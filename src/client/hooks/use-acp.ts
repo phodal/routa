@@ -3,34 +3,30 @@
 /**
  * useAcp - React hook for ACP client connection
  *
- * FIX: Uses refs for sessionId to avoid stale closure bugs.
- * FIX: Processes inline messages from prompt response (not just SSE).
+ * - OpenCode-compatible ACP client wrapper
+ * - Uses refs for sessionId to avoid stale closure bugs
  */
 
 import { useState, useCallback, useRef, useEffect } from "react";
-import { BrowserAcpClient, AcpSessionUpdate } from "../acp-client";
-
-export interface AcpMessage {
-  role: string;
-  content: string;
-  toolName?: string;
-  toolCallId?: string;
-  toolStatus?: string;
-  toolResult?: unknown;
-}
+import {
+  BrowserAcpClient,
+  AcpSessionNotification,
+  AcpNewSessionResult,
+} from "../acp-client";
 
 export interface UseAcpState {
   connected: boolean;
   sessionId: string | null;
-  agentId: string | null;
-  updates: AcpSessionUpdate[];
+  updates: AcpSessionNotification[];
   loading: boolean;
   error: string | null;
 }
 
 export interface UseAcpActions {
   connect: () => Promise<void>;
-  prompt: (text: string) => Promise<AcpMessage[]>;
+  createSession: (cwd?: string) => Promise<AcpNewSessionResult | null>;
+  selectSession: (sessionId: string) => void;
+  prompt: (text: string) => Promise<void>;
   cancel: () => Promise<void>;
   callTool: (name: string, args: Record<string, unknown>) => Promise<unknown>;
   disconnect: () => void;
@@ -43,7 +39,6 @@ export function useAcp(baseUrl: string = ""): UseAcpState & UseAcpActions {
   const [state, setState] = useState<UseAcpState>({
     connected: false,
     sessionId: null,
-    agentId: null,
     updates: [],
     loading: false,
     error: null,
@@ -56,20 +51,15 @@ export function useAcp(baseUrl: string = ""): UseAcpState & UseAcpActions {
     };
   }, []);
 
-  /**
-   * Connect: initialize + create session + connect SSE
-   * Does everything in one step so "Connect" button works end-to-end.
-   */
+  /** Connect (initialize only). Session creation is explicit. */
   const connect = useCallback(async () => {
     try {
       setState((s) => ({ ...s, loading: true, error: null }));
 
       const client = new BrowserAcpClient(baseUrl);
 
-      // 1. Initialize
       await client.initialize();
 
-      // 2. Register SSE handler
       client.onUpdate((update) => {
         setState((s) => ({
           ...s,
@@ -79,22 +69,10 @@ export function useAcp(baseUrl: string = ""): UseAcpState & UseAcpActions {
 
       clientRef.current = client;
 
-      // 3. Create session
-      const result = await client.newSession({});
-      const sessionId = result.sessionId;
-      const agentId = (result as unknown as Record<string, unknown>).agentId as
-        | string
-        | undefined;
-
-      sessionIdRef.current = sessionId;
-
       setState((s) => ({
         ...s,
         connected: true,
-        sessionId,
-        agentId: agentId ?? null,
         loading: false,
-        updates: [],
       }));
     } catch (err) {
       setState((s) => ({
@@ -105,29 +83,57 @@ export function useAcp(baseUrl: string = ""): UseAcpState & UseAcpActions {
     }
   }, [baseUrl]);
 
-  /**
-   * Send a prompt. Returns inline messages from the JSON-RPC response.
-   * Uses ref for sessionId to avoid stale closure.
-   */
-  const prompt = useCallback(async (text: string): Promise<AcpMessage[]> => {
+  const createSession = useCallback(
+    async (cwd?: string): Promise<AcpNewSessionResult | null> => {
+      const client = clientRef.current;
+      if (!client) return null;
+      try {
+        setState((s) => ({ ...s, loading: true, error: null, updates: [] }));
+        const result = await client.newSession({ cwd, mcpServers: [] });
+        sessionIdRef.current = result.sessionId;
+        setState((s) => ({
+          ...s,
+          sessionId: result.sessionId,
+          loading: false,
+        }));
+        return result;
+      } catch (err) {
+        setState((s) => ({
+          ...s,
+          loading: false,
+          error:
+            err instanceof Error ? err.message : "Session creation failed",
+        }));
+        return null;
+      }
+    },
+    []
+  );
+
+  const selectSession = useCallback((sessionId: string) => {
+    const client = clientRef.current;
+    if (!client) return;
+    sessionIdRef.current = sessionId;
+    client.attachSession(sessionId);
+    setState((s) => ({ ...s, sessionId, updates: [] }));
+  }, []);
+
+  /** Send a prompt to current session (content streams over SSE). */
+  const prompt = useCallback(async (text: string): Promise<void> => {
     const client = clientRef.current;
     const sessionId = sessionIdRef.current;
-    if (!client || !sessionId) return [];
+    if (!client || !sessionId) return;
 
     try {
       setState((s) => ({ ...s, loading: true, error: null }));
-      const result = await client.prompt(sessionId, text);
+      await client.prompt(sessionId, text);
       setState((s) => ({ ...s, loading: false }));
-
-      // Return inline messages from the response
-      return (result.messages ?? []) as AcpMessage[];
     } catch (err) {
       setState((s) => ({
         ...s,
         loading: false,
         error: err instanceof Error ? err.message : "Prompt failed",
       }));
-      return [];
     }
   }, []);
 
@@ -154,7 +160,6 @@ export function useAcp(baseUrl: string = ""): UseAcpState & UseAcpActions {
     setState({
       connected: false,
       sessionId: null,
-      agentId: null,
       updates: [],
       loading: false,
       error: null,
@@ -164,6 +169,8 @@ export function useAcp(baseUrl: string = ""): UseAcpState & UseAcpActions {
   return {
     ...state,
     connect,
+    createSession,
+    selectSession,
     prompt,
     cancel,
     callTool,

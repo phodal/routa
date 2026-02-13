@@ -1,6 +1,6 @@
 export {
   BrowserAcpClient,
-  type AcpSessionUpdate,
+  type AcpSessionNotification,
   type AcpInitializeResult,
   type AcpNewSessionResult,
   type AcpPromptResult,

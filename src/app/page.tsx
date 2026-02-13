@@ -14,14 +14,54 @@ import { useState, useCallback } from "react";
 import { AgentPanel } from "@/client/components/agent-panel";
 import { SkillPanel } from "@/client/components/skill-panel";
 import { ChatPanel } from "@/client/components/chat-panel";
+import { SessionPanel } from "@/client/components/session-panel";
+import { useAcp } from "@/client/hooks/use-acp";
 
 export default function HomePage() {
-  // refreshKey increments whenever agents change, triggering AgentPanel refresh
   const [refreshKey, setRefreshKey] = useState(0);
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const acp = useAcp();
 
-  const handleSessionChange = useCallback(() => {
+  const bumpRefresh = useCallback(() => {
     setRefreshKey((k) => k + 1);
   }, []);
+
+  const ensureConnected = useCallback(async () => {
+    if (!acp.connected) {
+      await acp.connect();
+    }
+  }, [acp]);
+
+  const handleCreateSession = useCallback(async () => {
+    await ensureConnected();
+    const result = await acp.createSession();
+    if (result?.sessionId) {
+      setActiveSessionId(result.sessionId);
+      bumpRefresh();
+    }
+  }, [acp, ensureConnected, bumpRefresh]);
+
+  const handleSelectSession = useCallback(
+    async (sessionId: string) => {
+      await ensureConnected();
+      acp.selectSession(sessionId);
+      setActiveSessionId(sessionId);
+      bumpRefresh();
+    },
+    [acp, ensureConnected, bumpRefresh]
+  );
+
+  const ensureSessionForChat = useCallback(async (): Promise<string | null> => {
+    await ensureConnected();
+    if (activeSessionId) return activeSessionId;
+    const result = await acp.createSession();
+    if (result?.sessionId) {
+      setActiveSessionId(result.sessionId);
+      bumpRefresh();
+      return result.sessionId;
+    }
+    return null;
+  }, [acp, activeSessionId, ensureConnected, bumpRefresh]);
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
@@ -47,15 +87,25 @@ export default function HomePage() {
       {/* Main content */}
       <main className="max-w-7xl mx-auto px-6 py-6">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[calc(100vh-8rem)]">
-          {/* Left column: Agents + Skills */}
+          {/* Left column: Sessions + Agents + Skills */}
           <div className="lg:col-span-1 space-y-6 overflow-y-auto">
+            <SessionPanel
+              selectedSessionId={activeSessionId}
+              onSelect={handleSelectSession}
+              onCreate={handleCreateSession}
+              refreshKey={refreshKey}
+            />
             <AgentPanel refreshKey={refreshKey} />
             <SkillPanel />
           </div>
 
           {/* Right column: Chat */}
           <div className="lg:col-span-2">
-            <ChatPanel onSessionChange={handleSessionChange} />
+            <ChatPanel
+              acp={acp}
+              activeSessionId={activeSessionId}
+              onEnsureSession={ensureSessionForChat}
+            />
           </div>
         </div>
       </main>

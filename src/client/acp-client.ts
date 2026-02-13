@@ -1,17 +1,18 @@
 /**
- * Browser ACP Client
+ * Browser ACP Client (OpenCode-compatible)
  *
- * Connects to the Routa ACP server (/api/acp) via JSON-RPC over HTTP + SSE.
- * Implements the client side of the Agent Client Protocol for browser use.
+ * Connects to `/api/acp` via JSON-RPC over HTTP and receives `session/update`
+ * notifications via SSE.
  *
- * Key fix: SSE is connected BEFORE session/new so no updates are lost.
- * Prompt responses also come back inline in JSON-RPC for reliability.
+ * This client intentionally follows ACP schema:
+ *   - `session/update` params are `{ sessionId, update }`
+ *   - `session/prompt` returns `{ stopReason }` while content streams over SSE
  */
 
-export interface AcpSessionUpdate {
+export interface AcpSessionNotification {
   sessionId: string;
-  sessionUpdate: string;
-  [key: string]: unknown;
+  update: Record<string, unknown>;
+  _meta?: Record<string, unknown> | null;
 }
 
 export interface AcpInitializeResult {
@@ -25,16 +26,9 @@ export interface AcpNewSessionResult {
 
 export interface AcpPromptResult {
   stopReason: string;
-  /** Inline response messages returned in JSON-RPC (not just SSE) */
-  messages?: Array<{
-    role: string;
-    content: string;
-    toolName?: string;
-    toolCallId?: string;
-  }>;
 }
 
-export type SessionUpdateHandler = (update: AcpSessionUpdate) => void;
+export type SessionUpdateHandler = (update: AcpSessionNotification) => void;
 
 export class BrowserAcpClient {
   private baseUrl: string;
@@ -62,20 +56,30 @@ export class BrowserAcpClient {
 
   /**
    * Create a new ACP session.
-   * Connects SSE first, then creates the session, so no updates are lost.
+   * Note: per ACP, SSE typically connects after sessionId is known.
    */
   async newSession(params: {
     cwd?: string;
     mcpServers?: Array<{ name: string; url?: string }>;
   }): Promise<AcpNewSessionResult> {
-    const result = await this.rpc<AcpNewSessionResult>("session/new", params);
+    const result = await this.rpc<AcpNewSessionResult>("session/new", {
+      cwd: params.cwd ?? "/",
+      mcpServers: params.mcpServers ?? [],
+    });
     this._sessionId = result.sessionId;
 
-    // Connect SSE AFTER we know the sessionId
-    // (updates during session/new are returned inline anyway)
-    this.connectSSE(result.sessionId);
+    // Connect SSE after we know the sessionId
+    this.attachSession(result.sessionId);
 
     return result;
+  }
+
+  /**
+   * Attach to an existing session ID (switch sessions).
+   */
+  attachSession(sessionId: string): void {
+    this._sessionId = sessionId;
+    this.connectSSE(sessionId);
   }
 
   /**
@@ -192,7 +196,7 @@ export class BrowserAcpClient {
       try {
         const data = JSON.parse(event.data);
         if (data.method === "session/update" && data.params) {
-          const update = data.params as AcpSessionUpdate;
+          const update = data.params as AcpSessionNotification;
           for (const handler of this.updateHandlers) {
             try {
               handler(update);

@@ -24,7 +24,8 @@ import type {
 import { v4 as uuidv4 } from "uuid";
 import { RoutaSystem } from "../routa-system";
 import { SkillRegistry } from "../skills/skill-registry";
-import { AgentRole } from "../models/agent";
+import { AgentRole, AgentStatus } from "../models/agent";
+import { getHttpSessionStore } from "./http-session-store";
 
 interface AcpSession {
   id: string;
@@ -63,6 +64,7 @@ export function createRoutaAcpAgent(
   skillRegistry?: SkillRegistry
 ) {
   const sessions = new Map<string, AcpSession>();
+  const sessionStore = getHttpSessionStore();
 
   return function agentHandler(connection: AgentSideConnection): Agent {
     return {
@@ -81,7 +83,8 @@ export function createRoutaAcpAgent(
 
       async newSession(params: NewSessionRequest): Promise<NewSessionResponse> {
         const sessionId = uuidv4();
-        const workspaceId = params.cwd ?? "default";
+        // UI expects a single shared workspace by default
+        const workspaceId = "default";
 
         const createResult = await system.tools.createAgent({
           name: `routa-session-${sessionId.slice(0, 8)}`,
@@ -94,6 +97,11 @@ export function createRoutaAcpAgent(
             ? (createResult.data as { agentId: string }).agentId
             : undefined;
 
+        if (routaAgentId) {
+          // Session agents should be active immediately (UI expects no PENDING)
+          await system.agentStore.updateStatus(routaAgentId, AgentStatus.ACTIVE);
+        }
+
         const session: AcpSession = {
           id: sessionId,
           cwd: params.cwd ?? process.cwd(),
@@ -101,6 +109,15 @@ export function createRoutaAcpAgent(
           workspaceId,
         };
         sessions.set(sessionId, session);
+
+        // Persist in HTTP session store for UI listing
+        sessionStore.upsertSession({
+          sessionId,
+          cwd: session.cwd,
+          workspaceId: session.workspaceId,
+          routaAgentId: session.routaAgentId,
+          createdAt: new Date().toISOString(),
+        });
 
         // Send available commands (skills as slash commands)
         if (skillRegistry) {
@@ -205,11 +222,15 @@ export function createRoutaAcpAgent(
         method: string,
         params: Record<string, unknown>
       ): Promise<Record<string, unknown>> {
-        if (method === "skills/list" && skillRegistry) {
+        // ACP spec: extension methods MUST start with "_" (underscore).
+        // Keep backward compatibility for the browser UI by supporting both.
+        const m = method.startsWith("_") ? method.slice(1) : method;
+
+        if (m === "skills/list" && skillRegistry) {
           return { skills: skillRegistry.listSkillSummaries() };
         }
 
-        if (method === "skills/load" && skillRegistry) {
+        if (m === "skills/load" && skillRegistry) {
           const skill = skillRegistry.getSkill(params.name as string);
           if (skill) {
             return {
@@ -221,7 +242,7 @@ export function createRoutaAcpAgent(
           throw new Error(`Skill not found: ${params.name}`);
         }
 
-        if (method === "tools/call") {
+        if (m === "tools/call") {
           const result = await dispatchTool(
             system,
             params.name as string,
