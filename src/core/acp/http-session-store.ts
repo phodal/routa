@@ -13,6 +13,7 @@ export interface RoutaSessionRecord {
   cwd: string;
   workspaceId: string;
   routaAgentId?: string;
+  provider?: string;
   createdAt: string;
 }
 
@@ -89,7 +90,7 @@ class HttpSessionStore {
         sessionId,
         update: {
           sessionUpdate: "agent_thought_chunk",
-          content: { type: "text", text: "Connected to opencode." },
+          content: { type: "text", text: "Connected to ACP session." },
         },
       },
     });

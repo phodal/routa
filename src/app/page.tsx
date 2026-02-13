@@ -32,14 +32,17 @@ export default function HomePage() {
     }
   }, [acp]);
 
-  const handleCreateSession = useCallback(async () => {
+  const handleCreateSession = useCallback(
+    async (provider: string) => {
     await ensureConnected();
-    const result = await acp.createSession();
-    if (result?.sessionId) {
-      setActiveSessionId(result.sessionId);
-      bumpRefresh();
-    }
-  }, [acp, ensureConnected, bumpRefresh]);
+      const result = await acp.createSession(undefined, provider);
+      if (result?.sessionId) {
+        setActiveSessionId(result.sessionId);
+        bumpRefresh();
+      }
+    },
+    [acp, ensureConnected, bumpRefresh]
+  );
 
   const handleSelectSession = useCallback(
     async (sessionId: string) => {
@@ -93,6 +96,9 @@ export default function HomePage() {
               selectedSessionId={activeSessionId}
               onSelect={handleSelectSession}
               onCreate={handleCreateSession}
+              providers={acp.providers}
+              selectedProvider={acp.selectedProvider}
+              onChangeProvider={acp.setProvider}
               refreshKey={refreshKey}
             />
             <AgentPanel refreshKey={refreshKey} />

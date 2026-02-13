@@ -126,6 +126,7 @@ export async function POST(request: NextRequest) {
         cwd,
         workspaceId: "default",
         routaAgentId: acpSessionId,
+        provider,
         createdAt: new Date().toISOString(),
       });
 

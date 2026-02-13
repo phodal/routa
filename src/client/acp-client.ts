@@ -24,10 +24,18 @@ export interface AcpInitializeResult {
 
 export interface AcpNewSessionResult {
   sessionId: string;
+  provider?: string;
 }
 
 export interface AcpPromptResult {
   stopReason: string;
+}
+
+export interface AcpProviderInfo {
+  id: string;
+  name: string;
+  description: string;
+  command: string;
 }
 
 export type SessionUpdateHandler = (update: AcpSessionNotification) => void;
@@ -58,14 +66,16 @@ export class BrowserAcpClient {
 
   /**
    * Create a new ACP session.
-   * This spawns a new opencode process on the backend.
+   * This spawns a new ACP agent process on the backend.
    */
   async newSession(params: {
     cwd?: string;
+    provider?: string;
     mcpServers?: Array<{ name: string; url?: string }>;
   }): Promise<AcpNewSessionResult> {
     const result = await this.rpc<AcpNewSessionResult>("session/new", {
       cwd: params.cwd ?? "/",
+      provider: params.provider ?? "opencode",
       mcpServers: params.mcpServers ?? [],
     });
     this._sessionId = result.sessionId;
@@ -74,6 +84,17 @@ export class BrowserAcpClient {
     this.attachSession(result.sessionId);
 
     return result;
+  }
+
+  /**
+   * List available ACP providers from the backend.
+   */
+  async listProviders(): Promise<AcpProviderInfo[]> {
+    const result = await this.rpc<{ providers?: AcpProviderInfo[] }>(
+      "_providers/list",
+      {}
+    );
+    return Array.isArray(result.providers) ? result.providers : [];
   }
 
   /**

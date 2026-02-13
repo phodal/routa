@@ -15,20 +15,27 @@ import {
   BrowserAcpClient,
   AcpSessionNotification,
   AcpNewSessionResult,
+  AcpProviderInfo,
 } from "../acp-client";
 
 export interface UseAcpState {
   connected: boolean;
   sessionId: string | null;
   updates: AcpSessionNotification[];
+  providers: AcpProviderInfo[];
+  selectedProvider: string;
   loading: boolean;
   error: string | null;
 }
 
 export interface UseAcpActions {
   connect: () => Promise<void>;
-  createSession: (cwd?: string) => Promise<AcpNewSessionResult | null>;
+  createSession: (
+    cwd?: string,
+    provider?: string
+  ) => Promise<AcpNewSessionResult | null>;
   selectSession: (sessionId: string) => void;
+  setProvider: (provider: string) => void;
   prompt: (text: string) => Promise<void>;
   cancel: () => Promise<void>;
   disconnect: () => void;
@@ -42,6 +49,8 @@ export function useAcp(baseUrl: string = ""): UseAcpState & UseAcpActions {
     connected: false,
     sessionId: null,
     updates: [],
+    providers: [],
+    selectedProvider: "opencode",
     loading: false,
     error: null,
   });
@@ -61,6 +70,7 @@ export function useAcp(baseUrl: string = ""): UseAcpState & UseAcpActions {
       const client = new BrowserAcpClient(baseUrl);
 
       await client.initialize();
+      const providers = await client.listProviders();
 
       client.onUpdate((update) => {
         setState((s) => ({
@@ -74,6 +84,7 @@ export function useAcp(baseUrl: string = ""): UseAcpState & UseAcpActions {
       setState((s) => ({
         ...s,
         connected: true,
+        providers,
         loading: false,
       }));
     } catch (err) {
@@ -86,16 +97,25 @@ export function useAcp(baseUrl: string = ""): UseAcpState & UseAcpActions {
   }, [baseUrl]);
 
   const createSession = useCallback(
-    async (cwd?: string): Promise<AcpNewSessionResult | null> => {
+    async (
+      cwd?: string,
+      provider?: string
+    ): Promise<AcpNewSessionResult | null> => {
       const client = clientRef.current;
       if (!client) return null;
       try {
         setState((s) => ({ ...s, loading: true, error: null, updates: [] }));
-        const result = await client.newSession({ cwd, mcpServers: [] });
+        const activeProvider = provider ?? state.selectedProvider;
+        const result = await client.newSession({
+          cwd,
+          provider: activeProvider,
+          mcpServers: [],
+        });
         sessionIdRef.current = result.sessionId;
         setState((s) => ({
           ...s,
           sessionId: result.sessionId,
+          selectedProvider: result.provider ?? activeProvider,
           loading: false,
         }));
         return result;
@@ -109,8 +129,12 @@ export function useAcp(baseUrl: string = ""): UseAcpState & UseAcpActions {
         return null;
       }
     },
-    []
+    [state.selectedProvider]
   );
+
+  const setProvider = useCallback((provider: string) => {
+    setState((s) => ({ ...s, selectedProvider: provider }));
+  }, []);
 
   const selectSession = useCallback((sessionId: string) => {
     const client = clientRef.current;
@@ -154,6 +178,8 @@ export function useAcp(baseUrl: string = ""): UseAcpState & UseAcpActions {
       connected: false,
       sessionId: null,
       updates: [],
+      providers: [],
+      selectedProvider: "opencode",
       loading: false,
       error: null,
     });
@@ -164,6 +190,7 @@ export function useAcp(baseUrl: string = ""): UseAcpState & UseAcpActions {
     connect,
     createSession,
     selectSession,
+    setProvider,
     prompt,
     cancel,
     disconnect,
