@@ -4,23 +4,56 @@
  * ChatPanel - ACP-based chat interface
  *
  * Renders streaming `session/update` SSE notifications from an opencode process.
- * Accumulates `agent_message_chunk` into a single growing assistant message.
- * Shows tool calls, thoughts, and plans inline.
+ * Handles all ACP sessionUpdate types:
+ *   - agent_message_chunk  → accumulated assistant message
+ *   - agent_thought_chunk  → accumulated collapsible thought block
+ *   - tool_call            → tool call card
+ *   - tool_call_update     → updates existing tool call card
+ *   - plan                 → plan entries list
+ *   - usage_update         → token/cost badge
+ *   - current_mode_update  → mode change notice
+ *   - available_commands_update → silent
+ *   - config_option_update → silent
+ *   - session_info_update  → silent
  */
 
-import { useState, useRef, useEffect, useCallback, type ReactElement } from "react";
+import {
+  useState,
+  useRef,
+  useEffect,
+  useCallback,
+  type ReactElement,
+} from "react";
 import type { AcpSessionNotification } from "../acp-client";
 import type { UseAcpActions, UseAcpState } from "../hooks/use-acp";
 
+// ─── Message Types ─────────────────────────────────────────────────────
+
+type MessageRole = "user" | "assistant" | "thought" | "tool" | "plan" | "info";
+
 interface ChatMessage {
   id: string;
-  role: "user" | "assistant" | "system" | "tool";
+  role: MessageRole;
   content: string;
   timestamp: Date;
-  /** For tool messages: tool name and status */
+  // Tool fields
   toolName?: string;
   toolStatus?: string;
   toolCallId?: string;
+  toolKind?: string;
+  // Plan fields
+  planEntries?: PlanEntry[];
+  // Usage fields
+  usageUsed?: number;
+  usageSize?: number;
+  costAmount?: number;
+  costCurrency?: string;
+}
+
+interface PlanEntry {
+  content: string;
+  priority?: "high" | "medium" | "low";
+  status?: "pending" | "in_progress" | "completed";
 }
 
 interface ChatPanelProps {
@@ -28,6 +61,8 @@ interface ChatPanelProps {
   activeSessionId: string | null;
   onEnsureSession: () => Promise<string | null>;
 }
+
+// ─── Main Component ────────────────────────────────────────────────────
 
 export function ChatPanel({
   acp,
@@ -43,8 +78,10 @@ export function ChatPanel({
   >({});
   const [visibleMessages, setVisibleMessages] = useState<ChatMessage[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  // Track the current streaming assistant message ID per session
+
+  // Track streaming IDs per session for accumulation
   const streamingMsgIdRef = useRef<Record<string, string | null>>({});
+  const streamingThoughtIdRef = useRef<Record<string, string | null>>({});
 
   // Auto-scroll
   useEffect(() => {
@@ -60,170 +97,296 @@ export function ChatPanel({
     setVisibleMessages(messagesBySession[activeSessionId] ?? []);
   }, [activeSessionId, messagesBySession]);
 
-  // Convert ACP SSE updates into messages (store per session)
+  // ── Process ACP SSE updates ──────────────────────────────────────────
+
   useEffect(() => {
     if (!updates.length) return;
     const last = updates[updates.length - 1] as AcpSessionNotification;
     const sid = last.sessionId;
 
-    // Support both nested (update.sessionUpdate) and flat (params.sessionUpdate) formats
+    // Support both nested (update.sessionUpdate) and flat (params.sessionUpdate)
     const update = (last.update ?? last) as Record<string, unknown>;
     const kind = update.sessionUpdate as string | undefined;
-
     if (!kind) return;
 
     const extractText = (): string => {
-      // Try content.text (ACP standard)
       const content = update.content as
         | { type: string; text?: string }
         | undefined;
       if (content?.text) return content.text;
-      // Try top-level text
       if (typeof update.text === "string") return update.text;
       return "";
     };
 
-    if (kind === "agent_message_chunk") {
-      const text = extractText();
-      if (!text) return;
-
+    // Helper to update messages for a session
+    const updateMessages = (
+      fn: (arr: ChatMessage[]) => ChatMessage[]
+    ) => {
       setMessagesBySession((prev) => {
         const next = { ...prev };
-        const arr = next[sid] ? [...next[sid]] : [];
-        const streamingId = streamingMsgIdRef.current[sid];
+        next[sid] = fn(next[sid] ? [...next[sid]] : []);
+        return next;
+      });
+    };
 
-        // Find existing streaming message to append to
-        const existingIdx = streamingId
-          ? arr.findIndex((m) => m.id === streamingId)
-          : -1;
+    switch (kind) {
+      // ── Agent message (accumulated) ──────────────────────────────────
+      case "agent_message_chunk": {
+        const text = extractText();
+        if (!text) return;
 
-        if (existingIdx >= 0) {
-          // Append to the existing streaming assistant message
-          arr[existingIdx] = {
-            ...arr[existingIdx],
-            content: arr[existingIdx].content + text,
-          };
-        } else {
-          // Start a new streaming assistant message
-          const newId = crypto.randomUUID();
-          streamingMsgIdRef.current[sid] = newId;
-          arr.push({
-            id: newId,
-            role: "assistant",
-            content: text,
-            timestamp: new Date(),
-          });
+        // Close any open thought block
+        streamingThoughtIdRef.current[sid] = null;
+
+        // Resolve or create the streaming message ID synchronously
+        // (refs must be updated outside setState to avoid race conditions)
+        let msgId = streamingMsgIdRef.current[sid];
+        if (!msgId) {
+          msgId = crypto.randomUUID();
+          streamingMsgIdRef.current[sid] = msgId;
         }
+        const targetId = msgId;
 
-        next[sid] = arr;
-        return next;
-      });
-    } else if (kind === "agent_thought_chunk") {
-      const text = extractText();
-      if (!text) return;
-
-      setMessagesBySession((prev) => {
-        const next = { ...prev };
-        const arr = next[sid] ? [...next[sid]] : [];
-        // Thoughts are shown as system messages (don't accumulate)
-        arr.push({
-          id: crypto.randomUUID(),
-          role: "system",
-          content: text,
-          timestamp: new Date(),
-        });
-        next[sid] = arr;
-        return next;
-      });
-    } else if (kind === "tool_call") {
-      // Start of a new tool call
-      const toolCallId = update.toolCallId as string | undefined;
-      const title = (update.title as string) ?? "tool";
-      const rawInput = update.rawInput
-        ? JSON.stringify(update.rawInput, null, 2)
-        : "";
-
-      setMessagesBySession((prev) => {
-        const next = { ...prev };
-        const arr = next[sid] ? [...next[sid]] : [];
-        arr.push({
-          id: toolCallId ?? crypto.randomUUID(),
-          role: "tool",
-          content: rawInput
-            ? `${title}\n\nInput:\n${rawInput}`
-            : title,
-          timestamp: new Date(),
-          toolName: title,
-          toolStatus: (update.status as string) ?? "running",
-          toolCallId,
-        });
-        next[sid] = arr;
-        return next;
-      });
-    } else if (kind === "tool_call_update") {
-      const toolCallId = update.toolCallId as string | undefined;
-      const status = (update.status as string) ?? "completed";
-      const rawOutput = update.rawOutput
-        ? typeof update.rawOutput === "string"
-          ? update.rawOutput
-          : JSON.stringify(update.rawOutput, null, 2)
-        : "";
-
-      if (toolCallId) {
-        setMessagesBySession((prev) => {
-          const next = { ...prev };
-          const arr = next[sid] ? [...next[sid]] : [];
-
-          // Find the matching tool_call and update it
-          const idx = arr.findIndex(
-            (m) => m.toolCallId === toolCallId
-          );
+        updateMessages((arr) => {
+          const idx = arr.findIndex((m) => m.id === targetId);
           if (idx >= 0) {
             arr[idx] = {
               ...arr[idx],
-              toolStatus: status,
-              content: rawOutput
-                ? `${arr[idx].toolName ?? "tool"}\n\nOutput:\n${rawOutput}`
-                : arr[idx].content,
+              content: arr[idx].content + text,
             };
           } else {
-            // No matching tool_call found, add as new
             arr.push({
-              id: crypto.randomUUID(),
-              role: "tool",
-              content: rawOutput || `Tool ${status}`,
+              id: targetId,
+              role: "assistant",
+              content: text,
               timestamp: new Date(),
-              toolStatus: status,
-              toolCallId,
             });
           }
-
-          next[sid] = arr;
-          return next;
+          return arr;
         });
+        break;
       }
-    } else if (kind === "plan") {
-      const planText =
-        typeof update.plan === "string"
-          ? update.plan
-          : JSON.stringify(update.plan, null, 2);
-      setMessagesBySession((prev) => {
-        const next = { ...prev };
-        const arr = next[sid] ? [...next[sid]] : [];
-        arr.push({
-          id: crypto.randomUUID(),
-          role: "system",
-          content: `Plan:\n${planText}`,
-          timestamp: new Date(),
+
+      // ── Thought (accumulated, collapsible) ───────────────────────────
+      case "agent_thought_chunk": {
+        const text = extractText();
+        if (!text) return;
+
+        // Resolve or create the streaming thought ID synchronously
+        let thoughtId = streamingThoughtIdRef.current[sid];
+        if (!thoughtId) {
+          thoughtId = crypto.randomUUID();
+          streamingThoughtIdRef.current[sid] = thoughtId;
+        }
+        const targetId = thoughtId;
+
+        updateMessages((arr) => {
+          const idx = arr.findIndex((m) => m.id === targetId);
+          if (idx >= 0) {
+            arr[idx] = {
+              ...arr[idx],
+              content: arr[idx].content + text,
+            };
+          } else {
+            arr.push({
+              id: targetId,
+              role: "thought",
+              content: text,
+              timestamp: new Date(),
+            });
+          }
+          return arr;
         });
-        next[sid] = arr;
-        return next;
-      });
-    } else if (kind === "available_commands_update") {
-      // Silently note commands update
+        break;
+      }
+
+      // ── Tool call ────────────────────────────────────────────────────
+      case "tool_call": {
+        const toolCallId = update.toolCallId as string | undefined;
+        const title = (update.title as string) ?? "tool";
+        const status = (update.status as string) ?? "running";
+        const toolKind = update.kind as string | undefined;
+
+        // Build content from various fields
+        let contentParts: string[] = [];
+        if (update.rawInput) {
+          contentParts.push(
+            `Input:\n${typeof update.rawInput === "string" ? update.rawInput : JSON.stringify(update.rawInput, null, 2)}`
+          );
+        }
+        // ACP spec: content is ToolCallContent[]
+        const toolContent = update.content as
+          | Array<{ type: string; text?: string }>
+          | undefined;
+        if (Array.isArray(toolContent)) {
+          for (const c of toolContent) {
+            if (c.text) contentParts.push(c.text);
+          }
+        }
+
+        updateMessages((arr) => {
+          arr.push({
+            id: toolCallId ?? crypto.randomUUID(),
+            role: "tool",
+            content: contentParts.join("\n\n") || title,
+            timestamp: new Date(),
+            toolName: title,
+            toolStatus: status,
+            toolCallId,
+            toolKind,
+          });
+          return arr;
+        });
+        break;
+      }
+
+      // ── Tool call update ─────────────────────────────────────────────
+      case "tool_call_update": {
+        const toolCallId = update.toolCallId as string | undefined;
+        const status = update.status as string | undefined;
+
+        // Build updated content
+        let outputParts: string[] = [];
+        if (update.rawOutput) {
+          outputParts.push(
+            typeof update.rawOutput === "string"
+              ? update.rawOutput
+              : JSON.stringify(update.rawOutput, null, 2)
+          );
+        }
+        const toolContent = update.content as
+          | Array<{ type: string; text?: string }>
+          | null
+          | undefined;
+        if (Array.isArray(toolContent)) {
+          for (const c of toolContent) {
+            if (c.text) outputParts.push(c.text);
+          }
+        }
+
+        if (toolCallId) {
+          updateMessages((arr) => {
+            const idx = arr.findIndex((m) => m.toolCallId === toolCallId);
+            if (idx >= 0) {
+              const existing = arr[idx];
+              arr[idx] = {
+                ...existing,
+                toolStatus: status ?? existing.toolStatus,
+                toolName: (update.title as string) ?? existing.toolName,
+                toolKind: (update.kind as string) ?? existing.toolKind,
+                content: outputParts.length
+                  ? `${existing.toolName ?? "tool"}\n\nOutput:\n${outputParts.join("\n")}`
+                  : existing.content,
+              };
+            } else {
+              arr.push({
+                id: crypto.randomUUID(),
+                role: "tool",
+                content: outputParts.join("\n") || `Tool ${status ?? "update"}`,
+                timestamp: new Date(),
+                toolStatus: status ?? "completed",
+                toolCallId,
+              });
+            }
+            return arr;
+          });
+        }
+        break;
+      }
+
+      // ── Plan ─────────────────────────────────────────────────────────
+      case "plan": {
+        const entries = update.entries as PlanEntry[] | undefined;
+        const planText = entries
+          ? entries
+              .map(
+                (e) =>
+                  `[${e.status ?? "pending"}] ${e.content}${e.priority ? ` (${e.priority})` : ""}`
+              )
+              .join("\n")
+          : typeof update.plan === "string"
+            ? update.plan
+            : JSON.stringify(update, null, 2);
+
+        updateMessages((arr) => {
+          arr.push({
+            id: crypto.randomUUID(),
+            role: "plan",
+            content: planText,
+            timestamp: new Date(),
+            planEntries: entries,
+          });
+          return arr;
+        });
+        break;
+      }
+
+      // ── Usage update ─────────────────────────────────────────────────
+      case "usage_update": {
+        const used = update.used as number | undefined;
+        const size = update.size as number | undefined;
+        const cost = update.cost as
+          | { amount: number; currency: string }
+          | null
+          | undefined;
+
+        updateMessages((arr) => {
+          // Replace existing usage message or add new
+          const usageIdx = arr.findIndex(
+            (m) => m.role === "info" && m.usageUsed !== undefined
+          );
+          const usageMsg: ChatMessage = {
+            id: usageIdx >= 0 ? arr[usageIdx].id : crypto.randomUUID(),
+            role: "info",
+            content: "",
+            timestamp: new Date(),
+            usageUsed: used,
+            usageSize: size,
+            costAmount: cost?.amount,
+            costCurrency: cost?.currency,
+          };
+          if (usageIdx >= 0) {
+            arr[usageIdx] = usageMsg;
+          } else {
+            arr.push(usageMsg);
+          }
+          return arr;
+        });
+        break;
+      }
+
+      // ── Mode update ──────────────────────────────────────────────────
+      case "current_mode_update": {
+        const modeId = update.currentModeId as string | undefined;
+        if (modeId) {
+          updateMessages((arr) => {
+            arr.push({
+              id: crypto.randomUUID(),
+              role: "info",
+              content: `Mode changed to: ${modeId}`,
+              timestamp: new Date(),
+            });
+            return arr;
+          });
+        }
+        break;
+      }
+
+      // ── Silent updates ───────────────────────────────────────────────
+      case "available_commands_update":
+      case "config_option_update":
+      case "session_info_update":
+        // No visible UI needed
+        break;
+
+      default:
+        console.log(`[ChatPanel] Unhandled sessionUpdate: ${kind}`);
+        break;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [updates]);
+
+  // ── Actions ──────────────────────────────────────────────────────────
 
   const handleConnect = useCallback(async () => {
     await connect();
@@ -237,10 +400,11 @@ export function ChatPanel({
     const text = input;
     setInput("");
 
-    // Clear the streaming message ID so the next response starts fresh
+    // Clear streaming IDs so the next response starts fresh
     streamingMsgIdRef.current[sid] = null;
+    streamingThoughtIdRef.current[sid] = null;
 
-    // Store user msg in active session transcript
+    // Store user msg
     setMessagesBySession((prev) => {
       const next = { ...prev };
       const arr = next[sid] ? [...next[sid]] : [];
@@ -256,9 +420,12 @@ export function ChatPanel({
 
     await prompt(text);
 
-    // After prompt completes, clear streaming ID
+    // After prompt completes, clear streaming IDs
     streamingMsgIdRef.current[sid] = null;
+    streamingThoughtIdRef.current[sid] = null;
   }, [input, activeSessionId, onEnsureSession, prompt]);
+
+  // ── Render ───────────────────────────────────────────────────────────
 
   return (
     <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm flex flex-col h-full">
@@ -354,61 +521,318 @@ export function ChatPanel({
 // ─── Message Bubble Component ──────────────────────────────────────────
 
 function MessageBubble({ message }: { message: ChatMessage }) {
-  const { role, content, toolName, toolStatus } = message;
+  const { role } = message;
 
-  if (role === "user") {
-    return (
-      <div className="flex justify-end">
-        <div className="max-w-[80%] px-4 py-2.5 rounded-2xl bg-blue-600 text-white text-sm whitespace-pre-wrap">
-          {content}
-        </div>
-      </div>
-    );
+  switch (role) {
+    case "user":
+      return <UserBubble content={message.content} />;
+    case "assistant":
+      return <AssistantBubble content={message.content} />;
+    case "thought":
+      return <ThoughtBubble content={message.content} />;
+    case "tool":
+      return (
+        <ToolBubble
+          content={message.content}
+          toolName={message.toolName}
+          toolStatus={message.toolStatus}
+          toolKind={message.toolKind}
+        />
+      );
+    case "plan":
+      return (
+        <PlanBubble
+          content={message.content}
+          entries={message.planEntries}
+        />
+      );
+    case "info":
+      if (message.usageUsed !== undefined) {
+        return (
+          <UsageBadge
+            used={message.usageUsed}
+            size={message.usageSize}
+            costAmount={message.costAmount}
+            costCurrency={message.costCurrency}
+          />
+        );
+      }
+      return <InfoBubble content={message.content} />;
+    default:
+      return null;
   }
+}
 
-  if (role === "system") {
-    return (
-      <div className="flex justify-start">
-        <div className="max-w-[90%] px-3 py-2 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 text-xs text-amber-800 dark:text-amber-300 whitespace-pre-wrap">
-          {content}
-        </div>
+// ─── User Bubble ───────────────────────────────────────────────────────
+
+function UserBubble({ content }: { content: string }) {
+  return (
+    <div className="flex justify-end">
+      <div className="max-w-[80%] px-4 py-2.5 rounded-2xl bg-blue-600 text-white text-sm whitespace-pre-wrap">
+        {content}
       </div>
-    );
-  }
+    </div>
+  );
+}
 
-  if (role === "tool") {
-    const statusColor =
-      toolStatus === "completed"
-        ? "bg-green-500"
-        : toolStatus === "running"
-          ? "bg-yellow-500 animate-pulse"
-          : "bg-gray-400";
+// ─── Assistant Bubble ──────────────────────────────────────────────────
 
-    return (
-      <div className="flex justify-start">
-        <div className="max-w-[90%] rounded-xl border border-gray-200 dark:border-gray-600 overflow-hidden">
-          <div className="px-3 py-1.5 bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600 flex items-center gap-2">
-            <span className={`w-1.5 h-1.5 rounded-full ${statusColor}`} />
-            <span className="text-xs font-mono text-gray-500 dark:text-gray-400">
-              {toolName ?? "tool"}
-            </span>
-            <span className="text-xs text-gray-400 dark:text-gray-500">
-              {toolStatus ?? "completed"}
-            </span>
-          </div>
-          <div className="px-3 py-2 text-xs font-mono text-gray-600 dark:text-gray-400 whitespace-pre-wrap max-h-48 overflow-y-auto bg-gray-50/50 dark:bg-gray-800/50">
-            {content}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // Assistant message
+function AssistantBubble({ content }: { content: string }) {
   return (
     <div className="flex justify-start">
       <div className="max-w-[85%] px-4 py-3 rounded-2xl bg-gray-100 dark:bg-gray-700 text-sm text-gray-900 dark:text-gray-100">
         <FormattedContent content={content} />
+      </div>
+    </div>
+  );
+}
+
+// ─── Thought Bubble (collapsible, max 2 lines) ────────────────────────
+
+function ThoughtBubble({ content }: { content: string }) {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <div className="flex justify-start">
+      <div className="max-w-[90%] w-full">
+        <button
+          type="button"
+          onClick={() => setExpanded((e) => !e)}
+          className="w-full text-left group"
+        >
+          <div className="flex items-center gap-1.5 mb-0.5">
+            <svg
+              className={`w-3 h-3 text-purple-400 transition-transform duration-150 ${expanded ? "rotate-90" : ""}`}
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M9 5l7 7-7 7"
+              />
+            </svg>
+            <span className="text-[11px] font-medium text-purple-500 dark:text-purple-400 uppercase tracking-wide">
+              Thinking
+            </span>
+          </div>
+          <div
+            className={`px-3 py-2 rounded-lg bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 text-xs text-purple-700 dark:text-purple-300 whitespace-pre-wrap transition-all duration-150 ${
+              expanded
+                ? "max-h-60 overflow-y-auto"
+                : "max-h-[2.8em] overflow-hidden"
+            }`}
+          >
+            {content}
+          </div>
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Tool Bubble ───────────────────────────────────────────────────────
+
+function ToolBubble({
+  content,
+  toolName,
+  toolStatus,
+  toolKind,
+}: {
+  content: string;
+  toolName?: string;
+  toolStatus?: string;
+  toolKind?: string;
+}) {
+  const [expanded, setExpanded] = useState(false);
+
+  const statusColor =
+    toolStatus === "completed"
+      ? "bg-green-500"
+      : toolStatus === "failed"
+        ? "bg-red-500"
+        : toolStatus === "in_progress" || toolStatus === "running"
+          ? "bg-yellow-500 animate-pulse"
+          : "bg-gray-400";
+
+  const kindLabel = toolKind ? ` (${toolKind})` : "";
+
+  return (
+    <div className="flex justify-start">
+      <div className="max-w-[90%] rounded-xl border border-gray-200 dark:border-gray-600 overflow-hidden">
+        <button
+          type="button"
+          onClick={() => setExpanded((e) => !e)}
+          className="w-full px-3 py-1.5 bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600 flex items-center gap-2 text-left"
+        >
+          <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${statusColor}`} />
+          <span className="text-xs font-mono text-gray-600 dark:text-gray-300 truncate">
+            {toolName ?? "tool"}{kindLabel}
+          </span>
+          <span className="text-xs text-gray-400 dark:text-gray-500 ml-auto shrink-0">
+            {toolStatus ?? "pending"}
+          </span>
+          <svg
+            className={`w-3 h-3 text-gray-400 transition-transform duration-150 shrink-0 ${expanded ? "rotate-90" : ""}`}
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={2}
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+          </svg>
+        </button>
+        {expanded && (
+          <div className="px-3 py-2 text-xs font-mono text-gray-600 dark:text-gray-400 whitespace-pre-wrap max-h-48 overflow-y-auto bg-gray-50/50 dark:bg-gray-800/50">
+            {content}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Plan Bubble ───────────────────────────────────────────────────────
+
+function PlanBubble({
+  content,
+  entries,
+}: {
+  content: string;
+  entries?: PlanEntry[];
+}) {
+  const [expanded, setExpanded] = useState(true);
+
+  const statusIcon = (s?: string) => {
+    switch (s) {
+      case "completed":
+        return "✓";
+      case "in_progress":
+        return "●";
+      default:
+        return "○";
+    }
+  };
+  const priorityColor = (p?: string) => {
+    switch (p) {
+      case "high":
+        return "text-red-500";
+      case "medium":
+        return "text-yellow-500";
+      default:
+        return "text-gray-400";
+    }
+  };
+
+  return (
+    <div className="flex justify-start">
+      <div className="max-w-[90%] rounded-xl border border-indigo-200 dark:border-indigo-800 overflow-hidden">
+        <button
+          type="button"
+          onClick={() => setExpanded((e) => !e)}
+          className="w-full px-3 py-1.5 bg-indigo-50 dark:bg-indigo-900/20 border-b border-indigo-200 dark:border-indigo-800 flex items-center gap-2 text-left"
+        >
+          <span className="text-xs font-semibold text-indigo-600 dark:text-indigo-400">
+            Plan
+          </span>
+          <svg
+            className={`w-3 h-3 text-indigo-400 transition-transform duration-150 ml-auto ${expanded ? "rotate-90" : ""}`}
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={2}
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+          </svg>
+        </button>
+        {expanded && (
+          <div className="px-3 py-2 bg-white dark:bg-gray-800">
+            {entries ? (
+              <div className="space-y-1">
+                {entries.map((e, i) => (
+                  <div key={i} className="flex items-start gap-2 text-xs">
+                    <span
+                      className={`shrink-0 ${e.status === "completed" ? "text-green-500" : e.status === "in_progress" ? "text-blue-500" : "text-gray-400"}`}
+                    >
+                      {statusIcon(e.status)}
+                    </span>
+                    <span className="text-gray-700 dark:text-gray-300">
+                      {e.content}
+                    </span>
+                    {e.priority && (
+                      <span
+                        className={`ml-auto shrink-0 text-[10px] ${priorityColor(e.priority)}`}
+                      >
+                        {e.priority}
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-xs text-gray-600 dark:text-gray-400 whitespace-pre-wrap">
+                {content}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Usage Badge ───────────────────────────────────────────────────────
+
+function UsageBadge({
+  used,
+  size,
+  costAmount,
+  costCurrency,
+}: {
+  used?: number;
+  size?: number;
+  costAmount?: number;
+  costCurrency?: string;
+}) {
+  if (used === undefined) return null;
+
+  const pct = size ? Math.round((used / size) * 100) : 0;
+  const formatTokens = (n: number) =>
+    n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
+
+  return (
+    <div className="flex justify-center">
+      <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-[11px] text-gray-500 dark:text-gray-400">
+        <span>
+          {formatTokens(used)}{size ? ` / ${formatTokens(size)}` : ""} tokens
+        </span>
+        {size ? (
+          <div className="w-12 h-1.5 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
+            <div
+              className={`h-full rounded-full transition-all ${pct > 80 ? "bg-red-400" : pct > 50 ? "bg-yellow-400" : "bg-green-400"}`}
+              style={{ width: `${Math.min(pct, 100)}%` }}
+            />
+          </div>
+        ) : null}
+        {costAmount !== undefined && costAmount > 0 && (
+          <span className="text-gray-400">
+            ${costAmount.toFixed(4)} {costCurrency ?? "USD"}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Info Bubble ───────────────────────────────────────────────────────
+
+function InfoBubble({ content }: { content: string }) {
+  return (
+    <div className="flex justify-center">
+      <div className="px-3 py-1 rounded-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-[11px] text-gray-500 dark:text-gray-400">
+        {content}
       </div>
     </div>
   );
@@ -463,10 +887,12 @@ function FormattedContent({ content }: { content: string }) {
         codeBlockLines = [];
         continue;
       } else {
-        // End of code block
         inCodeBlock = false;
         elements.push(
-          <div key={i} className="my-2 rounded-lg overflow-hidden border border-gray-200 dark:border-gray-600">
+          <div
+            key={i}
+            className="my-2 rounded-lg overflow-hidden border border-gray-200 dark:border-gray-600"
+          >
             {codeBlockLang && (
               <div className="px-3 py-1 bg-gray-100 dark:bg-gray-700 text-xs text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-600">
                 {codeBlockLang}
@@ -486,7 +912,7 @@ function FormattedContent({ content }: { content: string }) {
       continue;
     }
 
-    // Heading
+    // Headings
     if (line.startsWith("### ")) {
       elements.push(
         <div key={i} className="font-semibold mt-2 text-sm">
@@ -530,7 +956,9 @@ function FormattedContent({ content }: { content: string }) {
     if (numberedMatch) {
       elements.push(
         <div key={i} className="pl-3 flex gap-1.5">
-          <span className="text-gray-400 shrink-0">{numberedMatch[1]}.</span>
+          <span className="text-gray-400 shrink-0">
+            {numberedMatch[1]}.
+          </span>
           <span>
             <InlineMarkdown text={numberedMatch[2]} />
           </span>
@@ -566,10 +994,13 @@ function FormattedContent({ content }: { content: string }) {
     );
   }
 
-  // Handle unclosed code block
+  // Unclosed code block
   if (inCodeBlock && codeBlockLines.length > 0) {
     elements.push(
-      <div key="unclosed-code" className="my-2 rounded-lg overflow-hidden border border-gray-200 dark:border-gray-600">
+      <div
+        key="unclosed-code"
+        className="my-2 rounded-lg overflow-hidden border border-gray-200 dark:border-gray-600"
+      >
         {codeBlockLang && (
           <div className="px-3 py-1 bg-gray-100 dark:bg-gray-700 text-xs text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-600">
             {codeBlockLang}
