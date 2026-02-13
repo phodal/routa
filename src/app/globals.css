@@ -5,17 +5,38 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  --sidebar-width: 300px;
+  --topbar-height: 52px;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
+    --background: #0f1117;
     --foreground: #ededed;
   }
 }
 
+html,
 body {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
   color: var(--foreground);
   background: var(--background);
   font-family: system-ui, -apple-system, sans-serif;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(128, 128, 128, 0.3);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(128, 128, 128, 0.5);
 }
