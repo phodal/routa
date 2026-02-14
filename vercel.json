@@ -1,8 +1,8 @@
 {
-  "buildCommand": "npm install --legacy-peer-deps && npm install -g opencode-ai && npm run build",
+  "buildCommand": "npm install --legacy-peer-deps && npm run build",
   "functions": {
     "api/**/*.ts": {
-      "maxDuration": 1200
+      "maxDuration": 60
     }
   }
 }

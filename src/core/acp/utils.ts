@@ -5,14 +5,21 @@
 import { execFile } from "child_process";
 
 /**
- * Find an executable in PATH (like Unix `which`).
+ * Find an executable in PATH or node_modules/.bin.
  * Returns the resolved path if found, null otherwise.
+ *
+ * Checks in this order:
+ * 1. Absolute path (if provided)
+ * 2. node_modules/.bin (for locally installed packages)
+ * 3. System PATH (using which/where command)
  */
 export async function which(command: string): Promise<string | null> {
-  // If command is already an absolute path, check if it exists
-  if (command.startsWith("/") || command.startsWith("\\")) {
+  const path = await import("path");
+  const fs = await import("fs");
+
+  // 1. If command is already an absolute path, check if it exists
+  if (command.startsWith("/") || command.startsWith("\\") || path.isAbsolute(command)) {
     try {
-      const fs = await import("fs");
       const stat = fs.statSync(command);
       if (stat.isFile()) return command;
     } catch {
@@ -20,6 +27,18 @@ export async function which(command: string): Promise<string | null> {
     }
   }
 
+  // 2. Check node_modules/.bin (for locally installed packages)
+  try {
+    const localBinPath = path.join(process.cwd(), "node_modules", ".bin", command);
+    if (fs.existsSync(localBinPath)) {
+      const stat = fs.statSync(localBinPath);
+      if (stat.isFile()) return localBinPath;
+    }
+  } catch {
+    // Ignore errors, continue to PATH check
+  }
+
+  // 3. Check system PATH using which/where command
   const isWindows = process.platform === "win32";
   const checkCmd = isWindows ? "where" : "which";
 

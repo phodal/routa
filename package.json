@@ -10,7 +10,9 @@
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "^0.14.1",
+    "@google/generative-ai-cli": "^1.0.0",
     "@modelcontextprotocol/sdk": "^1.26.0",
+    "@openai/codex": "latest",
     "@tiptap/core": "^3.19.0",
     "@tiptap/extension-code-block-lowlight": "^3.19.0",
     "@tiptap/extension-image": "^3.19.0",
@@ -28,10 +30,16 @@
     "highlight.js": "^11.11.1",
     "lowlight": "^3.3.0",
     "next": "^15.1.0",
+    "opencode-ai": "latest",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "uuid": "^11.1.0",
     "zod": "^3.24.0"
+  },
+  "optionalDependencies": {
+    "@google/generative-ai-cli": "^1.0.0",
+    "@openai/codex": "latest",
+    "opencode-ai": "latest"
   },
   "devDependencies": {
     "@playwright/test": "^1.58.2",

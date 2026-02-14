@@ -117,13 +117,31 @@ export function getStandardPresets(): AcpAgentPreset[] {
 
 /**
  * Resolve the actual binary path for a preset.
- * Checks the environment variable override first, then falls back to the default command.
+ * Checks in this order:
+ * 1. Environment variable override (e.g., OPENCODE_BIN)
+ * 2. node_modules/.bin (for locally installed packages)
+ * 3. Default command (for globally installed or in PATH)
  */
 export function resolveCommand(preset: AcpAgentPreset): string {
+  // 1. Check environment variable override
   if (preset.envBinOverride) {
     const envValue = process.env[preset.envBinOverride];
     if (envValue) return envValue;
   }
+
+  // 2. Check node_modules/.bin (for locally installed packages)
+  const path = require("path");
+  const localBinPath = path.join(process.cwd(), "node_modules", ".bin", preset.command);
+  const fs = require("fs");
+  try {
+    if (fs.existsSync(localBinPath)) {
+      return localBinPath;
+    }
+  } catch {
+    // Ignore errors, fall through to default
+  }
+
+  // 3. Fall back to default command (assumes it's in PATH)
   return preset.command;
 }
 
