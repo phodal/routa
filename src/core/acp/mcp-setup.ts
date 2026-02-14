@@ -13,12 +13,17 @@
  *   │  auggie    │  Write ~/.augment/mcp-config.json, pass file path    │
  *   │            │  via  --mcp-config <path>                            │
  *   │  claude    │  Inline JSON via --mcp-config <json>                 │
+ *   │  codex     │  Merge into ~/.codex/config.toml (TOML format)      │
+ *   │            │  [mcp_servers.routa-coordination]                    │
  *   └────────────┴────────────────────────────────────────────────────────┘
+ *
+ * Codex docs: https://developers.openai.com/codex/mcp/
  */
 
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
+import TOML from "smol-toml";
 import {
   getDefaultRoutaMcpConfig,
   type RoutaMcpConfig,
@@ -26,7 +31,7 @@ import {
 
 // ─── Types ─────────────────────────────────────────────────────────────
 
-export type McpSupportedProvider = "claude" | "auggie" | "opencode";
+export type McpSupportedProvider = "claude" | "auggie" | "opencode" | "codex";
 
 /**
  * Result of a file-based MCP setup (OpenCode / Auggie).
@@ -43,7 +48,7 @@ export interface McpSetupResult {
 // ─── Public API ────────────────────────────────────────────────────────
 
 export function providerSupportsMcp(providerId: string): boolean {
-  const supported: McpSupportedProvider[] = ["claude", "auggie", "opencode"];
+  const supported: McpSupportedProvider[] = ["claude", "auggie", "opencode", "codex"];
   return supported.includes(providerId as McpSupportedProvider);
 }
 
@@ -71,6 +76,8 @@ export function ensureMcpForProvider(
       return ensureMcpForAuggie(mcpEndpoint, cfg.workspaceId);
     case "claude":
       return ensureMcpForClaude(mcpEndpoint, cfg.workspaceId);
+    case "codex":
+      return ensureMcpForCodex(mcpEndpoint);
     default:
       return { mcpConfigs: [], summary: `${providerId}: unknown` };
   }
@@ -208,6 +215,71 @@ function ensureMcpForClaude(
   };
 }
 
+// ─── Codex (OpenAI) ─────────────────────────────────────────────────────
+//
+// Codex stores MCP config in TOML format at ~/.codex/config.toml
+// https://developers.openai.com/codex/mcp/
+//
+// Streamable HTTP servers use:
+//   [mcp_servers.<server-name>]
+//   url = "http://..."
+//   enabled = true
+//
+// We merge a "routa-coordination" entry preserving all existing settings.
+
+const CODEX_CONFIG_DIR = path.join(os.homedir(), ".codex");
+const CODEX_CONFIG_FILE = path.join(CODEX_CONFIG_DIR, "config.toml");
+
+function ensureMcpForCodex(mcpEndpoint: string): McpSetupResult {
+  try {
+    // Read existing config (or start fresh)
+    let existing: Record<string, unknown> = {};
+    if (fs.existsSync(CODEX_CONFIG_FILE)) {
+      const raw = fs.readFileSync(CODEX_CONFIG_FILE, "utf-8");
+      existing = TOML.parse(raw) as Record<string, unknown>;
+    }
+
+    // Ensure "mcp_servers" key exists as an object
+    const mcpServers = (existing.mcp_servers ?? {}) as Record<
+      string,
+      unknown
+    >;
+
+    // Add / update the routa-coordination server entry
+    mcpServers["routa-coordination"] = {
+      url: mcpEndpoint,
+      enabled: true,
+    };
+
+    existing.mcp_servers = mcpServers;
+
+    // Write back
+    fs.mkdirSync(CODEX_CONFIG_DIR, { recursive: true });
+    fs.writeFileSync(
+      CODEX_CONFIG_FILE,
+      TOML.stringify(existing as Record<string, unknown>) + "\n",
+      "utf-8",
+    );
+
+    console.log(
+      `[MCP:Codex] Wrote routa-coordination to ${CODEX_CONFIG_FILE}`,
+    );
+
+    // Codex reads the config file itself – nothing to pass on the CLI
+    return {
+      mcpConfigs: [],
+      summary: `codex: wrote ${CODEX_CONFIG_FILE}`,
+    };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[MCP:Codex] Failed to write config: ${msg}`);
+    return {
+      mcpConfigs: [],
+      summary: `codex: config write failed – ${msg}`,
+    };
+  }
+}
+
 // ─── Legacy convenience wrappers ───────────────────────────────────────
 
 /** @deprecated Use ensureMcpForProvider("claude", config) */
@@ -224,6 +296,10 @@ export function setupMcpForClaudeCode(config?: RoutaMcpConfig): string[] {
 
 export function setupMcpForAuggie(config?: RoutaMcpConfig): string[] {
   return ensureMcpForProvider("auggie", config).mcpConfigs;
+}
+
+export function setupMcpForCodex(config?: RoutaMcpConfig): string[] {
+  return ensureMcpForProvider("codex", config).mcpConfigs;
 }
 
 // ─── Helpers (unchanged) ───────────────────────────────────────────────

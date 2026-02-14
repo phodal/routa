@@ -47,6 +47,7 @@ export {
   setupMcpForProvider,
   setupMcpForClaudeCode,
   setupMcpForAuggie,
+  setupMcpForCodex,
   providerSupportsMcp,
   isMcpConfigured,
   getMcpStatus,

@@ -6,6 +6,7 @@
  *   - OpenCode: config file at ~/.config/opencode/opencode.json
  *   - Auggie:   file at ~/.augment/mcp-config.json, passed via --mcp-config <path>
  *   - Claude:   inline JSON via --mcp-config <json>
+ *   - Codex:    TOML config at ~/.codex/config.toml [mcp_servers.routa-coordination]
  */
 
 import { AcpProcess } from "@/core/acp/acp-process";
@@ -69,6 +70,20 @@ export async function startClaudeCodeWithMcp(workspacePath: string) {
   const process = new ClaudeCodeProcess(config, (n) =>
     console.log("notification:", n),
   );
+  await process.start();
+  return process;
+}
+
+// ─── Example 4: Codex with MCP (TOML config file) ──────────────────────
+
+export async function startCodexWithMcp(workspacePath: string) {
+  // Merges routa-coordination entry into ~/.codex/config.toml
+  // using TOML format: [mcp_servers.routa-coordination]
+  const mcp = ensureMcpForProvider("codex");
+  console.log("Codex MCP:", mcp.summary);
+
+  const config = buildConfigFromPreset("codex", workspacePath);
+  const process = new AcpProcess(config, (n) => console.log("notification:", n));
   await process.start();
   return process;
 }
