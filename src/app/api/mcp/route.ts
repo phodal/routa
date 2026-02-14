@@ -154,7 +154,7 @@ export async function POST(request: NextRequest) {
 
 import { AgentTools } from "@/core/tools/agent-tools";
 
-async function executeMcpTool(
+export async function executeMcpTool(
   tools: AgentTools,
   name: string,
   args: Record<string, unknown>
@@ -240,7 +240,7 @@ function formatResult(result: { success: boolean; data?: unknown; error?: string
   };
 }
 
-function getMcpToolDefinitions() {
+export function getMcpToolDefinitions() {
   return [
     {
       name: "list_agents",

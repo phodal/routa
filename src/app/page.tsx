@@ -138,6 +138,12 @@ export default function HomePage() {
         <div className="flex items-center gap-2">
           <ProtocolBadge name="MCP" endpoint="/api/mcp" />
           <ProtocolBadge name="ACP" endpoint="/api/acp" />
+          <a
+            href="/mcp-tools"
+            className="px-2.5 py-1 rounded-md bg-blue-50 dark:bg-blue-900/20 text-[11px] font-medium text-blue-600 dark:text-blue-300"
+          >
+            MCP Tools
+          </a>
         </div>
 
         {/* Connection status */}
