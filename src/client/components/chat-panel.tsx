@@ -311,12 +311,7 @@ export function ChatPanel({
             const modeId = update.currentModeId as string | undefined;
             if (modeId) {
               modeUpdates[sid] = modeId;
-              arr.push({
-                id: crypto.randomUUID(),
-                role: "info",
-                content: `Mode changed to: ${modeId}`,
-                timestamp: new Date(),
-              });
+              // Don't display mode change messages to keep conversation clean
             }
             break;
           }
@@ -683,27 +678,70 @@ function PlanBubble({ content, entries }: { content: string; entries?: PlanEntry
   );
 }
 
-// ─── Usage Badge ───────────────────────────────────────────────────────
+// ─── Usage Badge (Circular token indicator) ────────────────────────────
 
 function UsageBadge({ used, size, costAmount, costCurrency }: { used?: number; size?: number; costAmount?: number; costCurrency?: string }) {
   if (used === undefined) return null;
   const pct = size ? Math.round((used / size) * 100) : 0;
   const formatTokens = (n: number) => n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
+  
+  // Determine color based on percentage
+  const strokeColor = pct > 80 ? "#f87171" : pct > 50 ? "#fbbf24" : "#4ade80";
+  
+  // SVG circle parameters
+  const radius = 16;
+  const circumference = 2 * Math.PI * radius;
+  const strokeDashoffset = circumference - (pct / 100) * circumference;
+  
   return (
     <div className="flex justify-center">
-      <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-gray-50 dark:bg-[#161922] border border-gray-100 dark:border-gray-800 text-[11px] text-gray-500 dark:text-gray-400">
-        <span>{formatTokens(used)}{size ? ` / ${formatTokens(size)}` : ""} tokens</span>
-        {size ? (
-          <div className="w-12 h-1.5 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
-            <div
-              className={`h-full rounded-full transition-all ${pct > 80 ? "bg-red-400" : pct > 50 ? "bg-yellow-400" : "bg-green-400"}`}
-              style={{ width: `${Math.min(pct, 100)}%` }}
+      <div 
+        className="relative group inline-flex items-center justify-center cursor-help"
+        title={`${formatTokens(used)}${size ? ` / ${formatTokens(size)}` : ""} tokens${costAmount !== undefined && costAmount > 0 ? ` · $${costAmount.toFixed(4)} ${costCurrency ?? "USD"}` : ""}`}
+      >
+        {/* Circular progress indicator */}
+        <svg width="40" height="40" className="transform -rotate-90">
+          {/* Background circle */}
+          <circle
+            cx="20"
+            cy="20"
+            r={radius}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="3"
+            className="text-gray-200 dark:text-gray-700"
+          />
+          {/* Progress circle */}
+          {size && (
+            <circle
+              cx="20"
+              cy="20"
+              r={radius}
+              fill="none"
+              stroke={strokeColor}
+              strokeWidth="3"
+              strokeDasharray={circumference}
+              strokeDashoffset={strokeDashoffset}
+              strokeLinecap="round"
+              className="transition-all duration-300"
             />
+          )}
+        </svg>
+        
+        {/* Percentage text in center */}
+        <span className="absolute text-[9px] font-semibold text-gray-600 dark:text-gray-300">
+          {size ? `${pct}%` : formatTokens(used)}
+        </span>
+        
+        {/* Tooltip on hover */}
+        <div className="absolute bottom-full mb-2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+          <div className="px-3 py-2 rounded-lg bg-gray-900 dark:bg-gray-800 text-white text-xs whitespace-nowrap shadow-lg border border-gray-700">
+            <div className="font-medium">{formatTokens(used)}{size ? ` / ${formatTokens(size)}` : ""} tokens</div>
+            {costAmount !== undefined && costAmount > 0 && (
+              <div className="text-gray-300 mt-0.5">${costAmount.toFixed(4)} {costCurrency ?? "USD"}</div>
+            )}
           </div>
-        ) : null}
-        {costAmount !== undefined && costAmount > 0 && (
-          <span className="text-gray-400">${costAmount.toFixed(4)} {costCurrency ?? "USD"}</span>
-        )}
+        </div>
       </div>
     </div>
   );
