@@ -30,7 +30,8 @@ export interface UseSkillsState {
 
 export interface UseSkillsActions {
   refresh: () => Promise<void>;
-  loadSkill: (name: string) => Promise<SkillContent | null>;
+  /** Load skill content by name. Pass repoPath for repo-specific skills. */
+  loadSkill: (name: string, repoPath?: string) => Promise<SkillContent | null>;
   reloadFromDisk: () => Promise<void>;
   cloneFromGithub: (url: string) => Promise<CloneSkillsResult>;
   loadRepoSkills: (repoPath: string) => Promise<void>;
@@ -66,10 +67,10 @@ export function useSkills(
     }
   }, []);
 
-  const loadSkill = useCallback(async (name: string) => {
+  const loadSkill = useCallback(async (name: string, repoPath?: string) => {
     try {
       setState((s) => ({ ...s, loading: true, error: null }));
-      const skill = await clientRef.current.load(name);
+      const skill = await clientRef.current.load(name, repoPath);
       setState((s) => ({ ...s, loadedSkill: skill, loading: false }));
       return skill;
     } catch (err) {

@@ -92,9 +92,10 @@ export default function HomePage() {
   }, [acp, activeSessionId, ensureConnected, bumpRefresh]);
 
   const handleLoadSkill = useCallback(async (name: string): Promise<string | null> => {
-    const skill = await skillsHook.loadSkill(name);
+    // Pass repoSelection.path so repo-specific skills can be found
+    const skill = await skillsHook.loadSkill(name, repoSelection?.path);
     return skill?.content ?? null;
-  }, [skillsHook]);
+  }, [skillsHook, repoSelection?.path]);
 
   const handleAgentChange = useCallback((role: AgentRole) => {
     if (role !== "CRAFTER") {

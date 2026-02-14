@@ -11,6 +11,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { SkillRegistry } from "@/core/skills/skill-registry";
+import { discoverSkillsFromPath } from "@/core/skills";
 
 let registry: SkillRegistry | undefined;
 
@@ -24,11 +25,28 @@ function getRegistry(): SkillRegistry {
 export async function GET(request: NextRequest) {
   const reg = getRegistry();
   const name = request.nextUrl.searchParams.get("name");
+  const repoPath = request.nextUrl.searchParams.get("repoPath");
 
   if (name) {
-    const skill = reg.getSkill(name);
+    // First try the local registry (project + global skills)
+    let skill = reg.getSkill(name);
+
+    // If not found in registry and a repoPath is provided,
+    // search in the repo's skill directories
+    if (!skill && repoPath) {
+      try {
+        const repoSkills = discoverSkillsFromPath(repoPath);
+        skill = repoSkills.find((s) => s.name === name);
+      } catch (err) {
+        console.warn(`[Skills API] Failed to discover skills from repo path: ${repoPath}`, err);
+      }
+    }
+
     if (!skill) {
-      return NextResponse.json({ error: `Skill not found: ${name}` }, { status: 404 });
+      return NextResponse.json(
+        { error: `Skill not found: ${name}${repoPath ? ` (also searched in ${repoPath})` : ""}` },
+        { status: 404 }
+      );
     }
     return NextResponse.json({
       name: skill.name,

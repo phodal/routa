@@ -59,21 +59,28 @@ export class SkillClient {
   }
 
   /**
-   * Load a specific skill by name
+   * Load a specific skill by name.
+   * If repoPath is provided, also searches in the repo's skill directories.
    */
-  async load(name: string): Promise<SkillContent | null> {
+  async load(name: string, repoPath?: string): Promise<SkillContent | null> {
+    // Build cache key that includes repoPath for repo-specific skills
+    const cacheKey = repoPath ? `${name}@${repoPath}` : name;
+
     // Check cache first
-    const cached = this.cache.get(name);
+    const cached = this.cache.get(cacheKey);
     if (cached) return cached;
 
-    const response = await fetch(
-      `${this.baseUrl}/api/skills?name=${encodeURIComponent(name)}`
-    );
+    let url = `${this.baseUrl}/api/skills?name=${encodeURIComponent(name)}`;
+    if (repoPath) {
+      url += `&repoPath=${encodeURIComponent(repoPath)}`;
+    }
+
+    const response = await fetch(url);
 
     if (!response.ok) return null;
 
     const skill = (await response.json()) as SkillContent;
-    this.cache.set(name, skill);
+    this.cache.set(cacheKey, skill);
     return skill;
   }
 
