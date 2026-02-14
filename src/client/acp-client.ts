@@ -76,7 +76,7 @@ export class BrowserAcpClient {
     mcpServers?: Array<{ name: string; url?: string }>;
   }): Promise<AcpNewSessionResult> {
     const result = await this.rpc<AcpNewSessionResult>("session/new", {
-      cwd: params.cwd ?? "/",
+      cwd: params.cwd, // Let server handle the default
       provider: params.provider ?? "opencode",
       modeId: params.modeId,
       mcpServers: params.mcpServers ?? [],

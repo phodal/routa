@@ -82,11 +82,15 @@ export function buildConfigFromPreset(
   const command = resolveCommand(preset);
   const args = [...preset.args];
 
-  // Append --cwd if the preset uses positional cwd (like opencode)
-  // For others, we rely on the process cwd
+  // Append --cwd as command-line argument for providers that support it
+  // - OpenCode: uses --cwd flag
+  // - Others: rely on process cwd + session/new cwd param (ACP protocol)
   if (preset.id === "opencode") {
     args.push("--cwd", cwd);
   }
+  // Note: Some providers may require additional flags for cwd support.
+  // If a provider doesn't respect the session/new cwd param, add explicit
+  // handling here (similar to opencode).
 
   if (extraArgs) {
     args.push(...extraArgs);

@@ -102,6 +102,8 @@ export async function POST(request: NextRequest) {
       const modeId = (p.modeId as string | undefined) ?? (p.mode as string | undefined);
       const sessionId = uuidv4();
 
+      console.log(`[ACP Route] Creating session: provider=${provider}, cwd=${cwd}, modeId=${modeId}`);
+
       const store = getHttpSessionStore();
       const manager = getAcpProcessManager();
 
