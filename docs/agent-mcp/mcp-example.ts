@@ -1,8 +1,10 @@
 /**
  * MCP Configuration Examples
  *
- * This file demonstrates how to configure MCP for different ACP providers
- * to connect to the Routa MCP server.
+ * This file demonstrates how to configure MCP for ACP providers
+ * that support --mcp-config flag (currently: Auggie and Claude Code).
+ * 
+ * Note: OpenCode and Codex do not support --mcp-config in ACP mode.
  */
 
 import { AcpProcess } from "@/core/acp/acp-process";
@@ -10,27 +12,26 @@ import { ClaudeCodeProcess } from "@/core/acp/claude-code-process";
 import { buildConfigFromPreset } from "@/core/acp/opencode-process";
 import { getPresetById } from "@/core/acp/acp-presets";
 import {
-  setupMcpForCodex,
   setupMcpForClaudeCode,
-  setupMcpForOpenCode,
+  setupMcpForAuggie,
   getMcpStatus,
 } from "@/core/acp/mcp-setup";
 import { getDefaultRoutaMcpConfig } from "@/core/acp/mcp-config-generator";
 
-// ─── Example 1: Codex with MCP ─────────────────────────────────────────
+// ─── Example 1: Auggie with MCP ────────────────────────────────────────
 
-export async function startCodexWithMcp(workspacePath: string) {
-  console.log("Starting Codex with MCP configuration...");
+export async function startAuggieWithMcp(workspacePath: string) {
+  console.log("Starting Auggie with MCP configuration...");
 
   // Setup MCP configuration
-  const mcpConfigs = setupMcpForCodex({
+  const mcpConfigs = setupMcpForAuggie({
     routaServerUrl: "http://localhost:3000",
     workspaceId: "my-workspace",
   });
 
   // Build process config
   const config = buildConfigFromPreset(
-    "codex",
+    "auggie",
     workspacePath,
     [], // extra args
     {}, // extra env
@@ -38,16 +39,16 @@ export async function startCodexWithMcp(workspacePath: string) {
   );
 
   // Check MCP status
-  const status = getMcpStatus("codex", mcpConfigs);
+  const status = getMcpStatus("auggie", mcpConfigs);
   console.log("MCP Status:", status);
 
   // Create and start process
   const process = new AcpProcess(config, (notification) => {
-    console.log("Codex notification:", notification);
+    console.log("Auggie notification:", notification);
   });
 
   await process.start();
-  console.log("Codex started with MCP enabled");
+  console.log("Auggie started with MCP enabled");
 
   return process;
 }
@@ -89,41 +90,10 @@ export async function startClaudeCodeWithMcp(workspacePath: string) {
   return process;
 }
 
-// ─── Example 3: OpenCode with MCP ──────────────────────────────────────
-
-export async function startOpenCodeWithMcp(workspacePath: string) {
-  console.log("Starting OpenCode with MCP configuration...");
-
-  // Setup MCP configuration
-  const mcpConfigs = setupMcpForOpenCode({
-    routaServerUrl: "http://localhost:3000",
-    workspaceId: "my-workspace",
-  });
-
-  // Build process config
-  const config = buildConfigFromPreset(
-    "opencode",
-    workspacePath,
-    [],
-    {},
-    mcpConfigs
-  );
-
-  // Create and start process
-  const process = new AcpProcess(config, (notification) => {
-    console.log("OpenCode notification:", notification);
-  });
-
-  await process.start();
-  console.log("OpenCode started with MCP enabled");
-
-  return process;
-}
-
-// ─── Example 4: Using Environment Variables ────────────────────────────
+// ─── Example 3: Using Environment Variables ────────────────────────────
 
 export async function startProviderWithDefaultMcp(
-  providerId: "codex" | "claude" | "opencode",
+  providerId: "auggie" | "claude",
   workspacePath: string
 ) {
   console.log(`Starting ${providerId} with default MCP configuration...`);
@@ -133,12 +103,10 @@ export async function startProviderWithDefaultMcp(
   console.log("Default MCP config:", defaultConfig);
 
   let mcpConfigs: string[];
-  if (providerId === "codex") {
-    mcpConfigs = setupMcpForCodex(defaultConfig);
-  } else if (providerId === "claude") {
-    mcpConfigs = setupMcpForClaudeCode(defaultConfig);
+  if (providerId === "auggie") {
+    mcpConfigs = setupMcpForAuggie(defaultConfig);
   } else {
-    mcpConfigs = setupMcpForOpenCode(defaultConfig);
+    mcpConfigs = setupMcpForClaudeCode(defaultConfig);
   }
 
   const config = buildConfigFromPreset(
@@ -162,14 +130,13 @@ export async function startProviderWithDefaultMcp(
 if (require.main === module) {
   const workspacePath = process.cwd();
 
-  // Example: Start Codex with MCP
-  startCodexWithMcp(workspacePath)
+  // Example: Start Auggie with MCP
+  startAuggieWithMcp(workspacePath)
     .then((process) => {
-      console.log("Codex process started successfully");
+      console.log("Auggie process started successfully");
       // You can now send prompts to the process
     })
     .catch((error) => {
-      console.error("Failed to start Codex:", error);
+      console.error("Failed to start Auggie:", error);
     });
 }
-

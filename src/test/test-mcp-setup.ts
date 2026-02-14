@@ -9,7 +9,7 @@ export function testMcpSetup() {
   console.log("Testing MCP Configuration\n");
   console.log("=" .repeat(60));
 
-  const providers: McpSupportedProvider[] = ["auggie", "codex", "opencode", "gemini"];
+  const providers = ["auggie", "codex", "opencode", "gemini"];
 
   for (const providerId of providers) {
     console.log(`\nProvider: ${providerId}`);
@@ -19,7 +19,7 @@ export function testMcpSetup() {
     console.log(`Supports MCP: ${supportsMcp}`);
 
     if (supportsMcp) {
-      const mcpConfigs = setupMcpForProvider(providerId);
+      const mcpConfigs = setupMcpForProvider(providerId as McpSupportedProvider);
       console.log(`MCP Config Count: ${mcpConfigs.length}`);
       
       if (mcpConfigs.length > 0) {
@@ -28,11 +28,14 @@ export function testMcpSetup() {
         try {
           const parsed = JSON.parse(mcpConfigs[0]);
           console.log(`\nParsed Config:`);
-          console.log(`  - Name: ${parsed.name}`);
-          console.log(`  - Type: ${parsed.type}`);
-          console.log(`  - URL: ${parsed.url}`);
+          console.log(`  - Name: ${parsed.name || 'N/A'}`);
+          console.log(`  - Type: ${parsed.type || 'N/A'}`);
+          console.log(`  - URL: ${parsed.url || 'N/A'}`);
           if (parsed.env) {
             console.log(`  - Env: ${JSON.stringify(parsed.env)}`);
+          }
+          if (parsed.mcpServers) {
+            console.log(`  - MCP Servers: ${JSON.stringify(parsed.mcpServers, null, 2)}`);
           }
         } catch (e) {
           console.error(`  ERROR: Invalid JSON - ${e instanceof Error ? e.message : String(e)}`);

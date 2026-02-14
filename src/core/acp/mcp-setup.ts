@@ -23,23 +23,29 @@ import {
 } from "./mcp-config-generator";
 
 /**
- * Provider IDs that support MCP configuration
+ * Provider IDs that support MCP configuration via --mcp-config flag
+ * 
+ * Verified support:
+ * - auggie: ✓ Supports --mcp-config with {mcpServers: {...}} format
+ * - claude: ✓ Supports --mcp-config with {mcpServers: {...}} format
+ * 
+ * Not supported (will cause process exit):
+ * - opencode: Uses separate `opencode mcp` command for configuration
+ * - codex: No MCP support in codex-acp wrapper
+ * - gemini: Uses different MCP configuration mechanism
  */
-export type McpSupportedProvider = "claude" | "codex" | "opencode" | "auggie" | "gemini";
+export type McpSupportedProvider = "claude" | "auggie";
 
 /**
- * Check if a provider supports MCP configuration.
+ * Check if a provider supports MCP configuration via --mcp-config flag.
  *
  * @param providerId - Provider ID to check
- * @returns True if the provider supports MCP
+ * @returns True if the provider supports --mcp-config
  */
 export function providerSupportsMcp(providerId: string): boolean {
   const supportedProviders: McpSupportedProvider[] = [
     "claude",
-    "codex",
-    "opencode",
     "auggie",
-    "gemini",
   ];
   return supportedProviders.includes(providerId as McpSupportedProvider);
 }
@@ -50,11 +56,16 @@ export function providerSupportsMcp(providerId: string): boolean {
  * This generates the MCP configuration JSON strings that can be passed
  * to the provider via --mcp-config flags.
  *
- * Different providers expect different MCP config formats:
- * - Auggie/Claude: {mcpServers: {name: {url, type}}}
- * - OpenCode/Codex: {name, url, type, env}
+ * Currently supported providers:
+ * - Auggie: Uses {mcpServers: {name: {url, type, env}}} format
+ * - Claude: Uses {mcpServers: {name: {url, type, env}}} format
  *
- * @param providerId - Provider ID (claude, codex, opencode, etc.)
+ * Not supported (will be ignored):
+ * - OpenCode: Requires separate `opencode mcp add` configuration
+ * - Codex: No MCP support in current wrapper
+ * - Gemini: Uses different configuration mechanism
+ *
+ * @param providerId - Provider ID (claude, auggie)
  * @param config - Routa MCP configuration (optional, uses defaults if not provided)
  * @returns Array of MCP config JSON strings
  */
@@ -63,31 +74,25 @@ export function setupMcpForProvider(
   config?: RoutaMcpConfig
 ): string[] {
   if (!providerSupportsMcp(providerId)) {
-    console.warn(`Provider "${providerId}" does not support MCP configuration`);
+    console.warn(`Provider "${providerId}" does not support --mcp-config flag`);
     return [];
   }
 
   const mcpConfig = config || getDefaultRoutaMcpConfig();
   
-  // Auggie and Claude use a different format: {mcpServers: {name: {url, type}}}
-  if (providerId === "auggie" || providerId === "claude") {
-    const mcpEndpoint = `${mcpConfig.routaServerUrl}/api/mcp`;
-    const mcpConfigJson = JSON.stringify({
-      mcpServers: {
-        "routa-coordination": {
-          url: mcpEndpoint,
-          type: "http",
-          env: {
-            ROUTA_WORKSPACE_ID: mcpConfig.workspaceId || "default",
-          },
+  // Auggie and Claude both use {mcpServers: {name: {url, type, env}}} format
+  const mcpEndpoint = `${mcpConfig.routaServerUrl}/api/mcp`;
+  const mcpConfigJson = JSON.stringify({
+    mcpServers: {
+      "routa-coordination": {
+        url: mcpEndpoint,
+        type: "http",
+        env: {
+          ROUTA_WORKSPACE_ID: mcpConfig.workspaceId || "default",
         },
       },
-    });
-    return [mcpConfigJson];
-  }
-  
-  // OpenCode, Codex, Gemini use the standard format
-  const mcpConfigJson = generateRoutaMcpConfigJson(mcpConfig);
+    },
+  });
   return [mcpConfigJson];
 }
 
@@ -101,30 +106,6 @@ export function setupMcpForProvider(
  */
 export function setupMcpForClaudeCode(config?: RoutaMcpConfig): string[] {
   return setupMcpForProvider("claude", config);
-}
-
-/**
- * Setup MCP for Codex.
- *
- * Codex (via codex-acp wrapper) may support --mcp-config flag.
- *
- * @param config - Routa MCP configuration
- * @returns Array of MCP config JSON strings for Codex
- */
-export function setupMcpForCodex(config?: RoutaMcpConfig): string[] {
-  return setupMcpForProvider("codex", config);
-}
-
-/**
- * Setup MCP for OpenCode.
- *
- * OpenCode may support --mcp-config flag for MCP server configurations.
- *
- * @param config - Routa MCP configuration
- * @returns Array of MCP config JSON strings for OpenCode
- */
-export function setupMcpForOpenCode(config?: RoutaMcpConfig): string[] {
-  return setupMcpForProvider("opencode", config);
 }
 
 /**

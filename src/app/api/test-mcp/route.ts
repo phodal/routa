@@ -10,13 +10,13 @@ import { getDefaultRoutaMcpConfig } from "@/core/acp/mcp-config-generator";
 
 export async function GET() {
   const results: Record<string, any> = {};
-  const providers: McpSupportedProvider[] = ["auggie", "codex", "opencode", "gemini", "claude"];
+  const providers = ["auggie", "codex", "opencode", "gemini", "claude"];
 
   for (const providerId of providers) {
     const supportsMcp = providerSupportsMcp(providerId);
     
     if (supportsMcp) {
-      const mcpConfigs = setupMcpForProvider(providerId);
+      const mcpConfigs = setupMcpForProvider(providerId as McpSupportedProvider);
       
       try {
         const parsed = mcpConfigs.length > 0 ? JSON.parse(mcpConfigs[0]) : null;
@@ -36,6 +36,7 @@ export async function GET() {
     } else {
       results[providerId] = {
         supportsMcp: false,
+        reason: "Provider does not support --mcp-config flag in ACP mode",
       };
     }
   }
