@@ -18,6 +18,7 @@ import type { AcpSessionNotification } from "../acp-client";
 import type { UseAcpActions, UseAcpState } from "../hooks/use-acp";
 import { TiptapInput, type InputContext } from "./tiptap-input";
 import type { SkillSummary } from "../skill-client";
+import type { RepoSelection } from "./repo-picker";
 
 // ─── Message Types ─────────────────────────────────────────────────────
 
@@ -64,7 +65,7 @@ export function ChatPanel({
 }: ChatPanelProps) {
   const { connected, loading, error, updates, prompt } = acp;
 
-  const [clonedCwd, setClonedCwd] = useState<string | null>(null);
+  const [repoSelection, setRepoSelection] = useState<RepoSelection | null>(null);
   const [messagesBySession, setMessagesBySession] = useState<
     Record<string, ChatMessage[]>
   >({});
@@ -292,22 +293,15 @@ export function ChatPanel({
 
   // ── Actions ──────────────────────────────────────────────────────────
 
-  const handleClone = useCallback(async (url: string) => {
-    const res = await fetch("/api/clone", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ url }),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || "Clone failed");
-    setClonedCwd(data.path);
+  const handleRepoChange = useCallback((selection: RepoSelection | null) => {
+    setRepoSelection(selection);
   }, []);
 
   const handleSend = useCallback(async (text: string, context: InputContext) => {
     if (!text.trim()) return;
 
-    // Use cwd from clone if set
-    const cwd = context.cwd || clonedCwd || undefined;
+    // Use cwd from repo selection if set
+    const cwd = context.cwd || repoSelection?.path || undefined;
 
     // If user selected a provider via @mention, switch to it
     if (context.provider) {
@@ -348,7 +342,7 @@ export function ChatPanel({
 
     streamingMsgIdRef.current[sid] = null;
     streamingThoughtIdRef.current[sid] = null;
-  }, [activeSessionId, onEnsureSession, prompt, clonedCwd, onLoadSkill, acp]);
+  }, [activeSessionId, onEnsureSession, prompt, repoSelection, onLoadSkill, acp]);
 
   // ── Render ───────────────────────────────────────────────────────────
 
@@ -413,8 +407,8 @@ export function ChatPanel({
               loading={loading}
               skills={skills}
               providers={acp.providers}
-              clonedCwd={clonedCwd}
-              onClone={handleClone}
+              repoSelection={repoSelection}
+              onRepoChange={handleRepoChange}
             />
             <button
               onClick={() => {

@@ -30,6 +30,7 @@ import { Extension } from "@tiptap/core";
 import { PluginKey } from "@tiptap/pm/state";
 import { common, createLowlight } from "lowlight";
 import type { SkillSummary } from "../skill-client";
+import { RepoPicker, type RepoSelection } from "./repo-picker";
 
 const lowlight = createLowlight(common);
 
@@ -292,8 +293,8 @@ interface TiptapInputProps {
   loading?: boolean;
   skills?: SkillSummary[];
   providers?: ProviderItem[];
-  clonedCwd?: string | null;
-  onClone?: (url: string) => Promise<void>;
+  repoSelection: RepoSelection | null;
+  onRepoChange: (selection: RepoSelection | null) => void;
 }
 
 export function TiptapInput({
@@ -303,13 +304,9 @@ export function TiptapInput({
   loading = false,
   skills = [],
   providers = [],
-  clonedCwd = null,
-  onClone,
+  repoSelection,
+  onRepoChange,
 }: TiptapInputProps) {
-  const [showClonePopover, setShowClonePopover] = useState(false);
-  const [cloneUrl, setCloneUrl] = useState("");
-  const [cloning, setCloning] = useState(false);
-  const [cloneError, setCloneError] = useState<string | null>(null);
 
   // Ref for skills so the Mention extension always has latest
   const skillsRef = useRef<SuggestionItem[]>([]);
@@ -369,10 +366,10 @@ export function TiptapInput({
     onSend(cleanText || text, {
       provider,
       skill,
-      cwd: clonedCwd ?? undefined,
+      cwd: repoSelection?.path ?? undefined,
     });
     editor.commands.clearContent();
-  }, [onSend, disabled, loading, clonedCwd]);
+  }, [onSend, disabled, loading, repoSelection]);
 
   const handleSendRef = useRef(handleSend);
   handleSendRef.current = handleSend;
@@ -481,46 +478,8 @@ export function TiptapInput({
     return () => window.removeEventListener("tiptap:send-click", fn);
   }, []);
 
-  // Clone handler
-  const handleClone = useCallback(async () => {
-    if (!cloneUrl.trim() || !onClone) return;
-    setCloning(true);
-    setCloneError(null);
-    try {
-      await onClone(cloneUrl.trim());
-      setShowClonePopover(false);
-      setCloneUrl("");
-    } catch (err) {
-      setCloneError(err instanceof Error ? err.message : "Clone failed");
-    } finally {
-      setCloning(false);
-    }
-  }, [cloneUrl, onClone]);
-
   return (
     <div className="flex-1 flex flex-col gap-1.5">
-      {/* CWD indicator */}
-      {clonedCwd && (
-        <div className="flex items-center gap-1.5 px-1">
-          <svg
-            className="w-3 h-3 text-green-500 shrink-0"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            strokeWidth={2}
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"
-            />
-          </svg>
-          <span className="text-[10px] text-gray-500 dark:text-gray-400 font-mono truncate">
-            {clonedCwd}
-          </span>
-        </div>
-      )}
-
       {/* Editor wrapper */}
       <div
         className={`tiptap-input-wrapper relative px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-[#161922] transition-colors focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-transparent ${
@@ -530,64 +489,12 @@ export function TiptapInput({
         <EditorContent editor={editor} />
 
         {/* Bottom toolbar */}
-        <div className="flex items-center gap-1 mt-1.5 -mb-0.5">
-          {/* GitHub clone button */}
-          <div className="relative">
-            <button
-              type="button"
-              onClick={() => setShowClonePopover((v) => !v)}
-              className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-              title="Clone GitHub repo"
-            >
-              <svg
-                className="w-3.5 h-3.5"
-                viewBox="0 0 24 24"
-                fill="currentColor"
-              >
-                <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z" />
-              </svg>
-              Clone
-            </button>
-
-            {/* Clone popover */}
-            {showClonePopover && (
-              <div className="absolute bottom-full left-0 mb-2 w-80 p-3 rounded-lg bg-white dark:bg-[#1e2130] border border-gray-200 dark:border-gray-700 shadow-xl z-50">
-                <div className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Clone GitHub Repository
-                </div>
-                <div className="flex gap-1.5">
-                  <input
-                    type="text"
-                    value={cloneUrl}
-                    onChange={(e) => setCloneUrl(e.target.value)}
-                    placeholder="https://github.com/owner/repo"
-                    className="flex-1 px-2.5 py-1.5 text-xs rounded-md border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-[#161922] text-gray-900 dark:text-gray-100 focus:ring-1 focus:ring-blue-500 focus:border-blue-500 placeholder:text-gray-400"
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") handleClone();
-                      if (e.key === "Escape") setShowClonePopover(false);
-                    }}
-                    autoFocus
-                  />
-                  <button
-                    onClick={handleClone}
-                    disabled={cloning || !cloneUrl.trim()}
-                    className="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors disabled:opacity-40"
-                  >
-                    {cloning ? "..." : "Clone"}
-                  </button>
-                </div>
-                {cloneError && (
-                  <div className="mt-1.5 text-[10px] text-red-500">
-                    {cloneError}
-                  </div>
-                )}
-                <div className="mt-1.5 text-[10px] text-gray-400">
-                  The repo will be cloned and used as the agent working
-                  directory.
-                </div>
-              </div>
-            )}
-          </div>
+        <div className="flex items-center gap-2 mt-1.5 -mb-0.5">
+          {/* Repo picker (replaces old Clone button) */}
+          <RepoPicker
+            value={repoSelection}
+            onChange={onRepoChange}
+          />
 
           {/* Hints */}
           <span className="text-[10px] text-gray-300 dark:text-gray-600 ml-auto">
