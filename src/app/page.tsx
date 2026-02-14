@@ -235,6 +235,22 @@ export default function HomePage() {
               )}
             </div>
 
+            {/* Serverless limitation warning */}
+            {acp.providers.length > 0 && acp.providers.filter((p) => p.status === "available").length === 0 && (
+              <div className="mt-2 px-2.5 py-2 rounded-md bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
+                <div className="flex items-start gap-1.5">
+                  <span className="text-amber-600 dark:text-amber-400 text-xs">⚠️</span>
+                  <div className="flex-1 text-[10px] text-amber-700 dark:text-amber-300 leading-relaxed">
+                    <p className="font-medium mb-1">CLI tools unavailable on Vercel</p>
+                    <p className="text-amber-600 dark:text-amber-400">
+                      Serverless platforms cannot run CLI processes.
+                      Deploy to a VPS or use API-based providers instead.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <button
               onClick={() => handleCreateSession(acp.selectedProvider)}
               disabled={acp.providers.length === 0 || !acp.selectedProvider}
