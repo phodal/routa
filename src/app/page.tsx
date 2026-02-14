@@ -69,10 +69,10 @@ export default function HomePage() {
     [acp, ensureConnected, bumpRefresh]
   );
 
-  const ensureSessionForChat = useCallback(async (cwd?: string, provider?: string): Promise<string | null> => {
+  const ensureSessionForChat = useCallback(async (cwd?: string, provider?: string, modeId?: string): Promise<string | null> => {
     await ensureConnected();
     if (activeSessionId) return activeSessionId;
-    const result = await acp.createSession(cwd, provider ?? acp.selectedProvider);
+    const result = await acp.createSession(cwd, provider ?? acp.selectedProvider, modeId);
     if (result?.sessionId) {
       setActiveSessionId(result.sessionId);
       bumpRefresh();

@@ -49,7 +49,7 @@ interface PlanEntry {
 interface ChatPanelProps {
   acp: UseAcpState & UseAcpActions;
   activeSessionId: string | null;
-  onEnsureSession: (cwd?: string, provider?: string) => Promise<string | null>;
+  onEnsureSession: (cwd?: string, provider?: string, modeId?: string) => Promise<string | null>;
   skills?: SkillSummary[];
   onLoadSkill?: (name: string) => Promise<string | null>;
   repoSelection: RepoSelection | null;
@@ -309,8 +309,12 @@ export function ChatPanel({
     }
 
     // Ensure we have a session — pass cwd and provider
-    const sid = activeSessionId ?? (await onEnsureSession(cwd, context.provider));
+    const sid = activeSessionId ?? (await onEnsureSession(cwd, context.provider, context.mode));
     if (!sid) return;
+    if (context.mode) {
+      await acp.setMode(context.mode);
+    }
+
 
     streamingMsgIdRef.current[sid] = null;
     streamingThoughtIdRef.current[sid] = null;
@@ -331,6 +335,7 @@ export function ChatPanel({
       const arr = next[sid] ? [...next[sid]] : [];
       const displayParts: string[] = [];
       if (context.provider) displayParts.push(`@${context.provider}`);
+      if (context.mode) displayParts.push(`#${context.mode}`);
       if (context.skill) displayParts.push(`/${context.skill}`);
       const prefix = displayParts.length ? displayParts.join(" ") + " " : "";
       arr.push({ id: crypto.randomUUID(), role: "user", content: prefix + text, timestamp: new Date() });
@@ -417,31 +422,10 @@ export function ChatPanel({
               loading={loading}
               skills={skills}
               providers={acp.providers}
+              selectedProvider={acp.selectedProvider}
               repoSelection={repoSelection}
               onRepoChange={handleRepoChange}
             />
-            <button
-              onClick={() => {
-                // The TiptapInput handles Enter-to-send internally.
-                // This button is a fallback for mouse users.
-                // We'll dispatch a custom event that the TiptapInput can listen to.
-                const event = new CustomEvent("tiptap:send-click");
-                window.dispatchEvent(event);
-              }}
-              disabled={!connected || loading}
-              className="shrink-0 w-10 h-10 flex items-center justify-center rounded-xl bg-blue-600 hover:bg-blue-700 text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              {loading ? (
-                <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                </svg>
-              ) : (
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14M12 5l7 7-7 7" />
-                </svg>
-              )}
-            </button>
           </div>
         </div>
       </div>

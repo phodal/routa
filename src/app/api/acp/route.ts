@@ -99,6 +99,7 @@ export async function POST(request: NextRequest) {
       const p = (params ?? {}) as Record<string, unknown>;
       const cwd = (p.cwd as string | undefined) ?? process.cwd();
       const provider = (p.provider as string | undefined) ?? "opencode";
+      const modeId = (p.modeId as string | undefined) ?? (p.mode as string | undefined);
       const sessionId = uuidv4();
 
       const store = getHttpSessionStore();
@@ -128,6 +129,7 @@ export async function POST(request: NextRequest) {
             }
           },
           mcpConfigs,
+          modeId,
         );
       } else {
         // ── Standard ACP agent ───────────────────────────────────────
@@ -145,6 +147,7 @@ export async function POST(request: NextRequest) {
             }
           },
           provider,
+          modeId,
         );
       }
 
@@ -283,7 +286,33 @@ export async function POST(request: NextRequest) {
 
     // ── session/set_mode ───────────────────────────────────────────────
     if (method === "session/set_mode") {
-      // TODO: forward to the agent when supported
+      const p = (params ?? {}) as Record<string, unknown>;
+      const sessionId = p.sessionId as string | undefined;
+      const modeId = (p.modeId as string | undefined) ?? (p.mode as string | undefined);
+      if (!sessionId || !modeId) {
+        return jsonrpcResponse(id ?? null, null, {
+          code: -32602,
+          message: "Missing sessionId or modeId",
+        });
+      }
+      const manager = getAcpProcessManager();
+      const store = getHttpSessionStore();
+      try {
+        await manager.setSessionMode(sessionId, modeId);
+        // Push a mode update so UI can immediately reflect the change.
+        store.pushNotification({
+          sessionId,
+          update: {
+            sessionUpdate: "current_mode_update",
+            currentModeId: modeId,
+          },
+        } as never);
+      } catch (err) {
+        return jsonrpcResponse(id ?? null, null, {
+          code: -32000,
+          message: err instanceof Error ? err.message : "Failed to set mode",
+        });
+      }
       return jsonrpcResponse(id ?? null, {});
     }
 

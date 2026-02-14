@@ -1,6 +1,6 @@
 import {AcpProcess} from "@/core/acp/acp-process";
 import {buildConfigFromPreset, ManagedProcess, NotificationHandler} from "@/core/acp/processer";
-import {ClaudeCodeProcess, buildClaudeCodeConfig} from "@/core/acp/claude-code-process";
+import {ClaudeCodeProcess, buildClaudeCodeConfig, mapClaudeModeToPermissionMode} from "@/core/acp/claude-code-process";
 
 /**
  * A managed Claude Code process (separate from standard ACP).
@@ -37,6 +37,7 @@ export class AcpProcessManager {
         cwd: string,
         onNotification: NotificationHandler,
         presetId: string = "opencode",
+        initialModeId?: string,
         extraArgs?: string[],
         extraEnv?: Record<string, string>
     ): Promise<string> {
@@ -46,6 +47,16 @@ export class AcpProcessManager {
         await proc.start();
         await proc.initialize();
         const acpSessionId = await proc.newSession(cwd);
+        if (initialModeId) {
+            try {
+                await proc.sendRequest("session/set_mode", {
+                    sessionId: acpSessionId,
+                    modeId: initialModeId,
+                });
+            } catch {
+                // Some providers do not support set_mode; ignore.
+            }
+        }
 
         this.processes.set(sessionId, {
             process: proc,
@@ -72,9 +83,11 @@ export class AcpProcessManager {
         cwd: string,
         onNotification: NotificationHandler,
         mcpConfigs?: string[],
+        modeId?: string,
         extraEnv?: Record<string, string>,
     ): Promise<string> {
-        const config = buildClaudeCodeConfig(cwd, mcpConfigs, extraEnv);
+        const permissionMode = mapClaudeModeToPermissionMode(modeId);
+        const config = buildClaudeCodeConfig(cwd, mcpConfigs, permissionMode, extraEnv);
         const proc = new ClaudeCodeProcess(config, onNotification);
 
         await proc.start();
@@ -92,6 +105,27 @@ export class AcpProcessManager {
         });
 
         return acpSessionId;
+    }
+
+    async setSessionMode(sessionId: string, modeId: string): Promise<void> {
+        if (this.isClaudeSession(sessionId)) {
+            const claudeProc = this.getClaudeProcess(sessionId);
+            if (!claudeProc) return;
+            const permissionMode = mapClaudeModeToPermissionMode(modeId);
+            if (permissionMode) {
+                claudeProc.setPermissionMode(permissionMode);
+            }
+            return;
+        }
+
+        const proc = this.getProcess(sessionId);
+        const acpSessionId = this.getAcpSessionId(sessionId);
+        if (!proc || !acpSessionId) return;
+
+        await proc.sendRequest("session/set_mode", {
+            sessionId: acpSessionId,
+            modeId,
+        });
     }
 
     /**

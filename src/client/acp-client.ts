@@ -72,11 +72,13 @@ export class BrowserAcpClient {
   async newSession(params: {
     cwd?: string;
     provider?: string;
+    modeId?: string;
     mcpServers?: Array<{ name: string; url?: string }>;
   }): Promise<AcpNewSessionResult> {
     const result = await this.rpc<AcpNewSessionResult>("session/new", {
       cwd: params.cwd ?? "/",
       provider: params.provider ?? "opencode",
+      modeId: params.modeId,
       mcpServers: params.mcpServers ?? [],
     });
     this._sessionId = result.sessionId;
@@ -115,6 +117,13 @@ export class BrowserAcpClient {
       sessionId,
       prompt: [{ type: "text", text }],
     });
+  }
+
+  /**
+   * Set session mode (if provider supports it).
+   */
+  async setMode(sessionId: string, modeId: string): Promise<void> {
+    await this.rpc("session/set_mode", { sessionId, modeId });
   }
 
   /**

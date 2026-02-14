@@ -276,6 +276,8 @@ export interface InputContext {
   skill?: string;
   /** Working directory (e.g. cloned repo path) */
   cwd?: string;
+  /** Session mode (provider-specific) */
+  mode?: string;
 }
 
 interface ProviderItem {
@@ -293,6 +295,7 @@ interface TiptapInputProps {
   loading?: boolean;
   skills?: SkillSummary[];
   providers?: ProviderItem[];
+  selectedProvider: string;
   repoSelection: RepoSelection | null;
   onRepoChange: (selection: RepoSelection | null) => void;
 }
@@ -304,9 +307,12 @@ export function TiptapInput({
   loading = false,
   skills = [],
   providers = [],
+  selectedProvider,
   repoSelection,
   onRepoChange,
 }: TiptapInputProps) {
+  const [claudeMode, setClaudeMode] = useState<"acceptEdits" | "plan">("acceptEdits");
+  const [opencodeMode, setOpencodeMode] = useState<"build" | "plan">("build");
 
   // Ref for skills so the Mention extension always has latest
   const skillsRef = useRef<SuggestionItem[]>([]);
@@ -459,13 +465,22 @@ export function TiptapInput({
       cleanText = cleanText.replace(new RegExp(`/${skill}\\s*`, "g"), "").trim();
     }
 
+    const effectiveProvider = provider ?? selectedProvider;
+    const mode =
+      effectiveProvider === "claude"
+        ? claudeMode
+        : effectiveProvider === "opencode"
+          ? opencodeMode
+          : undefined;
+
     onSend(cleanText || text, {
       provider,
       skill,
       cwd: repoSelection?.path ?? undefined,
+      mode,
     });
     editor.commands.clearContent();
-  }, [editor, onSend, disabled, loading, repoSelection, providers]);
+  }, [editor, onSend, disabled, loading, repoSelection, providers, selectedProvider, claudeMode, opencodeMode]);
 
   // Keep ref updated so EnterToSend and external send button always call latest
   handleSendRef.current = handleSend;
@@ -473,13 +488,6 @@ export function TiptapInput({
   useEffect(() => {
     if (editor) editor.setEditable(!disabled);
   }, [editor, disabled]);
-
-  // Listen for external send button click
-  useEffect(() => {
-    const fn = () => handleSendRef.current();
-    window.addEventListener("tiptap:send-click", fn);
-    return () => window.removeEventListener("tiptap:send-click", fn);
-  }, []);
 
   return (
     <div className="flex-1 flex flex-col gap-1.5">
@@ -499,14 +507,86 @@ export function TiptapInput({
             onChange={onRepoChange}
           />
 
-          {/* Hints */}
-          <span className="text-[10px] text-gray-300 dark:text-gray-600 ml-auto">
+          {/* Mode toggles for selected providers */}
+          {selectedProvider === "claude" && (
+            <div className="flex items-center gap-1">
+              <ModeChip
+                active={claudeMode === "acceptEdits"}
+                onClick={() => setClaudeMode("acceptEdits")}
+                label="Brave"
+              />
+              <ModeChip
+                active={claudeMode === "plan"}
+                onClick={() => setClaudeMode("plan")}
+                label="Plan"
+              />
+            </div>
+          )}
+          {selectedProvider === "opencode" && (
+            <div className="flex items-center gap-1">
+              <ModeChip
+                active={opencodeMode === "build"}
+                onClick={() => setOpencodeMode("build")}
+                label="Build"
+              />
+              <ModeChip
+                active={opencodeMode === "plan"}
+                onClick={() => setOpencodeMode("plan")}
+                label="Plan"
+              />
+            </div>
+          )}
+
+          {/* Hints + send */}
+          <span className="text-[10px] text-gray-300 dark:text-gray-600 ml-auto mr-1">
             <kbd className="px-1 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-500 font-mono">@</kbd> provider
             <span className="mx-1.5">&middot;</span>
             <kbd className="px-1 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-500 font-mono">/</kbd> skill
           </span>
+          <button
+            type="button"
+            onClick={() => handleSendRef.current()}
+            disabled={disabled || loading}
+            className="shrink-0 w-7 h-7 flex items-center justify-center rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            title="Send"
+          >
+            {loading ? (
+              <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+            ) : (
+              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14M12 5l7 7-7 7" />
+              </svg>
+            )}
+          </button>
         </div>
       </div>
     </div>
+  );
+}
+
+function ModeChip({
+  active,
+  onClick,
+  label,
+}: {
+  active: boolean;
+  onClick: () => void;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`px-2 py-0.5 rounded text-[10px] border transition-colors ${
+        active
+          ? "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-800"
+          : "bg-transparent text-gray-500 border-gray-200 hover:bg-gray-100 dark:text-gray-400 dark:border-gray-700 dark:hover:bg-gray-800"
+      }`}
+    >
+      {label}
+    </button>
   );
 }

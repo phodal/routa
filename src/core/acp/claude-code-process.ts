@@ -132,6 +132,10 @@ export class ClaudeCodeProcess {
         return this._config.preset.id;
     }
 
+    setPermissionMode(mode: string): void {
+        this._config.permissionMode = mode;
+    }
+
     /**
      * Spawn the Claude Code process with stream-json mode.
      */
@@ -549,6 +553,7 @@ function extractToolResultText(content: ClaudeContent): string {
 export function buildClaudeCodeConfig(
     cwd: string,
     mcpConfigs?: string[],
+    permissionMode?: string,
     extraEnv?: Record<string, string>,
 ): ClaudeCodeProcessConfig {
     const preset: AcpAgentPreset = {
@@ -568,7 +573,22 @@ export function buildClaudeCodeConfig(
         cwd,
         env: extraEnv,
         displayName: "Claude Code",
-        permissionMode: "acceptEdits",
+        permissionMode: permissionMode ?? "acceptEdits",
         mcpConfigs: mcpConfigs ?? [],
     };
+}
+
+export function mapClaudeModeToPermissionMode(modeId?: string): string | undefined {
+    if (!modeId) return undefined;
+    switch (modeId) {
+        case "plan":
+            return "plan";
+        case "acceptEdits":
+        case "brave":
+            return "acceptEdits";
+        case "bypassPermissions":
+            return "bypassPermissions";
+        default:
+            return undefined;
+    }
 }

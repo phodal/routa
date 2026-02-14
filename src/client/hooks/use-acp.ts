@@ -32,10 +32,12 @@ export interface UseAcpActions {
   connect: () => Promise<void>;
   createSession: (
     cwd?: string,
-    provider?: string
+    provider?: string,
+    modeId?: string
   ) => Promise<AcpNewSessionResult | null>;
   selectSession: (sessionId: string) => void;
   setProvider: (provider: string) => void;
+  setMode: (modeId: string) => Promise<void>;
   prompt: (text: string) => Promise<void>;
   cancel: () => Promise<void>;
   disconnect: () => void;
@@ -99,7 +101,8 @@ export function useAcp(baseUrl: string = ""): UseAcpState & UseAcpActions {
   const createSession = useCallback(
     async (
       cwd?: string,
-      provider?: string
+      provider?: string,
+      modeId?: string
     ): Promise<AcpNewSessionResult | null> => {
       const client = clientRef.current;
       if (!client) return null;
@@ -109,6 +112,7 @@ export function useAcp(baseUrl: string = ""): UseAcpState & UseAcpActions {
         const result = await client.newSession({
           cwd,
           provider: activeProvider,
+          modeId,
           mcpServers: [],
         });
         sessionIdRef.current = result.sessionId;
@@ -134,6 +138,21 @@ export function useAcp(baseUrl: string = ""): UseAcpState & UseAcpActions {
 
   const setProvider = useCallback((provider: string) => {
     setState((s) => ({ ...s, selectedProvider: provider }));
+  }, []);
+
+  const setMode = useCallback(async (modeId: string): Promise<void> => {
+    const client = clientRef.current;
+    const sessionId = sessionIdRef.current;
+    if (!client || !sessionId || !modeId) return;
+
+    try {
+      await client.setMode(sessionId, modeId);
+    } catch (err) {
+      setState((s) => ({
+        ...s,
+        error: err instanceof Error ? err.message : "Failed to set mode",
+      }));
+    }
   }, []);
 
   const selectSession = useCallback((sessionId: string) => {
@@ -191,6 +210,7 @@ export function useAcp(baseUrl: string = ""): UseAcpState & UseAcpActions {
     createSession,
     selectSession,
     setProvider,
+    setMode,
     prompt,
     cancel,
     disconnect,
