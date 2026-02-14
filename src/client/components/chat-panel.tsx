@@ -84,6 +84,7 @@ export function ChatPanel({
 
   const streamingMsgIdRef = useRef<Record<string, string | null>>({});
   const streamingThoughtIdRef = useRef<Record<string, string | null>>({});
+  const lastProcessedUpdateIndexRef = useRef(0);
 
   // Auto-scroll
   useEffect(() => {
@@ -124,202 +125,218 @@ export function ChatPanel({
   // ── Process ACP SSE updates ──────────────────────────────────────────
 
   useEffect(() => {
-    if (!updates.length) return;
-    const last = updates[updates.length - 1] as AcpSessionNotification;
-    const sid = last.sessionId;
+    if (!updates.length) {
+      lastProcessedUpdateIndexRef.current = 0;
+      return;
+    }
 
-    const update = (last.update ?? last) as Record<string, unknown>;
-    const kind = update.sessionUpdate as string | undefined;
-    if (!kind) return;
+    const startIndex =
+      lastProcessedUpdateIndexRef.current > updates.length
+        ? 0
+        : lastProcessedUpdateIndexRef.current;
+    const pending = updates.slice(startIndex) as AcpSessionNotification[];
+    if (!pending.length) return;
+    lastProcessedUpdateIndexRef.current = updates.length;
 
-    const extractText = (): string => {
-      const content = update.content as
-        | { type: string; text?: string }
-        | undefined;
-      if (content?.text) return content.text;
-      if (typeof update.text === "string") return update.text;
-      return "";
-    };
+    const modeUpdates: Record<string, string> = {};
 
-    const updateMessages = (fn: (arr: ChatMessage[]) => ChatMessage[]) => {
-      setMessagesBySession((prev) => {
-        const next = { ...prev };
-        next[sid] = fn(next[sid] ? [...next[sid]] : []);
-        return next;
-      });
-    };
-
-    switch (kind) {
-      case "agent_message_chunk": {
-        const text = extractText();
-        if (!text) return;
-        streamingThoughtIdRef.current[sid] = null;
-        let msgId = streamingMsgIdRef.current[sid];
-        if (!msgId) {
-          msgId = crypto.randomUUID();
-          streamingMsgIdRef.current[sid] = msgId;
+    setMessagesBySession((prev) => {
+      const next = { ...prev };
+      const getSessionMessages = (sid: string): ChatMessage[] => {
+        if (!next[sid]) {
+          next[sid] = [];
+          return next[sid];
         }
-        const targetId = msgId;
-        updateMessages((arr) => {
-          const idx = arr.findIndex((m) => m.id === targetId);
-          if (idx >= 0) {
-            arr[idx] = { ...arr[idx], content: arr[idx].content + text };
-          } else {
-            arr.push({ id: targetId, role: "assistant", content: text, timestamp: new Date() });
-          }
-          return arr;
-        });
-        break;
-      }
+        next[sid] = [...next[sid]];
+        return next[sid];
+      };
 
-      case "agent_thought_chunk": {
-        const text = extractText();
-        if (!text) return;
-        let thoughtId = streamingThoughtIdRef.current[sid];
-        if (!thoughtId) {
-          thoughtId = crypto.randomUUID();
-          streamingThoughtIdRef.current[sid] = thoughtId;
-        }
-        const targetId = thoughtId;
-        updateMessages((arr) => {
-          const idx = arr.findIndex((m) => m.id === targetId);
-          if (idx >= 0) {
-            arr[idx] = { ...arr[idx], content: arr[idx].content + text };
-          } else {
-            arr.push({ id: targetId, role: "thought", content: text, timestamp: new Date() });
-          }
-          return arr;
-        });
-        break;
-      }
+      for (const notification of pending) {
+        const sid = notification.sessionId;
+        const update = (notification.update ?? notification) as Record<string, unknown>;
+        const kind = update.sessionUpdate as string | undefined;
+        if (!sid || !kind) continue;
 
-      case "tool_call": {
-        const toolCallId = update.toolCallId as string | undefined;
-        const title = (update.title as string) ?? "tool";
-        const status = (update.status as string) ?? "running";
-        const toolKind = update.kind as string | undefined;
-        const contentParts: string[] = [];
-        if (update.rawInput) {
-          contentParts.push(
-            `Input:\n${typeof update.rawInput === "string" ? update.rawInput : JSON.stringify(update.rawInput, null, 2)}`
-          );
-        }
-        const toolContent = update.content as Array<{ type: string; text?: string }> | undefined;
-        if (Array.isArray(toolContent)) {
-          for (const c of toolContent) {
-            if (c.text) contentParts.push(c.text);
-          }
-        }
-        updateMessages((arr) => {
-          arr.push({
-            id: toolCallId ?? crypto.randomUUID(),
-            role: "tool",
-            content: contentParts.join("\n\n") || title,
-            timestamp: new Date(),
-            toolName: title,
-            toolStatus: status,
-            toolCallId,
-            toolKind,
-          });
-          return arr;
-        });
-        break;
-      }
+        const arr = getSessionMessages(sid);
+        const extractText = (): string => {
+          const content = update.content as
+            | { type: string; text?: string }
+            | undefined;
+          if (content?.text) return content.text;
+          if (typeof update.text === "string") return update.text;
+          return "";
+        };
 
-      case "tool_call_update": {
-        const toolCallId = update.toolCallId as string | undefined;
-        const status = update.status as string | undefined;
-        const outputParts: string[] = [];
-        if (update.rawOutput) {
-          outputParts.push(
-            typeof update.rawOutput === "string" ? update.rawOutput : JSON.stringify(update.rawOutput, null, 2)
-          );
-        }
-        const toolContent = update.content as Array<{ type: string; text?: string }> | null | undefined;
-        if (Array.isArray(toolContent)) {
-          for (const c of toolContent) {
-            if (c.text) outputParts.push(c.text);
-          }
-        }
-        if (toolCallId) {
-          updateMessages((arr) => {
-            const idx = arr.findIndex((m) => m.toolCallId === toolCallId);
+        switch (kind) {
+          case "agent_message_chunk": {
+            const text = extractText();
+            if (!text) break;
+            streamingThoughtIdRef.current[sid] = null;
+            let msgId = streamingMsgIdRef.current[sid];
+            if (!msgId) {
+              msgId = crypto.randomUUID();
+              streamingMsgIdRef.current[sid] = msgId;
+            }
+            const idx = arr.findIndex((m) => m.id === msgId);
             if (idx >= 0) {
-              const existing = arr[idx];
-              arr[idx] = {
-                ...existing,
-                toolStatus: status ?? existing.toolStatus,
-                toolName: (update.title as string) ?? existing.toolName,
-                toolKind: (update.kind as string) ?? existing.toolKind,
-                content: outputParts.length
-                  ? `${existing.toolName ?? "tool"}\n\nOutput:\n${outputParts.join("\n")}`
-                  : existing.content,
-              };
+              arr[idx] = { ...arr[idx], content: arr[idx].content + text };
             } else {
+              arr.push({ id: msgId, role: "assistant", content: text, timestamp: new Date() });
+            }
+            break;
+          }
+
+          case "agent_thought_chunk": {
+            const text = extractText();
+            if (!text) break;
+            let thoughtId = streamingThoughtIdRef.current[sid];
+            if (!thoughtId) {
+              thoughtId = crypto.randomUUID();
+              streamingThoughtIdRef.current[sid] = thoughtId;
+            }
+            const idx = arr.findIndex((m) => m.id === thoughtId);
+            if (idx >= 0) {
+              arr[idx] = { ...arr[idx], content: arr[idx].content + text };
+            } else {
+              arr.push({ id: thoughtId, role: "thought", content: text, timestamp: new Date() });
+            }
+            break;
+          }
+
+          case "tool_call": {
+            const toolCallId = update.toolCallId as string | undefined;
+            const title = (update.title as string) ?? "tool";
+            const status = (update.status as string) ?? "running";
+            const toolKind = update.kind as string | undefined;
+            const contentParts: string[] = [];
+            if (update.rawInput) {
+              contentParts.push(
+                `Input:\n${typeof update.rawInput === "string" ? update.rawInput : JSON.stringify(update.rawInput, null, 2)}`
+              );
+            }
+            const toolContent = update.content as Array<{ type: string; text?: string }> | undefined;
+            if (Array.isArray(toolContent)) {
+              for (const c of toolContent) {
+                if (c.text) contentParts.push(c.text);
+              }
+            }
+            arr.push({
+              id: toolCallId ?? crypto.randomUUID(),
+              role: "tool",
+              content: contentParts.join("\n\n") || title,
+              timestamp: new Date(),
+              toolName: title,
+              toolStatus: status,
+              toolCallId,
+              toolKind,
+            });
+            break;
+          }
+
+          case "tool_call_update": {
+            const toolCallId = update.toolCallId as string | undefined;
+            const status = update.status as string | undefined;
+            const outputParts: string[] = [];
+            if (update.rawOutput) {
+              outputParts.push(
+                typeof update.rawOutput === "string" ? update.rawOutput : JSON.stringify(update.rawOutput, null, 2)
+              );
+            }
+            const toolContent = update.content as Array<{ type: string; text?: string }> | null | undefined;
+            if (Array.isArray(toolContent)) {
+              for (const c of toolContent) {
+                if (c.text) outputParts.push(c.text);
+              }
+            }
+            if (toolCallId) {
+              const idx = arr.findIndex((m) => m.toolCallId === toolCallId);
+              if (idx >= 0) {
+                const existing = arr[idx];
+                arr[idx] = {
+                  ...existing,
+                  toolStatus: status ?? existing.toolStatus,
+                  toolName: (update.title as string) ?? existing.toolName,
+                  toolKind: (update.kind as string) ?? existing.toolKind,
+                  content: outputParts.length
+                    ? `${existing.toolName ?? "tool"}\n\nOutput:\n${outputParts.join("\n")}`
+                    : existing.content,
+                };
+              } else {
+                arr.push({
+                  id: crypto.randomUUID(),
+                  role: "tool",
+                  content: outputParts.join("\n") || `Tool ${status ?? "update"}`,
+                  timestamp: new Date(),
+                  toolStatus: status ?? "completed",
+                  toolCallId,
+                });
+              }
+            }
+            break;
+          }
+
+          case "plan": {
+            const entries = update.entries as PlanEntry[] | undefined;
+            const planText = entries
+              ? entries.map((e) => `[${e.status ?? "pending"}] ${e.content}${e.priority ? ` (${e.priority})` : ""}`).join("\n")
+              : typeof update.plan === "string" ? update.plan : JSON.stringify(update, null, 2);
+            arr.push({ id: crypto.randomUUID(), role: "plan", content: planText, timestamp: new Date(), planEntries: entries });
+            break;
+          }
+
+          case "usage_update": {
+            const used = update.used as number | undefined;
+            const size = update.size as number | undefined;
+            const cost = update.cost as { amount: number; currency: string } | null | undefined;
+            const usageIdx = arr.findIndex((m) => m.role === "info" && m.usageUsed !== undefined);
+            const usageMsg: ChatMessage = {
+              id: usageIdx >= 0 ? arr[usageIdx].id : crypto.randomUUID(),
+              role: "info",
+              content: "",
+              timestamp: new Date(),
+              usageUsed: used,
+              usageSize: size,
+              costAmount: cost?.amount,
+              costCurrency: cost?.currency,
+            };
+            if (usageIdx >= 0) {
+              arr[usageIdx] = usageMsg;
+            } else {
+              arr.push(usageMsg);
+            }
+            break;
+          }
+
+          case "current_mode_update": {
+            const modeId = update.currentModeId as string | undefined;
+            if (modeId) {
+              modeUpdates[sid] = modeId;
               arr.push({
                 id: crypto.randomUUID(),
-                role: "tool",
-                content: outputParts.join("\n") || `Tool ${status ?? "update"}`,
+                role: "info",
+                content: `Mode changed to: ${modeId}`,
                 timestamp: new Date(),
-                toolStatus: status ?? "completed",
-                toolCallId,
               });
             }
-            return arr;
-          });
+            break;
+          }
+
+          case "available_commands_update":
+          case "config_option_update":
+          case "session_info_update":
+            break;
+
+          default:
+            console.log(`[ChatPanel] Unhandled sessionUpdate: ${kind}`);
+            break;
         }
-        break;
       }
 
-      case "plan": {
-        const entries = update.entries as PlanEntry[] | undefined;
-        const planText = entries
-          ? entries.map((e) => `[${e.status ?? "pending"}] ${e.content}${e.priority ? ` (${e.priority})` : ""}`).join("\n")
-          : typeof update.plan === "string" ? update.plan : JSON.stringify(update, null, 2);
-        updateMessages((arr) => {
-          arr.push({ id: crypto.randomUUID(), role: "plan", content: planText, timestamp: new Date(), planEntries: entries });
-          return arr;
-        });
-        break;
-      }
+      return next;
+    });
 
-      case "usage_update": {
-        const used = update.used as number | undefined;
-        const size = update.size as number | undefined;
-        const cost = update.cost as { amount: number; currency: string } | null | undefined;
-        updateMessages((arr) => {
-          const usageIdx = arr.findIndex((m) => m.role === "info" && m.usageUsed !== undefined);
-          const usageMsg: ChatMessage = {
-            id: usageIdx >= 0 ? arr[usageIdx].id : crypto.randomUUID(),
-            role: "info", content: "", timestamp: new Date(),
-            usageUsed: used, usageSize: size, costAmount: cost?.amount, costCurrency: cost?.currency,
-          };
-          if (usageIdx >= 0) { arr[usageIdx] = usageMsg; } else { arr.push(usageMsg); }
-          return arr;
-        });
-        break;
-      }
-
-      case "current_mode_update": {
-        const modeId = update.currentModeId as string | undefined;
-        if (modeId) {
-          setSessionModeById((prev) => ({ ...prev, [sid]: modeId }));
-          updateMessages((arr) => {
-            arr.push({ id: crypto.randomUUID(), role: "info", content: `Mode changed to: ${modeId}`, timestamp: new Date() });
-            return arr;
-          });
-        }
-        break;
-      }
-
-      case "available_commands_update":
-      case "config_option_update":
-      case "session_info_update":
-        break;
-
-      default:
-        console.log(`[ChatPanel] Unhandled sessionUpdate: ${kind}`);
-        break;
+    if (Object.keys(modeUpdates).length > 0) {
+      setSessionModeById((prev) => ({ ...prev, ...modeUpdates }));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [updates]);

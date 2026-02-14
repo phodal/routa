@@ -43,12 +43,10 @@ export default function McpTestPage() {
 
       // Send a test prompt asking about available tools
       console.log(`[Test] Sending prompt to session ${sessionId}`);
-      const promptResult = await acp.prompt(
-        sessionId,
+      acp.selectSession(sessionId);
+      await acp.prompt(
         "List all tools you have access to. Include tool names and brief descriptions."
       );
-
-      console.log(`[Test] Prompt result:`, promptResult);
 
       setTestResults((prev) => ({
         ...prev,
