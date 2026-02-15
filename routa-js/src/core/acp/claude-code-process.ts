@@ -151,8 +151,17 @@ export class ClaudeCodeProcess {
         // With acceptEdits, only file-edit tools are auto-approved;
         // MCP tools trigger a permission request that our ACP server doesn't handle,
         // causing silent failures like "you haven't granted permission".
+        //
+        // IMPORTANT: --permission-mode bypassPermissions requires
+        // --allow-dangerously-skip-permissions to actually work. Without it,
+        // Claude CLI silently falls back to "default" mode and sends
+        // permission requests we can't handle.
         const effectivePermissionMode = permissionMode ?? "bypassPermissions";
-        cmd.push("--permission-mode", effectivePermissionMode);
+        if (effectivePermissionMode === "bypassPermissions") {
+            cmd.push("--dangerously-skip-permissions");
+        } else {
+            cmd.push("--permission-mode", effectivePermissionMode);
+        }
 
         // Disallow interactive questions (we auto-approve via permission mode)
         cmd.push("--disallowed-tools", "AskUserQuestion");

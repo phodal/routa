@@ -142,6 +142,7 @@ export async function POST(request: NextRequest) {
           },
           mcpConfigs,
           modeId,
+          role, // Pass role so ROUTA gets bypassPermissions
         );
       } else {
         // ── Standard ACP agent ───────────────────────────────────────

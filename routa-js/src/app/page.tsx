@@ -429,6 +429,7 @@ export default function HomePage() {
             repoSelection={repoSelection}
             onRepoChange={setRepoSelection}
             onTasksDetected={handleTasksDetected}
+            agentRole={selectedAgent}
           />
         </main>
 

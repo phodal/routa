@@ -313,6 +313,8 @@ interface TiptapInputProps {
   activeSessionMode?: string;
   repoSelection: RepoSelection | null;
   onRepoChange: (selection: RepoSelection | null) => void;
+  /** Current agent role – ROUTA hides provider mode chips (Brave/Plan) */
+  agentRole?: string;
 }
 
 export function TiptapInput({
@@ -324,6 +326,7 @@ export function TiptapInput({
   repoSkills = [],
   providers = [],
   selectedProvider,
+  agentRole,
   sessions = [],
   activeSessionMode,
   repoSelection,
@@ -543,8 +546,10 @@ export function TiptapInput({
     }
 
     const effectiveProvider = provider ?? selectedProvider;
-    const mode =
-      effectiveProvider === "claude"
+    // In ROUTA mode, don't send a mode – the backend forces bypassPermissions
+    const mode = agentRole === "ROUTA"
+      ? undefined
+      : effectiveProvider === "claude"
         ? claudeMode
         : effectiveProvider === "opencode"
           ? opencodeMode
@@ -558,7 +563,7 @@ export function TiptapInput({
       mode,
     });
     editor.commands.clearContent();
-  }, [editor, onSend, disabled, loading, repoSelection, providers, selectedProvider, claudeMode, opencodeMode, sessions]);
+  }, [editor, onSend, disabled, loading, repoSelection, providers, selectedProvider, claudeMode, opencodeMode, sessions, agentRole]);
 
   // Keep ref updated so EnterToSend and external send button always call latest
   handleSendRef.current = handleSend;
@@ -585,8 +590,8 @@ export function TiptapInput({
             onChange={onRepoChange}
           />
 
-          {/* Mode toggles for selected providers */}
-          {selectedProvider === "claude" && (
+          {/* Mode toggles for selected providers (hidden in ROUTA mode – coordinator uses bypassPermissions) */}
+          {agentRole !== "ROUTA" && selectedProvider === "claude" && (
             <div className="flex items-center gap-1">
               <ModeChip
                 active={claudeMode === "acceptEdits"}
@@ -600,7 +605,7 @@ export function TiptapInput({
               />
             </div>
           )}
-          {selectedProvider === "opencode" && (
+          {agentRole !== "ROUTA" && selectedProvider === "opencode" && (
             <div className="flex items-center gap-1">
               <ModeChip
                 active={opencodeMode === "build"}
