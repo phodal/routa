@@ -313,7 +313,8 @@ const GEMINI_CONFIG_FILE = path.join(GEMINI_CONFIG_DIR, "settings.json");
 function ensureMcpForGemini(mcpEndpoint: string): McpSetupResult {
   try {
     // Read existing settings (or start fresh)
-    let existing: Record<string, unknown> = {};
+    let
+        existing: Record<string, unknown> = {};
     if (fs.existsSync(GEMINI_CONFIG_FILE)) {
       const raw = fs.readFileSync(GEMINI_CONFIG_FILE, "utf-8");
       existing = JSON.parse(raw);
