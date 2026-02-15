@@ -265,6 +265,8 @@ export class RoutaMcpHttpServer {
         // Create a new transport + MCP server for this session
         const transport = new StreamableHTTPServerTransport({
           sessionIdGenerator: () => crypto.randomUUID(),
+          // Return JSON instead of SSE for better client compatibility
+          enableJsonResponse: true,
           onsessioninitialized: (id) => {
             this.sessions.set(id, { transport });
             console.log(

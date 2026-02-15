@@ -40,6 +40,10 @@ const DEFAULT_WORKSPACE_ID = "default";
 async function createSession(): Promise<WebStandardStreamableHTTPServerTransport> {
   const transport = new WebStandardStreamableHTTPServerTransport({
     sessionIdGenerator: () => crypto.randomUUID(),
+    // Return plain JSON responses instead of SSE streams.
+    // This is critical for compatibility with Claude Code and other MCP clients
+    // that may not send Accept: text/event-stream header (causing 406 errors).
+    enableJsonResponse: true,
     onsessioninitialized: (sessionId: string) => {
       sessions.set(sessionId, { transport });
       console.log(
@@ -109,8 +113,26 @@ function withCorsHeaders(response: Response): Response {
 
 export async function POST(request: NextRequest) {
   try {
+    // Log incoming MCP request for debugging
+    const sessionId = request.headers.get("mcp-session-id");
+    const accept = request.headers.get("accept");
+    const clonedReq = request.clone();
+    let method = "unknown";
+    try {
+      const body = await clonedReq.json();
+      method = body.method || "unknown";
+    } catch {
+      // body may not be JSON
+    }
+    console.log(
+      `[MCP Route] POST: method=${method}, session=${sessionId ?? "new"}, accept=${accept}`,
+    );
+
     const transport = await getOrCreateSession(request);
     const response = await transport.handleRequest(request);
+    console.log(
+      `[MCP Route] Response: ${response.status} ${response.headers.get("content-type")}`,
+    );
     return withCorsHeaders(response);
   } catch (error) {
     console.error("[MCP Route] POST error:", error);
