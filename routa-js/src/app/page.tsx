@@ -157,7 +157,7 @@ export default function HomePage() {
             href="/mcp-tools"
             className="px-2.5 py-1 rounded-md bg-blue-50 dark:bg-blue-900/20 text-[11px] font-medium text-blue-600 dark:text-blue-300"
           >
-            MCP Tools
+            Agent MCP Tools
           </a>
         </div>
 
