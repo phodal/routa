@@ -33,6 +33,7 @@
     "highlight.js": "^11.11.1",
     "lowlight": "^3.3.0",
     "marked": "^17.0.2",
+    "mermaid": "^11.12.2",
     "next": "^15.1.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",

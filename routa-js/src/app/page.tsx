@@ -7,13 +7,14 @@
  *   - Top bar: Logo, Agent selector, protocol badges
  *   - Left sidebar: Provider selector, Sessions, Skills
  *   - Right area: Chat panel
+ *   - Right sidebar (resizable): Task panel / CRAFTERs view
  */
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { SkillPanel } from "@/client/components/skill-panel";
 import { ChatPanel } from "@/client/components/chat-panel";
 import { SessionPanel } from "@/client/components/session-panel";
-import { TaskPanel } from "@/client/components/task-panel";
+import { TaskPanel, type CrafterAgent, type CrafterMessage } from "@/client/components/task-panel";
 import { useAcp } from "@/client/hooks/use-acp";
 import { useSkills } from "@/client/hooks/use-skills";
 import type { RepoSelection } from "@/client/components/repo-picker";
@@ -30,6 +31,20 @@ export default function HomePage() {
   const [routaTasks, setRoutaTasks] = useState<ParsedTask[]>([]);
   const acp = useAcp();
   const skillsHook = useSkills();
+
+  // ── Resizable sidebar state ──────────────────────────────────────────
+  const [sidebarWidth, setSidebarWidth] = useState(380);
+  const [isResizing, setIsResizing] = useState(false);
+  const resizeStartXRef = useRef(0);
+  const resizeStartWidthRef = useRef(0);
+
+  // ── CRAFTERs view state ──────────────────────────────────────────────
+  const [crafterAgents, setCrafterAgents] = useState<CrafterAgent[]>([]);
+  const [activeCrafterId, setActiveCrafterId] = useState<string | null>(null);
+  const [concurrency, setConcurrency] = useState(1);
+
+  // Track last processed update index for child agent routing
+  const lastChildUpdateIndexRef = useRef(0);
 
   // Auto-connect on mount so providers are loaded immediately
   useEffect(() => {
@@ -48,6 +63,173 @@ export default function HomePage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [repoSelection?.path]);
+
+  // ── Resize handlers ──────────────────────────────────────────────────
+
+  const handleResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsResizing(true);
+    resizeStartXRef.current = e.clientX;
+    resizeStartWidthRef.current = sidebarWidth;
+  }, [sidebarWidth]);
+
+  useEffect(() => {
+    if (!isResizing) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      // Moving left increases width (sidebar is on the right)
+      const delta = resizeStartXRef.current - e.clientX;
+      const newWidth = Math.max(280, Math.min(700, resizeStartWidthRef.current + delta));
+      setSidebarWidth(newWidth);
+    };
+
+    const handleMouseUp = () => {
+      setIsResizing(false);
+    };
+
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
+
+    // Prevent text selection during resize
+    document.body.style.userSelect = "none";
+    document.body.style.cursor = "col-resize";
+
+    return () => {
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+      document.body.style.userSelect = "";
+      document.body.style.cursor = "";
+    };
+  }, [isResizing]);
+
+  // ── Route child agent SSE updates to crafter agents ──────────────────
+
+  useEffect(() => {
+    const updates = acp.updates;
+    if (!updates.length) {
+      lastChildUpdateIndexRef.current = 0;
+      return;
+    }
+
+    const startIndex =
+      lastChildUpdateIndexRef.current > updates.length
+        ? 0
+        : lastChildUpdateIndexRef.current;
+    const pending = updates.slice(startIndex);
+    if (!pending.length) return;
+    lastChildUpdateIndexRef.current = updates.length;
+
+    setCrafterAgents((prev) => {
+      let updated = [...prev];
+      let changed = false;
+
+      for (const notification of pending) {
+        const raw = notification as Record<string, unknown>;
+        const update = (raw.update ?? raw) as Record<string, unknown>;
+        const childAgentId = (update.childAgentId ?? raw.childAgentId) as string | undefined;
+
+        if (!childAgentId) continue;
+
+        const agentIdx = updated.findIndex((a) => a.id === childAgentId);
+        if (agentIdx < 0) continue;
+
+        const agent = { ...updated[agentIdx] };
+        const messages = [...agent.messages];
+        const kind = update.sessionUpdate as string | undefined;
+
+        if (!kind) continue;
+        changed = true;
+
+        const extractText = (): string => {
+          const content = update.content as { type: string; text?: string } | undefined;
+          if (content?.text) return content.text;
+          if (typeof update.text === "string") return update.text as string;
+          return "";
+        };
+
+        switch (kind) {
+          case "agent_message_chunk": {
+            const text = extractText();
+            if (!text) break;
+            // Find or create streaming message
+            const lastMsg = messages[messages.length - 1];
+            if (lastMsg && lastMsg.role === "assistant" && !lastMsg.toolName) {
+              messages[messages.length - 1] = { ...lastMsg, content: lastMsg.content + text };
+            } else {
+              messages.push({
+                id: crypto.randomUUID(),
+                role: "assistant",
+                content: text,
+                timestamp: new Date(),
+              });
+            }
+            break;
+          }
+
+          case "agent_thought_chunk": {
+            const text = extractText();
+            if (!text) break;
+            const lastMsg = messages[messages.length - 1];
+            if (lastMsg && lastMsg.role === "thought") {
+              messages[messages.length - 1] = { ...lastMsg, content: lastMsg.content + text };
+            } else {
+              messages.push({
+                id: crypto.randomUUID(),
+                role: "thought",
+                content: text,
+                timestamp: new Date(),
+              });
+            }
+            break;
+          }
+
+          case "tool_call": {
+            const toolCallId = update.toolCallId as string | undefined;
+            const title = (update.title as string) ?? "tool";
+            const status = (update.status as string) ?? "running";
+            messages.push({
+              id: toolCallId ?? crypto.randomUUID(),
+              role: "tool",
+              content: title,
+              timestamp: new Date(),
+              toolName: title,
+              toolStatus: status,
+            });
+            break;
+          }
+
+          case "tool_call_update": {
+            const toolCallId = update.toolCallId as string | undefined;
+            const status = update.status as string | undefined;
+            if (toolCallId) {
+              const idx = messages.findIndex((m) => m.id === toolCallId || (m.role === "tool" && m.toolName === (update.title as string)));
+              if (idx >= 0) {
+                messages[idx] = {
+                  ...messages[idx],
+                  toolStatus: status ?? messages[idx].toolStatus,
+                };
+              }
+            }
+            break;
+          }
+
+          case "completed":
+          case "ended": {
+            agent.status = "completed";
+            break;
+          }
+
+          default:
+            break;
+        }
+
+        agent.messages = messages;
+        updated[agentIdx] = agent;
+      }
+
+      return changed ? updated : prev;
+    });
+  }, [acp.updates]);
 
   const bumpRefresh = useCallback(() => {
     setRefreshKey((k) => k + 1);
@@ -97,7 +279,6 @@ export default function HomePage() {
   }, [acp, activeSessionId, ensureConnected, bumpRefresh, selectedAgent]);
 
   const handleLoadSkill = useCallback(async (name: string): Promise<string | null> => {
-    // Pass repoSelection.path so repo-specific skills can be found
     const skill = await skillsHook.loadSkill(name, repoSelection?.path);
     return skill?.content ?? null;
   }, [skillsHook, repoSelection?.path]);
@@ -118,15 +299,12 @@ export default function HomePage() {
 
   /**
    * Call a Routa MCP tool via the /api/mcp endpoint.
-   * Manages session lifecycle: initialize once, then reuse session.
    */
   const mcpSessionRef = useCallback(() => {
-    // Store session ID in a closure-external ref
     return { current: null as string | null };
   }, [])();
 
   const callMcpTool = useCallback(async (toolName: string, args: Record<string, unknown>) => {
-    // Initialize MCP session if needed
     if (!mcpSessionRef.current) {
       const initRes = await fetch("/api/mcp", {
         method: "POST",
@@ -190,10 +368,11 @@ export default function HomePage() {
   /**
    * Execute a single task by creating it in the MCP task store
    * and delegating to a CRAFTER agent.
+   * Returns the created CrafterAgent info.
    */
-  const handleExecuteTask = useCallback(async (taskId: string) => {
+  const handleExecuteTask = useCallback(async (taskId: string): Promise<CrafterAgent | null> => {
     const task = routaTasks.find((t) => t.id === taskId);
-    if (!task) return;
+    if (!task) return null;
 
     // Mark as running
     setRoutaTasks((prev) =>
@@ -218,29 +397,42 @@ export default function HomePage() {
         const parsed = JSON.parse(resultText);
         mcpTaskId = parsed.taskId ?? parsed.id;
       } catch {
-        // Try regex fallback
         const m = resultText.match(/"(?:taskId|id)"\s*:\s*"([^"]+)"/);
         mcpTaskId = m?.[1];
       }
 
+      let agentId: string | undefined;
+      let childSessionId: string | undefined;
+
       if (!mcpTaskId) {
         console.warn("[TaskPanel] Could not extract taskId from create_task result:", resultText);
-        // Fall back to sending as a chat prompt
         if (activeSessionId) {
           await acp.prompt(
             `Execute task: "${task.title}"\nObjective: ${task.objective}\nScope: ${task.scope}\nDone when: ${task.definitionOfDone}`
           );
         }
       } else {
-        // 2. Delegate to a CRAFTER agent (create_agent + delegate_task or delegate_task_to_agent)
+        // 2. Delegate to a CRAFTER agent
         try {
-          await callMcpTool("delegate_task_to_agent", {
+          const delegateResult = await callMcpTool("delegate_task_to_agent", {
             taskId: mcpTaskId,
             callerAgentId: "routa-ui",
             specialist: "CRAFTER",
           });
+
+          // Extract agent info from delegation result
+          const delegateText = delegateResult?.content?.[0]?.text ?? "{}";
+          try {
+            const parsed = JSON.parse(delegateText);
+            agentId = parsed.agentId;
+            childSessionId = parsed.sessionId;
+          } catch {
+            const agentMatch = delegateText.match(/"agentId"\s*:\s*"([^"]+)"/);
+            const sessionMatch = delegateText.match(/"sessionId"\s*:\s*"([^"]+)"/);
+            agentId = agentMatch?.[1];
+            childSessionId = sessionMatch?.[1];
+          }
         } catch (delegateErr) {
-          // delegate_task_to_agent may not exist; fall back to prompt
           console.warn("[TaskPanel] delegate_task_to_agent failed, falling back to prompt:", delegateErr);
           if (activeSessionId) {
             await acp.prompt(
@@ -250,29 +442,90 @@ export default function HomePage() {
         }
       }
 
-      // Mark completed
+      // 3. Create CrafterAgent record
+      const crafterAgent: CrafterAgent = {
+        id: agentId ?? `crafter-${taskId}`,
+        sessionId: childSessionId ?? "",
+        taskId,
+        taskTitle: task.title,
+        status: "running",
+        messages: [],
+      };
+
+      setCrafterAgents((prev) => [...prev, crafterAgent]);
+
+      // Auto-select this agent if concurrency is 1
+      if (concurrency === 1) {
+        setActiveCrafterId(crafterAgent.id);
+      } else if (!activeCrafterId) {
+        setActiveCrafterId(crafterAgent.id);
+      }
+
+      // Mark completed (the orchestrator will handle the actual completion)
       setRoutaTasks((prev) =>
         prev.map((t) => (t.id === taskId ? { ...t, status: "completed" as const } : t))
       );
+
+      return crafterAgent;
     } catch (err) {
       console.error("[TaskPanel] Task execution failed:", err);
-      // Revert to confirmed on error
       setRoutaTasks((prev) =>
         prev.map((t) => (t.id === taskId ? { ...t, status: "confirmed" as const } : t))
       );
+      return null;
     }
-  }, [routaTasks, activeSessionId, acp, callMcpTool]);
+  }, [routaTasks, activeSessionId, acp, callMcpTool, concurrency, activeCrafterId]);
 
   /**
-   * Execute all confirmed tasks sequentially.
-   * Called after "Confirm All" to directly create CRAFTER agents.
+   * Execute all confirmed tasks with configurable concurrency.
+   * concurrency=1: sequential, auto-switch view to running agent
+   * concurrency=2: up to 2 tasks in parallel
    */
-  const handleExecuteAllTasks = useCallback(async () => {
+  const handleExecuteAllTasks = useCallback(async (requestedConcurrency: number) => {
     const confirmedTasks = routaTasks.filter((t) => t.status === "confirmed");
-    for (const task of confirmedTasks) {
-      await handleExecuteTask(task.id);
+    if (confirmedTasks.length === 0) return;
+
+    const effectiveConcurrency = Math.min(requestedConcurrency, confirmedTasks.length);
+
+    if (effectiveConcurrency <= 1) {
+      // Sequential execution - auto-switch to each agent's view
+      for (const task of confirmedTasks) {
+        const agent = await handleExecuteTask(task.id);
+        if (agent) {
+          setActiveCrafterId(agent.id);
+        }
+      }
+    } else {
+      // Parallel execution with concurrency limit
+      const queue = [...confirmedTasks];
+      const runBatch = async () => {
+        const batch = queue.splice(0, effectiveConcurrency);
+        const promises = batch.map((task) => handleExecuteTask(task.id));
+        const results = await Promise.allSettled(promises);
+        // Select the first agent from the batch
+        for (const result of results) {
+          if (result.status === "fulfilled" && result.value) {
+            setActiveCrafterId(result.value.id);
+            break;
+          }
+        }
+      };
+
+      while (queue.length > 0) {
+        await runBatch();
+      }
     }
   }, [routaTasks, handleExecuteTask]);
+
+  const handleSelectCrafter = useCallback((agentId: string) => {
+    setActiveCrafterId(agentId);
+  }, []);
+
+  const handleConcurrencyChange = useCallback((n: number) => {
+    setConcurrency(n);
+  }, []);
+
+  const showTaskPanel = routaTasks.length > 0 || crafterAgents.length > 0;
 
   return (
     <div className="h-screen flex flex-col bg-gray-50 dark:bg-[#0f1117]">
@@ -433,9 +686,20 @@ export default function HomePage() {
           />
         </main>
 
-        {/* ─── Right Panel: Routa Sub-Tasks ───────────────────────── */}
-        {routaTasks.length > 0 && (
-          <aside className="w-[340px] shrink-0 border-l border-gray-200 dark:border-gray-800 bg-white dark:bg-[#13151d] flex flex-col overflow-hidden">
+        {/* ─── Right Panel: Routa Sub-Tasks (Resizable) ───────────── */}
+        {showTaskPanel && (
+          <aside
+            className="shrink-0 border-l border-gray-200 dark:border-gray-800 bg-white dark:bg-[#13151d] flex flex-col overflow-hidden relative"
+            style={{ width: `${sidebarWidth}px` }}
+          >
+            {/* Resize handle */}
+            <div
+              className="absolute left-0 top-0 bottom-0 w-1 cursor-col-resize z-20 hover:bg-indigo-500/30 active:bg-indigo-500/50 transition-colors group"
+              onMouseDown={handleResizeStart}
+            >
+              <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 rounded-full bg-gray-300 dark:bg-gray-600 group-hover:bg-indigo-400 group-active:bg-indigo-500 transition-colors" />
+            </div>
+
             <TaskPanel
               tasks={routaTasks}
               onConfirmAll={handleConfirmAllTasks}
@@ -443,10 +707,20 @@ export default function HomePage() {
               onConfirmTask={handleConfirmTask}
               onEditTask={handleEditTask}
               onExecuteTask={handleExecuteTask}
+              crafterAgents={crafterAgents}
+              activeCrafterId={activeCrafterId}
+              onSelectCrafter={handleSelectCrafter}
+              concurrency={concurrency}
+              onConcurrencyChange={handleConcurrencyChange}
             />
           </aside>
         )}
       </div>
+
+      {/* ─── Resize overlay (prevents iframe/content interference) ─── */}
+      {isResizing && (
+        <div className="fixed inset-0 z-50 cursor-col-resize" />
+      )}
 
       {/* ─── Agent Toast ──────────────────────────────────────────── */}
       {showAgentToast && (
