@@ -13,9 +13,11 @@ import { useState, useCallback, useEffect } from "react";
 import { SkillPanel } from "@/client/components/skill-panel";
 import { ChatPanel } from "@/client/components/chat-panel";
 import { SessionPanel } from "@/client/components/session-panel";
+import { TaskPanel } from "@/client/components/task-panel";
 import { useAcp } from "@/client/hooks/use-acp";
 import { useSkills } from "@/client/hooks/use-skills";
 import type { RepoSelection } from "@/client/components/repo-picker";
+import type { ParsedTask } from "@/client/utils/task-block-parser";
 
 type AgentRole = "CRAFTER" | "ROUTA" | "GATE";
 
@@ -25,6 +27,7 @@ export default function HomePage() {
   const [selectedAgent, setSelectedAgent] = useState<AgentRole>("CRAFTER");
   const [showAgentToast, setShowAgentToast] = useState(false);
   const [repoSelection, setRepoSelection] = useState<RepoSelection | null>(null);
+  const [routaTasks, setRoutaTasks] = useState<ParsedTask[]>([]);
   const acp = useAcp();
   const skillsHook = useSkills();
 
@@ -106,6 +109,49 @@ export default function HomePage() {
       setTimeout(() => setShowAgentToast(false), 2500);
     }
   }, []);
+
+  // ── Routa Task Panel Handlers ─────────────────────────────────────────
+
+  const handleTasksDetected = useCallback((tasks: ParsedTask[]) => {
+    setRoutaTasks(tasks);
+  }, []);
+
+  const handleConfirmAllTasks = useCallback(() => {
+    setRoutaTasks((prev) =>
+      prev.map((t) => (t.status === "pending" ? { ...t, status: "confirmed" as const } : t))
+    );
+  }, []);
+
+  const handleConfirmTask = useCallback((taskId: string) => {
+    setRoutaTasks((prev) =>
+      prev.map((t) => (t.id === taskId ? { ...t, status: "confirmed" as const } : t))
+    );
+  }, []);
+
+  const handleEditTask = useCallback((taskId: string, updated: Partial<ParsedTask>) => {
+    setRoutaTasks((prev) =>
+      prev.map((t) => (t.id === taskId ? { ...t, ...updated } : t))
+    );
+  }, []);
+
+  const handleExecuteTask = useCallback(async (taskId: string) => {
+    // Mark the task as running
+    setRoutaTasks((prev) =>
+      prev.map((t) => (t.id === taskId ? { ...t, status: "running" as const } : t))
+    );
+
+    // Find the task and send it as a prompt to the coordinator
+    const task = routaTasks.find((t) => t.id === taskId);
+    if (task && activeSessionId) {
+      const taskPrompt = `请执行任务: "${task.title}"\n\n目标: ${task.objective}\n范围: ${task.scope}\n完成标准: ${task.definitionOfDone}`;
+      await acp.prompt(taskPrompt);
+
+      // Mark completed after prompt returns
+      setRoutaTasks((prev) =>
+        prev.map((t) => (t.id === taskId ? { ...t, status: "completed" as const } : t))
+      );
+    }
+  }, [routaTasks, activeSessionId, acp]);
 
   return (
     <div className="h-screen flex flex-col bg-gray-50 dark:bg-[#0f1117]">
@@ -261,8 +307,22 @@ export default function HomePage() {
             onLoadSkill={handleLoadSkill}
             repoSelection={repoSelection}
             onRepoChange={setRepoSelection}
+            onTasksDetected={handleTasksDetected}
           />
         </main>
+
+        {/* ─── Right Panel: Routa Sub-Tasks ───────────────────────── */}
+        {routaTasks.length > 0 && (
+          <aside className="w-[340px] shrink-0 border-l border-gray-200 dark:border-gray-800 bg-white dark:bg-[#13151d] flex flex-col overflow-hidden">
+            <TaskPanel
+              tasks={routaTasks}
+              onConfirmAll={handleConfirmAllTasks}
+              onConfirmTask={handleConfirmTask}
+              onEditTask={handleEditTask}
+              onExecuteTask={handleExecuteTask}
+            />
+          </aside>
+        )}
       </div>
 
       {/* ─── Agent Toast ──────────────────────────────────────────── */}

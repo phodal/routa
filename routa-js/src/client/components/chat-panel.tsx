@@ -20,6 +20,11 @@ import { TiptapInput, type InputContext } from "./tiptap-input";
 import type { SkillSummary } from "../skill-client";
 import { RepoPicker, type RepoSelection } from "./repo-picker";
 import { TerminalBubble } from "./terminal-bubble";
+import {
+  hasTaskBlocks,
+  extractTaskBlocks,
+  type ParsedTask,
+} from "../utils/task-block-parser";
 
 // ─── Message Types ─────────────────────────────────────────────────────
 
@@ -64,6 +69,8 @@ interface ChatPanelProps {
   onLoadSkill?: (name: string) => Promise<string | null>;
   repoSelection: RepoSelection | null;
   onRepoChange: (selection: RepoSelection | null) => void;
+  /** Called when @@@task blocks are detected in Routa agent responses */
+  onTasksDetected?: (tasks: ParsedTask[]) => void;
 }
 
 // ─── Main Component ────────────────────────────────────────────────────
@@ -78,6 +85,7 @@ export function ChatPanel({
   onLoadSkill,
   repoSelection,
   onRepoChange,
+  onTasksDetected,
 }: ChatPanelProps) {
   const { connected, loading, error, updates, prompt } = acp;
   const [sessions, setSessions] = useState<Array<{
@@ -471,7 +479,38 @@ export function ChatPanel({
 
     streamingMsgIdRef.current[sid] = null;
     streamingThoughtIdRef.current[sid] = null;
-  }, [activeSessionId, onEnsureSession, onSelectSession, prompt, repoSelection, onLoadSkill, acp]);
+
+    // After prompt completes, check assistant messages for @@@task blocks
+    if (onTasksDetected) {
+      setMessagesBySession((prev) => {
+        const msgs = prev[sid];
+        if (!msgs) return prev;
+
+        const next = { ...prev };
+        const arr = [...msgs];
+        let tasksFound = false;
+
+        for (let i = 0; i < arr.length; i++) {
+          const msg = arr[i];
+          if (msg.role === "assistant" && hasTaskBlocks(msg.content)) {
+            const { tasks, cleanedContent } = extractTaskBlocks(msg.content);
+            if (tasks.length > 0) {
+              // Replace the message content with cleaned version (tasks removed)
+              arr[i] = { ...msg, content: cleanedContent };
+              onTasksDetected(tasks);
+              tasksFound = true;
+            }
+          }
+        }
+
+        if (tasksFound) {
+          next[sid] = arr;
+          return next;
+        }
+        return prev;
+      });
+    }
+  }, [activeSessionId, onEnsureSession, onSelectSession, prompt, repoSelection, onLoadSkill, acp, onTasksDetected]);
 
   // ── Render ───────────────────────────────────────────────────────────
 
