@@ -10,12 +10,14 @@
  * but rendered as a standalone React panel with tiptap markdown.
  */
 
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useRef, useEffect } from "react";
 import type { ParsedTask } from "../utils/task-block-parser";
+import { MarkdownViewer } from "./markdown-viewer";
 
 interface TaskPanelProps {
   tasks: ParsedTask[];
   onConfirmAll?: () => void;
+  onExecuteAll?: () => void;
   onConfirmTask?: (taskId: string) => void;
   onEditTask?: (taskId: string, updated: Partial<ParsedTask>) => void;
   onExecuteTask?: (taskId: string) => void;
@@ -24,6 +26,7 @@ interface TaskPanelProps {
 export function TaskPanel({
   tasks,
   onConfirmAll,
+  onExecuteAll,
   onConfirmTask,
   onEditTask,
   onExecuteTask,
@@ -32,6 +35,10 @@ export function TaskPanel({
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
 
   if (tasks.length === 0) return null;
+
+  const hasPending = tasks.some((t) => t.status === "pending");
+  const hasConfirmed = tasks.some((t) => t.status === "confirmed");
+  const hasRunning = tasks.some((t) => t.status === "running");
 
   return (
     <div className="flex flex-col h-full">
@@ -48,14 +55,29 @@ export function TaskPanel({
             {tasks.length}
           </span>
         </div>
-        {onConfirmAll && (
-          <button
-            onClick={onConfirmAll}
-            className="text-xs font-medium px-2.5 py-1 rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition-colors"
-          >
-            Confirm All
-          </button>
-        )}
+        <div className="flex items-center gap-1.5">
+          {hasPending && onConfirmAll && (
+            <button
+              onClick={onConfirmAll}
+              className="text-xs font-medium px-2.5 py-1 rounded-md bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+            >
+              Confirm All
+            </button>
+          )}
+          {hasConfirmed && !hasRunning && onExecuteAll && (
+            <button
+              onClick={onExecuteAll}
+              className="text-xs font-medium px-2.5 py-1 rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition-colors"
+            >
+              Execute All
+            </button>
+          )}
+          {hasRunning && (
+            <span className="text-xs font-medium text-amber-600 dark:text-amber-400 animate-pulse">
+              Executing...
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Task List */}
@@ -242,26 +264,24 @@ function TaskCard({
   );
 }
 
-// ─── Task Content (Markdown-rendered) ──────────────────────────────────
+// ─── Task Content (Markdown-rendered via MarkdownViewer) ───────────────
 
 function TaskContent({ task }: { task: ParsedTask }) {
   return (
     <div className="mt-2.5 space-y-2.5 text-xs">
       {task.objective && (
         <Section title="Objective">
-          <p className="text-gray-600 dark:text-gray-300 whitespace-pre-wrap leading-relaxed">
-            {task.objective}
-          </p>
+          <MarkdownViewer content={task.objective} className="text-gray-600 dark:text-gray-300" />
         </Section>
       )}
       {task.scope && (
         <Section title="Scope">
-          <MarkdownContent content={task.scope} />
+          <MarkdownViewer content={task.scope} className="text-gray-600 dark:text-gray-300" />
         </Section>
       )}
       {task.definitionOfDone && (
         <Section title="Definition of Done">
-          <MarkdownContent content={task.definitionOfDone} />
+          <MarkdownViewer content={task.definitionOfDone} className="text-gray-600 dark:text-gray-300" />
         </Section>
       )}
     </div>
@@ -277,108 +297,6 @@ function Section({ title, children }: { title: string; children: React.ReactNode
       {children}
     </div>
   );
-}
-
-/**
- * Simple markdown renderer for task content.
- * Handles lists, inline code, bold, and basic formatting.
- */
-function MarkdownContent({ content }: { content: string }) {
-  const lines = content.split("\n");
-  const elements: React.ReactNode[] = [];
-  let listItems: string[] = [];
-  let listType: "ul" | "ol" | null = null;
-
-  const flushList = () => {
-    if (listItems.length > 0 && listType) {
-      const Tag = listType;
-      elements.push(
-        <Tag
-          key={`list-${elements.length}`}
-          className={`${listType === "ul" ? "list-disc" : "list-decimal"} pl-4 space-y-0.5 text-gray-600 dark:text-gray-300`}
-        >
-          {listItems.map((item, i) => (
-            <li key={i}>
-              <InlineMarkdown text={item} />
-            </li>
-          ))}
-        </Tag>
-      );
-      listItems = [];
-      listType = null;
-    }
-  };
-
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed) {
-      flushList();
-      continue;
-    }
-
-    // Unordered list
-    const ulMatch = trimmed.match(/^[-*+]\s+(.+)/);
-    if (ulMatch) {
-      if (listType !== "ul") flushList();
-      listType = "ul";
-      listItems.push(ulMatch[1]);
-      continue;
-    }
-
-    // Ordered list
-    const olMatch = trimmed.match(/^\d+[.)]\s+(.+)/);
-    if (olMatch) {
-      if (listType !== "ol") flushList();
-      listType = "ol";
-      listItems.push(olMatch[1]);
-      continue;
-    }
-
-    flushList();
-    elements.push(
-      <p key={`p-${elements.length}`} className="text-gray-600 dark:text-gray-300 whitespace-pre-wrap leading-relaxed">
-        <InlineMarkdown text={trimmed} />
-      </p>
-    );
-  }
-
-  flushList();
-  return <>{elements}</>;
-}
-
-function InlineMarkdown({ text }: { text: string }) {
-  // Parse inline: **bold**, `code`, *italic*
-  const parts: React.ReactNode[] = [];
-  let remaining = text;
-  let key = 0;
-
-  while (remaining.length > 0) {
-    // Bold
-    const boldMatch = remaining.match(/\*\*(.+?)\*\*/);
-    // Code
-    const codeMatch = remaining.match(/`([^`]+)`/);
-
-    if (boldMatch && (!codeMatch || (boldMatch.index ?? Infinity) < (codeMatch.index ?? Infinity))) {
-      const idx = boldMatch.index ?? 0;
-      if (idx > 0) parts.push(<span key={key++}>{remaining.slice(0, idx)}</span>);
-      parts.push(<strong key={key++} className="font-semibold text-gray-800 dark:text-gray-200">{boldMatch[1]}</strong>);
-      remaining = remaining.slice(idx + boldMatch[0].length);
-    } else if (codeMatch) {
-      const idx = codeMatch.index ?? 0;
-      if (idx > 0) parts.push(<span key={key++}>{remaining.slice(0, idx)}</span>);
-      parts.push(
-        <code key={key++} className="px-1 py-0.5 rounded bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 text-[11px] font-mono">
-          {codeMatch[1]}
-        </code>
-      );
-      remaining = remaining.slice(idx + codeMatch[0].length);
-    } else {
-      parts.push(<span key={key++}>{remaining}</span>);
-      remaining = "";
-    }
-  }
-
-  return <>{parts}</>;
 }
 
 // ─── Task Editor ──────────────────────────────────────────────────────

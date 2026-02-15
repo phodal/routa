@@ -109,6 +109,38 @@ function withCorsHeaders(response: Response): Response {
   });
 }
 
+// ─── Accept-header fix ────────────────────────────────────────────────
+//
+// The MCP SDK's WebStandardStreamableHTTPServerTransport *always* validates
+// that the `Accept` header includes `text/event-stream` (POST also requires
+// `application/json`).  The `enableJsonResponse` option only changes the
+// *response* format but does NOT skip this validation.
+//
+// Some MCP clients (notably Claude Code) may omit `text/event-stream` from
+// their Accept header, causing a 406 error that silently breaks the connection.
+//
+// To be maximally compatible we patch the Accept header to include the required
+// content types before forwarding the request to the transport.
+//
+
+function ensureAcceptHeader(request: NextRequest, ...required: string[]): NextRequest {
+  const current = request.headers.get("accept") ?? "";
+  const missing = required.filter((r) => !current.includes(r));
+  if (missing.length === 0) return request;
+
+  const patched = [current, ...missing].filter(Boolean).join(", ");
+  const headers = new Headers(request.headers);
+  headers.set("accept", patched);
+
+  // Create a new Request with the patched headers (body is forwarded as a stream)
+  return new NextRequest(request.url, {
+    method: request.method,
+    headers,
+    body: request.body,
+    duplex: "half",
+  });
+}
+
 // ─── Route Handlers ───────────────────────────────────────────────────
 
 export async function POST(request: NextRequest) {
@@ -128,8 +160,15 @@ export async function POST(request: NextRequest) {
       `[MCP Route] POST: method=${method}, session=${sessionId ?? "new"}, accept=${accept}`,
     );
 
-    const transport = await getOrCreateSession(request);
-    const response = await transport.handleRequest(request);
+    // Ensure the Accept header satisfies the MCP SDK validation
+    const patchedRequest = ensureAcceptHeader(
+      request,
+      "application/json",
+      "text/event-stream",
+    );
+
+    const transport = await getOrCreateSession(patchedRequest);
+    const response = await transport.handleRequest(patchedRequest);
     console.log(
       `[MCP Route] Response: ${response.status} ${response.headers.get("content-type")}`,
     );
@@ -168,7 +207,9 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const response = await session.transport.handleRequest(request);
+    // Ensure Accept header for GET (SDK requires text/event-stream)
+    const patchedRequest = ensureAcceptHeader(request, "text/event-stream");
+    const response = await session.transport.handleRequest(patchedRequest);
     return withCorsHeaders(response);
   } catch (error) {
     console.error("[MCP Route] GET error:", error);

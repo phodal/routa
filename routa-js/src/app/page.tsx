@@ -116,6 +116,59 @@ export default function HomePage() {
     setRoutaTasks(tasks);
   }, []);
 
+  /**
+   * Call a Routa MCP tool via the /api/mcp endpoint.
+   * Manages session lifecycle: initialize once, then reuse session.
+   */
+  const mcpSessionRef = useCallback(() => {
+    // Store session ID in a closure-external ref
+    return { current: null as string | null };
+  }, [])();
+
+  const callMcpTool = useCallback(async (toolName: string, args: Record<string, unknown>) => {
+    // Initialize MCP session if needed
+    if (!mcpSessionRef.current) {
+      const initRes = await fetch("/api/mcp", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Accept": "application/json, text/event-stream",
+        },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 1,
+          method: "initialize",
+          params: {
+            protocolVersion: "2024-11-05",
+            capabilities: {},
+            clientInfo: { name: "routa-ui", version: "0.1.0" },
+          },
+        }),
+      });
+      const sessionId = initRes.headers.get("mcp-session-id");
+      if (sessionId) mcpSessionRef.current = sessionId;
+    }
+
+    const res = await fetch("/api/mcp", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Accept": "application/json, text/event-stream",
+        ...(mcpSessionRef.current ? { "Mcp-Session-Id": mcpSessionRef.current } : {}),
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: Date.now(),
+        method: "tools/call",
+        params: { name: toolName, arguments: args },
+      }),
+    });
+
+    const data = await res.json();
+    if (data.error) throw new Error(data.error.message || "MCP tool call failed");
+    return data.result;
+  }, [mcpSessionRef]);
+
   const handleConfirmAllTasks = useCallback(() => {
     setRoutaTasks((prev) =>
       prev.map((t) => (t.status === "pending" ? { ...t, status: "confirmed" as const } : t))
@@ -134,24 +187,92 @@ export default function HomePage() {
     );
   }, []);
 
+  /**
+   * Execute a single task by creating it in the MCP task store
+   * and delegating to a CRAFTER agent.
+   */
   const handleExecuteTask = useCallback(async (taskId: string) => {
-    // Mark the task as running
+    const task = routaTasks.find((t) => t.id === taskId);
+    if (!task) return;
+
+    // Mark as running
     setRoutaTasks((prev) =>
       prev.map((t) => (t.id === taskId ? { ...t, status: "running" as const } : t))
     );
 
-    // Find the task and send it as a prompt to the coordinator
-    const task = routaTasks.find((t) => t.id === taskId);
-    if (task && activeSessionId) {
-      const taskPrompt = `请执行任务: "${task.title}"\n\n目标: ${task.objective}\n范围: ${task.scope}\n完成标准: ${task.definitionOfDone}`;
-      await acp.prompt(taskPrompt);
+    try {
+      // 1. Create task in MCP task store
+      const createResult = await callMcpTool("create_task", {
+        title: task.title,
+        objective: task.objective,
+        scope: task.scope || undefined,
+        acceptanceCriteria: task.definitionOfDone
+          ? task.definitionOfDone.split("\n").filter(Boolean).map((l) => l.replace(/^\d+[.)]\s*/, "").trim())
+          : undefined,
+      });
 
-      // Mark completed after prompt returns
+      // Extract created taskId from result
+      const resultText = createResult?.content?.[0]?.text ?? "{}";
+      let mcpTaskId: string | undefined;
+      try {
+        const parsed = JSON.parse(resultText);
+        mcpTaskId = parsed.taskId ?? parsed.id;
+      } catch {
+        // Try regex fallback
+        const m = resultText.match(/"(?:taskId|id)"\s*:\s*"([^"]+)"/);
+        mcpTaskId = m?.[1];
+      }
+
+      if (!mcpTaskId) {
+        console.warn("[TaskPanel] Could not extract taskId from create_task result:", resultText);
+        // Fall back to sending as a chat prompt
+        if (activeSessionId) {
+          await acp.prompt(
+            `Execute task: "${task.title}"\nObjective: ${task.objective}\nScope: ${task.scope}\nDone when: ${task.definitionOfDone}`
+          );
+        }
+      } else {
+        // 2. Delegate to a CRAFTER agent (create_agent + delegate_task or delegate_task_to_agent)
+        try {
+          await callMcpTool("delegate_task_to_agent", {
+            taskId: mcpTaskId,
+            callerAgentId: "routa-ui",
+            specialist: "CRAFTER",
+          });
+        } catch (delegateErr) {
+          // delegate_task_to_agent may not exist; fall back to prompt
+          console.warn("[TaskPanel] delegate_task_to_agent failed, falling back to prompt:", delegateErr);
+          if (activeSessionId) {
+            await acp.prompt(
+              `Task "${task.title}" has been created (ID: ${mcpTaskId}). Please delegate it to a CRAFTER agent and execute it.`
+            );
+          }
+        }
+      }
+
+      // Mark completed
       setRoutaTasks((prev) =>
         prev.map((t) => (t.id === taskId ? { ...t, status: "completed" as const } : t))
       );
+    } catch (err) {
+      console.error("[TaskPanel] Task execution failed:", err);
+      // Revert to confirmed on error
+      setRoutaTasks((prev) =>
+        prev.map((t) => (t.id === taskId ? { ...t, status: "confirmed" as const } : t))
+      );
     }
-  }, [routaTasks, activeSessionId, acp]);
+  }, [routaTasks, activeSessionId, acp, callMcpTool]);
+
+  /**
+   * Execute all confirmed tasks sequentially.
+   * Called after "Confirm All" to directly create CRAFTER agents.
+   */
+  const handleExecuteAllTasks = useCallback(async () => {
+    const confirmedTasks = routaTasks.filter((t) => t.status === "confirmed");
+    for (const task of confirmedTasks) {
+      await handleExecuteTask(task.id);
+    }
+  }, [routaTasks, handleExecuteTask]);
 
   return (
     <div className="h-screen flex flex-col bg-gray-50 dark:bg-[#0f1117]">
@@ -317,6 +438,7 @@ export default function HomePage() {
             <TaskPanel
               tasks={routaTasks}
               onConfirmAll={handleConfirmAllTasks}
+              onExecuteAll={handleExecuteAllTasks}
               onConfirmTask={handleConfirmTask}
               onEditTask={handleEditTask}
               onExecuteTask={handleExecuteTask}

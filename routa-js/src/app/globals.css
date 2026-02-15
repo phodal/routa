@@ -200,3 +200,248 @@ body {
     color: #a78bfa;
   }
 }
+
+/* ─── MarkdownViewer Styles ──────────────────────────────────────────── */
+/* Based on intent-0.2.4's MarkdownViewer.svelte styles */
+
+.markdown-viewer {
+  position: relative;
+  width: 100%;
+  font-size: 0.875rem;
+  line-height: 1.6;
+}
+
+.markdown-viewer.streaming-content {
+  contain: layout style;
+}
+
+.markdown-viewer.simple-content {
+  contain: layout style;
+}
+
+.markdown-viewer.simple-content p {
+  margin: 0;
+}
+
+.markdown-viewer.static-content {
+  contain: layout style;
+}
+
+.markdown-viewer.static-content > * + * {
+  margin-top: 0.5rem;
+}
+
+.markdown-viewer .ProseMirror {
+  outline: none;
+  min-height: 1em;
+}
+
+.markdown-viewer .ProseMirror > * + * {
+  margin-top: 0.5rem;
+}
+
+.markdown-viewer.streaming-content > * + * {
+  margin-top: 0.5rem;
+}
+
+/* Typography */
+.markdown-viewer p {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.markdown-viewer strong {
+  font-weight: 700;
+}
+
+.markdown-viewer h1,
+.markdown-viewer h2,
+.markdown-viewer h3,
+.markdown-viewer h4,
+.markdown-viewer h5,
+.markdown-viewer h6 {
+  margin-top: 1rem;
+  margin-bottom: 0.5rem;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.markdown-viewer h1 { font-size: 1.125rem; }
+.markdown-viewer h2 { font-size: 1rem; }
+.markdown-viewer h3 { font-size: 0.875rem; }
+
+/* Lists */
+.markdown-viewer ul,
+.markdown-viewer ol {
+  padding-left: 1.25rem;
+  margin: 0.25rem 0;
+}
+
+.markdown-viewer ul { list-style: disc; }
+.markdown-viewer ol { list-style: decimal; }
+
+.markdown-viewer li {
+  margin: 0.125rem 0;
+}
+
+/* Task lists */
+.markdown-viewer .task-list {
+  list-style: none;
+  padding-left: 0;
+}
+
+.markdown-viewer .task-item {
+  display: flex;
+  align-items: flex-start;
+  padding: 0.125rem 0;
+}
+
+.markdown-viewer .task-item input[type="checkbox"] {
+  appearance: none;
+  width: 1rem;
+  height: 1rem;
+  margin-right: 0.5rem;
+  margin-top: 0.125rem;
+  border: none;
+  border-radius: 0.25rem;
+  background: #e5e7eb;
+  cursor: default;
+  pointer-events: none;
+  position: relative;
+  flex-shrink: 0;
+}
+
+.markdown-viewer .task-item input[type="checkbox"]:checked {
+  background: #111827;
+}
+
+.markdown-viewer .task-item input[type="checkbox"]:checked::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 0.25rem;
+  height: 0.4rem;
+  border: solid white;
+  border-width: 0 2px 2px 0;
+  transform: translate(-45%, -60%) rotate(45deg);
+}
+
+/* Code */
+.markdown-viewer code:not(.code-block code) {
+  background: rgba(0, 0, 0, 0.06);
+  padding: 0.125rem 0.375rem;
+  border-radius: 0.25rem;
+  font-size: 0.85em;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* Code blocks */
+.markdown-viewer .code-block,
+.markdown-viewer pre {
+  background: #f8f9fa;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem;
+  padding: 0.75rem;
+  overflow-x: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+
+.markdown-viewer .code-block code,
+.markdown-viewer pre code {
+  background: transparent;
+  padding: 0;
+  border-radius: 0;
+  font-size: inherit;
+}
+
+/* Links */
+.markdown-viewer .markdown-link,
+.markdown-viewer a {
+  color: #3b82f6;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.markdown-viewer a:hover {
+  text-decoration-thickness: 2px;
+  opacity: 0.8;
+}
+
+/* Blockquotes */
+.markdown-viewer blockquote {
+  border-left: 3px solid #3b82f6;
+  padding-left: 0.75rem;
+  margin: 0.5rem 0;
+  color: #6b7280;
+  font-style: italic;
+}
+
+/* Tables */
+.markdown-viewer table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.5rem 0;
+  font-size: 0.8rem;
+}
+
+.markdown-viewer th,
+.markdown-viewer td {
+  border: 1px solid #e5e7eb;
+  padding: 0.375rem 0.5rem;
+  text-align: left;
+}
+
+.markdown-viewer th {
+  background: rgba(0, 0, 0, 0.03);
+  font-weight: 600;
+}
+
+/* Horizontal rule */
+.markdown-viewer hr {
+  border: none;
+  border-top: 1px solid #e5e7eb;
+  margin: 1rem 0;
+}
+
+/* Dark mode */
+@media (prefers-color-scheme: dark) {
+  .markdown-viewer code:not(.code-block code) {
+    background: rgba(255, 255, 255, 0.06);
+  }
+
+  .markdown-viewer .code-block,
+  .markdown-viewer pre {
+    background: rgba(0, 0, 0, 0.3);
+    border-color: rgba(255, 255, 255, 0.06);
+  }
+
+  .markdown-viewer .task-item input[type="checkbox"] {
+    background: #374151;
+  }
+
+  .markdown-viewer .task-item input[type="checkbox"]:checked {
+    background: #e5e7eb;
+  }
+
+  .markdown-viewer .task-item input[type="checkbox"]:checked::after {
+    border-color: #111827;
+  }
+
+  .markdown-viewer th {
+    background: rgba(255, 255, 255, 0.03);
+  }
+
+  .markdown-viewer th,
+  .markdown-viewer td {
+    border-color: rgba(255, 255, 255, 0.08);
+  }
+
+  .markdown-viewer blockquote {
+    color: #9ca3af;
+  }
+}

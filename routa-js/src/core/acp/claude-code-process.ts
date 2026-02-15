@@ -147,7 +147,11 @@ export class ClaudeCodeProcess {
         cmd.push("--input-format", "stream-json");
         cmd.push("--verbose");
 
-        const effectivePermissionMode = permissionMode ?? "acceptEdits";
+        // Default to bypassPermissions so ALL tools (including MCP tools) are auto-approved.
+        // With acceptEdits, only file-edit tools are auto-approved;
+        // MCP tools trigger a permission request that our ACP server doesn't handle,
+        // causing silent failures like "you haven't granted permission".
+        const effectivePermissionMode = permissionMode ?? "bypassPermissions";
         cmd.push("--permission-mode", effectivePermissionMode);
 
         // Disallow interactive questions (we auto-approve via permission mode)
@@ -573,7 +577,7 @@ export function buildClaudeCodeConfig(
         cwd,
         env: extraEnv,
         displayName: "Claude Code",
-        permissionMode: permissionMode ?? "acceptEdits",
+        permissionMode: permissionMode ?? "bypassPermissions",
         mcpConfigs: mcpConfigs ?? [],
     };
 }
