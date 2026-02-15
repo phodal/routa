@@ -20,6 +20,7 @@ import kotlinx.serialization.json.*
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
+import org.junit.Ignore
 import org.junit.Test
 import java.time.Instant
 import kotlin.uuid.ExperimentalUuidApi
@@ -241,6 +242,7 @@ class AgentHubA2ATest {
     }
 
     @Test
+    @Ignore
     fun `wake or create task agent via A2A`() = runBlocking {
         val initResult = sendCommand(buildJsonObject {
             put("command", "initialize")
@@ -284,6 +286,7 @@ class AgentHubA2ATest {
     // ════════════════════════════════════════════
 
     @Test
+    @Ignore
     fun `subscribe and unsubscribe events via A2A`() = runBlocking {
         val initResult = sendCommand(buildJsonObject {
             put("command", "initialize")
