@@ -133,6 +133,8 @@ export class AcpProcessManager {
      * @param cwd - Working directory
      * @param onNotification - Handler for translated session/update notifications
      * @param mcpConfigs - MCP config JSON strings to pass to Claude Code
+     * @param modeId - Claude mode (acceptEdits, plan, etc.)
+     * @param role - Agent role (ROUTA, CRAFTER, GATE). ROUTA forces bypassPermissions.
      * @param extraEnv - Additional environment variables
      * @returns A synthetic session ID for Claude Code
      */
@@ -142,9 +144,16 @@ export class AcpProcessManager {
         onNotification: NotificationHandler,
         mcpConfigs?: string[],
         modeId?: string,
+        role?: string,
         extraEnv?: Record<string, string>,
     ): Promise<string> {
-        const permissionMode = mapClaudeModeToPermissionMode(modeId);
+        // ROUTA agents need bypassPermissions because they use MCP tools
+        // (create_task, delegate_task_to_agent, list_agents) that are NOT
+        // auto-approved under acceptEdits mode, causing "you haven't
+        // granted permission" errors.
+        const permissionMode = role === "ROUTA"
+            ? "bypassPermissions"
+            : mapClaudeModeToPermissionMode(modeId);
         const config = buildClaudeCodeConfig(cwd, mcpConfigs, permissionMode, extraEnv);
         const proc = new ClaudeCodeProcess(config, onNotification);
 

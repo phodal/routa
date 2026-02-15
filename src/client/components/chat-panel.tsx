@@ -71,6 +71,8 @@ interface ChatPanelProps {
   onRepoChange: (selection: RepoSelection | null) => void;
   /** Called when @@@task blocks are detected in Routa agent responses */
   onTasksDetected?: (tasks: ParsedTask[]) => void;
+  /** Current agent role – ROUTA mode hides provider mode chips */
+  agentRole?: string;
 }
 
 // ─── Main Component ────────────────────────────────────────────────────
@@ -82,6 +84,7 @@ export function ChatPanel({
   onSelectSession,
   skills = [],
   repoSkills = [],
+  agentRole,
   onLoadSkill,
   repoSelection,
   onRepoChange,
@@ -591,6 +594,7 @@ export function ChatPanel({
               activeSessionMode={activeSessionId ? sessionModeById[activeSessionId] : undefined}
               repoSelection={repoSelection}
               onRepoChange={handleRepoChange}
+              agentRole={agentRole}
             />
           </div>
         </div>
