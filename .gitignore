@@ -87,7 +87,8 @@ logs
 # pnpm-lock.yaml
 test-results
 .routa
-apps/desktop/src-tauri/icons/*
+apps/desktop/src-tauri/icons/android/
+apps/desktop/src-tauri/icons/ios/
 .next-desktop/
 
 # SQLite database files
