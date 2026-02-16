@@ -1,5 +1,3 @@
-use tauri::Manager;
-
 /// Custom Tauri commands exposed to the frontend via `invoke`.
 /// These bridge the gap between the web frontend and native capabilities.
 
@@ -46,10 +44,11 @@ pub fn run() {
             get_home_dir,
             is_git_repo,
         ])
-        .setup(|app| {
+        .setup(|_app| {
             #[cfg(debug_assertions)]
             {
-                let window = app.get_webview_window("main").unwrap();
+                use tauri::Manager;
+                let window = _app.get_webview_window("main").unwrap();
                 window.open_devtools();
             }
             Ok(())

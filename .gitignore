@@ -18,6 +18,11 @@ out
 /build
 /dist
 
+# Tauri
+apps/desktop/src-tauri/target/
+apps/desktop/app-icon.png
+**/gen/**
+
 # Misc
 .DS_Store
 *.pem

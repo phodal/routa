@@ -4,13 +4,12 @@
   "version": "0.1.0",
   "identifier": "com.routa.desktop",
   "build": {
-    "beforeDevCommand": "npm run dev",
+    "beforeDevCommand": "cd ../.. && npm run dev",
     "devUrl": "http://localhost:3000",
-    "beforeBuildCommand": "npm run build",
-    "frontendDist": "../../.next"
+    "beforeBuildCommand": "cd ../.. && npm run build:static",
+    "frontendDist": "../../../out"
   },
   "app": {
-    "title": "Routa Desktop",
     "windows": [
       {
         "title": "Routa - Multi-Agent Coordination",
