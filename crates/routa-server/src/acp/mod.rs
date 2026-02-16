@@ -9,7 +9,16 @@
 //!   - `session/cancel` → sends cancellation notification
 //!   - SSE GET          → subscribes to `broadcast` channel for `session/update` events
 
+pub mod binary_manager;
+pub mod installation_state;
+pub mod paths;
 pub mod process;
+pub mod registry_types;
+
+pub use binary_manager::AcpBinaryManager;
+pub use installation_state::AcpInstallationState;
+pub use paths::AcpPaths;
+pub use registry_types::*;
 
 use std::collections::HashMap;
 use std::sync::Arc;

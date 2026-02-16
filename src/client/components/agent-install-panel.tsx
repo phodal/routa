@@ -8,9 +8,13 @@
  * - Install/Update/Uninstall buttons
  * - Version and distribution type info
  * - Runtime availability indicators (npx, uvx)
+ *
+ * In Tauri desktop mode, uses local installation via Tauri commands.
+ * In web mode, uses server-side API routes.
  */
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { isTauriRuntime } from "@/client/utils/diagnostics";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -40,6 +44,74 @@ interface RegistryResponse {
   };
 }
 
+// ─── Tauri Types (matching Rust types) ─────────────────────────────────────
+
+interface TauriAcpRegistry {
+  agents: TauriAcpAgentEntry[];
+}
+
+interface TauriAcpAgentEntry {
+  id: string;
+  name: string;
+  version: string;
+  description: string;
+  icon?: string;
+  homepage?: string;
+  repository?: string;
+  authors?: string[];
+  license?: string;
+  distribution: TauriAcpDistribution;
+}
+
+interface TauriAcpDistribution {
+  npx?: TauriNpxDistribution;
+  uvx?: TauriUvxDistribution;
+  binary?: Record<string, TauriBinaryInfo>;
+}
+
+interface TauriNpxDistribution {
+  package: string;
+  args?: string[];
+  env?: Record<string, string>;
+}
+
+interface TauriUvxDistribution {
+  package: string;
+  args?: string[];
+  env?: Record<string, string>;
+}
+
+interface TauriBinaryInfo {
+  archive: string;
+  cmd?: string;
+  sha256?: string;
+}
+
+interface TauriInstalledAgentInfo {
+  agentId: string;
+  version: string;
+  distType: "npx" | "uvx" | "binary";
+  installedAt: string;
+  binaryPath?: string;
+  package?: string;
+}
+
+// ─── Tauri Invoke Helper ───────────────────────────────────────────────────
+
+/**
+ * Dynamically invoke a Tauri command using the global __TAURI__ object.
+ * This avoids bundling @tauri-apps/api/core in web builds.
+ * Uses the Window.__TAURI__ type from diagnostics.ts.
+ */
+async function tauriInvoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const invoke = (window as any).__TAURI__?.core?.invoke;
+  if (!invoke) {
+    throw new Error("Tauri invoke not available - not running in Tauri environment");
+  }
+  return invoke(command, args) as Promise<T>;
+}
+
 // ─── Component ─────────────────────────────────────────────────────────────
 
 export function AgentInstallPanel() {
@@ -50,25 +122,76 @@ export function AgentInstallPanel() {
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [installingAgents, setInstallingAgents] = useState<Set<string>>(new Set());
+  const isTauri = useRef(isTauriRuntime());
 
-  // Fetch registry data
-  const fetchAgents = useCallback(async (refresh = false) => {
-    try {
-      setLoading(true);
-      setError(null);
-      const url = refresh ? "/api/acp/registry?refresh=true" : "/api/acp/registry";
-      const res = await fetch(url);
-      if (!res.ok) throw new Error(`Failed to fetch registry: ${res.status}`);
-      const data: RegistryResponse = await res.json();
-      setAgents(data.agents);
-      setPlatform(data.platform);
-      setRuntimeAvailability(data.runtimeAvailability);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load agents");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  // Convert Tauri registry to frontend format
+  const convertTauriRegistry = useCallback(
+    (registry: TauriAcpRegistry, installedAgents: TauriInstalledAgentInfo[]): AgentWithStatus[] => {
+      const installedMap = new Map(installedAgents.map((a) => [a.agentId, a]));
+      return registry.agents.map((agent) => {
+        // Determine distribution types from the new structure
+        const distTypes: ("npx" | "uvx" | "binary")[] = [];
+        if (agent.distribution.npx) distTypes.push("npx");
+        if (agent.distribution.uvx) distTypes.push("uvx");
+        if (agent.distribution.binary) distTypes.push("binary");
+
+        return {
+          agent: {
+            id: agent.id,
+            name: agent.name,
+            version: agent.version || "latest",
+            description: agent.description,
+            repository: agent.repository,
+            authors: agent.authors ?? [],
+            license: agent.license ?? "",
+            icon: agent.icon,
+          },
+          installed: installedMap.has(agent.id),
+          distributionTypes: distTypes,
+        };
+      });
+    },
+    []
+  );
+
+  // Fetch registry data (Tauri or Web)
+  const fetchAgents = useCallback(
+    async (refresh = false) => {
+      try {
+        setLoading(true);
+        setError(null);
+
+        if (isTauri.current) {
+          // Tauri: Use local commands
+          const registry = await tauriInvoke<TauriAcpRegistry>("fetch_acp_registry");
+          const installedAgents = await tauriInvoke<TauriInstalledAgentInfo[]>("get_installed_agents");
+          const converted = convertTauriRegistry(registry, installedAgents);
+          setAgents(converted);
+          // Detect platform from navigator
+          const ua = navigator.userAgent;
+          if (ua.includes("Mac")) setPlatform("darwin");
+          else if (ua.includes("Win")) setPlatform("windows");
+          else setPlatform("linux");
+          // In Tauri, we assume npx/uvx are available (can be enhanced later)
+          setRuntimeAvailability({ npx: true, uvx: true });
+        } else {
+          // Web: Use API routes
+          const url = refresh ? "/api/acp/registry?refresh=true" : "/api/acp/registry";
+          const res = await fetch(url);
+          if (!res.ok) throw new Error(`Failed to fetch registry: ${res.status}`);
+          const data: RegistryResponse = await res.json();
+          setAgents(data.agents);
+          setPlatform(data.platform);
+          setRuntimeAvailability(data.runtimeAvailability);
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to load agents");
+      } finally {
+        setLoading(false);
+      }
+    },
+    [convertTauriRegistry]
+  );
 
   useEffect(() => {
     fetchAgents();
@@ -86,55 +209,73 @@ export function AgentInstallPanel() {
     );
   }, [agents, searchQuery]);
 
-  // Install agent
-  const handleInstall = useCallback(async (agentId: string, distType?: string) => {
-    setInstallingAgents((prev) => new Set(prev).add(agentId));
-    try {
-      const res = await fetch("/api/acp/install", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ agentId, distributionType: distType }),
-      });
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || "Installation failed");
+  // Install agent (Tauri or Web)
+  const handleInstall = useCallback(
+    async (agentId: string, _distType?: string) => {
+      setInstallingAgents((prev) => new Set(prev).add(agentId));
+      try {
+        if (isTauri.current) {
+          // Tauri: Install locally
+          await tauriInvoke<TauriInstalledAgentInfo>("install_acp_agent", { agentId });
+        } else {
+          // Web: Use API route
+          const res = await fetch("/api/acp/install", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ agentId, distributionType: _distType }),
+          });
+          if (!res.ok) {
+            const data = await res.json();
+            throw new Error(data.error || "Installation failed");
+          }
+        }
+        await fetchAgents();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Installation failed");
+      } finally {
+        setInstallingAgents((prev) => {
+          const next = new Set(prev);
+          next.delete(agentId);
+          return next;
+        });
       }
-      await fetchAgents();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Installation failed");
-    } finally {
-      setInstallingAgents((prev) => {
-        const next = new Set(prev);
-        next.delete(agentId);
-        return next;
-      });
-    }
-  }, [fetchAgents]);
+    },
+    [fetchAgents]
+  );
 
-  // Uninstall agent
-  const handleUninstall = useCallback(async (agentId: string) => {
-    setInstallingAgents((prev) => new Set(prev).add(agentId));
-    try {
-      const res = await fetch("/api/acp/install", {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ agentId }),
-      });
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || "Uninstallation failed");
+  // Uninstall agent (Tauri or Web)
+  const handleUninstall = useCallback(
+    async (agentId: string) => {
+      setInstallingAgents((prev) => new Set(prev).add(agentId));
+      try {
+        if (isTauri.current) {
+          // Tauri: Uninstall locally
+          await tauriInvoke<void>("uninstall_acp_agent", { agentId });
+        } else {
+          // Web: Use API route
+          const res = await fetch("/api/acp/install", {
+            method: "DELETE",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ agentId }),
+          });
+          if (!res.ok) {
+            const data = await res.json();
+            throw new Error(data.error || "Uninstallation failed");
+          }
+        }
+        await fetchAgents();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Uninstallation failed");
+      } finally {
+        setInstallingAgents((prev) => {
+          const next = new Set(prev);
+          next.delete(agentId);
+          return next;
+        });
       }
-      await fetchAgents();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Uninstallation failed");
-    } finally {
-      setInstallingAgents((prev) => {
-        const next = new Set(prev);
-        next.delete(agentId);
-        return next;
-      });
-    }
-  }, [fetchAgents]);
+    },
+    [fetchAgents]
+  );
 
   return (
     <div className="h-full flex flex-col bg-white dark:bg-[#0f1117]">

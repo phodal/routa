@@ -2,13 +2,19 @@ use std::io::{BufRead, BufReader};
 use std::net::TcpStream;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
+use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 use tauri::menu::{Menu, MenuItem, Submenu};
-use tauri::Manager;
+use tauri::{Manager, State};
+use tokio::sync::RwLock;
 
 // Re-export routa_server for external use
 pub use routa_server as server;
+use routa_server::acp::{
+    AcpBinaryManager, AcpInstallationState, AcpPaths, AcpRegistry, DistributionType,
+    InstalledAgentInfo,
+};
 
 /// Custom Tauri commands exposed to the frontend via `invoke`.
 /// These bridge the gap between the web frontend and native capabilities.
@@ -44,6 +50,209 @@ fn is_git_repo(path: String) -> bool {
 #[tauri::command]
 fn log_frontend(level: String, scope: String, message: String) {
     println!("[frontend:{}][{}] {}", level, scope, message);
+}
+
+// ─── ACP Agent Installation State ─────────────────────────────────────────
+
+/// Shared state for ACP agent installation.
+pub struct AcpState {
+    paths: AcpPaths,
+    installation_state: AcpInstallationState,
+    binary_manager: AcpBinaryManager,
+    registry_cache: Arc<RwLock<Option<AcpRegistry>>>,
+}
+
+impl AcpState {
+    fn new() -> Self {
+        let paths = AcpPaths::new();
+        let installation_state = AcpInstallationState::new(paths.clone());
+        let binary_manager = AcpBinaryManager::new(paths.clone());
+        Self {
+            paths,
+            installation_state,
+            binary_manager,
+            registry_cache: Arc::new(RwLock::new(None)),
+        }
+    }
+}
+
+const ACP_REGISTRY_URL: &str = "https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json";
+
+/// Fetch the ACP registry from the CDN.
+#[tauri::command]
+async fn fetch_acp_registry(state: State<'_, AcpState>) -> Result<AcpRegistry, String> {
+    // Check cache first
+    {
+        let cache = state.registry_cache.read().await;
+        if let Some(ref registry) = *cache {
+            return Ok(registry.clone());
+        }
+    }
+
+    // Fetch from CDN
+    let response = reqwest::get(ACP_REGISTRY_URL)
+        .await
+        .map_err(|e| format!("Failed to fetch registry: {}", e))?;
+
+    let registry: AcpRegistry = response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse registry: {}", e))?;
+
+    // Update cache
+    {
+        let mut cache = state.registry_cache.write().await;
+        *cache = Some(registry.clone());
+    }
+
+    Ok(registry)
+}
+
+/// Get list of installed agents.
+#[tauri::command]
+async fn get_installed_agents(state: State<'_, AcpState>) -> Result<Vec<InstalledAgentInfo>, String> {
+    // Load state from disk if not already loaded
+    state.installation_state.load().await?;
+    Ok(state.installation_state.get_all_installed().await)
+}
+
+/// Install an ACP agent locally.
+#[tauri::command]
+async fn install_acp_agent(
+    state: State<'_, AcpState>,
+    agent_id: String,
+) -> Result<InstalledAgentInfo, String> {
+    // Fetch registry to get agent info
+    let registry = {
+        let cache = state.registry_cache.read().await;
+        cache.clone()
+    };
+
+    let registry = match registry {
+        Some(r) => r,
+        None => {
+            // Fetch if not cached
+            let response = reqwest::get(ACP_REGISTRY_URL)
+                .await
+                .map_err(|e| format!("Failed to fetch registry: {}", e))?;
+            response
+                .json::<AcpRegistry>()
+                .await
+                .map_err(|e| format!("Failed to parse registry: {}", e))?
+        }
+    };
+
+    let agent = registry
+        .agents
+        .iter()
+        .find(|a| a.id == agent_id)
+        .ok_or_else(|| format!("Agent '{}' not found in registry", agent_id))?;
+
+    // Version is now on the agent entry itself
+    let version = if agent.version.is_empty() {
+        "latest".to_string()
+    } else {
+        agent.version.clone()
+    };
+
+    // Get distribution type using the helper method
+    let dist_type = agent
+        .dist_type()
+        .ok_or_else(|| "Agent has no distribution type".to_string())?;
+
+    match dist_type {
+        DistributionType::Npx => {
+            // For npx, we just mark it as installed (npx will download on first run)
+            let package = agent.get_package();
+            state
+                .installation_state
+                .mark_installed(&agent_id, &version, DistributionType::Npx, None, package)
+                .await?;
+        }
+        DistributionType::Uvx => {
+            // For uvx, we just mark it as installed (uvx will download on first run)
+            let package = agent.get_package();
+            state
+                .installation_state
+                .mark_installed(&agent_id, &version, DistributionType::Uvx, None, package)
+                .await?;
+        }
+        DistributionType::Binary => {
+            // For binary, we need to download and extract
+            let platform = AcpPaths::current_platform();
+            let binary_info = agent
+                .get_binary_info(&platform)
+                .ok_or_else(|| format!("No binary available for platform: {}", platform))?;
+
+            let exe_path = state
+                .binary_manager
+                .install_binary(&agent_id, &version, binary_info)
+                .await?;
+
+            state
+                .installation_state
+                .mark_installed(
+                    &agent_id,
+                    &version,
+                    DistributionType::Binary,
+                    Some(exe_path.to_string_lossy().to_string()),
+                    None,
+                )
+                .await?;
+        }
+    }
+
+    state
+        .installation_state
+        .get_installed_info(&agent_id)
+        .await
+        .ok_or_else(|| "Failed to get installed agent info".to_string())
+}
+
+/// Uninstall an ACP agent.
+#[tauri::command]
+async fn uninstall_acp_agent(state: State<'_, AcpState>, agent_id: String) -> Result<(), String> {
+    // Get installed info to check if it's a binary
+    if let Some(info) = state.installation_state.get_installed_info(&agent_id).await {
+        if info.dist_type == DistributionType::Binary {
+            // Remove binary files
+            state.binary_manager.uninstall(&agent_id).await?;
+        }
+    }
+
+    // Remove from installation state
+    state.installation_state.uninstall(&agent_id).await
+}
+
+/// Check if an agent has an update available.
+#[tauri::command]
+async fn check_agent_update(
+    state: State<'_, AcpState>,
+    agent_id: String,
+) -> Result<bool, String> {
+    let registry = {
+        let cache = state.registry_cache.read().await;
+        cache.clone()
+    };
+
+    let registry = match registry {
+        Some(r) => r,
+        None => return Ok(false),
+    };
+
+    let agent = match registry.agents.iter().find(|a| a.id == agent_id) {
+        Some(a) => a,
+        None => return Ok(false),
+    };
+
+    // Version is now on the agent entry itself
+    let latest_version = if agent.version.is_empty() {
+        "latest"
+    } else {
+        &agent.version
+    };
+
+    Ok(state.installation_state.has_update(&agent_id, latest_version).await)
 }
 
 fn detect_repo_root() -> Option<PathBuf> {
@@ -305,12 +514,18 @@ pub fn run() {
         .plugin(tauri_plugin_sql::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_os::init())
+        .manage(AcpState::new())
         .invoke_handler(tauri::generate_handler![
             get_env,
             get_cwd,
             get_home_dir,
             is_git_repo,
             log_frontend,
+            fetch_acp_registry,
+            get_installed_agents,
+            install_acp_agent,
+            uninstall_acp_agent,
+            check_agent_update,
         ])
         .setup(|app| {
             // ─── Build Application Menu ─────────────────────────────────────

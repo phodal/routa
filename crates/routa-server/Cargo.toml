@@ -19,7 +19,7 @@ tower-http = { version = "0.6", features = ["cors", "trace", "fs"] }
 
 # Async runtime
 tokio = { version = "1", features = ["full"] }
-tokio-stream = { version = "0.1", features = ["io-util"] }
+tokio-stream = "0.1"
 async-stream = "0.3"
 
 # Database
@@ -46,6 +46,12 @@ dirs = "5"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 reqwest = { version = "0.12", features = ["json"] }
+
+# Archive extraction
+zip = "2"
+flate2 = "1"
+tar = "0.4"
+bzip2 = "0.5"
 
 [dev-dependencies]
 reqwest = { version = "0.12", features = ["json"] }
