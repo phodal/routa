@@ -58,7 +58,7 @@ export class A2aSessionRegistry {
       status: "connected", // Simplified status
       capabilities: this.getSessionCapabilities(session),
       rpcUrl: `${baseUrl}/api/a2a/rpc?sessionId=${session.sessionId}`,
-      eventStreamUrl: `${baseUrl}/api/a2a/events?sessionId=${session.sessionId}`,
+      eventStreamUrl: `${baseUrl}/api/a2a/rpc?sessionId=${session.sessionId}`,
       createdAt: session.createdAt,
     };
   }
@@ -72,23 +72,20 @@ export class A2aSessionRegistry {
       "method_list",
     ];
 
-    // ACP-based sessions support these methods
+    // ACP-based sessions support these methods (must match /api/a2a/rpc routing)
     const acpCapabilities = [
       "session/new",
       "session/prompt",
       "session/cancel",
       "session/load",
-      "skills/list",
-      "skills/load",
     ];
 
-    // Routa-specific coordination tools
+    // Routa-specific coordination tools (must match /api/a2a/rpc routing)
     const routaCapabilities = [
       "list_agents",
       "create_agent",
       "delegate_task",
       "message_agent",
-      "report_to_parent",
     ];
 
     return [...baseCapabilities, ...acpCapabilities, ...routaCapabilities];
@@ -127,10 +124,6 @@ export class A2aSessionRegistry {
         {
           url: `${baseUrl}/api/a2a/rpc`,
           transport: "JSONRPC",
-        },
-        {
-          url: `${baseUrl}/api/a2a/rest`,
-          transport: "HTTP+JSON",
         },
       ],
     };

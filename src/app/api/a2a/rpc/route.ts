@@ -44,6 +44,25 @@ export async function POST(request: NextRequest) {
     const body = (await request.json()) as JsonRpcRequest;
     const sessionId = request.nextUrl.searchParams.get("sessionId");
 
+    // Validate that body is an object
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return NextResponse.json(
+        {
+          jsonrpc: "2.0",
+          error: {
+            code: -32600,
+            message: "Invalid Request",
+          },
+        } as JsonRpcResponse,
+        {
+          status: 400,
+          headers: {
+            "Access-Control-Allow-Origin": "*",
+          },
+        }
+      );
+    }
+
     // Validate JSON-RPC format
     if (body.jsonrpc !== "2.0" || !body.method) {
       return NextResponse.json(
@@ -55,7 +74,12 @@ export async function POST(request: NextRequest) {
             message: "Invalid Request",
           },
         } as JsonRpcResponse,
-        { status: 400 }
+        {
+          status: 400,
+          headers: {
+            "Access-Control-Allow-Origin": "*",
+          },
+        }
       );
     }
 
@@ -144,6 +168,11 @@ export async function GET(request: NextRequest) {
       // Cleanup on close
       request.signal.addEventListener("abort", () => {
         clearInterval(keepAliveInterval);
+        try {
+          controller.close();
+        } catch {
+          // Ignore errors if the controller is already closed
+        }
         sessionStore.detachSse(sessionId);
       });
     },

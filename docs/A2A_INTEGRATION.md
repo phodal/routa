@@ -65,7 +65,7 @@ Response:
       "status": "connected",
       "capabilities": ["initialize", "session/new", "session/prompt", ...],
       "rpcUrl": "http://localhost:3000/api/a2a/rpc?sessionId=abc123",
-      "eventStreamUrl": "http://localhost:3000/api/a2a/events?sessionId=abc123",
+      "eventStreamUrl": "http://localhost:3000/api/a2a/rpc?sessionId=abc123",
       "createdAt": "2024-01-01T00:00:00.000Z"
     }
   ],
