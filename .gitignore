@@ -21,6 +21,7 @@ out
 # Tauri
 apps/desktop/src-tauri/target/
 apps/desktop/app-icon.png
+apps/desktop/src-tauri/bundled/
 **/gen/**
 
 # Misc

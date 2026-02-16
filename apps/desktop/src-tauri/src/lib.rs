@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
+use tauri::Manager;
 
 /// Custom Tauri commands exposed to the frontend via `invoke`.
 /// These bridge the gap between the web frontend and native capabilities.
@@ -90,7 +91,18 @@ fn pipe_child_logs(prefix: &'static str, child: &mut Child) {
     }
 }
 
-fn start_local_next_server() -> Result<Child, String> {
+fn env_or_default(key: &str, default: &str) -> String {
+    std::env::var(key).unwrap_or_else(|_| default.to_string())
+}
+
+fn api_port() -> u16 {
+    std::env::var("ROUTA_DESKTOP_API_PORT")
+        .ok()
+        .and_then(|v| v.parse::<u16>().ok())
+        .unwrap_or(3210)
+}
+
+fn start_local_next_server(host: &str, port: u16) -> Result<Child, String> {
     let repo_root = detect_repo_root().ok_or_else(|| {
         "Unable to detect repository root for desktop local API server".to_string()
     })?;
@@ -104,10 +116,57 @@ fn start_local_next_server() -> Result<Child, String> {
         .arg("run")
         .arg("start:desktop:server")
         .current_dir(repo_root)
+        .env("HOSTNAME", host)
+        .env("PORT", port.to_string())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
         .map_err(|e| format!("Failed to spawn desktop API server: {}", e))?;
+
+    pipe_child_logs("desktop-server", &mut child);
+    Ok(child)
+}
+
+fn start_embedded_next_server(
+    app: &tauri::AppHandle,
+    host: &str,
+    port: u16,
+) -> Result<Child, String> {
+    let resource_dir = app
+        .path()
+        .resource_dir()
+        .map_err(|e| format!("Cannot resolve Tauri resource dir: {}", e))?;
+    let server_root = resource_dir.join("bundled").join("desktop-server");
+    let server_js = server_root.join("server.js");
+    if !server_js.exists() {
+        return Err(format!(
+            "Embedded desktop server not found at {}",
+            server_js.to_string_lossy()
+        ));
+    }
+
+    let node_bin = env_or_default("ROUTA_NODE_BIN", "node");
+    println!(
+        "[desktop-server] Starting embedded server: {} {}",
+        node_bin,
+        server_js.to_string_lossy()
+    );
+
+    let mut child = Command::new(node_bin)
+        .arg("server.js")
+        .current_dir(server_root)
+        .env("HOSTNAME", host)
+        .env("PORT", port.to_string())
+        .env("ROUTA_DESKTOP_SERVER_BUILD", "1")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| {
+            format!(
+                "Failed to spawn embedded desktop API server. Install Node.js or set ROUTA_NODE_BIN. {}",
+                e
+            )
+        })?;
 
     pipe_child_logs("desktop-server", &mut child);
     Ok(child)
@@ -133,7 +192,6 @@ pub fn run() {
         .setup(|app| {
             #[cfg(debug_assertions)]
             {
-                use tauri::Manager;
                 let window = app.get_webview_window("main").unwrap();
                 window.open_devtools();
             }
@@ -143,40 +201,56 @@ pub fn run() {
                 let force_debug =
                     std::env::var("ROUTA_TAURI_DEBUG").ok().as_deref() == Some("1");
                 if force_debug {
-                    use tauri::Manager;
                     if let Some(window) = app.get_webview_window("main") {
                         window.open_devtools();
                     }
                 }
 
-                // Approach #1: start a local API/web server and navigate app window to it.
-                // This keeps all existing /api routes available in desktop builds.
-                let api_url = "http://127.0.0.1:3210";
-                let already_running = wait_for_port("127.0.0.1", 3210, 1);
+                // Configurable API mode:
+                // - embedded (default): start packaged standalone Next server.
+                // - external: do not spawn, connect to existing ROUTA_DESKTOP_API_URL/HOST:PORT.
+                // - off: use embedded static UI only.
+                let api_mode = env_or_default("ROUTA_DESKTOP_API_MODE", "embedded");
+                let api_host = env_or_default("ROUTA_DESKTOP_API_HOST", "127.0.0.1");
+                let port = api_port();
+                let api_url = std::env::var("ROUTA_DESKTOP_API_URL")
+                    .unwrap_or_else(|_| format!("http://{}:{}", api_host, port));
 
-                if !already_running {
-                    match start_local_next_server() {
-                        Ok(_child) => {}
-                        Err(err) => {
-                            eprintln!("[desktop-server] {}", err);
+                if api_mode != "off" {
+                    let mut ready = wait_for_port(&api_host, port, 1);
+                    if !ready && api_mode == "embedded" {
+                        match start_embedded_next_server(&app.handle(), &api_host, port) {
+                            Ok(_child) => {}
+                            Err(err) => {
+                                eprintln!("[desktop-server] {}", err);
+                                // Dev fallback: running app from repository workspace.
+                                match start_local_next_server(&api_host, port) {
+                                    Ok(_child) => {}
+                                    Err(dev_err) => {
+                                        eprintln!("[desktop-server] {}", dev_err);
+                                    }
+                                }
+                            }
                         }
+                        ready = wait_for_port(&api_host, port, 25);
+                    } else if ready {
+                        println!("[desktop-server] Reusing existing local server on {}", api_url);
                     }
-                } else {
-                    println!("[desktop-server] Reusing existing local server on {}", api_url);
-                }
 
-                if wait_for_port("127.0.0.1", 3210, 25) {
-                    use tauri::Manager;
-                    if let Some(window) = app.get_webview_window("main") {
-                        let js = format!("window.location.replace('{}');", api_url);
-                        let _ = window.eval(&js);
-                        println!("[desktop-server] Webview navigated to {}", api_url);
+                    if ready {
+                        if let Some(window) = app.get_webview_window("main") {
+                            let js = format!("window.location.replace('{}');", api_url);
+                            let _ = window.eval(&js);
+                            println!("[desktop-server] Webview navigated to {}", api_url);
+                        }
+                    } else {
+                        eprintln!(
+                            "[desktop-server] Timed out waiting for {}. Falling back to embedded static UI.",
+                            api_url
+                        );
                     }
                 } else {
-                    eprintln!(
-                        "[desktop-server] Timed out waiting for {}. Falling back to embedded static UI.",
-                        api_url
-                    );
+                    println!("[desktop-server] API mode is off, using embedded static UI only");
                 }
             }
             Ok(())

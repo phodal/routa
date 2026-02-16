@@ -11,13 +11,12 @@
 
     "shell:default",
     "shell:allow-open",
-    "shell:allow-execute",
-    "shell:allow-spawn",
     "shell:allow-stdin-write",
     "shell:allow-kill",
     {
       "identifier": "shell:allow-execute",
       "allow": [
+        { "name": "which", "cmd": "which", "args": true },
         { "name": "git", "cmd": "git", "args": true },
         { "name": "opencode", "cmd": "opencode", "args": true },
         { "name": "codex-acp", "cmd": "codex-acp", "args": true },
@@ -29,6 +28,10 @@
     {
       "identifier": "shell:allow-spawn",
       "allow": [
+        { "name": "which", "cmd": "which", "args": true },
+        { "name": "sh", "cmd": "/bin/sh", "args": true },
+        { "name": "bash", "cmd": "/bin/bash", "args": true },
+        { "name": "zsh", "cmd": "/bin/zsh", "args": true },
         { "name": "git", "cmd": "git", "args": true },
         { "name": "opencode", "cmd": "opencode", "args": true },
         { "name": "codex-acp", "cmd": "codex-acp", "args": true },

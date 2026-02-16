@@ -138,28 +138,48 @@ export function createPgSystem(): RoutaSystem {
  * These files are excluded from tsconfig.json for the same reason.
  */
 export function createSqliteSystem(): RoutaSystem {
-  // Use indirect require to prevent webpack from statically analyzing these imports.
-  // These modules depend on better-sqlite3 which is only available on desktop.
-  // eslint-disable-next-line no-eval
-  const dynamicRequire = eval("require") as NodeRequire;
-  const { getSqliteDatabase } = dynamicRequire("./db/sqlite");
-  const {
-    SqliteAgentStore,
-    SqliteConversationStore,
-    SqliteTaskStore,
-    SqliteNoteStore,
-    SqliteWorkspaceStore,
-  } = dynamicRequire("./db/sqlite-stores");
-
-  const db = getSqliteDatabase();
-  const agentStore = new SqliteAgentStore(db);
-  const conversationStore = new SqliteConversationStore(db);
-  const taskStore = new SqliteTaskStore(db);
-  const noteStore = new SqliteNoteStore(db);
-  const workspaceStore = new SqliteWorkspaceStore(db);
-
   const noteBroadcaster = getNoteEventBroadcaster();
   const crdtManager = new CRDTDocumentManager();
+
+  let agentStore: AgentStore;
+  let conversationStore: ConversationStore;
+  let taskStore: TaskStore;
+  let noteStore: NoteStore;
+  let workspaceStore: WorkspaceStore;
+
+  try {
+    // Use indirect require to prevent webpack from statically analyzing these imports.
+    // These modules depend on better-sqlite3 which is only available on desktop.
+    // eslint-disable-next-line no-eval
+    const dynamicRequire = eval("require") as NodeRequire;
+    const { getSqliteDatabase } = dynamicRequire("./db/sqlite");
+    const {
+      SqliteAgentStore,
+      SqliteConversationStore,
+      SqliteTaskStore,
+      SqliteNoteStore,
+      SqliteWorkspaceStore,
+    } = dynamicRequire("./db/sqlite-stores");
+
+    const db = getSqliteDatabase();
+    agentStore = new SqliteAgentStore(db);
+    conversationStore = new SqliteConversationStore(db);
+    taskStore = new SqliteTaskStore(db);
+    noteStore = new SqliteNoteStore(db);
+    workspaceStore = new SqliteWorkspaceStore(db);
+  } catch (err) {
+    // Standalone desktop bundles may not include sqlite dynamic modules.
+    // Keep app usable by falling back to in-memory stores.
+    console.warn(
+      "[RoutaSystem] SQLite modules unavailable, falling back to in-memory stores:",
+      err
+    );
+    agentStore = new InMemoryAgentStore();
+    conversationStore = new InMemoryConversationStore();
+    taskStore = new InMemoryTaskStore();
+    noteStore = new CRDTNoteStore(noteBroadcaster, crdtManager);
+    workspaceStore = new InMemoryWorkspaceStore();
+  }
 
   const eventBus = new EventBus();
   const tools = new AgentTools(agentStore, conversationStore, taskStore, eventBus);
@@ -181,7 +201,7 @@ export function createSqliteSystem(): RoutaSystem {
     workspaceTools,
     crdtManager,
     noteBroadcaster,
-    isPersistent: true,
+    isPersistent: !(workspaceStore instanceof InMemoryWorkspaceStore),
   };
 }
 

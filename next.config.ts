@@ -2,6 +2,7 @@ import type { NextConfig } from "next";
 
 const isStaticBuild = process.env.ROUTA_BUILD_STATIC === "1";
 const isDesktopServerBuild = process.env.ROUTA_DESKTOP_SERVER_BUILD === "1";
+const isDesktopStandaloneBuild = process.env.ROUTA_DESKTOP_STANDALONE === "1";
 
 const nextConfig: NextConfig = {
   typescript: {
@@ -16,6 +17,7 @@ const nextConfig: NextConfig = {
     "better-sqlite3",
   ],
   ...(isDesktopServerBuild ? { distDir: ".next-desktop" } : {}),
+  ...(isDesktopStandaloneBuild ? { output: "standalone" } : {}),
   ...(isStaticBuild
     ? {
         output: "export",
