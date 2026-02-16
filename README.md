@@ -9,7 +9,7 @@
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
-[Features](#features) • [Quick Start](#quick-start) • [Documentation](#documentation) • [Architecture](#architecture) • [Contributing](#contributing)
+[Features](#features) • [Quick Start](#quick-start) • [Architecture](#architecture) • [Contributing](#contributing)
 
 </div>
 
@@ -17,475 +17,148 @@
 
 ## Overview
 
-Routa JS is a powerful **multi-agent coordination platform** that enables seamless collaboration between AI agents through standardized protocols. Built with TypeScript and Next.js, it provides a full-stack solution for orchestrating multiple AI agents working together on complex tasks.
+**Routa.js** orchestrates AI agents to collaborate on complex development tasks through specialized roles and real-time coordination. Instead of a single AI handling everything, Routa enables multiple agents to work together—one plans, another implements, and a third verifies—creating a more robust and scalable development workflow.
 
-The platform supports four major protocols:
-- **MCP (Model Context Protocol)** - For AI model integration (Claude Code, etc.)
-- **ACP (Agent Client Protocol)** - For agent communication and session management
-- **A2A (Agent-to-Agent)** - For external agent federation and discovery
-- **Skills System** - OpenCode-compatible skill discovery and execution
+### What It Does
 
-Whether you're building autonomous coding assistants, orchestrating multi-agent workflows, or creating collaborative AI systems, Routa JS provides the infrastructure you need.
+- **Breaks down complex work** into manageable tasks across specialized agents
+- **Coordinates execution** through task delegation, messaging, and event streaming
+- **Verifies quality** with dedicated review agents before completion
+- **Connects multiple AI platforms** (Claude Code, OpenCode, Codex, Gemini) through unified protocols
+- **Provides real-time visibility** into agent activities, task progress, and collaboration
 
-## ✨ Features
+### Key Capabilities
 
-### Multi-Protocol Support
-- **MCP Server** - Expose 12 coordination tools to AI clients via HTTP/SSE
-- **ACP Agent** - Full Agent Client Protocol implementation with session management
-- **A2A Bridge** - Agent-to-Agent protocol for external agent federation and discovery
-- **Skills Registry** - Automatic discovery and loading of SKILL.md files from multiple directories
+- **🎭 Role-Based Agents**: ROUTA (Coordinator), CRAFTER (Implementor), GATE (Verifier), DEVELOPER (Solo)
+- **🔄 Task Orchestration**: Create tasks, delegate to agents, track dependencies, parallel execution
+- **💬 Inter-Agent Communication**: Message passing, conversation history, completion reports
+- **📡 Multi-Protocol Support**: MCP, ACP, A2A for connecting diverse AI clients
+- **🎯 Skills System**: OpenCode-compatible skill discovery and dynamic loading
+- **📊 Real-Time UI**: Live agent status, task progress, streaming chat interface
 
-### Agent Orchestration
-- **Three Agent Roles**: ROUTA (coordinator), CRAFTER (implementor), GATE (verifier)
-- **Task Delegation** - Assign tasks to agents and track their progress
-- **Inter-Agent Messaging** - Direct communication between agents
-- **Event System** - Subscribe to agent events and coordinate workflows
-
-### Developer Experience
-- **Browser UI** - Full-featured web interface for agent management, chat, and monitoring
-- **Real-time Updates** - SSE-based streaming for live agent status and messages
-- **Repository Integration** - Clone and work with Git repositories
-- **Skill Management** - Browse, upload, and execute skills dynamically
-
-### Built for Production
-- **TypeScript** - Full type safety across the stack
-- **Next.js 15** - Modern React framework with App Router
-- **In-Memory Stores** - Fast, efficient data storage (extensible to persistent stores)
-- **Comprehensive Testing** - E2E tests with Playwright
+👉 For detailed protocol specs and API reference, see [AGENTS.md](AGENTS.md)
 
 ## 🏗 Architecture
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│  Browser (React)                                            │
-│  ├─ ChatPanel      → ACP JSON-RPC → /api/acp               │
-│  ├─ AgentPanel     → REST         → /api/agents             │
-│  ├─ SkillPanel     → REST         → /api/skills             │
-│  └─ BrowserAcpClient + SkillClient (SSE + HTTP)             │
-└──────────────────────┬──────────────────────────────────────┘
-                       │ HTTP
-┌──────────────────────▼──────────────────────────────────────┐
-│  Next.js Server                                             │
-│  ├─ /api/mcp    → MCP Server (SSE + JSON-RPC)               │
-│  │   └─ RoutaMcpServer → RoutaMcpToolManager → AgentTools   │
-│  ├─ /api/acp    → ACP Agent (JSON-RPC + SSE streaming)      │
-│  │   └─ RoutaAcpAgent → AgentTools + SkillRegistry          │
-│  ├─ /api/agents → REST API for agent management             │
-│  └─ /api/skills → REST API for skill discovery              │
-│                                                             │
-│  Core Layer:                                                │
-│  ├─ AgentTools (12 coordination tools)                      │
-│  ├─ RoutaSystem (stores + event bus)                        │
-│  ├─ SkillRegistry (SKILL.md discovery)                      │
-│  └─ Models (Agent, Task, Message)                           │
-└─────────────────────────────────────────────────────────────┘
-          │                         │
-          │ MCP (SSE/WS)            │ ACP (stdio/JSON-RPC)
-          ▼                         ▼
-   Claude Code / MCP         OpenCode / Codex
-   Inspector / etc.          / external agents
-```
+```mermaid
+flowchart TB
+    subgraph clients["🖥️ AI Clients"]
+        claude["Claude Code"]
+        opencode["OpenCode/Codex"]
+        gemini["Gemini CLI"]
+        a2a_ext["External Agents"]
+    end
 
-## 📋 Protocols
+    subgraph browser["🌐 Web Interface"]
+        chat["Chat Panel"]
+        agents["Agent Panel"]
+        skills["Skill Panel"]
+    end
 
-### MCP (Model Context Protocol)
-- **Server**: `@modelcontextprotocol/sdk` - Exposes 12 coordination tools
-- **Endpoint**: `POST /api/mcp` (JSON-RPC), `GET /api/mcp` (SSE)
-- **Tools**: list_agents, create_agent, delegate_task, send_message_to_agent, report_to_parent, wake_or_create_task_agent, get_agent_status, get_agent_summary, subscribe_to_events, etc.
+    subgraph server["⚙️ Routa Server"]
+        mcp["MCP Server<br/>/api/mcp"]
+        acp["ACP Agent<br/>/api/acp"]
+        a2a["A2A Bridge<br/>/api/a2a"]
+        rest["REST APIs"]
 
-### ACP (Agent Client Protocol)
-- **Agent**: `@agentclientprotocol/sdk` - AgentSideConnection implementation
-- **Endpoint**: `POST /api/acp` (JSON-RPC), `GET /api/acp?sessionId=x` (SSE)
-- **Methods**: initialize, session/new, session/prompt, session/cancel, session/load, skills/list, skills/load, tools/call
+        subgraph core["Core Engine"]
+            tools["Coordination Tools"]
+            orchestrator["Orchestrator"]
+            system["Stores & EventBus"]
+            skill_reg["Skill Registry"]
+        end
+    end
 
-### A2A (Agent-to-Agent Protocol)
-- **SDK**: `@a2a-js/sdk` - Agent2Agent protocol for external federation
-- **Endpoints**: 
-  - `GET /api/a2a/card` - Agent card discovery
-  - `GET /api/a2a/sessions` - List active backend sessions
-  - `POST /api/a2a/rpc` - JSON-RPC bridge to backend sessions
-  - `GET /api/a2a/rpc?sessionId=x` - SSE stream for session events
-- **Methods**: initialize, method_list, list_agents, create_agent, delegate_task, message_agent, session/*
+    claude -.->|"SSE + JSON-RPC"| mcp
+    opencode -.->|"stdio + JSON-RPC"| acp
+    gemini -.->|"stdio + JSON-RPC"| acp
+    a2a_ext -.->|"HTTP + JSON-RPC"| a2a
 
-### Skills (OpenCode Compatible)
-- Discovers SKILL.md files from `.opencode/skills/`, `.claude/skills/`, `.agents/skills/`
-- Dynamic loading via ACP slash commands or REST API
-- Pattern-based permissions (allow/deny/ask)
+    chat -->|"WebSocket"| acp
+    agents -->|"REST"| rest
+    skills -->|"REST"| rest
 
-## 👥 Agent Roles
+    mcp --> tools
+    acp --> tools
+    acp --> skill_reg
+    a2a --> tools
+    rest --> system
 
-| Role | Purpose |
-|------|---------|
-| **ROUTA** | Coordinator - plans, delegates, orchestrates |
-| **CRAFTER** | Implementor - writes code, makes changes |
-| **GATE** | Verifier - reviews and validates work |
+    tools --> orchestrator
+    orchestrator --> system
+    skill_reg --> system
 
-## 🚀 Quick Start
+    classDef clientStyle fill:#e1f5ff,stroke:#0288d1,stroke-width:2px
+    classDef browserStyle fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+    classDef serverStyle fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+    classDef coreStyle fill:#e8f5e9,stroke:#388e3c,stroke-width:2px
 
-### Prerequisites
-
-- **Node.js** 18.x or higher
-- **npm** 9.x or higher
-- **Git** (for repository cloning features)
-
-### Installation
-
-```bash
-# Clone the repository
-git clone https://github.com/phodal/routa-js.git
-cd routa-js
-
-# Install dependencies
-npm install --legacy-peer-deps
-
-# Start the development server
-npm run dev
+    class claude,opencode,gemini,a2a_ext clientStyle
+    class chat,agents,skills browserStyle
+    class mcp,acp,a2a,rest serverStyle
+    class tools,orchestrator,system,skill_reg coreStyle
 ```
 
-Open [http://localhost:3000](http://localhost:3000) in your browser to access the UI.
+## 👥 Agent Roles & Workflow
 
-### Using with AI Clients
+```mermaid
+sequenceDiagram
+    participant User
+    participant ROUTA as 🎯 ROUTA<br/>(Coordinator)
+    participant CRAFTER as 🔨 CRAFTER<br/>(Implementor)
+    participant GATE as ✅ GATE<br/>(Verifier)
 
-#### MCP Client Connection
+    User->>ROUTA: Complex task request
+    activate ROUTA
 
-Configure your MCP-compatible client (Claude Code, MCP Inspector, etc.) to connect to:
-```
-http://localhost:3000/api/mcp
-```
+    Note over ROUTA: Analyzes requirements<br/>Creates task breakdown
+    ROUTA->>ROUTA: create_task("Implement feature X")
+    ROUTA->>ROUTA: create_task("Add tests")
 
-The server exposes 12 coordination tools for agent management, task delegation, and event subscription.
+    ROUTA->>CRAFTER: delegate_task(task_id, specialist="CRAFTER")
+    activate CRAFTER
+    Note over CRAFTER: Spawns ACP process<br/>Receives task context
 
-#### ACP Client Connection
+    CRAFTER->>CRAFTER: Implements changes
+    CRAFTER->>CRAFTER: Writes code
+    CRAFTER->>ROUTA: report_to_parent(success, summary)
+    deactivate CRAFTER
 
-ACP-compatible clients (OpenCode, Codex, etc.) can connect to:
-```
-http://localhost:3000/api/acp
-```
+    ROUTA->>GATE: delegate_task(task_id, specialist="GATE")
+    activate GATE
+    Note over GATE: Reviews implementation<br/>Runs verification commands
 
-Supports session management, prompts, skill loading, and tool calls.
+    GATE->>GATE: Checks acceptance criteria
+    GATE->>GATE: Validates quality
+    GATE->>ROUTA: report_to_parent(verdict, report)
+    deactivate GATE
 
-#### A2A Client Connection
+    alt Verification Approved
+        ROUTA->>User: Task completed ✓
+    else Needs Fix
+        ROUTA->>CRAFTER: delegate_task(fix_task_id)
+        Note over CRAFTER,GATE: Iteration continues...
+    end
 
-A2A-compatible agents can discover and connect to Routa sessions:
-```
-# Discover Routa agent
-http://localhost:3000/api/a2a/card
-
-# List active sessions
-http://localhost:3000/api/a2a/sessions
-
-# Connect via JSON-RPC
-http://localhost:3000/api/a2a/rpc
-```
-
-Enables external agents to interact with backend sessions and coordination tools.
-
-### Example Workflows
-
-#### 1. Create and Delegate a Task
-
-```typescript
-// Using MCP tools
-const agent = await tools.createAgent({
-  workspaceId: "my-workspace",
-  role: "CRAFTER",
-  name: "code-agent"
-});
-
-const task = await tools.delegate({
-  parentAgentId: agent.id,
-  targetAgentId: agent.id,
-  title: "Implement user authentication",
-  description: "Add JWT-based auth to the API"
-});
+    deactivate ROUTA
 ```
 
-#### 2. Subscribe to Agent Events
-
-```typescript
-// Monitor agent activities in real-time
-const subscription = await tools.subscribeToEvents({
-  agentId: "agent-123",
-  eventTypes: ["TASK_ASSIGNED", "TASK_COMPLETED", "MESSAGE_SENT"]
-});
-```
-
-#### 3. Use A2A Protocol for External Agent Communication
-
-```bash
-# Discover Routa as an A2A agent
-curl http://localhost:3000/api/a2a/card
-
-# List active backend sessions
-curl http://localhost:3000/api/a2a/sessions
-
-# Call coordination methods via A2A JSON-RPC
-curl -X POST http://localhost:3000/api/a2a/rpc \
-  -H "Content-Type: application/json" \
-  -d '{
-    "jsonrpc": "2.0",
-    "id": 1,
-    "method": "list_agents",
-    "params": {"workspaceId": "default"}
-  }'
-
-# Create an agent via A2A
-curl -X POST http://localhost:3000/api/a2a/rpc \
-  -H "Content-Type: application/json" \
-  -d '{
-    "jsonrpc": "2.0",
-    "id": 2,
-    "method": "create_agent",
-    "params": {
-      "name": "external-crafter",
-      "role": "CRAFTER",
-      "workspaceId": "default"
-    }
-  }'
-```
-
-## 📚 Documentation
-
-### Available Tools (MCP)
-
-Routa JS provides 12 coordination tools accessible via MCP:
-
-**Core Tools:**
-1. `list_agents` - List all agents in a workspace
-2. `read_agent_conversation` - Read another agent's conversation history
-3. `create_agent` - Create ROUTA/CRAFTER/GATE agents
-4. `delegate` - Assign tasks to agents
-5. `message_agent` - Send messages between agents
-6. `report_to_parent` - Report task completion to parent agent
-
-**Task Lifecycle:**
-7. `wake_or_create_task_agent` - Wake existing or create new task agent
-8. `send_message_to_task_agent` - Send message to task's assigned agent
-9. `get_agent_status` - Get current agent status
-10. `get_agent_summary` - Get agent summary with recent activities
-
-**Event Management:**
-11. `subscribe_to_events` - Subscribe to workspace events
-12. `unsubscribe_from_events` - Unsubscribe from events
-
-### API Endpoints
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/mcp` | GET | MCP SSE stream for real-time updates |
-| `/api/mcp` | POST | MCP JSON-RPC message handling |
-| `/api/acp` | GET | ACP SSE stream with session support |
-| `/api/acp` | POST | ACP JSON-RPC message handling |
-| `/api/a2a/card` | GET | A2A agent card for discovery |
-| `/api/a2a/sessions` | GET | List active A2A-accessible sessions |
-| `/api/a2a/rpc` | POST | A2A JSON-RPC bridge |
-| `/api/a2a/rpc` | GET | A2A SSE stream for session events |
-| `/api/agents` | GET/POST | REST API for agent management |
-| `/api/skills` | GET/POST | REST API for skill management |
-| `/api/sessions` | GET | Session management |
-
-## 🛠 Development
-
-### Project Structure
-
-```
-src/
-├── app/                          # Next.js App Router
-│   ├── layout.tsx                # Root layout
-│   ├── page.tsx                  # Main UI (Agent, Skill, Chat panels)
-│   └── api/
-│       ├── mcp/route.ts          # MCP Server endpoint
-│       ├── acp/route.ts          # ACP Agent endpoint
-│       ├── agents/route.ts       # Agent REST API
-│       └── skills/route.ts       # Skills REST API
-├── core/                         # Server-side core
-│   ├── models/                   # Data models
-│   │   ├── agent.ts              # Agent, AgentRole, AgentStatus
-│   │   ├── task.ts               # Task, TaskStatus
-│   │   └── message.ts            # Message, CompletionReport
-│   ├── store/                    # In-memory stores
-│   │   ├── agent-store.ts        # AgentStore interface + impl
-│   │   ├── conversation-store.ts # ConversationStore interface + impl
-│   │   └── task-store.ts         # TaskStore interface + impl
-│   ├── tools/
-│   │   ├── agent-tools.ts        # 12 coordination tools
-│   │   └── tool-result.ts        # ToolResult type
-│   ├── mcp/
-│   │   ├── routa-mcp-server.ts   # MCP Server factory
-│   │   └── routa-mcp-tool-manager.ts # Tool registration
-│   ├── acp/
-│   │   ├── routa-acp-agent.ts    # ACP Agent (AgentSideConnection)
-│   │   └── acp-session-manager.ts # Session management
-│   ├── skills/
-│   │   ├── skill-loader.ts       # SKILL.md discovery & parsing
-│   │   └── skill-registry.ts     # Runtime skill registry
-│   ├── events/
-│   │   └── event-bus.ts          # EventBus for inter-agent events
-│   └── routa-system.ts           # Central system (stores + tools)
-└── client/                       # Browser-side
-    ├── acp-client.ts             # BrowserAcpClient (JSON-RPC + SSE)
-    ├── skill-client.ts           # SkillClient (REST)
-    ├── hooks/
-    │   ├── use-acp.ts            # React hook for ACP
-    │   └── use-skills.ts         # React hook for skills
-    └── components/
-        ├── agent-panel.tsx       # Agent management UI
-        ├── skill-panel.tsx       # Skill discovery UI
-        └── chat-panel.tsx        # Chat interface
-```
-
-### Building and Testing
-
-```bash
-# Development server with hot reload
-npm run dev
-
-# Production build
-npm run build
-
-# Start production server
-npm start
-
-# Run linting
-npm run lint
-
-# Run E2E tests
-npx playwright test
-
-# Run E2E tests in UI mode
-npx playwright test --ui
-```
-
-### Adding New Tools
-
-To add a new coordination tool:
-
-1. Define the tool in `src/core/tools/agent-tools.ts`:
-```typescript
-async myNewTool(params: MyParams): Promise<ToolResult> {
-  // Implementation
-  return successResult({ data: "result" });
-}
-```
-
-2. Register it in `src/core/mcp/routa-mcp-tool-manager.ts`:
-```typescript
-{
-  name: "my_new_tool",
-  description: "Description of the tool",
-  inputSchema: zodToJsonSchema(MyParamsSchema),
-}
-```
-
-3. Add the handler in `src/app/api/mcp/route.ts`
-
-### Adding Skills
-
-Skills are discovered automatically from:
-- `.opencode/skills/`
-- `.claude/skills/`
-- `.agents/skills/`
-
-Create a `SKILL.md` file with YAML frontmatter:
-
-```markdown
----
-name: my-skill
-description: What this skill does
-permissions:
-  allow: ["read:*"]
-  deny: []
----
-
-# Skill Implementation
-
-Skill content here...
-```
-
-## 🚢 Deployment
-
-### Vercel (Recommended)
-
-The project is optimized for Vercel deployment:
-
-```bash
-# Install Vercel CLI
-npm i -g vercel
-
-# Deploy
-vercel
-```
-
-Or connect your GitHub repository to Vercel for automatic deployments.
-
-### Docker
-
-```bash
-# Build Docker image
-docker build -t routa-js .
-
-# Run container
-docker run -p 3000:3000 routa-js
-```
-
-### Environment Variables
-
-Create a `.env.local` file for local development:
-
-```env
-# Optional: Configure custom ports
-PORT=3000
-
-# Optional: Configure workspace paths
-WORKSPACE_ROOT=/path/to/workspaces
-```
-
-## 🤝 Contributing
-
-We welcome contributions! Here's how you can help:
-
-1. **Fork the repository**
-2. **Create a feature branch**: `git checkout -b feature/amazing-feature`
-3. **Make your changes**: Follow the existing code style
-4. **Test your changes**: `npm run lint && npx playwright test`
-5. **Commit your changes**: `git commit -m 'Add amazing feature'`
-6. **Push to the branch**: `git push origin feature/amazing-feature`
-7. **Open a Pull Request**
-
-### Development Guidelines
-
-- Write TypeScript with strict type checking
-- Follow the existing code organization
-- Add tests for new features
-- Update documentation as needed
-- Keep commits atomic and well-described
+| Role | Purpose | Behavior |
+|------|---------|----------|
+| **ROUTA** | Coordinator | Plans work, breaks down tasks, delegates to specialists, orchestrates workflow |
+| **CRAFTER** | Implementor | Executes implementation tasks, writes code, makes minimal focused changes |
+| **GATE** | Verifier | Reviews work, validates against acceptance criteria, approves or requests fixes |
+| **DEVELOPER** | Solo Agent | Plans and implements independently without delegation (single-agent mode) |
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🙏 Acknowledgments
-
 - Built with [Model Context Protocol](https://modelcontextprotocol.io/) by Anthropic
 - Uses [Agent Client Protocol](https://github.com/agentclientprotocol/sdk) for agent communication
-- Inspired by the multi-agent coordination patterns in modern AI systems
-- Special thanks to all [contributors](https://github.com/phodal/routa-js/graphs/contributors)
+- Uses [A2A Protocol](https://a2a-js.github.io/sdk/) for agent federation
+- Inspired by the [Intent](https://www.augmentcode.com/product/intent) - multi-agent coordination patterns in modern AI
+  systems
 
-## 📮 Support
-
-- **Issues**: [GitHub Issues](https://github.com/phodal/routa-js/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/phodal/routa-js/discussions)
-- **Documentation**: [docs/](docs/)
-
-## 🗺 Roadmap
-
-- [ ] Persistent storage backend (PostgreSQL, Redis)
-- [ ] WebSocket support for real-time communication
-- [ ] Agent marketplace and skill sharing
-- [ ] Multi-workspace support
-- [ ] Advanced agent analytics and monitoring
-- [ ] Integration with more AI providers
-- [ ] Plugin system for custom protocols
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ---
 
