@@ -210,8 +210,15 @@ async function handleA2aMethod(
     return handleSessionMethod(method, params, sessionId, sessionStore);
   }
 
-  if (method.startsWith("list_") || method.startsWith("create_") || method.startsWith("delegate_") || method.startsWith("message_")) {
-    // Coordination methods don't require sessionId (use default workspace)
+  // Coordination methods - use explicit list instead of prefix matching
+  const coordinationMethods = [
+    "list_agents",
+    "create_agent",
+    "delegate_task",
+    "message_agent",
+  ];
+
+  if (coordinationMethods.includes(method)) {
     return handleCoordinationMethod(method, params, system);
   }
 
@@ -257,27 +264,49 @@ async function handleCoordinationMethod(
 ): Promise<unknown> {
   const tools = system.tools;
 
+  // Validate params is an object
+  if (typeof params !== "object" || params === null) {
+    throw new Error("Invalid params: must be an object");
+  }
+
   switch (method) {
     case "list_agents": {
-      const p = params as { workspaceId?: string } | undefined;
-      return await tools.listAgents(p?.workspaceId || "default");
+      const p = params as { workspaceId?: string };
+      return await tools.listAgents(p.workspaceId || "default");
     }
 
     case "create_agent": {
-      const p = params as { name: string; role: string; workspaceId?: string };
+      const p = params as Record<string, unknown>;
+      
+      // Validate required fields
+      if (typeof p.name !== "string" || !p.name) {
+        throw new Error("Invalid params: 'name' is required and must be a non-empty string");
+      }
+      if (typeof p.role !== "string" || !p.role) {
+        throw new Error("Invalid params: 'role' is required and must be a non-empty string");
+      }
+      
       return await tools.createAgent({
         name: p.name,
         role: p.role,
-        workspaceId: p.workspaceId || "default",
+        workspaceId: typeof p.workspaceId === "string" ? p.workspaceId : "default",
       });
     }
 
     case "delegate_task": {
-      const p = params as {
-        agentId: string;
-        taskId: string;
-        callerAgentId: string;
-      };
+      const p = params as Record<string, unknown>;
+      
+      // Validate required fields
+      if (typeof p.agentId !== "string" || !p.agentId) {
+        throw new Error("Invalid params: 'agentId' is required and must be a non-empty string");
+      }
+      if (typeof p.taskId !== "string" || !p.taskId) {
+        throw new Error("Invalid params: 'taskId' is required and must be a non-empty string");
+      }
+      if (typeof p.callerAgentId !== "string" || !p.callerAgentId) {
+        throw new Error("Invalid params: 'callerAgentId' is required and must be a non-empty string");
+      }
+      
       return await tools.delegate({
         agentId: p.agentId,
         taskId: p.taskId,
@@ -286,11 +315,19 @@ async function handleCoordinationMethod(
     }
 
     case "message_agent": {
-      const p = params as {
-        fromAgentId: string;
-        toAgentId: string;
-        message: string;
-      };
+      const p = params as Record<string, unknown>;
+      
+      // Validate required fields
+      if (typeof p.fromAgentId !== "string" || !p.fromAgentId) {
+        throw new Error("Invalid params: 'fromAgentId' is required and must be a non-empty string");
+      }
+      if (typeof p.toAgentId !== "string" || !p.toAgentId) {
+        throw new Error("Invalid params: 'toAgentId' is required and must be a non-empty string");
+      }
+      if (typeof p.message !== "string" || !p.message) {
+        throw new Error("Invalid params: 'message' is required and must be a non-empty string");
+      }
+      
       return await tools.messageAgent({
         fromAgentId: p.fromAgentId,
         toAgentId: p.toAgentId,
