@@ -202,19 +202,80 @@ fn resolve_db_path(app: &tauri::AppHandle) -> String {
     })
 }
 
+/// Resolve the static frontend directory for the Rust server.
+/// In production, looks for the `frontend` resource bundled by Tauri.
+/// In development, uses the `out/` directory from the repo root.
+fn resolve_static_dir(app: &tauri::AppHandle) -> Option<String> {
+    // 1. Check for Tauri bundled resource
+    if let Ok(resource_dir) = app.path().resource_dir() {
+        let bundled_frontend = resource_dir.join("frontend");
+        if bundled_frontend.exists() && bundled_frontend.is_dir() {
+            println!(
+                "[rust-server] Using bundled frontend: {}",
+                bundled_frontend.to_string_lossy()
+            );
+            return Some(bundled_frontend.to_string_lossy().to_string());
+        }
+    }
+
+    // 2. Fall back to repo `out/` directory (development)
+    if let Some(repo_root) = detect_repo_root() {
+        let out_dir = repo_root.join("out");
+        if out_dir.exists() && out_dir.is_dir() {
+            println!(
+                "[rust-server] Using dev frontend: {}",
+                out_dir.to_string_lossy()
+            );
+            return Some(out_dir.to_string_lossy().to_string());
+        }
+    }
+
+    // 3. Check CARGO_MANIFEST_DIR/frontend (used in production builds)
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let frontend_dir = manifest_dir.join("frontend");
+    if frontend_dir.exists() && frontend_dir.is_dir() {
+        let canonical = frontend_dir.canonicalize().unwrap_or(frontend_dir);
+        println!(
+            "[rust-server] Using local frontend/: {}",
+            canonical.to_string_lossy()
+        );
+        return Some(canonical.to_string_lossy().to_string());
+    }
+
+    // 4. Check repo out/ directory (for cargo test / dev builds)
+    let out_dir = manifest_dir.join("..").join("..").join("..").join("out");
+    if out_dir.exists() && out_dir.is_dir() {
+        let canonical = out_dir.canonicalize().unwrap_or(out_dir);
+        println!(
+            "[rust-server] Using out/ frontend: {}",
+            canonical.to_string_lossy()
+        );
+        return Some(canonical.to_string_lossy().to_string());
+    }
+
+    println!("[rust-server] No static frontend directory found");
+    None
+}
+
 /// Start the embedded Rust backend server (replaces Node.js).
 fn start_rust_server(app: &tauri::AppHandle, host: &str, port: u16) -> Result<(), String> {
     let db_path = resolve_db_path(app);
+    let static_dir = resolve_static_dir(app);
     let host = host.to_string();
 
     println!("[rust-server] Starting embedded Rust backend server");
     println!("[rust-server] Database path: {}", db_path);
+    println!(
+        "[rust-server] Static dir: {}",
+        static_dir.as_deref().unwrap_or("(none)")
+    );
     println!("[rust-server] Listening on {}:{}", host, port);
 
     let config = server::ServerConfig {
         host,
         port,
         db_path,
+        static_dir,
     };
 
     // Start the server in the Tauri async runtime

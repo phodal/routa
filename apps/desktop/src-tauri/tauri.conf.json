@@ -30,7 +30,8 @@
     "active": true,
     "targets": "all",
     "resources": [
-      "bundled/desktop-server/**/*"
+      "bundled/desktop-server/**/*",
+      "frontend/**/*"
     ],
     "icon": [
       "icons/32x32.png",

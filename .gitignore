@@ -93,3 +93,4 @@ apps/desktop/src-tauri/icons/*
 *.db
 *.db-journal
 *.db-wal
+**/chunks/

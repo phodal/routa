@@ -10,6 +10,7 @@ pub mod acp;
 pub mod api;
 pub mod db;
 pub mod error;
+pub mod git;
 pub mod mcp;
 pub mod models;
 pub mod skills;
@@ -31,6 +32,9 @@ pub struct ServerConfig {
     pub host: String,
     pub port: u16,
     pub db_path: String,
+    /// Optional path to static frontend files (Next.js export).
+    /// When set, the server serves these files for all non-API routes.
+    pub static_dir: Option<String>,
 }
 
 impl Default for ServerConfig {
@@ -39,6 +43,7 @@ impl Default for ServerConfig {
             host: "127.0.0.1".to_string(),
             port: 3210,
             db_path: "routa.db".to_string(),
+            static_dir: None,
         }
     }
 }
@@ -87,12 +92,30 @@ pub async fn start_server(config: ServerConfig) -> Result<SocketAddr, String> {
         .allow_methods(Any)
         .allow_headers(Any);
 
-    let app = Router::new()
+    let mut app = Router::new()
         .merge(api::api_router())
         .route("/api/health", axum::routing::get(health_check))
-        .layer(cors)
+        .layer(cors.clone())
         .layer(TraceLayer::new_for_http())
         .with_state(state);
+
+    // Serve static frontend files if configured
+    if let Some(ref static_dir) = config.static_dir {
+        let static_path = std::path::Path::new(static_dir);
+        if static_path.exists() && static_path.is_dir() {
+            tracing::info!("Serving static frontend from: {}", static_dir);
+            let serve_dir = tower_http::services::ServeDir::new(static_dir)
+                .not_found_service(tower_http::services::ServeFile::new(
+                    static_path.join("index.html"),
+                ));
+            app = app.fallback_service(serve_dir);
+        } else {
+            tracing::warn!(
+                "Static directory not found: {}. Frontend won't be served.",
+                static_dir
+            );
+        }
+    }
 
     // Bind and serve
     let addr: SocketAddr = format!("{}:{}", config.host, config.port)

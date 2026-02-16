@@ -5,12 +5,6 @@ use std::time::Duration;
 #[tokio::test]
 async fn test_rust_backend_api() {
     // Start server on a random port
-    let config = routa_desktop_lib::server::ServerConfig {
-        host: "127.0.0.1".to_string(),
-        port: 0, // let OS pick a free port
-        db_path: ":memory:".to_string(),
-    };
-
     // We need to manually set up the server for testing
     let db = routa_desktop_lib::server::db::Database::open_in_memory().unwrap();
     let state: routa_desktop_lib::server::state::AppState =
@@ -258,7 +252,7 @@ async fn test_rust_backend_api() {
         .unwrap();
     assert_eq!(resp.status(), 200);
     let body: serde_json::Value = resp.json().await.unwrap();
-    assert_eq!(body["result"]["name"], "routa-desktop");
+    assert_eq!(body["result"]["agentInfo"]["name"], "routa-acp");
     println!("  PASS: ACP initialize works");
 
     // ── Test 16: ACP providers list ─────────────────────────────────
@@ -280,5 +274,255 @@ async fn test_rust_backend_api() {
     assert!(providers.len() >= 4);
     println!("  PASS: {} providers", providers.len());
 
-    println!("\n=== ALL 16 TESTS PASSED ===");
+    // ── Test 17: ACP session/new ──────────────────────────────────
+    println!("=== Test 17: ACP session/new ===");
+    let resp = client
+        .post(format!("{}/api/acp", base_url))
+        .json(&serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 3,
+            "method": "session/new",
+            "params": { "cwd": ".", "provider": "opencode" }
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    let body: serde_json::Value = resp.json().await.unwrap();
+    let acp_session_id = body["result"]["sessionId"].as_str().unwrap().to_string();
+    assert!(!acp_session_id.is_empty());
+    println!("  PASS: created ACP session {}", &acp_session_id[..8]);
+
+    // ── Test 18: ACP session/cancel ───────────────────────────────
+    println!("=== Test 18: ACP session/cancel ===");
+    let resp = client
+        .post(format!("{}/api/acp", base_url))
+        .json(&serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 4,
+            "method": "session/cancel",
+            "params": { "sessionId": acp_session_id }
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    let body: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(body["result"]["cancelled"], true);
+    println!("  PASS: cancelled session");
+
+    // ── Test 19: ACP session/load (unsupported) ───────────────────
+    println!("=== Test 19: ACP session/load ===");
+    let resp = client
+        .post(format!("{}/api/acp", base_url))
+        .json(&serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 5,
+            "method": "session/load",
+            "params": {}
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    let body: serde_json::Value = resp.json().await.unwrap();
+    assert!(body["error"].is_object());
+    println!("  PASS: session/load correctly returns error");
+
+    // ── Test 20: MCP Streamable HTTP initialize ──────────────────
+    println!("=== Test 20: MCP initialize ===");
+    let resp = client
+        .post(format!("{}/api/mcp", base_url))
+        .json(&serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": { "protocolVersion": "2024-11-05" }
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    let body: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(body["result"]["serverInfo"]["name"], "routa-mcp");
+    println!("  PASS: MCP initialized");
+
+    // ── Test 21: MCP tools/list ──────────────────────────────────
+    println!("=== Test 21: MCP tools/list ===");
+    let resp = client
+        .post(format!("{}/api/mcp", base_url))
+        .json(&serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "tools/list",
+            "params": {}
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    let body: serde_json::Value = resp.json().await.unwrap();
+    let tools = body["result"]["tools"].as_array().unwrap();
+    assert!(tools.len() >= 5, "Should have at least 5 tools");
+    println!("  PASS: {} MCP tools", tools.len());
+
+    // ── Test 22: MCP tools/call ──────────────────────────────────
+    println!("=== Test 22: MCP tools/call (list_workspaces) ===");
+    let resp = client
+        .post(format!("{}/api/mcp", base_url))
+        .json(&serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 3,
+            "method": "tools/call",
+            "params": {
+                "name": "list_workspaces",
+                "arguments": {}
+            }
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    let body: serde_json::Value = resp.json().await.unwrap();
+    assert!(body["result"]["content"].as_array().is_some());
+    println!("  PASS: MCP tools/call returned content");
+
+    // ── Test 23: /api/mcp/tools GET ──────────────────────────────
+    println!("=== Test 23: /api/mcp/tools GET ===");
+    let resp = client
+        .get(format!("{}/api/mcp/tools", base_url))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    let body: serde_json::Value = resp.json().await.unwrap();
+    assert!(body["tools"].as_array().is_some());
+    println!("  PASS: {} tools from /api/mcp/tools", body["tools"].as_array().unwrap().len());
+
+    // ── Test 24: /api/mcp/tools POST ─────────────────────────────
+    println!("=== Test 24: /api/mcp/tools POST ===");
+    let resp = client
+        .post(format!("{}/api/mcp/tools", base_url))
+        .json(&serde_json::json!({
+            "name": "list_agents",
+            "args": { "workspaceId": "default" }
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    let body: serde_json::Value = resp.json().await.unwrap();
+    assert!(body["content"].as_array().is_some());
+    println!("  PASS: executed tool via /api/mcp/tools");
+
+    // ── Test 25: MCP Server Management ───────────────────────────
+    println!("=== Test 25: /api/mcp-server ===");
+    let resp = client
+        .get(format!("{}/api/mcp-server", base_url))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    let body: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(body["running"], false);
+    println!("  PASS: MCP server status OK");
+
+    let resp = client
+        .post(format!("{}/api/mcp-server", base_url))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    let body: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(body["running"], true);
+    println!("  PASS: MCP server started");
+
+    // ── Test 26: Test MCP ────────────────────────────────────────
+    println!("=== Test 26: /api/test-mcp ===");
+    let resp = client
+        .get(format!("{}/api/test-mcp", base_url))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    let body: serde_json::Value = resp.json().await.unwrap();
+    assert!(body["providers"].is_object());
+    assert!(body["mcpEndpoint"].is_string());
+    println!("  PASS: test-mcp endpoint works");
+
+    // ── Test 27: Clone repos list ────────────────────────────────
+    println!("=== Test 27: /api/clone GET ===");
+    let resp = client
+        .get(format!("{}/api/clone", base_url))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    let body: serde_json::Value = resp.json().await.unwrap();
+    assert!(body["repos"].as_array().is_some());
+    println!("  PASS: clone list endpoint works");
+
+    // ── Test 28: A2A Sessions ────────────────────────────────────
+    println!("=== Test 28: /api/a2a/sessions ===");
+    let resp = client
+        .get(format!("{}/api/a2a/sessions", base_url))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    let body: serde_json::Value = resp.json().await.unwrap();
+    assert!(body["sessions"].as_array().is_some());
+    println!("  PASS: A2A sessions");
+
+    // ── Test 29: A2A Agent Card ──────────────────────────────────
+    println!("=== Test 29: /api/a2a/card ===");
+    let resp = client
+        .get(format!("{}/api/a2a/card", base_url))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    let body: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(body["name"], "Routa Multi-Agent Coordinator");
+    assert_eq!(body["protocolVersion"], "0.3.0");
+    println!("  PASS: A2A agent card");
+
+    // ── Test 30: A2A RPC ─────────────────────────────────────────
+    println!("=== Test 30: /api/a2a/rpc POST ===");
+    let resp = client
+        .post(format!("{}/api/a2a/rpc", base_url))
+        .json(&serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {}
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    let body: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(body["result"]["agentInfo"]["name"], "routa-a2a-bridge");
+    println!("  PASS: A2A RPC initialize");
+
+    // ── Test 31: A2A RPC method_list ─────────────────────────────
+    println!("=== Test 31: /api/a2a/rpc method_list ===");
+    let resp = client
+        .post(format!("{}/api/a2a/rpc", base_url))
+        .json(&serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "method_list",
+            "params": {}
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    let body: serde_json::Value = resp.json().await.unwrap();
+    let methods = body["result"]["methods"].as_array().unwrap();
+    assert!(methods.len() >= 5);
+    println!("  PASS: {} A2A methods", methods.len());
+
+    println!("\n=== ALL 31 TESTS PASSED ===");
 }
