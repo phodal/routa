@@ -6,6 +6,8 @@
  */
 
 import { AgentTools } from "@/core/tools/agent-tools";
+import { NoteTools } from "@/core/tools/note-tools";
+import { WorkspaceTools } from "@/core/tools/workspace-tools";
 import { getRoutaOrchestrator } from "@/core/orchestration/orchestrator-singleton";
 
 const DEFAULT_WORKSPACE_ID = "default";
@@ -13,7 +15,9 @@ const DEFAULT_WORKSPACE_ID = "default";
 export async function executeMcpTool(
   tools: AgentTools,
   name: string,
-  args: Record<string, unknown>
+  args: Record<string, unknown>,
+  noteTools?: NoteTools,
+  workspaceTools?: WorkspaceTools
 ) {
   const workspace = (args.workspaceId as string) ?? DEFAULT_WORKSPACE_ID;
 
@@ -122,6 +126,104 @@ export async function executeMcpTool(
       return formatResult(
         await tools.unsubscribeFromEvents(args.subscriptionId as string)
       );
+
+    // ── Note tools ───────────────────────────────────────────────────
+    case "create_note":
+      if (!noteTools) return formatResult({ success: false, error: "Note tools not available." });
+      return formatResult(
+        await noteTools.createNote({
+          title: args.title as string,
+          content: args.content as string | undefined,
+          workspaceId: (args.workspaceId as string) ?? workspace,
+          noteId: args.noteId as string | undefined,
+          type: args.type as "spec" | "task" | "general" | undefined,
+        })
+      );
+    case "read_note":
+      if (!noteTools) return formatResult({ success: false, error: "Note tools not available." });
+      return formatResult(
+        await noteTools.readNote({
+          noteId: args.noteId as string,
+          workspaceId: (args.workspaceId as string) ?? workspace,
+        })
+      );
+    case "list_notes":
+      if (!noteTools) return formatResult({ success: false, error: "Note tools not available." });
+      return formatResult(
+        await noteTools.listNotes({
+          workspaceId: (args.workspaceId as string) ?? workspace,
+          type: args.type as "spec" | "task" | "general" | undefined,
+        })
+      );
+    case "set_note_content":
+      if (!noteTools) return formatResult({ success: false, error: "Note tools not available." });
+      return formatResult(
+        await noteTools.setNoteContent({
+          noteId: args.noteId as string,
+          content: args.content as string,
+          title: args.title as string | undefined,
+          workspaceId: (args.workspaceId as string) ?? workspace,
+        })
+      );
+    case "append_to_note":
+      if (!noteTools) return formatResult({ success: false, error: "Note tools not available." });
+      return formatResult(
+        await noteTools.appendToNote({
+          noteId: args.noteId as string,
+          content: args.content as string,
+          workspaceId: (args.workspaceId as string) ?? workspace,
+        })
+      );
+    case "get_my_task":
+      if (!noteTools) return formatResult({ success: false, error: "Note tools not available." });
+      return formatResult(
+        await noteTools.getMyTask({
+          agentId: args.agentId as string,
+          workspaceId: (args.workspaceId as string) ?? workspace,
+        })
+      );
+    case "convert_task_blocks":
+      if (!noteTools) return formatResult({ success: false, error: "Note tools not available." });
+      return formatResult(
+        await noteTools.convertTaskBlocks({
+          noteId: args.noteId as string,
+          workspaceId: (args.workspaceId as string) ?? workspace,
+        })
+      );
+
+    // ── Workspace tools ──────────────────────────────────────────────
+    case "git_status":
+      if (!workspaceTools) return formatResult({ success: false, error: "Workspace tools not available." });
+      return formatResult(await workspaceTools.gitStatus({ cwd: args.cwd as string | undefined }));
+    case "git_diff":
+      if (!workspaceTools) return formatResult({ success: false, error: "Workspace tools not available." });
+      return formatResult(
+        await workspaceTools.gitDiff({
+          cwd: args.cwd as string | undefined,
+          staged: args.staged as boolean | undefined,
+          file: args.file as string | undefined,
+        })
+      );
+    case "git_commit":
+      if (!workspaceTools) return formatResult({ success: false, error: "Workspace tools not available." });
+      return formatResult(
+        await workspaceTools.gitCommit({
+          message: args.message as string,
+          cwd: args.cwd as string | undefined,
+          stageAll: args.stageAll as boolean | undefined,
+        })
+      );
+    case "get_workspace_info":
+      if (!workspaceTools) return formatResult({ success: false, error: "Workspace tools not available." });
+      return formatResult(
+        await workspaceTools.getWorkspaceInfo({
+          workspaceId: (args.workspaceId as string) ?? workspace,
+        })
+      );
+    case "list_specialists":
+      if (!workspaceTools) return formatResult({ success: false, error: "Workspace tools not available." });
+      return formatResult(await workspaceTools.listSpecialists());
+
     default:
       return {
         content: [{ type: "text", text: `Unknown tool: ${name}` }],
@@ -148,6 +250,7 @@ function formatResult(result: { success: boolean; data?: unknown; error?: string
 
 export function getMcpToolDefinitions() {
   return [
+    // ── Task tools ──────────────────────────────────────────────────
     {
       name: "create_task",
       description: "Create a new task in the task store. Returns a taskId for delegation.",
@@ -178,14 +281,14 @@ export function getMcpToolDefinitions() {
     },
     {
       name: "delegate_task_to_agent",
-      description: "Delegate a task to a new agent by spawning a real process. Use specialist='CRAFTER' for implementation and specialist='GATE' for verification.",
+      description: "Delegate a task to a new agent by spawning a real process. Use specialist='CRAFTER' for implementation, specialist='GATE' for verification, specialist='DEVELOPER' for solo plan+implement.",
       inputSchema: {
         type: "object",
         properties: {
           taskId: { type: "string", description: "Task ID to delegate" },
           callerAgentId: { type: "string", description: "Your agent ID" },
           callerSessionId: { type: "string", description: "Your session ID (optional)" },
-          specialist: { type: "string", enum: ["CRAFTER", "GATE", "crafter", "gate"], description: "Agent type to create" },
+          specialist: { type: "string", enum: ["CRAFTER", "GATE", "DEVELOPER", "crafter", "gate", "developer"], description: "Agent type to create" },
           provider: { type: "string", description: "ACP provider (claude, copilot, opencode, etc.)" },
           cwd: { type: "string", description: "Working directory" },
           additionalInstructions: { type: "string", description: "Extra context for the agent" },
@@ -194,6 +297,7 @@ export function getMcpToolDefinitions() {
         required: ["taskId", "callerAgentId", "specialist"],
       },
     },
+    // ── Agent tools ─────────────────────────────────────────────────
     {
       name: "list_agents",
       description: "List all agents in the current workspace",
@@ -221,15 +325,15 @@ export function getMcpToolDefinitions() {
     },
     {
       name: "create_agent",
-      description: "Create a new agent (ROUTA/CRAFTER/GATE)",
+      description: "Create a new agent (ROUTA=coordinator, CRAFTER=implementor, GATE=verifier, DEVELOPER=solo)",
       inputSchema: {
         type: "object",
         properties: {
           name: { type: "string" },
-          role: { type: "string", enum: ["ROUTA", "CRAFTER", "GATE"] },
+          role: { type: "string", enum: ["ROUTA", "CRAFTER", "GATE", "DEVELOPER"] },
           workspaceId: { type: "string" },
           parentId: { type: "string" },
-          modelTier: { type: "string", enum: ["SMART", "FAST"] },
+          modelTier: { type: "string", enum: ["SMART", "BALANCED", "FAST"] },
         },
         required: ["name", "role"],
       },
@@ -343,6 +447,150 @@ export function getMcpToolDefinitions() {
         type: "object",
         properties: { subscriptionId: { type: "string" } },
         required: ["subscriptionId"],
+      },
+    },
+    // ── Note tools ──────────────────────────────────────────────────
+    {
+      name: "create_note",
+      description: "Create a new note in the workspace for agent collaboration.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          title: { type: "string", description: "Note title" },
+          content: { type: "string", description: "Initial note content" },
+          noteId: { type: "string", description: "Custom note ID (auto-generated if omitted)" },
+          type: { type: "string", enum: ["spec", "task", "general"], description: "Note type" },
+          workspaceId: { type: "string" },
+        },
+        required: ["title"],
+      },
+    },
+    {
+      name: "read_note",
+      description: "Read the content of a note. Use noteId='spec' for the workspace spec note.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          noteId: { type: "string", description: "Note ID ('spec' for spec note)" },
+          workspaceId: { type: "string" },
+        },
+        required: ["noteId"],
+      },
+    },
+    {
+      name: "list_notes",
+      description: "List all notes in the workspace. Optionally filter by type.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          type: { type: "string", enum: ["spec", "task", "general"], description: "Filter by type" },
+          workspaceId: { type: "string" },
+        },
+      },
+    },
+    {
+      name: "set_note_content",
+      description: "Set (replace) the content of a note. Spec note is auto-created if missing.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          noteId: { type: "string", description: "Note ID" },
+          content: { type: "string", description: "New content (replaces existing)" },
+          title: { type: "string", description: "Update the note title" },
+          workspaceId: { type: "string" },
+        },
+        required: ["noteId", "content"],
+      },
+    },
+    {
+      name: "append_to_note",
+      description: "Append content to an existing note (for progress updates, reports, etc.).",
+      inputSchema: {
+        type: "object",
+        properties: {
+          noteId: { type: "string", description: "Note ID" },
+          content: { type: "string", description: "Content to append" },
+          workspaceId: { type: "string" },
+        },
+        required: ["noteId", "content"],
+      },
+    },
+    {
+      name: "get_my_task",
+      description: "Get the task(s) assigned to the calling agent, including objective, scope, and acceptance criteria.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          agentId: { type: "string", description: "Your agent ID" },
+          workspaceId: { type: "string" },
+        },
+        required: ["agentId"],
+      },
+    },
+    {
+      name: "convert_task_blocks",
+      description: "Convert @@@task blocks in a note into structured Task Notes and Task records.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          noteId: { type: "string", description: "Note ID containing @@@task blocks (typically 'spec')" },
+          workspaceId: { type: "string" },
+        },
+        required: ["noteId"],
+      },
+    },
+    // ── Workspace tools ─────────────────────────────────────────────
+    {
+      name: "git_status",
+      description: "Get the current git status (staged, unstaged, untracked files).",
+      inputSchema: {
+        type: "object",
+        properties: {
+          cwd: { type: "string", description: "Working directory (default: project root)" },
+        },
+      },
+    },
+    {
+      name: "git_diff",
+      description: "Get git diff output. Optionally scope to staged changes or a specific file.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          cwd: { type: "string", description: "Working directory" },
+          staged: { type: "boolean", description: "Show only staged changes" },
+          file: { type: "string", description: "Scope to a specific file path" },
+        },
+      },
+    },
+    {
+      name: "git_commit",
+      description: "Create a git commit with the given message. Optionally stage all changes first.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          message: { type: "string", description: "Commit message" },
+          cwd: { type: "string", description: "Working directory" },
+          stageAll: { type: "boolean", description: "Run git add -A before committing" },
+        },
+        required: ["message"],
+      },
+    },
+    {
+      name: "get_workspace_info",
+      description: "Get workspace details including agents, tasks, and notes summary.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          workspaceId: { type: "string", description: "Workspace ID" },
+        },
+      },
+    },
+    {
+      name: "list_specialists",
+      description: "List all available specialist configurations (roles, model tiers, descriptions).",
+      inputSchema: {
+        type: "object",
+        properties: {},
       },
     },
   ];

@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
     }
 
     const { system } = createRoutaMcpServer(DEFAULT_WORKSPACE_ID);
-    const result = await executeMcpTool(system.tools, name, args);
+    const result = await executeMcpTool(system.tools, name, args, system.noteTools, system.workspaceTools);
     return NextResponse.json(result);
   } catch (error) {
     return NextResponse.json(

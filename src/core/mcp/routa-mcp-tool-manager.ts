@@ -9,12 +9,14 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { AgentTools } from "../tools/agent-tools";
 import { NoteTools } from "../tools/note-tools";
+import { WorkspaceTools } from "../tools/workspace-tools";
 import { ToolResult } from "../tools/tool-result";
 import type { RoutaOrchestrator } from "../orchestration/orchestrator";
 
 export class RoutaMcpToolManager {
   private orchestrator?: RoutaOrchestrator;
   private noteTools?: NoteTools;
+  private workspaceTools?: WorkspaceTools;
 
   constructor(
     private tools: AgentTools,
@@ -33,6 +35,13 @@ export class RoutaMcpToolManager {
    */
   setNoteTools(noteTools: NoteTools): void {
     this.noteTools = noteTools;
+  }
+
+  /**
+   * Set the workspace tools for git and workspace management.
+   */
+  setWorkspaceTools(workspaceTools: WorkspaceTools): void {
+    this.workspaceTools = workspaceTools;
   }
 
   /**
@@ -62,6 +71,12 @@ export class RoutaMcpToolManager {
     this.registerAppendToNote(server);
     this.registerGetMyTask(server);
     this.registerConvertTaskBlocks(server);
+    // Workspace tools
+    this.registerGitStatus(server);
+    this.registerGitDiff(server);
+    this.registerGitCommit(server);
+    this.registerGetWorkspaceInfo(server);
+    this.registerListSpecialists(server);
   }
 
   // ─── Task Tools ────────────────────────────────────────────────────
@@ -520,6 +535,97 @@ The agent will start working immediately and you'll be notified when it complete
           noteId: params.noteId,
           workspaceId: params.workspaceId ?? this.workspaceId,
         });
+        return this.toMcpResult(result);
+      }
+    );
+  }
+
+  // ─── Workspace Tools ─────────────────────────────────────────────────
+
+  private registerGitStatus(server: McpServer) {
+    server.tool(
+      "git_status",
+      "Get the current git status (staged, unstaged, untracked files, current branch).",
+      {
+        cwd: z.string().optional().describe("Working directory (default: project root)"),
+      },
+      async (params) => {
+        if (!this.workspaceTools) {
+          return this.toMcpResult({ success: false, error: "Workspace tools not available." });
+        }
+        const result = await this.workspaceTools.gitStatus({ cwd: params.cwd });
+        return this.toMcpResult(result);
+      }
+    );
+  }
+
+  private registerGitDiff(server: McpServer) {
+    server.tool(
+      "git_diff",
+      "Get git diff output. Optionally scope to staged changes or a specific file.",
+      {
+        cwd: z.string().optional().describe("Working directory"),
+        staged: z.boolean().optional().describe("Show only staged changes (--cached)"),
+        file: z.string().optional().describe("Scope to a specific file path"),
+      },
+      async (params) => {
+        if (!this.workspaceTools) {
+          return this.toMcpResult({ success: false, error: "Workspace tools not available." });
+        }
+        const result = await this.workspaceTools.gitDiff(params);
+        return this.toMcpResult(result);
+      }
+    );
+  }
+
+  private registerGitCommit(server: McpServer) {
+    server.tool(
+      "git_commit",
+      "Create a git commit with the given message. Optionally stage all changes first.",
+      {
+        message: z.string().describe("Commit message"),
+        cwd: z.string().optional().describe("Working directory"),
+        stageAll: z.boolean().optional().describe("Run 'git add -A' before committing"),
+      },
+      async (params) => {
+        if (!this.workspaceTools) {
+          return this.toMcpResult({ success: false, error: "Workspace tools not available." });
+        }
+        const result = await this.workspaceTools.gitCommit(params);
+        return this.toMcpResult(result);
+      }
+    );
+  }
+
+  private registerGetWorkspaceInfo(server: McpServer) {
+    server.tool(
+      "get_workspace_info",
+      "Get workspace details including agent counts, task status summary, and notes overview.",
+      {
+        workspaceId: z.string().optional().describe("Workspace ID (uses default if omitted)"),
+      },
+      async (params) => {
+        if (!this.workspaceTools) {
+          return this.toMcpResult({ success: false, error: "Workspace tools not available." });
+        }
+        const result = await this.workspaceTools.getWorkspaceInfo({
+          workspaceId: params.workspaceId ?? this.workspaceId,
+        });
+        return this.toMcpResult(result);
+      }
+    );
+  }
+
+  private registerListSpecialists(server: McpServer) {
+    server.tool(
+      "list_specialists",
+      "List all available specialist configurations (roles, model tiers, descriptions).",
+      {},
+      async () => {
+        if (!this.workspaceTools) {
+          return this.toMcpResult({ success: false, error: "Workspace tools not available." });
+        }
+        const result = await this.workspaceTools.listSpecialists();
         return this.toMcpResult(result);
       }
     );
