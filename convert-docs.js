@@ -148,11 +148,15 @@ const htmlTemplate = (title, content) => `<!DOCTYPE html>
 </html>`;
 
 // Convert markdown files to HTML
+// To add new documentation files, add them to this array:
+// { input: 'filename.md', output: 'filename.html', title: 'Page Title' }
 const docsDir = path.join(__dirname, 'docs', 'agent-mcp');
 const files = [
   { input: 'MCP_SETUP_GUIDE.md', output: 'MCP_SETUP_GUIDE.html', title: 'MCP Setup Guide' },
   { input: 'MCP_IMPLEMENTATION.md', output: 'MCP_IMPLEMENTATION.html', title: 'MCP Implementation' }
 ];
+
+let hasErrors = false;
 
 files.forEach(({ input, output, title }) => {
   const inputPath = path.join(docsDir, input);
@@ -166,8 +170,14 @@ files.forEach(({ input, output, title }) => {
     fs.writeFileSync(outputPath, fullHtml);
     console.log(`✓ Converted ${input} to ${output}`);
   } else {
-    console.log(`✗ File not found: ${input}`);
+    console.error(`✗ Error: File not found: ${input}`);
+    hasErrors = true;
   }
 });
 
-console.log('Documentation conversion complete!');
+if (hasErrors) {
+  console.error('\nDocumentation conversion failed due to missing files!');
+  process.exit(1);
+}
+
+console.log('\nDocumentation conversion complete!');
