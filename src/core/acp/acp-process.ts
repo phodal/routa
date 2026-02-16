@@ -1,15 +1,19 @@
-import {ChildProcess, spawn} from "child_process";
 import {AcpProcessConfig, JsonRpcMessage, NotificationHandler, PendingRequest} from "@/core/acp/processer";
 import {getTerminalManager} from "@/core/acp/terminal-manager";
+import type {IProcessHandle} from "@/core/platform/interfaces";
+import {getServerBridge} from "@/core/platform";
 
 /**
  * Manages a single ACP agent process and its JSON-RPC communication.
  *
  * This is the core abstraction that handles the ACP protocol over stdio.
  * It works with any ACP-compliant agent (opencode, gemini, codex-acp, etc.).
+ *
+ * Uses the platform bridge for process spawning and file system operations,
+ * enabling support across Web (Node.js), Tauri, and Electron environments.
  */
 export class AcpProcess {
-    private process: ChildProcess | null = null;
+    private process: IProcessHandle | null = null;
     private buffer = "";
     private pendingRequests = new Map<number | string, PendingRequest>();
     private requestId = 0;
@@ -65,11 +69,18 @@ export class AcpProcess {
             `[AcpProcess:${displayName}] Spawning: ${command} ${finalArgs.join(" ")} (cwd: ${cwd})`
         );
 
-        this.process = spawn(command, finalArgs, {
+        const bridge = getServerBridge();
+        if (!bridge.process.isAvailable()) {
+            throw new Error(
+                `Process spawning is not available on this platform. ` +
+                `Cannot start ${displayName}.`
+            );
+        }
+
+        this.process = bridge.process.spawn(command, finalArgs, {
             stdio: ["pipe", "pipe", "pipe"],
             cwd,
             env: {
-                ...process.env,
                 ...env,
                 NODE_NO_READLINE: "1",
             },
@@ -374,15 +385,14 @@ export class AcpProcess {
             case "fs/read_text_file": {
                 const filePath = (params as { path: string })?.path;
                 if (filePath) {
-                    try {
-                        const fs = require("fs");
-                        const content = fs.readFileSync(filePath, "utf-8");
+                    const fsBridge = getServerBridge().fs;
+                    fsBridge.readTextFile(filePath).then((content) => {
                         this.writeMessage({
                             jsonrpc: "2.0",
                             id,
                             result: {content},
                         });
-                    } catch (err) {
+                    }).catch((err) => {
                         this.writeMessage({
                             jsonrpc: "2.0",
                             id,
@@ -391,7 +401,7 @@ export class AcpProcess {
                                 message: `Failed to read file: ${(err as Error).message}`,
                             },
                         });
-                    }
+                    });
                 }
                 break;
             }
@@ -402,15 +412,14 @@ export class AcpProcess {
                     content: string;
                 }) ?? {};
                 if (writePath && content !== undefined) {
-                    try {
-                        const fs = require("fs");
-                        fs.writeFileSync(writePath, content, "utf-8");
+                    const fsBridge = getServerBridge().fs;
+                    fsBridge.writeTextFile(writePath, content).then(() => {
                         this.writeMessage({
                             jsonrpc: "2.0",
                             id,
                             result: {},
                         });
-                    } catch (err) {
+                    }).catch((err) => {
                         this.writeMessage({
                             jsonrpc: "2.0",
                             id,
@@ -419,7 +428,7 @@ export class AcpProcess {
                                 message: `Failed to write file: ${(err as Error).message}`,
                             },
                         });
-                    }
+                    });
                 }
                 break;
             }
@@ -523,7 +532,7 @@ export class AcpProcess {
     }
 
     private writeMessage(msg: Record<string, unknown>): void {
-        if (!this.process?.stdin?.writable) {
+        if (!this.process?.stdin || !this.process.stdin.writable) {
             console.error(
                 `[AcpProcess:${this._config.displayName}] Cannot write - stdin not writable`
             );

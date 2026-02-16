@@ -7,6 +7,7 @@ const nextConfig: NextConfig = {
     "ws",
     "bufferutil",
     "utf-8-validate",
+    "better-sqlite3",
   ],
 };
 

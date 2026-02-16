@@ -329,20 +329,34 @@ class TauriFs implements IPlatformFs {
 
 class TauriDb implements IPlatformDb {
   type: DatabaseType = "sqlite";
+  private _db: unknown = null;
 
   isDatabaseConfigured(): boolean {
-    // Tauri always has SQLite available via the SQL plugin
     return true;
   }
 
   getDatabase(): unknown {
-    // The actual Drizzle SQLite instance will be set up during app initialization.
-    // This is a placeholder — the concrete implementation depends on the
-    // Tauri SQL plugin setup (e.g., drizzle-orm/better-sqlite3 or tauri-plugin-sql).
-    throw new Error(
-      "TauriDb.getDatabase() should be overridden during app initialization. " +
-      "Use TauriPlatformBridge.initDatabase() to set up the SQLite connection."
-    );
+    if (!this._db) {
+      // Lazy-load the SQLite database using indirect require
+      // to prevent webpack from bundling better-sqlite3 in web builds.
+      try {
+        // eslint-disable-next-line no-eval
+        const dynamicRequire = eval("require") as NodeRequire;
+        const { getSqliteDatabase } = dynamicRequire("@/core/db/sqlite");
+        this._db = getSqliteDatabase();
+      } catch {
+        throw new Error(
+          "SQLite database could not be initialized. " +
+          "Ensure better-sqlite3 is installed."
+        );
+      }
+    }
+    return this._db;
+  }
+
+  /** Set a pre-configured database instance (for Tauri SQL plugin integration). */
+  setDatabase(db: unknown): void {
+    this._db = db;
   }
 }
 
@@ -361,7 +375,7 @@ class TauriGit implements IPlatformGit {
 
   async isGitRepository(dirPath: string): Promise<boolean> {
     try {
-      await this.processAdapter.exec("git rev-parse --is-inside-work-tree");
+      await this.processAdapter.exec("git rev-parse --is-inside-work-tree", { cwd: dirPath });
       return true;
     } catch {
       return false;
@@ -369,12 +383,12 @@ class TauriGit implements IPlatformGit {
   }
 
   async getCurrentBranch(repoPath: string): Promise<string> {
-    const result = await this.processAdapter.exec("git branch --show-current");
+    const result = await this.processAdapter.exec("git branch --show-current", { cwd: repoPath });
     return result.stdout.trim();
   }
 
   async listBranches(repoPath: string): Promise<GitBranchInfo[]> {
-    const result = await this.processAdapter.exec("git branch");
+    const result = await this.processAdapter.exec("git branch", { cwd: repoPath });
     return result.stdout
       .split("\n")
       .filter((line) => line.trim())
@@ -391,7 +405,7 @@ class TauriGit implements IPlatformGit {
     }
 
     const branch = await this.getCurrentBranch(repoPath);
-    const result = await this.processAdapter.exec("git status --porcelain");
+    const result = await this.processAdapter.exec("git status --porcelain", { cwd: repoPath });
     const lines = result.stdout.split("\n").filter((l) => l.trim());
 
     const modified: string[] = [];
@@ -430,16 +444,16 @@ class TauriGit implements IPlatformGit {
   }
 
   async fetch(repoPath: string): Promise<void> {
-    await this.processAdapter.exec("git fetch --all");
+    await this.processAdapter.exec("git fetch --all", { cwd: repoPath });
   }
 
   async pull(repoPath: string, branch?: string): Promise<void> {
     const cmd = branch ? `git pull origin ${branch}` : "git pull";
-    await this.processAdapter.exec(cmd);
+    await this.processAdapter.exec(cmd, { cwd: repoPath });
   }
 
   async checkout(repoPath: string, branch: string): Promise<void> {
-    await this.processAdapter.exec(`git checkout ${branch}`);
+    await this.processAdapter.exec(`git checkout ${branch}`, { cwd: repoPath });
   }
 }
 
@@ -589,10 +603,29 @@ class TauriEnv implements IPlatformEnv {
     return this._appDataDir ?? "";
   }
 
-  getEnv(_key: string): string | undefined {
-    // Environment variables are not directly accessible in Tauri renderer.
-    // Use Tauri invoke to read from the Rust backend if needed.
-    return undefined;
+  private _envCache = new Map<string, string | undefined>();
+
+  getEnv(key: string): string | undefined {
+    // Return from cache if available (populated by initEnv)
+    return this._envCache.get(key);
+  }
+
+  /** Pre-fetch commonly used environment variables from Rust backend. */
+  async initEnv(): Promise<void> {
+    try {
+      const core = await getTauriCore();
+      const envKeys = ["HOME", "USERPROFILE", "PATH", "DATABASE_URL", "NODE_ENV"];
+      for (const key of envKeys) {
+        try {
+          const value = await core.invoke("get_env", { name: key });
+          if (value) this._envCache.set(key, value as string);
+        } catch {
+          // Key not available
+        }
+      }
+    } catch (err) {
+      console.error("[TauriEnv] Failed to initialize env:", err);
+    }
   }
 
   osPlatform(): string {
@@ -683,6 +716,7 @@ export class TauriPlatformBridge implements IPlatformBridge {
   /** Initialize async resources. Call once during app startup. */
   async initialize(): Promise<void> {
     await this.env.initPaths();
+    await this.env.initEnv();
   }
 
   async invoke<T = unknown>(channel: string, data?: unknown): Promise<T> {

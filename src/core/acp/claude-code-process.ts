@@ -1,6 +1,7 @@
-import { ChildProcess, spawn } from "child_process";
 import { NotificationHandler, JsonRpcMessage } from "@/core/acp/processer";
 import { AcpAgentPreset, resolveCommand } from "@/core/acp/acp-presets";
+import type { IProcessHandle } from "@/core/platform/interfaces";
+import { getServerBridge } from "@/core/platform";
 
 /**
  * Claude Code stream-json protocol types.
@@ -90,7 +91,7 @@ export interface ClaudeCodeProcessConfig {
  * Ported from Kotlin `ClaudeCodeClient` with adaptations for Node.js.
  */
 export class ClaudeCodeProcess {
-    private process: ChildProcess | null = null;
+    private process: IProcessHandle | null = null;
     private buffer = "";
     private _sessionId: string | null = null;
     private _alive = false;
@@ -182,11 +183,18 @@ export class ClaudeCodeProcess {
 
         console.log(`[ClaudeCode:${displayName}] Spawning: ${cmd.join(" ")} (cwd: ${cwd})`);
 
-        this.process = spawn(cmd[0], cmd.slice(1), {
+        const bridge = getServerBridge();
+        if (!bridge.process.isAvailable()) {
+            throw new Error(
+                `Process spawning is not available on this platform. ` +
+                `Cannot start Claude Code.`
+            );
+        }
+
+        this.process = bridge.process.spawn(cmd[0], cmd.slice(1), {
             stdio: ["pipe", "pipe", "pipe"],
             cwd,
             env: {
-                ...process.env,
                 ...env,
                 PWD: cwd,
             },

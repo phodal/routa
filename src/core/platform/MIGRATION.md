@@ -108,6 +108,8 @@ bridge.env.homeDir();
 
 ### 5. Database Selection
 
+The database layer now supports dual drivers (Postgres + SQLite) via a factory pattern:
+
 **Before:**
 ```typescript
 import { neon } from "@neondatabase/serverless";
@@ -117,7 +119,7 @@ const sql = neon(process.env.DATABASE_URL!);
 const db = drizzle(sql, { schema });
 ```
 
-**After:**
+**After (platform bridge):**
 ```typescript
 import { getServerBridge } from "@/core/platform";
 
@@ -125,11 +127,43 @@ const bridge = getServerBridge();
 if (bridge.db.isDatabaseConfigured()) {
   const db = bridge.db.getDatabase();
   // db type depends on platform:
-  //   - Web: NeonHttpDatabase
-  //   - Tauri: BetterSQLite3Database
-  //   - Electron: BetterSQLite3Database
+  //   - Web: NeonHttpDatabase (Postgres)
+  //   - Tauri/Electron: BetterSQLite3Database (SQLite)
 }
 ```
+
+**After (database factory):**
+```typescript
+import { getDatabase, getDatabaseDriver, isDatabaseConfigured } from "@/core/db";
+
+// Auto-detects: DATABASE_URL → Postgres, desktop → SQLite
+const driver = getDatabaseDriver(); // "postgres" | "sqlite" | "memory"
+
+if (isDatabaseConfigured()) {
+  const db = getDatabase();
+}
+```
+
+**Driver selection priority:**
+1. `ROUTA_DB_DRIVER` env var (explicit override: "postgres" | "sqlite" | "memory")
+2. `DATABASE_URL` present → Postgres
+3. Non-serverless environment → SQLite
+4. Fallback → InMemory
+
+**Store factory (RoutaSystem):**
+```typescript
+import { getRoutaSystem } from "@/core/routa-system";
+
+// Automatically creates Pg/Sqlite/InMemory stores based on driver
+const system = getRoutaSystem();
+```
+
+**SQLite schema:** `src/core/db/sqlite-schema.ts` mirrors the Postgres schema
+with SQLite-compatible types (integer timestamps, text JSON, etc.).
+
+**SQLite stores:** `src/core/db/sqlite-stores.ts` provides
+`SqliteWorkspaceStore`, `SqliteAgentStore`, `SqliteTaskStore`,
+`SqliteConversationStore`, `SqliteNoteStore`.
 
 ### 6. Dialogs (Tauri/Electron only)
 
@@ -163,14 +197,23 @@ await bridge.dialog.message("Task completed!", { type: "info" });
 └──────────┴──────────────┴───────────────────────┘
 ```
 
-## Gradual Migration
+## Migration Status
 
-You don't need to migrate everything at once. The existing code continues
-to work. Start by migrating the most platform-coupled code:
+The following core files have been migrated to use the platform bridge:
 
-1. **`acp-process.ts`** — spawn → `bridge.process.spawn()`
-2. **`terminal-manager.ts`** — spawn → `bridge.terminal.create()`
-3. **`git-utils.ts`** — execSync → `bridge.git.*`
-4. **`api-based-providers.ts`** — env detection → `bridge.env.isServerless()`
-5. **`db/index.ts`** — Neon-only → `bridge.db.getDatabase()`
-6. **`skill-loader.ts`** / `specialist-file-loader.ts` — fs → `bridge.fs.*`
+- [x] **`acp-process.ts`** — `child_process.spawn` → `bridge.process.spawn()`, `require("fs")` → `bridge.fs.*`
+- [x] **`terminal-manager.ts`** — `child_process.spawn` → `bridge.process.spawn()`
+- [x] **`claude-code-process.ts`** — `child_process.spawn` → `bridge.process.spawn()`
+- [x] **`git-utils.ts`** — `execSync` → `bridge.process.execSync()`, `fs.*` → `bridge.fs.*`
+- [x] **`acp-presets.ts`** — `process.env` → `bridge.env.getEnv()`, `require("fs")` → `bridge.fs.*`
+- [x] **`utils.ts`** — `execFile` → `bridge.process.which()`, `fs.*` → `bridge.fs.*`
+- [x] **`skill-loader.ts`** — `fs.*` → `bridge.fs.*`
+- [x] **`db/index.ts`** — Neon-only → multi-driver factory (Postgres + SQLite)
+- [x] **`routa-system.ts`** — Added `createSqliteSystem()` alongside `createPgSystem()`
+
+### Remaining (lower priority)
+
+- [ ] **`specialist-file-loader.ts`** — fs → `bridge.fs.*`
+- [ ] **`mcp-setup.ts`** — fs → `bridge.fs.*`
+- [ ] **`acp-installer.ts`** — fs/child_process → bridge
+- [ ] **API routes** (`src/app/api/**`) — These run server-side and can continue using Node.js APIs directly. For Tauri, the frontend should use `bridge.invoke()` instead of `fetch("/api/...")`.

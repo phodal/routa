@@ -3,11 +3,16 @@
  *
  * Shared utility functions for git operations in routa-js.
  * Provides helpers for repo validation, branch listing, and GitHub URL parsing.
+ *
+ * Uses the platform bridge for process execution and file system access,
+ * enabling support across Web (Node.js), Tauri, and Electron environments.
+ *
+ * NOTE: The sync functions (isGitRepository, getCurrentBranch, etc.) use
+ * bridge.process.execSync() which is only available on Web/Electron.
+ * For Tauri, use bridge.git.* (async) instead.
  */
 
-import { execSync } from "child_process";
-import * as path from "path";
-import * as fs from "fs";
+import { getServerBridge } from "@/core/platform";
 
 // ─── GitHub URL Parsing ──────────────────────────────────────────────────
 
@@ -55,6 +60,17 @@ export function parseGitHubUrl(url: string): ParsedGitHubUrl | null {
   return null;
 }
 
+// ─── Bridge Helper ──────────────────────────────────────────────────────
+
+/**
+ * Execute a git command synchronously via the platform bridge.
+ * Falls back to bridge.process.execSync for Web/Electron.
+ */
+function gitExecSync(command: string, cwd: string): string {
+  const bridge = getServerBridge();
+  return bridge.process.execSync(command, { cwd }).trim();
+}
+
 // ─── Git Repository Inspection ──────────────────────────────────────────
 
 export interface RepoBranchInfo {
@@ -67,11 +83,7 @@ export interface RepoBranchInfo {
  */
 export function isGitRepository(dir: string): boolean {
   try {
-    execSync("git rev-parse --git-dir", {
-      cwd: dir,
-      stdio: "pipe",
-      encoding: "utf-8",
-    });
+    gitExecSync("git rev-parse --git-dir", dir);
     return true;
   } catch {
     return false;
@@ -83,11 +95,7 @@ export function isGitRepository(dir: string): boolean {
  */
 export function getCurrentBranch(repoPath: string): string | null {
   try {
-    const branch = execSync("git rev-parse --abbrev-ref HEAD", {
-      cwd: repoPath,
-      stdio: "pipe",
-      encoding: "utf-8",
-    }).trim();
+    const branch = gitExecSync("git rev-parse --abbrev-ref HEAD", repoPath);
     return branch || null;
   } catch {
     return null;
@@ -99,11 +107,7 @@ export function getCurrentBranch(repoPath: string): string | null {
  */
 export function listBranches(repoPath: string): string[] {
   try {
-    const output = execSync("git branch --format='%(refname:short)'", {
-      cwd: repoPath,
-      stdio: "pipe",
-      encoding: "utf-8",
-    });
+    const output = gitExecSync("git branch --format='%(refname:short)'", repoPath);
     return output
       .split("\n")
       .map((b) => b.trim().replace(/^'|'$/g, ""))
@@ -128,20 +132,11 @@ export function getBranchInfo(repoPath: string): RepoBranchInfo {
  */
 export function checkoutBranch(repoPath: string, branch: string): boolean {
   try {
-    execSync(`git checkout "${branch}"`, {
-      cwd: repoPath,
-      stdio: "pipe",
-      timeout: 15000,
-    });
+    gitExecSync(`git checkout "${branch}"`, repoPath);
     return true;
   } catch {
-    // Try creating the branch
     try {
-      execSync(`git checkout -b "${branch}"`, {
-        cwd: repoPath,
-        stdio: "pipe",
-        timeout: 15000,
-      });
+      gitExecSync(`git checkout -b "${branch}"`, repoPath);
       return true;
     } catch {
       return false;
@@ -170,12 +165,7 @@ export function getRepoStatus(repoPath: string): RepoStatus {
   };
 
   try {
-    const output = execSync("git status --porcelain", {
-      cwd: repoPath,
-      stdio: "pipe",
-      encoding: "utf-8",
-    });
-
+    const output = gitExecSync("git status --porcelain", repoPath);
     const lines = output.split("\n").filter(Boolean);
     status.modified = lines.filter((l) => !l.startsWith("??")).length;
     status.untracked = lines.filter((l) => l.startsWith("??")).length;
@@ -185,11 +175,7 @@ export function getRepoStatus(repoPath: string): RepoStatus {
   }
 
   try {
-    const aheadBehind = execSync("git rev-list --left-right --count HEAD...@{upstream}", {
-      cwd: repoPath,
-      stdio: "pipe",
-      encoding: "utf-8",
-    }).trim();
+    const aheadBehind = gitExecSync("git rev-list --left-right --count HEAD...@{upstream}", repoPath);
     const [ahead, behind] = aheadBehind.split(/\s+/).map(Number);
     status.ahead = ahead || 0;
     status.behind = behind || 0;
@@ -208,7 +194,9 @@ const CLONE_BASE_DIR = ".routa/repos";
  * Get the base directory for cloned repos.
  */
 export function getCloneBaseDir(): string {
-  return path.join(process.cwd(), CLONE_BASE_DIR);
+  const pathMod = require("path");
+  const bridge = getServerBridge();
+  return pathMod.join(bridge.env.currentDir(), CLONE_BASE_DIR);
 }
 
 /**
@@ -239,14 +227,16 @@ export interface ClonedRepoInfo {
  * List all cloned repos with their branch/status info.
  */
 export function listClonedRepos(): ClonedRepoInfo[] {
+  const pathMod = require("path");
+  const bridge = getServerBridge();
   const baseDir = getCloneBaseDir();
-  if (!fs.existsSync(baseDir)) return [];
+  if (!bridge.fs.existsSync(baseDir)) return [];
 
-  const entries = fs.readdirSync(baseDir, { withFileTypes: true });
+  const entries = bridge.fs.readDirSync(baseDir);
   return entries
-    .filter((e) => e.isDirectory())
+    .filter((e) => e.isDirectory)
     .map((e) => {
-      const fullPath = path.join(baseDir, e.name);
+      const fullPath = pathMod.join(baseDir, e.name);
       const branchInfo = getBranchInfo(fullPath);
       const repoStatus = getRepoStatus(fullPath);
       return {
@@ -267,11 +257,7 @@ export function listClonedRepos(): ClonedRepoInfo[] {
  */
 export function listRemoteBranches(repoPath: string): string[] {
   try {
-    const output = execSync("git branch -r --format='%(refname:short)'", {
-      cwd: repoPath,
-      stdio: "pipe",
-      encoding: "utf-8",
-    });
+    const output = gitExecSync("git branch -r --format='%(refname:short)'", repoPath);
     return output
       .split("\n")
       .map((b) => b.trim().replace(/^'|'$/g, ""))
@@ -288,11 +274,7 @@ export function listRemoteBranches(repoPath: string): string[] {
  */
 export function fetchRemote(repoPath: string): boolean {
   try {
-    execSync("git fetch --all --prune", {
-      cwd: repoPath,
-      stdio: "pipe",
-      timeout: 30000,
-    });
+    gitExecSync("git fetch --all --prune", repoPath);
     return true;
   } catch {
     return false;
@@ -319,14 +301,10 @@ export function getBranchStatus(
   };
 
   try {
-    const aheadBehind = execSync(
+    const aheadBehind = gitExecSync(
       `git rev-list --left-right --count ${branch}...origin/${branch}`,
-      {
-        cwd: repoPath,
-        stdio: "pipe",
-        encoding: "utf-8",
-      }
-    ).trim();
+      repoPath
+    );
     const [ahead, behind] = aheadBehind.split(/\s+/).map(Number);
     result.ahead = ahead || 0;
     result.behind = behind || 0;
@@ -335,11 +313,7 @@ export function getBranchStatus(
   }
 
   try {
-    const status = execSync("git status --porcelain", {
-      cwd: repoPath,
-      stdio: "pipe",
-      encoding: "utf-8",
-    });
+    const status = gitExecSync("git status --porcelain", repoPath);
     result.hasUncommittedChanges = status.trim().length > 0;
   } catch {
     // ignore
@@ -353,11 +327,7 @@ export function getBranchStatus(
  */
 export function pullBranch(repoPath: string): { success: boolean; error?: string } {
   try {
-    execSync("git pull --ff-only", {
-      cwd: repoPath,
-      stdio: "pipe",
-      timeout: 30000,
-    });
+    gitExecSync("git pull --ff-only", repoPath);
     return { success: true };
   } catch (err) {
     return {
@@ -372,11 +342,7 @@ export function pullBranch(repoPath: string): { success: boolean; error?: string
  */
 export function getRemoteUrl(repoPath: string): string | null {
   try {
-    return execSync("git remote get-url origin", {
-      cwd: repoPath,
-      stdio: "pipe",
-      encoding: "utf-8",
-    }).trim() || null;
+    return gitExecSync("git remote get-url origin", repoPath) || null;
   } catch {
     return null;
   }
@@ -491,7 +457,8 @@ export function validateRepoInput(input: string): ValidationResult {
   }
 
   // Local path
-  if (fs.existsSync(trimmed)) {
+  const bridge = getServerBridge();
+  if (bridge.fs.existsSync(trimmed)) {
     if (isGitRepository(trimmed)) {
       return { valid: true };
     }

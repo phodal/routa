@@ -2,9 +2,10 @@
  * RoutaSystem - port of routa-core RoutaFactory / RoutaSystem
  *
  * Central system object that holds all stores, event bus, and tools.
- * Supports two modes:
- *   1. InMemory (no DATABASE_URL) — for quick dev / tests
- *   2. Postgres (DATABASE_URL set)  — Neon Serverless via Drizzle ORM
+ * Supports three storage modes:
+ *   1. InMemory (no database) — for quick dev / tests
+ *   2. Postgres (DATABASE_URL set) — Neon Serverless via Drizzle ORM (Web/Vercel)
+ *   3. SQLite (ROUTA_DB_DRIVER=sqlite or desktop) — local file via better-sqlite3 (Tauri/Electron)
  *
  * Workspace is a first-class citizen: every agent/task/note belongs
  * to a workspace. A "default" workspace is auto-created on first use.
@@ -85,14 +86,14 @@ export function createInMemorySystem(): RoutaSystem {
  * Requires DATABASE_URL to be set.
  */
 export function createPgSystem(): RoutaSystem {
-  const { getDatabase } = require("./db/index") as typeof import("./db/index");
+  const { getPostgresDatabase } = require("./db/index") as typeof import("./db/index");
   const { PgAgentStore } = require("./db/pg-agent-store") as typeof import("./db/pg-agent-store");
   const { PgConversationStore } = require("./db/pg-conversation-store") as typeof import("./db/pg-conversation-store");
   const { PgTaskStore } = require("./db/pg-task-store") as typeof import("./db/pg-task-store");
   const { PgNoteStore } = require("./db/pg-note-store") as typeof import("./db/pg-note-store");
   const { PgWorkspaceStore } = require("./db/pg-workspace-store") as typeof import("./db/pg-workspace-store");
 
-  const db = getDatabase();
+  const db = getPostgresDatabase();
   const agentStore = new PgAgentStore(db);
   const conversationStore = new PgConversationStore(db);
   const taskStore = new PgTaskStore(db);
@@ -128,6 +129,62 @@ export function createPgSystem(): RoutaSystem {
   };
 }
 
+/**
+ * Create a SQLite-backed RoutaSystem.
+ * Used for desktop deployments (Tauri, Electron).
+ *
+ * NOTE: sqlite.ts and sqlite-stores.ts are loaded via dynamic require
+ * to prevent webpack from bundling better-sqlite3 in web builds.
+ * These files are excluded from tsconfig.json for the same reason.
+ */
+export function createSqliteSystem(): RoutaSystem {
+  // Use indirect require to prevent webpack from statically analyzing these imports.
+  // These modules depend on better-sqlite3 which is only available on desktop.
+  // eslint-disable-next-line no-eval
+  const dynamicRequire = eval("require") as NodeRequire;
+  const { getSqliteDatabase } = dynamicRequire("./db/sqlite");
+  const {
+    SqliteAgentStore,
+    SqliteConversationStore,
+    SqliteTaskStore,
+    SqliteNoteStore,
+    SqliteWorkspaceStore,
+  } = dynamicRequire("./db/sqlite-stores");
+
+  const db = getSqliteDatabase();
+  const agentStore = new SqliteAgentStore(db);
+  const conversationStore = new SqliteConversationStore(db);
+  const taskStore = new SqliteTaskStore(db);
+  const noteStore = new SqliteNoteStore(db);
+  const workspaceStore = new SqliteWorkspaceStore(db);
+
+  const noteBroadcaster = getNoteEventBroadcaster();
+  const crdtManager = new CRDTDocumentManager();
+
+  const eventBus = new EventBus();
+  const tools = new AgentTools(agentStore, conversationStore, taskStore, eventBus);
+  const noteTools = new NoteTools(noteStore, taskStore);
+  const workspaceTools = new WorkspaceTools(agentStore, taskStore, noteStore);
+
+  workspaceTools.setWorkspaceStore(workspaceStore);
+  workspaceTools.setEventBus(eventBus);
+
+  return {
+    agentStore,
+    conversationStore,
+    taskStore,
+    noteStore,
+    workspaceStore,
+    eventBus,
+    tools,
+    noteTools,
+    workspaceTools,
+    crdtManager,
+    noteBroadcaster,
+    isPersistent: true,
+  };
+}
+
 // ─── Singleton for Next.js server ──────────────────────────────────────
 // Use globalThis to survive HMR in Next.js dev mode.
 
@@ -136,13 +193,22 @@ const GLOBAL_KEY = "__routa_system__";
 export function getRoutaSystem(): RoutaSystem {
   const g = globalThis as Record<string, unknown>;
   if (!g[GLOBAL_KEY]) {
-    const { isDatabaseConfigured } = require("./db/index") as typeof import("./db/index");
-    if (isDatabaseConfigured()) {
-      console.log("[RoutaSystem] Initializing with Postgres (Neon) stores");
-      g[GLOBAL_KEY] = createPgSystem();
-    } else {
-      console.log("[RoutaSystem] Initializing with InMemory stores (no DATABASE_URL)");
-      g[GLOBAL_KEY] = createInMemorySystem();
+    const { getDatabaseDriver } = require("./db/index") as typeof import("./db/index");
+    const driver = getDatabaseDriver();
+
+    switch (driver) {
+      case "postgres":
+        console.log("[RoutaSystem] Initializing with Postgres (Neon) stores");
+        g[GLOBAL_KEY] = createPgSystem();
+        break;
+      case "sqlite":
+        console.log("[RoutaSystem] Initializing with SQLite stores (desktop)");
+        g[GLOBAL_KEY] = createSqliteSystem();
+        break;
+      default:
+        console.log("[RoutaSystem] Initializing with InMemory stores (no database)");
+        g[GLOBAL_KEY] = createInMemorySystem();
+        break;
     }
   }
   return g[GLOBAL_KEY] as RoutaSystem;

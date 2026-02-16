@@ -10,3 +10,8 @@ export {
   InMemoryWorkspaceStore,
   PgWorkspaceStore,
 } from "../db/pg-workspace-store";
+
+// SQLite stores — for desktop platforms (Tauri/Electron)
+// NOTE: Only import these in environments where better-sqlite3 is available.
+// They are NOT exported from the barrel to avoid bundling SQLite in web builds.
+// Import directly from "@/core/db/sqlite-stores" when needed.

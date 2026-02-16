@@ -154,18 +154,21 @@ export function getStandardPresets(): AcpAgentPreset[] {
  * 3. Default command (for globally installed or in PATH)
  */
 export function resolveCommand(preset: AcpAgentPreset): string {
+  // Import bridge lazily to avoid circular dependencies at module load time
+  const { getServerBridge } = require("@/core/platform");
+  const bridge = getServerBridge();
+
   // 1. Check environment variable override
   if (preset.envBinOverride) {
-    const envValue = process.env[preset.envBinOverride];
+    const envValue = bridge.env.getEnv(preset.envBinOverride);
     if (envValue) return envValue;
   }
 
   // 2. Check node_modules/.bin (for locally installed packages)
   const path = require("path");
-  const localBinPath = path.join(process.cwd(), "node_modules", ".bin", preset.command);
-  const fs = require("fs");
+  const localBinPath = path.join(bridge.env.currentDir(), "node_modules", ".bin", preset.command);
   try {
-    if (fs.existsSync(localBinPath)) {
+    if (bridge.fs.existsSync(localBinPath)) {
       return localBinPath;
     }
   } catch {

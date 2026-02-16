@@ -6,9 +6,13 @@
  *
  * Terminal output is forwarded to the client via session/update notifications
  * with sessionUpdate type "terminal_output" for rendering in xterm.js.
+ *
+ * Uses the platform bridge for process spawning, enabling support across
+ * Web (Node.js), Tauri, and Electron environments.
  */
 
-import { spawn, ChildProcess } from "child_process";
+import type { IProcessHandle } from "@/core/platform/interfaces";
+import { getServerBridge } from "@/core/platform";
 
 export type TerminalNotificationEmitter = (notification: {
   jsonrpc: "2.0";
@@ -18,7 +22,7 @@ export type TerminalNotificationEmitter = (notification: {
 
 interface ManagedTerminal {
   terminalId: string;
-  process: ChildProcess;
+  process: IProcessHandle;
   output: string;
   exitCode: number | null;
   exited: boolean;
@@ -70,13 +74,16 @@ export class TerminalManager {
       },
     });
 
-    const proc = spawn(command, args, {
+    const bridge = getServerBridge();
+    if (!bridge.process.isAvailable()) {
+      throw new Error("Process spawning is not available on this platform");
+    }
+
+    const proc = bridge.process.spawn(command, args, {
       stdio: ["pipe", "pipe", "pipe"],
       cwd,
       env: {
-        ...process.env,
         ...env,
-        // Force color output for better xterm rendering
         FORCE_COLOR: "1",
         TERM: "xterm-256color",
       },

@@ -179,12 +179,16 @@ class WebFs implements IPlatformFs {
 
 class WebDb implements IPlatformDb {
   get type(): DatabaseType {
-    if (this.isDatabaseConfigured()) return "postgres";
+    const { getDatabaseDriver } = require("@/core/db/index");
+    const driver = getDatabaseDriver();
+    if (driver === "postgres") return "postgres";
+    if (driver === "sqlite") return "sqlite";
     return "memory";
   }
 
   isDatabaseConfigured(): boolean {
-    return !!process.env.DATABASE_URL;
+    const { isDatabaseConfigured } = require("@/core/db/index");
+    return isDatabaseConfigured();
   }
 
   getDatabase(): unknown {

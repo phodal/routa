@@ -15,9 +15,9 @@
  *   - metadata (optional): string-to-string map
  */
 
-import * as fs from "fs";
 import * as path from "path";
 import matter from "gray-matter";
+import { getServerBridge } from "@/core/platform";
 
 export interface SkillDefinition {
   name: string;
@@ -49,6 +49,7 @@ const GLOBAL_SKILL_DIRS = [
 export function discoverSkills(projectDir?: string): SkillDefinition[] {
   const skills: SkillDefinition[] = [];
   const seen = new Set<string>();
+  const bridge = getServerBridge();
 
   // Project-local skills
   if (projectDir) {
@@ -65,7 +66,7 @@ export function discoverSkills(projectDir?: string): SkillDefinition[] {
   }
 
   // Global skills
-  const homeDir = process.env.HOME ?? process.env.USERPROFILE;
+  const homeDir = bridge.env.getEnv("HOME") ?? bridge.env.getEnv("USERPROFILE") ?? bridge.env.homeDir();
   if (homeDir) {
     for (const globalDir of GLOBAL_SKILL_DIRS) {
       const dir = path.join(homeDir, globalDir);
@@ -116,19 +117,19 @@ export function discoverSkillsFromPath(repoDir: string): SkillDefinition[] {
  */
 function loadSkillsFromDir(dir: string): SkillDefinition[] {
   const skills: SkillDefinition[] = [];
+  const bridge = getServerBridge();
 
-  if (!fs.existsSync(dir)) {
+  if (!bridge.fs.existsSync(dir)) {
     return skills;
   }
 
   try {
-    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    const entries = bridge.fs.readDirSync(dir);
     for (const entry of entries) {
-      if (!entry.isDirectory()) continue;
+      if (!entry.isDirectory) continue;
 
       const skillPath = path.join(dir, entry.name, "SKILL.md");
-      if (fs.existsSync(skillPath)) {
-        // Direct skill directory: skills/<name>/SKILL.md
+      if (bridge.fs.existsSync(skillPath)) {
         try {
           const skill = loadSkillFile(skillPath, entry.name);
           if (skill) {
@@ -140,18 +141,16 @@ function loadSkillsFromDir(dir: string): SkillDefinition[] {
       } else {
         // Check for nested skill directories (e.g. skills/claude.ai/<name>/SKILL.md)
         try {
-          const subEntries = fs.readdirSync(path.join(dir, entry.name), {
-            withFileTypes: true,
-          });
+          const subEntries = bridge.fs.readDirSync(path.join(dir, entry.name));
           for (const subEntry of subEntries) {
-            if (!subEntry.isDirectory()) continue;
+            if (!subEntry.isDirectory) continue;
             const nestedPath = path.join(
               dir,
               entry.name,
               subEntry.name,
               "SKILL.md"
             );
-            if (!fs.existsSync(nestedPath)) continue;
+            if (!bridge.fs.existsSync(nestedPath)) continue;
             try {
               const skill = loadSkillFile(nestedPath, subEntry.name);
               if (skill) {
@@ -183,7 +182,8 @@ export function loadSkillFile(
   filePath: string,
   expectedName?: string
 ): SkillDefinition | null {
-  const raw = fs.readFileSync(filePath, "utf-8");
+  const bridge = getServerBridge();
+  const raw = bridge.fs.readTextFileSync(filePath);
   const { data: frontmatter, content } = matter(raw);
 
   const name = frontmatter.name as string | undefined;

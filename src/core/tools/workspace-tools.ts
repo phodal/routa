@@ -8,8 +8,6 @@
  * - Workspace management (title, details, context)
  */
 
-import { execFile } from "child_process";
-import { promisify } from "util";
 import { AgentStore } from "../store/agent-store";
 import { TaskStore } from "../store/task-store";
 import { NoteStore } from "../store/note-store";
@@ -17,8 +15,24 @@ import { WorkspaceStore } from "../db/pg-workspace-store";
 import { EventBus, AgentEventType } from "../events/event-bus";
 import { loadSpecialists } from "../orchestration/specialist-prompts";
 import { ToolResult, successResult, errorResult } from "./tool-result";
+import { getServerBridge } from "@/core/platform";
 
-const execFileAsync = promisify(execFile);
+/**
+ * Execute a git command via the platform bridge.
+ * Returns { stdout, stderr } like child_process.execFile.
+ */
+async function execFileAsync(
+  command: string,
+  args: string[],
+  options?: { cwd?: string; timeout?: number; maxBuffer?: number }
+): Promise<{ stdout: string; stderr: string }> {
+  const bridge = getServerBridge();
+  const fullCommand = [command, ...args].join(" ");
+  return bridge.process.exec(fullCommand, {
+    cwd: options?.cwd,
+    timeout: options?.timeout,
+  });
+}
 
 export class WorkspaceTools {
   private workspaceStore?: WorkspaceStore;
@@ -42,7 +56,7 @@ export class WorkspaceTools {
   // ─── Git Status ────────────────────────────────────────────────────
 
   async gitStatus(params: { cwd?: string }): Promise<ToolResult> {
-    const cwd = params.cwd ?? this.defaultCwd ?? process.cwd();
+    const cwd = params.cwd ?? this.defaultCwd ?? getServerBridge().env.currentDir();
     try {
       const { stdout } = await execFileAsync("git", ["status", "--porcelain=v1"], {
         cwd,
@@ -105,7 +119,7 @@ export class WorkspaceTools {
     staged?: boolean;
     file?: string;
   }): Promise<ToolResult> {
-    const cwd = params.cwd ?? this.defaultCwd ?? process.cwd();
+    const cwd = params.cwd ?? this.defaultCwd ?? getServerBridge().env.currentDir();
     try {
       const args = ["diff"];
       if (params.staged) args.push("--cached");
@@ -150,7 +164,7 @@ export class WorkspaceTools {
     cwd?: string;
     stageAll?: boolean;
   }): Promise<ToolResult> {
-    const cwd = params.cwd ?? this.defaultCwd ?? process.cwd();
+    const cwd = params.cwd ?? this.defaultCwd ?? getServerBridge().env.currentDir();
     try {
       // Optionally stage all changes
       if (params.stageAll) {
