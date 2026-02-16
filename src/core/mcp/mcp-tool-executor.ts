@@ -40,6 +40,34 @@ export async function executeMcpTool(
       return formatResult(
         await tools.listTasks((args.workspaceId as string) ?? workspace)
       );
+    case "update_task_status":
+      return formatResult(
+        await tools.updateTaskStatus({
+          taskId: args.taskId as string,
+          status: args.status as string,
+          agentId: args.agentId as string,
+          summary: args.summary as string | undefined,
+        })
+      );
+    case "update_task":
+      return formatResult(
+        await tools.updateTask({
+          taskId: args.taskId as string,
+          expectedVersion: args.expectedVersion as number | undefined,
+          agentId: args.agentId as string,
+          updates: {
+            title: args.title as string | undefined,
+            objective: args.objective as string | undefined,
+            scope: args.scope as string | undefined,
+            status: args.status as string | undefined,
+            completionSummary: args.completionSummary as string | undefined,
+            verificationVerdict: args.verificationVerdict as string | undefined,
+            verificationReport: args.verificationReport as string | undefined,
+            assignedTo: args.assignedTo as string | undefined,
+            acceptanceCriteria: args.acceptanceCriteria as string[] | undefined,
+          },
+        })
+      );
 
     // ── Enhanced delegation with process spawning ─────────────────────
     case "delegate_task_to_agent": {
@@ -223,6 +251,37 @@ export async function executeMcpTool(
     case "list_specialists":
       if (!workspaceTools) return formatResult({ success: false, error: "Workspace tools not available." });
       return formatResult(await workspaceTools.listSpecialists());
+
+    // ── Workspace management tools ────────────────────────────────────
+    case "get_workspace_details":
+      if (!workspaceTools) return formatResult({ success: false, error: "Workspace tools not available." });
+      return formatResult(
+        await workspaceTools.getWorkspaceDetails({
+          workspaceId: (args.workspaceId as string) ?? workspace,
+        })
+      );
+    case "set_workspace_title":
+      if (!workspaceTools) return formatResult({ success: false, error: "Workspace tools not available." });
+      return formatResult(
+        await workspaceTools.setWorkspaceTitle({
+          workspaceId: (args.workspaceId as string) ?? workspace,
+          title: args.title as string,
+          renameBranch: args.renameBranch as boolean | undefined,
+        })
+      );
+    case "list_workspaces":
+      if (!workspaceTools) return formatResult({ success: false, error: "Workspace tools not available." });
+      return formatResult(await workspaceTools.listWorkspaces());
+    case "create_workspace":
+      if (!workspaceTools) return formatResult({ success: false, error: "Workspace tools not available." });
+      return formatResult(
+        await workspaceTools.createWorkspace({
+          id: args.id as string,
+          title: args.title as string,
+          repoPath: args.repoPath as string | undefined,
+          branch: args.branch as string | undefined,
+        })
+      );
 
     default:
       return {
@@ -539,6 +598,47 @@ export function getMcpToolDefinitions() {
         required: ["noteId"],
       },
     },
+    // ── Task atomic update tools ────────────────────────────────────
+    {
+      name: "update_task_status",
+      description: "Atomically update a task's status. Emits TASK_STATUS_CHANGED event.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          taskId: { type: "string", description: "Task ID" },
+          status: {
+            type: "string",
+            enum: ["PENDING", "IN_PROGRESS", "REVIEW_REQUIRED", "COMPLETED", "NEEDS_FIX", "BLOCKED", "CANCELLED"],
+            description: "New status",
+          },
+          agentId: { type: "string", description: "Agent performing the update" },
+          summary: { type: "string", description: "Completion summary" },
+        },
+        required: ["taskId", "status", "agentId"],
+      },
+    },
+    {
+      name: "update_task",
+      description: "Atomically update task fields with optimistic locking. Provide expectedVersion to detect conflicts.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          taskId: { type: "string", description: "Task ID" },
+          expectedVersion: { type: "number", description: "Expected version for optimistic locking" },
+          agentId: { type: "string", description: "Agent performing the update" },
+          title: { type: "string" },
+          objective: { type: "string" },
+          scope: { type: "string" },
+          status: { type: "string" },
+          completionSummary: { type: "string" },
+          verificationVerdict: { type: "string", enum: ["APPROVED", "NOT_APPROVED", "BLOCKED"] },
+          verificationReport: { type: "string" },
+          assignedTo: { type: "string" },
+          acceptanceCriteria: { type: "array", items: { type: "string" } },
+        },
+        required: ["taskId", "agentId"],
+      },
+    },
     // ── Workspace tools ─────────────────────────────────────────────
     {
       name: "git_status",
@@ -591,6 +691,52 @@ export function getMcpToolDefinitions() {
       inputSchema: {
         type: "object",
         properties: {},
+      },
+    },
+    // ── Workspace management tools ──────────────────────────────────
+    {
+      name: "get_workspace_details",
+      description: "Get comprehensive workspace details: metadata, agents, tasks, notes overview, and Git branch.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          workspaceId: { type: "string", description: "Workspace ID" },
+        },
+      },
+    },
+    {
+      name: "set_workspace_title",
+      description: "Set or rename the workspace title. Optionally renames Git branch to match.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          workspaceId: { type: "string", description: "Workspace ID" },
+          title: { type: "string", description: "New workspace title" },
+          renameBranch: { type: "boolean", description: "Also rename Git branch" },
+        },
+        required: ["title"],
+      },
+    },
+    {
+      name: "list_workspaces",
+      description: "List all workspaces with their id, title, status, and branch.",
+      inputSchema: {
+        type: "object",
+        properties: {},
+      },
+    },
+    {
+      name: "create_workspace",
+      description: "Create a new workspace with a title and optional repo path / branch.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          id: { type: "string", description: "Unique workspace ID" },
+          title: { type: "string", description: "Workspace title" },
+          repoPath: { type: "string", description: "Local path to Git repository" },
+          branch: { type: "string", description: "Git branch name" },
+        },
+        required: ["id", "title"],
       },
     },
   ];

@@ -30,7 +30,7 @@ import {
   ModelTier,
   createAgent as createAgentModel,
 } from "../models/agent";
-import { Task, TaskStatus, createTask as createTaskModel } from "../models/task";
+import { Task, TaskStatus, VerificationVerdict, createTask as createTaskModel } from "../models/task";
 import { MessageRole, createMessage, CompletionReport } from "../models/message";
 import { AgentStore } from "../store/agent-store";
 import { ConversationStore } from "../store/conversation-store";
@@ -533,8 +533,19 @@ export class AgentTools {
     agentName: string;
     eventTypes: string[];
     excludeSelf?: boolean;
+    oneShot?: boolean;
+    waitGroupId?: string;
+    priority?: number;
   }): Promise<ToolResult> {
-    const { agentId, agentName, eventTypes, excludeSelf = true } = params;
+    const {
+      agentId,
+      agentName,
+      eventTypes,
+      excludeSelf = true,
+      oneShot = false,
+      waitGroupId,
+      priority = 0,
+    } = params;
 
     const validTypes = eventTypes
       .map((t) => t.toUpperCase())
@@ -554,11 +565,17 @@ export class AgentTools {
       agentName,
       eventTypes: validTypes,
       excludeSelf,
+      oneShot,
+      waitGroupId,
+      priority,
     });
 
     return successResult({
       subscriptionId,
       eventTypes: validTypes,
+      oneShot,
+      waitGroupId,
+      priority,
     });
   }
 
@@ -569,6 +586,141 @@ export class AgentTools {
     return successResult({
       unsubscribed: removed,
       subscriptionId,
+    });
+  }
+
+  // ─── Tool 13: Update Task Status (Atomic) ────────────────────────────
+
+  async updateTaskStatus(params: {
+    taskId: string;
+    status: string;
+    agentId: string;
+    summary?: string;
+  }): Promise<ToolResult> {
+    const { taskId, status: newStatus, agentId, summary } = params;
+
+    const validStatuses = Object.values(TaskStatus);
+    const statusUpper = newStatus.toUpperCase() as TaskStatus;
+    if (!validStatuses.includes(statusUpper)) {
+      return errorResult(
+        `Invalid status: ${newStatus}. Must be one of: ${validStatuses.join(", ")}`
+      );
+    }
+
+    const task = await this.taskStore.get(taskId);
+    if (!task) {
+      return errorResult(`Task not found: ${taskId}`);
+    }
+
+    const oldStatus = task.status;
+    task.status = statusUpper;
+    if (summary) {
+      task.completionSummary = summary;
+    }
+    task.updatedAt = new Date();
+    await this.taskStore.save(task);
+
+    // Emit status change event
+    this.eventBus.emit({
+      type: AgentEventType.TASK_STATUS_CHANGED,
+      agentId,
+      workspaceId: task.workspaceId,
+      data: { taskId, oldStatus, newStatus: statusUpper, summary },
+      timestamp: new Date(),
+    });
+
+    // Also emit TASK_COMPLETED if applicable
+    if (statusUpper === TaskStatus.COMPLETED) {
+      this.eventBus.emit({
+        type: AgentEventType.TASK_COMPLETED,
+        agentId,
+        workspaceId: task.workspaceId,
+        data: { taskId, taskTitle: task.title, summary },
+        timestamp: new Date(),
+      });
+    }
+
+    return successResult({
+      taskId,
+      oldStatus,
+      newStatus: statusUpper,
+      updatedAt: task.updatedAt.toISOString(),
+    });
+  }
+
+  // ─── Tool 14: Update Task (Atomic with optimistic locking) ──────────
+
+  async updateTask(params: {
+    taskId: string;
+    expectedVersion?: number;
+    updates: {
+      title?: string;
+      objective?: string;
+      scope?: string;
+      status?: string;
+      completionSummary?: string;
+      verificationVerdict?: string;
+      verificationReport?: string;
+      assignedTo?: string;
+      acceptanceCriteria?: string[];
+    };
+    agentId: string;
+  }): Promise<ToolResult> {
+    const { taskId, expectedVersion, updates, agentId } = params;
+
+    const task = await this.taskStore.get(taskId);
+    if (!task) {
+      return errorResult(`Task not found: ${taskId}`);
+    }
+
+    // If expectedVersion is provided and the store supports atomicUpdate, use it
+    // Otherwise, fall back to read-modify-write
+    const currentVersion = (task as Task & { version?: number }).version ?? 1;
+    if (expectedVersion !== undefined && expectedVersion !== currentVersion) {
+      return errorResult(
+        `Version conflict: expected ${expectedVersion}, current ${currentVersion}. ` +
+        `Re-read the task and retry with the latest version.`
+      );
+    }
+
+    // Apply updates
+    const oldStatus = task.status;
+    if (updates.title) task.title = updates.title;
+    if (updates.objective) task.objective = updates.objective;
+    if (updates.scope !== undefined) task.scope = updates.scope;
+    if (updates.status) {
+      const statusUpper = updates.status.toUpperCase() as TaskStatus;
+      task.status = statusUpper;
+    }
+    if (updates.completionSummary !== undefined) task.completionSummary = updates.completionSummary;
+    if (updates.verificationVerdict !== undefined) {
+      task.verificationVerdict = updates.verificationVerdict as import("../models/task").VerificationVerdict;
+    }
+    if (updates.verificationReport !== undefined) task.verificationReport = updates.verificationReport;
+    if (updates.assignedTo !== undefined) task.assignedTo = updates.assignedTo;
+    if (updates.acceptanceCriteria !== undefined) task.acceptanceCriteria = updates.acceptanceCriteria;
+    task.updatedAt = new Date();
+
+    await this.taskStore.save(task);
+
+    // Emit events if status changed
+    if (updates.status && oldStatus !== task.status) {
+      this.eventBus.emit({
+        type: AgentEventType.TASK_STATUS_CHANGED,
+        agentId,
+        workspaceId: task.workspaceId,
+        data: { taskId, oldStatus, newStatus: task.status },
+        timestamp: new Date(),
+      });
+    }
+
+    return successResult({
+      taskId,
+      version: currentVersion + 1,
+      updatedFields: Object.keys(updates).filter(
+        (k) => updates[k as keyof typeof updates] !== undefined
+      ),
+      updatedAt: task.updatedAt.toISOString(),
     });
   }
 

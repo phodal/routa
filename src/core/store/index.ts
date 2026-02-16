@@ -5,3 +5,8 @@ export {
 } from "./conversation-store";
 export { type TaskStore, InMemoryTaskStore } from "./task-store";
 export { type NoteStore, InMemoryNoteStore } from "./note-store";
+export {
+  type WorkspaceStore,
+  InMemoryWorkspaceStore,
+  PgWorkspaceStore,
+} from "../db/pg-workspace-store";

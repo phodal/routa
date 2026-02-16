@@ -83,8 +83,10 @@ export function createRoutaAcpAgent(
 
       async newSession(params: NewSessionRequest): Promise<NewSessionResponse> {
         const sessionId = uuidv4();
-        // UI expects a single shared workspace by default
-        const workspaceId = "default";
+
+        // Ensure default workspace exists, then use it
+        const workspace = await system.workspaceStore.ensureDefault();
+        const workspaceId = workspace.id;
 
         const createResult = await system.tools.createAgent({
           name: `routa-session-${sessionId.slice(0, 8)}`,
@@ -263,14 +265,19 @@ async function dispatchTool(
   args: Record<string, unknown>
 ) {
   const tools = system.tools;
+  const defaultWs = async () => {
+    const ws = await system.workspaceStore.ensureDefault();
+    return ws.id;
+  };
+
   switch (name) {
     case "list_agents":
-      return tools.listAgents((args.workspaceId as string) ?? "default");
+      return tools.listAgents((args.workspaceId as string) ?? await defaultWs());
     case "create_agent":
       return tools.createAgent({
         name: args.name as string,
         role: args.role as string,
-        workspaceId: (args.workspaceId as string) ?? "default",
+        workspaceId: (args.workspaceId as string) ?? await defaultWs(),
         parentId: args.parentId as string | undefined,
         modelTier: args.modelTier as string | undefined,
       });

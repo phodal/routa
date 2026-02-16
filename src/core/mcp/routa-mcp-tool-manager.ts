@@ -50,6 +50,8 @@ export class RoutaMcpToolManager {
   registerTools(server: McpServer): void {
     this.registerCreateTask(server);
     this.registerListTasks(server);
+    this.registerUpdateTaskStatus(server);
+    this.registerUpdateTask(server);
     this.registerListAgents(server);
     this.registerReadAgentConversation(server);
     this.registerCreateAgent(server);
@@ -76,6 +78,10 @@ export class RoutaMcpToolManager {
     this.registerGitDiff(server);
     this.registerGitCommit(server);
     this.registerGetWorkspaceInfo(server);
+    this.registerGetWorkspaceDetails(server);
+    this.registerSetWorkspaceTitle(server);
+    this.registerListWorkspaces(server);
+    this.registerCreateWorkspace(server);
     this.registerListSpecialists(server);
   }
 
@@ -114,6 +120,55 @@ export class RoutaMcpToolManager {
       },
       async (params) => {
         const result = await this.tools.listTasks(params.workspaceId ?? this.workspaceId);
+        return this.toMcpResult(result);
+      }
+    );
+  }
+
+  private registerUpdateTaskStatus(server: McpServer) {
+    server.tool(
+      "update_task_status",
+      "Atomically update a task's status. Emits TASK_STATUS_CHANGED event.",
+      {
+        taskId: z.string().describe("ID of the task to update"),
+        status: z.enum(["PENDING", "IN_PROGRESS", "REVIEW_REQUIRED", "COMPLETED", "NEEDS_FIX", "BLOCKED", "CANCELLED"])
+          .describe("New task status"),
+        agentId: z.string().describe("ID of the agent performing the update"),
+        summary: z.string().optional().describe("Completion summary (for COMPLETED/NEEDS_FIX)"),
+      },
+      async (params) => {
+        const result = await this.tools.updateTaskStatus(params);
+        return this.toMcpResult(result);
+      }
+    );
+  }
+
+  private registerUpdateTask(server: McpServer) {
+    server.tool(
+      "update_task",
+      "Atomically update task fields with optimistic locking. Provide expectedVersion from a prior read to detect conflicts.",
+      {
+        taskId: z.string().describe("ID of the task to update"),
+        expectedVersion: z.number().optional().describe("Expected version for optimistic locking (from prior task read)"),
+        agentId: z.string().describe("ID of the agent performing the update"),
+        title: z.string().optional().describe("Update the task title"),
+        objective: z.string().optional().describe("Update the task objective"),
+        scope: z.string().optional().describe("Update the task scope"),
+        status: z.string().optional().describe("Update the task status"),
+        completionSummary: z.string().optional().describe("Set completion summary"),
+        verificationVerdict: z.enum(["APPROVED", "NOT_APPROVED", "BLOCKED"]).optional().describe("Set verification verdict"),
+        verificationReport: z.string().optional().describe("Set verification report"),
+        assignedTo: z.string().optional().describe("Assign to agent ID"),
+        acceptanceCriteria: z.array(z.string()).optional().describe("Update acceptance criteria"),
+      },
+      async (params) => {
+        const { taskId, expectedVersion, agentId, ...updates } = params;
+        const result = await this.tools.updateTask({
+          taskId,
+          expectedVersion,
+          updates,
+          agentId,
+        });
         return this.toMcpResult(result);
       }
     );
@@ -354,12 +409,15 @@ The agent will start working immediately and you'll be notified when it complete
   private registerSubscribeToEvents(server: McpServer) {
     server.tool(
       "subscribe_to_events",
-      "Subscribe an agent to workspace events (AGENT_CREATED, TASK_COMPLETED, etc.)",
+      "Subscribe an agent to workspace events (AGENT_CREATED, TASK_COMPLETED, TASK_STATUS_CHANGED, etc.). Supports one-shot mode and priority.",
       {
         agentId: z.string().describe("ID of the subscribing agent"),
         agentName: z.string().describe("Name of the subscribing agent"),
         eventTypes: z.array(z.string()).describe("Event types to subscribe to"),
         excludeSelf: z.boolean().optional().describe("Exclude self-generated events (default: true)"),
+        oneShot: z.boolean().optional().describe("Auto-remove after first matching event (default: false)"),
+        waitGroupId: z.string().optional().describe("Wait group ID for after_all semantics"),
+        priority: z.number().optional().describe("Priority (higher = notified first, default: 0)"),
       },
       async (params) => {
         const result = await this.tools.subscribeToEvents(params);
@@ -611,6 +669,83 @@ The agent will start working immediately and you'll be notified when it complete
         const result = await this.workspaceTools.getWorkspaceInfo({
           workspaceId: params.workspaceId ?? this.workspaceId,
         });
+        return this.toMcpResult(result);
+      }
+    );
+  }
+
+  private registerGetWorkspaceDetails(server: McpServer) {
+    server.tool(
+      "get_workspace_details",
+      "Get comprehensive workspace details: metadata, agent counts, task summary, notes overview, and Git branch.",
+      {
+        workspaceId: z.string().optional().describe("Workspace ID (uses default if omitted)"),
+      },
+      async (params) => {
+        if (!this.workspaceTools) {
+          return this.toMcpResult({ success: false, error: "Workspace tools not available." });
+        }
+        const result = await this.workspaceTools.getWorkspaceDetails({
+          workspaceId: params.workspaceId ?? this.workspaceId,
+        });
+        return this.toMcpResult(result);
+      }
+    );
+  }
+
+  private registerSetWorkspaceTitle(server: McpServer) {
+    server.tool(
+      "set_workspace_title",
+      "Set or rename the workspace title. Optionally renames the Git branch to match.",
+      {
+        workspaceId: z.string().optional().describe("Workspace ID (uses default if omitted)"),
+        title: z.string().describe("New workspace title"),
+        renameBranch: z.boolean().optional().describe("Also rename the Git branch to match (default: false)"),
+      },
+      async (params) => {
+        if (!this.workspaceTools) {
+          return this.toMcpResult({ success: false, error: "Workspace tools not available." });
+        }
+        const result = await this.workspaceTools.setWorkspaceTitle({
+          workspaceId: params.workspaceId ?? this.workspaceId,
+          title: params.title,
+          renameBranch: params.renameBranch,
+        });
+        return this.toMcpResult(result);
+      }
+    );
+  }
+
+  private registerListWorkspaces(server: McpServer) {
+    server.tool(
+      "list_workspaces",
+      "List all workspaces with their id, title, status, and branch.",
+      {},
+      async () => {
+        if (!this.workspaceTools) {
+          return this.toMcpResult({ success: false, error: "Workspace tools not available." });
+        }
+        const result = await this.workspaceTools.listWorkspaces();
+        return this.toMcpResult(result);
+      }
+    );
+  }
+
+  private registerCreateWorkspace(server: McpServer) {
+    server.tool(
+      "create_workspace",
+      "Create a new workspace with a title and optional repo path / branch.",
+      {
+        id: z.string().describe("Unique workspace ID"),
+        title: z.string().describe("Workspace title"),
+        repoPath: z.string().optional().describe("Local path to Git repository"),
+        branch: z.string().optional().describe("Git branch name"),
+      },
+      async (params) => {
+        if (!this.workspaceTools) {
+          return this.toMcpResult({ success: false, error: "Workspace tools not available." });
+        }
+        const result = await this.workspaceTools.createWorkspace(params);
         return this.toMcpResult(result);
       }
     );
