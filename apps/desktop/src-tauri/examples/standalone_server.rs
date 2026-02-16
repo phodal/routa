@@ -11,7 +11,7 @@ async fn main() {
         .find(|p| p.exists() && p.is_dir())
         .map(|p| p.canonicalize().unwrap_or(p).to_string_lossy().to_string());
 
-    let config = routa_desktop_lib::server::ServerConfig {
+    let config = routa_server::ServerConfig {
         host: "127.0.0.1".to_string(),
         port: 3210,
         db_path: "/tmp/routa-test.db".to_string(),
@@ -27,7 +27,7 @@ async fn main() {
     }
     println!("Press Ctrl+C to stop.\n");
 
-    match routa_desktop_lib::server::start_server(config).await {
+    match routa_server::start_server(config).await {
         Ok(addr) => {
             println!("Server listening on http://{}", addr);
             println!("\nAvailable endpoints:");

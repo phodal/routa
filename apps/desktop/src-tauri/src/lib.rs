@@ -6,7 +6,8 @@ use std::thread;
 use std::time::{Duration, Instant};
 use tauri::Manager;
 
-pub mod server;
+// Re-export routa_server for external use
+pub use routa_server as server;
 
 /// Custom Tauri commands exposed to the frontend via `invoke`.
 /// These bridge the gap between the web frontend and native capabilities.

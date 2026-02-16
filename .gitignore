@@ -97,3 +97,4 @@ apps/desktop/src-tauri/icons/ios/
 *.db-wal
 **/chunks/
 **/_next/static/*
+target/

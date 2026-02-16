@@ -1,0 +1,51 @@
+[package]
+name = "routa-server"
+version = "0.1.0"
+description = "Routa.js Rust Backend Server - Multi-agent coordination platform"
+authors = ["phodal"]
+edition = "2021"
+license = "MIT"
+
+[lib]
+name = "routa_server"
+path = "src/lib.rs"
+
+[dependencies]
+# Web framework
+axum = { version = "0.8", features = ["macros"] }
+axum-extra = { version = "0.10", features = ["multipart"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["cors", "trace", "fs"] }
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+tokio-stream = { version = "0.1", features = ["io-util"] }
+async-stream = "0.3"
+
+# Database
+rusqlite = { version = "0.32", features = ["bundled"] }
+
+# MCP & ACP protocols
+rmcp = { version = "0.15", features = ["server", "transport-streamable-http-server", "schemars"] }
+schemars = "1"
+agent-client-protocol = "0.9"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Utilities
+uuid = { version = "1", features = ["v4"] }
+chrono = { version = "0.4", features = ["serde"] }
+thiserror = "2"
+glob = "0.3"
+regex = "1"
+dirs = "5"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[dev-dependencies]
+reqwest = { version = "0.12", features = ["json"] }
+

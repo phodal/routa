@@ -3980,18 +3980,9 @@ dependencies = [
 name = "routa-desktop"
 version = "0.1.0"
 dependencies = [
- "agent-client-protocol",
- "async-stream",
- "axum",
- "axum-extra",
- "chrono",
  "dirs 5.0.1",
- "glob",
- "regex",
  "reqwest 0.12.28",
- "rmcp",
- "rusqlite",
- "schemars 1.2.1",
+ "routa-server",
  "serde",
  "serde_json",
  "tauri",
@@ -4003,6 +3994,26 @@ dependencies = [
  "tauri-plugin-process",
  "tauri-plugin-shell",
  "tauri-plugin-sql",
+ "tokio",
+]
+
+[[package]]
+name = "routa-server"
+version = "0.1.0"
+dependencies = [
+ "agent-client-protocol",
+ "async-stream",
+ "axum",
+ "axum-extra",
+ "chrono",
+ "dirs 5.0.1",
+ "glob",
+ "regex",
+ "rmcp",
+ "rusqlite",
+ "schemars 1.2.1",
+ "serde",
+ "serde_json",
  "thiserror 2.0.18",
  "tokio",
  "tokio-stream",
