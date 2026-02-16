@@ -8,7 +8,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { getRoutaSystem } from "@/core/routa-system";
-import { createNote } from "@/core/models/note";
+import { createNote, Note } from "@/core/models/note";
 
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
@@ -99,7 +99,7 @@ export async function DELETE(request: NextRequest) {
   return NextResponse.json({ deleted: true, noteId });
 }
 
-function serializeNote(note: { id: string; title: string; content: string; workspaceId: string; metadata: Record<string, unknown>; createdAt: Date; updatedAt: Date }) {
+function serializeNote(note: Note) {
   return {
     id: note.id,
     title: note.title,

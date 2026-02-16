@@ -9,7 +9,7 @@
 import { v4 as uuidv4 } from "uuid";
 import { NoteStore } from "../store/note-store";
 import { TaskStore } from "../store/task-store";
-import { createNote, SPEC_NOTE_ID } from "../models/note";
+import { createNote, Note, SPEC_NOTE_ID } from "../models/note";
 import { createTask as createTaskModel, TaskStatus } from "../models/task";
 import { extractTaskBlocks } from "../orchestration/task-block-parser";
 import { ToolResult, successResult, errorResult } from "./tool-result";
@@ -305,10 +305,10 @@ export class NoteTools {
   // ─── Helper: CRDT-aware save ──────────────────────────────────────────
 
   private async saveNote(
-    note: { id: string; title: string; content: string; workspaceId: string; metadata: Record<string, unknown>; createdAt: Date; updatedAt: Date },
+    note: Note,
     source: "agent" | "user" | "system"
   ): Promise<void> {
-    await this.noteStore.save(note as import("../models/note").Note, source);
+    await this.noteStore.save(note, source);
   }
 
   // ─── Delete Note ──────────────────────────────────────────────────────

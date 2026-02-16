@@ -25,10 +25,10 @@ function createNotification(method: string, params: Record<string, unknown>): Js
   };
 }
 
-// Types from OpenCode SDK (we'll import the actual SDK when available)
+// Types from OpenCode SDK
 interface OpencodeClient {
   session: {
-    create: (opts: { body: { title?: string } }) => Promise<{ id: string }>;
+    create: (opts: { body: { title?: string } }) => Promise<{ data: { id: string } }>;
     prompt: (opts: {
       path: { id: string };
       body: {
@@ -36,14 +36,14 @@ interface OpencodeClient {
         parts: Array<{ type: string; text: string }>;
       };
     }) => Promise<SessionPromptResult>;
-    abort: (opts: { path: { id: string } }) => Promise<boolean>;
-    delete: (opts: { path: { id: string } }) => Promise<boolean>;
+    abort: (opts: { path: { id: string } }) => Promise<{ data: boolean }>;
+    delete: (opts: { path: { id: string } }) => Promise<{ data: boolean }>;
+  };
+  config: {
+    get: () => Promise<{ data: unknown }>;
   };
   global: {
-    health: () => Promise<{ data: { healthy: boolean; version: string } }>;
-  };
-  event: {
-    subscribe: () => Promise<{ stream: AsyncIterable<ServerEvent> }>;
+    event: () => Promise<{ stream: AsyncIterable<ServerEvent> }>;
   };
 }
 
@@ -115,18 +115,15 @@ export class OpencodeSdkAdapter {
     try {
       // Dynamic import to avoid bundling issues when SDK is not installed
       const { createOpencodeClient } = await import("@opencode-ai/sdk");
-      
+
       this.client = createOpencodeClient({
         baseUrl: this.serverUrl,
       }) as unknown as OpencodeClient;
 
-      // Check server health
-      const health = await this.client.global.health();
-      if (!health.data.healthy) {
-        throw new Error("OpenCode server is not healthy");
-      }
+      // Test connection by getting config
+      await this.client.config.get();
 
-      console.log(`[OpencodeSdkAdapter] Connected to server v${health.data.version}`);
+      console.log(`[OpencodeSdkAdapter] Connected to OpenCode server at ${this.serverUrl}`);
       this._alive = true;
     } catch (error) {
       console.error("[OpencodeSdkAdapter] Failed to connect:", error);
@@ -142,11 +139,11 @@ export class OpencodeSdkAdapter {
       throw new Error("Not connected to OpenCode server");
     }
 
-    const session = await this.client.session.create({
+    const response = await this.client.session.create({
       body: { title: title || "Routa Session" },
     });
 
-    this.sessionId = session.id;
+    this.sessionId = response.data.id;
     console.log(`[OpencodeSdkAdapter] Created session: ${this.sessionId}`);
     return this.sessionId;
   }
@@ -163,6 +160,9 @@ export class OpencodeSdkAdapter {
     }
 
     try {
+      // Start listening to events before sending the prompt
+      this.subscribeToEvents();
+
       const result = await this.client.session.prompt({
         path: { id: this.sessionId },
         body: {
@@ -180,6 +180,88 @@ export class OpencodeSdkAdapter {
         type: "error",
         error: { message: String(error) },
       }));
+    }
+  }
+
+  /**
+   * Subscribe to server events for real-time updates
+   */
+  private async subscribeToEvents(): Promise<void> {
+    if (!this.client) return;
+
+    try {
+      const events = await this.client.global.event();
+
+      // Process events in the background
+      (async () => {
+        try {
+          for await (const event of events.stream) {
+            this.handleServerEvent(event);
+          }
+        } catch (error) {
+          console.error("[OpencodeSdkAdapter] Event stream error:", error);
+        }
+      })();
+    } catch (error) {
+      console.error("[OpencodeSdkAdapter] Failed to subscribe to events:", error);
+    }
+  }
+
+  /**
+   * Handle server-sent events
+   */
+  private handleServerEvent(event: ServerEvent): void {
+    if (!this.sessionId) return;
+
+    // Map OpenCode events to ACP notifications
+    switch (event.type) {
+      case "message_start":
+        this.onNotification(createNotification("session/update", {
+          sessionId: this.sessionId,
+          type: "message_start",
+          message: event.properties,
+        }));
+        break;
+
+      case "text_delta":
+        this.onNotification(createNotification("session/update", {
+          sessionId: this.sessionId,
+          type: "text_delta",
+          delta: event.properties.text || "",
+        }));
+        break;
+
+      case "tool_call":
+        this.onNotification(createNotification("session/update", {
+          sessionId: this.sessionId,
+          type: "tool_call",
+          toolCall: event.properties,
+        }));
+        break;
+
+      case "message_end":
+        this.onNotification(createNotification("session/update", {
+          sessionId: this.sessionId,
+          type: "message_end",
+          message: event.properties,
+        }));
+        break;
+
+      case "error":
+        this.onNotification(createNotification("session/update", {
+          sessionId: this.sessionId,
+          type: "error",
+          error: event.properties,
+        }));
+        break;
+
+      default:
+        // Forward unknown events as-is
+        this.onNotification(createNotification("session/update", {
+          sessionId: this.sessionId,
+          type: event.type,
+          ...event.properties,
+        }));
     }
   }
 
