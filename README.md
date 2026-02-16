@@ -52,44 +52,6 @@ npm run dev
 
 Visit `http://localhost:3000` to access the web interface.
 
-### Deploying to Vercel
-
-Routa.js can be deployed to Vercel, but requires a remote OpenCode server since serverless platforms cannot run CLI processes.
-
-#### Step 1: Set up OpenCode Server
-
-On a VPS or local machine with a public IP:
-
-```bash
-# Install OpenCode
-npm install -g opencode-ai
-
-# Start the server (accessible from internet)
-opencode serve --host 0.0.0.0 --port 4096
-```
-
-#### Step 2: Deploy to Vercel
-
-1. Fork this repository
-2. Import to Vercel
-3. Add environment variable:
-   - `OPENCODE_SERVER_URL` = `http://your-server-ip:4096`
-4. Deploy!
-
-#### Alternative: Use API-based Providers
-
-Instead of OpenCode, you can use API-based providers that work natively in serverless:
-
-```bash
-# Set one or more API keys
-OPENAI_API_KEY=sk-...
-ANTHROPIC_API_KEY=sk-ant-...
-GOOGLE_API_KEY=...
-DEEPSEEK_API_KEY=sk-...
-```
-
-See [.env.example](.env.example) for all configuration options.
-
 ## 🏗 Architecture
 
 ```mermaid
