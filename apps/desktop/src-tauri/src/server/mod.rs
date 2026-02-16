@@ -14,10 +14,12 @@ pub mod events;
 pub mod git;
 pub mod mcp;
 pub mod models;
+pub mod orchestration;
 pub mod shell_env;
 pub mod skills;
 pub mod state;
 pub mod store;
+pub mod tools;
 
 use std::net::SocketAddr;
 use std::sync::Arc;
