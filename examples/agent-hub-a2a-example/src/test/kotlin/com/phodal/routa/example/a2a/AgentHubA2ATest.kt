@@ -22,6 +22,7 @@ import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Ignore
 import org.junit.Test
+import java.net.ServerSocket
 import java.time.Instant
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
@@ -34,7 +35,7 @@ import kotlin.uuid.Uuid
  */
 class AgentHubA2ATest {
 
-    private val port = 9300
+    private var port: Int = 0
     private lateinit var scope: CoroutineScope
     private lateinit var routa: RoutaSystem
     private lateinit var serverJob: Job
@@ -44,6 +45,7 @@ class AgentHubA2ATest {
 
     @Before
     fun setUp() = runBlocking {
+        port = ServerSocket(0).use { it.localPort }
         scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
         val (a2aServer, system) = createHubA2AServer(
             workspaceId = "test-workspace",
@@ -81,7 +83,7 @@ class AgentHubA2ATest {
     fun tearDown() = runBlocking {
         clientTransport.close()
         routa.coordinator.shutdown()
-        serverJob.cancel()
+        serverJob.cancelAndJoin()
         scope.cancel()
     }
 
