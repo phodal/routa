@@ -576,9 +576,13 @@ export default function HomePage() {
       <header className="h-[52px] shrink-0 bg-white dark:bg-[#161922] border-b border-gray-200 dark:border-gray-800 flex items-center px-4 gap-4 z-10">
         {/* Logo */}
         <div className="flex items-center gap-2.5">
-          <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center">
-            <span className="text-white text-xs font-bold">R</span>
-          </div>
+          <img
+            src="/logo.svg"
+            alt="Routa"
+            width={28}
+            height={28}
+            className="rounded-lg"
+          />
           <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">
             Routa
           </span>

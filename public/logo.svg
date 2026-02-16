@@ -1,0 +1,89 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="512" y2="512" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#1e293b"/>
+      <stop offset="100%" stop-color="#0f172a"/>
+    </linearGradient>
+    
+    <!-- Routa: Blue (coordinator/decision) -->
+    <linearGradient id="blue" x1="0" y1="0" x2="100" y2="100" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#60A5FA"/>
+      <stop offset="100%" stop-color="#3B82F6"/>
+    </linearGradient>
+    
+    <!-- Tasks: Orange (execution/creation) -->
+    <linearGradient id="orange" x1="0" y1="0" x2="50" y2="50" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FCD34D"/>
+      <stop offset="100%" stop-color="#F59E0B"/>
+    </linearGradient>
+    
+    <!-- Gate: Green (verification/success) -->
+    <linearGradient id="green" x1="0" y1="0" x2="80" y2="80" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#34D399"/>
+      <stop offset="100%" stop-color="#10B981"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+
+  <!-- Communication routes (white/light gray) -->
+  <!-- Stage 1→2: Fan-out (Routa → Tasks) -->
+  <path d="M 116 256 C 184 256, 210 144, 268 144"
+        stroke="#94A3B8" stroke-width="14" stroke-linecap="round" fill="none" stroke-opacity="0.3"/>
+  <path d="M 116 256 L 268 256"
+        stroke="#94A3B8" stroke-width="14" stroke-linecap="round" fill="none" stroke-opacity="0.3"/>
+  <path d="M 116 256 C 184 256, 210 368, 268 368"
+        stroke="#94A3B8" stroke-width="14" stroke-linecap="round" fill="none" stroke-opacity="0.3"/>
+
+  <!-- Stage 2→3: Converge (Tasks → Gate) -->
+  <path d="M 268 144 C 326 144, 362 256, 402 256"
+        stroke="#94A3B8" stroke-width="14" stroke-linecap="round" fill="none" stroke-opacity="0.3"/>
+  <path d="M 268 256 L 402 256"
+        stroke="#94A3B8" stroke-width="14" stroke-linecap="round" fill="none" stroke-opacity="0.3"/>
+  <path d="M 268 368 C 326 368, 362 256, 402 256"
+        stroke="#94A3B8" stroke-width="14" stroke-linecap="round" fill="none" stroke-opacity="0.3"/>
+
+  <!-- Flow dots on routes (animated visual indicators) -->
+  <!-- Top route dots -->
+  <circle cx="155" cy="220" r="4" fill="#60A5FA" opacity="0.8"/>
+  <circle cx="200" cy="180" r="4" fill="#60A5FA" opacity="0.6"/>
+  
+  <!-- Middle route dots -->
+  <circle cx="170" cy="256" r="4" fill="#60A5FA" opacity="0.8"/>
+  <circle cx="220" cy="256" r="4" fill="#60A5FA" opacity="0.6"/>
+  
+  <!-- Bottom route dots -->
+  <circle cx="155" cy="292" r="4" fill="#60A5FA" opacity="0.8"/>
+  <circle cx="200" cy="332" r="4" fill="#60A5FA" opacity="0.6"/>
+  
+  <!-- Converge route dots (orange→green transition) -->
+  <circle cx="300" cy="200" r="4" fill="#F59E0B" opacity="0.8"/>
+  <circle cx="350" cy="228" r="4" fill="#F59E0B" opacity="0.6"/>
+  
+  <circle cx="300" cy="256" r="4" fill="#F59E0B" opacity="0.8"/>
+  <circle cx="340" cy="256" r="4" fill="#10B981" opacity="0.7"/>
+  
+  <circle cx="300" cy="312" r="4" fill="#F59E0B" opacity="0.8"/>
+  <circle cx="350" cy="284" r="4" fill="#F59E0B" opacity="0.6"/>
+
+  <!-- Stage 1: Routa (Blue - coordinator/decision hub) -->
+  <circle cx="116" cy="256" r="50" fill="url(#blue)"/>
+  <circle cx="116" cy="256" r="25" fill="#1e293b"/>
+  <circle cx="116" cy="256" r="18" fill="url(#blue)" opacity="0.3"/>
+
+  <!-- Stage 2: CRAFTER Tasks (Orange - execution nodes) -->
+  <circle cx="268" cy="144" r="22" fill="url(#orange)"/>
+  <circle cx="268" cy="144" r="11" fill="#1e293b"/>
+  
+  <circle cx="268" cy="256" r="22" fill="url(#orange)"/>
+  <circle cx="268" cy="256" r="11" fill="#1e293b"/>
+  
+  <circle cx="268" cy="368" r="22" fill="url(#orange)"/>
+  <circle cx="268" cy="368" r="11" fill="#1e293b"/>
+
+  <!-- Stage 3: Gate (Green - verification/success node) -->
+  <circle cx="402" cy="256" r="36" fill="url(#green)"/>
+  <circle cx="402" cy="256" r="18" fill="#1e293b"/>
+  <circle cx="402" cy="256" r="12" fill="url(#green)" opacity="0.4"/>
+</svg>

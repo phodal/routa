@@ -1,0 +1,88 @@
+<!-- Visual reference showing the three agent types in the Routa system -->
+<svg width="800" height="300" viewBox="0 0 800 300" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="blue" x1="0" y1="0" x2="80" y2="80">
+      <stop offset="0%" stop-color="#60A5FA"/>
+      <stop offset="100%" stop-color="#3B82F6"/>
+    </linearGradient>
+    <linearGradient id="orange" x1="0" y1="0" x2="60" y2="60">
+      <stop offset="0%" stop-color="#FCD34D"/>
+      <stop offset="100%" stop-color="#F59E0B"/>
+    </linearGradient>
+    <linearGradient id="green" x1="0" y1="0" x2="70" y2="70">
+      <stop offset="0%" stop-color="#34D399"/>
+      <stop offset="100%" stop-color="#10B981"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="800" height="300" fill="#f8fafc"/>
+
+  <!-- Stage 1: Routa (Blue) -->
+  <g transform="translate(120, 150)">
+    <circle r="50" fill="url(#blue)"/>
+    <circle r="25" fill="white"/>
+    <text y="90" text-anchor="middle" font-family="system-ui" font-size="16" font-weight="600" fill="#1e293b">
+      Routa
+    </text>
+    <text y="110" text-anchor="middle" font-family="system-ui" font-size="12" fill="#64748b">
+      Coordinator
+    </text>
+    <text y="126" text-anchor="middle" font-family="system-ui" font-size="11" fill="#94a3b8">
+      (Dispatch Tasks)
+    </text>
+  </g>
+
+  <!-- Arrow 1 -->
+  <path d="M 190 150 L 330 150" stroke="#cbd5e1" stroke-width="3" marker-end="url(#arrowhead)"/>
+  <defs>
+    <marker id="arrowhead" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+      <polygon points="0 0, 10 3, 0 6" fill="#cbd5e1"/>
+    </marker>
+  </defs>
+
+  <!-- Stage 2: CRAFTER (Orange) -->
+  <g transform="translate(400, 150)">
+    <circle cy="-60" r="30" fill="url(#orange)"/>
+    <circle cy="-60" r="15" fill="white"/>
+    
+    <circle r="30" fill="url(#orange)"/>
+    <circle r="15" fill="white"/>
+    
+    <circle cy="60" r="30" fill="url(#orange)"/>
+    <circle cy="60" r="15" fill="white"/>
+    
+    <text y="110" text-anchor="middle" font-family="system-ui" font-size="16" font-weight="600" fill="#1e293b">
+      CRAFTER
+    </text>
+    <text y="130" text-anchor="middle" font-family="system-ui" font-size="12" fill="#64748b">
+      Task Executors
+    </text>
+    <text y="146" text-anchor="middle" font-family="system-ui" font-size="11" fill="#94a3b8">
+      (Parallel Work)
+    </text>
+  </g>
+
+  <!-- Arrow 2 -->
+  <path d="M 470 150 L 610 150" stroke="#cbd5e1" stroke-width="3" marker-end="url(#arrowhead)"/>
+
+  <!-- Stage 3: Gate (Green) -->
+  <g transform="translate(680, 150)">
+    <circle r="40" fill="url(#green)"/>
+    <circle r="20" fill="white"/>
+    <text y="90" text-anchor="middle" font-family="system-ui" font-size="16" font-weight="600" fill="#1e293b">
+      Gate
+    </text>
+    <text y="110" text-anchor="middle" font-family="system-ui" font-size="12" fill="#64748b">
+      Verifier
+    </text>
+    <text y="126" text-anchor="middle" font-family="system-ui" font-size="11" fill="#94a3b8">
+      (Quality Check)
+    </text>
+  </g>
+
+  <!-- Title -->
+  <text x="400" y="30" text-anchor="middle" font-family="system-ui" font-size="18" font-weight="700" fill="#0f172a">
+    Routa Agent Pipeline: Three-Stage Architecture
+  </text>
+</svg>

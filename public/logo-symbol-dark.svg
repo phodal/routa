@@ -1,0 +1,69 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- Routa: Blue -->
+    <linearGradient id="blue" x1="0" y1="0" x2="100" y2="100" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#60A5FA"/>
+      <stop offset="100%" stop-color="#3B82F6"/>
+    </linearGradient>
+    
+    <!-- Tasks: Orange -->
+    <linearGradient id="orange" x1="0" y1="0" x2="50" y2="50" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FCD34D"/>
+      <stop offset="100%" stop-color="#F59E0B"/>
+    </linearGradient>
+    
+    <!-- Gate: Green -->
+    <linearGradient id="green" x1="0" y1="0" x2="80" y2="80" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#34D399"/>
+      <stop offset="100%" stop-color="#10B981"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Routes (lighter for dark mode) -->
+  <path d="M 116 256 C 184 256, 210 144, 268 144"
+        stroke="#475569" stroke-width="14" stroke-linecap="round" fill="none" opacity="0.6"/>
+  <path d="M 116 256 L 268 256"
+        stroke="#475569" stroke-width="14" stroke-linecap="round" fill="none" opacity="0.6"/>
+  <path d="M 116 256 C 184 256, 210 368, 268 368"
+        stroke="#475569" stroke-width="14" stroke-linecap="round" fill="none" opacity="0.6"/>
+
+  <path d="M 268 144 C 326 144, 362 256, 402 256"
+        stroke="#475569" stroke-width="14" stroke-linecap="round" fill="none" opacity="0.6"/>
+  <path d="M 268 256 L 402 256"
+        stroke="#475569" stroke-width="14" stroke-linecap="round" fill="none" opacity="0.6"/>
+  <path d="M 268 368 C 326 368, 362 256, 402 256"
+        stroke="#475569" stroke-width="14" stroke-linecap="round" fill="none" opacity="0.6"/>
+
+  <!-- Flow dots (brighter in dark mode) -->
+  <circle cx="155" cy="220" r="4" fill="#60A5FA" opacity="0.8"/>
+  <circle cx="200" cy="180" r="4" fill="#60A5FA" opacity="0.6"/>
+  <circle cx="170" cy="256" r="4" fill="#60A5FA" opacity="0.8"/>
+  <circle cx="220" cy="256" r="4" fill="#60A5FA" opacity="0.6"/>
+  <circle cx="155" cy="292" r="4" fill="#60A5FA" opacity="0.8"/>
+  <circle cx="200" cy="332" r="4" fill="#60A5FA" opacity="0.6"/>
+  
+  <circle cx="300" cy="200" r="4" fill="#FBBF24" opacity="0.8"/>
+  <circle cx="350" cy="228" r="4" fill="#FBBF24" opacity="0.6"/>
+  <circle cx="300" cy="256" r="4" fill="#FBBF24" opacity="0.8"/>
+  <circle cx="340" cy="256" r="4" fill="#34D399" opacity="0.7"/>
+  <circle cx="300" cy="312" r="4" fill="#FBBF24" opacity="0.8"/>
+  <circle cx="350" cy="284" r="4" fill="#FBBF24" opacity="0.6"/>
+
+  <!-- Routa: Blue -->
+  <circle cx="116" cy="256" r="50" fill="url(#blue)"/>
+  <circle cx="116" cy="256" r="25" fill="#161922"/>
+
+  <!-- Tasks: Orange -->
+  <circle cx="268" cy="144" r="22" fill="url(#orange)"/>
+  <circle cx="268" cy="144" r="11" fill="#161922"/>
+  
+  <circle cx="268" cy="256" r="22" fill="url(#orange)"/>
+  <circle cx="268" cy="256" r="11" fill="#161922"/>
+  
+  <circle cx="268" cy="368" r="22" fill="url(#orange)"/>
+  <circle cx="268" cy="368" r="11" fill="#161922"/>
+
+  <!-- Gate: Green -->
+  <circle cx="402" cy="256" r="36" fill="url(#green)"/>
+  <circle cx="402" cy="256" r="18" fill="#161922"/>
+</svg>

@@ -5,6 +5,10 @@ export const metadata: Metadata = {
   title: "Routa - Multi-Agent Coordinator",
   description:
     "Browser-based multi-agent coordination with MCP, ACP, and A2A protocol support",
+  icons: {
+    icon: "/favicon.ico",
+    apple: "/apple-touch-icon.png",
+  },
 };
 
 export default function RootLayout({

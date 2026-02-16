@@ -1,8 +1,14 @@
-# Routa JS
-
 <div align="center">
 
+<img src="public/logo.svg" alt="Routa Logo" width="160" />
+
+# Routa JS
+
 **Multi-Agent Coordination Platform for AI Development**
+
+<p align="center">
+  <img src="public/logo-stages.svg" alt="Routa Agent Pipeline" width="600" />
+</p>
 
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue.svg)](https://www.typescriptlang.org/)
 [![Next.js](https://img.shields.io/badge/Next.js-15.1-black.svg)](https://nextjs.org/)
@@ -29,7 +35,13 @@
 
 ### Key Capabilities
 
-- **🎭 Role-Based Agents**: ROUTA (Coordinator), CRAFTER (Implementor), GATE (Verifier), DEVELOPER (Solo)
+| Icon | Role | Description |
+|------|------|-------------|
+| 🔵 | **Routa (Coordinator)** | Plans work, breaks down tasks, delegates to specialists, orchestrates workflow |
+| 🟠 | **CRAFTER (Implementor)** | Executes implementation tasks, writes code, makes minimal focused changes |
+| 🟢 | **GATE (Verifier)** | Reviews work, validates against acceptance criteria, approves or requests fixes |
+| 🎯 | **DEVELOPER (Solo)** | Plans and implements independently without delegation (single-agent mode) |
+
 - **🔄 Task Orchestration**: Create tasks, delegate to agents, track dependencies, parallel execution
 - **💬 Inter-Agent Communication**: Message passing, conversation history, completion reports
 - **📡 Multi-Protocol Support**: MCP, ACP, A2A for connecting diverse AI clients
@@ -118,9 +130,9 @@ flowchart TB
 ```mermaid
 sequenceDiagram
     participant User
-    participant ROUTA as 🎯 ROUTA<br/>(Coordinator)
-    participant CRAFTER as 🔨 CRAFTER<br/>(Implementor)
-    participant GATE as ✅ GATE<br/>(Verifier)
+    participant ROUTA as 🔵 ROUTA<br/>(Coordinator)
+    participant CRAFTER as 🟠 CRAFTER<br/>(Implementor)
+    participant GATE as 🟢 GATE<br/>(Verifier)
 
     User->>ROUTA: Complex task request
     activate ROUTA
@@ -159,10 +171,10 @@ sequenceDiagram
 
 | Role | Purpose | Behavior |
 |------|---------|----------|
-| **ROUTA** | Coordinator | Plans work, breaks down tasks, delegates to specialists, orchestrates workflow |
-| **CRAFTER** | Implementor | Executes implementation tasks, writes code, makes minimal focused changes |
-| **GATE** | Verifier | Reviews work, validates against acceptance criteria, approves or requests fixes |
-| **DEVELOPER** | Solo Agent | Plans and implements independently without delegation (single-agent mode) |
+| 🔵 **ROUTA** | Coordinator | Plans work, breaks down tasks, delegates to specialists, orchestrates workflow |
+| 🟠 **CRAFTER** | Implementor | Executes implementation tasks, writes code, makes minimal focused changes |
+| 🟢 **GATE** | Verifier | Reviews work, validates against acceptance criteria, approves or requests fixes |
+| 🎯 **DEVELOPER** | Solo Agent | Plans and implements independently without delegation (single-agent mode) |
 
 ## 📄 License
 
