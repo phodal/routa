@@ -38,6 +38,9 @@ export function createRoutaMcpServer(
     toolManager.setOrchestrator(orchestrator);
   }
 
+  // Wire in note tools
+  toolManager.setNoteTools(routaSystem.noteTools);
+
   toolManager.registerTools(server);
 
   return { server, system: routaSystem };

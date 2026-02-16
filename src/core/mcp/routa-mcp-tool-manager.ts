@@ -8,11 +8,13 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { AgentTools } from "../tools/agent-tools";
+import { NoteTools } from "../tools/note-tools";
 import { ToolResult } from "../tools/tool-result";
 import type { RoutaOrchestrator } from "../orchestration/orchestrator";
 
 export class RoutaMcpToolManager {
   private orchestrator?: RoutaOrchestrator;
+  private noteTools?: NoteTools;
 
   constructor(
     private tools: AgentTools,
@@ -24,6 +26,13 @@ export class RoutaMcpToolManager {
    */
   setOrchestrator(orchestrator: RoutaOrchestrator): void {
     this.orchestrator = orchestrator;
+  }
+
+  /**
+   * Set the note tools for note management.
+   */
+  setNoteTools(noteTools: NoteTools): void {
+    this.noteTools = noteTools;
   }
 
   /**
@@ -45,6 +54,14 @@ export class RoutaMcpToolManager {
     this.registerGetAgentSummary(server);
     this.registerSubscribeToEvents(server);
     this.registerUnsubscribeFromEvents(server);
+    // Note tools
+    this.registerCreateNote(server);
+    this.registerReadNote(server);
+    this.registerListNotes(server);
+    this.registerSetNoteContent(server);
+    this.registerAppendToNote(server);
+    this.registerGetMyTask(server);
+    this.registerConvertTaskBlocks(server);
   }
 
   // ─── Task Tools ────────────────────────────────────────────────────
@@ -101,7 +118,7 @@ The agent will start working immediately and you'll be notified when it complete
         taskId: z.string().describe("ID of the task to delegate (from create_task)"),
         callerAgentId: z.string().describe("Your agent ID (the coordinator's agent ID)"),
         callerSessionId: z.string().optional().describe("Your session ID (if known)"),
-        specialist: z.enum(["CRAFTER", "GATE", "crafter", "gate"]).describe("Specialist type: CRAFTER for implementation, GATE for verification"),
+        specialist: z.enum(["CRAFTER", "GATE", "DEVELOPER", "crafter", "gate", "developer"]).describe("Specialist type: CRAFTER for implementation, GATE for verification, DEVELOPER for solo plan+implement"),
         provider: z.string().optional().describe("ACP provider to use (e.g., 'claude', 'copilot', 'opencode'). Uses default if omitted."),
         cwd: z.string().optional().describe("Working directory for the agent"),
         additionalInstructions: z.string().optional().describe("Extra instructions beyond the task content"),
@@ -177,10 +194,10 @@ The agent will start working immediately and you'll be notified when it complete
       "Create a new agent with a role (ROUTA=coordinator, CRAFTER=implementor, GATE=verifier)",
       {
         name: z.string().describe("Name for the new agent"),
-        role: z.enum(["ROUTA", "CRAFTER", "GATE"]).describe("Agent role"),
+        role: z.enum(["ROUTA", "CRAFTER", "GATE", "DEVELOPER"]).describe("Agent role"),
         workspaceId: z.string().optional().describe("Workspace ID (uses default if omitted)"),
         parentId: z.string().optional().describe("Parent agent ID"),
-        modelTier: z.enum(["SMART", "FAST"]).optional().describe("Model tier (default: SMART)"),
+        modelTier: z.enum(["SMART", "BALANCED", "FAST"]).optional().describe("Model tier (default: SMART)"),
       },
       async (params) => {
         const result = await this.tools.createAgent({
@@ -263,7 +280,7 @@ The agent will start working immediately and you'll be notified when it complete
         callerAgentId: z.string().describe("ID of the calling agent"),
         workspaceId: z.string().optional().describe("Workspace ID (uses default if omitted)"),
         agentName: z.string().optional().describe("Name for new agent (if created)"),
-        modelTier: z.enum(["SMART", "FAST"]).optional().describe("Model tier for new agent"),
+        modelTier: z.enum(["SMART", "BALANCED", "FAST"]).optional().describe("Model tier for new agent"),
       },
       async (params) => {
         const result = await this.tools.wakeOrCreateTaskAgent({
@@ -345,6 +362,164 @@ The agent will start working immediately and you'll be notified when it complete
       },
       async (params) => {
         const result = await this.tools.unsubscribeFromEvents(params.subscriptionId);
+        return this.toMcpResult(result);
+      }
+    );
+  }
+
+  // ─── Note Tools ──────────────────────────────────────────────────────
+
+  private registerCreateNote(server: McpServer) {
+    server.tool(
+      "create_note",
+      "Create a new note in the workspace. Notes are shared documents for agent collaboration.",
+      {
+        title: z.string().describe("Note title"),
+        content: z.string().optional().describe("Initial note content"),
+        noteId: z.string().optional().describe("Custom note ID (auto-generated if omitted)"),
+        type: z.enum(["spec", "task", "general"]).optional().describe("Note type (default: general)"),
+        workspaceId: z.string().optional().describe("Workspace ID (uses default if omitted)"),
+      },
+      async (params) => {
+        if (!this.noteTools) {
+          return this.toMcpResult({ success: false, error: "Note tools not available." });
+        }
+        const result = await this.noteTools.createNote({
+          ...params,
+          workspaceId: params.workspaceId ?? this.workspaceId,
+        });
+        return this.toMcpResult(result);
+      }
+    );
+  }
+
+  private registerReadNote(server: McpServer) {
+    server.tool(
+      "read_note",
+      "Read the content of a note. Use noteId='spec' to read the workspace spec note.",
+      {
+        noteId: z.string().describe("ID of the note to read (use 'spec' for the spec note)"),
+        workspaceId: z.string().optional().describe("Workspace ID (uses default if omitted)"),
+      },
+      async (params) => {
+        if (!this.noteTools) {
+          return this.toMcpResult({ success: false, error: "Note tools not available." });
+        }
+        const result = await this.noteTools.readNote({
+          noteId: params.noteId,
+          workspaceId: params.workspaceId ?? this.workspaceId,
+        });
+        return this.toMcpResult(result);
+      }
+    );
+  }
+
+  private registerListNotes(server: McpServer) {
+    server.tool(
+      "list_notes",
+      "List all notes in the workspace. Optionally filter by type (spec, task, general).",
+      {
+        type: z.enum(["spec", "task", "general"]).optional().describe("Filter by note type"),
+        workspaceId: z.string().optional().describe("Workspace ID (uses default if omitted)"),
+      },
+      async (params) => {
+        if (!this.noteTools) {
+          return this.toMcpResult({ success: false, error: "Note tools not available." });
+        }
+        const result = await this.noteTools.listNotes({
+          workspaceId: params.workspaceId ?? this.workspaceId,
+          type: params.type,
+        });
+        return this.toMcpResult(result);
+      }
+    );
+  }
+
+  private registerSetNoteContent(server: McpServer) {
+    server.tool(
+      "set_note_content",
+      "Set (replace) the content of a note. The spec note is auto-created if it doesn't exist.",
+      {
+        noteId: z.string().describe("ID of the note to update"),
+        content: z.string().describe("New content for the note (replaces existing content)"),
+        title: z.string().optional().describe("Update the note title"),
+        workspaceId: z.string().optional().describe("Workspace ID (uses default if omitted)"),
+      },
+      async (params) => {
+        if (!this.noteTools) {
+          return this.toMcpResult({ success: false, error: "Note tools not available." });
+        }
+        const result = await this.noteTools.setNoteContent({
+          noteId: params.noteId,
+          content: params.content,
+          title: params.title,
+          workspaceId: params.workspaceId ?? this.workspaceId,
+        });
+        return this.toMcpResult(result);
+      }
+    );
+  }
+
+  private registerAppendToNote(server: McpServer) {
+    server.tool(
+      "append_to_note",
+      "Append content to an existing note. Useful for adding verification reports, progress updates, etc.",
+      {
+        noteId: z.string().describe("ID of the note to append to"),
+        content: z.string().describe("Content to append"),
+        workspaceId: z.string().optional().describe("Workspace ID (uses default if omitted)"),
+      },
+      async (params) => {
+        if (!this.noteTools) {
+          return this.toMcpResult({ success: false, error: "Note tools not available." });
+        }
+        const result = await this.noteTools.appendToNote({
+          noteId: params.noteId,
+          content: params.content,
+          workspaceId: params.workspaceId ?? this.workspaceId,
+        });
+        return this.toMcpResult(result);
+      }
+    );
+  }
+
+  private registerGetMyTask(server: McpServer) {
+    server.tool(
+      "get_my_task",
+      "Get the task note(s) assigned to the calling agent. Returns task details including objective, scope, and acceptance criteria.",
+      {
+        agentId: z.string().describe("ID of the calling agent"),
+        workspaceId: z.string().optional().describe("Workspace ID (uses default if omitted)"),
+      },
+      async (params) => {
+        if (!this.noteTools) {
+          return this.toMcpResult({ success: false, error: "Note tools not available." });
+        }
+        const result = await this.noteTools.getMyTask({
+          agentId: params.agentId,
+          workspaceId: params.workspaceId ?? this.workspaceId,
+        });
+        return this.toMcpResult(result);
+      }
+    );
+  }
+
+  private registerConvertTaskBlocks(server: McpServer) {
+    server.tool(
+      "convert_task_blocks",
+      "Convert @@@task blocks in a note into structured Task Notes and Task records. Returns the created task IDs and note IDs.",
+      {
+        noteId: z.string().describe("ID of the note containing @@@task blocks (typically 'spec')"),
+        workspaceId: z.string().optional().describe("Workspace ID (uses default if omitted)"),
+      },
+      async (params) => {
+        if (!this.noteTools) {
+          return this.toMcpResult({ success: false, error: "Note tools not available." });
+        }
+        const result = await this.noteTools.convertTaskBlocks({
+          noteId: params.noteId,
+          workspaceId: params.workspaceId ?? this.workspaceId,
+        });
         return this.toMcpResult(result);
       }
     );

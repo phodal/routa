@@ -37,7 +37,7 @@ export interface DelegateWithSpawnParams {
   callerSessionId: string;
   /** Workspace ID */
   workspaceId: string;
-  /** Specialist role: "CRAFTER" or "GATE" (or specialist ID like "crafter", "gate") */
+  /** Specialist role: "CRAFTER", "GATE", "DEVELOPER" (or specialist ID like "crafter", "gate", "developer") */
   specialist: string;
   /** ACP provider to use for the child (e.g., "claude", "copilot", "opencode") */
   provider?: string;

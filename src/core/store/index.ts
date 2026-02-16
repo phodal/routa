@@ -4,3 +4,4 @@ export {
   InMemoryConversationStore,
 } from "./conversation-store";
 export { type TaskStore, InMemoryTaskStore } from "./task-store";
+export { type NoteStore, InMemoryNoteStore } from "./note-store";

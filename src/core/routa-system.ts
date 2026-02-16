@@ -8,15 +8,19 @@
 import { InMemoryAgentStore, AgentStore } from "./store/agent-store";
 import { InMemoryConversationStore, ConversationStore } from "./store/conversation-store";
 import { InMemoryTaskStore, TaskStore } from "./store/task-store";
+import { InMemoryNoteStore, NoteStore } from "./store/note-store";
 import { EventBus } from "./events/event-bus";
 import { AgentTools } from "./tools/agent-tools";
+import { NoteTools } from "./tools/note-tools";
 
 export interface RoutaSystem {
   agentStore: AgentStore;
   conversationStore: ConversationStore;
   taskStore: TaskStore;
+  noteStore: NoteStore;
   eventBus: EventBus;
   tools: AgentTools;
+  noteTools: NoteTools;
 }
 
 /**
@@ -26,15 +30,19 @@ export function createInMemorySystem(): RoutaSystem {
   const agentStore = new InMemoryAgentStore();
   const conversationStore = new InMemoryConversationStore();
   const taskStore = new InMemoryTaskStore();
+  const noteStore = new InMemoryNoteStore();
   const eventBus = new EventBus();
   const tools = new AgentTools(agentStore, conversationStore, taskStore, eventBus);
+  const noteTools = new NoteTools(noteStore, taskStore);
 
   return {
     agentStore,
     conversationStore,
     taskStore,
+    noteStore,
     eventBus,
     tools,
+    noteTools,
   };
 }
 

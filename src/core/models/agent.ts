@@ -11,11 +11,15 @@ export enum AgentRole {
   CRAFTER = "CRAFTER",
   /** Verification agent - reviews and validates work */
   GATE = "GATE",
+  /** Solo agent - plans, implements, and verifies on its own */
+  DEVELOPER = "DEVELOPER",
 }
 
 export enum ModelTier {
   /** High-capability model (e.g., Claude Opus, GPT-4) */
   SMART = "SMART",
+  /** Balanced model (e.g., Claude Sonnet, GPT-4o) */
+  BALANCED = "BALANCED",
   /** Fast, cost-effective model (e.g., Claude Haiku, GPT-4-mini) */
   FAST = "FAST",
 }
