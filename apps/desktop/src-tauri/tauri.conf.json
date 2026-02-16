@@ -6,7 +6,7 @@
   "build": {
     "beforeDevCommand": "cd ../.. && npm run dev",
     "devUrl": "http://localhost:3000",
-    "beforeBuildCommand": "cd ../.. && npm run build:desktop",
+    "beforeBuildCommand": "cd ../.. && npm run build:static && rm -rf apps/desktop/src-tauri/frontend && cp -r out apps/desktop/src-tauri/frontend",
     "frontendDist": "../../../out"
   },
   "app": {
@@ -30,7 +30,6 @@
     "active": true,
     "targets": "all",
     "resources": [
-      "bundled/desktop-server/**/*",
       "frontend/**/*"
     ],
     "icon": [

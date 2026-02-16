@@ -107,6 +107,7 @@ impl AcpManager {
             &cwd,
             ntx.clone(),
             &preset.name,
+            &session_id,
         )
         .await?;
 

@@ -35,12 +35,16 @@ pub struct AcpProcess {
 
 impl AcpProcess {
     /// Spawn the agent process and start the background reader.
+    ///
+    /// `our_session_id` is used to rewrite the agent's session ID in notifications
+    /// so the frontend SSE stream matches on the correct session.
     pub async fn spawn(
         command: &str,
         args: &[&str],
         cwd: &str,
         notification_tx: NotificationSender,
         display_name: &str,
+        our_session_id: &str,
     ) -> Result<Self, String> {
         tracing::info!(
             "[AcpProcess:{}] Spawning: {} {} (cwd: {})",
@@ -103,6 +107,7 @@ impl AcpProcess {
         let ntx = notification_tx.clone();
         let stdin_clone = stdin.clone();
         let name_clone = name.clone();
+        let our_sid = our_session_id.to_string();
 
         let reader_handle = tokio::spawn(async move {
             let reader = BufReader::new(stdout);
@@ -180,7 +185,16 @@ impl AcpProcess {
                     let _ = stdin.flush().await;
                 } else if has_method {
                     // Notification (no id) — forward to SSE
-                    let _ = ntx.send(msg);
+                    // Rewrite the agent's sessionId to our session ID so the
+                    // frontend SSE stream can match on the correct session.
+                    let mut rewritten = msg;
+                    if let Some(params) = rewritten.get_mut("params") {
+                        if params.get("sessionId").is_some() {
+                            params["sessionId"] =
+                                serde_json::Value::String(our_sid.clone());
+                        }
+                    }
+                    let _ = ntx.send(rewritten);
                 } else {
                     tracing::debug!(
                         "[AcpProcess:{}] Unhandled message: {}",
