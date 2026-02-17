@@ -54,6 +54,8 @@ export default function HomePage() {
   // ── Mobile sidebar toggle ──────────────────────────────────────────
   const [showMobileSidebar, setShowMobileSidebar] = useState(false);
   const [showAgentInstallPopup, setShowAgentInstallPopup] = useState(false);
+  const agentInstallCloseRef = useRef<HTMLButtonElement>(null);
+  const installAgentsButtonRef = useRef<HTMLButtonElement>(null);
 
   // ── CRAFTERs view state ──────────────────────────────────────────────
   const [crafterAgents, setCrafterAgents] = useState<CrafterAgent[]>([]);
@@ -80,6 +82,35 @@ export default function HomePage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [repoSelection?.path]);
+
+  // Agent Install popup: body scroll lock + Escape to close
+  useEffect(() => {
+    if (!showAgentInstallPopup) return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setShowAgentInstallPopup(false);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [showAgentInstallPopup]);
+
+  // Agent Install popup: focus close button when open, restore focus when close
+  const prevAgentPopupRef = useRef(false);
+  useEffect(() => {
+    if (showAgentInstallPopup) {
+      prevAgentPopupRef.current = true;
+      const t = requestAnimationFrame(() => agentInstallCloseRef.current?.focus());
+      return () => cancelAnimationFrame(t);
+    }
+    if (prevAgentPopupRef.current) {
+      prevAgentPopupRef.current = false;
+      installAgentsButtonRef.current?.focus({ preventScroll: true });
+    }
+  }, [showAgentInstallPopup]);
 
   // ── Resize handlers (right sidebar) ──────────────────────────────────
 
@@ -782,6 +813,7 @@ export default function HomePage() {
           {/* Bottom actions */}
           <div className="p-2 border-t border-gray-100 dark:border-gray-800 space-y-1">
             <button
+              ref={installAgentsButtonRef}
               onClick={() => setShowAgentInstallPopup(true)}
               className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md text-[11px] font-medium text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-colors"
             >
@@ -790,16 +822,17 @@ export default function HomePage() {
               </svg>
               Install Agents
             </button>
-            <a
-              href="/settings/agents"
-              className="flex items-center gap-2 px-2.5 py-1.5 rounded-md text-[11px] text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+            <button
+              type="button"
+              onClick={() => setShowAgentInstallPopup(true)}
+              className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md text-[11px] text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
             >
               <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
                 <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
               </svg>
               Manage Providers
-            </a>
+            </button>
           </div>
 
           {/* Left sidebar resize handle */}
@@ -903,20 +936,42 @@ export default function HomePage() {
 
       {/* ─── Agent Install Popup ─────────────────────────────────────── */}
       {showAgentInstallPopup && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="agent-install-title"
+        >
           <div
             className="absolute inset-0 bg-black/40 backdrop-blur-sm"
             onClick={() => setShowAgentInstallPopup(false)}
+            aria-hidden="true"
           />
-          <div className="relative w-full max-w-5xl h-[80vh] bg-white dark:bg-[#161922] border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl overflow-hidden">
+          <div
+            className="relative w-full max-w-5xl h-[80vh] bg-white dark:bg-[#161922] border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="h-11 px-4 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between">
-              <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-                Install Agents
+              <div className="flex items-center gap-3">
+                <div id="agent-install-title" className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                  Install Agents
+                </div>
+                <a
+                  href="/settings/agents"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[11px] text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+                >
+                  Open in new tab
+                </a>
               </div>
               <button
+                ref={agentInstallCloseRef}
+                type="button"
                 onClick={() => setShowAgentInstallPopup(false)}
                 className="w-7 h-7 flex items-center justify-center rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
-                title="Close"
+                title="Close (Esc)"
+                aria-label="Close"
               >
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
