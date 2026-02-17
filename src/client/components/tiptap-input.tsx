@@ -591,8 +591,12 @@ export function TiptapInput({
   }, [editor, disabled]);
 
   const selectedProviderInfo = providers.find((p) => p.id === selectedProvider);
-  const availableProviders = providers.filter((p) => p.status === "available");
-  const unavailableProviders = providers.filter((p) => p.status !== "available");
+
+  // Group providers by source (builtin/static first, then registry)
+  const builtinAvailable = providers.filter((p) => p.source === "static" && p.status === "available");
+  const builtinUnavailable = providers.filter((p) => p.source === "static" && p.status !== "available");
+  const registryAvailable = providers.filter((p) => p.source === "registry" && p.status === "available");
+  const registryUnavailable = providers.filter((p) => p.source === "registry" && p.status !== "available");
 
   return (
     <div className="flex-1 flex flex-col gap-1.5">
@@ -641,12 +645,13 @@ export function TiptapInput({
                 className="fixed w-72 max-h-80 overflow-y-auto rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1e2130] shadow-xl z-[9999]"
                 style={{ left: dropdownPos.left, bottom: dropdownPos.bottom }}
               >
-                {availableProviders.length > 0 && (
+                {/* Builtin Available */}
+                {builtinAvailable.length > 0 && (
                   <div className="py-1">
                     <div className="px-3 py-1 text-[10px] font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider">
-                      Available ({availableProviders.length})
+                      Built-in ({builtinAvailable.length})
                     </div>
-                    {availableProviders.map((p) => (
+                    {builtinAvailable.map((p) => (
                       <button
                         key={p.id}
                         type="button"
@@ -667,12 +672,42 @@ export function TiptapInput({
                     ))}
                   </div>
                 )}
-                {unavailableProviders.length > 0 && (
-                  <div className="py-1 border-t border-gray-100 dark:border-gray-800">
+
+                {/* Registry Available */}
+                {registryAvailable.length > 0 && (
+                  <div className={`py-1 ${builtinAvailable.length > 0 ? "border-t border-gray-100 dark:border-gray-800" : ""}`}>
                     <div className="px-3 py-1 text-[10px] font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider">
-                      Not Installed ({unavailableProviders.length})
+                      ACP Registry ({registryAvailable.length})
                     </div>
-                    {unavailableProviders.map((p) => (
+                    {registryAvailable.map((p) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => {
+                          onProviderChange?.(p.id);
+                          setProviderDropdownOpen(false);
+                        }}
+                        className={`w-full text-left px-3 py-1.5 flex items-center gap-2 text-xs transition-colors ${
+                          p.id === selectedProvider
+                            ? "bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300"
+                            : "hover:bg-gray-50 dark:hover:bg-gray-800/50 text-gray-700 dark:text-gray-300"
+                        }`}
+                      >
+                        <span className="w-1.5 h-1.5 rounded-full bg-green-500 shrink-0" />
+                        <span className="font-medium truncate flex-1">{p.name}</span>
+                        <span className="text-[10px] text-gray-400 dark:text-gray-500 font-mono truncate max-w-[140px]">{p.command}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {/* Builtin Unavailable */}
+                {builtinUnavailable.length > 0 && (
+                  <div className={`py-1 ${(builtinAvailable.length > 0 || registryAvailable.length > 0) ? "border-t border-gray-100 dark:border-gray-800" : ""}`}>
+                    <div className="px-3 py-1 text-[10px] font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider">
+                      Built-in - Not Installed ({builtinUnavailable.length})
+                    </div>
+                    {builtinUnavailable.map((p) => (
                       <button
                         key={p.id}
                         type="button"
@@ -693,6 +728,35 @@ export function TiptapInput({
                     ))}
                   </div>
                 )}
+
+                {/* Registry Unavailable */}
+                {registryUnavailable.length > 0 && (
+                  <div className="py-1 border-t border-gray-100 dark:border-gray-800">
+                    <div className="px-3 py-1 text-[10px] font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider">
+                      ACP Registry - Not Installed ({registryUnavailable.length})
+                    </div>
+                    {registryUnavailable.map((p) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => {
+                          onProviderChange?.(p.id);
+                          setProviderDropdownOpen(false);
+                        }}
+                        className={`w-full text-left px-3 py-1.5 flex items-center gap-2 text-xs transition-colors opacity-60 ${
+                          p.id === selectedProvider
+                            ? "bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300"
+                            : "hover:bg-gray-50 dark:hover:bg-gray-800/50 text-gray-500 dark:text-gray-400"
+                        }`}
+                      >
+                        <span className="w-1.5 h-1.5 rounded-full bg-gray-300 dark:bg-gray-600 shrink-0" />
+                        <span className="font-medium truncate flex-1">{p.name}</span>
+                        <span className="text-[10px] text-gray-400 dark:text-gray-500 font-mono truncate max-w-[140px]">{p.command}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+
                 {providers.length === 0 && (
                   <div className="px-3 py-3 text-xs text-gray-400 text-center">
                     Connecting...

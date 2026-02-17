@@ -39,6 +39,7 @@ export interface AcpProviderInfo {
   description: string;
   command: string;
   status?: "available" | "unavailable";
+  source?: "static" | "registry";
 }
 
 export type SessionUpdateHandler = (update: AcpSessionNotification) => void;
