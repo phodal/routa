@@ -91,6 +91,7 @@ impl AcpManager {
     }
 
     /// Create a new ACP session: spawn agent process, initialize, create session.
+    /// Supports both static presets and registry-based agents.
     ///
     /// Returns `(our_session_id, agent_session_id)`.
     pub async fn create_session(
@@ -101,10 +102,7 @@ impl AcpManager {
         provider: Option<String>,
     ) -> Result<(String, String), String> {
         let provider_name = provider.as_deref().unwrap_or("opencode");
-        let preset = get_presets()
-            .into_iter()
-            .find(|p| p.name == provider_name)
-            .ok_or_else(|| format!("Unknown provider: {}", provider_name))?;
+        let preset = get_preset_by_id_with_registry(provider_name).await?;
 
         // Create the notification broadcast channel for this session
         let (ntx, _) = broadcast::channel::<serde_json::Value>(256);
@@ -249,7 +247,7 @@ pub struct AcpPreset {
     pub description: String,
 }
 
-/// Get the list of known ACP agent presets.
+/// Get the list of known ACP agent presets (static/builtin only).
 pub fn get_presets() -> Vec<AcpPreset> {
     vec![
         AcpPreset {
@@ -295,4 +293,66 @@ pub fn get_presets() -> Vec<AcpPreset> {
             description: "Anthropic Claude Code".to_string(),
         },
     ]
+}
+
+/// ACP Registry URL
+const ACP_REGISTRY_URL: &str = "https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json";
+
+/// Get a preset by ID, checking both static presets and registry.
+/// Static presets take precedence.
+pub async fn get_preset_by_id_with_registry(id: &str) -> Result<AcpPreset, String> {
+    // Check static presets first
+    if let Some(preset) = get_presets().into_iter().find(|p| p.name == id) {
+        return Ok(preset);
+    }
+
+    // Fall back to registry
+    get_registry_preset(id).await
+}
+
+/// Get a preset from the ACP registry by ID.
+async fn get_registry_preset(id: &str) -> Result<AcpPreset, String> {
+    // Fetch registry
+    let response = reqwest::get(ACP_REGISTRY_URL)
+        .await
+        .map_err(|e| format!("Failed to fetch ACP registry: {}", e))?;
+
+    if !response.status().is_success() {
+        return Err(format!("Registry fetch failed: {}", response.status()));
+    }
+
+    let registry: AcpRegistry = response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse registry: {}", e))?;
+
+    // Find the agent
+    let agent = registry
+        .agents
+        .into_iter()
+        .find(|a| a.id == id)
+        .ok_or_else(|| format!("Agent '{}' not found in registry", id))?;
+
+    // Build command from distribution
+    let (command, args) = if let Some(ref npx) = agent.distribution.npx {
+        let mut args = vec!["-y".to_string(), npx.package.clone()];
+        args.extend(npx.args.clone());
+        ("npx".to_string(), args)
+    } else if let Some(ref uvx) = agent.distribution.uvx {
+        let mut args = vec![uvx.package.clone()];
+        args.extend(uvx.args.clone());
+        ("uvx".to_string(), args)
+    } else {
+        return Err(format!(
+            "Agent '{}' has no supported distribution (npx/uvx)",
+            id
+        ));
+    };
+
+    Ok(AcpPreset {
+        name: agent.id,
+        command,
+        args,
+        description: agent.description,
+    })
 }

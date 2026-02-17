@@ -69,7 +69,7 @@ export class AcpProcessManager {
             console.log(`[AcpProcessManager] MCP setup for ${presetId}: ${mcpResult.summary}`);
         }
 
-        const config = buildConfigFromPreset(presetId, cwd, extraArgs, extraEnv, mcpConfigs);
+        const config = await buildConfigFromPreset(presetId, cwd, extraArgs, extraEnv, mcpConfigs);
         const proc = new AcpProcess(config, onNotification);
 
         await proc.start();

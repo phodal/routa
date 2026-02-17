@@ -14,7 +14,7 @@
  * See acp-presets.ts for available presets.
  */
 
-import {type AcpAgentPreset, getPresetById, resolveCommand,} from "./acp-presets";
+import {type AcpAgentPreset, getPresetById, getPresetByIdWithRegistry, resolveCommand,} from "./acp-presets";
 import {AcpProcess} from "@/core/acp/acp-process";
 import {AcpProcessManager} from "@/core/acp/acp-process-manager";
 
@@ -58,18 +58,19 @@ export interface AcpProcessConfig {
 
 /**
  * Build an AcpProcessConfig from a preset ID and working directory.
+ * Supports both static presets and registry-based agents.
  */
-export function buildConfigFromPreset(
+export async function buildConfigFromPreset(
   presetId: string,
   cwd: string,
   extraArgs?: string[],
   extraEnv?: Record<string, string>,
   mcpConfigs?: string[]
-): AcpProcessConfig {
-  const preset = getPresetById(presetId);
+): Promise<AcpProcessConfig> {
+  const preset = await getPresetByIdWithRegistry(presetId);
   if (!preset) {
     throw new Error(
-      `Unknown ACP preset: "${presetId}". Use one of: opencode, gemini, codex, copilot, auggie, kimi`
+      `Unknown ACP preset: "${presetId}". Check available providers or install from ACP Registry.`
     );
   }
   if (preset.nonStandardApi) {
@@ -92,12 +93,15 @@ export function buildConfigFromPreset(
     args.push(...extraArgs);
   }
 
+  // Merge preset env with extraEnv
+  const mergedEnv = { ...preset.env, ...extraEnv };
+
   return {
     preset,
     command,
     args,
     cwd,
-    env: extraEnv,
+    env: Object.keys(mergedEnv).length > 0 ? mergedEnv : undefined,
     displayName: preset.name,
     mcpConfigs,
   };
@@ -106,7 +110,7 @@ export function buildConfigFromPreset(
 /**
  * Build a default config (opencode) for backward compatibility.
  */
-export function buildDefaultConfig(cwd: string): AcpProcessConfig {
+export async function buildDefaultConfig(cwd: string): Promise<AcpProcessConfig> {
   return buildConfigFromPreset("opencode", cwd);
 }
 
