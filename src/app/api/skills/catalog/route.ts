@@ -117,6 +117,16 @@ async function handleSkillsShSearch(request: NextRequest) {
   const query = request.nextUrl.searchParams.get("q") || "";
   const limit = parseInt(request.nextUrl.searchParams.get("limit") || String(DEFAULT_SEARCH_LIMIT), 10);
 
+  // skills.sh API requires at least 2-char query; return empty for shorter
+  if (query.length < 2) {
+    return NextResponse.json({
+      type: "skillssh",
+      skills: [],
+      query,
+      count: 0,
+    });
+  }
+
   try {
     const apiUrl = `${SKILLS_SH_API}/api/search?q=${encodeURIComponent(query)}&limit=${limit}`;
     const response = await fetch(apiUrl, {

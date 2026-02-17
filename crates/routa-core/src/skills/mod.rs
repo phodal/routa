@@ -64,6 +64,7 @@ const SKILL_DIRS: &[&str] = &[
     ".agents/skills",
     ".codex/skills",
     ".cursor/skills",
+    ".gemini/skills",
 ];
 
 const SKILL_FILENAME: &str = "SKILL.md";

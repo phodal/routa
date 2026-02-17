@@ -1,11 +1,13 @@
 /**
  * SkillLoader - discovers and loads SKILL.md files
  *
- * Compatible with OpenCode's skill discovery format:
+ * Compatible with multi-tool skill discovery format:
  *   - Project: .opencode/skills/<name>/SKILL.md
  *   - Global:  ~/.config/opencode/skills/<name>/SKILL.md
  *   - Claude:  .claude/skills/<name>/SKILL.md
  *   - Agents:  .agents/skills/<name>/SKILL.md
+ *   - Codex:   .codex/skills/<name>/SKILL.md
+ *   - Gemini:  .gemini/skills/<name>/SKILL.md
  *
  * Each SKILL.md has YAML frontmatter with:
  *   - name (required): lowercase alphanumeric with single hyphens
@@ -38,6 +40,7 @@ const SKILL_SEARCH_DIRS = [
   ".agents/skills",
   ".codex/skills",
   ".cursor/skills",
+  ".gemini/skills",
 ];
 
 const GLOBAL_SKILL_DIRS = [
@@ -46,6 +49,7 @@ const GLOBAL_SKILL_DIRS = [
   ".agents/skills",
   ".codex/skills",
   ".cursor/skills",
+  ".gemini/skills",
 ];
 
 /**

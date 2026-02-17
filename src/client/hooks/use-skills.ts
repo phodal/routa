@@ -18,6 +18,7 @@ import {
   SkillContent,
   CloneSkillsResult,
   SkillsShSkill,
+  GithubCatalogSkill,
   CatalogInstallResult,
 } from "../skill-client";
 import {
@@ -26,6 +27,8 @@ import {
   logRuntime,
   toErrorMessage,
 } from "../utils/diagnostics";
+
+export type CatalogType = "skillssh" | "github";
 
 export interface UseSkillsState {
   skills: SkillSummary[];
@@ -36,6 +39,8 @@ export interface UseSkillsState {
   error: string | null;
   /** skills.sh search results */
   catalogSkills: SkillsShSkill[];
+  /** GitHub catalog results */
+  githubCatalogSkills: GithubCatalogSkill[];
   catalogLoading: boolean;
   catalogInstalling: boolean;
 }
@@ -52,8 +57,12 @@ export interface UseSkillsActions {
   allSkills: SkillSummary[];
   /** Search skills.sh catalog */
   searchCatalog: (query: string) => Promise<SkillsShSkill[]>;
+  /** List GitHub catalog skills */
+  listGithubCatalog: (repo?: string, catalogPath?: string) => Promise<GithubCatalogSkill[]>;
   /** Install skills from skills.sh results */
   installFromCatalog: (skills: Array<{ name: string; source: string }>) => Promise<CatalogInstallResult | null>;
+  /** Install skills from GitHub catalog */
+  installFromGithubCatalog: (skills: string[], repo?: string, catalogPath?: string) => Promise<CatalogInstallResult | null>;
   clearCatalog: () => void;
 }
 
@@ -69,6 +78,7 @@ export function useSkills(
     cloning: false,
     error: null,
     catalogSkills: [],
+    githubCatalogSkills: [],
     catalogLoading: false,
     catalogInstalling: false,
   });
@@ -208,6 +218,26 @@ export function useSkills(
     }
   }, []);
 
+  const listGithubCatalog = useCallback(async (repo?: string, catalogPath?: string) => {
+    try {
+      if (isDesktopStaticRuntime()) {
+        throw desktopStaticApiError("Skills Catalog");
+      }
+      setState((s) => ({ ...s, catalogLoading: true, error: null }));
+      const result = await clientRef.current.listGithubCatalog(repo, catalogPath);
+      setState((s) => ({ ...s, githubCatalogSkills: result.skills, catalogLoading: false }));
+      return result.skills;
+    } catch (err) {
+      logRuntime("warn", "useSkills.listGithubCatalog", "Failed to list GitHub catalog", err);
+      setState((s) => ({
+        ...s,
+        catalogLoading: false,
+        error: toErrorMessage(err) || "Failed to list GitHub catalog",
+      }));
+      return [];
+    }
+  }, []);
+
   const installFromCatalog = useCallback(async (
     skills: Array<{ name: string; source: string }>
   ) => {
@@ -244,8 +274,46 @@ export function useSkills(
     }
   }, []);
 
+  const installFromGithubCatalog = useCallback(async (
+    skills: string[],
+    repo?: string,
+    catalogPath?: string,
+  ) => {
+    try {
+      if (isDesktopStaticRuntime()) {
+        throw desktopStaticApiError("Skills Catalog");
+      }
+      setState((s) => ({ ...s, catalogInstalling: true, error: null }));
+      const result = await clientRef.current.installFromGithubCatalog(skills, repo, catalogPath);
+
+      if (result.installed.length > 0) {
+        const localSkills = await clientRef.current.list();
+        setState((s) => ({
+          ...s,
+          skills: localSkills,
+          catalogInstalling: false,
+          githubCatalogSkills: s.githubCatalogSkills.map((cs) =>
+            result.installed.includes(cs.name) ? { ...cs, installed: true } : cs
+          ),
+        }));
+      } else {
+        setState((s) => ({ ...s, catalogInstalling: false }));
+      }
+
+      return result;
+    } catch (err) {
+      logRuntime("error", "useSkills.installFromGithubCatalog", "Failed to install from GitHub catalog", err);
+      setState((s) => ({
+        ...s,
+        catalogInstalling: false,
+        error: toErrorMessage(err) || "Failed to install from GitHub catalog",
+      }));
+      return null;
+    }
+  }, []);
+
   const clearCatalog = useCallback(() => {
-    setState((s) => ({ ...s, catalogSkills: [], error: null }));
+    setState((s) => ({ ...s, catalogSkills: [], githubCatalogSkills: [], error: null }));
   }, []);
 
   // Auto-load on mount
@@ -282,7 +350,9 @@ export function useSkills(
     loadRepoSkills,
     clearRepoSkills,
     searchCatalog,
+    listGithubCatalog,
     installFromCatalog,
+    installFromGithubCatalog,
     clearCatalog,
   };
 }
