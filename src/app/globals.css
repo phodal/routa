@@ -445,3 +445,96 @@ body {
     color: #9ca3af;
   }
 }
+
+/* ─── Compact Markdown for Skill Panel ──────────────────────────────── */
+
+.skill-content-viewer .markdown-viewer {
+  font-size: 0.6875rem;
+  line-height: 1.5;
+}
+
+.skill-content-viewer .markdown-viewer h1 {
+  font-size: 0.8125rem;
+  margin-top: 0.5rem;
+}
+
+.skill-content-viewer .markdown-viewer h2 {
+  font-size: 0.75rem;
+  margin-top: 0.375rem;
+}
+
+.skill-content-viewer .markdown-viewer h3 {
+  font-size: 0.6875rem;
+  margin-top: 0.25rem;
+}
+
+.skill-content-viewer .markdown-viewer ul,
+.skill-content-viewer .markdown-viewer ol {
+  padding-left: 1rem;
+}
+
+.skill-content-viewer .markdown-viewer .code-block,
+.skill-content-viewer .markdown-viewer pre {
+  padding: 0.5rem;
+  font-size: 0.625rem;
+  border-radius: 0.375rem;
+}
+
+.skill-content-viewer .markdown-viewer p {
+  margin-bottom: 0.25rem;
+}
+
+/* ─── Left Sidebar Resize Handle ────────────────────────────────────── */
+
+.left-resize-handle {
+  position: absolute;
+  right: -2px;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: col-resize;
+  z-index: 20;
+  transition: background-color 0.15s;
+}
+
+.left-resize-handle:hover,
+.left-resize-handle:active {
+  background-color: rgba(99, 102, 241, 0.25);
+}
+
+.left-resize-handle .resize-indicator {
+  position: absolute;
+  right: 1px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 40px;
+  border-radius: 9999px;
+  background: #d1d5db;
+  opacity: 0;
+  transition: opacity 0.15s, background-color 0.15s;
+}
+
+.left-resize-handle:hover .resize-indicator {
+  opacity: 1;
+  background: #818cf8;
+}
+
+.left-resize-handle:active .resize-indicator {
+  opacity: 1;
+  background: #6366f1;
+}
+
+@media (prefers-color-scheme: dark) {
+  .left-resize-handle .resize-indicator {
+    background: #4b5563;
+  }
+  .left-resize-handle:hover .resize-indicator {
+    opacity: 1;
+    background: #818cf8;
+  }
+  .left-resize-handle:active .resize-indicator {
+    opacity: 1;
+    background: #6366f1;
+  }
+}

@@ -38,11 +38,20 @@ export default function HomePage() {
   // ── Collaborative editing panel view ──────────────────────────────────
   const [taskPanelMode, setTaskPanelMode] = useState<"tasks" | "collab">("tasks");
 
-  // ── Resizable sidebar state ──────────────────────────────────────────
+  // ── Resizable right sidebar state ────────────────────────────────────
   const [sidebarWidth, setSidebarWidth] = useState(380);
   const [isResizing, setIsResizing] = useState(false);
   const resizeStartXRef = useRef(0);
   const resizeStartWidthRef = useRef(0);
+
+  // ── Resizable left sidebar state ──────────────────────────────────
+  const [leftSidebarWidth, setLeftSidebarWidth] = useState(280);
+  const [isLeftResizing, setIsLeftResizing] = useState(false);
+  const leftResizeStartXRef = useRef(0);
+  const leftResizeStartWidthRef = useRef(0);
+
+  // ── Mobile sidebar toggle ──────────────────────────────────────────
+  const [showMobileSidebar, setShowMobileSidebar] = useState(false);
 
   // ── CRAFTERs view state ──────────────────────────────────────────────
   const [crafterAgents, setCrafterAgents] = useState<CrafterAgent[]>([]);
@@ -70,7 +79,7 @@ export default function HomePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [repoSelection?.path]);
 
-  // ── Resize handlers ──────────────────────────────────────────────────
+  // ── Resize handlers (right sidebar) ──────────────────────────────────
 
   const handleResizeStart = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -83,7 +92,6 @@ export default function HomePage() {
     if (!isResizing) return;
 
     const handleMouseMove = (e: MouseEvent) => {
-      // Moving left increases width (sidebar is on the right)
       const delta = resizeStartXRef.current - e.clientX;
       const newWidth = Math.max(280, Math.min(700, resizeStartWidthRef.current + delta));
       setSidebarWidth(newWidth);
@@ -95,8 +103,6 @@ export default function HomePage() {
 
     document.addEventListener("mousemove", handleMouseMove);
     document.addEventListener("mouseup", handleMouseUp);
-
-    // Prevent text selection during resize
     document.body.style.userSelect = "none";
     document.body.style.cursor = "col-resize";
 
@@ -107,6 +113,41 @@ export default function HomePage() {
       document.body.style.cursor = "";
     };
   }, [isResizing]);
+
+  // ── Resize handlers (left sidebar) ──────────────────────────────────
+
+  const handleLeftResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsLeftResizing(true);
+    leftResizeStartXRef.current = e.clientX;
+    leftResizeStartWidthRef.current = leftSidebarWidth;
+  }, [leftSidebarWidth]);
+
+  useEffect(() => {
+    if (!isLeftResizing) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const delta = e.clientX - leftResizeStartXRef.current;
+      const newWidth = Math.max(200, Math.min(450, leftResizeStartWidthRef.current + delta));
+      setLeftSidebarWidth(newWidth);
+    };
+
+    const handleMouseUp = () => {
+      setIsLeftResizing(false);
+    };
+
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
+    document.body.style.userSelect = "none";
+    document.body.style.cursor = "col-resize";
+
+    return () => {
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+      document.body.style.userSelect = "";
+      document.body.style.cursor = "";
+    };
+  }, [isLeftResizing]);
 
   // ── Route child agent SSE updates to crafter agents ──────────────────
 
@@ -573,9 +614,23 @@ export default function HomePage() {
   return (
     <div className="h-screen flex flex-col bg-gray-50 dark:bg-[#0f1117]">
       {/* ─── Top Bar ──────────────────────────────────────────────── */}
-      <header className="h-[52px] shrink-0 bg-white dark:bg-[#161922] border-b border-gray-200 dark:border-gray-800 flex items-center px-4 gap-4 z-10">
+      <header className="h-[52px] shrink-0 bg-white dark:bg-[#161922] border-b border-gray-200 dark:border-gray-800 flex items-center px-3 md:px-4 gap-2 md:gap-4 z-10">
+        {/* Mobile hamburger */}
+        <button
+          onClick={() => setShowMobileSidebar(!showMobileSidebar)}
+          className="md:hidden w-8 h-8 flex items-center justify-center rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500"
+        >
+          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            {showMobileSidebar ? (
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            ) : (
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+            )}
+          </svg>
+        </button>
+
         {/* Logo */}
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2">
           <img
             src="/logo.svg"
             alt="Routa"
@@ -583,17 +638,17 @@ export default function HomePage() {
             height={28}
             className="rounded-lg"
           />
-          <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+          <span className="text-sm font-semibold text-gray-900 dark:text-gray-100 hidden sm:inline">
             Routa
           </span>
         </div>
 
         {/* Separator */}
-        <div className="w-px h-5 bg-gray-200 dark:bg-gray-700" />
+        <div className="w-px h-5 bg-gray-200 dark:bg-gray-700 hidden md:block" />
 
         {/* Agent selector */}
         <div className="flex items-center gap-2">
-          <span className="text-xs text-gray-500 dark:text-gray-400">Agent:</span>
+          <span className="text-xs text-gray-500 dark:text-gray-400 hidden md:inline">Agent:</span>
           <div className="relative">
             <select
               value={selectedAgent}
@@ -609,34 +664,26 @@ export default function HomePage() {
               <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
             </svg>
           </div>
-          <span className="px-2 py-0.5 text-[10px] font-medium rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">
-            ACTIVE
-          </span>
         </div>
 
         {/* Spacer */}
         <div className="flex-1" />
 
-        {/* Protocol badges */}
-        <div className="flex items-center gap-2">
+        {/* Protocol badges (hidden on small screens) */}
+        <div className="hidden lg:flex items-center gap-2">
           <ProtocolBadge name="MCP" endpoint="/api/mcp" />
           <ProtocolBadge name="ACP" endpoint="/api/acp" />
-          <a
-            href="/settings/agents"
-            className="px-2.5 py-1 rounded-md bg-indigo-50 dark:bg-indigo-900/20 text-[11px] font-medium text-indigo-600 dark:text-indigo-300"
-          >
-            Install Agents
-          </a>
-          <a
-            href="/mcp-tools"
-            className="px-2.5 py-1 rounded-md bg-blue-50 dark:bg-blue-900/20 text-[11px] font-medium text-blue-600 dark:text-blue-300"
-          >
-            Agent MCP Tools
-          </a>
         </div>
 
-        {/* Connection status */}
-        <div className="w-px h-5 bg-gray-200 dark:bg-gray-700" />
+        {/* MCP Tools link */}
+        <a
+          href="/mcp-tools"
+          className="hidden md:inline-flex px-2.5 py-1 rounded-md bg-blue-50 dark:bg-blue-900/20 text-[11px] font-medium text-blue-600 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors"
+        >
+          MCP Tools
+        </a>
+
+        {/* Connection status (compact) */}
         <button
           onClick={async () => {
             if (acp.connected) {
@@ -645,21 +692,35 @@ export default function HomePage() {
               await acp.connect();
             }
           }}
-          className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-colors ${
+          title={acp.connected ? "Connected - click to disconnect" : "Disconnected - click to connect"}
+          className={`flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium transition-colors ${
             acp.connected
-              ? "text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-900/20 hover:bg-green-100 dark:hover:bg-green-900/30"
+              ? "text-green-700 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20"
               : "text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700"
           }`}
         >
-          <span className={`w-1.5 h-1.5 rounded-full ${acp.connected ? "bg-green-500" : "bg-gray-400"}`} />
-          {acp.connected ? "Connected" : "Disconnected"}
+          <span className={`w-2 h-2 rounded-full ${acp.connected ? "bg-green-500" : "bg-gray-400"}`} />
+          <span className="hidden sm:inline">{acp.connected ? "Connected" : "Disconnected"}</span>
         </button>
       </header>
 
       {/* ─── Main Area ────────────────────────────────────────────── */}
-      <div className="flex-1 flex min-h-0">
+      <div className="flex-1 flex min-h-0 relative">
+        {/* Mobile sidebar overlay */}
+        {showMobileSidebar && (
+          <div
+            className="fixed inset-0 z-30 bg-black/40 md:hidden"
+            onClick={() => setShowMobileSidebar(false)}
+          />
+        )}
+
         {/* ─── Left Sidebar ──────────────────────────────────────── */}
-        <aside className="w-[300px] shrink-0 border-r border-gray-200 dark:border-gray-800 bg-white dark:bg-[#13151d] flex flex-col overflow-hidden">
+        <aside
+          className={`shrink-0 border-r border-gray-200 dark:border-gray-800 bg-white dark:bg-[#13151d] flex flex-col relative
+            ${showMobileSidebar ? "fixed inset-y-[52px] left-0 z-40 shadow-2xl overflow-y-auto" : "hidden md:flex overflow-hidden"}
+          `}
+          style={{ width: `${leftSidebarWidth}px` }}
+        >
           {/* Provider summary + New Session */}
           <div className="p-3 border-b border-gray-100 dark:border-gray-800">
             <div className="flex items-center justify-between mb-2">
@@ -669,31 +730,22 @@ export default function HomePage() {
                 </label>
                 {acp.providers.length > 0 && (
                   <span className="text-[10px] text-gray-400 dark:text-gray-500">
-                    {acp.providers.filter((p) => p.status === "available").length}/{acp.providers.length} available
+                    {acp.providers.filter((p) => p.status === "available").length}/{acp.providers.length}
                   </span>
                 )}
               </div>
-              <a
-                href="/settings/agents"
-                className="text-[10px] text-blue-600 dark:text-blue-400 hover:underline"
-              >
-                Manage
-              </a>
             </div>
 
             {/* Current provider indicator */}
             {acp.selectedProvider && (
               <div className="px-2.5 py-1.5 rounded-md border border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/30 mb-2">
                 <div className="flex items-center gap-2">
-                  <span className={`w-1.5 h-1.5 rounded-full ${
+                  <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
                     acp.providers.find((p) => p.id === acp.selectedProvider)?.status === "available"
                       ? "bg-green-500" : "bg-gray-400"
                   }`} />
-                  <span className="text-xs font-medium text-gray-700 dark:text-gray-300">
+                  <span className="text-xs font-medium text-gray-700 dark:text-gray-300 truncate">
                     {acp.providers.find((p) => p.id === acp.selectedProvider)?.name ?? acp.selectedProvider}
-                  </span>
-                  <span className="text-[10px] text-gray-400 dark:text-gray-500 ml-auto">
-                    Use dropdown in input to switch
                   </span>
                 </div>
               </div>
@@ -708,7 +760,7 @@ export default function HomePage() {
             </button>
           </div>
 
-          {/* Sessions */}
+          {/* Sessions + Skills */}
           <div className="flex-1 overflow-y-auto">
             <SessionPanel
               selectedSessionId={activeSessionId}
@@ -723,6 +775,37 @@ export default function HomePage() {
             <SkillPanel
               skillsHook={skillsHook}
             />
+          </div>
+
+          {/* Bottom actions */}
+          <div className="p-2 border-t border-gray-100 dark:border-gray-800 space-y-1">
+            <a
+              href="/settings/agents"
+              className="flex items-center gap-2 px-2.5 py-1.5 rounded-md text-[11px] font-medium text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-colors"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+              </svg>
+              Install Agents
+            </a>
+            <a
+              href="/settings/agents"
+              className="flex items-center gap-2 px-2.5 py-1.5 rounded-md text-[11px] text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+              Manage Providers
+            </a>
+          </div>
+
+          {/* Left sidebar resize handle */}
+          <div
+            className="left-resize-handle hidden md:block"
+            onMouseDown={handleLeftResizeStart}
+          >
+            <div className="resize-indicator" />
           </div>
         </aside>
 
@@ -812,7 +895,7 @@ export default function HomePage() {
       </div>
 
       {/* ─── Resize overlay (prevents iframe/content interference) ─── */}
-      {isResizing && (
+      {(isResizing || isLeftResizing) && (
         <div className="fixed inset-0 z-50 cursor-col-resize" />
       )}
 

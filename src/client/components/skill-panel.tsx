@@ -14,6 +14,7 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { useSkills, type UseSkillsState, type UseSkillsActions, type CatalogType } from "../hooks/use-skills";
 import type { SkillsShSkill, GithubCatalogSkill } from "../skill-client";
+import { MarkdownViewer } from "./markdown-viewer";
 
 interface SkillPanelProps {
   /** Pass a shared useSkills() instance to keep sidebar and chat in sync */
@@ -130,15 +131,20 @@ export function SkillPanel({ skillsHook: externalHook }: SkillPanelProps) {
             <div key={skill.name}>
               <button
                 onClick={() => handleSkillClick(skill.name)}
-                className={`w-full text-left px-2.5 py-2 mb-0.5 rounded-md transition-colors ${
+                title={skill.description}
+                className={`group w-full text-left px-2.5 py-2 mb-0.5 rounded-md transition-all duration-150 ${
                   expandedSkill === skill.name
-                    ? "bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-300"
-                    : "hover:bg-gray-50 dark:hover:bg-gray-800/50 text-gray-700 dark:text-gray-300"
+                    ? "bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-300 ring-1 ring-indigo-200 dark:ring-indigo-800/50"
+                    : "hover:bg-gray-100/80 dark:hover:bg-gray-800/60 text-gray-700 dark:text-gray-300"
                 }`}
               >
                 <div className="flex items-center gap-1.5">
                   <svg
-                    className={`w-3 h-3 text-gray-400 transition-transform duration-150 ${expandedSkill === skill.name ? "rotate-90" : ""}`}
+                    className={`w-3 h-3 shrink-0 transition-transform duration-150 ${
+                      expandedSkill === skill.name
+                        ? "rotate-90 text-indigo-500 dark:text-indigo-400"
+                        : "text-gray-400 group-hover:text-gray-500 dark:group-hover:text-gray-300"
+                    }`}
                     fill="none"
                     viewBox="0 0 24 24"
                     stroke="currentColor"
@@ -160,22 +166,25 @@ export function SkillPanel({ skillsHook: externalHook }: SkillPanelProps) {
                     </span>
                   )}
                 </div>
-                <div className="mt-0.5 ml-[18px] text-[10px] text-gray-400 dark:text-gray-500 truncate">
+                <div className="mt-0.5 ml-[18px] text-[10px] text-gray-400 dark:text-gray-500 line-clamp-2 leading-relaxed">
                   {skill.shortDescription || skill.description}
                 </div>
               </button>
 
               {/* Expanded skill content */}
               {expandedSkill === skill.name && loadedSkill?.name === skill.name && (
-                <div className="mx-2.5 mb-2 p-2 rounded-md bg-gray-50 dark:bg-gray-800/50 border border-gray-100 dark:border-gray-800 space-y-1.5">
-                  {/* Full description (always shown when expanded) */}
-                  <div className="text-[10px] text-gray-500 dark:text-gray-400 leading-relaxed">
+                <div className="mx-2.5 mb-2 rounded-md bg-gray-50 dark:bg-gray-800/50 border border-gray-100 dark:border-gray-800 overflow-hidden">
+                  {/* Full description */}
+                  <div className="px-3 py-2 text-[11px] text-gray-600 dark:text-gray-400 leading-relaxed border-b border-gray-100 dark:border-gray-700">
                     {loadedSkill.description}
                   </div>
-                  {/* Instructions preview */}
+                  {/* Skill instructions rendered as markdown */}
                   {loadedSkill.content && (
-                    <div className="text-[10px] font-mono text-gray-600 dark:text-gray-400 whitespace-pre-wrap max-h-40 overflow-y-auto leading-relaxed border-t border-gray-100 dark:border-gray-700 pt-1.5">
-                      {loadedSkill.content}
+                    <div className="max-h-60 overflow-y-auto skill-content-viewer">
+                      <MarkdownViewer
+                        content={loadedSkill.content}
+                        className="px-3 py-2 text-[11px] leading-relaxed prose-compact"
+                      />
                     </div>
                   )}
                 </div>
