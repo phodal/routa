@@ -31,6 +31,7 @@ import { initRoutaOrchestrator, getRoutaOrchestrator } from "@/core/orchestratio
 import { getRoutaSystem } from "@/core/routa-system";
 import { AgentRole } from "@/core/models/agent";
 import { buildCoordinatorPrompt, getSpecialistByRole } from "@/core/orchestration/specialist-prompts";
+import { AcpError } from "@/core/acp/acp-process";
 
 export const dynamic = "force-dynamic";
 
@@ -517,6 +518,17 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error("[ACP Route] Error:", error);
+
+    // Handle AcpError with auth information
+    if (error instanceof AcpError) {
+      return jsonrpcResponse(null, null, {
+        code: error.code,
+        message: error.message,
+        authMethods: error.authMethods,
+        agentInfo: error.agentInfo,
+      });
+    }
+
     return jsonrpcResponse(null, null, {
       code: -32603,
       message: error instanceof Error ? error.message : "Internal error",
@@ -526,10 +538,17 @@ export async function POST(request: NextRequest) {
 
 // ─── Helpers ───────────────────────────────────────────────────────────
 
+interface JsonRpcError {
+  code: number;
+  message: string;
+  authMethods?: Array<{ id: string; name: string; description: string }>;
+  agentInfo?: { name: string; version: string };
+}
+
 function jsonrpcResponse(
   id: string | number | null,
   result: unknown,
-  error?: { code: number; message: string }
+  error?: JsonRpcError
 ) {
   if (error) {
     return NextResponse.json({ jsonrpc: "2.0", id, error });

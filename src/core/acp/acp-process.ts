@@ -12,6 +12,50 @@ import {getServerBridge} from "@/core/platform";
  * Uses the platform bridge for process spawning and file system operations,
  * enabling support across Web (Node.js), Tauri, and Electron environments.
  */
+/**
+ * Authentication method info from ACP agent.
+ */
+export interface AcpAuthMethod {
+    id: string;
+    name: string;
+    description: string;
+}
+
+/**
+ * ACP initialization result containing agent capabilities and auth methods.
+ */
+export interface AcpInitResult {
+    protocolVersion: number;
+    agentCapabilities?: Record<string, unknown>;
+    agentInfo?: {
+        name: string;
+        version: string;
+    };
+    authMethods?: AcpAuthMethod[];
+}
+
+/**
+ * Custom error class for ACP errors that may include auth requirements.
+ */
+export class AcpError extends Error {
+    code: number;
+    authMethods?: AcpAuthMethod[];
+    agentInfo?: { name: string; version: string };
+
+    constructor(
+        message: string,
+        code: number,
+        authMethods?: AcpAuthMethod[],
+        agentInfo?: { name: string; version: string }
+    ) {
+        super(message);
+        this.name = "AcpError";
+        this.code = code;
+        this.authMethods = authMethods;
+        this.agentInfo = agentInfo;
+    }
+}
+
 export class AcpProcess {
     private process: IProcessHandle | null = null;
     private buffer = "";
@@ -21,10 +65,15 @@ export class AcpProcess {
     private _sessionId: string | null = null;
     private _alive = false;
     private _config: AcpProcessConfig;
+    private _initResult: AcpInitResult | null = null;
 
     constructor(config: AcpProcessConfig, onNotification: NotificationHandler) {
         this._config = config;
         this.onNotification = onNotification;
+    }
+
+    get initResult(): AcpInitResult | null {
+        return this._initResult;
     }
 
     get sessionId(): string | null {
@@ -146,15 +195,20 @@ export class AcpProcess {
 
     /**
      * Initialize the ACP protocol.
+     * Stores the result including authMethods for later use.
      */
-    async initialize(): Promise<unknown> {
+    async initialize(): Promise<AcpInitResult> {
         const result = await this.sendRequest("initialize", {
             protocolVersion: 1,
             clientInfo: {
                 name: "routa-js",
                 version: "0.1.0",
             },
-        });
+        }) as AcpInitResult;
+
+        // Store the init result for later use (e.g., auth error handling)
+        this._initResult = result;
+
         console.log(
             `[AcpProcess:${this._config.displayName}] Initialized:`,
             JSON.stringify(result)
@@ -164,18 +218,39 @@ export class AcpProcess {
 
     /**
      * Create a new ACP session.
+     * Throws AcpError with authMethods if authentication is required.
      */
     async newSession(cwd?: string): Promise<string> {
-        const result = (await this.sendRequest("session/new", {
-            cwd: cwd || this._config.cwd,
-            mcpServers: [],
-        })) as { sessionId: string };
+        try {
+            const result = (await this.sendRequest("session/new", {
+                cwd: cwd || this._config.cwd,
+                mcpServers: [],
+            })) as { sessionId: string };
 
-        this._sessionId = result.sessionId;
-        console.log(
-            `[AcpProcess:${this._config.displayName}] Session created: ${this._sessionId}`
-        );
-        return this._sessionId;
+            this._sessionId = result.sessionId;
+            console.log(
+                `[AcpProcess:${this._config.displayName}] Session created: ${this._sessionId}`
+            );
+            return this._sessionId;
+        } catch (error) {
+            // If authentication is required, throw AcpError with auth info
+            if (error instanceof Error) {
+                const authMatch = error.message.match(/ACP Error \[(-?\d+)\]:\s*(.+)/);
+                if (authMatch) {
+                    const code = parseInt(authMatch[1], 10);
+                    const message = authMatch[2];
+
+                    // Include authMethods from init result if available
+                    throw new AcpError(
+                        message,
+                        code,
+                        this._initResult?.authMethods,
+                        this._initResult?.agentInfo
+                    );
+                }
+            }
+            throw error;
+        }
     }
 
     /**

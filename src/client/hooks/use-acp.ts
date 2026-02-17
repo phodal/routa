@@ -16,6 +16,8 @@ import {
   AcpSessionNotification,
   AcpNewSessionResult,
   AcpProviderInfo,
+  AcpClientError,
+  AcpAuthMethod,
 } from "../acp-client";
 import {
   desktopStaticApiError,
@@ -23,6 +25,15 @@ import {
   logRuntime,
   toErrorMessage,
 } from "../utils/diagnostics";
+
+/**
+ * Authentication error info for display in UI.
+ */
+export interface AuthErrorInfo {
+  message: string;
+  authMethods: AcpAuthMethod[];
+  agentInfo?: { name: string; version: string };
+}
 
 export interface UseAcpState {
   connected: boolean;
@@ -32,6 +43,8 @@ export interface UseAcpState {
   selectedProvider: string;
   loading: boolean;
   error: string | null;
+  /** Authentication error with methods to authenticate */
+  authError: AuthErrorInfo | null;
 }
 
 export interface UseAcpActions {
@@ -48,6 +61,8 @@ export interface UseAcpActions {
   prompt: (text: string) => Promise<void>;
   cancel: () => Promise<void>;
   disconnect: () => void;
+  /** Clear auth error (e.g., when user dismisses the popup) */
+  clearAuthError: () => void;
 }
 
 export function useAcp(baseUrl: string = ""): UseAcpState & UseAcpActions {
@@ -62,6 +77,7 @@ export function useAcp(baseUrl: string = ""): UseAcpState & UseAcpActions {
     selectedProvider: "opencode",
     loading: false,
     error: null,
+    authError: null,
   });
 
   // Clean up on unmount
@@ -109,6 +125,11 @@ export function useAcp(baseUrl: string = ""): UseAcpState & UseAcpActions {
     }
   }, [baseUrl]);
 
+  /** Clear auth error (e.g., when user dismisses the popup) */
+  const clearAuthError = useCallback(() => {
+    setState((s) => ({ ...s, authError: null }));
+  }, []);
+
   const createSession = useCallback(
     async (
       cwd?: string,
@@ -122,7 +143,7 @@ export function useAcp(baseUrl: string = ""): UseAcpState & UseAcpActions {
         if (isDesktopStaticRuntime()) {
           throw desktopStaticApiError("ACP");
         }
-        setState((s) => ({ ...s, loading: true, error: null, updates: [] }));
+        setState((s) => ({ ...s, loading: true, error: null, authError: null, updates: [] }));
         const activeProvider = provider ?? state.selectedProvider;
         const result = await client.newSession({
           cwd,
@@ -141,6 +162,22 @@ export function useAcp(baseUrl: string = ""): UseAcpState & UseAcpActions {
         return result;
       } catch (err) {
         logRuntime("error", "useAcp.createSession", "Failed to create ACP session", err);
+
+        // Check if this is an auth error with authMethods
+        if (err instanceof AcpClientError && err.authMethods && err.authMethods.length > 0) {
+          setState((s) => ({
+            ...s,
+            loading: false,
+            error: null,
+            authError: {
+              message: err.message,
+              authMethods: err.authMethods!,
+              agentInfo: err.agentInfo,
+            },
+          }));
+          return null;
+        }
+
         setState((s) => ({
           ...s,
           loading: false,
@@ -219,6 +256,7 @@ export function useAcp(baseUrl: string = ""): UseAcpState & UseAcpActions {
       selectedProvider: "opencode",
       loading: false,
       error: null,
+      authError: null,
     });
   }, []);
 
@@ -232,5 +270,6 @@ export function useAcp(baseUrl: string = ""): UseAcpState & UseAcpActions {
     prompt,
     cancel,
     disconnect,
+    clearAuthError,
   };
 }

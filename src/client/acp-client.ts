@@ -44,6 +44,37 @@ export interface AcpProviderInfo {
 
 export type SessionUpdateHandler = (update: AcpSessionNotification) => void;
 
+/**
+ * Authentication method info from ACP agent.
+ */
+export interface AcpAuthMethod {
+  id: string;
+  name: string;
+  description: string;
+}
+
+/**
+ * Custom error class for ACP errors that may include auth requirements.
+ */
+export class AcpClientError extends Error {
+  code: number;
+  authMethods?: AcpAuthMethod[];
+  agentInfo?: { name: string; version: string };
+
+  constructor(
+    message: string,
+    code: number,
+    authMethods?: AcpAuthMethod[],
+    agentInfo?: { name: string; version: string }
+  ) {
+    super(message);
+    this.name = "AcpClientError";
+    this.code = code;
+    this.authMethods = authMethods;
+    this.agentInfo = agentInfo;
+  }
+}
+
 export class BrowserAcpClient {
   private baseUrl: string;
   private eventSource: EventSource | null = null;
@@ -219,8 +250,12 @@ export class BrowserAcpClient {
     const data = await response.json();
 
     if (data.error) {
-      throw new Error(
-        `ACP Error [${data.error.code}]: ${data.error.message}`
+      // Throw AcpClientError with auth info if available
+      throw new AcpClientError(
+        data.error.message,
+        data.error.code,
+        data.error.authMethods,
+        data.error.agentInfo
       );
     }
 
