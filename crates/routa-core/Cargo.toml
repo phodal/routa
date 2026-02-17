@@ -1,0 +1,57 @@
+[package]
+name = "routa-core"
+version = "0.1.0"
+description = "Routa.js core domain — models, stores, protocols, and JSON-RPC (transport-agnostic)"
+authors = ["phodal"]
+edition = "2021"
+license = "MIT"
+
+[lib]
+name = "routa_core"
+path = "src/lib.rs"
+
+[features]
+default = []
+# Enable axum IntoResponse impl on ServerError for HTTP adapters
+axum = ["dep:axum"]
+
+[dependencies]
+# Optional: axum integration for ServerError → IntoResponse
+axum = { version = "0.8", optional = true }
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+tokio-stream = "0.1"
+async-stream = "0.3"
+
+# Database
+rusqlite = { version = "0.32", features = ["bundled"] }
+
+# MCP & ACP protocols
+rmcp = { version = "0.15", features = ["server", "transport-streamable-http-server", "schemars"] }
+schemars = "1"
+agent-client-protocol = "0.9"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Utilities
+uuid = { version = "1", features = ["v4"] }
+chrono = { version = "0.4", features = ["serde"] }
+thiserror = "2"
+glob = "0.3"
+regex = "1"
+dirs = "5"
+
+# Logging
+tracing = "0.1"
+
+# HTTP client (for ACP registry fetching etc.)
+reqwest = { version = "0.12", features = ["json"] }
+
+# Archive extraction (for ACP binary installation)
+zip = "2"
+flate2 = "1"
+tar = "0.4"
+bzip2 = "0.5"

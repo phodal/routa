@@ -11,4 +11,5 @@ name = "routa_rpc"
 path = "src/lib.rs"
 
 [dependencies]
-routa-server = { path = "../routa-server" }
+# Core domain only — no HTTP framework needed
+routa-core = { path = "../routa-core" }

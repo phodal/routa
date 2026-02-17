@@ -1,5 +1,8 @@
-use axum::http::StatusCode;
-use axum::response::{IntoResponse, Response};
+//! Core error type for the Routa platform.
+//!
+//! `ServerError` is used throughout the core domain (stores, RPC, etc.).
+//! When the `axum` feature is enabled, it also implements `IntoResponse`
+//! so it can be used directly as an axum handler error type.
 
 #[derive(Debug, thiserror::Error)]
 pub enum ServerError {
@@ -16,8 +19,15 @@ pub enum ServerError {
     Internal(String),
 }
 
-impl IntoResponse for ServerError {
-    fn into_response(self) -> Response {
+// ---------------------------------------------------------------------------
+// axum integration (opt-in via feature flag)
+// ---------------------------------------------------------------------------
+
+#[cfg(feature = "axum")]
+impl axum::response::IntoResponse for ServerError {
+    fn into_response(self) -> axum::response::Response {
+        use axum::http::StatusCode;
+
         let (status, message) = match &self {
             ServerError::Database(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg.clone()),
             ServerError::NotFound(msg) => (StatusCode::NOT_FOUND, msg.clone()),

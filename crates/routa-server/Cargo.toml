@@ -1,7 +1,7 @@
 [package]
 name = "routa-server"
 version = "0.1.0"
-description = "Routa.js Rust Backend Server - Multi-agent coordination platform"
+description = "Routa.js HTTP Server — axum adapter on top of routa-core"
 authors = ["phodal"]
 edition = "2021"
 license = "MIT"
@@ -11,48 +11,35 @@ name = "routa_server"
 path = "src/lib.rs"
 
 [dependencies]
+# Core domain (with axum IntoResponse support)
+routa-core = { path = "../routa-core", features = ["axum"] }
+
 # Web framework
 axum = { version = "0.8", features = ["macros"] }
 axum-extra = { version = "0.10", features = ["multipart"] }
 tower = "0.5"
 tower-http = { version = "0.6", features = ["cors", "trace", "fs"] }
 
-# Async runtime
+# Async runtime (re-used from routa-core, but needed for server bootstrap)
 tokio = { version = "1", features = ["full"] }
 tokio-stream = "0.1"
 async-stream = "0.3"
 
-# Database
-rusqlite = { version = "0.32", features = ["bundled"] }
-
-# MCP & ACP protocols
-rmcp = { version = "0.15", features = ["server", "transport-streamable-http-server", "schemars"] }
-schemars = "1"
-agent-client-protocol = "0.9"
-
-# Serialization
+# Serialization (re-used from routa-core, needed in API handlers)
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
-# Utilities
+# Utilities used in API handlers
 uuid = { version = "1", features = ["v4"] }
 chrono = { version = "0.4", features = ["serde"] }
-thiserror = "2"
-glob = "0.3"
+
+# HTTP client (used directly in some API handlers)
+reqwest = { version = "0.12", features = ["json"] }
 regex = "1"
-dirs = "5"
 
 # Logging
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-reqwest = { version = "0.12", features = ["json"] }
-
-# Archive extraction
-zip = "2"
-flate2 = "1"
-tar = "0.4"
-bzip2 = "0.5"
 
 [dev-dependencies]
 reqwest = { version = "0.12", features = ["json"] }
-

@@ -1745,6 +1745,7 @@ version = "0.1.0"
 dependencies = [
  "agent-client-protocol",
  "async-stream",
+ "axum",
  "bzip2",
  "chrono",
  "dirs",
@@ -1764,13 +1765,6 @@ dependencies = [
  "tracing",
  "uuid",
  "zip",
-]
-
-[[package]]
-name = "routa-rpc"
-version = "0.1.0"
-dependencies = [
- "routa-core",
 ]
 
 [[package]]

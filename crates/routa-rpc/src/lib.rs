@@ -8,7 +8,7 @@
 //! # Architecture
 //!
 //! ```text
-//! routa-server  (core: models, stores, state, REST API, rpc module)
+//! routa-core    (domain: models, stores, state, protocols, RPC)
 //!      ↑
 //! routa-rpc     (re-export facade — this crate)
 //!      ↑
@@ -74,10 +74,10 @@
 //! | skills      | `skills.get`         | Get skill by name              |
 //! | skills      | `skills.reload`      | Re-discover skills             |
 
-// Re-export the core RPC types and router from routa-server
-pub use routa_server::rpc::error::RpcError;
-pub use routa_server::rpc::router::RpcRouter;
-pub use routa_server::rpc::types::{
+// Re-export the core RPC types and router from routa-core
+pub use routa_core::rpc::error::RpcError;
+pub use routa_core::rpc::router::RpcRouter;
+pub use routa_core::rpc::types::{
     JsonRpcError, JsonRpcRequest, JsonRpcResponse,
     BAD_REQUEST, INTERNAL_ERROR, INVALID_PARAMS, INVALID_REQUEST,
     METHOD_NOT_FOUND, NOT_FOUND, PARSE_ERROR,
@@ -85,5 +85,5 @@ pub use routa_server::rpc::types::{
 
 // Re-export method param/result types for typed usage
 pub mod methods {
-    pub use routa_server::rpc::methods::*;
+    pub use routa_core::rpc::methods::*;
 }

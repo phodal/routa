@@ -1,29 +1,44 @@
-//! Routa Server - Multi-agent Coordination Platform Backend
+//! Routa Server — HTTP adapter for the Routa.js platform.
 //!
-//! A standalone Rust backend server for the Routa.js platform, providing:
-//! - RESTful HTTP API via axum
-//! - SQLite database with rusqlite
-//! - MCP (Model Context Protocol) server via rmcp
-//! - ACP (Agent Client Protocol) integration
+//! This crate provides the HTTP/REST layer (via axum) on top of `routa-core`.
+//! It re-exports all core modules so downstream consumers that only need the
+//! server can depend on this single crate.
 //!
-//! This crate can be used standalone or embedded in other applications
-//! (e.g., Tauri desktop app).
+//! # Architecture
+//!
+//! ```text
+//! routa-core    (domain: models, stores, state, protocols, RPC)
+//!      ↑
+//! routa-server  (adapter: HTTP/axum, this crate)
+//! ```
 
-pub mod acp;
+// ── Re-export everything from routa-core ────────────────────────────────
+// This allows API handlers and external consumers to use `crate::models::*`,
+// `crate::error::ServerError`, etc. without knowing about the crate split.
+
+pub use routa_core::acp;
+pub use routa_core::db;
+pub use routa_core::error;
+pub use routa_core::events;
+pub use routa_core::git;
+pub use routa_core::mcp;
+pub use routa_core::models;
+pub use routa_core::orchestration;
+pub use routa_core::rpc;
+pub use routa_core::shell_env;
+pub use routa_core::skills;
+pub use routa_core::state;
+pub use routa_core::store;
+pub use routa_core::tools;
+
+// Also re-export commonly used types at the top level
+pub use routa_core::{AppState, AppStateInner, Database, ServerError};
+
+// ── HTTP-specific modules ───────────────────────────────────────────────
+
 pub mod api;
-pub mod db;
-pub mod error;
-pub mod events;
-pub mod git;
-pub mod mcp;
-pub mod models;
-pub mod orchestration;
-pub mod rpc;
-pub mod shell_env;
-pub mod skills;
-pub mod state;
-pub mod store;
-pub mod tools;
+
+// ── Server bootstrap ────────────────────────────────────────────────────
 
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -31,9 +46,6 @@ use std::sync::Arc;
 use axum::Router;
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::TraceLayer;
-
-use self::db::Database;
-use self::state::{AppState, AppStateInner};
 
 /// Configuration for the Routa backend server.
 pub struct ServerConfig {
@@ -60,11 +72,11 @@ impl Default for ServerConfig {
 ///
 /// This is useful when you need to share the state between the HTTP server
 /// and other consumers (e.g. Tauri IPC commands, JSON-RPC router).
-pub async fn create_app_state(db_path: &str) -> Result<AppState, String> {
-    let db = Database::open(db_path)
+pub async fn create_app_state(db_path: &str) -> Result<state::AppState, String> {
+    let db = db::Database::open(db_path)
         .map_err(|e| format!("Failed to open database: {}", e))?;
 
-    let state: AppState = Arc::new(AppStateInner::new(db));
+    let state: state::AppState = Arc::new(state::AppStateInner::new(db));
 
     // Ensure default workspace exists
     state
@@ -90,7 +102,7 @@ pub async fn start_server(config: ServerConfig) -> Result<SocketAddr, String> {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "routa_server=info,tower_http=info".into()),
+                .unwrap_or_else(|_| "routa_core=info,routa_server=info,tower_http=info".into()),
         )
         .init();
 
@@ -116,7 +128,7 @@ pub async fn start_server(config: ServerConfig) -> Result<SocketAddr, String> {
 /// consumers (e.g. a Tauri IPC command that routes JSON-RPC calls directly).
 pub async fn start_server_with_state(
     config: ServerConfig,
-    state: AppState,
+    state: state::AppState,
 ) -> Result<SocketAddr, String> {
     // Build router
     let cors = CorsLayer::new()

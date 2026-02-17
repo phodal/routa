@@ -4114,6 +4114,34 @@ dependencies = [
 ]
 
 [[package]]
+name = "routa-core"
+version = "0.1.0"
+dependencies = [
+ "agent-client-protocol",
+ "async-stream",
+ "axum",
+ "bzip2",
+ "chrono",
+ "dirs 5.0.1",
+ "flate2",
+ "glob",
+ "regex",
+ "reqwest 0.12.28",
+ "rmcp",
+ "rusqlite",
+ "schemars 1.2.1",
+ "serde",
+ "serde_json",
+ "tar",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-stream",
+ "tracing",
+ "uuid",
+ "zip",
+]
+
+[[package]]
 name = "routa-desktop"
 version = "0.1.0"
 dependencies = [
@@ -4138,24 +4166,15 @@ dependencies = [
 name = "routa-server"
 version = "0.1.0"
 dependencies = [
- "agent-client-protocol",
  "async-stream",
  "axum",
  "axum-extra",
- "bzip2",
  "chrono",
- "dirs 5.0.1",
- "flate2",
- "glob",
  "regex",
  "reqwest 0.12.28",
- "rmcp",
- "rusqlite",
- "schemars 1.2.1",
+ "routa-core",
  "serde",
  "serde_json",
- "tar",
- "thiserror 2.0.18",
  "tokio",
  "tokio-stream",
  "tower",
@@ -4163,7 +4182,6 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "uuid",
- "zip",
 ]
 
 [[package]]

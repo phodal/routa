@@ -1833,13 +1833,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "routa-server"
+name = "routa-core"
 version = "0.1.0"
 dependencies = [
  "agent-client-protocol",
  "async-stream",
  "axum",
- "axum-extra",
  "bzip2",
  "chrono",
  "dirs",
@@ -1856,12 +1855,31 @@ dependencies = [
  "thiserror 2.0.18",
  "tokio",
  "tokio-stream",
+ "tracing",
+ "uuid",
+ "zip",
+]
+
+[[package]]
+name = "routa-server"
+version = "0.1.0"
+dependencies = [
+ "async-stream",
+ "axum",
+ "axum-extra",
+ "chrono",
+ "regex",
+ "reqwest",
+ "routa-core",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-stream",
  "tower",
  "tower-http",
  "tracing",
  "tracing-subscriber",
  "uuid",
- "zip",
 ]
 
 [[package]]
