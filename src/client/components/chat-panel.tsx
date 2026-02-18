@@ -109,6 +109,8 @@ export function ChatPanel({
   const streamingMsgIdRef = useRef<Record<string, string | null>>({});
   const streamingThoughtIdRef = useRef<Record<string, string | null>>({});
   const lastProcessedUpdateIndexRef = useRef(0);
+  // Track the last update kind per session to determine when to create new messages
+  const lastUpdateKindRef = useRef<Record<string, string | null>>({});
 
   // Auto-scroll
   useEffect(() => {
@@ -191,11 +193,20 @@ export function ChatPanel({
           return "";
         };
 
+        const lastKind = lastUpdateKindRef.current[sid];
+
         switch (kind) {
           case "agent_message_chunk": {
             const text = extractText();
             if (!text) break;
             streamingThoughtIdRef.current[sid] = null;
+
+            // If last update was NOT agent_message_chunk, create a new message
+            const shouldCreateNew = lastKind !== "agent_message_chunk";
+            if (shouldCreateNew) {
+              streamingMsgIdRef.current[sid] = null;
+            }
+
             let msgId = streamingMsgIdRef.current[sid];
             if (!msgId) {
               msgId = uuidv4();
@@ -213,6 +224,13 @@ export function ChatPanel({
           case "agent_thought_chunk": {
             const text = extractText();
             if (!text) break;
+
+            // If last update was NOT agent_thought_chunk, create a new thought
+            const shouldCreateNewThought = lastKind !== "agent_thought_chunk";
+            if (shouldCreateNewThought) {
+              streamingThoughtIdRef.current[sid] = null;
+            }
+
             let thoughtId = streamingThoughtIdRef.current[sid];
             if (!thoughtId) {
               thoughtId = uuidv4();
@@ -453,6 +471,9 @@ export function ChatPanel({
             console.log(`[ChatPanel] Unhandled sessionUpdate: ${kind}`);
             break;
         }
+
+        // Track last update kind for streaming message grouping
+        lastUpdateKindRef.current[sid] = kind;
       }
 
       return next;
