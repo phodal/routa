@@ -40,6 +40,8 @@ interface ChatMessage {
   toolStatus?: string;
   toolCallId?: string;
   toolKind?: string;
+  /** Raw input parameters for tool calls */
+  toolRawInput?: Record<string, unknown>;
   planEntries?: PlanEntry[];
   usageUsed?: number;
   usageSize?: number;
@@ -230,6 +232,9 @@ export function ChatPanel({
             const title = (update.title as string) ?? "tool";
             const status = (update.status as string) ?? "running";
             const toolKind = update.kind as string | undefined;
+            const rawInput = (typeof update.rawInput === "object" && update.rawInput !== null)
+              ? update.rawInput as Record<string, unknown>
+              : undefined;
             const contentParts: string[] = [];
             if (update.rawInput) {
               contentParts.push(
@@ -251,6 +256,7 @@ export function ChatPanel({
               toolStatus: status,
               toolCallId,
               toolKind,
+              toolRawInput: rawInput,
             });
             break;
           }
@@ -715,12 +721,24 @@ function MessageBubble({ message }: { message: ChatMessage }) {
     case "thought":
       return <ThoughtBubble content={message.content} />;
     case "tool":
+      // Use TaskBubble for task tool calls
+      if (message.toolKind === "task") {
+        return (
+          <TaskBubble
+            content={message.content}
+            toolName={message.toolName}
+            toolStatus={message.toolStatus}
+            rawInput={message.toolRawInput}
+          />
+        );
+      }
       return (
         <ToolBubble
           content={message.content}
           toolName={message.toolName}
           toolStatus={message.toolStatus}
           toolKind={message.toolKind}
+          rawInput={message.toolRawInput}
         />
       );
     case "terminal":
@@ -811,10 +829,27 @@ function ThoughtBubble({ content }: { content: string }) {
 
 // ─── Tool Bubble ───────────────────────────────────────────────────────
 
+/** Format raw input for inline display (truncated) */
+function formatToolInputInline(rawInput?: Record<string, unknown>, maxLen = 60): string {
+  if (!rawInput || Object.keys(rawInput).length === 0) return "";
+  // For common tools, show the most relevant param
+  const path = rawInput.file_path ?? rawInput.path ?? rawInput.file;
+  if (typeof path === "string") return path.length > maxLen ? `…${path.slice(-maxLen)}` : path;
+  const cmd = rawInput.command;
+  if (typeof cmd === "string") return cmd.length > maxLen ? `${cmd.slice(0, maxLen)}…` : cmd;
+  const pattern = rawInput.pattern ?? rawInput.glob_pattern ?? rawInput.query;
+  if (typeof pattern === "string") return pattern.length > maxLen ? `${pattern.slice(0, maxLen)}…` : pattern;
+  // Fallback: stringify first key-value
+  const firstKey = Object.keys(rawInput)[0];
+  const firstVal = rawInput[firstKey];
+  const str = typeof firstVal === "string" ? firstVal : JSON.stringify(firstVal);
+  return str.length > maxLen ? `${str.slice(0, maxLen)}…` : str;
+}
+
 function ToolBubble({
-  content, toolName, toolStatus, toolKind,
+  content, toolName, toolStatus, toolKind, rawInput,
 }: {
-  content: string; toolName?: string; toolStatus?: string; toolKind?: string;
+  content: string; toolName?: string; toolStatus?: string; toolKind?: string; rawInput?: Record<string, unknown>;
 }) {
   const [expanded, setExpanded] = useState(false);
   const statusColor =
@@ -823,32 +858,94 @@ function ToolBubble({
         : toolStatus === "in_progress" || toolStatus === "running" ? "bg-yellow-500 animate-pulse"
           : "bg-gray-400";
   const kindLabel = toolKind ? ` (${toolKind})` : "";
+  const inputPreview = formatToolInputInline(rawInput);
+
+  return (
+    <div className="flex flex-col items-start">
+      <button
+        type="button"
+        onClick={() => setExpanded((e) => !e)}
+        className="max-w-[90%] px-2.5 py-1 rounded-md bg-gray-50 dark:bg-[#161922] flex items-center gap-2 text-left hover:bg-gray-100 dark:hover:bg-[#1a1d2e] transition-colors"
+      >
+        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${statusColor}`} />
+        <span className="text-xs font-medium text-gray-700 dark:text-gray-300 shrink-0">
+          {toolName ?? "tool"}{kindLabel}
+        </span>
+        {inputPreview && (
+          <span className="text-[11px] text-gray-500 dark:text-gray-400 truncate max-w-[200px]">
+            {inputPreview}
+          </span>
+        )}
+        <svg
+          className={`w-2.5 h-2.5 text-gray-400 transition-transform duration-150 shrink-0 ml-auto ${expanded ? "rotate-90" : ""}`}
+          fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+        </svg>
+      </button>
+      {expanded && content && (
+        <div className="mt-1 ml-4 px-2.5 py-2 text-xs font-mono text-gray-600 dark:text-gray-400 whitespace-pre-wrap max-h-48 overflow-y-auto bg-gray-50 dark:bg-[#161922] rounded-md max-w-[90%]">
+          {content}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Task Bubble ──────────────────────────────────────────────────────
+
+function TaskBubble({
+  content, toolName, toolStatus, rawInput,
+}: {
+  content: string; toolName?: string; toolStatus?: string; rawInput?: Record<string, unknown>;
+}) {
+  const [expanded, setExpanded] = useState(true);
+  const statusColor =
+    toolStatus === "completed" ? "bg-green-500"
+      : toolStatus === "failed" ? "bg-red-500"
+        : toolStatus === "running" ? "bg-amber-500 animate-pulse"
+          : "bg-gray-400";
+  const statusLabel =
+    toolStatus === "completed" ? "done"
+      : toolStatus === "failed" ? "failed"
+        : toolStatus === "running" ? "running"
+          : "pending";
+
+  // Extract task info from rawInput
+  const description = (rawInput?.description as string) ?? "";
+  const subagentType = (rawInput?.subagent_type as string) ?? "";
+  const prompt = (rawInput?.prompt as string) ?? "";
 
   return (
     <div className="flex justify-start">
-      <div className="max-w-[90%] rounded-lg border border-gray-100 dark:border-gray-800 overflow-hidden">
+      <div className="max-w-[90%] w-full rounded-lg border border-amber-200 dark:border-amber-800/50 overflow-hidden bg-amber-50/50 dark:bg-amber-900/10">
         <button
           type="button"
           onClick={() => setExpanded((e) => !e)}
-          className="w-full px-3 py-1.5 bg-gray-50 dark:bg-[#161922] border-b border-gray-100 dark:border-gray-800 flex items-center gap-2 text-left"
+          className="w-full px-3 py-2 flex items-center gap-2 text-left"
         >
-          <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${statusColor}`} />
-          <span className="text-xs font-mono text-gray-600 dark:text-gray-300 truncate">
-            {toolName ?? "tool"}{kindLabel}
+          <span className={`w-2 h-2 rounded-full shrink-0 ${statusColor}`} />
+          <span className="text-xs font-semibold text-amber-700 dark:text-amber-400">
+            Task{subagentType ? ` [${subagentType}]` : ""}
           </span>
-          <span className="text-[10px] text-gray-400 dark:text-gray-500 ml-auto shrink-0">
-            {toolStatus ?? "pending"}
+          {description && (
+            <span className="text-xs text-gray-700 dark:text-gray-300 truncate flex-1">
+              {description}
+            </span>
+          )}
+          <span className="text-[10px] text-gray-500 dark:text-gray-400 ml-auto shrink-0">
+            {statusLabel}
           </span>
           <svg
-            className={`w-3 h-3 text-gray-400 transition-transform duration-150 shrink-0 ${expanded ? "rotate-90" : ""}`}
+            className={`w-3 h-3 text-gray-400 transition-transform duration-150 shrink-0 ${expanded ? "rotate-180" : ""}`}
             fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
           >
-            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
           </svg>
         </button>
-        {expanded && (
-          <div className="px-3 py-2 text-xs font-mono text-gray-600 dark:text-gray-400 whitespace-pre-wrap max-h-48 overflow-y-auto bg-white dark:bg-[#0f1117]">
-            {content}
+        {expanded && prompt && (
+          <div className="px-3 py-2 border-t border-amber-200/50 dark:border-amber-800/30 text-xs text-gray-600 dark:text-gray-400 whitespace-pre-wrap max-h-32 overflow-y-auto">
+            {prompt}
           </div>
         )}
       </div>
