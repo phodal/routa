@@ -12,7 +12,31 @@ import { getServerBridge } from "@/core/platform";
  *
  * This process translates Claude's output into ACP-compatible `session/update`
  * notifications so the existing frontend renderer works without changes.
+ *
+ * Streaming optimization (ported from JetBrains ml-llm):
+ *   - Uses isCompleteJson() to detect complete JSON objects
+ *   - Processes messages immediately when complete, without waiting for newlines
+ *   - Handles JSON that may span multiple chunks
  */
+
+// ─── JSON Parsing Utilities ───────────────────────────────────────────────
+
+/**
+ * Check if a JSON string is complete (ends with closing brace).
+ * Ported from JetBrains ClaudeCodeProcessHandler.
+ */
+function isCompleteJson(json: string): boolean {
+    return json.trimEnd().endsWith("}");
+}
+
+/**
+ * Remove ANSI escape codes from text.
+ * Ported from JetBrains ClaudeCodeProcessHandler.
+ */
+function clearAnsi(text: string): string {
+    // eslint-disable-next-line no-control-regex
+    return text.replace(/\x1b\[[0-9;]*m/g, "");
+}
 
 // ─── Claude Protocol Types ──────────────────────────────────────────────
 
@@ -318,19 +342,53 @@ export class ClaudeCodeProcess {
 
     // ─── Private: Buffer and Parse ──────────────────────────────────────
 
+    /**
+     * Process the buffer to extract complete JSON messages.
+     *
+     * This implementation is optimized for streaming (ported from JetBrains ml-llm):
+     * 1. Clears ANSI escape codes from incoming text
+     * 2. Uses isCompleteJson() to detect complete JSON objects
+     * 3. Processes messages immediately when complete, without waiting for newlines
+     * 4. Handles JSON that may span multiple chunks
+     */
     private processBuffer(): void {
+        // First, try the newline-based approach for NDJSON (most common case)
         const lines = this.buffer.split("\n");
-        this.buffer = lines[lines.length - 1];
 
+        // Process all complete lines (all but the last one)
         for (let i = 0; i < lines.length - 1; i++) {
-            const line = lines[i].trim();
-            if (!line || !line.startsWith("{")) continue;
+            const line = clearAnsi(lines[i].trim());
+            if (!line) continue;
+
+            // Skip debug/error lines that aren't JSON
+            if (line.startsWith("[DEBUG]") || line.startsWith("[ERROR]")) {
+                continue;
+            }
+
+            // Only process lines that look like JSON objects
+            if (!line.startsWith("{")) continue;
 
             try {
                 const msg = JSON.parse(line) as ClaudeOutputMessage;
                 this.handleClaudeMessage(msg);
             } catch {
-                // Ignore parse errors
+                // Ignore parse errors for incomplete JSON
+            }
+        }
+
+        // Keep the last (potentially incomplete) line in the buffer
+        this.buffer = lines[lines.length - 1];
+
+        // JetBrains-style: Also check if the remaining buffer contains complete JSON
+        // This handles cases where JSON doesn't end with a newline
+        if (this.buffer.startsWith("{") && isCompleteJson(this.buffer)) {
+            const cleanedBuffer = clearAnsi(this.buffer.trim());
+            try {
+                const msg = JSON.parse(cleanedBuffer) as ClaudeOutputMessage;
+                this.handleClaudeMessage(msg);
+                this.buffer = ""; // Clear buffer after successful parse
+            } catch {
+                // JSON looks complete but isn't valid - keep buffering
             }
         }
     }
