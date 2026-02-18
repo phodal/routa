@@ -45,6 +45,7 @@
 - **💬 Inter-Agent Communication**: Message passing, conversation history, completion reports
 - **📡 Multi-Protocol Support**: MCP, ACP, A2A for connecting diverse AI clients
 - **🎯 Skills System**: OpenCode-compatible skill discovery and dynamic loading
+- **🔌 ACP Registry**: Discover and install pre-configured agents from the community registry (supports npx, uvx, and binary distributions)
 - **📊 Real-Time UI**: Live agent status, task progress, streaming chat interface
 
 👉 For detailed protocol specs and API reference, see [AGENTS.md](AGENTS.md)
