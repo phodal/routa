@@ -861,30 +861,30 @@ function ToolBubble({
   const inputPreview = formatToolInputInline(rawInput);
 
   return (
-    <div className="flex flex-col items-start">
+    <div className="flex flex-col w-full">
       <button
         type="button"
         onClick={() => setExpanded((e) => !e)}
-        className="max-w-[90%] px-2.5 py-1 rounded-md bg-gray-50 dark:bg-[#161922] flex items-center gap-2 text-left hover:bg-gray-100 dark:hover:bg-[#1a1d2e] transition-colors"
+        className="w-full px-2.5 py-1 rounded-md bg-gray-50 dark:bg-[#161922] flex items-center gap-2 text-left hover:bg-gray-100 dark:hover:bg-[#1a1d2e] transition-colors"
       >
         <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${statusColor}`} />
         <span className="text-xs font-medium text-gray-700 dark:text-gray-300 shrink-0">
           {toolName ?? "tool"}{kindLabel}
         </span>
         {inputPreview && (
-          <span className="text-[11px] text-gray-500 dark:text-gray-400 truncate max-w-[200px]">
+          <span className="text-[11px] text-gray-500 dark:text-gray-400 truncate flex-1">
             {inputPreview}
           </span>
         )}
         <svg
-          className={`w-2.5 h-2.5 text-gray-400 transition-transform duration-150 shrink-0 ml-auto ${expanded ? "rotate-90" : ""}`}
+          className={`w-2.5 h-2.5 text-gray-400 transition-transform duration-150 shrink-0 ${expanded ? "rotate-90" : ""}`}
           fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
         >
           <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
         </svg>
       </button>
       {expanded && content && (
-        <div className="mt-1 ml-4 px-2.5 py-2 text-xs font-mono text-gray-600 dark:text-gray-400 whitespace-pre-wrap max-h-48 overflow-y-auto bg-gray-50 dark:bg-[#161922] rounded-md max-w-[90%]">
+        <div className="mt-1 ml-4 px-2.5 py-2 text-xs font-mono text-gray-600 dark:text-gray-400 whitespace-pre-wrap max-h-48 overflow-y-auto bg-gray-50 dark:bg-[#161922] rounded-md">
           {content}
         </div>
       )}
@@ -917,15 +917,15 @@ function TaskBubble({
   const prompt = (rawInput?.prompt as string) ?? "";
 
   return (
-    <div className="flex justify-start">
-      <div className="max-w-[90%] w-full rounded-lg border border-amber-200 dark:border-amber-800/50 overflow-hidden bg-amber-50/50 dark:bg-amber-900/10">
+    <div className="w-full">
+      <div className="w-full rounded-lg border border-amber-200 dark:border-amber-800/50 overflow-hidden bg-amber-50/50 dark:bg-amber-900/10">
         <button
           type="button"
           onClick={() => setExpanded((e) => !e)}
           className="w-full px-3 py-2 flex items-center gap-2 text-left"
         >
           <span className={`w-2 h-2 rounded-full shrink-0 ${statusColor}`} />
-          <span className="text-xs font-semibold text-amber-700 dark:text-amber-400">
+          <span className="text-xs font-semibold text-amber-700 dark:text-amber-400 shrink-0">
             Task{subagentType ? ` [${subagentType}]` : ""}
           </span>
           {description && (
@@ -933,7 +933,7 @@ function TaskBubble({
               {description}
             </span>
           )}
-          <span className="text-[10px] text-gray-500 dark:text-gray-400 ml-auto shrink-0">
+          <span className="text-[10px] text-gray-500 dark:text-gray-400 shrink-0">
             {statusLabel}
           </span>
           <svg
