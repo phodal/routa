@@ -12,6 +12,7 @@ import {
   useRef,
   useEffect,
   useCallback,
+  useMemo,
   type ReactElement,
 } from "react";
 import { v4 as uuidv4 } from "uuid";
@@ -26,6 +27,7 @@ import {
   extractTaskBlocks,
   type ParsedTask,
 } from "../utils/task-block-parser";
+import { TaskProgressBar, type TaskInfo } from "./task-progress-bar";
 
 // ─── Message Types ─────────────────────────────────────────────────────
 
@@ -111,6 +113,30 @@ export function ChatPanel({
   const lastProcessedUpdateIndexRef = useRef(0);
   // Track the last update kind per session to determine when to create new messages
   const lastUpdateKindRef = useRef<Record<string, string | null>>({});
+
+  // Extract task-type tool calls for TaskProgressBar
+  const taskInfos = useMemo<TaskInfo[]>(() => {
+    return visibleMessages
+      .filter((msg) => msg.role === "tool" && msg.toolKind === "task")
+      .map((msg) => {
+        const rawInput = msg.toolRawInput ?? {};
+        const description = (rawInput.description as string) ?? "";
+        const subagentType = (rawInput.subagent_type as string) ?? "";
+        // Map toolStatus to TaskInfo status
+        let status: TaskInfo["status"] = "pending";
+        if (msg.toolStatus === "completed") status = "completed";
+        else if (msg.toolStatus === "failed") status = "failed";
+        else if (msg.toolStatus === "running" || msg.toolStatus === "in_progress") status = "running";
+
+        return {
+          id: msg.id,
+          title: description || msg.toolName || "Task",
+          description,
+          subagentType,
+          status,
+        };
+      });
+  }, [visibleMessages]);
 
   // Auto-scroll
   useEffect(() => {
@@ -699,7 +725,11 @@ export function ChatPanel({
 
       {/* Input */}
       <div className="border-t border-gray-100 dark:border-gray-800 bg-white dark:bg-[#0f1117]">
-        <div className="max-w-3xl mx-auto px-5 py-3">
+        <div className="max-w-3xl mx-auto px-5 py-3 space-y-2">
+          {/* Task Progress Bar - shows above input when tasks exist */}
+          {taskInfos.length > 0 && (
+            <TaskProgressBar tasks={taskInfos} />
+          )}
           <div className="flex gap-2 items-end">
             <TiptapInput
               onSend={handleSend}
