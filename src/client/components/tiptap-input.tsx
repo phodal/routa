@@ -31,6 +31,7 @@ import { PluginKey } from "@tiptap/pm/state";
 import { common, createLowlight } from "lowlight";
 import type { SkillSummary } from "../skill-client";
 import { RepoPicker, type RepoSelection } from "./repo-picker";
+import type { FileMatch } from "../hooks/use-file-search";
 
 const lowlight = createLowlight(common);
 
@@ -197,8 +198,14 @@ function createSuggestionDropdown() {
 
 // ─── @ Mention Extension (file search) ─────────────────────────────────
 
+interface FileSearchContext {
+  repoPath: string | null;
+  abortController: AbortController | null;
+}
+
 function createAtMention(
-  getFileItems: () => SuggestionItem[]
+  getFileSearchContext: () => FileSearchContext,
+  getDefaultItems: () => SuggestionItem[]
 ) {
   return Mention.extend({ name: "atMention" }).configure({
     HTMLAttributes: {
@@ -220,14 +227,58 @@ function createAtMention(
     suggestion: {
       char: "@",
       pluginKey: new PluginKey("atMention"),
-      items: ({ query }: { query: string }) => {
-        const allItems = getFileItems();
-        if (!query) return allItems;
-        return allItems.filter((f) =>
-          f.label.toLowerCase().includes(query.toLowerCase()) ||
-          f.id.toLowerCase().includes(query.toLowerCase()) ||
-          (f.description ?? "").toLowerCase().includes(query.toLowerCase())
-        );
+      items: async ({ query }: { query: string }): Promise<SuggestionItem[]> => {
+        const ctx = getFileSearchContext();
+
+        // If no repo selected, show default items
+        if (!ctx.repoPath) {
+          const defaults = getDefaultItems();
+          if (!query) return defaults;
+          return defaults.filter((f) =>
+            f.label.toLowerCase().includes(query.toLowerCase())
+          );
+        }
+
+        // Cancel previous request
+        if (ctx.abortController) {
+          ctx.abortController.abort();
+        }
+
+        // Create new abort controller
+        const controller = new AbortController();
+        ctx.abortController = controller;
+
+        try {
+          const params = new URLSearchParams({
+            q: query,
+            repoPath: ctx.repoPath,
+            limit: "15",
+          });
+
+          const response = await fetch(`/api/files/search?${params}`, {
+            signal: controller.signal,
+          });
+
+          if (!response.ok) {
+            return getDefaultItems();
+          }
+
+          const data = await response.json();
+          const files: FileMatch[] = data.files || [];
+
+          return files.map((f) => ({
+            id: f.path,
+            label: f.name,
+            description: f.path,
+            type: "file",
+            path: f.fullPath,
+          }));
+        } catch (err) {
+          if (err instanceof Error && err.name === "AbortError") {
+            return []; // Request cancelled
+          }
+          return getDefaultItems();
+        }
       },
       render: createSuggestionDropdown,
     },
@@ -451,18 +502,25 @@ export function TiptapInput({
   agentItemsRef.current = [...providerItems, ...sessionItems];
 
   // Ref for @ suggestions (file search)
-  // For now, we provide a static list of common file patterns
-  // In a full implementation, this would be populated by a file search API
-  const fileItemsRef = useRef<SuggestionItem[]>([]);
-  // File items will be populated dynamically when user types @
-  // For now, show helpful hints
+  // File search context for async API calls
+  const fileSearchContextRef = useRef<FileSearchContext>({
+    repoPath: repoSelection?.path ?? null,
+    abortController: null,
+  });
+
+  // Update repo path when selection changes
+  useEffect(() => {
+    fileSearchContextRef.current.repoPath = repoSelection?.path ?? null;
+  }, [repoSelection?.path]);
+
+  // Default file items when no repo is selected
   const defaultFileItems: SuggestionItem[] = [
     { id: "src/", label: "src/", description: "Source directory", type: "file" },
     { id: "package.json", label: "package.json", description: "Package config", type: "file" },
     { id: "README.md", label: "README.md", description: "Documentation", type: "file" },
     { id: "tsconfig.json", label: "tsconfig.json", description: "TypeScript config", type: "file" },
   ];
-  fileItemsRef.current = defaultFileItems;
+  const defaultFileItemsRef = useRef<SuggestionItem[]>(defaultFileItems);
 
   // Use a ref for the send handler so extensions always call the latest version
   const handleSendRef = useRef<() => void>(() => {});
@@ -517,7 +575,10 @@ export function TiptapInput({
         nested: true,
         HTMLAttributes: { class: "flex items-start gap-2" },
       }),
-      createAtMention(() => fileItemsRef.current),
+      createAtMention(
+        () => fileSearchContextRef.current,
+        () => defaultFileItemsRef.current
+      ),
       createHashMention(() => agentItemsRef.current),
       createSkillMention(() => skillsRef.current),
       EnterToSend.configure({

@@ -5,6 +5,7 @@ pub mod agents;
 pub mod clone;
 pub mod clone_branches;
 pub mod clone_progress;
+pub mod files;
 pub mod mcp_routes;
 pub mod mcp_server_mgmt;
 pub mod mcp_tools;
@@ -44,6 +45,7 @@ pub fn api_router() -> Router<AppState> {
         .nest("/api/clone", clone::router())
         .nest("/api/clone/progress", clone_progress::router())
         .nest("/api/clone/branches", clone_branches::router())
+        .nest("/api/files", files::router())
         .nest("/api/rpc", rpc::router())
         .nest("/api/a2a", a2a::router())
 }
