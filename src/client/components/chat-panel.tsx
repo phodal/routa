@@ -546,9 +546,16 @@ export function ChatPanel({
       const next = { ...prev };
       const arr = next[sid] ? [...next[sid]] : [];
       const displayParts: string[] = [];
-      if (context.sessionId) displayParts.push(`@session-${context.sessionId.slice(0, 8)}`);
-      if (context.provider) displayParts.push(`@${context.provider}`);
-      if (context.mode) displayParts.push(`#${context.mode}`);
+      // @ is now for files
+      if (context.files && context.files.length > 0) {
+        for (const file of context.files) {
+          displayParts.push(`@${file.label}`);
+        }
+      }
+      // # is now for agents/sessions
+      if (context.sessionId) displayParts.push(`#session-${context.sessionId.slice(0, 8)}`);
+      if (context.provider) displayParts.push(`#${context.provider}`);
+      if (context.mode) displayParts.push(`[${context.mode}]`);
       if (context.skill) displayParts.push(`/${context.skill}`);
       const prefix = displayParts.length ? displayParts.join(" ") + " " : "";
       arr.push({ id: uuidv4(), role: "user", content: prefix + text, timestamp: new Date() });
@@ -726,7 +733,7 @@ export function ChatPanel({
               placeholder={
                 connected
                   ? activeSessionId
-                    ? "Type a message... @ mention, / skill, Enter to send"
+                    ? "Type a message... @ file, # agent, / skill"
                     : "Type a message to auto-create a session..."
                   : "Connect first..."
               }

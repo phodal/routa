@@ -195,15 +195,54 @@ function createSuggestionDropdown() {
   };
 }
 
-// ─── @ Mention Extension (providers + sessions) ────────────────────────
+// ─── @ Mention Extension (file search) ─────────────────────────────────
 
 function createAtMention(
-  getAtItems: () => SuggestionItem[]
+  getFileItems: () => SuggestionItem[]
 ) {
   return Mention.extend({ name: "atMention" }).configure({
     HTMLAttributes: {
+      class: "file-mention",
+      "data-type": "file",
+    },
+    renderHTML({ node }) {
+      return [
+        "span",
+        {
+          class: "file-mention",
+          "data-type": "file",
+          "data-id": node.attrs.id,
+          "data-path": node.attrs.path ?? node.attrs.id,
+        },
+        `@${node.attrs.label ?? node.attrs.id}`,
+      ];
+    },
+    suggestion: {
+      char: "@",
+      pluginKey: new PluginKey("atMention"),
+      items: ({ query }: { query: string }) => {
+        const allItems = getFileItems();
+        if (!query) return allItems;
+        return allItems.filter((f) =>
+          f.label.toLowerCase().includes(query.toLowerCase()) ||
+          f.id.toLowerCase().includes(query.toLowerCase()) ||
+          (f.description ?? "").toLowerCase().includes(query.toLowerCase())
+        );
+      },
+      render: createSuggestionDropdown,
+    },
+  });
+}
+
+// ─── # Mention Extension (providers + sessions) ────────────────────────
+
+function createHashMention(
+  getAgentItems: () => SuggestionItem[]
+) {
+  return Mention.extend({ name: "hashMention" }).configure({
+    HTMLAttributes: {
       class: "agent-mention",
-      "data-type": "at",
+      "data-type": "agent",
     },
     renderHTML({ node }) {
       const mentionType = node.attrs.type ?? "provider";
@@ -214,14 +253,14 @@ function createAtMention(
           "data-type": mentionType,
           "data-id": node.attrs.id,
         },
-        `@${node.attrs.label ?? node.attrs.id}`,
+        `#${node.attrs.label ?? node.attrs.id}`,
       ];
     },
     suggestion: {
-      char: "@",
-      pluginKey: new PluginKey("atMention"),
+      char: "#",
+      pluginKey: new PluginKey("hashMention"),
       items: ({ query }: { query: string }) => {
-        const allItems = getAtItems();
+        const allItems = getAgentItems();
         if (!query) return allItems;
         return allItems.filter((p) =>
           p.label.toLowerCase().includes(query.toLowerCase()) ||
@@ -272,10 +311,18 @@ function createSkillMention(
 
 // ─── Main Component ────────────────────────────────────────────────────
 
+/** File reference from @ mention */
+export interface FileReference {
+  /** File path (relative or absolute) */
+  path: string;
+  /** Display label shown in the input */
+  label: string;
+}
+
 export interface InputContext {
-  /** Provider selected via @ mention (e.g. "opencode") */
+  /** Provider selected via # mention (e.g. "opencode") */
   provider?: string;
-  /** Session selected via @ mention */
+  /** Session selected via # mention */
   sessionId?: string;
   /** Skill selected via / command (e.g. "find-skills") */
   skill?: string;
@@ -283,6 +330,8 @@ export interface InputContext {
   cwd?: string;
   /** Session mode (provider-specific) */
   mode?: string;
+  /** Files referenced via @ mention */
+  files?: FileReference[];
 }
 
 interface ProviderItem {
@@ -383,8 +432,8 @@ export function TiptapInput({
   }
   skillsRef.current = mergedSkillItems;
 
-  // Ref for @ suggestions (providers + sessions)
-  const atItemsRef = useRef<SuggestionItem[]>([]);
+  // Ref for # suggestions (providers + sessions) - agents
+  const agentItemsRef = useRef<SuggestionItem[]>([]);
   const providerItems = providers.map((p) => ({
     id: p.id,
     label: p.name,
@@ -399,7 +448,21 @@ export function TiptapInput({
     type: "session",
     disabled: false,
   }));
-  atItemsRef.current = [...providerItems, ...sessionItems];
+  agentItemsRef.current = [...providerItems, ...sessionItems];
+
+  // Ref for @ suggestions (file search)
+  // For now, we provide a static list of common file patterns
+  // In a full implementation, this would be populated by a file search API
+  const fileItemsRef = useRef<SuggestionItem[]>([]);
+  // File items will be populated dynamically when user types @
+  // For now, show helpful hints
+  const defaultFileItems: SuggestionItem[] = [
+    { id: "src/", label: "src/", description: "Source directory", type: "file" },
+    { id: "package.json", label: "package.json", description: "Package config", type: "file" },
+    { id: "README.md", label: "README.md", description: "Documentation", type: "file" },
+    { id: "tsconfig.json", label: "tsconfig.json", description: "TypeScript config", type: "file" },
+  ];
+  fileItemsRef.current = defaultFileItems;
 
   // Use a ref for the send handler so extensions always call the latest version
   const handleSendRef = useRef<() => void>(() => {});
@@ -454,7 +517,8 @@ export function TiptapInput({
         nested: true,
         HTMLAttributes: { class: "flex items-start gap-2" },
       }),
-      createAtMention(() => atItemsRef.current),
+      createAtMention(() => fileItemsRef.current),
+      createHashMention(() => agentItemsRef.current),
       createSkillMention(() => skillsRef.current),
       EnterToSend.configure({
         onSend: () => handleSendRef.current(),
@@ -506,10 +570,19 @@ export function TiptapInput({
     let provider: string | undefined;
     let sessionId: string | undefined;
     let skill: string | undefined;
+    const files: FileReference[] = [];
 
     // Walk the document to find mentions
     const walk = (node: any) => {
+      // @ mentions are now for files
       if (node.type === "atMention" && node.attrs?.id) {
+        files.push({
+          path: node.attrs.path ?? node.attrs.id,
+          label: node.attrs.label ?? node.attrs.id,
+        });
+      }
+      // # mentions are for agents (providers + sessions)
+      if (node.type === "hashMention" && node.attrs?.id) {
         if (node.attrs?.type === "session") {
           sessionId = node.attrs.id;
         } else {
@@ -528,19 +601,23 @@ export function TiptapInput({
     const text = editor.getText().trim();
     if (!text) return;
 
-    // Remove the @provider and /skill tokens from the text for the prompt
+    // Remove the #provider, @file, and /skill tokens from the text for the prompt
     let cleanText = text;
     if (provider) {
       const providerLabel = providers.find((p) => p.id === provider)?.name ?? provider;
-      cleanText = cleanText.replace(new RegExp(`@${providerLabel}\\s*`, "gi"), "").trim();
+      cleanText = cleanText.replace(new RegExp(`#${providerLabel}\\s*`, "gi"), "").trim();
+    }
+    // Remove file mentions from text
+    for (const file of files) {
+      cleanText = cleanText.replace(new RegExp(`@${file.label}\\s*`, "g"), "").trim();
     }
     if (skill) {
       cleanText = cleanText.replace(new RegExp(`/${skill}\\s*`, "g"), "").trim();
     }
 
-    // Fallback for plain-text session mentions like @session-46b5807d
+    // Fallback for plain-text session mentions like #session-46b5807d
     if (!sessionId) {
-      const sessionTokenMatch = cleanText.match(/@session-([a-f0-9]{6,})/i);
+      const sessionTokenMatch = cleanText.match(/#session-([a-f0-9]{6,})/i);
       if (sessionTokenMatch) {
         const prefix = sessionTokenMatch[1].toLowerCase();
         const matched = sessions.find((s) =>
@@ -569,6 +646,7 @@ export function TiptapInput({
       skill,
       cwd: repoSelection?.path ?? undefined,
       mode,
+      files: files.length > 0 ? files : undefined,
     });
     editor.commands.clearContent();
   }, [editor, onSend, disabled, loading, repoSelection, providers, selectedProvider, claudeMode, opencodeMode, sessions, agentRole]);
@@ -800,7 +878,9 @@ export function TiptapInput({
 
           {/* Hints + send */}
           <span className="text-[10px] text-gray-300 dark:text-gray-600 ml-auto mr-1">
-            <kbd className="px-1 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-500 font-mono">@</kbd> mention
+            <kbd className="px-1 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-500 font-mono">@</kbd> file
+            <span className="mx-1.5">&middot;</span>
+            <kbd className="px-1 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-500 font-mono">#</kbd> agent
             <span className="mx-1.5">&middot;</span>
             <kbd className="px-1 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-500 font-mono">/</kbd> skill
           </span>

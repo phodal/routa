@@ -164,6 +164,21 @@ body {
 
 /* ─── Mention Pills ────────────────────────────────────────────────── */
 
+/* @ file mentions - green/teal color */
+.file-mention {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  margin: 0 1px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  background: rgba(20, 184, 166, 0.15);
+  color: #14b8a6;
+  white-space: nowrap;
+}
+
+/* # agent mentions - blue color */
 .agent-mention {
   display: inline-flex;
   align-items: center;
@@ -177,6 +192,7 @@ body {
   white-space: nowrap;
 }
 
+/* / skill mentions - purple color */
 .skill-mention {
   display: inline-flex;
   align-items: center;
@@ -191,6 +207,10 @@ body {
 }
 
 @media (prefers-color-scheme: dark) {
+  .file-mention {
+    background: rgba(20, 184, 166, 0.2);
+    color: #2dd4bf;
+  }
   .agent-mention {
     background: rgba(59, 130, 246, 0.2);
     color: #60a5fa;
