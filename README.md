@@ -2,7 +2,7 @@
 
 <img src="public/logo.svg" alt="Routa Logo" width="160" />
 
-# Routa JS
+# Routa
 
 **Multi-Agent Coordination Platform for AI Development**
 
