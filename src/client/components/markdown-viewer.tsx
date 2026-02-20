@@ -11,6 +11,7 @@
  *     1. Simple: plain text, no markdown → <p>
  *     2. Static: processed HTML without tiptap (for links, code blocks, etc.)
  *     3. Complex: full tiptap for interactive content (task lists)
+ *   - Mermaid: fenced ```mermaid blocks are rendered via MermaidRenderer
  *
  * Usage:
  *   <MarkdownViewer content={markdownString} />
@@ -18,6 +19,7 @@
  */
 
 import { useRef, useEffect, useMemo } from "react";
+import { MermaidRenderer } from "./mermaid-renderer";
 import { Editor } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import CodeBlockLowlight from "@tiptap/extension-code-block-lowlight";
@@ -39,6 +41,41 @@ function markdownToHtml(md: string): string {
     // Fallback: escape and wrap in <p>
     return `<p>${md.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</p>`;
   }
+}
+
+// ─── Mermaid block splitting ─────────────────────────────────────────
+type ContentSegment =
+  | { type: "markdown"; content: string }
+  | { type: "mermaid"; code: string };
+
+const MERMAID_BLOCK_RE = /```mermaid\n([\s\S]*?)```/gm;
+
+function hasMermaidBlocks(content: string): boolean {
+  MERMAID_BLOCK_RE.lastIndex = 0;
+  return MERMAID_BLOCK_RE.test(content);
+}
+
+function splitMermaidBlocks(content: string): ContentSegment[] {
+  const segments: ContentSegment[] = [];
+  let lastIndex = 0;
+  const re = /```mermaid\n([\s\S]*?)```/gm;
+  let match: RegExpExecArray | null;
+
+  while ((match = re.exec(content)) !== null) {
+    if (match.index > lastIndex) {
+      const before = content.slice(lastIndex, match.index).trim();
+      if (before) segments.push({ type: "markdown", content: before });
+    }
+    segments.push({ type: "mermaid", code: match[1].trim() });
+    lastIndex = match.index + match[0].length;
+  }
+
+  if (lastIndex < content.length) {
+    const rest = content.slice(lastIndex).trim();
+    if (rest) segments.push({ type: "markdown", content: rest });
+  }
+
+  return segments;
 }
 
 // ─── Content complexity detection ────────────────────────────────────
@@ -88,6 +125,30 @@ export function MarkdownViewer({
   className = "",
   onFileClick,
 }: MarkdownViewerProps) {
+  // ── Mermaid: split content and render blocks separately ─────────────
+  const hasMermaid = useMemo(() => hasMermaidBlocks(content), [content]);
+
+  if (hasMermaid && !isStreaming) {
+    const segments = splitMermaidBlocks(content);
+    return (
+      <div className={`markdown-viewer mermaid-content ${className}`}>
+        {segments.map((seg, i) =>
+          seg.type === "mermaid" ? (
+            <MermaidRenderer key={i} code={seg.code} className="my-2" />
+          ) : (
+            <MarkdownViewer
+              key={i}
+              content={seg.content}
+              isStreaming={false}
+              className=""
+              onFileClick={onFileClick}
+            />
+          )
+        )}
+      </div>
+    );
+  }
+
   const complexity = useMemo(() => detectComplexity(content), [content]);
   const html = useMemo(() => {
     if (complexity === "simple") return "";

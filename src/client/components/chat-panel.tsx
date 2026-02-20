@@ -17,7 +17,7 @@ import {RepoPicker, type RepoSelection} from "./repo-picker";
 import {TerminalBubble} from "./terminal-bubble";
 import {extractTaskBlocks, hasTaskBlocks, type ParsedTask,} from "../utils/task-block-parser";
 import {type TaskInfo, TaskProgressBar} from "./task-progress-bar";
-import {FormattedContent} from "@/client/components/markdown-renderer";
+import {MarkdownViewer} from "@/client/components/markdown-viewer";
 
 // ─── Message Types ─────────────────────────────────────────────────────
 
@@ -830,7 +830,7 @@ function AssistantBubble({ content }: { content: string }) {
   return (
     <div className="flex justify-start">
       <div className="max-w-[85%] px-4 py-3 rounded-2xl rounded-bl-md bg-gray-50 dark:bg-[#1a1d2e] text-sm text-gray-900 dark:text-gray-100">
-        <FormattedContent content={content} />
+        <MarkdownViewer content={content} className="text-sm" />
       </div>
     </div>
   );
