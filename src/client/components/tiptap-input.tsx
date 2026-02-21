@@ -66,24 +66,37 @@ interface SuggestionItem {
   disabled?: boolean;
 }
 
-function createSuggestionDropdown() {
+function createSuggestionDropdown(triggerChar?: string) {
   let popup: HTMLDivElement | null = null;
   let selectedIndex = 0;
   let currentItems: SuggestionItem[] = [];
   let currentCommand: ((item: SuggestionItem) => void) | null = null;
+  const currentTriggerChar = triggerChar ?? null;
 
   const renderList = () => {
     const p = popup;
     if (!p) return;
     p.innerHTML = "";
+
+    // Empty state with contextual message
     if (currentItems.length === 0) {
       const empty = document.createElement("div");
       empty.style.cssText =
-        "padding: 8px 12px; color: #9ca3af; font-size: 12px;";
-      empty.textContent = "No results";
+        "padding: 12px 14px; color: #9ca3af; font-size: 12px; text-align: center;";
+
+      // Show different message based on trigger character
+      if (currentTriggerChar === "@") {
+        empty.innerHTML = `
+          <div style="margin-bottom: 4px;">📁 No files found</div>
+          <div style="font-size: 11px; opacity: 0.7;">Clone a repository first to search files</div>
+        `;
+      } else {
+        empty.textContent = "No results";
+      }
       p.appendChild(empty);
       return;
     }
+
     currentItems.forEach((item, index) => {
       const btn = document.createElement("button");
       btn.type = "button";
@@ -100,13 +113,23 @@ function createSuggestionDropdown() {
       const statusDot = item.type === "provider"
         ? `<span style="width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; background: ${item.disabled ? '#9ca3af' : '#22c55e'};"></span>`
         : "";
+      // File icon for file items
+      const fileIcon = item.type === "file"
+        ? `<span style="font-size: 11px; opacity: 0.6;">📄</span>`
+        : "";
       btn.innerHTML = `
         ${statusDot}
+        ${fileIcon}
         <span style="font-weight: 500;">${item.label}</span>
         ${item.description ? `<span style="opacity: 0.5; font-size: 11px; margin-left: auto; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${item.description}</span>` : ""}
       `;
-      btn.onclick = () => {
-        if (!item.disabled && currentCommand) currentCommand(item);
+      // Use mousedown instead of click to prevent blur issues
+      btn.onmousedown = (e) => {
+        e.preventDefault(); // Prevent editor blur
+        e.stopPropagation();
+        if (!item.disabled && currentCommand) {
+          currentCommand(item);
+        }
       };
       btn.onmouseenter = () => {
         selectedIndex = index;
@@ -204,8 +227,7 @@ interface FileSearchContext {
 }
 
 function createAtMention(
-  getFileSearchContext: () => FileSearchContext,
-  getDefaultItems: () => SuggestionItem[]
+  getFileSearchContext: () => FileSearchContext
 ) {
   return Mention.extend({ name: "atMention" }).configure({
     HTMLAttributes: {
@@ -230,13 +252,9 @@ function createAtMention(
       items: async ({ query }: { query: string }): Promise<SuggestionItem[]> => {
         const ctx = getFileSearchContext();
 
-        // If no repo selected, show default items
+        // If no repo selected, return empty - dropdown will show "Clone a repository first"
         if (!ctx.repoPath) {
-          const defaults = getDefaultItems();
-          if (!query) return defaults;
-          return defaults.filter((f) =>
-            f.label.toLowerCase().includes(query.toLowerCase())
-          );
+          return [];
         }
 
         // Cancel previous request
@@ -260,7 +278,7 @@ function createAtMention(
           });
 
           if (!response.ok) {
-            return getDefaultItems();
+            return [];
           }
 
           const data = await response.json();
@@ -277,10 +295,10 @@ function createAtMention(
           if (err instanceof Error && err.name === "AbortError") {
             return []; // Request cancelled
           }
-          return getDefaultItems();
+          return [];
         }
       },
-      render: createSuggestionDropdown,
+      render: () => createSuggestionDropdown("@"),
     },
   });
 }
@@ -513,15 +531,6 @@ export function TiptapInput({
     fileSearchContextRef.current.repoPath = repoSelection?.path ?? null;
   }, [repoSelection?.path]);
 
-  // Default file items when no repo is selected
-  const defaultFileItems: SuggestionItem[] = [
-    { id: "src/", label: "src/", description: "Source directory", type: "file" },
-    { id: "package.json", label: "package.json", description: "Package config", type: "file" },
-    { id: "README.md", label: "README.md", description: "Documentation", type: "file" },
-    { id: "tsconfig.json", label: "tsconfig.json", description: "TypeScript config", type: "file" },
-  ];
-  const defaultFileItemsRef = useRef<SuggestionItem[]>(defaultFileItems);
-
   // Use a ref for the send handler so extensions always call the latest version
   const handleSendRef = useRef<() => void>(() => {});
 
@@ -575,10 +584,7 @@ export function TiptapInput({
         nested: true,
         HTMLAttributes: { class: "flex items-start gap-2" },
       }),
-      createAtMention(
-        () => fileSearchContextRef.current,
-        () => defaultFileItemsRef.current
-      ),
+      createAtMention(() => fileSearchContextRef.current),
       createHashMention(() => agentItemsRef.current),
       createSkillMention(() => skillsRef.current),
       EnterToSend.configure({
