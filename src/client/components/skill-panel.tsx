@@ -14,7 +14,7 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { useSkills, type UseSkillsState, type UseSkillsActions, type CatalogType } from "../hooks/use-skills";
 import type { SkillsShSkill, GithubCatalogSkill } from "../skill-client";
-import { MarkdownViewer } from "./markdown-viewer";
+import { MarkdownViewer } from "./markdown/markdown-viewer";
 
 interface SkillPanelProps {
   /** Pass a shared useSkills() instance to keep sidebar and chat in sync */

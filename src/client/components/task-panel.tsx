@@ -15,8 +15,8 @@
 
 import { useState, useRef, useEffect } from "react";
 import type { ParsedTask } from "../utils/task-block-parser";
-import { MarkdownViewer } from "./markdown-viewer";
-import { MermaidRenderer } from "./mermaid-renderer";
+import { MarkdownViewer } from "./markdown/markdown-viewer";
+import { MermaidRenderer } from "./markdown/mermaid-renderer";
 
 // ─── Types ──────────────────────────────────────────────────────────────
 

@@ -17,7 +17,7 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import type { NoteData } from "../hooks/use-notes";
-import { MarkdownViewer } from "./markdown-viewer";
+import { MarkdownViewer } from "./markdown/markdown-viewer";
 
 interface CollaborativeTaskEditorProps {
   notes: NoteData[];
