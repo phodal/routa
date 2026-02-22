@@ -1,5 +1,5 @@
 import {useState} from "react";
-import {TerminalBubble} from "@/client/components/terminal-bubble";
+import {TerminalBubble} from "@/client/components/terminal/terminal-bubble";
 import {ChatMessage, PlanEntry} from "@/client/components/chat-panel";
 
 export function MessageBubble({message}: { message: ChatMessage }) {
