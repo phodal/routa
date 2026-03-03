@@ -28,7 +28,7 @@ import { WorkspaceSwitcher } from "@/client/components/workspace-switcher";
 import { AgentInstallPanel } from "@/client/components/agent-install-panel";
 import { ProtocolBadge } from "@/app/protocol-badge";
 import { A2UIViewer } from "@/client/a2ui/renderer";
-import { generateDashboardA2UI } from "@/client/a2ui/dashboard-generator";
+import { generateDashboardA2UI, generateTaskKanbanSurface, generateAgentMonitorSurface, generateTimelineSurface, generateWorkspaceSummarySurface } from "@/client/a2ui/dashboard-generator";
 import type { A2UIMessage } from "@/client/a2ui/types";
 import type { DashboardData } from "@/client/a2ui/dashboard-generator";
 
@@ -1876,6 +1876,7 @@ function OverviewA2UITab({
   onNavigateSession: (sessionId: string) => void;
 }) {
   const [showJsonPanel, setShowJsonPanel] = useState(false);
+  const [showTemplateGallery, setShowTemplateGallery] = useState(false);
   const [customJsonInput, setCustomJsonInput] = useState("");
   const [jsonError, setJsonError] = useState<string | null>(null);
 
@@ -2111,7 +2112,20 @@ function OverviewA2UITab({
         </div>
         <div className="flex items-center gap-1.5">
           <button
-            onClick={() => setShowJsonPanel(!showJsonPanel)}
+            onClick={() => { setShowTemplateGallery(!showTemplateGallery); setShowJsonPanel(false); }}
+            className={`flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-medium transition-colors ${
+              showTemplateGallery
+                ? "bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400"
+                : "text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#191c28]"
+            }`}
+          >
+            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z" />
+            </svg>
+            Templates
+          </button>
+          <button
+            onClick={() => { setShowJsonPanel(!showJsonPanel); setShowTemplateGallery(false); }}
             className="flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-medium text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#191c28] transition-colors"
           >
             <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -2143,6 +2157,102 @@ function OverviewA2UITab({
           </button>
         </div>
       </div>
+
+      {/* ─── Template Gallery ─────────────────────────────────── */}
+      {showTemplateGallery && (
+        <div className="bg-white dark:bg-[#12141c] rounded-xl border border-gray-200/60 dark:border-[#1c1f2e] p-4">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 className="text-xs font-semibold text-gray-700 dark:text-gray-300">Surface Templates</h3>
+              <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5">Add pre-built surfaces to your dashboard</p>
+            </div>
+            <button onClick={() => setShowTemplateGallery(false)}
+              className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {[
+              {
+                id: "kanban",
+                title: "Task Board",
+                description: "Kanban-style view: Active, Pending, and Done tasks",
+                icon: (
+                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 4.5v15m6-15v15m-10.875 0h15.75c.621 0 1.125-.504 1.125-1.125V5.625c0-.621-.504-1.125-1.125-1.125H4.125C3.504 4.5 3 5.004 3 5.625v12.75c0 .621.504 1.125 1.125 1.125z" />
+                  </svg>
+                ),
+                accent: "text-blue-500 dark:text-blue-400",
+                bg: "bg-blue-50 dark:bg-blue-900/20",
+                generate: () => generateTaskKanbanSurface(dashboardData),
+              },
+              {
+                id: "agents",
+                title: "Agent Monitor",
+                description: "Live agent status with role badges and health indicators",
+                icon: (
+                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M17.982 18.725A7.488 7.488 0 0012 15.75a7.488 7.488 0 00-5.982 2.975m11.963 0a9 9 0 10-11.963 0m11.963 0A8.966 8.966 0 0112 21a8.966 8.966 0 01-5.982-2.275M15 9.75a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                ),
+                accent: "text-violet-500 dark:text-violet-400",
+                bg: "bg-violet-50 dark:bg-violet-900/20",
+                generate: () => generateAgentMonitorSurface(dashboardData.agents),
+              },
+              {
+                id: "timeline",
+                title: "Timeline",
+                description: "Chronological activity feed across tasks and traces",
+                icon: (
+                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 3v11.25A2.25 2.25 0 006 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0118 16.5h-2.25m-7.5 0h7.5m-7.5 0l-1 3m8.5-3l1 3m0 0l.5 1.5m-.5-1.5h-9.5m0 0l-.5 1.5m.75-9l3-3 2.148 2.148A12.061 12.061 0 0116.5 7.605" />
+                  </svg>
+                ),
+                accent: "text-emerald-500 dark:text-emerald-400",
+                bg: "bg-emerald-50 dark:bg-emerald-900/20",
+                generate: () => generateTimelineSurface(dashboardData),
+              },
+              {
+                id: "summary",
+                title: "Workspace Summary",
+                description: "High-level metrics: tasks, agents, BG jobs, and codebases",
+                icon: (
+                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 14.25v2.25m3-4.5v4.5m3-6.75v6.75m3-9v9M6 20.25h12A2.25 2.25 0 0020.25 18V6A2.25 2.25 0 0018 3.75H6A2.25 2.25 0 003.75 6v12A2.25 2.25 0 006 20.25z" />
+                  </svg>
+                ),
+                accent: "text-amber-500 dark:text-amber-400",
+                bg: "bg-amber-50 dark:bg-amber-900/20",
+                generate: () => generateWorkspaceSummarySurface(dashboardData),
+              },
+            ].map((tpl) => (
+              <div
+                key={tpl.id}
+                className="group flex flex-col gap-3 p-3 rounded-lg border border-gray-200/60 dark:border-[#252838] bg-gray-50 dark:bg-[#0e1019] hover:border-gray-300 dark:hover:border-[#2e3248] transition-colors"
+              >
+                <div className={`w-9 h-9 rounded-lg ${tpl.bg} flex items-center justify-center ${tpl.accent}`}>
+                  {tpl.icon}
+                </div>
+                <div className="flex-1">
+                  <div className="text-[12px] font-semibold text-gray-700 dark:text-gray-300">{tpl.title}</div>
+                  <div className="text-[10px] text-gray-400 dark:text-gray-500 leading-relaxed mt-0.5">{tpl.description}</div>
+                </div>
+                <button
+                  onClick={() => {
+                    onAddCustomSurface(tpl.generate());
+                    setShowTemplateGallery(false);
+                  }}
+                  className={`w-full py-1.5 rounded-md text-[11px] font-medium transition-colors border ${tpl.bg} ${tpl.accent} border-current/20 hover:opacity-80`}
+                >
+                  Add Surface
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* ─── Source View ──────────────────────────────────────── */}
       {showSource && (

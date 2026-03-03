@@ -68,12 +68,12 @@ describe("A2UI Dashboard Generator", () => {
     expect(createAgents).toBeUndefined();
   });
 
-  it("creates sessions surface when sessions exist", () => {
+  it("creates tasks surface when tasks exist", () => {
     const messages = generateDashboardA2UI(sampleData);
-    const createSessions = messages.find(
-      (m) => "createSurface" in m && m.createSurface.surfaceId === "dashboard_sessions"
+    const createTasks = messages.find(
+      (m) => "createSurface" in m && m.createSurface.surfaceId === "dashboard_tasks"
     );
-    expect(createSessions).toBeDefined();
+    expect(createTasks).toBeDefined();
   });
 
   it("creates BG tasks surface with status summary", () => {
@@ -84,9 +84,11 @@ describe("A2UI Dashboard Generator", () => {
     expect(bgDataModel).toBeDefined();
     if (bgDataModel && "updateDataModel" in bgDataModel) {
       const value = bgDataModel.updateDataModel.value as Record<string, unknown>;
-      expect(value.bgCount).toBe("2 tasks");
-      expect(value.bgStatusSummary).toContain("running");
-      expect(value.bgStatusSummary).toContain("completed");
+      // New structure has running/pending/history arrays
+      expect(value.running).toBeDefined();
+      expect(value.pending).toBeDefined();
+      expect(value.history).toBeDefined();
+      expect(Array.isArray(value.running)).toBe(true);
     }
   });
 
@@ -297,10 +299,10 @@ describe("processA2UIMessages", () => {
     const messages = generateDashboardA2UI(data);
     const surfaces = processA2UIMessages(messages);
 
-    // Should have stats + agents + sessions surfaces
+    // Should have stats + agents + tasks surfaces
     expect(surfaces.size).toBe(3);
     expect(surfaces.has("dashboard_stats")).toBe(true);
     expect(surfaces.has("dashboard_agents")).toBe(true);
-    expect(surfaces.has("dashboard_sessions")).toBe(true);
+    expect(surfaces.has("dashboard_tasks")).toBe(true);
   });
 });

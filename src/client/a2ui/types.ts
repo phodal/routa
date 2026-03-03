@@ -42,6 +42,7 @@ export interface CheckRule {
 // ─── Component definitions ────────────────────────────────────────
 
 export type TextVariant = "h1" | "h2" | "h3" | "h4" | "h5" | "body" | "caption";
+export type TextAccent = "success" | "warning" | "error" | "info" | "muted" | "primary" | "violet";
 export type ImageVariant = "icon" | "avatar" | "smallFeature" | "mediumFeature" | "largeFeature" | "header";
 export type ImageFit = "contain" | "cover" | "fill" | "none" | "scaleDown";
 export type JustifyContent = "start" | "center" | "end" | "spaceBetween" | "spaceAround" | "spaceEvenly" | "stretch";
@@ -67,6 +68,10 @@ export interface TextComponent extends BaseComponentProps {
   component: "Text";
   text: DynamicString;
   variant?: TextVariant;
+  /** Semantic accent color — renderer maps to appropriate Tailwind color */
+  accent?: TextAccent;
+  /** Render as a pill/badge instead of inline text */
+  pill?: boolean;
 }
 
 export interface ImageComponent extends BaseComponentProps {
@@ -97,6 +102,7 @@ export interface RowComponent extends BaseComponentProps {
   children: ChildList;
   justify?: JustifyContent;
   align?: AlignItems;
+  gap?: "none" | "xs" | "sm" | "md" | "lg";
 }
 
 export interface ColumnComponent extends BaseComponentProps {
@@ -104,6 +110,7 @@ export interface ColumnComponent extends BaseComponentProps {
   children: ChildList;
   justify?: JustifyContent;
   align?: AlignItems;
+  gap?: "none" | "xs" | "sm" | "md" | "lg";
 }
 
 export interface ListComponent extends BaseComponentProps {
@@ -116,6 +123,10 @@ export interface ListComponent extends BaseComponentProps {
 export interface CardComponent extends BaseComponentProps {
   component: "Card";
   child: string;
+  /** Optional header label shown above the card content */
+  label?: DynamicString;
+  /** Accent color for the card header or top border */
+  accent?: TextAccent;
 }
 
 export interface TabsComponent extends BaseComponentProps {

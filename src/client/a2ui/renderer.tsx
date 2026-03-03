@@ -20,6 +20,7 @@ import type {
   DynamicNumber,
   DynamicBoolean,
   TextVariant,
+  TextAccent,
   ButtonVariant,
   JustifyContent,
   AlignItems,
@@ -113,6 +114,26 @@ const TEXT_VARIANT_CLASSES: Record<TextVariant, string> = {
   caption: "text-xs text-gray-500 dark:text-gray-500",
 };
 
+const TEXT_ACCENT_CLASSES: Record<TextAccent, string> = {
+  success:  "text-emerald-600 dark:text-emerald-400",
+  warning:  "text-amber-600 dark:text-amber-500",
+  error:    "text-red-600 dark:text-red-400",
+  info:     "text-blue-600 dark:text-blue-400",
+  muted:    "text-gray-400 dark:text-gray-500",
+  primary:  "text-amber-600 dark:text-amber-500",
+  violet:   "text-violet-600 dark:text-violet-400",
+};
+
+const TEXT_ACCENT_PILL_CLASSES: Record<TextAccent, string> = {
+  success:  "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400",
+  warning:  "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400",
+  error:    "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400",
+  info:     "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400",
+  muted:    "bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400",
+  primary:  "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400",
+  violet:   "bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-400",
+};
+
 const JUSTIFY_CLASSES: Record<JustifyContent, string> = {
   start: "justify-start",
   center: "justify-center",
@@ -128,6 +149,22 @@ const ALIGN_CLASSES: Record<AlignItems, string> = {
   center: "items-center",
   end: "items-end",
   stretch: "items-stretch",
+};
+
+const GAP_ROW_CLASSES: Record<string, string> = {
+  none: "gap-0",
+  xs: "gap-1",
+  sm: "gap-2",
+  md: "gap-3",
+  lg: "gap-6",
+};
+
+const GAP_COL_CLASSES: Record<string, string> = {
+  none: "gap-0",
+  xs: "gap-0.5",
+  sm: "gap-1.5",
+  md: "gap-3",
+  lg: "gap-5",
 };
 
 const BUTTON_VARIANT_CLASSES: Record<ButtonVariant, string> = {
@@ -235,8 +272,18 @@ function A2UIComponentRenderer({ componentId, ctx }: { componentId: string; ctx:
   switch (comp.component) {
     case "Text": {
       const text = resolveString(comp.text, ctx.data, ctx.scope);
+      const accentCls = comp.accent
+        ? (comp.pill ? TEXT_ACCENT_PILL_CLASSES[comp.accent] : TEXT_ACCENT_CLASSES[comp.accent])
+        : undefined;
+      if (comp.pill) {
+        return (
+          <span key={comp.id} className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold uppercase tracking-wider shrink-0 ${accentCls ?? "bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400"}`} style={flex}>
+            {text}
+          </span>
+        );
+      }
       const variantCls = TEXT_VARIANT_CLASSES[comp.variant ?? "body"];
-      return <span key={comp.id} className={variantCls} style={flex}>{text}</span>;
+      return <span key={comp.id} className={`${variantCls} ${accentCls ?? ""}`.trim()} style={flex}>{text}</span>;
     }
 
     case "Image": {
@@ -264,8 +311,9 @@ function A2UIComponentRenderer({ componentId, ctx }: { componentId: string; ctx:
     case "Row": {
       const justify = JUSTIFY_CLASSES[comp.justify ?? "start"];
       const align = ALIGN_CLASSES[comp.align ?? "center"];
+      const gap = GAP_ROW_CLASSES[comp.gap ?? "sm"];
       return (
-        <div key={comp.id} className={`flex flex-row gap-2 ${justify} ${align}`} style={flex}>
+        <div key={comp.id} className={`flex flex-row ${gap} ${justify} ${align}`} style={flex}>
           {renderChildList(comp.children, ctx)}
         </div>
       );
@@ -274,23 +322,42 @@ function A2UIComponentRenderer({ componentId, ctx }: { componentId: string; ctx:
     case "Column": {
       const justify = JUSTIFY_CLASSES[comp.justify ?? "start"];
       const align = ALIGN_CLASSES[comp.align ?? "stretch"];
+      const gap = GAP_COL_CLASSES[comp.gap ?? "sm"];
       return (
-        <div key={comp.id} className={`flex flex-col gap-1.5 ${justify} ${align}`} style={flex}>
+        <div key={comp.id} className={`flex flex-col ${gap} ${justify} ${align}`} style={flex}>
           {renderChildList(comp.children, ctx)}
         </div>
       );
     }
 
     case "Card": {
+      const accentBorderMap: Record<string, string> = {
+        success: "border-t-2 border-t-emerald-500",
+        warning: "border-t-2 border-t-amber-500",
+        error:   "border-t-2 border-t-red-500",
+        info:    "border-t-2 border-t-blue-500",
+        violet:  "border-t-2 border-t-violet-500",
+        primary: "border-t-2 border-t-amber-500",
+        muted:   "",
+      };
+      const headerLabel = comp.label ? resolveString(comp.label, ctx.data, ctx.scope) : undefined;
+      const cardAccentCls = comp.accent ? (accentBorderMap[comp.accent] ?? "") : "";
       return (
-        <div key={comp.id} className="bg-white dark:bg-[#12141c] rounded-xl border border-gray-200/60 dark:border-[#1c1f2e] p-4 overflow-hidden" style={flex}>
-          <A2UIComponentRenderer componentId={comp.child} ctx={ctx} />
+        <div key={comp.id} className={`bg-white dark:bg-[#12141c] rounded-xl border border-gray-200/60 dark:border-[#1c1f2e] overflow-hidden ${cardAccentCls}`} style={flex}>
+          {headerLabel && (
+            <div className="px-4 py-2.5 border-b border-gray-100 dark:border-[#191c28] flex items-center justify-between">
+              <span className="text-[12px] font-semibold text-gray-700 dark:text-gray-300">{headerLabel}</span>
+            </div>
+          )}
+          <div className="p-4">
+            <A2UIComponentRenderer componentId={comp.child} ctx={ctx} />
+          </div>
         </div>
       );
     }
 
     case "List": {
-      const dirCls = comp.direction === "horizontal" ? "flex flex-row gap-2 overflow-x-auto" : "flex flex-col gap-1";
+      const dirCls = comp.direction === "horizontal" ? "flex flex-row gap-2 flex-wrap" : "flex flex-col gap-1.5";
       return (
         <div key={comp.id} className={dirCls} style={flex}>
           {renderChildList(comp.children, ctx)}
