@@ -16,7 +16,7 @@
  * Route: /workspace/[workspaceId]
  */
 
-import { useCallback, useState, useEffect } from "react";
+import React, { useCallback, useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { HomeInput } from "@/client/components/home-input";
 import { useWorkspaces, useCodebases } from "@/client/hooks/use-workspaces";
@@ -27,6 +27,10 @@ import { useSkills } from "@/client/hooks/use-skills";
 import { WorkspaceSwitcher } from "@/client/components/workspace-switcher";
 import { AgentInstallPanel } from "@/client/components/agent-install-panel";
 import { ProtocolBadge } from "@/app/protocol-badge";
+import { A2UIViewer } from "@/client/a2ui/renderer";
+import { generateDashboardA2UI } from "@/client/a2ui/dashboard-generator";
+import type { A2UIMessage } from "@/client/a2ui/types";
+import type { DashboardData } from "@/client/a2ui/dashboard-generator";
 
 // ─── Types ─────────────────────────────────────────────────────────
 
@@ -101,7 +105,8 @@ export function WorkspacePageClient() {
   const [traces, setTraces] = useState<TraceInfo[]>([]);
   const [refreshKey, setRefreshKey] = useState(0);
   const [showAgentInstallPopup, setShowAgentInstallPopup] = useState(false);
-  const [activeTab, setActiveTab] = useState<"overview" | "notes" | "note_tasks" | "bg_tasks">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "a2ui_dashboard" | "notes" | "note_tasks" | "bg_tasks">("overview");
+  const [customA2UISurfaces, setCustomA2UISurfaces] = useState<A2UIMessage[]>([]);
   const [bgTasks, setBgTasks] = useState<BackgroundTaskInfo[]>([]);
   const [showDispatchModal, setShowDispatchModal] = useState(false);
   const [dispatchPrompt, setDispatchPrompt] = useState("");
@@ -558,6 +563,12 @@ export function WorkspacePageClient() {
           {/* ─── Tab Bar ─────────────────────────────────────────────── */}
           <div className="flex items-center gap-1 mb-6 border-b border-gray-200/60 dark:border-[#191c28]">
             <TabButton active={activeTab === "overview"} onClick={() => setActiveTab("overview")}>Overview</TabButton>
+            <TabButton active={activeTab === "a2ui_dashboard"} onClick={() => setActiveTab("a2ui_dashboard")}>
+              A2UI Dashboard
+              <span className="ml-1.5 px-1.5 py-0.5 text-[9px] rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 font-semibold uppercase tracking-wider">
+                Live
+              </span>
+            </TabButton>
             <TabButton active={activeTab === "notes"} onClick={() => setActiveTab("notes")}>
               Workspace Notes
               {notesHook.notes.filter(n => n.metadata?.type === "general").length > 0 && (
@@ -1253,6 +1264,27 @@ export function WorkspacePageClient() {
                 </OverlayModal>
               )}
             </div>
+          )}
+
+          {activeTab === "a2ui_dashboard" && (
+            <A2UIDashboardTab
+              workspace={effectiveWorkspace}
+              sessions={sessions}
+              agents={agentsHook.agents}
+              tasks={tasks}
+              bgTasks={bgTasks}
+              codebases={codebases}
+              notes={notesHook.notes}
+              traces={traces}
+              customSurfaces={customA2UISurfaces}
+              onAction={(action) => {
+                // Handle A2UI actions (button clicks, etc.)
+                console.log("[A2UI Action]", action);
+              }}
+              onAddCustomSurface={(messages) => {
+                setCustomA2UISurfaces((prev) => [...prev, ...messages]);
+              }}
+            />
           )}
 
           {activeTab === "notes" && (
@@ -1959,6 +1991,257 @@ function NoteTasksTab({
     </div>
   );
 }
+
+// ─── A2UI Dashboard Tab ────────────────────────────────────────────────────────
+
+function A2UIDashboardTab({
+  workspace,
+  sessions,
+  agents,
+  tasks,
+  bgTasks,
+  codebases,
+  notes,
+  traces,
+  customSurfaces,
+  onAction,
+  onAddCustomSurface,
+}: {
+  workspace: { id: string; title: string; status: string };
+  sessions: SessionInfo[];
+  agents: Array<{ id: string; name: string; role: string; status: string }>;
+  tasks: TaskInfo[];
+  bgTasks: BackgroundTaskInfo[];
+  codebases: Array<{ id: string; label?: string; repoPath: string; branch?: string; isDefault?: boolean }>;
+  notes: NoteData[];
+  traces: TraceInfo[];
+  customSurfaces: A2UIMessage[];
+  onAction: (action: { name: string; surfaceId: string; context?: Record<string, unknown> }) => void;
+  onAddCustomSurface: (messages: A2UIMessage[]) => void;
+}) {
+  const [showJsonPanel, setShowJsonPanel] = useState(false);
+  const [customJsonInput, setCustomJsonInput] = useState("");
+  const [jsonError, setJsonError] = useState<string | null>(null);
+
+  // Build dashboard data from workspace state
+  const dashboardData: DashboardData = {
+    workspace,
+    sessions: sessions.map((s) => ({
+      sessionId: s.sessionId,
+      name: s.name,
+      provider: s.provider,
+      role: s.role,
+      createdAt: s.createdAt,
+    })),
+    agents,
+    tasks: tasks.map((t) => ({
+      id: t.id,
+      title: t.title,
+      status: t.status,
+      assignedTo: t.assignedTo,
+      createdAt: t.createdAt,
+    })),
+    bgTasks: bgTasks.map((t) => ({
+      id: t.id,
+      title: t.title,
+      status: t.status,
+      agentId: t.agentId,
+      triggerSource: t.triggerSource,
+      createdAt: t.createdAt,
+    })),
+    codebases,
+    notes: notes.map((n) => ({
+      id: n.id,
+      title: n.title,
+      content: n.content,
+      metadata: n.metadata,
+      updatedAt: n.updatedAt,
+    })),
+    traces: traces.map((t) => ({
+      id: t.id,
+      agentName: t.agentName,
+      action: t.action,
+      summary: t.summary,
+      createdAt: t.createdAt,
+    })),
+  };
+
+  // Generate A2UI messages from workspace data
+  const a2uiMessages = React.useMemo(
+    () => [...generateDashboardA2UI(dashboardData), ...customSurfaces],
+    [dashboardData, customSurfaces]
+  );
+
+  // Export the raw A2UI JSON for external consumption
+  const exportJson = () => {
+    const json = JSON.stringify(a2uiMessages, null, 2);
+    const blob = new Blob([json], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `a2ui-dashboard-${workspace.id}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // Import custom A2UI JSON surface
+  const handleImportJson = () => {
+    try {
+      const parsed = JSON.parse(customJsonInput);
+      const messages: A2UIMessage[] = Array.isArray(parsed) ? parsed : [parsed];
+      // Validate basic structure
+      for (const msg of messages) {
+        if (!msg.version || msg.version !== "v0.10") {
+          throw new Error("Each message must have version: \"v0.10\"");
+        }
+        if (!("createSurface" in msg || "updateComponents" in msg || "updateDataModel" in msg || "deleteSurface" in msg)) {
+          throw new Error("Each message must contain one of: createSurface, updateComponents, updateDataModel, deleteSurface");
+        }
+      }
+      onAddCustomSurface(messages);
+      setCustomJsonInput("");
+      setJsonError(null);
+      setShowJsonPanel(false);
+    } catch (e) {
+      setJsonError(e instanceof Error ? e.message : "Invalid JSON");
+    }
+  };
+
+  // Sample A2UI JSON for the import panel placeholder
+  const sampleJson = `[
+  {
+    "version": "v0.10",
+    "createSurface": {
+      "surfaceId": "custom_widget",
+      "catalogId": "https://a2ui.org/specification/v0_10/basic_catalog.json",
+      "theme": { "agentDisplayName": "Custom Agent" }
+    }
+  },
+  {
+    "version": "v0.10",
+    "updateComponents": {
+      "surfaceId": "custom_widget",
+      "components": [
+        { "id": "root", "component": "Card", "child": "content" },
+        { "id": "content", "component": "Column", "children": ["title", "body"] },
+        { "id": "title", "component": "Text", "text": "Hello from A2UI!", "variant": "h3" },
+        { "id": "body", "component": "Text", "text": { "path": "/message" }, "variant": "body" }
+      ]
+    }
+  },
+  {
+    "version": "v0.10",
+    "updateDataModel": {
+      "surfaceId": "custom_widget",
+      "value": { "message": "This is a custom A2UI surface rendered in Routa!" }
+    }
+  }
+]`;
+
+  return (
+    <div className="max-w-7xl space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-sm font-semibold text-gray-800 dark:text-gray-200">A2UI Dashboard</h2>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+            Dynamic dashboard surfaces rendered via{" "}
+            <a href="https://a2ui.org/" target="_blank" rel="noopener noreferrer" className="text-amber-600 dark:text-amber-500 hover:underline">
+              A2UI v0.10 protocol
+            </a>
+            {" "}— agents can generate custom UI panels
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowJsonPanel(!showJsonPanel)}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[11px] font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-[#191c28] transition-colors"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+            </svg>
+            Import Surface
+          </button>
+          <button
+            onClick={exportJson}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[11px] font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-[#191c28] transition-colors"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+            </svg>
+            Export JSON
+          </button>
+        </div>
+      </div>
+
+      {/* Import Panel */}
+      {showJsonPanel && (
+        <div className="bg-white dark:bg-[#12141c] rounded-xl border border-gray-200/60 dark:border-[#1c1f2e] p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-xs font-semibold text-gray-700 dark:text-gray-300">Import Custom A2UI Surface</h3>
+            <button onClick={() => { setShowJsonPanel(false); setJsonError(null); }}
+              className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+          <textarea
+            value={customJsonInput}
+            onChange={(e) => { setCustomJsonInput(e.target.value); setJsonError(null); }}
+            placeholder={sampleJson}
+            rows={12}
+            className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-[#252838] bg-gray-50 dark:bg-[#0e1019] text-[12px] text-gray-800 dark:text-gray-200 placeholder-gray-400 dark:placeholder-gray-600 outline-none focus:ring-2 focus:ring-amber-500/30 resize-none font-mono leading-relaxed"
+          />
+          {jsonError && (
+            <div className="mt-2 text-[11px] text-red-500 dark:text-red-400 bg-red-50 dark:bg-red-900/20 px-3 py-2 rounded-md">
+              {jsonError}
+            </div>
+          )}
+          <div className="flex items-center gap-2 mt-3">
+            <button
+              onClick={handleImportJson}
+              disabled={!customJsonInput.trim()}
+              className="px-4 py-2 rounded-lg text-[12px] font-medium text-white bg-amber-500 hover:bg-amber-600 disabled:opacity-40 transition-colors shadow-sm"
+            >
+              Render Surface
+            </button>
+            <button
+              onClick={() => setCustomJsonInput(sampleJson)}
+              className="px-3 py-2 rounded-lg text-[11px] font-medium text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
+            >
+              Load Example
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* A2UI Rendered Dashboard */}
+      <div className="space-y-4">
+        <A2UIViewer
+          messages={a2uiMessages}
+          onAction={onAction}
+        />
+      </div>
+
+      {/* Protocol info footer */}
+      <div className="mt-8 pt-4 border-t border-gray-200/40 dark:border-[#191c28]">
+        <div className="flex items-center gap-3 text-[10px] text-gray-400 dark:text-gray-600">
+          <span className="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-[#191c28] font-mono">A2UI v0.10</span>
+          <span>{a2uiMessages.length} messages</span>
+          <span>·</span>
+          <span>{a2uiMessages.filter(m => "createSurface" in m).length} surfaces</span>
+          <span>·</span>
+          <a href="https://a2ui.org/specification/" target="_blank" rel="noopener noreferrer"
+            className="text-amber-500 hover:text-amber-600 transition-colors">
+            Protocol docs →
+          </a>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Overlay Modal ─────────────────────────────────────────────────────────────
 
 function OverlayModal({
