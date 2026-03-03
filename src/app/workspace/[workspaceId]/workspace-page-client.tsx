@@ -105,7 +105,8 @@ export function WorkspacePageClient() {
   const [traces, setTraces] = useState<TraceInfo[]>([]);
   const [refreshKey, setRefreshKey] = useState(0);
   const [showAgentInstallPopup, setShowAgentInstallPopup] = useState(false);
-  const [activeTab, setActiveTab] = useState<"overview" | "a2ui_dashboard" | "notes" | "note_tasks" | "bg_tasks">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "notes" | "note_tasks" | "bg_tasks">("overview");
+  const [showA2UISource, setShowA2UISource] = useState(false);
   const [customA2UISurfaces, setCustomA2UISurfaces] = useState<A2UIMessage[]>([]);
   const [bgTasks, setBgTasks] = useState<BackgroundTaskInfo[]>([]);
   const [showDispatchModal, setShowDispatchModal] = useState(false);
@@ -562,11 +563,10 @@ export function WorkspacePageClient() {
 
           {/* ─── Tab Bar ─────────────────────────────────────────────── */}
           <div className="flex items-center gap-1 mb-6 border-b border-gray-200/60 dark:border-[#191c28]">
-            <TabButton active={activeTab === "overview"} onClick={() => setActiveTab("overview")}>Overview</TabButton>
-            <TabButton active={activeTab === "a2ui_dashboard"} onClick={() => setActiveTab("a2ui_dashboard")}>
-              A2UI Dashboard
+            <TabButton active={activeTab === "overview"} onClick={() => setActiveTab("overview")}>
+              Overview
               <span className="ml-1.5 px-1.5 py-0.5 text-[9px] rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 font-semibold uppercase tracking-wider">
-                Live
+                A2UI
               </span>
             </TabButton>
             <TabButton active={activeTab === "notes"} onClick={() => setActiveTab("notes")}>
@@ -597,166 +597,29 @@ export function WorkspacePageClient() {
 
           {/* ─── Tab Content ─────────────────────────────────────────── */}
           {activeTab === "overview" && (
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              {/* Left 2/3: Sessions */}
-              <div className="lg:col-span-2 space-y-6">
-                {/* Recent Sessions */}
-                <DashboardCard
-                  title="Recent Sessions"
-                  count={sessions.length}
-                  emptyText="No sessions yet. Start one above."
-                  action={
-                    sessions.length > 0 ? (
-                      <button
-                        onClick={handleDeleteAllSessions}
-                        className="text-[11px] text-red-500 dark:text-red-400 hover:text-red-600 dark:hover:text-red-300 transition-colors"
-                      >
-                        Clear all
-                      </button>
-                    ) : undefined
-                  }
-                >
-                  {sessions.slice(0, 8).map((s) => (
-                    <button
-                      key={s.sessionId}
-                      onClick={() => router.push(`/workspace/${workspaceId}/sessions/${s.sessionId}`)}
-                      className="group w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg hover:bg-gray-50 dark:hover:bg-[#151720] transition-colors text-left"
-                    >
-                      <div className="w-7 h-7 rounded-md bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center shrink-0">
-                        <svg className="w-3.5 h-3.5 text-blue-500 dark:text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a5.969 5.969 0 01-.474-.065 4.48 4.48 0 00.978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z" />
-                        </svg>
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="text-[13px] font-medium text-gray-700 dark:text-gray-300 truncate group-hover:text-gray-900 dark:group-hover:text-gray-100 transition-colors">
-                          {s.name || s.provider || `Session ${s.sessionId.slice(0, 8)}`}
-                        </div>
-                        <div className="text-[11px] text-gray-400 dark:text-gray-500 truncate">
-                          {s.role && <span className="capitalize">{s.role.toLowerCase()}</span>}
-                          {s.role && s.provider && <span className="mx-1">·</span>}
-                          {s.provider && <span>{s.provider}</span>}
-                        </div>
-                      </div>
-                      <span className="text-[10px] text-gray-400 dark:text-gray-600 font-mono shrink-0">
-                        {formatRelativeTime(s.createdAt)}
-                      </span>
-                      <svg className="w-3.5 h-3.5 text-gray-300 dark:text-gray-600 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
-                      </svg>
-                    </button>
-                  ))}
-                </DashboardCard>
-              </div>
-
-              {/* Right 1/3: Context Sidebar */}
-              <div className="space-y-6">
-                {/* Codebases */}
-                <DashboardCard
-                  title="Codebases"
-                  count={codebases.length}
-                  emptyText="No codebases linked."
-                >
-                  {codebases.map((cb) => (
-                    <div key={cb.id} className="flex items-center gap-3 px-3.5 py-2.5 rounded-lg">
-                      <div className="w-7 h-7 rounded-md bg-gray-100 dark:bg-[#191c28] flex items-center justify-center shrink-0">
-                        <svg className="w-3.5 h-3.5 text-gray-500 dark:text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5" />
-                        </svg>
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="text-[12px] font-medium text-gray-700 dark:text-gray-300 truncate">
-                          {cb.label || cb.repoPath.split("/").pop()}
-                        </div>
-                        {cb.branch && (
-                          <div className="text-[10px] text-gray-400 dark:text-gray-500 font-mono truncate flex items-center gap-1">
-                            <svg className="w-2.5 h-2.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m9.07-9.07a4.5 4.5 0 00-6.364 0l-4.5 4.5a4.5 4.5 0 000 6.364l1.757 1.757" />
-                            </svg>
-                            {cb.branch}
-                          </div>
-                        )}
-                      </div>
-                      {cb.isDefault && (
-                        <span className="text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400">
-                          Default
-                        </span>
-                      )}
-                    </div>
-                  ))}
-                </DashboardCard>
-
-                {/* Active Agents */}
-                <DashboardCard
-                  title="Agents"
-                  count={agentsHook.agents.length}
-                  emptyText="No agents spawned."
-                  action={
-                    <button
-                      onClick={() => setShowAgentInstallPopup(true)}
-                      className="text-[11px] text-amber-600 dark:text-amber-500 hover:text-amber-700 dark:hover:text-amber-400 transition-colors"
-                    >
-                      + Install
-                    </button>
-                  }
-                >
-                  {agentsHook.agents.slice(0, 6).map((agent) => (
-                    <div key={agent.id} className="flex items-center gap-3 px-3.5 py-2 rounded-lg">
-                      <AgentRoleIcon role={agent.role} />
-                      <div className="flex-1 min-w-0">
-                        <div className="text-[12px] font-medium text-gray-700 dark:text-gray-300 truncate">{agent.name}</div>
-                        <div className="text-[10px] text-gray-400 dark:text-gray-500 uppercase tracking-wider">{agent.role}</div>
-                      </div>
-                      <AgentStatusDot status={agent.status} />
-                    </div>
-                  ))}
-                </DashboardCard>
-
-                {/* Skills */}
-                <DashboardCard
-                  title="Skills"
-                  count={skillsHook.skills.length}
-                  emptyText="No skills loaded."
-                >
-                  <div className="flex flex-wrap gap-1.5 px-3 py-2">
-                    {skillsHook.skills.slice(0, 12).map((sk) => (
-                      <span
-                        key={sk.name}
-                        className="inline-flex items-center px-2 py-1 rounded-md bg-gray-100 dark:bg-[#191c28] text-[11px] font-medium text-gray-600 dark:text-gray-400 border border-gray-200/50 dark:border-[#252838]"
-                      >
-                        /{sk.name}
-                      </span>
-                    ))}
-                  </div>
-                </DashboardCard>
-
-                {/* Activity Feed */}
-                {traces.length > 0 && (
-                  <DashboardCard title="Recent Activity" count={traces.length}>
-                    {traces.slice(0, 5).map((t) => (
-                      <div key={t.id} className="flex items-start gap-2.5 px-3.5 py-2">
-                        <div className="w-1.5 h-1.5 rounded-full bg-gray-300 dark:bg-gray-600 mt-1.5 shrink-0" />
-                        <div className="flex-1 min-w-0">
-                          <div className="text-[11px] text-gray-600 dark:text-gray-400 truncate">
-                            {t.summary || t.action || "Agent trace"}
-                          </div>
-                          <div className="text-[10px] text-gray-400 dark:text-gray-600 font-mono">
-                            {t.agentName && <span>{t.agentName}</span>}
-                            {t.agentName && <span className="mx-1">·</span>}
-                            {formatRelativeTime(t.createdAt)}
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                    <a
-                      href="/traces"
-                      className="block px-3.5 py-2 text-[11px] text-amber-600 dark:text-amber-500 hover:text-amber-700 dark:hover:text-amber-400 transition-colors"
-                    >
-                      View all traces →
-                    </a>
-                  </DashboardCard>
-                )}
-              </div>
-            </div>
+            <OverviewA2UITab
+              workspace={effectiveWorkspace}
+              sessions={sessions}
+              agents={agentsHook.agents}
+              tasks={tasks}
+              bgTasks={bgTasks}
+              codebases={codebases}
+              notes={notesHook.notes}
+              traces={traces}
+              skills={skillsHook.skills}
+              customSurfaces={customA2UISurfaces}
+              showSource={showA2UISource}
+              onToggleSource={() => setShowA2UISource((v) => !v)}
+              onAction={(action) => {
+                console.log("[A2UI Action]", action);
+              }}
+              onAddCustomSurface={(messages) => {
+                setCustomA2UISurfaces((prev) => [...prev, ...messages]);
+              }}
+              onInstallAgent={() => setShowAgentInstallPopup(true)}
+              onDeleteAllSessions={handleDeleteAllSessions}
+              onNavigateSession={(sessionId) => router.push(`/workspace/${workspaceId}/sessions/${sessionId}`)}
+            />
           )}
 
           {activeTab === "bg_tasks" && (
@@ -1264,27 +1127,6 @@ export function WorkspacePageClient() {
                 </OverlayModal>
               )}
             </div>
-          )}
-
-          {activeTab === "a2ui_dashboard" && (
-            <A2UIDashboardTab
-              workspace={effectiveWorkspace}
-              sessions={sessions}
-              agents={agentsHook.agents}
-              tasks={tasks}
-              bgTasks={bgTasks}
-              codebases={codebases}
-              notes={notesHook.notes}
-              traces={traces}
-              customSurfaces={customA2UISurfaces}
-              onAction={(action) => {
-                // Handle A2UI actions (button clicks, etc.)
-                console.log("[A2UI Action]", action);
-              }}
-              onAddCustomSurface={(messages) => {
-                setCustomA2UISurfaces((prev) => [...prev, ...messages]);
-              }}
-            />
           )}
 
           {activeTab === "notes" && (
@@ -1992,9 +1834,11 @@ function NoteTasksTab({
   );
 }
 
-// ─── A2UI Dashboard Tab ────────────────────────────────────────────────────────
+// ─── Overview Tab (A2UI-powered) ──────────────────────────────────────────────
+// The Overview is dynamically generated via A2UI v0.10 protocol.
+// Agents can inject custom surfaces, and users can import/export the JSON.
 
-function A2UIDashboardTab({
+function OverviewA2UITab({
   workspace,
   sessions,
   agents,
@@ -2003,9 +1847,15 @@ function A2UIDashboardTab({
   codebases,
   notes,
   traces,
+  skills,
   customSurfaces,
+  showSource,
+  onToggleSource,
   onAction,
   onAddCustomSurface,
+  onInstallAgent,
+  onDeleteAllSessions,
+  onNavigateSession,
 }: {
   workspace: { id: string; title: string; status: string };
   sessions: SessionInfo[];
@@ -2015,9 +1865,15 @@ function A2UIDashboardTab({
   codebases: Array<{ id: string; label?: string; repoPath: string; branch?: string; isDefault?: boolean }>;
   notes: NoteData[];
   traces: TraceInfo[];
+  skills: Array<{ name: string }>;
   customSurfaces: A2UIMessage[];
+  showSource: boolean;
+  onToggleSource: () => void;
   onAction: (action: { name: string; surfaceId: string; context?: Record<string, unknown> }) => void;
   onAddCustomSurface: (messages: A2UIMessage[]) => void;
+  onInstallAgent: () => void;
+  onDeleteAllSessions: () => void;
+  onNavigateSession: (sessionId: string) => void;
 }) {
   const [showJsonPanel, setShowJsonPanel] = useState(false);
   const [customJsonInput, setCustomJsonInput] = useState("");
@@ -2066,13 +1922,13 @@ function A2UIDashboardTab({
     })),
   };
 
-  // Generate A2UI messages from workspace data
+  // Generate A2UI messages
   const a2uiMessages = React.useMemo(
     () => [...generateDashboardA2UI(dashboardData), ...customSurfaces],
-    [dashboardData, customSurfaces]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [JSON.stringify(dashboardData), customSurfaces]
   );
 
-  // Export the raw A2UI JSON for external consumption
   const exportJson = () => {
     const json = JSON.stringify(a2uiMessages, null, 2);
     const blob = new Blob([json], { type: "application/json" });
@@ -2084,12 +1940,10 @@ function A2UIDashboardTab({
     URL.revokeObjectURL(url);
   };
 
-  // Import custom A2UI JSON surface
   const handleImportJson = () => {
     try {
       const parsed = JSON.parse(customJsonInput);
       const messages: A2UIMessage[] = Array.isArray(parsed) ? parsed : [parsed];
-      // Validate basic structure
       for (const msg of messages) {
         if (!msg.version || msg.version !== "v0.10") {
           throw new Error("Each message must have version: \"v0.10\"");
@@ -2107,14 +1961,13 @@ function A2UIDashboardTab({
     }
   };
 
-  // Sample A2UI JSON for the import panel placeholder
   const sampleJson = `[
   {
     "version": "v0.10",
     "createSurface": {
       "surfaceId": "custom_widget",
       "catalogId": "https://a2ui.org/specification/v0_10/basic_catalog.json",
-      "theme": { "agentDisplayName": "Custom Agent" }
+      "theme": { "agentDisplayName": "My Agent" }
     }
   },
   {
@@ -2124,7 +1977,7 @@ function A2UIDashboardTab({
       "components": [
         { "id": "root", "component": "Card", "child": "content" },
         { "id": "content", "component": "Column", "children": ["title", "body"] },
-        { "id": "title", "component": "Text", "text": "Hello from A2UI!", "variant": "h3" },
+        { "id": "title", "component": "Text", "text": "Custom Widget", "variant": "h3" },
         { "id": "body", "component": "Text", "text": { "path": "/message" }, "variant": "body" }
       ]
     }
@@ -2133,48 +1986,185 @@ function A2UIDashboardTab({
     "version": "v0.10",
     "updateDataModel": {
       "surfaceId": "custom_widget",
-      "value": { "message": "This is a custom A2UI surface rendered in Routa!" }
+      "value": { "message": "This is a custom A2UI surface rendered in your dashboard!" }
     }
   }
 ]`;
 
   return (
-    <div className="max-w-7xl space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-sm font-semibold text-gray-800 dark:text-gray-200">A2UI Dashboard</h2>
-          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-            Dynamic dashboard surfaces rendered via{" "}
-            <a href="https://a2ui.org/" target="_blank" rel="noopener noreferrer" className="text-amber-600 dark:text-amber-500 hover:underline">
-              A2UI v0.10 protocol
-            </a>
-            {" "}— agents can generate custom UI panels
-          </p>
+    <div className="space-y-6">
+      {/* ─── A2UI-Rendered Dashboard ─────────────────────────── */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Left 2/3: A2UI dynamic surfaces */}
+        <div className="lg:col-span-2 space-y-4">
+          <A2UIViewer
+            messages={a2uiMessages}
+            onAction={onAction}
+          />
         </div>
-        <div className="flex items-center gap-2">
+
+        {/* Right 1/3: Native interactive sidebar */}
+        <div className="space-y-6">
+          {/* Recent Sessions (native — needs click navigation) */}
+          <DashboardCard
+            title="Recent Sessions"
+            count={sessions.length}
+            emptyText="No sessions yet. Start one above."
+            action={
+              sessions.length > 0 ? (
+                <button
+                  onClick={onDeleteAllSessions}
+                  className="text-[11px] text-red-500 dark:text-red-400 hover:text-red-600 dark:hover:text-red-300 transition-colors"
+                >
+                  Clear all
+                </button>
+              ) : undefined
+            }
+          >
+            {sessions.slice(0, 6).map((s) => (
+              <button
+                key={s.sessionId}
+                onClick={() => onNavigateSession(s.sessionId)}
+                className="group w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg hover:bg-gray-50 dark:hover:bg-[#151720] transition-colors text-left"
+              >
+                <div className="w-7 h-7 rounded-md bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center shrink-0">
+                  <svg className="w-3.5 h-3.5 text-blue-500 dark:text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a5.969 5.969 0 01-.474-.065 4.48 4.48 0 00.978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z" />
+                  </svg>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-[13px] font-medium text-gray-700 dark:text-gray-300 truncate group-hover:text-gray-900 dark:group-hover:text-gray-100 transition-colors">
+                    {s.name || s.provider || `Session ${s.sessionId.slice(0, 8)}`}
+                  </div>
+                  <div className="text-[11px] text-gray-400 dark:text-gray-500 truncate">
+                    {s.role && <span className="capitalize">{s.role.toLowerCase()}</span>}
+                    {s.role && s.provider && <span className="mx-1">·</span>}
+                    {s.provider && <span>{s.provider}</span>}
+                  </div>
+                </div>
+                <span className="text-[10px] text-gray-400 dark:text-gray-600 font-mono shrink-0">
+                  {formatRelativeTime(s.createdAt)}
+                </span>
+                <svg className="w-3.5 h-3.5 text-gray-300 dark:text-gray-600 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+                </svg>
+              </button>
+            ))}
+          </DashboardCard>
+
+          {/* Agents */}
+          <DashboardCard
+            title="Agents"
+            count={agents.length}
+            emptyText="No agents spawned."
+            action={
+              <button
+                onClick={onInstallAgent}
+                className="text-[11px] text-amber-600 dark:text-amber-500 hover:text-amber-700 dark:hover:text-amber-400 transition-colors"
+              >
+                + Install
+              </button>
+            }
+          >
+            {agents.slice(0, 6).map((agent) => (
+              <div key={agent.id} className="flex items-center gap-3 px-3.5 py-2 rounded-lg">
+                <AgentRoleIcon role={agent.role} />
+                <div className="flex-1 min-w-0">
+                  <div className="text-[12px] font-medium text-gray-700 dark:text-gray-300 truncate">{agent.name}</div>
+                  <div className="text-[10px] text-gray-400 dark:text-gray-500 uppercase tracking-wider">{agent.role}</div>
+                </div>
+                <AgentStatusDot status={agent.status} />
+              </div>
+            ))}
+          </DashboardCard>
+
+          {/* Skills */}
+          {skills.length > 0 && (
+            <DashboardCard title="Skills" count={skills.length}>
+              <div className="flex flex-wrap gap-1.5 px-3 py-2">
+                {skills.slice(0, 12).map((sk) => (
+                  <span
+                    key={sk.name}
+                    className="inline-flex items-center px-2 py-1 rounded-md bg-gray-100 dark:bg-[#191c28] text-[11px] font-medium text-gray-600 dark:text-gray-400 border border-gray-200/50 dark:border-[#252838]"
+                  >
+                    /{sk.name}
+                  </span>
+                ))}
+              </div>
+            </DashboardCard>
+          )}
+        </div>
+      </div>
+
+      {/* ─── A2UI Toolbar ─────────────────────────────────────── */}
+      <div className="flex items-center justify-between pt-2 border-t border-gray-200/40 dark:border-[#191c28]">
+        <div className="flex items-center gap-3 text-[10px] text-gray-400 dark:text-gray-600">
+          <span className="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-[#191c28] font-mono">A2UI v0.10</span>
+          <span>{a2uiMessages.length} messages</span>
+          <span>·</span>
+          <span>{a2uiMessages.filter(m => "createSurface" in m).length} surfaces</span>
+          <span>·</span>
+          <a href="https://a2ui.org/specification/" target="_blank" rel="noopener noreferrer"
+            className="text-amber-500 hover:text-amber-600 transition-colors">
+            Protocol docs
+          </a>
+        </div>
+        <div className="flex items-center gap-1.5">
           <button
             onClick={() => setShowJsonPanel(!showJsonPanel)}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[11px] font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-[#191c28] transition-colors"
+            className="flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-medium text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#191c28] transition-colors"
           >
-            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
             </svg>
-            Import Surface
+            Import
           </button>
           <button
             onClick={exportJson}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[11px] font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-[#191c28] transition-colors"
+            className="flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-medium text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#191c28] transition-colors"
           >
-            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
             </svg>
-            Export JSON
+            Export
+          </button>
+          <button
+            onClick={onToggleSource}
+            className={`flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-medium transition-colors ${
+              showSource
+                ? "bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400"
+                : "text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#191c28]"
+            }`}
+          >
+            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5" />
+            </svg>
+            Source
           </button>
         </div>
       </div>
 
-      {/* Import Panel */}
+      {/* ─── Source View ──────────────────────────────────────── */}
+      {showSource && (
+        <div className="bg-gray-50 dark:bg-[#0a0c12] rounded-xl border border-gray-200/60 dark:border-[#1c1f2e] p-4 overflow-hidden">
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-[11px] font-semibold text-gray-500 dark:text-gray-400">A2UI Protocol Messages (JSON)</h3>
+            <button
+              onClick={() => {
+                navigator.clipboard.writeText(JSON.stringify(a2uiMessages, null, 2));
+              }}
+              className="text-[10px] text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+            >
+              Copy
+            </button>
+          </div>
+          <pre className="text-[11px] text-gray-600 dark:text-gray-400 font-mono whitespace-pre-wrap leading-relaxed max-h-96 overflow-y-auto">
+            {JSON.stringify(a2uiMessages, null, 2)}
+          </pre>
+        </div>
+      )}
+
+      {/* ─── Import Panel ─────────────────────────────────────── */}
       {showJsonPanel && (
         <div className="bg-white dark:bg-[#12141c] rounded-xl border border-gray-200/60 dark:border-[#1c1f2e] p-4">
           <div className="flex items-center justify-between mb-3">
@@ -2190,7 +2180,7 @@ function A2UIDashboardTab({
             value={customJsonInput}
             onChange={(e) => { setCustomJsonInput(e.target.value); setJsonError(null); }}
             placeholder={sampleJson}
-            rows={12}
+            rows={10}
             className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-[#252838] bg-gray-50 dark:bg-[#0e1019] text-[12px] text-gray-800 dark:text-gray-200 placeholder-gray-400 dark:placeholder-gray-600 outline-none focus:ring-2 focus:ring-amber-500/30 resize-none font-mono leading-relaxed"
           />
           {jsonError && (
@@ -2215,29 +2205,6 @@ function A2UIDashboardTab({
           </div>
         </div>
       )}
-
-      {/* A2UI Rendered Dashboard */}
-      <div className="space-y-4">
-        <A2UIViewer
-          messages={a2uiMessages}
-          onAction={onAction}
-        />
-      </div>
-
-      {/* Protocol info footer */}
-      <div className="mt-8 pt-4 border-t border-gray-200/40 dark:border-[#191c28]">
-        <div className="flex items-center gap-3 text-[10px] text-gray-400 dark:text-gray-600">
-          <span className="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-[#191c28] font-mono">A2UI v0.10</span>
-          <span>{a2uiMessages.length} messages</span>
-          <span>·</span>
-          <span>{a2uiMessages.filter(m => "createSurface" in m).length} surfaces</span>
-          <span>·</span>
-          <a href="https://a2ui.org/specification/" target="_blank" rel="noopener noreferrer"
-            className="text-amber-500 hover:text-amber-600 transition-colors">
-            Protocol docs →
-          </a>
-        </div>
-      </div>
     </div>
   );
 }
