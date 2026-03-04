@@ -13,6 +13,8 @@ export interface SessionPersistData {
   id: string;
   name?: string;
   cwd: string;
+  /** Git branch the session is scoped to (optional) */
+  branch?: string;
   workspaceId: string;
   routaAgentId: string;
   provider: string;
@@ -32,6 +34,7 @@ export async function persistSessionToDb(data: SessionPersistData): Promise<void
     id: data.id,
     name: data.name,
     cwd: data.cwd,
+    branch: data.branch,
     workspaceId: data.workspaceId,
     routaAgentId: data.routaAgentId,
     provider: data.provider,
@@ -108,6 +111,7 @@ export async function hydrateSessionsFromDb(): Promise<Array<{
   id: string;
   name?: string;
   cwd: string;
+  branch?: string;
   workspaceId: string;
   routaAgentId?: string;
   provider?: string;

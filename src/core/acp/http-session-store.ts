@@ -25,6 +25,8 @@ export interface RoutaSessionRecord {
   /** User-editable display name */
   name?: string;
   cwd: string;
+  /** Git branch the session is scoped to (optional) */
+  branch?: string;
   workspaceId: string;
   routaAgentId?: string;
   provider?: string;
@@ -682,6 +684,7 @@ class HttpSessionStore {
           sessionId: s.id,
           name: s.name,
           cwd: s.cwd,
+          branch: s.branch,
           workspaceId: s.workspaceId,
           routaAgentId: s.routaAgentId,
           provider: s.provider,

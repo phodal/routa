@@ -64,6 +64,8 @@ export interface UseAcpActions {
     baseUrl?: string,
     /** API key override */
     apiKey?: string,
+    /** Git branch to scope the session to */
+    branch?: string,
   ) => Promise<AcpNewSessionResult | null>;
   selectSession: (sessionId: string) => void;
   setProvider: (provider: string) => void;
@@ -212,6 +214,7 @@ export function useAcp(baseUrl: string = ""): UseAcpState & UseAcpActions {
       specialistId?: string,
       baseUrl?: string,
       apiKey?: string,
+      branch?: string,
     ): Promise<AcpNewSessionResult | null> => {
       const client = clientRef.current;
       if (!client) return null;
@@ -220,6 +223,7 @@ export function useAcp(baseUrl: string = ""): UseAcpState & UseAcpActions {
         const activeProvider = provider ?? state.selectedProvider;
         const result = await client.newSession({
           cwd,
+          branch,
           provider: activeProvider,
           modeId,
           role,

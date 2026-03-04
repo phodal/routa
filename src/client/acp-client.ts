@@ -117,6 +117,8 @@ export class BrowserAcpClient {
    */
   async newSession(params: {
     cwd?: string;
+    /** Git branch to scope the session to (optional) */
+    branch?: string;
     provider?: string;
     modeId?: string;
     role?: string;
@@ -134,6 +136,7 @@ export class BrowserAcpClient {
   }): Promise<AcpNewSessionResult> {
     const result = await this.rpc<AcpNewSessionResult>("session/new", {
       cwd: params.cwd,
+      branch: params.branch,
       provider: params.provider ?? "opencode",
       modeId: params.modeId,
       role: params.role,

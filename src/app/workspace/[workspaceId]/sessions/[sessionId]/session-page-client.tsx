@@ -721,11 +721,12 @@ export function SessionPageClient() {
       await deleteEmptySession(sessionId);
 
       const cwd = repoSelection?.path ?? undefined;
+      const branch = repoSelection?.branch || undefined;
       // Always pass the selected role - don't skip CRAFTER
       const role = selectedAgent;
       const { provider: effectiveProvider, model: resolvedModel, baseUrl, apiKey } = resolveAgentConfig(provider);
       console.log(`[handleCreateSession] Creating session: provider=${effectiveProvider}, model=${resolvedModel}, role=${role}, specialistId=${selectedSpecialistId}`);
-      const result = await acp.createSession(cwd, effectiveProvider, undefined, role, workspaceId, resolvedModel, undefined, selectedSpecialistId ?? undefined, baseUrl, apiKey);
+      const result = await acp.createSession(cwd, effectiveProvider, undefined, role, workspaceId, resolvedModel, undefined, selectedSpecialistId ?? undefined, baseUrl, apiKey, branch);
       if (result?.sessionId) {
         router.push(`/workspace/${workspaceId}/sessions/${result.sessionId}`);
       }
@@ -756,8 +757,9 @@ export function SessionPageClient() {
     const { provider: effectiveProvider, model: resolvedModel, baseUrl, apiKey } = resolveAgentConfig(provider);
     // Explicit model (from chat input) takes priority over per-role model config
     const effectiveModel = model ?? resolvedModel;
+    const branch = repoSelection?.branch || undefined;
     console.log(`[ensureSessionForChat] Creating session: provider=${effectiveProvider}, role=${role}, model=${effectiveModel}, specialistId=${selectedSpecialistId}`);
-    const result = await acp.createSession(cwd, effectiveProvider, modeId, role, workspaceId, effectiveModel, undefined, selectedSpecialistId ?? undefined, baseUrl, apiKey);
+    const result = await acp.createSession(cwd, effectiveProvider, modeId, role, workspaceId, effectiveModel, undefined, selectedSpecialistId ?? undefined, baseUrl, apiKey, branch);
     if (result?.sessionId) {
       router.push(`/workspace/${workspaceId}/sessions/${result.sessionId}`);
       return result.sessionId;

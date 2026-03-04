@@ -130,6 +130,8 @@ export async function POST(request: NextRequest) {
     (input.forwardedProps?.workspaceId as string) ?? "default";
   const cwd =
     (input.forwardedProps?.cwd as string) ?? process.cwd();
+  const branch =
+    (input.forwardedProps?.branch as string) || undefined;
 
   const manager = getAcpProcessManager();
   const store = getHttpSessionStore();
@@ -188,6 +190,7 @@ export async function POST(request: NextRequest) {
       store.upsertSession({
         sessionId,
         cwd,
+        branch,
         workspaceId,
         provider,
         role: "CRAFTER",
@@ -197,6 +200,7 @@ export async function POST(request: NextRequest) {
       await persistSessionToDb({
         id: sessionId,
         cwd,
+        branch,
         workspaceId,
         routaAgentId: sessionId,
         provider,

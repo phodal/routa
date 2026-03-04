@@ -211,6 +211,7 @@ export async function POST(request: NextRequest) {
     if (method === "session/new") {
       const p = (params ?? {}) as Record<string, unknown>;
       const cwd = (p.cwd as string | undefined) ?? process.cwd();
+      const branch = (p.branch as string | undefined) || undefined;
 
       // Determine default provider based on environment
       const defaultProvider = isServerlessEnvironment() ? "claude-code-sdk" : "opencode";
@@ -440,6 +441,7 @@ export async function POST(request: NextRequest) {
       store.upsertSession({
         sessionId,
         cwd,
+        branch,
         workspaceId,
         routaAgentId: routaAgentId ?? acpSessionId,
         provider,
@@ -455,6 +457,7 @@ export async function POST(request: NextRequest) {
       await persistSessionToDb({
         id: sessionId,
         cwd,
+        branch,
         workspaceId,
         routaAgentId: routaAgentId ?? acpSessionId,
         provider,

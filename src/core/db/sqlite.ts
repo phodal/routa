@@ -175,6 +175,9 @@ function initializeSqliteTables(db: SqliteDatabase): void {
     )
   `);
 
+  // Add branch column to existing acp_sessions tables
+  try { db.run(sql`ALTER TABLE acp_sessions ADD COLUMN branch TEXT`); } catch { /* column already exists */ }
+
   db.run(sql`
     CREATE TABLE IF NOT EXISTS codebases (
       id TEXT PRIMARY KEY,

@@ -18,6 +18,8 @@ export interface AcpSession {
   /** User-editable display name */
   name?: string;
   cwd: string;
+  /** Git branch the session is scoped to (optional) */
+  branch?: string;
   workspaceId: string;
   routaAgentId?: string;
   provider?: string;

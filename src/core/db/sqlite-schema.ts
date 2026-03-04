@@ -155,6 +155,8 @@ export const acpSessions = sqliteTable("acp_sessions", {
   /** User-editable display name */
   name: text("name"),
   cwd: text("cwd").notNull(),
+  /** Git branch the session is scoped to (optional) */
+  branch: text("branch"),
   workspaceId: text("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
   routaAgentId: text("routa_agent_id"),
   provider: text("provider"),

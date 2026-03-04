@@ -191,6 +191,7 @@ export function HomeInput({
           selectedSpecialistId ?? undefined,
           def?.baseUrl ?? conn.baseUrl,
           def?.apiKey ?? conn.apiKey,
+          repoSelection?.branch,
         );
 
         if (result?.sessionId) {
