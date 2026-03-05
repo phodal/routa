@@ -47,8 +47,8 @@ function formatDateTime(date: Date): string {
  */
 export class TraceWriter {
   private cwd: string;
-  private currentDay: string | null = null;
-  private currentFilePath: string | null = null;
+  /** Per-session file path cache: sessionId → filePath */
+  private sessionFiles = new Map<string, { day: string; filePath: string }>();
   private readonly isServerless: boolean;
 
   constructor(cwd: string) {
@@ -65,20 +65,24 @@ export class TraceWriter {
   }
 
   /**
-   * Get a trace file path for the current datetime (local only).
+   * Get a trace file path for a specific session.
+   * Each session gets its own JSONL file to avoid mixing traces.
    */
-  private async getTracePath(day: string): Promise<string> {
+  private async getTracePath(day: string, sessionId: string): Promise<string> {
     const dir = this.getTraceDir(day);
     await fs.mkdir(dir, { recursive: true });
 
-    if (this.currentDay === day && this.currentFilePath) {
-      return this.currentFilePath;
+    // Reuse existing file for same session + same day
+    const cached = this.sessionFiles.get(sessionId);
+    if (cached && cached.day === day) {
+      return cached.filePath;
     }
 
+    // Use session ID prefix (first 8 chars) + datetime for readability
     const datetime = formatDateTime(new Date());
-    const filePath = path.join(dir, `traces-${datetime}.jsonl`);
-    this.currentDay = day;
-    this.currentFilePath = filePath;
+    const shortId = sessionId.slice(0, 8);
+    const filePath = path.join(dir, `traces-${shortId}-${datetime}.jsonl`);
+    this.sessionFiles.set(sessionId, { day, filePath });
     return filePath;
   }
 
@@ -99,7 +103,7 @@ export class TraceWriter {
 
     // Local: write to JSONL file under ~/.routa/projects/{slug}/traces/
     const day = formatDay(new Date());
-    const filePath = await this.getTracePath(day);
+    const filePath = await this.getTracePath(day, record.sessionId);
     const line = JSON.stringify(record) + "\n";
     await fs.appendFile(filePath, line, "utf-8");
   }
