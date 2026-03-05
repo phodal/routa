@@ -811,18 +811,9 @@ export function ChatPanel({
             break;
           }
 
-          case "acp_status": {
-            const status = update.status as string | undefined;
-            const error = update.error as string | undefined;
-            const label = error
-              ? `acp_status: ${status ?? "?"} — ${error}`
-              : `acp_status: ${status ?? "?"}`;
-            arr.push({ id: uuidv4(), role: "info", content: label, timestamp: new Date(), rawData: update });
-            break;
-          }
-
           case "available_commands_update":
           case "config_option_update":
+          case "acp_status":
           case "session_info_update": {
             arr.push({
               id: uuidv4(),
@@ -833,8 +824,6 @@ export function ChatPanel({
             });
             break;
           }
-
-          // ─── Input JSON Streaming ───────────────────────────────────
           case "tool_call_start": {
             // Tool call streaming started - create placeholder entry
             const toolCallId = update.toolCallId as string | undefined;
