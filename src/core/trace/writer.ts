@@ -139,6 +139,13 @@ export function getTraceWriter(cwd: string): TraceWriter {
   if (!writer) {
     writer = new TraceWriter(cwd);
     cache.set(cwd, writer);
+
+    // Fire-and-forget: run trace migration on first writer creation (local only)
+    if (!isServerlessEnvironment()) {
+      import("../storage/migration-tool").then(({ MigrationTool }) => {
+        new MigrationTool(cwd).migrateTraces().catch(() => {});
+      }).catch(() => {});
+    }
   }
   return writer;
 }
