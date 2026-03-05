@@ -6,6 +6,7 @@ import type { SpecialistConfig, AgentRole, ModelTier } from "./specialist-manage
 import { GitHubWebhookPanel } from "./github-webhook-panel";
 import { SchedulePanel } from "./schedule-panel";
 import { AgentInstallPanel } from "./agent-install-panel";
+import { WorkflowPanel } from "./workflow-panel";
 
 /**
  * Agent roles that can have default providers configured.
@@ -191,7 +192,7 @@ interface SettingsPanelProps {
   initialTab?: SettingsTab;
 }
 
-type SettingsTab = "providers" | "specialists" | "models" | "memory" | "mcp" | "webhooks" | "schedules" | "agents";
+type SettingsTab = "providers" | "specialists" | "models" | "memory" | "mcp" | "webhooks" | "schedules" | "agents" | "workflows";
 
 // ─── Shared style helpers ──────────────────────────────────────────────────
 const inputCls =
@@ -1314,6 +1315,7 @@ export function SettingsPanel({ open, onClose, providers, initialTab }: Settings
     { key: "mcp", label: "MCP Servers" },
     { key: "webhooks", label: "Webhooks" },
     { key: "schedules", label: "Schedules" },
+    { key: "workflows", label: "Workflows" },
     { key: "memory", label: "Memory" },
   ];
 
@@ -1407,6 +1409,11 @@ export function SettingsPanel({ open, onClose, providers, initialTab }: Settings
           {activeTab === "mcp" && <McpServersTab />}
           {activeTab === "webhooks" && <WebhooksTab />}
           {activeTab === "schedules" && <SchedulesTab />}
+          {activeTab === "workflows" && (
+            <div className="h-full overflow-y-auto">
+              <WorkflowPanel />
+            </div>
+          )}
           {activeTab === "memory" && <MemoryStatsTab />}
         </div>
 
