@@ -32,26 +32,10 @@ These files serve as context handoff between agents and humans.
 context handoff between agents (and humans) — focus on **WHAT** and **WHY**, not HOW to resolve.
 - File Naming: `issues/YYYY-MM-DD-short-description.md`
 
-### Format
+## Debug
 
-Use `issues/_template.md` as the base. Key rules:
-
-- **front-matter** is required: `title`, `date`, `status`, `severity`, `area`, `reported_by`
-- **What Happened**: objective facts only — error messages, observed behavior, deviation from expected
-- **Why This Might Happen**: possible causes, use hedging language ("可能", "疑似"), never prescribe solutions
-- **Relevant Files**: list file paths that a reader should look at, no need to explain why
-- **Do NOT include solutions or fix instructions** — the person picking this up should form their own judgment with the context provided
-
-### Status Lifecycle
-
-`open` → `investigating` → `resolved` / `wontfix`
-
-### When to Create an Issue
-
-- Encountered an unexpected error during a task
-- Observed behavior that deviates from the API contract or expected flow
-- Found a potential bug but it's not blocking your current work
-- Need to hand off an investigation to another agent or human
+- When debug developing frontend Bug, you can use console.log to log in browser, use Playwright read and reslove it.
+- After resolve bug, should clear unused console.log
 
 ## Testing 
 
