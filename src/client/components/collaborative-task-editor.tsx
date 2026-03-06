@@ -15,13 +15,11 @@
  * - Task status management
  */
 
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useState, useRef, useCallback, useMemo } from "react";
 import { desktopAwareFetch } from "../utils/diagnostics";
 import type { NoteData } from "../hooks/use-notes";
 import { MarkdownViewer } from "./markdown/markdown-viewer";
-import { type CrafterAgent, CraftersView } from "./task-panel";
-
-type CollabPanelView = "tasks" | "crafters";
+import { type CrafterAgent } from "./task-panel";
 
 interface CollaborativeTaskEditorProps {
   notes: NoteData[];
@@ -35,10 +33,8 @@ interface CollaborativeTaskEditorProps {
   workspaceId?: string;
   /** CRAFTER agents spawned from tasks */
   crafterAgents?: CrafterAgent[];
-  /** Currently active crafter agent ID */
-  activeCrafterId?: string | null;
-  /** Callback when user selects a crafter tab */
-  onSelectCrafter?: (agentId: string) => void;
+  /** Callback when user clicks a task note that may map to a crafter */
+  onSelectTaskNote?: (noteId: string) => void;
   /** Execute a single task note */
   onExecuteTask?: (noteId: string) => Promise<unknown>;
   /** Execute a selected subset of task notes */
@@ -49,8 +45,6 @@ interface CollaborativeTaskEditorProps {
   concurrency?: number;
   /** Callback when concurrency changes */
   onConcurrencyChange?: (n: number) => void;
-  /** Callback to update agent messages after lazy-loading from DB */
-  onUpdateAgentMessages?: (agentId: string, messages: import('./task-panel').CrafterMessage[]) => void;
 }
 
 export function CollaborativeTaskEditor({
@@ -60,31 +54,18 @@ export function CollaborativeTaskEditor({
   onDeleteNote,
   workspaceId,
   crafterAgents = [],
-  activeCrafterId,
-  onSelectCrafter,
+  onSelectTaskNote,
   onExecuteTask,
   onExecuteSelected,
   onExecuteAll,
   concurrency = 1,
   onConcurrencyChange,
-  onUpdateAgentMessages,
 }: CollaborativeTaskEditorProps) {
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [expandedNoteId, setExpandedNoteId] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<CollabPanelView>("tasks");
   const [selectedNoteIds, setSelectedNoteIds] = useState<Set<string>>(new Set());
 
   const containerRef = useRef<HTMLDivElement>(null);
-
-  // Auto-switch to crafters view only on the first agent spawn,
-  // then let the user freely toggle between tabs.
-  const hasAutoSwitchedRef = useRef(false);
-  useEffect(() => {
-    if (crafterAgents.length > 0 && !hasAutoSwitchedRef.current) {
-      hasAutoSwitchedRef.current = true;
-      setViewMode("crafters");
-    }
-  }, [crafterAgents.length]);
 
   // Filter task notes (spec is now shown in the dedicated Spec tab)
   const taskNotes = useMemo(
@@ -92,14 +73,15 @@ export function CollaborativeTaskEditor({
     [notes]
   );
 
-  if (taskNotes.length === 0 && crafterAgents.length === 0) {
+  if (taskNotes.length === 0) {
     return null;
   }
 
   const hasPending = taskNotes.some(
     (n) => !n.metadata.taskStatus || n.metadata.taskStatus === "PENDING"
   );
-  const hasRunning = taskNotes.some((n) => n.metadata.taskStatus === "IN_PROGRESS");
+  const runningCrafterCount = crafterAgents.filter((agent) => agent.status === "running").length;
+  const hasRunning = taskNotes.some((n) => n.metadata.taskStatus === "IN_PROGRESS") || runningCrafterCount > 0;
 
   const pendingNotes = taskNotes.filter(
     (n) => !n.metadata.taskStatus || n.metadata.taskStatus === "PENDING"
@@ -136,7 +118,7 @@ export function CollaborativeTaskEditor({
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2">
             <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-              {crafterAgents.length > 0 ? "Collab / CRAFTERs" : "Collaborative Tasks"}
+              Collaborative Tasks
             </span>
             <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-300">
               {taskNotes.length}
@@ -147,10 +129,10 @@ export function CollaborativeTaskEditor({
           <div className="flex items-center gap-1.5">
             {hasRunning && (
               <span className="text-xs font-medium text-amber-600 dark:text-amber-400 animate-pulse">
-                Executing...
+                Executing{runningCrafterCount > 0 ? ` (${runningCrafterCount})` : ""}...
               </span>
             )}
-            {pendingNotes.length > 0 && !hasRunning && (
+            {pendingNotes.length > 0 && (
               <button
                 onClick={toggleSelectAll}
                 className="text-xs font-medium px-2 py-1 rounded-md bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
@@ -158,7 +140,7 @@ export function CollaborativeTaskEditor({
                 {selectedNoteIds.size === pendingNotes.length ? "Deselect All" : "Select All"}
               </button>
             )}
-            {selectedNoteIds.size > 0 && !hasRunning && onExecuteSelected && (
+            {selectedNoteIds.size > 0 && onExecuteSelected && (
               <button
                 onClick={handleExecuteSelected}
                 className="text-xs font-medium px-2.5 py-1 rounded-md bg-blue-600 text-white hover:bg-blue-700 transition-colors"
@@ -166,7 +148,7 @@ export function CollaborativeTaskEditor({
                 Execute Selected ({selectedNoteIds.size})
               </button>
             )}
-            {hasPending && !hasRunning && onExecuteAll && (
+            {hasPending && onExecuteAll && (
               <button
                 onClick={() => onExecuteAll(concurrency)}
                 className="text-xs font-medium px-2.5 py-1 rounded-md bg-emerald-600 text-white hover:bg-emerald-700 transition-colors"
@@ -188,125 +170,82 @@ export function CollaborativeTaskEditor({
           </div>
         </div>
 
-        {/* Concurrency control + View toggle */}
-        <div className="flex items-center justify-between">
-          {/* CRDT badge + concurrency */}
-          <div className="flex items-center gap-2">
-            <span className="text-[9px] font-medium px-1.5 py-0.5 rounded bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-300">
-              CRDT
-            </span>
-            <span className="text-[10px] font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-              Concurrency
-            </span>
-            <div className="flex items-center rounded-md border border-gray-200 dark:border-gray-700 overflow-hidden">
-              {[1, 2].map((n) => (
-                <button
-                  key={n}
-                  onClick={() => onConcurrencyChange?.(n)}
-                  className={`px-2 py-0.5 text-[11px] font-medium transition-colors ${
-                    concurrency === n
-                      ? "bg-emerald-600 text-white"
-                      : "bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700"
-                  }`}
-                >
-                  {n}
-                </button>
-              ))}
-            </div>
+        <div className="flex items-center gap-2">
+          <span className="text-[9px] font-medium px-1.5 py-0.5 rounded bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-300">
+            CRDT
+          </span>
+          <span className="text-[10px] font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+            Concurrency
+          </span>
+          <div className="flex items-center rounded-md border border-gray-200 dark:border-gray-700 overflow-hidden">
+            {[1, 2].map((n) => (
+              <button
+                key={n}
+                onClick={() => onConcurrencyChange?.(n)}
+                className={`px-2 py-0.5 text-[11px] font-medium transition-colors ${
+                  concurrency === n
+                    ? "bg-emerald-600 text-white"
+                    : "bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700"
+                }`}
+              >
+                {n}
+              </button>
+            ))}
           </div>
+        </div>
+      </div>
 
-          {/* View toggle */}
-          {crafterAgents.length > 0 && (
-            <div className="flex items-center rounded-md border border-gray-200 dark:border-gray-700 overflow-hidden">
-              <button
-                onClick={() => setViewMode("tasks")}
-                className={`px-2 py-0.5 text-[10px] font-medium transition-colors ${
-                  viewMode === "tasks"
-                    ? "bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900"
-                    : "bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700"
-                }`}
-              >
-                Tasks
-              </button>
-              <button
-                onClick={() => setViewMode("crafters")}
-                className={`px-2 py-0.5 text-[10px] font-medium transition-colors ${
-                  viewMode === "crafters"
-                    ? "bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900"
-                    : "bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700"
-                }`}
-              >
-                CRAFTERs ({crafterAgents.length})
-              </button>
+      <div className="flex-1 overflow-y-auto">
+        <div className="p-3 space-y-2">
+          {taskNotes.map((note, index) => (
+            <TaskNoteCard
+              key={note.id}
+              note={note}
+              index={index}
+              expanded={expandedNoteId === note.id}
+              editing={editingNoteId === note.id}
+              selected={selectedNoteIds.has(note.id)}
+              onToggleSelect={() => toggleNoteSelection(note.id)}
+              onToggleExpand={() => {
+                onSelectTaskNote?.(note.id);
+                setExpandedNoteId((prev) =>
+                  prev === note.id ? null : note.id
+                );
+              }}
+              onEdit={() => setEditingNoteId(note.id)}
+              onCancelEdit={() => setEditingNoteId(null)}
+              onSave={async (update) => {
+                await onUpdateNote(note.id, update);
+                setEditingNoteId(null);
+              }}
+              onDelete={
+                onDeleteNote
+                  ? () => onDeleteNote(note.id)
+                  : undefined
+              }
+              onStatusChange={async (status) => {
+                await onUpdateNote(note.id, {
+                  metadata: { ...note.metadata, taskStatus: status },
+                });
+              }}
+              onExecute={
+                onExecuteTask
+                  ? () => onExecuteTask(note.id)
+                  : undefined
+              }
+            />
+          ))}
+
+          {taskNotes.length === 0 && (
+            <div className="text-center py-8 text-xs text-gray-400 dark:text-gray-500">
+              <div className="space-y-1.5">
+                <div className="text-sm">No task notes yet</div>
+                <div>Tasks will appear here when ROUTA creates them</div>
+              </div>
             </div>
           )}
         </div>
       </div>
-
-
-      {/* Content */}
-      {viewMode === "tasks" ? (
-        /* ─── Task Notes List ─────────────────────────── */
-        <div className="flex-1 overflow-y-auto">
-          <div className="p-3 space-y-2">
-            {taskNotes.map((note, index) => (
-              <TaskNoteCard
-                key={note.id}
-                note={note}
-                index={index}
-                expanded={expandedNoteId === note.id}
-                editing={editingNoteId === note.id}
-                selected={selectedNoteIds.has(note.id)}
-                onToggleSelect={() => toggleNoteSelection(note.id)}
-                onToggleExpand={() =>
-                  setExpandedNoteId((prev) =>
-                    prev === note.id ? null : note.id
-                  )
-                }
-                onEdit={() => setEditingNoteId(note.id)}
-                onCancelEdit={() => setEditingNoteId(null)}
-                onSave={async (update) => {
-                  await onUpdateNote(note.id, update);
-                  setEditingNoteId(null);
-                }}
-                onDelete={
-                  onDeleteNote
-                    ? () => onDeleteNote(note.id)
-                    : undefined
-                }
-                onStatusChange={async (status) => {
-                  await onUpdateNote(note.id, {
-                    metadata: { ...note.metadata, taskStatus: status },
-                  });
-                }}
-                onExecute={
-                  onExecuteTask
-                    ? () => onExecuteTask(note.id)
-                    : undefined
-                }
-                executeDisabled={concurrency <= 1 && hasRunning}
-              />
-            ))}
-
-            {taskNotes.length === 0 && (
-              <div className="text-center py-8 text-xs text-gray-400 dark:text-gray-500">
-                <div className="space-y-1.5">
-                  <div className="text-sm">No task notes yet</div>
-                  <div>Tasks will appear here when ROUTA creates them</div>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      ) : (
-        /* ─── CRAFTERs View ───────────────────────────── */
-        <CraftersView
-          agents={crafterAgents}
-          activeCrafterId={activeCrafterId}
-          onSelectCrafter={onSelectCrafter}
-          onUpdateAgentMessages={onUpdateAgentMessages}
-        />
-      )}
     </div>
   );
 }
@@ -327,7 +266,6 @@ interface TaskNoteCardProps {
   onDelete?: () => void;
   onStatusChange: (status: string) => Promise<void>;
   onExecute?: () => void;
-  executeDisabled?: boolean;
 }
 
 const STATUS_LABELS: Record<string, { label: string; color: string; bg: string }> = {
@@ -487,7 +425,6 @@ function TaskNoteCard({
   onDelete,
   onStatusChange,
   onExecute,
-  executeDisabled,
 }: TaskNoteCardProps) {
   const status = note.metadata.taskStatus ?? "PENDING";
   const statusInfo = STATUS_LABELS[status] ?? STATUS_LABELS.PENDING;
@@ -665,13 +602,7 @@ function TaskNoteCard({
                       e.stopPropagation();
                       onExecute();
                     }}
-                    disabled={executeDisabled}
-                    className={`text-[11px] font-medium px-2 py-1 rounded-md transition-colors ${
-                      executeDisabled
-                        ? "bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed"
-                        : "bg-emerald-600 text-white hover:bg-emerald-700"
-                    }`}
-                    title={executeDisabled ? "Another task is running (concurrency limit)" : undefined}
+                    className="text-[11px] font-medium px-2 py-1 rounded-md transition-colors bg-emerald-600 text-white hover:bg-emerald-700"
                   >
                     Execute
                   </button>

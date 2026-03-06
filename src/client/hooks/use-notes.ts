@@ -31,6 +31,8 @@ export interface NoteData {
     assignedAgentIds?: string[];
     parentNoteId?: string;
     linkedTaskId?: string;
+    childSessionId?: string;
+    provider?: string;
     custom?: Record<string, string>;
   };
   createdAt: string;

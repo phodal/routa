@@ -57,6 +57,8 @@ interface LeftSidebarProps {
   onExecuteQuickAccessNoteTask: (noteId: string) => Promise<CrafterAgent | null>;
   onExecuteAllNoteTasks: (concurrency: number) => Promise<void>;
   onExecuteSelectedNoteTasks: (noteIds: string[], concurrency: number) => Promise<void>;
+  crafterAgents: CrafterAgent[];
+  onSelectNoteTask: (noteId: string) => void;
 }
 
 /* ─── Spec Viewer (inline in sidebar) ──────────────────────────────── */
@@ -528,6 +530,8 @@ export function LeftSidebar({
   onExecuteAllNoteTasks,
   onExecuteQuickAccessNoteTask,
   onExecuteSelectedNoteTasks,
+  crafterAgents,
+  onSelectNoteTask,
 }: LeftSidebarProps) {
   const canCreateSession = hasProviders && hasSelectedProvider;
   const [activeTab, setActiveTab] = useState<SidebarTab>("sessions");
@@ -742,6 +746,8 @@ export function LeftSidebar({
                       onUpdateNote={onUpdateNote}
                       onDeleteNote={onDeleteNote}
                       workspaceId={workspaceId}
+                      crafterAgents={crafterAgents}
+                      onSelectTaskNote={onSelectNoteTask}
                       onExecuteTask={onExecuteNoteTask}
                       onExecuteSelected={onExecuteSelectedNoteTasks}
                       onExecuteAll={onExecuteAllNoteTasks}
