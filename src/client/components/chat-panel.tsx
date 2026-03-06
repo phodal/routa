@@ -813,7 +813,7 @@ export function ChatPanel({
 
           case "available_commands_update":
           case "config_option_update":
-          case "acp_status":
+          // case "acp_status":
           case "session_info_update": {
             arr.push({
               id: uuidv4(),
