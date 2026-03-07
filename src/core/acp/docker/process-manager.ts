@@ -77,6 +77,11 @@ export class DockerProcessManager {
       return sessionInfo;
     }
 
+    // If a persistent container exists but is not healthy, clean it up
+    if (this.persistentContainer) {
+      this.cleanupPersistentContainer();
+    }
+
     // No healthy persistent container available, start a new one
     return this.startContainer(config);
   }
@@ -98,6 +103,33 @@ export class DockerProcessManager {
   }
 
   /**
+   * Clean up tracking and resources for the current persistent container.
+   * This is used when the persistent container is no longer healthy and
+   * we need to start a replacement.
+   */
+  private cleanupPersistentContainer(): void {
+    if (!this.persistentContainer) {
+      return;
+    }
+
+    // Cancel any pending idle timeout associated with the old persistent container
+    this.cancelIdleTimeout();
+
+    // Remove any sessions mapped to this persistent container
+    for (const [sessionId, info] of this.containers.entries()) {
+      if (info.containerName === this.persistentContainer.containerName) {
+        this.containers.delete(sessionId);
+      }
+    }
+
+    // Release the port used by the old persistent container
+    this.usedPorts.delete(this.persistentContainer.hostPort);
+
+    // Clear the persistent container reference
+    this.persistentContainer = null;
+  }
+
+  /**
    * Start a new idle timeout for the persistent container.
    */
   private scheduleIdleTimeout(): void {
@@ -110,7 +142,9 @@ export class DockerProcessManager {
           `[DockerProcessManager] Persistent container ${this.persistentContainer.containerName} ` +
           `idle for ${Math.floor(idleTime / 1000)}s, stopping...`
         );
-        await this.stopPersistentContainer();
+        await this.stopPersistentContainer().catch((err) => {
+          console.error(`[DockerProcessManager] Failed to stop idle container:`, err);
+        });
       }
     }, CONTAINER_IDLE_TIMEOUT_MS);
   }
@@ -384,13 +418,29 @@ export class DockerProcessManager {
     // Remove session mapping
     this.containers.delete(sessionId);
 
-    // If this is the persistent container, don't stop it immediately
-    // Instead, schedule idle timeout for potential reuse
+    // If this is the persistent container, only schedule idle timeout when the last session ends
     if (this.persistentContainer && info.containerName === this.persistentContainer.containerName) {
-      console.log(
-        `[DockerProcessManager] Session ${sessionId} ended, keeping persistent container ` +
-        `${info.containerName} alive for reuse (idle timeout: ${CONTAINER_IDLE_TIMEOUT_MS / 1000}s)`
+      // Check if any other session is still using this persistent container
+      const hasOtherSessionsForPersistent = Array.from(this.containers.values()).some(
+        (c) => c.containerName === info.containerName,
       );
+
+      if (hasOtherSessionsForPersistent) {
+        console.log(
+          `[DockerProcessManager] Session ${sessionId} ended, persistent container ${info.containerName} ` +
+          `still has active sessions; not scheduling idle timeout.`,
+        );
+        return;
+      }
+
+      // At this point the persistent container is actually idle
+      console.log(
+        `[DockerProcessManager] Session ${sessionId} ended, persistent container ${info.containerName} is now idle; ` +
+        `scheduling idle timeout for reuse (idle timeout: ${CONTAINER_IDLE_TIMEOUT_MS / 1000}s)`,
+      );
+
+      // Update lastUsedAt when the persistent container becomes idle
+      this.persistentContainer.lastUsedAt = new Date();
       this.scheduleIdleTimeout();
       return;
     }

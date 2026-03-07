@@ -65,20 +65,11 @@ impl DockerProcessManager {
         &self,
         config: DockerContainerConfig,
     ) -> Result<DockerContainerInfo, String> {
-        // Try to reuse persistent container if available and healthy
-        let should_reuse = {
-            let persistent = self.persistent_container.read().await;
-            if let Some(ref persistent_info) = *persistent {
-                self.is_container_healthy(&persistent_info.info).await
-            } else {
-                false
-            }
-        };
+        // Hold write lock for entire operation to avoid TOCTOU
+        let mut persistent_write = self.persistent_container.write().await;
 
-        if should_reuse {
-            // Update persistent container tracking
-            let mut persistent_write = self.persistent_container.write().await;
-            if let Some(ref mut p) = *persistent_write {
+        if let Some(ref mut p) = *persistent_write {
+            if self.is_container_healthy(&p.info).await {
                 tracing::info!(
                     "[DockerProcessManager] Reusing persistent container {} for session {} (sessions: {})",
                     p.info.container_name,
@@ -99,6 +90,7 @@ impl DockerProcessManager {
                 return Ok(session_info);
             }
         }
+        drop(persistent_write);
 
         // No healthy persistent container available, start a new one
         self.start_container(config).await
