@@ -34,6 +34,16 @@ interface OverviewA2UITabProps {
   onInstallAgent: () => void;
   onDeleteAllSessions: () => void;
   onNavigateSession: (sessionId: string) => void;
+  /** Dashboard config: surface ordering */
+  surfaceOrder?: string[] | null;
+  /** Dashboard config: hidden surface IDs */
+  hiddenSurfaces?: string[];
+  /** Callback to hide a surface */
+  onHideSurface?: (surfaceId: string) => void;
+  /** Callback to show a hidden surface */
+  onShowSurface?: (surfaceId: string) => void;
+  /** Callback when surfaces are reordered via drag-and-drop */
+  onReorderSurfaces?: (newOrder: string[]) => void;
 }
 
 export function OverviewA2UITab({
@@ -52,6 +62,11 @@ export function OverviewA2UITab({
   onAction,
   onAddCustomSurface,
   onInstallAgent,
+  surfaceOrder,
+  hiddenSurfaces,
+  onHideSurface,
+  onShowSurface,
+  onReorderSurfaces,
 }: OverviewA2UITabProps) {
   const [showJsonPanel, setShowJsonPanel] = useState(false);
   const [showTemplateGallery, setShowTemplateGallery] = useState(false);
@@ -212,7 +227,15 @@ export function OverviewA2UITab({
       {/* ─── A2UI-Rendered Dashboard ─────────────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-4">
-          <A2UIViewer messages={a2uiMessages} onAction={onAction} />
+          <A2UIViewer
+            messages={a2uiMessages}
+            onAction={onAction}
+            hiddenSurfaces={hiddenSurfaces}
+            surfaceOrder={surfaceOrder}
+            onHideSurface={onHideSurface}
+            onReorderSurfaces={onReorderSurfaces}
+            showControls={!!(onHideSurface || onReorderSurfaces)}
+          />
         </div>
 
         <div className="space-y-6">
@@ -265,6 +288,12 @@ export function OverviewA2UITab({
           <span>{a2uiMessages.length} messages</span>
           <span>·</span>
           <span>{a2uiMessages.filter((m) => "createSurface" in m).length} surfaces</span>
+          {hiddenSurfaces && hiddenSurfaces.length > 0 && (
+            <>
+              <span>·</span>
+              <span className="text-amber-500">{hiddenSurfaces.length} hidden</span>
+            </>
+          )}
           <span>·</span>
           <a
             href="https://a2ui.org/specification/"
@@ -322,6 +351,28 @@ export function OverviewA2UITab({
           </button>
         </div>
       </div>
+
+      {/* ─── Hidden Surfaces Restore Bar ───────────────────────── */}
+      {hiddenSurfaces && hiddenSurfaces.length > 0 && onShowSurface && (
+        <div className="bg-gray-50 dark:bg-[#0e1019] rounded-lg border border-gray-200/60 dark:border-[#1c1f2e] px-4 py-2.5">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-[10px] font-medium text-gray-500 dark:text-gray-400 shrink-0">Hidden panels:</span>
+            {hiddenSurfaces.map((surfaceId) => (
+              <button
+                key={surfaceId}
+                onClick={() => onShowSurface(surfaceId)}
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium bg-white dark:bg-[#12141c] border border-gray-200/60 dark:border-[#252838] text-gray-600 dark:text-gray-400 hover:text-amber-600 dark:hover:text-amber-400 hover:border-amber-300 dark:hover:border-amber-600/50 transition-colors"
+              >
+                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+                {surfaceId.replace(/^dashboard_|^template_/, "")}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* ─── Template Gallery ─────────────────────────────────── */}
       {showTemplateGallery && (

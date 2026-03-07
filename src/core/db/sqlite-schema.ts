@@ -371,6 +371,20 @@ export const webhookTriggerLogs = sqliteTable("webhook_trigger_logs", {
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
 });
 
+// ─── Dashboard Config (A2UI dashboard panel persistence) ─────────────────
+
+export const dashboardConfig = sqliteTable("dashboard_config", {
+  id: text("id").primaryKey(),
+  workspaceId: text("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  /** JSON array of surface IDs defining display order */
+  surfaceOrder: text("surface_order", { mode: "json" }).$type<string[]>(),
+  /** JSON array of surface IDs that are hidden */
+  hiddenSurfaces: text("hidden_surfaces", { mode: "json" }).$type<string[]>(),
+  /** JSON array of custom A2UI messages */
+  customSurfaces: text("custom_surfaces", { mode: "json" }).$type<Record<string, unknown>[]>(),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+});
+
 // ─── Specialists (user-defined agent specialist configurations) ───────────
 
 export const specialists = sqliteTable("specialists", {

@@ -307,6 +307,17 @@ function initializeSqliteTables(db: SqliteDatabase): void {
     )
   `);
 
+  db.run(sql`
+    CREATE TABLE IF NOT EXISTS dashboard_config (
+      id TEXT PRIMARY KEY,
+      workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+      surface_order TEXT,
+      hidden_surfaces TEXT,
+      custom_surfaces TEXT,
+      updated_at INTEGER NOT NULL DEFAULT (unixepoch('now') * 1000)
+    )
+  `);
+
   console.log("[SQLite] Tables initialized");
 }
 

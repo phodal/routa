@@ -27,6 +27,7 @@ import { useSkills } from "@/client/hooks/use-skills";
 import { AppHeader } from "@/client/components/app-header";
 import { AgentInstallPanel } from "@/client/components/agent-install-panel";
 import type { A2UIMessage } from "@/client/a2ui/types";
+import { useDashboardConfig } from "@/client/hooks/use-dashboard-config";
 import {SessionsOverview} from "@/app/workspace/[workspaceId]/sessions-overview";
 import {BackgroundTaskInfo, TaskInfo, TraceInfo, SessionInfo} from "@/app/workspace/[workspaceId]/types";
 import {NoteTasksTab} from "@/app/workspace/[workspaceId]/note-tasks-tab";
@@ -45,6 +46,7 @@ export function WorkspacePageClient() {
   const agentsHook = useAgentsRpc(workspaceId);
   const notesHook = useNotes(workspaceId);
   const skillsHook = useSkills();
+  const dashboardConfig = useDashboardConfig(workspaceId);
 
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
   const [tasks, setTasks] = useState<TaskInfo[]>([]);
@@ -53,7 +55,6 @@ export function WorkspacePageClient() {
   const [showAgentInstallPopup, setShowAgentInstallPopup] = useState(false);
   const [activeTab, setActiveTab] = useState<"overview" | "notes" | "note_tasks" | "bg_tasks">("overview");
   const [showA2UISource, setShowA2UISource] = useState(false);
-  const [customA2UISurfaces, setCustomA2UISurfaces] = useState<A2UIMessage[]>([]);
   const [bgTasks, setBgTasks] = useState<BackgroundTaskInfo[]>([]);
   // Sessions modal state
   const [showSessionsModal, setShowSessionsModal] = useState(false);
@@ -408,7 +409,7 @@ export function WorkspacePageClient() {
               notes={notesHook.notes}
               traces={traces}
               skills={skillsHook.skills}
-              customSurfaces={customA2UISurfaces}
+              customSurfaces={(dashboardConfig.config.customSurfaces ?? []) as A2UIMessage[]}
               showSource={showA2UISource}
               onToggleSource={() => setShowA2UISource((v) => !v)}
               onAction={(action) => {
@@ -425,11 +426,16 @@ export function WorkspacePageClient() {
                 }
               }}
               onAddCustomSurface={(messages) => {
-                setCustomA2UISurfaces((prev) => [...prev, ...messages]);
+                dashboardConfig.addCustomSurfaces(messages);
               }}
               onInstallAgent={() => setShowAgentInstallPopup(true)}
               onDeleteAllSessions={handleDeleteAllSessions}
               onNavigateSession={(sessionId) => router.push(`/workspace/${workspaceId}/sessions/${sessionId}`)}
+              surfaceOrder={dashboardConfig.config.surfaceOrder}
+              hiddenSurfaces={dashboardConfig.hiddenSurfaceIds}
+              onHideSurface={dashboardConfig.hideSurface}
+              onShowSurface={dashboardConfig.showSurface}
+              onReorderSurfaces={dashboardConfig.setSurfaceOrder}
             />
           )}
 

@@ -446,6 +446,20 @@ export const webhookTriggerLogs = pgTable("webhook_trigger_logs", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+// ─── Dashboard Config (A2UI dashboard panel persistence) ─────────────────
+
+export const dashboardConfig = pgTable("dashboard_config", {
+  id: text("id").primaryKey(),
+  workspaceId: text("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  /** JSON array of surface IDs defining display order */
+  surfaceOrder: jsonb("surface_order").$type<string[]>(),
+  /** JSON array of surface IDs that are hidden */
+  hiddenSurfaces: jsonb("hidden_surfaces").$type<string[]>(),
+  /** JSON array of custom A2UI messages */
+  customSurfaces: jsonb("custom_surfaces").$type<Record<string, unknown>[]>(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 // ─── Specialists (user-defined agent specialist configurations) ───────────
 
 export const specialists = pgTable("specialists", {
