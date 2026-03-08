@@ -8,6 +8,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { AgentTools } from "../tools/agent-tools";
+import { KanbanTools } from "../tools/kanban-tools";
 import { NoteTools } from "../tools/note-tools";
 import { WorkspaceTools } from "../tools/workspace-tools";
 import { ToolResult } from "../tools/tool-result";
@@ -24,6 +25,7 @@ export class RoutaMcpToolManager {
   private orchestrator?: RoutaOrchestrator;
   private noteTools?: NoteTools;
   private workspaceTools?: WorkspaceTools;
+  private kanbanTools?: KanbanTools;
   private toolMode: ToolMode = "essential";
   private sessionId?: string;
 
@@ -67,6 +69,13 @@ export class RoutaMcpToolManager {
    */
   setWorkspaceTools(workspaceTools: WorkspaceTools): void {
     this.workspaceTools = workspaceTools;
+  }
+
+  /**
+   * Set the kanban tools for board and card management.
+   */
+  setKanbanTools(kanbanTools: KanbanTools): void {
+    this.kanbanTools = kanbanTools;
   }
 
   /**
@@ -143,6 +152,18 @@ export class RoutaMcpToolManager {
     this.registerListWorkspaces(server);
     this.registerCreateWorkspace(server);
     this.registerListSpecialists(server);
+    // Kanban tools
+    this.registerCreateBoard(server);
+    this.registerListBoards(server);
+    this.registerGetBoard(server);
+    this.registerCreateCard(server);
+    this.registerMoveCard(server);
+    this.registerUpdateCard(server);
+    this.registerDeleteCard(server);
+    this.registerCreateColumn(server);
+    this.registerDeleteColumn(server);
+    this.registerSearchCards(server);
+    this.registerListCardsByColumn(server);
   }
 
   // ─── Task Tools ────────────────────────────────────────────────────
@@ -847,6 +868,250 @@ Note: taskId must be a UUID from create_task, not a task name.`,
           return this.toMcpResult({ success: false, error: "Workspace tools not available." });
         }
         const result = await this.workspaceTools.listSpecialists();
+        return this.toMcpResult(result);
+      }
+    );
+  }
+
+  // ─── Kanban Tools ───────────────────────────────────────────────────────
+
+  private registerCreateBoard(server: McpServer) {
+    server.tool(
+      "create_board",
+      "Create a new Kanban board",
+      {
+        name: z.string().describe("Board name"),
+        columns: z.array(z.string()).optional().describe("Default column names"),
+        workspaceId: z.string().optional().describe("Workspace ID (uses default if omitted)"),
+      },
+      async (params) => {
+        if (!this.kanbanTools) {
+          return this.toMcpResult({ success: false, error: "Kanban tools not available." });
+        }
+        const result = await this.kanbanTools.createBoard({
+          workspaceId: params.workspaceId ?? this.workspaceId,
+          name: params.name,
+          columns: params.columns,
+        });
+        return this.toMcpResult(result);
+      }
+    );
+  }
+
+  private registerListBoards(server: McpServer) {
+    server.tool(
+      "list_boards",
+      "List all Kanban boards",
+      {
+        workspaceId: z.string().optional().describe("Workspace ID (uses default if omitted)"),
+      },
+      async (params) => {
+        if (!this.kanbanTools) {
+          return this.toMcpResult({ success: false, error: "Kanban tools not available." });
+        }
+        const result = await this.kanbanTools.listBoards(params.workspaceId ?? this.workspaceId);
+        return this.toMcpResult(result);
+      }
+    );
+  }
+
+  private registerGetBoard(server: McpServer) {
+    server.tool(
+      "get_board",
+      "Get a board with all columns and cards",
+      {
+        boardId: z.string().describe("Board ID"),
+      },
+      async (params) => {
+        if (!this.kanbanTools) {
+          return this.toMcpResult({ success: false, error: "Kanban tools not available." });
+        }
+        const result = await this.kanbanTools.getBoard(params.boardId);
+        return this.toMcpResult(result);
+      }
+    );
+  }
+
+  private registerCreateCard(server: McpServer) {
+    server.tool(
+      "create_card",
+      "Create a new card in a column",
+      {
+        boardId: z.string().describe("Board ID"),
+        columnId: z.string().describe("Column ID"),
+        title: z.string().describe("Card title"),
+        description: z.string().optional().describe("Card description"),
+        priority: z.enum(["low", "medium", "high", "urgent"]).optional().describe("Card priority"),
+        labels: z.array(z.string()).optional().describe("Card labels"),
+        workspaceId: z.string().optional().describe("Workspace ID (uses default if omitted)"),
+      },
+      async (params) => {
+        if (!this.kanbanTools) {
+          return this.toMcpResult({ success: false, error: "Kanban tools not available." });
+        }
+        const result = await this.kanbanTools.createCard({
+          boardId: params.boardId,
+          columnId: params.columnId,
+          title: params.title,
+          description: params.description,
+          priority: params.priority,
+          labels: params.labels,
+          workspaceId: params.workspaceId ?? this.workspaceId,
+        });
+        return this.toMcpResult(result);
+      }
+    );
+  }
+
+  private registerMoveCard(server: McpServer) {
+    server.tool(
+      "move_card",
+      "Move a card to a different column or position",
+      {
+        cardId: z.string().describe("Card ID"),
+        targetColumnId: z.string().describe("Target column ID"),
+        position: z.number().optional().describe("Position in the column"),
+      },
+      async (params) => {
+        if (!this.kanbanTools) {
+          return this.toMcpResult({ success: false, error: "Kanban tools not available." });
+        }
+        const result = await this.kanbanTools.moveCard({
+          cardId: params.cardId,
+          targetColumnId: params.targetColumnId,
+          position: params.position,
+        });
+        return this.toMcpResult(result);
+      }
+    );
+  }
+
+  private registerUpdateCard(server: McpServer) {
+    server.tool(
+      "update_card",
+      "Update card fields (title, description, priority, labels)",
+      {
+        cardId: z.string().describe("Card ID"),
+        title: z.string().optional().describe("New title"),
+        description: z.string().optional().describe("New description"),
+        priority: z.enum(["low", "medium", "high", "urgent"]).optional().describe("New priority"),
+        labels: z.array(z.string()).optional().describe("New labels"),
+      },
+      async (params) => {
+        if (!this.kanbanTools) {
+          return this.toMcpResult({ success: false, error: "Kanban tools not available." });
+        }
+        const result = await this.kanbanTools.updateCard({
+          cardId: params.cardId,
+          title: params.title,
+          description: params.description,
+          priority: params.priority,
+          labels: params.labels,
+        });
+        return this.toMcpResult(result);
+      }
+    );
+  }
+
+  private registerDeleteCard(server: McpServer) {
+    server.tool(
+      "delete_card",
+      "Delete a card from the board",
+      {
+        cardId: z.string().describe("Card ID"),
+      },
+      async (params) => {
+        if (!this.kanbanTools) {
+          return this.toMcpResult({ success: false, error: "Kanban tools not available." });
+        }
+        const result = await this.kanbanTools.deleteCard(params.cardId);
+        return this.toMcpResult(result);
+      }
+    );
+  }
+
+  private registerCreateColumn(server: McpServer) {
+    server.tool(
+      "create_column",
+      "Create a new column in a board",
+      {
+        boardId: z.string().describe("Board ID"),
+        name: z.string().describe("Column name"),
+        color: z.string().optional().describe("Column color"),
+      },
+      async (params) => {
+        if (!this.kanbanTools) {
+          return this.toMcpResult({ success: false, error: "Kanban tools not available." });
+        }
+        const result = await this.kanbanTools.createColumn({
+          boardId: params.boardId,
+          name: params.name,
+          color: params.color,
+        });
+        return this.toMcpResult(result);
+      }
+    );
+  }
+
+  private registerDeleteColumn(server: McpServer) {
+    server.tool(
+      "delete_column",
+      "Delete a column (and optionally its cards)",
+      {
+        columnId: z.string().describe("Column ID"),
+        boardId: z.string().describe("Board ID"),
+        deleteCards: z.boolean().optional().describe("Whether to delete cards in the column"),
+      },
+      async (params) => {
+        if (!this.kanbanTools) {
+          return this.toMcpResult({ success: false, error: "Kanban tools not available." });
+        }
+        const result = await this.kanbanTools.deleteColumn({
+          columnId: params.columnId,
+          boardId: params.boardId,
+          deleteCards: params.deleteCards,
+        });
+        return this.toMcpResult(result);
+      }
+    );
+  }
+
+  private registerSearchCards(server: McpServer) {
+    server.tool(
+      "search_cards",
+      "Search cards across boards by title, labels, or assignee",
+      {
+        query: z.string().describe("Search query"),
+        boardId: z.string().optional().describe("Limit search to a specific board"),
+        workspaceId: z.string().optional().describe("Workspace ID (uses default if omitted)"),
+      },
+      async (params) => {
+        if (!this.kanbanTools) {
+          return this.toMcpResult({ success: false, error: "Kanban tools not available." });
+        }
+        const result = await this.kanbanTools.searchCards({
+          query: params.query,
+          boardId: params.boardId,
+          workspaceId: params.workspaceId ?? this.workspaceId,
+        });
+        return this.toMcpResult(result);
+      }
+    );
+  }
+
+  private registerListCardsByColumn(server: McpServer) {
+    server.tool(
+      "list_cards_by_column",
+      "List all cards in a specific column",
+      {
+        columnId: z.string().describe("Column ID"),
+        boardId: z.string().describe("Board ID"),
+      },
+      async (params) => {
+        if (!this.kanbanTools) {
+          return this.toMcpResult({ success: false, error: "Kanban tools not available." });
+        }
+        const result = await this.kanbanTools.listCardsByColumn(params.columnId, params.boardId);
         return this.toMcpResult(result);
       }
     );
