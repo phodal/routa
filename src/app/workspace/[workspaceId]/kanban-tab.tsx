@@ -69,6 +69,7 @@ export function KanbanTab({ workspaceId, boards, tasks, sessions, providers, spe
     assignedSpecialistId: string;
     assignedSpecialistName: string;
   }>>({});
+  const [visibleColumns, setVisibleColumns] = useState<string[]>([]);
 
   useEffect(() => {
     setSelectedBoardId(defaultBoardId);
@@ -82,6 +83,14 @@ export function KanbanTab({ workspaceId, boards, tasks, sessions, providers, spe
     () => boards.find((item) => item.id === selectedBoardId) ?? null,
     [boards, selectedBoardId],
   );
+
+  // Initialize visible columns when board changes
+  useEffect(() => {
+    if (board) {
+      const allColumnIds = board.columns.map((col) => col.id);
+      setVisibleColumns(allColumnIds);
+    }
+  }, [board]);
 
   const boardTasks = useMemo(() => {
     const effectiveBoardId = selectedBoardId ?? defaultBoardId;
@@ -252,6 +261,22 @@ export function KanbanTab({ workspaceId, boards, tasks, sessions, providers, spe
           >
             {pathname?.endsWith("/kanban") ? "Dashboard view" : "Board page"}
           </a>
+          <div className="relative">
+            <select
+              multiple
+              value={visibleColumns}
+              onChange={(event) => {
+                const selected = Array.from(event.target.selectedOptions, (option) => option.value);
+                setVisibleColumns(selected.length > 0 ? selected : board?.columns.map((col) => col.id) ?? []);
+              }}
+              className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#12141c] px-3 py-2 text-sm text-gray-700 dark:text-gray-200"
+              size={1}
+            >
+              {board?.columns.map((col) => (
+                <option key={col.id} value={col.id}>{col.name}</option>
+              ))}
+            </select>
+          </div>
         </div>
         <button
           onClick={() => setShowCreateModal(true)}
@@ -261,11 +286,12 @@ export function KanbanTab({ workspaceId, boards, tasks, sessions, providers, spe
         </button>
       </div>
 
-      <div className="overflow-x-auto pb-2">
-        <div className="grid min-w-[68.75rem] grid-cols-6 gap-3">
+      <div className="overflow-x-auto overflow-y-hidden pb-2">
+        <div className="flex gap-3" style={{ minWidth: `${visibleColumns.length * 18}rem` }}>
           {board.columns
             .slice()
             .sort((left, right) => left.position - right.position)
+            .filter((column) => visibleColumns.includes(column.id))
             .map((column) => {
               const columnTasks = boardTasks.filter((task) => (task.columnId ?? "backlog") === column.id);
               return (
@@ -277,7 +303,7 @@ export function KanbanTab({ workspaceId, boards, tasks, sessions, providers, spe
                     await moveTask(dragTaskId, column.id);
                     setDragTaskId(null);
                   }}
-                  className="min-h-[6.5625rem] rounded-2xl border border-gray-200/70 bg-white p-3 dark:border-[#1c1f2e] dark:bg-[#12141c]"
+                  className="min-h-[6.5625rem] w-[18rem] flex-shrink-0 rounded-2xl border border-gray-200/70 bg-white p-3 dark:border-[#1c1f2e] dark:bg-[#12141c]"
                 >
                   <div className="mb-3 flex items-center justify-between">
                     <div>
@@ -344,15 +370,31 @@ export function KanbanTab({ workspaceId, boards, tasks, sessions, providers, spe
                             <div className="truncate">
                               {task.assignedProvider ? `${task.assignedProvider}${task.assignedSpecialistName ? ` · ${task.assignedSpecialistName}` : ""}` : "Unassigned"}
                             </div>
-                            <button
-                              onClick={() => {
-                                setEditingAssignmentId(editingAssignmentId === task.id ? null : task.id);
-                                setAssignmentDrafts((current) => ({ ...current, [task.id]: assignment }));
-                              }}
-                              className="rounded-md border border-gray-200 px-2 py-1 text-[11px] hover:bg-white dark:border-gray-700 dark:hover:bg-[#191c28]"
-                            >
-                              Assign
-                            </button>
+                            <div className="relative">
+                              <select
+                                value=""
+                                onChange={async (event) => {
+                                  const value = event.target.value;
+                                  if (value === "assign") {
+                                    setEditingAssignmentId(task.id);
+                                    setAssignmentDrafts((current) => ({ ...current, [task.id]: assignment }));
+                                  } else if (value === "unassign") {
+                                    await patchTask(task.id, {
+                                      assignedProvider: undefined,
+                                      assignedRole: undefined,
+                                      assignedSpecialistId: undefined,
+                                      assignedSpecialistName: undefined,
+                                    });
+                                    onRefresh();
+                                  }
+                                }}
+                                className="rounded-md border border-gray-200 px-2 py-1 text-[11px] hover:bg-white dark:border-gray-700 dark:bg-[#12141c] dark:hover:bg-[#191c28] cursor-pointer"
+                              >
+                                <option value="">Assign ▾</option>
+                                <option value="assign">Edit assignment</option>
+                                {task.assignedProvider && <option value="unassign">Unassign</option>}
+                              </select>
+                            </div>
                           </div>
 
                           {editingAssignmentId === task.id && (
@@ -580,7 +622,7 @@ export function KanbanTab({ workspaceId, boards, tasks, sessions, providers, spe
             </div>
             <iframe
               title="ACP session"
-              src={`/workspace/${workspaceId}/sessions/${activeSessionId}`}
+              src={`/workspace/${workspaceId}/sessions/${activeSessionId}?embed=true`}
               className="h-[calc(88vh-48px)] w-full border-0"
             />
           </div>
