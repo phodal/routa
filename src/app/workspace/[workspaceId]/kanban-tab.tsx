@@ -404,12 +404,12 @@ export function KanbanTab({ workspaceId, boards, tasks, sessions, providers, spe
                                     });
                                     onRefresh();
                                   }}
-                                  className="flex-1 rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] dark:border-gray-700 dark:bg-[#12141c]"
+                                  className="min-w-0 flex-1 truncate rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] dark:border-gray-700 dark:bg-[#12141c]"
                                 >
                                   <option value="">None</option>
                                   {specialists.map((specialist) => (
                                     <option key={specialist.id} value={specialist.id}>
-                                      {specialist.name} ({specialist.role})
+                                      {specialist.name}
                                     </option>
                                   ))}
                                 </select>
