@@ -7,6 +7,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getRoutaSystem } from "@/core/routa-system";
 import { TaskStatus } from "@/core/models/task";
+import { taskStatusToColumnId } from "@/core/models/kanban";
 
 export const dynamic = "force-dynamic";
 
@@ -28,7 +29,15 @@ export async function POST(
   }
 
   const system = getRoutaSystem();
-  await system.taskStore.updateStatus(taskId, taskStatus);
+  const task = await system.taskStore.get(taskId);
+  if (!task) {
+    return NextResponse.json({ error: "Task not found" }, { status: 404 });
+  }
+
+  task.status = taskStatus;
+  task.columnId = taskStatusToColumnId(taskStatus);
+  task.updatedAt = new Date();
+  await system.taskStore.save(task);
 
   return NextResponse.json({ updated: true });
 }

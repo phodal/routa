@@ -210,6 +210,7 @@ export default function HomePage() {
                 setShowWorkspacesMenu={setShowWorkspacesMenu}
                 workspacesMenuRef={workspacesMenuRef}
               />
+              <HomeTodoPreview workspaceId={activeWorkspaceId} refreshKey={refreshKey} />
             </div>
           </div>
         )}
@@ -238,12 +239,94 @@ function ConnectionDot({ connected }: { connected: boolean }) {
   );
 }
 
+function HomeTodoPreview({
+  workspaceId,
+  refreshKey,
+}: {
+  workspaceId: string | null;
+  refreshKey: number;
+}) {
+  const [tasks, setTasks] = useState<HomeTaskInfo[]>([]);
+
+  useEffect(() => {
+    if (!workspaceId) {
+      setTasks([]);
+      return;
+    }
+
+    const fetchTasks = async () => {
+      try {
+        const res = await fetch(`/api/tasks?workspaceId=${encodeURIComponent(workspaceId)}`, { cache: "no-store" });
+        const data = await res.json();
+        const nextTasks = Array.isArray(data?.tasks) ? data.tasks as HomeTaskInfo[] : [];
+        setTasks(
+          nextTasks
+            .filter((task) => !["COMPLETED", "CANCELLED"].includes(task.status))
+            .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime())
+            .slice(0, 4),
+        );
+      } catch {
+        setTasks([]);
+      }
+    };
+
+    void fetchTasks();
+  }, [workspaceId, refreshKey]);
+
+  if (!workspaceId || tasks.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="mt-5 rounded-2xl border border-gray-100 bg-white/90 p-4 dark:border-[#1c1f2e] dark:bg-[#12141c]">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div>
+          <div className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-500 dark:text-gray-400">
+            Current Todos
+          </div>
+          <div className="mt-1 text-sm text-gray-600 dark:text-gray-300">
+            A quick slice of the active board.
+          </div>
+        </div>
+        <a
+          href={`/workspace/${workspaceId}/kanban`}
+          className="rounded-lg border border-gray-200 px-3 py-2 text-xs font-medium text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-[#191c28]"
+        >
+          Open Kanban
+        </a>
+      </div>
+
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        {tasks.map((task) => (
+          <a
+            key={task.id}
+            href={`/workspace/${workspaceId}/kanban`}
+            className="rounded-xl border border-gray-100 bg-[#fcfcfc] px-3 py-3 transition-colors hover:border-amber-200 hover:bg-amber-50/60 dark:border-[#1c1f2e] dark:bg-[#0f1118] dark:hover:border-amber-800/40 dark:hover:bg-amber-900/5"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="truncate text-sm font-medium text-gray-800 dark:text-gray-100">{task.title}</div>
+                <div className="mt-1 text-[11px] text-gray-400 dark:text-gray-500">
+                  {(task.columnId ?? "backlog").toUpperCase()} · {task.assignedProvider ?? "unassigned"}
+                </div>
+              </div>
+              <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] uppercase tracking-wide text-gray-600 dark:bg-[#1c1f2e] dark:text-gray-300">
+                {task.priority ?? "medium"}
+              </span>
+            </div>
+          </a>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ─── Onboarding Card ──────────────────────────────────────────────────
 
 function OnboardingCard({ onCreateWorkspace }: { onCreateWorkspace: (title: string) => void }) {
   return (
     <div className="w-full max-w-sm text-center">
-      <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center mx-auto mb-5 shadow-lg shadow-amber-500/20">
+      <div className="w-12 h-12 rounded-xl bg-linear-to-br from-amber-400 to-orange-500 flex items-center justify-center mx-auto mb-5 shadow-lg shadow-amber-500/20">
         <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 9.776c.112-.017.227-.026.344-.026h15.812c.117 0 .232.009.344.026m-16.5 0a2.25 2.25 0 00-1.883 2.542l.857 6a2.25 2.25 0 002.227 1.932H19.05a2.25 2.25 0 002.227-1.932l.857-6a2.25 2.25 0 00-1.883-2.542m-16.5 0V6A2.25 2.25 0 016 3.75h3.879a1.5 1.5 0 011.06.44l2.122 2.12a1.5 1.5 0 001.06.44H18A2.25 2.25 0 0120.25 9v.776" />
         </svg>
@@ -257,7 +340,7 @@ function OnboardingCard({ onCreateWorkspace }: { onCreateWorkspace: (title: stri
       <button
         type="button"
         onClick={() => onCreateWorkspace("My Workspace")}
-        className="px-6 py-2.5 text-sm font-medium text-white bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 rounded-xl transition-all shadow-lg shadow-amber-500/25 hover:shadow-amber-500/40"
+        className="px-6 py-2.5 text-sm font-medium text-white bg-linear-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 rounded-xl transition-all shadow-lg shadow-amber-500/25 hover:shadow-amber-500/40"
       >
         Get Started
       </button>
@@ -280,6 +363,16 @@ interface SessionInfo {
 interface WorkspaceCardSession {
   sessionId: string;
   displayName: string;
+  createdAt: string;
+}
+
+interface HomeTaskInfo {
+  id: string;
+  title: string;
+  status: string;
+  priority?: string;
+  columnId?: string;
+  assignedProvider?: string;
   createdAt: string;
 }
 

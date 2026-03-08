@@ -39,6 +39,10 @@ components:
       type: string
       enum: [APPROVED, NOT_APPROVED, BLOCKED]
 
+    TaskPriority:
+      type: string
+      enum: [low, medium, high, urgent]
+
     NoteType:
       type: string
       enum: [spec, task, general]
@@ -122,6 +126,45 @@ components:
           type: string
         status:
           $ref: "#/components/schemas/TaskStatus"
+        boardId:
+          type: string
+        columnId:
+          type: string
+        position:
+          type: integer
+        priority:
+          $ref: "#/components/schemas/TaskPriority"
+        labels:
+          type: array
+          items:
+            type: string
+        assignee:
+          type: string
+        assignedProvider:
+          type: string
+        assignedRole:
+          $ref: "#/components/schemas/AgentRole"
+        assignedSpecialistId:
+          type: string
+        assignedSpecialistName:
+          type: string
+        triggerSessionId:
+          type: string
+        githubId:
+          type: string
+        githubNumber:
+          type: integer
+        githubUrl:
+          type: string
+        githubRepo:
+          type: string
+        githubState:
+          type: string
+        githubSyncedAt:
+          type: string
+          format: date-time
+        lastSyncError:
+          type: string
         dependencies:
           type: array
           items:
@@ -142,6 +185,44 @@ components:
           $ref: "#/components/schemas/VerificationVerdict"
         verificationReport:
           type: string
+
+    KanbanColumn:
+      type: object
+      required: [id, name, position, stage]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        color:
+          type: string
+        position:
+          type: integer
+        stage:
+          type: string
+
+    KanbanBoard:
+      type: object
+      required: [id, workspaceId, name, isDefault, columns, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+        workspaceId:
+          type: string
+        name:
+          type: string
+        isDefault:
+          type: boolean
+        columns:
+          type: array
+          items:
+            $ref: "#/components/schemas/KanbanColumn"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
 
     NoteMetadata:
       type: object
@@ -502,8 +583,34 @@ paths:
                     type: string
                 parallelGroup:
                   type: string
+                boardId:
+                  type: string
+                columnId:
+                  type: string
+                position:
+                  type: integer
+                priority:
+                  $ref: "#/components/schemas/TaskPriority"
+                labels:
+                  type: array
+                  items:
+                    type: string
+                assignee:
+                  type: string
+                assignedProvider:
+                  type: string
+                assignedRole:
+                  $ref: "#/components/schemas/AgentRole"
+                assignedSpecialistId:
+                  type: string
+                assignedSpecialistName:
+                  type: string
+                createGitHubIssue:
+                  type: boolean
+                repoPath:
+                  type: string
       responses:
-        "200":
+        "201":
           description: Created task
           content:
             application/json:
@@ -547,7 +654,68 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Task"
+                type: object
+                properties:
+                  task:
+                    $ref: "#/components/schemas/Task"
+    patch:
+      operationId: updateTask
+      summary: Update a task
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                objective:
+                  type: string
+                status:
+                  $ref: "#/components/schemas/TaskStatus"
+                boardId:
+                  type: string
+                columnId:
+                  type: string
+                position:
+                  type: integer
+                priority:
+                  $ref: "#/components/schemas/TaskPriority"
+                labels:
+                  type: array
+                  items:
+                    type: string
+                assignee:
+                  type: string
+                assignedProvider:
+                  type: string
+                assignedRole:
+                  $ref: "#/components/schemas/AgentRole"
+                assignedSpecialistId:
+                  type: string
+                assignedSpecialistName:
+                  type: string
+                repoPath:
+                  type: string
+                syncToGitHub:
+                  type: boolean
+      responses:
+        "200":
+          description: Updated task
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  task:
+                    $ref: "#/components/schemas/Task"
         "404":
           description: Task not found
     delete:
@@ -620,6 +788,56 @@ paths:
                     type: array
                     items:
                       $ref: "#/components/schemas/Task"
+
+  /api/kanban/boards:
+    get:
+      operationId: listKanbanBoards
+      summary: List Kanban boards for a workspace
+      parameters:
+        - name: workspaceId
+          in: query
+          schema:
+            type: string
+            default: "default"
+      responses:
+        "200":
+          description: Board list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  boards:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/KanbanBoard"
+    post:
+      operationId: createKanbanBoard
+      summary: Create a Kanban board
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [workspaceId, name]
+              properties:
+                workspaceId:
+                  type: string
+                name:
+                  type: string
+                isDefault:
+                  type: boolean
+      responses:
+        "201":
+          description: Board created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  board:
+                    $ref: "#/components/schemas/KanbanBoard"
 
   # ── Notes ──
   /api/notes:

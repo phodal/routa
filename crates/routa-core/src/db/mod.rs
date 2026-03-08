@@ -166,6 +166,24 @@ impl Database {
                     verification_commands   TEXT,
                     assigned_to             TEXT,
                     status                  TEXT NOT NULL DEFAULT 'PENDING',
+                    board_id                TEXT,
+                    column_id               TEXT,
+                    position                INTEGER NOT NULL DEFAULT 0,
+                    priority                TEXT,
+                    labels                  TEXT NOT NULL DEFAULT '[]',
+                    assignee                TEXT,
+                    assigned_provider       TEXT,
+                    assigned_role           TEXT,
+                    assigned_specialist_id  TEXT,
+                    assigned_specialist_name TEXT,
+                    trigger_session_id      TEXT,
+                    github_id               TEXT,
+                    github_number           INTEGER,
+                    github_url              TEXT,
+                    github_repo             TEXT,
+                    github_state            TEXT,
+                    github_synced_at        INTEGER,
+                    last_sync_error         TEXT,
                     dependencies            TEXT NOT NULL DEFAULT '[]',
                     parallel_group          TEXT,
                     workspace_id            TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
@@ -176,6 +194,15 @@ impl Database {
                     version                 INTEGER NOT NULL DEFAULT 1,
                     created_at              INTEGER NOT NULL,
                     updated_at              INTEGER NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS kanban_boards (
+                    id              TEXT PRIMARY KEY,
+                    workspace_id    TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+                    name            TEXT NOT NULL,
+                    is_default      INTEGER NOT NULL DEFAULT 0,
+                    columns_json    TEXT NOT NULL DEFAULT '[]',
+                    created_at      INTEGER NOT NULL,
+                    updated_at      INTEGER NOT NULL
                 );
                 CREATE TABLE IF NOT EXISTS notes (
                     id                  TEXT NOT NULL,
@@ -229,6 +256,7 @@ impl Database {
 
                 CREATE INDEX IF NOT EXISTS idx_agents_workspace ON agents(workspace_id);
                 CREATE INDEX IF NOT EXISTS idx_tasks_workspace ON tasks(workspace_id);
+                CREATE INDEX IF NOT EXISTS idx_kanban_boards_workspace ON kanban_boards(workspace_id);
                 CREATE INDEX IF NOT EXISTS idx_notes_workspace ON notes(workspace_id);
                 CREATE INDEX IF NOT EXISTS idx_messages_agent ON messages(agent_id);
 
@@ -281,10 +309,40 @@ impl Database {
         self.with_conn(|conn| {
             // Add session_id to tasks if it doesn't exist yet (ignore error if already present)
             let _ = conn.execute("ALTER TABLE tasks ADD COLUMN session_id TEXT", []);
+            let _ = conn.execute("ALTER TABLE tasks ADD COLUMN board_id TEXT", []);
+            let _ = conn.execute("ALTER TABLE tasks ADD COLUMN column_id TEXT", []);
+            let _ = conn.execute("ALTER TABLE tasks ADD COLUMN position INTEGER NOT NULL DEFAULT 0", []);
+            let _ = conn.execute("ALTER TABLE tasks ADD COLUMN priority TEXT", []);
+            let _ = conn.execute("ALTER TABLE tasks ADD COLUMN labels TEXT NOT NULL DEFAULT '[]'", []);
+            let _ = conn.execute("ALTER TABLE tasks ADD COLUMN assignee TEXT", []);
+            let _ = conn.execute("ALTER TABLE tasks ADD COLUMN assigned_provider TEXT", []);
+            let _ = conn.execute("ALTER TABLE tasks ADD COLUMN assigned_role TEXT", []);
+            let _ = conn.execute("ALTER TABLE tasks ADD COLUMN assigned_specialist_id TEXT", []);
+            let _ = conn.execute("ALTER TABLE tasks ADD COLUMN assigned_specialist_name TEXT", []);
+            let _ = conn.execute("ALTER TABLE tasks ADD COLUMN trigger_session_id TEXT", []);
+            let _ = conn.execute("ALTER TABLE tasks ADD COLUMN github_id TEXT", []);
+            let _ = conn.execute("ALTER TABLE tasks ADD COLUMN github_number INTEGER", []);
+            let _ = conn.execute("ALTER TABLE tasks ADD COLUMN github_url TEXT", []);
+            let _ = conn.execute("ALTER TABLE tasks ADD COLUMN github_repo TEXT", []);
+            let _ = conn.execute("ALTER TABLE tasks ADD COLUMN github_state TEXT", []);
+            let _ = conn.execute("ALTER TABLE tasks ADD COLUMN github_synced_at INTEGER", []);
+            let _ = conn.execute("ALTER TABLE tasks ADD COLUMN last_sync_error TEXT", []);
             // Add session_id to notes if it doesn't exist yet (ignore error if already present)
             let _ = conn.execute("ALTER TABLE notes ADD COLUMN session_id TEXT", []);
             // Add parent_session_id to acp_sessions for CRAFTER child session tracking
             let _ = conn.execute("ALTER TABLE acp_sessions ADD COLUMN parent_session_id TEXT", []);
+            conn.execute_batch(
+                "CREATE TABLE IF NOT EXISTS kanban_boards (
+                    id TEXT PRIMARY KEY,
+                    workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+                    name TEXT NOT NULL,
+                    is_default INTEGER NOT NULL DEFAULT 0,
+                    columns_json TEXT NOT NULL DEFAULT '[]',
+                    created_at INTEGER NOT NULL,
+                    updated_at INTEGER NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_kanban_boards_workspace ON kanban_boards(workspace_id);"
+            )?;
             // Create indexes for session_id columns
             conn.execute_batch(
                 "CREATE INDEX IF NOT EXISTS idx_tasks_session ON tasks(session_id);

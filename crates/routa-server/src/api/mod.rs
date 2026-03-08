@@ -13,6 +13,7 @@ pub mod codebases;
 pub mod debug;
 pub mod files;
 pub mod github;
+pub mod kanban;
 pub mod memory;
 pub mod mcp_routes;
 pub mod mcp_server_mgmt;
@@ -46,6 +47,7 @@ pub fn api_router() -> Router<AppState> {
     Router::new()
         .nest("/api/agents", agents::router())
         .nest("/api/notes", notes::router())
+        .nest("/api/kanban", kanban::router())
         .nest("/api/tasks", tasks::router())
         .nest("/api/workspaces", workspaces::router())
         .nest("/api", codebases::router())

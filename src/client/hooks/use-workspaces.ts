@@ -19,6 +19,8 @@ export interface CodebaseData {
   branch?: string;
   label?: string;
   isDefault: boolean;
+  sourceType?: "local" | "github";
+  sourceUrl?: string;
   createdAt: string;
   updatedAt: string;
 }

@@ -13,6 +13,7 @@ import type { Agent, AgentRole, AgentStatus } from "../models/agent";
 import type { Task, TaskStatus } from "../models/task";
 import type { Message, MessageRole } from "../models/message";
 import type { Note, NoteType, NoteMetadata } from "../models/note";
+import type { KanbanBoard } from "../models/kanban";
 import { createSpecNote, SPEC_NOTE_ID } from "../models/note";
 import type { WorkspaceStore } from "./pg-workspace-store";
 import type { AgentStore } from "../store/agent-store";
@@ -20,6 +21,7 @@ import type { TaskStore } from "../store/task-store";
 import type { ConversationStore } from "../store/conversation-store";
 import type { NoteStore } from "../store/note-store";
 import type { AcpSessionStore, AcpSession, AcpSessionNotification } from "../store/acp-session-store";
+import type { KanbanBoardStore } from "../store/kanban-board-store";
 
 type SqliteDb = BetterSQLite3Database<typeof sqliteSchema>;
 
@@ -435,9 +437,28 @@ export class SqliteTaskStore implements TaskStore {
         verificationCommands: task.verificationCommands,
         assignedTo: task.assignedTo,
         status: task.status,
+        boardId: task.boardId,
+        columnId: task.columnId,
+        position: task.position,
+        priority: task.priority,
+        labels: task.labels,
+        assignee: task.assignee,
+        assignedProvider: task.assignedProvider,
+        assignedRole: task.assignedRole,
+        assignedSpecialistId: task.assignedSpecialistId,
+        assignedSpecialistName: task.assignedSpecialistName,
+        triggerSessionId: task.triggerSessionId,
+        githubId: task.githubId,
+        githubNumber: task.githubNumber,
+        githubUrl: task.githubUrl,
+        githubRepo: task.githubRepo,
+        githubState: task.githubState,
+        githubSyncedAt: task.githubSyncedAt,
+        lastSyncError: task.lastSyncError,
         dependencies: task.dependencies,
         parallelGroup: task.parallelGroup,
         workspaceId: task.workspaceId,
+        sessionId: task.sessionId,
         completionSummary: task.completionSummary,
         verificationVerdict: task.verificationVerdict,
         verificationReport: task.verificationReport,
@@ -455,8 +476,27 @@ export class SqliteTaskStore implements TaskStore {
           verificationCommands: task.verificationCommands,
           assignedTo: task.assignedTo,
           status: task.status,
+          boardId: task.boardId,
+          columnId: task.columnId,
+          position: task.position,
+          priority: task.priority,
+          labels: task.labels,
+          assignee: task.assignee,
+          assignedProvider: task.assignedProvider,
+          assignedRole: task.assignedRole,
+          assignedSpecialistId: task.assignedSpecialistId,
+          assignedSpecialistName: task.assignedSpecialistName,
+          triggerSessionId: task.triggerSessionId,
+          githubId: task.githubId,
+          githubNumber: task.githubNumber,
+          githubUrl: task.githubUrl,
+          githubRepo: task.githubRepo,
+          githubState: task.githubState,
+          githubSyncedAt: task.githubSyncedAt,
+          lastSyncError: task.lastSyncError,
           dependencies: task.dependencies,
           parallelGroup: task.parallelGroup,
+          sessionId: task.sessionId,
           completionSummary: task.completionSummary,
           verificationVerdict: task.verificationVerdict,
           verificationReport: task.verificationReport,
@@ -576,14 +616,95 @@ export class SqliteTaskStore implements TaskStore {
       verificationCommands: (row.verificationCommands as string[]) ?? undefined,
       assignedTo: row.assignedTo ?? undefined,
       status: row.status as TaskStatus,
+      boardId: row.boardId ?? undefined,
+      columnId: row.columnId ?? undefined,
+      position: row.position,
+      priority: row.priority as import("../models/task").TaskPriority | undefined,
+      labels: (row.labels as string[]) ?? [],
+      assignee: row.assignee ?? undefined,
+      assignedProvider: row.assignedProvider ?? undefined,
+      assignedRole: row.assignedRole ?? undefined,
+      assignedSpecialistId: row.assignedSpecialistId ?? undefined,
+      assignedSpecialistName: row.assignedSpecialistName ?? undefined,
+      triggerSessionId: row.triggerSessionId ?? undefined,
+      githubId: row.githubId ?? undefined,
+      githubNumber: row.githubNumber ?? undefined,
+      githubUrl: row.githubUrl ?? undefined,
+      githubRepo: row.githubRepo ?? undefined,
+      githubState: row.githubState ?? undefined,
+      githubSyncedAt: row.githubSyncedAt ?? undefined,
+      lastSyncError: row.lastSyncError ?? undefined,
       dependencies: (row.dependencies as string[]) ?? [],
       parallelGroup: row.parallelGroup ?? undefined,
       workspaceId: row.workspaceId,
+      sessionId: row.sessionId ?? undefined,
       completionSummary: row.completionSummary ?? undefined,
       verificationVerdict: row.verificationVerdict as
         | import("../models/task").VerificationVerdict
         | undefined,
       verificationReport: row.verificationReport ?? undefined,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+    };
+  }
+}
+
+export class SqliteKanbanBoardStore implements KanbanBoardStore {
+  constructor(private db: SqliteDb) {}
+
+  async save(board: KanbanBoard): Promise<void> {
+    await this.db
+      .insert(sqliteSchema.kanbanBoards)
+      .values({
+        id: board.id,
+        workspaceId: board.workspaceId,
+        name: board.name,
+        isDefault: board.isDefault,
+        columns: board.columns,
+        createdAt: board.createdAt,
+        updatedAt: board.updatedAt,
+      })
+      .onConflictDoUpdate({
+        target: sqliteSchema.kanbanBoards.id,
+        set: {
+          name: board.name,
+          isDefault: board.isDefault,
+          columns: board.columns,
+          updatedAt: new Date(),
+        },
+      });
+  }
+
+  async get(boardId: string): Promise<KanbanBoard | undefined> {
+    const rows = await this.db.select().from(sqliteSchema.kanbanBoards).where(eq(sqliteSchema.kanbanBoards.id, boardId)).limit(1);
+    return rows[0] ? this.toModel(rows[0]) : undefined;
+  }
+
+  async listByWorkspace(workspaceId: string): Promise<KanbanBoard[]> {
+    const rows = await this.db.select().from(sqliteSchema.kanbanBoards).where(eq(sqliteSchema.kanbanBoards.workspaceId, workspaceId));
+    return rows.map((row) => this.toModel(row));
+  }
+
+  async getDefault(workspaceId: string): Promise<KanbanBoard | undefined> {
+    const rows = await this.db
+      .select()
+      .from(sqliteSchema.kanbanBoards)
+      .where(and(eq(sqliteSchema.kanbanBoards.workspaceId, workspaceId), eq(sqliteSchema.kanbanBoards.isDefault, true)))
+      .limit(1);
+    return rows[0] ? this.toModel(rows[0]) : undefined;
+  }
+
+  async delete(boardId: string): Promise<void> {
+    await this.db.delete(sqliteSchema.kanbanBoards).where(eq(sqliteSchema.kanbanBoards.id, boardId));
+  }
+
+  private toModel(row: typeof sqliteSchema.kanbanBoards.$inferSelect): KanbanBoard {
+    return {
+      id: row.id,
+      workspaceId: row.workspaceId,
+      name: row.name,
+      isDefault: row.isDefault,
+      columns: row.columns,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
     };

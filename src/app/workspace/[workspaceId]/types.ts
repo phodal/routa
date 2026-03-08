@@ -7,6 +7,8 @@ export interface SessionInfo {
   workspaceId: string;
   provider?: string;
   role?: string;
+  acpStatus?: "connecting" | "ready" | "error";
+  acpError?: string;
   createdAt: string;
 }
 
@@ -15,9 +17,45 @@ export interface TaskInfo {
   title: string;
   objective?: string;
   status: string;
+  boardId?: string;
+  columnId?: string;
+  position?: number;
+  priority?: string;
+  labels?: string[];
+  assignee?: string;
   assignedTo?: string;
+  assignedProvider?: string;
+  assignedRole?: string;
+  assignedSpecialistId?: string;
+  assignedSpecialistName?: string;
+  triggerSessionId?: string;
+  githubId?: string;
+  githubNumber?: number;
+  githubUrl?: string;
+  githubRepo?: string;
+  githubState?: string;
+  githubSyncedAt?: string;
+  lastSyncError?: string;
   sessionId?: string;
   createdAt: string;
+}
+
+export interface KanbanColumnInfo {
+  id: string;
+  name: string;
+  color?: string;
+  position: number;
+  stage: string;
+}
+
+export interface KanbanBoardInfo {
+  id: string;
+  workspaceId: string;
+  name: string;
+  isDefault: boolean;
+  columns: KanbanColumnInfo[];
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface BackgroundTaskInfo {

@@ -150,6 +150,8 @@ async function testTaskStore() {
       title: "Implement login",
       objective: "Build the login page",
       status: TaskStatus.PENDING,
+      position: 0,
+      labels: [],
       dependencies: [],
       workspaceId: "default",
       acceptanceCriteria: ["Has email field", "Has password field"],

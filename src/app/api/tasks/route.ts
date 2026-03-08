@@ -8,8 +8,10 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { getRoutaSystem } from "@/core/routa-system";
-import { createTask, Task, TaskStatus } from "@/core/models/task";
+import { createTask, Task, TaskStatus, TaskPriority } from "@/core/models/task";
 import { v4 as uuidv4 } from "uuid";
+import { ensureDefaultBoard } from "@/core/kanban/boards";
+import { createGitHubIssue, parseGitHubRepo } from "@/core/kanban/github-issues";
 
 export const dynamic = "force-dynamic";
 
@@ -58,6 +60,18 @@ export async function POST(request: NextRequest) {
     verificationCommands,
     dependencies,
     parallelGroup,
+    boardId,
+    columnId,
+    position,
+    priority,
+    labels,
+    assignee,
+    assignedProvider,
+    assignedRole,
+    assignedSpecialistId,
+    assignedSpecialistName,
+    createGitHubIssue: shouldCreateGitHubIssue,
+    repoPath,
   } = body;
 
   if (!title) {
@@ -68,6 +82,44 @@ export async function POST(request: NextRequest) {
   }
 
   const system = getRoutaSystem();
+  const defaultBoard = await ensureDefaultBoard(system, workspaceId);
+
+  const codebase = repoPath
+    ? await system.codebaseStore.findByRepoPath(workspaceId, repoPath)
+    : await system.codebaseStore.getDefault(workspaceId);
+
+  const repo = parseGitHubRepo(codebase?.sourceUrl);
+
+  let githubId: string | undefined;
+  let githubNumber: number | undefined;
+  let githubUrl: string | undefined;
+  let githubRepo: string | undefined;
+  let githubState: string | undefined;
+  let githubSyncedAt: Date | undefined;
+  let lastSyncError: string | undefined;
+
+  if (shouldCreateGitHubIssue) {
+    if (!repo) {
+      lastSyncError = "Selected codebase is not linked to a GitHub repository.";
+    } else {
+      try {
+        const issue = await createGitHubIssue(repo, {
+          title,
+          body: objective,
+          labels,
+          assignees: assignee ? [assignee] : undefined,
+        });
+        githubId = issue.id;
+        githubNumber = issue.number;
+        githubUrl = issue.url;
+        githubRepo = issue.repo;
+        githubState = issue.state;
+        githubSyncedAt = new Date();
+      } catch (error) {
+        lastSyncError = error instanceof Error ? error.message : "GitHub issue create failed";
+      }
+    }
+  }
 
   const task = createTask({
     id: uuidv4(),
@@ -80,6 +132,23 @@ export async function POST(request: NextRequest) {
     verificationCommands,
     dependencies,
     parallelGroup,
+    boardId: boardId ?? defaultBoard.id,
+    columnId: columnId ?? "backlog",
+    position: typeof position === "number" ? position : 0,
+    priority: priority as TaskPriority | undefined,
+    labels: Array.isArray(labels) ? labels : [],
+    assignee,
+    assignedProvider,
+    assignedRole,
+    assignedSpecialistId,
+    assignedSpecialistName,
+    githubId,
+    githubNumber,
+    githubUrl,
+    githubRepo,
+    githubState,
+    githubSyncedAt,
+    lastSyncError,
   });
 
   await system.taskStore.save(task);
@@ -111,6 +180,24 @@ function serializeTask(task: Task) {
     verificationCommands: task.verificationCommands,
     assignedTo: task.assignedTo,
     status: task.status,
+    boardId: task.boardId,
+    columnId: task.columnId,
+    position: task.position,
+    priority: task.priority,
+    labels: task.labels,
+    assignee: task.assignee,
+    assignedProvider: task.assignedProvider,
+    assignedRole: task.assignedRole,
+    assignedSpecialistId: task.assignedSpecialistId,
+    assignedSpecialistName: task.assignedSpecialistName,
+    triggerSessionId: task.triggerSessionId,
+    githubId: task.githubId,
+    githubNumber: task.githubNumber,
+    githubUrl: task.githubUrl,
+    githubRepo: task.githubRepo,
+    githubState: task.githubState,
+    githubSyncedAt: task.githubSyncedAt?.toISOString(),
+    lastSyncError: task.lastSyncError,
     dependencies: task.dependencies,
     parallelGroup: task.parallelGroup,
     workspaceId: task.workspaceId,

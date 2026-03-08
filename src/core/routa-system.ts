@@ -28,6 +28,7 @@ import { CRDTNoteStore } from "./notes/crdt-note-store";
 import { CRDTDocumentManager } from "./notes/crdt-document-manager";
 import { NoteEventBroadcaster, getNoteEventBroadcaster } from "./notes/note-event-broadcaster";
 import { WorkflowRunStore, InMemoryWorkflowRunStore } from "./workflows/workflow-store";
+import { InMemoryKanbanBoardStore, KanbanBoardStore } from "./store/kanban-board-store";
 
 export interface RoutaSystem {
   agentStore: AgentStore;
@@ -41,6 +42,7 @@ export interface RoutaSystem {
   scheduleStore: ScheduleStore;
   /** Workflow run store for multi-step workflow execution */
   workflowRunStore: WorkflowRunStore;
+  kanbanBoardStore: KanbanBoardStore;
   eventBus: EventBus;
   tools: AgentTools;
   noteTools: NoteTools;
@@ -66,6 +68,7 @@ export function createInMemorySystem(): RoutaSystem {
   const backgroundTaskStore = new InMemoryBackgroundTaskStore();
   const scheduleStore = new InMemoryScheduleStore();
   const workflowRunStore = new InMemoryWorkflowRunStore();
+  const kanbanBoardStore = new InMemoryKanbanBoardStore();
 
   // CRDT-backed note store with event broadcasting
   const noteBroadcaster = getNoteEventBroadcaster();
@@ -92,6 +95,7 @@ export function createInMemorySystem(): RoutaSystem {
     backgroundTaskStore,
     scheduleStore,
     workflowRunStore,
+    kanbanBoardStore,
     eventBus,
     tools,
     noteTools,
@@ -117,6 +121,7 @@ export function createPgSystem(): RoutaSystem {
   const { PgBackgroundTaskStore } = require("./db/pg-background-task-store") as typeof import("./db/pg-background-task-store");
   const { PgScheduleStore } = require("./db/pg-schedule-store") as typeof import("./db/pg-schedule-store");
   const { PgWorktreeStore } = require("./db/pg-worktree-store") as typeof import("./db/pg-worktree-store");
+  const { PgKanbanBoardStore } = require("./db/pg-kanban-board-store") as typeof import("./db/pg-kanban-board-store");
 
   const db = getPostgresDatabase();
   const agentStore = new PgAgentStore(db);
@@ -130,6 +135,7 @@ export function createPgSystem(): RoutaSystem {
   const scheduleStore = new PgScheduleStore(db);
   // TODO: Implement PgWorkflowRunStore for persistent workflow state
   const workflowRunStore = new InMemoryWorkflowRunStore();
+  const kanbanBoardStore = new PgKanbanBoardStore(db);
 
   // CRDT manager and broadcaster still used for real-time collab
   const noteBroadcaster = getNoteEventBroadcaster();
@@ -157,6 +163,7 @@ export function createPgSystem(): RoutaSystem {
     backgroundTaskStore,
     scheduleStore,
     workflowRunStore,
+    kanbanBoardStore,
     eventBus,
     tools,
     noteTools,
@@ -188,6 +195,7 @@ export function createSqliteSystem(): RoutaSystem {
   let worktreeStore: WorktreeStore;
   let backgroundTaskStore: BackgroundTaskStore;
   let scheduleStore: ScheduleStore;
+  let kanbanBoardStore: KanbanBoardStore;
   // TODO: Implement SqliteWorkflowRunStore for persistent workflow state
   const workflowRunStore = new InMemoryWorkflowRunStore();
   // True when noteStore doesn't broadcast on save (SqliteNoteStore); NoteTools will broadcast.
@@ -208,6 +216,7 @@ export function createSqliteSystem(): RoutaSystem {
       SqliteWorktreeStore,
       SqliteBackgroundTaskStore,
       SqliteScheduleStore,
+      SqliteKanbanBoardStore,
     } = require("./db/sqlite-stores") as typeof import("./db/sqlite-stores");
 
     const db = getSqliteDatabase();
@@ -220,6 +229,7 @@ export function createSqliteSystem(): RoutaSystem {
     worktreeStore = new SqliteWorktreeStore(db);
     backgroundTaskStore = new SqliteBackgroundTaskStore(db);
     scheduleStore = new SqliteScheduleStore(db);
+    kanbanBoardStore = new SqliteKanbanBoardStore(db);
     noteToolsBroadcast = true; // SqliteNoteStore doesn't broadcast — NoteTools must
   } catch (err) {
     // Some builds may not include sqlite native modules.
@@ -237,6 +247,7 @@ export function createSqliteSystem(): RoutaSystem {
     worktreeStore = new InMemoryWorktreeStore();
     backgroundTaskStore = new InMemoryBackgroundTaskStore();
     scheduleStore = new InMemoryScheduleStore();
+    kanbanBoardStore = new InMemoryKanbanBoardStore();
   }
 
   const eventBus = new EventBus();
@@ -259,6 +270,7 @@ export function createSqliteSystem(): RoutaSystem {
     backgroundTaskStore,
     scheduleStore,
     workflowRunStore,
+    kanbanBoardStore,
     eventBus,
     tools,
     noteTools,

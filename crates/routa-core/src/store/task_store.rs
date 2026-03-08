@@ -3,7 +3,7 @@ use rusqlite::OptionalExtension;
 
 use crate::db::Database;
 use crate::error::ServerError;
-use crate::models::task::{Task, TaskStatus, VerificationVerdict};
+use crate::models::task::{Task, TaskPriority, TaskStatus, VerificationVerdict};
 
 #[derive(Clone)]
 pub struct TaskStore {
@@ -21,9 +21,14 @@ impl TaskStore {
             .with_conn_async(move |conn| {
                 conn.execute(
                     "INSERT INTO tasks (id, title, objective, scope, acceptance_criteria, verification_commands,
-                     assigned_to, status, dependencies, parallel_group, workspace_id, session_id,
-                     completion_summary, verification_verdict, verification_report, version, created_at, updated_at)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, 1, ?16, ?17)
+                                         assigned_to, status, board_id, column_id, position, priority, labels, assignee,
+                                         assigned_provider, assigned_role, assigned_specialist_id, assigned_specialist_name,
+                                         trigger_session_id, github_id, github_number, github_url, github_repo, github_state,
+                                         github_synced_at, last_sync_error, dependencies, parallel_group, workspace_id, session_id,
+                                         completion_summary, verification_verdict, verification_report, version, created_at, updated_at)
+                                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17,
+                                         ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29, ?30, ?31, ?32, ?33, 1,
+                                         ?34, ?35)
                      ON CONFLICT(id) DO UPDATE SET
                        title = excluded.title,
                        objective = excluded.objective,
@@ -32,8 +37,27 @@ impl TaskStore {
                        verification_commands = excluded.verification_commands,
                        assigned_to = excluded.assigned_to,
                        status = excluded.status,
+                                             board_id = excluded.board_id,
+                                             column_id = excluded.column_id,
+                                             position = excluded.position,
+                                             priority = excluded.priority,
+                                             labels = excluded.labels,
+                                             assignee = excluded.assignee,
+                                             assigned_provider = excluded.assigned_provider,
+                                             assigned_role = excluded.assigned_role,
+                                             assigned_specialist_id = excluded.assigned_specialist_id,
+                                             assigned_specialist_name = excluded.assigned_specialist_name,
+                                             trigger_session_id = excluded.trigger_session_id,
+                                             github_id = excluded.github_id,
+                                             github_number = excluded.github_number,
+                                             github_url = excluded.github_url,
+                                             github_repo = excluded.github_repo,
+                                             github_state = excluded.github_state,
+                                             github_synced_at = excluded.github_synced_at,
+                                             last_sync_error = excluded.last_sync_error,
                        dependencies = excluded.dependencies,
                        parallel_group = excluded.parallel_group,
+                                             workspace_id = excluded.workspace_id,
                        session_id = excluded.session_id,
                        completion_summary = excluded.completion_summary,
                        verification_verdict = excluded.verification_verdict,
@@ -48,6 +72,24 @@ impl TaskStore {
                         t.verification_commands.map(|v| serde_json::to_string(&v).unwrap_or_default()),
                         t.assigned_to,
                         t.status.as_str(),
+                        t.board_id,
+                        t.column_id,
+                        t.position,
+                        t.priority.as_ref().map(|v| v.as_str()),
+                        serde_json::to_string(&t.labels).unwrap_or_default(),
+                        t.assignee,
+                        t.assigned_provider,
+                        t.assigned_role,
+                        t.assigned_specialist_id,
+                        t.assigned_specialist_name,
+                        t.trigger_session_id,
+                        t.github_id,
+                        t.github_number,
+                        t.github_url,
+                        t.github_repo,
+                        t.github_state,
+                        t.github_synced_at.map(|v| v.timestamp_millis()),
+                        t.last_sync_error,
                         serde_json::to_string(&t.dependencies).unwrap_or_default(),
                         t.parallel_group,
                         t.workspace_id,
@@ -70,7 +112,10 @@ impl TaskStore {
             .with_conn_async(move |conn| {
                 let mut stmt = conn.prepare(
                     "SELECT id, title, objective, scope, acceptance_criteria, verification_commands,
-                     assigned_to, status, dependencies, parallel_group, workspace_id, session_id,
+                     assigned_to, status, board_id, column_id, position, priority, labels, assignee,
+                     assigned_provider, assigned_role, assigned_specialist_id, assigned_specialist_name,
+                     trigger_session_id, github_id, github_number, github_url, github_repo, github_state,
+                     github_synced_at, last_sync_error, dependencies, parallel_group, workspace_id, session_id,
                      completion_summary, verification_verdict, verification_report, created_at, updated_at
                      FROM tasks WHERE id = ?1",
                 )?;
@@ -86,7 +131,10 @@ impl TaskStore {
             .with_conn_async(move |conn| {
                 let mut stmt = conn.prepare(
                     "SELECT id, title, objective, scope, acceptance_criteria, verification_commands,
-                     assigned_to, status, dependencies, parallel_group, workspace_id, session_id,
+                     assigned_to, status, board_id, column_id, position, priority, labels, assignee,
+                     assigned_provider, assigned_role, assigned_specialist_id, assigned_specialist_name,
+                     trigger_session_id, github_id, github_number, github_url, github_repo, github_state,
+                     github_synced_at, last_sync_error, dependencies, parallel_group, workspace_id, session_id,
                      completion_summary, verification_verdict, verification_report, created_at, updated_at
                      FROM tasks WHERE workspace_id = ?1 ORDER BY created_at DESC",
                 )?;
@@ -104,7 +152,10 @@ impl TaskStore {
             .with_conn_async(move |conn| {
                 let mut stmt = conn.prepare(
                     "SELECT id, title, objective, scope, acceptance_criteria, verification_commands,
-                     assigned_to, status, dependencies, parallel_group, workspace_id, session_id,
+                     assigned_to, status, board_id, column_id, position, priority, labels, assignee,
+                     assigned_provider, assigned_role, assigned_specialist_id, assigned_specialist_name,
+                     trigger_session_id, github_id, github_number, github_url, github_repo, github_state,
+                     github_synced_at, last_sync_error, dependencies, parallel_group, workspace_id, session_id,
                      completion_summary, verification_verdict, verification_report, created_at, updated_at
                      FROM tasks WHERE session_id = ?1 ORDER BY created_at DESC",
                 )?;
@@ -127,7 +178,10 @@ impl TaskStore {
             .with_conn_async(move |conn| {
                 let mut stmt = conn.prepare(
                     "SELECT id, title, objective, scope, acceptance_criteria, verification_commands,
-                     assigned_to, status, dependencies, parallel_group, workspace_id, session_id,
+                     assigned_to, status, board_id, column_id, position, priority, labels, assignee,
+                     assigned_provider, assigned_role, assigned_specialist_id, assigned_specialist_name,
+                     trigger_session_id, github_id, github_number, github_url, github_repo, github_state,
+                     github_synced_at, last_sync_error, dependencies, parallel_group, workspace_id, session_id,
                      completion_summary, verification_verdict, verification_report, created_at, updated_at
                      FROM tasks WHERE workspace_id = ?1 AND status = ?2 ORDER BY created_at DESC",
                 )?;
@@ -147,7 +201,10 @@ impl TaskStore {
             .with_conn_async(move |conn| {
                 let mut stmt = conn.prepare(
                     "SELECT id, title, objective, scope, acceptance_criteria, verification_commands,
-                     assigned_to, status, dependencies, parallel_group, workspace_id, session_id,
+                     assigned_to, status, board_id, column_id, position, priority, labels, assignee,
+                     assigned_provider, assigned_role, assigned_specialist_id, assigned_specialist_name,
+                     trigger_session_id, github_id, github_number, github_url, github_repo, github_state,
+                     github_synced_at, last_sync_error, dependencies, parallel_group, workspace_id, session_id,
                      completion_summary, verification_verdict, verification_report, created_at, updated_at
                      FROM tasks WHERE assigned_to = ?1 ORDER BY created_at DESC",
                 )?;
@@ -209,12 +266,8 @@ impl TaskStore {
 use rusqlite::Row;
 
 fn row_to_task(row: &Row<'_>) -> Task {
-    // Column order: id(0), title(1), objective(2), scope(3), acceptance_criteria(4),
-    // verification_commands(5), assigned_to(6), status(7), dependencies(8), parallel_group(9),
-    // workspace_id(10), session_id(11), completion_summary(12), verification_verdict(13),
-    // verification_report(14), created_at(15), updated_at(16)
-    let created_ms: i64 = row.get(15).unwrap_or(0);
-    let updated_ms: i64 = row.get(16).unwrap_or(0);
+    let created_ms: i64 = row.get(33).unwrap_or(0);
+    let updated_ms: i64 = row.get(34).unwrap_or(0);
 
     let acceptance_criteria: Option<Vec<String>> = row
         .get::<_, Option<String>>(4)
@@ -224,8 +277,13 @@ fn row_to_task(row: &Row<'_>) -> Task {
         .get::<_, Option<String>>(5)
         .unwrap_or(None)
         .and_then(|s| serde_json::from_str(&s).ok());
+    let labels: Vec<String> = row
+        .get::<_, String>(12)
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_default();
     let dependencies: Vec<String> = row
-        .get::<_, String>(8)
+        .get::<_, String>(26)
         .ok()
         .and_then(|s| serde_json::from_str(&s).ok())
         .unwrap_or_default();
@@ -240,16 +298,40 @@ fn row_to_task(row: &Row<'_>) -> Task {
         assigned_to: row.get(6).unwrap_or(None),
         status: TaskStatus::from_str(&row.get::<_, String>(7).unwrap_or_default())
             .unwrap_or(TaskStatus::Pending),
+        board_id: row.get(8).unwrap_or(None),
+        column_id: row.get(9).unwrap_or(None),
+        position: row.get(10).unwrap_or(0),
+        priority: row
+            .get::<_, Option<String>>(11)
+            .unwrap_or(None)
+            .and_then(|s| TaskPriority::from_str(&s)),
+        labels,
+        assignee: row.get(13).unwrap_or(None),
+        assigned_provider: row.get(14).unwrap_or(None),
+        assigned_role: row.get(15).unwrap_or(None),
+        assigned_specialist_id: row.get(16).unwrap_or(None),
+        assigned_specialist_name: row.get(17).unwrap_or(None),
+        trigger_session_id: row.get(18).unwrap_or(None),
+        github_id: row.get(19).unwrap_or(None),
+        github_number: row.get(20).unwrap_or(None),
+        github_url: row.get(21).unwrap_or(None),
+        github_repo: row.get(22).unwrap_or(None),
+        github_state: row.get(23).unwrap_or(None),
+        github_synced_at: row
+            .get::<_, Option<i64>>(24)
+            .unwrap_or(None)
+            .and_then(chrono::DateTime::from_timestamp_millis),
+        last_sync_error: row.get(25).unwrap_or(None),
         dependencies,
-        parallel_group: row.get(9).unwrap_or(None),
-        workspace_id: row.get(10).unwrap_or_default(),
-        session_id: row.get(11).unwrap_or(None),
-        completion_summary: row.get(12).unwrap_or(None),
+        parallel_group: row.get(27).unwrap_or(None),
+        workspace_id: row.get(28).unwrap_or_default(),
+        session_id: row.get(29).unwrap_or(None),
+        completion_summary: row.get(30).unwrap_or(None),
         verification_verdict: row
-            .get::<_, Option<String>>(13)
+            .get::<_, Option<String>>(31)
             .unwrap_or(None)
             .and_then(|s| VerificationVerdict::from_str(&s)),
-        verification_report: row.get(14).unwrap_or(None),
+        verification_report: row.get(32).unwrap_or(None),
         created_at: chrono::DateTime::from_timestamp_millis(created_ms)
             .unwrap_or_else(|| Utc::now()),
         updated_at: chrono::DateTime::from_timestamp_millis(updated_ms)

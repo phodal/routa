@@ -18,6 +18,7 @@ import {
   primaryKey,
   uniqueIndex,
 } from "drizzle-orm/sqlite-core";
+import type { KanbanColumn } from "../models/kanban";
 
 // ─── Workspaces ─────────────────────────────────────────────────────
 
@@ -71,6 +72,24 @@ export const tasks = sqliteTable("tasks", {
   verificationCommands: text("verification_commands", { mode: "json" }).$type<string[]>(),
   assignedTo: text("assigned_to"),
   status: text("status").notNull().default("PENDING"),
+  boardId: text("board_id"),
+  columnId: text("column_id"),
+  position: integer("position").notNull().default(0),
+  priority: text("priority"),
+  labels: text("labels", { mode: "json" }).$type<string[]>().default([]),
+  assignee: text("assignee"),
+  assignedProvider: text("assigned_provider"),
+  assignedRole: text("assigned_role"),
+  assignedSpecialistId: text("assigned_specialist_id"),
+  assignedSpecialistName: text("assigned_specialist_name"),
+  triggerSessionId: text("trigger_session_id"),
+  githubId: text("github_id"),
+  githubNumber: integer("github_number"),
+  githubUrl: text("github_url"),
+  githubRepo: text("github_repo"),
+  githubState: text("github_state"),
+  githubSyncedAt: integer("github_synced_at", { mode: "timestamp_ms" }),
+  lastSyncError: text("last_sync_error"),
   dependencies: text("dependencies", { mode: "json" }).$type<string[]>().default([]),
   parallelGroup: text("parallel_group"),
   workspaceId: text("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
@@ -83,6 +102,16 @@ export const tasks = sqliteTable("tasks", {
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
 });
+
+export const kanbanBoards = sqliteTable("kanban_boards", {
+  id: text("id").primaryKey(),
+  workspaceId: text("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  isDefault: integer("is_default", { mode: "boolean" }).notNull().default(false),
+  columns: text("columns", { mode: "json" }).$type<KanbanColumn[]>().notNull().default([]),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+}, (table) => [uniqueIndex("kanban_boards_workspace_default_idx").on(table.workspaceId, table.isDefault)]);
 
 // ─── Notes ──────────────────────────────────────────────────────────
 
