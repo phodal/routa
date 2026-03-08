@@ -51,6 +51,59 @@ components:
       type: string
       enum: [local, github]
 
+    KanbanStatus:
+      type: string
+      enum: [backlog, todo, in_progress, in_review, blocked, done]
+
+    IssuePriority:
+      type: string
+      enum: [urgent, high, medium, low, none]
+
+    KanbanIssue:
+      type: object
+      required: [id, title, body, status, priority, workspaceId, labels, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        body:
+          type: string
+        status:
+          $ref: "#/components/schemas/KanbanStatus"
+        priority:
+          $ref: "#/components/schemas/IssuePriority"
+        workspaceId:
+          type: string
+        assigneeId:
+          type: string
+        labels:
+          type: array
+          items:
+            type: string
+        githubId:
+          type: string
+        githubNumber:
+          type: integer
+        githubUrl:
+          type: string
+        githubState:
+          type: string
+        githubUpdatedAt:
+          type: string
+          format: date-time
+        githubSyncedAt:
+          type: string
+          format: date-time
+        lastSyncError:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
     VirtualFileEntry:
       type: object
       required: [path, name, isDirectory]
@@ -1764,6 +1817,177 @@ paths:
                     type: integer
                   query:
                     type: string
+
+  # ── Kanban / GitHub Issues ──
+  /api/github/issue:
+    post:
+      operationId: createKanbanIssue
+      summary: Create a new Kanban issue (optionally synced to GitHub)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title]
+              properties:
+                title:
+                  type: string
+                body:
+                  type: string
+                  default: ""
+                status:
+                  $ref: "#/components/schemas/KanbanStatus"
+                priority:
+                  $ref: "#/components/schemas/IssuePriority"
+                workspaceId:
+                  type: string
+                  default: default
+                labels:
+                  type: array
+                  items:
+                    type: string
+                assigneeId:
+                  type: string
+                githubOwner:
+                  type: string
+                githubRepo:
+                  type: string
+                githubToken:
+                  type: string
+      responses:
+        "201":
+          description: Issue created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  issue:
+                    $ref: "#/components/schemas/KanbanIssue"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/github/issue/{id}:
+    patch:
+      operationId: updateKanbanIssue
+      summary: Update a Kanban issue by its local ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                body:
+                  type: string
+                status:
+                  $ref: "#/components/schemas/KanbanStatus"
+                priority:
+                  $ref: "#/components/schemas/IssuePriority"
+                labels:
+                  type: array
+                  items:
+                    type: string
+                assigneeId:
+                  type: string
+                githubOwner:
+                  type: string
+                githubRepo:
+                  type: string
+                githubToken:
+                  type: string
+      responses:
+        "200":
+          description: Issue updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  issue:
+                    $ref: "#/components/schemas/KanbanIssue"
+        "404":
+          description: Issue not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/github/issues:
+    get:
+      operationId: listKanbanIssues
+      summary: List Kanban issues for a workspace, with optional GitHub sync
+      parameters:
+        - name: workspaceId
+          in: query
+          schema:
+            type: string
+            default: default
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/KanbanStatus"
+        - name: sync
+          in: query
+          description: When true, pull from GitHub and upsert before returning
+          schema:
+            type: boolean
+            default: false
+        - name: githubOwner
+          in: query
+          schema:
+            type: string
+        - name: githubRepo
+          in: query
+          schema:
+            type: string
+        - name: githubToken
+          in: query
+          schema:
+            type: string
+        - name: state
+          in: query
+          schema:
+            type: string
+            enum: [open, closed, all]
+            default: open
+      responses:
+        "200":
+          description: Issue list
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [issues]
+                properties:
+                  issues:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/KanbanIssue"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: GitHub API error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   # ── Workspace sub-resources ──
   /api/workspaces/{id}/archive:

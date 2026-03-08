@@ -392,6 +392,43 @@ export const worktrees = sqliteTable("worktrees", {
   uniqueIndex("uq_worktrees_path").on(table.worktreePath),
 ]);
 
+// ─── Kanban Issues ────────────────────────────────────────────────────────
+
+/**
+ * Kanban/GitHub issues — local issue tracking with optional GitHub sync.
+ */
+export const issues = sqliteTable("issues", {
+  id: text("id").primaryKey(),
+  title: text("title").notNull(),
+  body: text("body").notNull().default(""),
+  /** Kanban column: backlog | todo | in_progress | in_review | blocked | done */
+  status: text("status").notNull().default("backlog"),
+  /** Priority: urgent | high | medium | low | none */
+  priority: text("priority").notNull().default("none"),
+  workspaceId: text("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  assigneeId: text("assignee_id"),
+  labels: text("labels", { mode: "json" }).$type<string[]>().default([]),
+
+  // ── GitHub sync fields ──
+  /** GitHub node ID (unique across all repos) */
+  githubId: text("github_id").unique(),
+  /** GitHub issue number within the repository */
+  githubNumber: integer("github_number"),
+  /** HTML URL to the issue on GitHub */
+  githubUrl: text("github_url"),
+  /** GitHub state: open | closed */
+  githubState: text("github_state"),
+  /** When the issue was last updated on GitHub */
+  githubUpdatedAt: integer("github_updated_at", { mode: "timestamp_ms" }),
+  /** When the last successful sync occurred */
+  githubSyncedAt: integer("github_synced_at", { mode: "timestamp_ms" }),
+  /** Error message from the most recent sync attempt */
+  lastSyncError: text("last_sync_error"),
+
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+});
+
 // ─── Specialists (user-defined agent specialist configurations) ───────────
 
 export const specialists = sqliteTable("specialists", {
