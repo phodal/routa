@@ -54,7 +54,12 @@ We use a **feedback-driven loop** to capture, share, and resolve issues systemat
 - When an issue is resolved, update the local issue file with resolution notes
 - Close the GitHub issue if applicable
 - The documented feedback becomes **knowledge** for future agents and humans
-- When some issue was oute call ``
+
+### 5. **Garbage Collection** (Periodic Cleanup)
+- Periodically run the `issue-garbage-collector` skill to clean up duplicates
+- Merge similar issues by filename pattern and content similarity
+- Keep resolved issues as knowledge base, archive if directory is cluttered
+- See: `.claude/skills/issue-garbage-collector/SKILL.md`
 
 ## Debug
 
