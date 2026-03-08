@@ -59,7 +59,7 @@ function fetchIssue(issueNumber: number): IssueData | null {
 async function analyzeIssue(issue: IssueData, dryRun: boolean): Promise<void> {
   const apiKey = process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN;
 
-  if (!apiKey) {
+  if (!apiKey && !dryRun) {
     console.error("❌ No ANTHROPIC_API_KEY or ANTHROPIC_AUTH_TOKEN set");
     process.exit(1);
   }
