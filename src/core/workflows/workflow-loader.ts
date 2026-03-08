@@ -62,7 +62,7 @@ export class WorkflowLoader {
       const raw = yaml.load(content) as Record<string, unknown>;
       return this.validate(raw, source);
     } catch (err) {
-      throw new Error(`Failed to parse workflow YAML from ${source}: ${err}`);
+      throw new Error(`Failed to parse workflow YAML from ${source}: ${err}`, { cause: err });
     }
   }
 

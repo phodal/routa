@@ -188,7 +188,7 @@ export class GitWorktreeService {
         await this.worktreeStore.updateStatus(worktree.id, "error", msg);
         worktree.status = "error";
         worktree.errorMessage = msg;
-        throw new Error(`Failed to create worktree: ${msg}`);
+        throw new Error(`Failed to create worktree: ${msg}`, { cause: err });
       }
     });
   }

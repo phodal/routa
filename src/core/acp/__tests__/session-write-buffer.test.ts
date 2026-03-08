@@ -34,7 +34,7 @@ function makeChunkNotification(
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 describe("SessionWriteBuffer", () => {
-  let persistFn: ReturnType<typeof vi.fn>;
+  let persistFn: ReturnType<typeof vi.fn<(sessionId: string, history: SessionUpdateNotification[]) => Promise<void>>>;
   let buffer: SessionWriteBuffer;
 
   beforeEach(() => {

@@ -321,14 +321,6 @@ export class TraceReader {
   }
 
   /**
-   * List all day directories sorted newest first.
-   * @deprecated Use #listDayDirsFrom instead
-   */
-  async #listDayDirs(): Promise<string[]> {
-    return this.#listDayDirsFrom(this.#baseDir);
-  }
-
-  /**
    * List all trace files in a day directory sorted by name.
    */
   async #listTraceFiles(dayDir: string): Promise<string[]> {

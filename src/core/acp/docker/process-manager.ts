@@ -282,11 +282,10 @@ export class DockerProcessManager {
     }
 
     // Mount auth.json if provided — write to temp file and bind-mount into container
-    let authJsonTempFile: string | null = null;
     if (config.authJson?.trim()) {
       try {
         fsSync.mkdirSync(DOCKER_OPENCODE_TMP_DIR, { recursive: true });
-        authJsonTempFile = path.join(DOCKER_OPENCODE_TMP_DIR, `auth-${config.sessionId}.json`);
+        const authJsonTempFile = path.join(DOCKER_OPENCODE_TMP_DIR, `auth-${config.sessionId}.json`);
         fsSync.writeFileSync(authJsonTempFile, config.authJson, "utf-8");
         // Opencode reads from ~/.local/share/opencode/auth.json
         runParts.push(`-v ${shellEscape(`${authJsonTempFile}:/root/.local/share/opencode/auth.json:ro`)}`);
@@ -332,7 +331,7 @@ export class DockerProcessManager {
 
       return info;
     } catch (err) {
-      throw new Error(`Failed to start Docker container: ${err instanceof Error ? err.message : String(err)}`);
+      throw new Error(`Failed to start Docker container: ${err instanceof Error ? err.message : String(err)}`, { cause: err });
     }
   }
 

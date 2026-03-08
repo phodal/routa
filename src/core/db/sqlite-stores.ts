@@ -20,6 +20,8 @@ import type { TaskStore } from "../store/task-store";
 import type { ConversationStore } from "../store/conversation-store";
 import type { NoteStore } from "../store/note-store";
 import type { AcpSessionStore, AcpSession, AcpSessionNotification } from "../store/acp-session-store";
+import type { Issue, KanbanStatus, GitHubState, IssuePriority } from "../models/issue";
+import type { IssueStore } from "../store/issue-store";
 
 type SqliteDb = BetterSQLite3Database<typeof sqliteSchema>;
 
@@ -1459,6 +1461,133 @@ export class SqliteScheduleStore implements ScheduleStore {
       nextRunAt: row.nextRunAt ?? undefined,
       lastTaskId: row.lastTaskId ?? undefined,
       promptTemplate: row.promptTemplate ?? undefined,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+    };
+  }
+}
+
+// ─── SQLite Issue Store ───────────────────────────────────────────────────
+
+export class SqliteIssueStore implements IssueStore {
+  constructor(private db: SqliteDb) {}
+
+  async save(issue: Issue): Promise<void> {
+    await this.db
+      .insert(sqliteSchema.issues)
+      .values({
+        id: issue.id,
+        title: issue.title,
+        body: issue.body,
+        status: issue.status,
+        priority: issue.priority,
+        workspaceId: issue.workspaceId,
+        assigneeId: issue.assigneeId,
+        labels: issue.labels,
+        githubId: issue.githubId,
+        githubNumber: issue.githubNumber,
+        githubUrl: issue.githubUrl,
+        githubState: issue.githubState,
+        githubUpdatedAt: issue.githubUpdatedAt,
+        githubSyncedAt: issue.githubSyncedAt,
+        lastSyncError: issue.lastSyncError,
+        createdAt: issue.createdAt,
+        updatedAt: issue.updatedAt,
+      })
+      .onConflictDoUpdate({
+        target: sqliteSchema.issues.id,
+        set: {
+          title: issue.title,
+          body: issue.body,
+          status: issue.status,
+          priority: issue.priority,
+          assigneeId: issue.assigneeId,
+          labels: issue.labels,
+          githubId: issue.githubId,
+          githubNumber: issue.githubNumber,
+          githubUrl: issue.githubUrl,
+          githubState: issue.githubState,
+          githubUpdatedAt: issue.githubUpdatedAt,
+          githubSyncedAt: issue.githubSyncedAt,
+          lastSyncError: issue.lastSyncError,
+          updatedAt: new Date(),
+        },
+      });
+  }
+
+  async get(issueId: string): Promise<Issue | undefined> {
+    const rows = await this.db
+      .select()
+      .from(sqliteSchema.issues)
+      .where(eq(sqliteSchema.issues.id, issueId))
+      .limit(1);
+    return rows[0] ? this.toModel(rows[0]) : undefined;
+  }
+
+  async listByWorkspace(workspaceId: string): Promise<Issue[]> {
+    const rows = await this.db
+      .select()
+      .from(sqliteSchema.issues)
+      .where(eq(sqliteSchema.issues.workspaceId, workspaceId))
+      .orderBy(desc(sqliteSchema.issues.updatedAt));
+    return rows.map(this.toModel.bind(this));
+  }
+
+  async listByStatus(workspaceId: string, status: KanbanStatus): Promise<Issue[]> {
+    const rows = await this.db
+      .select()
+      .from(sqliteSchema.issues)
+      .where(and(eq(sqliteSchema.issues.workspaceId, workspaceId), eq(sqliteSchema.issues.status, status)))
+      .orderBy(desc(sqliteSchema.issues.updatedAt));
+    return rows.map(this.toModel.bind(this));
+  }
+
+  async findByGithubNumber(workspaceId: string, githubNumber: number): Promise<Issue | undefined> {
+    const rows = await this.db
+      .select()
+      .from(sqliteSchema.issues)
+      .where(and(eq(sqliteSchema.issues.workspaceId, workspaceId), eq(sqliteSchema.issues.githubNumber, githubNumber)))
+      .limit(1);
+    return rows[0] ? this.toModel(rows[0]) : undefined;
+  }
+
+  async findByGithubId(githubId: string): Promise<Issue | undefined> {
+    const rows = await this.db
+      .select()
+      .from(sqliteSchema.issues)
+      .where(eq(sqliteSchema.issues.githubId, githubId))
+      .limit(1);
+    return rows[0] ? this.toModel(rows[0]) : undefined;
+  }
+
+  async updateStatus(issueId: string, status: KanbanStatus): Promise<void> {
+    await this.db
+      .update(sqliteSchema.issues)
+      .set({ status, updatedAt: new Date() })
+      .where(eq(sqliteSchema.issues.id, issueId));
+  }
+
+  async delete(issueId: string): Promise<void> {
+    await this.db.delete(sqliteSchema.issues).where(eq(sqliteSchema.issues.id, issueId));
+  }
+
+  private toModel(row: typeof sqliteSchema.issues.$inferSelect): Issue {
+    return {
+      id: row.id,
+      title: row.title,
+      body: row.body,
+      status: row.status as KanbanStatus,
+      priority: (row.priority ?? "none") as IssuePriority,
+      workspaceId: row.workspaceId,
+      assigneeId: row.assigneeId ?? undefined,
+      labels: (row.labels ?? []) as string[],
+      githubId: row.githubId ?? undefined,
+      githubNumber: row.githubNumber ?? undefined,
+      githubUrl: row.githubUrl ?? undefined,
+      githubState: row.githubState as GitHubState | undefined,
+      githubUpdatedAt: row.githubUpdatedAt ?? undefined,
+      githubSyncedAt: row.githubSyncedAt ?? undefined,
+      lastSyncError: row.lastSyncError ?? undefined,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
     };
