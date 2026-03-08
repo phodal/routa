@@ -134,6 +134,7 @@ export function SessionPageClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { workspaceId, sessionId, isResolved } = useRealParams();
+  const isEmbedMode = searchParams.get("embed") === "true";
 
   const [refreshKey, setRefreshKey] = useState(0);
   const [focusedSessionId, setFocusedSessionId] = useState<string | null>(null);
@@ -2042,17 +2043,18 @@ export function SessionPageClient() {
   };
 
   return (
-    <div className="h-screen flex flex-col bg-gray-50 dark:bg-[#0f1117]">
+    <div className={`h-screen flex flex-col bg-gray-50 dark:bg-[#0f1117] ${isEmbedMode ? 'embed-mode' : ''}`}>
       {/* ─── Top Bar ──────────────────────────────────────────────── */}
-      <AppHeader
-        workspaceId={workspaceId}
-        workspaces={workspacesHook.workspaces}
-        workspacesLoading={workspacesHook.loading}
-        onWorkspaceSelect={handleWorkspaceSelect}
-        onWorkspaceCreate={handleWorkspaceCreate}
-        variant="session"
-        showMobileSidebar={showMobileSidebar}
-        onToggleMobileSidebar={() => setShowMobileSidebar(!showMobileSidebar)}
+      {!isEmbedMode && (
+        <AppHeader
+          workspaceId={workspaceId}
+          workspaces={workspacesHook.workspaces}
+          workspacesLoading={workspacesHook.loading}
+          onWorkspaceSelect={handleWorkspaceSelect}
+          onWorkspaceCreate={handleWorkspaceCreate}
+          variant="session"
+          showMobileSidebar={showMobileSidebar}
+          onToggleMobileSidebar={() => setShowMobileSidebar(!showMobileSidebar)}
         leftSlot={
           /* Agent selector */
           <div className="relative">
@@ -2104,7 +2106,8 @@ export function SessionPageClient() {
             </a>
           </>
         }
-      />
+        />
+      )}
 
       {/* ─── Main Area ────────────────────────────────────────────── */}
       <div className="flex-1 flex min-h-0 relative">
@@ -2117,42 +2120,44 @@ export function SessionPageClient() {
         )}
 
         {/* ─── Left Sidebar ──────────────────────────────────────── */}
-        <LeftSidebar
-          isCollapsed={isLeftSidebarCollapsed}
-          onToggleCollapse={() => setIsLeftSidebarCollapsed((v) => !v)}
-          width={leftSidebarWidth}
-          showMobileSidebar={showMobileSidebar}
-          onResizeStart={handleLeftResizeStart}
-          sessionId={sessionId}
-          focusedSessionId={focusedSessionId}
-          workspaceId={workspaceId}
-          refreshKey={refreshKey}
-          onSelectSession={handleSelectSession}
-          onCreateSession={handleCreateSession}
-          codebases={codebases}
-          repoSelection={repoSelection}
-          hasProviders={acp.providers.length > 0}
-          hasSelectedProvider={!!acp.selectedProvider}
-          routaTasks={routaTasks}
-          onConfirmAllTasks={handleConfirmAllTasks}
-          onExecuteAllTasks={handleExecuteAllTasks}
-          onConfirmTask={handleConfirmTask}
-          onEditTask={handleEditTask}
-          onExecuteTask={handleExecuteTask}
-          concurrency={concurrency}
-          onConcurrencyChange={handleConcurrencyChange}
-          hasCollabNotes={hasCollabNotes}
-          sessionNotes={sessionNotes}
-          notesConnected={notesHook.connected}
-          onUpdateNote={notesHook.updateNote}
-          onDeleteNote={notesHook.deleteNote}
-          onExecuteNoteTask={handleExecuteProviderNoteTask}
-          onExecuteQuickAccessNoteTask={handleOpenOrExecuteNoteTask}
-          onExecuteAllNoteTasks={handleExecuteAllNoteTasks}
-          onExecuteSelectedNoteTasks={handleExecuteSelectedNoteTasks}
-          crafterAgents={crafterAgents}
-          onSelectNoteTask={handleSelectNoteTask}
-        />
+        {!isEmbedMode && (
+          <LeftSidebar
+            isCollapsed={isLeftSidebarCollapsed}
+            onToggleCollapse={() => setIsLeftSidebarCollapsed((v) => !v)}
+            width={leftSidebarWidth}
+            showMobileSidebar={showMobileSidebar}
+            onResizeStart={handleLeftResizeStart}
+            sessionId={sessionId}
+            focusedSessionId={focusedSessionId}
+            workspaceId={workspaceId}
+            refreshKey={refreshKey}
+            onSelectSession={handleSelectSession}
+            onCreateSession={handleCreateSession}
+            codebases={codebases}
+            repoSelection={repoSelection}
+            hasProviders={acp.providers.length > 0}
+            hasSelectedProvider={!!acp.selectedProvider}
+            routaTasks={routaTasks}
+            onConfirmAllTasks={handleConfirmAllTasks}
+            onExecuteAllTasks={handleExecuteAllTasks}
+            onConfirmTask={handleConfirmTask}
+            onEditTask={handleEditTask}
+            onExecuteTask={handleExecuteTask}
+            concurrency={concurrency}
+            onConcurrencyChange={handleConcurrencyChange}
+            hasCollabNotes={hasCollabNotes}
+            sessionNotes={sessionNotes}
+            notesConnected={notesHook.connected}
+            onUpdateNote={notesHook.updateNote}
+            onDeleteNote={notesHook.deleteNote}
+            onExecuteNoteTask={handleExecuteProviderNoteTask}
+            onExecuteQuickAccessNoteTask={handleOpenOrExecuteNoteTask}
+            onExecuteAllNoteTasks={handleExecuteAllNoteTasks}
+            onExecuteSelectedNoteTasks={handleExecuteSelectedNoteTasks}
+            crafterAgents={crafterAgents}
+            onSelectNoteTask={handleSelectNoteTask}
+          />
+        )}
 
         {/* ─── Chat Area ──────────────────────────────────────────── */}
         <main className="flex-1 min-w-0">
@@ -2177,7 +2182,7 @@ export function SessionPageClient() {
         </main>
 
         {/* ─── Right Sidebar: CRAFTERs running status ─────────────── */}
-        {crafterAgents.length > 0 && (
+        {!isEmbedMode && crafterAgents.length > 0 && (
           <>
             {/* Right sidebar resize handle */}
             <div

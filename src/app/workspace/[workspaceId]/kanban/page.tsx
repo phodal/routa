@@ -1,4 +1,4 @@
-import { WorkspacePageClient } from "../workspace-page-client";
+import { KanbanPageClient } from "./kanban-page-client";
 
 export async function generateStaticParams() {
   if (process.env.ROUTA_BUILD_STATIC === "1") {
@@ -8,5 +8,5 @@ export async function generateStaticParams() {
 }
 
 export default function WorkspaceKanbanPage() {
-  return <WorkspacePageClient initialTab="kanban" />;
+  return <KanbanPageClient />;
 }
