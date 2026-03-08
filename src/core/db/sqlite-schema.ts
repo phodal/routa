@@ -16,7 +16,6 @@ import {
   text,
   integer,
   primaryKey,
-  uniqueIndex,
 } from "drizzle-orm/sqlite-core";
 import type { KanbanColumn } from "../models/kanban";
 
@@ -111,7 +110,7 @@ export const kanbanBoards = sqliteTable("kanban_boards", {
   columns: text("columns", { mode: "json" }).$type<KanbanColumn[]>().notNull().default([]),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
-}, (table) => [uniqueIndex("kanban_boards_workspace_default_idx").on(table.workspaceId, table.isDefault)]);
+});
 
 // ─── Notes ──────────────────────────────────────────────────────────
 

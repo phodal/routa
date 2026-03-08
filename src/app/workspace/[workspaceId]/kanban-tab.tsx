@@ -262,7 +262,7 @@ export function KanbanTab({ workspaceId, boards, tasks, sessions, providers, spe
       </div>
 
       <div className="overflow-x-auto pb-2">
-        <div className="grid min-w-275 grid-cols-6 gap-3">
+        <div className="grid min-w-[68.75rem] grid-cols-6 gap-3">
           {board.columns
             .slice()
             .sort((left, right) => left.position - right.position)
@@ -277,7 +277,7 @@ export function KanbanTab({ workspaceId, boards, tasks, sessions, providers, spe
                     await moveTask(dragTaskId, column.id);
                     setDragTaskId(null);
                   }}
-                  className="min-h-105 rounded-2xl border border-gray-200/70 dark:border-[#1c1f2e] bg-white dark:bg-[#12141c] p-3"
+                  className="min-h-[6.5625rem] rounded-2xl border border-gray-200/70 bg-white p-3 dark:border-[#1c1f2e] dark:bg-[#12141c]"
                 >
                   <div className="mb-3 flex items-center justify-between">
                     <div>

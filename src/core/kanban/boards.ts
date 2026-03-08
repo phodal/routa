@@ -14,5 +14,6 @@ export async function ensureDefaultBoard(system: RoutaSystem, workspaceId: strin
     isDefault: true,
   });
   await system.kanbanBoardStore.save(board);
+  await system.kanbanBoardStore.setDefault(workspaceId, board.id);
   return board;
 }

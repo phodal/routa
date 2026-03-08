@@ -15,8 +15,17 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const body = await request.json() as { workspaceId?: string; name?: string; columns?: ReturnType<typeof createKanbanBoard>["columns"]; isDefault?: boolean };
-  const workspaceId = body.workspaceId ?? "default";
+  let body: { workspaceId?: string; name?: string; columns?: ReturnType<typeof createKanbanBoard>["columns"]; isDefault?: boolean };
+  try {
+    body = await request.json() as { workspaceId?: string; name?: string; columns?: ReturnType<typeof createKanbanBoard>["columns"]; isDefault?: boolean };
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+
+  const workspaceId = body.workspaceId?.trim();
+  if (!workspaceId) {
+    return NextResponse.json({ error: "workspaceId is required" }, { status: 400 });
+  }
   if (!body.name?.trim()) {
     return NextResponse.json({ error: "name is required" }, { status: 400 });
   }
@@ -30,5 +39,8 @@ export async function POST(request: NextRequest) {
     columns: body.columns,
   });
   await system.kanbanBoardStore.save(board);
+  if (board.isDefault) {
+    await system.kanbanBoardStore.setDefault(workspaceId, board.id);
+  }
   return NextResponse.json({ board }, { status: 201 });
 }

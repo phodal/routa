@@ -29,6 +29,10 @@ export const DEFAULT_KANBAN_COLUMNS: KanbanColumn[] = [
   { id: "done", name: "Done", color: "emerald", position: 5, stage: "done" },
 ];
 
+export function cloneKanbanColumns(columns: KanbanColumn[]): KanbanColumn[] {
+  return columns.map((column) => ({ ...column }));
+}
+
 export function createKanbanBoard(params: {
   id: string;
   workspaceId: string;
@@ -42,7 +46,7 @@ export function createKanbanBoard(params: {
     workspaceId: params.workspaceId,
     name: params.name,
     isDefault: params.isDefault ?? false,
-    columns: params.columns ?? DEFAULT_KANBAN_COLUMNS,
+    columns: cloneKanbanColumns(params.columns ?? DEFAULT_KANBAN_COLUMNS),
     createdAt: now,
     updatedAt: now,
   };

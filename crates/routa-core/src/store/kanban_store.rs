@@ -20,7 +20,7 @@ impl KanbanStore {
         self.db
             .with_conn_async(move |conn| {
                 let mut stmt = conn.prepare(
-                    "SELECT id, workspace_id, name, is_default, columns_json, created_at, updated_at \
+                    "SELECT id, workspace_id, name, is_default, columns, created_at, updated_at \
                      FROM kanban_boards WHERE workspace_id = ?1 ORDER BY is_default DESC, created_at ASC",
                 )?;
                 let rows = stmt
@@ -36,7 +36,7 @@ impl KanbanStore {
         self.db
             .with_conn_async(move |conn| {
                 conn.execute(
-                    "INSERT INTO kanban_boards (id, workspace_id, name, is_default, columns_json, created_at, updated_at) \
+                    "INSERT INTO kanban_boards (id, workspace_id, name, is_default, columns, created_at, updated_at) \
                      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
                     rusqlite::params![
                         stored.id,
@@ -84,7 +84,7 @@ impl KanbanStore {
         self.db
             .with_conn_async(move |conn| {
                 conn.query_row(
-                    "SELECT id, workspace_id, name, is_default, columns_json, created_at, updated_at \
+                    "SELECT id, workspace_id, name, is_default, columns, created_at, updated_at \
                      FROM kanban_boards WHERE id = ?1",
                     rusqlite::params![board_id],
                     |row| Ok(row_to_board(row)),

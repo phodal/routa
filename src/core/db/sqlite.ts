@@ -249,6 +249,8 @@ function initializeSqliteTables(db: SqliteDatabase): void {
     )
   `);
 
+  db.run(sql`DROP INDEX IF EXISTS kanban_boards_workspace_default_idx`);
+
   db.run(sql`
     CREATE TABLE IF NOT EXISTS skills (
       id TEXT PRIMARY KEY,

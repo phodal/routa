@@ -15,6 +15,28 @@ import { createGitHubIssue, parseGitHubRepo } from "@/core/kanban/github-issues"
 
 export const dynamic = "force-dynamic";
 
+function sanitizeLabels(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+
+  return Array.from(
+    new Set(
+      value
+        .filter((label): label is string => typeof label === "string")
+        .map((label) => label.trim())
+        .filter(Boolean),
+    ),
+  );
+}
+
+function parsePriority(value: unknown): TaskPriority | undefined {
+  if (value === undefined || value === null || value === "") return undefined;
+  if (typeof value !== "string") return undefined;
+
+  return Object.values(TaskPriority).includes(value as TaskPriority)
+    ? value as TaskPriority
+    : undefined;
+}
+
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
   const workspaceId = searchParams.get("workspaceId") ?? "default";
@@ -49,7 +71,13 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const body = await request.json();
+  let body: Record<string, unknown>;
+  try {
+    body = await request.json() as Record<string, unknown>;
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+
   const {
     title,
     objective,
@@ -81,6 +109,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "objective is required" }, { status: 400 });
   }
 
+  const normalizedPriority = parsePriority(priority);
+  if (priority !== undefined && priority !== null && normalizedPriority === undefined) {
+    return NextResponse.json({ error: `Invalid priority: ${String(priority)}` }, { status: 400 });
+  }
+
+  const normalizedLabels = sanitizeLabels(labels);
+
   const system = getRoutaSystem();
   const defaultBoard = await ensureDefaultBoard(system, workspaceId);
 
@@ -106,7 +141,7 @@ export async function POST(request: NextRequest) {
         const issue = await createGitHubIssue(repo, {
           title,
           body: objective,
-          labels,
+          labels: normalizedLabels,
           assignees: assignee ? [assignee] : undefined,
         });
         githubId = issue.id;
@@ -135,8 +170,8 @@ export async function POST(request: NextRequest) {
     boardId: boardId ?? defaultBoard.id,
     columnId: columnId ?? "backlog",
     position: typeof position === "number" ? position : 0,
-    priority: priority as TaskPriority | undefined,
-    labels: Array.isArray(labels) ? labels : [],
+    priority: normalizedPriority,
+    labels: normalizedLabels,
     assignee,
     assignedProvider,
     assignedRole,

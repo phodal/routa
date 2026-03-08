@@ -22,7 +22,7 @@ function getGitHubToken(): string | undefined {
 
 function getHeaders(token: string) {
   return {
-    Authorization: `Bearer ${token}`,
+    Authorization: `token ${token}`,
     Accept: "application/vnd.github+json",
     "Content-Type": "application/json",
     "User-Agent": "routa-js-kanban",

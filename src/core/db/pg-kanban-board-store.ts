@@ -49,6 +49,18 @@ export class PgKanbanBoardStore implements KanbanBoardStore {
     return rows[0] ? this.toModel(rows[0]) : undefined;
   }
 
+  async setDefault(workspaceId: string, boardId: string): Promise<void> {
+    await this.db
+      .update(kanbanBoards)
+      .set({ isDefault: false, updatedAt: new Date() })
+      .where(eq(kanbanBoards.workspaceId, workspaceId));
+
+    await this.db
+      .update(kanbanBoards)
+      .set({ isDefault: true, updatedAt: new Date() })
+      .where(and(eq(kanbanBoards.workspaceId, workspaceId), eq(kanbanBoards.id, boardId)));
+  }
+
   async delete(boardId: string): Promise<void> {
     await this.db.delete(kanbanBoards).where(eq(kanbanBoards.id, boardId));
   }

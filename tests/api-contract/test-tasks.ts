@@ -34,7 +34,7 @@ export async function testTasks(): Promise<TestResult[]> {
         acceptanceCriteria: ["Tests pass on both backends"],
         dependencies: [],
       });
-      assertStatus(status, 200);
+      assertStatus(status, 201);
       const d = data as Record<string, unknown>;
       assertHasField(d, "task");
       const task = d.task as Record<string, unknown>;
@@ -59,7 +59,9 @@ export async function testTasks(): Promise<TestResult[]> {
       if (!createdTaskId) throw new Error("Depends on create test");
       const { status, data } = await api("GET", `/api/tasks/${createdTaskId}`);
       assertStatus(status, 200);
-      const task = data as Record<string, unknown>;
+      const d = data as Record<string, unknown>;
+      assertHasField(d, "task");
+      const task = d.task as Record<string, unknown>;
       assert(task.id === createdTaskId, "ID should match");
       validateTaskShape(task);
     })

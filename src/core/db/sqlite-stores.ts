@@ -694,6 +694,18 @@ export class SqliteKanbanBoardStore implements KanbanBoardStore {
     return rows[0] ? this.toModel(rows[0]) : undefined;
   }
 
+  async setDefault(workspaceId: string, boardId: string): Promise<void> {
+    await this.db
+      .update(sqliteSchema.kanbanBoards)
+      .set({ isDefault: false, updatedAt: new Date() })
+      .where(eq(sqliteSchema.kanbanBoards.workspaceId, workspaceId));
+
+    await this.db
+      .update(sqliteSchema.kanbanBoards)
+      .set({ isDefault: true, updatedAt: new Date() })
+      .where(and(eq(sqliteSchema.kanbanBoards.workspaceId, workspaceId), eq(sqliteSchema.kanbanBoards.id, boardId)));
+  }
+
   async delete(boardId: string): Promise<void> {
     await this.db.delete(sqliteSchema.kanbanBoards).where(eq(sqliteSchema.kanbanBoards.id, boardId));
   }
