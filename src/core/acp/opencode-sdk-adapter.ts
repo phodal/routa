@@ -245,7 +245,7 @@ export class OpencodeSdkAdapter {
       this._alive = true;
     } catch (error) {
       console.error("[OpencodeSdkAdapter] Failed to connect:", error);
-      throw new Error(`Failed to connect to OpenCode server at ${this.serverUrl}: ${error}`);
+      throw new Error(`Failed to connect to OpenCode server at ${this.serverUrl}: ${error}`, { cause: error });
     }
   }
 

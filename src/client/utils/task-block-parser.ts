@@ -99,18 +99,10 @@ function parseTaskSection(content: string, id: string): ParsedTask | null {
   const lines = content.split("\n");
 
   // Extract title from first line (e.g. "Task 1: Title here" or "### Task 1: Title")
-  let title = "";
-  let bodyStart = 0;
   const firstLine = lines[0].replace(/^#+\s*/, "").trim();
   const titleMatch = firstLine.match(/^Task\s+\d+[:\s]+(.+)/i);
-  if (titleMatch) {
-    title = titleMatch[1].trim();
-    bodyStart = 1;
-  } else {
-    // Use first line as title
-    title = firstLine;
-    bodyStart = 1;
-  }
+  const title = titleMatch ? titleMatch[1].trim() : firstLine;
+  const bodyStart = 1;
 
   const body = lines.slice(bodyStart).join("\n").trim();
 

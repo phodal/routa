@@ -136,8 +136,9 @@ export function useNotes(workspaceId: string, sessionId?: string): UseNotesRetur
       logRuntime("warn", "useNotes.fetchNotes", "Failed to fetch notes", err);
       setError(toErrorMessage(err) || "Failed to fetch notes");
     } finally {
-      if (tearingDownRef.current) return;
-      setLoading(false);
+      if (!tearingDownRef.current) {
+        setLoading(false);
+      }
     }
   }, [workspaceId, sessionId]);
 

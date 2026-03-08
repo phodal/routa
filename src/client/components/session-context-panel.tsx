@@ -76,8 +76,9 @@ export function SessionContextPanel({
       console.error("Failed to fetch session context", e);
       setContext(null);
     } finally {
-      if (tearingDownRef.current) return;
-      setLoading(false);
+      if (!tearingDownRef.current) {
+        setLoading(false);
+      }
     }
   }, [sessionId]);
 
