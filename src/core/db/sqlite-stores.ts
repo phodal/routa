@@ -208,6 +208,101 @@ export class SqliteCodebaseStore implements CodebaseStore {
   }
 }
 
+// ─── SQLite Worktree Store ─────────────────────────────────────────────
+
+import type { Worktree, WorktreeStatus } from "../models/worktree";
+import type { WorktreeStore } from "./pg-worktree-store";
+
+export class SqliteWorktreeStore implements WorktreeStore {
+  constructor(private db: SqliteDb) {}
+
+  async add(worktree: Worktree): Promise<void> {
+    await this.db.insert(sqliteSchema.worktrees).values({
+      id: worktree.id,
+      codebaseId: worktree.codebaseId,
+      workspaceId: worktree.workspaceId,
+      worktreePath: worktree.worktreePath,
+      branch: worktree.branch,
+      baseBranch: worktree.baseBranch,
+      status: worktree.status,
+      sessionId: worktree.sessionId ?? null,
+      label: worktree.label ?? null,
+      errorMessage: worktree.errorMessage ?? null,
+      createdAt: worktree.createdAt,
+      updatedAt: worktree.updatedAt,
+    });
+  }
+
+  async get(worktreeId: string): Promise<Worktree | undefined> {
+    const rows = await this.db
+      .select()
+      .from(sqliteSchema.worktrees)
+      .where(eq(sqliteSchema.worktrees.id, worktreeId))
+      .limit(1);
+    return rows[0] ? this.toModel(rows[0]) : undefined;
+  }
+
+  async listByCodebase(codebaseId: string): Promise<Worktree[]> {
+    const rows = await this.db
+      .select()
+      .from(sqliteSchema.worktrees)
+      .where(eq(sqliteSchema.worktrees.codebaseId, codebaseId));
+    return rows.map(this.toModel);
+  }
+
+  async listByWorkspace(workspaceId: string): Promise<Worktree[]> {
+    const rows = await this.db
+      .select()
+      .from(sqliteSchema.worktrees)
+      .where(eq(sqliteSchema.worktrees.workspaceId, workspaceId));
+    return rows.map(this.toModel);
+  }
+
+  async updateStatus(worktreeId: string, status: WorktreeStatus, errorMessage?: string): Promise<void> {
+    await this.db
+      .update(sqliteSchema.worktrees)
+      .set({ status, errorMessage: errorMessage ?? null, updatedAt: new Date() })
+      .where(eq(sqliteSchema.worktrees.id, worktreeId));
+  }
+
+  async assignSession(worktreeId: string, sessionId: string | null): Promise<void> {
+    await this.db
+      .update(sqliteSchema.worktrees)
+      .set({ sessionId, updatedAt: new Date() })
+      .where(eq(sqliteSchema.worktrees.id, worktreeId));
+  }
+
+  async remove(worktreeId: string): Promise<void> {
+    await this.db.delete(sqliteSchema.worktrees).where(eq(sqliteSchema.worktrees.id, worktreeId));
+  }
+
+  async findByBranch(codebaseId: string, branch: string): Promise<Worktree | undefined> {
+    const rows = await this.db
+      .select()
+      .from(sqliteSchema.worktrees)
+      .where(and(eq(sqliteSchema.worktrees.codebaseId, codebaseId), eq(sqliteSchema.worktrees.branch, branch)))
+      .limit(1);
+    return rows[0] ? this.toModel(rows[0]) : undefined;
+  }
+
+  private toModel(row: typeof sqliteSchema.worktrees.$inferSelect): Worktree {
+    return {
+      id: row.id,
+      codebaseId: row.codebaseId,
+      workspaceId: row.workspaceId,
+      worktreePath: row.worktreePath,
+      branch: row.branch,
+      baseBranch: row.baseBranch,
+      status: row.status as WorktreeStatus,
+      sessionId: row.sessionId ?? undefined,
+      label: row.label ?? undefined,
+      errorMessage: row.errorMessage ?? undefined,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+    };
+  }
+}
+
 // ─── SQLite Agent Store ─────────────────────────────────────────────────
 
 export class SqliteAgentStore implements AgentStore {

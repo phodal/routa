@@ -35,6 +35,7 @@ pub mod test_mcp;
 pub mod traces;
 pub mod webhooks;
 pub mod workspaces;
+pub mod worktrees;
 
 use axum::Router;
 
@@ -80,4 +81,5 @@ pub fn api_router() -> Router<AppState> {
         .nest("/api/memory", memory::router())
         .nest("/api/debug", debug::router())
         .nest("/api/polling", polling::router())
+        .nest("/api", worktrees::router())
 }

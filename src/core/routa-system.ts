@@ -17,6 +17,7 @@ import { InMemoryTaskStore, TaskStore } from "./store/task-store";
 import { NoteStore } from "./store/note-store";
 import { WorkspaceStore, InMemoryWorkspaceStore } from "./db/pg-workspace-store";
 import { CodebaseStore, InMemoryCodebaseStore } from "./db/pg-codebase-store";
+import { WorktreeStore, InMemoryWorktreeStore } from "./db/pg-worktree-store";
 import { BackgroundTaskStore, InMemoryBackgroundTaskStore } from "./store/background-task-store";
 import { ScheduleStore, InMemoryScheduleStore } from "./store/schedule-store";
 import { EventBus } from "./events/event-bus";
@@ -35,6 +36,7 @@ export interface RoutaSystem {
   noteStore: NoteStore;
   workspaceStore: WorkspaceStore;
   codebaseStore: CodebaseStore;
+  worktreeStore: WorktreeStore;
   backgroundTaskStore: BackgroundTaskStore;
   scheduleStore: ScheduleStore;
   /** Workflow run store for multi-step workflow execution */
@@ -60,6 +62,7 @@ export function createInMemorySystem(): RoutaSystem {
   const taskStore = new InMemoryTaskStore();
   const workspaceStore = new InMemoryWorkspaceStore();
   const codebaseStore = new InMemoryCodebaseStore();
+  const worktreeStore = new InMemoryWorktreeStore();
   const backgroundTaskStore = new InMemoryBackgroundTaskStore();
   const scheduleStore = new InMemoryScheduleStore();
   const workflowRunStore = new InMemoryWorkflowRunStore();
@@ -85,6 +88,7 @@ export function createInMemorySystem(): RoutaSystem {
     noteStore,
     workspaceStore,
     codebaseStore,
+    worktreeStore,
     backgroundTaskStore,
     scheduleStore,
     workflowRunStore,
@@ -112,6 +116,7 @@ export function createPgSystem(): RoutaSystem {
   const { PgCodebaseStore } = require("./db/pg-codebase-store") as typeof import("./db/pg-codebase-store");
   const { PgBackgroundTaskStore } = require("./db/pg-background-task-store") as typeof import("./db/pg-background-task-store");
   const { PgScheduleStore } = require("./db/pg-schedule-store") as typeof import("./db/pg-schedule-store");
+  const { PgWorktreeStore } = require("./db/pg-worktree-store") as typeof import("./db/pg-worktree-store");
 
   const db = getPostgresDatabase();
   const agentStore = new PgAgentStore(db);
@@ -120,6 +125,7 @@ export function createPgSystem(): RoutaSystem {
   const noteStore = new PgNoteStore(db);
   const workspaceStore = new PgWorkspaceStore(db);
   const codebaseStore = new PgCodebaseStore(db);
+  const worktreeStore = new PgWorktreeStore(db);
   const backgroundTaskStore = new PgBackgroundTaskStore(db);
   const scheduleStore = new PgScheduleStore(db);
   // TODO: Implement PgWorkflowRunStore for persistent workflow state
@@ -147,6 +153,7 @@ export function createPgSystem(): RoutaSystem {
     noteStore,
     workspaceStore,
     codebaseStore,
+    worktreeStore,
     backgroundTaskStore,
     scheduleStore,
     workflowRunStore,
@@ -178,6 +185,7 @@ export function createSqliteSystem(): RoutaSystem {
   let noteStore: NoteStore;
   let workspaceStore: WorkspaceStore;
   let codebaseStore: CodebaseStore;
+  let worktreeStore: WorktreeStore;
   let backgroundTaskStore: BackgroundTaskStore;
   let scheduleStore: ScheduleStore;
   // TODO: Implement SqliteWorkflowRunStore for persistent workflow state
@@ -197,6 +205,7 @@ export function createSqliteSystem(): RoutaSystem {
       SqliteNoteStore,
       SqliteWorkspaceStore,
       SqliteCodebaseStore,
+      SqliteWorktreeStore,
       SqliteBackgroundTaskStore,
       SqliteScheduleStore,
     } = require("./db/sqlite-stores") as typeof import("./db/sqlite-stores");
@@ -208,6 +217,7 @@ export function createSqliteSystem(): RoutaSystem {
     noteStore = new SqliteNoteStore(db);
     workspaceStore = new SqliteWorkspaceStore(db);
     codebaseStore = new SqliteCodebaseStore(db);
+    worktreeStore = new SqliteWorktreeStore(db);
     backgroundTaskStore = new SqliteBackgroundTaskStore(db);
     scheduleStore = new SqliteScheduleStore(db);
     noteToolsBroadcast = true; // SqliteNoteStore doesn't broadcast — NoteTools must
@@ -224,6 +234,7 @@ export function createSqliteSystem(): RoutaSystem {
     noteStore = new CRDTNoteStore(noteBroadcaster, crdtManager);
     workspaceStore = new InMemoryWorkspaceStore();
     codebaseStore = new InMemoryCodebaseStore();
+    worktreeStore = new InMemoryWorktreeStore();
     backgroundTaskStore = new InMemoryBackgroundTaskStore();
     scheduleStore = new InMemoryScheduleStore();
   }
@@ -244,6 +255,7 @@ export function createSqliteSystem(): RoutaSystem {
     noteStore,
     workspaceStore,
     codebaseStore,
+    worktreeStore,
     backgroundTaskStore,
     scheduleStore,
     workflowRunStore,

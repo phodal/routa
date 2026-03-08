@@ -5,6 +5,7 @@ pub mod conversation_store;
 pub mod note_store;
 pub mod schedule_store;
 pub mod task_store;
+pub mod worktree_store;
 pub mod workspace_store;
 
 pub use acp_session_store::AcpSessionStore;
@@ -14,4 +15,5 @@ pub use conversation_store::ConversationStore;
 pub use note_store::NoteStore;
 pub use schedule_store::ScheduleStore;
 pub use task_store::TaskStore;
+pub use worktree_store::WorktreeStore;
 pub use workspace_store::WorkspaceStore;

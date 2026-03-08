@@ -14,6 +14,7 @@ import {
   integer,
   boolean,
   primaryKey,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 
 // ─── Workspaces ─────────────────────────────────────────────────────
@@ -445,6 +446,26 @@ export const webhookTriggerLogs = pgTable("webhook_trigger_logs", {
   errorMessage: text("error_message"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+// ─── Worktrees ──────────────────────────────────────────────────────
+
+export const worktrees = pgTable("worktrees", {
+  id: text("id").primaryKey(),
+  codebaseId: text("codebase_id").notNull().references(() => codebases.id, { onDelete: "cascade" }),
+  workspaceId: text("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  worktreePath: text("worktree_path").notNull(),
+  branch: text("branch").notNull(),
+  baseBranch: text("base_branch").notNull(),
+  status: text("status").notNull().default("creating"), // creating | active | error | removing
+  sessionId: text("session_id"),
+  label: text("label"),
+  errorMessage: text("error_message"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  uniqueIndex("uq_worktrees_codebase_branch").on(table.codebaseId, table.branch),
+  uniqueIndex("uq_worktrees_path").on(table.worktreePath),
+]);
 
 // ─── Specialists (user-defined agent specialist configurations) ───────────
 

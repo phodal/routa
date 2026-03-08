@@ -49,7 +49,7 @@ context handoff between agents (and humans) — focus on **WHAT** and **WHY**, n
 
 - Follow the Baby-Step Commit principle — keep commits small, but not excessively granular.
 - Always include the related GitHub issue ID when applicable.
-- Make sure tests pass before pushing.
+- Make sure tests pass before pushing. (also API Contract, `npm run api:check`)
 - Append a co-author line in the following format: (YourName, like Copilot,Augment,Claude etc.) (Your model name) <YourEmail, like, <claude@anthropic.com>, <auggie@augmentcode.com>)
   for example:
   ```

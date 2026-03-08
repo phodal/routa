@@ -101,6 +101,32 @@ async fn delete_codebase(
     State(state): State<AppState>,
     axum::extract::Path(id): axum::extract::Path<String>,
 ) -> Result<Json<serde_json::Value>, ServerError> {
+    // Clean up worktrees on disk before deleting the codebase
+    if let Ok(Some(codebase)) = state.codebase_store.get(&id).await {
+        let repo_path = &codebase.repo_path;
+
+        // Acquire repo lock to prevent races with concurrent worktree operations
+        let lock = {
+            let mut locks = crate::api::worktrees::get_repo_locks().lock().await;
+            locks
+                .entry(repo_path.to_string())
+                .or_insert_with(|| std::sync::Arc::new(tokio::sync::Mutex::new(())))
+                .clone()
+        };
+        let _guard = lock.lock().await;
+
+        let worktrees = state.worktree_store.list_by_codebase(&id).await
+            .map_err(|e| ServerError::Internal(format!("Failed to list worktrees: {}", e)))?;
+        for wt in &worktrees {
+            if let Err(e) = crate::git::worktree_remove(repo_path, &wt.worktree_path, true) {
+                tracing::warn!("[Codebase DELETE] Failed to remove worktree {}: {}", wt.id, e);
+            }
+        }
+        if !worktrees.is_empty() {
+            let _ = crate::git::worktree_prune(repo_path);
+        }
+    }
+
     state.codebase_store.delete(&id).await?;
     Ok(Json(serde_json::json!({ "deleted": true })))
 }

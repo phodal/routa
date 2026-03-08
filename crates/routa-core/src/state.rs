@@ -11,7 +11,7 @@ use crate::events::EventBus;
 use crate::skills::SkillRegistry;
 use crate::store::{
     AcpSessionStore, AgentStore, CodebaseStore, ConversationStore, NoteStore, ScheduleStore, TaskStore,
-    WorkspaceStore,
+    WorkspaceStore, WorktreeStore,
 };
 
 /// Docker state for managing Docker-based agent execution.
@@ -34,6 +34,7 @@ pub struct AppStateInner {
     pub db: Database,
     pub workspace_store: WorkspaceStore,
     pub codebase_store: CodebaseStore,
+    pub worktree_store: WorktreeStore,
     pub agent_store: AgentStore,
     pub task_store: TaskStore,
     pub note_store: NoteStore,
@@ -63,6 +64,7 @@ impl AppStateInner {
         Self {
             workspace_store: WorkspaceStore::new(db.clone()),
             codebase_store: CodebaseStore::new(db.clone()),
+            worktree_store: WorktreeStore::new(db.clone()),
             agent_store: AgentStore::new(db.clone()),
             task_store: TaskStore::new(db.clone()),
             note_store: NoteStore::new(db.clone()),

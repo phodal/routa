@@ -226,6 +226,38 @@ components:
           type: boolean
           const: true
 
+    Worktree:
+      type: object
+      required: [id, codebaseId, workspaceId, worktreePath, branch, baseBranch, status, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+        codebaseId:
+          type: string
+        workspaceId:
+          type: string
+        worktreePath:
+          type: string
+        branch:
+          type: string
+        baseBranch:
+          type: string
+        status:
+          type: string
+          enum: [creating, active, error, removing]
+        sessionId:
+          type: string
+        label:
+          type: string
+        errorMessage:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
 # ─────────────────────────────────────────────────────────
 # API Paths
 # ─────────────────────────────────────────────────────────
@@ -1860,6 +1892,173 @@ paths:
       responses:
         "200":
           description: Updated
+
+  # ── Worktrees ──
+  /api/workspaces/{workspace_id}/codebases/{codebase_id}/worktrees:
+    get:
+      operationId: listWorktrees
+      summary: List worktrees for a codebase
+      parameters:
+        - name: workspace_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: codebase_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of worktrees
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  worktrees:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Worktree"
+    post:
+      operationId: createWorktree
+      summary: Create a new git worktree
+      parameters:
+        - name: workspace_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: codebase_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                branch:
+                  type: string
+                baseBranch:
+                  type: string
+                label:
+                  type: string
+      responses:
+        "201":
+          description: Created worktree
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  worktree:
+                    $ref: "#/components/schemas/Worktree"
+        "404":
+          description: Codebase or workspace not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Branch already in use
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Git operation failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/worktrees/{id}:
+    get:
+      operationId: getWorktree
+      summary: Get a single worktree
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Worktree details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  worktree:
+                    $ref: "#/components/schemas/Worktree"
+        "404":
+          description: Worktree not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteWorktree
+      summary: Remove a worktree
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: deleteBranch
+          in: query
+          required: false
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeletedResponse"
+        "404":
+          description: Worktree not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Removal failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/worktrees/{id}/validate:
+    post:
+      operationId: validateWorktree
+      summary: Validate worktree health on disk
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Validation result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  healthy:
+                    type: boolean
+                  error:
+                    type: string
 
   # ── Skills catalog ──
   /api/skills/catalog:
