@@ -62,6 +62,7 @@ export function KanbanTab({ workspaceId, boards, tasks, sessions, providers, spe
     createGitHubIssue: githubAvailable,
   });
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const [activeTaskId, setActiveTaskId] = useState<string | null>(null); // For card detail view
   const [editingAssignmentId, setEditingAssignmentId] = useState<string | null>(null);
   const [assignmentDrafts, setAssignmentDrafts] = useState<Record<string, {
     assignedProvider: string;
@@ -237,8 +238,8 @@ export function KanbanTab({ workspaceId, boards, tasks, sessions, providers, spe
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className="flex flex-col h-full space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3 flex-shrink-0">
         <div className="flex items-center gap-2">
           <select
             value={selectedBoardId ?? ""}
@@ -286,8 +287,8 @@ export function KanbanTab({ workspaceId, boards, tasks, sessions, providers, spe
         </button>
       </div>
 
-      <div className="overflow-x-auto overflow-y-hidden pb-2">
-        <div className="flex gap-3" style={{ minWidth: `${visibleColumns.length * 18}rem` }}>
+      <div className="flex-1 min-h-0 overflow-x-auto overflow-y-hidden pb-2">
+        <div className="flex gap-3 h-full" style={{ minWidth: `${visibleColumns.length * 18}rem` }}>
           {board.columns
             .slice()
             .sort((left, right) => left.position - right.position)
@@ -399,53 +400,73 @@ export function KanbanTab({ workspaceId, boards, tasks, sessions, providers, spe
 
                           {editingAssignmentId === task.id && (
                             <div className="mt-3 space-y-2 border-t border-gray-200/70 pt-3 dark:border-[#262938]">
-                              <select
-                                value={assignment.assignedProvider}
-                                onChange={(event) => setAssignmentDrafts((current) => ({
-                                  ...current,
-                                  [task.id]: { ...assignment, assignedProvider: event.target.value },
-                                }))}
-                                className="w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs dark:border-gray-700 dark:bg-[#12141c]"
-                              >
-                                {availableProviders.map((provider) => (
-                                  <option key={provider.id} value={provider.id}>{provider.name}</option>
-                                ))}
-                              </select>
-
-                              <select
-                                value={assignment.assignedRole}
-                                onChange={(event) => setAssignmentDrafts((current) => ({
-                                  ...current,
-                                  [task.id]: { ...assignment, assignedRole: event.target.value },
-                                }))}
-                                className="w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs dark:border-gray-700 dark:bg-[#12141c]"
-                              >
-                                {ROLE_OPTIONS.map((role) => (
-                                  <option key={role} value={role}>{role}</option>
-                                ))}
-                              </select>
-
-                              <select
-                                value={assignment.assignedSpecialistId}
-                                onChange={(event) => {
-                                  const specialist = specialists.find((item) => item.id === event.target.value);
-                                  setAssignmentDrafts((current) => ({
+                              <div>
+                                <label className="mb-1 block text-[10px] font-medium text-gray-500 dark:text-gray-400">
+                                  ACP Provider
+                                </label>
+                                <select
+                                  value={assignment.assignedProvider}
+                                  onChange={(event) => setAssignmentDrafts((current) => ({
                                     ...current,
-                                    [task.id]: {
-                                      ...assignment,
-                                      assignedSpecialistId: event.target.value,
-                                      assignedSpecialistName: specialist?.name ?? "",
-                                      assignedRole: specialist?.role ?? assignment.assignedRole,
-                                    },
-                                  }));
-                                }}
-                                className="w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs dark:border-gray-700 dark:bg-[#12141c]"
-                              >
-                                <option value="">No specialist</option>
-                                {specialists.map((specialist) => (
-                                  <option key={specialist.id} value={specialist.id}>{specialist.name}</option>
-                                ))}
-                              </select>
+                                    [task.id]: { ...assignment, assignedProvider: event.target.value },
+                                  }))}
+                                  className="w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs dark:border-gray-700 dark:bg-[#12141c]"
+                                >
+                                  <option value="">Select provider...</option>
+                                  {availableProviders.map((provider) => (
+                                    <option key={provider.id} value={provider.id}>
+                                      {provider.name} {provider.status !== "available" ? "(unavailable)" : ""}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+
+                              <div>
+                                <label className="mb-1 block text-[10px] font-medium text-gray-500 dark:text-gray-400">
+                                  Role
+                                </label>
+                                <select
+                                  value={assignment.assignedRole}
+                                  onChange={(event) => setAssignmentDrafts((current) => ({
+                                    ...current,
+                                    [task.id]: { ...assignment, assignedRole: event.target.value },
+                                  }))}
+                                  className="w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs dark:border-gray-700 dark:bg-[#12141c]"
+                                >
+                                  {ROLE_OPTIONS.map((role) => (
+                                    <option key={role} value={role}>{role}</option>
+                                  ))}
+                                </select>
+                              </div>
+
+                              <div>
+                                <label className="mb-1 block text-[10px] font-medium text-gray-500 dark:text-gray-400">
+                                  Specialist (Optional)
+                                </label>
+                                <select
+                                  value={assignment.assignedSpecialistId}
+                                  onChange={(event) => {
+                                    const specialist = specialists.find((item) => item.id === event.target.value);
+                                    setAssignmentDrafts((current) => ({
+                                      ...current,
+                                      [task.id]: {
+                                        ...assignment,
+                                        assignedSpecialistId: event.target.value,
+                                        assignedSpecialistName: specialist?.name ?? "",
+                                        assignedRole: specialist?.role ?? assignment.assignedRole,
+                                      },
+                                    }));
+                                  }}
+                                  className="w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs dark:border-gray-700 dark:bg-[#12141c]"
+                                >
+                                  <option value="">No specialist</option>
+                                  {specialists.map((specialist) => (
+                                    <option key={specialist.id} value={specialist.id}>
+                                      {specialist.name} ({specialist.role})
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
 
                               <div className="flex items-center justify-between gap-2">
                                 <button
@@ -500,9 +521,21 @@ export function KanbanTab({ workspaceId, boards, tasks, sessions, providers, spe
                                   Rerun
                                 </button>
                               )}
+                              <button
+                                onClick={() => {
+                                  setActiveTaskId(task.id);
+                                  setActiveSessionId(task.triggerSessionId ?? null);
+                                }}
+                                className="rounded-md bg-blue-100 px-2 py-1 text-blue-700 hover:bg-blue-200 dark:bg-blue-900/20 dark:text-blue-300"
+                              >
+                                View detail
+                              </button>
                               {task.triggerSessionId && (
                                 <button
-                                  onClick={() => setActiveSessionId(task.triggerSessionId ?? null)}
+                                  onClick={() => {
+                                    setActiveTaskId(null);
+                                    setActiveSessionId(task.triggerSessionId ?? null);
+                                  }}
                                   className="rounded-md bg-violet-100 px-2 py-1 text-violet-700 hover:bg-violet-200 dark:bg-violet-900/20 dark:text-violet-300"
                                 >
                                   View session
@@ -595,36 +628,116 @@ export function KanbanTab({ workspaceId, boards, tasks, sessions, providers, spe
         </div>
       )}
 
-      {activeSessionId && (
+      {(activeSessionId || activeTaskId) && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4 py-6">
-          <div className="relative h-[88vh] w-full max-w-6xl overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl dark:border-[#1c1f2e] dark:bg-[#12141c]">
+          <div className="relative h-[88vh] w-full max-w-7xl overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl dark:border-[#1c1f2e] dark:bg-[#12141c]">
             <div className="flex h-12 items-center justify-between border-b border-gray-100 px-4 dark:border-[#191c28]">
               <div>
-                <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">ACP Session</div>
-                <div className="text-[11px] text-gray-400 dark:text-gray-500">{activeSessionId}</div>
+                <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                  {activeTaskId ? "Card Detail" : "ACP Session"}
+                </div>
+                <div className="text-[11px] text-gray-400 dark:text-gray-500">
+                  {activeTaskId ? `Task: ${activeTaskId}` : activeSessionId}
+                </div>
               </div>
               <div className="flex items-center gap-2">
-                <a
-                  href={`/workspace/${workspaceId}/sessions/${activeSessionId}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="rounded-md border border-gray-200 px-2 py-1 text-xs text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-[#191c28]"
-                >
-                  Open full page
-                </a>
+                {activeSessionId && (
+                  <a
+                    href={`/workspace/${workspaceId}/sessions/${activeSessionId}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="rounded-md border border-gray-200 px-2 py-1 text-xs text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-[#191c28]"
+                  >
+                    Open full page
+                  </a>
+                )}
                 <button
-                  onClick={() => setActiveSessionId(null)}
+                  onClick={() => {
+                    setActiveSessionId(null);
+                    setActiveTaskId(null);
+                  }}
                   className="rounded-md border border-gray-200 px-2 py-1 text-xs text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-[#191c28]"
                 >
                   Close
                 </button>
               </div>
             </div>
-            <iframe
-              title="ACP session"
-              src={`/workspace/${workspaceId}/sessions/${activeSessionId}?embed=true`}
-              className="h-[calc(88vh-48px)] w-full border-0"
-            />
+            <div className="flex h-[calc(88vh-48px)]">
+              {/* Left: Card Detail (if activeTaskId exists) */}
+              {activeTaskId && (() => {
+                const task = localTasks.find((t) => t.id === activeTaskId);
+                if (!task) return null;
+                return (
+                  <div className="w-1/3 border-r border-gray-200 dark:border-[#191c28] overflow-y-auto p-4">
+                    <div className="space-y-4">
+                      <div>
+                        <div className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">Title</div>
+                        <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">{task.title}</div>
+                      </div>
+                      <div>
+                        <div className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">Objective</div>
+                        <div className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{task.objective}</div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <div className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">Priority</div>
+                          <span className="inline-block rounded-full bg-gray-200 px-2 py-0.5 text-[10px] uppercase tracking-wide text-gray-600 dark:bg-[#1c1f2e] dark:text-gray-300">
+                            {task.priority ?? "medium"}
+                          </span>
+                        </div>
+                        <div>
+                          <div className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">Column</div>
+                          <div className="text-sm text-gray-700 dark:text-gray-300">{task.columnId ?? "backlog"}</div>
+                        </div>
+                      </div>
+                      {task.labels && task.labels.length > 0 && (
+                        <div>
+                          <div className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">Labels</div>
+                          <div className="flex flex-wrap gap-1">
+                            {task.labels.map((label) => (
+                              <span key={label} className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] text-amber-700 dark:bg-amber-900/20 dark:text-amber-300">
+                                {label}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      <div>
+                        <div className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">Assignment</div>
+                        <div className="text-sm text-gray-700 dark:text-gray-300">
+                          {task.assignedProvider ? `${task.assignedProvider}${task.assignedSpecialistName ? ` · ${task.assignedSpecialistName}` : ""}` : "Unassigned"}
+                        </div>
+                      </div>
+                      {task.githubNumber && (
+                        <div>
+                          <div className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">GitHub</div>
+                          <a
+                            href={task.githubUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-sm text-amber-600 dark:text-amber-400 hover:underline"
+                          >
+                            #{task.githubNumber}
+                          </a>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
+              {/* Right: Session (if activeSessionId exists) */}
+              {activeSessionId ? (
+                <iframe
+                  title="ACP session"
+                  src={`/workspace/${workspaceId}/sessions/${activeSessionId}?embed=true`}
+                  className={`border-0 ${activeTaskId ? "w-2/3" : "w-full"} h-full`}
+                />
+              ) : activeTaskId ? (
+                <div className="w-2/3 flex items-center justify-center text-sm text-gray-500 dark:text-gray-400">
+                  No session available for this task
+                </div>
+              ) : null}
+            </div>
           </div>
         </div>
       )}
