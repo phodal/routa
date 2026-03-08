@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { usePathname } from "next/navigation";
 import type { AcpProviderInfo } from "@/client/acp-client";
 import type { CodebaseData } from "@/client/hooks/use-workspaces";
+import type { UseAcpState } from "@/client/hooks/use-acp";
 import type { KanbanBoardInfo, SessionInfo, TaskInfo } from "./types";
 
 interface SpecialistOption {
@@ -21,6 +22,10 @@ interface KanbanTabProps {
   specialists: SpecialistOption[];
   codebases: CodebaseData[];
   onRefresh: () => void;
+  /** ACP state for agent input */
+  acp?: UseAcpState;
+  /** Handler for agent prompt - creates session and sends prompt */
+  onAgentPrompt?: (prompt: string) => Promise<string | null>;
 }
 
 type DraftIssue = {
@@ -41,7 +46,7 @@ const EMPTY_DRAFT: DraftIssue = {
 
 const ROLE_OPTIONS = ["CRAFTER", "ROUTA", "GATE", "DEVELOPER"];
 
-export function KanbanTab({ workspaceId, boards, tasks, sessions, providers, specialists, codebases, onRefresh }: KanbanTabProps) {
+export function KanbanTab({ workspaceId, boards, tasks, sessions, providers, specialists, codebases, onRefresh, acp, onAgentPrompt }: KanbanTabProps) {
   const pathname = usePathname();
   const defaultBoardId = useMemo(
     () => boards.find((board) => board.isDefault)?.id ?? boards[0]?.id ?? null,
@@ -64,6 +69,46 @@ export function KanbanTab({ workspaceId, boards, tasks, sessions, providers, spe
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null); // For card detail view;
   const [visibleColumns, setVisibleColumns] = useState<string[]>([]);
+
+  // Agent input state
+  const [agentInput, setAgentInput] = useState("");
+  const [agentLoading, setAgentLoading] = useState(false);
+  const [agentSessionId, setAgentSessionId] = useState<string | null>(null);
+
+  // Handle agent input submission
+  const handleAgentSubmit = useCallback(async () => {
+    if (!agentInput.trim() || !onAgentPrompt || agentLoading) return;
+
+    setAgentLoading(true);
+    try {
+      // Build a system prompt that instructs the agent to use Kanban tools
+      const systemPrompt = `You are a Kanban board assistant. The user wants to manage their tasks on the Kanban board.
+Use the available Kanban tools to help them:
+- create_card: Create a new card/task
+- move_card: Move a card to a different column
+- update_card: Update card details
+- delete_card: Delete a card
+- search_cards: Search for cards
+- list_cards_by_column: List cards in a specific column
+
+Current workspace: ${workspaceId}
+Default board ID: ${defaultBoardId ?? "default"}
+
+User request: ${agentInput}`;
+
+      const sessionId = await onAgentPrompt(systemPrompt);
+      if (sessionId) {
+        setAgentSessionId(sessionId);
+        // Refresh to show any new cards created
+        setTimeout(() => {
+          onRefresh();
+        }, 2000);
+      }
+      setAgentInput("");
+    } finally {
+      setAgentLoading(false);
+    }
+  }, [agentInput, onAgentPrompt, agentLoading, workspaceId, defaultBoardId, onRefresh]);
 
   useEffect(() => {
     setSelectedBoardId(defaultBoardId);
@@ -260,6 +305,68 @@ export function KanbanTab({ workspaceId, boards, tasks, sessions, providers, spe
           Create issue
         </button>
       </div>
+
+      {/* Agent Input Box */}
+      {onAgentPrompt && (
+        <div className="flex-shrink-0 rounded-2xl border border-gray-200/60 dark:border-[#1c1f2e] bg-white dark:bg-[#12141c] p-4">
+          <div className="flex items-center gap-3">
+            <div className="flex-shrink-0">
+              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-amber-400 to-orange-500 text-white text-sm font-medium">
+                🤖
+              </div>
+            </div>
+            <div className="flex-1 min-w-0">
+              <input
+                type="text"
+                value={agentInput}
+                onChange={(e) => setAgentInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    void handleAgentSubmit();
+                  }
+                }}
+                placeholder="Ask the agent to create issues, move cards, or manage your board..."
+                disabled={agentLoading || !acp?.connected}
+                className="w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-[#0d1018] px-4 py-2.5 text-sm text-gray-800 dark:text-gray-200 placeholder-gray-400 dark:placeholder-gray-500 focus:border-amber-400 focus:outline-none focus:ring-1 focus:ring-amber-400/50 disabled:opacity-50"
+              />
+            </div>
+            <button
+              onClick={() => void handleAgentSubmit()}
+              disabled={!agentInput.trim() || agentLoading || !acp?.connected}
+              className="flex-shrink-0 rounded-xl bg-amber-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              {agentLoading ? (
+                <span className="flex items-center gap-2">
+                  <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                  Processing...
+                </span>
+              ) : (
+                "Send"
+              )}
+            </button>
+          </div>
+          {!acp?.connected && (
+            <div className="mt-2 text-xs text-amber-600 dark:text-amber-400">
+              Connecting to agent...
+            </div>
+          )}
+          {agentSessionId && (
+            <div className="mt-2 flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+              <span>Last session:</span>
+              <button
+                onClick={() => setActiveSessionId(agentSessionId)}
+                className="text-amber-600 dark:text-amber-400 hover:underline"
+              >
+                View response
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="flex-1 min-h-0 overflow-x-auto overflow-y-hidden pb-2">
         <div className="flex gap-3 h-full" style={{ minWidth: `${visibleColumns.length * 18}rem` }}>
