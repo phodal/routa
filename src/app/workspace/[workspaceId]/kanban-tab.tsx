@@ -62,14 +62,7 @@ export function KanbanTab({ workspaceId, boards, tasks, sessions, providers, spe
     createGitHubIssue: githubAvailable,
   });
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
-  const [activeTaskId, setActiveTaskId] = useState<string | null>(null); // For card detail view
-  const [editingAssignmentId, setEditingAssignmentId] = useState<string | null>(null);
-  const [assignmentDrafts, setAssignmentDrafts] = useState<Record<string, {
-    assignedProvider: string;
-    assignedRole: string;
-    assignedSpecialistId: string;
-    assignedSpecialistName: string;
-  }>>({});
+  const [activeTaskId, setActiveTaskId] = useState<string | null>(null); // For card detail view;
   const [visibleColumns, setVisibleColumns] = useState<string[]>([]);
 
   useEffect(() => {
@@ -197,25 +190,6 @@ export function KanbanTab({ workspaceId, boards, tasks, sessions, providers, spe
     }
   }
 
-  async function saveAssignment(task: TaskInfo) {
-    const draftAssignment = assignmentDrafts[task.id];
-    if (!draftAssignment) return;
-
-    const specialist = specialists.find((item) => item.id === draftAssignment.assignedSpecialistId);
-    const assignedSpecialistName = specialist?.name ?? draftAssignment.assignedSpecialistName ?? undefined;
-    const updated = await patchTask(task.id, {
-      assignedProvider: draftAssignment.assignedProvider,
-      assignedRole: specialist?.role ?? draftAssignment.assignedRole,
-      assignedSpecialistId: draftAssignment.assignedSpecialistId || undefined,
-      assignedSpecialistName,
-    });
-    setEditingAssignmentId(null);
-    if (updated.triggerSessionId && updated.triggerSessionId !== task.triggerSessionId) {
-      setActiveSessionId(updated.triggerSessionId);
-    }
-    onRefresh();
-  }
-
   async function createBoard() {
     const name = window.prompt("Board name");
     if (!name?.trim()) return;
@@ -321,12 +295,6 @@ export function KanbanTab({ workspaceId, boards, tasks, sessions, providers, spe
                       const canRetry = Boolean(task.assignedProvider) && (
                         sessionStatus === "error" || (!task.triggerSessionId && task.columnId === "dev")
                       );
-                      const assignment = assignmentDrafts[task.id] ?? {
-                        assignedProvider: task.assignedProvider ?? availableProviders[0]?.id ?? "opencode",
-                        assignedRole: task.assignedRole ?? "CRAFTER",
-                        assignedSpecialistId: task.assignedSpecialistId ?? "",
-                        assignedSpecialistName: task.assignedSpecialistName ?? "",
-                      };
                       return (
                         <div
                           key={task.id}
@@ -367,99 +335,78 @@ export function KanbanTab({ workspaceId, boards, tasks, sessions, providers, spe
                             </div>
                           )}
 
-                          <div className="mt-3 flex items-center justify-between gap-2 text-[11px] text-gray-500 dark:text-gray-400">
-                            <div className="truncate">
-                              {task.assignedProvider ? `${task.assignedProvider}${task.assignedSpecialistName ? ` · ${task.assignedSpecialistName}` : ""}` : "Unassigned"}
-                            </div>
-                            <div className="relative">
+                          {/* Assignment Section */}
+                          <div className="mt-3 space-y-2 border-t border-gray-200/50 pt-3 dark:border-[#262938]">
+                            {/* Row 1: Provider */}
+                            <div className="flex items-center gap-2">
+                              <span className="w-16 shrink-0 text-[10px] font-medium text-gray-500 dark:text-gray-400">Provider</span>
                               <select
-                                value=""
+                                value={task.assignedProvider ?? ""}
                                 onChange={async (event) => {
-                                  const value = event.target.value;
-                                  if (value === "assign") {
-                                    setEditingAssignmentId(task.id);
-                                    setAssignmentDrafts((current) => ({ ...current, [task.id]: assignment }));
-                                  } else if (value === "unassign") {
+                                  const providerId = event.target.value;
+                                  if (providerId) {
+                                    await patchTask(task.id, {
+                                      assignedProvider: providerId,
+                                      assignedRole: task.assignedRole ?? "DEVELOPER",
+                                    });
+                                  } else {
                                     await patchTask(task.id, {
                                       assignedProvider: undefined,
                                       assignedRole: undefined,
                                       assignedSpecialistId: undefined,
                                       assignedSpecialistName: undefined,
                                     });
-                                    onRefresh();
                                   }
+                                  onRefresh();
                                 }}
-                                className="rounded-md border border-gray-200 px-2 py-1 text-[11px] hover:bg-white dark:border-gray-700 dark:bg-[#12141c] dark:hover:bg-[#191c28] cursor-pointer"
+                                className="flex-1 rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] dark:border-gray-700 dark:bg-[#12141c]"
                               >
-                                <option value="">Assign ▾</option>
-                                <option value="assign">Edit assignment</option>
-                                {task.assignedProvider && <option value="unassign">Unassign</option>}
+                                <option value="">Select...</option>
+                                {availableProviders.map((provider) => (
+                                  <option key={provider.id} value={provider.id}>
+                                    {provider.name}
+                                  </option>
+                                ))}
                               </select>
                             </div>
-                          </div>
 
-                          {editingAssignmentId === task.id && (
-                            <div className="mt-3 space-y-2 border-t border-gray-200/70 pt-3 dark:border-[#262938]">
-                              <div>
-                                <label className="mb-1 block text-[10px] font-medium text-gray-500 dark:text-gray-400">
-                                  ACP Provider
-                                </label>
+                            {/* Row 2: Role (only show if provider is assigned) */}
+                            {task.assignedProvider && (
+                              <div className="flex items-center gap-2">
+                                <span className="w-16 shrink-0 text-[10px] font-medium text-gray-500 dark:text-gray-400">Role</span>
                                 <select
-                                  value={assignment.assignedProvider}
-                                  onChange={(event) => setAssignmentDrafts((current) => ({
-                                    ...current,
-                                    [task.id]: { ...assignment, assignedProvider: event.target.value },
-                                  }))}
-                                  className="w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs dark:border-gray-700 dark:bg-[#12141c]"
-                                >
-                                  <option value="">Select provider...</option>
-                                  {availableProviders.map((provider) => (
-                                    <option key={provider.id} value={provider.id}>
-                                      {provider.name} {provider.status !== "available" ? "(unavailable)" : ""}
-                                    </option>
-                                  ))}
-                                </select>
-                              </div>
-
-                              <div>
-                                <label className="mb-1 block text-[10px] font-medium text-gray-500 dark:text-gray-400">
-                                  Role
-                                </label>
-                                <select
-                                  value={assignment.assignedRole}
-                                  onChange={(event) => setAssignmentDrafts((current) => ({
-                                    ...current,
-                                    [task.id]: { ...assignment, assignedRole: event.target.value },
-                                  }))}
-                                  className="w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs dark:border-gray-700 dark:bg-[#12141c]"
+                                  value={task.assignedRole ?? "DEVELOPER"}
+                                  onChange={async (event) => {
+                                    await patchTask(task.id, { assignedRole: event.target.value });
+                                    onRefresh();
+                                  }}
+                                  className="flex-1 rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] dark:border-gray-700 dark:bg-[#12141c]"
                                 >
                                   {ROLE_OPTIONS.map((role) => (
                                     <option key={role} value={role}>{role}</option>
                                   ))}
                                 </select>
                               </div>
+                            )}
 
-                              <div>
-                                <label className="mb-1 block text-[10px] font-medium text-gray-500 dark:text-gray-400">
-                                  Specialist (Optional)
-                                </label>
+                            {/* Row 3: Specialist (only show if provider is assigned) */}
+                            {task.assignedProvider && (
+                              <div className="flex items-center gap-2">
+                                <span className="w-16 shrink-0 text-[10px] font-medium text-gray-500 dark:text-gray-400">Specialist</span>
                                 <select
-                                  value={assignment.assignedSpecialistId}
-                                  onChange={(event) => {
+                                  value={task.assignedSpecialistId ?? ""}
+                                  onChange={async (event) => {
                                     const specialist = specialists.find((item) => item.id === event.target.value);
-                                    setAssignmentDrafts((current) => ({
-                                      ...current,
-                                      [task.id]: {
-                                        ...assignment,
-                                        assignedSpecialistId: event.target.value,
-                                        assignedSpecialistName: specialist?.name ?? "",
-                                        assignedRole: specialist?.role ?? assignment.assignedRole,
-                                      },
-                                    }));
+                                    await patchTask(task.id, {
+                                      assignedSpecialistId: event.target.value || undefined,
+                                      assignedSpecialistName: specialist?.name ?? undefined,
+                                      assignedRole: specialist?.role ?? task.assignedRole,
+                                    });
+                                    onRefresh();
                                   }}
-                                  className="w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs dark:border-gray-700 dark:bg-[#12141c]"
+                                  className="flex-1 rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] dark:border-gray-700 dark:bg-[#12141c]"
                                 >
-                                  <option value="">No specialist</option>
+                                  <option value="">None</option>
                                   {specialists.map((specialist) => (
                                     <option key={specialist.id} value={specialist.id}>
                                       {specialist.name} ({specialist.role})
@@ -467,23 +414,8 @@ export function KanbanTab({ workspaceId, boards, tasks, sessions, providers, spe
                                   ))}
                                 </select>
                               </div>
-
-                              <div className="flex items-center justify-between gap-2">
-                                <button
-                                  onClick={() => setEditingAssignmentId(null)}
-                                  className="rounded-md border border-gray-200 px-2 py-1 text-xs text-gray-500 hover:bg-white dark:border-gray-700 dark:hover:bg-[#191c28]"
-                                >
-                                  Cancel
-                                </button>
-                                <button
-                                  onClick={() => saveAssignment(task)}
-                                  className="rounded-md bg-amber-500 px-3 py-1 text-xs font-medium text-white hover:bg-amber-600"
-                                >
-                                  Save
-                                </button>
-                              </div>
-                            </div>
-                          )}
+                            )}
+                          </div>
 
                           <div className="mt-3 flex items-center justify-between gap-2 text-[11px]">
                             <div className="min-w-0 flex-1">
