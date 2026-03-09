@@ -16,6 +16,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { execSync } from "child_process";
 import * as fs from "fs";
+import * as path from "path";
 import {
   parseGitHubUrl,
   getCloneBaseDir,
@@ -24,6 +25,38 @@ import {
   getBranchInfo,
   checkoutBranch,
 } from "@/core/git";
+import { importGitHubRepo } from "@/core/github";
+
+function getGitHubToken(): string | undefined {
+  return process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
+}
+
+function copyDirectoryRecursively(sourceDir: string, targetDir: string) {
+  fs.mkdirSync(targetDir, { recursive: true });
+  fs.cpSync(sourceDir, targetDir, { recursive: true, force: true });
+}
+
+async function importGitHubZipFallback(params: {
+  owner: string;
+  repo: string;
+  targetDir: string;
+}) {
+  const workspace = await importGitHubRepo({
+    owner: params.owner,
+    repo: params.repo,
+    token: getGitHubToken(),
+  });
+
+  // importGitHubRepo stores extraction in a shared tmp cache. For /api/clone,
+  // copy to the conventional clone directory so the rest of the app can keep
+  // using repoPath semantics unchanged.
+  copyDirectoryRecursively(workspace.extractedPath, params.targetDir);
+
+  return {
+    current: workspace.ref,
+    branches: [workspace.ref],
+  };
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -78,31 +111,53 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Clone the repository
-    const cloneUrl = `https://github.com/${owner}/${repo}.git`;
-    execSync(`git clone --depth 1 "${cloneUrl}" "${targetDir}"`, {
-      stdio: "pipe",
-      timeout: 120000, // 2 minutes timeout
-    });
+    let branchInfo: { current: string; branches: string[] };
+    let importedVia = "git";
 
-    // Unshallow to get branches
+    // Clone the repository. If git is unavailable (serverless) or clone fails,
+    // gracefully fall back to GitHub zipball import.
+    const cloneUrl = `https://github.com/${owner}/${repo}.git`;
     try {
-      execSync("git fetch --all", {
-        cwd: targetDir,
+      execSync(`git clone --depth 1 "${cloneUrl}" "${targetDir}"`, {
         stdio: "pipe",
-        timeout: 60000,
+        timeout: 120000,
       });
-    } catch {
-      // Fetch failed, that's ok for shallow clone
+
+      // Unshallow to get branches
+      try {
+        execSync("git fetch --all", {
+          cwd: targetDir,
+          stdio: "pipe",
+          timeout: 60000,
+        });
+      } catch {
+        // Fetch failed, that's ok for shallow clone
+      }
+
+      branchInfo = getBranchInfo(targetDir);
+    } catch (gitErr) {
+      importedVia = "zipball";
+      if (fs.existsSync(targetDir)) {
+        fs.rmSync(targetDir, { recursive: true, force: true });
+      }
+
+      // Ensure per-request temp isolation for extraction-copy workflow
+      fs.mkdirSync(path.dirname(targetDir), { recursive: true });
+
+      try {
+        branchInfo = await importGitHubZipFallback({ owner, repo, targetDir });
+      } catch {
+        throw gitErr;
+      }
     }
 
-    const branchInfo = getBranchInfo(targetDir);
     return NextResponse.json({
       success: true,
       path: targetDir,
       name: `${owner}/${repo}`,
       branch: branchInfo.current,
       branches: branchInfo.branches,
+      importedVia,
       existed: false,
     });
   } catch (err) {
