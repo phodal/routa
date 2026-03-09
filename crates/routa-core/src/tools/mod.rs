@@ -668,8 +668,7 @@ impl AgentTools {
 
         let last_response = last_messages
             .iter()
-            .filter(|m| m.role == MessageRole::Assistant)
-            .next_back();
+            .rfind(|m| m.role == MessageRole::Assistant);
 
         let all_messages = self.conversation_store.get_conversation(agent_id).await?;
         let tool_call_count = all_messages

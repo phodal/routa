@@ -212,6 +212,13 @@ async fn decompose_tasks(
         }
     };
 
+    if board.workspace_id != body.workspace_id {
+        return Err(ServerError::BadRequest(format!(
+            "workspace mismatch: board {} belongs to workspace {}",
+            body.board_id, board.workspace_id
+        )));
+    }
+
     // Validate tasks array is not empty
     if body.tasks.is_empty() {
         return Err(ServerError::BadRequest(
@@ -230,12 +237,16 @@ async fn decompose_tasks(
     }
 
     // Get existing tasks in the column to determine starting position
-    let existing_tasks = state.task_store.list_by_workspace(&body.workspace_id).await?;
+    let existing_tasks = state
+        .task_store
+        .list_by_workspace(&board.workspace_id)
+        .await?;
+    let backlog = String::from("backlog");
     let column_tasks: Vec<_> = existing_tasks
         .iter()
         .filter(|t| {
             t.board_id.as_ref() == Some(&body.board_id)
-                && t.column_id.as_ref().unwrap_or(&"backlog".to_string()) == &target_column_id
+                && t.column_id.as_ref().unwrap_or(&backlog) == &target_column_id
         })
         .collect();
     let mut position = column_tasks.len() as i64;
