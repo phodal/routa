@@ -147,7 +147,7 @@ export function KanbanPageClient() {
   }, [acp, codebases, workspaceId]);
 
   return (
-    <div className="flex min-h-screen flex-col bg-gray-50 dark:bg-[#0a0c10]">
+    <div className="flex h-screen flex-col bg-gray-50 dark:bg-[#0a0c10]">
       <AppHeader
         workspaceId={workspaceId}
         workspaces={workspacesHook.workspaces}
@@ -156,19 +156,21 @@ export function KanbanPageClient() {
         onWorkspaceCreate={handleWorkspaceCreate}
         variant="dashboard"
       />
-      <main className="flex-1 px-6 py-6">
-        <KanbanTab
-          workspaceId={workspaceId}
-          boards={boards}
-          tasks={tasks}
-          sessions={sessions}
-          providers={acp.providers}
-          specialists={specialists}
-          codebases={codebases}
-          onRefresh={() => setRefreshKey((k) => k + 1)}
-          acp={acp}
-          onAgentPrompt={handleAgentPrompt}
-        />
+      <main className="flex-1 min-h-0 overflow-hidden px-6 py-6">
+        <div className="mx-auto flex h-full max-w-7xl flex-col">
+          <KanbanTab
+            workspaceId={workspaceId}
+            boards={boards}
+            tasks={tasks}
+            sessions={sessions}
+            providers={acp.providers}
+            specialists={specialists}
+            codebases={codebases}
+            onRefresh={() => setRefreshKey((k) => k + 1)}
+            acp={acp}
+            onAgentPrompt={handleAgentPrompt}
+          />
+        </div>
       </main>
     </div>
   );

@@ -206,6 +206,15 @@ User request: ${agentInput}`;
     [sessions],
   );
 
+  const openTaskDetail = useCallback((task: TaskInfo) => {
+    setActiveTaskId(task.id);
+    setActiveSessionId(task.triggerSessionId ?? null);
+  }, []);
+
+  const stopCardInteraction = useCallback((event: { stopPropagation: () => void }) => {
+    event.stopPropagation();
+  }, []);
+
   // Fetch worktrees for tasks that have worktreeId
   useEffect(() => {
     const worktreeIds = [...new Set(localTasks.map((t) => t.worktreeId).filter((id): id is string => Boolean(id)))];
@@ -374,148 +383,149 @@ User request: ${agentInput}`;
 
   return (
     <div className="flex flex-col h-full space-y-4">
-      {/* Requirement 1: Workspace Repository Info Toolbar */}
-      <div className="flex-shrink-0 rounded-xl border border-gray-200/70 dark:border-[#1c1f2e] bg-white dark:bg-[#12141c] px-4 py-2.5">
-        {codebases.length === 0 ? (
-          <div className="flex items-center gap-2 text-sm text-gray-400 dark:text-gray-500">
-            <span>No repositories linked.</span>
-            <a
-              href={`/workspace/${workspaceId}`}
-              className="text-amber-600 dark:text-amber-400 hover:underline"
-            >
-              Add a codebase in Workspace settings →
-            </a>
-          </div>
-        ) : (
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs font-medium text-gray-500 dark:text-gray-400 mr-1">Repos:</span>
-            {codebases.map((cb) => (
-              <button
-                key={cb.id}
-                onClick={() => {
-                  setSelectedCodebase(cb);
-                  void fetchCodebaseWorktrees(cb);
-                }}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-[#0d1018] px-2.5 py-1 text-xs text-gray-700 dark:text-gray-300 hover:border-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/10 transition-colors"
-                data-testid="codebase-badge"
-              >
-                <span className={`w-1.5 h-1.5 rounded-full ${cb.sourceType === "github" ? "bg-violet-500" : "bg-emerald-500"}`} />
-                <span className="font-medium">{cb.label ?? cb.repoPath.split("/").pop() ?? cb.repoPath}</span>
-                {cb.branch && <span className="text-gray-400 dark:text-gray-500">@{cb.branch}</span>}
-                <span className={`text-[10px] rounded px-1 ${cb.isDefault ? "bg-amber-100 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300" : "bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400"}`}>
-                  {cb.isDefault ? "default" : cb.sourceType ?? "local"}
-                </span>
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
+      <div className="shrink-0 rounded-2xl border border-gray-200/70 bg-white px-4 py-3 dark:border-[#1c1f2e] dark:bg-[#12141c]">
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+          <div className="flex min-w-0 flex-1 flex-col gap-3 xl:flex-row xl:items-center">
+            <div className="flex min-w-0 items-start gap-2 xl:max-w-xl">
+              <span className="pt-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">Repos</span>
+              {codebases.length === 0 ? (
+                <div className="flex min-w-0 flex-wrap items-center gap-2 rounded-xl border border-dashed border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-400 dark:border-gray-700 dark:bg-[#0d1018] dark:text-gray-500">
+                  <span>No repositories linked.</span>
+                  <a
+                    href={`/workspace/${workspaceId}?tab=settings`}
+                    className="text-amber-600 hover:underline dark:text-amber-400"
+                  >
+                    Add one in Settings →
+                  </a>
+                </div>
+              ) : (
+                <div className="flex min-w-0 flex-wrap items-center gap-2">
+                  {codebases.map((cb) => (
+                    <button
+                      key={cb.id}
+                      onClick={() => {
+                        setSelectedCodebase(cb);
+                        void fetchCodebaseWorktrees(cb);
+                      }}
+                      className="inline-flex max-w-full items-center gap-1.5 rounded-lg border border-gray-200 bg-gray-50 px-2.5 py-1.5 text-xs text-gray-700 transition-colors hover:border-amber-400 hover:bg-amber-50 dark:border-gray-700 dark:bg-[#0d1018] dark:text-gray-300 dark:hover:bg-amber-900/10"
+                      data-testid="codebase-badge"
+                    >
+                      <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${cb.sourceType === "github" ? "bg-violet-500" : "bg-emerald-500"}`} />
+                      <span className="truncate font-medium">{cb.label ?? cb.repoPath.split("/").pop() ?? cb.repoPath}</span>
+                      {cb.branch && <span className="shrink-0 text-gray-400 dark:text-gray-500">@{cb.branch}</span>}
+                      <span className={`shrink-0 rounded px-1 text-[10px] ${cb.isDefault ? "bg-amber-100 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300" : "bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400"}`}>
+                        {cb.isDefault ? "default" : cb.sourceType ?? "local"}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-3 flex-shrink-0">
-        <div className="flex items-center gap-2">
-          {boards.length > 1 ? (
-            <>
-              <select
-                value={selectedBoardId ?? ""}
-                onChange={(event) => setSelectedBoardId(event.target.value)}
-                className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#12141c] px-3 py-2 text-sm text-gray-700 dark:text-gray-200"
-              >
-                {boards.map((item) => (
-                  <option key={item.id} value={item.id}>{item.name}</option>
-                ))}
-              </select>
+            <div className="flex min-w-0 flex-wrap items-center gap-2 xl:flex-nowrap">
+              <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">Default Workspace Board</span>
+              {boards.length > 1 ? (
+                <select
+                  value={selectedBoardId ?? ""}
+                  onChange={(event) => setSelectedBoardId(event.target.value)}
+                  className="min-w-48 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 dark:border-gray-700 dark:bg-[#12141c] dark:text-gray-200"
+                >
+                  {boards.map((item) => (
+                    <option key={item.id} value={item.id}>{item.name}</option>
+                  ))}
+                </select>
+              ) : (
+                <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600 dark:border-gray-700 dark:bg-[#0d1018] dark:text-gray-300">
+                  {board?.name ?? "Kanban board"}
+                </div>
+              )}
               <button
                 onClick={createBoard}
-                className="rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#191c28]"
+                className="rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-[#191c28]"
               >
                 New board
               </button>
-            </>
-          ) : (
-            <div className="text-sm text-gray-500 dark:text-gray-400">
-              {board?.name ?? "Kanban board"}
+              <select
+                multiple
+                value={visibleColumns}
+                onChange={(event) => {
+                  const selected = Array.from(event.target.selectedOptions, (option) => option.value);
+                  setVisibleColumns(selected.length > 0 ? selected : board?.columns.map((col) => col.id) ?? []);
+                }}
+                className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 dark:border-gray-700 dark:bg-[#12141c] dark:text-gray-200"
+                size={1}
+                title="Visible columns"
+              >
+                {board?.columns.map((col) => (
+                  <option key={col.id} value={col.id}>{col.name}</option>
+                ))}
+              </select>
             </div>
-          )}
-          <a
-            href={pathname?.endsWith("/kanban") ? `/workspace/${workspaceId}` : `/workspace/${workspaceId}/kanban`}
-            className="rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#191c28]"
-          >
-            {pathname?.endsWith("/kanban") ? "Dashboard view" : "Board page"}
-          </a>
-          <div className="relative">
-            <select
-              multiple
-              value={visibleColumns}
-              onChange={(event) => {
-                const selected = Array.from(event.target.selectedOptions, (option) => option.value);
-                setVisibleColumns(selected.length > 0 ? selected : board?.columns.map((col) => col.id) ?? []);
-              }}
-              className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#12141c] px-3 py-2 text-sm text-gray-700 dark:text-gray-200"
-              size={1}
-            >
-              {board?.columns.map((col) => (
-                <option key={col.id} value={col.id}>{col.name}</option>
-              ))}
-            </select>
+
+            {onAgentPrompt && (
+              <div className="flex min-w-[20rem] flex-1 items-center gap-2 xl:max-w-none">
+                <div className="relative min-w-0 flex-1">
+                  <input
+                    type="text"
+                    value={agentInput}
+                    onChange={(e) => setAgentInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        void handleAgentSubmit();
+                      }
+                    }}
+                    placeholder={acp?.connected ? "Ask agent to create issues..." : "Connecting..."}
+                    disabled={agentLoading || !acp?.connected}
+                    className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 pr-16 text-sm text-gray-800 placeholder-gray-400 focus:border-amber-400 focus:outline-none focus:ring-1 focus:ring-amber-400/50 disabled:opacity-50 dark:border-gray-700 dark:bg-[#12141c] dark:text-gray-200 dark:placeholder-gray-500"
+                  />
+                  <button
+                    onClick={() => void handleAgentSubmit()}
+                    disabled={!agentInput.trim() || agentLoading || !acp?.connected}
+                    className="absolute right-1 top-1/2 -translate-y-1/2 rounded-md bg-amber-500 px-2 py-1 text-xs font-medium text-white transition-colors hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {agentLoading ? "..." : "Send"}
+                  </button>
+                </div>
+                {agentSessionId && (
+                  <button
+                    onClick={() => setActiveSessionId(agentSessionId)}
+                    className="shrink-0 text-xs text-amber-600 hover:underline dark:text-amber-400"
+                    title="View last agent response"
+                  >
+                    View
+                  </button>
+                )}
+              </div>
+            )}
           </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setShowSettings(true)}
-            className="rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#191c28]"
-            title="Board settings"
-          >
-            Settings
-          </button>
-          <button
-            onClick={() => setShowCreateModal(true)}
-            className="rounded-lg bg-amber-500 px-4 py-2 text-sm font-medium text-white hover:bg-amber-600"
-          >
-            Create issue
-          </button>
+
+          <div className="flex shrink-0 items-center gap-2">
+            <a
+              href={pathname?.endsWith("/kanban") ? `/workspace/${workspaceId}` : `/workspace/${workspaceId}/kanban`}
+              className="rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-[#191c28]"
+            >
+              {pathname?.endsWith("/kanban") ? "Dashboard view" : "Board page"}
+            </a>
+            <button
+              onClick={() => setShowSettings(true)}
+              className="rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-[#191c28]"
+              title="Board settings"
+            >
+              Settings
+            </button>
+            <button
+              onClick={() => setShowCreateModal(true)}
+              className="rounded-lg bg-amber-500 px-4 py-2 text-sm font-medium text-white hover:bg-amber-600"
+            >
+              Create issue
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* Agent Input Box - Compact inline style */}
-      {onAgentPrompt && (
-        <div className="flex-shrink-0 flex items-center gap-2 max-w-2xl">
-          <div className="flex-1 min-w-0 relative">
-            <input
-              type="text"
-              value={agentInput}
-              onChange={(e) => setAgentInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  void handleAgentSubmit();
-                }
-              }}
-              placeholder={acp?.connected ? "Ask agent to create issues..." : "Connecting..."}
-              disabled={agentLoading || !acp?.connected}
-              className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#12141c] px-3 py-1.5 text-sm text-gray-800 dark:text-gray-200 placeholder-gray-400 dark:placeholder-gray-500 focus:border-amber-400 focus:outline-none focus:ring-1 focus:ring-amber-400/50 disabled:opacity-50 pr-16"
-            />
-            <button
-              onClick={() => void handleAgentSubmit()}
-              disabled={!agentInput.trim() || agentLoading || !acp?.connected}
-              className="absolute right-1 top-1/2 -translate-y-1/2 rounded-md bg-amber-500 px-2 py-1 text-xs font-medium text-white hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              {agentLoading ? "..." : "Send"}
-            </button>
-          </div>
-          {agentSessionId && (
-            <button
-              onClick={() => setActiveSessionId(agentSessionId)}
-              className="flex-shrink-0 text-xs text-amber-600 dark:text-amber-400 hover:underline"
-              title="View last agent response"
-            >
-              View
-            </button>
-          )}
-        </div>
-      )}
-
-      <div className="flex-1 min-h-0 overflow-x-auto overflow-y-hidden pb-2">
-        <div className="flex gap-3 h-full" style={{ minWidth: `${visibleColumns.length * 18}rem` }}>
+      <div className="flex-1 min-h-0 overflow-auto pb-2">
+        <div className="flex min-h-full items-start gap-3" style={{ minWidth: `${visibleColumns.length * 18}rem` }}>
           {board.columns
             .slice()
             .sort((left, right) => left.position - right.position)
@@ -531,7 +541,7 @@ User request: ${agentInput}`;
                     await moveTask(dragTaskId, column.id);
                     setDragTaskId(null);
                   }}
-                  className="min-h-[6.5625rem] w-[18rem] flex-shrink-0 rounded-2xl border border-gray-200/70 bg-white p-3 dark:border-[#1c1f2e] dark:bg-[#12141c]"
+                  className="flex h-full min-h-26.25 w-[18rem] shrink-0 flex-col rounded-2xl border border-gray-200/70 bg-white p-3 dark:border-[#1c1f2e] dark:bg-[#12141c]"
                   data-testid="kanban-column"
                 >
                   <div className="mb-3 flex items-center justify-between">
@@ -541,7 +551,7 @@ User request: ${agentInput}`;
                     </div>
                   </div>
 
-                  <div className="space-y-2">
+                  <div className="flex-1 min-h-0 space-y-2 overflow-y-auto pr-1">
                     {columnTasks.map((task) => {
                       const linkedSession = task.triggerSessionId ? sessionMap.get(task.triggerSessionId) : undefined;
                       const sessionStatus = linkedSession?.acpStatus;
@@ -554,7 +564,17 @@ User request: ${agentInput}`;
                           key={task.id}
                           draggable
                           onDragStart={() => setDragTaskId(task.id)}
-                          className="rounded-xl border border-gray-200/70 dark:border-[#262938] bg-gray-50/80 dark:bg-[#0d1018] p-3 shadow-sm"
+                          onClick={() => openTaskDetail(task)}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter" || event.key === " ") {
+                              event.preventDefault();
+                              openTaskDetail(task);
+                            }
+                          }}
+                          role="button"
+                          tabIndex={0}
+                          aria-label={`Open ${task.title}`}
+                          className="cursor-grab rounded-xl border border-gray-200/70 bg-gray-50/80 p-3 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-amber-400/50 active:cursor-grabbing dark:border-[#262938] dark:bg-[#0d1018]"
                           data-testid="kanban-card"
                         >
                           <div className="flex items-start justify-between gap-2">
@@ -565,6 +585,7 @@ User request: ${agentInput}`;
                                   href={task.githubUrl}
                                   target="_blank"
                                   rel="noreferrer"
+                                  onClick={stopCardInteraction}
                                   className="mt-1 inline-flex text-[11px] text-amber-600 dark:text-amber-400 hover:underline"
                                 >
                                   #{task.githubNumber}
@@ -635,7 +656,7 @@ User request: ${agentInput}`;
                                 <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${wtBadgeColor}`}>
                                   {wt.status}
                                 </span>
-                                <span className="text-[10px] text-gray-500 dark:text-gray-400 truncate max-w-[120px]">{wt.branch}</span>
+                                <span className="max-w-30 truncate text-[10px] text-gray-500 dark:text-gray-400">{wt.branch}</span>
                               </button>
                             );
                           })()}
@@ -647,6 +668,7 @@ User request: ${agentInput}`;
                               <span className="w-16 shrink-0 text-[10px] font-medium text-gray-500 dark:text-gray-400">Provider</span>
                               <select
                                 value={task.assignedProvider ?? ""}
+                                onClick={stopCardInteraction}
                                 onChange={async (event) => {
                                   const providerId = event.target.value;
                                   if (providerId) {
@@ -681,6 +703,7 @@ User request: ${agentInput}`;
                                 <span className="w-16 shrink-0 text-[10px] font-medium text-gray-500 dark:text-gray-400">Role</span>
                                 <select
                                   value={task.assignedRole ?? "DEVELOPER"}
+                                  onClick={stopCardInteraction}
                                   onChange={async (event) => {
                                     await patchTask(task.id, { assignedRole: event.target.value });
                                     onRefresh();
@@ -700,6 +723,7 @@ User request: ${agentInput}`;
                                 <span className="w-16 shrink-0 text-[10px] font-medium text-gray-500 dark:text-gray-400">Specialist</span>
                                 <select
                                   value={task.assignedSpecialistId ?? ""}
+                                  onClick={stopCardInteraction}
                                   onChange={async (event) => {
                                     const specialist = specialists.find((item) => item.id === event.target.value);
                                     await patchTask(task.id, {
@@ -753,16 +777,15 @@ User request: ${agentInput}`;
                               {canRetry && (
                                 <button
                                   onClick={() => void retryTaskTrigger(task.id)}
+                                  onClickCapture={stopCardInteraction}
                                   className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-amber-700 hover:bg-amber-100 dark:border-amber-800/50 dark:bg-amber-900/10 dark:text-amber-300"
                                 >
                                   Rerun
                                 </button>
                               )}
                               <button
-                                onClick={() => {
-                                  setActiveTaskId(task.id);
-                                  setActiveSessionId(task.triggerSessionId ?? null);
-                                }}
+                                onClick={() => openTaskDetail(task)}
+                                onClickCapture={stopCardInteraction}
                                 className="rounded-md bg-blue-100 px-2 py-1 text-blue-700 hover:bg-blue-200 dark:bg-blue-900/20 dark:text-blue-300"
                               >
                                 View detail
@@ -773,6 +796,7 @@ User request: ${agentInput}`;
                                     setActiveTaskId(null);
                                     setActiveSessionId(task.triggerSessionId ?? null);
                                   }}
+                                  onClickCapture={stopCardInteraction}
                                   className="rounded-md bg-violet-100 px-2 py-1 text-violet-700 hover:bg-violet-200 dark:bg-violet-900/20 dark:text-violet-300"
                                 >
                                   View session
@@ -1168,7 +1192,7 @@ User request: ${agentInput}`;
                             }}
                             className="sr-only peer"
                           />
-                          <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-amber-300 dark:peer-focus:ring-amber-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-gray-600 peer-checked:bg-amber-500"></div>
+                          <div className="w-9 h-5 rounded-full bg-gray-200 peer dark:bg-gray-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-amber-300 peer-checked:bg-amber-500 peer-checked:after:translate-x-full peer-checked:after:border-white after:absolute after:left-0.5 after:top-0.5 after:h-4 after:w-4 after:rounded-full after:border after:border-gray-300 after:bg-white after:content-[''] after:transition-all dark:border-gray-600 dark:peer-focus:ring-amber-800"></div>
                         </label>
                       </div>
 
@@ -1188,8 +1212,8 @@ User request: ${agentInput}`;
                               className="flex-1 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#0d1018] px-2 py-1.5 text-sm"
                             >
                               <option value="">Default</option>
-                              {providers.map((p) => (
-                                <option key={p.id} value={p.id}>{p.name}</option>
+                              {availableProviders.map((p) => (
+                                <option key={`${p.id}-${p.name}`} value={p.id}>{p.name}</option>
                               ))}
                             </select>
                           </div>
