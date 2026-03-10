@@ -1,0 +1,126 @@
+# page-id: settings
+# route: /settings
+# source-page: src/app/settings/page.tsx
+# url: http://127.0.0.1:3000/settings
+# title: Routa - Multi-Agent Coordinator
+# generated-at: 2026-03-10T15:05:12.726Z
+# generator: playwright-cli
+# playwright-cli-version: 1.59.0-alpha-1771104257000
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e3]:
+      - generic [ref=e4]:
+        - img [ref=e5]
+        - heading "Settings" [level=2] [ref=e6]
+      - button [ref=e7]:
+        - img [ref=e8]
+    - generic [ref=e9]:
+      - button "Agents" [ref=e10]
+      - button "Providers" [ref=e11]
+      - button "Specialists" [ref=e12]
+      - button "Models" [ref=e13]
+      - button "MCP Servers" [ref=e14]
+      - button "Webhooks" [ref=e15]
+      - button "Schedules" [ref=e16]
+      - button "Workflows" [ref=e17]
+      - button "Memory" [ref=e18]
+    - generic [ref=e19]:
+      - generic [ref=e20]:
+        - generic [ref=e21]:
+          - generic [ref=e22]: Provider
+          - generic [ref=e23]: Model Override
+        - generic [ref=e24]:
+          - generic [ref=e25]:
+            - generic [ref=e26]:
+              - generic [ref=e27]: ROUTA
+              - generic [ref=e28]: Coordinator – plans & delegates
+            - combobox [ref=e29]:
+              - option "Auto" [selected]
+              - option "Auggie"
+              - option "Claude Code"
+              - option "Claude Code SDK"
+              - option "Codex"
+              - option "Gemini"
+              - option "GitHub Copilot"
+              - option "Kimi"
+              - option "Kiro"
+              - option "OpenCode"
+              - option "OpenCode SDK"
+              - option "Qoder"
+            - combobox "e.g. claude-3-5-haiku" [ref=e30]
+          - generic [ref=e31]:
+            - generic [ref=e32]:
+              - generic [ref=e33]: CRAFTER
+              - generic [ref=e34]: Implementation – writes code
+            - combobox [ref=e35]:
+              - option "Auto" [selected]
+              - option "Auggie"
+              - option "Claude Code"
+              - option "Claude Code SDK"
+              - option "Codex"
+              - option "Gemini"
+              - option "GitHub Copilot"
+              - option "Kimi"
+              - option "Kiro"
+              - option "OpenCode"
+              - option "OpenCode SDK"
+              - option "Qoder"
+            - combobox "e.g. claude-3-5-haiku" [ref=e36]
+          - generic [ref=e37]:
+            - generic [ref=e38]:
+              - generic [ref=e39]: GATE
+              - generic [ref=e40]: Verification – reviews code
+            - combobox [ref=e41]:
+              - option "Auto" [selected]
+              - option "Auggie"
+              - option "Claude Code"
+              - option "Claude Code SDK"
+              - option "Codex"
+              - option "Gemini"
+              - option "GitHub Copilot"
+              - option "Kimi"
+              - option "Kiro"
+              - option "OpenCode"
+              - option "OpenCode SDK"
+              - option "Qoder"
+            - combobox "e.g. claude-3-5-haiku" [ref=e42]
+          - generic [ref=e43]:
+            - generic [ref=e44]:
+              - generic [ref=e45]: DEVELOPER
+              - generic [ref=e46]: Solo – plans, implements & verifies
+            - combobox [ref=e47]:
+              - option "Auto" [selected]
+              - option "Auggie"
+              - option "Claude Code"
+              - option "Claude Code SDK"
+              - option "Codex"
+              - option "Gemini"
+              - option "GitHub Copilot"
+              - option "Kimi"
+              - option "Kiro"
+              - option "OpenCode"
+              - option "OpenCode SDK"
+              - option "Qoder"
+            - combobox "e.g. claude-3-5-haiku" [ref=e48]
+      - paragraph [ref=e49]:
+        - text: Leave model blank to use the provider default. Type a model alias from the
+        - button "Models tab" [ref=e50]
+        - text: to use custom connection details.
+      - generic [ref=e51]:
+        - paragraph [ref=e52]: Provider Credentials
+        - generic [ref=e53]:
+          - generic [ref=e54]:
+            - img [ref=e55]
+            - generic [ref=e56]: Docker OpenCode
+            - generic [ref=e57]: auth.json
+          - paragraph [ref=e58]:
+            - text: Paste your
+            - code [ref=e59]: ~/.local/share/opencode/auth.json
+            - text: here. This config will be mounted into the Docker container.
+          - 'textbox "{ \"zai\": { \"type\": \"api\", \"key\": \"your-api-key-here\" } }" [ref=e60]':
+            - /placeholder: "{\n  \"zai\": {\n    \"type\": \"api\",\n    \"key\": \"your-api-key-here\"\n  }\n}"
+          - button "Save" [ref=e61]
+    - button "Done" [ref=e62]
+  - button "Open Next.js Dev Tools" [ref=e63] [cursor=pointer]:
+    - img [ref=e64]
+  - alert [ref=e65]

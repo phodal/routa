@@ -1,0 +1,122 @@
+[
+  {
+    "id": "home",
+    "name": "Home Page",
+    "group": "core",
+    "priority": "P0",
+    "route": "/",
+    "pageFile": "src/app/page.tsx",
+    "snapshotFile": "src/app/page.snapshot.yaml",
+    "waitFor": {
+      "strategy": "selector",
+      "value": "main",
+      "timeoutMs": 15000,
+      "settleMs": 1200
+    }
+  },
+  {
+    "id": "workspace",
+    "name": "Workspace Detail",
+    "group": "workspace",
+    "priority": "P0",
+    "route": "/workspace/default",
+    "pageFile": "src/app/workspace/[workspaceId]/page.tsx",
+    "snapshotFile": "src/app/workspace/[workspaceId]/page.snapshot.yaml",
+    "waitFor": {
+      "strategy": "text",
+      "value": "Default Workspace",
+      "timeoutMs": 20000,
+      "settleMs": 1500
+    }
+  },
+  {
+    "id": "kanban",
+    "name": "Workspace Kanban",
+    "group": "workspace",
+    "priority": "P0",
+    "route": "/workspace/default/kanban",
+    "pageFile": "src/app/workspace/[workspaceId]/kanban/page.tsx",
+    "snapshotFile": "src/app/workspace/[workspaceId]/kanban/page.snapshot.yaml",
+    "waitFor": {
+      "strategy": "selector",
+      "value": "main",
+      "timeoutMs": 20000,
+      "settleMs": 1500
+    }
+  },
+  {
+    "id": "mcp-tools",
+    "name": "MCP Tools",
+    "group": "integrations",
+    "priority": "P1",
+    "route": "/mcp-tools",
+    "pageFile": "src/app/mcp-tools/page.tsx",
+    "snapshotFile": "src/app/mcp-tools/page.snapshot.yaml",
+    "waitFor": {
+      "strategy": "text",
+      "value": "MCP Tools",
+      "timeoutMs": 20000,
+      "settleMs": 1000
+    }
+  },
+  {
+    "id": "traces",
+    "name": "Trace Viewer",
+    "group": "observability",
+    "priority": "P1",
+    "route": "/traces",
+    "pageFile": "src/app/traces/page.tsx",
+    "snapshotFile": "src/app/traces/page.snapshot.yaml",
+    "waitFor": {
+      "strategy": "text",
+      "value": "Agent Trace Viewer",
+      "timeoutMs": 20000,
+      "settleMs": 1200
+    }
+  },
+  {
+    "id": "settings",
+    "name": "Settings",
+    "group": "settings",
+    "priority": "P2",
+    "route": "/settings",
+    "pageFile": "src/app/settings/page.tsx",
+    "snapshotFile": "src/app/settings/page.snapshot.yaml",
+    "waitFor": {
+      "strategy": "selector",
+      "value": "main",
+      "timeoutMs": 15000,
+      "settleMs": 1000
+    }
+  },
+  {
+    "id": "a2a",
+    "name": "A2A Protocol",
+    "group": "integrations",
+    "priority": "P2",
+    "route": "/a2a",
+    "pageFile": "src/app/a2a/page.tsx",
+    "snapshotFile": "src/app/a2a/page.snapshot.yaml",
+    "waitFor": {
+      "strategy": "text",
+      "value": "A2A",
+      "timeoutMs": 20000,
+      "settleMs": 1000
+    }
+  },
+  {
+    "id": "ag-ui",
+    "name": "AG-UI Protocol",
+    "group": "integrations",
+    "priority": "P2",
+    "route": "/ag-ui",
+    "pageFile": "src/app/ag-ui/page.tsx",
+    "snapshotFile": "src/app/ag-ui/page.snapshot.yaml",
+    "waitFor": {
+      "strategy": "text",
+      "value": "AG-UI",
+      "timeoutMs": 20000,
+      "settleMs": 1000
+    }
+  }
+]

@@ -37,6 +37,8 @@
     "api:schema:report": "npx tsx scripts/validate-openapi-schema.ts --report",
     "api:validate": "./scripts/validate-api-parity.sh",
     "api:validate:full": "./scripts/validate-api-parity.sh --runtime",
+    "snapshots:generate": "node scripts/generate-snapshots.mjs",
+    "snapshots:validate": "node scripts/validate-snapshots.mjs",
     "test": "vitest",
     "test:ui": "vitest --ui",
     "test:run": "vitest run",

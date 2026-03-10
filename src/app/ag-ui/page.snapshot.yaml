@@ -1,0 +1,48 @@
+# page-id: ag-ui
+# route: /ag-ui
+# source-page: src/app/ag-ui/page.tsx
+# url: http://127.0.0.1:3000/ag-ui
+# title: Routa - Multi-Agent Coordinator
+# generated-at: 2026-03-10T15:05:21.874Z
+# generator: playwright-cli
+# playwright-cli-version: 1.59.0-alpha-1771104257000
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - banner [ref=e3]:
+      - generic [ref=e4]:
+        - generic [ref=e5]:
+          - link [ref=e6] [cursor=pointer]:
+            - /url: /
+            - img [ref=e7]
+          - generic [ref=e8]:
+            - heading "AG-UI Protocol" [level=1] [ref=e9]
+            - paragraph [ref=e10]: Agent-User Interaction Protocol Test
+        - generic [ref=e11]:
+          - generic [ref=e12]:
+            - button "AG-UI" [ref=e13]
+            - button "ACP" [ref=e14]
+          - generic [ref=e15]:
+            - text: AG-UI
+            - generic [ref=e16]: /api/ag-ui
+          - generic [ref=e17]: 0 events
+          - button "Clear" [ref=e18]
+    - main [ref=e19]:
+      - generic [ref=e20]:
+        - generic [ref=e21]:
+          - img [ref=e22]
+          - paragraph [ref=e23]: Send a message to test the AG-UI protocol
+          - paragraph [ref=e24]: Switch between protocols using the toggle above
+        - generic [ref=e25]:
+          - textbox "Send via AG-UI protocol…" [ref=e26]
+          - button "Send" [disabled] [ref=e27]
+      - generic [ref=e28]:
+        - generic [ref=e29]:
+          - generic [ref=e30]:
+            - heading "Event Inspector" [level=2] [ref=e31]
+            - generic [ref=e32]: (0)
+          - button [ref=e33]:
+            - img [ref=e34]
+        - paragraph [ref=e35]: No events yet. Send a message to see AG-UI events stream here.
+  - button "Open Next.js Dev Tools" [ref=e36] [cursor=pointer]:
+    - img [ref=e37]
+  - alert [ref=e38]

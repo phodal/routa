@@ -1,0 +1,299 @@
+# page-id: home
+# route: /
+# source-page: src/app/page.tsx
+# url: http://127.0.0.1:3000/
+# title: Routa - Multi-Agent Coordinator
+# generated-at: 2026-03-10T15:04:32.653Z
+# generator: playwright-cli
+# playwright-cli-version: 1.59.0-alpha-1771104257000
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - banner [ref=e3]:
+      - generic [ref=e4]:
+        - img "Routa" [ref=e5]
+        - generic [ref=e6]: Routa
+      - navigation [ref=e7]:
+        - link "Kanban" [ref=e8] [cursor=pointer]:
+          - /url: /workspace/default/kanban
+        - button "Integrations" [ref=e9]:
+          - text: Integrations
+          - img [ref=e10]
+        - link "Webhooks" [ref=e11] [cursor=pointer]:
+          - /url: /settings/webhooks
+        - link "Schedules" [ref=e12] [cursor=pointer]:
+          - /url: /settings/schedules
+        - button "Notifications" [ref=e13]:
+          - img [ref=e14]
+        - button "Settings" [ref=e15]:
+          - img [ref=e16]
+        - generic "Connected" [ref=e17]:
+          - generic [ref=e18]: Connected
+    - main [ref=e19]:
+      - generic [ref=e20]:
+        - generic [ref=e21]:
+          - generic [ref=e22]:
+            - generic [ref=e23]:
+              - paragraph [ref=e24]: What are you working on? (@ files, / skills)
+              - generic [ref=e25]:
+                - generic [ref=e26]:
+                  - img [ref=e27]
+                  - button "routa-js" [ref=e28]
+                  - button "Uncommitted changes" [ref=e29]:
+                    - img [ref=e30]
+                    - generic "Uncommitted changes" [ref=e31]
+                    - img [ref=e32]
+                  - button "Clear repo selection" [ref=e33]:
+                    - img [ref=e34]
+                - button "Claude Code SDK" [ref=e35]:
+                  - generic [ref=e36]: Claude Code SDK
+                  - img [ref=e37]
+                - generic [ref=e38]: "@ file·# agent·/ skill"
+                - button "Send" [ref=e39]:
+                  - img [ref=e40]
+            - generic [ref=e41]:
+              - group "Agent mode" [ref=e42]:
+                - button "Multi-Agent" [ref=e43]:
+                  - img [ref=e44]
+                  - text: Multi-Agent
+                - button "Direct" [ref=e45]:
+                  - img [ref=e46]
+                  - text: Direct
+              - button "Custom" [ref=e47]:
+                - img [ref=e48]
+                - text: Custom
+                - img [ref=e49]
+              - button "Default Workspace" [ref=e50]:
+                - img [ref=e51]
+                - generic [ref=e52]: Default Workspace
+                - img [ref=e53]
+              - generic [ref=e54]: ⏎ send
+          - generic [ref=e55]:
+            - img [ref=e56]
+            - generic [ref=e57]: 适合复杂任务 · 自动拆解需求并分配给多个专属 Agent
+          - generic [ref=e58]:
+            - 'button "/issue-enricher Transforms rough requirements into well-structured GitHub issues. Use when the user provides a vague idea, feature request, or problem description and wants to create a GitHub issue. Analyzes codebase, explores solution approaches, researches relevant libraries, and generates actionable issues using `gh` CLI." [ref=e59]':
+              - generic [ref=e60]: /issue-enricher
+              - generic [ref=e61]: "Transforms rough requirements into well-structured GitHub issues. Use when the user provides a vague idea, feature request, or problem description and wants to create a GitHub issue. Analyzes codebase, explores solution approaches, researches relevant libraries, and generates actionable issues using `gh` CLI."
+            - button "/issue-garbage-collector Two-phase cleanup of duplicate and outdated issue files in docs/issues/. Phase 1 uses Python script for fast pattern matching. Phase 2 uses claude -p for semantic analysis on suspects only." [ref=e62]:
+              - generic [ref=e63]: /issue-garbage-collector
+              - generic [ref=e64]: Two-phase cleanup of duplicate and outdated issue files in docs/issues/. Phase 1 uses Python script for fast pattern matching. Phase 2 uses claude -p for semantic analysis on suspects only.
+            - button "/playwright-cli Automates browser interactions for web testing, form filling, screenshots, and data extraction. Use when the user needs to navigate websites, interact with web pages, fill forms, take screenshots, test web applications, or extract information from web pages." [ref=e65]:
+              - generic [ref=e66]: /playwright-cli
+              - generic [ref=e67]: Automates browser interactions for web testing, form filling, screenshots, and data extraction. Use when the user needs to navigate websites, interact with web pages, fill forms, take screenshots, test web applications, or extract information from web pages.
+            - button "/pr-verify Comprehensive PR verification skill. Analyzes PR body requirements, reviews comments, checks CI status, and performs E2E testing. Use when a PR is ready for final verification before merge." [ref=e68]:
+              - generic [ref=e69]: /pr-verify
+              - generic [ref=e70]: Comprehensive PR verification skill. Analyzes PR body requirements, reviews comments, checks CI status, and performs E2E testing. Use when a PR is ready for final verification before merge.
+            - button "/agent-browser Browser automation CLI for AI agents. Use when the user needs to interact with websites, including navigating pages, filling forms, clicking buttons, taking screenshots, extracting data, testing web apps, or automating any browser task. Triggers include requests to \"open a website\", \"fill out a form\", \"click a button\", \"take a screenshot\", \"scrape data from a page\", \"test this web app\", \"login to a site\", \"automate browser actions\", or any task requiring programmatic web interaction." [ref=e71]:
+              - generic [ref=e72]: /agent-browser
+              - generic [ref=e73]: Browser automation CLI for AI agents. Use when the user needs to interact with websites, including navigating pages, filling forms, clicking buttons, taking screenshots, extracting data, testing web apps, or automating any browser task. Triggers include requests to "open a website", "fill out a form", "click a button", "take a screenshot", "scrape data from a page", "test this web app", "login to a site", "automate browser actions", or any task requiring programmatic web interaction.
+            - button "/dogfood Systematically explore and test a web application to find bugs, UX issues, and other problems. Use when asked to \"dogfood\", \"QA\", \"exploratory test\", \"find issues\", \"bug hunt\", \"test this app/site/platform\", or review the quality of a web application. Produces a structured report with full reproduction evidence -- step-by-step screenshots, repro videos, and detailed repro steps for every issue -- so findings can be handed directly to the responsible teams." [ref=e74]:
+              - generic [ref=e75]: /dogfood
+              - generic [ref=e76]: Systematically explore and test a web application to find bugs, UX issues, and other problems. Use when asked to "dogfood", "QA", "exploratory test", "find issues", "bug hunt", "test this app/site/platform", or review the quality of a web application. Produces a structured report with full reproduction evidence -- step-by-step screenshots, repro videos, and detailed repro steps for every issue -- so findings can be handed directly to the responsible teams.
+            - button "/electron Automate Electron desktop apps (VS Code, Slack, Discord, Figma, Notion, Spotify, etc.) using agent-browser via Chrome DevTools Protocol. Use when the user needs to interact with an Electron app, automate a desktop app, connect to a running app, control a native app, or test an Electron application. Triggers include \"automate Slack app\", \"control VS Code\", \"interact with Discord app\", \"test this Electron app\", \"connect to desktop app\", or any task requiring automation of a native Electron application." [ref=e77]:
+              - generic [ref=e78]: /electron
+              - generic [ref=e79]: Automate Electron desktop apps (VS Code, Slack, Discord, Figma, Notion, Spotify, etc.) using agent-browser via Chrome DevTools Protocol. Use when the user needs to interact with an Electron app, automate a desktop app, connect to a running app, control a native app, or test an Electron application. Triggers include "automate Slack app", "control VS Code", "interact with Discord app", "test this Electron app", "connect to desktop app", or any task requiring automation of a native Electron application.
+            - button "/frontend-design Create distinctive, production-grade frontend interfaces with high design quality. Use this skill when the user asks to build web components, pages, artifacts, posters, or applications (examples include websites, landing pages, dashboards, React components, HTML/CSS layouts, or when styling/beautifying any web UI). Generates creative, polished code and UI design that avoids generic AI aesthetics." [ref=e80]:
+              - generic [ref=e81]: /frontend-design
+              - generic [ref=e82]: Create distinctive, production-grade frontend interfaces with high design quality. Use this skill when the user asks to build web components, pages, artifacts, posters, or applications (examples include websites, landing pages, dashboards, React components, HTML/CSS layouts, or when styling/beautifying any web UI). Generates creative, polished code and UI design that avoids generic AI aesthetics.
+            - button "/slack Interact with Slack workspaces using browser automation. Use when the user needs to check unread channels, navigate Slack, send messages, extract data, find information, search conversations, or automate any Slack task. Triggers include \"check my Slack\", \"what channels have unreads\", \"send a message to\", \"search Slack for\", \"extract from Slack\", \"find who said\", or any task requiring programmatic Slack interaction." [ref=e83]:
+              - generic [ref=e84]: /slack
+              - generic [ref=e85]: Interact with Slack workspaces using browser automation. Use when the user needs to check unread channels, navigate Slack, send messages, extract data, find information, search conversations, or automate any Slack task. Triggers include "check my Slack", "what channels have unreads", "send a message to", "search Slack for", "extract from Slack", "find who said", or any task requiring programmatic Slack interaction.
+            - button "/find-skills Helps users discover and install agent skills when they ask questions like \"how do I do X\", \"find a skill for X\", \"is there a skill that can...\", or express interest in extending capabilities. This skill should be used when the user is looking for functionality that might exist as an installable skill." [ref=e86]:
+              - generic [ref=e87]: /find-skills
+              - generic [ref=e88]: Helps users discover and install agent skills when they ask questions like "how do I do X", "find a skill for X", "is there a skill that can...", or express interest in extending capabilities. This skill should be used when the user is looking for functionality that might exist as an installable skill.
+            - button "/skill-creator Guide for creating effective skills. This skill should be used when users want to create a new skill (or update an existing skill) that extends Codex's capabilities with specialized knowledge, workflows, or tool integrations." [ref=e89]:
+              - generic [ref=e90]: /skill-creator
+              - generic [ref=e91]: Guide for creating effective skills. This skill should be used when users want to create a new skill (or update an existing skill) that extends Codex's capabilities with specialized knowledge, workflows, or tool integrations.
+            - button "/skill-installer Install Codex skills into $CODEX_HOME/skills from a curated list or a GitHub repo path. Use when a user asks to list installable skills, install a curated skill, or install a skill from another repo (including private repos)." [ref=e92]:
+              - generic [ref=e93]: /skill-installer
+              - generic [ref=e94]: Install Codex skills into $CODEX_HOME/skills from a curated list or a GitHub repo path. Use when a user asks to list installable skills, install a curated skill, or install a skill from another repo (including private repos).
+            - button "/cloudflare-deploy Deploy applications and infrastructure to Cloudflare using Workers, Pages, and related platform services. Use when the user asks to deploy, host, publish, or set up a project on Cloudflare." [ref=e95]:
+              - generic [ref=e96]: /cloudflare-deploy
+              - generic [ref=e97]: Deploy applications and infrastructure to Cloudflare using Workers, Pages, and related platform services. Use when the user asks to deploy, host, publish, or set up a project on Cloudflare.
+            - button "/feedback-mastery Navigate difficult conversations and deliver constructive feedback using structured frameworks. Covers the Preparation-Delivery-Follow-up model and Situation-Behavior-Impact (SBI) feedback technique. Use when preparing for difficult conversations, giving feedback, or managing conflicts." [ref=e98]:
+              - generic [ref=e99]: /feedback-mastery
+              - generic [ref=e100]: Navigate difficult conversations and deliver constructive feedback using structured frameworks. Covers the Preparation-Delivery-Follow-up model and Situation-Behavior-Impact (SBI) feedback technique. Use when preparing for difficult conversations, giving feedback, or managing conflicts.
+            - button "/mysql-best-practices MySQL development best practices for schema design, query optimization, and database administration" [ref=e101]:
+              - generic [ref=e102]: /mysql-best-practices
+              - generic [ref=e103]: MySQL development best practices for schema design, query optimization, and database administration
+        - generic [ref=e104]:
+          - generic [ref=e105]:
+            - generic [ref=e106]:
+              - heading "Recent Workspaces" [level=2] [ref=e107]
+              - button "View all" [ref=e108]:
+                - text: View all
+                - img [ref=e109]
+            - generic [ref=e110]:
+              - button "Default Workspace Add login page · claude 1h ago Add login page · claude 1h ago Add login page · claude 1h ago" [ref=e111]:
+                - generic [ref=e112]:
+                  - generic [ref=e113]: Default Workspace
+                  - generic [ref=e114]:
+                    - link "Open Kanban board" [ref=e115] [cursor=pointer]:
+                      - /url: /workspace/default/kanban
+                      - img [ref=e116]
+                    - link "Open workspace" [ref=e117] [cursor=pointer]:
+                      - /url: /workspace/default
+                      - img [ref=e118]
+                - generic [ref=e119]:
+                  - generic [ref=e120] [cursor=pointer]:
+                    - img [ref=e121]
+                    - generic [ref=e122]: Add login page · claude
+                    - generic [ref=e123]: 1h ago
+                  - generic [ref=e124] [cursor=pointer]:
+                    - img [ref=e125]
+                    - generic [ref=e126]: Add login page · claude
+                    - generic [ref=e127]: 1h ago
+                  - generic [ref=e128] [cursor=pointer]:
+                    - img [ref=e129]
+                    - generic [ref=e130]: Add login page · claude
+                    - generic [ref=e131]: 1h ago
+              - button "Kanban Repo Workspace 1773144715785 Kanban Repo Flow 1773144715785 · opencode 2h ago" [ref=e132]:
+                - generic [ref=e133]:
+                  - generic [ref=e134]: Kanban Repo Workspace 1773144715785
+                  - generic [ref=e135]:
+                    - link "Open Kanban board" [ref=e136] [cursor=pointer]:
+                      - /url: /workspace/84d5654f-24c9-4812-9671-b8092117a518/kanban
+                      - img [ref=e137]
+                    - link "Open workspace" [ref=e138] [cursor=pointer]:
+                      - /url: /workspace/84d5654f-24c9-4812-9671-b8092117a518
+                      - img [ref=e139]
+                - generic [ref=e140] [cursor=pointer]:
+                  - img [ref=e141]
+                  - generic [ref=e142]: Kanban Repo Flow 1773144715785 · opencode
+                  - generic [ref=e143]: 2h ago
+              - button "Kanban Repo Workspace 1773144503872 No sessions yet" [ref=e144]:
+                - generic [ref=e145]:
+                  - generic [ref=e146]: Kanban Repo Workspace 1773144503872
+                  - generic [ref=e147]:
+                    - link "Open Kanban board" [ref=e148] [cursor=pointer]:
+                      - /url: /workspace/15ad0ce4-185a-4560-8022-7515e9fa299a/kanban
+                      - img [ref=e149]
+                    - link "Open workspace" [ref=e150] [cursor=pointer]:
+                      - /url: /workspace/15ad0ce4-185a-4560-8022-7515e9fa299a
+                      - img [ref=e151]
+                - text: No sessions yet
+              - button "Kanban Repo Workspace 1773144481618 No sessions yet" [ref=e152]:
+                - generic [ref=e153]:
+                  - generic [ref=e154]: Kanban Repo Workspace 1773144481618
+                  - generic [ref=e155]:
+                    - link "Open Kanban board" [ref=e156] [cursor=pointer]:
+                      - /url: /workspace/52134625-7bd6-425f-9574-c845a2d6e71b/kanban
+                      - img [ref=e157]
+                    - link "Open workspace" [ref=e158] [cursor=pointer]:
+                      - /url: /workspace/52134625-7bd6-425f-9574-c845a2d6e71b
+                      - img [ref=e159]
+                - text: No sessions yet
+              - button "Kanban Repo Workspace 1773144457359 No sessions yet" [ref=e160]:
+                - generic [ref=e161]:
+                  - generic [ref=e162]: Kanban Repo Workspace 1773144457359
+                  - generic [ref=e163]:
+                    - link "Open Kanban board" [ref=e164] [cursor=pointer]:
+                      - /url: /workspace/a61e5908-a8cb-43d3-b34d-464468faaa39/kanban
+                      - img [ref=e165]
+                    - link "Open workspace" [ref=e166] [cursor=pointer]:
+                      - /url: /workspace/a61e5908-a8cb-43d3-b34d-464468faaa39
+                      - img [ref=e167]
+                - text: No sessions yet
+              - button "Kanban Repo Workspace 1773144251277 No sessions yet" [ref=e168]:
+                - generic [ref=e169]:
+                  - generic [ref=e170]: Kanban Repo Workspace 1773144251277
+                  - generic [ref=e171]:
+                    - link "Open Kanban board" [ref=e172] [cursor=pointer]:
+                      - /url: /workspace/cb388190-77af-4cb7-bddd-81d8c445426a/kanban
+                      - img [ref=e173]
+                    - link "Open workspace" [ref=e174] [cursor=pointer]:
+                      - /url: /workspace/cb388190-77af-4cb7-bddd-81d8c445426a
+                      - img [ref=e175]
+                - text: No sessions yet
+              - button "Schema Test Workspace No sessions yet" [ref=e176]:
+                - generic [ref=e177]:
+                  - generic [ref=e178]: Schema Test Workspace
+                  - generic [ref=e179]:
+                    - link "Open Kanban board" [ref=e180] [cursor=pointer]:
+                      - /url: /workspace/18f9edb3-2e31-491d-a698-ee0940cf2d7b/kanban
+                      - img [ref=e181]
+                    - link "Open workspace" [ref=e182] [cursor=pointer]:
+                      - /url: /workspace/18f9edb3-2e31-491d-a698-ee0940cf2d7b
+                      - img [ref=e183]
+                - text: No sessions yet
+              - button "Schema Test Workspace No sessions yet" [ref=e184]:
+                - generic [ref=e185]:
+                  - generic [ref=e186]: Schema Test Workspace
+                  - generic [ref=e187]:
+                    - link "Open Kanban board" [ref=e188] [cursor=pointer]:
+                      - /url: /workspace/3c8af588-c2c6-4376-aba4-b095acfb022c/kanban
+                      - img [ref=e189]
+                    - link "Open workspace" [ref=e190] [cursor=pointer]:
+                      - /url: /workspace/3c8af588-c2c6-4376-aba4-b095acfb022c
+                      - img [ref=e191]
+                - text: No sessions yet
+              - button "New Workspace No sessions yet" [ref=e192]:
+                - generic [ref=e193]:
+                  - generic [ref=e194]: New Workspace
+                  - generic [ref=e195]:
+                    - link "Open Kanban board" [ref=e196] [cursor=pointer]:
+                      - /url: /workspace/08a37727-8055-4be2-9ffa-bd59732538ce/kanban
+                      - img [ref=e197]
+                    - link "Open workspace" [ref=e198] [cursor=pointer]:
+                      - /url: /workspace/08a37727-8055-4be2-9ffa-bd59732538ce
+                      - img [ref=e199]
+                - text: No sessions yet
+              - button "New workspace" [ref=e200]:
+                - generic [ref=e201]:
+                  - img [ref=e202]
+                  - generic [ref=e203]: New workspace
+          - generic [ref=e204]:
+            - generic [ref=e205]:
+              - generic [ref=e206]:
+                - generic [ref=e207]:
+                  - img [ref=e208]
+                  - generic [ref=e209]: Current Todos
+                - generic [ref=e210]: A quick slice of the active board.
+              - link "Open Kanban" [ref=e211] [cursor=pointer]:
+                - /url: /workspace/default/kanban
+                - img [ref=e212]
+                - text: Open Kanban
+            - generic [ref=e213]:
+              - link "Test issue with repo selection BACKLOG · unassigned medium" [ref=e214] [cursor=pointer]:
+                - /url: /workspace/default/kanban
+                - generic [ref=e215]:
+                  - generic [ref=e216]:
+                    - generic [ref=e217]: Test issue with repo selection
+                    - generic [ref=e218]:
+                      - generic [ref=e219]: BACKLOG
+                      - generic [ref=e220]: ·
+                      - generic [ref=e221]: unassigned
+                  - generic [ref=e222]: medium
+              - link "Test task BACKLOG · unassigned medium" [ref=e223] [cursor=pointer]:
+                - /url: /workspace/default/kanban
+                - generic [ref=e224]:
+                  - generic [ref=e225]:
+                    - generic [ref=e226]: Test task
+                    - generic [ref=e227]:
+                      - generic [ref=e228]: BACKLOG
+                      - generic [ref=e229]: ·
+                      - generic [ref=e230]: unassigned
+                  - generic [ref=e231]: medium
+              - link "Test GET API Endpoints BACKLOG · unassigned medium" [ref=e232] [cursor=pointer]:
+                - /url: /workspace/default/kanban
+                - generic [ref=e233]:
+                  - generic [ref=e234]:
+                    - generic [ref=e235]: Test GET API Endpoints
+                    - generic [ref=e236]:
+                      - generic [ref=e237]: BACKLOG
+                      - generic [ref=e238]: ·
+                      - generic [ref=e239]: unassigned
+                  - generic [ref=e240]: medium
+              - link "Verify session popup works BACKLOG · unassigned medium" [ref=e241] [cursor=pointer]:
+                - /url: /workspace/default/kanban
+                - generic [ref=e242]:
+                  - generic [ref=e243]:
+                    - generic [ref=e244]: Verify session popup works
+                    - generic [ref=e245]:
+                      - generic [ref=e246]: BACKLOG
+                      - generic [ref=e247]: ·
+                      - generic [ref=e248]: unassigned
+                  - generic [ref=e249]: medium
+  - button "Open Next.js Dev Tools" [ref=e250] [cursor=pointer]:
+    - img [ref=e251]
+  - alert [ref=e252]

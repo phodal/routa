@@ -1,0 +1,1412 @@
+# page-id: kanban
+# route: /workspace/default/kanban
+# source-page: src/app/workspace/[workspaceId]/kanban/page.tsx
+# url: http://127.0.0.1:3000/workspace/default/kanban
+# title: Routa - Multi-Agent Coordinator
+# generated-at: 2026-03-10T15:04:44.459Z
+# generator: playwright-cli
+# playwright-cli-version: 1.59.0-alpha-1771104257000
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - banner [ref=e3]:
+      - link "Routa Routa" [ref=e4] [cursor=pointer]:
+        - /url: /
+        - img "Routa" [ref=e5]
+        - generic [ref=e6]: Routa
+      - img [ref=e7]
+      - generic [ref=e8]:
+        - generic [ref=e9]: Workspace
+        - button "Switch" [ref=e10]:
+          - img [ref=e11]
+          - text: Switch
+      - generic [ref=e12]:
+        - 'generic "Command failed: docker info --format ''{{json .}}'' Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?" [ref=e13]':
+          - generic [ref=e14]: Docker unavailable
+        - button "Refresh" [ref=e15]
+      - generic [ref=e16]:
+        - generic [ref=e17]:
+          - text: MCP
+          - generic [ref=e18]: /api/mcp
+        - generic [ref=e19]:
+          - text: ACP
+          - generic [ref=e20]: /api/acp
+      - link "Dashboard" [ref=e21] [cursor=pointer]:
+        - /url: /workspace/default
+        - img [ref=e22]
+        - text: Dashboard
+    - main [ref=e23]:
+      - generic [ref=e24]:
+        - generic [ref=e25]:
+          - generic [ref=e26]:
+            - generic [ref=e27]:
+              - generic [ref=e28]: Repos
+              - button "routa-js default" [ref=e29]:
+                - generic [ref=e30]: routa-js
+                - generic [ref=e31]: default
+            - generic [ref=e32]:
+              - textbox "Ask agent to create issues..." [ref=e33]
+              - button "Send" [disabled] [ref=e34]
+          - generic [ref=e35]:
+            - button "Settings" [ref=e36]
+            - button "Manual" [ref=e37]
+        - generic [ref=e38]:
+          - generic [ref=e39]:
+            - generic [ref=e40]:
+              - generic [ref=e41]: Backlog
+              - generic [ref=e42]: 22 cards
+            - generic [ref=e43]:
+              - button "Open Implement Master Agent Dynamic Provider Routing" [ref=e44]:
+                - generic [ref=e45]:
+                  - generic [ref=e46]:
+                    - generic [ref=e47]: Implement Master Agent Dynamic Provider Routing
+                    - generic [ref=e48]: Local issue
+                  - generic [ref=e49]: medium
+                - paragraph [ref=e50]: "Integrate capability-based provider selection into agent creation flow. **Scope**: `src/core/acp/agent-instance-factory.ts`, coordinator logic **Definition of Done**: - Coordinator uses capability matching when creating agents - Selection logged in session metadata **Verification**: Manual test with multiple providers"
+                - generic [ref=e51]: routa-js
+                - generic [ref=e52]:
+                  - generic [ref=e53]:
+                    - generic [ref=e54]: Provider
+                    - combobox [ref=e55]:
+                      - option "Select..."
+                      - option "Auggie"
+                      - option "Claude Code" [selected]
+                      - option "Claude Code SDK"
+                      - option "Codex"
+                      - option "Gemini"
+                      - option "GitHub Copilot"
+                      - option "Kimi"
+                      - option "Kiro"
+                      - option "OpenCode"
+                      - option "OpenCode SDK"
+                      - option "Qoder"
+                      - option "Auggie CLI (Registry)"
+                      - option "Autohand Code"
+                      - option "Claude Agent"
+                      - option "Cline"
+                      - option "Codebuddy Code"
+                      - option "Codex CLI"
+                      - option "crow-cli"
+                      - option "DimCode"
+                      - option "Factory Droid"
+                      - option "fast-agent"
+                      - option "Gemini CLI (Registry)"
+                      - option "GitHub Copilot"
+                      - option "Junie"
+                      - option "Kilo"
+                      - option "Minion Code"
+                      - option "Nova"
+                      - option "pi ACP"
+                      - option "Qwen Code"
+                  - generic [ref=e56]:
+                    - generic [ref=e57]: Role
+                    - combobox [ref=e58]:
+                      - option "CRAFTER"
+                      - option "ROUTA"
+                      - option "GATE"
+                      - option "DEVELOPER" [selected]
+                  - generic [ref=e59]:
+                    - generic [ref=e60]: Specialist
+                    - combobox [ref=e61]:
+                      - option "None" [selected]
+                      - option "Claude Code"
+                      - option "Implementor"
+                      - option "Desk Check Agent"
+                      - option "Developer"
+                      - option "Verifier"
+                      - option "Issue Enricher"
+                      - option "Kanban Agent"
+                      - option "PR Analyzer"
+                      - option "PR Reviewer"
+                      - option "Coordinator"
+                - generic [ref=e62]:
+                  - generic [ref=e63]: Not synced
+                  - generic [ref=e64]:
+                    - button "Run" [ref=e65]
+                    - button "View detail" [ref=e66]
+              - button "Open Update Task Panel UI with Provider Capabilities" [ref=e67]:
+                - generic [ref=e68]:
+                  - generic [ref=e69]:
+                    - generic [ref=e70]: Update Task Panel UI with Provider Capabilities
+                    - generic [ref=e71]: Local issue
+                  - generic [ref=e72]: medium
+                - paragraph [ref=e73]: "Enhance Task Panel to show provider capabilities and enable auto-selection. **Scope**: `src/client/components/task-panel.tsx` **Definition of Done**: - Provider list shows capability badges - Auto-select option available **Verification**: UI rendering test"
+                - generic [ref=e74]: routa-js
+                - generic [ref=e75]:
+                  - generic [ref=e76]: Provider
+                  - combobox [ref=e77]:
+                    - option "Select..." [selected]
+                    - option "Auggie"
+                    - option "Claude Code"
+                    - option "Claude Code SDK"
+                    - option "Codex"
+                    - option "Gemini"
+                    - option "GitHub Copilot"
+                    - option "Kimi"
+                    - option "Kiro"
+                    - option "OpenCode"
+                    - option "OpenCode SDK"
+                    - option "Qoder"
+                    - option "Auggie CLI (Registry)"
+                    - option "Autohand Code"
+                    - option "Claude Agent"
+                    - option "Cline"
+                    - option "Codebuddy Code"
+                    - option "Codex CLI"
+                    - option "crow-cli"
+                    - option "DimCode"
+                    - option "Factory Droid"
+                    - option "fast-agent"
+                    - option "Gemini CLI (Registry)"
+                    - option "GitHub Copilot"
+                    - option "Junie"
+                    - option "Kilo"
+                    - option "Minion Code"
+                    - option "Nova"
+                    - option "pi ACP"
+                    - option "Qwen Code"
+                - generic [ref=e78]:
+                  - generic [ref=e79]: Not synced
+                  - button "View detail" [ref=e80]
+              - button "Open Add Workspace Agent Capability Awareness" [ref=e81]:
+                - generic [ref=e82]:
+                  - generic [ref=e83]:
+                    - generic [ref=e84]: Add Workspace Agent Capability Awareness
+                    - generic [ref=e85]: Local issue
+                  - generic [ref=e86]: medium
+                - paragraph [ref=e87]: "Extend WorkspaceAgentConfig with requiredCapabilities and implement auto-selection. **Scope**: `src/core/acp/workspace-agent/workspace-agent-config.ts` **Definition of Done**: - Config supports requiredCapabilities - Auto-selection based on capabilities **Verification**: Unit tests"
+                - generic [ref=e88]: routa-js
+                - generic [ref=e89]:
+                  - generic [ref=e90]: Provider
+                  - combobox [ref=e91]:
+                    - option "Select..." [selected]
+                    - option "Auggie"
+                    - option "Claude Code"
+                    - option "Claude Code SDK"
+                    - option "Codex"
+                    - option "Gemini"
+                    - option "GitHub Copilot"
+                    - option "Kimi"
+                    - option "Kiro"
+                    - option "OpenCode"
+                    - option "OpenCode SDK"
+                    - option "Qoder"
+                    - option "Auggie CLI (Registry)"
+                    - option "Autohand Code"
+                    - option "Claude Agent"
+                    - option "Cline"
+                    - option "Codebuddy Code"
+                    - option "Codex CLI"
+                    - option "crow-cli"
+                    - option "DimCode"
+                    - option "Factory Droid"
+                    - option "fast-agent"
+                    - option "Gemini CLI (Registry)"
+                    - option "GitHub Copilot"
+                    - option "Junie"
+                    - option "Kilo"
+                    - option "Minion Code"
+                    - option "Nova"
+                    - option "pi ACP"
+                    - option "Qwen Code"
+                - generic [ref=e92]:
+                  - generic [ref=e93]: Not synced
+                  - button "View detail" [ref=e94]
+              - button "Open Add Capability Metadata to AcpAgentPreset" [ref=e95]:
+                - generic [ref=e96]:
+                  - generic [ref=e97]:
+                    - generic [ref=e98]: Add Capability Metadata to AcpAgentPreset
+                    - generic [ref=e99]: Local issue
+                  - generic [ref=e100]: medium
+                - paragraph [ref=e101]: "Extend AcpAgentPreset interface with capabilities, supportedRoles, and preferredTier fields. Update existing static presets with metadata. **Scope**: `src/core/acp/acp-presets.ts` **Definition of Done**: - AcpAgentPreset interface has new fields - All static presets have capability metadata **Verification**: TypeScript compilation"
+                - generic [ref=e102]: routa-js
+                - generic [ref=e103]:
+                  - generic [ref=e104]: Provider
+                  - combobox [ref=e105]:
+                    - option "Select..." [selected]
+                    - option "Auggie"
+                    - option "Claude Code"
+                    - option "Claude Code SDK"
+                    - option "Codex"
+                    - option "Gemini"
+                    - option "GitHub Copilot"
+                    - option "Kimi"
+                    - option "Kiro"
+                    - option "OpenCode"
+                    - option "OpenCode SDK"
+                    - option "Qoder"
+                    - option "Auggie CLI (Registry)"
+                    - option "Autohand Code"
+                    - option "Claude Agent"
+                    - option "Cline"
+                    - option "Codebuddy Code"
+                    - option "Codex CLI"
+                    - option "crow-cli"
+                    - option "DimCode"
+                    - option "Factory Droid"
+                    - option "fast-agent"
+                    - option "Gemini CLI (Registry)"
+                    - option "GitHub Copilot"
+                    - option "Junie"
+                    - option "Kilo"
+                    - option "Minion Code"
+                    - option "Nova"
+                    - option "pi ACP"
+                    - option "Qwen Code"
+                - generic [ref=e106]:
+                  - generic [ref=e107]: Not synced
+                  - button "View detail" [ref=e108]
+              - button "Open Add Capability Metadata to AcpAgentPreset" [ref=e109]:
+                - generic [ref=e110]:
+                  - generic [ref=e111]:
+                    - generic [ref=e112]: Add Capability Metadata to AcpAgentPreset
+                    - generic [ref=e113]: Local issue
+                  - generic [ref=e114]: medium
+                - paragraph [ref=e115]: "Extend AcpAgentPreset interface with capabilities, supportedRoles, and preferredTier fields. Update existing static presets with metadata. **Scope**: `src/core/acp/acp-presets.ts` **Definition of Done**: - AcpAgentPreset interface has new fields - All static presets have capability metadata **Verification**: TypeScript compilation"
+                - generic [ref=e116]: routa-js
+                - generic [ref=e117]:
+                  - generic [ref=e118]: Provider
+                  - combobox [ref=e119]:
+                    - option "Select..." [selected]
+                    - option "Auggie"
+                    - option "Claude Code"
+                    - option "Claude Code SDK"
+                    - option "Codex"
+                    - option "Gemini"
+                    - option "GitHub Copilot"
+                    - option "Kimi"
+                    - option "Kiro"
+                    - option "OpenCode"
+                    - option "OpenCode SDK"
+                    - option "Qoder"
+                    - option "Auggie CLI (Registry)"
+                    - option "Autohand Code"
+                    - option "Claude Agent"
+                    - option "Cline"
+                    - option "Codebuddy Code"
+                    - option "Codex CLI"
+                    - option "crow-cli"
+                    - option "DimCode"
+                    - option "Factory Droid"
+                    - option "fast-agent"
+                    - option "Gemini CLI (Registry)"
+                    - option "GitHub Copilot"
+                    - option "Junie"
+                    - option "Kilo"
+                    - option "Minion Code"
+                    - option "Nova"
+                    - option "pi ACP"
+                    - option "Qwen Code"
+                - generic [ref=e120]:
+                  - generic [ref=e121]: Not synced
+                  - button "View detail" [ref=e122]
+              - button "Open Add Capability Metadata to AcpAgentPreset" [ref=e123]:
+                - generic [ref=e124]:
+                  - generic [ref=e125]:
+                    - generic [ref=e126]: Add Capability Metadata to AcpAgentPreset
+                    - generic [ref=e127]: Local issue
+                  - generic [ref=e128]: medium
+                - paragraph [ref=e129]: "Extend AcpAgentPreset interface with capabilities, supportedRoles, and preferredTier fields. Update existing static presets with metadata. **Scope**: `src/core/acp/acp-presets.ts` **Definition of Done**: - AcpAgentPreset interface has new fields - All static presets have capability metadata **Verification**: TypeScript compilation"
+                - generic [ref=e130]: routa-js
+                - generic [ref=e131]:
+                  - generic [ref=e132]: Provider
+                  - combobox [ref=e133]:
+                    - option "Select..." [selected]
+                    - option "Auggie"
+                    - option "Claude Code"
+                    - option "Claude Code SDK"
+                    - option "Codex"
+                    - option "Gemini"
+                    - option "GitHub Copilot"
+                    - option "Kimi"
+                    - option "Kiro"
+                    - option "OpenCode"
+                    - option "OpenCode SDK"
+                    - option "Qoder"
+                    - option "Auggie CLI (Registry)"
+                    - option "Autohand Code"
+                    - option "Claude Agent"
+                    - option "Cline"
+                    - option "Codebuddy Code"
+                    - option "Codex CLI"
+                    - option "crow-cli"
+                    - option "DimCode"
+                    - option "Factory Droid"
+                    - option "fast-agent"
+                    - option "Gemini CLI (Registry)"
+                    - option "GitHub Copilot"
+                    - option "Junie"
+                    - option "Kilo"
+                    - option "Minion Code"
+                    - option "Nova"
+                    - option "pi ACP"
+                    - option "Qwen Code"
+                - generic [ref=e134]:
+                  - generic [ref=e135]: Not synced
+                  - button "View detail" [ref=e136]
+              - button "Open Playwright Quick Task 1772781167792" [ref=e137]:
+                - generic [ref=e138]:
+                  - generic [ref=e139]:
+                    - generic [ref=e140]: Playwright Quick Task 1772781167792
+                    - generic [ref=e141]: Local issue
+                  - generic [ref=e142]: medium
+                - paragraph [ref=e143]: Run me from Quick Access to verify the automatic MCP execution path.
+                - generic [ref=e144]: routa-js
+                - generic [ref=e145]:
+                  - generic [ref=e146]: Provider
+                  - combobox [ref=e147]:
+                    - option "Select..." [selected]
+                    - option "Auggie"
+                    - option "Claude Code"
+                    - option "Claude Code SDK"
+                    - option "Codex"
+                    - option "Gemini"
+                    - option "GitHub Copilot"
+                    - option "Kimi"
+                    - option "Kiro"
+                    - option "OpenCode"
+                    - option "OpenCode SDK"
+                    - option "Qoder"
+                    - option "Auggie CLI (Registry)"
+                    - option "Autohand Code"
+                    - option "Claude Agent"
+                    - option "Cline"
+                    - option "Codebuddy Code"
+                    - option "Codex CLI"
+                    - option "crow-cli"
+                    - option "DimCode"
+                    - option "Factory Droid"
+                    - option "fast-agent"
+                    - option "Gemini CLI (Registry)"
+                    - option "GitHub Copilot"
+                    - option "Junie"
+                    - option "Kilo"
+                    - option "Minion Code"
+                    - option "Nova"
+                    - option "pi ACP"
+                    - option "Qwen Code"
+                - generic [ref=e148]:
+                  - generic [ref=e149]: Not synced
+                  - button "View detail" [ref=e150]
+              - button "Open Implement Provider Capability Query APIs" [ref=e151]:
+                - generic [ref=e152]:
+                  - generic [ref=e153]:
+                    - generic [ref=e154]: Implement Provider Capability Query APIs
+                    - generic [ref=e155]: Local issue
+                  - generic [ref=e156]: medium
+                - paragraph [ref=e157]: "Add getProviderCapabilities, findProvidersByCapability, and findBestProviderForRole functions. **Scope**: `src/core/acp/provider-registry.ts` **Definition of Done**: - Three new functions exported and working - Unit tests for capability matching logic **Verification**: Run existing tests + add unit tests"
+                - generic [ref=e158]: routa-js
+                - generic [ref=e159]:
+                  - generic [ref=e160]: Provider
+                  - combobox [ref=e161]:
+                    - option "Select..." [selected]
+                    - option "Auggie"
+                    - option "Claude Code"
+                    - option "Claude Code SDK"
+                    - option "Codex"
+                    - option "Gemini"
+                    - option "GitHub Copilot"
+                    - option "Kimi"
+                    - option "Kiro"
+                    - option "OpenCode"
+                    - option "OpenCode SDK"
+                    - option "Qoder"
+                    - option "Auggie CLI (Registry)"
+                    - option "Autohand Code"
+                    - option "Claude Agent"
+                    - option "Cline"
+                    - option "Codebuddy Code"
+                    - option "Codex CLI"
+                    - option "crow-cli"
+                    - option "DimCode"
+                    - option "Factory Droid"
+                    - option "fast-agent"
+                    - option "Gemini CLI (Registry)"
+                    - option "GitHub Copilot"
+                    - option "Junie"
+                    - option "Kilo"
+                    - option "Minion Code"
+                    - option "Nova"
+                    - option "pi ACP"
+                    - option "Qwen Code"
+                - generic [ref=e162]:
+                  - generic [ref=e163]: Not synced
+                  - button "View detail" [ref=e164]
+              - button "Open Implement Provider Capability Query APIs" [ref=e165]:
+                - generic [ref=e166]:
+                  - generic [ref=e167]:
+                    - generic [ref=e168]: Implement Provider Capability Query APIs
+                    - generic [ref=e169]: Local issue
+                  - generic [ref=e170]: medium
+                - paragraph [ref=e171]: "Add getProviderCapabilities, findProvidersByCapability, and findBestProviderForRole functions. **Scope**: `src/core/acp/provider-registry.ts` **Definition of Done**: - Three new functions exported and working - Unit tests for capability matching logic **Verification**: Run existing tests + add unit tests"
+                - generic [ref=e172]: routa-js
+                - generic [ref=e173]:
+                  - generic [ref=e174]: Provider
+                  - combobox [ref=e175]:
+                    - option "Select..." [selected]
+                    - option "Auggie"
+                    - option "Claude Code"
+                    - option "Claude Code SDK"
+                    - option "Codex"
+                    - option "Gemini"
+                    - option "GitHub Copilot"
+                    - option "Kimi"
+                    - option "Kiro"
+                    - option "OpenCode"
+                    - option "OpenCode SDK"
+                    - option "Qoder"
+                    - option "Auggie CLI (Registry)"
+                    - option "Autohand Code"
+                    - option "Claude Agent"
+                    - option "Cline"
+                    - option "Codebuddy Code"
+                    - option "Codex CLI"
+                    - option "crow-cli"
+                    - option "DimCode"
+                    - option "Factory Droid"
+                    - option "fast-agent"
+                    - option "Gemini CLI (Registry)"
+                    - option "GitHub Copilot"
+                    - option "Junie"
+                    - option "Kilo"
+                    - option "Minion Code"
+                    - option "Nova"
+                    - option "pi ACP"
+                    - option "Qwen Code"
+                - generic [ref=e176]:
+                  - generic [ref=e177]: Not synced
+                  - button "View detail" [ref=e178]
+              - button "Open Implement Master Agent Dynamic Provider Routing" [ref=e179]:
+                - generic [ref=e180]:
+                  - generic [ref=e181]:
+                    - generic [ref=e182]: Implement Master Agent Dynamic Provider Routing
+                    - generic [ref=e183]: Local issue
+                  - generic [ref=e184]: medium
+                - paragraph [ref=e185]: "Integrate capability-based provider selection into agent creation flow. **Scope**: `src/core/acp/agent-instance-factory.ts`, coordinator logic **Definition of Done**: - Coordinator uses capability matching when creating agents - Selection logged in session metadata **Verification**: Manual test with multiple providers"
+                - generic [ref=e186]: routa-js
+                - generic [ref=e187]:
+                  - generic [ref=e188]: Provider
+                  - combobox [ref=e189]:
+                    - option "Select..." [selected]
+                    - option "Auggie"
+                    - option "Claude Code"
+                    - option "Claude Code SDK"
+                    - option "Codex"
+                    - option "Gemini"
+                    - option "GitHub Copilot"
+                    - option "Kimi"
+                    - option "Kiro"
+                    - option "OpenCode"
+                    - option "OpenCode SDK"
+                    - option "Qoder"
+                    - option "Auggie CLI (Registry)"
+                    - option "Autohand Code"
+                    - option "Claude Agent"
+                    - option "Cline"
+                    - option "Codebuddy Code"
+                    - option "Codex CLI"
+                    - option "crow-cli"
+                    - option "DimCode"
+                    - option "Factory Droid"
+                    - option "fast-agent"
+                    - option "Gemini CLI (Registry)"
+                    - option "GitHub Copilot"
+                    - option "Junie"
+                    - option "Kilo"
+                    - option "Minion Code"
+                    - option "Nova"
+                    - option "pi ACP"
+                    - option "Qwen Code"
+                - generic [ref=e190]:
+                  - generic [ref=e191]: Not synced
+                  - button "View detail" [ref=e192]
+              - button "Open Implement Master Agent Dynamic Provider Routing" [ref=e193]:
+                - generic [ref=e194]:
+                  - generic [ref=e195]:
+                    - generic [ref=e196]: Implement Master Agent Dynamic Provider Routing
+                    - generic [ref=e197]: Local issue
+                  - generic [ref=e198]: medium
+                - paragraph [ref=e199]: "# Task: Implement Master Agent Dynamic Provider Routing Integrate capability-based provider selection into agent creation flow. **Status**: ✅ COMPLETE **Scope**: `src/core/acp/agent-instance-factory.ts`, coordinator logic **Definition of Done**: - ✅ Coordinator uses capability matching when creating agents - ✅ Selection logged in session metadata **Verification**: Manual test with multiple providers --- ## What Changed ### Files Modified: 1. **src/core/orchestration/orchestrator.ts** - Added import for `findBestProviderForRole` from `provider-registry` - Replaced static provider selection with capability-based selection in `delegateTaskWithSpawn()` - Added provider selection logging to console - Extended agent metadata to include provider and providerSelectionMethod - Enhanced TASK_ASSIGNED event with providerSelectionMethod ### Implementation Details: 1. **Capability-based provider selection** (lines 260-293): - Uses `findBestProviderForRole()` to dynamically select providers based on: - Agent role (CRAFTER, GATE, etc.) - Required capabilities (currently `mcp_tool`) - Preferred model tier - Falls back to configured defaults if no match found - Logs selection details for debugging 2. **Session metadata** (lines 303-312): - Agent metadata now includes: - `provider`: The selected provider ID - `providerSelectionMethod`: \"explicit\" or \"capability-based\" - Enables tracking of how providers were selected 3. **Event emission** (lines 424-438): - TASK_ASSIGNED event includes `providerSelectionMethod` - Allows downstream consumers to track provider selection patterns ### Verification: - TypeScript compilation: No new errors - Implementation follows existing patterns in the codebase - Capability query APIs were already implemented in previous tasks ### Next Steps: - Manual testing with multiple providers to verify selection logic - Consider adding role-specific required capabilities (e.g., CRAFTER needs code_generation)"
+                - generic [ref=e200]: routa-js
+                - generic [ref=e201]:
+                  - generic [ref=e202]: Provider
+                  - combobox [ref=e203]:
+                    - option "Select..." [selected]
+                    - option "Auggie"
+                    - option "Claude Code"
+                    - option "Claude Code SDK"
+                    - option "Codex"
+                    - option "Gemini"
+                    - option "GitHub Copilot"
+                    - option "Kimi"
+                    - option "Kiro"
+                    - option "OpenCode"
+                    - option "OpenCode SDK"
+                    - option "Qoder"
+                    - option "Auggie CLI (Registry)"
+                    - option "Autohand Code"
+                    - option "Claude Agent"
+                    - option "Cline"
+                    - option "Codebuddy Code"
+                    - option "Codex CLI"
+                    - option "crow-cli"
+                    - option "DimCode"
+                    - option "Factory Droid"
+                    - option "fast-agent"
+                    - option "Gemini CLI (Registry)"
+                    - option "GitHub Copilot"
+                    - option "Junie"
+                    - option "Kilo"
+                    - option "Minion Code"
+                    - option "Nova"
+                    - option "pi ACP"
+                    - option "Qwen Code"
+                - generic [ref=e204]:
+                  - generic [ref=e205]: Not synced
+                  - button "View detail" [ref=e206]
+              - button "Open Implement Master Agent Dynamic Provider Routing" [ref=e207]:
+                - generic [ref=e208]:
+                  - generic [ref=e209]:
+                    - generic [ref=e210]: Implement Master Agent Dynamic Provider Routing
+                    - generic [ref=e211]: Local issue
+                  - generic [ref=e212]: medium
+                - paragraph [ref=e213]: "# Task: Implement Master Agent Dynamic Provider Routing Integrate capability-based provider selection into agent creation flow. **Status**: ✅ COMPLETE **Scope**: `src/core/acp/agent-instance-factory.ts`, coordinator logic **Definition of Done**: - ✅ Coordinator uses capability matching when creating agents - ✅ Selection logged in session metadata **Verification**: Manual test with multiple providers --- ## What Changed ### Files Modified: 1. **src/core/orchestration/orchestrator.ts** - Added import for `findBestProviderForRole` from `provider-registry` - Replaced static provider selection with capability-based selection in `delegateTaskWithSpawn()` - Added provider selection logging to console - Extended agent metadata to include provider and providerSelectionMethod - Enhanced TASK_ASSIGNED event with providerSelectionMethod ### Implementation Details: 1. **Capability-based provider selection** (lines 260-293): - Uses `findBestProviderForRole()` to dynamically select providers based on: - Agent role (CRAFTER, GATE, etc.) - Required capabilities (currently `mcp_tool`) - Preferred model tier - Falls back to configured defaults if no match found - Logs selection details for debugging 2. **Session metadata** (lines 303-312): - Agent metadata now includes: - `provider`: The selected provider ID - `providerSelectionMethod`: \"explicit\" or \"capability-based\" - Enables tracking of how providers were selected 3. **Event emission** (lines 424-438): - TASK_ASSIGNED event includes `providerSelectionMethod` - Allows downstream consumers to track provider selection patterns ### Verification: - TypeScript compilation: No new errors - Implementation follows existing patterns in the codebase - Capability query APIs were already implemented in previous tasks ### Next Steps: - Manual testing with multiple providers to verify selection logic - Consider adding role-specific required capabilities (e.g., CRAFTER needs code_generation)"
+                - generic [ref=e214]: routa-js
+                - generic [ref=e215]:
+                  - generic [ref=e216]: Provider
+                  - combobox [ref=e217]:
+                    - option "Select..." [selected]
+                    - option "Auggie"
+                    - option "Claude Code"
+                    - option "Claude Code SDK"
+                    - option "Codex"
+                    - option "Gemini"
+                    - option "GitHub Copilot"
+                    - option "Kimi"
+                    - option "Kiro"
+                    - option "OpenCode"
+                    - option "OpenCode SDK"
+                    - option "Qoder"
+                    - option "Auggie CLI (Registry)"
+                    - option "Autohand Code"
+                    - option "Claude Agent"
+                    - option "Cline"
+                    - option "Codebuddy Code"
+                    - option "Codex CLI"
+                    - option "crow-cli"
+                    - option "DimCode"
+                    - option "Factory Droid"
+                    - option "fast-agent"
+                    - option "Gemini CLI (Registry)"
+                    - option "GitHub Copilot"
+                    - option "Junie"
+                    - option "Kilo"
+                    - option "Minion Code"
+                    - option "Nova"
+                    - option "pi ACP"
+                    - option "Qwen Code"
+                - generic [ref=e218]:
+                  - generic [ref=e219]: Not synced
+                  - button "View detail" [ref=e220]
+              - button "Open Implement Master Agent Dynamic Provider Routing" [ref=e221]:
+                - generic [ref=e222]:
+                  - generic [ref=e223]:
+                    - generic [ref=e224]: Implement Master Agent Dynamic Provider Routing
+                    - generic [ref=e225]: Local issue
+                  - generic [ref=e226]: medium
+                - paragraph [ref=e227]: "# Task: Implement Master Agent Dynamic Provider Routing Integrate capability-based provider selection into agent creation flow. **Status**: ✅ COMPLETE **Scope**: `src/core/acp/agent-instance-factory.ts`, coordinator logic **Definition of Done**: - ✅ Coordinator uses capability matching when creating agents - ✅ Selection logged in session metadata **Verification**: Manual test with multiple providers --- ## What Changed ### Files Modified: 1. **src/core/orchestration/orchestrator.ts** - Added import for `findBestProviderForRole` from `provider-registry` - Replaced static provider selection with capability-based selection in `delegateTaskWithSpawn()` - Added provider selection logging to console - Extended agent metadata to include provider and providerSelectionMethod - Enhanced TASK_ASSIGNED event with providerSelectionMethod ### Implementation Details: 1. **Capability-based provider selection** (lines 260-293): - Uses `findBestProviderForRole()` to dynamically select providers based on: - Agent role (CRAFTER, GATE, etc.) - Required capabilities (currently `mcp_tool`) - Preferred model tier - Falls back to configured defaults if no match found - Logs selection details for debugging 2. **Session metadata** (lines 303-312): - Agent metadata now includes: - `provider`: The selected provider ID - `providerSelectionMethod`: \"explicit\" or \"capability-based\" - Enables tracking of how providers were selected 3. **Event emission** (lines 424-438): - TASK_ASSIGNED event includes `providerSelectionMethod` - Allows downstream consumers to track provider selection patterns ### Verification: - TypeScript compilation: No new errors - Implementation follows existing patterns in the codebase - Capability query APIs were already implemented in previous tasks ### Next Steps: - Manual testing with multiple providers to verify selection logic - Consider adding role-specific required capabilities (e.g., CRAFTER needs code_generation)"
+                - generic [ref=e228]: routa-js
+                - generic [ref=e229]:
+                  - generic [ref=e230]: Provider
+                  - combobox [ref=e231]:
+                    - option "Select..." [selected]
+                    - option "Auggie"
+                    - option "Claude Code"
+                    - option "Claude Code SDK"
+                    - option "Codex"
+                    - option "Gemini"
+                    - option "GitHub Copilot"
+                    - option "Kimi"
+                    - option "Kiro"
+                    - option "OpenCode"
+                    - option "OpenCode SDK"
+                    - option "Qoder"
+                    - option "Auggie CLI (Registry)"
+                    - option "Autohand Code"
+                    - option "Claude Agent"
+                    - option "Cline"
+                    - option "Codebuddy Code"
+                    - option "Codex CLI"
+                    - option "crow-cli"
+                    - option "DimCode"
+                    - option "Factory Droid"
+                    - option "fast-agent"
+                    - option "Gemini CLI (Registry)"
+                    - option "GitHub Copilot"
+                    - option "Junie"
+                    - option "Kilo"
+                    - option "Minion Code"
+                    - option "Nova"
+                    - option "pi ACP"
+                    - option "Qwen Code"
+                - generic [ref=e232]:
+                  - generic [ref=e233]: Not synced
+                  - button "View detail" [ref=e234]
+              - button "Open Implement Master Agent Dynamic Provider Routing" [ref=e235]:
+                - generic [ref=e236]:
+                  - generic [ref=e237]:
+                    - generic [ref=e238]: Implement Master Agent Dynamic Provider Routing
+                    - generic [ref=e239]: Local issue
+                  - generic [ref=e240]: medium
+                - paragraph [ref=e241]: "# Task: Implement Master Agent Dynamic Provider Routing Integrate capability-based provider selection into agent creation flow. **Status**: ✅ COMPLETE **Scope**: `src/core/acp/agent-instance-factory.ts`, coordinator logic **Definition of Done**: - ✅ Coordinator uses capability matching when creating agents - ✅ Selection logged in session metadata **Verification**: Manual test with multiple providers --- ## What Changed ### Files Modified: 1. **src/core/orchestration/orchestrator.ts** - Added import for `findBestProviderForRole` from `provider-registry` - Replaced static provider selection with capability-based selection in `delegateTaskWithSpawn()` - Added provider selection logging to console - Extended agent metadata to include provider and providerSelectionMethod - Enhanced TASK_ASSIGNED event with providerSelectionMethod ### Implementation Details: 1. **Capability-based provider selection** (lines 260-293): - Uses `findBestProviderForRole()` to dynamically select providers based on: - Agent role (CRAFTER, GATE, etc.) - Required capabilities (currently `mcp_tool`) - Preferred model tier - Falls back to configured defaults if no match found - Logs selection details for debugging 2. **Session metadata** (lines 303-312): - Agent metadata now includes: - `provider`: The selected provider ID - `providerSelectionMethod`: \"explicit\" or \"capability-based\" - Enables tracking of how providers were selected 3. **Event emission** (lines 424-438): - TASK_ASSIGNED event includes `providerSelectionMethod` - Allows downstream consumers to track provider selection patterns ### Verification: - TypeScript compilation: No new errors - Implementation follows existing patterns in the codebase - Capability query APIs were already implemented in previous tasks ### Next Steps: - Manual testing with multiple providers to verify selection logic - Consider adding role-specific required capabilities (e.g., CRAFTER needs code_generation)"
+                - generic [ref=e242]: routa-js
+                - generic [ref=e243]:
+                  - generic [ref=e244]: Provider
+                  - combobox [ref=e245]:
+                    - option "Select..." [selected]
+                    - option "Auggie"
+                    - option "Claude Code"
+                    - option "Claude Code SDK"
+                    - option "Codex"
+                    - option "Gemini"
+                    - option "GitHub Copilot"
+                    - option "Kimi"
+                    - option "Kiro"
+                    - option "OpenCode"
+                    - option "OpenCode SDK"
+                    - option "Qoder"
+                    - option "Auggie CLI (Registry)"
+                    - option "Autohand Code"
+                    - option "Claude Agent"
+                    - option "Cline"
+                    - option "Codebuddy Code"
+                    - option "Codex CLI"
+                    - option "crow-cli"
+                    - option "DimCode"
+                    - option "Factory Droid"
+                    - option "fast-agent"
+                    - option "Gemini CLI (Registry)"
+                    - option "GitHub Copilot"
+                    - option "Junie"
+                    - option "Kilo"
+                    - option "Minion Code"
+                    - option "Nova"
+                    - option "pi ACP"
+                    - option "Qwen Code"
+                - generic [ref=e246]:
+                  - generic [ref=e247]: Not synced
+                  - button "View detail" [ref=e248]
+              - button "Open Implement Master Agent Dynamic Provider Routing" [ref=e249]:
+                - generic [ref=e250]:
+                  - generic [ref=e251]:
+                    - generic [ref=e252]: Implement Master Agent Dynamic Provider Routing
+                    - generic [ref=e253]: Local issue
+                  - generic [ref=e254]: medium
+                - paragraph [ref=e255]: "# Task: Implement Master Agent Dynamic Provider Routing Integrate capability-based provider selection into agent creation flow. **Status**: ✅ COMPLETE **Scope**: `src/core/acp/agent-instance-factory.ts`, coordinator logic **Definition of Done**: - ✅ Coordinator uses capability matching when creating agents - ✅ Selection logged in session metadata **Verification**: Manual test with multiple providers --- ## What Changed ### Files Modified: 1. **src/core/orchestration/orchestrator.ts** - Added import for `findBestProviderForRole` from `provider-registry` (line 42) - Replaced static provider selection with capability-based selection in `delegateTaskWithSpawn()` (lines 260-295) - Added provider selection logging to console (lines 280-293) - Extended agent metadata to include provider and providerSelectionMethod (lines 305-314) - Enhanced TASK_ASSIGNED event with providerSelectionMethod (lines 426-440) ### Implementation Details: 1. **Capability-based provider selection** (lines 260-295): - Uses `findBestProviderForRole()` to dynamically select providers based on: - Agent role (CRAFTER, GATE, etc.) - Required capabilities (currently `mcp_tool`) - Preferred model tier - Falls back to configured defaults if no match found - Logs selection details for debugging 2. **Session metadata** (lines 305-314): - Agent metadata now includes: - `provider`: The selected provider ID - `providerSelectionMethod`: \"explicit\", \"capability-based\", or \"fallback\" - Enables tracking of how providers were selected 3. **Event emission** (lines 426-440): - TASK_ASSIGNED event includes `providerSelectionMethod` - Allows downstream consumers to track provider selection patterns ### Verification: - TypeScript compilation: No new errors in orchestrator.ts - Implementation follows existing patterns in the codebase - Capability query APIs were already implemented in previous tasks ### Next Steps: - Manual testing with multiple providers to verify selection logic - Consider adding role-specific required capabilities (e.g., CRAFTER needs code_generation)"
+                - generic [ref=e256]: routa-js
+                - generic [ref=e257]:
+                  - generic [ref=e258]: Provider
+                  - combobox [ref=e259]:
+                    - option "Select..." [selected]
+                    - option "Auggie"
+                    - option "Claude Code"
+                    - option "Claude Code SDK"
+                    - option "Codex"
+                    - option "Gemini"
+                    - option "GitHub Copilot"
+                    - option "Kimi"
+                    - option "Kiro"
+                    - option "OpenCode"
+                    - option "OpenCode SDK"
+                    - option "Qoder"
+                    - option "Auggie CLI (Registry)"
+                    - option "Autohand Code"
+                    - option "Claude Agent"
+                    - option "Cline"
+                    - option "Codebuddy Code"
+                    - option "Codex CLI"
+                    - option "crow-cli"
+                    - option "DimCode"
+                    - option "Factory Droid"
+                    - option "fast-agent"
+                    - option "Gemini CLI (Registry)"
+                    - option "GitHub Copilot"
+                    - option "Junie"
+                    - option "Kilo"
+                    - option "Minion Code"
+                    - option "Nova"
+                    - option "pi ACP"
+                    - option "Qwen Code"
+                - generic [ref=e260]:
+                  - generic [ref=e261]: Not synced
+                  - button "View detail" [ref=e262]
+              - button "Open Create smoke-test task" [ref=e263]:
+                - generic [ref=e264]:
+                  - generic [ref=e265]:
+                    - generic [ref=e266]: Create smoke-test task
+                    - generic [ref=e267]: Local issue
+                  - generic [ref=e268]: medium
+                - paragraph [ref=e269]: "Create a new task via the API with title \"Smoke Test - Kanban ACP\" and an objective. ## Scope - API: POST /api/tasks - Task should be created in the default workspace ## Definition of Done - Task created successfully with a valid task ID - Task appears in the Kanban board in the backlog column ## Verification - `curl -X POST http://localhost:3000/api/tasks -H \"Content-Type: application/json\" -d '{\"title\":\"Smoke Test - Kanban ACP\",\"objective\":\"Verify end-to-end ACP workflow\",\"workspaceId\":\"default\"}'` - Task appears in GET /api/tasks?workspaceId=default"
+                - generic [ref=e270]: routa-js
+                - generic [ref=e271]:
+                  - generic [ref=e272]: Provider
+                  - combobox [ref=e273]:
+                    - option "Select..." [selected]
+                    - option "Auggie"
+                    - option "Claude Code"
+                    - option "Claude Code SDK"
+                    - option "Codex"
+                    - option "Gemini"
+                    - option "GitHub Copilot"
+                    - option "Kimi"
+                    - option "Kiro"
+                    - option "OpenCode"
+                    - option "OpenCode SDK"
+                    - option "Qoder"
+                    - option "Auggie CLI (Registry)"
+                    - option "Autohand Code"
+                    - option "Claude Agent"
+                    - option "Cline"
+                    - option "Codebuddy Code"
+                    - option "Codex CLI"
+                    - option "crow-cli"
+                    - option "DimCode"
+                    - option "Factory Droid"
+                    - option "fast-agent"
+                    - option "Gemini CLI (Registry)"
+                    - option "GitHub Copilot"
+                    - option "Junie"
+                    - option "Kilo"
+                    - option "Minion Code"
+                    - option "Nova"
+                    - option "pi ACP"
+                    - option "Qwen Code"
+                - generic [ref=e274]:
+                  - generic [ref=e275]: Not synced
+                  - button "View detail" [ref=e276]
+              - button "Open Assign task to ACP provider" [ref=e277]:
+                - generic [ref=e278]:
+                  - generic [ref=e279]:
+                    - generic [ref=e280]: Assign task to ACP provider
+                    - generic [ref=e281]: Local issue
+                  - generic [ref=e282]: medium
+                - paragraph [ref=e283]: "Assign the created task to an available ACP provider with a role (CRAFTER). ## Scope - API: PATCH /api/tasks/[taskId] - Need to find available ACP providers first ## Definition of Done - Task has assignedProvider, assignedRole, and optionally assignedSpecialistId set ## Verification - Check task via GET /api/tasks/[taskId] returns assignedProvider field"
+                - generic [ref=e284]: routa-js
+                - generic [ref=e285]:
+                  - generic [ref=e286]: Provider
+                  - combobox [ref=e287]:
+                    - option "Select..." [selected]
+                    - option "Auggie"
+                    - option "Claude Code"
+                    - option "Claude Code SDK"
+                    - option "Codex"
+                    - option "Gemini"
+                    - option "GitHub Copilot"
+                    - option "Kimi"
+                    - option "Kiro"
+                    - option "OpenCode"
+                    - option "OpenCode SDK"
+                    - option "Qoder"
+                    - option "Auggie CLI (Registry)"
+                    - option "Autohand Code"
+                    - option "Claude Agent"
+                    - option "Cline"
+                    - option "Codebuddy Code"
+                    - option "Codex CLI"
+                    - option "crow-cli"
+                    - option "DimCode"
+                    - option "Factory Droid"
+                    - option "fast-agent"
+                    - option "Gemini CLI (Registry)"
+                    - option "GitHub Copilot"
+                    - option "Junie"
+                    - option "Kilo"
+                    - option "Minion Code"
+                    - option "Nova"
+                    - option "pi ACP"
+                    - option "Qwen Code"
+                - generic [ref=e288]:
+                  - generic [ref=e289]: Not synced
+                  - button "View detail" [ref=e290]
+              - button "Open Move task to dev column" [ref=e291]:
+                - generic [ref=e292]:
+                  - generic [ref=e293]:
+                    - generic [ref=e294]: Move task to dev column
+                    - generic [ref=e295]: Local issue
+                  - generic [ref=e296]: medium
+                - paragraph [ref=e297]: "Move the task from backlog to dev column, which should trigger an ACP session. ## Scope - API: PATCH /api/tasks/[taskId] with columnId: \"dev\" - Trigger logic in /api/tasks/[taskId]/route.ts ## Definition of Done - Task moved to dev column - triggerSessionId is set on the task (ACP session created) ## Verification - Check task via GET /api/tasks/[taskId] returns triggerSessionId field"
+                - generic [ref=e298]: routa-js
+                - generic [ref=e299]:
+                  - generic [ref=e300]: Provider
+                  - combobox [ref=e301]:
+                    - option "Select..." [selected]
+                    - option "Auggie"
+                    - option "Claude Code"
+                    - option "Claude Code SDK"
+                    - option "Codex"
+                    - option "Gemini"
+                    - option "GitHub Copilot"
+                    - option "Kimi"
+                    - option "Kiro"
+                    - option "OpenCode"
+                    - option "OpenCode SDK"
+                    - option "Qoder"
+                    - option "Auggie CLI (Registry)"
+                    - option "Autohand Code"
+                    - option "Claude Agent"
+                    - option "Cline"
+                    - option "Codebuddy Code"
+                    - option "Codex CLI"
+                    - option "crow-cli"
+                    - option "DimCode"
+                    - option "Factory Droid"
+                    - option "fast-agent"
+                    - option "Gemini CLI (Registry)"
+                    - option "GitHub Copilot"
+                    - option "Junie"
+                    - option "Kilo"
+                    - option "Minion Code"
+                    - option "Nova"
+                    - option "pi ACP"
+                    - option "Qwen Code"
+                - generic [ref=e302]:
+                  - generic [ref=e303]: Not synced
+                  - button "View detail" [ref=e304]
+              - button "Open Verify session popup works" [ref=e305]:
+                - generic [ref=e306]:
+                  - generic [ref=e307]:
+                    - generic [ref=e308]: Verify session popup works
+                    - generic [ref=e309]: Local issue
+                  - generic [ref=e310]: medium
+                - paragraph [ref=e311]: "Confirm the session popup can be opened from the Kanban UI. ## Scope - KanbanTab component renders session popup when activeSessionId is set - URL pattern: /workspace/[workspaceId]/sessions/[sessionId] ## Definition of Done - Task card shows \"View session\" button when triggerSessionId exists - Clicking it opens a modal with iframe to session page ## Verification - Manual verification: Open Kanban board, find the smoke test task, click \"View session\" - Or check that the session page loads without error"
+                - generic [ref=e312]: routa-js
+                - generic [ref=e313]:
+                  - generic [ref=e314]: Provider
+                  - combobox [ref=e315]:
+                    - option "Select..." [selected]
+                    - option "Auggie"
+                    - option "Claude Code"
+                    - option "Claude Code SDK"
+                    - option "Codex"
+                    - option "Gemini"
+                    - option "GitHub Copilot"
+                    - option "Kimi"
+                    - option "Kiro"
+                    - option "OpenCode"
+                    - option "OpenCode SDK"
+                    - option "Qoder"
+                    - option "Auggie CLI (Registry)"
+                    - option "Autohand Code"
+                    - option "Claude Agent"
+                    - option "Cline"
+                    - option "Codebuddy Code"
+                    - option "Codex CLI"
+                    - option "crow-cli"
+                    - option "DimCode"
+                    - option "Factory Droid"
+                    - option "fast-agent"
+                    - option "Gemini CLI (Registry)"
+                    - option "GitHub Copilot"
+                    - option "Junie"
+                    - option "Kilo"
+                    - option "Minion Code"
+                    - option "Nova"
+                    - option "pi ACP"
+                    - option "Qwen Code"
+                - generic [ref=e316]:
+                  - generic [ref=e317]: Not synced
+                  - button "View detail" [ref=e318]
+              - button "Open Test GET API Endpoints" [ref=e319]:
+                - generic [ref=e320]:
+                  - generic [ref=e321]:
+                    - generic [ref=e322]: Test GET API Endpoints
+                    - generic [ref=e323]: Local issue
+                  - generic [ref=e324]: medium
+                - paragraph [ref=e325]: Test GET request functionality across the API endpoints
+                - generic [ref=e326]: routa-js
+                - generic [ref=e327]:
+                  - generic [ref=e328]: Provider
+                  - combobox [ref=e329]:
+                    - option "Select..." [selected]
+                    - option "Auggie"
+                    - option "Claude Code"
+                    - option "Claude Code SDK"
+                    - option "Codex"
+                    - option "Gemini"
+                    - option "GitHub Copilot"
+                    - option "Kimi"
+                    - option "Kiro"
+                    - option "OpenCode"
+                    - option "OpenCode SDK"
+                    - option "Qoder"
+                    - option "Auggie CLI (Registry)"
+                    - option "Autohand Code"
+                    - option "Claude Agent"
+                    - option "Cline"
+                    - option "Codebuddy Code"
+                    - option "Codex CLI"
+                    - option "crow-cli"
+                    - option "DimCode"
+                    - option "Factory Droid"
+                    - option "fast-agent"
+                    - option "Gemini CLI (Registry)"
+                    - option "GitHub Copilot"
+                    - option "Junie"
+                    - option "Kilo"
+                    - option "Minion Code"
+                    - option "Nova"
+                    - option "pi ACP"
+                    - option "Qwen Code"
+                - generic [ref=e330]:
+                  - generic [ref=e331]: Not synced
+                  - button "View detail" [ref=e332]
+              - button "Open Test task" [ref=e333]:
+                - generic [ref=e334]:
+                  - generic [ref=e335]:
+                    - generic [ref=e336]: Test task
+                    - generic [ref=e337]: Local issue
+                  - generic [ref=e338]: medium
+                - paragraph
+                - generic [ref=e339]: routa-js
+                - generic [ref=e340]:
+                  - generic [ref=e341]: Provider
+                  - combobox [ref=e342]:
+                    - option "Select..." [selected]
+                    - option "Auggie"
+                    - option "Claude Code"
+                    - option "Claude Code SDK"
+                    - option "Codex"
+                    - option "Gemini"
+                    - option "GitHub Copilot"
+                    - option "Kimi"
+                    - option "Kiro"
+                    - option "OpenCode"
+                    - option "OpenCode SDK"
+                    - option "Qoder"
+                    - option "Auggie CLI (Registry)"
+                    - option "Autohand Code"
+                    - option "Claude Agent"
+                    - option "Cline"
+                    - option "Codebuddy Code"
+                    - option "Codex CLI"
+                    - option "crow-cli"
+                    - option "DimCode"
+                    - option "Factory Droid"
+                    - option "fast-agent"
+                    - option "Gemini CLI (Registry)"
+                    - option "GitHub Copilot"
+                    - option "Junie"
+                    - option "Kilo"
+                    - option "Minion Code"
+                    - option "Nova"
+                    - option "pi ACP"
+                    - option "Qwen Code"
+                - generic [ref=e343]:
+                  - generic [ref=e344]: Not synced
+                  - button "View detail" [ref=e345]
+              - button "Open Test issue with repo selection" [ref=e346]:
+                - generic [ref=e347]:
+                  - generic [ref=e348]:
+                    - generic [ref=e349]: Test issue with repo selection
+                    - generic [ref=e350]: Local issue
+                  - generic [ref=e351]: medium
+                - paragraph [ref=e352]: Testing the kanban repo selector flow
+                - generic [ref=e353]: routa-js
+                - generic [ref=e354]:
+                  - generic [ref=e355]: Provider
+                  - combobox [ref=e356]:
+                    - option "Select..." [selected]
+                    - option "Auggie"
+                    - option "Claude Code"
+                    - option "Claude Code SDK"
+                    - option "Codex"
+                    - option "Gemini"
+                    - option "GitHub Copilot"
+                    - option "Kimi"
+                    - option "Kiro"
+                    - option "OpenCode"
+                    - option "OpenCode SDK"
+                    - option "Qoder"
+                    - option "Auggie CLI (Registry)"
+                    - option "Autohand Code"
+                    - option "Claude Agent"
+                    - option "Cline"
+                    - option "Codebuddy Code"
+                    - option "Codex CLI"
+                    - option "crow-cli"
+                    - option "DimCode"
+                    - option "Factory Droid"
+                    - option "fast-agent"
+                    - option "Gemini CLI (Registry)"
+                    - option "GitHub Copilot"
+                    - option "Junie"
+                    - option "Kilo"
+                    - option "Minion Code"
+                    - option "Nova"
+                    - option "pi ACP"
+                    - option "Qwen Code"
+                - generic [ref=e357]:
+                  - generic [ref=e358]: Not synced
+                  - button "View detail" [ref=e359]
+          - generic [ref=e360]:
+            - generic [ref=e361]:
+              - generic [ref=e362]: Todo
+              - generic [ref=e363]: 1 cards
+            - button "Open Add login page" [ref=e364]:
+              - generic [ref=e365]:
+                - generic [ref=e366]:
+                  - generic [ref=e367]: Add login page
+                  - generic [ref=e368]: Local issue
+                - generic [ref=e369]: medium
+              - paragraph [ref=e370]: Create a login page with email/password authentication
+              - generic [ref=e371]: routa-js
+              - generic [ref=e372]:
+                - generic [ref=e373]:
+                  - generic [ref=e374]: Provider
+                  - combobox [ref=e375]:
+                    - option "Select..."
+                    - option "Auggie"
+                    - option "Claude Code" [selected]
+                    - option "Claude Code SDK"
+                    - option "Codex"
+                    - option "Gemini"
+                    - option "GitHub Copilot"
+                    - option "Kimi"
+                    - option "Kiro"
+                    - option "OpenCode"
+                    - option "OpenCode SDK"
+                    - option "Qoder"
+                    - option "Auggie CLI (Registry)"
+                    - option "Autohand Code"
+                    - option "Claude Agent"
+                    - option "Cline"
+                    - option "Codebuddy Code"
+                    - option "Codex CLI"
+                    - option "crow-cli"
+                    - option "DimCode"
+                    - option "Factory Droid"
+                    - option "fast-agent"
+                    - option "Gemini CLI (Registry)"
+                    - option "GitHub Copilot"
+                    - option "Junie"
+                    - option "Kilo"
+                    - option "Minion Code"
+                    - option "Nova"
+                    - option "pi ACP"
+                    - option "Qwen Code"
+                - generic [ref=e376]:
+                  - generic [ref=e377]: Role
+                  - combobox [ref=e378]:
+                    - option "CRAFTER"
+                    - option "ROUTA"
+                    - option "GATE"
+                    - option "DEVELOPER" [selected]
+                - generic [ref=e379]:
+                  - generic [ref=e380]: Specialist
+                  - combobox [ref=e381]:
+                    - option "None"
+                    - option "Claude Code"
+                    - option "Implementor"
+                    - option "Desk Check Agent"
+                    - option "Developer"
+                    - option "Verifier"
+                    - option "Issue Enricher" [selected]
+                    - option "Kanban Agent"
+                    - option "PR Analyzer"
+                    - option "PR Reviewer"
+                    - option "Coordinator"
+              - generic [ref=e382]:
+                - generic [ref=e383]: Not synced
+                - generic [ref=e384]:
+                  - button "View detail" [ref=e385]
+                  - button "View session" [ref=e386]
+          - generic [ref=e387]:
+            - generic [ref=e388]:
+              - generic [ref=e389]: Dev
+              - generic [ref=e390]: 2 cards
+            - generic [ref=e391]:
+              - button "Open Add Capability Metadata to AcpAgentPreset" [ref=e392]:
+                - generic [ref=e393]:
+                  - generic [ref=e394]:
+                    - generic [ref=e395]: Add Capability Metadata to AcpAgentPreset
+                    - generic [ref=e396]: Local issue
+                  - generic [ref=e397]: medium
+                - paragraph [ref=e398]: "Extend AcpAgentPreset interface with capabilities, supportedRoles, and preferredTier fields. Update existing static presets with metadata. **Scope**: `src/core/acp/acp-presets.ts` **Definition of Done**: - AcpAgentPreset interface has new fields - All static presets have capability metadata **Verification**: TypeScript compilation"
+                - generic [ref=e399]: routa-js
+                - generic [ref=e400]:
+                  - generic [ref=e401]:
+                    - generic [ref=e402]: Provider
+                    - combobox [ref=e403]:
+                      - option "Select..."
+                      - option "Auggie" [selected]
+                      - option "Claude Code"
+                      - option "Claude Code SDK"
+                      - option "Codex"
+                      - option "Gemini"
+                      - option "GitHub Copilot"
+                      - option "Kimi"
+                      - option "Kiro"
+                      - option "OpenCode"
+                      - option "OpenCode SDK"
+                      - option "Qoder"
+                      - option "Auggie CLI (Registry)"
+                      - option "Autohand Code"
+                      - option "Claude Agent"
+                      - option "Cline"
+                      - option "Codebuddy Code"
+                      - option "Codex CLI"
+                      - option "crow-cli"
+                      - option "DimCode"
+                      - option "Factory Droid"
+                      - option "fast-agent"
+                      - option "Gemini CLI (Registry)"
+                      - option "GitHub Copilot"
+                      - option "Junie"
+                      - option "Kilo"
+                      - option "Minion Code"
+                      - option "Nova"
+                      - option "pi ACP"
+                      - option "Qwen Code"
+                  - generic [ref=e404]:
+                    - generic [ref=e405]: Role
+                    - combobox [ref=e406]:
+                      - option "CRAFTER"
+                      - option "ROUTA"
+                      - option "GATE"
+                      - option "DEVELOPER" [selected]
+                  - generic [ref=e407]:
+                    - generic [ref=e408]: Specialist
+                    - combobox [ref=e409]:
+                      - option "None" [selected]
+                      - option "Claude Code"
+                      - option "Implementor"
+                      - option "Desk Check Agent"
+                      - option "Developer"
+                      - option "Verifier"
+                      - option "Issue Enricher"
+                      - option "Kanban Agent"
+                      - option "PR Analyzer"
+                      - option "PR Reviewer"
+                      - option "Coordinator"
+                - generic [ref=e410]:
+                  - generic [ref=e411]: Not synced
+                  - generic [ref=e412]:
+                    - button "View detail" [ref=e413]
+                    - button "View session" [ref=e414]
+              - button "Open Implement Provider Capability Query APIs" [ref=e415]:
+                - generic [ref=e416]:
+                  - generic [ref=e417]:
+                    - generic [ref=e418]: Implement Provider Capability Query APIs
+                    - generic [ref=e419]: Local issue
+                  - generic [ref=e420]: medium
+                - paragraph [ref=e421]: "Add getProviderCapabilities, findProvidersByCapability, and findBestProviderForRole functions. **Scope**: `src/core/acp/provider-registry.ts` **Definition of Done**: - Three new functions exported and working - Unit tests for capability matching logic **Verification**: Run existing tests + add unit tests"
+                - generic [ref=e422]: routa-js
+                - generic [ref=e423]:
+                  - generic [ref=e424]:
+                    - generic [ref=e425]: Provider
+                    - combobox [ref=e426]:
+                      - option "Select..."
+                      - option "Auggie"
+                      - option "Claude Code" [selected]
+                      - option "Claude Code SDK"
+                      - option "Codex"
+                      - option "Gemini"
+                      - option "GitHub Copilot"
+                      - option "Kimi"
+                      - option "Kiro"
+                      - option "OpenCode"
+                      - option "OpenCode SDK"
+                      - option "Qoder"
+                      - option "Auggie CLI (Registry)"
+                      - option "Autohand Code"
+                      - option "Claude Agent"
+                      - option "Cline"
+                      - option "Codebuddy Code"
+                      - option "Codex CLI"
+                      - option "crow-cli"
+                      - option "DimCode"
+                      - option "Factory Droid"
+                      - option "fast-agent"
+                      - option "Gemini CLI (Registry)"
+                      - option "GitHub Copilot"
+                      - option "Junie"
+                      - option "Kilo"
+                      - option "Minion Code"
+                      - option "Nova"
+                      - option "pi ACP"
+                      - option "Qwen Code"
+                  - generic [ref=e427]:
+                    - generic [ref=e428]: Role
+                    - combobox [ref=e429]:
+                      - option "CRAFTER"
+                      - option "ROUTA"
+                      - option "GATE"
+                      - option "DEVELOPER" [selected]
+                  - generic [ref=e430]:
+                    - generic [ref=e431]: Specialist
+                    - combobox [ref=e432]:
+                      - option "None"
+                      - option "Claude Code"
+                      - option "Implementor"
+                      - option "Desk Check Agent"
+                      - option "Developer"
+                      - option "Verifier"
+                      - option "Issue Enricher" [selected]
+                      - option "Kanban Agent"
+                      - option "PR Analyzer"
+                      - option "PR Reviewer"
+                      - option "Coordinator"
+                - generic [ref=e433]:
+                  - generic [ref=e434]: Not synced
+                  - generic [ref=e435]:
+                    - button "View detail" [ref=e436]
+                    - button "View session" [ref=e437]
+          - generic [ref=e438]:
+            - generic [ref=e439]:
+              - generic [ref=e440]: Review
+              - generic [ref=e441]: 2 cards
+            - generic [ref=e442]:
+              - button "Open Kanban ACP smoke test" [ref=e443]:
+                - generic [ref=e444]:
+                  - generic [ref=e445]:
+                    - generic [ref=e446]: Kanban ACP smoke test
+                    - generic [ref=e447]: Local issue
+                  - generic [ref=e448]: medium
+                - paragraph [ref=e449]: Create a smoke-test issue, assign it to an ACP provider, move it to dev, and confirm a session can be opened from the Kanban popup.
+                - generic [ref=e450]: routa-js
+                - generic [ref=e451]:
+                  - generic [ref=e452]:
+                    - generic [ref=e453]: Provider
+                    - combobox [ref=e454]:
+                      - option "Select..."
+                      - option "Auggie"
+                      - option "Claude Code" [selected]
+                      - option "Claude Code SDK"
+                      - option "Codex"
+                      - option "Gemini"
+                      - option "GitHub Copilot"
+                      - option "Kimi"
+                      - option "Kiro"
+                      - option "OpenCode"
+                      - option "OpenCode SDK"
+                      - option "Qoder"
+                      - option "Auggie CLI (Registry)"
+                      - option "Autohand Code"
+                      - option "Claude Agent"
+                      - option "Cline"
+                      - option "Codebuddy Code"
+                      - option "Codex CLI"
+                      - option "crow-cli"
+                      - option "DimCode"
+                      - option "Factory Droid"
+                      - option "fast-agent"
+                      - option "Gemini CLI (Registry)"
+                      - option "GitHub Copilot"
+                      - option "Junie"
+                      - option "Kilo"
+                      - option "Minion Code"
+                      - option "Nova"
+                      - option "pi ACP"
+                      - option "Qwen Code"
+                  - generic [ref=e455]:
+                    - generic [ref=e456]: Role
+                    - combobox [ref=e457]:
+                      - option "CRAFTER"
+                      - option "ROUTA"
+                      - option "GATE"
+                      - option "DEVELOPER" [selected]
+                  - generic [ref=e458]:
+                    - generic [ref=e459]: Specialist
+                    - combobox [ref=e460]:
+                      - option "None"
+                      - option "Claude Code"
+                      - option "Implementor"
+                      - option "Desk Check Agent"
+                      - option "Developer" [selected]
+                      - option "Verifier"
+                      - option "Issue Enricher"
+                      - option "Kanban Agent"
+                      - option "PR Analyzer"
+                      - option "PR Reviewer"
+                      - option "Coordinator"
+                - generic [ref=e461]:
+                  - generic [ref=e462]: Not synced
+                  - generic [ref=e463]:
+                    - button "View detail" [ref=e464]
+                    - button "View session" [ref=e465]
+              - button "Open Kanban OpenCode smoke test" [ref=e466]:
+                - generic [ref=e467]:
+                  - generic [ref=e468]:
+                    - generic [ref=e469]: Kanban OpenCode smoke test
+                    - generic [ref=e470]: Local issue
+                  - generic [ref=e471]: medium
+                - paragraph [ref=e472]: Create a second smoke-test issue to validate ACP triggering with the OpenCode provider and session popup behavior.
+                - generic [ref=e473]: routa-js
+                - generic [ref=e474]:
+                  - generic [ref=e475]:
+                    - generic [ref=e476]: Provider
+                    - combobox [ref=e477]:
+                      - option "Select..."
+                      - option "Auggie"
+                      - option "Claude Code"
+                      - option "Claude Code SDK"
+                      - option "Codex"
+                      - option "Gemini"
+                      - option "GitHub Copilot"
+                      - option "Kimi"
+                      - option "Kiro"
+                      - option "OpenCode" [selected]
+                      - option "OpenCode SDK"
+                      - option "Qoder"
+                      - option "Auggie CLI (Registry)"
+                      - option "Autohand Code"
+                      - option "Claude Agent"
+                      - option "Cline"
+                      - option "Codebuddy Code"
+                      - option "Codex CLI"
+                      - option "crow-cli"
+                      - option "DimCode"
+                      - option "Factory Droid"
+                      - option "fast-agent"
+                      - option "Gemini CLI (Registry)"
+                      - option "GitHub Copilot"
+                      - option "Junie"
+                      - option "Kilo"
+                      - option "Minion Code"
+                      - option "Nova"
+                      - option "pi ACP"
+                      - option "Qwen Code"
+                  - generic [ref=e478]:
+                    - generic [ref=e479]: Role
+                    - combobox [ref=e480]:
+                      - option "CRAFTER" [selected]
+                      - option "ROUTA"
+                      - option "GATE"
+                      - option "DEVELOPER"
+                  - generic [ref=e481]:
+                    - generic [ref=e482]: Specialist
+                    - combobox [ref=e483]:
+                      - option "None" [selected]
+                      - option "Claude Code"
+                      - option "Implementor"
+                      - option "Desk Check Agent"
+                      - option "Developer"
+                      - option "Verifier"
+                      - option "Issue Enricher"
+                      - option "Kanban Agent"
+                      - option "PR Analyzer"
+                      - option "PR Reviewer"
+                      - option "Coordinator"
+                - generic [ref=e484]:
+                  - generic [ref=e485]: Not synced
+                  - generic [ref=e486]:
+                    - button "View detail" [ref=e487]
+                    - button "View session" [ref=e488]
+          - generic [ref=e489]:
+            - generic [ref=e490]: Blocked
+            - generic [ref=e491]: 0 cards
+          - generic [ref=e492]:
+            - generic [ref=e493]: Done
+            - generic [ref=e494]: 0 cards
+  - button "Open Next.js Dev Tools" [ref=e495] [cursor=pointer]:
+    - img [ref=e496]
+  - alert [ref=e497]

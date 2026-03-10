@@ -1,0 +1,67 @@
+# page-id: mcp-tools
+# route: /mcp-tools
+# source-page: src/app/mcp-tools/page.tsx
+# url: http://127.0.0.1:3000/mcp-tools
+# title: Routa - Multi-Agent Coordinator
+# generated-at: 2026-03-10T15:04:49.029Z
+# generator: playwright-cli
+# playwright-cli-version: 1.59.0-alpha-1771104257000
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - complementary [ref=e3]:
+      - generic [ref=e4]:
+        - generic [ref=e5]:
+          - heading "MCP Tools" [level=1] [ref=e6]
+          - button "Refresh" [ref=e7]
+        - generic [ref=e8] [cursor=pointer]:
+          - checkbox "Essential (7)" [checked] [ref=e9]
+          - generic [ref=e10]: Essential (7)
+      - generic [ref=e11]:
+        - generic [ref=e12]:
+          - button "Task (1) ▼" [ref=e13]:
+            - generic [ref=e14]: Task (1)
+            - generic [ref=e15]: ▼
+          - button "delegate_task" [ref=e16]:
+            - generic [ref=e17]: delegate_task
+        - generic [ref=e18]:
+          - button "Agent (8) ▼" [ref=e19]:
+            - generic [ref=e20]: Agent (8)
+            - generic [ref=e21]: ▼
+          - generic [ref=e22]:
+            - button "fetch_webpage" [ref=e23]:
+              - generic [ref=e24]: fetch_webpage
+            - button "delegate_task_to_agent" [ref=e25]:
+              - generic [ref=e26]: delegate_task_to_agent
+            - button "list_agents" [ref=e27]:
+              - generic [ref=e28]: list_agents
+            - button "read_agent_conversation" [ref=e29]:
+              - generic [ref=e30]: read_agent_conversation
+            - button "create_agent" [ref=e31]:
+              - generic [ref=e32]: create_agent
+            - button "set_agent_name" [ref=e33]:
+              - generic [ref=e34]: set_agent_name
+            - button "send_message_to_agent" [ref=e35]:
+              - generic [ref=e36]: send_message_to_agent
+            - button "report_to_parent" [ref=e37]:
+              - generic [ref=e38]: report_to_parent
+    - main [ref=e39]:
+      - generic [ref=e40]:
+        - generic [ref=e41]:
+          - heading "fetch_webpage" [level=2] [ref=e42]
+          - paragraph [ref=e43]: Fetch the content of a web page or URL and return its text. Strips HTML tags. Use this to read GitHub issues, documentation, or any web resource.
+        - generic [ref=e44]:
+          - generic [ref=e45]: Arguments (JSON)
+          - textbox [ref=e46]: "{}"
+        - generic [ref=e47]:
+          - button "Run Tool" [ref=e48]
+          - link "Back" [ref=e49] [cursor=pointer]:
+            - /url: /
+        - generic [ref=e50]:
+          - generic [ref=e51]: Tool Result
+          - generic [ref=e52]: "{}"
+        - generic [ref=e53]:
+          - generic [ref=e54]: Input Schema
+          - generic [ref=e55]: "{ \"type\": \"object\", \"properties\": { \"url\": { \"type\": \"string\", \"description\": \"The URL to fetch\" }, \"query\": { \"type\": \"string\", \"description\": \"Optional search query to help focus on relevant content\" } }, \"required\": [ \"url\" ] }"
+  - button "Open Next.js Dev Tools" [ref=e56] [cursor=pointer]:
+    - img [ref=e57]
+  - alert [ref=e58]
