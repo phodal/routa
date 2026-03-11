@@ -9,13 +9,13 @@
 
 import {useCallback, useEffect, useMemo, useRef, useState,} from "react";
 import { desktopAwareFetch } from "../utils/diagnostics";
-import {createPortal} from "react-dom";
 import {v4 as uuidv4} from "uuid";
 import type {AcpSessionNotification} from "../acp-client";
 import type {UseAcpActions, UseAcpState} from "../hooks/use-acp";
 import {type InputContext, TiptapInput} from "./tiptap-input";
 import type {SkillSummary} from "../skill-client";
-import {RepoPicker, type RepoSelection} from "./repo-picker";
+import {type RepoSelection} from "./repo-picker";
+import {SetupView} from "./chat-panel/components";
 import {extractTaskBlocks, hasTaskBlocks, type ParsedTask,} from "../utils/task-block-parser";
 import {type TaskInfo, TaskProgressBar, type FileChangesSummary} from "./task-progress-bar";
 import {
@@ -1205,63 +1205,12 @@ export function ChatPanel({
   // ── Setup State ──────────────────────────────────────────────────────
 
   const [setupInput, setSetupInput] = useState("");
-  const [setupProviderDropdownOpen, setSetupProviderDropdownOpen] = useState(false);
-  const setupProviderDropdownRef = useRef<HTMLDivElement>(null);
-  const setupProviderButtonRef = useRef<HTMLButtonElement>(null);
-  const [setupProviderDropdownPos, setSetupProviderDropdownPos] = useState<{ left: number; bottom: number } | null>(null);
-  const [setupModel, setSetupModel] = useState("");
-  const [setupModelDropdownOpen, setSetupModelDropdownOpen] = useState(false);
-  const [setupModelModels, setSetupModelModels] = useState<string[]>([]);
-  const [setupModelLoading, setSetupModelLoading] = useState(false);
-  const [setupModelFilter, setSetupModelFilter] = useState("");
-  const setupModelBtnRef = useRef<HTMLButtonElement>(null);
-  const setupModelDropdownRef = useRef<HTMLDivElement>(null);
-  const [setupModelDropdownPos, setSetupModelDropdownPos] = useState<{ left: number; bottom: number } | null>(null);
-
-  // Close dropdown when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (setupProviderDropdownRef.current && !setupProviderDropdownRef.current.contains(event.target as Node) &&
-          setupProviderButtonRef.current && !setupProviderButtonRef.current.contains(event.target as Node)) {
-        setSetupProviderDropdownOpen(false);
-      }
-    };
-
-    if (setupProviderDropdownOpen) {
-      document.addEventListener("mousedown", handleClickOutside);
-    }
-
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
-  }, [setupProviderDropdownOpen]);
-
-  // Close setup model dropdown on click outside
-  useEffect(() => {
-    if (!setupModelDropdownOpen) return;
-    const handler = (e: MouseEvent) => {
-      if (setupModelDropdownRef.current && !setupModelDropdownRef.current.contains(e.target as Node) &&
-          setupModelBtnRef.current && !setupModelBtnRef.current.contains(e.target as Node)) {
-        setSetupModelDropdownOpen(false);
-        setSetupModelFilter("");
-      }
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [setupModelDropdownOpen]);
-
-  // Reset setup model when provider changes
-  useEffect(() => {
-    setSetupModel("");
-    setSetupModelModels([]);
-     
-  }, [acp.selectedProvider]);
 
   const handleStartSession = useCallback(async () => {
     if (!setupInput.trim()) return;
-    await handleSend(setupInput, { model: setupModel || undefined });
+    await handleSend(setupInput, {});
     setSetupInput("");
-  }, [setupInput, handleSend, setupModel]);
+  }, [setupInput, handleSend]);
 
   // ── Render ───────────────────────────────────────────────────────────
 
@@ -1377,402 +1326,24 @@ export function ChatPanel({
         <TracePanel sessionId={activeSessionId} />
       ) : (visibleMessages.length === 0 && !activeSessionId) ? (
 
-        /* ── Setup / Empty State — new design ── */
-        <div className="flex-1 overflow-y-auto">
-          <div className="max-w-2xl mx-auto px-5 py-6 flex flex-col gap-4">
-
-            {/* Header */}
-            <div className="text-center">
-              <div className="w-10 h-10 mx-auto mb-2 rounded-xl bg-linear-to-br from-indigo-500/20 to-blue-500/20 flex items-center justify-center">
-                <svg className="w-5 h-5 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" />
-                </svg>
-              </div>
-              <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">What would you like to work on?</h2>
-              <p className="mt-0.5 text-xs text-gray-400 dark:text-gray-500">Describe your task and choose your mode.</p>
-            </div>
-
-            {/* ── 1. Input — primary visual ── */}
-            <div className="rounded-2xl border-2 border-indigo-200 dark:border-indigo-800/60 bg-white dark:bg-[#1a1f2e] shadow-sm overflow-hidden focus-within:border-indigo-400 dark:focus-within:border-indigo-600 transition-colors">
-              <textarea
-                value={setupInput}
-                onChange={(e) => setSetupInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                    e.preventDefault();
-                    handleStartSession();
-                  }
-                }}
-                placeholder="Describe your task, question, or goal..."
-                rows={4}
-                className="w-full px-5 py-3.5 text-base text-gray-900 dark:text-gray-100 bg-transparent resize-none focus:outline-none placeholder:text-gray-400 dark:placeholder:text-gray-500 leading-relaxed"
-                autoFocus
-              />
-              {/* Bottom toolbar — mirrors TiptapInput style */}
-              <div className="flex items-center justify-between px-3 py-2 border-t border-gray-100 dark:border-gray-800/60 bg-gray-50/40 dark:bg-gray-900/20">
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[11px] text-gray-400 dark:text-gray-500 mr-1">⌘↵</span>
-                  {/* Provider chip — same style as TiptapInput toolbar */}
-                  {acp.providers.length > 0 && (() => {
-                    const providerInfo = acp.providers.find((p) => p.id === acp.selectedProvider);
-                    return (
-                      <div className="relative">
-                        <button
-                          ref={setupProviderButtonRef}
-                          type="button"
-                          onClick={() => {
-                            if (setupProviderDropdownOpen) {
-                              setSetupProviderDropdownOpen(false);
-                            } else {
-                              const rect = setupProviderButtonRef.current?.getBoundingClientRect();
-                              if (rect) {
-                                setSetupProviderDropdownPos({ left: rect.left, bottom: window.innerHeight - rect.top });
-                              }
-                              setSetupProviderDropdownOpen(true);
-                            }
-                          }}
-                          className="flex items-center gap-1.5 pl-2 pr-1.5 py-0.5 rounded-md border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 text-xs font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-transparent transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                          disabled={acp.providers.filter((p) => p.status === "available").length === 0}
-                        >
-                          {/* Status dot */}
-                          <span className={`w-1.5 h-1.5 rounded-full ${providerInfo?.status === "available" ? "bg-green-500" : "bg-gray-400"}`} />
-                          {/* Provider name */}
-                          <span className="truncate max-w-30">{providerInfo?.name ?? "Select..."}</span>
-                          {/* Chevron */}
-                          <svg className={`w-3 h-3 text-gray-400 transition-transform ${setupProviderDropdownOpen ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-                          </svg>
-                        </button>
-
-                        {/* Dropdown menu */}
-                        {setupProviderDropdownOpen && setupProviderDropdownPos && typeof document !== "undefined" &&
-                          createPortal(
-                            <div
-                              ref={setupProviderDropdownRef}
-                              className="fixed w-64 max-h-80 overflow-y-auto rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1e2130] shadow-xl z-9999"
-                              style={{ left: setupProviderDropdownPos.left, bottom: setupProviderDropdownPos.bottom }}
-                            >
-                              {/* Group providers by availability */}
-                              {(() => {
-                                const availableProviders = acp.providers.filter((p) => p.status === "available");
-                                const unavailableProviders = acp.providers.filter((p) => p.status !== "available");
-                                const builtinAvailable = availableProviders.filter((p) => p.source === "static");
-                                const registryAvailable = availableProviders.filter((p) => p.source === "registry");
-                                const builtinUnavailable = unavailableProviders.filter((p) => p.source === "static");
-                                const registryUnavailable = unavailableProviders.filter((p) => p.source === "registry");
-
-                                return (
-                                  <>
-                                    {/* Builtin Available */}
-                                    {builtinAvailable.length > 0 && (
-                                      <div className="py-1">
-                                        <div className="px-3 py-1 text-[10px] font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider">
-                                          Built-in ({builtinAvailable.length})
-                                        </div>
-                                        {builtinAvailable.map((p) => (
-                                          <button
-                                            key={p.id}
-                                            type="button"
-                                            onClick={() => {
-                                              acp.setProvider(p.id);
-                                              setSetupProviderDropdownOpen(false);
-                                            }}
-                                            className={`w-full text-left px-3 py-1.5 flex items-center gap-2 text-xs transition-colors ${
-                                              p.id === acp.selectedProvider
-                                                ? "bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300"
-                                                : "hover:bg-gray-50 dark:hover:bg-gray-800/50 text-gray-700 dark:text-gray-300"
-                                            }`}
-                                          >
-                                            <span className="w-1.5 h-1.5 rounded-full bg-green-500 shrink-0" />
-                                            <span className="font-medium truncate flex-1">{p.name}</span>
-                                            <span className="text-[10px] text-gray-400 dark:text-gray-500 font-mono truncate max-w-35">{p.command}</span>
-                                          </button>
-                                        ))}
-                                      </div>
-                                    )}
-
-                                    {/* Registry Available */}
-                                    {registryAvailable.length > 0 && (
-                                      <div className={`py-1 ${builtinAvailable.length > 0 ? "border-t border-gray-100 dark:border-gray-800" : ""}`}>
-                                        <div className="px-3 py-1 text-[10px] font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider">
-                                          ACP Registry ({registryAvailable.length})
-                                        </div>
-                                        {registryAvailable.map((p) => (
-                                          <button
-                                            key={p.id}
-                                            type="button"
-                                            onClick={() => {
-                                              acp.setProvider(p.id);
-                                              setSetupProviderDropdownOpen(false);
-                                            }}
-                                            className={`w-full text-left px-3 py-1.5 flex items-center gap-2 text-xs transition-colors ${
-                                              p.id === acp.selectedProvider
-                                                ? "bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300"
-                                                : "hover:bg-gray-50 dark:hover:bg-gray-800/50 text-gray-700 dark:text-gray-300"
-                                            }`}
-                                          >
-                                            <span className="w-1.5 h-1.5 rounded-full bg-green-500 shrink-0" />
-                                            <span className="font-medium truncate flex-1">{p.name}</span>
-                                            <span className="text-[10px] text-gray-400 dark:text-gray-500 font-mono truncate max-w-35">{p.command}</span>
-                                          </button>
-                                        ))}
-                                      </div>
-                                    )}
-
-                                    {/* Builtin Unavailable */}
-                                    {builtinUnavailable.length > 0 && (
-                                      <div className={`py-1 ${(builtinAvailable.length > 0 || registryAvailable.length > 0) ? "border-t border-gray-100 dark:border-gray-800" : ""}`}>
-                                        <div className="px-3 py-1 text-[10px] font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider">
-                                          Built-in - Not Installed ({builtinUnavailable.length})
-                                        </div>
-                                        {builtinUnavailable.map((p) => (
-                                          <button
-                                            key={p.id}
-                                            type="button"
-                                            onClick={() => {
-                                              acp.setProvider(p.id);
-                                              setSetupProviderDropdownOpen(false);
-                                            }}
-                                            className={`w-full text-left px-3 py-1.5 flex items-center gap-2 text-xs transition-colors opacity-60 ${
-                                              p.id === acp.selectedProvider
-                                                ? "bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300"
-                                                : "hover:bg-gray-50 dark:hover:bg-gray-800/50 text-gray-500 dark:text-gray-400"
-                                            }`}
-                                          >
-                                            <span className="w-1.5 h-1.5 rounded-full bg-gray-300 dark:bg-gray-600 shrink-0" />
-                                            <span className="font-medium truncate flex-1">{p.name}</span>
-                                            <span className="text-[10px] text-gray-400 dark:text-gray-500 font-mono truncate max-w-35">{p.command}</span>
-                                          </button>
-                                        ))}
-                                      </div>
-                                    )}
-
-                                    {/* Registry Unavailable */}
-                                    {registryUnavailable.length > 0 && (
-                                      <div className="py-1 border-t border-gray-100 dark:border-gray-800">
-                                        <div className="px-3 py-1 text-[10px] font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider">
-                                          ACP Registry - Not Installed ({registryUnavailable.length})
-                                        </div>
-                                        {registryUnavailable.map((p) => (
-                                          <button
-                                            key={p.id}
-                                            type="button"
-                                            onClick={() => {
-                                              acp.setProvider(p.id);
-                                              setSetupProviderDropdownOpen(false);
-                                            }}
-                                            className={`w-full text-left px-3 py-1.5 flex items-center gap-2 text-xs transition-colors opacity-60 ${
-                                              p.id === acp.selectedProvider
-                                                ? "bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300"
-                                                : "hover:bg-gray-50 dark:hover:bg-gray-800/50 text-gray-500 dark:text-gray-400"
-                                            }`}
-                                          >
-                                            <span className="w-1.5 h-1.5 rounded-full bg-gray-300 dark:bg-gray-600 shrink-0" />
-                                            <span className="font-medium truncate flex-1">{p.name}</span>
-                                            <span className="text-[10px] text-gray-400 dark:text-gray-500 font-mono truncate max-w-35">{p.command}</span>
-                                          </button>
-                                        ))}
-                                      </div>
-                                    )}
-
-                                    {/* No available providers message */}
-                                    {acp.providers.length > 0 && builtinAvailable.length === 0 && registryAvailable.length === 0 && (
-                                      <div className="px-3 py-3 text-xs text-gray-500 dark:text-gray-400 text-center">
-                                        {builtinUnavailable.length > 0 || registryUnavailable.length > 0 ? (
-                                          <>
-                                            <p className="font-medium mb-1">No providers available</p>
-                                            <p className="text-[10px] opacity-75">
-                                              {acp.providers.some(p => p.id === "opencode-sdk")
-                                                ? "Configure OPENCODE_SERVER_URL environment variable to use OpenCode SDK"
-                                                : "Install a provider to get started"}
-                                            </p>
-                                          </>
-                                        ) : (
-                                          "Loading providers..."
-                                        )}
-                                      </div>
-                                    )}
-                                  </>
-                                );
-                              })()}
-                            </div>,
-                            document.body
-                          )}
-                      </div>
-                    );
-                  })()}
-                </div>
-                {/* Model selector for setup view — shown for providers that support it */}
-                {(acp.selectedProvider === "opencode" || acp.selectedProvider === "gemini") && (
-                  <div ref={setupModelDropdownRef}>
-                    <button
-                      ref={setupModelBtnRef}
-                      type="button"
-                      onClick={async () => {
-                        if (!setupModelDropdownOpen && setupModelBtnRef.current) {
-                          const rect = setupModelBtnRef.current.getBoundingClientRect();
-                          setSetupModelDropdownPos({ left: rect.left, bottom: window.innerHeight - rect.top });
-                        }
-                        if (!setupModelDropdownOpen && setupModelModels.length === 0) {
-                          setSetupModelLoading(true);
-                          const models = await acp.listProviderModels(acp.selectedProvider);
-                          setSetupModelModels(models);
-                          setSetupModelLoading(false);
-                        }
-                        setSetupModelDropdownOpen((v) => !v);
-                        setSetupModelFilter("");
-                      }}
-                      className="flex items-center gap-1.5 pl-2 pr-1.5 py-0.5 rounded-md border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 text-xs font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-transparent transition-colors"
-                    >
-                      <svg className="w-3 h-3 text-gray-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                      </svg>
-                      <span className="truncate max-w-30">{setupModel ? setupModel.split("/").pop() : "Default model"}</span>
-                      {setupModelLoading
-                        ? <span className="w-3 h-3 border border-gray-400 border-t-transparent rounded-full animate-spin" />
-                        : <svg className={`w-3 h-3 text-gray-400 transition-transform ${setupModelDropdownOpen ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-                          </svg>
-                      }
-                    </button>
-                    {setupModelDropdownOpen && setupModelDropdownPos && typeof document !== "undefined" &&
-                      createPortal(
-                        <div
-                          className="fixed w-72 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1e2130] shadow-xl z-9999 flex flex-col"
-                          style={{ left: setupModelDropdownPos.left, bottom: setupModelDropdownPos.bottom, maxHeight: "300px" }}
-                        >
-                          <div className="p-2 border-b border-gray-100 dark:border-gray-800">
-                            <input
-                              autoFocus
-                              type="text"
-                              value={setupModelFilter}
-                              onChange={(e) => setSetupModelFilter(e.target.value)}
-                              placeholder="Filter models..."
-                              className="w-full px-2 py-1 text-xs rounded border border-gray-200 dark:border-gray-700 bg-transparent outline-none focus:ring-1 focus:ring-indigo-500 text-gray-800 dark:text-gray-200"
-                            />
-                          </div>
-                          <div className="overflow-y-auto flex-1">
-                            <button
-                              type="button"
-                              onClick={() => { setSetupModel(""); setSetupModelDropdownOpen(false); }}
-                              className={`w-full text-left px-3 py-1.5 text-xs transition-colors ${!setupModel ? "bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-300" : "hover:bg-gray-50 dark:hover:bg-gray-800/50 text-gray-700 dark:text-gray-300"}`}
-                            >
-                              <span className="font-medium">Default model</span>
-                            </button>
-                            {setupModelModels
-                              .filter((m) => !setupModelFilter || m.toLowerCase().includes(setupModelFilter.toLowerCase()))
-                              .map((m) => (
-                                <button
-                                  key={m}
-                                  type="button"
-                                  onClick={() => { setSetupModel(m); setSetupModelDropdownOpen(false); setSetupModelFilter(""); }}
-                                  className={`w-full text-left px-3 py-1.5 text-xs flex items-center gap-2 transition-colors ${m === setupModel ? "bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-300" : "hover:bg-gray-50 dark:hover:bg-gray-800/50 text-gray-700 dark:text-gray-300"}`}
-                                >
-                                  <span className="text-gray-400 dark:text-gray-500 font-mono text-[10px] shrink-0">{m.split("/")[0]}</span>
-                                  <span className="font-medium truncate">{m.split("/").slice(1).join("/") || m}</span>
-                                </button>
-                              ))
-                            }
-                            {setupModelModels.length === 0 && !setupModelLoading && (
-                              <div className="px-3 py-3 text-xs text-gray-400 text-center">No models found</div>
-                            )}
-                          </div>
-                        </div>,
-                        document.body
-                      )
-                    }
-                  </div>
-                )}
-                <button
-                  onClick={handleStartSession}
-                  disabled={!setupInput.trim() || !connected}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  开始
-                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
-                  </svg>
-                </button>
-              </div>
-            </div>
-
-            {/* ── 2. Workspace + Repository — always side-by-side ── */}
-            <div className="grid grid-cols-2 gap-3 items-end">
-              <div>
-                <label className="block text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">Workspace</label>
-                <select
-                  value={activeWorkspaceId ?? ""}
-                  onChange={(e) => onWorkspaceChange?.(e.target.value)}
-                  className="w-full px-3 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1e2130] text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                >
-                  {workspaces.length > 0 ? workspaces.map((ws) => (
-                    <option key={ws.id} value={ws.id}>{ws.title}</option>
-                  )) : <option value="">No workspaces</option>}
-                </select>
-              </div>
-              <div>
-                <label className="block text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">Repository</label>
-                <RepoPicker value={repoSelection} onChange={onRepoChange} />
-              </div>
-            </div>
-
-            {/* ── 3. Agent Selection — big cards (ROUTA + CRATER only) ── */}
-            <div>
-              <label className="block text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1.5">Mode</label>
-              <div className="grid grid-cols-2 gap-3">
-                {/* Routa Card */}
-                <button
-                  type="button"
-                  onClick={() => onAgentRoleChange?.("ROUTA")}
-                  className={`p-3.5 rounded-xl border-2 text-left transition-all duration-150 ${
-                    agentRole === "ROUTA"
-                      ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-900/25 shadow-sm"
-                      : "border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1a1f2e] hover:border-indigo-300 dark:hover:border-indigo-700 hover:shadow-sm"
-                  }`}
-                >
-                  <div className="flex items-center gap-2 mb-1.5">
-                    <div className={`w-6 h-6 rounded-lg flex items-center justify-center text-xs font-bold ${
-                      agentRole === "ROUTA" ? "bg-indigo-600 text-white" : "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300"
-                    }`}>R</div>
-                    <span className={`font-semibold text-sm ${agentRole === "ROUTA" ? "text-indigo-700 dark:text-indigo-300" : "text-gray-800 dark:text-gray-200"}`}>
-                      Routa
-                    </span>
-                    {agentRole === "ROUTA" && (
-                      <span className="ml-auto text-[10px] font-medium bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 px-1.5 py-0.5 rounded-full">推荐</span>
-                    )}
-                  </div>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
-                    负责任务编排与规划。会生成执行规格（spec），并协调后续工作流。
-                  </p>
-                </button>
-
-                {/* CRATER Card */}
-                <button
-                  type="button"
-                  onClick={() => onAgentRoleChange?.("CRAFTER")}
-                  className={`p-3.5 rounded-xl border-2 text-left transition-all duration-150 ${
-                    agentRole === "CRAFTER"
-                      ? "border-violet-500 bg-violet-50 dark:bg-violet-900/25 shadow-sm"
-                      : "border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1a1f2e] hover:border-violet-300 dark:hover:border-violet-700 hover:shadow-sm"
-                  }`}
-                >
-                  <div className="flex items-center gap-2 mb-1.5">
-                    <div className={`w-6 h-6 rounded-lg flex items-center justify-center text-xs font-bold ${
-                      agentRole === "CRAFTER" ? "bg-violet-600 text-white" : "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300"
-                    }`}>C</div>
-                    <span className={`font-semibold text-sm ${agentRole === "CRAFTER" ? "text-violet-700 dark:text-violet-300" : "text-gray-800 dark:text-gray-200"}`}>
-                      CRATER
-                    </span>
-                  </div>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
-                    专注于具体实现与代码生成。根据任务描述直接进行实现。
-                  </p>
-                </button>
-              </div>
-            </div>
-
-          </div>
-        </div>
+        /* ── Setup / Empty State ── */
+        <SetupView
+          setupInput={setupInput}
+          onSetupInputChange={setSetupInput}
+          onStartSession={handleStartSession}
+          connected={connected}
+          providers={acp.providers}
+          selectedProvider={acp.selectedProvider}
+          onProviderChange={acp.setProvider}
+          onFetchModels={acp.listProviderModels}
+          workspaces={workspaces}
+          activeWorkspaceId={activeWorkspaceId ?? null}
+          onWorkspaceChange={(id) => onWorkspaceChange?.(id)}
+          repoSelection={repoSelection}
+          onRepoChange={onRepoChange}
+          agentRole={agentRole}
+          onAgentRoleChange={onAgentRoleChange}
+        />
 
       ) : (
 
