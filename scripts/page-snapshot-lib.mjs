@@ -243,6 +243,10 @@ export async function captureSnapshot({
   const finalUrl = page.url();
   const snapshot = await page.accessibility.snapshot();
 
+  if (!snapshot) {
+    throw new Error(`Failed to capture accessibility snapshot for ${target.id}`);
+  }
+
   const snapshotYaml = formatAccessibilitySnapshot(snapshot);
   const snapshotBody = normalizeSnapshotBody(snapshotYaml);
 
