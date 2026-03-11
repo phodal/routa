@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { URL } from "node:url";
@@ -241,13 +240,14 @@ export async function captureSnapshot({
 
   const title = await page.title();
   const finalUrl = page.url();
-  const snapshot = await page.accessibility.snapshot();
+  
+  // Use the newer ariaSnapshot() API which returns YAML directly
+  const snapshotYaml = await page.locator('body').ariaSnapshot();
 
-  if (!snapshot) {
+  if (!snapshotYaml) {
     throw new Error(`Failed to capture accessibility snapshot for ${target.id}`);
   }
 
-  const snapshotYaml = formatAccessibilitySnapshot(snapshot);
   const snapshotBody = normalizeSnapshotBody(snapshotYaml);
 
   const header = [
@@ -265,46 +265,6 @@ export async function captureSnapshot({
   ensureParentDir(outputPath);
   fs.writeFileSync(outputPath, `${header}${snapshotBody}\n`, "utf-8");
   return { outputPath, title, finalUrl };
-}
-
-function formatAccessibilitySnapshot(node, indent = 0) {
-  if (!node) return "";
-  
-  const lines = [];
-  const prefix = "  ".repeat(indent);
-  
-  let line = `${prefix}- ${node.role || "generic"}`;
-  
-  if (node.name) {
-    line += ` "${node.name}"`;
-  }
-  
-  const attrs = [];
-  if (node.focused) attrs.push("focused");
-  if (node.disabled) attrs.push("disabled");
-  if (node.pressed !== undefined) attrs.push(node.pressed ? "pressed" : "not pressed");
-  if (node.checked !== undefined) {
-    if (node.checked === "mixed") attrs.push("mixed");
-    else attrs.push(node.checked ? "checked" : "unchecked");
-  }
-  if (node.expanded !== undefined) attrs.push(node.expanded ? "expanded" : "collapsed");
-  if (node.level) attrs.push(`level=${node.level}`);
-  if (node.valuetext) attrs.push(`value="${node.valuetext}"`);
-  if (node.description) attrs.push(`description="${node.description}"`);
-  
-  if (attrs.length > 0) {
-    line += ` [${attrs.join("] [")}]`;
-  }
-  
-  lines.push(line + ":");
-  
-  if (node.children) {
-    for (const child of node.children) {
-      lines.push(formatAccessibilitySnapshot(child, indent + 1));
-    }
-  }
-  
-  return lines.join("\n");
 }
 
 async function getPlaywrightVersion() {
