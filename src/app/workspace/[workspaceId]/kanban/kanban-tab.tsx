@@ -4,8 +4,8 @@ import { useEffect, useMemo, useState, useCallback } from "react";
 import type { AcpProviderInfo } from "@/client/acp-client";
 import type { CodebaseData } from "@/client/hooks/use-workspaces";
 import type { UseAcpState } from "@/client/hooks/use-acp";
-import type { KanbanBoardInfo, SessionInfo, TaskInfo, WorktreeInfo } from "./types";
-import { KanbanCreateModal, EMPTY_DRAFT, type DraftIssue } from "./kanban-create-modal";
+import type { KanbanBoardInfo, SessionInfo, TaskInfo, WorktreeInfo } from "../types";
+import { KanbanCreateModal, EMPTY_DRAFT, type DraftIssue } from "../kanban-create-modal";
 
 interface SpecialistOption {
   id: string;

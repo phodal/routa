@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useAcp } from "@/client/hooks/use-acp";
 import { useWorkspaces, useCodebases } from "@/client/hooks/use-workspaces";
 import { AppHeader } from "@/client/components/app-header";
-import { KanbanTab } from "../kanban-tab";
+import { KanbanTab } from "./kanban-tab";
 import type { KanbanBoardInfo, TaskInfo, SessionInfo } from "../types";
 
 interface SpecialistOption {

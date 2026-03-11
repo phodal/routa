@@ -33,7 +33,7 @@ import {NoteTasksTab} from "@/app/workspace/[workspaceId]/note-tasks-tab";
 import {NotesTab} from "@/app/workspace/[workspaceId]/notes-tab";
 import {OverviewA2UITab} from "@/app/workspace/[workspaceId]/overview-a2ui-tab";
 import {BgTasksTab} from "@/app/workspace/[workspaceId]/bg-tasks-tab";
-import {KanbanTab} from "@/app/workspace/[workspaceId]/kanban-tab";
+import {KanbanTab} from "@/app/workspace/[workspaceId]/kanban/kanban-tab";
 import {WorkspaceSettingsTab} from "@/app/workspace/[workspaceId]/workspace-settings-tab";
 
 interface SpecialistOption {
