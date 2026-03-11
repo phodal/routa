@@ -137,30 +137,31 @@ export function extractPageSnapshotElements(
 ): PageSnapshotElement[] {
   const requestedType = elementType?.trim().toLowerCase();
 
-  return snapshotText
-    .split(/\r?\n/)
-    .map((line) => {
-      const typeMatch = line.match(TYPE_PATTERN);
-      if (!typeMatch) {
-        return null;
-      }
+  const elements: PageSnapshotElement[] = [];
+  
+  for (const line of snapshotText.split(/\r?\n/)) {
+    const typeMatch = line.match(TYPE_PATTERN);
+    if (!typeMatch) {
+      continue;
+    }
 
-      const type = typeMatch[1].toLowerCase();
-      if (requestedType && type !== requestedType) {
-        return null;
-      }
+    const type = typeMatch[1].toLowerCase();
+    if (requestedType && type !== requestedType) {
+      continue;
+    }
 
-      const refMatch = line.match(REF_PATTERN);
-      const labelMatch = line.match(LABEL_PATTERN);
+    const refMatch = line.match(REF_PATTERN);
+    const labelMatch = line.match(LABEL_PATTERN);
 
-      return {
-        type,
-        ref: refMatch?.[1],
-        label: labelMatch?.[1],
-        line: line.trim(),
-      } satisfies PageSnapshotElement;
-    })
-    .filter((element): element is PageSnapshotElement => element !== null);
+    elements.push({
+      type,
+      ref: refMatch?.[1],
+      label: labelMatch?.[1],
+      line: line.trim(),
+    });
+  }
+  
+  return elements;
 }
 
 export function readPageSnapshot(targetId: string):
