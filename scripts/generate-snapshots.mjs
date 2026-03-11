@@ -1,20 +1,18 @@
 #!/usr/bin/env node
 
+import fs from "node:fs";
+
 import {
   captureSnapshot,
-  capturePlaywrightArtifactState,
-  cleanupPlaywrightArtifacts,
-  closeSession,
-  getPlaywrightCliVersion,
+  createBrowser,
+  isServerReachable,
   loadRegistry,
-  openSession,
   parseCliArgs,
   resolveWorkspacePath,
   selectSnapshotTargets,
   shouldUpdateTarget,
   startDevServer,
   waitForServer,
-  isServerReachable,
 } from "./page-snapshot-lib.mjs";
 
 async function main() {
@@ -34,55 +32,53 @@ async function main() {
     await waitForServer(options.baseUrl, options.timeoutMs, devServer.getLogs);
   }
 
-  const sessionName = `psg-${process.pid}`;
-  const playwrightCliVersion = getPlaywrightCliVersion();
-  const stats = { total: registry.length, generated: 0, skipped: 0, failed: 0, failures: [] };
-  const artifactState = capturePlaywrightArtifactState();
+  const browser = await createBrowser(options.headed);
+  const context = await browser.newContext({
+    viewport: { width: 1440, height: 960 },
+  });
+  const page = await context.newPage();
+
+  let generated = 0;
+  let skipped = 0;
 
   try {
-    openSession(sessionName, options.headed);
-
     for (const target of registry) {
-      if (options.update && !shouldUpdateTarget(target)) {
-        console.log(`Skipping ${target.id} (snapshot is up to date)`);
-        stats.skipped += 1;
+      const snapshotPath = resolveWorkspacePath(target.snapshotFile);
+
+      if (!options.update && !shouldUpdateTarget(target)) {
+        console.log(`⏭️  ${target.id}: snapshot is up-to-date`);
+        skipped += 1;
         continue;
       }
 
-      const outputPath = resolveWorkspacePath(target.snapshotFile);
-      console.log(`Generating ${target.id} -> ${target.snapshotFile}`);
+      console.log(`📸 ${target.id}: capturing snapshot...`);
 
       try {
-        captureSnapshot({
-          sessionName,
+        await captureSnapshot({
+          page,
           target,
           baseUrl: options.baseUrl,
           timeoutMs: options.timeoutMs,
-          playwrightCliVersion,
-          outputPath,
+          outputPath: snapshotPath,
         });
-        stats.generated += 1;
+
+        generated += 1;
+        console.log(`✅ ${target.id}: snapshot saved to ${target.snapshotFile}`);
       } catch (error) {
-        stats.failed += 1;
-        stats.failures.push({
-          target: target.id,
-          error: error instanceof Error ? error.message : String(error),
-        });
-        console.error(`Failed to generate ${target.id}:`, error instanceof Error ? error.message : error);
+        console.error(`❌ ${target.id}: failed to capture snapshot`);
+        console.error(error instanceof Error ? error.message : error);
       }
     }
   } finally {
-    closeSession(sessionName);
-    cleanupPlaywrightArtifacts(artifactState);
+    await page.close();
+    await context.close();
+    await browser.close();
     if (devServer) {
       devServer.child.kill("SIGTERM");
     }
   }
 
-  console.log(`Generated ${stats.generated}/${stats.total} snapshots, skipped ${stats.skipped}, failed ${stats.failed}.`);
-  if (stats.failed > 0) {
-    process.exit(1);
-  }
+  console.log(`\nGenerated ${generated} snapshots, skipped ${skipped}.`);
 }
 
 main().catch((error) => {

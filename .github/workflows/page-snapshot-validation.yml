@@ -46,8 +46,8 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Install playwright-cli
-        run: npm install -g playwright-cli@0.262.0
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
 
       - name: Validate stable page snapshots
         run: xvfb-run -a npm run snapshots:validate -- --ci

@@ -3,15 +3,16 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { spawn, spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { URL } from "node:url";
+import { chromium } from "@playwright/test";
 
 export const ROOT_DIR = process.cwd();
 export const REGISTRY_FILE = path.join(ROOT_DIR, "resources", "page-snapshot-registry.json");
 export const DEFAULT_BASE_URL = process.env.PAGE_SNAPSHOT_BASE_URL || "http://127.0.0.1:3000";
 export const DEFAULT_TIMEOUT_MS = 30000;
 export const REPORT_FILE = path.join(ROOT_DIR, "test-results", "page-snapshot-report.json");
-export const PLAYWRIGHT_ARTIFACTS_DIR = path.join(ROOT_DIR, ".playwright-cli");
+export const PLAYWRIGHT_ARTIFACTS_DIR = path.join(ROOT_DIR, ".playwright-snapshots");
 
 export function loadRegistry() {
   const raw = fs.readFileSync(REGISTRY_FILE, "utf-8");
@@ -79,47 +80,6 @@ export function ensureReportDir() {
 
 export function resolveWorkspacePath(relativePath) {
   return path.join(ROOT_DIR, relativePath);
-}
-
-export function parseEvalResult(output) {
-  const match = output.match(/### Result\s+([\s\S]*?)\s+### Ran Playwright code/);
-  if (!match) {
-    return "";
-  }
-
-  const value = match[1].trim();
-  if (!value) {
-    return "";
-  }
-
-  try {
-    return JSON.parse(value);
-  } catch {
-    return value;
-  }
-}
-
-export function runPlaywrightCli(args, { allowFailure = false } = {}) {
-  const result = spawnSync("playwright-cli", args, {
-    cwd: ROOT_DIR,
-    encoding: "utf-8",
-  });
-
-  if (result.status !== 0 && !allowFailure) {
-    const stderr = result.stderr?.trim();
-    const stdout = result.stdout?.trim();
-    throw new Error(stderr || stdout || `playwright-cli failed for args: ${args.join(" ")}`);
-  }
-
-  return {
-    stdout: result.stdout ?? "",
-    stderr: result.stderr ?? "",
-    status: result.status ?? 0,
-  };
-}
-
-export function getPlaywrightCliVersion() {
-  return runPlaywrightCli(["--version"]).stdout.trim();
 }
 
 export async function isServerReachable(baseUrl) {
@@ -217,26 +177,6 @@ export function normalizeComparableSnapshot(content) {
   return normalizeSnapshotBody(stripSnapshotHeader(content));
 }
 
-export function capturePlaywrightArtifactState() {
-  if (!fs.existsSync(PLAYWRIGHT_ARTIFACTS_DIR)) {
-    return new Set();
-  }
-
-  return new Set(fs.readdirSync(PLAYWRIGHT_ARTIFACTS_DIR));
-}
-
-export function cleanupPlaywrightArtifacts(previousArtifacts) {
-  if (!fs.existsSync(PLAYWRIGHT_ARTIFACTS_DIR)) {
-    return;
-  }
-
-  for (const fileName of fs.readdirSync(PLAYWRIGHT_ARTIFACTS_DIR)) {
-    if (!previousArtifacts.has(fileName)) {
-      fs.rmSync(path.join(PLAYWRIGHT_ARTIFACTS_DIR, fileName), { force: true });
-    }
-  }
-}
-
 export function summarizeDiff(expected, actual) {
   const expectedLines = expected.split(/\r?\n/);
   const actualLines = actual.split(/\r?\n/);
@@ -272,84 +212,112 @@ export function shouldUpdateTarget(target) {
   });
 }
 
-export function buildWaitScript(target, timeoutMs) {
-  const waitFor = target.waitFor ?? { strategy: "networkidle", timeoutMs, settleMs: 1000 };
-  const effectiveTimeout = waitFor.timeoutMs ?? timeoutMs;
-  const settleMs = waitFor.settleMs ?? 1000;
-  const lines = [
-    "async (page) => {",
-    `  await page.waitForLoadState(\"domcontentloaded\", { timeout: ${effectiveTimeout} });`,
-  ];
-
-  if (waitFor.strategy === "selector" && waitFor.value) {
-    lines.push(`  await page.waitForSelector(${JSON.stringify(waitFor.value)}, { timeout: ${effectiveTimeout} });`);
-  } else if (waitFor.strategy === "text" && waitFor.value) {
-    lines.push(`  await page.getByText(${JSON.stringify(waitFor.value)}, { exact: false }).first().waitFor({ timeout: ${effectiveTimeout} });`);
-  } else {
-    lines.push(`  await page.waitForLoadState(\"networkidle\", { timeout: ${effectiveTimeout} }).catch(() => {});`);
-  }
-
-  if (settleMs > 0) {
-    lines.push(`  await page.waitForTimeout(${settleMs});`);
-  }
-
-  lines.push("}");
-  return lines.join("\n");
-}
-
-export function openSession(sessionName, headed) {
-  runPlaywrightCli([`-s=${sessionName}`, "close"], { allowFailure: true });
-  const args = [`-s=${sessionName}`, "open"];
-  if (headed) {
-    args.push("--headed");
-  }
-  runPlaywrightCli(args);
-  runPlaywrightCli([`-s=${sessionName}`, "resize", "1440", "960"]);
-}
-
-export function closeSession(sessionName) {
-  runPlaywrightCli([`-s=${sessionName}`, "close"], { allowFailure: true });
-}
-
-export function captureSnapshot({
-  sessionName,
+export async function captureSnapshot({
+  page,
   target,
   baseUrl,
   timeoutMs,
-  playwrightCliVersion,
   outputPath,
 }) {
   const targetUrl = new URL(target.route, baseUrl).toString();
-  runPlaywrightCli([`-s=${sessionName}`, "goto", targetUrl]);
-  runPlaywrightCli([`-s=${sessionName}`, "run-code", buildWaitScript(target, timeoutMs)]);
+  
+  await page.goto(targetUrl, { waitUntil: "domcontentloaded", timeout: timeoutMs });
 
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "routa-snapshot-"));
-  const tempFile = path.join(tempDir, `${target.id}.yaml`);
+  const waitFor = target.waitFor ?? { strategy: "networkidle", timeoutMs, settleMs: 1000 };
+  const effectiveTimeout = waitFor.timeoutMs ?? timeoutMs;
+  const settleMs = waitFor.settleMs ?? 1000;
 
-  try {
-    runPlaywrightCli([`-s=${sessionName}`, "snapshot", `--filename=${tempFile}`]);
-    const title = String(parseEvalResult(runPlaywrightCli([`-s=${sessionName}`, "eval", "document.title"]).stdout) ?? "");
-    const finalUrl = String(parseEvalResult(runPlaywrightCli([`-s=${sessionName}`, "eval", "location.href"]).stdout) ?? targetUrl);
-    const snapshotBody = normalizeSnapshotBody(fs.readFileSync(tempFile, "utf-8").trim());
-
-    const header = [
-      `# page-id: ${target.id}`,
-      `# route: ${target.route}`,
-      `# source-page: ${target.pageFile}`,
-      `# url: ${finalUrl}`,
-      `# title: ${title}`,
-      `# generated-at: ${new Date().toISOString()}`,
-      `# generator: playwright-cli`,
-      `# playwright-cli-version: ${playwrightCliVersion}`,
-      "",
-    ].join("\n");
-
-    ensureParentDir(outputPath);
-    fs.writeFileSync(outputPath, `${header}${snapshotBody}\n`, "utf-8");
-    return { outputPath, title, finalUrl };
-  } finally {
-    fs.rmSync(tempDir, { recursive: true, force: true });
+  if (waitFor.strategy === "selector" && waitFor.value) {
+    await page.waitForSelector(waitFor.value, { timeout: effectiveTimeout });
+  } else if (waitFor.strategy === "text" && waitFor.value) {
+    await page.getByText(waitFor.value, { exact: false }).first().waitFor({ timeout: effectiveTimeout });
+  } else {
+    await page.waitForLoadState("networkidle", { timeout: effectiveTimeout }).catch(() => {});
   }
+
+  if (settleMs > 0) {
+    await page.waitForTimeout(settleMs);
+  }
+
+  const title = await page.title();
+  const finalUrl = page.url();
+  const snapshot = await page.accessibility.snapshot();
+
+  const snapshotYaml = formatAccessibilitySnapshot(snapshot);
+  const snapshotBody = normalizeSnapshotBody(snapshotYaml);
+
+  const header = [
+    `# page-id: ${target.id}`,
+    `# route: ${target.route}`,
+    `# source-page: ${target.pageFile}`,
+    `# url: ${finalUrl}`,
+    `# title: ${title}`,
+    `# generated-at: ${new Date().toISOString()}`,
+    `# generator: playwright`,
+    `# playwright-version: ${await getPlaywrightVersion()}`,
+    "",
+  ].join("\n");
+
+  ensureParentDir(outputPath);
+  fs.writeFileSync(outputPath, `${header}${snapshotBody}\n`, "utf-8");
+  return { outputPath, title, finalUrl };
+}
+
+function formatAccessibilitySnapshot(node, indent = 0) {
+  if (!node) return "";
+  
+  const lines = [];
+  const prefix = "  ".repeat(indent);
+  
+  let line = `${prefix}- ${node.role || "generic"}`;
+  
+  if (node.name) {
+    line += ` "${node.name}"`;
+  }
+  
+  const attrs = [];
+  if (node.focused) attrs.push("focused");
+  if (node.disabled) attrs.push("disabled");
+  if (node.pressed !== undefined) attrs.push(node.pressed ? "pressed" : "not pressed");
+  if (node.checked !== undefined) {
+    if (node.checked === "mixed") attrs.push("mixed");
+    else attrs.push(node.checked ? "checked" : "unchecked");
+  }
+  if (node.expanded !== undefined) attrs.push(node.expanded ? "expanded" : "collapsed");
+  if (node.level) attrs.push(`level=${node.level}`);
+  if (node.valuetext) attrs.push(`value="${node.valuetext}"`);
+  if (node.description) attrs.push(`description="${node.description}"`);
+  
+  if (attrs.length > 0) {
+    line += ` [${attrs.join("] [")}]`;
+  }
+  
+  lines.push(line + ":");
+  
+  if (node.children) {
+    for (const child of node.children) {
+      lines.push(formatAccessibilitySnapshot(child, indent + 1));
+    }
+  }
+  
+  return lines.join("\n");
+}
+
+async function getPlaywrightVersion() {
+  try {
+    const pkg = JSON.parse(
+      fs.readFileSync(path.join(ROOT_DIR, "node_modules", "@playwright", "test", "package.json"), "utf-8")
+    );
+    return pkg.version;
+  } catch {
+    return "unknown";
+  }
+}
+
+export async function createBrowser(headed) {
+  return await chromium.launch({
+    headless: !headed,
+  });
 }
 
 export function writeReport(report) {

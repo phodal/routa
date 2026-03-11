@@ -4,13 +4,10 @@ import fs from "node:fs";
 
 import {
   captureSnapshot,
-  capturePlaywrightArtifactState,
-  cleanupPlaywrightArtifacts,
-  closeSession,
-  getPlaywrightCliVersion,
+  createBrowser,
+  isServerReachable,
   loadRegistry,
   normalizeComparableSnapshot,
-  openSession,
   parseCliArgs,
   resolveWorkspacePath,
   selectSnapshotTargets,
@@ -18,7 +15,6 @@ import {
   summarizeDiff,
   waitForServer,
   writeReport,
-  isServerReachable,
 } from "./page-snapshot-lib.mjs";
 
 async function main() {
@@ -38,9 +34,12 @@ async function main() {
     await waitForServer(options.baseUrl, options.timeoutMs, devServer.getLogs);
   }
 
-  const sessionName = `psv-${process.pid}`;
-  const playwrightCliVersion = getPlaywrightCliVersion();
-  const artifactState = capturePlaywrightArtifactState();
+  const browser = await createBrowser(options.headed);
+  const context = await browser.newContext({
+    viewport: { width: 1440, height: 960 },
+  });
+  const page = await context.newPage();
+
   const report = {
     generatedAt: new Date().toISOString(),
     baseUrl: options.baseUrl,
@@ -53,8 +52,6 @@ async function main() {
   };
 
   try {
-    openSession(sessionName, options.headed);
-
     for (const target of registry) {
       report.validated += 1;
       const snapshotPath = resolveWorkspacePath(target.snapshotFile);
@@ -62,18 +59,18 @@ async function main() {
       if (!fs.existsSync(snapshotPath)) {
         report.missing += 1;
         report.diffs.push({ target: target.id, reason: "missing snapshot" });
+        console.log(`❌ ${target.id}: missing snapshot`);
         continue;
       }
 
       const tempPath = `${snapshotPath}.tmp`;
 
       try {
-        captureSnapshot({
-          sessionName,
+        await captureSnapshot({
+          page,
           target,
           baseUrl: options.baseUrl,
           timeoutMs: options.timeoutMs,
-          playwrightCliVersion,
           outputPath: tempPath,
         });
 
@@ -82,14 +79,17 @@ async function main() {
 
         if (expected === actual) {
           report.matched += 1;
+          console.log(`✅ ${target.id}: snapshot matches`);
         } else {
           report.mismatched += 1;
           const diff = summarizeDiff(expected, actual);
           report.diffs.push({ target: target.id, reason: "content mismatch", diff });
+          console.log(`❌ ${target.id}: snapshot mismatch`);
 
           if (options.update) {
             fs.renameSync(tempPath, snapshotPath);
             report.updated += 1;
+            console.log(`📝 ${target.id}: snapshot updated`);
             continue;
           }
         }
@@ -100,15 +100,16 @@ async function main() {
       }
     }
   } finally {
-    closeSession(sessionName);
-    cleanupPlaywrightArtifacts(artifactState);
+    await page.close();
+    await context.close();
+    await browser.close();
     if (devServer) {
       devServer.child.kill("SIGTERM");
     }
     writeReport(report);
   }
 
-  console.log(`Validated ${report.validated} snapshots, matched ${report.matched}, mismatched ${report.mismatched}, updated ${report.updated}, missing ${report.missing}.`);
+  console.log(`\nValidated ${report.validated} snapshots, matched ${report.matched}, mismatched ${report.mismatched}, updated ${report.updated}, missing ${report.missing}.`);
   if (report.mismatched > 0 || report.missing > 0) {
     process.exit(options.update ? 0 : 1);
   }
