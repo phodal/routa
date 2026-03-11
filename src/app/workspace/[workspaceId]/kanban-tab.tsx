@@ -90,6 +90,10 @@ export function KanbanTab({ workspaceId, boards, tasks, sessions, providers, spe
   }>>({});
   const [settingsSaving, setSettingsSaving] = useState(false);
 
+  // Delete confirmation modal state
+  const [deleteConfirmTask, setDeleteConfirmTask] = useState<TaskInfo | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
   // Handle agent input submission
   const handleAgentSubmit = useCallback(async () => {
     if (!agentInput.trim() || !onAgentPrompt || agentLoading) return;
@@ -219,7 +223,6 @@ User request: ${agentInput}`;
   }, []);
 
   // Reset detail edit state when the active task changes
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (activeTaskId) {
       const activeTask = localTasks.find((t) => t.id === activeTaskId);
@@ -229,7 +232,7 @@ User request: ${agentInput}`;
         setDetailEditPriority(activeTask.priority ?? "medium");
       }
     }
-  }, [activeTaskId]);
+  }, [activeTaskId, localTasks]);
 
   // Close modal on Escape key
   useEffect(() => {
@@ -340,6 +343,38 @@ User request: ${agentInput}`;
     onRefresh();
   }
 
+  function confirmDeleteTask(task: TaskInfo) {
+    setDeleteConfirmTask(task);
+  }
+
+  async function executeDeleteTask() {
+    if (!deleteConfirmTask) return;
+
+    setIsDeleting(true);
+    try {
+      const response = await fetch(`/api/tasks/${encodeURIComponent(deleteConfirmTask.id)}`, {
+        method: "DELETE",
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error ?? "Failed to delete task");
+      }
+      setLocalTasks((current) => current.filter((task) => task.id !== deleteConfirmTask.id));
+      setDeleteConfirmTask(null);
+      closeTaskDetail();
+      onRefresh();
+    } catch (error) {
+      console.error("Failed to delete task:", error);
+      // Show error in the modal instead of alert
+      setIsDeleting(false);
+    }
+  }
+
+  function cancelDeleteTask() {
+    setDeleteConfirmTask(null);
+    setIsDeleting(false);
+  }
+
   async function moveTask(taskId: string, targetColumnId: string) {
     const movingTask = localTasks.find((task) => task.id === taskId);
     if (!movingTask) return;
@@ -395,7 +430,7 @@ User request: ${agentInput}`;
     }
   }
 
-  async function createBoard() {
+  async function _createBoard() {
     const name = window.prompt("Board name");
     if (!name?.trim()) return;
     const response = await fetch("/api/kanban/boards", {
@@ -577,9 +612,24 @@ User request: ${agentInput}`;
                           role="button"
                           tabIndex={0}
                           aria-label={`Open ${task.title}`}
-                          className="cursor-grab rounded-xl border border-gray-200/70 bg-gray-50/80 p-3 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-amber-400/50 active:cursor-grabbing dark:border-[#262938] dark:bg-[#0d1018]"
+                          className="group relative cursor-grab rounded-xl border border-gray-200/70 bg-gray-50/80 p-3 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-amber-400/50 active:cursor-grabbing dark:border-[#262938] dark:bg-[#0d1018]"
                           data-testid="kanban-card"
                         >
+                          {/* Delete button - shown on hover */}
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              confirmDeleteTask(task);
+                            }}
+                            className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity rounded-md p-1 hover:bg-red-100 dark:hover:bg-red-900/20"
+                            title="Delete task"
+                            data-testid="kanban-card-delete"
+                          >
+                            <svg className="w-4 h-4 text-red-600 dark:text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                          </button>
+
                           <div className="flex items-start justify-between gap-2">
                             <div>
                               <div className="text-sm font-medium text-gray-800 dark:text-gray-100">{task.title}</div>
@@ -1105,6 +1155,16 @@ User request: ${agentInput}`;
                           </div>
                         );
                       })()}
+
+                      {/* Delete Task Button */}
+                      <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
+                        <button
+                          onClick={() => confirmDeleteTask(task)}
+                          className="w-full rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-100 hover:border-red-300 dark:border-red-900/50 dark:bg-red-900/10 dark:text-red-400 dark:hover:bg-red-900/20 transition-colors"
+                        >
+                          Delete Task
+                        </button>
+                      </div>
                     </div>
                   </div>
                 );
@@ -1441,6 +1501,52 @@ User request: ${agentInput}`;
                     ))}
                   </div>
                 )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deleteConfirmTask && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4 animate-in fade-in duration-150">
+          <div className="relative w-full max-w-md overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl dark:border-[#1c1f2e] dark:bg-[#12141c] animate-in zoom-in-95 duration-150">
+            <div className="p-6">
+              <div className="flex items-start gap-4">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-red-100 dark:bg-red-900/20">
+                  <svg className="h-6 w-6 text-red-600 dark:text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                </div>
+                <div className="flex-1">
+                  <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                    Delete Task
+                  </h3>
+                  <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
+                    Are you sure you want to delete <span className="font-medium text-gray-900 dark:text-gray-100">&quot;{deleteConfirmTask.title}&quot;</span>? This action cannot be undone.
+                  </p>
+                  {deleteConfirmTask.githubNumber && (
+                    <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">
+                      Note: This will only delete the local task. The GitHub issue #{deleteConfirmTask.githubNumber} will remain unchanged.
+                    </p>
+                  )}
+                </div>
+              </div>
+              <div className="mt-6 flex gap-3">
+                <button
+                  onClick={cancelDeleteTask}
+                  disabled={isDeleting}
+                  className="flex-1 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:bg-[#0d1018] dark:text-gray-300 dark:hover:bg-[#191c28]"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={executeDeleteTask}
+                  disabled={isDeleting}
+                  className="flex-1 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50 dark:bg-red-500 dark:hover:bg-red-600"
+                >
+                  {isDeleting ? "Deleting..." : "Delete"}
+                </button>
               </div>
             </div>
           </div>
