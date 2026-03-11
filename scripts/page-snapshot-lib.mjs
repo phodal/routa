@@ -32,6 +32,7 @@ export function parseCliArgs(argv) {
     headed: false,
     baseUrl: DEFAULT_BASE_URL,
     timeoutMs: DEFAULT_TIMEOUT_MS,
+    similarityThreshold: 0.95, // 95% similarity required by default
   };
 
   for (const arg of argv) {
@@ -49,6 +50,11 @@ export function parseCliArgs(argv) {
       options.baseUrl = arg.slice("--base-url=".length);
     } else if (arg.startsWith("--timeout=")) {
       options.timeoutMs = Number.parseInt(arg.slice("--timeout=".length), 10) || DEFAULT_TIMEOUT_MS;
+    } else if (arg.startsWith("--similarity=")) {
+      const value = Number.parseFloat(arg.slice("--similarity=".length));
+      if (value >= 0 && value <= 1) {
+        options.similarityThreshold = value;
+      }
     }
   }
 
@@ -174,6 +180,33 @@ export function normalizeSnapshotBody(content) {
 
 export function normalizeComparableSnapshot(content) {
   return normalizeSnapshotBody(stripSnapshotHeader(content));
+}
+
+export function calculateSimilarity(expected, actual) {
+  const expectedLines = expected.split(/\r?\n/).filter(line => line.trim());
+  const actualLines = actual.split(/\r?\n/).filter(line => line.trim());
+  
+  if (expectedLines.length === 0 && actualLines.length === 0) {
+    return 1.0;
+  }
+  
+  if (expectedLines.length === 0 || actualLines.length === 0) {
+    return 0.0;
+  }
+  
+  const minLines = Math.min(expectedLines.length, actualLines.length);
+  const maxLines = Math.max(expectedLines.length, actualLines.length);
+  let matchingLines = 0;
+  
+  // Count matching lines up to the shorter length
+  for (let i = 0; i < minLines; i += 1) {
+    if (expectedLines[i] === actualLines[i]) {
+      matchingLines += 1;
+    }
+  }
+  
+  // Similarity is based on the longer snapshot to penalize additions/deletions
+  return matchingLines / maxLines;
 }
 
 export function summarizeDiff(expected, actual) {

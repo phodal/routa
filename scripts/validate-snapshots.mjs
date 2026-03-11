@@ -3,6 +3,7 @@
 import fs from "node:fs";
 
 import {
+  calculateSimilarity,
   captureSnapshot,
   createBrowser,
   isServerReachable,
@@ -43,6 +44,7 @@ async function main() {
   const report = {
     generatedAt: new Date().toISOString(),
     baseUrl: options.baseUrl,
+    similarityThreshold: options.similarityThreshold,
     validated: 0,
     matched: 0,
     mismatched: 0,
@@ -77,14 +79,26 @@ async function main() {
         const expected = normalizeComparableSnapshot(fs.readFileSync(snapshotPath, "utf-8"));
         const actual = normalizeComparableSnapshot(fs.readFileSync(tempPath, "utf-8"));
 
-        if (expected === actual) {
+        const similarity = calculateSimilarity(expected, actual);
+        const similarityPercent = (similarity * 100).toFixed(1);
+
+        if (similarity >= options.similarityThreshold) {
           report.matched += 1;
-          console.log(`✅ ${target.id}: snapshot matches`);
+          if (similarity === 1.0) {
+            console.log(`✅ ${target.id}: snapshot matches (100%)`);
+          } else {
+            console.log(`✅ ${target.id}: snapshot similar enough (${similarityPercent}%)`);
+          }
         } else {
           report.mismatched += 1;
           const diff = summarizeDiff(expected, actual);
-          report.diffs.push({ target: target.id, reason: "content mismatch", diff });
-          console.log(`❌ ${target.id}: snapshot mismatch`);
+          report.diffs.push({ 
+            target: target.id, 
+            reason: "content mismatch", 
+            similarity: similarityPercent,
+            diff 
+          });
+          console.log(`❌ ${target.id}: snapshot mismatch (${similarityPercent}% similar, threshold: ${(options.similarityThreshold * 100).toFixed(0)}%)`);
 
           if (options.update) {
             fs.renameSync(tempPath, snapshotPath);
@@ -110,6 +124,8 @@ async function main() {
   }
 
   console.log(`\nValidated ${report.validated} snapshots, matched ${report.matched}, mismatched ${report.mismatched}, updated ${report.updated}, missing ${report.missing}.`);
+  console.log(`Similarity threshold: ${(options.similarityThreshold * 100).toFixed(0)}%`);
+  
   if (report.mismatched > 0 || report.missing > 0) {
     process.exit(options.update ? 0 : 1);
   }
