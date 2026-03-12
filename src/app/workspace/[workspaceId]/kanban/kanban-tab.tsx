@@ -139,6 +139,42 @@ User request: ${agentInput}`;
     setLocalTasks(tasks);
   }, [tasks]);
 
+  const repoHealth = useMemo(() => {
+    if (codebases.length === 0) {
+      return { missingRepoTasks: 0, cwdMismatchTasks: 0 };
+    }
+
+    const codebaseById = new Map(codebases.map((cb) => [cb.id, cb]));
+    const sessionById = new Map(sessions.map((s) => [s.sessionId, s]));
+    let missingRepoTasks = 0;
+    let cwdMismatchTasks = 0;
+
+    for (const task of localTasks) {
+      const taskCodebaseIds = task.codebaseIds && task.codebaseIds.length > 0
+        ? task.codebaseIds
+        : [];
+      const hasMissingRepo = taskCodebaseIds.length > 0 &&
+        taskCodebaseIds.every((cbId) => !codebaseById.has(cbId));
+      if (hasMissingRepo) {
+        missingRepoTasks += 1;
+      }
+
+      if (task.triggerSessionId) {
+        const session = sessionById.get(task.triggerSessionId);
+        if (session?.cwd) {
+          const primaryCodebase = taskCodebaseIds.length > 0
+            ? codebaseById.get(taskCodebaseIds[0]) ?? defaultCodebase
+            : defaultCodebase;
+          if (primaryCodebase?.repoPath && session.cwd !== primaryCodebase.repoPath) {
+            cwdMismatchTasks += 1;
+          }
+        }
+      }
+    }
+
+    return { missingRepoTasks, cwdMismatchTasks };
+  }, [codebases, defaultCodebase, localTasks, sessions]);
+
   // Sync task's assignedProvider to ACP state when activeTaskId changes
   useEffect(() => {
     if (!activeTaskId) return;
@@ -202,14 +238,38 @@ User request: ${agentInput}`;
     [sessions],
   );
 
-  const openTaskDetail = useCallback((task: TaskInfo) => {
+  const patchTask = useCallback(async (taskId: string, payload: Record<string, unknown>) => {
+    const response = await fetch(`/api/tasks/${encodeURIComponent(taskId)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error ?? "Failed to update task");
+    }
+    const updated = data.task as TaskInfo;
+    setLocalTasks((current) => current.map((task) => (task.id === taskId ? updated : task)));
+    return updated;
+  }, []);
+
+  const openTaskDetail = useCallback(async (task: TaskInfo) => {
     setActiveTaskId(task.id);
     setActiveSessionId(task.triggerSessionId ?? null);
+
+    if (task.codebaseIds?.length === 0 && defaultCodebase) {
+      try {
+        await patchTask(task.id, { codebaseIds: [defaultCodebase.id] });
+      } catch (error) {
+        console.error("Failed to auto-assign default repo to task", error);
+      }
+    }
+
     // Select the session in ACP if it exists
     if (task.triggerSessionId && acp) {
       acp.selectSession(task.triggerSessionId);
     }
-  }, [acp]);
+  }, [acp, defaultCodebase, patchTask]);
 
   const openSession = useCallback((sessionId: string | null) => {
     setActiveTaskId(null);
@@ -323,21 +383,6 @@ User request: ${agentInput}`;
         setCodebaseWorktrees(Array.isArray(data.worktrees) ? data.worktrees as WorktreeInfo[] : []);
       }
     } catch { /* ignore */ }
-  }
-
-  async function patchTask(taskId: string, payload: Record<string, unknown>) {
-    const response = await fetch(`/api/tasks/${encodeURIComponent(taskId)}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    const data = await response.json();
-    if (!response.ok) {
-      throw new Error(data.error ?? "Failed to update task");
-    }
-    const updated = data.task as TaskInfo;
-    setLocalTasks((current) => current.map((task) => (task.id === taskId ? updated : task)));
-    return updated;
   }
 
   async function createIssue() {
@@ -527,6 +572,21 @@ User request: ${agentInput}`;
                       </span>
                     </button>
                   ))}
+                  {(repoHealth.missingRepoTasks > 0 || repoHealth.cwdMismatchTasks > 0) && (
+                    <div className="inline-flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-[11px] text-amber-700 dark:border-amber-900/40 dark:bg-amber-900/10 dark:text-amber-300">
+                      <span className="font-medium">Repo health</span>
+                      {repoHealth.missingRepoTasks > 0 && (
+                        <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[10px] text-rose-700 dark:bg-rose-900/30 dark:text-rose-300">
+                          {repoHealth.missingRepoTasks} missing
+                        </span>
+                      )}
+                      {repoHealth.cwdMismatchTasks > 0 && (
+                        <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+                          {repoHealth.cwdMismatchTasks} session mismatch
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
