@@ -25,3 +25,16 @@ export type {
   PostPRCommentOptions,
   PostPRReviewOptions,
 } from "./github-pr-comment";
+
+export {
+  syncGitHubIssuesToLocal,
+  loadLocalIssueSnapshot,
+  findDuplicateIssueCandidates,
+  buildMaintainerIssueTriagePrompt,
+} from "./github-issue-maintainer";
+
+export type {
+  GitHubIssueLite,
+  LocalIssueSnapshot,
+  DuplicateCandidate,
+} from "./github-issue-maintainer";

@@ -23,6 +23,13 @@ import { createBackgroundTask } from "../models/background-task";
 import type { WorkflowRunStore } from "../workflows/workflow-store";
 import { WorkflowExecutor } from "../workflows/workflow-executor";
 import { getWorkflowLoader } from "../workflows/workflow-loader";
+import {
+  buildMaintainerIssueTriagePrompt,
+  findDuplicateIssueCandidates,
+  loadLocalIssueSnapshot,
+  syncGitHubIssuesToLocal,
+  type GitHubIssueLite,
+} from "../github";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -228,6 +235,53 @@ export function buildPrompt(
     .replace(/\{\{payload\}\}/g, JSON.stringify(payload, null, 2));
 }
 
+async function buildMaintainerPromptIfNeeded(
+  config: GitHubWebhookConfig,
+  eventType: string,
+  payload: GitHubWebhookPayload,
+): Promise<string | null> {
+  if (eventType !== "issues" || payload.action !== "opened" || !payload.issue) {
+    return null;
+  }
+
+  const repo = payload.repository?.full_name ?? config.repo;
+  if (!repo || !config.githubToken) {
+    return null;
+  }
+
+  const currentIssue: GitHubIssueLite = {
+    id: -1,
+    number: payload.issue.number,
+    title: payload.issue.title,
+    body: payload.issue.body ?? "",
+    state: "open",
+    labels: payload.issue.labels?.map((label) => label.name) ?? [],
+    assignees: [],
+    user: payload.issue.user?.login,
+    htmlUrl: payload.issue.html_url,
+    createdAt: "",
+    updatedAt: "",
+  };
+
+  const snapshot = await syncGitHubIssuesToLocal({
+    repo,
+    token: config.githubToken,
+    state: "open",
+  });
+
+  const localSnapshot = snapshot ?? await loadLocalIssueSnapshot(repo);
+  const duplicateCandidates = findDuplicateIssueCandidates({
+    currentIssue,
+    issues: localSnapshot?.issues ?? [],
+  });
+
+  return buildMaintainerIssueTriagePrompt({
+    issue: currentIssue,
+    duplicateCandidates,
+    snapshotSyncedAt: localSnapshot?.syncedAt,
+  });
+}
+
 function buildContextSection(eventType: string, payload: GitHubWebhookPayload): string {
   if (eventType === "issues" && payload.issue) {
     const issue = payload.issue;
@@ -425,7 +479,8 @@ export async function handleGitHubWebhook(
         taskId = result.taskIds[0]; // First task for logging
       } else {
         // Fallback to single background task
-        const prompt = buildPrompt(config, eventType, payload);
+        const maintainerPrompt = await buildMaintainerPromptIfNeeded(config, eventType, payload);
+        const prompt = maintainerPrompt ?? buildPrompt(config, eventType, payload);
         const taskTitle = `[GitHub ${eventType}] ${payload.repository?.full_name ?? config.repo} — ${payload.action ?? "event"}`;
 
         const task = createBackgroundTask({
