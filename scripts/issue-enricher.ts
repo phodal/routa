@@ -21,12 +21,19 @@
 import { execSync } from "child_process";
 import { readFileSync, existsSync } from "fs";
 import { join } from "path";
+import {
+  defaultIssueCachePath,
+  findDuplicateCandidates,
+  loadSyncedGitHubIssues,
+  syncGitHubIssues,
+} from "../src/core/github/github-issue-intel";
 
 // ─── Configuration ─────────────────────────────────────────────────────────
 
 const SKILL_PATH = ".claude/skills/issue-enricher/SKILL.md";
 
 interface IssueData {
+  repo: string;
   number: number;
   title: string;
   body: string;
@@ -37,6 +44,9 @@ interface IssueData {
 // ─── Label Taxonomy ────────────────────────────────────────────────────────
 
 const LABEL_TAXONOMY = {
+  triage: [
+    { name: "duplicated", color: "cfd3d7", description: "Likely duplicate of an existing issue" },
+  ],
   type: [
     { name: "bug", color: "d73a4a", description: "Something isn't working" },
     { name: "enhancement", color: "a2eeef", description: "New feature or request" },
@@ -65,6 +75,7 @@ function ensureLabelsExist(): void {
     ...LABEL_TAXONOMY.type,
     ...LABEL_TAXONOMY.area,
     ...LABEL_TAXONOMY.complexity,
+    ...LABEL_TAXONOMY.triage,
   ];
 
   for (const label of allLabels) {
@@ -85,11 +96,13 @@ function ensureLabelsExist(): void {
 function fetchIssue(issueNumber: number): IssueData | null {
   try {
     const output = execSync(
-      `gh issue view ${issueNumber} --json number,title,body,labels,author`,
+      `gh issue view ${issueNumber} --json number,title,body,labels,author --repo $(gh repo view --json nameWithOwner --jq .nameWithOwner)`,
       { encoding: "utf-8", cwd: process.cwd() }
     );
     const data = JSON.parse(output);
+    const repo = execSync("gh repo view --json nameWithOwner --jq .nameWithOwner", { encoding: "utf-8", cwd: process.cwd() }).trim();
     return {
+      repo,
       number: data.number,
       title: data.title,
       body: data.body || "",
@@ -119,10 +132,29 @@ async function analyzeIssue(issue: IssueData, dryRun: boolean): Promise<void> {
 
   const hasBody = issue.body.trim().length > 0;
 
+  let duplicateHints = "(none)";
+  try {
+    const cachePath = defaultIssueCachePath(issue.repo);
+    const allIssues = syncGitHubIssues(issue.repo, cachePath, 300);
+    const duplicates = findDuplicateCandidates(issue, allIssues, 6);
+    duplicateHints = duplicates.length > 0
+      ? duplicates
+        .map((candidate) => `- #${candidate.number} [${candidate.state}] ${candidate.title} (${candidate.score}) ${candidate.url}`)
+        .join("\n")
+      : "(no high-confidence duplicates from local sync)";
+
+    const locallySyncedCount = loadSyncedGitHubIssues(cachePath).length;
+    console.log(`   📦 Local GitHub issue cache ready: ${locallySyncedCount} issues (${cachePath})`);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.log(`   ⚠️  Failed to refresh local issue cache: ${message}`);
+  }
+
   // Build label taxonomy strings for prompt
   const typeLabels = LABEL_TAXONOMY.type.map((l) => `\`${l.name}\``).join(", ");
   const areaLabels = LABEL_TAXONOMY.area.map((l) => `\`${l.name}\``).join(", ");
   const complexityLabels = LABEL_TAXONOMY.complexity.map((l) => `\`${l.name}\``).join(", ");
+  const triageLabels = LABEL_TAXONOMY.triage.map((l) => `\`${l.name}\``).join(", ");
 
   const prompt = `Analyze GitHub issue #${issue.number} and provide a detailed analysis.
 
@@ -134,6 +166,9 @@ ${hasBody ? issue.body : "(empty - user did not write a body)"}
 
 ## Current Labels
 ${issue.labels.length > 0 ? issue.labels.join(", ") : "(none)"}
+
+## Local Duplicate Hints (from synced GitHub issues)
+${duplicateHints}
 
 ## CRITICAL: External Repository References
 If the issue title or body contains a GitHub repository URL (e.g. https://github.com/user/repo):
@@ -166,7 +201,10 @@ This is essential — if the user says "clone" or references an external repo, t
    - 2-3 proposed approaches with trade-offs
    - Recommended approach
    - Effort estimate (Small/Medium/Large)
-7. Automatically apply labels based on your analysis using these categories:
+7. First, determine whether this issue duplicates existing ones:
+   - If duplicate, identify canonical issue(s), explain the overlap, and apply triage label ${triageLabels}.
+   - If not duplicate, state why it is distinct.
+8. Automatically apply labels based on your analysis using these categories:
    - **Type** (pick ONE): ${typeLabels}
    - **Area** (pick ONE or MORE that apply): ${areaLabels}
    - **Complexity** (pick ONE): ${complexityLabels}
@@ -174,6 +212,8 @@ This is essential — if the user says "clone" or references an external repo, t
      ? "Output the labels you would apply and why, but do NOT run any gh commands."
      : `Apply the labels with: gh issue edit ${issue.number} --add-label "bug,area:frontend,complexity:small" (replace with the labels you chose)
    Use only labels from the taxonomy above. Do NOT invent new label names.`}
+
+9. If this issue needs follow-up from a code owner, include @mentions based on git history and relevant files. Only mention maintainers when you have concrete file-level evidence.
 
 Do NOT create a new issue - only analyze and update issue #${issue.number}.`;
 

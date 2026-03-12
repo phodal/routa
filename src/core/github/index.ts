@@ -25,3 +25,16 @@ export type {
   PostPRCommentOptions,
   PostPRReviewOptions,
 } from "./github-pr-comment";
+
+
+export {
+  findDuplicateCandidates,
+  syncGitHubIssues,
+  loadSyncedGitHubIssues,
+  defaultIssueCachePath,
+} from "./github-issue-intel";
+
+export type {
+  GitHubIssueRecord,
+  DuplicateCandidate,
+} from "./github-issue-intel";
