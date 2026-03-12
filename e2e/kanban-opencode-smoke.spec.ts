@@ -16,7 +16,7 @@
 
 import { test, expect } from "@playwright/test";
 
-const BASE = "http://127.0.0.1:3000";
+const BASE_URL = "http://127.0.0.1:3000";
 
 async function fillIssueObjective(page: import("@playwright/test").Page, text: string) {
   const editor = page.locator(".ProseMirror").last();
@@ -26,6 +26,8 @@ async function fillIssueObjective(page: import("@playwright/test").Page, text: s
 }
 
 test.describe("Kanban OpenCode Smoke Test", () => {
+  test.use({ baseURL: BASE_URL });
+
   test("ACP triggering with OpenCode provider and session popup", async ({ page, request }) => {
     const results: string[] = [];
     const title = `Test OpenCode Smoke Issue ${Date.now()}`;
@@ -41,7 +43,7 @@ test.describe("Kanban OpenCode Smoke Test", () => {
     });
 
     // Step 1: Navigate directly to the Kanban page.
-    await page.goto(`${BASE}/workspace/default/kanban`, { waitUntil: "domcontentloaded" });
+    await page.goto("/workspace/default/kanban", { waitUntil: "domcontentloaded" });
     results.push("1. Navigated to workspace/default/kanban");
 
     await expect(page.getByRole("button", { name: /Create issue|Manual/ })).toBeVisible({

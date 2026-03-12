@@ -24,6 +24,8 @@ async function createAutomationSession(
   system: RoutaSystem,
   params: {
     workspaceId: string;
+    cardTitle: string;
+    columnName: string;
     cardId: string;
     columnId: string;
     automation: KanbanColumnAutomation;
@@ -54,6 +56,7 @@ async function createAutomationSession(
   }
 
   let worktreeCwd = preferredCodebase?.repoPath ?? process.cwd();
+  let worktreeBranch = preferredCodebase?.branch;
   if (params.columnId === "dev" && preferredCodebase && !nextTask.worktreeId) {
     try {
       const worktreeService = new GitWorktreeService(
@@ -79,6 +82,7 @@ async function createAutomationSession(
       });
       nextTask.worktreeId = worktree.id;
       worktreeCwd = worktree.worktreePath;
+      worktreeBranch = worktree.branch;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       nextTask.status = TaskStatus.BLOCKED;
@@ -91,14 +95,15 @@ async function createAutomationSession(
     const existingWorktree = await system.worktreeStore.get(nextTask.worktreeId);
     if (existingWorktree?.worktreePath) {
       worktreeCwd = existingWorktree.worktreePath;
+      worktreeBranch = existingWorktree.branch ?? worktreeBranch;
     }
   }
 
   const triggerResult = await triggerAssignedTaskAgent({
     origin: getInternalApiOrigin(),
-    workspaceId: params.workspaceId,
+    workspaceId: nextTask.workspaceId,
     cwd: worktreeCwd,
-    branch: preferredCodebase?.branch,
+    branch: worktreeBranch,
     task: nextTask,
   });
 
@@ -132,15 +137,6 @@ export function getWorkflowOrchestrator(system: RoutaSystem): KanbanWorkflowOrch
     g[GLOBAL_KEY] = orchestrator;
   }
 
-  orchestrator.setCreateSession((params) =>
-    createAutomationSession(system, {
-      workspaceId: params.workspaceId,
-      cardId: params.cardId,
-      columnId: params.columnId,
-      automation: params.automation,
-    })
-  );
-
   return orchestrator;
 }
 
@@ -149,12 +145,13 @@ export function getWorkflowOrchestrator(system: RoutaSystem): KanbanWorkflowOrch
  */
 export function startWorkflowOrchestrator(system: RoutaSystem): void {
   const g = globalThis as Record<string, unknown>;
-  const orchestrator = getWorkflowOrchestrator(system);
 
   if (g[STARTED_KEY]) {
     return; // Already started
   }
 
+  const orchestrator = getWorkflowOrchestrator(system);
+  orchestrator.setCreateSession((params) => createAutomationSession(system, params));
   orchestrator.start();
   g[STARTED_KEY] = true;
 }

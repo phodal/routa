@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 
 const BASE_URL = "http://127.0.0.1:3000";
-const PRIMARY_REPO_PATH = "/Users/phodal/ai/routa-js";
+const PRIMARY_REPO_PATH = process.env.ROUTA_E2E_REPO_PATH || process.cwd();
 
 async function fillIssueObjective(page: import("@playwright/test").Page, text: string) {
   const editor = page.locator(".ProseMirror").last();

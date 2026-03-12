@@ -10,7 +10,7 @@ import { RoutaMcpToolManager, ToolMode } from "./routa-mcp-tool-manager";
 import { RoutaSystem, getRoutaSystem } from "../routa-system";
 import { initRoutaOrchestrator } from "../orchestration/orchestrator-singleton";
 import { KanbanTools } from "../tools/kanban-tools";
-import { getWorkflowOrchestrator as getKanbanWorkflowOrchestrator } from "../kanban/workflow-orchestrator-singleton";
+import { startWorkflowOrchestrator as startKanbanWorkflowOrchestrator } from "../kanban/workflow-orchestrator-singleton";
 
 export interface RoutaMcpServerResult {
   server: McpServer;
@@ -79,7 +79,7 @@ export function createRoutaMcpServer(
   toolManager.setKanbanTools(kanbanTools);
 
   // Initialize the workflow orchestrator singleton (listens for column transitions)
-  getKanbanWorkflowOrchestrator(routaSystem);
+  startKanbanWorkflowOrchestrator(routaSystem);
 
   toolManager.registerTools(server);
 

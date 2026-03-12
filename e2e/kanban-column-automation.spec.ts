@@ -1,7 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 
 const BASE_URL = "http://127.0.0.1:3000";
-const PRIMARY_REPO_PATH = "/Users/phodal/ai/routa-js";
+const PRIMARY_REPO_PATH = process.env.ROUTA_E2E_REPO_PATH || process.cwd();
 
 async function fillIssueObjective(page: Page, text: string) {
   const editor = page.locator(".ProseMirror").last();
@@ -11,6 +11,7 @@ async function fillIssueObjective(page: Page, text: string) {
 }
 
 test.describe("Kanban column automation", () => {
+  test.use({ baseURL: BASE_URL });
   test.setTimeout(180_000);
 
   test("manual issue modal works and todo column automation creates a session", async ({
