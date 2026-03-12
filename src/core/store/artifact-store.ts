@@ -9,7 +9,6 @@ import {
   Artifact,
   ArtifactRequest,
   ArtifactType,
-  ArtifactStatus,
 } from "../models/artifact";
 
 export interface ArtifactStore {
@@ -125,4 +124,3 @@ export class InMemoryArtifactStore implements ArtifactStore {
     }
   }
 }
-

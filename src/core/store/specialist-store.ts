@@ -5,7 +5,7 @@
  * Supports CRUD operations for specialists with role and model tier mappings.
  */
 
-import { eq, and, isNull } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import type { PostgresDatabase } from "../db";
 import { specialists } from "../db/schema";
 import type { SpecialistConfig } from "../orchestration/specialist-prompts";
@@ -147,7 +147,7 @@ export class PostgresSpecialistStore implements SpecialistStore {
   }
 
   async delete(id: string): Promise<boolean> {
-    const result = await this.db
+    await this.db
       .delete(specialists)
       .where(eq(specialists.id, id));
 

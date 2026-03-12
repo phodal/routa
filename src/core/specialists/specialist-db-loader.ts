@@ -16,12 +16,8 @@ import {
   loadBundledSpecialists,
   loadUserSpecialists,
   toSpecialistConfig,
-  type ParsedSpecialist,
 } from "../specialists/specialist-file-loader";
 import type { SpecialistStore } from "../store/specialist-store";
-import { getDatabase } from "../db";
-import { specialists } from "../db/schema";
-import { eq } from "drizzle-orm";
 
 // ─── Cached Specialists ─────────────────────────────────────────────────────
 

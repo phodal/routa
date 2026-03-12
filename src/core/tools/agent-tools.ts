@@ -24,17 +24,14 @@
 
 import { v4 as uuidv4 } from "uuid";
 import {
-  Agent,
   AgentRole,
   AgentStatus,
   ModelTier,
   createAgent as createAgentModel,
 } from "../models/agent";
-import { Task, TaskStatus, VerificationVerdict, createTask as createTaskModel } from "../models/task";
+import { Task, TaskStatus, createTask as createTaskModel } from "../models/task";
 import { MessageRole, createMessage, CompletionReport } from "../models/message";
 import {
-  Artifact,
-  ArtifactRequest,
   ArtifactType,
   createArtifact,
   createArtifactRequest,
@@ -1057,7 +1054,7 @@ export class AgentTools {
 
       // Try to extract path from output if not specified
       if (!screenshotPath) {
-        const pathMatch = output.match(/(?:Saved|Screenshot).*?([\/\w\-\.]+\.png)/i);
+        const pathMatch = output.match(/(?:Saved|Screenshot).*?([/\w.-]+\.png)/i);
         if (pathMatch) {
           screenshotPath = pathMatch[1];
         }
