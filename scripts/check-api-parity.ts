@@ -59,7 +59,7 @@ function parseContract(): RouteEndpoint[] {
 
   for (const line of content.split("\n")) {
     // Match path definitions (2-space indented, starts with /)
-    const pathMatch = line.match(/^{2}(\/api\/\S+):$/);
+    const pathMatch = line.match(/^ {2}(\/api\/\S+):$/);
     if (pathMatch) {
       currentPath = pathMatch[1];
       continue;
@@ -67,7 +67,7 @@ function parseContract(): RouteEndpoint[] {
 
     // Match method definitions (4-space indented)
     if (currentPath) {
-      const methodMatch = line.match(/^{4}(\w+):$/);
+      const methodMatch = line.match(/^ {4}(\w+):$/);
       if (methodMatch && methods.includes(methodMatch[1].toLowerCase())) {
         endpoints.push({
           method: methodMatch[1].toUpperCase(),
