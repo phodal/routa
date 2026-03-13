@@ -1,10 +1,20 @@
 ---
 dimension: maintainability
 weight: 14
-description: API 契约测试证据清单
-commands:
-  - cargo test -p routa-server --test rust_api_end_to_end
-  - npm run api:check
+threshold:
+  pass: 100
+  warn: 90
+
+metrics:
+  - name: api_contract_parity
+    command: npm run api:check 2>&1
+    pattern: "parity check passed|All endpoints match"
+    hard_gate: true
+
+  - name: rust_api_test
+    command: cargo test -p routa-server --test rust_api_end_to_end 2>&1
+    pattern: "test result: ok"
+    hard_gate: false
 ---
 
 # API 契约测试证据

@@ -1,10 +1,21 @@
 ---
 dimension: testability
 weight: 14
-description: 单元测试与集成测试证据清单
-commands:
-  - cargo test --workspace
-  - npm run test:run
+threshold:
+  pass: 80
+  warn: 70
+  block: 0  # 测试失败直接阻断
+
+metrics:
+  - name: ts_test_pass
+    command: npm run test:run 2>&1
+    pattern: "Tests\\s+(\\d+)\\s+passed"
+    hard_gate: true
+
+  - name: rust_test_pass
+    command: cargo test --workspace 2>&1
+    pattern: "test result: ok"
+    hard_gate: true
 ---
 
 # 单元测试与集成测试证据

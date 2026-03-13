@@ -1,6 +1,14 @@
 # Fitness Function Rulebook
 
-> 入口文件：[FITNESS.md](FITNESS.md)
+## Quick Start
+
+```bash
+# 运行 fitness 检查（解析 frontmatter，执行命令，输出结果）
+python docs/fitness/scripts/fitness.py
+
+# 仅查看会执行什么（不实际运行）
+python docs/fitness/scripts/fitness.py --dry-run
+```
 
 ## Scope
 

@@ -26,7 +26,7 @@
 
 ## Fitness Function
 
-Before any PR, verify fitness using [docs/fitness/FITNESS.md](docs/fitness/FITNESS.md):
+Before any PR, verify fitness using [docs/fitness/README.md](docs/fitness/README.md):
 
 1. Check hard gates (must all pass):
    - `npm run test:run` — TS tests
