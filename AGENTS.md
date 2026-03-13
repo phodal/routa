@@ -15,8 +15,8 @@
 - Use **Playwright MCP tool** or CLI (`playwright-cli`) or Skills to test the web UI directly.
 - Use **Playwright e2e** tests for automated coverage.
 - Test Tauri UI: `npm run tauri dev`, then use Playwright against `http://127.0.0.1:3210/`.
-- For Rust test coverage work, maintain progress in `docs/fitness/unit-test.md` before and after each batch of test changes.
-- For Rust test coverage work, always update coverage metrics (line coverage if available, otherwise file-level proxy) in `docs/fitness/unit-test.md`; progress checklist alone is insufficient.
+- For Rust test coverage work, follow this sequence: `AGENTS.md` -> `docs/fitness/README.md` -> `docs/fitness/unit-test.md`.
+- For Rust test coverage work, maintain progress and coverage metrics (line coverage when `llvm-cov` is available, otherwise file-level proxy) in `docs/fitness/unit-test.md`; progress checklist alone is insufficient.
 - When changes span many files, do a full manual walkthrough in the browser:
   - Home page → select claude code → enter a requirement → auto-redirect to detail page → trigger ACP session
   - Visit a workspace detail page → click a session → switch to Trace UI to check history

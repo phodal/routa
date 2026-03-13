@@ -136,7 +136,7 @@ async fn create_worktree(
         .as_ref()
         .and_then(|ws| ws.metadata.get("worktreeRoot"))
         .filter(|s| !s.trim().is_empty())
-        .map(|s| std::path::PathBuf::from(s))
+        .map(std::path::PathBuf::from)
         .unwrap_or_else(|| git::get_default_workspace_worktree_root(&workspace_id));
 
     // Use codebase label (or fallback to codebase_id) for the directory name

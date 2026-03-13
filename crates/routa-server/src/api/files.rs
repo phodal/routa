@@ -218,3 +218,55 @@ async fn search_files(
         scanned,
     }))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use tempfile::tempdir;
+
+    #[test]
+    fn fuzzy_match_prefers_exact_match() {
+        let exact = fuzzy_match("readme.md", "readme.md");
+        let prefix = fuzzy_match("readme", "docs/readme.md");
+        let contains = fuzzy_match("eadm", "docs/readme.md");
+        let miss = fuzzy_match("xyz", "docs/readme.md");
+
+        assert_eq!(exact, 1000);
+        assert!(prefix > contains);
+        assert_eq!(miss, 0);
+    }
+
+    #[test]
+    fn should_ignore_uses_known_patterns() {
+        assert!(should_ignore("node_modules"));
+        assert!(should_ignore(".git"));
+        assert!(!should_ignore("src"));
+        assert!(!should_ignore("README.md"));
+    }
+
+    #[test]
+    fn walk_directory_skips_ignored_dirs_and_applies_limit() {
+        let temp = tempdir().expect("tempdir should be created");
+        let root = temp.path();
+
+        fs::create_dir_all(root.join("src")).expect("create src");
+        fs::create_dir_all(root.join(".git")).expect("create .git");
+        fs::create_dir_all(root.join("node_modules/pkg")).expect("create node_modules");
+
+        fs::write(root.join("src/a.rs"), "a").expect("write a.rs");
+        fs::write(root.join("src/b.rs"), "b").expect("write b.rs");
+        fs::write(root.join(".git/config"), "ignored").expect("write git config");
+        fs::write(root.join("node_modules/pkg/index.js"), "ignored").expect("write node_modules");
+
+        let files = walk_directory(root, root, 1);
+        assert_eq!(files.len(), 1);
+        assert!(files[0].starts_with("src/"));
+
+        let all = walk_directory(root, root, 10);
+        assert!(all.iter().any(|p| p == "src/a.rs"));
+        assert!(all.iter().any(|p| p == "src/b.rs"));
+        assert!(!all.iter().any(|p| p.contains(".git")));
+        assert!(!all.iter().any(|p| p.contains("node_modules")));
+    }
+}

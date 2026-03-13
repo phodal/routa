@@ -203,6 +203,38 @@ async fn list_repos() -> Result<Json<serde_json::Value>, ServerError> {
     Ok(Json(serde_json::json!({ "repos": repos })))
 }
 
+#[cfg(test)]
+mod tests {
+    use super::parse_git_clone_error;
+
+    #[test]
+    fn parse_git_clone_error_maps_auth_and_network_failures() {
+        let auth = parse_git_clone_error("fatal: Authentication failed", Some(128));
+        assert!(auth.contains("Git credentials not configured"));
+
+        let ssh = parse_git_clone_error("Permission denied (publickey).", Some(128));
+        assert!(ssh.contains("SSH key not configured"));
+
+        let network = parse_git_clone_error("fatal: Could not resolve host: github.com", Some(128));
+        assert!(network.contains("Network error"));
+    }
+
+    #[test]
+    fn parse_git_clone_error_prefers_fatal_line_and_fallback() {
+        let fatal = parse_git_clone_error(
+            "warning: x\nfatal: repository 'https://x' not found\n",
+            Some(128),
+        );
+        assert!(fatal.contains("Repository not found"));
+
+        let generic = parse_git_clone_error("unexpected failure happened", Some(42));
+        assert_eq!(generic, "Clone failed: unexpected failure happened");
+
+        let code_only = parse_git_clone_error("", Some(7));
+        assert_eq!(code_only, "Clone failed with exit code 7");
+    }
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct SwitchBranchRequest {

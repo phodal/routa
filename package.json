@@ -49,6 +49,9 @@
     "test:e2e:debug": "playwright test --debug",
     "test:e2e:tauri": "playwright test --config=playwright.tauri.config.ts e2e/tauri-backend-check.spec.ts",
     "test:e2e:tauri:headed": "playwright test --config=playwright.tauri.config.ts e2e/tauri-backend-check.spec.ts --project=chromium-headed",
+    "rust:cov": "./scripts/rust-coverage.sh routa-core summary",
+    "rust:cov:lcov": "./scripts/rust-coverage.sh routa-core lcov",
+    "rust:cov:html": "./scripts/rust-coverage.sh routa-core html",
     "prepare": "husky"
   },
   "dependencies": {
