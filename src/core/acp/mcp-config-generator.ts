@@ -9,6 +9,8 @@
  * to providers via --mcp-config flags.
  */
 
+import type { ToolMode } from "../mcp/routa-mcp-tool-manager";
+
 export interface RoutaMcpConfig {
   /** Base URL of the routa-js server (e.g., http://localhost:3000) */
   routaServerUrl: string;
@@ -31,6 +33,8 @@ export interface RoutaMcpConfig {
    * Defaults to true. Set to false to only use the built-in routa-coordination server.
    */
   includeCustomServers?: boolean;
+  /** MCP tool exposure for this session. Defaults to the server global mode. */
+  toolMode?: ToolMode;
 }
 
 export interface McpServerConfig {
@@ -117,7 +121,11 @@ export function generateMultipleRoutaMcpConfigs(
  * @param workspaceId - Optional workspace ID (defaults to "default")
  * @returns Default MCP configuration
  */
-export function getDefaultRoutaMcpConfig(workspaceId?: string, sessionId?: string): RoutaMcpConfig {
+export function getDefaultRoutaMcpConfig(
+  workspaceId?: string,
+  sessionId?: string,
+  toolMode?: ToolMode,
+): RoutaMcpConfig {
   const effectiveWorkspaceId = workspaceId || process.env.ROUTA_WORKSPACE_ID || "default";
 
   // Build query string with workspace and session context so MCP server can scope notes correctly
@@ -128,6 +136,9 @@ export function getDefaultRoutaMcpConfig(workspaceId?: string, sessionId?: strin
     }
     if (sessionId) {
       params.push(`sid=${encodeURIComponent(sessionId)}`);
+    }
+    if (toolMode) {
+      params.push(`toolMode=${encodeURIComponent(toolMode)}`);
     }
     return params.length > 0 ? `${url}?${params.join("&")}` : url;
   };
@@ -152,6 +163,7 @@ export function getDefaultRoutaMcpConfig(workspaceId?: string, sessionId?: strin
           routaServerUrl: `http://${host}:${port}`,
           mcpEndpoint: withWsParam(standaloneServer.mcpUrl),
           workspaceId: effectiveWorkspaceId,
+          toolMode,
         };
       }
     } catch {
@@ -169,6 +181,7 @@ export function getDefaultRoutaMcpConfig(workspaceId?: string, sessionId?: strin
     mcpEndpoint: withContextParams(`${routaServerUrl}/api/mcp`),
     workspaceId: effectiveWorkspaceId,
     sessionId,
+    toolMode,
   };
 }
 
@@ -214,4 +227,3 @@ export async function validateRoutaMcpConfig(
     return false;
   }
 }
-

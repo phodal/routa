@@ -133,6 +133,7 @@ export class BrowserAcpClient {
     gateProvider?: string;
     mcpServers?: Array<{ name: string; url?: string }>;
     workspaceId?: string;
+    toolMode?: "essential" | "full";
     model?: string;
     idempotencyKey?: string;
     specialistId?: string;
@@ -159,6 +160,7 @@ export class BrowserAcpClient {
       gateProvider: params.gateProvider,
       mcpServers: params.mcpServers ?? [],
       workspaceId: params.workspaceId,
+      toolMode: params.toolMode,
       model: params.model,
       idempotencyKey: params.idempotencyKey,
       specialistId: params.specialistId,

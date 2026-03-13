@@ -99,6 +99,7 @@ export class AcpProcessManager {
         extraArgs?: string[],
         extraEnv?: Record<string, string>,
         workspaceId?: string,
+        toolMode?: "essential" | "full",
     ): Promise<string> {
         // Check if we should use OpenCode SDK adapter (serverless + configured)
         if (presetId === "opencode" && shouldUseOpencodeAdapter()) {
@@ -110,7 +111,10 @@ export class AcpProcessManager {
         // This ensures notes created by the agent are scoped to the current session.
         let mcpConfigs: string[] | undefined;
         if (providerSupportsMcp(presetId)) {
-            const mcpResult = await ensureMcpForProvider(presetId, getDefaultRoutaMcpConfig(workspaceId, sessionId));
+            const mcpResult = await ensureMcpForProvider(
+                presetId,
+                getDefaultRoutaMcpConfig(workspaceId, sessionId, toolMode),
+            );
             mcpConfigs = mcpResult.mcpConfigs.length > 0 ? mcpResult.mcpConfigs : undefined;
             console.log(`[AcpProcessManager] MCP setup for ${presetId}: ${mcpResult.summary}`);
         }

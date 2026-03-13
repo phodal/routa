@@ -250,6 +250,11 @@ export async function POST(request: NextRequest) {
       const parentSessionId = (p.parentSessionId as string | undefined) || undefined;
       const model = (p.model as string | undefined);
       const specialistId = (p.specialistId as string | undefined);
+      const toolMode = p.toolMode === "full"
+        ? "full"
+        : p.toolMode === "essential"
+          ? "essential"
+          : undefined;
       const baseUrl = (p.baseUrl as string | undefined);
       const apiKey = (p.apiKey as string | undefined);
       const workspaceId = (p.workspaceId as string) || "default";
@@ -373,6 +378,7 @@ export async function POST(request: NextRequest) {
         workspaceId,
         provider,
         role: role ?? "CRAFTER",
+        toolMode,
         parentSessionId,
         modeId,
         model,
@@ -476,7 +482,7 @@ export async function POST(request: NextRequest) {
               instanceConfig,
             );
           } else if (isClaudeCode) {
-            const mcpConfigs = await buildMcpConfigForClaude(workspaceId, sessionId);
+            const mcpConfigs = await buildMcpConfigForClaude(workspaceId, sessionId, toolMode);
             acpSessionId = await manager.createClaudeSession(
               sessionId,
               cwd,
@@ -509,6 +515,7 @@ export async function POST(request: NextRequest) {
               extraArgs.length > 0 ? extraArgs : undefined,
               undefined,
               workspaceId,
+              toolMode,
             );
           }
 
@@ -607,6 +614,7 @@ export async function POST(request: NextRequest) {
             routaAgentId: routaAgentId ?? acpSessionId,
             provider,
             role: role ?? "CRAFTER",
+            toolMode,
             parentSessionId,
             modeId,
             model,
@@ -739,6 +747,7 @@ export async function POST(request: NextRequest) {
         const provider = (p.provider as string | undefined) ?? storedSession?.provider ?? defaultProvider;
         const workspaceId = (p.workspaceId as string) || storedSession?.workspaceId || "default";
         const role = storedSession?.role ?? "CRAFTER"; // Prefer stored role for restarts
+        const toolMode = storedSession?.toolMode;
 
         try {
           const preset = getPresetById(provider);
@@ -801,7 +810,7 @@ export async function POST(request: NextRequest) {
             );
           } else if (isClaudeCode) {
             // Claude Code CLI session
-            const mcpConfigs = await buildMcpConfigForClaude(workspaceId, sessionId);
+            const mcpConfigs = await buildMcpConfigForClaude(workspaceId, sessionId, toolMode);
             acpSessionId = await manager.createClaudeSession(
               sessionId,
               cwd,
@@ -821,6 +830,7 @@ export async function POST(request: NextRequest) {
               undefined, // extraArgs
               undefined, // extraEnv
               workspaceId,
+              toolMode,
             );
           }
 
@@ -833,6 +843,7 @@ export async function POST(request: NextRequest) {
             routaAgentId: acpSessionId,
             provider,
             role,
+            toolMode,
             createdAt: now.toISOString(),
           });
 
@@ -1140,8 +1151,9 @@ export async function POST(request: NextRequest) {
           const restartCwd = sessionRecord.cwd ?? process.cwd();
           const restartWorkspaceId = sessionRecord.workspaceId ?? "default";
           const restartRole = sessionRecord.role ?? "CRAFTER";
+          const restartToolMode = sessionRecord.toolMode;
           try {
-            const mcpConfigs = await buildMcpConfigForClaude(restartWorkspaceId, sessionId);
+            const mcpConfigs = await buildMcpConfigForClaude(restartWorkspaceId, sessionId, restartToolMode);
             await manager.createClaudeSession(
               sessionId,
               restartCwd,
@@ -1660,11 +1672,17 @@ function jsonrpcResponse(
  * Claude Code accepts --mcp-config with an inline JSON object.
  * We reuse the shared provider setup path to avoid config drift.
  */
-async function buildMcpConfigForClaude(workspaceId?: string, sessionId?: string): Promise<string[]> {
+async function buildMcpConfigForClaude(
+  workspaceId?: string,
+  sessionId?: string,
+  toolMode?: "essential" | "full",
+): Promise<string[]> {
   // Keep Claude MCP setup consistent with all other providers.
   // Pass workspace ID and session ID so they're embedded in the MCP endpoint URL
   // (?wsId=...&sid=...) allowing the MCP server to scope notes to the correct session.
-  const config = workspaceId ? getDefaultRoutaMcpConfig(workspaceId, sessionId) : undefined;
+  const config = workspaceId
+    ? getDefaultRoutaMcpConfig(workspaceId, sessionId, toolMode)
+    : undefined;
   const result = await ensureMcpForProvider("claude", config);
   console.log(`[ACP Route] MCP config for Claude Code: ${result.summary}`);
   return result.mcpConfigs;

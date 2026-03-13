@@ -149,6 +149,7 @@ export class KanbanTools {
     });
 
     await this.taskStore.save(task);
+    this.emitCreatedCardTransition(board, column, task);
 
     return successResult(this.taskToCard(task));
   }
@@ -436,6 +437,7 @@ export class KanbanTools {
         labels: item.labels,
       });
       await this.taskStore.save(task);
+      this.emitCreatedCardTransition(board, column, task);
       createdCards.push(this.taskToCard(task));
     }
 
@@ -457,5 +459,21 @@ export class KanbanTools {
       updatedAt: task.updatedAt,
     };
   }
-}
 
+  private emitCreatedCardTransition(board: { id: string; workspaceId: string }, column: KanbanColumn, task: Task) {
+    if (!this.eventBus || !column.automation?.enabled) {
+      return;
+    }
+
+    emitColumnTransition(this.eventBus, {
+      cardId: task.id,
+      cardTitle: task.title,
+      boardId: board.id,
+      workspaceId: board.workspaceId,
+      fromColumnId: "__created__",
+      toColumnId: column.id,
+      fromColumnName: "Created",
+      toColumnName: column.name,
+    });
+  }
+}

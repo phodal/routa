@@ -70,19 +70,21 @@ export interface UseAcpActions {
     provider?: string,
     modeId?: string,
     role?: string,
-    workspaceId?: string,
-    model?: string,
-    /** Idempotency key to prevent duplicate session creation */
-    idempotencyKey?: string,
+      workspaceId?: string,
+      model?: string,
+      /** Idempotency key to prevent duplicate session creation */
+      idempotencyKey?: string,
     /** Specialist ID for per-specialist model configuration */
     specialistId?: string,
     /** Custom API base URL override */
     baseUrl?: string,
     /** API key override */
-    apiKey?: string,
-    /** Git branch to scope the session to */
-    branch?: string,
-  ) => Promise<AcpNewSessionResult | null>;
+      apiKey?: string,
+      /** Git branch to scope the session to */
+      branch?: string,
+      /** MCP tool exposure for the session */
+      toolMode?: "essential" | "full",
+    ) => Promise<AcpNewSessionResult | null>;
   selectSession: (sessionId: string) => void;
   setProvider: (provider: string) => void;
   setMode: (modeId: string) => Promise<void>;
@@ -295,6 +297,7 @@ export function useAcp(baseUrl: string = ""): UseAcpState & UseAcpActions {
       baseUrl?: string,
       apiKey?: string,
       branch?: string,
+      toolMode?: "essential" | "full",
     ): Promise<AcpNewSessionResult | null> => {
       const client = clientRef.current;
       if (!client) return null;
@@ -316,6 +319,7 @@ export function useAcp(baseUrl: string = ""): UseAcpState & UseAcpActions {
           role,
           mcpServers: [],
           workspaceId,
+          toolMode,
           model,
           idempotencyKey,
           specialistId,

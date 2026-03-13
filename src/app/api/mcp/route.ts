@@ -23,6 +23,7 @@ import { NextRequest } from "next/server";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { createRoutaMcpServer } from "@/core/mcp/routa-mcp-server";
 import { getGlobalToolMode } from "@/core/mcp/tool-mode-config";
+import type { ToolMode } from "@/core/mcp/routa-mcp-tool-manager";
 
 // ─── Session management ────────────────────────────────────────────────
 
@@ -45,6 +46,7 @@ async function createSession(
   workspaceId?: string,
   enableStatelessMode = false,
   acpSessionId?: string,
+  toolMode?: ToolMode,
 ): Promise<WebStandardStreamableHTTPServerTransport> {
   const effectiveWorkspaceId = workspaceId || process.env.ROUTA_WORKSPACE_ID || "default";
   const sessionId = enableStatelessMode
@@ -67,7 +69,7 @@ async function createSession(
 
   const { server } = createRoutaMcpServer({
     workspaceId: effectiveWorkspaceId,
-    toolMode: getGlobalToolMode(),
+    toolMode: toolMode ?? getGlobalToolMode(),
     sessionId: acpSessionId,
   });
   await server.connect(transport);
@@ -84,6 +86,14 @@ async function createSession(
   };
 
   return transport;
+}
+
+function resolveToolMode(request: NextRequest): ToolMode | undefined {
+  const toolMode = new URL(request.url).searchParams.get("toolMode");
+  if (toolMode === "essential" || toolMode === "full") {
+    return toolMode;
+  }
+  return undefined;
 }
 
 /**
@@ -114,9 +124,10 @@ async function getOrCreateSession(
 
   // ACP session ID embedded in URL by orchestrator (?sid=) so notes are scoped correctly
   const acpSessionId = url.searchParams.get("sid") ?? undefined;
+  const toolMode = resolveToolMode(request);
 
   // New session needed (initialize request)
-  return createSession(workspaceId, false, acpSessionId);
+  return createSession(workspaceId, false, acpSessionId, toolMode);
 }
 
 /**
@@ -225,9 +236,10 @@ export async function POST(request: NextRequest) {
               const wsId = request.headers.get("routa-workspace-id") ||
                 process.env.ROUTA_WORKSPACE_ID ||
                 "default";
+              const toolMode = resolveToolMode(request);
 
               // Create a fresh session and send an initialize request to it
-              const freshTransport = await createSession(wsId);
+              const freshTransport = await createSession(wsId, false, undefined, toolMode);
               const initBody = JSON.stringify({
                 jsonrpc: "2.0",
                 id: `auto-init-${Date.now()}`,

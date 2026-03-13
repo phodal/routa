@@ -13,6 +13,7 @@ import { v4 as uuidv4 } from "uuid";
 import { ensureDefaultBoard } from "@/core/kanban/boards";
 import { createGitHubIssue, parseGitHubRepo } from "@/core/kanban/github-issues";
 import { columnIdToTaskStatus } from "@/core/models/kanban";
+import { emitColumnTransition } from "@/core/kanban/column-transition";
 
 export const dynamic = "force-dynamic";
 
@@ -226,6 +227,21 @@ export async function POST(request: NextRequest) {
 
   await system.taskStore.save(task);
 
+  const board = await system.kanbanBoardStore.get(task.boardId ?? defaultBoard.id);
+  const targetColumn = board?.columns.find((column) => column.id === (task.columnId ?? "backlog"));
+  if (board && targetColumn?.automation?.enabled) {
+    emitColumnTransition(system.eventBus, {
+      cardId: task.id,
+      cardTitle: task.title,
+      boardId: board.id,
+      workspaceId: task.workspaceId,
+      fromColumnId: "__created__",
+      toColumnId: targetColumn.id,
+      fromColumnName: "Created",
+      toColumnName: targetColumn.name,
+    });
+  }
+
   return NextResponse.json({ task: serializeTask(task) }, { status: 201 });
 }
 
@@ -284,4 +300,3 @@ function serializeTask(task: Task) {
     updatedAt: task.updatedAt instanceof Date ? task.updatedAt.toISOString() : task.updatedAt,
   };
 }
-
