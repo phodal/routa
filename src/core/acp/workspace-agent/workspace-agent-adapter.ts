@@ -20,6 +20,7 @@ import {
   createLanguageModel,
   type WorkspaceAgentConfig,
 } from "./workspace-agent-config";
+import { LifecycleNotifier } from "../lifecycle-notifier";
 
 function createNotification(method: string, params: Record<string, unknown>): JsonRpcMessage {
   return { jsonrpc: "2.0", method, params };
@@ -30,6 +31,7 @@ export interface WorkspaceAgentAdapterOptions {
   workspaceId?: string;
   agentId?: string;
   config?: Partial<WorkspaceAgentConfig>;
+  lifecycleNotifier?: LifecycleNotifier;
 }
 
 export class WorkspaceAgentAdapter {
@@ -42,6 +44,7 @@ export class WorkspaceAgentAdapter {
   private agentTools?: AgentTools;
   private workspaceId?: string;
   private agentId?: string;
+  private lifecycleNotifier?: LifecycleNotifier;
   /** Conversation history for multi-turn */
   private messages: Array<{ role: "system" | "user" | "assistant"; content: string }> = [];
 
@@ -56,6 +59,7 @@ export class WorkspaceAgentAdapter {
     this.workspaceId = options?.workspaceId;
     this.agentId = options?.agentId;
     this.config = resolveWorkspaceAgentConfig(options?.config);
+    this.lifecycleNotifier = options?.lifecycleNotifier;
   }
 
   get alive(): boolean {

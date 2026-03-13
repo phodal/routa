@@ -26,6 +26,20 @@ export enum AgentEventType {
   ARTIFACT_REQUESTED = "ARTIFACT_REQUESTED",
   /** Emitted when an agent provides an artifact */
   ARTIFACT_PROVIDED = "ARTIFACT_PROVIDED",
+  /** Emitted when an agent has no pending work (auto-emitted by ACP adapters) */
+  AGENT_IDLE = "AGENT_IDLE",
+  /** Emitted when an agent process fails or crashes */
+  AGENT_FAILED = "AGENT_FAILED",
+  /** Emitted when an agent exceeds its time or token budget */
+  AGENT_TIMEOUT = "AGENT_TIMEOUT",
+  /** Emitted when a worker agent requests a runtime permission from its coordinator */
+  PERMISSION_REQUESTED = "PERMISSION_REQUESTED",
+  /** Emitted when a coordinator responds to a permission request */
+  PERMISSION_RESPONDED = "PERMISSION_RESPONDED",
+  /** Emitted when the coordinator initiates a graceful shutdown of all agents */
+  SHUTDOWN_REQUESTED = "SHUTDOWN_REQUESTED",
+  /** Emitted when an agent acknowledges a shutdown request */
+  SHUTDOWN_ACKNOWLEDGED = "SHUTDOWN_ACKNOWLEDGED",
 }
 
 export interface AgentEvent {
@@ -129,6 +143,8 @@ export class EventBus {
     // 3. Check wait groups
     if (
       event.type === AgentEventType.AGENT_COMPLETED ||
+      event.type === AgentEventType.AGENT_FAILED ||
+      event.type === AgentEventType.AGENT_TIMEOUT ||
       event.type === AgentEventType.REPORT_SUBMITTED
     ) {
       this.checkWaitGroups(event.agentId);

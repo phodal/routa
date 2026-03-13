@@ -41,10 +41,12 @@ import { ConversationStore } from "../store/conversation-store";
 import { TaskStore } from "../store/task-store";
 import { ArtifactStore } from "../store/artifact-store";
 import { EventBus, AgentEventType } from "../events/event-bus";
-import { ToolResult, successResult, errorResult } from "./tool-result";
+import { ToolResult, successResult, errorResult } from './tool-result';
+import { PermissionStore, PermissionRequest, PermissionUrgency } from './permission-store';
 
 export class AgentTools {
   private artifactStore?: ArtifactStore;
+  private permissionStore?: PermissionStore;
 
   constructor(
     private agentStore: AgentStore,
@@ -59,6 +61,10 @@ export class AgentTools {
    */
   setArtifactStore(store: ArtifactStore): void {
     this.artifactStore = store;
+  }
+
+  setPermissionStore(store: PermissionStore): void {
+    this.permissionStore = store;
   }
 
   // ─── Tool 0: Create Task ────────────────────────────────────────────
@@ -1119,4 +1125,187 @@ export class AgentTools {
       return errorResult(`Screenshot capture failed: ${error.message}`);
     }
   }
+  // ─── Phase 2: Request Permission ────────────────────────────────────────────
+
+  async requestPermission(params: {
+    requestingAgentId: string;
+    coordinatorAgentId: string;
+    workspaceId: string;
+    type: string;
+    tool?: string;
+    description: string;
+    options?: Record<string, unknown>;
+    urgency?: string;
+  }): Promise<ToolResult> {
+    if (!this.permissionStore) {
+      return errorResult('Permission store not configured');
+    }
+    const coordinator = await this.agentStore.get(params.coordinatorAgentId);
+    if (!coordinator) {
+      return errorResult('Coordinator agent not found: ' + params.coordinatorAgentId);
+    }
+    const request: PermissionRequest = {
+      id: uuidv4(),
+      requestingAgentId: params.requestingAgentId,
+      coordinatorAgentId: params.coordinatorAgentId,
+      workspaceId: params.workspaceId,
+      type: params.type,
+      tool: params.tool,
+      description: params.description,
+      options: params.options,
+      urgency: (params.urgency as PermissionUrgency) ?? 'normal',
+      decision: 'pending',
+      createdAt: new Date(),
+    };
+    this.permissionStore.save(request);
+    await this.conversationStore.append(
+      createMessage({
+        id: uuidv4(),
+        agentId: params.coordinatorAgentId,
+        role: MessageRole.USER,
+        content:
+          '[Permission Request] Agent ' + params.requestingAgentId + ' requests permission.' +
+          '\nRequest ID: ' + request.id +
+          '\nType: ' + params.type +
+          (params.tool ? '\nTool: ' + params.tool : '') +
+          '\nDescription: ' + params.description +
+          '\nUrgency: ' + request.urgency +
+          '\nCall respondToPermission to allow or deny.',
+      })
+    );
+    this.eventBus.emit({
+      type: AgentEventType.PERMISSION_REQUESTED,
+      agentId: params.requestingAgentId,
+      workspaceId: params.workspaceId,
+      data: { requestId: request.id, coordinatorAgentId: params.coordinatorAgentId, type: params.type, tool: params.tool, description: params.description, urgency: request.urgency },
+      timestamp: new Date(),
+    });
+    return successResult({ requestId: request.id, decision: 'pending', message: 'Permission request submitted. Await coordinator response.' });
+  }
+
+  // ─── Phase 2: Respond to Permission ─────────────────────────────────────────
+
+  async respondToPermission(params: {
+    requestId: string;
+    coordinatorAgentId: string;
+    decision: 'allow' | 'deny';
+    feedback?: string;
+    constraints?: Record<string, unknown>;
+  }): Promise<ToolResult> {
+    if (!this.permissionStore) {
+      return errorResult('Permission store not configured');
+    }
+    const request = this.permissionStore.get(params.requestId);
+    if (!request) {
+      return errorResult('Permission request not found: ' + params.requestId);
+    }
+    if (request.coordinatorAgentId !== params.coordinatorAgentId) {
+      return errorResult('Only the designated coordinator can respond to this request');
+    }
+    const ok = this.permissionStore.respond(params.requestId, params.decision, params.feedback, params.constraints);
+    if (!ok) {
+      return errorResult('Permission request already resolved or not found');
+    }
+    await this.conversationStore.append(
+      createMessage({
+        id: uuidv4(),
+        agentId: request.requestingAgentId,
+        role: MessageRole.USER,
+        content:
+          '[Permission Response] Request ' + params.requestId + ' has been ' + params.decision + '.' +
+          (params.feedback ? '\nFeedback: ' + params.feedback : '') +
+          (params.constraints ? '\nConstraints: ' + JSON.stringify(params.constraints) : ''),
+      })
+    );
+    this.eventBus.emit({
+      type: AgentEventType.PERMISSION_RESPONDED,
+      agentId: params.coordinatorAgentId,
+      workspaceId: request.workspaceId,
+      data: { requestId: params.requestId, requestingAgentId: request.requestingAgentId, decision: params.decision, feedback: params.feedback },
+      timestamp: new Date(),
+    });
+    return successResult({ requestId: params.requestId, decision: params.decision, notified: request.requestingAgentId });
+  }
+
+  // ─── Phase 2: List Pending Permissions ──────────────────────────────────────
+
+  async listPendingPermissions(coordinatorAgentId: string): Promise<ToolResult> {
+    if (!this.permissionStore) {
+      return errorResult('Permission store not configured');
+    }
+    const pending = this.permissionStore.listPending(coordinatorAgentId);
+    return successResult({
+      count: pending.length,
+      requests: pending.map((r) => ({ id: r.id, requestingAgentId: r.requestingAgentId, type: r.type, tool: r.tool, description: r.description, urgency: r.urgency, createdAt: r.createdAt.toISOString() })),
+    });
+  }
+
+  // ─── Phase 3: Request Shutdown ───────────────────────────────────────────────
+
+  async requestShutdown(params: {
+    coordinatorAgentId: string;
+    workspaceId: string;
+    reason?: string;
+    timeoutMs?: number;
+  }): Promise<ToolResult> {
+    const { coordinatorAgentId, workspaceId, reason, timeoutMs = 30000 } = params;
+    const activeAgents = await this.agentStore.listByStatus(workspaceId, AgentStatus.ACTIVE);
+    const children = activeAgents.filter((a) => a.parentId === coordinatorAgentId);
+    if (children.length === 0) {
+      return successResult({ message: 'No active child agents to shut down.', agentIds: [] });
+    }
+    const shutdownMessage =
+      '[Shutdown Request] The coordinator has initiated a graceful shutdown.' +
+      (reason ? '\nReason: ' + reason : '') +
+      '\nFinish your current operation, save state, and call acknowledgeShutdown.';
+    for (const agent of children) {
+      await this.conversationStore.append(
+        createMessage({ id: uuidv4(), agentId: agent.id, role: MessageRole.USER, content: shutdownMessage })
+      );
+      this.eventBus.emit({
+        type: AgentEventType.SHUTDOWN_REQUESTED,
+        agentId: coordinatorAgentId,
+        workspaceId,
+        data: { targetAgentId: agent.id, reason: reason ?? '', timeoutMs },
+        timestamp: new Date(),
+      });
+    }
+    return successResult({ message: 'Shutdown requested for ' + children.length + ' agent(s).', agentIds: children.map((a) => a.id), timeoutMs });
+  }
+
+  // ─── Phase 3: Acknowledge Shutdown ──────────────────────────────────────────
+
+  async acknowledgeShutdown(params: {
+    agentId: string;
+    workspaceId: string;
+    summary?: string;
+  }): Promise<ToolResult> {
+    const { agentId, workspaceId, summary } = params;
+    const agent = await this.agentStore.get(agentId);
+    if (!agent) {
+      return errorResult('Agent not found: ' + agentId);
+    }
+    await this.agentStore.updateStatus(agentId, AgentStatus.COMPLETED);
+    this.eventBus.emit({
+      type: AgentEventType.SHUTDOWN_ACKNOWLEDGED,
+      agentId,
+      workspaceId,
+      data: { summary: summary ?? 'Agent shut down gracefully.' },
+      timestamp: new Date(),
+    });
+    if (agent.parentId) {
+      await this.conversationStore.append(
+        createMessage({
+          id: uuidv4(),
+          agentId: agent.parentId,
+          role: MessageRole.USER,
+          content:
+            '[Shutdown Acknowledged] Agent ' + (agent.name ?? agentId) + ' has shut down.' +
+            (summary ? '\nSummary: ' + summary : ''),
+        })
+      );
+    }
+    return successResult({ agentId, status: AgentStatus.COMPLETED, acknowledged: true });
+  }
+
 }
