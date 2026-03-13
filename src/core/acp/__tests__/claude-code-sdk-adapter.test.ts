@@ -164,6 +164,7 @@ describe("ClaudeCodeSdkAdapter", () => {
   afterEach(async () => {
     delete process.env.ANTHROPIC_API_KEY;
     delete process.env.ANTHROPIC_AUTH_TOKEN;
+    delete process.env.CLAUDE_CODE_BYPASS_PERMISSIONS;
   });
 
   // ── connect ────────────────────────────────────────────────────────────────
@@ -229,9 +230,26 @@ describe("ClaudeCodeSdkAdapter", () => {
       const callArgs = mockQuery.mock.calls[0][0];
       expect(callArgs.prompt).toBe("Say hello");
       expect(callArgs.options.cwd).toBe("/tmp/test-cwd");
+      expect(callArgs.options.permissionMode).toBeUndefined();
+      expect(callArgs.options.allowDangerouslySkipPermissions).toBeUndefined();
+      expect(callArgs.options.maxTurns).toBe(30);
+    });
+
+    it("enables permission bypass only when explicitly configured", async () => {
+      process.env.CLAUDE_CODE_BYPASS_PERMISSIONS = "true";
+      mockQuery.mockReturnValue(makeStream([]));
+
+      const { handler } = collectNotifications();
+      const adapter = new ClaudeCodeSdkAdapter("/tmp/test-cwd", handler);
+      await adapter.connect();
+      await adapter.prompt("Say hello");
+
+      expect(mockQuery).toHaveBeenCalledOnce();
+      const callArgs = mockQuery.mock.calls[0][0];
       expect(callArgs.options.permissionMode).toBe("bypassPermissions");
       expect(callArgs.options.allowDangerouslySkipPermissions).toBe(true);
-      expect(callArgs.options.maxTurns).toBe(30);
+
+      delete process.env.CLAUDE_CODE_BYPASS_PERMISSIONS;
     });
 
     it("emits agent_message_chunk notifications from text_delta stream events", async () => {

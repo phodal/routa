@@ -89,6 +89,23 @@ export function getClaudeCodeSdkConfig(): {
   };
 }
 
+function getPermissionOptions(): {
+  permissionMode?: "bypassPermissions";
+  allowDangerouslySkipPermissions?: boolean;
+} {
+  if (process.env.CLAUDE_CODE_BYPASS_PERMISSIONS === "true") {
+    console.warn(
+      "[ClaudeCodeSdkAdapter] CLAUDE_CODE_BYPASS_PERMISSIONS=true enables dangerous tool permission bypass"
+    );
+    return {
+      permissionMode: "bypassPermissions",
+      allowDangerouslySkipPermissions: true,
+    };
+  }
+
+  return {};
+}
+
 /**
  * Claude Code SDK Adapter — wraps the official agent SDK to provide an
  * ACP-compatible streaming interface.
@@ -248,8 +265,7 @@ export class ClaudeCodeSdkAdapter {
         model: this._modelOverride ?? config.model,
         maxTurns: this._maxTurnsOverride ?? 30,
         abortController: this.abortController,
-        permissionMode: "bypassPermissions",
-        allowDangerouslySkipPermissions: true,
+        ...getPermissionOptions(),
         pathToClaudeCodeExecutable: cliPath,
         // Load Skills from user (~/.claude/skills/) and project (.claude/skills/) dirs
         settingSources: ["user", "project"],
@@ -436,10 +452,7 @@ export class ClaudeCodeSdkAdapter {
         model: this._modelOverride ?? config.model,
         maxTurns: this._maxTurnsOverride ?? 30,
         abortController: this.abortController,
-        // Allow the agent to execute tools without interactive permission prompts.
-        // Required for autonomous operation in serverless environments.
-        permissionMode: "bypassPermissions",
-        allowDangerouslySkipPermissions: true,
+        ...getPermissionOptions(),
         // Explicitly point to cli.js so the SDK doesn't try to resolve it
         // relative to its own import.meta.url (which fails after webpack
         // bundling on Vercel because cli.js is not a statically-imported module
