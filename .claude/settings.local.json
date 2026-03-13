@@ -64,7 +64,10 @@
       "Bash(git -C /Users/phodal/ai/routa-js log:*)",
       "Bash(git -C /Users/phodal/ai/routa-js push origin main)",
       "Skill(agent-browser)",
-      "Skill(playwright-cli)"
+      "Skill(playwright-cli)",
+      "Bash(git rebase:*)",
+      "Bash(gh run view:*)",
+      "Bash(git pull:*)"
     ]
   }
 }

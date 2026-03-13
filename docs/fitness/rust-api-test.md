@@ -1,4 +1,15 @@
-# Rust API 测试规则与执行矩阵
+---
+dimension: maintainability
+weight: 14
+description: API 契约测试证据清单
+commands:
+  - cargo test -p routa-server --test rust_api_end_to_end
+  - npm run api:check
+---
+
+# API 契约测试证据
+
+> 本文件记录 API 端点的测试状态，作为 maintainability 维度的证据来源。
 
 ## 规则目标
 - API 回归检查必须按端点、方法、成功路径、负向路径、回归路径三层记录。

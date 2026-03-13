@@ -1,4 +1,15 @@
-# Rust 单元测试与集成测试规则（行为驱动版）
+---
+dimension: testability
+weight: 14
+description: 单元测试与集成测试证据清单
+commands:
+  - cargo test --workspace
+  - npm run test:run
+---
+
+# 单元测试与集成测试证据
+
+> 本文件记录测试条目的验证状态，作为 testability 维度的证据来源。
 
 ## 适用范围
 - `routa-core`, `routa-server` 为本版主线；`routa-cli`, `routa-rpc` 在联动改动时同步纳入。

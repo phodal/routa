@@ -24,6 +24,20 @@
 - When debugging frontend bugs, use `console.log` and read output via Playwright.
 - After fixing, **always clean up** all debug `console.log` statements.
 
+## Fitness Function
+
+Before any PR, verify fitness using [docs/fitness/FITNESS.md](docs/fitness/FITNESS.md):
+
+1. Check hard gates (must all pass):
+   - `npm run test:run` — TS tests
+   - `cargo test --workspace` — Rust tests
+   - `npm run api:check` — API contract parity
+   - `npm run lint` — Lint
+
+2. Update evidence files if tests changed:
+   - [docs/fitness/unit-test.md](docs/fitness/unit-test.md)
+   - [docs/fitness/rust-api-test.md](docs/fitness/rust-api-test.md)
+
 ## After generating or modifying code
 
 After generating or modifying **source code** (not docs, configs, or workflows), agents must run the following checks automatically.
