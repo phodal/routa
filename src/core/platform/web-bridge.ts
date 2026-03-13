@@ -266,6 +266,12 @@ class WebGit implements IPlatformGit {
   }
 
   async clone(url: string, targetDir: string, onProgress?: (msg: string) => void): Promise<void> {
+    // Validate Git URL to prevent command injection via ext:: protocol
+    const { isValidGitUrl } = require("@/core/utils/safe-exec");
+    if (!isValidGitUrl(url)) {
+      throw new Error(`Invalid or unsafe Git URL: ${url}`);
+    }
+    
     if (onProgress) {
       const handle = this.processAdapter.spawn("git", ["clone", "--progress", url, targetDir]);
       return new Promise((resolve, reject) => {
