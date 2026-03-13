@@ -14,6 +14,12 @@ interface SpecialistOption {
   role: string;
 }
 
+interface KanbanAgentPromptOptions {
+  provider?: string;
+  role?: string;
+  toolMode?: "essential" | "full";
+}
+
 export function KanbanPageClient() {
   const params = useParams();
   const router = useRouter();
@@ -121,21 +127,32 @@ export function KanbanPageClient() {
   };
 
   // Handler for agent input - creates session and sends prompt
-  const handleAgentPrompt = useCallback(async (promptText: string): Promise<string | null> => {
+  const handleAgentPrompt = useCallback(async (
+    promptText: string,
+    options?: KanbanAgentPromptOptions,
+  ): Promise<string | null> => {
     if (!acp.connected) {
       await acp.connect();
     }
 
     const defaultCodebase = codebases.find((c) => c.isDefault) ?? codebases[0];
     const cwd = defaultCodebase?.repoPath;
+    const provider = options?.provider ?? acp.selectedProvider ?? undefined;
 
     // Create a new session with DEVELOPER role (has access to Kanban tools)
     const result = await acp.createSession(
       cwd,
-      acp.selectedProvider || undefined,
+      provider,
       undefined,
-      "DEVELOPER",
+      options?.role ?? "DEVELOPER",
       workspaceId,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      options?.toolMode,
     );
 
     if (!result?.sessionId) {
@@ -188,4 +205,3 @@ export function KanbanPageClient() {
     </div>
   );
 }
-

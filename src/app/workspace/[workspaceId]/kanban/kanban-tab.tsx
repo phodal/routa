@@ -30,7 +30,10 @@ interface KanbanTabProps {
   /** ACP state and actions for agent input and session management */
   acp?: UseAcpState & UseAcpActions;
   /** Handler for agent prompt - creates session and sends prompt */
-  onAgentPrompt?: (prompt: string) => Promise<string | null>;
+  onAgentPrompt?: (
+    prompt: string,
+    options?: { provider?: string; role?: string; toolMode?: "essential" | "full" },
+  ) => Promise<string | null>;
 }
 
 export function KanbanTab({ workspaceId, boards, tasks, sessions, providers, specialists, codebases, onRefresh, acp, onAgentPrompt }: KanbanTabProps) {
@@ -66,6 +69,7 @@ export function KanbanTab({ workspaceId, boards, tasks, sessions, providers, spe
   const [agentInput, setAgentInput] = useState("");
   const [agentLoading, setAgentLoading] = useState(false);
   const [agentSessionId, setAgentSessionId] = useState<string | null>(null);
+  const [agentPanelOpen, setAgentPanelOpen] = useState(false);
 
   // Codebase detail popup state
   const [selectedCodebase, setSelectedCodebase] = useState<CodebaseData | null>(null);
@@ -95,16 +99,21 @@ export function KanbanTab({ workspaceId, boards, tasks, sessions, providers, spe
   const [deleteConfirmTask, setDeleteConfirmTask] = useState<TaskInfo | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
+  const openAgentPanel = useCallback((sessionId: string) => {
+    setAgentSessionId(sessionId);
+    setAgentPanelOpen(true);
+    acp?.selectSession(sessionId);
+  }, [acp]);
+
   // Handle agent input submission
   const handleAgentSubmit = useCallback(async () => {
     if (!agentInput.trim() || !onAgentPrompt || agentLoading) return;
 
     setAgentLoading(true);
     try {
-      // Build a system prompt that instructs the Kanban Agent to decompose tasks
-      const systemPrompt = `You are the Kanban Agent — an orchestrator that transforms natural language input into structured Kanban tasks.
+      const systemPrompt = `You are the Kanban ACP Provider Agent for this workspace.
 
-Your primary tool is decompose_tasks which creates multiple cards in bulk. You can also use individual card tools.
+You can directly use Kanban MCP tools and coordination tools. Prefer decompose_tasks for backlog planning, and only use create_agent when the request clearly benefits from spawning follow-up execution agents.
 
 Available Kanban tools:
 - decompose_tasks: Create multiple cards from a task breakdown (preferred for multi-task input)
@@ -114,22 +123,29 @@ Available Kanban tools:
 - delete_card: Delete a card
 - search_cards: Search for cards
 - list_cards_by_column: List cards in a specific column
+- create_agent: Create a follow-up agent when the workflow needs execution beyond planning
 
 Current workspace: ${workspaceId}
-Default board ID: ${defaultBoardId ?? "default"}
+Current board ID: ${selectedBoardId ?? defaultBoardId ?? "default"}
+Default repo path: ${defaultCodebase?.repoPath ?? "not configured"}
 
 Instructions:
 1. Parse the user's input to identify discrete, actionable tasks
 2. Each task should be self-contained and completable independently
-3. Use decompose_tasks to create all tasks at once on the backlog
+3. Use decompose_tasks to create all tasks at once on the backlog unless a single task is clearly better
 4. Assign appropriate priorities and labels
-5. Report what was created
+5. If the user explicitly asks to execute work, you may create specialized agents and explain what you created
+6. Report exactly which cards or agents were created and what happens next
 
 User request: ${agentInput}`;
 
-      const sessionId = await onAgentPrompt(systemPrompt);
+      const sessionId = await onAgentPrompt(systemPrompt, {
+        provider: acp?.selectedProvider,
+        role: "DEVELOPER",
+        toolMode: "full",
+      });
       if (sessionId) {
-        setAgentSessionId(sessionId);
+        openAgentPanel(sessionId);
         // Refresh to show any new cards created
         setTimeout(() => {
           onRefresh();
@@ -139,7 +155,18 @@ User request: ${agentInput}`;
     } finally {
       setAgentLoading(false);
     }
-  }, [agentInput, onAgentPrompt, agentLoading, workspaceId, defaultBoardId, onRefresh]);
+  }, [
+    acp?.selectedProvider,
+    agentInput,
+    agentLoading,
+    defaultBoardId,
+    defaultCodebase?.repoPath,
+    onAgentPrompt,
+    onRefresh,
+    openAgentPanel,
+    selectedBoardId,
+    workspaceId,
+  ]);
 
   useEffect(() => {
     setSelectedBoardId(defaultBoardId);
@@ -300,6 +327,49 @@ User request: ${agentInput}`;
     () => new Map(sessions.map((session) => [session.sessionId, session])),
     [sessions],
   );
+  const agentSession = agentSessionId ? sessionMap.get(agentSessionId) : undefined;
+  const kanbanRepoSelection = useMemo<RepoSelection | null>(() => {
+    if (!defaultCodebase) return null;
+    return {
+      path: defaultCodebase.repoPath,
+      branch: defaultCodebase.branch ?? "",
+      name: defaultCodebase.label ?? defaultCodebase.repoPath.split("/").pop() ?? "",
+    };
+  }, [defaultCodebase]);
+
+  const ensureKanbanAgentSession = useCallback(async (
+    cwd?: string,
+    provider?: string,
+    _modeId?: string,
+    model?: string,
+  ) => {
+    if (!acp) return null;
+    if (agentSessionId) {
+      return agentSessionId;
+    }
+
+    const result = await acp.createSession(
+      cwd ?? defaultCodebase?.repoPath,
+      provider ?? acp.selectedProvider,
+      undefined,
+      "DEVELOPER",
+      workspaceId,
+      model,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      "full",
+    );
+
+    if (!result?.sessionId) {
+      return null;
+    }
+
+    openAgentPanel(result.sessionId);
+    return result.sessionId;
+  }, [acp, agentSessionId, defaultCodebase?.repoPath, openAgentPanel, workspaceId]);
 
   const openTaskDetail = useCallback(async (task: TaskInfo) => {
     setActiveTaskId(task.id);
@@ -332,6 +402,16 @@ User request: ${agentInput}`;
     setActiveTaskId(null);
     setActiveSessionId(null);
   }, []);
+
+  useEffect(() => {
+    if (!agentSessionId || !agentPanelOpen) return;
+
+    const intervalId = window.setInterval(() => {
+      onRefresh();
+    }, 4_000);
+
+    return () => window.clearInterval(intervalId);
+  }, [agentPanelOpen, agentSessionId, onRefresh]);
 
   // Codebase edit handlers - use RepoPicker for re-selecting/cloning
   const handleStartEditCodebase = useCallback(() => {
@@ -707,6 +787,20 @@ User request: ${agentInput}`;
 
             {onAgentPrompt && (
               <div className="flex min-w-[20rem] flex-1 items-center gap-2 xl:max-w-none">
+                <select
+                  value={acp?.selectedProvider ?? ""}
+                  onChange={(event) => acp?.setProvider(event.target.value)}
+                  disabled={!acp?.connected || availableProviders.length === 0}
+                  className="w-32 shrink-0 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 disabled:opacity-50 dark:border-gray-700 dark:bg-[#12141c] dark:text-gray-200"
+                  aria-label="Kanban agent provider"
+                  data-testid="kanban-agent-provider"
+                >
+                  {availableProviders.map((provider) => (
+                    <option key={provider.id} value={provider.id}>
+                      {provider.name}
+                    </option>
+                  ))}
+                </select>
                 <div className="relative min-w-0 flex-1">
                   <input
                     type="text"
@@ -718,7 +812,7 @@ User request: ${agentInput}`;
                         void handleAgentSubmit();
                       }
                     }}
-                    placeholder={acp?.connected ? "Ask agent to create issues..." : "Connecting..."}
+                    placeholder={acp?.connected ? "Describe work to plan in Kanban..." : "Connecting..."}
                     disabled={agentLoading || !acp?.connected}
                     className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 pr-16 text-sm text-gray-800 placeholder-gray-400 focus:border-amber-400 focus:outline-none focus:ring-1 focus:ring-amber-400/50 disabled:opacity-50 dark:border-gray-700 dark:bg-[#12141c] dark:text-gray-200 dark:placeholder-gray-500"
                   />
@@ -732,9 +826,9 @@ User request: ${agentInput}`;
                 </div>
                 {agentSessionId && (
                   <button
-                    onClick={() => openSession(agentSessionId)}
+                    onClick={() => openAgentPanel(agentSessionId)}
                     className="shrink-0 text-xs text-amber-600 hover:underline dark:text-amber-400"
-                    title="View last agent response"
+                    title="Open the Kanban agent panel"
                   >
                     View
                   </button>
@@ -787,58 +881,109 @@ User request: ${agentInput}`;
         </div>
       </div>
 
-      <div className="flex-1 min-h-0 overflow-auto pb-2">
-        <div className="flex min-h-full items-start gap-3" style={{ minWidth: `${visibleColumns.length * 18}rem` }}>
-          {board.columns
-            .slice()
-            .sort((left, right) => left.position - right.position)
-            .filter((column) => visibleColumns.includes(column.id))
-            .map((column) => {
-              const columnTasks = boardTasks.filter((task) => (task.columnId ?? "backlog") === column.id);
-              return (
-                <div
-                  key={column.id}
-                  onDragOver={(event) => event.preventDefault()}
-                  onDrop={async () => {
-                    if (!dragTaskId) return;
-                    await moveTask(dragTaskId, column.id);
-                    setDragTaskId(null);
-                  }}
-                  className="flex h-full min-h-26.25 w-[18rem] shrink-0 flex-col rounded-2xl border border-gray-200/70 bg-white p-3 dark:border-[#1c1f2e] dark:bg-[#12141c]"
-                  data-testid="kanban-column"
-                >
-                  <div className="mb-3 flex items-center justify-between">
-                    <div>
-                      <div className="text-sm font-semibold text-gray-800 dark:text-gray-100">{column.name}</div>
-                      <div className="text-[11px] text-gray-400 dark:text-gray-500">{columnTasks.length} cards</div>
-                    </div>
-                  </div>
+      <div className="flex-1 min-h-0 flex gap-4">
+        <div className={`${agentPanelOpen && agentSessionId ? "min-w-0 flex-1" : "w-full"} flex min-h-0 flex-col`}>
+          <div className="flex-1 min-h-0 overflow-auto pb-2">
+            <div className="flex min-h-full items-start gap-3" style={{ minWidth: `${visibleColumns.length * 18}rem` }}>
+              {board.columns
+                .slice()
+                .sort((left, right) => left.position - right.position)
+                .filter((column) => visibleColumns.includes(column.id))
+                .map((column) => {
+                  const columnTasks = boardTasks.filter((task) => (task.columnId ?? "backlog") === column.id);
+                  return (
+                    <div
+                      key={column.id}
+                      onDragOver={(event) => event.preventDefault()}
+                      onDrop={async () => {
+                        if (!dragTaskId) return;
+                        await moveTask(dragTaskId, column.id);
+                        setDragTaskId(null);
+                      }}
+                      className="flex h-full min-h-26.25 w-[18rem] shrink-0 flex-col rounded-2xl border border-gray-200/70 bg-white p-3 dark:border-[#1c1f2e] dark:bg-[#12141c]"
+                      data-testid="kanban-column"
+                    >
+                      <div className="mb-3 flex items-center justify-between">
+                        <div>
+                          <div className="text-sm font-semibold text-gray-800 dark:text-gray-100">{column.name}</div>
+                          <div className="text-[11px] text-gray-400 dark:text-gray-500">{columnTasks.length} cards</div>
+                        </div>
+                      </div>
 
-                  <div className="flex-1 min-h-0 space-y-2 overflow-y-auto pr-1">
-                    {columnTasks.map((task) => (
-                      <KanbanCard
-                        key={task.id}
-                        task={task}
-                        linkedSession={task.triggerSessionId ? sessionMap.get(task.triggerSessionId) : undefined}
-                        availableProviders={availableProviders}
-                        specialists={specialists}
-                        codebases={codebases}
-                        allCodebaseIds={allCodebaseIds}
-                        worktreeCache={worktreeCache}
-                        onDragStart={() => setDragTaskId(task.id)}
-                        onOpenDetail={() => openTaskDetail(task)}
-                        onOpenSession={openSession}
-                        onDelete={() => confirmDeleteTask(task)}
-                        onPatchTask={patchTask}
-                        onRetryTrigger={retryTaskTrigger}
-                        onRefresh={onRefresh}
-                      />
-                    ))}
-                  </div>
-                </div>
-              );
-            })}
+                      <div className="flex-1 min-h-0 space-y-2 overflow-y-auto pr-1">
+                        {columnTasks.map((task) => (
+                          <KanbanCard
+                            key={task.id}
+                            task={task}
+                            linkedSession={task.triggerSessionId ? sessionMap.get(task.triggerSessionId) : undefined}
+                            availableProviders={availableProviders}
+                            specialists={specialists}
+                            codebases={codebases}
+                            allCodebaseIds={allCodebaseIds}
+                            worktreeCache={worktreeCache}
+                            onDragStart={() => setDragTaskId(task.id)}
+                            onOpenDetail={() => openTaskDetail(task)}
+                            onOpenSession={openSession}
+                            onDelete={() => confirmDeleteTask(task)}
+                            onPatchTask={patchTask}
+                            onRetryTrigger={retryTaskTrigger}
+                            onRefresh={onRefresh}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+          </div>
         </div>
+
+        {agentPanelOpen && agentSessionId && acp && (
+          <aside
+            className="flex h-full w-[32rem] min-w-[28rem] flex-col overflow-hidden rounded-2xl border border-gray-200/70 bg-white dark:border-[#1c1f2e] dark:bg-[#12141c]"
+            data-testid="kanban-agent-panel"
+          >
+            <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3 dark:border-[#191c28]">
+              <div className="min-w-0">
+                <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">Kanban ACP Agent</div>
+                <div className="truncate text-[11px] text-gray-400 dark:text-gray-500">
+                  {agentSession?.provider ?? acp.selectedProvider} · {agentSessionId.slice(0, 12)}...
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <a
+                  href={`/workspace/${workspaceId}/sessions/${agentSessionId}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="rounded-md border border-gray-200 px-2 py-1 text-xs text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-[#191c28]"
+                >
+                  Open
+                </a>
+                <button
+                  onClick={() => setAgentPanelOpen(false)}
+                  className="rounded-md border border-gray-200 px-2 py-1 text-xs text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-[#191c28]"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+            <div className="min-h-0 flex-1">
+              <ChatPanel
+                acp={acp}
+                activeSessionId={agentSessionId}
+                onEnsureSession={ensureKanbanAgentSession}
+                onSelectSession={async (sessionId) => {
+                  openAgentPanel(sessionId);
+                }}
+                repoSelection={kanbanRepoSelection}
+                onRepoChange={() => {}}
+                codebases={codebases}
+                activeWorkspaceId={workspaceId}
+                agentRole="DEVELOPER"
+              />
+            </div>
+          </aside>
+        )}
       </div>
 
       {showCreateModal && (
