@@ -1,6 +1,7 @@
 import { mkdtempSync, readFileSync, writeFileSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
+import { describe, expect, it } from "vitest";
 
 import {
   buildSyncedGitHubIssueDocument,

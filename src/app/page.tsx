@@ -12,18 +12,16 @@
  */
 
 import { useCallback, useState, useEffect, useRef } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
 import { HomeInput } from "@/client/components/home-input";
-import { useWorkspaces } from "@/client/hooks/use-workspaces";
+import { useWorkspaces, type WorkspaceData } from "@/client/hooks/use-workspaces";
 import { useAcp } from "@/client/hooks/use-acp";
 import { useSkills } from "@/client/hooks/use-skills";
 import { SettingsPanel } from "@/client/components/settings-panel";
 import { NotificationProvider, NotificationBell } from "@/client/components/notification-center";
 
 export default function HomePage() {
-  const router = useRouter();
   const workspacesHook = useWorkspaces();
   const acp = useAcp();
   const skillsHook = useSkills();
@@ -33,9 +31,8 @@ export default function HomePage() {
   const [showSettingsPanel, setShowSettingsPanel] = useState(false);
   const [settingsInitialTab, setSettingsInitialTab] = useState<"agents" | undefined>(undefined);
   const [showIntegrationsMenu, setShowIntegrationsMenu] = useState(false);
-  const [showWorkspacesMenu, setShowWorkspacesMenu] = useState(false);
+  const [workspaceFilterId, setWorkspaceFilterId] = useState<string | "all">("all");
   const integrationsRef = useRef<HTMLDivElement>(null);
-  const workspacesMenuRef = useRef<HTMLDivElement>(null);
 
   // Close integrations dropdown on outside click
   useEffect(() => {
@@ -49,24 +46,12 @@ export default function HomePage() {
     return () => document.removeEventListener("mousedown", handler);
   }, [showIntegrationsMenu]);
 
-  // Close workspaces menu on outside click
-  useEffect(() => {
-    if (!showWorkspacesMenu) return;
-    const handler = (e: MouseEvent) => {
-      if (workspacesMenuRef.current && !workspacesMenuRef.current.contains(e.target as Node)) {
-        setShowWorkspacesMenu(false);
-      }
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [showWorkspacesMenu]);
-
   // Auto-select first workspace on load
   useEffect(() => {
     if (!activeWorkspaceId && workspacesHook.workspaces.length > 0) {
       setActiveWorkspaceId(workspacesHook.workspaces[0].id);
     }
-  }, [activeWorkspaceId, workspacesHook.workspaces, workspacesHook.workspaces.length]);
+  }, [activeWorkspaceId, workspacesHook.workspaces]);
 
   // Auto-connect on mount
   useEffect(() => {
@@ -87,14 +72,6 @@ export default function HomePage() {
     const ws = await workspacesHook.createWorkspace(title);
     if (ws) handleWorkspaceSelect(ws.id);
   }, [workspacesHook, handleWorkspaceSelect]);
-
-  const handleSessionClick = useCallback((sessionId: string) => {
-    if (activeWorkspaceId) {
-      router.push(`/workspace/${activeWorkspaceId}/sessions/${sessionId}`);
-    } else {
-      router.push(`/workspace/${sessionId}`);
-    }
-  }, [activeWorkspaceId, router]);
 
   return (
     <NotificationProvider>
@@ -196,7 +173,7 @@ export default function HomePage() {
             <OnboardingCard onCreateWorkspace={handleWorkspaceCreate} />
           </div>
         ) : (
-          <div className="min-h-full flex flex-col justify-center px-6 py-8">
+          <div className="mx-auto flex min-h-full w-full max-w-7xl flex-col gap-8 px-6 py-8">
             {/* ── Input — centered ──────────────────────────────────── */}
             <div className="flex justify-center mb-8">
               <div className="w-full max-w-2xl">
@@ -204,6 +181,9 @@ export default function HomePage() {
                   workspaceId={activeWorkspaceId ?? undefined}
                   onWorkspaceChange={(wsId) => {
                     setActiveWorkspaceId(wsId);
+                    if (workspaceFilterId !== "all") {
+                      setWorkspaceFilterId(wsId ?? "all");
+                    }
                     setRefreshKey((k) => k + 1);
                   }}
                   onSessionCreated={() => {
@@ -214,20 +194,18 @@ export default function HomePage() {
               </div>
             </div>
 
-            {/* ── Workspace Cards — below input ─────────────────────── */}
-            <div className="max-w-4xl mx-auto">
-              <WorkspaceCards
-                workspaceId={activeWorkspaceId}
-                refreshKey={refreshKey}
-                onWorkspaceSelect={handleWorkspaceSelect}
-                onWorkspaceCreate={handleWorkspaceCreate}
-                onSessionClick={handleSessionClick}
-                showWorkspacesMenu={showWorkspacesMenu}
-                setShowWorkspacesMenu={setShowWorkspacesMenu}
-                workspacesMenuRef={workspacesMenuRef}
-              />
-              <HomeTodoPreview workspaceId={activeWorkspaceId} refreshKey={refreshKey} />
-            </div>
+            <HomeKanbanPreview
+              workspaces={workspacesHook.workspaces}
+              workspaceFilterId={workspaceFilterId}
+              refreshKey={refreshKey}
+              onWorkspaceFilterChange={(nextWorkspaceId) => {
+                setWorkspaceFilterId(nextWorkspaceId);
+                if (nextWorkspaceId !== "all") {
+                  handleWorkspaceSelect(nextWorkspaceId);
+                }
+              }}
+              onWorkspaceCreate={handleWorkspaceCreate}
+            />
           </div>
         )}
       </main>
@@ -255,19 +233,91 @@ function ConnectionDot({ connected }: { connected: boolean }) {
   );
 }
 
-function HomeTodoPreview({
-  workspaceId,
+type HomeWorkspaceFilterId = string | "all";
+type HomeKanbanColumnId = "backlog" | "todo" | "dev" | "review" | "blocked";
+
+const HOME_KANBAN_COLUMNS: Array<{
+  id: HomeKanbanColumnId;
+  title: string;
+  accentClassName: string;
+  emptyCopy: string;
+}> = [
+  {
+    id: "backlog",
+    title: "Backlog",
+    accentClassName: "bg-slate-500",
+    emptyCopy: "No backlog items yet.",
+  },
+  {
+    id: "todo",
+    title: "Todo",
+    accentClassName: "bg-sky-500",
+    emptyCopy: "Nothing queued for execution.",
+  },
+  {
+    id: "dev",
+    title: "In Dev",
+    accentClassName: "bg-amber-500",
+    emptyCopy: "No work is currently in progress.",
+  },
+  {
+    id: "review",
+    title: "Review",
+    accentClassName: "bg-violet-500",
+    emptyCopy: "Nothing is waiting on review.",
+  },
+  {
+    id: "blocked",
+    title: "Blocked",
+    accentClassName: "bg-rose-500",
+    emptyCopy: "No active blockers across the board.",
+  },
+];
+
+function normalizeHomeTaskColumnId(task: HomeTaskInfo): HomeKanbanColumnId {
+  switch ((task.columnId ?? "").toLowerCase()) {
+    case "todo":
+      return "todo";
+    case "dev":
+      return "dev";
+    case "review":
+      return "review";
+    case "blocked":
+      return "blocked";
+    default:
+      break;
+  }
+
+  switch (task.status.toUpperCase()) {
+    case "IN_PROGRESS":
+      return "dev";
+    case "REVIEW_REQUIRED":
+    case "NEEDS_FIX":
+      return "review";
+    case "BLOCKED":
+      return "blocked";
+    default:
+      return "backlog";
+  }
+}
+
+function HomeKanbanPreview({
+  workspaces,
+  workspaceFilterId,
   refreshKey,
+  onWorkspaceFilterChange,
+  onWorkspaceCreate,
 }: {
-  workspaceId: string | null;
+  workspaces: WorkspaceData[];
+  workspaceFilterId: HomeWorkspaceFilterId;
   refreshKey: number;
+  onWorkspaceFilterChange: (workspaceId: HomeWorkspaceFilterId) => void;
+  onWorkspaceCreate: (title: string) => void;
 }) {
   const [tasks, setTasks] = useState<HomeTaskInfo[]>([]);
 
   useEffect(() => {
-    if (!workspaceId) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setTasks([]);
+    if (workspaces.length === 0) {
       return;
     }
 
@@ -275,20 +325,16 @@ function HomeTodoPreview({
 
     const fetchTasks = async () => {
       try {
-        setTasks([]);
-        const res = await fetch(`/api/tasks?workspaceId=${encodeURIComponent(workspaceId)}`, {
+        const query = workspaceFilterId === "all"
+          ? "/api/tasks?allWorkspaces=true"
+          : `/api/tasks?workspaceId=${encodeURIComponent(workspaceFilterId)}`;
+        const res = await fetch(query, {
           cache: "no-store",
           signal: controller.signal,
         });
         const data = await res.json();
         if (controller.signal.aborted) return;
-        const nextTasks = Array.isArray(data?.tasks) ? data.tasks as HomeTaskInfo[] : [];
-        setTasks(
-          nextTasks
-            .filter((task) => !["COMPLETED", "CANCELLED"].includes(task.status))
-            .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime())
-            .slice(0, 4),
-        );
+        setTasks(Array.isArray(data?.tasks) ? data.tasks as HomeTaskInfo[] : []);
       } catch {
         if (controller.signal.aborted) return;
         setTasks([]);
@@ -297,66 +343,169 @@ function HomeTodoPreview({
 
     void fetchTasks();
     return () => controller.abort();
-  }, [workspaceId, refreshKey]);
+  }, [workspaceFilterId, workspaces.length, refreshKey]);
 
-  if (!workspaceId || tasks.length === 0) {
-    return null;
-  }
+  const activeWorkspace = workspaceFilterId === "all"
+    ? null
+    : workspaces.find((workspace) => workspace.id === workspaceFilterId) ?? null;
+  const workspaceTitleById = new Map(workspaces.map((workspace) => [workspace.id, workspace.title]));
+  const visibleTasks = tasks
+    .filter((task) => !["COMPLETED", "CANCELLED"].includes(task.status.toUpperCase()))
+    .sort((left, right) => {
+      const leftTimestamp = new Date(left.updatedAt ?? left.createdAt).getTime();
+      const rightTimestamp = new Date(right.updatedAt ?? right.createdAt).getTime();
+      return rightTimestamp - leftTimestamp;
+    });
+  const tasksByColumn = HOME_KANBAN_COLUMNS.reduce<Record<HomeKanbanColumnId, HomeTaskInfo[]>>((groups, column) => {
+    groups[column.id] = visibleTasks.filter((task) => normalizeHomeTaskColumnId(task) === column.id);
+    return groups;
+  }, {
+    backlog: [],
+    todo: [],
+    dev: [],
+    review: [],
+    blocked: [],
+  });
 
   return (
-    <div className="mt-5 rounded-2xl border border-gray-100 bg-white/90 p-5 dark:border-[#1c1f2e] dark:bg-[#12141c] shadow-sm">
-      <div className="mb-4 flex items-center justify-between gap-3">
+    <section className="rounded-[28px] border border-gray-100 bg-white/90 p-5 shadow-sm dark:border-[#1c1f2e] dark:bg-[#12141c] sm:p-6">
+      <div className="flex flex-col gap-4 border-b border-gray-100 pb-5 dark:border-[#1c1f2e] lg:flex-row lg:items-end lg:justify-between">
         <div>
           <div className="flex items-center gap-2">
-            <svg className="w-4 h-4 text-blue-500 dark:text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <svg className="h-4 w-4 text-blue-500 dark:text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M9 4.5v15m6-15v15m-10.875 0h15.75c.621 0 1.125-.504 1.125-1.125V5.625c0-.621-.504-1.125-1.125-1.125H4.125C3.504 4.5 3 5.004 3 5.625v12.75c0 .621.504 1.125 1.125 1.125z" />
             </svg>
             <div className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-500 dark:text-gray-400">
-              Current Todos
+              Tasks at a glance
             </div>
           </div>
-          <div className="mt-1 text-sm text-gray-600 dark:text-gray-300">
-            A quick slice of the active board.
-          </div>
+          <h2 className="mt-2 text-xl font-semibold text-gray-900 dark:text-gray-100">
+            {activeWorkspace ? `${activeWorkspace.title} board` : "Unified Kanban across workspaces"}
+          </h2>
+          <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
+            See active work immediately and use workspace filters as context instead of a navigation step.
+          </p>
         </div>
-        <Link
-          href={`/workspace/${workspaceId}/kanban`}
-          className="flex items-center gap-1.5 rounded-lg bg-blue-500 hover:bg-blue-600 px-4 py-2 text-xs font-medium text-white transition-colors shadow-sm hover:shadow"
-        >
-          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M9 4.5v15m6-15v15m-10.875 0h15.75c.621 0 1.125-.504 1.125-1.125V5.625c0-.621-.504-1.125-1.125-1.125H4.125C3.504 4.5 3 5.004 3 5.625v12.75c0 .621.504 1.125 1.125 1.125z" />
-          </svg>
-          Open Kanban
-        </Link>
+
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <label className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-600 shadow-xs dark:border-[#2a2d3d] dark:bg-[#0f1118] dark:text-gray-300">
+            <span className="text-xs font-medium uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500">
+              Workspace
+            </span>
+            <select
+              aria-label="Filter workspace tasks"
+              value={workspaceFilterId}
+              onChange={(event) => onWorkspaceFilterChange(event.target.value as HomeWorkspaceFilterId)}
+              className="bg-transparent text-sm font-medium text-gray-900 outline-hidden dark:text-gray-100"
+            >
+              <option value="all">All workspaces</option>
+              {workspaces.map((workspace) => (
+                <option key={workspace.id} value={workspace.id}>
+                  {workspace.title}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <Link
+            href={activeWorkspace ? `/workspace/${activeWorkspace.id}/kanban` : "/workspaces"}
+            className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-blue-500 px-4 py-2 text-xs font-medium text-white transition-colors hover:bg-blue-600"
+          >
+            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 4.5v15m6-15v15m-10.875 0h15.75c.621 0 1.125-.504 1.125-1.125V5.625c0-.621-.504-1.125-1.125-1.125H4.125C3.504 4.5 3 5.004 3 5.625v12.75c0 .621.504 1.125 1.125 1.125z" />
+            </svg>
+            {activeWorkspace ? "Open workspace board" : "Browse workspaces"}
+          </Link>
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-        {tasks.map((task) => (
-          <Link
-            key={task.id}
-            href={`/workspace/${workspaceId}/kanban`}
-            className="group rounded-xl border border-gray-100 bg-[#fcfcfc] px-3.5 py-3 transition-all hover:border-blue-200 hover:bg-blue-50/60 hover:shadow-sm dark:border-[#1c1f2e] dark:bg-[#0f1118] dark:hover:border-blue-800/40 dark:hover:bg-blue-900/5"
-          >
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-sm font-medium text-gray-800 dark:text-gray-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">{task.title}</div>
-                <div className="mt-1.5 flex items-center gap-2 text-[11px] text-gray-400 dark:text-gray-500">
-                  <span className="inline-flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-gray-300 dark:bg-gray-600" />
-                    {(task.columnId ?? "backlog").toUpperCase()}
-                  </span>
-                  <span>·</span>
-                  <span>{task.assignedProvider ?? "unassigned"}</span>
+      <div className="mt-5 flex gap-4 overflow-x-auto pb-2">
+        {HOME_KANBAN_COLUMNS.map((column) => {
+          const columnTasks = tasksByColumn[column.id].slice(0, 6);
+          return (
+            <section
+              key={column.id}
+              className="min-h-[320px] min-w-[260px] flex-1 rounded-2xl border border-gray-100 bg-[#fcfcfc] p-4 dark:border-[#1c1f2e] dark:bg-[#0f1118]"
+            >
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <span className={`h-2.5 w-2.5 rounded-full ${column.accentClassName}`} />
+                  <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-100">{column.title}</h3>
                 </div>
+                <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-500 dark:bg-[#1c1f2e] dark:text-gray-300">
+                  {tasksByColumn[column.id].length}
+                </span>
               </div>
-              <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] uppercase tracking-wide text-gray-600 dark:bg-[#1c1f2e] dark:text-gray-300 shrink-0">
-                {task.priority ?? "medium"}
-              </span>
-            </div>
-          </Link>
-        ))}
+
+              {columnTasks.length === 0 ? (
+                <div className="flex h-[240px] items-center justify-center rounded-xl border border-dashed border-gray-200 px-4 text-center text-sm text-gray-400 dark:border-[#232737] dark:text-gray-500">
+                  {column.emptyCopy}
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {columnTasks.map((task) => (
+                    <Link
+                      key={task.id}
+                      href={`/workspace/${task.workspaceId}/kanban`}
+                      className="group block rounded-xl border border-gray-100 bg-white px-3.5 py-3 transition-all hover:border-blue-200 hover:bg-blue-50/60 hover:shadow-sm dark:border-[#1c1f2e] dark:bg-[#12141c] dark:hover:border-blue-800/40 dark:hover:bg-blue-900/5"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-sm font-medium text-gray-800 transition-colors group-hover:text-blue-600 dark:text-gray-100 dark:group-hover:text-blue-400">
+                            {task.title}
+                          </div>
+                          <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] text-gray-400 dark:text-gray-500">
+                            <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-600 dark:bg-[#1c1f2e] dark:text-gray-300">
+                              {workspaceTitleById.get(task.workspaceId) ?? task.workspaceId}
+                            </span>
+                            <span>·</span>
+                            <span>{task.assignedProvider ?? "unassigned"}</span>
+                          </div>
+                        </div>
+                        <span className="shrink-0 rounded-full bg-gray-100 px-2 py-0.5 text-[10px] uppercase tracking-wide text-gray-600 dark:bg-[#1c1f2e] dark:text-gray-300">
+                          {task.priority ?? "medium"}
+                        </span>
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </section>
+          );
+        })}
       </div>
-    </div>
+
+      <div className="mt-5 flex flex-wrap items-center gap-2 border-t border-gray-100 pt-5 dark:border-[#1c1f2e]">
+        {workspaces.map((workspace) => {
+          const isActive = workspaceFilterId === workspace.id;
+          return (
+            <button
+              key={workspace.id}
+              type="button"
+              onClick={() => onWorkspaceFilterChange(workspace.id)}
+              className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
+                isActive
+                  ? "border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-700/50 dark:bg-amber-900/10 dark:text-amber-300"
+                  : "border-gray-200 text-gray-500 hover:border-amber-200 hover:text-amber-600 dark:border-[#2a2d3d] dark:text-gray-400 dark:hover:border-amber-700/50 dark:hover:text-amber-300"
+              }`}
+            >
+              {workspace.title}
+            </button>
+          );
+        })}
+
+        <button
+          type="button"
+          onClick={() => onWorkspaceCreate("New Workspace")}
+          className="inline-flex items-center gap-1.5 rounded-full border border-dashed border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-500 transition-colors hover:border-amber-300 hover:text-amber-600 dark:border-[#2a2d3d] dark:text-gray-400 dark:hover:border-amber-700/50 dark:hover:text-amber-300"
+        >
+          <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+          </svg>
+          New workspace
+        </button>
+      </div>
+    </section>
   );
 }
 
@@ -387,24 +536,6 @@ function OnboardingCard({ onCreateWorkspace }: { onCreateWorkspace: (title: stri
   );
 }
 
-// ─── WorkspaceCards — left panel ─────────────────────────────────────
-
-interface SessionInfo {
-  sessionId: string;
-  name?: string;
-  cwd: string;
-  workspaceId: string;
-  provider?: string;
-  role?: string;
-  createdAt: string;
-}
-
-interface WorkspaceCardSession {
-  sessionId: string;
-  displayName: string;
-  createdAt: string;
-}
-
 interface HomeTaskInfo {
   id: string;
   title: string;
@@ -412,240 +543,7 @@ interface HomeTaskInfo {
   priority?: string;
   columnId?: string;
   assignedProvider?: string;
+  workspaceId: string;
   createdAt: string;
-}
-
-interface WorkspaceCardData {
-  id: string;
-  title: string;
-  updatedAt: string;
-  recentSessions: WorkspaceCardSession[] | [];
-}
-
-function WorkspaceCards({
-  workspaceId,
-  refreshKey,
-  onWorkspaceSelect,
-  onWorkspaceCreate,
-  onSessionClick,
-  showWorkspacesMenu,
-  setShowWorkspacesMenu,
-  workspacesMenuRef,
-}: {
-  workspaceId: string | null;
-  refreshKey: number;
-  onWorkspaceSelect: (id: string) => void;
-  onWorkspaceCreate: (title: string) => void;
-  onSessionClick: (id: string) => void;
-  showWorkspacesMenu: boolean;
-  setShowWorkspacesMenu: (v: boolean) => void;
-  workspacesMenuRef: React.RefObject<HTMLDivElement | null>;
-}) {
-  const workspacesHook = useWorkspaces();
-  const [cardData, setCardData] = useState<WorkspaceCardData[]>([]);
-
-  const formatTime = (dateStr: string) => {
-    // eslint-disable-next-line react-hooks/purity
-    const diffMs = Date.now() - new Date(dateStr).getTime();
-    const mins = Math.floor(diffMs / 60000);
-    if (mins < 1) return "now";
-    if (mins < 60) return `${mins}m ago`;
-    const hrs = Math.floor(mins / 60);
-    if (hrs < 24) return `${hrs}h ago`;
-    return `${Math.floor(hrs / 24)}d ago`;
-  };
-
-  const getDisplayName = (s: SessionInfo) => {
-    if (s.name) return s.name;
-    if (s.provider && s.role) return `${s.provider} · ${s.role.toLowerCase()}`;
-    if (s.provider) return s.provider;
-    return `Session ${s.sessionId.slice(0, 6)}`;
-  };
-
-  useEffect(() => {
-    const fetchAll = async () => {
-      const workspaces = workspacesHook.workspaces;
-      if (workspaces.length === 0) return;
-
-      const cards: WorkspaceCardData[] = await Promise.all(
-        workspaces.slice(0, 9).map(async (ws) => {
-          try {
-            const res = await fetch(
-              `/api/sessions?workspaceId=${encodeURIComponent(ws.id)}&limit=3`,
-              { cache: "no-store" }
-            );
-            const data = await res.json();
-            const sessions: SessionInfo[] = Array.isArray(data?.sessions) ? data.sessions : [];
-            const recentSessions: WorkspaceCardSession[] = sessions.slice(0, 3).map(s => ({
-              sessionId: s.sessionId,
-              displayName: getDisplayName(s),
-              createdAt: s.createdAt,
-            }));
-            return {
-              id: ws.id,
-              title: ws.title,
-              updatedAt: ws.updatedAt,
-              recentSessions,
-            };
-          } catch {
-            return { id: ws.id, title: ws.title, updatedAt: ws.updatedAt, recentSessions: [] };
-          }
-        })
-      );
-
-      // Sort by most recent session activity
-      cards.sort((a, b) => {
-        const aDate = a.recentSessions[0]?.createdAt ?? a.updatedAt;
-        const bDate = b.recentSessions[0]?.createdAt ?? b.updatedAt;
-        return new Date(bDate).getTime() - new Date(aDate).getTime();
-      });
-
-      setCardData(cards);
-    };
-    fetchAll();
-  }, [workspacesHook.workspaces, refreshKey]);
-
-  if (workspacesHook.loading) {
-    return (
-      <div className="h-full flex items-center justify-center">
-        <span className="text-sm text-gray-400 dark:text-gray-500">Loading…</span>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between mb-1">
-        <h2 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-          Recent Workspaces
-        </h2>
-        <div className="relative" ref={workspacesMenuRef}>
-          <button
-            onClick={() => setShowWorkspacesMenu(!showWorkspacesMenu)}
-            className="text-[11px] text-amber-600 dark:text-amber-500 hover:text-amber-700 dark:hover:text-amber-400 transition-colors flex items-center gap-1"
-          >
-            View all
-            <svg className={`w-2.5 h-2.5 transition-transform ${showWorkspacesMenu ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-            </svg>
-          </button>
-          {showWorkspacesMenu && (
-            <div className="absolute right-0 top-full mt-1 w-40 bg-white dark:bg-[#12141c] border border-gray-100 dark:border-[#1c1f2e] rounded-lg shadow-lg z-50 py-1 overflow-hidden">
-              <Link
-                href="/workspaces"
-                onClick={() => setShowWorkspacesMenu(false)}
-                className="flex items-center gap-2 px-3 py-2 text-xs text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1a1d2c] transition-colors"
-              >
-                <svg className="w-3.5 h-3.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 9.776c.112-.017.227-.026.344-.026h15.812c.117 0 .232.009.344.026m-16.5 0a2.25 2.25 0 00-1.883 2.542l.857 6a2.25 2.25 0 002.227 1.932H19.05a2.25 2.25 0 002.227-1.932l.857-6a2.25 2.25 0 00-1.883-2.542m-16.5 0V6A2.25 2.25 0 016 3.75h3.879a1.5 1.5 0 011.06.44l2.122 2.12a1.5 1.5 0 001.06.44H18A2.25 2.25 0 0120.25 9v.776" />
-                </svg>
-                All Workspaces
-              </Link>
-              <Link
-                href="/sessions"
-                onClick={() => setShowWorkspacesMenu(false)}
-                className="flex items-center gap-2 px-3 py-2 text-xs text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1a1d2c] transition-colors"
-              >
-                <svg className="w-3.5 h-3.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-3 3v-3z" />
-                </svg>
-                All Sessions
-              </Link>
-            </div>
-          )}
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-        {cardData.map((ws) => {
-          const isActive = ws.id === workspaceId;
-          return (
-            <button
-              key={ws.id}
-              onClick={() => onWorkspaceSelect(ws.id)}
-              className={`group text-left rounded-xl border p-4 transition-all hover:shadow-sm ${
-                isActive
-                  ? "bg-amber-50 dark:bg-amber-900/10 border-amber-200 dark:border-amber-700/50"
-                  : "bg-white dark:bg-[#12141c] border-gray-100 dark:border-[#1c1f2e] hover:border-amber-200 dark:hover:border-amber-700/40"
-              }`}
-            >
-              {/* Workspace header */}
-              <div className="flex items-start justify-between gap-2 mb-2.5">
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className={`w-2 h-2 rounded-full shrink-0 transition-colors ${isActive ? "bg-amber-500" : "bg-emerald-500 group-hover:bg-amber-400"}`} />
-                  <span className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate leading-tight">
-                    {ws.title}
-                  </span>
-                </div>
-                <div className="flex items-center gap-1 shrink-0">
-                  <Link
-                    href={`/workspace/${ws.id}/kanban`}
-                    onClick={(e) => e.stopPropagation()}
-                    className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded text-blue-400 hover:text-blue-600 dark:text-blue-500 dark:hover:text-blue-400"
-                    title="Open Kanban board"
-                  >
-                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 4.5v15m6-15v15m-10.875 0h15.75c.621 0 1.125-.504 1.125-1.125V5.625c0-.621-.504-1.125-1.125-1.125H4.125C3.504 4.5 3 5.004 3 5.625v12.75c0 .621.504 1.125 1.125 1.125z" />
-                    </svg>
-                  </Link>
-                  <Link
-                    href={`/workspace/${ws.id}`}
-                    onClick={(e) => e.stopPropagation()}
-                    className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
-                    title="Open workspace"
-                  >
-                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
-                    </svg>
-                  </Link>
-                </div>
-              </div>
-
-              {/* Recent sessions */}
-              {ws.recentSessions.length > 0 ? (
-                <div className="space-y-1">
-                  {ws.recentSessions.map((session) => (
-                    <div
-                      key={session.sessionId}
-                      className="flex items-center gap-1.5 cursor-pointer group/session"
-                      onClick={(e) => { e.stopPropagation(); onSessionClick(session.sessionId); }}
-                    >
-                      <svg className="w-3 h-3 shrink-0 text-blue-400 dark:text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-3 3v-3z" />
-                      </svg>
-                      <span className="text-[10px] text-gray-500 dark:text-gray-400 truncate flex-1 hover:text-gray-700 dark:hover:text-gray-300 transition-colors">
-                        {session.displayName}
-                      </span>
-                      <span className="text-[9px] text-gray-300 dark:text-gray-600 font-mono shrink-0">
-                        {formatTime(session.createdAt)}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <span className="text-[10px] text-gray-300 dark:text-gray-600 italic">No sessions yet</span>
-              )}
-            </button>
-          );
-        })}
-
-        {/* New workspace card */}
-        <button
-          onClick={() => onWorkspaceCreate("New Workspace")}
-          className="text-left rounded-xl border border-dashed border-gray-200 dark:border-[#1c1f2e] p-4 transition-all hover:border-amber-300 dark:hover:border-amber-700/50 hover:bg-amber-50/50 dark:hover:bg-amber-900/5 group"
-        >
-          <div className="flex items-center gap-2">
-            <span className="w-5 h-5 rounded-md bg-gray-100 dark:bg-[#1a1d2c] flex items-center justify-center group-hover:bg-amber-100 dark:group-hover:bg-amber-900/30 transition-colors">
-              <svg className="w-3 h-3 text-gray-400 dark:text-gray-500 group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-              </svg>
-            </span>
-            <span className="text-xs text-gray-400 dark:text-gray-500 group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors">
-              New workspace
-            </span>
-          </div>
-        </button>
-      </div>
-    </div>
-  );
+  updatedAt?: string;
 }

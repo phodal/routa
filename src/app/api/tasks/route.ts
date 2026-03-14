@@ -17,6 +17,7 @@ import {
   shouldCreateGitHubIssueOnTaskCreate,
 } from "@/core/kanban/task-creation-policy";
 import { columnIdToTaskStatus } from "@/core/models/kanban";
+import { WorkspaceStatus } from "@/core/models/workspace";
 import { emitColumnTransition } from "@/core/kanban/column-transition";
 
 export const dynamic = "force-dynamic";
@@ -46,6 +47,7 @@ function parsePriority(value: unknown): TaskPriority | undefined {
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
   const workspaceId = searchParams.get("workspaceId") ?? "default";
+  const allWorkspaces = searchParams.get("allWorkspaces") === "true";
   const sessionId = searchParams.get("sessionId");
   const status = searchParams.get("status");
   const assignedTo = searchParams.get("assignedTo");
@@ -56,6 +58,21 @@ export async function GET(request: NextRequest) {
 
   if (assignedTo) {
     tasks = await system.taskStore.listByAssignee(assignedTo);
+  } else if (allWorkspaces) {
+    const workspaces = await system.workspaceStore.listByStatus("active" satisfies WorkspaceStatus);
+    if (status) {
+      const taskStatus = status.toUpperCase() as TaskStatus;
+      if (!Object.values(TaskStatus).includes(taskStatus)) {
+        return NextResponse.json({ error: `Invalid status: ${status}` }, { status: 400 });
+      }
+      tasks = (await Promise.all(
+        workspaces.map((workspace) => system.taskStore.listByStatus(workspace.id, taskStatus)),
+      )).flat();
+    } else {
+      tasks = (await Promise.all(
+        workspaces.map((workspace) => system.taskStore.listByWorkspace(workspace.id)),
+      )).flat();
+    }
   } else if (status) {
     const taskStatus = status.toUpperCase() as TaskStatus;
     if (!Object.values(TaskStatus).includes(taskStatus)) {
