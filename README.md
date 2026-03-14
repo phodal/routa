@@ -205,7 +205,7 @@ Routa.js is a practical case study of the three principles from the
 build software systems that are readable for AI, constrained by engineering
 guardrails, and improved through fast automated feedback.
 
-### 🔍 System Readability（系统可读性）
+### 🔍 System Readability (系统可读性)
 
 Routa makes project structure and operating rules explicit so agents can work
 with less hidden context:
@@ -221,7 +221,7 @@ with less hidden context:
   [docs/fitness/README.md](docs/fitness/README.md) reveal role boundaries,
   quality gates, and task-specific context only where needed.
 
-### 🛡️ Defense Mechanisms（防御机制）
+### 🛡️ Defense Mechanisms (防御机制)
 
 Routa treats engineering constraints as hard boundaries that keep AI-generated
 changes inside a safe operating envelope:
@@ -237,7 +237,7 @@ changes inside a safe operating envelope:
   what agents should do, what they must not do, and how they report verifiable
   evidence.
 
-### 🔄 Automated Feedback Loops（自动化反馈回路）
+### 🔄 Automated Feedback Loops (自动化反馈回路)
 
 Routa closes the loop by collecting feedback from issue intake, review
 automation, and recurring maintenance workflows:
