@@ -49,6 +49,7 @@ import { persistSessionToDb, renameSessionInDb, saveHistoryToDb } from "@/core/a
 import { resolveSkillContent } from "@/core/skills/skill-resolver";
 import type { SessionUpdateNotification } from "@/core/acp/http-session-store";
 import { SessionWriteBuffer } from "@/core/acp/session-write-buffer";
+import { getTerminalManager } from "@/core/acp/terminal-manager";
 
 export const dynamic = "force-dynamic";
 
@@ -1256,6 +1257,89 @@ export async function POST(request: NextRequest) {
     }
 
     // ── session/cancel ─────────────────────────────────────────────────
+    if (method === "terminal/create") {
+      const p = (params ?? {}) as Record<string, unknown>;
+      const sessionId = p.sessionId as string | undefined;
+      const cwd = p.cwd as string | undefined;
+      const command = p.command as string | undefined;
+      const args = Array.isArray(p.args) ? p.args.filter((item): item is string => typeof item === "string") : undefined;
+      const shell = typeof p.shell === "boolean" ? p.shell : undefined;
+      const env = typeof p.env === "object" && p.env !== null
+        ? Object.fromEntries(
+            Object.entries(p.env as Record<string, unknown>).filter((entry): entry is [string, string] => typeof entry[1] === "string")
+          )
+        : undefined;
+
+      if (!sessionId) {
+        return jsonrpcResponse(id ?? null, null, {
+          code: -32602,
+          message: "Missing sessionId",
+        });
+      }
+
+      const store = getHttpSessionStore();
+      await store.hydrateFromDb();
+      const session = store.getSession(sessionId);
+      if (!session) {
+        return jsonrpcResponse(id ?? null, null, {
+          code: -32000,
+          message: `Session ${sessionId} not found`,
+        });
+      }
+
+      const result = getTerminalManager().create(
+        {
+          cwd: cwd ?? session.cwd,
+          command,
+          args,
+          shell,
+          env,
+        },
+        sessionId,
+        createSessionUpdateForwarder(store, sessionId),
+      );
+
+      return jsonrpcResponse(id ?? null, result);
+    }
+
+    if (method === "terminal/write") {
+      const p = (params ?? {}) as Record<string, unknown>;
+      const terminalId = p.terminalId as string | undefined;
+      const data = p.data as string | undefined;
+
+      if (!terminalId || typeof data !== "string") {
+        return jsonrpcResponse(id ?? null, null, {
+          code: -32602,
+          message: "Missing terminalId or data",
+        });
+      }
+
+      const result = getTerminalManager().write(terminalId, data);
+      if (!result.ok) {
+        return jsonrpcResponse(id ?? null, null, {
+          code: -32000,
+          message: `Terminal ${terminalId} is not writable`,
+        });
+      }
+
+      return jsonrpcResponse(id ?? null, result);
+    }
+
+    if (method === "terminal/kill") {
+      const p = (params ?? {}) as Record<string, unknown>;
+      const terminalId = p.terminalId as string | undefined;
+
+      if (!terminalId) {
+        return jsonrpcResponse(id ?? null, null, {
+          code: -32602,
+          message: "Missing terminalId",
+        });
+      }
+
+      getTerminalManager().kill(terminalId);
+      return jsonrpcResponse(id ?? null, { ok: true });
+    }
+
     if (method === "session/respond_user_input") {
       const p = (params ?? {}) as Record<string, unknown>;
       const sessionId = p.sessionId as string | undefined;

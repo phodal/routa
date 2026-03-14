@@ -22,6 +22,7 @@ export type TerminalNotificationEmitter = (notification: {
 
 interface ManagedTerminal {
   terminalId: string;
+  sessionId: string;
   process: IProcessHandle;
   output: string;
   exitCode: number | null;
@@ -54,6 +55,7 @@ export class TerminalManager {
     const args = (params.args as string[]) ?? [];
     const cwd = (params.cwd as string) ?? process.cwd();
     const env = (params.env as Record<string, string>) ?? {};
+    const useShell = typeof params.shell === "boolean" ? params.shell : true;
 
     console.log(
       `[TerminalManager] Creating terminal ${terminalId}: ${command} ${args.join(" ")} (cwd: ${cwd})`
@@ -87,7 +89,7 @@ export class TerminalManager {
         FORCE_COLOR: "1",
         TERM: "xterm-256color",
       },
-      shell: true,
+      shell: useShell,
     });
 
     const output = "";
@@ -98,6 +100,7 @@ export class TerminalManager {
 
     const managed: ManagedTerminal = {
       terminalId,
+      sessionId,
       process: proc,
       output,
       exitCode: null,
@@ -183,6 +186,19 @@ export class TerminalManager {
     this.terminals.set(terminalId, managed);
 
     return { terminalId };
+  }
+
+  /**
+   * Write input to a running terminal process.
+   */
+  write(terminalId: string, data: string): { ok: boolean } {
+    const terminal = this.terminals.get(terminalId);
+    if (!terminal || terminal.exited || !terminal.process.stdin?.writable) {
+      return { ok: false };
+    }
+
+    terminal.process.stdin.write(data.replace(/\r/g, "\n"));
+    return { ok: true };
   }
 
   /**

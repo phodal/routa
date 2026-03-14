@@ -85,6 +85,7 @@ interface ChatPanelProps {
   activeWorkspaceId?: string | null;
   onWorkspaceChange?: (id: string) => void;
   codebases?: CodebaseData[];
+  hideTerminalMessages?: boolean;
   /** When set, pre-fills the chat input (e.g. to restore text after a session error) */
   inputPrefill?: string | null;
   /** Called after inputPrefill has been consumed */
@@ -111,6 +112,7 @@ export function ChatPanel({
   activeWorkspaceId,
   onWorkspaceChange,
   codebases: _codebases = [],
+  hideTerminalMessages = false,
   inputPrefill,
   onInputPrefillConsumed,
 }: ChatPanelProps) {
@@ -498,6 +500,9 @@ export function ChatPanel({
                   }
                   // Hide pending AskUserQuestion from chat stream — shown sticky above input
                   if (msg.role === "tool" && isAskUserQuestionMessage(msg) && !hasAskUserQuestionAnswers(msg) && msg.toolStatus !== "failed") {
+                    return false;
+                  }
+                  if (hideTerminalMessages && msg.role === "terminal") {
                     return false;
                   }
                   return true;
