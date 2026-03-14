@@ -24,6 +24,7 @@ import "@/core/platform/serverless-fs-patch";
 
 import type { NotificationHandler, JsonRpcMessage } from "@/core/acp/processer";
 import { isServerlessEnvironment } from "@/core/acp/api-based-providers";
+import { PROVIDER_MODEL_TIERS } from "@/core/acp/provider-registry";
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import { join } from "path";
@@ -35,6 +36,40 @@ interface PendingUserInputRequest {
   input: Record<string, unknown>;
   resolve: (value: { behavior: "allow"; updatedInput: Record<string, unknown> }) => void;
   reject: (reason: Error) => void;
+}
+
+const DEFAULT_CLAUDE_CODE_SDK_MODEL = "claude-sonnet-4-20250514";
+const DEFAULT_MODEL_SWITCH_AFTER_FAILURES = 2;
+const DEFAULT_MODEL_SWITCH_LIMIT = 1;
+
+interface ClaudeCodeSdkFallbackConfig {
+  model?: string;
+  switchAfterFailures: number;
+  maxSwitches: number;
+}
+
+function parsePositiveInt(value: string | undefined, fallback: number): number {
+  const parsed = Number.parseInt(value ?? "", 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+export function resolveClaudeCodeSdkFallbackModel(
+  model: string,
+  preferredFallbackModel?: string,
+): string | undefined {
+  const explicitFallback = preferredFallbackModel?.trim();
+  if (explicitFallback) {
+    return explicitFallback;
+  }
+
+  const tierModels = PROVIDER_MODEL_TIERS.claudeCodeSdk;
+  const upgradePath = [tierModels.fast, tierModels.balanced, tierModels.smart];
+  const currentIndex = upgradePath.indexOf(model);
+  if (currentIndex === -1 || currentIndex >= upgradePath.length - 1) {
+    return undefined;
+  }
+
+  return upgradePath[currentIndex + 1];
 }
 
 /**
@@ -79,13 +114,29 @@ export function getClaudeCodeSdkConfig(): {
   baseUrl: string | undefined;
   model: string;
   timeoutMs: number;
+  modelFallback: ClaudeCodeSdkFallbackConfig;
 } {
+  const model = process.env.ANTHROPIC_MODEL || DEFAULT_CLAUDE_CODE_SDK_MODEL;
   return {
     apiKey: process.env.ANTHROPIC_AUTH_TOKEN || process.env.ANTHROPIC_API_KEY,
     baseUrl: process.env.ANTHROPIC_BASE_URL,
-    model: process.env.ANTHROPIC_MODEL || "claude-sonnet-4-20250514",
+    model,
     // Keep 5s below Vercel Pro 60s limit to allow clean shutdown
     timeoutMs: parseInt(process.env.API_TIMEOUT_MS || "55000", 10),
+    modelFallback: {
+      model: resolveClaudeCodeSdkFallbackModel(
+        model,
+        process.env.ANTHROPIC_FALLBACK_MODEL,
+      ),
+      switchAfterFailures: parsePositiveInt(
+        process.env.ANTHROPIC_FALLBACK_AFTER_FAILURES,
+        DEFAULT_MODEL_SWITCH_AFTER_FAILURES,
+      ),
+      maxSwitches: parsePositiveInt(
+        process.env.ANTHROPIC_FALLBACK_MAX_SWITCHES,
+        DEFAULT_MODEL_SWITCH_LIMIT,
+      ),
+    },
   };
 }
 
@@ -126,6 +177,12 @@ export class ClaudeCodeSdkAdapter {
   private _apiKeyOverride: string | undefined;
   /** Optional allowlist for provider-native tools such as Bash/Read/Edit. */
   private _allowedNativeTools: string[];
+  /** Currently active model for this session. Can switch to a stronger fallback. */
+  private _activeModel: string | undefined;
+  /** Consecutive failures for the currently active model. */
+  private _activeModelFailureCount = 0;
+  /** Number of times the adapter has switched to a fallback model. */
+  private _modelSwitchCount = 0;
   /** Pending AskUserQuestion requests waiting for a UI response. */
   private pendingUserInputRequests = new Map<string, PendingUserInputRequest>();
   /** Completed AskUserQuestion responses keyed by tool call ID. */
@@ -194,6 +251,7 @@ export class ClaudeCodeSdkAdapter {
   async connect(): Promise<void> {
     const config = getClaudeCodeSdkConfig();
     const effectiveModel = this._modelOverride ?? config.model;
+    const fallbackModel = this.getFallbackModel(effectiveModel);
     const effectiveApiKey = this._apiKeyOverride ?? config.apiKey;
     const effectiveBaseUrl = this._baseUrlOverride ?? config.baseUrl;
 
@@ -219,7 +277,12 @@ export class ClaudeCodeSdkAdapter {
 
     this.sessionId = `claude-sdk-${Date.now()}`;
     this._alive = true;
-    console.log(`[ClaudeCodeSdkAdapter] Initialized with model: ${effectiveModel}${this._modelOverride ? ' (per-instance override)' : ''}`);
+    this._activeModel = effectiveModel;
+    console.log(
+      `[ClaudeCodeSdkAdapter] Initialized with model: ${effectiveModel}` +
+        `${this._modelOverride ? " (per-instance override)" : ""}` +
+        `${fallbackModel ? `, fallback=${fallbackModel}` : ""}`,
+    );
     if (effectiveBaseUrl) {
       console.log(`[ClaudeCodeSdkAdapter] Using custom API endpoint: ${effectiveBaseUrl}`);
     }
@@ -256,6 +319,7 @@ export class ClaudeCodeSdkAdapter {
     // Use the provided ACP session ID for notifications, or fall back to internal ID
     const sessionId = acpSessionId ?? this.sessionId;
 
+    const activeModel = this.getActiveModel(config);
     const maskedKey = config.apiKey
       ? `${config.apiKey.substring(0, 8)}...${config.apiKey.substring(config.apiKey.length - 4)}`
       : "undefined";
@@ -264,7 +328,7 @@ export class ClaudeCodeSdkAdapter {
     const shouldContinue = !this._isFirstPrompt && this.sdkSessionId !== null;
 
     console.log(
-      `[ClaudeCodeSdkAdapter] promptStream: model=${config.model}, apiKey=${maskedKey}, ` +
+      `[ClaudeCodeSdkAdapter] promptStream: model=${activeModel}, apiKey=${maskedKey}, ` +
       `cwd=${promptCwd}, cli=${cliPath}, continue=${shouldContinue}`
     );
 
@@ -285,7 +349,7 @@ export class ClaudeCodeSdkAdapter {
     try {
       const queryOptions: Parameters<typeof query>[0]["options"] = {
         cwd: promptCwd,
-        model: this._modelOverride ?? config.model,
+        model: activeModel,
         maxTurns: this._maxTurnsOverride ?? 30,
         abortController: this.abortController,
         permissionMode: "bypassPermissions",
@@ -393,6 +457,11 @@ export class ClaudeCodeSdkAdapter {
       }
 
       this._isFirstPrompt = false;
+      if (stopReason === "error") {
+        this.recordModelFailure(activeModel, config);
+      } else {
+        this.recordModelSuccess(activeModel);
+      }
 
       // Yield turn_complete event
       const completeNotification = createNotification("session/update", {
@@ -413,6 +482,7 @@ export class ClaudeCodeSdkAdapter {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       if (!this.abortController?.signal.aborted) {
+        this.recordModelFailure(activeModel, config);
         console.error("[ClaudeCodeSdkAdapter] promptStream failed:", errorMessage);
         const errorNotification = createNotification("session/update", {
           sessionId,
@@ -451,6 +521,7 @@ export class ClaudeCodeSdkAdapter {
     this._hasSeenStreamTextDelta = false;
     const sessionId = this.sessionId;
 
+    const activeModel = this.getActiveModel(config);
     const maskedKey = config.apiKey
       ? `${config.apiKey.substring(0, 8)}...${config.apiKey.substring(config.apiKey.length - 4)}`
       : "undefined";
@@ -459,7 +530,7 @@ export class ClaudeCodeSdkAdapter {
     const shouldContinue = !this._isFirstPrompt && this.sdkSessionId !== null;
 
     console.log(
-      `[ClaudeCodeSdkAdapter] Sending prompt: model=${config.model}, apiKey=${maskedKey}, ` +
+      `[ClaudeCodeSdkAdapter] Sending prompt: model=${activeModel}, apiKey=${maskedKey}, ` +
       `cwd=${promptCwd}, cli=${cliPath}, continue=${shouldContinue}, sdkSessionId=${this.sdkSessionId ?? "none"}`
     );
 
@@ -478,7 +549,7 @@ export class ClaudeCodeSdkAdapter {
       // Build query options with session continuity support
       const queryOptions: Parameters<typeof query>[0]["options"] = {
         cwd: promptCwd,
-        model: this._modelOverride ?? config.model,
+        model: activeModel,
         maxTurns: this._maxTurnsOverride ?? 30,
         abortController: this.abortController,
         // Allow the agent to execute tools without interactive permission prompts.
@@ -599,12 +670,18 @@ export class ClaudeCodeSdkAdapter {
 
       // Mark that first prompt has been completed - next prompts should use continue
       this._isFirstPrompt = false;
+      if (stopReason === "error") {
+        this.recordModelFailure(activeModel, config);
+      } else {
+        this.recordModelSuccess(activeModel);
+      }
 
       console.log(`[ClaudeCodeSdkAdapter] stream done: ${msgCount} messages, content_len=${fullContent.length}, in=${inputTokens}, out=${outputTokens}, sdkSessionId=${this.sdkSessionId ?? "none"}`);
     } catch (error) {
       if (this.abortController?.signal.aborted) {
         return { stopReason: "cancelled" };
       }
+      this.recordModelFailure(activeModel, config);
       const errorMessage = error instanceof Error ? error.message : String(error);
       console.error("[ClaudeCodeSdkAdapter] Prompt failed:", errorMessage);
       this.onNotification(
@@ -639,6 +716,62 @@ export class ClaudeCodeSdkAdapter {
       content: fullContent,
       usage: { inputTokens, outputTokens },
     };
+  }
+
+  private getActiveModel(
+    config: ReturnType<typeof getClaudeCodeSdkConfig>,
+  ): string {
+    const configuredModel = this._modelOverride ?? config.model;
+    if (!this._activeModel) {
+      this._activeModel = configuredModel;
+    }
+    return this._activeModel;
+  }
+
+  private getFallbackModel(
+    model: string,
+  ): string | undefined {
+    return resolveClaudeCodeSdkFallbackModel(
+      model,
+      process.env.ANTHROPIC_FALLBACK_MODEL,
+    );
+  }
+
+  private recordModelSuccess(model: string): void {
+    if (this._activeModel === model) {
+      this._activeModelFailureCount = 0;
+    }
+  }
+
+  private recordModelFailure(
+    model: string,
+    config: ReturnType<typeof getClaudeCodeSdkConfig>,
+  ): void {
+    if (this._activeModel !== model) {
+      return;
+    }
+
+    this._activeModelFailureCount += 1;
+
+    const fallbackModel = this.getFallbackModel(model);
+    const canSwitchModels =
+      !!fallbackModel &&
+      fallbackModel !== model &&
+      this._modelSwitchCount < config.modelFallback.maxSwitches &&
+      this._activeModelFailureCount >= config.modelFallback.switchAfterFailures;
+
+    if (!canSwitchModels) {
+      return;
+    }
+
+    this._activeModel = fallbackModel;
+    this._activeModelFailureCount = 0;
+    this._modelSwitchCount += 1;
+    this.sdkSessionId = null;
+    this._isFirstPrompt = true;
+    console.warn(
+      `[ClaudeCodeSdkAdapter] Switching model after ${config.modelFallback.switchAfterFailures} failures: ${model} -> ${fallbackModel}`,
+    );
   }
 
   /**

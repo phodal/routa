@@ -30,6 +30,7 @@ import {
   ClaudeCodeSdkAdapter,
   isClaudeCodeSdkConfigured,
   getClaudeCodeSdkConfig,
+  resolveClaudeCodeSdkFallbackModel,
   shouldUseClaudeCodeSdkAdapter,
   createClaudeCodeSdkAdapterIfAvailable,
 } from "../claude-code-sdk-adapter";
@@ -84,6 +85,9 @@ describe("getClaudeCodeSdkConfig", () => {
     delete process.env.ANTHROPIC_API_KEY;
     delete process.env.ANTHROPIC_BASE_URL;
     delete process.env.ANTHROPIC_MODEL;
+    delete process.env.ANTHROPIC_FALLBACK_MODEL;
+    delete process.env.ANTHROPIC_FALLBACK_AFTER_FAILURES;
+    delete process.env.ANTHROPIC_FALLBACK_MAX_SWITCHES;
     delete process.env.API_TIMEOUT_MS;
   });
 
@@ -92,6 +96,9 @@ describe("getClaudeCodeSdkConfig", () => {
     delete process.env.ANTHROPIC_API_KEY;
     delete process.env.ANTHROPIC_BASE_URL;
     delete process.env.ANTHROPIC_MODEL;
+    delete process.env.ANTHROPIC_FALLBACK_MODEL;
+    delete process.env.ANTHROPIC_FALLBACK_AFTER_FAILURES;
+    delete process.env.ANTHROPIC_FALLBACK_MAX_SWITCHES;
     delete process.env.API_TIMEOUT_MS;
   });
 
@@ -111,11 +118,46 @@ describe("getClaudeCodeSdkConfig", () => {
     expect(config.timeoutMs).toBe(55000);
   });
 
+  it("derives a stronger fallback model when no explicit fallback is configured", () => {
+    process.env.ANTHROPIC_MODEL = "claude-3-5-haiku-20241022";
+    const config = getClaudeCodeSdkConfig();
+    expect(config.modelFallback).toEqual({
+      model: "claude-sonnet-4-20250514",
+      switchAfterFailures: 2,
+      maxSwitches: 1,
+    });
+  });
+
+  it("uses explicit fallback model settings from env", () => {
+    process.env.ANTHROPIC_MODEL = "claude-sonnet-4-20250514";
+    process.env.ANTHROPIC_FALLBACK_MODEL = "claude-opus-4-5";
+    process.env.ANTHROPIC_FALLBACK_AFTER_FAILURES = "3";
+    process.env.ANTHROPIC_FALLBACK_MAX_SWITCHES = "2";
+    const config = getClaudeCodeSdkConfig();
+    expect(config.modelFallback).toEqual({
+      model: "claude-opus-4-5",
+      switchAfterFailures: 3,
+      maxSwitches: 2,
+    });
+  });
+
   it("uses ANTHROPIC_AUTH_TOKEN over ANTHROPIC_API_KEY when both set", () => {
     process.env.ANTHROPIC_AUTH_TOKEN = "auth-token";
     process.env.ANTHROPIC_API_KEY = "api-key";
     const config = getClaudeCodeSdkConfig();
     expect(config.apiKey).toBe("auth-token");
+  });
+});
+
+describe("resolveClaudeCodeSdkFallbackModel", () => {
+  it("upgrades Claude Code SDK tiered models to the next stronger tier", () => {
+    expect(resolveClaudeCodeSdkFallbackModel("claude-3-5-haiku-20241022")).toBe(
+      "claude-sonnet-4-20250514"
+    );
+    expect(resolveClaudeCodeSdkFallbackModel("claude-sonnet-4-20250514")).toBe(
+      "claude-opus-4-5"
+    );
+    expect(resolveClaudeCodeSdkFallbackModel("claude-opus-4-5")).toBeUndefined();
   });
 });
 
@@ -164,6 +206,10 @@ describe("ClaudeCodeSdkAdapter", () => {
   afterEach(async () => {
     delete process.env.ANTHROPIC_API_KEY;
     delete process.env.ANTHROPIC_AUTH_TOKEN;
+    delete process.env.ANTHROPIC_MODEL;
+    delete process.env.ANTHROPIC_FALLBACK_MODEL;
+    delete process.env.ANTHROPIC_FALLBACK_AFTER_FAILURES;
+    delete process.env.ANTHROPIC_FALLBACK_MAX_SWITCHES;
   });
 
   // ── connect ────────────────────────────────────────────────────────────────
@@ -670,6 +716,57 @@ describe("ClaudeCodeSdkAdapter", () => {
           (n.params as Record<string, unknown>).type === "error"
       );
       expect(errorNotifs).toHaveLength(1);
+    });
+
+    it("switches to a stronger model after two failures", async () => {
+      process.env.ANTHROPIC_MODEL = "claude-3-5-haiku-20241022";
+      process.env.ANTHROPIC_FALLBACK_AFTER_FAILURES = "2";
+
+      mockQuery
+        .mockImplementationOnce(() => {
+          throw new Error("model overloaded");
+        })
+        .mockImplementationOnce(() => {
+          throw new Error("model overloaded");
+        })
+        .mockReturnValueOnce(
+          makeStream([
+            {
+              type: "result",
+              subtype: "success",
+              duration_ms: 1000,
+              duration_api_ms: 900,
+              is_error: false,
+              num_turns: 1,
+              result: "Recovered",
+              stop_reason: "end_turn",
+              total_cost_usd: 0.001,
+              usage: {
+                input_tokens: 10,
+                output_tokens: 20,
+                cache_creation_input_tokens: 0,
+                cache_read_input_tokens: 0,
+              } as any,
+              modelUsage: {},
+              permission_denials: [],
+              uuid: "uuid-fallback-success" as `${string}-${string}-${string}-${string}-${string}`,
+              session_id: "sess-1",
+            },
+          ]),
+        );
+
+      const { handler } = collectNotifications();
+      const adapter = new ClaudeCodeSdkAdapter("/cwd", handler);
+      await adapter.connect();
+
+      await expect(adapter.prompt("first try")).rejects.toThrow("model overloaded");
+      await expect(adapter.prompt("second try")).rejects.toThrow("model overloaded");
+      const result = await adapter.prompt("third try");
+
+      expect(result.content).toBe("Recovered");
+      expect(mockQuery.mock.calls[0][0].options.model).toBe("claude-3-5-haiku-20241022");
+      expect(mockQuery.mock.calls[1][0].options.model).toBe("claude-3-5-haiku-20241022");
+      expect(mockQuery.mock.calls[2][0].options.model).toBe("claude-sonnet-4-20250514");
     });
   });
 
