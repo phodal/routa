@@ -760,7 +760,7 @@ export class ClaudeCodeSdkAdapter {
       this._modelSwitchCount < config.modelFallback.maxSwitches &&
       this._activeModelFailureCount >= config.modelFallback.switchAfterFailures;
 
-    if (!canSwitchModels || !fallbackModel) {
+    if (!canSwitchModels) {
       return;
     }
 
