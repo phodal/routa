@@ -24,6 +24,15 @@ struct BoardsQuery {
     workspace_id: Option<String>,
 }
 
+fn get_session_concurrency_limit(metadata: &std::collections::HashMap<String, String>, board_id: &str) -> u32 {
+    let key = format!("kanbanSessionConcurrencyLimit:{}", board_id);
+    metadata
+        .get(&key)
+        .and_then(|v| v.parse::<u32>().ok())
+        .filter(|&n| n >= 1)
+        .unwrap_or(1)
+}
+
 async fn list_boards(
     State(state): State<AppState>,
     Query(query): Query<BoardsQuery>,
@@ -34,7 +43,26 @@ async fn list_boards(
         .ensure_default_board(&workspace_id)
         .await?;
     let boards = state.kanban_store.list_by_workspace(&workspace_id).await?;
-    Ok(Json(serde_json::json!({ "boards": boards })))
+    let workspace = state.workspace_store.get(&workspace_id).await.ok().flatten();
+    let metadata = workspace.map(|w| w.metadata).unwrap_or_default();
+    let boards_with_meta: Vec<serde_json::Value> = boards
+        .iter()
+        .map(|b| {
+            let mut v = serde_json::to_value(b).unwrap_or_default();
+            if let Some(obj) = v.as_object_mut() {
+                obj.insert(
+                    "sessionConcurrencyLimit".to_string(),
+                    serde_json::json!(get_session_concurrency_limit(&metadata, &b.id)),
+                );
+                obj.insert(
+                    "queue".to_string(),
+                    serde_json::json!({ "runningCount": 0, "queuedCount": 0 }),
+                );
+            }
+            v
+        })
+        .collect();
+    Ok(Json(serde_json::json!({ "boards": boards_with_meta })))
 }
 
 #[derive(Debug, Deserialize)]
@@ -83,7 +111,22 @@ async fn get_board(
 ) -> Result<Json<serde_json::Value>, ServerError> {
     let board = state.kanban_store.get(&board_id).await?;
     match board {
-        Some(b) => Ok(Json(serde_json::json!({ "board": b }))),
+        Some(b) => {
+            let workspace = state.workspace_store.get(&b.workspace_id).await.ok().flatten();
+            let metadata = workspace.map(|w| w.metadata).unwrap_or_default();
+            let mut v = serde_json::to_value(&b).unwrap_or_default();
+            if let Some(obj) = v.as_object_mut() {
+                obj.insert(
+                    "sessionConcurrencyLimit".to_string(),
+                    serde_json::json!(get_session_concurrency_limit(&metadata, &b.id)),
+                );
+                obj.insert(
+                    "queue".to_string(),
+                    serde_json::json!({ "runningCount": 0, "queuedCount": 0 }),
+                );
+            }
+            Ok(Json(serde_json::json!({ "board": v })))
+        }
         None => Err(ServerError::NotFound(format!(
             "Board not found: {}",
             board_id
@@ -97,6 +140,7 @@ struct UpdateBoardRequest {
     name: Option<String>,
     columns: Option<Vec<KanbanColumn>>,
     is_default: Option<bool>,
+    session_concurrency_limit: Option<u32>,
 }
 
 async fn update_board(
@@ -140,7 +184,31 @@ async fn update_board(
             .await?;
     }
 
-    Ok(Json(serde_json::json!({ "board": board })))
+    // Persist sessionConcurrencyLimit in workspace metadata if provided
+    if let Some(limit) = body.session_concurrency_limit {
+        let limit = limit.max(1);
+        let workspace = state.workspace_store.get(&board.workspace_id).await.ok().flatten();
+        if let Some(mut ws) = workspace {
+            let key = format!("kanbanSessionConcurrencyLimit:{}", board_id);
+            ws.metadata.insert(key, limit.to_string());
+            state.workspace_store.save(&ws).await?;
+        }
+    }
+
+    let workspace = state.workspace_store.get(&board.workspace_id).await.ok().flatten();
+    let metadata = workspace.map(|w| w.metadata).unwrap_or_default();
+    let mut v = serde_json::to_value(&board).unwrap_or_default();
+    if let Some(obj) = v.as_object_mut() {
+        obj.insert(
+            "sessionConcurrencyLimit".to_string(),
+            serde_json::json!(get_session_concurrency_limit(&metadata, &board_id)),
+        );
+        obj.insert(
+            "queue".to_string(),
+            serde_json::json!({ "runningCount": 0, "queuedCount": 0 }),
+        );
+    }
+    Ok(Json(serde_json::json!({ "board": v })))
 }
 
 // Helper function to convert column_id to TaskStatus
