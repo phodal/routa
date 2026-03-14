@@ -17,7 +17,6 @@ import {
   shouldCreateGitHubIssueOnTaskCreate,
 } from "@/core/kanban/task-creation-policy";
 import { columnIdToTaskStatus } from "@/core/models/kanban";
-import { WorkspaceStatus } from "@/core/models/workspace";
 import { emitColumnTransition } from "@/core/kanban/column-transition";
 
 export const dynamic = "force-dynamic";
@@ -59,7 +58,7 @@ export async function GET(request: NextRequest) {
   if (assignedTo) {
     tasks = await system.taskStore.listByAssignee(assignedTo);
   } else if (allWorkspaces) {
-    const workspaces = await system.workspaceStore.listByStatus("active" satisfies WorkspaceStatus);
+    const workspaces = await system.workspaceStore.listByStatus("active");
     if (status) {
       const taskStatus = status.toUpperCase() as TaskStatus;
       if (!Object.values(TaskStatus).includes(taskStatus)) {

@@ -181,8 +181,8 @@ export default function HomePage() {
                   workspaceId={activeWorkspaceId ?? undefined}
                   onWorkspaceChange={(wsId) => {
                     setActiveWorkspaceId(wsId);
-                    if (workspaceFilterId !== "all") {
-                      setWorkspaceFilterId(wsId ?? "all");
+                    if (workspaceFilterId !== "all" && wsId) {
+                      setWorkspaceFilterId(wsId);
                     }
                     setRefreshKey((k) => k + 1);
                   }}
@@ -356,8 +356,8 @@ function HomeKanbanPreview({
       const rightTimestamp = new Date(right.updatedAt ?? right.createdAt).getTime();
       return rightTimestamp - leftTimestamp;
     });
-  const tasksByColumn = HOME_KANBAN_COLUMNS.reduce<Record<HomeKanbanColumnId, HomeTaskInfo[]>>((groups, column) => {
-    groups[column.id] = visibleTasks.filter((task) => normalizeHomeTaskColumnId(task) === column.id);
+  const tasksByColumn = visibleTasks.reduce<Record<HomeKanbanColumnId, HomeTaskInfo[]>>((groups, task) => {
+    groups[normalizeHomeTaskColumnId(task)].push(task);
     return groups;
   }, {
     backlog: [],
@@ -396,7 +396,7 @@ function HomeKanbanPreview({
               aria-label="Filter workspace tasks"
               value={workspaceFilterId}
               onChange={(event) => onWorkspaceFilterChange(event.target.value as HomeWorkspaceFilterId)}
-              className="bg-transparent text-sm font-medium text-gray-900 outline-hidden dark:text-gray-100"
+              className="rounded-md bg-transparent text-sm font-medium text-gray-900 outline-none ring-0 focus-visible:ring-2 focus-visible:ring-blue-500 dark:text-gray-100"
             >
               <option value="all">All workspaces</option>
               {workspaces.map((workspace) => (
