@@ -76,6 +76,15 @@ jobs:
             echo "assign_copilot=false" >> $GITHUB_OUTPUT
           fi
 
+      - name: Sync GitHub issues into local docs/issues cache
+        run: |
+          echo "### Local issue sync" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          npx tsx scripts/sync-github-issues.ts --state all 2>&1 | tee /tmp/issue-sync-output.txt
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          head -80 /tmp/issue-sync-output.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
       - name: Analyze Issue
         id: analyze
         run: |
@@ -97,6 +106,8 @@ jobs:
             ARGS="$ARGS --assign-copilot"
           fi
 
+          ARGS="$ARGS --skip-sync"
+
           # Run the issue enricher script
           npx tsx scripts/issue-enricher.ts $ARGS 2>&1 | tee /tmp/enricher-output.txt
 
@@ -105,4 +116,3 @@ jobs:
           echo '```' >> $GITHUB_STEP_SUMMARY
           head -200 /tmp/enricher-output.txt >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
-

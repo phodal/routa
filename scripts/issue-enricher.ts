@@ -19,19 +19,29 @@
  */
 
 import { ghExec } from "@/core/utils/safe-exec";
+import {
+  findExistingSyncedGitHubIssueFile,
+  syncGitHubIssuesToDirectory,
+} from "@/core/github/github-issue-sync";
+import { fetchGitHubIssuesViaGh } from "@/core/github/github-issue-gh";
 import { readFileSync, existsSync } from "fs";
-import { join } from "path";
+import { join, relative } from "path";
 
 // ─── Configuration ─────────────────────────────────────────────────────────
 
 const SKILL_PATH = ".claude/skills/issue-enricher/SKILL.md";
-
+const SYNCED_ISSUES_DIR = join(process.cwd(), "docs/issues");
 interface IssueData {
   number: number;
   title: string;
   body: string;
   labels: string[];
   author: string;
+}
+
+interface SyncContext {
+  syncedCount: number;
+  currentIssueFile?: string;
 }
 
 // ─── Label Taxonomy ────────────────────────────────────────────────────────
@@ -111,9 +121,40 @@ function fetchIssue(issueNumber: number): IssueData | null {
   }
 }
 
+function syncLocalIssueContext(issueNumber: number, dryRun: boolean): SyncContext {
+  const syncLimit = process.env.ISSUE_SYNC_LIMIT ? parseInt(process.env.ISSUE_SYNC_LIMIT, 10) : undefined;
+
+  try {
+    console.log(`\n📚 Syncing GitHub issues into local docs/issues/${syncLimit ? ` (limit: ${syncLimit})` : " (full sync)"}...`);
+    const issues = fetchGitHubIssuesViaGh({ state: "all", limit: syncLimit });
+    const results = syncGitHubIssuesToDirectory(SYNCED_ISSUES_DIR, issues, { dryRun });
+    const currentIssueResult = results.find((result) => result.issueNumber === issueNumber);
+    const existingCurrentFile = findExistingSyncedGitHubIssueFile(SYNCED_ISSUES_DIR, issueNumber);
+    const currentIssueFile = currentIssueResult?.relativePath
+      ?? (existingCurrentFile ? relative(process.cwd(), existingCurrentFile) : undefined);
+
+    console.log(`   Synced ${results.length} GitHub issues into docs/issues/${dryRun ? " (dry-run preview)" : ""}`);
+    if (currentIssueFile) {
+      console.log(`   Current issue mirror: ${currentIssueFile}`);
+    }
+
+    return {
+      syncedCount: results.length,
+      currentIssueFile,
+    };
+  } catch (error) {
+    console.log(`   ⚠️ Local issue sync skipped: ${error instanceof Error ? error.message : error}`);
+    const existingCurrentFile = findExistingSyncedGitHubIssueFile(SYNCED_ISSUES_DIR, issueNumber);
+    return {
+      syncedCount: 0,
+      currentIssueFile: existingCurrentFile ? relative(process.cwd(), existingCurrentFile) : undefined,
+    };
+  }
+}
+
 // ─── Run Claude Analysis ───────────────────────────────────────────────────
 
-async function analyzeIssue(issue: IssueData, dryRun: boolean): Promise<void> {
+async function analyzeIssue(issue: IssueData, dryRun: boolean, syncContext: SyncContext): Promise<void> {
   const apiKey = process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN;
 
   if (!apiKey && !dryRun) {
@@ -132,6 +173,9 @@ async function analyzeIssue(issue: IssueData, dryRun: boolean): Promise<void> {
   const typeLabels = LABEL_TAXONOMY.type.map((l) => `\`${l.name}\``).join(", ");
   const areaLabels = LABEL_TAXONOMY.area.map((l) => `\`${l.name}\``).join(", ");
   const complexityLabels = LABEL_TAXONOMY.complexity.map((l) => `\`${l.name}\``).join(", ");
+  const localIssueContext = syncContext.currentIssueFile
+    ? `- Current issue mirror: \`${syncContext.currentIssueFile}\`\n- Synced GitHub issue mirrors available under \`docs/issues/\` (${syncContext.syncedCount} files in this run)`
+    : `- Synced GitHub issue mirrors available under \`docs/issues/\` (${syncContext.syncedCount} files in this run)`;
 
   const prompt = `Analyze GitHub issue #${issue.number} and provide a detailed analysis.
 
@@ -143,6 +187,13 @@ ${hasBody ? issue.body : "(empty - user did not write a body)"}
 
 ## Current Labels
 ${issue.labels.length > 0 ? issue.labels.join(", ") : "(none)"}
+
+## Local Issue Context
+GitHub issues have already been synced into the local \`docs/issues/\` directory before this analysis. Treat those files as your local issue knowledge base.
+
+${localIssueContext}
+
+Start by reading the mirrored issue file if it exists, then search \`docs/issues/\` for related historical issues, overlapping requirements, duplicate proposals, or prior implementation notes.
 
 ## CRITICAL: External Repository References
 If the issue title or body contains a GitHub repository URL (e.g. https://github.com/user/repo):
@@ -172,6 +223,7 @@ This is essential — if the user says "clone" or references an external repo, t
 6. The ${!hasBody ? "body" : "comment"} should include:
    - Problem analysis
    - Relevant files in the codebase (and external repo if cloned)
+   - Related issues or prior context from \`docs/issues/\` and GitHub history
    - 2-3 proposed approaches with trade-offs
    - Recommended approach
    - Effort estimate (Small/Medium/Large)
@@ -277,11 +329,12 @@ async function main(): Promise<void> {
   const dryRun = args.includes("--dry-run");
   const shouldReopen = args.includes("--reopen");
   const shouldAssignCopilot = args.includes("--assign-copilot");
+  const shouldSkipSync = args.includes("--skip-sync");
 
   // Parse --issue argument
   const issueIndex = args.indexOf("--issue");
   if (issueIndex === -1 || !args[issueIndex + 1]) {
-    console.error("Usage: npx tsx scripts/issue-enricher.ts --issue <number> [--dry-run] [--reopen] [--assign-copilot]");
+    console.error("Usage: npx tsx scripts/issue-enricher.ts --issue <number> [--dry-run] [--reopen] [--assign-copilot] [--skip-sync]");
     process.exit(1);
   }
   const issueNumber = parseInt(args[issueIndex + 1], 10);
@@ -311,13 +364,23 @@ async function main(): Promise<void> {
     ensureLabelsExist();
   }
 
+  const syncContext = shouldSkipSync
+    ? {
+        syncedCount: 0,
+        currentIssueFile: (() => {
+          const existingFile = findExistingSyncedGitHubIssueFile(SYNCED_ISSUES_DIR, issueNumber);
+          return existingFile ? relative(process.cwd(), existingFile) : undefined;
+        })(),
+      }
+    : syncLocalIssueContext(issueNumber, dryRun);
+
   // Check if author is allowed for Copilot assignment
   const isAllowedAuthor = ALLOWED_AUTHORS.includes(issue.author);
   if (shouldAssignCopilot && !isAllowedAuthor) {
     console.log(`\n   ⚠️ Skipping Copilot assignment: author "${issue.author}" is not in allowed list`);
   }
 
-  await analyzeIssue(issue, dryRun);
+  await analyzeIssue(issue, dryRun, syncContext);
 
   // Assign Copilot if requested and author is allowed (after analysis)
   if (shouldAssignCopilot && isAllowedAuthor && !dryRun) {
@@ -331,4 +394,3 @@ main().catch((error) => {
   console.error("Fatal error:", error);
   process.exit(1);
 });
-
