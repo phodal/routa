@@ -198,6 +198,64 @@ flowchart TB
     class tools,orchestrator,system,skill_reg coreStyle
 ```
 
+## 🎯 Harness Engineering in Practice
+
+Routa.js is a practical case study of the three principles from the
+[Harness Engineering](https://www.phodal.com/blog/harness-engineering/) article:
+build software systems that are readable for AI, constrained by engineering
+guardrails, and improved through fast automated feedback.
+
+### 🔍 System Readability（系统可读性）
+
+Routa makes project structure and operating rules explicit so agents can work
+with less hidden context:
+
+- **Explicit knowledge architecture**: [AGENTS.md](AGENTS.md) defines coding
+  standards, testing strategy, Git discipline, and PR requirements, while
+  [docs/product-specs/FEATURE_TREE.md](docs/product-specs/FEATURE_TREE.md)
+  captures product capabilities.
+- **Machine-friendly interfaces**: the platform exposes MCP, ACP, A2A, REST,
+  and CLI entry points so agent workflows do not depend on manual UI steps.
+- **Progressive context disclosure**: bundled specialist definitions in
+  [`resources/specialists/`](resources/specialists/) and the fitness rulebook in
+  [docs/fitness/README.md](docs/fitness/README.md) reveal role boundaries,
+  quality gates, and task-specific context only where needed.
+
+### 🛡️ Defense Mechanisms（防御机制）
+
+Routa treats engineering constraints as hard boundaries that keep AI-generated
+changes inside a safe operating envelope:
+
+- **Automated enforcement before code lands**: `.husky/pre-commit` runs a fast
+  lint pass, and `.husky/pre-push` delegates to
+  [`scripts/smart-check.sh`](scripts/smart-check.sh) for structured validation.
+- **Fitness functions as physical laws**:
+  [docs/fitness/README.md](docs/fitness/README.md) defines hard gates such as
+  `npm run test:run`, `cargo test --workspace`, `npm run api:check`, and
+  `npm run lint`.
+- **Clear boundaries for agents**: `AGENTS.md` and specialist configs define
+  what agents should do, what they must not do, and how they report verifiable
+  evidence.
+
+### 🔄 Automated Feedback Loops（自动化反馈回路）
+
+Routa closes the loop by collecting feedback from issue intake, review
+automation, and recurring maintenance workflows:
+
+- **Issue enrichment**:
+  [`.github/workflows/issue-enricher.yml`](.github/workflows/issue-enricher.yml)
+  prepares structured context and solution direction for new work.
+- **Review handoff automation**:
+  [`.github/workflows/copilot-complete.yml`](.github/workflows/copilot-complete.yml)
+  promotes completed work into review-ready state and triggers downstream
+  verification.
+- **Continuous backlog hygiene**:
+  [`.github/workflows/issue-garbage-collector.yml`](.github/workflows/issue-garbage-collector.yml)
+  keeps issue context fresh through scheduled cleanup.
+- **Unified evidence collection**: Git hooks, fitness reports, workflow logs,
+  and task artifacts all produce feedback that can be fed back into the next
+  agent iteration.
+
 ## 📄 License
 
 - Built with [Model Context Protocol](https://modelcontextprotocol.io/) by Anthropic
