@@ -1022,35 +1022,50 @@ export class AgentTools {
     const { agentId, taskId, workspaceId, url, fullPage, annotate, context, outputPath } = params;
 
     try {
-      // Build agent-browser command
-      const commands: string[] = [];
+      const path = await import("path");
+      const fs = await import("fs/promises");
+
+      // Force output into a safe local screenshots directory to prevent arbitrary file reads.
+      const screenshotsDir = path.resolve(process.cwd(), ".routa-screenshots");
+      await fs.mkdir(screenshotsDir, { recursive: true });
+
+      let screenshotPath = path.join(screenshotsDir, `${uuidv4()}.png`);
+      if (outputPath) {
+        const fileName = path.basename(outputPath);
+        if (!/^[\w.-]+\.png$/i.test(fileName)) {
+          return errorResult("Invalid outputPath: must be a .png filename");
+        }
+
+        screenshotPath = path.join(screenshotsDir, fileName);
+      }
+
+      // Execute via child_process without shell interpolation
+      const { execFile } = await import("child_process");
+      const { promisify } = await import("util");
+      const execFileAsync = promisify(execFile);
 
       if (url) {
-        commands.push(`agent-browser open "${url}"`);
-        commands.push("agent-browser wait --load networkidle");
+        await execFileAsync("agent-browser", ["open", url], {
+          timeout: 60000,
+          cwd: process.cwd(),
+        });
+
+        await execFileAsync("agent-browser", ["wait", "--load", "networkidle"], {
+          timeout: 60000,
+          cwd: process.cwd(),
+        });
       }
 
-      // Build screenshot command
-      let screenshotCmd = "agent-browser screenshot";
+      const screenshotArgs = ["screenshot"];
       if (fullPage) {
-        screenshotCmd += " --full";
+        screenshotArgs.push("--full");
       }
       if (annotate) {
-        screenshotCmd += " --annotate";
+        screenshotArgs.push("--annotate");
       }
-      if (outputPath) {
-        screenshotCmd += ` "${outputPath}"`;
-      }
-      commands.push(screenshotCmd);
+      screenshotArgs.push(screenshotPath);
 
-      const fullCommand = commands.join(" && ");
-
-      // Execute via child_process
-      const { exec } = await import("child_process");
-      const { promisify } = await import("util");
-      const execAsync = promisify(exec);
-
-      const result = await execAsync(fullCommand, {
+      const result = await execFileAsync("agent-browser", screenshotArgs, {
         timeout: 60000, // 60 second timeout
         cwd: process.cwd(),
       });
@@ -1059,28 +1074,14 @@ export class AgentTools {
       const output = result.stdout.trim();
       const stderrOutput = result.stderr?.trim();
 
-      // Read the screenshot file if path is available
+      // Read file and convert to base64
       let screenshotContent = "";
-      let screenshotPath = outputPath;
-
-      // Try to extract path from output if not specified
-      if (!screenshotPath) {
-        const pathMatch = output.match(/(?:Saved|Screenshot).*?([/\w.-]+\.png)/i);
-        if (pathMatch) {
-          screenshotPath = pathMatch[1];
-        }
-      }
-
-      // Read file and convert to base64 if we have a path
-      if (screenshotPath) {
-        try {
-          const fs = await import("fs/promises");
-          const buffer = await fs.readFile(screenshotPath);
-          screenshotContent = buffer.toString("base64");
-        } catch {
-          // File might not exist or be readable
-          screenshotContent = `Screenshot captured at: ${screenshotPath}`;
-        }
+      try {
+        const buffer = await fs.readFile(screenshotPath);
+        screenshotContent = buffer.toString("base64");
+      } catch {
+        // File might not exist or be readable
+        screenshotContent = `Screenshot captured at: ${screenshotPath}`;
       }
 
       // Store as artifact
