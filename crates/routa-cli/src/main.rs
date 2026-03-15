@@ -133,6 +133,19 @@ enum Commands {
         role: String,
     },
 
+    /// Run repository static/security scans (TypeScript, Rust, Docker)
+    Scan {
+        /// Optional project directory to scan
+        #[arg(long)]
+        project_dir: Option<String>,
+        /// Directory to write reports into
+        #[arg(long, default_value = "artifacts/security")]
+        output_dir: String,
+        /// Fail if any scanner fails
+        #[arg(long, default_value_t = false)]
+        strict: bool,
+    },
+
     /// Run YAML-defined agent workflows
     Workflow {
         #[command(subcommand)]
@@ -539,6 +552,12 @@ async fn main() {
                 let state = commands::init_state(&cli.db).await;
                 commands::chat::run(&state, &workspace_id, &provider, &role).await
             }
+
+            Commands::Scan {
+                project_dir,
+                output_dir,
+                strict,
+            } => commands::scan::run(project_dir.as_deref(), &output_dir, strict).await,
 
             Commands::Workflow { action } => {
                 let state = commands::init_state(&cli.db).await;

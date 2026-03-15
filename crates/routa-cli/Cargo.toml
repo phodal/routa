@@ -17,6 +17,9 @@ routa-core = { path = "../routa-core" }
 # HTTP server (for the `server` subcommand)
 routa-server = { path = "../routa-server" }
 
+# Reusable scanner module
+routa-scanner = { path = "../routa-scanner" }
+
 # CLI argument parsing
 clap = { version = "4", features = ["derive", "env"] }
 

@@ -10,6 +10,7 @@ pub mod chat;
 pub mod delegate;
 pub mod prompt;
 pub mod rpc;
+pub mod scan;
 pub mod server;
 pub mod skill;
 pub mod task;
