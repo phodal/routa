@@ -273,8 +273,8 @@ automation, and recurring maintenance workflows:
 ## 📄 License
 
 - Built with [Model Context Protocol](https://modelcontextprotocol.io/) by Anthropic
-- Uses [Agent Client Protocol](https://github.com/agentclientprotocol/sdk) for agent communication
-- Uses [A2A Protocol](https://a2a-js.github.io/sdk/) for agent federation
+- Uses [Agent Client Protocol](https://github.com/agentclientprotocol/typescript-sdk) for agent communication
+- Uses [A2A Protocol](https://a2aprotocol.ai/) for agent federation
 - Inspired by the [Intent](https://www.augmentcode.com/product/intent) - multi-agent coordination patterns in modern AI
   systems
 
