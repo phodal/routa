@@ -1,11 +1,11 @@
-# Code Review Workflow — analyze and review code changes
+# Code Review Workflow — multi-phase review with confidence filtering
 #
 # Usage:
-#   routa workflow run resources/flows/code-review.yaml --trigger-payload "Review the changes in PR #42"
+#   routa workflow run resources/flows/code-review.yaml --trigger-payload "Review PR #42 in owner/repo"
 
 name: "Code Review Flow"
-description: "Two-step workflow: analyze changes, then verify quality"
-version: "1.0"
+description: "Four-phase code review: context, diff analysis, false-positive filtering, final verdict"
+version: "2.0"
 
 trigger:
   type: manual
@@ -14,36 +14,72 @@ variables:
   model: "${ANTHROPIC_MODEL:-GLM-4.7}"
 
 steps:
-  - name: "Analyze Changes"
-    specialist: "developer"
+  - name: "Phase 1 - Gather Context"
+    specialist: "pr-reviewer"
     adapter: "claude-code-sdk"
     config:
       model: "${model}"
     input: |
-      Analyze the following code changes or request:
+      You are running phase 1 only.
 
+      Task:
       ${trigger.payload}
 
-      Provide:
-      1. Summary of changes
-      2. Potential issues or bugs
-      3. Suggestions for improvement
-      4. Security concerns (if any)
-    output_key: "analysis"
+      Gather project context (tech stack, lint coverage, conventions, custom review rules).
+      Do not output review findings yet.
+    output_key: "project_context"
 
-  - name: "Quality Gate"
-    specialist: "gate"
+  - name: "Phase 2 - Raw Diff Analysis"
+    specialist: "pr-reviewer"
     adapter: "claude-code-sdk"
     config:
       model: "${model}"
     input: |
-      Based on the following analysis, provide a final quality verdict:
+      You are running phase 2 only.
 
-      ## Analysis
-      ${steps.Analyze Changes.output}
+      ## Phase 1 Context
+      ${steps.Phase 1 - Gather Context.output}
 
-      ## Original Request
+      ## Task
       ${trigger.payload}
 
-      Provide your verification verdict with evidence for each point.
+      Analyze only PR-introduced changes and return a raw findings list with confidence.
+    output_key: "raw_findings"
+
+  - name: "Phase 3 - Validate Findings"
+    specialist: "pr-reviewer"
+    adapter: "claude-code-sdk"
+    config:
+      model: "${model}"
+    input: |
+      You are running phase 3 only.
+
+      ## Phase 1 Context
+      ${steps.Phase 1 - Gather Context.output}
+
+      ## Phase 2 Raw Findings
+      ${steps.Phase 2 - Raw Diff Analysis.output}
+
+      Validate each finding with hard exclusions and confidence re-scoring.
+      Keep only findings with verdict=KEEP and confidence>=7.
+    output_key: "validated_findings"
+
+  - name: "Phase 4 - Final Review Report"
+    specialist: "pr-reviewer"
+    adapter: "claude-code-sdk"
+    config:
+      model: "${model}"
+    input: |
+      You are running phase 4 only.
+
+      ## Context
+      ${steps.Phase 1 - Gather Context.output}
+
+      ## Raw Findings
+      ${steps.Phase 2 - Raw Diff Analysis.output}
+
+      ## Validated Findings
+      ${steps.Phase 3 - Validate Findings.output}
+
+      Generate the final concise review report.
     output_key: "verdict"
