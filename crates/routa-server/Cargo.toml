@@ -37,7 +37,7 @@ uuid = { version = "1", features = ["v4"] }
 chrono = { version = "0.4", features = ["serde"] }
 
 # HTTP client (used directly in some API handlers)
-reqwest = { version = "0.12", features = ["json"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 regex = "1"
 
 # Archive extraction (for skill catalog install)
@@ -60,4 +60,4 @@ notify-rust = "4.12.0"
 lazy_static = "1.5.0"
 
 [dev-dependencies]
-reqwest = { version = "0.12", features = ["json"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }

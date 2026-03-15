@@ -27,6 +27,9 @@ apps/desktop/src-tauri/frontend/**
 !apps/desktop/src-tauri/frontend/
 !apps/desktop/src-tauri/frontend/ci-placeholder.txt
 **/gen/**
+!apps/desktop/src-tauri/gen/
+!apps/desktop/src-tauri/gen/android/
+!apps/desktop/src-tauri/gen/android/**
 
 # Rust
 Cargo.lock

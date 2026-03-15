@@ -29,18 +29,19 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 dirs = "5"
 
-# PTY support for interactive terminals
-portable-pty = "0.8"
-
 # Routa Server (extracted crate)
 routa-server = { path = "../../../crates/routa-server" }
 
 # Async runtime (needed for Tauri integration)
 tokio = { version = "1", features = ["full"] }
-reqwest = { version = "0.12", features = ["json"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+# PTY support for interactive terminals
+portable-pty = "0.8"
 
 [dev-dependencies]
 axum = "0.8.8"
-reqwest = { version = "0.12", features = ["json"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 tower = { version = "0.5", features = ["util"] }
 tower-http = { version = "0.6.8", features = ["cors"] }

@@ -5,17 +5,34 @@ use std::process::{Child, Command, Stdio};
 use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 use tauri::menu::{Menu, MenuItem, Submenu};
 use tauri::{Manager, State};
 use tokio::sync::RwLock;
 
 // PTY module for interactive terminal support
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 mod pty;
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub use pty::{pty_create, pty_kill, pty_list, pty_read, pty_resize, pty_write, PtyState};
+#[cfg(any(target_os = "android", target_os = "ios"))]
+mod pty_mobile;
+#[cfg(any(target_os = "android", target_os = "ios"))]
+pub use pty_mobile::{pty_create, pty_kill, pty_list, pty_read, pty_resize, pty_write, PtyState};
 
 // System tray module
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 mod tray;
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub use tray::GitHubRepo;
+#[cfg(any(target_os = "android", target_os = "ios"))]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+pub struct GitHubRepo {
+    #[serde(default)]
+    pub name: String,
+    pub owner: String,
+    pub repo: String,
+}
 
 // Re-export routa_server for external use
 pub use routa_server as server;
@@ -115,7 +132,102 @@ fn log_frontend(level: String, scope: String, message: String) {
 /// that the tray immediately reflects the configured repositories.
 #[tauri::command]
 fn update_tray_github_repos(app: tauri::AppHandle, repos: Vec<GitHubRepo>) -> Result<(), String> {
-    tray::update_tray_repos(&app, &repos).map_err(|e| e.to_string())
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    {
+        tray::update_tray_repos(&app, &repos).map_err(|e| e.to_string())
+    }
+
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    {
+        let _ = app;
+        let _ = repos;
+        Ok(())
+    }
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+fn setup_platform_shell(app: &mut tauri::App) -> tauri::Result<()> {
+    let app_handle = app.handle();
+
+    let install_agents = MenuItem::with_id(
+        app_handle,
+        "install_agents",
+        "Install Agents...",
+        true,
+        Some("CmdOrCtrl+Shift+I"),
+    )?;
+
+    let mcp_tools = MenuItem::with_id(
+        app_handle,
+        "mcp_tools",
+        "MCP Tools",
+        true,
+        Some("CmdOrCtrl+Shift+M"),
+    )?;
+
+    let reload = MenuItem::with_id(
+        app_handle,
+        "reload",
+        "Reload",
+        true,
+        Some("CmdOrCtrl+R"),
+    )?;
+
+    let quit = MenuItem::with_id(app_handle, "quit", "Quit", true, Some("CmdOrCtrl+Q"))?;
+
+    let tools_submenu =
+        Submenu::with_items(app_handle, "Tools", true, &[&install_agents, &mcp_tools])?;
+    let file_submenu = Submenu::with_items(app_handle, "File", true, &[&reload, &quit])?;
+    let menu = Menu::with_items(app_handle, &[&file_submenu, &tools_submenu])?;
+
+    if let Some(window) = app.get_webview_window("main") {
+        window.set_menu(menu)?;
+    }
+
+    app.on_menu_event(move |app_handle, event| match event.id().as_ref() {
+        "install_agents" => {
+            if let Some(window) = app_handle.get_webview_window("main") {
+                let port = api_port();
+                let url = format!("http://127.0.0.1:{}/settings/agents", port);
+                let js = format!("window.location.href = '{}';", url);
+                let _ = window.eval(&js);
+                println!("[menu] Navigating to Install Agents: {}", url);
+            }
+        }
+        "mcp_tools" => {
+            if let Some(window) = app_handle.get_webview_window("main") {
+                let port = api_port();
+                let url = format!("http://127.0.0.1:{}/mcp-tools", port);
+                let js = format!("window.location.href = '{}';", url);
+                let _ = window.eval(&js);
+                println!("[menu] Navigating to MCP Tools: {}", url);
+            }
+        }
+        "reload" => {
+            if let Some(window) = app_handle.get_webview_window("main") {
+                let _ = window.eval("window.location.reload();");
+            }
+        }
+        "quit" => {
+            std::process::exit(0);
+        }
+        _ => {}
+    });
+
+    if let Err(e) = tray::setup_tray(app.handle(), &[]) {
+        eprintln!("[tray] Failed to set up system tray: {}", e);
+    }
+
+    if let Some(window) = app.get_webview_window("main") {
+        window.open_devtools();
+    }
+
+    Ok(())
+}
+
+#[cfg(any(target_os = "android", target_os = "ios"))]
+fn setup_platform_shell(_app: &mut tauri::App) -> tauri::Result<()> {
+    Ok(())
 }
 
 // ─── ACP Agent Installation State ─────────────────────────────────────────
@@ -614,111 +726,7 @@ pub fn run() {
             update_tray_github_repos,
         ])
         .setup(|app| {
-            // ─── Build Application Menu ─────────────────────────────────────
-            let app_handle = app.handle();
-
-            // Create menu items
-            let install_agents = MenuItem::with_id(
-                app_handle,
-                "install_agents",
-                "Install Agents...",
-                true,
-                Some("CmdOrCtrl+Shift+I"),
-            )?;
-
-            let mcp_tools = MenuItem::with_id(
-                app_handle,
-                "mcp_tools",
-                "MCP Tools",
-                true,
-                Some("CmdOrCtrl+Shift+M"),
-            )?;
-
-            let reload = MenuItem::with_id(
-                app_handle,
-                "reload",
-                "Reload",
-                true,
-                Some("CmdOrCtrl+R"),
-            )?;
-
-            let quit = MenuItem::with_id(
-                app_handle,
-                "quit",
-                "Quit",
-                true,
-                Some("CmdOrCtrl+Q"),
-            )?;
-
-            // Build Tools submenu
-            let tools_submenu = Submenu::with_items(
-                app_handle,
-                "Tools",
-                true,
-                &[&install_agents, &mcp_tools],
-            )?;
-
-            // Build File submenu
-            let file_submenu = Submenu::with_items(
-                app_handle,
-                "File",
-                true,
-                &[&reload, &quit],
-            )?;
-
-            // Build main menu
-            let menu = Menu::with_items(app_handle, &[&file_submenu, &tools_submenu])?;
-
-            // Set the menu on the main window
-            if let Some(window) = app.get_webview_window("main") {
-                window.set_menu(menu)?;
-            }
-
-            // ─── Handle Menu Events ─────────────────────────────────────────
-            app.on_menu_event(move |app_handle, event| {
-                match event.id().as_ref() {
-                    "install_agents" => {
-                        // Navigate to the agent installation page
-                        if let Some(window) = app_handle.get_webview_window("main") {
-                            let port = api_port();
-                            let url = format!("http://127.0.0.1:{}/settings/agents", port);
-                            let js = format!("window.location.href = '{}';", url);
-                            let _ = window.eval(&js);
-                            println!("[menu] Navigating to Install Agents: {}", url);
-                        }
-                    }
-                    "mcp_tools" => {
-                        // Navigate to MCP tools page
-                        if let Some(window) = app_handle.get_webview_window("main") {
-                            let port = api_port();
-                            let url = format!("http://127.0.0.1:{}/mcp-tools", port);
-                            let js = format!("window.location.href = '{}';", url);
-                            let _ = window.eval(&js);
-                            println!("[menu] Navigating to MCP Tools: {}", url);
-                        }
-                    }
-                    "reload" => {
-                        if let Some(window) = app_handle.get_webview_window("main") {
-                            let _ = window.eval("window.location.reload();");
-                        }
-                    }
-                    "quit" => {
-                        std::process::exit(0);
-                    }
-                    _ => {}
-                }
-            });
-            // ─── System Tray ────────────────────────────────────────────────
-            // Initialise with an empty repo list; the frontend calls
-            // `update_tray_github_repos` after loading webhook configs.
-            if let Err(e) = tray::setup_tray(app.handle(), &[]) {
-                eprintln!("[tray] Failed to set up system tray: {}", e);
-            }
-
-            // Always open devtools (in both debug and release builds)
-            if let Some(window) = app.get_webview_window("main") {
-                window.open_devtools();
-            }
+            setup_platform_shell(app)?;
 
             // Configurable API mode:
             // - rust (default): start embedded Rust server (no Node.js needed).

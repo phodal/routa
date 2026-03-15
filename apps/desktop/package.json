@@ -5,7 +5,10 @@
   "scripts": {
     "dev": "npm run tauri dev",
     "build": "npm run tauri build",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "android:init": "npx @tauri-apps/cli android init --ci --skip-targets-install",
+    "android:dev": "npx @tauri-apps/cli android dev",
+    "android:build": "npx @tauri-apps/cli android build"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.0.0",
