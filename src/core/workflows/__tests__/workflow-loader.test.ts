@@ -108,7 +108,23 @@ steps:
       const fileLoader = new WorkflowLoader("resources/flows");
       const def = await fileLoader.load("code-review");
       expect(def.name).toBe("Code Review Flow");
-      expect(def.steps.length).toBeGreaterThanOrEqual(2);
+      expect(def.version).toBe("2.0");
+      expect(def.variables?.confidence_threshold).toBe("7");
+      expect(def.steps).toHaveLength(4);
+      expect(def.steps.map(step => step.name)).toEqual([
+        "Phase 1 - Context Gathering",
+        "Phase 2 - Diff Analysis",
+        "Phase 3 - False Positive Filter",
+        "Phase 4 - Final Review Report",
+      ]);
+
+      expect(def.steps[0].specialist).toBe("pr-reviewer");
+      expect(def.steps[1].specialist).toBe("pr-reviewer");
+      expect(def.steps[2].specialist).toBe("gate");
+      expect(def.steps[3].specialist).toBe("pr-analyzer");
+
+      expect(def.steps[2].input).toContain("confidence >= ${confidence_threshold}");
+      expect(def.steps[3].input).toContain("No significant issues found");
     });
 
     it("should load the pr-verify workflow", async () => {
@@ -137,4 +153,3 @@ steps:
     });
   });
 });
-

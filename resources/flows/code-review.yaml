@@ -1,49 +1,97 @@
-# Code Review Workflow — analyze and review code changes
+# Code Review Workflow — multi-phase analysis with confidence filtering
 #
 # Usage:
 #   routa workflow run resources/flows/code-review.yaml --trigger-payload "Review the changes in PR #42"
 
 name: "Code Review Flow"
-description: "Two-step workflow: analyze changes, then verify quality"
-version: "1.0"
+description: "Multi-phase PR review: context, diff analysis, independent validation, and confidence-gated reporting"
+version: "2.0"
 
 trigger:
   type: manual
 
 variables:
   model: "${ANTHROPIC_MODEL:-GLM-4.7}"
+  confidence_threshold: "7"
 
 steps:
-  - name: "Analyze Changes"
-    specialist: "developer"
+  - name: "Phase 1 - Context Gathering"
+    specialist: "pr-reviewer"
     adapter: "claude-code-sdk"
     config:
       model: "${model}"
     input: |
-      Analyze the following code changes or request:
+      Gather project context for a high-signal PR review.
 
+      PR / Request:
       ${trigger.payload}
 
-      Provide:
-      1. Summary of changes
-      2. Potential issues or bugs
-      3. Suggestions for improvement
-      4. Security concerns (if any)
-    output_key: "analysis"
+      Required output:
+      1. Tech stack and key frameworks
+      2. What lint/type checks already enforce (avoid duplicate findings)
+      3. Existing project patterns to compare against
+      4. Custom rules from .routa/review-rules.md if available
+    output_key: "context"
 
-  - name: "Quality Gate"
+  - name: "Phase 2 - Diff Analysis"
+    specialist: "pr-reviewer"
+    adapter: "claude-code-sdk"
+    config:
+      model: "${model}"
+    input: |
+      Analyze only the new changes from this PR against project context.
+
+      ## Context
+      ${steps.Phase 1 - Context Gathering.output}
+
+      ## PR / Request
+      ${trigger.payload}
+
+      For every candidate finding include:
+      - file:line
+      - category
+      - severity
+      - raw_confidence (1-10)
+      - description
+      - suggestion
+
+      Reject low-value style findings already covered by linters.
+    output_key: "raw_findings"
+
+  - name: "Phase 3 - False Positive Filter"
     specialist: "gate"
     adapter: "claude-code-sdk"
     config:
       model: "${model}"
     input: |
-      Based on the following analysis, provide a final quality verdict:
+      Validate the candidate findings and suppress false positives.
 
-      ## Analysis
-      ${steps.Analyze Changes.output}
+      ## Context
+      ${steps.Phase 1 - Context Gathering.output}
 
-      ## Original Request
-      ${trigger.payload}
+      ## Raw Findings
+      ${steps.Phase 2 - Diff Analysis.output}
 
-      Provide your verification verdict with evidence for each point.
+      Apply hard exclusions and output verdict KEEP/REJECT with validated_confidence.
+      KEEP only findings with confidence >= ${confidence_threshold}.
+    output_key: "validated_findings"
+
+  - name: "Phase 4 - Final Review Report"
+    specialist: "pr-analyzer"
+    adapter: "claude-code-sdk"
+    config:
+      model: "${model}"
+    input: |
+      Produce the final PR review report.
+
+      ## Context
+      ${steps.Phase 1 - Context Gathering.output}
+
+      ## Validated Findings
+      ${steps.Phase 3 - False Positive Filter.output}
+
+      ## Rules
+      - Report only findings with confidence >= ${confidence_threshold}
+      - Include filtered-out summary counts by reason
+      - If none remain, output: "No significant issues found"
     output_key: "verdict"
