@@ -155,10 +155,12 @@ pub async fn start_server_with_state(
             // For Next.js static export with dynamic routes, we need custom fallback logic.
             // Next.js generates placeholder files for dynamic routes:
             // - workspace/__placeholder__.html (for /workspace/[workspaceId])
+            // - workspace/__placeholder__/kanban.html (for /workspace/[workspaceId]/kanban)
             // - workspace/__placeholder__/sessions/__placeholder__.html (for /workspace/[workspaceId]/sessions/[sessionId])
             //
             // Additionally, Next.js client navigation requests .txt RSC payload files:
             // - workspace/default/sessions/abc123.txt → workspace/__placeholder__/sessions/__placeholder__.txt
+            // - workspace/default/kanban.txt → workspace/__placeholder__/kanban.txt
             //
             // We match the URL pattern and serve the corresponding placeholder file.
             let static_dir_clone = static_dir.clone();
@@ -195,6 +197,12 @@ pub async fn start_server_with_state(
                                         "workspace/__placeholder__/sessions/__placeholder__.{}",
                                         ext
                                     ),
+                                    content,
+                                )
+                            } else if segments.len() == 2 && segments[1] == "kanban" {
+                                // /workspace/{workspaceId}/kanban[.txt]
+                                (
+                                    format!("workspace/__placeholder__/kanban.{}", ext),
                                     content,
                                 )
                             } else if !segments.is_empty() {
