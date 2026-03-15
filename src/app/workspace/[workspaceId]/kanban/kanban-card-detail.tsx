@@ -5,6 +5,7 @@ import type { AcpProviderInfo } from "@/client/acp-client";
 import type { CodebaseData } from "@/client/hooks/use-workspaces";
 import { resolveEffectiveTaskAutomation } from "@/core/kanban/effective-task-automation";
 import type { KanbanColumnInfo, SessionInfo, TaskInfo, WorktreeInfo } from "../types";
+import { KanbanDescriptionEditor } from "./kanban-description-editor";
 
 interface SpecialistOption {
   id: string;
@@ -162,17 +163,16 @@ export function KanbanCardDetail({
           description={compactMode ? undefined : "Capture the context, constraints, and acceptance notes for this card."}
           compact={compactMode}
         >
-          <textarea
+          <KanbanDescriptionEditor
             value={editObjective}
-            onChange={(event) => setEditObjective(event.target.value)}
-            onBlur={async () => {
-              if (editObjective !== (task.objective ?? "")) {
-                await onPatchTask(task.id, { objective: editObjective });
+            compact={compactMode}
+            onSave={async (nextObjective) => {
+              if (nextObjective !== (task.objective ?? "")) {
+                setEditObjective(nextObjective);
+                await onPatchTask(task.id, { objective: nextObjective });
                 onRefresh();
               }
             }}
-            rows={compactMode ? 9 : 12}
-            className={`w-full rounded-2xl border border-gray-200 bg-gray-50/80 text-sm text-gray-700 outline-none transition focus:border-amber-400 focus:bg-white dark:border-gray-700 dark:bg-[#0d1018] dark:text-gray-300 dark:focus:bg-[#101622] ${compactMode ? "min-h-[13rem] px-3 py-2.5 leading-5" : "min-h-[18rem] px-4 py-3 leading-6"}`}
           />
         </DetailSection>
 
