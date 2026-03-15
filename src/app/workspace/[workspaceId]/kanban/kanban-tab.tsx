@@ -10,6 +10,7 @@ import { KanbanCard } from "./kanban-card";
 import { KanbanSettingsModal, type ColumnAutomationConfig } from "./kanban-settings-modal";
 import { KanbanCardDetail } from "./kanban-card-detail";
 import { buildKanbanTaskAgentPrompt, scheduleKanbanRefreshBurst } from "./kanban-agent-input";
+import { KanbanBgAgentPanel } from "./kanban-bg-agent-panel";
 import { ChatPanel } from "@/client/components/chat-panel";
 import { RepoPicker, type RepoSelection } from "@/client/components/repo-picker";
 
@@ -893,14 +894,18 @@ export function KanbanTab({ workspaceId, boards, tasks, sessions, providers, spe
 
   if (!board) {
     return (
-      <div className="rounded-2xl border border-gray-200/60 dark:border-[#1c1f2e] bg-white dark:bg-[#12141c] p-6 text-sm text-gray-500 dark:text-gray-400">
-        No board available yet.
+      <div className="flex h-full flex-col space-y-4">
+        <KanbanBgAgentPanel workspaceId={workspaceId} />
+        <div className="rounded-2xl border border-gray-200/60 bg-white p-6 text-sm text-gray-500 dark:border-[#1c1f2e] dark:bg-[#12141c] dark:text-gray-400">
+          No board available yet.
+        </div>
       </div>
     );
   }
 
   return (
     <div className="flex flex-col h-full space-y-4">
+      <KanbanBgAgentPanel workspaceId={workspaceId} />
       <div className="shrink-0 rounded-2xl border border-gray-200/70 bg-white px-4 py-3 dark:border-[#1c1f2e] dark:bg-[#12141c]">
         <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
           <div className="flex min-w-0 flex-1 flex-col gap-3 xl:flex-row xl:items-center">
