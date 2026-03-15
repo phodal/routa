@@ -12,6 +12,7 @@ import { KanbanCardDetail } from "./kanban-card-detail";
 import { buildKanbanTaskAgentPrompt, scheduleKanbanRefreshBurst } from "./kanban-agent-input";
 import { ChatPanel } from "@/client/components/chat-panel";
 import { RepoPicker, type RepoSelection } from "@/client/components/repo-picker";
+import { InteractiveSessionTerminal } from "@/client/components/terminal/interactive-session-terminal";
 
 interface SpecialistOption {
   id: string;
@@ -145,6 +146,8 @@ export function KanbanTab({ workspaceId, boards, tasks, sessions, providers, spe
   const [agentLoading, setAgentLoading] = useState(false);
   const [agentSessionId, setAgentSessionId] = useState<string | null>(null);
   const [agentPanelOpen, setAgentPanelOpen] = useState(false);
+  const [agentTerminalEnabled, setAgentTerminalEnabled] = useState(false);
+  const [sessionTerminalEnabled, setSessionTerminalEnabled] = useState(false);
 
   // Codebase detail popup state
   const [selectedCodebase, setSelectedCodebase] = useState<CodebaseData | null>(null);
@@ -177,6 +180,7 @@ export function KanbanTab({ workspaceId, boards, tasks, sessions, providers, spe
   const openAgentPanel = useCallback((sessionId: string) => {
     setAgentSessionId(sessionId);
     setAgentPanelOpen(true);
+    setAgentTerminalEnabled(false);
     acp?.selectSession(sessionId);
   }, [acp]);
 
@@ -426,9 +430,26 @@ export function KanbanTab({ workspaceId, boards, tasks, sessions, providers, spe
     return result.sessionId;
   }, [acp, agentSessionId, defaultCodebase?.repoPath, openAgentPanel, workspaceId]);
 
+  const handleOpenTerminalPoc = useCallback(async () => {
+    if (!acp) return;
+    if (!acp.connected) {
+      await acp.connect();
+    }
+
+    const sessionId = await ensureKanbanAgentSession(
+      defaultCodebase?.repoPath,
+      acp.selectedProvider,
+    );
+    if (!sessionId) return;
+
+    openAgentPanel(sessionId);
+    setAgentTerminalEnabled(true);
+  }, [acp, defaultCodebase?.repoPath, ensureKanbanAgentSession, openAgentPanel]);
+
   const openTaskDetail = useCallback(async (task: TaskInfo) => {
     setActiveTaskId(task.id);
     setActiveSessionId(task.triggerSessionId ?? null);
+    setSessionTerminalEnabled(false);
 
     if (task.codebaseIds?.length === 0 && defaultCodebase) {
       try {
@@ -447,6 +468,7 @@ export function KanbanTab({ workspaceId, boards, tasks, sessions, providers, spe
   const openSession = useCallback((sessionId: string | null) => {
     setActiveTaskId(null);
     setActiveSessionId(sessionId);
+    setSessionTerminalEnabled(false);
     // Select the session in ACP
     if (sessionId && acp) {
       acp.selectSession(sessionId);
@@ -456,6 +478,7 @@ export function KanbanTab({ workspaceId, boards, tasks, sessions, providers, spe
   const closeTaskDetail = useCallback(() => {
     setActiveTaskId(null);
     setActiveSessionId(null);
+    setSessionTerminalEnabled(false);
   }, []);
 
   useEffect(() => {
@@ -887,6 +910,14 @@ export function KanbanTab({ workspaceId, boards, tasks, sessions, providers, spe
                     View
                   </button>
                 )}
+                <button
+                  onClick={() => void handleOpenTerminalPoc()}
+                  disabled={agentLoading}
+                  className="shrink-0 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-700 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-emerald-900/40 dark:bg-emerald-950/20 dark:text-emerald-300 dark:hover:bg-emerald-950/30"
+                  data-testid="kanban-terminal-poc-button"
+                >
+                  Terminal POC
+                </button>
               </div>
             )}
           </div>
@@ -1036,6 +1067,17 @@ export function KanbanTab({ workspaceId, boards, tasks, sessions, providers, spe
                 </div>
               </div>
               <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setAgentTerminalEnabled((current) => !current)}
+                  className={`rounded-md border px-2 py-1 text-xs ${
+                    agentTerminalEnabled
+                      ? "border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300"
+                      : "border-gray-200 text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-[#191c28]"
+                  }`}
+                  data-testid="kanban-agent-terminal-toggle"
+                >
+                  {agentTerminalEnabled ? "Hide terminal" : "Enable interactive terminal"}
+                </button>
                 <a
                   href={`/workspace/${workspaceId}/sessions/${agentSessionId}`}
                   target="_blank"
@@ -1053,19 +1095,34 @@ export function KanbanTab({ workspaceId, boards, tasks, sessions, providers, spe
               </div>
             </div>
             <div className="min-h-0 flex-1">
-              <ChatPanel
-                acp={acp}
-                activeSessionId={agentSessionId}
-                onEnsureSession={ensureKanbanAgentSession}
-                onSelectSession={async (sessionId) => {
-                  openAgentPanel(sessionId);
-                }}
-                repoSelection={kanbanRepoSelection}
-                onRepoChange={() => {}}
-                codebases={codebases}
-                activeWorkspaceId={workspaceId}
-                agentRole="DEVELOPER"
-              />
+              <div className="flex h-full min-h-0 flex-col">
+                <div className={`${agentTerminalEnabled ? "min-h-0 flex-[0_0_58%]" : "min-h-0 flex-1"}`}>
+                  <ChatPanel
+                    acp={acp}
+                    activeSessionId={agentSessionId}
+                    onEnsureSession={ensureKanbanAgentSession}
+                    onSelectSession={async (sessionId) => {
+                      openAgentPanel(sessionId);
+                    }}
+                    repoSelection={kanbanRepoSelection}
+                    onRepoChange={() => {}}
+                    codebases={codebases}
+                    activeWorkspaceId={workspaceId}
+                    agentRole="DEVELOPER"
+                    hideTerminalMessages={agentTerminalEnabled}
+                  />
+                </div>
+                {agentTerminalEnabled && (
+                  <div className="min-h-0 flex-[0_0_42%] border-t border-slate-800/80">
+                    <InteractiveSessionTerminal
+                      acp={acp}
+                      sessionId={agentSessionId}
+                      cwd={kanbanRepoSelection?.path ?? defaultCodebase?.repoPath}
+                      title="KanbanTask Agent terminal"
+                    />
+                  </div>
+                )}
+              </div>
             </div>
           </aside>
         )}
@@ -1099,6 +1156,19 @@ export function KanbanTab({ workspaceId, boards, tasks, sessions, providers, spe
                   </div>
                 </div>
               <div className="flex items-center gap-2">
+                {activeSessionId && (
+                  <button
+                    onClick={() => setSessionTerminalEnabled((current) => !current)}
+                    className={`rounded-md border px-2 py-1 text-xs ${
+                      sessionTerminalEnabled
+                        ? "border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300"
+                        : "border-gray-200 text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-[#191c28]"
+                    }`}
+                    data-testid="kanban-session-terminal-toggle"
+                  >
+                    {sessionTerminalEnabled ? "Hide terminal" : "Enable interactive terminal"}
+                  </button>
+                )}
                 {activeSessionId && (
                   <a
                     href={`/workspace/${workspaceId}/sessions/${activeSessionId}`}
@@ -1173,20 +1243,36 @@ export function KanbanTab({ workspaceId, boards, tasks, sessions, providers, spe
                 return (
                   <div className={`${activeTaskId ? "w-2/3" : "w-full"} h-full overflow-hidden`}>
                     {acp && (
-                    <ChatPanel
-                      acp={acp}
-                      activeSessionId={activeSessionId}
-                      onEnsureSession={async () => activeSessionId}
-                      onSelectSession={async (sessionId) => {
-                        setActiveSessionId(sessionId);
-                        acp.selectSession(sessionId);
-                      }}
-                      repoSelection={repoSelection}
-                      onRepoChange={() => {}}
-                      codebases={codebases}
-                      activeWorkspaceId={workspaceId}
-                      agentRole={taskAgentRole}
-                    />
+                    <div className="flex h-full min-h-0 flex-col">
+                      <div className={`${sessionTerminalEnabled ? "min-h-0 flex-[0_0_58%]" : "min-h-0 flex-1"}`}>
+                        <ChatPanel
+                          acp={acp}
+                          activeSessionId={activeSessionId}
+                          onEnsureSession={async () => activeSessionId}
+                          onSelectSession={async (sessionId) => {
+                            setActiveSessionId(sessionId);
+                            setSessionTerminalEnabled(false);
+                            acp.selectSession(sessionId);
+                          }}
+                          repoSelection={repoSelection}
+                          onRepoChange={() => {}}
+                          codebases={codebases}
+                          activeWorkspaceId={workspaceId}
+                          agentRole={taskAgentRole}
+                          hideTerminalMessages={sessionTerminalEnabled}
+                        />
+                      </div>
+                      {sessionTerminalEnabled && activeSessionId && (
+                        <div className="min-h-0 flex-[0_0_42%] border-t border-slate-800/80">
+                          <InteractiveSessionTerminal
+                            acp={acp}
+                            sessionId={activeSessionId}
+                            cwd={repoSelection?.path ?? defaultCodebase?.repoPath}
+                            title={activeTask ? "Task session terminal" : "Session terminal"}
+                          />
+                        </div>
+                      )}
+                    </div>
                     )}
                   </div>
                 );

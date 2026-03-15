@@ -42,6 +42,10 @@ export interface AcpPromptResult {
   };
 }
 
+export interface AcpTerminalCreateResult {
+  terminalId: string;
+}
+
 export interface AcpProviderInfo {
   id: string;
   name: string;
@@ -414,6 +418,38 @@ export class BrowserAcpClient {
       sessionId,
       toolCallId,
       response,
+    });
+  }
+
+  async createTerminal(
+    sessionId: string,
+    params: {
+      cwd?: string;
+      command?: string;
+      args?: string[];
+      shell?: boolean;
+      env?: Record<string, string>;
+    },
+  ): Promise<AcpTerminalCreateResult> {
+    return this.rpc<AcpTerminalCreateResult>("terminal/create", {
+      sessionId,
+      ...params,
+    });
+  }
+
+  async writeTerminal(
+    terminalId: string,
+    data: string,
+  ): Promise<{ ok: boolean }> {
+    return this.rpc<{ ok: boolean }>("terminal/write", {
+      terminalId,
+      data,
+    });
+  }
+
+  async killTerminal(terminalId: string): Promise<{ ok: boolean }> {
+    return this.rpc<{ ok: boolean }>("terminal/kill", {
+      terminalId,
     });
   }
 

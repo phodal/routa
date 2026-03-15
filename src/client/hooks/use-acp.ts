@@ -18,6 +18,7 @@ import {
   AcpClientError,
   AcpAuthMethod,
   AcpSessionNotification,
+  AcpTerminalCreateResult,
 } from "../acp-client";
 import {
   getDesktopApiBaseUrl,
@@ -97,6 +98,18 @@ export interface UseAcpActions {
     skillContext?: { skillName: string; skillContent: string },
   ) => Promise<void>;
   respondToUserInput: (toolCallId: string, response: Record<string, unknown>) => Promise<void>;
+  createTerminal: (
+    sessionId: string,
+    params?: {
+      cwd?: string;
+      command?: string;
+      args?: string[];
+      shell?: boolean;
+      env?: Record<string, string>;
+    },
+  ) => Promise<AcpTerminalCreateResult | null>;
+  writeTerminal: (terminalId: string, data: string) => Promise<boolean>;
+  killTerminal: (terminalId: string) => Promise<boolean>;
   cancel: () => Promise<void>;
   disconnect: () => void;
   /** Clear auth error (e.g., when user dismisses the popup) */
@@ -504,6 +517,65 @@ export function useAcp(baseUrl: string = ""): UseAcpState & UseAcpActions {
     }
   }, []);
 
+  const createTerminal = useCallback(async (
+    sessionId: string,
+    params?: {
+      cwd?: string;
+      command?: string;
+      args?: string[];
+      shell?: boolean;
+      env?: Record<string, string>;
+    },
+  ): Promise<AcpTerminalCreateResult | null> => {
+    const client = clientRef.current;
+    if (!client) return null;
+
+    try {
+      return await client.createTerminal(sessionId, params ?? {});
+    } catch (err) {
+      logRuntime("error", "useAcp.createTerminal", "Failed to create terminal", err);
+      setState((s) => ({
+        ...s,
+        error: toErrorMessage(err) || "Failed to create terminal",
+      }));
+      return null;
+    }
+  }, []);
+
+  const writeTerminal = useCallback(async (terminalId: string, data: string): Promise<boolean> => {
+    const client = clientRef.current;
+    if (!client) return false;
+
+    try {
+      const result = await client.writeTerminal(terminalId, data);
+      return result.ok;
+    } catch (err) {
+      logRuntime("error", "useAcp.writeTerminal", "Failed to write terminal input", err);
+      setState((s) => ({
+        ...s,
+        error: toErrorMessage(err) || "Failed to write terminal input",
+      }));
+      return false;
+    }
+  }, []);
+
+  const killTerminal = useCallback(async (terminalId: string): Promise<boolean> => {
+    const client = clientRef.current;
+    if (!client) return false;
+
+    try {
+      const result = await client.killTerminal(terminalId);
+      return result.ok;
+    } catch (err) {
+      logRuntime("error", "useAcp.killTerminal", "Failed to kill terminal", err);
+      setState((s) => ({
+        ...s,
+        error: toErrorMessage(err) || "Failed to kill terminal",
+      }));
+      return false;
+    }
+  }, []);
+
   const disconnect = useCallback(() => {
     clientRef.current?.disconnect();
     clientRef.current = null;
@@ -541,6 +613,9 @@ export function useAcp(baseUrl: string = ""): UseAcpState & UseAcpActions {
     prompt,
     promptSession,
     respondToUserInput,
+    createTerminal,
+    writeTerminal,
+    killTerminal,
     cancel,
     disconnect,
     clearAuthError,
