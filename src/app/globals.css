@@ -831,3 +831,184 @@ body {
     background: #6366f1;
   }
 }
+
+/* ─── Desktop App Styles (Tauri) ──────────────────────────────────────────── */
+
+/* Drag region for window title bar */
+.app-drag-region {
+  -webkit-app-region: drag;
+  app-region: drag;
+}
+
+/* Prevent drag on interactive elements */
+.app-drag-region button,
+.app-drag-region a,
+.app-drag-region input,
+.app-drag-region select {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+/* VS Code-like dark theme base colors */
+.desktop-theme {
+  --dt-bg-primary: #1e1e1e;
+  --dt-bg-secondary: #252526;
+  --dt-bg-tertiary: #2d2d2d;
+  --dt-bg-active: #37373d;
+  --dt-border: #3c3c3c;
+  --dt-border-light: #333;
+  --dt-text-primary: #cccccc;
+  --dt-text-secondary: #858585;
+  --dt-text-muted: #5a5a5a;
+  --dt-accent: #007acc;
+  --dt-accent-hover: #1177bb;
+}
+
+/* Desktop scrollbar - thinner and more subtle */
+.desktop-scrollbar::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.desktop-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.desktop-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(121, 121, 121, 0.4);
+  border-radius: 5px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+.desktop-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(121, 121, 121, 0.6);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+.desktop-scrollbar::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* Desktop button styles */
+.desktop-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 400;
+  border-radius: 2px;
+  border: none;
+  cursor: pointer;
+  transition: background-color 0.1s;
+}
+
+.desktop-btn-primary {
+  background: #0e639c;
+  color: white;
+}
+
+.desktop-btn-primary:hover {
+  background: #1177bb;
+}
+
+.desktop-btn-secondary {
+  background: #3c3c3c;
+  color: #cccccc;
+}
+
+.desktop-btn-secondary:hover {
+  background: #4c4c4c;
+}
+
+/* Desktop input styles */
+.desktop-input {
+  background: #3c3c3c;
+  border: 1px solid #3c3c3c;
+  border-radius: 2px;
+  padding: 4px 8px;
+  font-size: 12px;
+  color: #cccccc;
+  outline: none;
+  transition: border-color 0.1s;
+}
+
+.desktop-input:focus {
+  border-color: #007acc;
+}
+
+.desktop-input::placeholder {
+  color: #858585;
+}
+
+/* Desktop panel styles */
+.desktop-panel {
+  background: #252526;
+  border: 1px solid #3c3c3c;
+  border-radius: 0;
+}
+
+.desktop-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: #323233;
+  border-bottom: 1px solid #3c3c3c;
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #cccccc;
+}
+
+/* Desktop list item */
+.desktop-list-item {
+  display: flex;
+  align-items: center;
+  padding: 6px 12px;
+  font-size: 13px;
+  color: #cccccc;
+  cursor: pointer;
+  transition: background-color 0.1s;
+}
+
+.desktop-list-item:hover {
+  background: #2a2a2a;
+}
+
+.desktop-list-item.active {
+  background: #37373d;
+}
+
+/* Desktop badge */
+.desktop-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  font-size: 10px;
+  font-weight: 500;
+  border-radius: 9px;
+  background: #4d4d4d;
+  color: #cccccc;
+}
+
+.desktop-badge-accent {
+  background: #007acc;
+  color: white;
+}
+
+.desktop-badge-warning {
+  background: #cca700;
+  color: #1e1e1e;
+}
+
+.desktop-badge-success {
+  background: #3fb950;
+  color: #1e1e1e;
+}

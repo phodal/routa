@@ -1,11 +1,14 @@
 "use client";
 
 /**
- * Workspace Dashboard — simplified 3-tab layout
+ * Workspace Dashboard — Desktop-optimized layout with sidebar navigation
  *
  * Route: /workspace/[workspaceId]
  *
- * Tabs: Kanban (default) | Notes (general + task) | Activity (BG tasks)
+ * Features:
+ * - VS Code-style sidebar navigation
+ * - Compact title bar
+ * - Tabs: Kanban (default) | Notes (general + task) | Activity (BG tasks)
  */
 
 import React, { useCallback, useState, useEffect } from "react";
@@ -15,14 +18,14 @@ import { useWorkspaces, useCodebases } from "@/client/hooks/use-workspaces";
 import { useAcp } from "@/client/hooks/use-acp";
 import { useAgentsRpc } from "@/client/hooks/use-agents-rpc";
 import { useNotes } from "@/client/hooks/use-notes";
-import { AppHeader } from "@/client/components/app-header";
+import { DesktopLayout } from "@/client/components/desktop-layout";
 import { AgentInstallPanel } from "@/client/components/agent-install-panel";
-import {SessionsOverview} from "@/app/workspace/[workspaceId]/sessions-overview";
-import {BackgroundTaskInfo, TaskInfo, SessionInfo, KanbanBoardInfo} from "@/app/workspace/[workspaceId]/types";
-import {NoteTasksTab} from "@/app/workspace/[workspaceId]/note-tasks-tab";
-import {NotesTab} from "@/app/workspace/[workspaceId]/notes-tab";
-import {BgTasksTab} from "@/app/workspace/[workspaceId]/bg-tasks-tab";
-import {KanbanTab} from "@/app/workspace/[workspaceId]/kanban/kanban-tab";
+import { SessionsOverview } from "@/app/workspace/[workspaceId]/sessions-overview";
+import { BackgroundTaskInfo, TaskInfo, SessionInfo, KanbanBoardInfo } from "@/app/workspace/[workspaceId]/types";
+import { NoteTasksTab } from "@/app/workspace/[workspaceId]/note-tasks-tab";
+import { NotesTab } from "@/app/workspace/[workspaceId]/notes-tab";
+import { BgTasksTab } from "@/app/workspace/[workspaceId]/bg-tasks-tab";
+import { KanbanTab } from "@/app/workspace/[workspaceId]/kanban/kanban-tab";
 
 interface SpecialistOption {
   id: string;
@@ -37,9 +40,6 @@ export function WorkspacePageClient({
 }) {
   const router = useRouter();
   const params = useParams();
-  // In static export mode the Rust server serves workspace/__placeholder__.html
-  // for all /workspace/[id] paths, so useParams() initially returns "__placeholder__".
-  // Extract the real workspace ID from the actual browser URL in that case.
   const rawWorkspaceId = params.workspaceId as string;
   const workspaceId =
     rawWorkspaceId === "__placeholder__" && typeof window !== "undefined"
@@ -60,7 +60,6 @@ export function WorkspacePageClient({
   const [activeTab, setActiveTab] = useState<"kanban" | "notes" | "activity">(initialTab);
   const [bgTasks, setBgTasks] = useState<BackgroundTaskInfo[]>([]);
   const [specialists, setSpecialists] = useState<SpecialistOption[]>([]);
-  // Notes sub-filter: "general" or "tasks"
   const [notesSubFilter, setNotesSubFilter] = useState<"general" | "tasks">("general");
 
   // Auto-connect ACP
@@ -85,7 +84,6 @@ export function WorkspacePageClient({
   // Fetch tasks
   useEffect(() => {
     const controller = new AbortController();
-
     (async () => {
       try {
         setTasks([]);
@@ -101,14 +99,12 @@ export function WorkspacePageClient({
         setTasks([]);
       }
     })();
-
     return () => controller.abort();
   }, [workspaceId, refreshKey]);
 
   // Fetch boards
   useEffect(() => {
     const controller = new AbortController();
-
     (async () => {
       try {
         setBoards([]);
@@ -124,7 +120,6 @@ export function WorkspacePageClient({
         setBoards([]);
       }
     })();
-
     return () => controller.abort();
   }, [workspaceId, refreshKey]);
 
@@ -139,7 +134,7 @@ export function WorkspacePageClient({
     })();
   }, [workspaceId, refreshKey]);
 
-  // Fetch specialists for ACP assignment in Kanban
+  // Fetch specialists
   useEffect(() => {
     (async () => {
       try {
@@ -156,7 +151,6 @@ export function WorkspacePageClient({
     })();
   }, []);
 
-  // Verify workspace
   const workspace = workspacesHook.workspaces.find((w) => w.id === workspaceId);
   const isDefaultWorkspace = workspaceId === "default";
 
@@ -175,8 +169,6 @@ export function WorkspacePageClient({
     if (ws) router.push(`/workspace/${ws.id}`);
   }, [workspacesHook, router]);
 
-  // Unified refresh handler - updates refreshKey and fetches codebases
-  // Must be defined before early returns to follow React Hooks rules
   const handleRefresh = useCallback(() => {
     setRefreshKey((k) => k + 1);
     void fetchCodebases();
@@ -184,8 +176,8 @@ export function WorkspacePageClient({
 
   if (workspacesHook.loading && !isDefaultWorkspace) {
     return (
-      <div className="h-screen flex items-center justify-center bg-[#fafafa] dark:bg-[#0a0c12]">
-        <div className="flex items-center gap-3 text-gray-400 dark:text-gray-500">
+      <div className="h-screen flex items-center justify-center bg-[#1e1e1e]">
+        <div className="flex items-center gap-3 text-[#858585]">
           <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
@@ -198,7 +190,7 @@ export function WorkspacePageClient({
 
   if (!workspace && !isDefaultWorkspace) return null;
 
-  const effectiveWorkspace = workspace ?? {
+  const _effectiveWorkspace = workspace ?? {
     id: "default",
     title: "Default Workspace",
     status: "active" as const,
@@ -207,7 +199,6 @@ export function WorkspacePageClient({
     updatedAt: new Date().toISOString(),
   };
 
-  // ─── Computed stats ──────────────────────────────────────────────
   const activeAgents = agentsHook.agents.filter((a) => a.status === "ACTIVE");
   const pendingTasks = tasks.filter((t) => t.status === "PENDING" || t.status === "IN_PROGRESS");
   const runningBgTasks = bgTasks.filter((t) => t.status === "RUNNING").length;
@@ -239,215 +230,150 @@ export function WorkspacePageClient({
   };
 
   return (
-    <div className="h-screen flex flex-col bg-[#fafafa] dark:bg-[#0a0c12]">
-      {/* ─── Top Bar ───────────────────────────────────────────────── */}
-      <AppHeader
-        workspaceId={workspaceId}
-        workspaceTitle={effectiveWorkspace.title}
-        workspaces={workspacesHook.workspaces}
-        workspacesLoading={workspacesHook.loading}
-        onWorkspaceSelect={handleWorkspaceSelect}
-        onWorkspaceCreate={handleWorkspaceCreate}
-        variant="dashboard"
-        rightSlot={
-          <a href="/settings" className="p-1.5 rounded-md text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#191c28] transition-colors" title="Settings">
-            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.241-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.991l1.004.827c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 010-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z" />
-              <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-            </svg>
-          </a>
-        }
-      />
-
-      {/* ─── Dashboard Body ────────────────────────────────────────── */}
-      <div className="flex-1 min-h-0 overflow-y-auto">
-        <div className="max-w-7xl mx-auto px-6 py-6">
-
-          {/* Quick Input */}
-          <div className="mb-8">
-            <HomeInput
-              workspaceId={workspaceId}
-              onSessionCreated={handleRefresh}
-            />
-          </div>
-
-          {/* ─── Sessions Overview ────────────────────────────────────── */}
-          {sessions.length > 0 && (
-            <div className="mb-8">
-              <SessionsOverview
-                sessions={sessions}
+    <DesktopLayout
+      workspaceId={workspaceId}
+      workspaces={workspacesHook.workspaces}
+      workspacesLoading={workspacesHook.loading}
+      onWorkspaceSelect={handleWorkspaceSelect}
+      onWorkspaceCreate={handleWorkspaceCreate}
+      sessionCount={sessions.length}
+      taskCount={tasks.length}
+      activeTaskCount={pendingTasks.length}
+    >
+      <div className="h-full flex flex-col bg-[#252526] overflow-hidden">
+        {/* Content Area */}
+        <div className="flex-1 min-h-0 overflow-y-auto">
+          <div className="max-w-6xl mx-auto px-4 py-4">
+            {/* Quick Input - more compact */}
+            <div className="mb-4">
+              <HomeInput
                 workspaceId={workspaceId}
-                onNavigate={(sessionId) => router.push(`/workspace/${workspaceId}/sessions/${sessionId}`)}
-                onRefresh={handleRefresh}
+                onSessionCreated={handleRefresh}
               />
             </div>
-          )}
 
-          {/* ─── Stat Cards ──────────────────────────────────────────── */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
-            <StatCard
-              label="Sessions"
-              value={sessions.length}
-              icon={
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 8.511c.884.284 1.5 1.128 1.5 2.097v4.286c0 1.136-.847 2.1-1.98 2.193-.34.027-.68.052-1.02.072v3.091l-3-3c-1.354 0-2.694-.055-4.02-.163a2.115 2.115 0 01-.825-.242m9.345-8.334a2.126 2.126 0 00-.476-.095 48.64 48.64 0 00-8.048 0c-1.131.094-1.976 1.057-1.976 2.192v4.286c0 .837.46 1.58 1.155 1.951m9.345-8.334V6.637c0-1.621-1.152-3.026-2.76-3.235A48.455 48.455 0 0011.25 3c-2.115 0-4.198.137-6.24.402-1.608.209-2.76 1.614-2.76 3.235v6.226c0 1.621 1.152 3.026 2.76 3.235.577.075 1.157.14 1.74.194V21l4.155-4.155" />
-                </svg>
-              }
-              color="blue"
-            />
-            <StatCard
-              label="Agents"
-              value={agentsHook.agents.length}
-              sub={activeAgents.length > 0 ? `${activeAgents.length} active` : undefined}
-              icon={
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" />
-                </svg>
-              }
-              color="violet"
-            />
-            <StatCard
-              label="Tasks"
-              value={tasks.length}
-              sub={pendingTasks.length > 0 ? `${pendingTasks.length} in progress` : undefined}
-              icon={
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              }
-              color="emerald"
-            />
-            <StatCard
-              label="BG Tasks"
-              value={bgTasks.length}
-              sub={runningBgTasks > 0 ? `${runningBgTasks} running` : undefined}
-              icon={
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              }
-              color="amber"
-            />
-          </div>
-
-          {/* ─── Tab Bar ─────────────────────────────────────────────── */}
-          <div className="flex items-center gap-1 mb-6 border-b border-gray-200/60 dark:border-[#191c28]">
-            <TabButton active={activeTab === "kanban"} onClick={() => setActiveTab("kanban")}>
-              Kanban
-              {tasks.length > 0 && (
-                <span className="ml-1.5 px-1.5 py-0.5 text-[10px] rounded-full bg-gray-100 dark:bg-[#191c28] text-gray-500 dark:text-gray-400 font-mono">
-                  {tasks.length}
-                </span>
-              )}
-            </TabButton>
-            <TabButton active={activeTab === "notes"} onClick={() => setActiveTab("notes")}>
-              Notes
-              {notesHook.notes.length > 0 && (
-                <span className="ml-1.5 px-1.5 py-0.5 text-[10px] rounded-full bg-gray-100 dark:bg-[#191c28] text-gray-500 dark:text-gray-400 font-mono">
-                  {notesHook.notes.length}
-                </span>
-              )}
-            </TabButton>
-            <TabButton active={activeTab === "activity"} onClick={() => setActiveTab("activity")}>
-              Activity
-              {bgTasks.length > 0 && (
-                <span className="ml-1.5 px-1.5 py-0.5 text-[10px] rounded-full bg-gray-100 dark:bg-[#191c28] text-gray-500 dark:text-gray-400 font-mono">
-                  {bgTasks.length}
-                </span>
-              )}
-            </TabButton>
-          </div>
-
-          {/* ─── Tab Content ─────────────────────────────────────────── */}
-          {activeTab === "kanban" && (
-            <KanbanTab
-              workspaceId={workspaceId}
-              boards={boards}
-              tasks={tasks}
-              sessions={sessions}
-              providers={acp.providers}
-              specialists={specialists}
-              codebases={codebases}
-              onRefresh={handleRefresh}
-            />
-          )}
-
-          {activeTab === "notes" && (
-            <div>
-              {/* Notes sub-filter */}
-              <div className="flex items-center gap-2 mb-4">
-                <button
-                  onClick={() => setNotesSubFilter("general")}
-                  className={`px-3 py-1.5 rounded-lg text-[12px] font-medium transition-colors ${
-                    notesSubFilter === "general"
-                      ? "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400"
-                      : "text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-[#191c28]"
-                  }`}
-                >
-                  Workspace Notes
-                  {notesHook.notes.filter(n => n.metadata?.type === "general").length > 0 && (
-                    <span className="ml-1.5 text-[10px] opacity-60">{notesHook.notes.filter(n => n.metadata?.type === "general").length}</span>
-                  )}
-                </button>
-                <button
-                  onClick={() => setNotesSubFilter("tasks")}
-                  className={`px-3 py-1.5 rounded-lg text-[12px] font-medium transition-colors ${
-                    notesSubFilter === "tasks"
-                      ? "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400"
-                      : "text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-[#191c28]"
-                  }`}
-                >
-                  Task Notes
-                  {notesHook.notes.filter(n => n.metadata?.type === "task").length > 0 && (
-                    <span className="ml-1.5 text-[10px] opacity-60">{notesHook.notes.filter(n => n.metadata?.type === "task").length}</span>
-                  )}
-                </button>
+            {/* Sessions Overview - compact */}
+            {sessions.length > 0 && (
+              <div className="mb-4">
+                <SessionsOverview
+                  sessions={sessions}
+                  workspaceId={workspaceId}
+                  onNavigate={(sessionId) => router.push(`/workspace/${workspaceId}/sessions/${sessionId}`)}
+                  onRefresh={handleRefresh}
+                />
               </div>
+            )}
 
-              {notesSubFilter === "general" && (
-                <NotesTab
-                  notes={notesHook.notes.filter(n => n.metadata?.type === "general")}
-                  loading={notesHook.loading}
-                  workspaceId={workspaceId}
-                  sessions={sessions}
-                  onCreateNote={async (title, content, sessionId) => {
-                    await notesHook.createNote({ title, content, type: "general", sessionId });
-                  }}
-                  onUpdateNote={async (noteId, update) => {
-                    await notesHook.updateNote(noteId, update);
-                  }}
-                  onDeleteNote={async (noteId) => {
-                    await notesHook.deleteNote(noteId);
-                  }}
-                  onDeleteAllNotes={handleDeleteAllGeneralNotes}
-                />
-              )}
-
-              {notesSubFilter === "tasks" && (
-                <NoteTasksTab
-                  notes={notesHook.notes}
-                  loading={notesHook.loading}
-                  workspaceId={workspaceId}
-                  sessions={sessions}
-                  onDeleteNote={async (noteId) => {
-                    await notesHook.deleteNote(noteId);
-                  }}
-                  onUpdateNoteMetadata={handleUpdateNoteMetadata}
-                  onDeleteAllTaskNotes={handleDeleteAllTaskNotes}
-                />
-              )}
+            {/* Compact Stat Row */}
+            <div className="flex items-center gap-4 mb-4 px-1">
+              <CompactStat label="Sessions" value={sessions.length} color="blue" />
+              <CompactStat label="Agents" value={agentsHook.agents.length} sub={activeAgents.length > 0 ? `${activeAgents.length} active` : undefined} color="violet" />
+              <CompactStat label="Tasks" value={tasks.length} sub={pendingTasks.length > 0 ? `${pendingTasks.length} pending` : undefined} color="emerald" />
+              <CompactStat label="BG Tasks" value={bgTasks.length} sub={runningBgTasks > 0 ? `${runningBgTasks} running` : undefined} color="amber" />
             </div>
-          )}
 
-          {activeTab === "activity" && (
-            <BgTasksTab
-              bgTasks={bgTasks}
-              workspaceId={workspaceId}
-              workspaces={workspacesHook.workspaces}
-              onRefresh={handleRefresh}
-            />
-          )}
+            {/* Tab Bar - VS Code style */}
+            <div className="flex items-center gap-0 mb-4 border-b border-[#3c3c3c]">
+              <DesktopTabButton active={activeTab === "kanban"} onClick={() => setActiveTab("kanban")}>
+                Kanban {tasks.length > 0 && <span className="ml-1 text-[10px] opacity-60">({tasks.length})</span>}
+              </DesktopTabButton>
+              <DesktopTabButton active={activeTab === "notes"} onClick={() => setActiveTab("notes")}>
+                Notes {notesHook.notes.length > 0 && <span className="ml-1 text-[10px] opacity-60">({notesHook.notes.length})</span>}
+              </DesktopTabButton>
+              <DesktopTabButton active={activeTab === "activity"} onClick={() => setActiveTab("activity")}>
+                Activity {bgTasks.length > 0 && <span className="ml-1 text-[10px] opacity-60">({bgTasks.length})</span>}
+              </DesktopTabButton>
+            </div>
 
+            {/* Tab Content */}
+            {activeTab === "kanban" && (
+              <KanbanTab
+                workspaceId={workspaceId}
+                boards={boards}
+                tasks={tasks}
+                sessions={sessions}
+                providers={acp.providers}
+                specialists={specialists}
+                codebases={codebases}
+                onRefresh={handleRefresh}
+              />
+            )}
+
+            {activeTab === "notes" && (
+              <div>
+                <div className="flex items-center gap-2 mb-3">
+                  <button
+                    onClick={() => setNotesSubFilter("general")}
+                    className={`px-2.5 py-1 rounded text-[11px] font-medium transition-colors ${
+                      notesSubFilter === "general"
+                        ? "bg-[#37373d] text-white"
+                        : "text-[#858585] hover:text-white hover:bg-[#2a2a2a]"
+                    }`}
+                  >
+                    Workspace Notes
+                    {notesHook.notes.filter(n => n.metadata?.type === "general").length > 0 && (
+                      <span className="ml-1 opacity-60">({notesHook.notes.filter(n => n.metadata?.type === "general").length})</span>
+                    )}
+                  </button>
+                  <button
+                    onClick={() => setNotesSubFilter("tasks")}
+                    className={`px-2.5 py-1 rounded text-[11px] font-medium transition-colors ${
+                      notesSubFilter === "tasks"
+                        ? "bg-[#37373d] text-white"
+                        : "text-[#858585] hover:text-white hover:bg-[#2a2a2a]"
+                    }`}
+                  >
+                    Task Notes
+                    {notesHook.notes.filter(n => n.metadata?.type === "task").length > 0 && (
+                      <span className="ml-1 opacity-60">({notesHook.notes.filter(n => n.metadata?.type === "task").length})</span>
+                    )}
+                  </button>
+                </div>
+
+                {notesSubFilter === "general" && (
+                  <NotesTab
+                    notes={notesHook.notes.filter(n => n.metadata?.type === "general")}
+                    loading={notesHook.loading}
+                    workspaceId={workspaceId}
+                    sessions={sessions}
+                    onCreateNote={async (title, content, sessionId) => {
+                      await notesHook.createNote({ title, content, type: "general", sessionId });
+                    }}
+                    onUpdateNote={async (noteId, update) => {
+                      await notesHook.updateNote(noteId, update);
+                    }}
+                    onDeleteNote={async (noteId) => {
+                      await notesHook.deleteNote(noteId);
+                    }}
+                    onDeleteAllNotes={handleDeleteAllGeneralNotes}
+                  />
+                )}
+
+                {notesSubFilter === "tasks" && (
+                  <NoteTasksTab
+                    notes={notesHook.notes}
+                    loading={notesHook.loading}
+                    workspaceId={workspaceId}
+                    sessions={sessions}
+                    onDeleteNote={async (noteId) => {
+                      await notesHook.deleteNote(noteId);
+                    }}
+                    onUpdateNoteMetadata={handleUpdateNoteMetadata}
+                    onDeleteAllTaskNotes={handleDeleteAllTaskNotes}
+                  />
+                )}
+              </div>
+            )}
+
+            {activeTab === "activity" && (
+              <BgTasksTab
+                bgTasks={bgTasks}
+                workspaceId={workspaceId}
+                workspaces={workspacesHook.workspaces}
+                onRefresh={handleRefresh}
+              />
+            )}
+          </div>
         </div>
       </div>
 
@@ -457,20 +383,20 @@ export function WorkspacePageClient({
           <AgentInstallPanel />
         </OverlayModal>
       )}
-    </div>
+    </DesktopLayout>
   );
 }
 
-// ─── Sub-components ────────────────────────────────────────────────
+// ─── Desktop-optimized Sub-components ──────────────────────────────
 
-function TabButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+function DesktopTabButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
     <button
       onClick={onClick}
-      className={`px-3.5 py-2 text-[13px] font-medium border-b-2 transition-colors ${
+      className={`px-3 py-1.5 text-[12px] font-medium transition-colors ${
         active
-          ? "text-gray-900 dark:text-gray-100 border-amber-500"
-          : "text-gray-400 dark:text-gray-500 border-transparent hover:text-gray-600 dark:hover:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600"
+          ? "text-white bg-[#1e1e1e] border-t-2 border-t-[#007acc]"
+          : "text-[#858585] hover:text-white bg-[#2d2d2d] border-t-2 border-t-transparent"
       }`}
     >
       {children}
@@ -478,44 +404,31 @@ function TabButton({ active, onClick, children }: { active: boolean; onClick: ()
   );
 }
 
-function StatCard({
+function CompactStat({
   label,
   value,
   sub,
-  icon,
   color,
 }: {
   label: string;
   value: number;
   sub?: string;
-  icon: React.ReactNode;
   color: "blue" | "violet" | "emerald" | "amber";
 }) {
-  const bgMap = {
-    blue: "bg-blue-50 dark:bg-blue-900/15",
-    violet: "bg-violet-50 dark:bg-violet-900/15",
-    emerald: "bg-emerald-50 dark:bg-emerald-900/15",
-    amber: "bg-amber-50 dark:bg-amber-900/15",
-  };
-  const textMap = {
-    blue: "text-blue-600 dark:text-blue-400",
-    violet: "text-violet-600 dark:text-violet-400",
-    emerald: "text-emerald-600 dark:text-emerald-400",
-    amber: "text-amber-600 dark:text-amber-400",
+  const colorMap = {
+    blue: "text-blue-400",
+    violet: "text-violet-400",
+    emerald: "text-emerald-400",
+    amber: "text-amber-400",
   };
 
   return (
-    <div className="flex items-center gap-3 p-4 rounded-xl bg-white dark:bg-[#12141c] border border-gray-200/60 dark:border-[#1c1f2e] hover:shadow-sm transition-shadow">
-      <div className={`w-9 h-9 rounded-lg ${bgMap[color]} flex items-center justify-center shrink-0 ${textMap[color]}`}>
-        {icon}
-      </div>
-      <div>
-        <div className="text-xl font-bold text-gray-900 dark:text-gray-100 tabular-nums leading-none">{value}</div>
-        <div className="text-[11px] text-gray-400 dark:text-gray-500 mt-0.5">
-          {label}
-          {sub && <span className="ml-1 text-gray-300 dark:text-gray-600">· {sub}</span>}
-        </div>
-      </div>
+    <div className="flex items-center gap-2">
+      <span className={`text-sm font-semibold tabular-nums ${colorMap[color]}`}>{value}</span>
+      <span className="text-[11px] text-[#858585]">
+        {label}
+        {sub && <span className="ml-1 text-[#5a5a5a]">· {sub}</span>}
+      </span>
     </div>
   );
 }
@@ -531,36 +444,26 @@ function OverlayModal({
 }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true">
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} aria-hidden="true" />
+      <div className="absolute inset-0 bg-black/60" onClick={onClose} aria-hidden="true" />
       <div
-        className="relative w-full max-w-5xl h-[80vh] bg-white dark:bg-[#12141c] border border-gray-200 dark:border-[#1c1f2e] rounded-xl shadow-2xl overflow-hidden"
+        className="relative w-full max-w-5xl h-[80vh] bg-[#1e1e1e] border border-[#3c3c3c] rounded shadow-2xl overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="h-11 px-4 border-b border-gray-100 dark:border-[#191c28] flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">{title}</span>
-            <a
-              href="/settings/agents"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-[11px] text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
-            >
-              Open in new tab
-            </a>
-          </div>
+        <div className="h-9 px-3 border-b border-[#3c3c3c] flex items-center justify-between bg-[#323233]">
+          <span className="text-[12px] font-medium text-[#cccccc]">{title}</span>
           <button
             type="button"
             onClick={onClose}
-            className="w-7 h-7 flex items-center justify-center rounded-md hover:bg-gray-100 dark:hover:bg-[#191c28] text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+            className="w-6 h-6 flex items-center justify-center rounded hover:bg-[#3c3c3c] text-[#858585] hover:text-white transition-colors"
             title="Close (Esc)"
             aria-label="Close"
           >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
         </div>
-        <div className="h-[calc(80vh-44px)]">{children}</div>
+        <div className="h-[calc(80vh-36px)]">{children}</div>
       </div>
     </div>
   );

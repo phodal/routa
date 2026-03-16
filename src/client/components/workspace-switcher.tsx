@@ -10,6 +10,8 @@ interface WorkspaceSwitcherProps {
   onCreate: (title: string) => Promise<void>;
   loading?: boolean;
   compact?: boolean;
+  /** Use desktop/VS Code style theme */
+  desktop?: boolean;
 }
 
 export function WorkspaceSwitcher({
@@ -19,6 +21,7 @@ export function WorkspaceSwitcher({
   onCreate,
   loading,
   compact,
+  desktop,
 }: WorkspaceSwitcherProps) {
   const [open, setOpen] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -53,37 +56,114 @@ export function WorkspaceSwitcher({
     setOpen(false);
   };
 
+  // Desktop theme styles
+  if (desktop || compact) {
+    return (
+      <div className="relative" ref={dropdownRef}>
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          className="flex items-center gap-1.5 px-2 py-1 rounded text-[11px] text-[#cccccc] hover:bg-[#3c3c3c] transition-colors"
+          title={active?.title ?? "Select workspace"}
+        >
+          <svg className="w-3 h-3 text-[#858585]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
+          </svg>
+          <span className="max-w-[120px] truncate">
+            {loading ? "..." : (active?.title ?? "Select")}
+          </span>
+          <svg className={`w-2.5 h-2.5 text-[#858585] transition-transform ${open ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+
+        {open && (
+          <div className="absolute top-full left-0 mt-1 w-52 bg-[#252526] border border-[#3c3c3c] shadow-xl z-50">
+            <div className="py-1 max-h-52 overflow-y-auto">
+              {workspaces.length === 0 && (
+                <div className="px-3 py-2 text-[11px] text-[#858585] text-center">No workspaces yet</div>
+              )}
+              {workspaces.map((ws) => (
+                <button
+                  key={ws.id}
+                  type="button"
+                  onClick={() => { onSelect(ws.id); setOpen(false); }}
+                  className={`w-full text-left px-3 py-1.5 flex items-center gap-2 text-[11px] transition-colors ${
+                    ws.id === activeWorkspaceId
+                      ? "bg-[#37373d] text-white"
+                      : "text-[#cccccc] hover:bg-[#2a2a2a]"
+                  }`}
+                >
+                  <svg className="w-3 h-3 shrink-0 text-[#858585]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
+                  </svg>
+                  <span className="truncate flex-1">{ws.title}</span>
+                  {ws.id === activeWorkspaceId && (
+                    <svg className="w-3 h-3 text-[#007acc] shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                    </svg>
+                  )}
+                </button>
+              ))}
+            </div>
+
+            <div className="border-t border-[#3c3c3c] p-1.5">
+              {creating ? (
+                <div className="flex gap-1">
+                  <input
+                    ref={inputRef}
+                    type="text"
+                    value={newTitle}
+                    onChange={(e) => setNewTitle(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") handleCreate(); if (e.key === "Escape") setCreating(false); }}
+                    placeholder="Workspace name..."
+                    className="flex-1 px-2 py-1 text-[11px] bg-[#3c3c3c] border border-[#3c3c3c] text-[#cccccc] focus:border-[#007acc] outline-none placeholder:text-[#858585]"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleCreate}
+                    className="px-2 py-1 text-[11px] font-medium text-white bg-[#0e639c] hover:bg-[#1177bb] transition-colors"
+                  >
+                    Create
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setCreating(true)}
+                  className="w-full flex items-center gap-1.5 px-2 py-1 text-[11px] text-[#007acc] hover:bg-[#2a2a2a] transition-colors"
+                >
+                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                  </svg>
+                  New Workspace
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Original light/dark theme styles
   return (
     <div className="relative" ref={dropdownRef}>
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className={compact
-          ? "flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors shrink-0"
-          : "flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1e2130] hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors max-w-[180px]"
-        }
+        className="flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1e2130] hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors max-w-[180px]"
         title={active?.title ?? "Select workspace"}
       >
-        {compact ? (
-          <>
-            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M8 9l4-4 4 4m0 6l-4 4-4-4" />
-            </svg>
-            Switch
-          </>
-        ) : (
-          <>
-            <svg className="w-3.5 h-3.5 text-indigo-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
-            </svg>
-            <span className="text-xs font-medium text-gray-700 dark:text-gray-300 truncate flex-1 text-left">
-              {loading ? "..." : (active?.title ?? "Select workspace")}
-            </span>
-            <svg className={`w-3 h-3 text-gray-400 shrink-0 transition-transform ${open ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-            </svg>
-          </>
-        )}
+        <svg className="w-3.5 h-3.5 text-indigo-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
+        </svg>
+        <span className="text-xs font-medium text-gray-700 dark:text-gray-300 truncate flex-1 text-left">
+          {loading ? "..." : (active?.title ?? "Select workspace")}
+        </span>
+        <svg className={`w-3 h-3 text-gray-400 shrink-0 transition-transform ${open ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+        </svg>
       </button>
 
       {open && (
