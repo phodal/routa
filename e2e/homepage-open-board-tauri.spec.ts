@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 
 /**
  * Homepage "Open board" E2E Test for Tauri/Rust Backend
@@ -19,6 +19,16 @@ test.describe("Homepage Open Board Flow (Tauri/Rust)", () => {
     return process.env.PLAYWRIGHT_BASE_URL || "http://127.0.0.1:3210";
   };
 
+  const ensureWorkspaceExists = async (page: Page) => {
+    const getStartedButton = page.getByRole("button", { name: "Get Started" });
+    if (await getStartedButton.isVisible().catch(() => false)) {
+      await getStartedButton.click();
+    }
+
+    await expect(page.getByRole("heading", { name: "Recent work" })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole("link", { name: "Open board" })).toHaveAttribute("href", /\/kanban$/, { timeout: 10_000 });
+  };
+
   test.setTimeout(120_000);
 
   test("Complete flow: Homepage → Open board → Kanban → Task detail → Back to homepage", async ({ page }) => {
@@ -28,6 +38,7 @@ test.describe("Homepage Open Board Flow (Tauri/Rust)", () => {
     // Step 1: Navigate to homepage
     await page.goto(baseUrl);
     await page.waitForLoadState("domcontentloaded");
+    await ensureWorkspaceExists(page);
     results.push("1. Homepage loaded");
 
     await page.screenshot({
@@ -37,7 +48,8 @@ test.describe("Homepage Open Board Flow (Tauri/Rust)", () => {
 
     // Step 2: Verify homepage elements
     await expect(page.locator("text=Routa")).toBeVisible({ timeout: 10_000 });
-    await expect(page.locator("text=Kanban Core")).toBeVisible();
+    await expect(page.locator("text=Recent work")).toBeVisible();
+    await expect(page.locator("text=Board Snapshot")).toHaveCount(0);
     results.push("2. Homepage elements visible");
 
     // Step 3: Find and click "Open board" button
@@ -105,7 +117,7 @@ test.describe("Homepage Open Board Flow (Tauri/Rust)", () => {
       });
 
       // Verify we're back on homepage
-      await expect(page.locator("text=Kanban Core")).toBeVisible({ timeout: 10_000 });
+      await expect(page.locator("text=Recent work")).toBeVisible({ timeout: 10_000 });
       results.push("10. Back on homepage");
     }
 
@@ -123,6 +135,7 @@ test.describe("Homepage Open Board Flow (Tauri/Rust)", () => {
 
     await page.goto(baseUrl);
     await page.waitForLoadState("domcontentloaded");
+    await ensureWorkspaceExists(page);
 
     // Find the "Open board" or "Open Kanban" link
     const openBoardLink = page.locator('a:has-text("Open board"), a:has-text("Open Kanban")').first();
@@ -140,4 +153,3 @@ test.describe("Homepage Open Board Flow (Tauri/Rust)", () => {
     });
   });
 });
-

@@ -470,6 +470,8 @@ interface TiptapInputProps {
   activeSessionMode?: string;
   repoSelection: RepoSelection | null;
   onRepoChange: (selection: RepoSelection | null) => void;
+  /** Toggle visibility of the repository picker in the input toolbar. */
+  showRepoPicker?: boolean;
   repoPathDisplay?: "inline" | "below-muted" | "hidden";
   /** Current agent role – ROUTA hides provider mode chips (Brave/Plan) */
   agentRole?: string;
@@ -503,6 +505,7 @@ export function TiptapInput({
   activeSessionMode,
   repoSelection,
   onRepoChange,
+  showRepoPicker = true,
   repoPathDisplay = "hidden",
   usageInfo,
   onFetchModels,
@@ -867,11 +870,13 @@ export function TiptapInput({
         {/* Bottom toolbar */}
         <div className="mt-1.5 -mb-0.5 flex flex-wrap items-center gap-2">
           {/* Repo picker */}
-          <RepoPicker
-            value={repoSelection}
-            onChange={onRepoChange}
-            pathDisplay={repoPathDisplay}
-          />
+          {showRepoPicker && (
+            <RepoPicker
+              value={repoSelection}
+              onChange={onRepoChange}
+              pathDisplay={repoPathDisplay}
+            />
+          )}
 
           {/* Provider dropdown */}
           <div ref={providerDropdownRef}>

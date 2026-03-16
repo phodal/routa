@@ -78,20 +78,25 @@ export function useWorkspaces(): UseWorkspacesReturn {
   return { workspaces, loading, fetchWorkspaces, createWorkspace, archiveWorkspace };
 }
 
-export function useCodebases(workspaceId: string): {
+export function useCodebases(workspaceId: string, options?: { enabled?: boolean }): {
   codebases: CodebaseData[];
   fetchCodebases: () => Promise<void>;
 } {
   const [codebases, setCodebases] = useState<CodebaseData[]>([]);
+  const enabled = options?.enabled ?? true;
 
   const fetchCodebases = useCallback(async () => {
+    if (!enabled) {
+      setCodebases([]);
+      return;
+    }
     // Skip if workspaceId is missing or is a placeholder (static export mode)
     if (!workspaceId || workspaceId === "__placeholder__") return;
     const res = await desktopAwareFetch(`/api/workspaces/${workspaceId}/codebases`);
     if (!res.ok) return;
     const data = await res.json();
     setCodebases(data.codebases ?? []);
-  }, [workspaceId]);
+  }, [enabled, workspaceId]);
 
   useEffect(() => {
     let active = true;

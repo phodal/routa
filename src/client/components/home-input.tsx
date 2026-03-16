@@ -19,6 +19,7 @@ import { useWorkspaces, useCodebases } from "../hooks/use-workspaces";
 import type { RepoSelection } from "./repo-picker";
 import { storePendingPrompt } from "../utils/pending-prompt";
 import { loadProviderConnectionConfig, getModelDefinitionByAlias, DockerConfigModal } from "./settings-panel";
+import { desktopAwareFetch } from "../utils/diagnostics";
 
 type AgentRole = "ROUTA" | "DEVELOPER";
 
@@ -40,6 +41,8 @@ interface HomeInputProps {
   displaySkills?: Array<{ name: string; description: string }>;
   /** Called when a skill pill is clicked */
   onSkillPillClick?: (name: string) => void;
+  /** Hide role/specialist controls, repo picker, mode tips, and skill pills for simpler task-first layouts */
+  minimalControls?: boolean;
 }
 
 export function HomeInput({
@@ -51,6 +54,7 @@ export function HomeInput({
   onExternalSkillConsumed,
   displaySkills,
   onSkillPillClick: _onSkillPillClick,
+  minimalControls = false,
 }: HomeInputProps) {
   const router = useRouter();
   const acp = useAcp();
@@ -58,7 +62,7 @@ export function HomeInput({
   const workspacesHook = useWorkspaces();
 
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(propWorkspaceId ?? null);
-  const { codebases } = useCodebases(selectedWorkspaceId ?? "");
+  const { codebases } = useCodebases(selectedWorkspaceId ?? "", { enabled: !minimalControls });
 
   const [selectedRole, setSelectedRole] = useState<AgentRole>("ROUTA");
   const [repoSelection, setRepoSelection] = useState<RepoSelection | null>(null);
@@ -103,11 +107,16 @@ export function HomeInput({
 
   // Load specialists
   useEffect(() => {
-    fetch("/api/specialists")
+    if (minimalControls) {
+      setSpecialists([]);
+      return;
+    }
+
+    desktopAwareFetch("/api/specialists")
       .then((r) => r.ok ? r.json() : { specialists: [] })
       .then((data) => setSpecialists(data.specialists ?? []))
       .catch(() => {});
-  }, []);
+  }, [minimalControls]);
 
   // Close specialist dropdown on outside click
   useEffect(() => {
@@ -140,6 +149,10 @@ export function HomeInput({
 
   // Auto-select default codebase
   useEffect(() => {
+    if (minimalControls) {
+      setRepoSelection(null);
+      return;
+    }
     if (codebases.length === 0) return;
     const def = codebases.find((c) => c.isDefault) ?? codebases[0];
     setRepoSelection({
@@ -147,7 +160,7 @@ export function HomeInput({
       branch: def.branch ?? "",
       name: def.label ?? def.repoPath.split("/").pop() ?? "",
     });
-  }, [codebases]);
+  }, [codebases, minimalControls]);
 
   // Handle external pending skill from grid
   useEffect(() => {
@@ -250,6 +263,7 @@ export function HomeInput({
             onProviderChange={acp.setProvider}
             repoSelection={repoSelection}
             onRepoChange={setRepoSelection}
+            showRepoPicker={!minimalControls}
             repoPathDisplay="hidden"
             agentRole={selectedRole}
             onFetchModels={acp.listProviderModels}
@@ -259,7 +273,7 @@ export function HomeInput({
 
           {/* ─── Bottom Control Bar ─────────────────────────────────── */}
           <div className={bottomBarClass}>
-            {selectedSpecialistId ? (
+            {!minimalControls && selectedSpecialistId ? (
               /* ── Specialist mode: show specialist pill as primary selector ── */
               <div className="flex items-center gap-1.5">
                 <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-700 text-violet-700 dark:text-violet-300">
@@ -309,7 +323,7 @@ export function HomeInput({
                   </div>
                 )}
               </div>
-            ) : (
+            ) : !minimalControls ? (
               /* ── Built-in role mode: segmented toggle + optional specialist picker ── */
               <>
                 <div className="flex items-center rounded-lg bg-gray-100 dark:bg-[#1a1d2a] p-0.5 gap-0.5" role="group" aria-label="Agent mode">
@@ -373,7 +387,7 @@ export function HomeInput({
                   </>
                 )}
               </>
-            )}
+            ) : null}
 
             {/* Workspace Pill */}
             {workspacesHook.workspaces.length > 0 && (
@@ -475,7 +489,8 @@ export function HomeInput({
       </div>
 
       {/* ─── Mode Tips ──────────────────────────────────────────────── */}
-      <div className="mt-1.5 px-1 min-h-[20px]">
+      {!minimalControls && (
+        <div className="mt-1.5 px-1 min-h-[20px]">
         {repoSelection?.path && (
           <div className="mb-1 flex items-center gap-1.5 text-[10px] text-gray-400 dark:text-gray-500">
             <span className="font-medium text-gray-500 dark:text-gray-400">
@@ -518,10 +533,11 @@ export function HomeInput({
             <span>适合简单快速任务 · 单 Agent 直接执行</span>
           </div>
         )}
-      </div>
+        </div>
+      )}
 
       {/* ─── Skills — horizontal scroll row ─────────────────────── */}
-      {displaySkills && displaySkills.length > 0 && (
+      {!minimalControls && displaySkills && displaySkills.length > 0 && (
         <div className="mt-2 -mx-0.5">
           <div className="flex gap-1.5 overflow-x-auto pb-0 scrollbar-none" style={{ scrollbarWidth: "none" }}>
             {displaySkills.map((skill) => (

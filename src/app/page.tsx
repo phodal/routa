@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 
@@ -8,26 +8,8 @@ import { HomeInput } from "@/client/components/home-input";
 import { ConnectionDot, OnboardingCard } from "@/client/components/home-page-sections";
 import { useAcp } from "@/client/hooks/use-acp";
 import { useWorkspaces } from "@/client/hooks/use-workspaces";
-import { NotificationBell, NotificationProvider } from "@/client/components/notification-center";
 import { SettingsPanel } from "@/client/components/settings-panel";
-
-interface KanbanColumnInfo {
-  id: string;
-  name: string;
-}
-
-interface KanbanBoardQueue {
-  runningCount: number;
-  queuedCount: number;
-}
-
-interface KanbanBoardSummary {
-  id: string;
-  name: string;
-  isDefault: boolean;
-  columns: KanbanColumnInfo[];
-  queue?: KanbanBoardQueue;
-}
+import { desktopAwareFetch } from "@/client/utils/diagnostics";
 
 interface HomeTaskInfo {
   id: string;
@@ -38,6 +20,21 @@ interface HomeTaskInfo {
   priority?: string;
 }
 
+/**
+ * Session summary rendered in the homepage "Recent work" section.
+ * Values are derived from `/api/sessions` and intentionally limited to
+ * fields needed for display and navigation.
+ */
+interface HomeSessionInfo {
+  sessionId: string;
+  workspaceId?: string;
+  name?: string;
+  provider?: string;
+  role?: string;
+  createdAt: string;
+  acpStatus?: "connecting" | "ready" | "error";
+}
+
 export default function HomePage() {
   const workspacesHook = useWorkspaces();
   const acp = useAcp();
@@ -46,13 +43,9 @@ export default function HomePage() {
   const [refreshKey, setRefreshKey] = useState(0);
   const [showSettingsPanel, setShowSettingsPanel] = useState(false);
   const [settingsInitialTab, setSettingsInitialTab] = useState<"agents" | undefined>(undefined);
-
-  const [showWorkspacesMenu, setShowWorkspacesMenu] = useState(false);
-  const workspacesMenuRef = useRef<HTMLDivElement>(null);
-
-  const [activeBoard, setActiveBoard] = useState<KanbanBoardSummary | null>(null);
-  const [boardTasks, setBoardTasks] = useState<HomeTaskInfo[]>([]);
-  const [isBoardLoading, setIsBoardLoading] = useState(false);
+  const [workspaceTasks, setWorkspaceTasks] = useState<HomeTaskInfo[]>([]);
+  const [workspaceSessions, setWorkspaceSessions] = useState<HomeSessionInfo[]>([]);
+  const [isHomeLoading, setIsHomeLoading] = useState(false);
 
   useEffect(() => {
     if (!activeWorkspaceId && workspacesHook.workspaces.length > 0) {
@@ -68,71 +61,34 @@ export default function HomePage() {
   }, [acp.connected, acp.loading]);
 
   useEffect(() => {
-    if (!showWorkspacesMenu) return;
-    const handler = (event: MouseEvent) => {
-      if (workspacesMenuRef.current && !workspacesMenuRef.current.contains(event.target as Node)) {
-        setShowWorkspacesMenu(false);
-      }
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [showWorkspacesMenu]);
-
-  useEffect(() => {
     if (!activeWorkspaceId) {
-      setActiveBoard(null);
-      setBoardTasks([]);
+      setWorkspaceTasks([]);
+      setWorkspaceSessions([]);
       return;
     }
 
     const controller = new AbortController();
 
-    const loadKanbanSnapshot = async () => {
-      setIsBoardLoading(true);
+    const loadHomepageData = async () => {
+      setIsHomeLoading(true);
       try {
-        const [boardsRes, tasksRes] = await Promise.all([
-          fetch(`/api/kanban/boards?workspaceId=${encodeURIComponent(activeWorkspaceId)}`, {
+        const [tasksRes, sessionsRes] = await Promise.all([
+          desktopAwareFetch(`/api/tasks?workspaceId=${encodeURIComponent(activeWorkspaceId)}`, {
             cache: "no-store",
             signal: controller.signal,
           }),
-          fetch(`/api/tasks?workspaceId=${encodeURIComponent(activeWorkspaceId)}`, {
+          desktopAwareFetch(`/api/sessions?workspaceId=${encodeURIComponent(activeWorkspaceId)}`, {
             cache: "no-store",
             signal: controller.signal,
           }),
         ]);
 
-        const boardsPayload = await boardsRes.json();
         const tasksPayload = await tasksRes.json();
+        const sessionsPayload = await sessionsRes.json();
 
         if (controller.signal.aborted) return;
 
-        const boards = Array.isArray(boardsPayload?.boards) ? boardsPayload.boards : [];
-        const defaultBoard = boards.find((board: { isDefault?: boolean }) => board.isDefault === true)
-          ?? boards[0]
-          ?? null;
-        if (defaultBoard) {
-          setActiveBoard({
-            id: String(defaultBoard.id),
-            name: String(defaultBoard.name || "Kanban Board"),
-            isDefault: Boolean(defaultBoard.isDefault),
-            columns: Array.isArray(defaultBoard.columns)
-              ? defaultBoard.columns.map((column: { id: string; name: string }) => ({
-                  id: String(column.id),
-                  name: String(column.name),
-                }))
-              : [],
-            queue: defaultBoard.queue && typeof defaultBoard.queue === "object"
-              ? {
-                  runningCount: Number(defaultBoard.queue.runningCount ?? 0),
-                  queuedCount: Number(defaultBoard.queue.queuedCount ?? 0),
-                }
-              : undefined,
-          });
-        } else {
-          setActiveBoard(null);
-        }
-
-        setBoardTasks(
+        setWorkspaceTasks(
           Array.isArray(tasksPayload?.tasks)
             ? tasksPayload.tasks
               .filter((task: { id?: string; title?: string; createdAt?: string }) => task?.id && task?.title)
@@ -146,78 +102,69 @@ export default function HomePage() {
               }))
             : [],
         );
+
+        setWorkspaceSessions(
+          Array.isArray(sessionsPayload?.sessions)
+            ? sessionsPayload.sessions
+              .filter((session: { sessionId?: string; createdAt?: string }) => session?.sessionId && session?.createdAt)
+              .map((session: {
+                sessionId: string;
+                workspaceId?: string;
+                name?: string;
+                provider?: string;
+                role?: string;
+                createdAt: string;
+                acpStatus?: "connecting" | "ready" | "error";
+              }) => ({
+                sessionId: String(session.sessionId),
+                workspaceId: session.workspaceId ? String(session.workspaceId) : undefined,
+                name: session.name ? String(session.name) : undefined,
+                provider: session.provider ? String(session.provider) : undefined,
+                role: session.role ? String(session.role) : undefined,
+                createdAt: String(session.createdAt),
+                acpStatus: session.acpStatus,
+              }))
+            : [],
+        );
       } catch {
-        setActiveBoard(null);
-        setBoardTasks([]);
+        setWorkspaceTasks([]);
+        setWorkspaceSessions([]);
       } finally {
         if (!controller.signal.aborted) {
-          setIsBoardLoading(false);
+          setIsHomeLoading(false);
         }
       }
     };
 
-    void loadKanbanSnapshot();
+    void loadHomepageData();
 
     return () => controller.abort();
   }, [activeWorkspaceId, refreshKey]);
 
-  const handleWorkspaceSelect = useCallback((workspaceId: string) => {
-    setActiveWorkspaceId(workspaceId);
-    setRefreshKey((value) => value + 1);
-    setShowWorkspacesMenu(false);
-  }, []);
-
   const handleWorkspaceCreate = useCallback(async (title: string) => {
     const workspace = await workspacesHook.createWorkspace(title);
     if (workspace) {
-      handleWorkspaceSelect(workspace.id);
-      setShowWorkspacesMenu(false);
+      setActiveWorkspaceId(workspace.id);
+      setRefreshKey((value) => value + 1);
     }
-  }, [handleWorkspaceSelect, workspacesHook]);
+  }, [workspacesHook]);
 
   const activeWorkspace = workspacesHook.workspaces.find((workspace) => workspace.id === activeWorkspaceId) ?? null;
   const workspaceCount = workspacesHook.workspaces.length;
 
   const activeKanbanHref = activeWorkspaceId ? `/workspace/${activeWorkspaceId}/kanban` : "/";
   const activeWorkspaceHref = activeWorkspaceId ? `/workspace/${activeWorkspaceId}` : "/";
-
-  const boardColumnCounts = useMemo(() => {
-    const columns = activeBoard?.columns ?? [];
-    const counts = Object.fromEntries(columns.map((column) => [column.id, 0])) as Record<string, number>;
-
-    for (const task of boardTasks) {
-      const columnId = task.columnId ?? "backlog";
-      counts[columnId] = (counts[columnId] ?? 0) + 1;
-    }
-
-    return counts;
-  }, [activeBoard, boardTasks]);
-
-  const laneCards = useMemo(() => {
-    if (!activeBoard) return [];
-
-    return activeBoard.columns.map((column) => {
-      const items = boardTasks
-        .filter((task) => (task.columnId ?? "backlog") === column.id)
-        .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime())
-        .slice(0, 3);
-      return { column, items, count: boardColumnCounts[column.id] ?? 0 };
-    });
-  }, [activeBoard, boardTasks, boardColumnCounts]);
-
-  const totalActiveTasks = boardTasks.filter((task) => (task.columnId ?? "backlog").toLowerCase() !== "done").length;
-  const totalDoneTasks = boardTasks.filter((task) => (task.columnId ?? "backlog").toLowerCase() === "done").length;
-  const runningCount = activeBoard?.queue?.runningCount ?? 0;
-  const queuedCount = activeBoard?.queue?.queuedCount ?? 0;
+  const recentSessions = useMemo(() => workspaceSessions.slice(0, 3), [workspaceSessions]);
+  const totalActiveTasks = workspaceTasks.filter((task) => !isTaskDone(task)).length;
+  const runningSessionCount = workspaceSessions.filter(
+    (session) => session.acpStatus === "connecting" || session.acpStatus === "ready",
+  ).length;
 
   return (
-    <NotificationProvider>
-      <div className="relative flex h-screen min-h-screen flex-col overflow-hidden bg-[#f2f7ff] text-[#081120] dark:bg-[#040913] dark:text-gray-100">
+      <div className="relative flex h-screen min-h-screen flex-col overflow-hidden bg-[#f6f9fd] text-[#081120] dark:bg-[#040913] dark:text-gray-100">
         <div className="pointer-events-none absolute inset-0">
-          <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(248,252,255,0.98),rgba(233,240,249,0.9))] dark:bg-[linear-gradient(180deg,rgba(5,10,18,0.98),rgba(4,9,19,0.97))]" />
-          <div className="absolute inset-0 bg-[linear-gradient(rgba(14,90,160,0.05)_1px,transparent_1px),linear-gradient(90deg,rgba(14,90,160,0.05)_1px,transparent_1px)] bg-[size:120px_120px] opacity-35 dark:opacity-18" />
-          <div className="home-float-slow absolute left-[-14rem] top-12 h-[24rem] w-[24rem] rounded-full bg-[radial-gradient(circle,_rgba(56,189,248,0.19),_transparent_68%)] blur-3xl" />
-          <div className="home-float-delay absolute right-[-10rem] top-[-6rem] h-[28rem] w-[28rem] rounded-full bg-[radial-gradient(circle,_rgba(37,99,235,0.17),_transparent_72%)] blur-3xl" />
+          <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(250,253,255,0.98),rgba(240,245,252,0.94))] dark:bg-[linear-gradient(180deg,rgba(5,10,18,0.98),rgba(4,9,19,0.97))]" />
+          <div className="absolute inset-0 bg-[linear-gradient(rgba(14,90,160,0.04)_1px,transparent_1px),linear-gradient(90deg,rgba(14,90,160,0.04)_1px,transparent_1px)] bg-[size:160px_160px] opacity-25 dark:opacity-10" />
         </div>
 
         <header className="relative z-10 flex h-14 shrink-0 items-center border-b border-sky-200/55 bg-white/55 px-3 backdrop-blur-xl sm:px-5 dark:border-white/6 dark:bg-[#040913]/76">
@@ -242,12 +189,10 @@ export default function HomePage() {
               <Link
                 href={activeKanbanHref}
                 className="rounded-full px-3 py-1.5 text-[11px] font-medium text-[#46638b] transition-colors hover:bg-sky-100/70 hover:text-[#081120] dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-gray-100"
-              >
-                Kanban
-              </Link>
+                >
+                  Kanban
+                </Link>
             )}
-
-            <NotificationBell />
 
             <button
               onClick={() => {
@@ -263,7 +208,7 @@ export default function HomePage() {
               </svg>
             </button>
 
-            <div className="ml-1 border-l border-black/8 pl-3 dark:border-white/8">
+            <div className="ml-1">
               <ConnectionDot connected={acp.connected} />
             </div>
           </nav>
@@ -279,110 +224,121 @@ export default function HomePage() {
               <OnboardingCard onCreateWorkspace={handleWorkspaceCreate} />
             </div>
           ) : (
-            <div className="mx-auto flex w-full max-w-[112rem] px-3 py-4 sm:px-6 sm:py-7">
-              <div className="w-full space-y-4">
-                <section className="overflow-hidden rounded-[34px] border border-sky-200/75 bg-[linear-gradient(180deg,rgba(250,253,255,0.98),rgba(238,246,255,0.96))] shadow-[0_60px_170px_-120px_rgba(37,99,235,0.45)] dark:border-[#223049] dark:bg-[linear-gradient(180deg,rgba(7,12,21,0.96),rgba(9,15,26,0.98))]">
-                  <div className="grid gap-5 p-4 sm:p-6 lg:grid-cols-[minmax(0,1.17fr)_355px] lg:p-7">
-                    <div>
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-[#4a74a8] dark:text-slate-400">
-                        Kanban Core
-                      </p>
-                      <h1 className="mt-2 max-w-3xl font-['Avenir_Next_Condensed','Avenir_Next','Segoe_UI','Helvetica_Neue',sans-serif] text-[2.25rem] leading-[0.95] font-semibold tracking-[-0.04em] text-[#081120] dark:text-white sm:text-[2.9rem] lg:text-[3.2rem]">
-                        Start with a requirement, move in lanes.
-                      </h1>
-                      <p className="mt-3 max-w-2xl text-sm leading-7 text-[#4d6689] dark:text-slate-300">
-                        The homepage now puts your active Kanban board first. Create tasks from one composer, then immediately check where they sit: Backlog, Dev, Review, or Blocked.
-                      </p>
+            <div className="mx-auto w-full max-w-5xl px-4 py-6 sm:px-6 sm:py-8">
+              <section className="overflow-hidden rounded-[32px] border border-sky-200/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.97),rgba(241,247,255,0.95))] p-5 shadow-[0_45px_110px_-90px_rgba(37,99,235,0.55)] dark:border-[#223049] dark:bg-[linear-gradient(180deg,rgba(7,12,21,0.96),rgba(9,15,26,0.98))] sm:p-7">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-[#4a74a8] dark:text-slate-400">
+                  Desktop home
+                </p>
+                <h1 className="mt-2 max-w-3xl font-['Avenir_Next_Condensed','Avenir_Next','Segoe_UI','Helvetica_Neue',sans-serif] text-[2.3rem] leading-[0.95] font-semibold tracking-[-0.04em] text-[#081120] dark:text-white sm:text-[3rem]">
+                  Start with a requirement.
+                </h1>
+                <p className="mt-3 max-w-2xl text-sm leading-7 text-[#4d6689] dark:text-slate-300">
+                  Keep the desktop homepage focused on one job: choose the workspace, send the task, then jump straight into your latest session or Kanban board when you need more detail.
+                </p>
 
-                      <div className="mt-5 grid gap-2 sm:grid-cols-3 lg:grid-cols-6">
-                        <BoardStat label="Board" value={String(workspaceCount).padStart(2, "0")} detail="Connected workspaces" />
-                        <BoardStat label="Active" value={String(totalActiveTasks)} detail="In flow lanes" />
-                        <BoardStat label="Done" value={String(totalDoneTasks)} detail="Completed tasks" />
-                        <BoardStat label="Runtime" value={acp.connected ? "Connected" : "Offline"} detail={acp.connected ? "ACP ready" : "Waiting for runtime"} />
-                        <BoardStat label="Running" value={String(runningCount)} detail="Sessions" />
-                        <BoardStat label="Queued" value={String(queuedCount)} detail="Awaiting concurrency" />
-                      </div>
+                <div className="mt-6 grid gap-3 sm:grid-cols-3">
+                  <BoardStat label="Active tasks" value={String(totalActiveTasks)} detail="Cards not in Done" />
+                  <BoardStat
+                    label="Running sessions"
+                    value={String(runningSessionCount)}
+                    detail={acp.connected ? "ACP runtime ready" : "ACP runtime offline"}
+                  />
+                  <BoardStat
+                    label="Workspace"
+                    value={String(workspaceCount).padStart(2, "0")}
+                    detail={activeWorkspace?.title ?? "No workspace selected"}
+                  />
+                </div>
 
-                      <div className="mt-5 rounded-[28px] border border-sky-200/75 bg-white/78 p-3 shadow-[0_30px_100px_-58px_rgba(37,99,235,0.24)] backdrop-blur dark:border-white/10 dark:bg-[#0a1322]/66 sm:p-4">
-                        <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-[#356fb0] dark:text-slate-400">
-                          Composer (open board first)
-                        </div>
-                        <HomeInput
-                          variant="hero"
-                          workspaceId={activeWorkspaceId ?? undefined}
-                          onWorkspaceChange={(workspaceId) => {
-                            setActiveWorkspaceId(workspaceId);
-                            setRefreshKey((value) => value + 1);
-                          }}
-                          onSessionCreated={() => {
-                            setRefreshKey((value) => value + 1);
-                          }}
-                        />
-                      </div>
+                <div className="mt-6 rounded-[28px] border border-sky-200/75 bg-white/82 p-3 shadow-[0_30px_100px_-58px_rgba(37,99,235,0.24)] backdrop-blur dark:border-white/10 dark:bg-[#0a1322]/66 sm:p-4">
+                  <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-[#356fb0] dark:text-slate-400">
+                    Quick start
+                  </div>
+                  <HomeInput
+                    variant="hero"
+                    workspaceId={activeWorkspaceId ?? undefined}
+                    minimalControls
+                    onWorkspaceChange={(workspaceId) => {
+                      setActiveWorkspaceId(workspaceId);
+                      setRefreshKey((value) => value + 1);
+                    }}
+                    onSessionCreated={() => {
+                      setRefreshKey((value) => value + 1);
+                    }}
+                  />
+                </div>
 
-                      <div className="mt-4 flex flex-wrap gap-2">
-                        <Link
-                          href={activeWorkspaceHref}
-                          className="inline-flex items-center justify-center rounded-full border border-sky-200/70 bg-white/90 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#2b6fc8] transition-colors hover:bg-white dark:border-white/10 dark:bg-[#1b2232] dark:text-slate-300 dark:hover:bg-[#101826]"
-                        >
-                          Open workspace
-                        </Link>
-                        <Link
-                          href={activeKanbanHref}
-                          className="inline-flex items-center justify-center rounded-full bg-[#0f62d6] px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-white transition-colors hover:bg-[#2a77e4] dark:bg-[#5ee5ff] dark:text-[#04111d] dark:hover:bg-[#87edff]"
-                        >
-                          Open board
-                        </Link>
-                        <button
-                          type="button"
-                          onClick={() => setShowWorkspacesMenu((value) => !value)}
-                          className="inline-flex items-center justify-center rounded-full border border-sky-200/70 px-3 py-2 text-[11px] font-medium uppercase tracking-[0.16em] text-[#45678f] transition-colors hover:border-sky-300 hover:text-[#081120] dark:border-[#2a3042] dark:text-slate-400 dark:hover:border-[#39415a] dark:hover:text-slate-200"
-                        >
-                          {activeWorkspace?.title ?? "Switch workspace"}
-                        </button>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <Link
+                    href={activeWorkspaceHref}
+                    className="inline-flex items-center justify-center rounded-full border border-sky-200/70 bg-white/90 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#2b6fc8] transition-colors hover:bg-white dark:border-white/10 dark:bg-[#1b2232] dark:text-slate-300 dark:hover:bg-[#101826]"
+                  >
+                    Open workspace
+                  </Link>
+                  <Link
+                    href={activeKanbanHref}
+                    className="inline-flex items-center justify-center rounded-full bg-[#0f62d6] px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-white transition-colors hover:bg-[#2a77e4] dark:bg-[#5ee5ff] dark:text-[#04111d] dark:hover:bg-[#87edff]"
+                  >
+                    Open board
+                  </Link>
+                </div>
+
+                <div className="mt-7 grid gap-4 lg:grid-cols-[minmax(0,1fr)_250px]">
+                  <section className="rounded-[24px] border border-sky-200/70 bg-white/72 p-4 dark:border-white/10 dark:bg-white/[0.04]">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <h2 className="text-sm font-semibold text-[#081120] dark:text-white">Recent work</h2>
+                        <p className="mt-1 text-xs text-[#577090] dark:text-slate-400">
+                          Re-open the latest sessions without leaving the homepage.
+                        </p>
                       </div>
+                      <span className="rounded-full bg-sky-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-sky-700 dark:bg-sky-950/60 dark:text-sky-200">
+                        {workspaceSessions.length} total
+                      </span>
                     </div>
 
-                    <aside className="overflow-hidden rounded-[24px] border border-[#1f3354] bg-[linear-gradient(180deg,#07111f,#0b1630)] p-4 text-white sm:p-5">
-                      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.13),_transparent_30%),radial-gradient(circle_at_85%_0%,_rgba(37,99,235,0.1),_transparent_30%)]" />
-
-                      <div className="relative">
-                        <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-sky-200/75">
-                          Board Snapshot
+                    <div className="mt-4 space-y-2">
+                      {isHomeLoading ? (
+                        <div className="rounded-2xl border border-sky-100 bg-sky-50/70 px-3 py-4 text-sm text-[#577090] dark:border-white/10 dark:bg-white/[0.03] dark:text-slate-400">
+                          Loading recent work...
                         </div>
-                        <div className="mt-2 text-[1.3rem] font-semibold text-white">
-                          {activeBoard?.name ?? "Loading board"}
+                      ) : recentSessions.length === 0 ? (
+                        <div className="rounded-2xl border border-dashed border-sky-200/80 bg-sky-50/60 px-3 py-4 text-sm text-[#577090] dark:border-white/10 dark:bg-white/[0.03] dark:text-slate-400">
+                          Your latest sessions will appear here after you send a prompt.
                         </div>
-                        <div className="mt-4 space-y-2">
-                          {isBoardLoading ? (
-                            <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-3 text-sm text-slate-300">Loading board status...</div>
-                          ) : (
-                            laneCards.slice(0, 4).map((lane) => (
-                              <div key={lane.column.id} className="rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-2.5">
-                                <div className="flex items-center justify-between gap-2 text-xs uppercase tracking-[0.15em] text-slate-300">
-                                  <span>{lane.column.name}</span>
-                                  <span>{lane.count}</span>
-                                </div>
-                                {lane.items.length === 0 ? (
-                                  <div className="mt-2 text-[11px] text-slate-500">No cards</div>
-                                ) : (
-                                  <div className="mt-2 space-y-1">
-                                    {lane.items.map((task) => (
-                                      <div key={task.id} className="truncate rounded-[12px] border border-white/8 bg-white/[0.03] px-2 py-1.5 text-[11px] leading-5 text-slate-200">
-                                        {task.title}
-                                      </div>
-                                    ))}
-                                  </div>
-                                )}
+                      ) : (
+                        recentSessions.map((session) => (
+                          <Link
+                            key={session.sessionId}
+                            href={`/workspace/${session.workspaceId ?? activeWorkspaceId ?? ""}/sessions/${session.sessionId}`}
+                            className="flex items-center justify-between gap-3 rounded-2xl border border-sky-100/90 bg-white px-3 py-3 transition-colors hover:border-sky-300 hover:bg-sky-50/70 dark:border-white/8 dark:bg-[#0b1424] dark:hover:border-sky-700/40 dark:hover:bg-[#0d182a]"
+                          >
+                            <div className="min-w-0">
+                              <div className="truncate text-sm font-medium text-[#081120] dark:text-slate-100">
+                                {getSessionDisplayName(session)}
                               </div>
-                            ))
-                          )}
-                        </div>
-                      </div>
-                    </aside>
-                  </div>
-                </section>
-              </div>
+                              <div className="mt-1 text-[11px] text-[#577090] dark:text-slate-500">
+                                {formatRelativeTime(session.createdAt)}
+                              </div>
+                            </div>
+                            <span className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-medium uppercase tracking-[0.16em] ${session.acpStatus === "error" ? "bg-rose-50 text-rose-700 dark:bg-rose-950/50 dark:text-rose-200" : "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-200"}`}>
+                              {session.acpStatus === "error" ? "Issue" : session.acpStatus ?? "Ready"}
+                            </span>
+                          </Link>
+                        ))
+                      )}
+                    </div>
+                  </section>
+
+                  <aside className="rounded-[24px] border border-sky-200/70 bg-white/72 p-4 dark:border-white/10 dark:bg-white/[0.04]">
+                    <h2 className="text-sm font-semibold text-[#081120] dark:text-white">Shortcuts</h2>
+                    <div className="mt-4 space-y-2">
+                      <ShortcutHint keys="Enter" detail="Send the current requirement" />
+                      <ShortcutHint keys="Shift + Enter" detail="Insert a new line" />
+                    </div>
+                  </aside>
+                </div>
+              </section>
             </div>
           )}
         </main>
@@ -393,39 +349,32 @@ export default function HomePage() {
           providers={acp.providers}
           initialTab={settingsInitialTab}
         />
-
-        {showWorkspacesMenu && (
-          <div ref={workspacesMenuRef} className="fixed inset-0 z-40">
-            <div className="absolute right-4 top-14 w-60 rounded-2xl border border-sky-200/80 bg-white p-1.5 shadow-lg dark:border-[#1c1f2e] dark:bg-[#12141c]">
-              {workspacesHook.workspaces.map((workspace) => (
-                <button
-                  type="button"
-                  key={workspace.id}
-                  onClick={() => handleWorkspaceSelect(workspace.id)}
-                  className={`mb-0.5 flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm transition-colors hover:bg-sky-50 dark:hover:bg-[#1a1f31] ${workspace.id === activeWorkspaceId ? "bg-sky-50 dark:bg-[#1c2740]" : ""}`}
-                >
-                  <span className="truncate text-[#081120] dark:text-slate-100">{workspace.title}</span>
-                  <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] text-sky-700 dark:bg-sky-900/35 dark:text-sky-200">
-                    {workspace.id === activeWorkspaceId ? "Active" : "Enter"}
-                  </span>
-                </button>
-              ))}
-              <button
-                type="button"
-                onClick={() => {
-                  handleWorkspaceCreate("New Workspace");
-                  setShowWorkspacesMenu(false);
-                }}
-                className="mt-1 flex w-full items-center rounded-xl bg-sky-50 px-3 py-2 text-left text-sm text-[#081120] transition-colors hover:bg-sky-100 dark:bg-[#1a1f31] dark:text-slate-200 dark:hover:bg-[#232a3f]"
-              >
-                + New workspace
-              </button>
-            </div>
-          </div>
-        )}
       </div>
-    </NotificationProvider>
   );
+}
+
+const DONE_TASK_STATES = new Set(["done", "completed"]);
+
+function isTaskDone(task: HomeTaskInfo): boolean {
+  const lane = (task.columnId ?? task.status ?? "").toLowerCase();
+  return DONE_TASK_STATES.has(lane);
+}
+
+function getSessionDisplayName(session: HomeSessionInfo): string {
+  if (session.name) return session.name;
+  if (session.provider && session.role) return `${session.provider} · ${session.role.toLowerCase()}`;
+  if (session.provider) return session.provider;
+  return `Session ${session.sessionId.slice(0, 6)}`;
+}
+
+function formatRelativeTime(dateStr: string): string {
+  const diffMs = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.floor(diffMs / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
 }
 
 function BoardStat({ label, value, detail }: { label: string; value: string; detail: string }) {
@@ -434,6 +383,17 @@ function BoardStat({ label, value, detail }: { label: string; value: string; det
       <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#4b6f98] dark:text-slate-400">{label}</div>
       <div className="mt-1.5 text-[1.35rem] font-semibold tracking-tight text-[#081120] dark:text-white">{value}</div>
       <div className="mt-1 text-[11px] leading-5 text-[#577090] dark:text-slate-500">{detail}</div>
+    </div>
+  );
+}
+
+function ShortcutHint({ keys, detail }: { keys: string; detail: string }) {
+  return (
+    <div className="rounded-2xl border border-sky-100/90 bg-white px-3 py-3 dark:border-white/8 dark:bg-[#0b1424]">
+      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#356fb0] dark:text-sky-300/80">
+        {keys}
+      </div>
+      <div className="mt-1 text-xs text-[#577090] dark:text-slate-400">{detail}</div>
     </div>
   );
 }
