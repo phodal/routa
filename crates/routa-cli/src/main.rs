@@ -151,6 +151,12 @@ enum Commands {
         #[command(subcommand)]
         action: WorkflowAction,
     },
+
+    /// Run read-only code review analysis against git changes
+    Review {
+        #[command(subcommand)]
+        action: ReviewAction,
+    },
 }
 
 #[derive(Subcommand)]
@@ -334,6 +340,34 @@ enum WorkflowAction {
     },
     /// List available specialist definitions
     Specialists {
+        /// Custom specialist definitions directory
+        #[arg(long)]
+        specialist_dir: Option<String>,
+    },
+}
+
+#[derive(Subcommand)]
+enum ReviewAction {
+    /// Analyze a git diff using Specialist-backed multi-phase review
+    Analyze {
+        /// Base revision for the diff (defaults to HEAD~1)
+        #[arg(long, default_value = "HEAD~1")]
+        base: String,
+        /// Head revision for the diff (defaults to HEAD)
+        #[arg(long, default_value = "HEAD")]
+        head: String,
+        /// Repository path (defaults to current working directory)
+        #[arg(long)]
+        repo_path: Option<String>,
+        /// Optional project-specific review rules file
+        #[arg(long)]
+        rules_file: Option<String>,
+        /// Enable verbose workflow output
+        #[arg(long, short = 'v')]
+        verbose: bool,
+        /// Print the final output as pretty JSON when possible
+        #[arg(long, default_value_t = false)]
+        json: bool,
         /// Custom specialist definitions directory
         #[arg(long)]
         specialist_dir: Option<String>,
@@ -580,6 +614,34 @@ async fn main() {
                     WorkflowAction::Validate { file } => commands::workflow::validate(&file).await,
                     WorkflowAction::Specialists { specialist_dir } => {
                         commands::workflow::list_specialists(specialist_dir.as_deref()).await
+                    }
+                }
+            }
+            Commands::Review { action } => {
+                let state = commands::init_state(&cli.db).await;
+                match action {
+                    ReviewAction::Analyze {
+                        base,
+                        head,
+                        repo_path,
+                        rules_file,
+                        verbose,
+                        json,
+                        specialist_dir,
+                    } => {
+                        commands::review::analyze(
+                            &state,
+                            commands::review::ReviewAnalyzeOptions {
+                                base: &base,
+                                head: &head,
+                                repo_path: repo_path.as_deref(),
+                                rules_file: rules_file.as_deref(),
+                                verbose,
+                                as_json: json,
+                                specialist_dir: specialist_dir.as_deref(),
+                            },
+                        )
+                        .await
                     }
                 }
             }

@@ -9,6 +9,7 @@ pub mod agent;
 pub mod chat;
 pub mod delegate;
 pub mod prompt;
+pub mod review;
 pub mod rpc;
 pub mod scan;
 pub mod server;
