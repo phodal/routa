@@ -4,6 +4,10 @@ import { KanbanTab } from "../kanban-tab";
 import type { KanbanBoardInfo, TaskInfo } from "../../types";
 import type { UseAcpActions, UseAcpState } from "@/client/hooks/use-acp";
 
+vi.mock("@/client/components/repo-picker", () => ({
+  RepoPicker: () => <div data-testid="repo-picker-mock" />,
+}));
+
 const board: KanbanBoardInfo = {
   id: "board-1",
   workspaceId: "workspace-1",
@@ -334,7 +338,7 @@ describe("KanbanTab quick ACP assignment", () => {
   });
 });
 
-describe("KanbanTab session terminal hint", () => {
+describe("KanbanTab agent prompt flow", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
   });
@@ -416,10 +420,5 @@ describe("KanbanTab session terminal hint", () => {
       }),
     );
 
-    const hint = await screen.findByTestId("kanban-read-only-terminal-hint");
-    expect(hint.textContent).toContain("Browser terminal output is read-only right now.");
-
-    const link = screen.getByRole("link", { name: "Open session" });
-    expect(link.getAttribute("href")).toBe("/workspace/workspace-1/sessions/session-123");
   });
 });

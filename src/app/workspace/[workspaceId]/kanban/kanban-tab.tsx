@@ -116,28 +116,6 @@ function formatLaneAutomationSummary(
   return `-> ${core}`;
 }
 
-function ReadOnlyTerminalHint({ workspaceId, sessionId }: { workspaceId: string; sessionId: string }) {
-  return (
-    <div
-      className="flex items-start justify-between gap-3 border-b border-amber-200/70 bg-amber-50/80 px-4 py-2 text-[11px] text-amber-900 dark:border-amber-900/30 dark:bg-amber-950/20 dark:text-amber-200"
-      data-testid="kanban-read-only-terminal-hint"
-    >
-      <p className="min-w-0 leading-5">
-        Browser terminal output is read-only right now. Continue on the session page for full context, and use the
-        desktop app when you need an interactive PTY shell.
-      </p>
-      <a
-        href={`/workspace/${workspaceId}/sessions/${sessionId}`}
-        target="_blank"
-        rel="noreferrer"
-        className="shrink-0 rounded-md border border-amber-300/80 px-2 py-1 font-medium text-amber-900 transition-colors hover:bg-amber-100 dark:border-amber-700/50 dark:text-amber-200 dark:hover:bg-amber-900/20"
-      >
-        Open session
-      </a>
-    </div>
-  );
-}
-
 export function KanbanTab({ workspaceId, boards, tasks, sessions, providers, specialists, codebases, onRefresh, acp, onAgentPrompt }: KanbanTabProps) {
   const defaultBoardId = useMemo(
     () => boards.find((board) => board.isDefault)?.id ?? boards[0]?.id ?? null,
@@ -1293,7 +1271,6 @@ export function KanbanTab({ workspaceId, boards, tasks, sessions, providers, spe
                 </button>
               </div>
             </div>
-            <ReadOnlyTerminalHint workspaceId={workspaceId} sessionId={agentSessionId} />
             <div className="min-h-0 flex-1">
               <ChatPanel
                 acp={acp}
@@ -1359,7 +1336,6 @@ export function KanbanTab({ workspaceId, boards, tasks, sessions, providers, spe
                 </button>
               </div>
             </div>
-            {activeSessionId && <ReadOnlyTerminalHint workspaceId={workspaceId} sessionId={activeSessionId} />}
             <div ref={detailSplitContainerRef} className="flex h-[calc(88vh-48px)]">
               {/* Left: Card Detail (if activeTaskId exists) */}
               {activeTaskId && (() => {
