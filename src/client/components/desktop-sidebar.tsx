@@ -18,7 +18,6 @@ interface NavItem {
   label: string;
   icon: React.ReactNode;
   href: string;
-  badge?: number;
 }
 
 interface DesktopSidebarProps {
@@ -31,8 +30,8 @@ interface DesktopSidebarProps {
 export function DesktopSidebar({
   workspaceId,
   sessionCount: _sessionCount = 0,
-  taskCount = 0,
-  activeTaskCount = 0,
+  taskCount: _taskCount = 0,
+  activeTaskCount: _activeTaskCount = 0,
 }: DesktopSidebarProps) {
   const pathname = usePathname();
 
@@ -61,7 +60,6 @@ export function DesktopSidebar({
       id: "kanban",
       label: "Kanban",
       href: `/workspace/${workspaceId}/kanban`,
-      badge: taskCount > 0 ? taskCount : undefined,
       icon: (
         <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M9 4.5v15m6-15v15m-10.875 0h15.75c.621 0 1.125-.504 1.125-1.125V5.625c0-.621-.504-1.125-1.125-1.125H4.125C3.504 4.5 3 5.004 3 5.625v12.75c0 .621.504 1.125 1.125 1.125z" />
@@ -72,7 +70,6 @@ export function DesktopSidebar({
       id: "sessions",
       label: "Sessions",
       href: `/workspace/${workspaceId}/sessions`,
-      badge: activeTaskCount > 0 ? activeTaskCount : undefined,
       icon: (
         <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 8.511c.884.284 1.5 1.128 1.5 2.097v4.286c0 1.136-.847 2.1-1.98 2.193-.34.027-.68.052-1.02.072v3.091l-3-3c-1.354 0-2.694-.055-4.02-.163a2.115 2.115 0 01-.825-.242m9.345-8.334a2.126 2.126 0 00-.476-.095 48.64 48.64 0 00-8.048 0c-1.131.094-1.976 1.057-1.976 2.192v4.286c0 .837.46 1.58 1.155 1.951m9.345-8.334V6.637c0-1.621-1.152-3.026-2.76-3.235A48.455 48.455 0 0011.25 3c-2.115 0-4.198.137-6.24.402-1.608.209-2.76 1.614-2.76 3.235v6.226c0 1.621 1.152 3.026 2.76 3.235.577.075 1.157.14 1.74.194V21l4.155-4.155" />
@@ -97,7 +94,7 @@ export function DesktopSidebar({
   };
 
   return (
-    <aside className="w-12 shrink-0 flex flex-col bg-[#1e1e1e] dark:bg-[#1e1e1e] border-r border-[#333] h-full">
+    <aside className="h-full w-12 shrink-0 flex-col border-r border-[var(--dt-border-light)] bg-[var(--dt-bg-primary)]">
       {/* Primary Navigation */}
       <nav className="flex-1 flex flex-col items-center py-2 gap-0.5">
         {navItems.map((item) => {
@@ -109,8 +106,8 @@ export function DesktopSidebar({
               className={`
                 relative w-10 h-10 flex items-center justify-center rounded-md transition-colors
                 ${active
-                  ? "text-white bg-[#37373d]"
-                  : "text-[#858585] hover:text-white hover:bg-[#2a2a2a]"
+                  ? "bg-[var(--dt-bg-active)] text-[var(--dt-text-primary)]"
+                  : "text-[var(--dt-text-secondary)] hover:bg-[var(--dt-bg-tertiary)] hover:text-[var(--dt-text-primary)]"
                 }
               `}
               title={item.label}
@@ -120,29 +117,23 @@ export function DesktopSidebar({
                 <div className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 bg-white rounded-r" />
               )}
               {item.icon}
-              {/* Badge */}
-              {item.badge !== undefined && item.badge > 0 && (
-                <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 flex items-center justify-center text-[10px] font-medium bg-amber-500 text-white rounded-full">
-                  {item.badge > 99 ? "99+" : item.badge}
-                </span>
-              )}
             </Link>
           );
         })}
       </nav>
 
       {/* Divider */}
-      <div className="mx-2 border-t border-[#333]" />
+      <div className="mx-2 border-t border-[var(--dt-border-light)]" />
 
       {/* Secondary Actions */}
       <div className="flex flex-col items-center py-2 gap-0.5">
         <Link
-          href="/settings"
+          href={`/settings?from=${encodeURIComponent(pathname)}`}
           className={`
             w-10 h-10 flex items-center justify-center rounded-md transition-colors
-            ${pathname === "/settings"
-              ? "text-white bg-[#37373d]"
-              : "text-[#858585] hover:text-white hover:bg-[#2a2a2a]"
+            ${pathname.startsWith("/settings")
+              ? "bg-[var(--dt-bg-active)] text-[var(--dt-text-primary)]"
+              : "text-[var(--dt-text-secondary)] hover:bg-[var(--dt-bg-tertiary)] hover:text-[var(--dt-text-primary)]"
             }
           `}
           title="Settings"

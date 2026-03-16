@@ -20,7 +20,7 @@ interface DesktopNavRailProps {
 export function DesktopNavRail({
   workspaceId,
   sessionCount: _sessionCount = 0,
-  taskCount = 0,
+  taskCount: _taskCount = 0,
 }: DesktopNavRailProps) {
   const pathname = usePathname();
 
@@ -49,7 +49,6 @@ export function DesktopNavRail({
       id: "kanban",
       label: "Kanban",
       href: `/workspace/${workspaceId}/kanban`,
-      badge: taskCount > 0 ? taskCount : undefined,
       icon: (
         <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M9 4.5v15m6-15v15m-10.875 0h15.75c.621 0 1.125-.504 1.125-1.125V5.625c0-.621-.504-1.125-1.125-1.125H4.125C3.504 4.5 3 5.004 3 5.625v12.75c0 .621.504 1.125 1.125 1.125z" />
@@ -75,7 +74,7 @@ export function DesktopNavRail({
   };
 
   return (
-    <aside className="w-12 shrink-0 flex flex-col bg-[#1e1e1e] border-r border-[#333] h-full">
+    <aside className="h-full w-12 shrink-0 flex-col border-r border-[var(--dt-border-light)] bg-[var(--dt-bg-primary)]">
       <nav className="flex-1 flex flex-col items-center py-2 gap-0.5">
         {navItems.map((item) => {
           const active = isActive(item.href);
@@ -86,8 +85,8 @@ export function DesktopNavRail({
               className={`
                 relative w-10 h-10 flex items-center justify-center rounded-md transition-colors
                 ${active
-                  ? "text-white bg-[#37373d]"
-                  : "text-[#858585] hover:text-white hover:bg-[#2a2a2a]"
+                  ? "bg-[var(--dt-bg-active)] text-[var(--dt-text-primary)]"
+                  : "text-[var(--dt-text-secondary)] hover:bg-[var(--dt-bg-tertiary)] hover:text-[var(--dt-text-primary)]"
                 }
               `}
               title={item.label}
@@ -96,24 +95,19 @@ export function DesktopNavRail({
                 <div className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 bg-white rounded-r" />
               )}
               {item.icon}
-              {item.badge !== undefined && item.badge > 0 && (
-                <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 flex items-center justify-center text-[10px] font-medium bg-amber-500 text-white rounded-full">
-                  {item.badge > 99 ? "99+" : item.badge}
-                </span>
-              )}
             </Link>
           );
         })}
       </nav>
-      <div className="mx-2 border-t border-[#333]" />
+      <div className="mx-2 border-t border-[var(--dt-border-light)]" />
       <div className="flex flex-col items-center py-2 gap-0.5">
         <Link
-          href="/settings"
+          href={`/settings?from=${encodeURIComponent(pathname)}`}
           className={`
             w-10 h-10 flex items-center justify-center rounded-md transition-colors
-            ${pathname === "/settings"
-              ? "text-white bg-[#37373d]"
-              : "text-[#858585] hover:text-white hover:bg-[#2a2a2a]"
+            ${pathname.startsWith("/settings")
+              ? "bg-[var(--dt-bg-active)] text-[var(--dt-text-primary)]"
+              : "text-[var(--dt-text-secondary)] hover:bg-[var(--dt-bg-tertiary)] hover:text-[var(--dt-text-primary)]"
             }
           `}
           title="Settings"

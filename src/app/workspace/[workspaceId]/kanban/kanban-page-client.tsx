@@ -179,21 +179,21 @@ export function KanbanPageClient() {
         />
       }
     >
-      <div className="h-full flex flex-col bg-[#252526] overflow-hidden">
+      <div className="desktop-theme h-full flex flex-col overflow-hidden bg-[var(--dt-bg-secondary)]">
         {/* Page Header */}
-        <div className="shrink-0 px-4 py-3 border-b border-[#3c3c3c] flex items-center justify-between">
+        <div className="shrink-0 flex items-center justify-between border-b border-[var(--dt-border)] px-4 py-3">
           <div className="flex items-center gap-2">
-            <svg className="w-4 h-4 text-[#858585]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <svg className="w-4 h-4 text-[var(--dt-text-secondary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M9 4.5v15m6-15v15m-10.875 0h15.75c.621 0 1.125-.504 1.125-1.125V5.625c0-.621-.504-1.125-1.125-1.125H4.125C3.504 4.5 3 5.004 3 5.625v12.75c0 .621.504 1.125 1.125 1.125z" />
             </svg>
-            <h1 className="text-[13px] font-medium text-[#cccccc]">Kanban Board</h1>
+            <h1 className="text-[13px] font-medium text-[var(--dt-text-primary)]">Kanban Board</h1>
             {tasks.length > 0 && (
-              <span className="text-[11px] text-[#858585]">({tasks.length} tasks)</span>
+              <span className="text-[11px] text-[var(--dt-text-secondary)]">({tasks.length} tasks)</span>
             )}
           </div>
           <button
             onClick={handleRefresh}
-            className="p-1.5 rounded hover:bg-[#3c3c3c] text-[#858585] hover:text-white transition-colors"
+            className="rounded p-1.5 text-[var(--dt-text-secondary)] transition-colors hover:bg-[var(--dt-bg-active)] hover:text-[var(--dt-text-primary)]"
             title="Refresh"
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
