@@ -13,18 +13,21 @@ metrics:
   - name: npm_audit_critical
     command: npm audit --audit-level=critical 2>&1 || true
     pattern: "found 0 vulnerabilities|0 critical|no vulnerabilities"
+    blocked_pattern: "ENOTFOUND registry\\.npmjs\\.org|audit endpoint returned an error"
     hard_gate: true
     description: "检测 npm 依赖中的 critical 级别漏洞"
 
   - name: cargo_audit
     command: cargo audit 2>&1 || true
-    pattern: "0 vulnerabilities|No vulnerabilities found|not installed"
+    pattern: "0 vulnerabilities|No vulnerabilities found"
+    blocked_pattern: "not installed|no such command: `audit`"
     hard_gate: true
     description: "检测 Rust 依赖中的已知漏洞"
 
   - name: semgrep_critical
     command: semgrep --config=p/security-audit --config=p/owasp-top-ten --severity=ERROR --error --quiet . 2>&1 || true
     pattern: "no matches found|Ran .* rules|0 findings"
+    blocked_pattern: "empty trust anchors|Failed to create system store X509 authenticator"
     hard_gate: true
     description: "Semgrep SAST 扫描 - 仅 ERROR 级别"
 
@@ -35,18 +38,21 @@ metrics:
   - name: npm_audit_high
     command: npm audit --audit-level=high 2>&1 || true
     pattern: "found 0 vulnerabilities|0 high|no vulnerabilities"
+    blocked_pattern: "ENOTFOUND registry\\.npmjs\\.org|audit endpoint returned an error"
     hard_gate: false
     description: "检测 npm 依赖中的 high 级别漏洞"
 
   - name: semgrep_warning
     command: semgrep --config=p/security-audit --severity=WARNING --quiet . 2>&1 || true
     pattern: "no matches found|Ran .* rules"
+    blocked_pattern: "empty trust anchors|Failed to create system store X509 authenticator"
     hard_gate: false
     description: "Semgrep SAST 扫描 - WARNING 级别"
 
   - name: trivy_filesystem
     command: trivy fs --severity HIGH,CRITICAL --exit-code 0 . 2>&1 || true
     pattern: "Total: 0|no vulnerabilities"
+    blocked_pattern: "command not found: trivy|trivy: command not found"
     hard_gate: false
     description: "Trivy 文件系统扫描"
 

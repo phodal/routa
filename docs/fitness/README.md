@@ -157,6 +157,7 @@ metrics:
 | `name` | 是 | 指标名称，用于显示 |
 | `command` | 是 | Shell 命令，建议加 `2>&1` 捕获 stderr |
 | `pattern` | 否 | 成功匹配的正则，未设置则用 exit code |
+| `blocked_pattern` | 否 | 环境阻塞匹配正则；命中后记为 `BLOCKED`，不计入得分 |
 | `hard_gate` | 否 | 硬门禁失败直接阻断（默认 false）|
 
 ## 添加新维度示例

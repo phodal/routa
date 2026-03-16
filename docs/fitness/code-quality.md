@@ -54,7 +54,7 @@ metrics:
 
   - name: cyclomatic_complexity
     command: |
-      npx eslint --rule "complexity: [error, 15]" --format compact src apps 2>&1 | grep -c "complexity" || echo "0"
+      npx eslint --no-error-on-unmatched-pattern --rule "complexity: [error, 15]" --format compact src apps 2>&1 | grep -c "complexity" || true
     pattern: "^0$|No files"
     hard_gate: false
     description: "圈复杂度限制 ≤15"
@@ -80,8 +80,8 @@ metrics:
     description: "ESLint 必须通过"
 
   - name: clippy_pass
-    command: cargo clippy --workspace -- -D warnings 2>&1 || true
-    pattern: "Finished|could not find|warning: 0 warnings"
+    command: cargo clippy --workspace -- -D warnings 2>&1
+    pattern: "Finished|warning: 0 warnings"
     hard_gate: true
     description: "Clippy 必须通过（无警告）"
 
@@ -178,4 +178,3 @@ python3 docs/fitness/scripts/fitness.py
 | `eslint.config.mjs` | ESLint 配置 |
 | `.clippy.toml` | Clippy 配置（如有） |
 | `docs/fitness/README.md` | Fitness 规则手册 |
-

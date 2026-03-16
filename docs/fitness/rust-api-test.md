@@ -8,12 +8,13 @@ threshold:
 metrics:
   - name: api_contract_parity
     command: npm run api:check 2>&1
-    pattern: "parity check passed|All endpoints match"
+    pattern: "parity check passed|All endpoints match|All backends are in sync with the contract"
     hard_gate: true
 
   - name: rust_api_test
     command: cargo test -p routa-server --test rust_api_end_to_end 2>&1
     pattern: "test result: ok"
+    blocked_pattern: "Failed to bind to 127\\.0\\.0\\.1:0: Operation not permitted"
     hard_gate: false
 ---
 

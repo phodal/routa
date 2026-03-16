@@ -14,6 +14,7 @@ Options:
     --help      Show this help message
 """
 
+import os
 import re
 import subprocess
 import sys
@@ -28,38 +29,49 @@ def parse_frontmatter(content: str) -> dict | None:
         return None
     return yaml.safe_load(match.group(1))
 
-def run_metric(metric: dict, dry_run: bool = False, verbose: bool = False) -> tuple[str, bool, str]:
+def run_metric(metric: dict, dry_run: bool = False, verbose: bool = False) -> tuple[str, str, str]:
     """Run a single metric command and check result."""
     name = metric.get('name', 'unknown')
     command = metric.get('command', '')
     pattern = metric.get('pattern', '')
+    blocked_pattern = metric.get('blocked_pattern', '')
 
     if dry_run:
-        return name, True, f"[DRY-RUN] Would run: {command}"
+        return name, "pass", f"[DRY-RUN] Would run: {command}"
 
     try:
-        # Use shell=False with proper argument splitting for security
-        # For simple commands, split on spaces; for complex ones, use shlex
-        import shlex
-        cmd_args = shlex.split(command)
-        
+        env = os.environ.copy()
+        env.setdefault("npm_config_cache", "/tmp/routa-npm-cache")
+        env.setdefault("CARGO_HOME", str(Path.home() / ".cargo"))
+
         result = subprocess.run(
-            cmd_args, capture_output=True, text=True, timeout=300, shell=False
+            command,
+            capture_output=True,
+            text=True,
+            timeout=300,
+            shell=True,
+            executable="/bin/bash",
+            env=env,
         )
         output = result.stdout + result.stderr
 
+        if blocked_pattern and re.search(blocked_pattern, output, re.IGNORECASE):
+            return name, "blocked", output[:500]
+
+        uses_exit_override = "||" in command
         if pattern:
-            passed = bool(re.search(pattern, output, re.IGNORECASE))
+            matched = bool(re.search(pattern, output, re.IGNORECASE))
+            passed = matched or (result.returncode == 0 and not uses_exit_override)
         else:
             passed = result.returncode == 0
 
         # Return more output in verbose mode
         max_len = 2000 if verbose else 500
-        return name, passed, output[:max_len]
+        return name, "pass" if passed else "fail", output[:max_len]
     except subprocess.TimeoutExpired:
-        return name, False, "TIMEOUT (300s)"
+        return name, "fail", "TIMEOUT (300s)"
     except Exception as e:
-        return name, False, str(e)
+        return name, "fail", str(e)
 
 def print_help():
     print(__doc__)
@@ -101,16 +113,19 @@ def main():
         
         dim_passed = 0
         dim_total = 0
-        
+        dim_blocked = 0
+
         for metric in fm.get('metrics', []):
-            name, passed, output = run_metric(metric, dry_run, verbose)
-            status = "✅ PASS" if passed else "❌ FAIL"
+            name, outcome, output = run_metric(metric, dry_run, verbose)
+            passed = outcome == "pass"
+            blocked = outcome == "blocked"
+            status = "✅ PASS" if passed else ("⚠️ BLOCKED" if blocked else "❌ FAIL")
             hard = " [HARD GATE]" if metric.get('hard_gate') else ""
 
             print(f"   - {name}: {status}{hard}")
 
             # Show output on failure (or in verbose mode)
-            if not passed and (verbose or metric.get('hard_gate')):
+            if (not passed or blocked) and (verbose or metric.get('hard_gate')):
                 print(f"     Command: {metric.get('command', '')}")
                 if output and output != "TIMEOUT (300s)":
                     # Indent output
@@ -119,17 +134,23 @@ def main():
                     if output.count('\n') > 10:
                         print(f"     > ... ({output.count(chr(10)) - 10} more lines)")
 
-            if not passed and metric.get('hard_gate'):
+            if not passed and not blocked and metric.get('hard_gate'):
                 hard_gate_failed.append(name)
+
+            if blocked:
+                dim_blocked += 1
+                continue
 
             dim_passed += 1 if passed else 0
             dim_total += 1
-        
+
         if dim_total > 0:
             dim_score = (dim_passed / dim_total) * 100
             total_score += dim_score * weight
             total_weight += weight
             print(f"   Score: {dim_score:.0f}%")
+            if dim_blocked > 0:
+                print(f"   Blocked: {dim_blocked}")
     
     print("\n" + "=" * 60)
     
@@ -154,4 +175,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-

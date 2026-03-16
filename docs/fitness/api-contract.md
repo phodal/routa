@@ -7,18 +7,18 @@ threshold:
 
 metrics:
   - name: openapi_schema_valid
-    command: npm run api:schema:validate 2>&1
-    pattern: "schema is valid|validation passed"
+    command: node --import tsx scripts/validate-openapi-schema.ts 2>&1
+    pattern: "schema is valid|validation passed|Summary: 0 error\\(s\\)"
     hard_gate: true
 
   - name: api_parity_check
     command: npm run api:check 2>&1
-    pattern: "parity check passed|All endpoints match|✓"
+    pattern: "parity check passed|All endpoints match|All backends are in sync with the contract"
     hard_gate: true
 
   - name: no_breaking_changes
     command: npm run api:check 2>&1
-    pattern: "no breaking changes|0 breaking"
+    pattern: "no breaking changes|0 breaking|All backends are in sync with the contract"
     hard_gate: false
 ---
 
@@ -92,4 +92,3 @@ api-contract:
 | `/scripts/check-api-parity.ts` | 一致性检查脚本 |
 | `/scripts/validate-openapi-schema.ts` | Schema 验证脚本 |
 | `/tests/api-contract/` | 契约测试用例 |
-
