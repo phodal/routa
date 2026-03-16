@@ -1036,21 +1036,32 @@ export function KanbanTab({ workspaceId, boards, tasks, sessions, providers, spe
 
             {onAgentPrompt && (
               <div className="flex min-w-[20rem] flex-1 items-center gap-2 xl:max-w-none">
-                <select
-                  value={acp?.selectedProvider ?? ""}
-                  onChange={(event) => acp?.setProvider(event.target.value)}
-                  disabled={!acp?.connected || availableProviders.length === 0}
-                  className="h-10 w-32 shrink-0 rounded-xl border border-gray-200 bg-white px-3 text-sm text-gray-700 shadow-sm transition-colors focus:border-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-400/15 disabled:opacity-50 dark:border-gray-700 dark:bg-[#12141c] dark:text-gray-200"
-                  aria-label="KanbanTask Agent provider"
-                  data-testid="kanban-agent-provider"
-                >
-                  {availableProviders.map((provider) => (
-                    <option key={provider.id} value={provider.id}>
-                      {provider.name}
-                    </option>
-                  ))}
-                </select>
-                <div className="group relative flex min-w-0 flex-1 items-center rounded-xl border border-gray-200 bg-white shadow-sm transition-colors focus-within:border-amber-400 focus-within:ring-2 focus-within:ring-amber-400/15 dark:border-gray-700 dark:bg-[#12141c]">
+                <div className="group relative flex min-w-0 flex-1 items-center rounded-2xl border border-gray-200 bg-white shadow-sm transition-colors focus-within:border-amber-400/80 focus-within:ring-2 focus-within:ring-amber-400/15 dark:border-gray-700 dark:bg-[#12141c]">
+                  <div className="relative shrink-0">
+                    <select
+                      value={acp?.selectedProvider ?? ""}
+                      onChange={(event) => acp?.setProvider(event.target.value)}
+                      disabled={!acp?.connected || availableProviders.length === 0}
+                      className="h-10 appearance-none rounded-l-2xl border-r border-gray-200 bg-transparent pl-3 pr-8 text-sm font-medium text-gray-700 outline-none transition-colors disabled:opacity-50 dark:border-gray-700 dark:text-gray-200"
+                      aria-label="KanbanTask Agent provider"
+                      data-testid="kanban-agent-provider"
+                    >
+                      {availableProviders.map((provider) => (
+                        <option key={provider.id} value={provider.id}>
+                          {provider.name}
+                        </option>
+                      ))}
+                    </select>
+                    <svg
+                      className="pointer-events-none absolute right-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      strokeWidth={2}
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" d="m6 9 6 6 6-6" />
+                    </svg>
+                  </div>
                   <input
                     type="text"
                     value={agentInput}
@@ -1063,12 +1074,12 @@ export function KanbanTab({ workspaceId, boards, tasks, sessions, providers, spe
                     }}
                     placeholder={acp?.connected ? "Describe work to plan in Kanban..." : "Connecting..."}
                     disabled={agentLoading || !acp?.connected}
-                    className="h-10 w-full rounded-l-xl bg-transparent px-3 pr-1 text-sm text-gray-800 placeholder-gray-400 outline-none disabled:opacity-50 dark:text-gray-200 dark:placeholder-gray-500"
+                    className="h-10 w-full bg-transparent px-3 pr-2 text-sm text-gray-800 placeholder-gray-400 outline-none disabled:opacity-50 dark:text-gray-200 dark:placeholder-gray-500"
                   />
                   <button
                     onClick={() => void handleAgentSubmit()}
                     disabled={!agentInput.trim() || agentLoading || !acp?.connected}
-                    className="mr-1 inline-flex h-8 shrink-0 items-center gap-1 rounded-lg border border-amber-500/20 bg-gradient-to-r from-amber-500 to-orange-500 px-3 text-xs font-semibold text-white shadow-sm transition-all hover:from-amber-600 hover:to-orange-500 disabled:cursor-not-allowed disabled:border-gray-200 disabled:bg-gray-100 disabled:text-gray-400 disabled:shadow-none dark:disabled:border-gray-700 dark:disabled:bg-[#1a1d29] dark:disabled:text-gray-500"
+                    className="mr-1.5 inline-flex h-8 shrink-0 items-center gap-1 rounded-xl bg-gray-900 px-3 text-xs font-semibold text-white transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400 dark:bg-amber-500 dark:hover:bg-amber-400 dark:disabled:bg-[#1a1d29] dark:disabled:text-gray-500"
                   >
                     {agentLoading ? (
                       "..."
