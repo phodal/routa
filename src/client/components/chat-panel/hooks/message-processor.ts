@@ -15,6 +15,192 @@ import {
 import { getToolEventLabel, getToolEventName } from "../tool-call-name";
 
 type SetState<T> = React.Dispatch<React.SetStateAction<T>>;
+type StreamingRole = "assistant" | "thought";
+type StreamingIds = Record<string, string | null>;
+type ToolContentBlock = Array<{ type: string; text?: string }> | null | undefined;
+
+function appendStreamingChunk(
+  messages: ChatMessage[],
+  streamingIds: StreamingIds,
+  sessionId: string,
+  lastKind: string | null,
+  expectedKind: string,
+  role: StreamingRole,
+  text: string,
+): string {
+  if (lastKind !== expectedKind) {
+    streamingIds[sessionId] = null;
+  }
+
+  let messageId = streamingIds[sessionId];
+  if (!messageId) {
+    messageId = uuidv4();
+    streamingIds[sessionId] = messageId;
+  }
+
+  const index = messages.findIndex((message) => message.id === messageId);
+  const content = index >= 0 ? messages[index].content + text : text;
+  if (index >= 0) {
+    messages[index] = { ...messages[index], content };
+  } else {
+    messages.push({ id: messageId, role, content, timestamp: new Date() });
+  }
+
+  return content;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === "object" && value !== null ? value as Record<string, unknown> : undefined;
+}
+
+function pushTextParts(parts: string[], content: ToolContentBlock): void {
+  if (!Array.isArray(content)) {
+    return;
+  }
+
+  for (const item of content) {
+    if (item.text) {
+      parts.push(item.text);
+    }
+  }
+}
+
+function formatUnknownValue(value: unknown): string {
+  return typeof value === "string" ? value : JSON.stringify(value, null, 2);
+}
+
+function buildToolCallPreview(update: Record<string, unknown>): {
+  content: string;
+  rawInput: Record<string, unknown> | undefined;
+  status: string;
+  toolCallId: string | undefined;
+  toolKind: string | undefined;
+  toolName: string;
+} {
+  const toolCallId = update.toolCallId as string | undefined;
+  const toolName = getToolEventLabel(update);
+  const status = (update.status as string) ?? "running";
+  const toolKind = update.kind as string | undefined;
+  const rawInput = asRecord(update.rawInput);
+  const contentParts: string[] = [];
+
+  if (update.rawInput) {
+    contentParts.push(`Input:\n${formatUnknownValue(update.rawInput)}`);
+  }
+  pushTextParts(contentParts, update.content as ToolContentBlock);
+
+  return {
+    content: contentParts.join("\n\n") || toolName,
+    rawInput,
+    status,
+    toolCallId,
+    toolKind,
+    toolName,
+  };
+}
+
+function appendToolCallMessage(
+  messages: ChatMessage[],
+  update: Record<string, unknown>,
+): void {
+  const preview = buildToolCallPreview(update);
+  const alreadyExists = preview.toolCallId && messages.some((message) => message.toolCallId === preview.toolCallId);
+  if (alreadyExists) {
+    return;
+  }
+
+  messages.push({
+    id: preview.toolCallId ?? uuidv4(),
+    role: "tool",
+    content: preview.content,
+    timestamp: new Date(),
+    toolName: preview.toolName,
+    toolStatus: preview.status,
+    toolCallId: preview.toolCallId,
+    toolKind: preview.toolKind,
+    toolRawInput: preview.rawInput,
+  });
+}
+
+function buildToolUpdatePayload(update: Record<string, unknown>) {
+  const outputParts: string[] = [];
+  if (update.rawOutput) {
+    outputParts.push(formatUnknownValue(update.rawOutput));
+  }
+  pushTextParts(outputParts, update.content as ToolContentBlock);
+
+  return {
+    delegatedTaskId: update.delegatedTaskId as string | undefined,
+    outputParts,
+    rawInput: asRecord(update.rawInput),
+    rawOutput: update.rawOutput,
+    status: update.status as string | undefined,
+    toolCallId: update.toolCallId as string | undefined,
+    toolKind: update.kind as string | undefined,
+    toolName: getToolEventName(update) ?? (update.kind as string | undefined),
+  };
+}
+
+function applyToolCallUpdate(
+  messages: ChatMessage[],
+  update: Record<string, unknown>,
+): {
+  rawInput: Record<string, unknown> | undefined;
+  rawOutput: string | undefined;
+  status: string | undefined;
+  toolCallId: string | undefined;
+  toolName: string | undefined;
+} {
+  const payload = buildToolUpdatePayload(update);
+  if (!payload.toolCallId) {
+    return {
+      rawInput: payload.rawInput,
+      rawOutput: typeof payload.rawOutput === "string" ? payload.rawOutput : undefined,
+      status: payload.status,
+      toolCallId: payload.toolCallId,
+      toolName: payload.toolName,
+    };
+  }
+
+  const index = messages.findIndex((message) => message.toolCallId === payload.toolCallId);
+  if (index >= 0) {
+    const existing = messages[index];
+    messages[index] = {
+      ...existing,
+      toolStatus: payload.status ?? existing.toolStatus,
+      toolName: payload.toolName ?? existing.toolName,
+      toolKind: payload.toolKind ?? existing.toolKind,
+      delegatedTaskId: payload.delegatedTaskId ?? existing.delegatedTaskId,
+      toolRawInput: payload.rawInput ?? existing.toolRawInput,
+      toolRawOutput: payload.rawOutput ?? existing.toolRawOutput,
+      content: payload.outputParts.length
+        ? `${payload.toolName ?? existing.toolName ?? "tool"}\n\nOutput:\n${payload.outputParts.join("\n")}`
+        : existing.content,
+    };
+  } else {
+    messages.push({
+      id: uuidv4(),
+      role: "tool",
+      content: payload.outputParts.join("\n") || `Tool ${payload.status ?? "update"}`,
+      timestamp: new Date(),
+      toolStatus: payload.status ?? "completed",
+      toolCallId: payload.toolCallId,
+      toolName: payload.toolName,
+      toolKind: payload.toolKind,
+      toolRawInput: payload.rawInput,
+      toolRawOutput: payload.rawOutput,
+      delegatedTaskId: payload.delegatedTaskId,
+    });
+  }
+
+  return {
+    rawInput: payload.rawInput,
+    rawOutput: typeof payload.rawOutput === "string" ? payload.rawOutput : undefined,
+    status: payload.status,
+    toolCallId: payload.toolCallId,
+    toolName: payload.toolName,
+  };
+}
 
 /**
  * Process a single SSE update and mutate the messages array
@@ -38,31 +224,18 @@ export function processUpdate(
       const text = extractText();
       if (!text) break;
       streamingThoughtIdRef.current[sid] = null;
-
-      const shouldCreateNew = lastKind !== "agent_message_chunk";
-      if (shouldCreateNew) {
-        streamingMsgIdRef.current[sid] = null;
-      }
-
-      let msgId = streamingMsgIdRef.current[sid];
-      if (!msgId) {
-        msgId = uuidv4();
-        streamingMsgIdRef.current[sid] = msgId;
-      }
-      const idx = arr.findIndex((m) => m.id === msgId);
-      if (idx >= 0) {
-        const updatedContent = arr[idx].content + text;
-        arr[idx] = { ...arr[idx], content: updatedContent };
-        const parsedChecklist = parseChecklist(updatedContent);
-        if (parsedChecklist.length > 0) {
-          setChecklistItems(parsedChecklist);
-        }
-      } else {
-        arr.push({ id: msgId, role: "assistant", content: text, timestamp: new Date() });
-        const parsedChecklist = parseChecklist(text);
-        if (parsedChecklist.length > 0) {
-          setChecklistItems(parsedChecklist);
-        }
+      const updatedContent = appendStreamingChunk(
+        arr,
+        streamingMsgIdRef.current,
+        sid,
+        lastKind,
+        "agent_message_chunk",
+        "assistant",
+        text,
+      );
+      const parsedChecklist = parseChecklist(updatedContent);
+      if (parsedChecklist.length > 0) {
+        setChecklistItems(parsedChecklist);
       }
       break;
     }
@@ -71,59 +244,20 @@ export function processUpdate(
       const text = extractText();
       if (!text) break;
 
-      const shouldCreateNewThought = lastKind !== "agent_thought_chunk";
-      if (shouldCreateNewThought) {
-        streamingThoughtIdRef.current[sid] = null;
-      }
-
-      let thoughtId = streamingThoughtIdRef.current[sid];
-      if (!thoughtId) {
-        thoughtId = uuidv4();
-        streamingThoughtIdRef.current[sid] = thoughtId;
-      }
-      const idx = arr.findIndex((m) => m.id === thoughtId);
-      if (idx >= 0) {
-        arr[idx] = { ...arr[idx], content: arr[idx].content + text };
-      } else {
-        arr.push({ id: thoughtId, role: "thought", content: text, timestamp: new Date() });
-      }
+      appendStreamingChunk(
+        arr,
+        streamingThoughtIdRef.current,
+        sid,
+        lastKind,
+        "agent_thought_chunk",
+        "thought",
+        text,
+      );
       break;
     }
 
     case "tool_call": {
-      const toolCallId = update.toolCallId as string | undefined;
-      const toolName = getToolEventLabel(update);
-      const status = (update.status as string) ?? "running";
-      const toolKind = update.kind as string | undefined;
-      const rawInput = (typeof update.rawInput === "object" && update.rawInput !== null)
-        ? update.rawInput as Record<string, unknown>
-        : undefined;
-      const contentParts: string[] = [];
-      if (update.rawInput) {
-        contentParts.push(
-          `Input:\n${typeof update.rawInput === "string" ? update.rawInput : JSON.stringify(update.rawInput, null, 2)}`
-        );
-      }
-      const toolContent = update.content as Array<{ type: string; text?: string }> | undefined;
-      if (Array.isArray(toolContent)) {
-        for (const c of toolContent) {
-          if (c.text) contentParts.push(c.text);
-        }
-      }
-      const alreadyExists = toolCallId && arr.some((m) => m.toolCallId === toolCallId);
-      if (!alreadyExists) {
-        arr.push({
-          id: toolCallId ?? uuidv4(),
-          role: "tool",
-          content: contentParts.join("\n\n") || toolName,
-          timestamp: new Date(),
-          toolName,
-          toolStatus: status,
-          toolCallId,
-          toolKind,
-          toolRawInput: rawInput,
-        });
-      }
+      appendToolCallMessage(arr, update);
       break;
     }
 
@@ -366,66 +500,12 @@ function processToolCallUpdate(
   arr: ChatMessage[],
   setFileChangesState: SetState<FileChangesState>
 ): void {
-  const toolCallId = update.toolCallId as string | undefined;
-  const status = update.status as string | undefined;
-  const delegatedTaskId = update.delegatedTaskId as string | undefined;
-  const toolKind = update.kind as string | undefined;
-  const toolName = getToolEventName(update) ?? toolKind;
-  const rawOutput = typeof update.rawOutput === "string" ? update.rawOutput : undefined;
-  const rawInput = (typeof update.rawInput === "object" && update.rawInput !== null)
-    ? update.rawInput as Record<string, unknown>
-    : undefined;
+  const result = applyToolCallUpdate(arr, update);
 
-  const outputParts: string[] = [];
-  if (update.rawOutput) {
-    outputParts.push(
-      typeof update.rawOutput === "string" ? update.rawOutput : JSON.stringify(update.rawOutput, null, 2)
-    );
-  }
-  const toolContent = update.content as Array<{ type: string; text?: string }> | null | undefined;
-  if (Array.isArray(toolContent)) {
-    for (const c of toolContent) {
-      if (c.text) outputParts.push(c.text);
-    }
-  }
-
-  if (toolName && status === "completed") {
-    const fileChange = extractFileChangeFromToolResult(toolName, rawOutput, rawInput);
+  if (result.toolName && result.status === "completed") {
+    const fileChange = extractFileChangeFromToolResult(result.toolName, result.rawOutput, result.rawInput);
     if (fileChange) {
       setFileChangesState((prev) => updateFileChange({ ...prev, files: new Map(prev.files) }, fileChange));
-    }
-  }
-
-  if (toolCallId) {
-    const idx = arr.findIndex((m) => m.toolCallId === toolCallId);
-    if (idx >= 0) {
-      const existing = arr[idx];
-      arr[idx] = {
-        ...existing,
-        toolStatus: status ?? existing.toolStatus,
-        toolName: toolName ?? existing.toolName,
-        toolKind: toolKind ?? existing.toolKind,
-        delegatedTaskId: delegatedTaskId ?? existing.delegatedTaskId,
-        toolRawInput: rawInput ?? existing.toolRawInput,
-        toolRawOutput: update.rawOutput ?? existing.toolRawOutput,
-        content: outputParts.length
-          ? `${toolName ?? existing.toolName ?? "tool"}\n\nOutput:\n${outputParts.join("\n")}`
-          : existing.content,
-      };
-    } else {
-      arr.push({
-        id: uuidv4(),
-        role: "tool",
-        content: outputParts.join("\n") || `Tool ${status ?? "update"}`,
-        timestamp: new Date(),
-        toolStatus: status ?? "completed",
-        toolCallId,
-        toolName,
-        toolKind,
-        toolRawInput: rawInput,
-        toolRawOutput: update.rawOutput,
-        delegatedTaskId,
-      });
     }
   }
 }
@@ -502,22 +582,15 @@ export function processHistoryToMessages(
         if (!text) break;
         streamingThoughtId[sessionId] = null;
 
-        const shouldCreateNew = lastKind !== "agent_message_chunk";
-        if (shouldCreateNew) {
-          streamingMsgId[sessionId] = null;
-        }
-
-        let msgId = streamingMsgId[sessionId];
-        if (!msgId) {
-          msgId = uuidv4();
-          streamingMsgId[sessionId] = msgId;
-        }
-        const idx = messages.findIndex((m) => m.id === msgId);
-        if (idx >= 0) {
-          messages[idx] = { ...messages[idx], content: messages[idx].content + text };
-        } else {
-          messages.push({ id: msgId, role: "assistant", content: text, timestamp: new Date() });
-        }
+        appendStreamingChunk(
+          messages,
+          streamingMsgId,
+          sessionId,
+          lastKind,
+          "agent_message_chunk",
+          "assistant",
+          text,
+        );
         break;
       }
 
@@ -525,117 +598,25 @@ export function processHistoryToMessages(
         const text = extractText();
         if (!text) break;
 
-        const shouldCreateNewThought = lastKind !== "agent_thought_chunk";
-        if (shouldCreateNewThought) {
-          streamingThoughtId[sessionId] = null;
-        }
-
-        let thoughtId = streamingThoughtId[sessionId];
-        if (!thoughtId) {
-          thoughtId = uuidv4();
-          streamingThoughtId[sessionId] = thoughtId;
-        }
-        const idx = messages.findIndex((m) => m.id === thoughtId);
-        if (idx >= 0) {
-          messages[idx] = { ...messages[idx], content: messages[idx].content + text };
-        } else {
-          messages.push({ id: thoughtId, role: "thought", content: text, timestamp: new Date() });
-        }
+        appendStreamingChunk(
+          messages,
+          streamingThoughtId,
+          sessionId,
+          lastKind,
+          "agent_thought_chunk",
+          "thought",
+          text,
+        );
         break;
       }
 
       case "tool_call": {
-        const toolCallId = update.toolCallId as string | undefined;
-        const toolName = getToolEventLabel(update);
-        const status = (update.status as string) ?? "running";
-        const toolKind = update.kind as string | undefined;
-        const rawInput = (typeof update.rawInput === "object" && update.rawInput !== null)
-          ? update.rawInput as Record<string, unknown>
-          : undefined;
-        const contentParts: string[] = [];
-        if (update.rawInput) {
-          contentParts.push(
-            `Input:\n${typeof update.rawInput === "string" ? update.rawInput : JSON.stringify(update.rawInput, null, 2)}`
-          );
-        }
-        const toolContent = update.content as Array<{ type: string; text?: string }> | undefined;
-        if (Array.isArray(toolContent)) {
-          for (const c of toolContent) {
-            if (c.text) contentParts.push(c.text);
-          }
-        }
-        const alreadyExists = toolCallId && messages.some((m) => m.toolCallId === toolCallId);
-        if (!alreadyExists) {
-          messages.push({
-            id: toolCallId ?? uuidv4(),
-            role: "tool",
-            content: contentParts.join("\n\n") || toolName,
-            timestamp: new Date(),
-            toolName,
-            toolStatus: status,
-            toolCallId,
-            toolKind,
-            toolRawInput: rawInput,
-          });
-        }
+        appendToolCallMessage(messages, update);
         break;
       }
 
       case "tool_call_update": {
-        const toolCallId = update.toolCallId as string | undefined;
-        const status = update.status as string | undefined;
-        const toolKind = update.kind as string | undefined;
-        const toolName = getToolEventName(update) ?? toolKind;
-        const rawInput = (typeof update.rawInput === "object" && update.rawInput !== null)
-          ? update.rawInput as Record<string, unknown>
-          : undefined;
-        const delegatedTaskId = update.delegatedTaskId as string | undefined;
-
-        const outputParts: string[] = [];
-        if (update.rawOutput) {
-          outputParts.push(
-            typeof update.rawOutput === "string" ? update.rawOutput : JSON.stringify(update.rawOutput, null, 2)
-          );
-        }
-        const toolContent = update.content as Array<{ type: string; text?: string }> | null | undefined;
-        if (Array.isArray(toolContent)) {
-          for (const c of toolContent) {
-            if (c.text) outputParts.push(c.text);
-          }
-        }
-
-        if (toolCallId) {
-          const idx = messages.findIndex((m) => m.toolCallId === toolCallId);
-          if (idx >= 0) {
-            const existing = messages[idx];
-            messages[idx] = {
-              ...existing,
-              toolStatus: status ?? existing.toolStatus,
-              toolName: toolName ?? existing.toolName,
-              toolKind: toolKind ?? existing.toolKind,
-              delegatedTaskId: delegatedTaskId ?? existing.delegatedTaskId,
-              toolRawInput: rawInput ?? existing.toolRawInput,
-              toolRawOutput: update.rawOutput ?? existing.toolRawOutput,
-              content: outputParts.length
-                ? `${toolName ?? existing.toolName ?? "tool"}\n\nOutput:\n${outputParts.join("\n")}`
-                : existing.content,
-            };
-          } else {
-            messages.push({
-              id: uuidv4(),
-              role: "tool",
-              content: outputParts.join("\n") || `Tool ${status ?? "update"}`,
-              timestamp: new Date(),
-              toolStatus: status ?? "completed",
-              toolCallId,
-              toolName,
-              toolKind,
-              toolRawInput: rawInput,
-              toolRawOutput: update.rawOutput,
-              delegatedTaskId,
-            });
-          }
-        }
+        applyToolCallUpdate(messages, update);
         break;
       }
 
