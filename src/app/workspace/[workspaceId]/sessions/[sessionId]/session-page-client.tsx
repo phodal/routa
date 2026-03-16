@@ -31,6 +31,7 @@ import {consumePendingPrompt, storePendingPrompt} from "@/client/utils/pending-p
 import {SettingsPanel, DockerConfigModal, loadDefaultProviders, loadProviderConnectionConfig, getModelDefinitionByAlias} from "@/client/components/settings-panel";
 import {getDesktopApiBaseUrl, shouldSuppressTeardownError} from "@/client/utils/diagnostics";
 import { getToolEventLabel } from "@/client/components/chat-panel/tool-call-name";
+import {DesktopNavRail} from "@/client/components/desktop-nav-rail";
 
 type AgentRole = "CRAFTER" | "ROUTA" | "GATE" | "DEVELOPER";
 
@@ -2056,7 +2057,12 @@ export function SessionPageClient() {
   };
 
   return (
-    <div className={`h-screen flex flex-col bg-gray-50 dark:bg-[#0f1117] ${isEmbedMode ? 'embed-mode' : ''}`}>
+    <div className={`h-screen flex bg-[#1e1e1e] ${isEmbedMode ? 'embed-mode' : ''}`}>
+      {/* Desktop Navigation Rail */}
+      {!isEmbedMode && (
+        <DesktopNavRail workspaceId={workspaceId} />
+      )}
+      <div className="flex-1 flex flex-col min-w-0 bg-gray-50 dark:bg-[#0f1117]">
       {/* ─── Top Bar ──────────────────────────────────────────────── */}
       {!isEmbedMode && (
         <AppHeader
@@ -2346,5 +2352,6 @@ export function SessionPageClient() {
         onClose={() => setShowSpecialistManager(false)}
       />
     </div>
+  </div>
   );
 }

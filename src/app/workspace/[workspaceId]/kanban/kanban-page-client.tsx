@@ -4,7 +4,8 @@ import React, { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useAcp } from "@/client/hooks/use-acp";
 import { useWorkspaces, useCodebases } from "@/client/hooks/use-workspaces";
-import { AppHeader } from "@/client/components/app-header";
+import { DesktopAppShell } from "@/client/components/desktop-app-shell";
+import { WorkspaceSwitcher } from "@/client/components/workspace-switcher";
 import { KanbanTab } from "./kanban-tab";
 import type { KanbanBoardInfo, TaskInfo, SessionInfo } from "../types";
 
@@ -44,14 +45,12 @@ export function KanbanPageClient() {
     if (!acp.connected && !acp.loading) {
       acp.connect();
     }
-    // We intentionally exclude 'acp' from deps to avoid re-connecting on every acp change
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [acp.connected, acp.loading]);
 
   // Fetch boards
   useEffect(() => {
     const controller = new AbortController();
-
     (async () => {
       try {
         const res = await fetch(`/api/kanban/boards?workspaceId=${encodeURIComponent(workspaceId)}`, {
@@ -61,18 +60,14 @@ export function KanbanPageClient() {
         const data = await res.json();
         if (controller.signal.aborted) return;
         setBoards(Array.isArray(data?.boards) ? data.boards : []);
-      } catch {
-        // Preserve the current board list when a refresh is aborted or fails.
-      }
+      } catch { /* ignore */ }
     })();
-
     return () => controller.abort();
   }, [workspaceId, refreshKey]);
 
   // Fetch tasks
   useEffect(() => {
     const controller = new AbortController();
-
     (async () => {
       try {
         const res = await fetch(`/api/tasks?workspaceId=${encodeURIComponent(workspaceId)}`, {
@@ -82,11 +77,8 @@ export function KanbanPageClient() {
         const data = await res.json();
         if (controller.signal.aborted) return;
         setTasks(Array.isArray(data?.tasks) ? data.tasks : []);
-      } catch {
-        // Preserve the current task list when a refresh is aborted or fails.
-      }
+      } catch { /* ignore */ }
     })();
-
     return () => controller.abort();
   }, [workspaceId, refreshKey]);
 
@@ -123,13 +115,12 @@ export function KanbanPageClient() {
     }
   };
 
-  // Unified refresh handler - updates refreshKey and fetches codebases
   const handleRefresh = useCallback(() => {
     setRefreshKey((k) => k + 1);
     void fetchCodebases();
   }, [fetchCodebases]);
 
-  // Handler for agent input - creates session and sends prompt
+  // Handler for agent input
   const handleAgentPrompt = useCallback(async (
     promptText: string,
     options?: KanbanAgentPromptOptions,
@@ -142,7 +133,6 @@ export function KanbanPageClient() {
     const cwd = defaultCodebase?.repoPath;
     const provider = options?.provider ?? acp.selectedProvider ?? undefined;
 
-    // Create a new session with DEVELOPER role (has access to Kanban tools)
     const result = await acp.createSession(
       cwd,
       provider,
@@ -163,7 +153,6 @@ export function KanbanPageClient() {
       return null;
     }
 
-    // Send the prompt in the background so the UI can open the session panel immediately.
     void acp.promptSession(result.sessionId, promptText).catch((error) => {
       console.error("[kanban] Failed to send Kanban agent prompt:", error);
     });
@@ -171,29 +160,50 @@ export function KanbanPageClient() {
     return result.sessionId;
   }, [acp, codebases, workspaceId]);
 
+  const workspace = workspacesHook.workspaces.find((w) => w.id === workspaceId);
+
   return (
-    <div className="flex h-screen flex-col bg-gray-50 dark:bg-[#0a0c10]">
-      <AppHeader
-        workspaceId={workspaceId}
-        workspaces={workspacesHook.workspaces}
-        workspacesLoading={workspacesHook.loading}
-        onWorkspaceSelect={handleWorkspaceSelect}
-        onWorkspaceCreate={handleWorkspaceCreate}
-        variant="dashboard"
-        rightSlot={
-          <a
-            href={`/workspace/${workspaceId}`}
-            className="hidden md:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[11px] font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-[#191c28] transition-colors"
-          >
-            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+    <DesktopAppShell
+      workspaceId={workspaceId}
+      workspaceTitle={workspace?.title}
+      sessionCount={sessions.length}
+      taskCount={tasks.length}
+      workspaceSwitcher={
+        <WorkspaceSwitcher
+          workspaces={workspacesHook.workspaces}
+          activeWorkspaceId={workspaceId}
+          onSelect={handleWorkspaceSelect}
+          onCreate={handleWorkspaceCreate}
+          loading={workspacesHook.loading}
+          compact
+        />
+      }
+    >
+      <div className="h-full flex flex-col bg-[#252526] overflow-hidden">
+        {/* Page Header */}
+        <div className="shrink-0 px-4 py-3 border-b border-[#3c3c3c] flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <svg className="w-4 h-4 text-[#858585]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 4.5v15m6-15v15m-10.875 0h15.75c.621 0 1.125-.504 1.125-1.125V5.625c0-.621-.504-1.125-1.125-1.125H4.125C3.504 4.5 3 5.004 3 5.625v12.75c0 .621.504 1.125 1.125 1.125z" />
             </svg>
-            Dashboard
-          </a>
-        }
-      />
-      <main className="flex-1 min-h-0 overflow-hidden px-6 py-6">
-        <div className="flex h-full flex-col">
+            <h1 className="text-[13px] font-medium text-[#cccccc]">Kanban Board</h1>
+            {tasks.length > 0 && (
+              <span className="text-[11px] text-[#858585]">({tasks.length} tasks)</span>
+            )}
+          </div>
+          <button
+            onClick={handleRefresh}
+            className="p-1.5 rounded hover:bg-[#3c3c3c] text-[#858585] hover:text-white transition-colors"
+            title="Refresh"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Kanban Content */}
+        <div className="flex-1 min-h-0 overflow-hidden p-4">
           <KanbanTab
             workspaceId={workspaceId}
             boards={boards}
@@ -207,7 +217,7 @@ export function KanbanPageClient() {
             onAgentPrompt={handleAgentPrompt}
           />
         </div>
-      </main>
-    </div>
+      </div>
+    </DesktopAppShell>
   );
 }
