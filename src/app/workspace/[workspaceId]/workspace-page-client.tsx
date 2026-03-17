@@ -176,8 +176,8 @@ export function WorkspacePageClient({
 
   if (workspacesHook.loading && !isDefaultWorkspace) {
     return (
-      <div className="h-screen flex items-center justify-center bg-[#f2f2f7] dark:bg-[#1e1e1e]">
-        <div className="flex items-center gap-3 text-[#6e6e73] dark:text-[#858585]">
+      <div className="desktop-theme h-screen flex items-center justify-center bg-[var(--dt-bg-primary)]">
+        <div className="flex items-center gap-3 text-[var(--dt-text-secondary)]">
           <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
@@ -236,11 +236,8 @@ export function WorkspacePageClient({
       workspacesLoading={workspacesHook.loading}
       onWorkspaceSelect={handleWorkspaceSelect}
       onWorkspaceCreate={handleWorkspaceCreate}
-      sessionCount={sessions.length}
-      taskCount={tasks.length}
-      activeTaskCount={pendingTasks.length}
     >
-      <div className="h-full flex flex-col bg-[#f2f2f7] dark:bg-[#1e1e1e] overflow-hidden">
+      <div className="h-full flex flex-col bg-[var(--dt-bg-primary)] overflow-hidden">
         {/* Content Area */}
         <div className="flex-1 min-h-0 overflow-y-auto">
           <div className="max-w-6xl mx-auto px-4 py-4">
@@ -273,7 +270,7 @@ export function WorkspacePageClient({
             </div>
 
             {/* Tab Bar - VS Code style */}
-            <div className="flex items-center gap-0 mb-4 border-b border-[#c4c7cc] dark:border-[#3c3c3c]">
+            <div className="flex items-center gap-0 mb-4 border-b border-[var(--dt-border)]">
               <DesktopTabButton active={activeTab === "kanban"} onClick={() => setActiveTab("kanban")}>
                 Kanban {tasks.length > 0 && <span className="ml-1 text-[10px] opacity-60">({tasks.length})</span>}
               </DesktopTabButton>
@@ -306,8 +303,8 @@ export function WorkspacePageClient({
                     onClick={() => setNotesSubFilter("general")}
                     className={`px-2.5 py-1 rounded text-[11px] font-medium transition-colors ${
                       notesSubFilter === "general"
-                        ? "text-[#0a84ff] bg-[#dce8ff] dark:text-white dark:bg-[#37373d]"
-                        : "text-[#6e6e73] hover:text-[#1d1d1f] hover:bg-[#d7d7dc] dark:text-[#858585] dark:hover:text-white dark:hover:bg-[#2a2a2a]"
+                      ? "text-[var(--dt-accent)] bg-[var(--dt-bg-active)]"
+                      : "text-[var(--dt-text-secondary)] hover:text-[var(--dt-text-primary)] hover:bg-[var(--dt-bg-active)]/70"
                     }`}
                   >
                     Workspace Notes
@@ -319,8 +316,8 @@ export function WorkspacePageClient({
                     onClick={() => setNotesSubFilter("tasks")}
                     className={`px-2.5 py-1 rounded text-[11px] font-medium transition-colors ${
                       notesSubFilter === "tasks"
-                        ? "text-[#0a84ff] bg-[#dce8ff] dark:text-white dark:bg-[#37373d]"
-                        : "text-[#6e6e73] hover:text-[#1d1d1f] hover:bg-[#d7d7dc] dark:text-[#858585] dark:hover:text-white dark:hover:bg-[#2a2a2a]"
+                      ? "text-[var(--dt-accent)] bg-[var(--dt-bg-active)]"
+                      : "text-[var(--dt-text-secondary)] hover:text-[var(--dt-text-primary)] hover:bg-[var(--dt-bg-active)]/70"
                     }`}
                   >
                     Task Notes
@@ -395,8 +392,8 @@ function DesktopTabButton({ active, onClick, children }: { active: boolean; onCl
       onClick={onClick}
       className={`px-3 py-1.5 text-[12px] font-medium transition-colors ${
         active
-          ? "text-[#0a84ff] bg-[#dce8ff] border-b-2 border-b-[#0a84ff] dark:text-white dark:bg-[#37373d] dark:border-b-[#007acc]"
-          : "text-[#6e6e73] hover:text-[#1d1d1f] hover:bg-[#d7d7dc] dark:text-[#858585] dark:hover:text-white dark:hover:bg-[#2a2a2a]"
+          ? "text-[var(--dt-accent)] bg-[var(--dt-bg-active)] border-b-2 border-b-[var(--dt-accent)]"
+          : "text-[var(--dt-text-secondary)] hover:text-[var(--dt-text-primary)] hover:bg-[var(--dt-bg-active)]/70"
       }`}
     >
       {children}
@@ -425,9 +422,9 @@ function CompactStat({
   return (
     <div className="flex items-center gap-2">
       <span className={`text-sm font-semibold tabular-nums ${colorMap[color]}`}>{value}</span>
-      <span className="text-[11px] text-[#858585]">
+      <span className="text-[11px] text-[var(--dt-text-muted)]">
         {label}
-        {sub && <span className="ml-1 text-[#5a5a5a]">· {sub}</span>}
+        {sub && <span className="ml-1 text-[var(--dt-text-muted)]">· {sub}</span>}
       </span>
     </div>
   );
@@ -446,15 +443,15 @@ function OverlayModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true">
       <div className="absolute inset-0 bg-black/60" onClick={onClose} aria-hidden="true" />
       <div
-        className="relative w-full max-w-5xl h-[80vh] bg-[#1e1e1e] border border-[#3c3c3c] rounded shadow-2xl overflow-hidden"
+        className="relative w-full max-w-5xl h-[80vh] bg-[var(--dt-bg-secondary)] border border-[var(--dt-border)] rounded shadow-2xl overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="h-9 px-3 border-b border-[#3c3c3c] flex items-center justify-between bg-[#323233]">
-          <span className="text-[12px] font-medium text-[#cccccc]">{title}</span>
+        <div className="h-9 px-3 border-b border-[var(--dt-border)] flex items-center justify-between bg-[var(--dt-bg-tertiary)]">
+          <span className="text-[12px] font-medium text-[var(--dt-text-primary)]">{title}</span>
           <button
             type="button"
             onClick={onClose}
-            className="w-6 h-6 flex items-center justify-center rounded hover:bg-[#3c3c3c] text-[#858585] hover:text-white transition-colors"
+            className="w-6 h-6 flex items-center justify-center rounded hover:bg-[var(--dt-bg-active)] text-[var(--dt-text-secondary)] hover:text-[var(--dt-accent-text)] transition-colors"
             title="Close (Esc)"
             aria-label="Close"
           >
