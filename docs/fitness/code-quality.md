@@ -138,6 +138,24 @@ metrics:
     description: "深层嵌套检测（>3层）"
 
   # ══════════════════════════════════════════════════════════════
+  # 依赖健康检测 - 防止依赖失序和循环依赖
+  # ══════════════════════════════════════════════════════════════
+
+  - name: dependency_cruiser_dependency_health
+    command: |
+      changed_files=$(git diff --name-only --diff-filter=ACMR HEAD -- src apps crates 2>/dev/null | \
+        grep -E '\.(ts|tsx|js|jsx)$' | \
+        grep -vE '(^|/)(node_modules|target|\\.next|_next|bundled)/' || true)
+
+      if [ -z "$changed_files" ]; then
+        echo "No changed TS/JS files"
+      else
+        npx --yes dependency-cruiser --config .dependency-cruiser.cjs src --validate
+      fi
+    hard_gate: true
+    description: "基于 dependency-cruiser 检测变更范围内循环依赖与依赖规则违规"
+
+  # ══════════════════════════════════════════════════════════════
   # Lint 检查 - Hard Gate
   # ══════════════════════════════════════════════════════════════
 
@@ -200,6 +218,7 @@ metrics:
 | 结构坏味道 | 变更文件中结构型包装重复 = 0 | ❌ | ast-grep |
 | 圈复杂度 | ≤15 | ❌ | ESLint |
 | 深层嵌套 | ≤3 层 | ❌ | grep |
+| 依赖健康检查 | 循环依赖/依赖违规为 0 | ❌ | dependency-cruiser |
 | ESLint | 0 errors | ✅ | ESLint |
 | Clippy | 0 warnings | ✅ | Clippy |
 | TODO/FIXME | <100 | ❌ | grep |
@@ -240,6 +259,9 @@ AI 遗留 console.log 和 TODO。
 # 安装 jscpd
 npm install -g jscpd
 
+# 运行 dependency-cruiser（未安装时自动临时拉取）
+npx --yes dependency-cruiser --version
+
 # 运行变更文件重复检测
 git diff --name-only --diff-filter=ACMR HEAD -- src apps
 
@@ -256,4 +278,5 @@ python3 docs/fitness/scripts/fitness.py
 |------|------|
 | `eslint.config.mjs` | ESLint 配置 |
 | `.clippy.toml` | Clippy 配置（如有） |
+| `.dependency-cruiser.cjs` | dependency-cruiser 配置 |
 | `docs/fitness/README.md` | Fitness 规则手册 |
