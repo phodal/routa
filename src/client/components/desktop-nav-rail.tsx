@@ -13,14 +13,10 @@ import { usePathname } from "next/navigation";
 
 interface DesktopNavRailProps {
   workspaceId: string;
-  sessionCount?: number;
-  taskCount?: number;
 }
 
 export function DesktopNavRail({
   workspaceId,
-  sessionCount: _sessionCount = 0,
-  taskCount: _taskCount = 0,
 }: DesktopNavRailProps) {
   const pathname = usePathname();
 
@@ -73,7 +69,7 @@ export function DesktopNavRail({
   };
 
   return (
-    <aside className="w-12 shrink-0 flex flex-col bg-[#efeff2] dark:bg-[#1e1e1e] border-r border-[#c4c7cc] dark:border-[#333] h-full">
+    <aside className="desktop-theme w-12 shrink-0 flex flex-col bg-[var(--dt-bg-secondary)] border-r border-[var(--dt-border)] h-full">
       <nav className="flex-1 flex flex-col items-center py-2 gap-0.5">
         {navItems.map((item) => {
           const active = isActive(item.href);
@@ -83,30 +79,30 @@ export function DesktopNavRail({
               href={item.href}
               className={`
                 relative w-10 h-10 flex items-center justify-center rounded-md transition-colors
-                ${active
-                  ? "text-[#0a84ff] bg-[#dce8ff] dark:text-white dark:bg-[#37373d]"
-                  : "text-[#6e6e73] hover:text-[#1d1d1f] hover:bg-[#d7d7dc] dark:text-[#858585] dark:hover:text-white dark:hover:bg-[#2a2a2a]"
+              ${active
+                  ? "text-[var(--dt-accent)] bg-[var(--dt-bg-active)]"
+                  : "text-[var(--dt-text-secondary)] hover:text-[var(--dt-text-primary)] hover:bg-[var(--dt-bg-active)]/70"
                 }
               `}
               title={item.label}
             >
               {active && (
-                <div className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 bg-[#0a84ff] dark:bg-white rounded-r" />
+                <div className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 bg-[var(--dt-accent)] rounded-r" />
               )}
               {item.icon}
             </Link>
           );
         })}
       </nav>
-      <div className="mx-2 border-t border-[#c4c7cc] dark:border-[#333]" />
+      <div className="mx-2 border-t border-[var(--dt-border)]" />
       <div className="flex flex-col items-center py-2 gap-0.5">
         <Link
           href="/settings"
           className={`
             w-10 h-10 flex items-center justify-center rounded-md transition-colors
             ${pathname === "/settings"
-              ? "text-[#0a84ff] bg-[#dce8ff] dark:text-white dark:bg-[#37373d]"
-              : "text-[#6e6e73] hover:text-[#1d1d1f] hover:bg-[#d7d7dc] dark:text-[#858585] dark:hover:text-white dark:hover:bg-[#2a2a2a]"
+              ? "text-[var(--dt-accent)] bg-[var(--dt-bg-active)]"
+              : "text-[var(--dt-text-secondary)] hover:text-[var(--dt-text-primary)] hover:bg-[var(--dt-bg-active)]/70"
             }
           `}
           title="Settings"

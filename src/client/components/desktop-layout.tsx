@@ -22,9 +22,6 @@ interface DesktopLayoutProps {
   workspacesLoading?: boolean;
   onWorkspaceSelect: (wsId: string) => void;
   onWorkspaceCreate: (title: string) => Promise<void>;
-  sessionCount?: number;
-  taskCount?: number;
-  activeTaskCount?: number;
   /** Optional right side content for the title bar */
   titleBarRight?: React.ReactNode;
 }
@@ -36,22 +33,19 @@ export function DesktopLayout({
   workspacesLoading,
   onWorkspaceSelect,
   onWorkspaceCreate,
-  sessionCount = 0,
-  taskCount = 0,
-  activeTaskCount = 0,
   titleBarRight,
 }: DesktopLayoutProps) {
   return (
-    <div className="h-screen flex flex-col bg-[#f2f2f7] dark:bg-[#1e1e1e] overflow-hidden">
+    <div className="desktop-theme h-screen flex flex-col bg-[var(--dt-bg-primary)] overflow-hidden">
       {/* Title Bar - compact, native feel */}
-        <header className="h-9 shrink-0 flex items-center bg-[#f8f8f8] dark:bg-[#323233] border-b border-[#c4c7cc] dark:border-[#252526] select-none">
+      <header className="h-9 shrink-0 flex items-center bg-[var(--dt-bg-tertiary)] border-b border-[var(--dt-border)] select-none">
         {/* Drag region for window - macOS traffic lights area */}
         <div className="w-20 h-full app-drag-region" />
 
         {/* Logo + App Name */}
         <div className="flex items-center gap-2 px-2">
           <Image src="/logo.svg" alt="Routa" width={16} height={16} className="rounded" />
-          <span className="text-[11px] font-medium text-[#3c3c43] dark:text-[#cccccc]">Routa</span>
+          <span className="text-[11px] font-medium text-[var(--dt-text-primary)]">Routa</span>
         </div>
 
         {/* Workspace Switcher */}
@@ -82,13 +76,10 @@ export function DesktopLayout({
         {/* Left Sidebar Navigation */}
         <DesktopSidebar
           workspaceId={workspaceId}
-          sessionCount={sessionCount}
-          taskCount={taskCount}
-          activeTaskCount={activeTaskCount}
         />
 
         {/* Content */}
-        <main className="flex-1 min-w-0 bg-[#f2f2f7] dark:bg-[#1e1e1e] overflow-hidden">
+        <main className="flex-1 min-w-0 bg-[var(--dt-bg-primary)] overflow-hidden">
           {children}
         </main>
       </div>

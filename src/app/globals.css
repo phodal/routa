@@ -849,19 +849,37 @@ body {
   app-region: no-drag;
 }
 
-/* VS Code-like dark theme base colors */
+/* Desktop app theme tokens (shared by shell, sidebar, and navigation) */
 .desktop-theme {
-  --dt-bg-primary: #1e1e1e;
-  --dt-bg-secondary: #252526;
-  --dt-bg-tertiary: #2d2d2d;
-  --dt-bg-active: #37373d;
-  --dt-border: #3c3c3c;
-  --dt-border-light: #333;
-  --dt-text-primary: #cccccc;
-  --dt-text-secondary: #858585;
-  --dt-text-muted: #5a5a5a;
-  --dt-accent: #007acc;
-  --dt-accent-hover: #1177bb;
+  --dt-bg-primary: #f2f2f7;
+  --dt-bg-secondary: #efeff2;
+  --dt-bg-tertiary: #f8f8f8;
+  --dt-bg-active: #dce8ff;
+  --dt-border: #c4c7cc;
+  --dt-border-light: #d9d9dd;
+  --dt-text-primary: #3c3c43;
+  --dt-text-secondary: #6e6e73;
+  --dt-text-muted: #858585;
+  --dt-accent: #0a84ff;
+  --dt-accent-strong: #007acc;
+  --dt-accent-text: #ffffff;
+}
+
+@media (prefers-color-scheme: dark) {
+  .desktop-theme {
+    --dt-bg-primary: #1e1e1e;
+    --dt-bg-secondary: #252526;
+    --dt-bg-tertiary: #323233;
+    --dt-bg-active: #37373d;
+    --dt-border: #333333;
+    --dt-border-light: #2c2c2c;
+    --dt-text-primary: #cccccc;
+    --dt-text-secondary: #858585;
+    --dt-text-muted: #7a7a7a;
+    --dt-accent: #007acc;
+    --dt-accent-strong: #1177bb;
+    --dt-accent-text: #ffffff;
+  }
 }
 
 /* Desktop scrollbar - thinner and more subtle */

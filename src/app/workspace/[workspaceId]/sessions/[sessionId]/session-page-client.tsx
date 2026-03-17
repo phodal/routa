@@ -2031,8 +2031,8 @@ export function SessionPageClient() {
   // or while workspaces are loading
   if (!isResolved || (workspacesHook.loading && !isDefaultWorkspace)) {
     return (
-      <div className="h-screen flex items-center justify-center bg-gray-50 dark:bg-[#0f1117]">
-        <div className="text-gray-400 dark:text-gray-500">Loading...</div>
+      <div className="desktop-theme h-screen flex items-center justify-center bg-[var(--dt-bg-primary)]">
+        <div className="text-[var(--dt-text-secondary)]">Loading...</div>
       </div>
     );
   }
@@ -2040,8 +2040,8 @@ export function SessionPageClient() {
   // For non-default workspaces, require workspace to exist
   if (!workspace && !isDefaultWorkspace) {
     return (
-      <div className="h-screen flex items-center justify-center bg-gray-50 dark:bg-[#0f1117]">
-        <div className="text-gray-400 dark:text-gray-500">Loading...</div>
+      <div className="desktop-theme h-screen flex items-center justify-center bg-[var(--dt-bg-primary)]">
+        <div className="text-[var(--dt-text-secondary)]">Loading...</div>
       </div>
     );
   }
@@ -2057,12 +2057,12 @@ export function SessionPageClient() {
   };
 
   return (
-    <div className={`h-screen flex bg-[#1e1e1e] ${isEmbedMode ? 'embed-mode' : ''}`}>
+    <div className={`desktop-theme h-screen flex bg-[var(--dt-bg-primary)] ${isEmbedMode ? "embed-mode" : ""}`}>
       {/* Desktop Navigation Rail */}
       {!isEmbedMode && (
         <DesktopNavRail workspaceId={workspaceId} />
       )}
-      <div className="flex-1 flex flex-col min-w-0 bg-gray-50 dark:bg-[#0f1117]">
+      <div className="flex-1 flex flex-col min-w-0 bg-[var(--dt-bg-primary)]">
       {/* ─── Top Bar ──────────────────────────────────────────────── */}
       {!isEmbedMode && (
         <AppHeader
@@ -2076,11 +2076,11 @@ export function SessionPageClient() {
           onToggleMobileSidebar={() => setShowMobileSidebar(!showMobileSidebar)}
         leftSlot={
           /* Agent selector */
-          <div className="relative">
+            <div className="relative">
             <select
               value={selectedSpecialistId ? `specialist:${selectedSpecialistId}` : selectedAgent}
               onChange={(e) => handleAgentChange(e.target.value)}
-              className="appearance-none pl-2.5 pr-6 py-0.5 text-xs font-medium rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1e2130] text-gray-900 dark:text-gray-100 cursor-pointer focus:ring-1 focus:ring-blue-500"
+              className="appearance-none pl-2.5 pr-6 py-0.5 text-xs font-medium rounded-md border border-[var(--dt-border)] bg-[var(--dt-bg-primary)] text-[var(--dt-text-primary)] cursor-pointer focus:ring-1 focus:ring-[var(--dt-accent)]"
             >
               {BUILTIN_ROLES.map((r) => (
                 <option key={r.value} value={r.value}>{r.label}</option>
@@ -2095,7 +2095,7 @@ export function SessionPageClient() {
                 </optgroup>
               )}
             </select>
-            <svg className="absolute right-1.5 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <svg className="absolute right-1.5 top-1/2 -translate-y-1/2 w-3 h-3 text-[var(--dt-text-secondary)] pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
             </svg>
           </div>
@@ -2104,7 +2104,7 @@ export function SessionPageClient() {
           <>
             {/* Tool Mode Toggle */}
             <label className="hidden md:flex items-center gap-1.5 cursor-pointer select-none" title={`Tool Mode: ${toolMode === "essential" ? "Essential (7 tools)" : "Full (34 tools)"}`}>
-              <span className="text-[10px] text-gray-400 dark:text-gray-500">Full</span>
+              <span className="text-[10px] text-[var(--dt-text-secondary)]">Full</span>
               <div className="relative">
                 <input
                   type="checkbox"
@@ -2112,15 +2112,15 @@ export function SessionPageClient() {
                   onChange={(e) => handleToolModeToggle(e.target.checked)}
                   className="sr-only peer"
                 />
-                <div className="w-7 h-3.5 bg-gray-300 dark:bg-gray-600 rounded-full peer peer-checked:bg-purple-500 transition-colors" />
-                <div className="absolute left-0.5 top-0.5 w-2.5 h-2.5 bg-white rounded-full transition-transform peer-checked:translate-x-3.5" />
+                <div className="w-7 h-3.5 bg-[var(--dt-bg-active)] rounded-full peer peer-checked:bg-[var(--dt-accent)] transition-colors" />
+                <div className="absolute left-0.5 top-0.5 w-2.5 h-2.5 bg-[var(--dt-accent-text)] rounded-full transition-transform peer-checked:translate-x-3.5" />
               </div>
-              <span className="text-[10px] text-purple-600 dark:text-purple-400 font-medium">Essential</span>
+              <span className="text-[10px] text-[var(--dt-accent)] font-medium">Essential</span>
             </label>
-            <a href="/mcp-tools" className="hidden md:inline-flex px-2.5 py-1 rounded-md bg-blue-50 dark:bg-blue-900/20 text-[11px] font-medium text-blue-600 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors">
+            <a href="/mcp-tools" className="hidden md:inline-flex px-2.5 py-1 rounded-md bg-[var(--dt-bg-secondary)] text-[11px] font-medium text-[var(--dt-text-primary)] hover:bg-[var(--dt-bg-active)] transition-colors">
               MCP Tools
             </a>
-            <a href="/traces" className="hidden md:inline-flex px-2.5 py-1 rounded-md bg-purple-50 dark:bg-purple-900/20 text-[11px] font-medium text-purple-600 dark:text-purple-300 hover:bg-purple-100 dark:hover:bg-purple-900/30 transition-colors">
+            <a href="/traces" className="hidden md:inline-flex px-2.5 py-1 rounded-md bg-[var(--dt-bg-secondary)] text-[11px] font-medium text-[var(--dt-text-primary)] hover:bg-[var(--dt-bg-active)] transition-colors">
               Traces
             </a>
           </>
@@ -2205,39 +2205,39 @@ export function SessionPageClient() {
           <>
             {/* Right sidebar resize handle */}
             <div
-              className="hidden md:flex items-center justify-center w-1 cursor-col-resize hover:bg-indigo-500/30 active:bg-indigo-500/50 transition-colors group shrink-0"
+              className="hidden md:flex items-center justify-center w-1 cursor-col-resize hover:bg-[var(--dt-accent)]/30 active:bg-[var(--dt-accent)]/50 transition-colors group shrink-0"
               onMouseDown={handleResizeStart}
             >
-              <div className="w-0.5 h-8 rounded-full bg-gray-300 dark:bg-gray-600 group-hover:bg-indigo-400 group-active:bg-indigo-500 transition-colors" />
+              <div className="w-0.5 h-8 rounded-full bg-[var(--dt-border)] group-hover:bg-[var(--dt-accent)] group-active:bg-[var(--dt-accent)] transition-colors" />
             </div>
             <aside
-              className="hidden md:flex shrink-0 border-l border-gray-200 dark:border-gray-800 bg-white dark:bg-[#13151d] flex-col overflow-hidden"
+              className="hidden md:flex shrink-0 border-l border-[var(--dt-border)] bg-[var(--dt-bg-primary)] flex-col overflow-hidden"
               style={{ width: `${sidebarWidth}px` }}
             >
               {/* CRAFTER agents header */}
-              <div className="px-3 py-2 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between">
+              <div className="px-3 py-2 border-b border-[var(--dt-border)] flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <span className="text-xs font-semibold text-gray-900 dark:text-gray-100">
+                  <span className="text-xs font-semibold text-[var(--dt-text-primary)]">
                     CRAFTERs
                   </span>
-                  <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-300">
+                  <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-[var(--dt-bg-active)] text-[var(--dt-accent)]">
                     {crafterAgents.length}
                   </span>
                 </div>
                 {/* Concurrency control */}
                 <div className="flex items-center gap-2">
-                  <span className="text-[10px] font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  <span className="text-[10px] font-medium text-[var(--dt-text-secondary)] uppercase tracking-wider">
                     Concurrency
                   </span>
-                  <div className="flex items-center rounded-md border border-gray-200 dark:border-gray-700 overflow-hidden">
+                  <div className="flex items-center rounded-md border border-[var(--dt-border)] overflow-hidden">
                     {[1, 2].map((n) => (
                       <button
                         key={n}
                         onClick={() => handleConcurrencyChange(n)}
                         className={`px-2 py-0.5 text-[11px] font-medium transition-colors ${
                           concurrency === n
-                            ? "bg-indigo-600 text-white"
-                            : "bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700"
+                            ? "bg-[var(--dt-accent)] text-[var(--dt-accent-text)]"
+                            : "bg-[var(--dt-bg-primary)] text-[var(--dt-text-secondary)] hover:bg-[var(--dt-bg-active)]"
                         }`}
                       >
                         {n}
@@ -2277,19 +2277,19 @@ export function SessionPageClient() {
             aria-hidden="true"
           />
           <div
-            className="relative w-full max-w-5xl h-[80vh] bg-white dark:bg-[#161922] border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl overflow-hidden"
+            className="relative w-full max-w-5xl h-[80vh] bg-[var(--dt-bg-primary)] border border-[var(--dt-border)] rounded-xl shadow-2xl overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="h-11 px-4 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between">
+            <div className="h-11 px-4 border-b border-[var(--dt-border)] flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div id="agent-install-title" className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                <div id="agent-install-title" className="text-sm font-semibold text-[var(--dt-text-primary)]">
                   Install Agents
                 </div>
                 <a
                   href="/settings/agents"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-[11px] text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+                  className="text-[11px] text-[var(--dt-text-secondary)] hover:text-[var(--dt-text-primary)] transition-colors"
                 >
                   Open in new tab
                 </a>
@@ -2298,7 +2298,7 @@ export function SessionPageClient() {
                 ref={agentInstallCloseRef}
                 type="button"
                 onClick={() => setShowAgentInstallPopup(false)}
-                className="w-7 h-7 flex items-center justify-center rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+                className="w-7 h-7 flex items-center justify-center rounded-md hover:bg-[var(--dt-bg-active)] text-[var(--dt-text-secondary)] hover:text-[var(--dt-text-primary)] transition-colors"
                 title="Close (Esc)"
                 aria-label="Close"
               >
@@ -2316,7 +2316,7 @@ export function SessionPageClient() {
 
       {/* ─── Agent Toast ──────────────────────────────────────────── */}
       {showAgentToast && (
-        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-lg bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 text-sm font-medium shadow-lg animate-fade-in">
+        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-lg bg-[var(--dt-text-primary)] text-[var(--dt-accent-text)] text-sm font-medium shadow-lg animate-fade-in">
           ROUTA mode: Coordinator will plan, delegate to CRAFTER agents, and verify with GATE.
         </div>
       )}

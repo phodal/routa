@@ -812,7 +812,7 @@ export function WorkspaceCards({
           {showWorkspacesMenu && (
             <div className="absolute right-0 top-full z-50 mt-2 w-44 overflow-hidden rounded-2xl border border-sky-200/70 bg-white py-1 shadow-lg dark:border-[#1c1f2e] dark:bg-[#12141c]">
               <Link
-                href="/workspaces"
+                href="/"
                 onClick={() => setShowWorkspacesMenu(false)}
                 className="flex items-center gap-2 px-3 py-2 text-xs text-gray-700 transition-colors hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-[#1a1d2c]"
               >
@@ -822,7 +822,7 @@ export function WorkspaceCards({
                 All Workspaces
               </Link>
               <Link
-                href="/sessions"
+                href="/traces"
                 onClick={() => setShowWorkspacesMenu(false)}
                 className="flex items-center gap-2 px-3 py-2 text-xs text-gray-700 transition-colors hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-[#1a1d2c]"
               >
