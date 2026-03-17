@@ -188,6 +188,7 @@ export async function saveHistoryToDb(
 ): Promise<void> {
   const driver = getDatabaseDriver();
   const normalizedHistory = normalizeSessionHistory(history);
+  const firstPromptSent = hasUserMessageInHistory(normalizedHistory);
 
   // 1. Save full history snapshot to DB
   if (driver !== "memory") {
@@ -197,14 +198,24 @@ export async function saveHistoryToDb(
         const pgStore = new PgAcpSessionStore(db);
         const session = await pgStore.get(sessionId);
         if (!session) return;
-        await pgStore.save({ ...session, messageHistory: normalizedHistory, updatedAt: new Date() });
+        await pgStore.save({
+          ...session,
+          firstPromptSent: session.firstPromptSent || firstPromptSent,
+          messageHistory: normalizedHistory,
+          updatedAt: new Date(),
+        });
       } else {
         const { getSqliteDatabase } = require("../db/sqlite") as typeof import("../db/sqlite");
         const db = getSqliteDatabase();
         const sqliteStore = new SqliteAcpSessionStore(db);
         const session = await sqliteStore.get(sessionId);
         if (!session) return;
-        await sqliteStore.save({ ...session, messageHistory: normalizedHistory, updatedAt: new Date() });
+        await sqliteStore.save({
+          ...session,
+          firstPromptSent: session.firstPromptSent || firstPromptSent,
+          messageHistory: normalizedHistory,
+          updatedAt: new Date(),
+        });
       }
     } catch (err) {
       console.error(`[SessionDB] Failed to save history to ${driver}:`, err);
@@ -350,4 +361,13 @@ export function normalizeSessionHistory<T>(history: T[]): T[] {
   }
 
   return history;
+}
+
+export function hasUserMessageInHistory(
+  history: import("@/core/acp/http-session-store").SessionUpdateNotification[],
+): boolean {
+  return history.some((entry) => {
+    const update = (entry as { update?: { sessionUpdate?: string } }).update;
+    return update?.sessionUpdate === "user_message";
+  });
 }

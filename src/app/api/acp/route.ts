@@ -930,6 +930,7 @@ export async function POST(request: NextRequest) {
 
       // ── Store user message in history before sending ────────────────
       store.pushUserMessage(sessionId, promptText);
+      await persistSessionHistorySnapshot(sessionId, store);
 
       // ── Trace: user_message ─────────────────────────────────────────
       const sessionRecord = store.getSession(sessionId);
