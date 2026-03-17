@@ -142,6 +142,8 @@ class HttpSessionStore {
   private eventBus?: EventBus;
   /** AG-UI notification interceptors per session (for protocol bridging) */
   private notificationInterceptors = new Map<string, Set<(n: SessionUpdateNotification) => void>>();
+  /** Capture assistant output per session for workflow step chaining */
+  private sessionAssistantOutput = new Map<string, string>();
   /**
    * Sessions currently streaming a prompt response via their own SSE body.
    * While in streaming mode, pushNotification() stores to history/trace but
@@ -224,6 +226,7 @@ class HttpSessionStore {
     this.traceRecorder.cleanupSession(sessionId);
     this.messageHistory.delete(sessionId);
     this.pendingNotifications.delete(sessionId);
+    this.sessionAssistantOutput.delete(sessionId);
     // Clean up AgentEventBridge
     this.agentEventBridges.get(sessionId)?.cleanup();
     this.agentEventBridges.delete(sessionId);
@@ -821,6 +824,10 @@ class HttpSessionStore {
       let currentActivity: string | undefined;
 
       for (const update of updates) {
+        if (update.message?.role === "assistant" && update.message.content) {
+          this.captureAssistantOutput(sessionId, update.message.content, update.message.isChunk);
+        }
+
         // Count tool calls
         if (update.toolCall && update.eventType === "tool_call") {
           toolCallCount++;
@@ -844,12 +851,15 @@ class HttpSessionStore {
 
         // Mark task COMPLETED when the agent's turn finishes
         if (update.eventType === "turn_complete" || update.turnComplete) {
+          const taskOutput = this.getSessionAssistantOutput(sessionId);
           try {
             await system.backgroundTaskStore.updateStatus(task.id, "COMPLETED", {
               completedAt: new Date(),
               resultSessionId: sessionId,
             });
+            await system.backgroundTaskStore.updateTaskOutput(task.id, taskOutput);
             console.log(`[BGWorker] Task ${task.id} COMPLETED via turn_complete event.`);
+            this.sessionAssistantOutput.delete(sessionId);
           } catch {
             // best-effort
           }
@@ -867,6 +877,23 @@ class HttpSessionStore {
     } catch {
       // Ignore errors - progress tracking is best-effort
     }
+  }
+
+  private captureAssistantOutput(sessionId: string, content: string, isChunk: boolean): void {
+    const current = this.sessionAssistantOutput.get(sessionId) ?? "";
+    if (isChunk) {
+      this.sessionAssistantOutput.set(sessionId, current + content);
+      return;
+    }
+    if (current.length > 0) {
+      this.sessionAssistantOutput.set(sessionId, `${current}\n${content}`);
+    } else {
+      this.sessionAssistantOutput.set(sessionId, content);
+    }
+  }
+
+  private getSessionAssistantOutput(sessionId: string): string {
+    return this.sessionAssistantOutput.get(sessionId) ?? "";
   }
 }
 

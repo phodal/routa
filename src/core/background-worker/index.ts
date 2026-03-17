@@ -96,6 +96,15 @@ export class BackgroundTaskWorker {
 
   async dispatchTask(task: BackgroundTask): Promise<void> {
     const system = getRoutaSystem();
+
+    // Resolve workflow step dependencies before dispatch, injecting prior step outputs
+    // into the prompt placeholders (e.g., ${steps.Analyze.output}).
+    const resolvedTask = await this.resolveTaskPrompt(task);
+    if (resolvedTask.prompt !== task.prompt) {
+      task = resolvedTask;
+      await system.backgroundTaskStore.save(task);
+    }
+
     // Optimistically mark RUNNING to prevent re-dispatch
     await system.backgroundTaskStore.updateStatus(task.id, "RUNNING", { startedAt: new Date() });
 
@@ -115,6 +124,41 @@ export class BackgroundTaskWorker {
         completedAt: new Date(),
       });
     }
+  }
+
+  private async resolveTaskPrompt(task: BackgroundTask): Promise<BackgroundTask> {
+    if (!task.workflowRunId || !task.dependsOnTaskIds || task.dependsOnTaskIds.length === 0) {
+      return task;
+    }
+
+    const system = getRoutaSystem();
+    const runTasks = await system.backgroundTaskStore.listByWorkflowRunId(task.workflowRunId);
+
+    const stepOutputMap = new Map<string, string>();
+    for (const depId of task.dependsOnTaskIds) {
+      const depTask = runTasks.find((t) => t.id === depId);
+      if (!depTask?.workflowStepName || depTask.taskOutput === undefined) continue;
+      stepOutputMap.set(depTask.workflowStepName, depTask.taskOutput);
+    }
+
+    if (stepOutputMap.size === 0) {
+      return task;
+    }
+
+    const resolvedPrompt = task.prompt.replace(
+      /\$\{steps\.([^.}]+)\.output\}/g,
+      (_match, stepName: string) => {
+        const key = stepName.trim();
+        return stepOutputMap.get(key) ?? _match;
+      }
+    );
+
+    if (resolvedPrompt === task.prompt) return task;
+
+    return {
+      ...task,
+      prompt: resolvedPrompt,
+    };
   }
 
   /**
