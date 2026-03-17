@@ -105,6 +105,10 @@ export interface UseAcpActions {
   clearDockerConfigError: () => void;
   /** List models available for a provider (e.g. opencode) */
   listProviderModels: (provider: string) => Promise<string[]>;
+  /** Write data to a terminal in the current session */
+  writeTerminal: (terminalId: string, data: string) => Promise<void>;
+  /** Resize a terminal in the current session */
+  resizeTerminal: (terminalId: string, cols: number, rows: number) => Promise<void>;
 }
 
 export function useAcp(baseUrl: string = ""): UseAcpState & UseAcpActions {
@@ -549,6 +553,20 @@ export function useAcp(baseUrl: string = ""): UseAcpState & UseAcpActions {
     }
   }, []);
 
+  const writeTerminal = useCallback(async (terminalId: string, data: string): Promise<void> => {
+    const client = clientRef.current;
+    const sessionId = sessionIdRef.current;
+    if (!client || !sessionId) return;
+    await client.writeTerminal(sessionId, terminalId, data);
+  }, []);
+
+  const resizeTerminal = useCallback(async (terminalId: string, cols: number, rows: number): Promise<void> => {
+    const client = clientRef.current;
+    const sessionId = sessionIdRef.current;
+    if (!client || !sessionId) return;
+    await client.resizeTerminal(sessionId, terminalId, cols, rows);
+  }, []);
+
   return {
     ...state,
     connect,
@@ -564,5 +582,7 @@ export function useAcp(baseUrl: string = ""): UseAcpState & UseAcpActions {
     clearAuthError,
     clearDockerConfigError,
     listProviderModels,
+    writeTerminal,
+    resizeTerminal,
   };
 }
