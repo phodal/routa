@@ -27,6 +27,7 @@ export interface AcpNewSessionResult {
   provider?: string;
   role?: string;
   routaAgentId?: string;
+  sandboxId?: string;
   /** ACP process lifecycle status — "connecting" means the agent is still starting up */
   acpStatus?: "connecting" | "ready" | "error";
 }
@@ -147,6 +148,8 @@ export class BrowserAcpClient {
     baseUrl?: string;
     /** API key override (overrides ANTHROPIC_AUTH_TOKEN env var) */
     apiKey?: string;
+    /** Existing Rust sandbox to bind to this session instead of auto-creating one */
+    sandboxId?: string;
     /** Custom provider command (for user-defined ACP providers) */
     customCommand?: string;
     /** Custom provider args (for user-defined ACP providers) */
@@ -173,6 +176,7 @@ export class BrowserAcpClient {
       specialistId: params.specialistId,
       baseUrl: params.baseUrl,
       apiKey: params.apiKey,
+      sandboxId: params.sandboxId,
       customCommand: params.customCommand,
       customArgs: params.customArgs,
       authJson: params.authJson,

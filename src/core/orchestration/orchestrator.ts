@@ -40,6 +40,7 @@ import { getProviderAdapter } from "../acp/provider-adapter";
 import { AgentEventBridge, makeStartedEvent } from "../acp/agent-event-bridge";
 import type { WorkspaceAgentEvent } from "../acp/agent-event-bridge";
 import { LifecycleNotifier } from "../acp/lifecycle-notifier";
+import { createWorkspaceSessionSandbox } from "../sandbox/permissions";
 
 export interface DelegateWithSpawnParams {
   /** Task ID to delegate */
@@ -105,6 +106,10 @@ interface DelegationGroup {
   completedAgentIds: Set<string>;
 }
 
+function isWorkspaceProvider(provider: string): boolean {
+  return provider === "workspace" || provider === "workspace-agent" || provider === "routa-native";
+}
+
 export class RoutaOrchestrator {
   private system: RoutaSystem;
   private processManager: AcpProcessManager;
@@ -130,6 +135,7 @@ export class RoutaOrchestrator {
     provider: string;
     role: string;
     parentSessionId?: string;
+    sandboxId?: string;
   }) => void;
   /** Map: agentId → file watcher cleanup function */
   private reportFileWatchers = new Map<string, () => void>();
@@ -226,6 +232,7 @@ export class RoutaOrchestrator {
       provider: string;
       role: string;
       parentSessionId?: string;
+      sandboxId?: string;
     }) => void
   ): void {
     this.sessionRegistrationHandler = handler;
@@ -341,8 +348,9 @@ export class RoutaOrchestrator {
 
     // 7. Spawn the ACP process
     const childSessionId = uuidv4();
+    let childSandboxId: string | undefined;
     try {
-      await this.spawnChildAgent(
+      const spawnResult = await this.spawnChildAgent(
         childSessionId,
         agentId,
         provider,
@@ -351,6 +359,7 @@ export class RoutaOrchestrator {
         callerSessionId,
         workspaceId,
       );
+      childSandboxId = spawnResult.sandboxId;
     } catch (err) {
       // Clean up on spawn failure
       await this.system.agentStore.updateStatus(agentId, AgentStatus.ERROR);
@@ -387,6 +396,7 @@ export class RoutaOrchestrator {
         provider,
         role: specialistConfig.role,
         parentSessionId: callerSessionId,
+        sandboxId: childSandboxId,
       });
     }
 
@@ -455,9 +465,10 @@ export class RoutaOrchestrator {
     initialPrompt: string,
     parentSessionId: string,
     workspaceId?: string,
-  ): Promise<void> {
+  ): Promise<{ sandboxId?: string }> {
     const isClaudeCode = provider === "claude";
     const isClaudeCodeSdk = provider === "claude-code-sdk";
+    const isNativeWorkspaceAgent = isWorkspaceProvider(provider);
 
     // Create AgentEventBridge for this child agent
     const bridge = new AgentEventBridge(sessionId);
@@ -531,8 +542,42 @@ export class RoutaOrchestrator {
     const mcpUrl = mcpUrlObj.toString();
 
     let acpSessionId: string;
+    let sandboxId: string | undefined;
 
-    if (isClaudeCode) {
+    if (isNativeWorkspaceAgent) {
+      sandboxId = (await createWorkspaceSessionSandbox({
+        workspaceId,
+        workdir: cwd,
+      }))?.id;
+
+      acpSessionId = await this.processManager.createWorkspaceAgentSession(
+        sessionId,
+        cwd,
+        notificationHandler,
+        {
+          agentTools: this.system.tools,
+          workspaceId,
+          agentId,
+          sandboxId,
+          lifecycleNotifier,
+        },
+      );
+
+      const workspaceAgent = this.processManager.getWorkspaceAgent(sessionId);
+      if (workspaceAgent) {
+        (async () => {
+          try {
+            for await (const _ of workspaceAgent.promptStream(initialPrompt, acpSessionId)) {
+              // notifications are forwarded via notificationHandler
+            }
+            this.autoReportIfNeeded(agentId);
+          } catch (err) {
+            console.error(`[Orchestrator] Workspace child agent ${agentId} failed:`, err);
+            this.handleChildError(agentId, err);
+          }
+        })();
+      }
+    } else if (isClaudeCode) {
       const mcpConfigJson = JSON.stringify({
         mcpServers: {
           routa: { url: mcpUrl, type: "http" },
@@ -595,6 +640,7 @@ export class RoutaOrchestrator {
           }
         })();
       }
+    } else {
       acpSessionId = await this.processManager.createSession(
         sessionId,
         cwd,
@@ -630,6 +676,7 @@ export class RoutaOrchestrator {
     console.log(
       `[Orchestrator] Spawned ${provider} process for agent ${agentId} (session: ${sessionId}, mcpUrl: ${mcpUrl})`
     );
+    return { sandboxId };
   }
 
   /**

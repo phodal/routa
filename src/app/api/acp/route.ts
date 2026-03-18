@@ -50,6 +50,7 @@ import { resolveSkillContent } from "@/core/skills/skill-resolver";
 import type { SessionUpdateNotification } from "@/core/acp/http-session-store";
 import { SessionWriteBuffer } from "@/core/acp/session-write-buffer";
 import { getTerminalManager } from "@/core/acp/terminal-manager";
+import { createWorkspaceSessionSandbox } from "@/core/sandbox/permissions";
 
 export const dynamic = "force-dynamic";
 
@@ -256,7 +257,7 @@ export async function POST(request: NextRequest) {
       const parentSessionId = (p.parentSessionId as string | undefined) || undefined;
       const model = (p.model as string | undefined);
       const specialistId = (p.specialistId as string | undefined);
-      const sandboxId = (p.sandboxId as string | undefined)?.trim() || undefined;
+      let sandboxId = (p.sandboxId as string | undefined)?.trim() || undefined;
       const toolMode = p.toolMode === "full"
         ? "full"
         : p.toolMode === "essential"
@@ -299,11 +300,13 @@ export async function POST(request: NextRequest) {
         cleanupIdempotencyCache();
         const cached = idempotencyCache.get(idempotencyKey);
         if (cached) {
+          const cachedSession = getHttpSessionStore().getSession(cached.sessionId);
           console.log(`[ACP Route] Returning cached session for idempotencyKey: ${idempotencyKey} -> ${cached.sessionId}`);
           return jsonrpcResponse(id ?? null, {
             sessionId: cached.sessionId,
             provider: cached.provider,
             role: cached.role,
+            sandboxId: cachedSession?.sandboxId,
             cached: true,
           });
         }
@@ -380,6 +383,13 @@ export async function POST(request: NextRequest) {
         validatedWorktreeId = worktreeId;
       }
 
+      if (isWorkspaceAgent && !sandboxId) {
+        sandboxId = (await createWorkspaceSessionSandbox({
+          workspaceId,
+          workdir: cwd,
+        }))?.id;
+      }
+
       const now = new Date();
       store.upsertSession({
         sessionId,
@@ -445,6 +455,7 @@ export async function POST(request: NextRequest) {
         provider,
         role: role ?? "CRAFTER",
         model,
+        sandboxId,
         acpStatus: "connecting" as const,
       };
 
@@ -613,6 +624,7 @@ export async function POST(request: NextRequest) {
                   provider: childSession.provider,
                   role: childSession.role,
                   parentSessionId: childSession.parentSessionId,
+                  sandboxId: childSession.sandboxId,
                   createdAt: new Date().toISOString(),
                 });
                 persistSessionToDb({

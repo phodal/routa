@@ -11,6 +11,7 @@
 
 import os from "os";
 import type { BackgroundTask } from "@/core/models/background-task";
+import { createWorkspaceSessionSandbox } from "@/core/sandbox/permissions";
 import type {
   Worker,
   WorkerType,
@@ -28,8 +29,14 @@ const LOCAL_WORKER_CAPABILITIES: readonly WorkerCapability[] = [
   "opencode",
   "claude",
   "claude-code-sdk",
+  "workspace",
   "workspace-agent",
+  "routa-native",
 ] as const;
+
+function isWorkspaceProvider(provider: string): boolean {
+  return provider === "workspace" || provider === "workspace-agent" || provider === "routa-native";
+}
 
 /**
  * Calculate max concurrency based on system CPU cores.
@@ -100,6 +107,9 @@ export class LocalWorker implements Worker {
         "kiro",
         "claude",
         "claude-code-sdk",
+        "workspace",
+        "workspace-agent",
+        "routa-native",
       ]);
 
       let acpSessionId: string;
@@ -116,14 +126,18 @@ export class LocalWorker implements Worker {
           cwd,
           noopNotification,
         );
-      } else if (task.agentId === "workspace-agent") {
+      } else if (isWorkspaceProvider(task.agentId)) {
+        const sandboxId = task.sandboxId ?? (await createWorkspaceSessionSandbox({
+          workspaceId: task.workspaceId,
+          workdir: cwd,
+        }))?.id;
         acpSessionId = await manager.createWorkspaceAgentSession(
           sessionId,
           cwd,
           noopNotification,
           {
             workspaceId: task.workspaceId,
-            sandboxId: task.sandboxId,
+            sandboxId,
           },
         );
       } else if (KNOWN_PROVIDERS.has(task.agentId)) {

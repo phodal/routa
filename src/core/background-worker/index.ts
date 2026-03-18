@@ -197,6 +197,9 @@ export class BackgroundTaskWorker {
       "kiro",
       "claude",
       "claude-code-sdk",
+      "workspace",
+      "workspace-agent",
+      "routa-native",
     ]);
 
     // Determine provider and specialistId based on task.agentId
@@ -219,6 +222,7 @@ export class BackgroundTaskWorker {
           workspaceId: task.workspaceId,
           cwd: process.cwd(),
           role: "CRAFTER",
+          sandboxId: task.sandboxId,
         },
       }),
     });
