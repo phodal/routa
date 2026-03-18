@@ -70,6 +70,12 @@ enum Commands {
         action: TaskAction,
     },
 
+    /// Manage Kanban boards, cards, and columns
+    Kanban {
+        #[command(subcommand)]
+        action: KanbanAction,
+    },
+
     /// Manage workspaces
     Workspace {
         #[command(subcommand)]
@@ -294,6 +300,190 @@ enum TaskAction {
         /// Optional completion summary
         #[arg(long)]
         summary: Option<String>,
+    },
+}
+
+#[derive(Subcommand)]
+enum KanbanAction {
+    /// Manage boards
+    Board {
+        #[command(subcommand)]
+        action: KanbanBoardAction,
+    },
+    /// Manage cards
+    Card {
+        #[command(subcommand)]
+        action: KanbanCardAction,
+    },
+    /// Manage columns
+    Column {
+        #[command(subcommand)]
+        action: KanbanColumnAction,
+    },
+}
+
+#[derive(Subcommand)]
+enum KanbanBoardAction {
+    /// List boards in a workspace
+    List {
+        #[arg(long, default_value = "default")]
+        workspace_id: String,
+    },
+    /// Create a board
+    Create {
+        #[arg(long)]
+        name: String,
+        #[arg(long, default_value = "default")]
+        workspace_id: String,
+        #[arg(long, value_delimiter = ',')]
+        columns: Option<Vec<String>>,
+        #[arg(long, default_value_t = false)]
+        is_default: bool,
+    },
+    /// Get a board with its cards
+    Get {
+        #[arg(long)]
+        board_id: String,
+    },
+    /// Update a board
+    Update {
+        #[arg(long)]
+        board_id: String,
+        #[arg(long)]
+        name: Option<String>,
+        #[arg(long)]
+        columns_json: Option<String>,
+        #[arg(long, default_value_t = false)]
+        set_default: bool,
+    },
+    /// Validate a Kanban YAML config file
+    Validate {
+        /// Path to the YAML config file
+        #[arg(long)]
+        file: String,
+    },
+    /// Apply a Kanban YAML config (upsert boards and columns)
+    Apply {
+        /// Path to the YAML config file
+        #[arg(long)]
+        file: String,
+        /// Workspace ID override (overrides value in YAML)
+        #[arg(long)]
+        workspace_id: Option<String>,
+        /// Preview changes without writing
+        #[arg(long, default_value_t = false)]
+        dry_run: bool,
+        /// Continue applying remaining boards on error
+        #[arg(long, default_value_t = false)]
+        continue_on_error: bool,
+    },
+    /// Export workspace boards to a YAML config file
+    Export {
+        /// Workspace ID to export
+        #[arg(long, default_value = "default")]
+        workspace_id: String,
+        /// Output file path (prints to stdout if omitted)
+        #[arg(long)]
+        output: Option<String>,
+    },
+}
+
+#[derive(Subcommand)]
+enum KanbanCardAction {
+    /// Create a card
+    Create {
+        #[arg(long)]
+        title: String,
+        #[arg(long)]
+        description: Option<String>,
+        #[arg(long, default_value = "default")]
+        workspace_id: String,
+        #[arg(long)]
+        board_id: Option<String>,
+        #[arg(long)]
+        column_id: Option<String>,
+        #[arg(long)]
+        priority: Option<String>,
+        #[arg(long, value_delimiter = ',')]
+        labels: Option<Vec<String>>,
+    },
+    /// Move a card
+    Move {
+        #[arg(long)]
+        card_id: String,
+        #[arg(long)]
+        target_column_id: String,
+        #[arg(long)]
+        position: Option<i64>,
+    },
+    /// Update a card
+    Update {
+        #[arg(long)]
+        card_id: String,
+        #[arg(long)]
+        title: Option<String>,
+        #[arg(long)]
+        description: Option<String>,
+        #[arg(long)]
+        priority: Option<String>,
+        #[arg(long, value_delimiter = ',')]
+        labels: Option<Vec<String>>,
+    },
+    /// Delete a card
+    Delete {
+        #[arg(long)]
+        card_id: String,
+    },
+    /// Search cards
+    Search {
+        #[arg(long)]
+        query: String,
+        #[arg(long, default_value = "default")]
+        workspace_id: String,
+        #[arg(long)]
+        board_id: Option<String>,
+    },
+    /// List cards in a column
+    ListByColumn {
+        #[arg(long)]
+        column_id: String,
+        #[arg(long, default_value = "default")]
+        workspace_id: String,
+        #[arg(long)]
+        board_id: Option<String>,
+    },
+    /// Bulk-create cards from a JSON task array
+    Decompose {
+        #[arg(long)]
+        tasks_json: String,
+        #[arg(long, default_value = "default")]
+        workspace_id: String,
+        #[arg(long)]
+        board_id: Option<String>,
+        #[arg(long)]
+        column_id: Option<String>,
+    },
+}
+
+#[derive(Subcommand)]
+enum KanbanColumnAction {
+    /// Create a column
+    Create {
+        #[arg(long)]
+        board_id: String,
+        #[arg(long)]
+        name: String,
+        #[arg(long)]
+        color: Option<String>,
+    },
+    /// Delete a column
+    Delete {
+        #[arg(long)]
+        board_id: String,
+        #[arg(long)]
+        column_id: String,
+        #[arg(long, default_value_t = false)]
+        delete_cards: bool,
     },
 }
 
@@ -527,6 +717,206 @@ async fn main() {
                         )
                         .await
                     }
+                }
+            }
+
+            Commands::Kanban { action } => {
+                let state = commands::init_state(&cli.db).await;
+                match action {
+                    KanbanAction::Board { action } => match action {
+                        KanbanBoardAction::List { workspace_id } => {
+                            commands::kanban::list_boards(&state, &workspace_id).await
+                        }
+                        KanbanBoardAction::Create {
+                            name,
+                            workspace_id,
+                            columns,
+                            is_default,
+                        } => {
+                            commands::kanban::create_board(
+                                &state,
+                                &workspace_id,
+                                &name,
+                                columns,
+                                is_default,
+                            )
+                            .await
+                        }
+                        KanbanBoardAction::Get { board_id } => {
+                            commands::kanban::get_board(&state, &board_id).await
+                        }
+                        KanbanBoardAction::Update {
+                            board_id,
+                            name,
+                            columns_json,
+                            set_default,
+                        } => {
+                            commands::kanban::update_board(
+                                &state,
+                                &board_id,
+                                name.as_deref(),
+                                columns_json.as_deref(),
+                                set_default,
+                            )
+                            .await
+                        }
+                        KanbanBoardAction::Validate { file } => {
+                            commands::kanban::validate_config(&file).await
+                        }
+                        KanbanBoardAction::Apply {
+                            file,
+                            workspace_id,
+                            dry_run,
+                            continue_on_error,
+                        } => {
+                            commands::kanban::apply_config(
+                                &state,
+                                &file,
+                                workspace_id.as_deref(),
+                                dry_run,
+                                continue_on_error,
+                            )
+                            .await
+                        }
+                        KanbanBoardAction::Export {
+                            workspace_id,
+                            output,
+                        } => {
+                            commands::kanban::export_config(
+                                &state,
+                                &workspace_id,
+                                output.as_deref(),
+                            )
+                            .await
+                        }
+                    },
+                    KanbanAction::Card { action } => match action {
+                        KanbanCardAction::Create {
+                            title,
+                            description,
+                            workspace_id,
+                            board_id,
+                            column_id,
+                            priority,
+                            labels,
+                        } => {
+                            commands::kanban::create_card(
+                                &state,
+                                commands::kanban::CreateCardOptions {
+                                    workspace_id: &workspace_id,
+                                    board_id: board_id.as_deref(),
+                                    column_id: column_id.as_deref(),
+                                    title: &title,
+                                    description: description.as_deref(),
+                                    priority: priority.as_deref(),
+                                    labels,
+                                },
+                            )
+                            .await
+                        }
+                        KanbanCardAction::Move {
+                            card_id,
+                            target_column_id,
+                            position,
+                        } => {
+                            commands::kanban::move_card(
+                                &state,
+                                &card_id,
+                                &target_column_id,
+                                position,
+                            )
+                            .await
+                        }
+                        KanbanCardAction::Update {
+                            card_id,
+                            title,
+                            description,
+                            priority,
+                            labels,
+                        } => {
+                            commands::kanban::update_card(
+                                &state,
+                                &card_id,
+                                title.as_deref(),
+                                description.as_deref(),
+                                priority.as_deref(),
+                                labels,
+                            )
+                            .await
+                        }
+                        KanbanCardAction::Delete { card_id } => {
+                            commands::kanban::delete_card(&state, &card_id).await
+                        }
+                        KanbanCardAction::Search {
+                            query,
+                            workspace_id,
+                            board_id,
+                        } => {
+                            commands::kanban::search_cards(
+                                &state,
+                                &workspace_id,
+                                &query,
+                                board_id.as_deref(),
+                            )
+                            .await
+                        }
+                        KanbanCardAction::ListByColumn {
+                            column_id,
+                            workspace_id,
+                            board_id,
+                        } => {
+                            commands::kanban::list_cards_by_column(
+                                &state,
+                                &workspace_id,
+                                &column_id,
+                                board_id.as_deref(),
+                            )
+                            .await
+                        }
+                        KanbanCardAction::Decompose {
+                            tasks_json,
+                            workspace_id,
+                            board_id,
+                            column_id,
+                        } => {
+                            commands::kanban::decompose_tasks(
+                                &state,
+                                &workspace_id,
+                                board_id.as_deref(),
+                                column_id.as_deref(),
+                                &tasks_json,
+                            )
+                            .await
+                        }
+                    },
+                    KanbanAction::Column { action } => match action {
+                        KanbanColumnAction::Create {
+                            board_id,
+                            name,
+                            color,
+                        } => {
+                            commands::kanban::create_column(
+                                &state,
+                                &board_id,
+                                &name,
+                                color.as_deref(),
+                            )
+                            .await
+                        }
+                        KanbanColumnAction::Delete {
+                            board_id,
+                            column_id,
+                            delete_cards,
+                        } => {
+                            commands::kanban::delete_column(
+                                &state,
+                                &board_id,
+                                &column_id,
+                                delete_cards,
+                            )
+                            .await
+                        }
+                    },
                 }
             }
 
