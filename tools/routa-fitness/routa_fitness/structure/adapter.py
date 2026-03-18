@@ -1,6 +1,10 @@
-"""Adapter wrapping code-review-graph as a StructuralAnalyzer.
+"""Structural analyzer adapters.
 
-code-review-graph is an optional dependency. This adapter handles:
+Supports:
+- external `code-review-graph` when available
+- built-in lightweight analyzer as a zero-dependency fallback
+
+The external adapter handles:
 - Lazy import (only when actually used)
 - ROUTA_CODE_REVIEW_GRAPH_SOURCE env for local dev
 - Graceful error reporting when not installed
@@ -11,6 +15,8 @@ from __future__ import annotations
 import os
 import sys
 from pathlib import Path
+
+from routa_fitness.structure.builtin import BuiltinGraphAdapter
 
 
 class CodeReviewGraphAdapter:
@@ -57,7 +63,7 @@ class CodeReviewGraphAdapter:
     def query(self, query_type: str, target: str) -> dict:
         self._ensure_loaded()
         return self._tools.query_graph(
-            query_type=query_type,
+            pattern=query_type,
             target=target,
             repo_root=str(self.repo_root),
         )
@@ -67,11 +73,29 @@ class CodeReviewGraphAdapter:
         return self._tools.list_graph_stats(repo_root=str(self.repo_root))
 
 
-def try_create_adapter(repo_root: Path) -> CodeReviewGraphAdapter | None:
-    """Attempt to create an adapter, returning None if code-review-graph is unavailable."""
-    adapter = CodeReviewGraphAdapter(repo_root)
-    try:
-        adapter._ensure_loaded()
-        return adapter
-    except ImportError:
-        return None
+def try_create_adapter(repo_root: Path):
+    """Create the best available structural analyzer backend.
+
+    Backend selection can be forced via `ROUTA_FITNESS_GRAPH_BACKEND`:
+    - `external`: require code-review-graph
+    - `builtin`: always use the local lightweight analyzer
+    - `auto` (default): prefer external, then fall back to builtin
+    """
+    backend = os.environ.get("ROUTA_FITNESS_GRAPH_BACKEND", "auto").strip().lower() or "auto"
+
+    if backend == "builtin":
+        return BuiltinGraphAdapter(repo_root)
+
+    if backend in {"auto", "external"}:
+        adapter = CodeReviewGraphAdapter(repo_root)
+        try:
+            adapter._ensure_loaded()
+            return adapter
+        except ImportError:
+            if backend == "external":
+                return None
+
+    if backend in {"auto", "builtin"}:
+        return BuiltinGraphAdapter(repo_root)
+
+    return BuiltinGraphAdapter(repo_root)
