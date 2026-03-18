@@ -18,6 +18,14 @@ describe("getToolEventName", () => {
     expect(getToolEventLabel({ kind: "shell" })).toBe("shell");
     expect(getToolEventLabel({})).toBe("tool");
   });
+
+  it("uses the command when the provider title is an opaque call id", () => {
+    expect(getToolEventLabel({
+      title: "call_BCby6Zam4yfgIY78O9x3vYOH",
+      kind: "shell",
+      rawInput: { command: "rg -n \"foo\" src/app/api" },
+    })).toBe("rg -n \"foo\" src/app/api");
+  });
 });
 
 describe("message-processor tool names", () => {
