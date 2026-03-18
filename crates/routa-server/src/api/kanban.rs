@@ -47,8 +47,15 @@ async fn list_boards(
         serde_json::json!({ "workspaceId": workspace_id }),
     )
     .await?;
-    let workspace = state.workspace_store.get(&workspace_id).await.ok().flatten();
-    let metadata = workspace.map(|workspace| workspace.metadata).unwrap_or_default();
+    let workspace = state
+        .workspace_store
+        .get(&workspace_id)
+        .await
+        .ok()
+        .flatten();
+    let metadata = workspace
+        .map(|workspace| workspace.metadata)
+        .unwrap_or_default();
 
     let boards = rpc_result
         .get("boards")
@@ -130,7 +137,9 @@ async fn get_board(
         .and_then(|value| value.as_str())
         .unwrap_or("default");
     let workspace = state.workspace_store.get(workspace_id).await.ok().flatten();
-    let metadata = workspace.map(|workspace| workspace.metadata).unwrap_or_default();
+    let metadata = workspace
+        .map(|workspace| workspace.metadata)
+        .unwrap_or_default();
 
     let mut board = strip_board_cards(&rpc_result);
     add_board_runtime_meta(&mut board, &metadata);
@@ -183,8 +192,15 @@ async fn update_board(
         persist_session_concurrency_limit(&state, &workspace_id, &board_id, limit).await?;
     }
 
-    let workspace = state.workspace_store.get(&workspace_id).await.ok().flatten();
-    let metadata = workspace.map(|workspace| workspace.metadata).unwrap_or_default();
+    let workspace = state
+        .workspace_store
+        .get(&workspace_id)
+        .await
+        .ok()
+        .flatten();
+    let metadata = workspace
+        .map(|workspace| workspace.metadata)
+        .unwrap_or_default();
     let mut board = board;
     add_board_runtime_meta(&mut board, &metadata);
 
@@ -253,10 +269,13 @@ async fn rpc_result(
         return Ok(result.clone());
     }
 
-    let error = response
-        .get("error")
-        .ok_or_else(|| ServerError::Internal(format!("Missing RPC result for method {}", method)))?;
-    let code = error.get("code").and_then(|value| value.as_i64()).unwrap_or(0);
+    let error = response.get("error").ok_or_else(|| {
+        ServerError::Internal(format!("Missing RPC result for method {}", method))
+    })?;
+    let code = error
+        .get("code")
+        .and_then(|value| value.as_i64())
+        .unwrap_or(0);
     let message = error
         .get("message")
         .and_then(|value| value.as_str())
@@ -272,7 +291,10 @@ async fn rpc_result(
 
 fn strip_board_cards(board: &serde_json::Value) -> serde_json::Value {
     let mut board = board.clone();
-    if let Some(columns) = board.get_mut("columns").and_then(|value| value.as_array_mut()) {
+    if let Some(columns) = board
+        .get_mut("columns")
+        .and_then(|value| value.as_array_mut())
+    {
         for column in columns {
             if let Some(object) = column.as_object_mut() {
                 object.remove("cards");

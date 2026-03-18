@@ -1,13 +1,13 @@
 use chrono::Utc;
 
 use crate::error::ServerError;
+use crate::models::kanban::{column_id_to_task_status, task_status_to_column_id};
+use crate::models::task::{Task, TaskPriority, TaskStatus};
+use crate::state::AppState;
 use routa_core::kanban::{
     ensure_task_board_context, set_task_column, sync_task_column_from_status,
     sync_task_status_from_column,
 };
-use crate::models::kanban::{column_id_to_task_status, task_status_to_column_id};
-use crate::models::task::{Task, TaskPriority, TaskStatus};
-use crate::state::AppState;
 
 #[derive(Clone)]
 pub struct TaskApplicationService {
@@ -235,8 +235,8 @@ impl TaskApplicationService {
                 || has_assigned_role_update);
 
         // Check if entering a column with automation enabled
-        let entering_new_column = has_column_update
-            && task.column_id.as_deref() != existing_column_id.as_deref();
+        let entering_new_column =
+            has_column_update && task.column_id.as_deref() != existing_column_id.as_deref();
         let column_automation = if entering_new_column {
             if let (Some(board_id), Some(col_id)) = (&task.board_id, &task.column_id) {
                 self.state
@@ -289,9 +289,9 @@ impl TaskApplicationService {
             }
         }
 
-        let should_trigger_agent = (entering_dev || assigned_while_in_dev || retry_trigger
-            || column_automation.is_some())
-            && task.trigger_session_id.is_none();
+        let should_trigger_agent =
+            (entering_dev || assigned_while_in_dev || retry_trigger || column_automation.is_some())
+                && task.trigger_session_id.is_none();
 
         task.updated_at = Utc::now();
 

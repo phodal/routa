@@ -38,8 +38,14 @@ async fn get_workspace(
         .get(&id)
         .await?
         .ok_or_else(|| ServerError::NotFound(format!("Workspace {} not found", id)))?;
-    let codebases = state.codebase_store.list_by_workspace(&id).await.unwrap_or_default();
-    Ok(Json(serde_json::json!({ "workspace": workspace, "codebases": codebases })))
+    let codebases = state
+        .codebase_store
+        .list_by_workspace(&id)
+        .await
+        .unwrap_or_default();
+    Ok(Json(
+        serde_json::json!({ "workspace": workspace, "codebases": codebases }),
+    ))
 }
 
 #[derive(Debug, Deserialize)]

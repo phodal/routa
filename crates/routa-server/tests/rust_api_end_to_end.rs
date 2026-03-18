@@ -441,11 +441,9 @@ async fn api_codebase_and_file_search_flow() {
         .json()
         .await
         .expect("decode default codebase response");
-    assert!(
-        default_json["codebase"]["isDefault"]
-            .as_bool()
-            .expect("isDefault")
-    );
+    assert!(default_json["codebase"]["isDefault"]
+        .as_bool()
+        .expect("isDefault"));
 
     let search = fixture
         .client
