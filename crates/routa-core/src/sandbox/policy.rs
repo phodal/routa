@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 pub const SANDBOX_SCOPE_CONTAINER_ROOT: &str = "/workspace";
 const SANDBOX_EXTRA_READONLY_ROOT: &str = "/workspace-extra/ro";
 const SANDBOX_EXTRA_READWRITE_ROOT: &str = "/workspace-extra/rw";
+const SANDBOX_LINKED_WORKTREE_ROOT: &str = "/workspace-worktrees";
 
 fn is_false(value: &bool) -> bool {
     !*value
@@ -26,6 +27,34 @@ pub enum SandboxEnvMode {
     #[default]
     Sanitized,
     Inherit,
+}
+
+#[derive(
+    Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash, Default,
+)]
+#[serde(rename_all = "camelCase")]
+pub enum SandboxCapability {
+    #[default]
+    WorkspaceRead,
+    WorkspaceWrite,
+    NetworkAccess,
+    LinkedWorktreeRead,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum SandboxCapabilityTier {
+    Observation,
+    Action,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum SandboxLinkedWorktreeMode {
+    #[default]
+    Disabled,
+    All,
+    Explicit,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -73,6 +102,12 @@ pub struct SandboxPolicyInput {
     pub env_mode: Option<SandboxEnvMode>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub env_allowlist: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub capabilities: Vec<SandboxCapability>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub linked_worktree_mode: Option<SandboxLinkedWorktreeMode>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub linked_worktree_ids: Vec<String>,
     #[serde(default, skip_serializing_if = "is_false")]
     pub trust_workspace_config: bool,
 }
@@ -87,6 +122,9 @@ impl SandboxPolicyInput {
             && self.network_mode.is_none()
             && self.env_mode.is_none()
             && self.env_allowlist.is_empty()
+            && self.capabilities.is_empty()
+            && self.linked_worktree_mode.is_none()
+            && self.linked_worktree_ids.is_empty()
             && !self.trust_workspace_config
     }
 
@@ -101,6 +139,11 @@ impl SandboxPolicyInput {
             .transpose()?;
         let workspace_config = resolve_workspace_config(self, derived_root.as_deref())?;
         let effective_input = merge_workspace_config(self, workspace_config.as_ref());
+        let capability_set = effective_input
+            .capabilities
+            .iter()
+            .copied()
+            .collect::<BTreeSet<_>>();
 
         let host_workdir = match effective_input.workdir.as_deref() {
             Some(raw) => resolve_user_path(raw, derived_root.as_deref())?,
@@ -138,11 +181,27 @@ impl SandboxPolicyInput {
             resolve_grant_paths(&effective_input.read_only_paths, &scope_root)?;
         let read_write_paths = resolve_grant_paths(&effective_input.read_write_paths, &scope_root)?;
 
+        if !read_write_paths.is_empty()
+            && !capability_set.contains(&SandboxCapability::WorkspaceWrite)
+        {
+            return Err(
+                "Sandbox policy readWritePaths require the workspaceWrite capability.".to_string(),
+            );
+        }
+
         let read_write_set: BTreeSet<PathBuf> = read_write_paths.iter().cloned().collect();
         read_only_paths.retain(|path| !read_write_set.contains(path));
         if effective_input.read_only_paths.len() != read_only_paths.len() {
             notes.push(
                 "Dropped duplicate read-only grants that were also present in read-write grants."
+                    .to_string(),
+            );
+        }
+
+        let network_mode = resolve_network_mode(effective_input.network_mode, &capability_set)?;
+        if network_mode == SandboxNetworkMode::None && effective_input.network_mode.is_none() {
+            notes.push(
+                "Defaulted network mode to none because networkAccess is not allow-listed."
                     .to_string(),
             );
         }
@@ -179,6 +238,21 @@ impl SandboxPolicyInput {
             &read_write_paths,
             SandboxMountAccess::ReadWrite,
         ));
+        let linked_worktrees = resolve_linked_worktrees(
+            &effective_input,
+            context.as_ref(),
+            &scope_root,
+            &capability_set,
+            &mut notes,
+        )?;
+        for linked_worktree in &linked_worktrees {
+            mounts.push(SandboxMount {
+                host_path: linked_worktree.host_path.clone(),
+                container_path: linked_worktree.container_path.clone(),
+                access: SandboxMountAccess::ReadOnly,
+                reason: Some("linkedWorktree".to_string()),
+            });
+        }
 
         let env_allowlist = effective_input
             .env_allowlist
@@ -204,10 +278,17 @@ impl SandboxPolicyInput {
                 .into_iter()
                 .map(|path| path.to_string_lossy().to_string())
                 .collect(),
-            network_mode: effective_input.network_mode.unwrap_or_default(),
+            network_mode,
             env_mode: effective_input.env_mode.unwrap_or_default(),
             env_allowlist,
             mounts,
+            capabilities: resolve_capability_view(
+                &capability_set,
+                !read_write_set.is_empty(),
+                network_mode,
+                !linked_worktrees.is_empty(),
+            ),
+            linked_worktrees,
             workspace_config: workspace_config.map(|entry| entry.descriptor),
             notes,
         })
@@ -219,6 +300,7 @@ pub struct SandboxPolicyContext {
     pub workspace_id: Option<String>,
     pub codebase_id: Option<String>,
     pub workspace_root: Option<PathBuf>,
+    pub available_worktrees: Vec<SandboxPolicyWorktree>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -240,10 +322,33 @@ pub struct ResolvedSandboxPolicy {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub env_allowlist: Vec<String>,
     pub mounts: Vec<SandboxMount>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub capabilities: Vec<ResolvedSandboxCapability>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub linked_worktrees: Vec<ResolvedSandboxLinkedWorktree>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub workspace_config: Option<ResolvedSandboxWorkspaceConfig>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub notes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ResolvedSandboxCapability {
+    pub capability: SandboxCapability,
+    pub tier: SandboxCapabilityTier,
+    pub enabled: bool,
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ResolvedSandboxLinkedWorktree {
+    pub id: String,
+    pub codebase_id: String,
+    pub branch: String,
+    pub host_path: String,
+    pub container_path: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -270,12 +375,26 @@ struct WorkspaceSandboxConfigFile {
     env_mode: Option<SandboxEnvMode>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     env_allowlist: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    capabilities: Vec<SandboxCapability>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    linked_worktree_mode: Option<SandboxLinkedWorktreeMode>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    linked_worktree_ids: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
 struct WorkspaceConfigResolution {
     descriptor: ResolvedSandboxWorkspaceConfig,
     config: Option<WorkspaceSandboxConfigFile>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SandboxPolicyWorktree {
+    pub id: String,
+    pub codebase_id: String,
+    pub worktree_path: String,
+    pub branch: String,
 }
 
 fn resolve_grant_paths(raw_paths: &[String], scope_root: &Path) -> Result<Vec<PathBuf>, String> {
@@ -368,6 +487,12 @@ fn merge_workspace_config(
         merged.env_mode = config.env_mode;
     }
     merged.env_allowlist = merge_string_lists(&config.env_allowlist, &policy.env_allowlist);
+    merged.capabilities = merge_capabilities(&config.capabilities, &policy.capabilities);
+    if merged.linked_worktree_mode.is_none() {
+        merged.linked_worktree_mode = config.linked_worktree_mode;
+    }
+    merged.linked_worktree_ids =
+        merge_string_lists(&config.linked_worktree_ids, &policy.linked_worktree_ids);
 
     merged
 }
@@ -378,6 +503,18 @@ fn merge_string_lists(base: &[String], overlay: &[String]) -> Vec<String> {
         .map(|value| value.trim())
         .filter(|value| !value.is_empty())
         .map(ToOwned::to_owned)
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect()
+}
+
+fn merge_capabilities(
+    base: &[SandboxCapability],
+    overlay: &[SandboxCapability],
+) -> Vec<SandboxCapability> {
+    base.iter()
+        .chain(overlay.iter())
+        .copied()
         .collect::<BTreeSet<_>>()
         .into_iter()
         .collect()
@@ -426,6 +563,207 @@ fn resolve_user_path(raw_path: &str, base_dir: Option<&Path>) -> Result<PathBuf,
             "Relative sandbox path '{}' requires a workspace/codebase root or explicit workdir base.",
             raw_path
         ))
+    }
+}
+
+fn resolve_network_mode(
+    requested: Option<SandboxNetworkMode>,
+    capabilities: &BTreeSet<SandboxCapability>,
+) -> Result<SandboxNetworkMode, String> {
+    if capabilities.contains(&SandboxCapability::NetworkAccess) {
+        return Ok(requested.unwrap_or(SandboxNetworkMode::Bridge));
+    }
+
+    match requested {
+        Some(SandboxNetworkMode::Bridge) => Err(
+            "Sandbox policy networkMode=bridge requires the networkAccess capability.".to_string(),
+        ),
+        _ => Ok(SandboxNetworkMode::None),
+    }
+}
+
+fn resolve_linked_worktrees(
+    policy: &SandboxPolicyInput,
+    context: Option<&SandboxPolicyContext>,
+    scope_root: &Path,
+    capabilities: &BTreeSet<SandboxCapability>,
+    notes: &mut Vec<String>,
+) -> Result<Vec<ResolvedSandboxLinkedWorktree>, String> {
+    let mode = policy.linked_worktree_mode.unwrap_or_default();
+    if mode == SandboxLinkedWorktreeMode::Disabled {
+        return Ok(Vec::new());
+    }
+
+    if !capabilities.contains(&SandboxCapability::LinkedWorktreeRead) {
+        return Err(
+            "Sandbox policy linkedWorktreeMode requires the linkedWorktreeRead capability."
+                .to_string(),
+        );
+    }
+
+    let available = context
+        .map(|ctx| ctx.available_worktrees.as_slice())
+        .unwrap_or(&[]);
+    if available.is_empty() {
+        notes.push("No active linked worktrees available for this sandbox context.".to_string());
+        return Ok(Vec::new());
+    }
+
+    let requested_ids = policy
+        .linked_worktree_ids
+        .iter()
+        .cloned()
+        .collect::<BTreeSet<_>>();
+    if mode == SandboxLinkedWorktreeMode::Explicit && requested_ids.is_empty() {
+        return Err(
+            "Sandbox policy linkedWorktreeMode=explicit requires linkedWorktreeIds.".to_string(),
+        );
+    }
+
+    let mut selected = Vec::new();
+    for worktree in available {
+        let include = match mode {
+            SandboxLinkedWorktreeMode::Disabled => false,
+            SandboxLinkedWorktreeMode::All => true,
+            SandboxLinkedWorktreeMode::Explicit => requested_ids.contains(&worktree.id),
+        };
+        if !include {
+            continue;
+        }
+
+        let host_path = canonicalize_existing_path(Path::new(&worktree.worktree_path))?;
+        if host_path == scope_root {
+            notes.push(format!(
+                "Skipped linked worktree {} because it matches the sandbox scope root.",
+                worktree.id
+            ));
+            continue;
+        }
+
+        selected.push(ResolvedSandboxLinkedWorktree {
+            id: worktree.id.clone(),
+            codebase_id: worktree.codebase_id.clone(),
+            branch: worktree.branch.clone(),
+            host_path: host_path.to_string_lossy().to_string(),
+            container_path: format!(
+                "{}/{:02}-{}",
+                SANDBOX_LINKED_WORKTREE_ROOT,
+                selected.len(),
+                sanitize_mount_name(Path::new(&worktree.worktree_path))
+            ),
+        });
+    }
+
+    if mode == SandboxLinkedWorktreeMode::Explicit {
+        let selected_ids = selected
+            .iter()
+            .map(|worktree| worktree.id.clone())
+            .collect::<BTreeSet<_>>();
+        let missing = requested_ids
+            .difference(&selected_ids)
+            .cloned()
+            .collect::<Vec<_>>();
+        if !missing.is_empty() {
+            return Err(format!(
+                "Sandbox policy linkedWorktreeIds not found or inactive: {}",
+                missing.join(", ")
+            ));
+        }
+    }
+
+    if !selected.is_empty() {
+        notes.push(format!(
+            "Mounted {} linked worktree(s) as read-only comparison roots.",
+            selected.len()
+        ));
+    }
+
+    Ok(selected)
+}
+
+fn resolve_capability_view(
+    capabilities: &BTreeSet<SandboxCapability>,
+    uses_workspace_write: bool,
+    network_mode: SandboxNetworkMode,
+    has_linked_worktrees: bool,
+) -> Vec<ResolvedSandboxCapability> {
+    [
+        SandboxCapability::WorkspaceRead,
+        SandboxCapability::WorkspaceWrite,
+        SandboxCapability::NetworkAccess,
+        SandboxCapability::LinkedWorktreeRead,
+    ]
+    .into_iter()
+    .map(|capability| ResolvedSandboxCapability {
+        capability,
+        tier: capability_tier(capability),
+        enabled: capability == SandboxCapability::WorkspaceRead
+            || capabilities.contains(&capability),
+        reason: capability_reason(
+            capability,
+            capabilities,
+            uses_workspace_write,
+            network_mode,
+            has_linked_worktrees,
+        ),
+    })
+    .collect()
+}
+
+fn capability_tier(capability: SandboxCapability) -> SandboxCapabilityTier {
+    match capability {
+        SandboxCapability::WorkspaceRead | SandboxCapability::LinkedWorktreeRead => {
+            SandboxCapabilityTier::Observation
+        }
+        SandboxCapability::WorkspaceWrite | SandboxCapability::NetworkAccess => {
+            SandboxCapabilityTier::Action
+        }
+    }
+}
+
+fn capability_reason(
+    capability: SandboxCapability,
+    capabilities: &BTreeSet<SandboxCapability>,
+    uses_workspace_write: bool,
+    network_mode: SandboxNetworkMode,
+    has_linked_worktrees: bool,
+) -> String {
+    match capability {
+        SandboxCapability::WorkspaceRead => {
+            "Implicitly enabled for the primary workspace/codebase mount.".to_string()
+        }
+        SandboxCapability::WorkspaceWrite => {
+            if capabilities.contains(&SandboxCapability::WorkspaceWrite) {
+                if uses_workspace_write {
+                    "Allow-listed and used to authorize read-write path grants.".to_string()
+                } else {
+                    "Allow-listed, but no read-write path grants are currently in use.".to_string()
+                }
+            } else {
+                "Not allow-listed; workspace and extra mounts remain read-only.".to_string()
+            }
+        }
+        SandboxCapability::NetworkAccess => {
+            if capabilities.contains(&SandboxCapability::NetworkAccess) {
+                format!(
+                    "Allow-listed with effective network mode {:?}.",
+                    network_mode
+                )
+            } else {
+                "Not allow-listed; network defaults to none.".to_string()
+            }
+        }
+        SandboxCapability::LinkedWorktreeRead => {
+            if capabilities.contains(&SandboxCapability::LinkedWorktreeRead) {
+                if has_linked_worktrees {
+                    "Allow-listed and used to mount linked worktrees read-only.".to_string()
+                } else {
+                    "Allow-listed, but no linked worktrees were selected.".to_string()
+                }
+            } else {
+                "Not allow-listed; linked worktrees are unavailable.".to_string()
+            }
+        }
     }
 }
 
@@ -559,231 +897,4 @@ fn sanitize_mount_name(path: &Path) -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn write_dir(path: &Path) {
-        std::fs::create_dir_all(path).expect("directory should be created");
-    }
-
-    fn write_file(path: &Path, content: &str) {
-        if let Some(parent) = path.parent() {
-            write_dir(parent);
-        }
-        std::fs::write(path, content).expect("file should be written");
-    }
-
-    fn canonical(path: &Path) -> String {
-        std::fs::canonicalize(path)
-            .expect("path should be canonicalizable")
-            .to_string_lossy()
-            .to_string()
-    }
-
-    #[test]
-    fn empty_policy_is_detected() {
-        assert!(SandboxPolicyInput::default().is_empty());
-    }
-
-    #[test]
-    fn resolve_policy_uses_explicit_workdir_as_scope_when_no_context() {
-        let temp = tempfile::tempdir().expect("tempdir should exist");
-        let repo = temp.path().join("repo");
-        let child = repo.join("src");
-        write_dir(&child);
-
-        let policy = SandboxPolicyInput {
-            workdir: Some(repo.to_string_lossy().to_string()),
-            read_write_paths: vec![child.to_string_lossy().to_string()],
-            ..Default::default()
-        };
-
-        let resolved = policy.resolve(None).expect("policy should resolve");
-        assert_eq!(resolved.scope_root, canonical(&repo));
-        assert_eq!(resolved.container_workdir, SANDBOX_SCOPE_CONTAINER_ROOT);
-        assert_eq!(resolved.mounts[0].access, SandboxMountAccess::ReadOnly);
-        assert!(resolved.mounts.iter().any(|mount| {
-            mount.container_path.ends_with("/src") && mount.access == SandboxMountAccess::ReadWrite
-        }));
-    }
-
-    #[test]
-    fn resolve_policy_uses_workspace_root_for_relative_paths() {
-        let temp = tempfile::tempdir().expect("tempdir should exist");
-        let repo = temp.path().join("repo");
-        let scripts = repo.join("scripts");
-        write_dir(&scripts);
-
-        let policy = SandboxPolicyInput {
-            workdir: Some("scripts".to_string()),
-            read_write_paths: vec!["scripts".to_string()],
-            ..Default::default()
-        };
-        let context = SandboxPolicyContext {
-            workspace_id: Some("ws-1".to_string()),
-            codebase_id: Some("cb-1".to_string()),
-            workspace_root: Some(repo.clone()),
-        };
-
-        let resolved = policy
-            .resolve(Some(context))
-            .expect("policy should resolve");
-        assert_eq!(resolved.host_workdir, canonical(&scripts));
-        assert_eq!(resolved.container_workdir, "/workspace/scripts");
-    }
-
-    #[test]
-    fn resolve_policy_rejects_workdir_outside_scope_root() {
-        let temp = tempfile::tempdir().expect("tempdir should exist");
-        let repo = temp.path().join("repo");
-        let outside = temp.path().join("outside");
-        write_dir(&repo);
-        write_dir(&outside);
-
-        let policy = SandboxPolicyInput {
-            workdir: Some(outside.to_string_lossy().to_string()),
-            ..Default::default()
-        };
-        let context = SandboxPolicyContext {
-            workspace_root: Some(repo),
-            ..Default::default()
-        };
-
-        let err = policy
-            .resolve(Some(context))
-            .expect_err("workdir outside root should fail");
-        assert!(err.contains("escapes scope root"));
-    }
-
-    #[test]
-    fn read_write_grant_wins_over_read_only_duplicate() {
-        let temp = tempfile::tempdir().expect("tempdir should exist");
-        let repo = temp.path().join("repo");
-        let cache = repo.join("cache");
-        write_dir(&cache);
-
-        let policy = SandboxPolicyInput {
-            workdir: Some(repo.to_string_lossy().to_string()),
-            read_only_paths: vec![cache.to_string_lossy().to_string()],
-            read_write_paths: vec![cache.to_string_lossy().to_string()],
-            ..Default::default()
-        };
-
-        let resolved = policy.resolve(None).expect("policy should resolve");
-        assert!(resolved.read_only_paths.is_empty());
-        assert_eq!(resolved.read_write_paths, vec![canonical(&cache)]);
-    }
-
-    #[test]
-    fn trusted_workspace_config_is_loaded_and_merged() {
-        let temp = tempfile::tempdir().expect("tempdir should exist");
-        let repo = temp.path().join("repo");
-        let scripts = repo.join("scripts");
-        let cache = repo.join("cache");
-        let output = repo.join("output");
-        write_dir(&scripts);
-        write_dir(&cache);
-        write_dir(&output);
-        write_file(
-            &repo.join(".routa").join("sandbox.json"),
-            r#"{
-                "workdir": "scripts",
-                "readOnlyPaths": ["cache"],
-                "networkMode": "none",
-                "envAllowlist": ["OPENAI_API_KEY"]
-            }"#,
-        );
-
-        let policy = SandboxPolicyInput {
-            trust_workspace_config: true,
-            read_write_paths: vec!["output".to_string()],
-            env_allowlist: vec!["LANG".to_string()],
-            ..Default::default()
-        };
-        let context = SandboxPolicyContext {
-            workspace_root: Some(repo.clone()),
-            ..Default::default()
-        };
-
-        let resolved = policy
-            .resolve(Some(context))
-            .expect("policy should resolve");
-
-        assert_eq!(resolved.host_workdir, canonical(&scripts));
-        assert_eq!(resolved.network_mode, SandboxNetworkMode::None);
-        assert_eq!(
-            resolved.env_allowlist,
-            vec!["LANG".to_string(), "OPENAI_API_KEY".to_string()]
-        );
-        assert_eq!(
-            resolved.workspace_config,
-            Some(ResolvedSandboxWorkspaceConfig {
-                path: canonical(&repo.join(".routa").join("sandbox.json")),
-                trusted: true,
-                loaded: true,
-                reason: "loaded".to_string(),
-            })
-        );
-        assert!(resolved.read_only_paths.contains(&canonical(&cache)));
-        assert!(resolved.read_write_paths.contains(&canonical(&output)));
-        assert!(resolved
-            .notes
-            .iter()
-            .any(|note| note.contains("Loaded trusted workspace sandbox config")));
-    }
-
-    #[test]
-    fn workspace_config_is_ignored_without_trust() {
-        let temp = tempfile::tempdir().expect("tempdir should exist");
-        let repo = temp.path().join("repo");
-        let scripts = repo.join("scripts");
-        write_dir(&scripts);
-        write_file(
-            &repo.join(".routa").join("sandbox.json"),
-            r#"{"workdir":"scripts","networkMode":"none"}"#,
-        );
-
-        let context = SandboxPolicyContext {
-            workspace_root: Some(repo.clone()),
-            ..Default::default()
-        };
-        let resolved = SandboxPolicyInput {
-            workdir: Some(repo.to_string_lossy().to_string()),
-            ..Default::default()
-        }
-        .resolve(Some(context))
-        .expect("policy should resolve");
-
-        assert_eq!(resolved.host_workdir, canonical(&repo));
-        assert_eq!(resolved.network_mode, SandboxNetworkMode::Bridge);
-        assert_eq!(
-            resolved.workspace_config,
-            Some(ResolvedSandboxWorkspaceConfig {
-                path: canonical(&repo.join(".routa").join("sandbox.json")),
-                trusted: false,
-                loaded: false,
-                reason: "trustDisabled".to_string(),
-            })
-        );
-    }
-
-    #[test]
-    fn invalid_trusted_workspace_config_fails_resolution() {
-        let temp = tempfile::tempdir().expect("tempdir should exist");
-        let repo = temp.path().join("repo");
-        write_dir(&repo);
-        write_file(&repo.join(".routa").join("sandbox.json"), "{not-json");
-
-        let err = SandboxPolicyInput {
-            trust_workspace_config: true,
-            ..Default::default()
-        }
-        .resolve(Some(SandboxPolicyContext {
-            workspace_root: Some(repo),
-            ..Default::default()
-        }))
-        .expect_err("invalid trusted config should fail");
-
-        assert!(err.contains("Failed to parse trusted workspace sandbox config"));
-    }
-}
+mod policy_tests;

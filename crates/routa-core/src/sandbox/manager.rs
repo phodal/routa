@@ -527,6 +527,8 @@ mod tests {
                     reason: Some("scopeOverride".to_string()),
                 },
             ],
+            capabilities: vec![],
+            linked_worktrees: vec![],
             workspace_config: None,
             notes: vec![],
         };

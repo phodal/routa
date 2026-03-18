@@ -25,7 +25,7 @@ use serde_json::json;
 
 use crate::error::ServerError;
 use crate::sandbox::{
-    policy::SandboxPolicyContext,
+    policy::{SandboxPolicyContext, SandboxPolicyWorktree},
     types::{CreateSandboxRequest, ExecuteRequest, ResolvedCreateSandboxRequest},
 };
 use crate::state::AppState;
@@ -185,6 +185,7 @@ async fn resolve_policy_context(
         workspace_id,
         codebase_id,
         workspace_root: None,
+        available_worktrees: Vec::new(),
     };
 
     if let Some(codebase_id) = context.codebase_id.clone() {
@@ -205,6 +206,19 @@ async fn resolve_policy_context(
 
         context.workspace_id = Some(codebase.workspace_id.clone());
         context.workspace_root = Some(std::path::PathBuf::from(&codebase.repo_path));
+        context.available_worktrees = state
+            .worktree_store
+            .list_by_codebase(&codebase_id)
+            .await?
+            .into_iter()
+            .filter(|worktree| worktree.status == "active")
+            .map(|worktree| SandboxPolicyWorktree {
+                id: worktree.id,
+                codebase_id: worktree.codebase_id,
+                worktree_path: worktree.worktree_path,
+                branch: worktree.branch,
+            })
+            .collect();
         return Ok(Some(context));
     }
 
@@ -221,6 +235,20 @@ async fn resolve_policy_context(
             context.codebase_id = Some(codebase.id);
             context.workspace_root = Some(std::path::PathBuf::from(codebase.repo_path));
         }
+
+        context.available_worktrees = state
+            .worktree_store
+            .list_by_workspace(&workspace_id)
+            .await?
+            .into_iter()
+            .filter(|worktree| worktree.status == "active")
+            .map(|worktree| SandboxPolicyWorktree {
+                id: worktree.id,
+                codebase_id: worktree.codebase_id,
+                worktree_path: worktree.worktree_path,
+                branch: worktree.branch,
+            })
+            .collect();
     }
 
     Ok(Some(context))
@@ -233,8 +261,11 @@ mod tests {
     use crate::state::AppStateInner;
     use routa_core::{
         db::Database,
-        models::{codebase::Codebase, workspace::Workspace},
-        sandbox::{CreateSandboxRequest, SandboxNetworkMode, SandboxPolicyInput},
+        models::{codebase::Codebase, workspace::Workspace, worktree::Worktree},
+        sandbox::{
+            CreateSandboxRequest, SandboxCapability, SandboxLinkedWorktreeMode, SandboxNetworkMode,
+            SandboxPolicyInput,
+        },
     };
 
     use super::resolve_create_request;
@@ -248,9 +279,11 @@ mod tests {
         std::fs::create_dir_all(repo.join(".routa")).expect("config directory should exist");
         std::fs::write(
             repo.join(".routa").join("sandbox.json"),
-            r#"{"networkMode":"none","readWritePaths":["output"]}"#,
+            r#"{"networkMode":"none","readWritePaths":["output"],"capabilities":["workspaceWrite","linkedWorktreeRead"]}"#,
         )
         .expect("workspace config should exist");
+        let review_wt = temp.path().join("wt-review");
+        std::fs::create_dir_all(&review_wt).expect("worktree directory should exist");
 
         let db = Database::open_in_memory().expect("db should open");
         let state = Arc::new(AppStateInner::new(db));
@@ -275,6 +308,21 @@ mod tests {
             ))
             .await
             .expect("codebase should save");
+        let mut worktree = Worktree::new(
+            "wt-1".to_string(),
+            "cb-1".to_string(),
+            "ws-1".to_string(),
+            review_wt.to_string_lossy().to_string(),
+            "review".to_string(),
+            "main".to_string(),
+            Some("Review".to_string()),
+        );
+        worktree.status = "active".to_string();
+        state
+            .worktree_store
+            .save(&worktree)
+            .await
+            .expect("worktree should save");
 
         let resolved = resolve_create_request(
             &state,
@@ -282,6 +330,7 @@ mod tests {
                 lang: "python".to_string(),
                 policy: Some(SandboxPolicyInput {
                     workspace_id: Some("ws-1".to_string()),
+                    linked_worktree_mode: Some(SandboxLinkedWorktreeMode::All),
                     trust_workspace_config: true,
                     ..Default::default()
                 }),
@@ -292,12 +341,18 @@ mod tests {
 
         let policy = resolved.policy.expect("policy should be resolved");
         assert_eq!(policy.network_mode, SandboxNetworkMode::None);
+        assert!(policy
+            .capabilities
+            .iter()
+            .any(|cap| cap.capability == SandboxCapability::LinkedWorktreeRead && cap.enabled));
         assert!(policy.read_write_paths.contains(
             &std::fs::canonicalize(&output)
                 .expect("output should canonicalize")
                 .to_string_lossy()
                 .to_string()
         ));
+        assert_eq!(policy.linked_worktrees.len(), 1);
+        assert_eq!(policy.linked_worktrees[0].id, "wt-1");
         assert_eq!(
             policy
                 .workspace_config
