@@ -70,6 +70,37 @@ def test_parser_graph_history():
     assert args.ref == "main"
 
 
+def test_parser_graph_review_context():
+    parser = build_parser()
+    args = parser.parse_args(
+        [
+            "graph",
+            "review-context",
+            "--base",
+            "HEAD~2",
+            "--depth",
+            "3",
+            "--max-targets",
+            "10",
+            "--max-files",
+            "4",
+            "--max-lines-per-file",
+            "80",
+            "--no-source",
+            "src/a.ts",
+        ]
+    )
+    assert args.command == "graph"
+    assert args.graph_command == "review-context"
+    assert args.base == "HEAD~2"
+    assert args.depth == 3
+    assert args.max_targets == 10
+    assert args.max_files == 4
+    assert args.max_lines_per_file == 80
+    assert args.no_source is True
+    assert args.files == ["src/a.ts"]
+
+
 def test_parser_no_command():
     parser = build_parser()
     args = parser.parse_args([])

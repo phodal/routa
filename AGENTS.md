@@ -17,6 +17,7 @@
 - Test Tauri UI: `npm run tauri dev`, then use Playwright against `http://127.0.0.1:3210/`.
 - **Tauri routing debug**: If Tauri shows wrong page, check `crates/routa-server/src/lib.rs` fallback service maps routes to correct `__placeholder__` files; verify with `ls -la out/workspace/__placeholder__/`.
 - For Rust test coverage work, follow this sequence: `AGENTS.md` -> `docs/fitness/README.md` -> `docs/fitness/unit-test.md`.
+- When changes span many files or touch shared core modules, run `routa-fitness graph impact`, `graph test-radius`, or `graph review-context` first to identify blast radius and prioritize regression coverage.
 - When changes span many files, do a full manual walkthrough in the browser:
   - Home page → select claude code → enter a requirement → auto-redirect to detail page → trigger ACP session
   - Visit a workspace detail page → click a session → switch to Trace UI to check history

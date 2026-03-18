@@ -272,3 +272,28 @@ def test_select_query_targets_skips_nested_local_helpers(monkeypatch, tmp_path: 
         "src/service.ts:Service",
         "src/service.ts:Service.run",
     ]
+
+
+def test_review_context_includes_guidance_and_source(monkeypatch, tmp_path: Path):
+    adapter = FakeAdapter()
+    project_root = tmp_path
+    (project_root / "src").mkdir()
+    (project_root / "src" / "service.ts").write_text(
+        "export function run() {\n  return 1;\n}\n",
+        encoding="utf-8",
+    )
+    (project_root / "src" / "service.test.ts").write_text(
+        "test('run', () => {})\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(graph_module, "try_create_adapter", lambda _: adapter)
+
+    runner = GraphRunner(project_root)
+    result = runner.review_context(["src/service.ts"], build_mode="skip")
+
+    assert result["status"] == "ok"
+    assert "Review guidance:" in result["summary"]
+    assert result["context"]["changed_files"] == ["src/service.ts"]
+    assert result["context"]["tests"]["test_files"] == ["src/service.test.ts"]
+    assert result["context"]["source_snippets"][0]["file_path"] == "src/service.ts"
+    assert "lack direct or inherited tests" in result["context"]["review_guidance"]

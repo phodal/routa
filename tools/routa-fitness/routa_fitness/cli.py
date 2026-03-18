@@ -83,6 +83,25 @@ def _print_graph_history(result: dict) -> None:
         )
 
 
+def _print_graph_review_context(result: dict) -> None:
+    print(result.get("summary", "No summary available."))
+    context = result.get("context", {})
+    tests = context.get("tests", {})
+    print(f"Changed files: {len(context.get('changed_files', []))}")
+    print(f"Impacted files: {len(context.get('impacted_files', []))}")
+    print(f"Queryable targets: {len(context.get('targets', []))}")
+    print(f"Test files: {len(tests.get('test_files', []))}")
+    print("Review guidance:")
+    for line in str(context.get("review_guidance", "")).splitlines():
+        print(f"  {line}")
+    snippets = context.get("source_snippets", [])
+    if snippets:
+        print("Source snippets:")
+        for snippet in snippets[:10]:
+            suffix = " (truncated)" if snippet.get("truncated") else ""
+            print(f"  - {snippet['file_path']}{suffix}")
+
+
 def cmd_run(args: argparse.Namespace) -> int:
     """Run fitness checks (main command)."""
     project_root = _find_project_root()
@@ -265,6 +284,29 @@ def cmd_graph_history(args: argparse.Namespace) -> int:
     return 0 if result.get("status") != "unavailable" else 1
 
 
+def cmd_graph_review_context(args: argparse.Namespace) -> int:
+    """Build an AI-friendly review context for the current diff or files."""
+    runner = GraphRunner(_find_project_root())
+    result = runner.review_context(
+        args.files or None,
+        base=args.base,
+        max_depth=args.depth,
+        build_mode=args.build_mode,
+        max_targets=args.max_targets,
+        include_source=not args.no_source,
+        max_files=args.max_files,
+        max_lines_per_file=args.max_lines_per_file,
+    )
+    if args.json:
+        _print_json(result)
+    else:
+        if result.get("status") == "unavailable":
+            print(result.get("reason", "Graph unavailable"))
+            return 1
+        _print_graph_review_context(result)
+    return 0 if result.get("status") != "unavailable" else 1
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="routa-fitness",
@@ -374,6 +416,35 @@ def build_parser() -> argparse.ArgumentParser:
     )
     graph_history.add_argument("--json", action="store_true", help="Emit JSON output")
     graph_history.set_defaults(func=cmd_graph_history)
+
+    graph_review_context = graph_subparsers.add_parser(
+        "review-context",
+        help="Build an AI-friendly review context from the current graph",
+    )
+    graph_review_context.add_argument("files", nargs="*", help="Optional explicit changed files")
+    graph_review_context.add_argument("--base", default="HEAD", help="Git diff base")
+    graph_review_context.add_argument("--depth", type=int, default=2, help="Traversal depth")
+    graph_review_context.add_argument("--max-targets", type=int, default=25, help="Max nodes to query")
+    graph_review_context.add_argument("--max-files", type=int, default=12, help="Max source files to include")
+    graph_review_context.add_argument(
+        "--max-lines-per-file",
+        type=int,
+        default=120,
+        help="Max source lines to include per file",
+    )
+    graph_review_context.add_argument(
+        "--no-source",
+        action="store_true",
+        help="Do not include source snippets in the output",
+    )
+    graph_review_context.add_argument(
+        "--build-mode",
+        choices=["auto", "full", "skip"],
+        default="auto",
+        help="Graph build mode",
+    )
+    graph_review_context.add_argument("--json", action="store_true", help="Emit JSON output")
+    graph_review_context.set_defaults(func=cmd_graph_review_context)
 
     return parser
 

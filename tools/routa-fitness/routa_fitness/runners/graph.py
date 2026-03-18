@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from textwrap import dedent
 from typing import Any
 
 from routa_fitness.model import MetricResult, Tier
@@ -385,6 +386,71 @@ class GraphRunner:
             "commits": results,
         }
 
+    def review_context(
+        self,
+        changed_files: list[str] | None = None,
+        *,
+        base: str = "HEAD",
+        max_depth: int = 2,
+        build_mode: str = "auto",
+        max_targets: int = 25,
+        include_source: bool = True,
+        max_files: int = 12,
+        max_lines_per_file: int = 120,
+    ) -> dict[str, Any]:
+        """Build an AI-friendly review context from graph impact and test radius."""
+        radius = self.analyze_test_radius(
+            changed_files,
+            base=base,
+            max_depth=max_depth,
+            build_mode=build_mode,
+            max_targets=max_targets,
+        )
+        if radius.get("status") != "ok":
+            return radius
+
+        context: dict[str, Any] = {
+            "changed_files": radius.get("changed_files", []),
+            "impacted_files": radius.get("impacted_files", []),
+            "graph": {
+                "changed_nodes": radius.get("changed_nodes", []),
+                "impacted_nodes": radius.get("impacted_nodes", []),
+                "edges": radius.get("edges", []),
+            },
+            "targets": radius.get("target_nodes", []),
+            "tests": {
+                "test_files": radius.get("test_files", []),
+                "untested_targets": radius.get("untested_targets", []),
+                "query_failures": radius.get("query_failures", []),
+            },
+            "review_guidance": self._generate_review_guidance(radius),
+        }
+        if include_source:
+            context["source_snippets"] = self._collect_source_snippets(
+                radius,
+                max_files=max_files,
+                max_lines_per_file=max_lines_per_file,
+            )
+
+        summary = dedent(
+            f"""\
+            Review context for {len(radius.get('changed_files', []))} changed file(s):
+              - {len(radius.get('changed_nodes', []))} directly changed nodes
+              - {len(radius.get('impacted_nodes', []))} impacted nodes in {len(radius.get('impacted_files', []))} files
+
+            Review guidance:
+            {context['review_guidance']}"""
+        ).strip()
+
+        return {
+            "status": "ok",
+            "analysis_mode": "current_graph",
+            "summary": summary,
+            "base": base,
+            "context": context,
+            "build": radius.get("build", {}),
+        }
+
     def probe_impact(
         self,
         *,
@@ -457,6 +523,96 @@ class GraphRunner:
             ),
             tier=Tier.NORMAL,
         )
+
+    def _generate_review_guidance(self, radius: dict[str, Any]) -> str:
+        guidance_parts: list[str] = []
+
+        untested_targets = radius.get("untested_targets", [])
+        if untested_targets:
+            names = ", ".join(
+                str(target.get("qualified_name", ""))
+                for target in untested_targets[:5]
+                if target.get("qualified_name")
+            )
+            guidance_parts.append(
+                f"- {len(untested_targets)} changed target(s) lack direct or inherited tests: {names}"
+            )
+
+        if radius.get("wide_blast_radius"):
+            guidance_parts.append(
+                f"- Wide blast radius: {len(radius.get('impacted_files', []))} impacted files. "
+                "Review callers, API routes, and downstream workflows carefully."
+            )
+
+        impacted_test_files = radius.get("impacted_test_files", [])
+        if impacted_test_files:
+            guidance_parts.append(
+                f"- {len(impacted_test_files)} impacted test file(s) were identified. "
+                "Prioritize those before broader regression sweeps."
+            )
+
+        query_failures = radius.get("query_failures", [])
+        if query_failures:
+            guidance_parts.append(
+                f"- {len(query_failures)} graph query failure(s) occurred. "
+                "Treat the result as partial and verify critical paths manually."
+            )
+
+        changed_targets = radius.get("target_nodes", [])
+        if changed_targets and not untested_targets and not radius.get("wide_blast_radius"):
+            guidance_parts.append(
+                "- Changes appear locally test-covered and reasonably contained."
+            )
+
+        if not guidance_parts:
+            guidance_parts.append("- No graph-derived review guidance available.")
+
+        return "\n".join(guidance_parts)
+
+    def _collect_source_snippets(
+        self,
+        radius: dict[str, Any],
+        *,
+        max_files: int,
+        max_lines_per_file: int,
+    ) -> list[dict[str, Any]]:
+        ranked_paths: list[str] = []
+        seen: set[str] = set()
+        for path in radius.get("changed_files", []):
+            if isinstance(path, str) and path and path not in seen:
+                seen.add(path)
+                ranked_paths.append(path)
+        for path in radius.get("test_files", []):
+            if isinstance(path, str) and path and path not in seen:
+                seen.add(path)
+                ranked_paths.append(path)
+        for path in radius.get("impacted_files", []):
+            if isinstance(path, str) and path and path not in seen:
+                seen.add(path)
+                ranked_paths.append(path)
+
+        snippets: list[dict[str, Any]] = []
+        for relative_path in ranked_paths[:max_files]:
+            snippet = self._read_source_snippet(relative_path, max_lines=max_lines_per_file)
+            if snippet:
+                snippets.append(snippet)
+        return snippets
+
+    def _read_source_snippet(self, relative_path: str, *, max_lines: int) -> dict[str, Any] | None:
+        path = self.project_root / relative_path
+        if not path.exists() or not path.is_file():
+            return None
+        try:
+            lines = path.read_text(encoding="utf-8").splitlines()
+        except UnicodeDecodeError:
+            return None
+
+        return {
+            "file_path": relative_path,
+            "line_count": len(lines),
+            "truncated": len(lines) > max_lines,
+            "content": "\n".join(lines[:max_lines]),
+        }
 
     def _select_query_targets(
         self, changed_nodes: list[dict[str, Any]], *, max_targets: int
