@@ -32,7 +32,7 @@ const board: KanbanBoardInfo = {
 };
 
 describe("KanbanSettingsModal", () => {
-  it("saves updated automation and artifact requirements", async () => {
+  it("applies recommended defaults and saves updated automation", async () => {
     const onSave = vi.fn(async () => {});
 
     render(
@@ -49,9 +49,8 @@ describe("KanbanSettingsModal", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /review/i }));
     fireEvent.click(screen.getByRole("switch", { name: /automation/i }));
-    fireEvent.change(screen.getByLabelText("Provider"), { target: { value: "claude" } });
-    fireEvent.change(screen.getByLabelText("Specialist"), { target: { value: "verify" } });
-    fireEvent.click(screen.getByText("Screenshot"));
+    fireEvent.change(screen.getAllByLabelText("Provider")[0], { target: { value: "claude" } });
+    fireEvent.change(screen.getAllByLabelText("Specialist")[0], { target: { value: "verify" } });
     fireEvent.click(screen.getByRole("button", { name: /save board settings/i }));
 
     await waitFor(() => {
@@ -70,7 +69,8 @@ describe("KanbanSettingsModal", () => {
             specialistId: "verify",
             specialistName: "Verifier",
             role: "GATE",
-            requiredArtifacts: ["screenshot"],
+            transitionType: "exit",
+            requiredArtifacts: ["screenshot", "test_results"],
           }),
         },
         2,
@@ -82,5 +82,23 @@ describe("KanbanSettingsModal", () => {
         },
       );
     });
+  });
+
+  it("keeps runtime settings collapsed until requested", () => {
+    render(
+      <KanbanSettingsModal
+        board={board}
+        visibleColumns={["todo", "review"]}
+        columnAutomation={{}}
+        availableProviders={[{ id: "claude", name: "Claude Code", description: "Claude Code provider", command: "claude" }]}
+        specialists={[{ id: "verify", name: "Verifier", role: "GATE" }]}
+        onClose={vi.fn()}
+        onSave={vi.fn(async () => {})}
+      />,
+    );
+
+    expect(screen.queryByLabelText("Dev supervision mode")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /show runtime settings/i }));
+    expect(screen.getByLabelText("Dev supervision mode")).not.toBeNull();
   });
 });
