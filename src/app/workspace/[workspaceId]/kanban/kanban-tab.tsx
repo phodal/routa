@@ -14,6 +14,7 @@ import { KanbanBgAgentPanel } from "./kanban-bg-agent-panel";
 import { getKanbanAutomationSteps, normalizeKanbanAutomation } from "@/core/models/kanban";
 import { ChatPanel } from "@/client/components/chat-panel";
 import { RepoPicker, type RepoSelection } from "@/client/components/repo-picker";
+import { KanbanRepoSyncStatus, type RepoSyncState } from "./kanban-repo-sync-status";
 
 interface SpecialistOption {
   id: string;
@@ -30,6 +31,7 @@ interface KanbanTabProps {
   specialists: SpecialistOption[];
   codebases: CodebaseData[];
   onRefresh: () => void;
+  repoSync?: RepoSyncState;
   /** ACP state and actions for agent input and session management */
   acp?: UseAcpState & UseAcpActions;
   /** Handler for agent prompt - creates session and sends prompt */
@@ -107,7 +109,19 @@ function formatLaneAutomationSummary(
   return `-> ${core}`;
 }
 
-export function KanbanTab({ workspaceId, boards, tasks, sessions, providers, specialists, codebases, onRefresh, acp, onAgentPrompt }: KanbanTabProps) {
+export function KanbanTab({
+  workspaceId,
+  boards,
+  tasks,
+  sessions,
+  providers,
+  specialists,
+  codebases,
+  onRefresh,
+  repoSync,
+  acp,
+  onAgentPrompt,
+}: KanbanTabProps) {
   const defaultBoardId = useMemo(
     () => boards.find((board) => board.isDefault)?.id ?? boards[0]?.id ?? null,
     [boards],
@@ -1015,7 +1029,7 @@ export function KanbanTab({ workspaceId, boards, tasks, sessions, providers, spe
       <div className="shrink-0 rounded-2xl border border-gray-200/70 bg-white px-4 py-2 dark:border-[#1c1f2e] dark:bg-[#12141c]">
         <div className="flex flex-col gap-1.5 lg:flex-row lg:items-center lg:justify-between lg:gap-3">
           <div className="flex min-w-0 flex-1 flex-col gap-1.5 lg:flex-row lg:items-center lg:gap-2">
-            <div className="flex min-w-0 items-center gap-2 xl:max-w-xl">
+            <div className="flex min-w-0 flex-wrap items-center gap-2 xl:max-w-[56rem]">
               <span className="inline-flex h-8 items-center text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">Repos</span>
               {codebases.length === 0 ? (
                 <div className="flex min-w-0 flex-col gap-2 rounded-xl border border-dashed border-gray-200 bg-gray-50 px-3 py-2 dark:border-gray-700 dark:bg-[#0d1018]">
@@ -1085,6 +1099,7 @@ export function KanbanTab({ workspaceId, boards, tasks, sessions, providers, spe
                   )}
                 </div>
               )}
+              <KanbanRepoSyncStatus repoSync={repoSync} />
             </div>
           </div>
 

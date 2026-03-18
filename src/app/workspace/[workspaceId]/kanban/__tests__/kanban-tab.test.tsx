@@ -133,6 +133,45 @@ describe("KanbanTab lane automation labels", () => {
   });
 });
 
+describe("KanbanTab repo sync indicator", () => {
+  it("renders sync progress inline with the repos section", () => {
+    render(
+      <KanbanTab
+        workspaceId="workspace-1"
+        boards={[board]}
+        tasks={[]}
+        sessions={[]}
+        providers={[]}
+        specialists={[]}
+        codebases={[{
+          id: "codebase-1",
+          workspaceId: "workspace-1",
+          repoPath: "/tmp/repo",
+          branch: "main",
+          label: "routa-js",
+          isDefault: true,
+          sourceType: "github",
+          sourceUrl: "https://github.com/example/routa-js",
+          createdAt: "2025-01-01T00:00:00.000Z",
+          updatedAt: "2025-01-01T00:00:00.000Z",
+        }]}
+        onRefresh={vi.fn()}
+        repoSync={{
+          status: "done",
+          total: 1,
+          completed: 1,
+          currentRepoLabel: null,
+          message: "Repository sync complete. 1 repo updated.",
+          error: null,
+        }}
+      />,
+    );
+
+    const syncIndicator = screen.getByTestId("kanban-repo-sync-progress");
+    expect(syncIndicator.textContent).toContain("1 repo updated");
+  });
+});
+
 describe("KanbanTab card detail manual runs", () => {
   afterEach(() => {
     vi.unstubAllGlobals();

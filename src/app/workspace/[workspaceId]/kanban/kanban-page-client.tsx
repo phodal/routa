@@ -10,6 +10,7 @@ import { DesktopAppShell } from "@/client/components/desktop-app-shell";
 import { WorkspaceSwitcher } from "@/client/components/workspace-switcher";
 import { KanbanTab } from "./kanban-tab";
 import { scheduleKanbanRefreshBurst } from "./kanban-agent-input";
+import type { RepoSyncState } from "./kanban-repo-sync-status";
 import type { KanbanBoardInfo, TaskInfo, SessionInfo } from "../types";
 import type { CodebaseData } from "@/client/hooks/use-workspaces";
 
@@ -24,15 +25,6 @@ interface KanbanAgentPromptOptions {
   role?: string;
   toolMode?: "essential" | "full";
   allowedNativeTools?: string[];
-}
-
-interface RepoSyncState {
-  status: "idle" | "syncing" | "done" | "error";
-  total: number;
-  completed: number;
-  currentRepoLabel: string | null;
-  message: string | null;
-  error: string | null;
 }
 
 export function KanbanPageClient() {
@@ -366,11 +358,6 @@ export function KanbanPageClient() {
   }, [acp, codebases, workspaceId]);
 
   const workspace = workspacesHook.workspaces.find((w) => w.id === workspaceId);
-  const repoSyncPercent = repoSync.total > 0
-    ? Math.round((repoSync.completed / repoSync.total) * 100)
-    : 0;
-  const showRepoSyncBanner = repoSync.status !== "idle";
-
   return (
     <DesktopAppShell
       workspaceId={workspaceId}
@@ -388,39 +375,6 @@ export function KanbanPageClient() {
     >
       <div className="flex h-full flex-col overflow-hidden bg-desktop-bg-primary" data-testid="kanban-page-shell">
         <div className="flex-1 min-h-0 overflow-hidden p-4">
-          {showRepoSyncBanner && (
-            <div
-              className={`mb-4 rounded-xl border px-4 py-3 ${
-                repoSync.status === "error"
-                  ? "border-rose-200 bg-rose-50 text-rose-900 dark:border-rose-900/40 dark:bg-rose-950/30 dark:text-rose-100"
-                  : "border-sky-200 bg-sky-50 text-slate-900 dark:border-sky-900/40 dark:bg-sky-950/30 dark:text-slate-100"
-              }`}
-              data-testid="kanban-repo-sync-progress"
-            >
-              <div className="flex items-center justify-between gap-3 text-xs">
-                <div className="min-w-0">
-                  <div className="font-medium">{repoSync.message}</div>
-                  {repoSync.currentRepoLabel && (
-                    <div className="mt-1 truncate opacity-80">{repoSync.currentRepoLabel}</div>
-                  )}
-                  {repoSync.error && (
-                    <div className="mt-1 break-words text-[11px] opacity-90">{repoSync.error}</div>
-                  )}
-                </div>
-                <div className="shrink-0 font-mono text-[11px]">
-                  {repoSync.completed}/{repoSync.total}
-                </div>
-              </div>
-              <div className="mt-3 h-2 overflow-hidden rounded-full bg-black/10 dark:bg-white/10">
-                <div
-                  className={`h-full rounded-full transition-all duration-300 ${
-                    repoSync.status === "error" ? "bg-rose-500" : "bg-sky-500"
-                  }`}
-                  style={{ width: `${Math.max(repoSyncPercent, repoSync.status === "syncing" ? 6 : 0)}%` }}
-                />
-              </div>
-            </div>
-          )}
           <KanbanTab
             workspaceId={workspaceId}
             boards={boards}
@@ -432,6 +386,7 @@ export function KanbanPageClient() {
             onRefresh={handleRefresh}
             acp={acp}
             onAgentPrompt={handleAgentPrompt}
+            repoSync={repoSync}
           />
         </div>
       </div>
