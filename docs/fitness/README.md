@@ -59,17 +59,18 @@ Fitness = Σ (Weight_i × Score_i) / 100
 阻断: < 80 | 强告警: 80-90 | 通过: ≥ 90
 ```
 
-## Dimensions (七大维度)
+## Dimensions (八大维度)
 
 | 维度 | 权重 | 描述 | 关键指标 | 证据文件 |
 |------|------|------|----------|----------|
-| code_quality | 24% | 代码质量与架构 | Lint通过, 无循环依赖, 文件≤1000行 | [code-quality.md](code-quality.md) |
+| code_quality | 18% | 代码质量与架构 | Lint通过, 无循环依赖, 文件≤1000行 | [code-quality.md](code-quality.md) |
 | testability | 20% | 测试覆盖与通过率 | 覆盖率≥80%, 通过率100% | [unit-test.md](unit-test.md) |
 | security | 20% | 依赖漏洞与安全扫描 | critical=0, high≤阈值 | [security.md](security.md) |
 | api_contract | 10% | API 契约测试 | Rust API 测试通过, 契约同步 | [rust-api-test.md](rust-api-test.md) |
 | design_system | 10% | 设计系统质量 | 视觉回归, 可访问性, 性能 | [design-system-quality-layers.md](design-system-quality-layers.md) |
 | evolvability | 8% | API 兼容性与契约 | breaking changes=0, parity=100% | [api-contract.md](api-contract.md) |
 | ui_consistency | 8% | UI 一致性 | Shell 组件覆盖, Token 接入 | [design-system-shell.md](design-system-shell.md) |
+| change_impact | 6% | 变更影响与爆炸半径 | graph probe 可运行, 宽 blast radius 告警 | [change-impact.md](change-impact.md) |
 
 **Total: 100%**
 

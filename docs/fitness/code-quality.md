@@ -1,6 +1,6 @@
 ---
 dimension: code_quality
-weight: 24
+weight: 18
 tier: normal
 threshold:
   pass: 90
