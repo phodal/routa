@@ -9,7 +9,6 @@ module.exports = {
   trailingSlash: false,
   onBrokenLinks: "warn",
   onBrokenMarkdownLinks: "warn",
-
   presets: [
     [
       "@docusaurus/preset-classic",
