@@ -882,3 +882,136 @@ async fn api_contract_negative_filters() {
         .and_then(Value::as_array)
         .is_some());
 }
+
+#[tokio::test]
+async fn api_mcp_tools_include_delegate_task_tool() {
+    let fixture = ApiFixture::new().await;
+
+    let list_tools = fixture
+        .client
+        .get(fixture.endpoint("/api/mcp/tools"))
+        .send()
+        .await
+        .expect("list mcp tools");
+    assert_eq!(list_tools.status(), StatusCode::OK);
+
+    let tool_payload: Value = list_tools
+        .json()
+        .await
+        .expect("decode mcp tools response");
+    let tools = tool_payload
+        .get("tools")
+        .and_then(Value::as_array)
+        .expect("tools array");
+    let has_delegate = tools
+        .iter()
+        .filter_map(|tool| tool.get("name").and_then(Value::as_str))
+        .any(|name| name == "delegate_task_to_agent");
+    assert!(has_delegate, "delegate_task_to_agent should be discoverable");
+}
+
+#[tokio::test]
+async fn api_mcp_tools_delegate_task_to_agent_contract() {
+    let fixture = ApiFixture::new().await;
+
+    let create_task = fixture
+        .client
+        .post(fixture.endpoint("/api/tasks"))
+        .json(&json!({
+            "title": "Run MCP delegate tool",
+            "objective": "Smoke validate delegate tool execution path",
+            "workspaceId": "default"
+        }))
+        .send()
+        .await
+        .expect("create task");
+    assert_eq!(create_task.status(), StatusCode::CREATED);
+    let created_task: Value = create_task
+        .json()
+        .await
+        .expect("decode create task");
+    let task_id = created_task["task"]["id"]
+        .as_str()
+        .expect("task id should exist");
+
+    let delegate_response = fixture
+        .client
+        .post(fixture.endpoint("/api/mcp/tools"))
+        .json(&json!({
+            "name": "delegate_task_to_agent",
+            "args": {
+                "taskId": task_id,
+                "callerAgentId": "team-lead-smoke",
+                "specialist": "CRAFTER",
+                "waitMode": "immediate"
+            }
+        }))
+        .send()
+        .await
+        .expect("call delegate_task_to_agent");
+    assert_eq!(delegate_response.status(), StatusCode::OK);
+
+    let delegate_json: Value = delegate_response
+        .json()
+        .await
+        .expect("decode delegate response");
+
+    let content = delegate_json
+        .get("content")
+        .and_then(Value::as_array)
+        .and_then(|arr| arr.first())
+        .and_then(|item| item.get("text"))
+        .and_then(Value::as_str)
+        .expect("delegate tool should include text result");
+
+    let is_error = delegate_json
+        .get("isError")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+
+    let result = if is_error {
+        let error = content;
+        assert!(
+            error.contains("Failed to delegate task")
+                || error.contains("Task not found")
+                || error.contains("Failed to spawn agent process"),
+            "unexpected delegate error: {}",
+            error
+        );
+        return;
+    } else {
+        serde_json::from_str::<Value>(content).expect("decode tool result json")
+    };
+
+    let success = result
+        .get("success")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    if success {
+        let data = result
+            .get("data")
+            .and_then(Value::as_object)
+            .expect("delegate result should have data");
+        assert_eq!(data["taskId"].as_str().expect("taskId"), task_id);
+        assert!(data.get("agentId").and_then(Value::as_str).is_some());
+        assert!(data.get("sessionId").and_then(Value::as_str).is_some());
+        assert_eq!(
+            data["waitMode"].as_str().expect("waitMode"),
+            "immediate"
+        );
+        let specialist = data["specialist"].as_str().expect("specialist");
+        assert!(specialist == "crafter" || specialist == "CRAFTER");
+    } else {
+        let error = result
+            .get("error")
+            .and_then(Value::as_str)
+            .expect("delegate failure should provide error");
+        assert!(
+            error.contains("Failed to delegate task")
+                || error.contains("Task not found")
+                || error.contains("Failed to spawn agent process"),
+            "unexpected delegate error: {}",
+            error
+        );
+    }
+}
