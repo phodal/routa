@@ -1,3 +1,9 @@
+---
+title: 从 AutoDev 到 Routa：开放生态下的新一代多 Agent 编排实践
+format: md
+date: 2026-03-02
+---
+
 # 从 AutoDev 到 Routa：开放生态下的新一代多 Agent 编排实践
 
 > Routa 是一个 **“工程化的多 Agent 协作框架”**：它把任务、状态、事件和执行拆成可控模块，让开放生态下的多 Agent 系统可以真正落地，而不是靠

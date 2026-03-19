@@ -1,3 +1,9 @@
+---
+title: "When Agents Join the Board: From Coordination to Computability"
+format: md
+date: 2026-03-19
+---
+
 # When Agents Join the Board: From Coordination to Computability
 
 *When execution shifts from humans to agents, Kanban must evolve from a collaboration interface into a governable system.*

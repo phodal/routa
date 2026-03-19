@@ -1,3 +1,9 @@
+---
+title: Harness Engineering 的下一步：用 Fitness Function 定义 AI Agent 的完成条件
+format: md
+date: 2026-03-16
+---
+
 # Harness Engineering 的下一步：用 Fitness Function 定义 AI Agent 的完成条件
 
 ## 当 Harness Engineering 开始落地，问题就不再只是"怎么生成代码"

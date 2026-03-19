@@ -1,3 +1,9 @@
+---
+title: 当 Kanban 不再管理人：Routa Kanban 如何管理 Agent Team
+format: md
+date: 2026-03-15
+---
+
 # 当 Kanban 不再管理人：Routa Kanban 如何管理 Agent Team
 
 > 摘要：当 Agent 开始结队工作时，真正的挑战就不再是“它们能不能写代码”，而是“我们能不能管理它们”。Routa Kanban

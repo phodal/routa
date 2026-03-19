@@ -18,6 +18,7 @@ out
 /build
 /dist
 docs-site/
+.docusaurus/
 
 # Tauri
 apps/desktop/src-tauri/target/
