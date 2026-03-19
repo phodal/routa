@@ -690,6 +690,33 @@ enum ReviewAction {
         #[arg(long)]
         specialist_dir: Option<String>,
     },
+    /// Analyze a git diff using tool-driven security review
+    Security {
+        /// Base revision for the diff (defaults to HEAD~1)
+        #[arg(long, default_value = "HEAD~1")]
+        base: String,
+        /// Head revision for the diff (defaults to HEAD)
+        #[arg(long, default_value = "HEAD")]
+        head: String,
+        /// Repository path (defaults to current working directory)
+        #[arg(long)]
+        repo_path: Option<String>,
+        /// Optional project-specific review rules file
+        #[arg(long)]
+        rules_file: Option<String>,
+        /// Enable verbose workflow output
+        #[arg(long, short = 'v')]
+        verbose: bool,
+        /// Print the final output as pretty JSON when possible
+        #[arg(long, default_value_t = false)]
+        json: bool,
+        /// Print the tool-collected payload without invoking the specialist
+        #[arg(long, default_value_t = false)]
+        payload_only: bool,
+        /// Custom specialist definitions directory
+        #[arg(long)]
+        specialist_dir: Option<String>,
+    },
 }
 
 #[tokio::main]
@@ -1233,6 +1260,32 @@ async fn main() {
                                 rules_file: rules_file.as_deref(),
                                 verbose,
                                 as_json: json,
+                                payload_only: false,
+                                specialist_dir: specialist_dir.as_deref(),
+                            },
+                        )
+                        .await
+                    }
+                    ReviewAction::Security {
+                        base,
+                        head,
+                        repo_path,
+                        rules_file,
+                        verbose,
+                        json,
+                        payload_only,
+                        specialist_dir,
+                    } => {
+                        commands::review::security(
+                            &state,
+                            commands::review::ReviewAnalyzeOptions {
+                                base: &base,
+                                head: &head,
+                                repo_path: repo_path.as_deref(),
+                                rules_file: rules_file.as_deref(),
+                                verbose,
+                                as_json: json,
+                                payload_only,
                                 specialist_dir: specialist_dir.as_deref(),
                             },
                         )
