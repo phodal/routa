@@ -26,6 +26,7 @@ Project links:
 - Releases: https://github.com/phodal/routa/releases
 - Docs: https://phodal.github.io/routa/
 - Demo Video: https://www.bilibili.com/video/BV16CwyzUED5/
+- Demo Video (YouTube): https://www.youtube.com/watch?v=spjmr_1AQLM
 - Contributing: [CONTRIBUTING.md](CONTRIBUTING.md)
 - Security: [SECURITY.md](SECURITY.md)
 
