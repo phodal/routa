@@ -1,140 +1,96 @@
 ---
-title: "When Agents Join the Board: From Coordination to Computability"
+title: "Kanban 接管多 Agent 协作：将协作收敛为可执行的专家链路"
 date: 2026-03-19
 ---
 
-# When Agents Join the Board: From Coordination to Computability
+# Kanban 接管多 Agent 协作：将协作收敛为可执行的专家链路
 
-*When execution shifts from humans to agents, Kanban must evolve from a collaboration interface into a governable system.*
+*当执行从人类转移到 Agent，Kanban 就必须从协作界面演化为一种可治理、可计算、可执行的系统语言。*
 
-## A Kanban Board Is Not a Workflow Until It Has Semantics
+## 看板不是工作流，除非它具备语义
 
-在大多数团队中，看板的首要价值是“让工作可见”。列的设计围绕协作展开：To Do、In Progress、Done，辅以 WIP 限制与简单规则。这种设计在以人为执行者的系统中是有效的，因为人类能够用经验补全规则的缺口。
+大多数团队使用 Kanban，看重的是它的可视化能力。它把工作摆到台面上，让人看到拥塞、等待与流动，让协调变得更容易。但这并不自动意味着它已经成为一个工作流系统。很多看板之所以能运转，不是因为列本身足够严谨，而是因为团队成员会在日常协作中不断补足它的含义。人类很擅长在模糊边界中工作，会自行理解“基本完成”意味着什么，也会在信息不完整时根据经验做出修正。
 
-但当 Agent 成为执行者，这种“弱语义”的看板开始暴露问题。Agent 无法理解“差不多完成”，也无法在不完备信息下做出判断。它们需要的是可判定的状态，而不是可解释的状态。
+问题在于，Agent 不会这样工作。它不会替系统脑补上下文，也不会对“差不多”抱有善意理解。对于 Agent 来说，只有那些可以被明确判断的状态，才是真正存在的状态。于是，一个原本依赖默契维系的看板，在进入多 Agent 协作之后，立刻会暴露出其真正的结构问题：列究竟只是展示标签，还是系统可判断的状态节点；移动究竟只是用户操作，还是需要被解释的状态转移；Done 究竟只是一个视觉终点，还是一个可被验证的完成条件。
 
-> **A workflow is not what you see on the board; it is what the system can decide.**
+Martin Fowler 常提醒我们，好的系统设计并不来自界面的优雅，而来自模型是否足够准确。Kanban 也是如此。板上看到的流程并不等于系统真正理解的流程。真正的工作流，必须建立在一套系统可以据此做决策的语义之上。换句话说，工作流不是“人觉得合理的流动方式”，而是“系统知道在什么条件下允许前进、阻止前进、触发执行、或者进入恢复”的那套规则。只有当看板的列、状态、触发器与约束被建模成显式结构，看板才真正从协作白板，变成执行系统的一部分。
 
-因此，看板必须发生一次根本性的转变：从“可视化工具”演进为“语义化工作流”。列不再只是阶段标签，而是状态机中的节点；卡片的移动不再是简单操作，而是一个需要被系统解释的状态转移。
+Routa 现在的实现已经开始把这件事做实。卡片被移动时，系统不会只改一个 `columnId` 字段，而是会发出 `COLUMN_TRANSITION` 事件；随后 `KanbanWorkflowOrchestrator` 读取 board 配置，通过 `resolveTransitionAutomation` 和 `getKanbanAutomationSteps` 判断目标列是否有自动化、是否需要创建 ACP session、是否需要在同列内继续下一步 specialist。列在这里已经不只是展示层，而是运行时控制点。
 
-Routa 代码库已经开始朝这个方向收敛。卡片列变化不会只更新 UI，而是会发出 `COLUMN_TRANSITION` 事件；随后由 `KanbanWorkflowOrchestrator` 读取 board 配置、判断目标列是否配置了自动化步骤、是否需要创建 session、是否应该自动前进，甚至是否需要进入恢复流程。列在这里已经不只是“显示位置”，而是工作流控制点。
+## 列必须是状态，而不是标签
 
-如果缺乏这种语义，自动化只会放大系统的不一致，而不会提升效率。
+传统 Kanban 中，列常常被当作一种宽松的分类方式。Backlog、In Progress、Review、Done 这些名字本身看起来很明确，但在不同人心中往往对应着不同的判断标准。之所以这种不一致没有立刻变成灾难，是因为人类天然擅长在不一致中求得暂时一致。团队会通过站会、评论、聊天和经验，把这些模糊边界暂时缝合起来。
 
-## Columns Must Behave Like States, Not Labels
+但一旦 Agent 成为执行者，这种缝合能力就消失了。系统里如果同时存在两套状态模型，例如一套用于 UI 列展示，另一套用于业务逻辑判断，那么人类可能仍然能勉强工作，Agent 却只会在边界处不断失败。它无法知道某个列是否真的对应一个稳定状态，也无法判断两个近似状态之间是否可以互换。于是，系统表现出来的不是“有点不严谨”，而是“根本不可靠”。
 
-传统 Kanban 的一个隐含前提是：列是标签，而不是严格的状态。团队可以接受列之间存在模糊边界，因为人类可以用上下文自行修正。
+这里的原则其实很朴素：一个工作流只能有一个真实状态机，其余一切都应该是它的投影。如果列承担了执行语义，它就不能再只是视觉层面的组织方式，而必须与状态模型严格对齐。否则，看板看起来像一个流程，系统内部却运行着另一个流程，最后的结果只能是自动化把原本靠人修补的不一致全面放大。所谓“让 Agent 参与流程”，第一步并不是给每一列配一个提示词，而是先让列真正成为状态。只有状态收敛了，自动化才不会建立在沙地上。
 
-但在 Agent 系统中，这种模糊性会迅速演变为系统性错误。
+Routa 的代码把这个问题暴露得很真实。`KanbanColumnStage` 定义了 `backlog`、`todo`、`dev`、`review`、`done`、`blocked` 这套列语义；与此同时，任务仍然通过 `TaskStatus` 表达业务状态，并依靠 `columnIdToTaskStatus` 与 `taskStatusToColumnId` 双向映射。值得注意的是，这个映射并不是完全对称的，例如默认状态会回落到 `backlog`，而 `todo` 并没有独立的 `TaskStatus`。这并不说明设计失败，反而说明一旦列开始承担自动化语义，列与状态迟早要进一步收敛为同一个工作流模型的两种投影。
 
-如果系统中存在两个不一致的状态模型，例如一个用于展示的列结构，另一个用于业务逻辑的状态枚举，那么人类可以在两者之间“脑补一致性”，而 Agent 只能在边界条件上不断失败。
+## 流转不是移动，而是契约
 
-> **If your system has two states, your system has no state.**
+在人类协作里，拖动一张卡片本身带有大量隐含语义。把卡片移到 Review，往往不只是表示位置变化，而是在说“我认为这里已经到了可供你检查的程度”。把卡片移到 Done，也不只是结束动作，而是一种带有责任声明的表达：我认为这件事已经满足了完成条件。人类能够理解这种隐含契约，因为人在协作时一直在同时处理正式规则与非正式共识。
 
-从建模角度看，这违反了一个基本原则：
+Agent 不具备这种双重理解。对于它而言，A 到 B 的变化如果没有被定义为一个显式契约，那就只是一次位置变化，而不是一次可执行决策。真正的状态流转，必须明确回答几个问题：什么条件下允许转移，转移后会触发什么行为，失败时应该如何处理，是否允许自动回退，是否需要人工介入。也就是说，流转本身不是简单的 movement，而是 decision。
 
-> 一个工作流只能有一个状态机，所有视图都必须是它的投影。
+这也是为什么成熟的多 Agent 系统不会允许“先移过去再说”。它们会把每一次流转建模为带约束的系统动作。一个卡片如果仍然存在未完成的 specialist step，就不应该被允许离开当前列；如果进入下一列需要某类 artifact，而这些 artifact 尚未产生，那么转移就应该被阻止；如果某个状态只允许通过特定验证进入，那么手工拖拽也不应绕过这个约束。这种设计看起来减少了灵活性，实际上是在为系统建立可预测性。对于人类来说，灵活是美德；对于 Agent 系统来说，灵活往往只是未建模的不确定性。
 
-Routa 当前的实现很接近这个问题的真实边界。一方面，board 明确有 `backlog`、`todo`、`dev`、`review`、`done`、`blocked` 等列；另一方面，任务状态通过 `TaskStatus` 映射到这些列时，并不是完全一一对应。这个细节很重要，因为它提醒我们：一旦列承担了自动化语义，列和状态就不能只是“差不多一致”。它们必须由同一个工作流模型驱动。
+Routa 在这里已经有了非常具体的实现。`buildTaskPrompt` 会根据当前列、上一列历史、当前 lane 是否仍有剩余 steps，动态生成 Agent 的操作边界。如果 `resolveCurrentLaneAutomationState` 判断同一列里还有下一个 specialist 要跑，prompt 会明确禁止调用 `move_card` 离开当前列，而是要求先完成本 step，等待工作流自动启动同列内下一步。看起来只是 prompt 文本，实质上已经是显式契约的一部分。
 
-只有当列具备明确的状态语义时，看板才真正成为可执行系统的一部分。
+## Gate 不是 checklist，而是策略判定
 
-## Every Transition Should Be an Explicit Contract
+很多团队都有 Definition of Done，但它经常在实践中退化成一张 checklist。测试跑了，文档补了，截图贴了，于是工作就算完成了。这种方式在人类团队中可以勉强成立，因为人们通常知道 checklist 背后真正关心的质量意图，并且会在必要时做额外判断。
 
-在人类团队中，卡片流转往往是一种“软约定”。拖动卡片意味着“差不多完成”，评论意味着“请你接手”。这些行为依赖共识，而不是系统约束。
+可一旦交给 Agent，checklist 很快就会显得过于单薄。因为证据的存在并不等于质量的通过。有测试报告，不代表测试通过；有 verification report，不代表验证结论允许放行；有 code diff，也不代表改动已经满足进入下一状态的条件。换句话说，Gate 的重点不在于“有没有东西”，而在于“这些东西是否足以支持一次状态推进”。
 
-但 Agent 无法依赖共识。每一次流转，都必须是一个显式契约。
+因此，Gate 应该被理解为 policy，而不是表单项。它需要表达的不只是 artifact presence，而是 verdict semantics。系统不该只检查某个字段有没有值，而应该判断这些证据的结果是否允许通过这道门。这里的转变非常关键，因为它标志着流程治理从“存在性检查”进入“策略判定”。前者只能保证形式完备，后者才能保证系统行为的边界。一个真正面向 Agent 的 Kanban，不会把质量门当作附属说明，而会把它提升为工作流中的一等对象，因为只有这样，自动推进才不会变成自动放行。
 
-一次状态转移不仅是“从 A 到 B”，还隐含着一组需要被系统处理的问题：是否允许进入目标状态，是否需要触发执行，失败时如何处理，是否需要回退或重试。
+Routa 的现有模型已经走到这条路的一半。列自动化允许声明 `requiredArtifacts`，`resolveKanbanTransitionArtifacts` 会同时计算“当前列进入门槛”和“下一次流转门槛”，而 prompt 中也会明确要求 Agent 用 `list_artifacts`、`provide_artifact`、`capture_screenshot` 来补齐证据。另一方面，dev supervision 已经支持 `turn_complete`、`completion_summary`、`verification_report` 这些完成要求，任务模型里也已经保留了 `completionSummary`、`verificationReport`、`verificationVerdict` 字段。也就是说，系统已经不再满足于“有产出”，而是在逐步逼近“产出是否足以放行”。
 
-> **A transition is not movement; it is a decision.**
+## 自动化提升效率，编排保证秩序
 
-这与 Kanban 中“明确交接”的实践是一致的，但在 Agent 系统中，它必须被提升为可执行协议，而不是团队习惯。
+很多团队在引入 Agent 时，最自然的冲动是“把更多步骤自动化”。这个冲动并不难理解，因为自动化看起来立刻能带来速度上的收益。但问题在于，软件交付的核心从来不只是执行任务，而是管理流动。Kanban 的价值不在于让每一列都更忙，而在于让整体系统更稳地向前走。
 
-Routa 在这一点上的做法很值得注意。手动 PATCH 任务进入新列时，系统会先检查是否仍有当前泳道内未完成的自动化 step；如果同列内还有下一个 specialist 要运行，就会直接阻止移出该列。换句话说，列之间的流转已经不是任意拖拽，而是一个由运行时状态决定的契约。对于 Agent 来说，这比“允许移动，再靠人纠正”要可靠得多。
+这也是为什么在多 Agent 场景下，orchestration 比 automation 更重要。自动化解决的是“能不能做”，编排解决的是“应不应该在现在做、做完后怎么衔接、失败后如何恢复”。没有编排的自动化，往往只是把局部步骤推得更快，却没有人对全局负责。结果系统表面上更先进，实际上更容易在多个 specialist 之间产生脱节、重复触发、错误推进或无意义重试。
 
-当流转成为契约，工作流才具备可预测性与可组合性。
+成熟的系统一定会引入一个独立的控制层，负责监听关键事件，维护当前执行上下文，判断是否满足推进条件，以及在异常时切换到恢复路径。这个控制层并不是某个具体 Agent，而是工作流秩序的维护者。它的价值不在于会写代码、会分析报告，而在于它决定了系统什么时候可以继续，什么时候必须停下来。自动化带来速度，编排带来边界；前者让系统更快，后者才让系统可信。
 
-## A Gate Is a Policy, Not a Checklist
+Routa 里真正承担这件事的，就是 `KanbanWorkflowOrchestrator` 和 `KanbanSessionQueue`。前者监听 `COLUMN_TRANSITION`、`AGENT_COMPLETED`、`REPORT_SUBMITTED`、`AGENT_FAILED`、`AGENT_TIMEOUT` 等事件，维护 `activeAutomations`，并在成功、失败、超时后决定是继续下一步、自动推进下一列，还是进入恢复流程。后者则解决了另一个现实问题：多卡片并发时不能无限制地起 session。它按 board 维度维护运行中和排队中的卡片，结合并发上限进行 `enqueue`、`drainQueue`，避免“看板刚接入 Agent 就把执行资源打满”。
 
-Kanban 中的 Definition of Done，本质上是一种质量门。但在很多团队中，它逐渐演变为 checklist：只要提交了某些产出，就被视为“完成”。
+更重要的是，Routa 的 dev lane 不是“一次 session 跑完就算结束”，而是允许 `watchdog_retry` 与 `ralph_loop` 这样的 supervision mode。系统会定期扫描无活动 session，必要时根据 `completion_criteria_not_met`、`watchdog_inactivity`、`agent_failed` 等原因做 bounded recovery。换句话说，系统开始显式建模“失败后怎么办”，而这恰恰是编排比自动化更值钱的地方。
 
-这种做法在人类系统中尚可运行，但在 Agent 系统中会迅速失效。
+## 历史必须成为系统资产
 
-真正的 Gate 关注的不是“是否存在证据”，而是：
+在人类协作中，工作历史常常只是副产品。它散落在评论、提交记录、聊天窗口和会议纪要里，平时没人刻意整理，只有在出现争议或故障时才会被回头翻找。这种做法对于以人为中心的团队尚可接受，因为团队成员本身保留了大量上下文记忆。
 
-> 这些证据是否允许进入下一状态。
+Agent 系统没有这种天然记忆。它如果不能依赖结构化历史，就只能依赖局部上下文，而局部上下文总会丢失、截断或变形。因此，多 Agent 协作中的历史必须从附带产物提升为系统资产。每一次 handoff、每一次失败、每一次 recovery、每一次验证结论，都应该留下可追溯记录。不是为了“事后审计”这么简单，而是因为系统本身需要这些信息来理解自己。
 
-> **Evidence is not validation; passing a gate is a decision, not a presence.**
+一个无法 replay 的系统，实际上是不可治理的。因为你无法解释为什么它会走到当前状态，也无法判断下一次遇到同类情况时应如何优化。因此，Kanban 在 Agent 时代不仅要表示“现在在哪里”，还要表示“是如何来到这里的”。这使得看板不再只是工作可视化工具，而成为执行路径的索引面。它记录的不只是卡片的位置，还记录责任如何迁移、决策如何发生、链路如何收敛。只有当历史被结构化，观测、治理与改进才不再停留在口号层面。
 
-Routa 已经实现了 Gate 的第一层语义。列自动化配置允许声明 `requiredArtifacts`，例如 `screenshot`、`test_results`、`code_diff`；当卡片进入目标列前，系统会检查这些 artifact 是否已经存在。与此同时，dev lane 的监督模式还可以要求 session 不只是“结束”，而是必须留下 `completionSummary` 或 `verificationReport` 才算满足完成条件。
+Routa 在这方面已经有比较完整的领域对象。任务不只保存一个当前运行中的 `triggerSessionId`，还会保存 `sessionIds`、`laneSessions` 与 `laneHandoffs`。`laneSessions` 会记录某个 session 属于哪个列、哪个 step、哪个 specialist、何时开始、何时完成、是否 recovery；`laneHandoffs` 则记录相邻泳道之间的请求与响应，例如 `environment_preparation`、`runtime_context`、`clarification`、`rerun_command`。这让多 Agent 协作开始从“一串对话”变成“可重放的执行路径”。
 
-这已经比“靠口头说明完成了”前进了一大步。但这套设计也清楚地暴露出下一步该往哪里演化：Gate 还需要从“存在性检查”走向“策略判定”。例如，系统已经有 `verificationVerdict` 字段，但当前前进条件仍主要看报告是否存在，而不是 verdict 是否允许放行。这恰恰说明 Gate 不应该只是表单字段，而应该是一等公民的 policy object。
+## 卡片必须带着执行上下文一起流动
 
-当 Gate 被提升为策略，系统才真正具备治理能力。
+传统任务管理系统有一个容易被默认接受的前提：卡片描述的是工作本身，至于工作在哪里做、如何做、依赖什么环境，那是执行层的事情。
 
-## Orchestration Is More Important Than Automation
+但软件交付从来不是这样。一个任务是否真的可执行，往往不只取决于描述是否清晰，还取决于它绑定了哪个仓库、哪个分支、哪个 worktree、哪个 session、哪个运行环境。
 
-引入 Agent 时，一个常见误区是试图“自动化每一列”。看板因此被拆解为一组独立的自动执行节点，每个节点只关注自己的局部任务。
+在 Routa 里，这些上下文已经开始进入任务模型本身。任务可以绑定 `codebaseIds`，在开发阶段持有 `worktreeId`，并通过任务 prompt 获得非常具体的工具边界，例如什么时候优先用 `update_card`、`list_artifacts`、`create_note`，什么时候允许 `move_card`，什么时候应该向上一泳道发 `request_previous_lane_handoff` 去请求环境准备或运行时上下文。对 Agent 来说，这些都不是“提示词优化”，而是执行上下文被系统化后的结果。
 
-但这会导致系统失去整体控制。
+这件事的价值，不在于提示更长，而在于卡片不再只是一个描述单元，而开始接近一个真正的执行单元。工作流里流动的，不只是任务标题，而是任务与执行环境的绑定关系。
 
-Kanban 的核心不是自动化，而是“管理流动”。当执行者变成 Agent，这一原则变得更加重要。系统需要一个统一的控制层来决定何时开始、何时停止、何时重试以及何时前进。
+## 多 Agent 协作，本质上是一条可执行的专家链路
 
-> **Automation executes; orchestration decides.**
+当我们把以上这些变化放在一起，就会看到一个比“AI 加进 Kanban”更深的结构转变。真正发生的事情不是看板上多了几个自动节点，而是协作本身被重新建模了。原本依赖人类默契维系的过程，被逐渐压缩、显式化、收敛成一条可以被系统执行的专家链路。
 
-在 Routa 中，真正承担这个职责的不是某一个 specialist prompt，而是 `KanbanWorkflowOrchestrator`。它监听 `AGENT_COMPLETED`、`AGENT_FAILED`、`AGENT_TIMEOUT` 与 `REPORT_SUBMITTED`，维护 active automations，判断当前列是否需要恢复，是否存在下一个 lane step，是否应该自动推进到下一列。它还会在 dev 阶段配合 watchdog 与 `ralph_loop` 这样的 supervision mode，对长期无活动的 session 进行恢复或重试。
+在这条链路里，列不只是阶段，而是具备边界的执行上下文；流转不只是交接，而是一次次带条件的契约变更；Gate 不只是检查点，而是策略层的放行机制；历史不只是日志，而是系统自我理解的基础。于是，Kanban 不再只是一个让团队“看见进度”的界面，而开始承担 control plane 的角色。Agent 是执行单元，专家能力被分布在不同状态节点上，而整个系统则通过编排与策略控制，把这些局部能力收束成一条可治理的交付路径。
 
-自动化关注的是“能不能做”，而编排关注的是“什么时候做、是否应该做”。前者提升效率，后者保证系统行为的可预测性。
+这也是为什么“Kanban 接管多 Agent 协作”这个表述是成立的。它并不是在说看板取代了专家判断，而是在说：原本依赖专家经验维持的协作秩序，现在被逐渐转译成系统可执行的结构。软件工程的关注点，也因此从“如何帮助人更好地协作”，转向“如何让协作本身具备可计算性”。这是一个很 Thoughtworks 的命题，因为它最终指向的不是某个工具，而是一种设计立场：当系统开始承担协作，模糊就必须让位于建模，经验就必须让位于可验证的边界。
 
-在 Agent 系统中，后者更为关键。
+## 从可视化到可计算
 
-## Work History Must Be First-Class, Not Incidental
+Kanban 的早期价值是可视化。后来，我们用它管理 WIP，优化流动，识别瓶颈。到了多 Agent 时代，它不得不再向前迈一步，进入可计算阶段。这里的“可计算”并不只是说系统能自动触发几个动作，而是说协作中的关键部分都已经被建模成可判定、可验证、可编排的对象。系统不再只是在显示工作，而是在执行工作。
 
-在人类团队中，协作历史通常是副产品。它分散在评论、提交记录和即时通信中，只有在需要时才被回溯。
+这背后反映的是软件工程重心的变化。过去，我们主要设计人与人之间的协作机制；现在，我们开始设计人、Agent 与系统之间的职责边界。过去的问题是“如何沟通”，现在的问题是“哪些东西必须先被定义，系统才能安全执行”。看板也因此不再只是管理界面，而成为一种工作流语言，一种将专家协作压缩为系统行为的语言。
 
-但在 Agent 系统中，历史必须成为一等公民。
-
-每一次责任转移、每一个决策理由、每一次失败与恢复路径，都需要被显式记录。否则，系统将无法解释自身行为，也无法持续改进。
-
-> **If you cannot replay the work, you do not understand the system.**
-
-Routa 在这方面的实现非常有代表性。任务并不只保存一个 `triggerSessionId`，而是保存 `laneSessions` 与 `laneHandoffs`。前者记录某个 session 属于哪个列、哪个 step、哪个 specialist、何时开始、何时完成、是否 recovery；后者记录相邻泳道之间的请求与响应，例如 environment preparation、runtime context、clarification 或 rerun command。
-
-这意味着多 Agent 协作不再只是“一段对话”，而是“可回放的执行路径”。更进一步，Agent 通过 MCP 工具更新任务时，不只是改标题和状态，也可以回写 `completionSummary`、`verificationReport` 与其他结构化字段。对系统来说，这些字段并不是备注，而是可治理工作流的一部分。
-
-这与 Kanban 中“度量流动”的原则形成呼应。只是这里的度量不再是简单的时间指标，而是可追溯的执行路径。
-
-当历史成为系统的一部分，观测与治理才有基础。
-
-## Execution Context Matters More Than the Card
-
-传统看板默认卡片描述了工作本身。但在软件交付里，一项工作是否可执行，往往不只取决于描述是否清晰，还取决于它在哪个仓库、哪个分支、哪个 worktree、哪个运行时上下文里被执行。
-
-> **In software delivery, work is never detached from its execution context.**
-
-Routa Kanban 的一个重要进展，是把这些上下文从隐性背景提升成显式领域对象。任务可以绑定 codebase，进入 `dev` 列时可以自动创建 worktree，任务会记录当前 session 与 lane 历史，Agent prompt 里还会明确告诉执行者应该优先使用哪些 Kanban MCP 工具，何时可以 `move_card`，何时必须先补齐 artifact。卡片因此不再只是“描述单元”，而开始接近“执行单元”。
-
-这件事很关键，因为没有执行上下文，Agent 就只能依赖脆弱的聊天记忆；而一旦上下文被纳入工作流模型，看板才有可能成为真正的 control plane。
-
-## From Visualization to Computation
-
-把这些变化放在一起，可以看到一个清晰的演进方向。
-
-Kanban 最初解决的是可视化问题，让团队理解工作状态。随后，通过 WIP 限制与流动管理，它开始优化效率。而当 Agent 成为执行者后，系统面临新的要求：一切必须可判定、可执行、可验证。
-
-> **Coordination tolerates ambiguity; computation does not.**
-
-这推动看板从协作工具演变为执行系统：
-
-- 列从标签变为状态
-- 流转从操作变为契约
-- Gate 从检查变为策略
-- 历史从副产品变为系统资产
-- 上下文从背景信息变为显式执行边界
-
-软件工程的重心也随之发生转移。过去，我们关注如何协调人类的工作；现在，我们需要定义系统本身的行为边界。
-
-> **When agents execute work, software engineering becomes a discipline of computability.**
-
-当执行者变成 Agent，工程问题从“如何沟通”转向“如何计算”。Kanban 也不再只是一个管理界面，而成为一种可以被系统执行的语言。
+当执行者变成 Agent，软件工程就不只是协调艺术，而逐渐变成一门关于可计算协作的 discipline。Kanban 在这场变化中扮演的角色，不是被 AI 附加了一层自动化，而是被重新定义为多 Agent 系统的控制平面。只有理解这一点，我们才不会把“Agent 化 Kanban”误解为一次 UI 升级，而会真正把它当作软件交付模型的一次重构。
