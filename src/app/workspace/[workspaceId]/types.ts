@@ -6,10 +6,15 @@ export interface SessionInfo {
   cwd: string;
   branch?: string;
   workspaceId: string;
+  routaAgentId?: string;
   provider?: string;
   role?: string;
   acpStatus?: "connecting" | "ready" | "error";
   acpError?: string;
+  modeId?: string;
+  model?: string;
+  parentSessionId?: string;
+  specialistId?: string;
   createdAt: string;
 }
 

@@ -45,6 +45,7 @@ export async function GET(
       model: session.model,
       createdAt: session.createdAt,
       parentSessionId: session.parentSessionId,
+      specialistId: session.specialistId,
     },
   });
 }
