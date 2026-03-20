@@ -3,6 +3,7 @@
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::time::Duration;
 
 use routa_core::state::AppState;
 use routa_core::workflow::agent_caller::{AcpAgentCaller, AgentCallConfig};
@@ -273,7 +274,11 @@ pub async fn analyze(_state: &AppState, options: ReviewAnalyzeOptions<'_>) -> Re
     Ok(())
 }
 
-pub async fn security(_state: &AppState, options: ReviewAnalyzeOptions<'_>) -> Result<(), String> {
+pub async fn security(state: &AppState, options: ReviewAnalyzeOptions<'_>) -> Result<(), String> {
+    // Resolve PATH for provider commands (opencode/claude/codex, etc.).
+    let full_path = routa_core::shell_env::full_path();
+    std::env::set_var("PATH", full_path);
+
     load_dotenv();
 
     let repo_root = resolve_repo_root(options.repo_path)?;
@@ -303,25 +308,29 @@ pub async fn security(_state: &AppState, options: ReviewAnalyzeOptions<'_>) -> R
     final_payload.specialist_reports = specialist_reports;
     final_payload.pre_merged_findings = pre_merged_findings;
 
-    let config = build_agent_call_config(&specialist)?;
     let prompt = build_security_specialist_prompt(&final_payload)?;
 
     if options.verbose {
         println!(
-            "── Security Review Specialist: {} (model: {}) ──",
-            specialist.id, config.model
+            "── Security Review Specialist: {} (provider: {}) ──",
+            specialist.id,
+            specialist
+                .default_provider
+                .clone()
+                .unwrap_or_else(|| "opencode".to_string())
         );
     }
 
-    let response = caller.call(&config, &prompt).await?;
-
-    if !response.success {
-        return Err(response
-            .error
-            .unwrap_or_else(|| "Security review specialist failed".to_string()));
-    }
-
-    let final_output = response.content.trim().to_string();
+    let final_output = call_security_specialist_via_acp(
+        state,
+        &specialist,
+        &prompt,
+        options.verbose,
+        &final_payload.repo_root,
+    )
+    .await?
+    .trim()
+    .to_string();
     if final_output.is_empty() {
         return Err("Security review completed without producing an output.".to_string());
     }
@@ -370,6 +379,268 @@ async fn call_review_worker(
     }
 
     Ok(response.content.trim().to_string())
+}
+
+async fn call_security_specialist_via_acp(
+    state: &AppState,
+    specialist: &SpecialistDef,
+    user_request: &str,
+    verbose: bool,
+    cwd: &str,
+) -> Result<String, String> {
+    let provider = std::env::var("ROUTA_REVIEW_PROVIDER")
+        .ok()
+        .or_else(|| specialist.default_provider.clone())
+        .unwrap_or_else(|| "opencode".to_string());
+
+    let session_id = uuid::Uuid::new_v4().to_string();
+    let workspace_id = "default".to_string();
+    let cwd = cwd.to_string();
+
+    if verbose {
+        println!("╔══════════════════════════════════════════════════════════╗");
+        println!("║  Security Specialist ACP Execution                    ║");
+        println!("╠══════════════════════════════════════════════════════════╣");
+        println!("║  Specialist: {:<40} ║", truncate(&specialist.id, 40));
+        println!("║  Provider  : {:<40} ║", truncate(&provider, 40));
+        println!("║  Role      : {:<40} ║", truncate(&specialist.role, 40));
+        println!("║  Workspace : {:<40} ║", truncate(&workspace_id, 40));
+        println!("║  CWD       : {:<40} ║", truncate(&cwd, 40));
+        println!("╚══════════════════════════════════════════════════════════╝");
+    }
+
+    state
+        .acp_manager
+        .create_session(
+            session_id.clone(),
+            cwd.clone(),
+            workspace_id.clone(),
+            Some(provider.clone()),
+            Some(specialist.role.clone()),
+            specialist.default_model.clone(),
+            None,
+            None,
+            None,
+        )
+        .await
+        .map_err(|error| format!("Failed to create ACP session: {}", error))?;
+
+    let mut maybe_rx = state.acp_manager.subscribe(&session_id).await;
+    let prompt = build_security_final_prompt(specialist, user_request);
+
+    state
+        .acp_manager
+        .prompt(&session_id, &prompt)
+        .await
+        .map_err(|error| format!("Failed to send prompt: {}", error))?;
+
+    if let Some(mut rx) = maybe_rx.take() {
+        wait_for_turn_complete_with_updates(state, &session_id, &mut rx, verbose).await?;
+    } else {
+        wait_for_turn_complete_without_updates(state, &session_id).await?;
+    }
+
+    let history = state
+        .acp_manager
+        .get_session_history(&session_id)
+        .await
+        .unwrap_or_default();
+    let output = extract_agent_output_from_history(&history);
+
+    state.acp_manager.kill_session(&session_id).await;
+
+    if output.trim().is_empty() {
+        return Err("Security specialist completed without producing an output.".to_string());
+    }
+
+    Ok(output)
+}
+
+fn build_security_final_prompt(specialist: &SpecialistDef, user_request: &str) -> String {
+    let mut prompt = specialist.system_prompt.clone();
+    if let Some(reminder) = &specialist.role_reminder {
+        if !reminder.trim().is_empty() {
+            prompt.push_str(&format!("\n\n---\n**Reminder:** {}", reminder));
+        }
+    }
+    prompt.push_str(&format!("\n\n---\n\n## User Request\n\n{}", user_request));
+    prompt
+}
+
+async fn wait_for_turn_complete_with_updates(
+    state: &AppState,
+    session_id: &str,
+    rx: &mut tokio::sync::broadcast::Receiver<serde_json::Value>,
+    verbose: bool,
+) -> Result<(), String> {
+    let mut renderer = if verbose {
+        Some(super::tui::TuiRenderer::new())
+    } else {
+        None
+    };
+
+    let mut idle_count = 0u32;
+    let max_idle = 600;
+
+    loop {
+        match tokio::time::timeout(Duration::from_secs(1), rx.recv()).await {
+            Ok(Ok(update)) => {
+                if let Some(renderer) = renderer.as_mut() {
+                    renderer.handle_update(&update);
+                }
+                idle_count = 0;
+
+                let is_done = update
+                    .get("params")
+                    .and_then(|params| params.get("update"))
+                    .and_then(|update| update.get("sessionUpdate"))
+                    .and_then(|value| value.as_str())
+                    == Some("turn_complete");
+                if is_done {
+                    if let Some(renderer) = renderer.as_mut() {
+                        renderer.finish();
+                    }
+                    return Ok(());
+                }
+            }
+            Ok(Err(_)) => {
+                if let Some(renderer) = renderer.as_mut() {
+                    renderer.finish();
+                }
+                return Ok(());
+            }
+            Err(_) => {
+                idle_count += 1;
+                if idle_count >= max_idle {
+                    if let Some(renderer) = renderer.as_mut() {
+                        renderer.finish();
+                    }
+                    return Ok(());
+                }
+
+                if !state.acp_manager.is_alive(session_id).await {
+                    if let Some(renderer) = renderer.as_mut() {
+                        renderer.finish();
+                    }
+                    return Ok(());
+                }
+            }
+        }
+
+        if let Some(history) = state.acp_manager.get_session_history(session_id).await {
+            if update_contains_turn_complete(&history) {
+                if let Some(renderer) = renderer.as_mut() {
+                    renderer.finish();
+                }
+                return Ok(());
+            }
+        } else if !state.acp_manager.is_alive(session_id).await {
+            if let Some(renderer) = renderer.as_mut() {
+                renderer.finish();
+            }
+            return Ok(());
+        }
+    }
+}
+
+async fn wait_for_turn_complete_without_updates(
+    state: &AppState,
+    session_id: &str,
+) -> Result<(), String> {
+    let mut idle_ticks = 0u32;
+    let max_idle = 600;
+    loop {
+        match state.acp_manager.get_session_history(session_id).await {
+            Some(history) if update_contains_turn_complete(&history) => return Ok(()),
+            Some(_) => {}
+            None => {
+                return Err("Session disappeared before completion.".to_string());
+            }
+        }
+
+        if !state.acp_manager.is_alive(session_id).await {
+            return Ok(());
+        }
+
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        idle_ticks += 1;
+        if idle_ticks >= max_idle {
+            return Ok(());
+        }
+    }
+}
+
+fn update_contains_turn_complete(history: &[serde_json::Value]) -> bool {
+    history.iter().any(|entry| {
+        entry
+            .get("params")
+            .and_then(|params| params.get("update"))
+            .and_then(|update| update.get("sessionUpdate"))
+            .and_then(|value| value.as_str())
+            == Some("turn_complete")
+    })
+}
+
+fn extract_agent_output_from_history(history: &[serde_json::Value]) -> String {
+    let mut output = String::new();
+    for entry in history {
+        let Some(update) = entry
+            .get("params")
+            .and_then(|params| params.get("update"))
+            .and_then(|update| update.as_object())
+        else {
+            continue;
+        };
+
+        let session_update = update
+            .get("sessionUpdate")
+            .and_then(|value| value.as_str())
+            .unwrap_or("");
+        if matches!(
+            session_update,
+            "agent_message" | "agent_message_chunk" | "agent_chunk"
+        ) {
+            if let Some(text) = extract_update_text(update) {
+                output.push_str(&text);
+            }
+        }
+    }
+    output
+}
+
+fn extract_update_text(update: &serde_json::Map<String, serde_json::Value>) -> Option<String> {
+    if let Some(text) = update
+        .get("content")
+        .and_then(|content| content.get("text"))
+        .and_then(|text| text.as_str())
+    {
+        return Some(text.to_string());
+    }
+
+    if let Some(text) = update.get("text").and_then(|text| text.as_str()) {
+        return Some(text.to_string());
+    }
+
+    if let Some(text) = update.get("message").and_then(|text| text.as_str()) {
+        return Some(text.to_string());
+    }
+
+    let content = update.get("content")?.as_array()?;
+    let mut output = String::new();
+    for part in content {
+        if let Some(text) = part.get("text").and_then(|t| t.as_str()) {
+            output.push_str(text);
+            continue;
+        }
+        if let Some(text) = part.get("content").and_then(|t| t.as_str()) {
+            output.push_str(text);
+        }
+    }
+    if output.is_empty() {
+        None
+    } else {
+        Some(output)
+    }
 }
 
 fn load_pr_reviewer(specialist_dir: Option<&str>) -> Result<SpecialistDef, String> {
