@@ -43,6 +43,13 @@ interface TeamActivityItem {
   timestamp: string;
   summary?: string;
   sessionId?: string;
+  memberSession?: {
+    sessionId: string;
+    actor: string;
+    badge: string;
+    preview?: string;
+    lastUpdatedLabel: string;
+  };
 }
 
 interface SessionStreamSummary {
@@ -219,6 +226,36 @@ function resolveDelegationTarget(update?: SessionHistoryEntry["update"]): string
       return "Developer";
     default:
       return specialist;
+  }
+}
+
+function resolveDelegationRosterSpecialistId(update?: SessionHistoryEntry["update"]): string | undefined {
+  const rawInput = update?.rawInput;
+  if (!rawInput) return undefined;
+
+  const directSpecialist = typeof rawInput.specialist === "string" ? rawInput.specialist : undefined;
+  if (directSpecialist?.startsWith("team-")) return directSpecialist;
+
+  const hintText = [
+    typeof rawInput.additionalInstructions === "string" ? rawInput.additionalInstructions : "",
+    typeof rawInput.description === "string" ? rawInput.description : "",
+  ]
+    .join(" ")
+    .toLowerCase();
+
+  switch (directSpecialist?.toLowerCase()) {
+    case "gate":
+      return "team-qa";
+    case "crafter":
+    case "developer":
+      if (hintText.includes("research")) return "team-researcher";
+      if (hintText.includes("frontend")) return "team-frontend-dev";
+      if (hintText.includes("backend")) return "team-backend-dev";
+      if (hintText.includes("ux") || hintText.includes("design")) return "team-ux-designer";
+      if (hintText.includes("review")) return "team-code-reviewer";
+      return "team-general-engineer";
+    default:
+      return undefined;
   }
 }
 
@@ -613,6 +650,22 @@ export function TeamRunPageClient() {
     [selectedSessionForModal, sessionStreams],
   );
 
+  const sessionStreamsBySessionId = useMemo(
+    () => new Map(sessionStreams.map((stream) => [stream.session.sessionId, stream])),
+    [sessionStreams],
+  );
+
+  const latestChildSessionByRosterId = useMemo(() => {
+    const map = new Map<string, SessionStreamSummary>();
+    for (const stream of sessionStreams) {
+      if (!stream.session.parentSessionId) continue;
+      const rosterId = resolveRosterSpecialistId(stream.session);
+      if (!rosterId && !stream.session.specialistId) continue;
+      map.set(rosterId ?? stream.session.specialistId ?? stream.session.sessionId, stream);
+    }
+    return map;
+  }, [sessionStreams]);
+
   const rootHistory = useMemo(
     () => historiesBySessionId[sessionId] ?? [],
     [historiesBySessionId, sessionId],
@@ -662,6 +715,8 @@ export function TeamRunPageClient() {
 
       if (updateType === "tool_call_update" && getToolEventLabel(update as Record<string, unknown>).includes("delegate_task")) {
         const target = resolveDelegationTarget(update) ?? "team member";
+        const targetRosterId = resolveDelegationRosterSpecialistId(update);
+        const linkedStream = targetRosterId ? latestChildSessionByRosterId.get(targetRosterId) : undefined;
         items.push({
           id: `${sessionId}-delegate-${index}`,
           type: update.status === "failed" ? "blocked" : "assign",
@@ -674,7 +729,14 @@ export function TeamRunPageClient() {
               ? update.rawInput.additionalInstructions
               : update.rawOutput?.output,
           ),
-          sessionId: session.sessionId,
+          sessionId: linkedStream?.session.sessionId ?? session.sessionId,
+          memberSession: linkedStream ? {
+            sessionId: linkedStream.session.sessionId,
+            actor: linkedStream.actor,
+            badge: linkedStream.badge,
+            preview: linkedStream.preview,
+            lastUpdatedLabel: linkedStream.lastUpdatedLabel,
+          } : undefined,
           sortKey,
         });
       }
@@ -693,6 +755,13 @@ export function TeamRunPageClient() {
         timestamp: formatRelativeTime(child.createdAt),
         summary: summarizeText(child.name ?? child.specialistId ?? child.role ?? child.provider),
         sessionId: child.sessionId,
+        memberSession: sessionStreamsBySessionId.get(child.sessionId) ? {
+          sessionId: child.sessionId,
+          actor,
+          badge: sessionBadge(child),
+          preview: sessionStreamsBySessionId.get(child.sessionId)?.preview,
+          lastUpdatedLabel: sessionStreamsBySessionId.get(child.sessionId)?.lastUpdatedLabel ?? formatRelativeTime(child.createdAt),
+        } : undefined,
         sortKey: childCreatedAt,
       });
 
@@ -713,6 +782,13 @@ export function TeamRunPageClient() {
             timestamp: formatRelativeTime(child.createdAt),
             summary: completion.summary,
             sessionId: child.sessionId,
+            memberSession: sessionStreamsBySessionId.get(child.sessionId) ? {
+              sessionId: child.sessionId,
+              actor,
+              badge: sessionBadge(child),
+              preview: sessionStreamsBySessionId.get(child.sessionId)?.preview,
+              lastUpdatedLabel: sessionStreamsBySessionId.get(child.sessionId)?.lastUpdatedLabel ?? formatRelativeTime(child.createdAt),
+            } : undefined,
             sortKey,
           });
           return;
@@ -727,6 +803,13 @@ export function TeamRunPageClient() {
             timestamp: formatRelativeTime(child.createdAt),
             summary: summarizeText(update.error),
             sessionId: child.sessionId,
+            memberSession: sessionStreamsBySessionId.get(child.sessionId) ? {
+              sessionId: child.sessionId,
+              actor,
+              badge: sessionBadge(child),
+              preview: sessionStreamsBySessionId.get(child.sessionId)?.preview,
+              lastUpdatedLabel: sessionStreamsBySessionId.get(child.sessionId)?.lastUpdatedLabel ?? formatRelativeTime(child.createdAt),
+            } : undefined,
             sortKey,
           });
         }
@@ -737,7 +820,7 @@ export function TeamRunPageClient() {
       .sort((a, b) => b.sortKey - a.sortKey)
       .slice(0, 24)
       .map(({ sortKey: _sortKey, ...item }) => item);
-  }, [descendantSessions, historiesBySessionId, notesHook.notes, rootHistory, session, sessionId, specialistsById]);
+  }, [descendantSessions, historiesBySessionId, latestChildSessionByRosterId, notesHook.notes, rootHistory, session, sessionId, sessionStreamsBySessionId, specialistsById]);
 
   const latestSessionBySpecialistId = useMemo(() => {
     const map = new Map<string, SessionStreamSummary>();
@@ -1371,6 +1454,27 @@ function CoordinationFeedItem({
             <div className="mt-3 rounded-xl border border-desktop-border bg-desktop-bg-primary px-3 py-2 text-sm leading-6 text-desktop-text-secondary">
               {item.summary}
             </div>
+          )}
+          {item.memberSession && (
+            <button
+              type="button"
+              onClick={onInspectSession}
+              className="mt-3 flex w-full items-start justify-between gap-3 rounded-xl border border-desktop-border bg-desktop-bg-primary px-3 py-3 text-left transition hover:bg-desktop-bg-active/70"
+            >
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-semibold uppercase tracking-[0.16em] text-desktop-text-muted">Member session</span>
+                  <span className="rounded-full border border-desktop-border px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] text-desktop-text-secondary">
+                    {item.memberSession.badge}
+                  </span>
+                </div>
+                <div className="mt-2 text-sm font-medium text-desktop-text-primary">{item.memberSession.actor}</div>
+                <div className="mt-1 line-clamp-2 text-xs leading-5 text-desktop-text-secondary">
+                  {item.memberSession.preview ?? item.memberSession.sessionId}
+                </div>
+              </div>
+              <div className="shrink-0 text-[11px] text-desktop-text-muted">{item.memberSession.lastUpdatedLabel}</div>
+            </button>
           )}
         </div>
       </div>
