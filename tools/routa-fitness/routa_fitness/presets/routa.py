@@ -13,6 +13,20 @@ class RoutaPreset:
     def fitness_dir(self, project_root: Path) -> Path:
         return project_root / "docs" / "fitness"
 
+    def review_trigger_config(self, project_root: Path) -> Path:
+        return self.fitness_dir(project_root) / "review-triggers.yaml"
+
+    def should_ignore_changed_file(self, file_path: str) -> bool:
+        return file_path.startswith(
+            (
+                "tmp/",
+                "docs/",
+                ".routa-fitness/",
+                ".code-review-graph/",
+                "node_modules/",
+            )
+        )
+
     def domains_from_files(self, files: list[str]) -> set[str]:
         domains: set[str] = set()
         config_files = {

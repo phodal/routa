@@ -16,6 +16,9 @@ from routa_fitness.scoring import score_dimension, score_report
 
 def collect_changed_files(project_root: Path, base: str) -> list[str]:
     """Collect changed files from git for incremental fitness runs."""
+    from routa_fitness.presets import get_project_preset
+
+    preset = get_project_preset()
     files: list[str] = []
 
     commands = [
@@ -37,15 +40,7 @@ def collect_changed_files(project_root: Path, base: str) -> list[str]:
     seen: set[str] = set()
     deduped: list[str] = []
     for file_path in files:
-        if file_path.startswith(
-            (
-                "tmp/",
-                "docs/",
-                ".routa-fitness/",
-                ".code-review-graph/",
-                "node_modules/",
-            )
-        ):
+        if preset.should_ignore_changed_file(file_path):
             continue
         if file_path not in seen:
             seen.add(file_path)

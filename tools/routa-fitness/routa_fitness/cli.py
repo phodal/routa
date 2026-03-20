@@ -43,7 +43,7 @@ def _find_fitness_dir(project_root: Path) -> Path:
 
 def _find_review_trigger_config(project_root: Path) -> Path:
     """Locate the default review-trigger config."""
-    config_path = get_project_preset().fitness_dir(project_root) / "review-triggers.yaml"
+    config_path = get_project_preset().review_trigger_config(project_root)
     if not config_path.is_file():
         print(f"Error: review-trigger config not found at {config_path}")
         sys.exit(1)
