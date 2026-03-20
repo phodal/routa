@@ -1,0 +1,9 @@
+# page-id: kanban
+# route: /workspace/default/kanban
+# source-page: src/app/workspace/[workspaceId]/kanban/page.tsx
+# url: http://127.0.0.1:3000/workspace/default/kanban
+# title: Routa
+# generated-at: 2026-03-20T07:02:42.450Z
+# generator: playwright
+# playwright-version: 1.58.2
+- text: Snapshot
