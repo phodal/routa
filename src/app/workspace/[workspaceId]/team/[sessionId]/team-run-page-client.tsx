@@ -217,6 +217,23 @@ function roleChipClass(roleId?: string, emphasis: "soft" | "strong" = "soft"): s
   return styles[tone][emphasis];
 }
 
+function roleAvatarClass(roleId?: string): string {
+  const tone = roleTone(roleId);
+  const styles: Record<RoleTone, string> = {
+    lead: "bg-violet-100 text-violet-800 dark:bg-violet-500/15 dark:text-violet-200",
+    qa: "bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-200",
+    research: "bg-emerald-100 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-200",
+    frontend: "bg-cyan-100 text-cyan-800 dark:bg-cyan-500/15 dark:text-cyan-200",
+    backend: "bg-blue-100 text-blue-800 dark:bg-blue-500/15 dark:text-blue-200",
+    review: "bg-fuchsia-100 text-fuchsia-800 dark:bg-fuchsia-500/15 dark:text-fuchsia-200",
+    ux: "bg-pink-100 text-pink-800 dark:bg-pink-500/15 dark:text-pink-200",
+    ops: "bg-orange-100 text-orange-800 dark:bg-orange-500/15 dark:text-orange-200",
+    general: "bg-slate-100 text-slate-800 dark:bg-slate-500/15 dark:text-slate-200",
+    neutral: "bg-desktop-bg-active text-desktop-text-primary",
+  };
+  return styles[tone];
+}
+
 function sessionBadge(session: SessionInfo): string {
   if (!session.parentSessionId) return "lead";
   return session.specialistId ?? session.role ?? session.provider ?? "session";
@@ -1176,14 +1193,14 @@ export function TeamRunPageClient() {
                             : "cursor-default opacity-80"
                         }`}
                       >
-                        <div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-desktop-bg-active text-xs font-semibold text-desktop-text-primary">
+                        <div className={`relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${roleAvatarClass(member.specialist.id)}`}>
                           {member.actor
                             .split(" ")
                             .map((part) => part.charAt(0))
                             .join("")
                             .slice(0, 2)
                             .toUpperCase()}
-                          <span className={`absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-desktop-bg-secondary ${statusDotClass(member.status)}`} />
+                          <span className={`absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-white dark:border-[#141821] ${statusDotClass(member.status)}`} />
                         </div>
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center justify-between gap-2">
