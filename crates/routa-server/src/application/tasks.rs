@@ -79,25 +79,25 @@ impl TaskApplicationService {
         task.assigned_specialist_name = assigned_specialist_name;
         let entering_dev = task.column_id.as_deref() == Some("dev");
 
-        let column_automation = if let (Some(board_id), Some(col_id)) = (&task.board_id, &task.column_id)
-        {
-            self.state
-                .kanban_store
-                .get(board_id)
-                .await
-                .ok()
-                .flatten()
-                .and_then(|board| {
-                    board
-                        .columns
-                        .into_iter()
-                        .find(|c| &c.id == col_id)
-                        .and_then(|col| col.automation)
-                        .filter(|automation| automation.enabled)
-                })
-        } else {
-            None
-        };
+        let column_automation =
+            if let (Some(board_id), Some(col_id)) = (&task.board_id, &task.column_id) {
+                self.state
+                    .kanban_store
+                    .get(board_id)
+                    .await
+                    .ok()
+                    .flatten()
+                    .and_then(|board| {
+                        board
+                            .columns
+                            .into_iter()
+                            .find(|c| &c.id == col_id)
+                            .and_then(|col| col.automation)
+                            .filter(|automation| automation.enabled)
+                    })
+            } else {
+                None
+            };
 
         if let Some(ref automation) = column_automation {
             let primary_step = automation.primary_step();
@@ -340,9 +340,9 @@ impl TaskApplicationService {
             }
         }
 
+        let entering_automated_column = entering_dev || column_automation.is_some();
         let should_trigger_agent =
-            (entering_dev || assigned_while_in_dev || retry_trigger || column_automation.is_some())
-                && task.trigger_session_id.is_none();
+            entering_automated_column || assigned_while_in_dev || retry_trigger;
 
         task.updated_at = Utc::now();
 
@@ -660,6 +660,66 @@ mod tests {
         assert_eq!(plan.task.last_sync_error, None);
         assert!(plan.should_trigger_agent);
         assert!(!plan.should_sync_github);
+
+        let _ = fs::remove_file(db_path);
+    }
+
+    #[tokio::test]
+    async fn update_task_retriggers_when_entering_new_automated_column() {
+        let (service, db_path) = setup_service().await;
+        let mut task = seed_task(&service, Some("todo")).await;
+        task.trigger_session_id = Some("session-todo".to_string());
+        service
+            .state
+            .task_store
+            .save(&task)
+            .await
+            .expect("persist updated seed task");
+
+        let board_id = task
+            .board_id
+            .clone()
+            .expect("seed task should belong to a board");
+        let mut board = service
+            .state
+            .kanban_store
+            .get(&board_id)
+            .await
+            .expect("board load should succeed")
+            .expect("board should exist");
+        let dev = board
+            .columns
+            .iter_mut()
+            .find(|column| column.id == "dev")
+            .expect("dev column should exist");
+        dev.automation = Some(routa_core::models::kanban::KanbanColumnAutomation {
+            enabled: true,
+            provider_id: Some("opencode".to_string()),
+            role: Some("CRAFTER".to_string()),
+            transition_type: Some("entry".to_string()),
+            ..Default::default()
+        });
+        service
+            .state
+            .kanban_store
+            .update(&board)
+            .await
+            .expect("board update should succeed");
+
+        let plan = service
+            .update_task(
+                &task.id,
+                UpdateTaskCommand {
+                    column_id: Some("dev".to_string()),
+                    ..UpdateTaskCommand::default()
+                },
+            )
+            .await
+            .expect("update task plan");
+
+        assert_eq!(plan.task.column_id.as_deref(), Some("dev"));
+        assert_eq!(plan.task.trigger_session_id.as_deref(), Some("session-todo"));
+        assert!(plan.should_trigger_agent);
 
         let _ = fs::remove_file(db_path);
     }
