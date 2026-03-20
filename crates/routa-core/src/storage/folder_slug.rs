@@ -35,6 +35,10 @@ pub fn to_folder_slug(absolute_path: &str) -> String {
     let mut result = String::with_capacity(cleaned.len());
     let mut last_was_sep = false;
     for c in cleaned.chars() {
+        if c == ':' {
+            // Skip colons (Windows drive letters like C: or E:)
+            continue;
+        }
         if c == '/' || c == '\\' {
             if !last_was_sep {
                 result.push('-');
@@ -87,7 +91,7 @@ mod tests {
     fn test_windows_path() {
         assert_eq!(
             to_folder_slug("C:\\Users\\john\\project"),
-            "C:-Users-john-project"
+            "C-Users-john-project"
         );
     }
 
@@ -130,5 +134,25 @@ mod tests {
         let dir = get_project_storage_dir("/Users/john/my-project");
         assert!(dir.to_string_lossy().contains("Users-john-my-project"));
         assert!(dir.to_string_lossy().contains(".routa/projects"));
+    }
+    
+    #[test]
+    fn test_windows_drive_letter_colon_stripped() {
+        assert_eq!(to_folder_slug("E:\\routa"), "E-routa");
+        assert_eq!(to_folder_slug("D:\\my-workspace\\app"), "D-my-workspace-app");
+    }
+
+    #[test]
+    fn test_windows_drive_colon_consistency() {
+        // With or without drive letter should produce a valid slug (no colons)
+        let slug = to_folder_slug("E:\\routa\\.routa\\repos\\keepongo--routa-project");
+        assert!(!slug.contains(':'), "slug must not contain colons: {slug}");
+        assert_eq!(slug, "E-routa-.routa-repos-keepongo--routa-project");
+    }
+
+    #[test]
+    fn test_multiple_colons_stripped() {
+        // Edge case: path with multiple colons
+        assert_eq!(to_folder_slug("C:\\foo:bar\\baz"), "C-foobar-baz");
     }
 }
