@@ -40,7 +40,7 @@ env:
 
 jobs:
   # ══════════════════════════════════════════════════════════════
-  # HARD GATE: Fitness CI (统一由 routa-fitness 驱动)
+  # HARD GATE: Fitness CI (统一由 entrix 驱动)
   # ══════════════════════════════════════════════════════════════
   fitness-ci:
     name: 'Gate: Fitness'
@@ -48,6 +48,8 @@ jobs:
     if: github.event_name != 'schedule'
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - name: Install Rust system dependencies
         run: |
@@ -85,14 +87,14 @@ jobs:
       - name: Rust cache
         uses: swatinem/rust-cache@v2
 
-      - name: Install routa-fitness
-        run: pip install -e tools/routa-fitness
+      - name: Install entrix
+        run: pip install -e tools/entrix
 
       - name: Run fitness check
         id: fitness
         run: |
           mkdir -p .artifacts
-          routa-fitness run --parallel --tier normal --scope ci --min-score 0 --output .artifacts/fitness-report.json
+          entrix run --parallel --tier normal --scope ci --min-score 0 --output .artifacts/fitness-report.json
 
       - name: Summary
         if: always()

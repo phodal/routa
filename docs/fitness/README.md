@@ -14,25 +14,25 @@
 
 ```bash
 # 安装（首次）
-pip install -e tools/routa-fitness
+pip install -e tools/entrix
 
 # 快速检查（仅 fast tier，<30s）
-routa-fitness run --tier fast
+entrix run --tier fast
 
 # 标准检查（fast + normal tier，<5min）
-routa-fitness run --tier normal
+entrix run --tier normal
 
 # 完整检查（所有 tier，<15min）
-routa-fitness run
+entrix run
 
 # 并行执行（加速）
-routa-fitness run --parallel
+entrix run --parallel
 
 # 仅查看会执行什么（不实际运行）
-routa-fitness run --dry-run
+entrix run --dry-run
 
 # 校验维度权重
-routa-fitness validate
+entrix validate
 ```
 
 ### Tier 分层
@@ -54,7 +54,7 @@ routa-fitness validate
 2. README.md                        → 规则手册（本文件）
 3. unit-test.md                     → 单元测试证据（含 frontmatter）
 4. rust-api-test.md                 → API 契约证据（含 frontmatter）
-5. tools/routa-fitness/             → 解析 frontmatter，执行检查（Python 模块）
+5. tools/entrix/                    → 解析 frontmatter，执行检查（Python 模块）
 ```
 
 ## Score Model
@@ -138,7 +138,7 @@ Fitness = Σ (Weight_i × Score_i) / 100
 - `README.md`：规则手册（本文件）。
 - `unit-test.md`：单元测试证据，frontmatter 定义 metrics。
 - `rust-api-test.md`：API 契约证据，frontmatter 定义 metrics。
-- `tools/routa-fitness/`：解析 frontmatter，执行命令，输出结果（`routa-fitness` CLI）。
+- `tools/entrix/`：解析 frontmatter，执行命令，输出结果（`entrix` CLI）。
 - 所有测试改动必须同步更新证据文件。
 
 ## Core principle
@@ -223,10 +223,10 @@ claude -p "请执行 fitness 检查的 dry-run"
 
 ## 模块架构
 
-执行引擎位于 `tools/routa-fitness/`，按《Building Evolutionary Architectures》概念分层：
+执行引擎位于 `tools/entrix/`，按《Building Evolutionary Architectures》概念分层：
 
 ```
-routa_fitness/
+entrix/
   model.py          → 领域模型 (Tier, Metric, Dimension, FitnessReport)
   evidence.py       → 从本目录 *.md 加载 frontmatter → Dimension
   runners/shell.py  → Shell 命令执行

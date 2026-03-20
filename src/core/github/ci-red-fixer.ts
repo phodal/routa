@@ -35,7 +35,7 @@ export interface RepairPromptInput {
 
 const DEFENSE_JOB_COMMANDS: Record<string, string[]> = {
   "Gate: Fitness": [
-    "routa-fitness run --tier normal --scope ci --min-score 0 --output .artifacts/fitness-report.json",
+    "entrix run --tier normal --scope ci --min-score 0 --output .artifacts/fitness-report.json",
   ],
   "Security: Dependency Scan": [
     "npm audit --audit-level=critical",

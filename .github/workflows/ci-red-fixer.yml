@@ -50,6 +50,7 @@ jobs:
           fetch-depth: 0
           ref: ${{ env.TARGET_BRANCH }}
           token: ${{ secrets.GITHUB_TOKEN }}
+          submodules: recursive
 
       - name: Install Rust system dependencies
         run: |
@@ -71,6 +72,11 @@ jobs:
           node-version: lts/*
           cache: 'npm'
 
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -81,6 +87,9 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Install entrix
+        run: pip install -e tools/entrix
 
       - name: Configure Git
         run: |

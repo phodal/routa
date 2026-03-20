@@ -44,7 +44,7 @@
 - **Kanban cross-column automation replay**: To verify Rust lane transition automation instead of only create-time automation, create a card in `Backlog`, move it into a lane with `automation.enabled=true` such as `Todo`, then confirm the task gains `assignedProvider`, `assignedRole`, and `triggerSessionId`, the board UI shows the card in the new lane, and `GET /api/sessions?workspaceId=...` returns the matching `OpenCode` session.
 - **Kanban full auto-chain replay**: To verify `input -> backlog -> todo -> dev`, import a board config, create a card from the top Kanban input, then move the same card through `Todo` and `Dev`. Confirm each automated lane transition can create a fresh `OpenCode` session even if the task already has an older `triggerSessionId`.
 - For Rust test coverage work, follow this sequence: `AGENTS.md` -> `docs/fitness/README.md` -> `docs/fitness/unit-test.md`.
-- When changes span many files or touch shared core modules, run `routa-fitness graph impact`, `graph test-radius`, or `graph review-context` first to identify blast radius and prioritize regression coverage.
+- When changes span many files or touch shared core modules, run `entrix graph impact`, `graph test-radius`, or `graph review-context` first to identify blast radius and prioritize regression coverage.
 - When changes span many files, do a full manual walkthrough in the browser:
   - Home page → select claude code → enter a requirement → auto-redirect to detail page → trigger ACP session
   - Visit a workspace detail page → click a session → switch to Trace UI to check history
@@ -57,11 +57,11 @@
 Before any PR, verify fitness using [docs/fitness/README.md](docs/fitness/README.md):
 
 ```bash
-routa-fitness run --dry-run
-routa-fitness run
+entrix run --dry-run
+entrix run
 ```
 
-> Install: `pip install -e tools/routa-fitness`
+> Install: `pip install -e tools/entrix`
 
 ## After generating or modifying code
 

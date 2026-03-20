@@ -19,4 +19,4 @@ quantums:
   - id: tools_fitness
     description: Python fitness engine, loaders, presets, and reporters
     roots:
-      - tools/routa-fitness/**
+      - tools/entrix/**

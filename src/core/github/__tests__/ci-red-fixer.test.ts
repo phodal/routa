@@ -49,7 +49,7 @@ describe("ci-red-fixer helpers", () => {
     ]);
 
     expect(collectValidationCommands(failedJobs.map((job) => job.name))).toEqual([
-      "routa-fitness run --tier normal --scope ci --min-score 0 --output .artifacts/fitness-report.json",
+      "entrix run --tier normal --scope ci --min-score 0 --output .artifacts/fitness-report.json",
       "npm audit --audit-level=critical",
     ]);
   });
@@ -86,7 +86,7 @@ describe("ci-red-fixer helpers", () => {
             conclusion: "failure",
             html_url: "https://example.test/job/301",
           }),
-          validationCommands: ["routa-fitness run --tier normal --scope ci --min-score 0 --output .artifacts/fitness-report.json"],
+          validationCommands: ["entrix run --tier normal --scope ci --min-score 0 --output .artifacts/fitness-report.json"],
           logExcerpt: "ESLint found 1 error",
         },
       ],
@@ -95,7 +95,7 @@ describe("ci-red-fixer helpers", () => {
     expect(prompt).toContain('workflow "Defense"');
     expect(prompt).toContain("Run ID: 201");
     expect(prompt).toContain("Failed Job: Gate: Fitness");
-    expect(prompt).toContain("`routa-fitness run --tier normal --scope ci --min-score 0 --output .artifacts/fitness-report.json`");
+    expect(prompt).toContain("`entrix run --tier normal --scope ci --min-score 0 --output .artifacts/fitness-report.json`");
     expect(prompt).toContain("ESLint found 1 error");
   });
 });

@@ -465,8 +465,8 @@ fn preferred_ssl_cert_file() -> Option<PathBuf> {
         .find(|path| path.is_file())
 }
 
-fn preferred_routa_fitness_command(repo_root: &Path) -> Option<PathBuf> {
-    preferred_tool_command(repo_root, &["routa-fitness"])
+fn preferred_entrix_command(repo_root: &Path) -> Option<PathBuf> {
+    preferred_tool_command(repo_root, &["entrix"])
 }
 
 pub(crate) fn preferred_tool_command(repo_root: &Path, commands: &[&str]) -> Option<PathBuf> {
@@ -665,13 +665,13 @@ fn collect_fitness_review_context(
     filtered_files.sort();
     filtered_files.dedup();
 
-    let fitness_command = match preferred_routa_fitness_command(repo_root) {
+    let fitness_command = match preferred_entrix_command(repo_root) {
         Some(path) => path,
         None => {
             tool_trace.push(ToolTrace {
-                tool: "routa-fitness".to_string(),
+                tool: "entrix".to_string(),
                 status: "unavailable".to_string(),
-                details: "routa-fitness command not found".to_string(),
+                details: "entrix command not found".to_string(),
             });
             return None;
         }
@@ -697,9 +697,9 @@ fn collect_fitness_review_context(
         Ok(output) => output,
         Err(err) => {
             tool_trace.push(ToolTrace {
-                tool: "routa-fitness".to_string(),
+                tool: "entrix".to_string(),
                 status: "failed".to_string(),
-                details: format!("Failed to execute routa-fitness: {}", err),
+                details: format!("Failed to execute entrix: {}", err),
             });
             return None;
         }
@@ -708,10 +708,10 @@ fn collect_fitness_review_context(
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
         tool_trace.push(ToolTrace {
-            tool: "routa-fitness".to_string(),
+            tool: "entrix".to_string(),
             status: "error".to_string(),
             details: if stderr.is_empty() {
-                "routa-fitness returned non-zero status".to_string()
+                "entrix returned non-zero status".to_string()
             } else {
                 truncate(&stderr, 1_500)
             },
@@ -723,7 +723,7 @@ fn collect_fitness_review_context(
     match serde_json::from_str::<Value>(&stdout) {
         Ok(value) => {
             tool_trace.push(ToolTrace {
-                tool: "routa-fitness".to_string(),
+                tool: "entrix".to_string(),
                 status: "ok".to_string(),
                 details: format!("Loaded review context via {}", fitness_command.display()),
             });
@@ -731,9 +731,9 @@ fn collect_fitness_review_context(
         }
         Err(err) => {
             tool_trace.push(ToolTrace {
-                tool: "routa-fitness".to_string(),
+                tool: "entrix".to_string(),
                 status: "error".to_string(),
-                details: format!("Failed to parse routa-fitness output: {}", err),
+                details: format!("Failed to parse entrix output: {}", err),
             });
             None
         }

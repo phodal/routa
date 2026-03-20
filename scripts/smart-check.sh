@@ -178,7 +178,7 @@ maybe_warn_human_review() {
 
   echo -e "${BLUE}[review] Evaluating human review triggers...${NC}"
   echo ""
-  PYTHONPATH=tools/routa-fitness python3 -m routa_fitness.cli review-trigger --base "$review_base" || true
+  PYTHONPATH=tools/entrix python3 -m entrix.cli review-trigger --base "$review_base" || true
   echo ""
 }
 

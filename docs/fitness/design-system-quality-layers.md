@@ -105,7 +105,7 @@ metrics:
 npm run lint:css
 npm run test:e2e:desktop-shell
 npm run test:accessibility
-routa-fitness run --dry-run
+entrix run --dry-run
 ```
 
 ## 已知边界

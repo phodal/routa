@@ -2,9 +2,9 @@
 # Runs: npm test, cargo test, api:check, lint
 #
 # Usage:
-#   docker build -f docker/Dockerfile.fitness -t routa-fitness .
-#   docker run --rm routa-fitness
-#   docker run --rm routa-fitness npm run lint      # run specific check
+#   docker build -f docker/Dockerfile.fitness -t entrix .
+#   docker run --rm entrix
+#   docker run --rm entrix npm run lint      # run specific check
 
 FROM node:22-bookworm AS base
 
@@ -65,8 +65,8 @@ RUN npm ci --legacy-peer-deps
 # ── Layer 3: Copy full source ────────────────────────────────────────────
 COPY . .
 
-# ── Install routa-fitness ───────────────────────────────────────────────
-RUN pip3 install --break-system-packages -e tools/routa-fitness
+# ── Install entrix ──────────────────────────────────────────────────────
+RUN pip3 install --break-system-packages -e tools/entrix
 
 # ── Default: run all fitness checks ─────────────────────────────────────
 COPY docker/fitness-entrypoint.sh /usr/local/bin/fitness-entrypoint.sh
