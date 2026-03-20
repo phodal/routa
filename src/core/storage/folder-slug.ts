@@ -6,12 +6,14 @@
  *
  * Algorithm:
  * 1. Strip leading path separators (/ or \)
- * 2. Replace all path separators with hyphens
- * 3. Collapse consecutive separators into a single hyphen
+ * 2. Strip colons (Windows drive letter separator, e.g. "C:" → "C")
+ * 3. Replace all path separators with hyphens
+ * 4. Collapse consecutive separators into a single hyphen
  *
  * Examples:
  *   /Users/john/my-project → Users-john-my-project
  *   C:\Users\john\project  → C-Users-john-project
+ *   E:\routa               → E-routa
  *
  * The same algorithm is implemented in Rust (routa-core) for consistency.
  */
@@ -27,6 +29,8 @@ export function toFolderSlug(absolutePath: string): string {
   let cleaned = absolutePath.replace(/^[/\\]+/, "");
   // Strip trailing separators (avoids trailing hyphen in slug)
   cleaned = cleaned.replace(/[/\\]+$/, "");
+  // Strip colons (Windows drive letter separator, e.g. "C:" → "C")
+  cleaned = cleaned.replace(/:/g, "");
   // Replace all path separators (including consecutive) with a single hyphen
   cleaned = cleaned.replace(/[/\\]+/g, "-");
   return cleaned;
