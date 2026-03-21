@@ -76,7 +76,9 @@ export async function GET(request: NextRequest) {
     // Add built-in presets that are NOT in the registry (so they still appear in the install panel)
     const builtinAgents: Array<{
       agent: RegistryAgent;
+      available: boolean;
       installed: boolean;
+      uninstallable: boolean;
       distributionTypes: DistributionType[];
       source: "builtin";
     }> = [];

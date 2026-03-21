@@ -1171,7 +1171,9 @@ export class RoutaOrchestrator {
     } else if (manager.isDockerAdapterSession(sessionId)) {
       const adapter = manager.getDockerAdapter(sessionId);
       if (adapter && adapter.alive) {
-        await adapter.prompt(prompt);
+        for await (const _ of adapter.promptStream(prompt, sessionId)) {
+          // notifications are forwarded by the adapter
+        }
       } else {
         console.error(
           `[Orchestrator] Docker adapter not available for session ${sessionId}`
