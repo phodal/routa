@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { MessageBubble } from "@/client/components/message-bubble";
 import type { ChatMessage } from "@/client/components/chat-panel/types";
 import { AskUserQuestionBubble } from "@/client/components/message-bubble";
@@ -385,7 +386,12 @@ function LeadMessageThread({
   onOpenViewer?: () => void;
   onSubmitQuestion?: (sessionId: string, toolCallId: string, response: Record<string, unknown>) => Promise<void>;
 }) {
+  const [expanded, setExpanded] = useState(false);
   const isActive = lane?.sessionId === activeSessionId;
+  const previewLaneMessage = lane?.messages.at(-1);
+  const previewText = typeof previewLaneMessage?.content === "string"
+    ? previewLaneMessage.content.replace(/\s+/g, " ").trim()
+    : "";
   const pendingQuestionMessage = lane?.pendingQuestion ? {
     id: `${lane.pendingQuestion.sessionId}-${lane.pendingQuestion.toolCallId}`,
     role: "tool",
@@ -421,6 +427,11 @@ function LeadMessageThread({
               >
                 {lane.actor}
               </button>
+              {lane.roleLabel && (
+                <span className="rounded-full border border-desktop-border bg-desktop-bg-primary px-2 py-0.5 text-[10px] text-desktop-text-secondary">
+                  {lane.roleLabel}
+                </span>
+              )}
               <SessionStatusPill status={lane.status} />
               <span className="text-[10px] text-desktop-text-muted">{lane.lastUpdatedLabel}</span>
               <span className="text-[10px] text-desktop-text-muted opacity-40">/</span>
@@ -438,12 +449,36 @@ function LeadMessageThread({
           <div className="space-y-1 py-0.5">
             {lane.messages.length === 0 ? (
               <div className="text-[11px] text-desktop-text-secondary">No transcript content yet.</div>
-            ) : (
-              lane.messages.slice(-4).map((laneMessage, index) => (
-                <div key={`${laneMessage.id}-${index}`} className="[&_button]:text-[11px] [&_.markdown-body]:text-[11px] [&_.markdown-body]:leading-5">
-                  <MessageBubble message={laneMessage} />
+            ) : !expanded && previewLaneMessage ? (
+              <>
+                <div className="rounded-[12px] border border-desktop-border bg-desktop-bg-primary px-3 py-2 text-[11px] leading-5 text-desktop-text-secondary line-clamp-2">
+                  {previewText || "Open this thread to inspect the latest update."}
                 </div>
-              ))
+                <button
+                  type="button"
+                  onClick={() => setExpanded(true)}
+                  className="text-[10px] font-medium text-desktop-text-secondary transition-colors hover:text-desktop-text-primary"
+                >
+                  Expand thread
+                </button>
+              </>
+            ) : (
+              <>
+                {lane.messages.map((laneMessage, index) => (
+                  <div key={`${laneMessage.id}-${index}`} className="[&_button]:text-[11px] [&_.markdown-body]:text-[11px] [&_.markdown-body]:leading-5">
+                    <MessageBubble message={laneMessage} />
+                  </div>
+                ))}
+                {lane.messages.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setExpanded(false)}
+                    className="text-[10px] font-medium text-desktop-text-secondary transition-colors hover:text-desktop-text-primary"
+                  >
+                    Show less
+                  </button>
+                )}
+              </>
             )}
           </div>
         </div>

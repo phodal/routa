@@ -93,6 +93,7 @@ export interface SessionLaneItem {
   sessionId: string;
   actor: string;
   roleId?: string;
+  roleLabel?: string;
   badge: string;
   sessionName: string;
   status: TeamMemberStatus;
@@ -389,10 +390,20 @@ export function extractFullHistoryText(update?: SessionHistoryEntry["update"]): 
 export function isLowSignalLeadMessage(text?: string): boolean {
   const normalized = text?.replace(/\s+/g, " ").trim().toLowerCase();
   if (!normalized) return true;
+  const mentionsResearcherDispatch = normalized.includes("已派发 researcher")
+    || normalized.includes("dispatch a researcher")
+    || normalized.includes("dispatch researcher")
+    || normalized.includes("researcher 调查 issue");
+  const mentionsReportBack = normalized.includes("正在等待回报")
+    || normalized.includes("report back")
+    || normalized.includes("report my findings to the parent")
+    || normalized.includes("report findings to the parent")
+    || normalized.includes("report back to the parent");
   return (
     normalized.includes("已派发 researcher 任务。正在等待回报")
     || normalized.includes("reported completion back to lead (auto-submitted by orchestrator)")
     || normalized.includes("正在等待回报")
+    || (mentionsResearcherDispatch && mentionsReportBack)
   );
 }
 

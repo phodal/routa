@@ -1051,6 +1051,7 @@ export function TeamRunPageClient() {
       sessionId,
       actor: specialistsById.get(TEAM_LEAD_SPECIALIST_ID)?.name ?? "Agent Lead",
       roleId: TEAM_LEAD_SPECIALIST_ID,
+      roleLabel: specialistsById.get(TEAM_LEAD_SPECIALIST_ID)?.name ?? "Agent Lead",
       badge: "lead",
       sessionName: session?.name ?? sessionId,
       status: leadStatus,
@@ -1071,6 +1072,7 @@ export function TeamRunPageClient() {
         const history = historiesBySessionId[stream.session.sessionId] ?? [];
         const member = teamMembers.find((item) => item.sessionId === stream.session.sessionId);
         const completion = stream.session.routaAgentId ? completionByAgentId.get(stream.session.routaAgentId) : undefined;
+        const roleId = resolveRosterSpecialistId(stream.session, agentsById) ?? stream.session.specialistId;
         const snippets = buildLaneSnippets(history, 4);
         if (completion?.completionSummary && !isLowSignalLeadMessage(completion.completionSummary)) {
           snippets.push({
@@ -1085,7 +1087,12 @@ export function TeamRunPageClient() {
           id: `lane-${stream.session.sessionId}`,
           sessionId: stream.session.sessionId,
           actor: stream.actor,
-          roleId: resolveRosterSpecialistId(stream.session, agentsById) ?? stream.session.specialistId,
+          roleId,
+          roleLabel: member?.roleLabel
+            ?? specialistsById.get(roleId ?? "")?.name
+            ?? stream.session.role
+            ?? stream.session.specialistId
+            ?? "Member",
           badge: stream.badge,
           sessionName: stream.session.name ?? stream.session.sessionId,
           status: member?.status ?? "working",
