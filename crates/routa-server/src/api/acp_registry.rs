@@ -14,7 +14,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::acp::{AcpPaths, DistributionType, RuntimeType, WarmupStatus};
+use crate::acp::{get_presets, AcpPaths, DistributionType, RuntimeType, WarmupStatus};
 use crate::error::ServerError;
 use crate::shell_env;
 use crate::state::AppState;
@@ -62,9 +62,12 @@ pub struct AcpRegistry {
 #[derive(Debug, Serialize)]
 struct AgentWithStatus {
     agent: RegistryAgent,
+    available: bool,
     installed: bool,
+    uninstallable: bool,
     #[serde(rename = "distributionTypes")]
     distribution_types: Vec<String>,
+    source: &'static str,
 }
 
 #[derive(Debug, Serialize)]
@@ -111,14 +114,14 @@ async fn get_registry(
     // If specific agent requested
     if let Some(agent_id) = query.id {
         if let Some(agent) = registry.agents.into_iter().find(|a| a.id == agent_id) {
-            let dist_types = get_distribution_types(&agent.distribution);
-            let installed = state.acp_installation_state.is_installed(&agent.id).await
-                || check_agent_installed(&agent, npx_available, uvx_available);
+            let status = get_agent_status(&state, &agent, npx_available, uvx_available).await;
             return Ok(Json(serde_json::json!({
                 "agent": agent,
-                "installed": installed,
+                "available": status.available,
+                "installed": status.installed,
+                "uninstallable": status.uninstallable,
                 "platform": detect_platform(),
-                "distributionTypes": dist_types,
+                "distributionType": status.resolved_distribution_type,
             })));
         } else {
             return Err(ServerError::NotFound(format!(
@@ -129,15 +132,52 @@ async fn get_registry(
     }
 
     // List all agents with status
+    let registry_ids: std::collections::HashSet<String> = registry
+        .agents
+        .iter()
+        .map(|agent| agent.id.clone())
+        .collect();
     let mut agents_with_status = Vec::new();
     for agent in registry.agents {
         let dist_types = get_distribution_types(&agent.distribution);
-        let installed = state.acp_installation_state.is_installed(&agent.id).await
-            || check_agent_installed(&agent, npx_available, uvx_available);
+        let status = get_agent_status(&state, &agent, npx_available, uvx_available).await;
         agents_with_status.push(AgentWithStatus {
             agent,
-            installed,
+            available: status.available,
+            installed: status.installed,
+            uninstallable: status.uninstallable,
             distribution_types: dist_types,
+            source: "registry",
+        });
+    }
+
+    for preset in get_presets() {
+        if preset.id == "claude" {
+            continue;
+        }
+        if registry_ids.contains(&preset.id) {
+            continue;
+        }
+
+        let resolved =
+            resolve_preset_command(&preset).and_then(|command| shell_env::which(&command));
+        agents_with_status.push(AgentWithStatus {
+            agent: RegistryAgent {
+                id: preset.id,
+                name: preset.name,
+                version: String::new(),
+                description: preset.description,
+                repository: None,
+                authors: vec![],
+                license: String::new(),
+                icon: None,
+                distribution: serde_json::json!({}),
+            },
+            available: resolved.is_some(),
+            installed: resolved.is_some(),
+            uninstallable: false,
+            distribution_types: vec![],
+            source: "builtin",
         });
     }
 
@@ -418,23 +458,79 @@ fn get_distribution_types(distribution: &serde_json::Value) -> Vec<String> {
     types
 }
 
-/// Check if an agent is installed/available
-fn check_agent_installed(agent: &RegistryAgent, npx_available: bool, uvx_available: bool) -> bool {
+#[derive(Debug)]
+struct RegistryAgentStatus {
+    available: bool,
+    installed: bool,
+    uninstallable: bool,
+    resolved_distribution_type: Option<&'static str>,
+}
+
+async fn get_agent_status(
+    state: &AppState,
+    agent: &RegistryAgent,
+    npx_available: bool,
+    uvx_available: bool,
+) -> RegistryAgentStatus {
+    let installed_info = state
+        .acp_installation_state
+        .get_installed_info(&agent.id)
+        .await;
+
+    if let Some(info) = installed_info {
+        if info.dist_type == DistributionType::Binary {
+            return RegistryAgentStatus {
+                available: true,
+                installed: true,
+                uninstallable: true,
+                resolved_distribution_type: Some("binary"),
+            };
+        }
+    }
+
     let dist = &agent.distribution;
-
-    // npx agents are "installed" if npx is available
     if dist.get("npx").is_some() && npx_available {
-        return true;
+        return RegistryAgentStatus {
+            available: true,
+            installed: false,
+            uninstallable: false,
+            resolved_distribution_type: Some("npx"),
+        };
     }
 
-    // uvx agents are "installed" if uvx is available
     if dist.get("uvx").is_some() && uvx_available {
-        return true;
+        return RegistryAgentStatus {
+            available: true,
+            installed: false,
+            uninstallable: false,
+            resolved_distribution_type: Some("uvx"),
+        };
     }
 
-    // Binary agents would need to check if the binary exists
-    // For now, return false for binary-only agents
-    false
+    RegistryAgentStatus {
+        available: false,
+        installed: false,
+        uninstallable: false,
+        resolved_distribution_type: None,
+    }
+}
+
+fn resolve_preset_command(preset: &crate::acp::AcpPreset) -> Option<String> {
+    if let Some(env_var) = &preset.env_bin_override {
+        if let Ok(value) = std::env::var(env_var) {
+            let trimmed = value.trim();
+            if !trimmed.is_empty() {
+                return Some(trimmed.to_string());
+            }
+        }
+    }
+
+    let trimmed = preset.command.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_string())
+    }
 }
 
 /// Detect the current platform
