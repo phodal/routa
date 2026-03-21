@@ -36,18 +36,59 @@ interface ProviderInfo {
 const cache = {
   localProviders: null as ProviderInfo[] | null,
   registryProviders: null as ProviderInfo[] | null,
+  checkedLocalProviders: null as ProviderInfo[] | null,
+  checkedRegistryProviders: null as ProviderInfo[] | null,
   localTimestamp: 0,
   registryTimestamp: 0,
+  checkedLocalTimestamp: 0,
+  checkedRegistryTimestamp: 0,
   LOCAL_TTL: 60000, // 60 seconds for local (changes rarely)
   REGISTRY_TTL: 300000, // 5 minutes for registry (changes very rarely)
+  CHECKED_LOCAL_TTL: 15000, // 15 seconds for command availability checks
+  CHECKED_REGISTRY_TTL: 30000, // 30 seconds for checked registry status
 };
+
+async function getDockerProviderInfo(shouldCheck: boolean): Promise<ProviderInfo> {
+  if (!shouldCheck) {
+    return {
+      id: "docker-opencode",
+      name: "Docker OpenCode",
+      description: "OpenCode in isolated Docker container",
+      command: "docker run",
+      status: "checking",
+      source: "static",
+    };
+  }
+
+  const dockerStatus = await getDockerDetector().checkAvailability();
+  return {
+    id: "docker-opencode",
+    name: "Docker OpenCode",
+    description: dockerStatus.available
+      ? "OpenCode in isolated Docker container"
+      : "Requires Docker/Colima daemon",
+    command: "docker run",
+    status: dockerStatus.available ? "available" : "unavailable",
+    source: "static",
+    unavailableReason: dockerStatus.available
+      ? undefined
+      : (dockerStatus.error ?? "Docker daemon unavailable. Start Docker Desktop or Colima."),
+  };
+}
 
 /**
  * Fetch only local (static) providers - fast and reliable
  */
 async function getLocalProviders(shouldCheck = false): Promise<ProviderInfo[]> {
   // Check cache first
-  if (!shouldCheck && cache.localProviders && Date.now() - cache.localTimestamp < cache.LOCAL_TTL) {
+  if (shouldCheck) {
+    if (
+      cache.checkedLocalProviders &&
+      Date.now() - cache.checkedLocalTimestamp < cache.CHECKED_LOCAL_TTL
+    ) {
+      return cache.checkedLocalProviders;
+    }
+  } else if (cache.localProviders && Date.now() - cache.localTimestamp < cache.LOCAL_TTL) {
     return cache.localProviders;
   }
 
@@ -110,20 +151,7 @@ async function getLocalProviders(shouldCheck = false): Promise<ProviderInfo[]> {
     });
   }
 
-  const dockerStatus = await getDockerDetector().checkAvailability();
-  providers.push({
-    id: "docker-opencode",
-    name: "Docker OpenCode",
-    description: dockerStatus.available
-      ? "OpenCode in isolated Docker container"
-      : "Requires Docker/Colima daemon",
-    command: "docker run",
-    status: dockerStatus.available ? "available" : "unavailable",
-    source: "static",
-    unavailableReason: dockerStatus.available
-      ? undefined
-      : (dockerStatus.error ?? "Docker daemon unavailable. Start Docker Desktop or Colima."),
-  });
+  providers.push(await getDockerProviderInfo(shouldCheck));
 
   // Non-serverless: show all CLI-based providers
   const allPresets = [...getStandardPresets()];
@@ -166,7 +194,10 @@ async function getLocalProviders(shouldCheck = false): Promise<ProviderInfo[]> {
   }
 
   // Update cache
-  if (!shouldCheck) {
+  if (shouldCheck) {
+    cache.checkedLocalProviders = providers;
+    cache.checkedLocalTimestamp = Date.now();
+  } else {
     cache.localProviders = providers;
     cache.localTimestamp = Date.now();
   }
@@ -179,7 +210,17 @@ async function getLocalProviders(shouldCheck = false): Promise<ProviderInfo[]> {
  */
 async function getRegistryProviders(shouldCheck = false): Promise<ProviderInfo[]> {
   // Check cache first
-  if (!shouldCheck && cache.registryProviders && Date.now() - cache.registryTimestamp < cache.REGISTRY_TTL) {
+  if (shouldCheck) {
+    if (
+      cache.checkedRegistryProviders &&
+      Date.now() - cache.checkedRegistryTimestamp < cache.CHECKED_REGISTRY_TTL
+    ) {
+      return cache.checkedRegistryProviders;
+    }
+  } else if (
+    cache.registryProviders &&
+    Date.now() - cache.registryTimestamp < cache.REGISTRY_TTL
+  ) {
     return cache.registryProviders;
   }
 
@@ -269,7 +310,10 @@ async function getRegistryProviders(shouldCheck = false): Promise<ProviderInfo[]
     }
 
     // Update cache
-    if (!shouldCheck) {
+    if (shouldCheck) {
+      cache.checkedRegistryProviders = providers;
+      cache.checkedRegistryTimestamp = Date.now();
+    } else {
       cache.registryProviders = providers;
       cache.registryTimestamp = Date.now();
     }
@@ -306,14 +350,6 @@ export async function GET(request: NextRequest) {
   const registryProviders = await getRegistryProviders(shouldCheck);
 
   const allProviders = [...localProviders, ...registryProviders];
-
-  // Update full cache when checking
-  if (shouldCheck) {
-    cache.localProviders = localProviders;
-    cache.localTimestamp = Date.now();
-    cache.registryProviders = registryProviders;
-    cache.registryTimestamp = Date.now();
-  }
 
   return NextResponse.json({
     providers: allProviders,

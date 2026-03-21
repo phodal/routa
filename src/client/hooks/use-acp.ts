@@ -34,6 +34,33 @@ import {
 import { loadDockerOpencodeAuthJson } from "../components/settings-panel";
 import type { McpServerProfile } from "@/core/mcp/mcp-server-profiles";
 
+const BUILTIN_PROVIDER_FALLBACKS: AcpProviderInfo[] = [
+  {
+    id: "claude",
+    name: "Claude Code",
+    description: "Anthropic Claude Code (native ACP support)",
+    command: "claude",
+    status: "checking",
+    source: "static",
+  },
+  {
+    id: "opencode",
+    name: "OpenCode",
+    description: "OpenCode AI coding agent",
+    command: "opencode",
+    status: "checking",
+    source: "static",
+  },
+  {
+    id: "codex",
+    name: "Codex",
+    description: "OpenAI Codex CLI (via codex-acp wrapper)",
+    command: "codex-acp",
+    status: "checking",
+    source: "static",
+  },
+];
+
 /** Convert a custom ACP provider to AcpProviderInfo for the provider list. */
 function toAcpProviderInfo(cp: CustomAcpProvider): AcpProviderInfo {
   return {
@@ -55,6 +82,17 @@ function sortProvidersByPreference(providers: AcpProviderInfo[]): AcpProviderInf
     const rightIndex = orderMap.get(right.id) ?? Number.MAX_SAFE_INTEGER;
     return leftIndex - rightIndex;
   });
+}
+
+function getInitialProviderFallbacks(): AcpProviderInfo[] {
+  const disabledProviders = loadHiddenProviders();
+  const customProviders = loadCustomAcpProviders().map(toAcpProviderInfo);
+
+  return sortProvidersByPreference(
+    [...BUILTIN_PROVIDER_FALLBACKS, ...customProviders].filter(
+      (provider) => !disabledProviders.includes(provider.id)
+    )
+  );
 }
 
 /**
@@ -143,7 +181,7 @@ export function useAcp(baseUrl: string = ""): UseAcpState & UseAcpActions {
     connected: false,
     sessionId: null,
     updates: [],
-    providers: [],
+    providers: getInitialProviderFallbacks(),
     selectedProvider: "opencode",
     loading: false,
     error: null,
