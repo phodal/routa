@@ -40,8 +40,8 @@ The repository still contains historical design material under `.kiro/specs/`. T
 
 ## Related Docs
 
-- [ARCHITECTURE.md](/Users/phodal/ai/routa-js/docs/ARCHITECTURE.md)
-- [FEATURE_TREE.md](/Users/phodal/ai/routa-js/docs/product-specs/FEATURE_TREE.md)
-- [core-beliefs.md](/Users/phodal/ai/routa-js/docs/design-docs/core-beliefs.md)
-- [golden-rules.md](/Users/phodal/ai/routa-js/docs/design-docs/golden-rules.md)
-- [workspace-centric-redesign.md](/Users/phodal/ai/routa-js/docs/design-docs/workspace-centric-redesign.md)
+- [ARCHITECTURE.md](../ARCHITECTURE.md)
+- [FEATURE_TREE.md](../product-specs/FEATURE_TREE.md)
+- [core-beliefs.md](./core-beliefs.md)
+- [golden-rules.md](./golden-rules.md)
+- [workspace-centric-redesign.md](./workspace-centric-redesign.md)

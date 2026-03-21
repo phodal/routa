@@ -17,15 +17,15 @@ update_policy:
 
 Routa.js is a workspace-first multi-agent coordination platform with two runtime surfaces:
 
-- Web: Next.js app and API in [`src/`](/Users/phodal/ai/routa-js/src)
-- Desktop: Tauri app in [`apps/desktop/`](/Users/phodal/ai/routa-js/apps/desktop) backed by Axum in [`crates/routa-server/`](/Users/phodal/ai/routa-js/crates/routa-server)
+- Web: Next.js app and API in `src/`
+- Desktop: Tauri app in `apps/desktop/` backed by Axum in `crates/routa-server/`
 
 The project is intentionally not "two separate products". Web and desktop differ in deployment model and storage, but they are expected to preserve the same domain semantics, API shape, and agent-coordination behavior.
 
 ## Core Principles
 
 - Workspace-first: workspaces are the top-level coordination boundary for sessions, tasks, notes, boards, codebases, worktrees, and memories.
-- Dual-backend parity: Next.js and Rust expose the same product concepts and should stay aligned with [`api-contract.yaml`](/Users/phodal/ai/routa-js/api-contract.yaml).
+- Dual-backend parity: Next.js and Rust expose the same product concepts and should stay aligned with `api-contract.yaml`.
 - Protocol-oriented orchestration: REST, MCP, ACP, A2A, AG-UI, and SSE are all first-class integration surfaces.
 - Local-first execution: desktop mode favors SQLite, local agent binaries, local worktrees, and trace files.
 - Provider abstraction: different agent CLIs and runtimes are normalized behind adapter layers instead of leaking provider-specific protocol details through the system.
@@ -34,23 +34,23 @@ The project is intentionally not "two separate products". Web and desktop differ
 
 | Area | Purpose |
 |---|---|
-| [`src/app/`](/Users/phodal/ai/routa-js/src/app) | Next.js App Router pages and API routes |
-| [`src/client/`](/Users/phodal/ai/routa-js/src/client) | Client components, hooks, view models, A2UI helpers |
-| [`src/core/`](/Users/phodal/ai/routa-js/src/core) | TypeScript domain logic: stores, ACP/MCP, kanban automation, workflows, notes, tools |
-| [`apps/desktop/`](/Users/phodal/ai/routa-js/apps/desktop) | Tauri shell and desktop packaging |
-| [`crates/routa-core/`](/Users/phodal/ai/routa-js/crates/routa-core) | Shared Rust domain/runtime foundation: stores, ACP manager, sandbox, skills, events |
-| [`crates/routa-server/`](/Users/phodal/ai/routa-js/crates/routa-server) | Axum HTTP API for desktop/local server mode |
-| [`crates/routa-cli/`](/Users/phodal/ai/routa-js/crates/routa-cli) | CLI entrypoints and ACP serving commands |
-| [`crates/routa-rpc/`](/Users/phodal/ai/routa-js/crates/routa-rpc) | RPC contract helpers |
-| [`crates/routa-scanner/`](/Users/phodal/ai/routa-js/crates/routa-scanner) | Codebase scanning utilities |
-| [`docs/`](/Users/phodal/ai/routa-js/docs) | Durable architecture, design intent, plans, fitness guidance |
+| `src/app/` | Next.js App Router pages and API routes |
+| `src/client/` | Client components, hooks, view models, A2UI helpers |
+| `src/core/` | TypeScript domain logic: stores, ACP/MCP, kanban automation, workflows, notes, tools |
+| `apps/desktop/` | Tauri shell and desktop packaging |
+| `crates/routa-core/` | Shared Rust domain/runtime foundation: stores, ACP manager, sandbox, skills, events |
+| `crates/routa-server/` | Axum HTTP API for desktop/local server mode |
+| `crates/routa-cli/` | CLI entrypoints and ACP serving commands |
+| `crates/routa-rpc/` | RPC contract helpers |
+| `crates/routa-scanner/` | Codebase scanning utilities |
+| `docs/` | Durable architecture, design intent, plans, fitness guidance |
 
 ## Runtime Topology
 
 ### Web Runtime
 
-- Next.js serves pages under [`src/app/`](/Users/phodal/ai/routa-js/src/app).
-- API handlers in [`src/app/api/`](/Users/phodal/ai/routa-js/src/app/api) use the TypeScript `RoutaSystem` from [`src/core/routa-system.ts`](/Users/phodal/ai/routa-js/src/core/routa-system.ts).
+- Next.js serves pages under `src/app/`.
+- API handlers in `src/app/api/` use the TypeScript `RoutaSystem` from `src/core/routa-system.ts`.
 - `RoutaSystem` selects storage by environment:
   - `DATABASE_URL` -> Postgres-backed stores
   - `ROUTA_DB_DRIVER=sqlite` or local Node runtime -> SQLite-backed stores
@@ -59,8 +59,8 @@ The project is intentionally not "two separate products". Web and desktop differ
 
 ### Desktop Runtime
 
-- Tauri hosts the UI and starts the embedded Axum server from [`crates/routa-server/src/lib.rs`](/Users/phodal/ai/routa-js/crates/routa-server/src/lib.rs).
-- Shared application state is built in [`crates/routa-core/src/state.rs`](/Users/phodal/ai/routa-js/crates/routa-core/src/state.rs).
+- Tauri hosts the UI and starts the embedded Axum server from `crates/routa-server/src/lib.rs`.
+- Shared application state is built in `crates/routa-core/src/state.rs`.
 - The Rust backend owns local SQLite persistence, ACP runtime management, Docker-assisted agent execution, sandbox management, and local file/worktree operations.
 - Tauri static export placeholders are a routing implementation detail, not part of the domain model.
 
@@ -97,7 +97,7 @@ Dependency direction should stay downward. UI and transport layers depend on dom
 Workspace is the primary user-visible scope. Users navigate by workspace first and then inspect sessions, boards, notes, tasks, codebases, or memories within that scope.
 
 Current canonical background:
-- [workspace-centric-redesign.md](/Users/phodal/ai/routa-js/docs/design-docs/workspace-centric-redesign.md)
+- [workspace-centric-redesign.md](./design-docs/workspace-centric-redesign.md)
 
 Important invariant:
 - New product surfaces should require explicit workspace context unless they are deliberate bootstrap flows.
@@ -121,7 +121,7 @@ Important invariant:
 - Tasks are the durable work units.
 - Kanban is not just a UI projection; it also drives lane-based automation and queueing.
 - Column transitions can trigger fresh ACP sessions and enrich tasks with provider/role/session metadata.
-- The TypeScript queue in [`src/core/kanban/kanban-session-queue.ts`](/Users/phodal/ai/routa-js/src/core/kanban/kanban-session-queue.ts) enforces per-board concurrency and prevents stale auto-run entries from re-firing incorrectly.
+- The TypeScript queue in `src/core/kanban/kanban-session-queue.ts` enforces per-board concurrency and prevents stale auto-run entries from re-firing incorrectly.
 
 ### Background Task And Workflow
 
@@ -139,7 +139,7 @@ Important invariant:
 
 ### TypeScript `RoutaSystem`
 
-[`src/core/routa-system.ts`](/Users/phodal/ai/routa-js/src/core/routa-system.ts) is the central assembly point for the Next.js runtime. It wires:
+`src/core/routa-system.ts` is the central assembly point for the Next.js runtime. It wires:
 
 - stores for agents, conversations, tasks, notes, workspaces, codebases, worktrees, schedules, kanban boards, background tasks, workflow runs, and artifacts
 - `EventBus` for in-process coordination
@@ -151,7 +151,7 @@ This file is the TypeScript equivalent of a service container. New domain servic
 
 ### Rust `AppState`
 
-[`crates/routa-core/src/state.rs`](/Users/phodal/ai/routa-js/crates/routa-core/src/state.rs) plays the same role for the Axum server. It wires:
+`crates/routa-core/src/state.rs` plays the same role for the Axum server. It wires:
 
 - core stores including workspace, codebase, worktree, task, note, kanban, conversation, artifact, schedule, and ACP session stores
 - `AcpManager`, binary/runtime/warmup managers, and ACP path resolution
@@ -174,7 +174,7 @@ This keeps desktop/server execution local-first while preserving the same domain
 | A2UI | `/api/a2ui/*` | dashboard-oriented UI protocol surfaces |
 | SSE | ACP, notes, AG-UI, and related endpoints | incremental updates to the frontend |
 
-The product surface changes often. For endpoint inventory, use [`docs/product-specs/FEATURE_TREE.md`](/Users/phodal/ai/routa-js/docs/product-specs/FEATURE_TREE.md) rather than expanding this document into an API catalog.
+The product surface changes often. For endpoint inventory, use [docs/product-specs/FEATURE_TREE.md](./product-specs/FEATURE_TREE.md) rather than expanding this document into an API catalog.
 
 ## ACP And Provider Architecture
 
@@ -197,7 +197,7 @@ Current provider/runtime concerns include:
 - Docker-backed OpenCode execution paths
 - runtime installation, warmup, and registry discovery
 
-The Rust ACP subsystem lives under [`crates/routa-core/src/acp/`](/Users/phodal/ai/routa-js/crates/routa-core/src/acp), while the web runtime keeps corresponding process and route logic under [`src/core/acp/`](/Users/phodal/ai/routa-js/src/core/acp) and [`src/app/api/acp/`](/Users/phodal/ai/routa-js/src/app/api/acp).
+The Rust ACP subsystem lives under `crates/routa-core/src/acp/`, while the web runtime keeps corresponding process and route logic under `src/core/acp/` and `src/app/api/acp/`.
 
 ## Real-Time And Eventing
 
@@ -234,7 +234,7 @@ These support:
 
 ## Rust API Surface
 
-The Axum router in [`crates/routa-server/src/api/mod.rs`](/Users/phodal/ai/routa-js/crates/routa-server/src/api/mod.rs) shows the breadth of the desktop/server backend. In addition to the core workspace/session/task APIs, it includes:
+The Axum router in `crates/routa-server/src/api/mod.rs` shows the breadth of the desktop/server backend. In addition to the core workspace/session/task APIs, it includes:
 
 - ACP registry, runtime, and Docker routes
 - Kanban and worktree routes
@@ -247,7 +247,7 @@ This breadth is intentional: the desktop backend is not a thin transport shim. I
 
 ## Current Transitional Areas
 
-The repository is still finishing the workspace-centric normalization. The durable status lives in [`docs/design-docs/workspace-centric-redesign.md`](/Users/phodal/ai/routa-js/docs/design-docs/workspace-centric-redesign.md), but the key architecture caveat is:
+The repository is still finishing the workspace-centric normalization. The durable status lives in [docs/design-docs/workspace-centric-redesign.md](./design-docs/workspace-centric-redesign.md), but the key architecture caveat is:
 
 - some paths still fall back to `"default"` when workspace scope is omitted
 - some bootstrap/runtime flows still assume a default workspace exists
@@ -258,8 +258,8 @@ Treat `"default"` as transition scaffolding, not as the target domain model.
 
 ## Related Documents
 
-- Product/API index: [`docs/product-specs/FEATURE_TREE.md`](/Users/phodal/ai/routa-js/docs/product-specs/FEATURE_TREE.md)
-- Workspace redesign status: [`docs/design-docs/workspace-centric-redesign.md`](/Users/phodal/ai/routa-js/docs/design-docs/workspace-centric-redesign.md)
-- Active workspace normalization plan: [`docs/exec-plans/active/workspace-centric-normalization.md`](/Users/phodal/ai/routa-js/docs/exec-plans/active/workspace-centric-normalization.md)
-- Fitness and verification guidance: [`docs/fitness/README.md`](/Users/phodal/ai/routa-js/docs/fitness/README.md)
-- Repository operating contract: [`AGENTS.md`](/Users/phodal/ai/routa-js/AGENTS.md)
+- Product/API index: [docs/product-specs/FEATURE_TREE.md](./product-specs/FEATURE_TREE.md)
+- Workspace redesign status: [docs/design-docs/workspace-centric-redesign.md](./design-docs/workspace-centric-redesign.md)
+- Active workspace normalization plan: [docs/exec-plans/active/workspace-centric-normalization.md](./exec-plans/active/workspace-centric-normalization.md)
+- Fitness and verification guidance: `docs/fitness/README.md`
+- Repository operating contract: `AGENTS.md`

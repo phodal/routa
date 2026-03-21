@@ -46,12 +46,12 @@ The Rust desktop backend and the Next.js backend can differ in implementation, b
 - Tauri static export routing supports placeholder workspace routes and resolves them client-side.
 
 Representative files:
-- [workspace-page-client.tsx](/Users/phodal/ai/routa-js/src/app/workspace/[workspaceId]/workspace-page-client.tsx)
-- [workspace-switcher.tsx](/Users/phodal/ai/routa-js/src/client/components/workspace-switcher.tsx)
-- [use-workspaces.ts](/Users/phodal/ai/routa-js/src/client/hooks/use-workspaces.ts)
-- [route.ts](/Users/phodal/ai/routa-js/src/app/api/workspaces/[workspaceId]/route.ts)
-- [route.ts](/Users/phodal/ai/routa-js/src/app/api/workspaces/[workspaceId]/codebases/route.ts)
-- [schema.ts](/Users/phodal/ai/routa-js/src/core/db/schema.ts)
+- `src/app/workspace/[workspaceId]/workspace-page-client.tsx`
+- `src/client/components/workspace-switcher.tsx`
+- `src/client/hooks/use-workspaces.ts`
+- `src/app/api/workspaces/[workspaceId]/route.ts`
+- `src/app/api/workspaces/[workspaceId]/codebases/route.ts`
+- `src/core/db/schema.ts`
 
 ### Transitional Or Incomplete Areas
 
@@ -62,11 +62,11 @@ Representative files:
 - `workspace_skills` exists in schema, but the repository still needs a clear canonical doc for what is fully implemented versus transitional in skill scoping.
 
 Representative files with residual transition logic:
-- [route.ts](/Users/phodal/ai/routa-js/src/app/api/tasks/route.ts)
-- [route.ts](/Users/phodal/ai/routa-js/src/app/api/background-tasks/route.ts)
-- [route.ts](/Users/phodal/ai/routa-js/src/app/api/acp/route.ts)
-- [lib.rs](/Users/phodal/ai/routa-js/crates/routa-server/src/lib.rs)
-- [prompt.rs](/Users/phodal/ai/routa-js/crates/routa-cli/src/commands/prompt.rs)
+- `src/app/api/tasks/route.ts`
+- `src/app/api/background-tasks/route.ts`
+- `src/app/api/acp/route.ts`
+- `crates/routa-server/src/lib.rs`
+- `crates/routa-cli/src/commands/prompt.rs`
 
 ## Invariants To Preserve
 
@@ -100,5 +100,5 @@ Source material normalized into this document:
 - `.kiro/specs/workspace-centric-redesign/tasks.md`
 
 Related docs:
-- [ARCHITECTURE.md](/Users/phodal/ai/routa-js/docs/ARCHITECTURE.md)
-- [workspace-centric-normalization.md](/Users/phodal/ai/routa-js/docs/exec-plans/active/workspace-centric-normalization.md)
+- [ARCHITECTURE.md](../ARCHITECTURE.md)
+- [workspace-centric-normalization.md](../exec-plans/active/workspace-centric-normalization.md)
