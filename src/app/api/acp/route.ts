@@ -757,10 +757,19 @@ export async function POST(request: NextRequest) {
             if (workspaceSessionAgentId) {
               routaAgentId = workspaceSessionAgentId;
             } else {
+              const agentMetadata: Record<string, string> = {};
+              if (specialistId) {
+                agentMetadata.specialist = specialistId;
+              }
+              if (specialistId === "team-agent-lead") {
+                agentMetadata.rosterRoleId = specialistId;
+                agentMetadata.displayLabel = specialist?.name ?? "Agent Lead";
+              }
               const agentResult = await system.tools.createAgent({
                 name: `routa-coordinator-${sessionId.slice(0, 8)}`,
                 role: AgentRole.ROUTA,
                 workspaceId,
+                metadata: Object.keys(agentMetadata).length > 0 ? agentMetadata : undefined,
               });
 
               if (agentResult.success && agentResult.data) {

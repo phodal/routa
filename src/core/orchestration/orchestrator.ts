@@ -19,7 +19,7 @@ import { v4 as uuidv4 } from "uuid";
 import * as fs from "fs";
 import * as path from "path";
 import { AgentRole, AgentStatus } from "../models/agent";
-import { TaskStatus } from "../models/task";
+import { TaskStatus, type Task } from "../models/task";
 import { AgentEventType } from "../events/event-bus";
 import { ToolResult, successResult, errorResult } from "../tools/tool-result";
 import {
@@ -108,6 +108,99 @@ interface DelegationGroup {
 
 function isWorkspaceProvider(provider: string): boolean {
   return provider === "workspace" || provider === "workspace-agent" || provider === "routa-native";
+}
+
+const TEAM_LEAD_SPECIALIST_ID = "team-agent-lead";
+const TEAM_RUNTIME_LABELS: Record<string, string[]> = {
+  "team-researcher": ["Alex", "Sam", "Jack", "Tina", "Eric"],
+  "team-frontend-dev": ["Lee", "Taylor", "Felix", "Jay", "Robin"],
+  "team-backend-dev": ["Jimmy", "Bill", "Robin", "James", "Jason"],
+  "team-qa": ["Chris", "Terry", "Leo", "Ben", "David"],
+  "team-ux-designer": ["Kelly", "Kerry", "Emma", "Alice"],
+  "team-code-reviewer": ["Mark", "Ryan", "Daniel", "Ray", "Kim"],
+  "team-operations": ["Emily", "Ben", "Olivia", "Grace", "Ivan"],
+  "team-general-engineer": ["Nick", "Cindy", "Hunk", "Sarah", "Chloe"],
+};
+
+function inferRosterRoleId(task: Task, specialistId: string, additionalInstructions?: string): string | undefined {
+  if (specialistId.startsWith("team-")) {
+    return specialistId;
+  }
+
+  const text = [
+    task.title,
+    task.objective,
+    task.scope ?? "",
+    task.acceptanceCriteria?.join(" ") ?? "",
+    task.testCases?.join(" ") ?? "",
+    additionalInstructions ?? "",
+  ]
+    .join(" ")
+    .toLowerCase();
+
+  if (text.includes("research")) return "team-researcher";
+  if (text.includes("frontend") || text.includes("react") || text.includes("next.js") || text.includes("tailwind") || text.includes("ui ")) {
+    return "team-frontend-dev";
+  }
+  if (text.includes("backend") || text.includes("api") || text.includes("database") || text.includes("service")) {
+    return "team-backend-dev";
+  }
+  if (text.includes("ux") || text.includes("design") || text.includes("accessibility")) {
+    return "team-ux-designer";
+  }
+  if (text.includes("review") || text.includes("risk") || text.includes("bug")) {
+    return "team-code-reviewer";
+  }
+  if (text.includes("qa") || text.includes("test") || text.includes("verify") || text.includes("validation")) {
+    return "team-qa";
+  }
+  if (text.includes("deploy") || text.includes("ci") || text.includes("infra") || text.includes("monitor") || text.includes("release")) {
+    return "team-operations";
+  }
+  if (specialistId === "gate") return "team-qa";
+  if (specialistId === "crafter" || specialistId === "developer") return "team-general-engineer";
+  return undefined;
+}
+
+async function buildTeamRuntimeMetadata(input: {
+  system: RoutaSystem;
+  workspaceId: string;
+  callerAgentId: string;
+  task: Task;
+  specialistId: string;
+  additionalInstructions?: string;
+}): Promise<Record<string, string> | undefined> {
+  const caller = await input.system.agentStore.get(input.callerAgentId);
+  if (caller?.metadata?.specialist !== TEAM_LEAD_SPECIALIST_ID) {
+    return undefined;
+  }
+
+  const rosterRoleId = inferRosterRoleId(input.task, input.specialistId, input.additionalInstructions);
+  if (!rosterRoleId) {
+    return undefined;
+  }
+
+  const labels = TEAM_RUNTIME_LABELS[rosterRoleId];
+  if (!labels?.length) {
+    return { rosterRoleId };
+  }
+
+  const agents = await input.system.agentStore.listByWorkspace(input.workspaceId);
+  const usedLabels = new Set(
+    agents
+      .filter((agent) => agent.metadata?.rosterRoleId === rosterRoleId)
+      .map((agent) => agent.metadata?.displayLabel)
+      .filter((label): label is string => typeof label === "string" && label.length > 0),
+  );
+
+  const fallbackIndex = usedLabels.size;
+  const displayLabel = labels.find((label) => !usedLabels.has(label))
+    ?? `${labels[fallbackIndex % labels.length]} ${Math.floor(fallbackIndex / labels.length) + 1}`;
+
+  return {
+    rosterRoleId,
+    displayLabel,
+  };
 }
 
 export class RoutaOrchestrator {
@@ -300,11 +393,21 @@ export class RoutaOrchestrator {
       .replace(/\s+/g, "-")
       .toLowerCase()}`;
 
+    const runtimeRosterMetadata = await buildTeamRuntimeMetadata({
+      system: this.system,
+      workspaceId,
+      callerAgentId,
+      task,
+      specialistId: specialistConfig.id,
+      additionalInstructions,
+    });
+
     // Build metadata including delegation depth
     const agentMetadata = buildAgentMetadata(
       calculateChildDepth(depthCheck.currentDepth),
       callerAgentId,
-      specialistConfig.id
+      specialistConfig.id,
+      runtimeRosterMetadata,
     );
 
     const agentResult = await this.system.tools.createAgent({

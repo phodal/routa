@@ -33,6 +33,7 @@ interface AgentSummary {
   parentId?: string;
   createdAt: string;
   updatedAt?: string;
+  metadata?: Record<string, string>;
 }
 
 type NormalizedTaskStatus = "not-started" | "in-progress" | "waiting-review" | "done" | "blocked";
@@ -324,7 +325,15 @@ function sessionBadge(session: SessionInfo): string {
   return session.specialistId ?? session.role ?? session.provider ?? "session";
 }
 
-function resolveRosterSpecialistId(session: SessionInfo): string | undefined {
+function resolveRosterSpecialistId(
+  session: SessionInfo,
+  agentsById?: Map<string, AgentSummary>,
+): string | undefined {
+  const metadataRosterId = session.routaAgentId
+    ? agentsById?.get(session.routaAgentId)?.metadata?.rosterRoleId
+    : undefined;
+  if (metadataRosterId?.startsWith("team-")) return metadataRosterId;
+
   const direct = session.specialistId;
   if (direct?.startsWith("team-")) return direct;
 
@@ -341,8 +350,17 @@ function resolveRosterSpecialistId(session: SessionInfo): string | undefined {
   return undefined;
 }
 
-function getActorLabel(session: SessionInfo, specialistsById: Map<string, SpecialistSummary>): string {
-  const rosterId = resolveRosterSpecialistId(session);
+function getActorLabel(
+  session: SessionInfo,
+  specialistsById: Map<string, SpecialistSummary>,
+  agentsById?: Map<string, AgentSummary>,
+): string {
+  const displayLabel = session.routaAgentId
+    ? agentsById?.get(session.routaAgentId)?.metadata?.displayLabel
+    : undefined;
+  if (displayLabel) return displayLabel;
+
+  const rosterId = resolveRosterSpecialistId(session, agentsById);
   return specialistsById.get(rosterId ?? session.specialistId ?? "")?.name ?? session.name ?? session.specialistId ?? session.role ?? "Agent";
 }
 
@@ -804,6 +822,10 @@ export function TeamRunPageClient() {
     () => new Map(specialists.map((specialist) => [specialist.id, specialist])),
     [specialists],
   );
+  const agentsById = useMemo(
+    () => new Map(agents.map((agent) => [agent.id, agent])),
+    [agents],
+  );
 
   const descendantSessions = useMemo(() => {
     const childMap = new Map<string, SessionInfo[]>();
@@ -912,7 +934,7 @@ export function TeamRunPageClient() {
 
         return {
           session: entry,
-          actor: getActorLabel(entry, specialistsById),
+          actor: getActorLabel(entry, specialistsById, agentsById),
           badge: sessionBadge(entry),
           preview,
           eventCount: history.length,
@@ -925,7 +947,7 @@ export function TeamRunPageClient() {
         if (b.session.sessionId === sessionId) return 1;
         return b.lastUpdatedAt - a.lastUpdatedAt;
       });
-  }, [allRunSessions, historiesBySessionId, sessionId, specialistsById]);
+  }, [agentsById, allRunSessions, historiesBySessionId, sessionId, specialistsById]);
 
   const selectedSessionStream = useMemo(
     () => sessionStreams.find((item) => item.session.sessionId === selectedSessionId) ?? sessionStreams[0] ?? null,
@@ -941,12 +963,12 @@ export function TeamRunPageClient() {
     const map = new Map<string, SessionStreamSummary>();
     for (const stream of sessionStreams) {
       if (!stream.session.parentSessionId) continue;
-      const rosterId = resolveRosterSpecialistId(stream.session);
+      const rosterId = resolveRosterSpecialistId(stream.session, agentsById);
       if (!rosterId && !stream.session.specialistId) continue;
       map.set(rosterId ?? stream.session.specialistId ?? stream.session.sessionId, stream);
     }
     return map;
-  }, [sessionStreams]);
+  }, [agentsById, sessionStreams]);
 
   const rootHistory = useMemo(
     () => historiesBySessionId[sessionId] ?? [],
@@ -1056,7 +1078,7 @@ export function TeamRunPageClient() {
             linkedStream,
             linkedStream?.session ?? session,
             linkedStream?.actor ?? target,
-            targetRosterId ?? resolveRosterSpecialistId(linkedStream?.session ?? session),
+            targetRosterId ?? resolveRosterSpecialistId(linkedStream?.session ?? session, agentsById),
           ),
           sortKey,
         });
@@ -1081,8 +1103,8 @@ export function TeamRunPageClient() {
     });
 
     for (const child of descendantSessions) {
-      const actor = getActorLabel(child, specialistsById);
-      const childRoleId = resolveRosterSpecialistId(child) ?? child.specialistId;
+      const actor = getActorLabel(child, specialistsById, agentsById);
+      const childRoleId = resolveRosterSpecialistId(child, agentsById) ?? child.specialistId;
       const childCreatedAt = new Date(child.createdAt).getTime();
 
       items.push({
@@ -1160,19 +1182,19 @@ export function TeamRunPageClient() {
       .sort((a, b) => b.sortKey - a.sortKey)
       .slice(0, 24)
       .map(({ sortKey: _sortKey, ...item }) => item);
-  }, [descendantSessions, historiesBySessionId, latestChildSessionByRosterId, notesHook.notes, rootHistory, session, sessionId, sessionStreamsBySessionId, specialistsById]);
+  }, [agentsById, descendantSessions, historiesBySessionId, latestChildSessionByRosterId, notesHook.notes, rootHistory, session, sessionId, sessionStreamsBySessionId, specialistsById]);
 
   const latestSessionBySpecialistId = useMemo(() => {
     const map = new Map<string, SessionStreamSummary>();
     for (const stream of sessionStreams) {
-      const specialistId = resolveRosterSpecialistId(stream.session);
+      const specialistId = resolveRosterSpecialistId(stream.session, agentsById);
       if (!specialistId) continue;
       if (!map.has(specialistId)) {
         map.set(specialistId, stream);
       }
     }
     return map;
-  }, [sessionStreams]);
+  }, [agentsById, sessionStreams]);
 
   const sessionStreamByAgentId = useMemo(() => {
     const map = new Map<string, SessionStreamSummary>();
@@ -1202,16 +1224,18 @@ export function TeamRunPageClient() {
         leadItem,
         ...createdAgents.map(({ agent }) => {
           const linkedStream = sessionStreamByAgentId.get(agent.id);
+          const rosterRoleId = agent.metadata?.rosterRoleId;
+          const displayLabel = agent.metadata?.displayLabel ?? agent.name;
           return {
             id: agent.id,
-            actor: agent.name,
-            roleId: agent.role,
-            roleLabel: agent.role,
+            actor: displayLabel,
+            roleId: rosterRoleId ?? agent.role,
+            roleLabel: specialistsById.get(rosterRoleId ?? "")?.name ?? rosterRoleId ?? agent.role,
             status: linkedStream ? mapAgentStatus(linkedStream.session.acpStatus === "error" ? "ERROR" : agent.status) : mapAgentStatus(agent.status),
             lastUpdatedLabel: linkedStream?.lastUpdatedLabel ?? formatRelativeTime(agent.updatedAt ?? agent.createdAt),
             sessionId: linkedStream?.session.sessionId,
             preview: linkedStream?.preview ?? "Created and waiting for task dispatch",
-            avatarLabel: avatarInitials(agent.name),
+            avatarLabel: avatarInitials(displayLabel),
           } satisfies TeamMemberItem;
         }),
       ];
@@ -1246,17 +1270,17 @@ export function TeamRunPageClient() {
 
       return {
         id: specialist.id,
-        actor: specialist.name,
+        actor: latest ? getActorLabel(latest.session, specialistsById, agentsById) : specialist.name,
         roleId: specialist.id,
-        roleLabel: specialist.id,
+        roleLabel: specialist.name,
         status,
         lastUpdatedLabel: latest?.lastUpdatedLabel,
         sessionId: latest?.session.sessionId,
         preview: latest?.preview,
-        avatarLabel: avatarInitials(specialist.name),
+        avatarLabel: avatarInitials(latest ? getActorLabel(latest.session, specialistsById, agentsById) : specialist.name),
       };
     });
-  }, [createdAgents, historiesBySessionId, latestSessionBySpecialistId, session, sessionId, sessionStreams, sessionStreamByAgentId, specialists, specialistsById]);
+  }, [agentsById, createdAgents, historiesBySessionId, latestSessionBySpecialistId, session, sessionId, sessionStreams, sessionStreamByAgentId, specialists, specialistsById]);
 
   const memberCounts = useMemo(
     () => ({
@@ -1346,12 +1370,12 @@ export function TeamRunPageClient() {
   const deliverables = useMemo<DeliverableItem[]>(() => {
     const noteDeliverables = notesHook.notes.map((note) => {
       const sourceSession = note.sessionId ? allRunSessions.find((entry) => entry.sessionId === note.sessionId) : undefined;
-      const ownerId = sourceSession ? resolveRosterSpecialistId(sourceSession) ?? sourceSession.specialistId : undefined;
+      const ownerId = sourceSession ? resolveRosterSpecialistId(sourceSession, agentsById) ?? sourceSession.specialistId : undefined;
       return {
         id: `note-${note.id}`,
         label: inferDeliverableLabel(note, ownerId),
         title: note.title,
-        owner: sourceSession ? getActorLabel(sourceSession, specialistsById) : "Agent Lead",
+        owner: sourceSession ? getActorLabel(sourceSession, specialistsById, agentsById) : "Agent Lead",
         status:
           note.metadata.type === "spec"
             ? "approved"
@@ -1367,7 +1391,7 @@ export function TeamRunPageClient() {
     });
 
     const sessionDeliverables = descendantSessions.flatMap((entry) => {
-      const actor = getActorLabel(entry, specialistsById);
+      const actor = getActorLabel(entry, specialistsById, agentsById);
       const history = historiesBySessionId[entry.sessionId] ?? [];
       const latestCompletion = [...history].reverse().find((item) => item.update?.sessionUpdate === "task_completion");
       if (!latestCompletion?.update) return [];
@@ -1391,7 +1415,7 @@ export function TeamRunPageClient() {
     return [...noteDeliverables, ...sessionDeliverables]
       .sort((a, b) => b.updatedAt - a.updatedAt)
       .slice(0, 8);
-  }, [allRunSessions, descendantSessions, historiesBySessionId, notesHook.notes, specialistsById]);
+  }, [agentsById, allRunSessions, descendantSessions, historiesBySessionId, notesHook.notes, specialistsById]);
 
   const completionByAgentId = useMemo(() => {
     const map = new Map<string, NonNullable<SessionHistoryEntry["update"]>>();
@@ -1448,7 +1472,7 @@ export function TeamRunPageClient() {
           id: `lane-${stream.session.sessionId}`,
           sessionId: stream.session.sessionId,
           actor: stream.actor,
-          roleId: resolveRosterSpecialistId(stream.session) ?? stream.session.specialistId,
+          roleId: resolveRosterSpecialistId(stream.session, agentsById) ?? stream.session.specialistId,
           badge: stream.badge,
           sessionName: stream.session.name ?? stream.session.sessionId,
           status: member?.status ?? "working",
@@ -1467,7 +1491,7 @@ export function TeamRunPageClient() {
       });
 
     return [leadLane, ...childLanes];
-  }, [completionByAgentId, historiesBySessionId, pendingQuestionsBySessionId, rootHistory, selectedSessionStream, session, sessionId, sessionStreams, specialistsById, teamMembers]);
+  }, [agentsById, completionByAgentId, historiesBySessionId, pendingQuestionsBySessionId, rootHistory, selectedSessionStream, session, sessionId, sessionStreams, specialistsById, teamMembers]);
 
   if (!session) {
     return (
