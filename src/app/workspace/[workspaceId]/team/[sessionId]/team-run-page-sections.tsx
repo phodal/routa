@@ -402,64 +402,55 @@ function LeadMessageThread({
   } satisfies ChatMessage : null;
 
   return (
-    <div className={lane ? "rounded-[10px] border border-desktop-border bg-desktop-bg-secondary" : ""}>
-      <div className={lane ? "px-2 py-1" : ""}>
+    <div className="space-y-1">
+      <div>
         <MessageBubble message={message} />
       </div>
 
       {lane && (
         <div
           ref={sessionBlockRef}
-          className={`mx-2 mb-2 rounded-[10px] border ${isActive ? "border-cyan-300 bg-cyan-50/50 dark:border-cyan-800 dark:bg-cyan-950/20" : "border-desktop-border bg-desktop-bg-primary"}`}
+          className={`ml-6 rounded-r-[10px] border-l-2 pl-3 ${isActive ? "border-cyan-400 bg-cyan-50/20 dark:border-cyan-700 dark:bg-cyan-950/10" : "border-desktop-border/80"}`}
         >
-          <div className="flex items-center justify-between gap-2 px-2 py-1">
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={onSelectSession}
-                  className={`rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] transition ${roleChipClass(lane.roleId, "soft")}`}
-                >
-                  {lane.actor}
-                </button>
-                <span className="rounded-full border border-desktop-border px-2 py-0.5 text-[10px] uppercase tracking-[0.14em] text-desktop-text-secondary">
-                  member session
-                </span>
-                <SessionStatusPill status={lane.status} />
-                <span className="text-[10px] text-desktop-text-muted">{lane.lastUpdatedLabel}</span>
-                <span className="text-[10px] text-desktop-text-muted opacity-40">/</span>
-                <span className="text-[10px] text-desktop-text-muted">{lane.eventCount} updates</span>
-              </div>
-            </div>
-            <div className="flex items-center gap-1.5">
+          <div className="flex items-center justify-between gap-2 py-1">
+            <div className="min-w-0 flex flex-wrap items-center gap-1.5">
               <button
                 type="button"
-                onClick={onOpenViewer}
-                className="rounded-[10px] border border-desktop-border bg-desktop-bg-secondary px-2 py-1 text-[10px] font-medium text-desktop-text-secondary transition-colors hover:bg-desktop-bg-active hover:text-desktop-text-primary"
+                onClick={onSelectSession}
+                className={`rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] transition ${roleChipClass(lane.roleId, "soft")}`}
               >
-                Open viewer
+                {lane.actor}
               </button>
+              <SessionStatusPill status={lane.status} />
+              <span className="text-[10px] text-desktop-text-muted">{lane.lastUpdatedLabel}</span>
+              <span className="text-[10px] text-desktop-text-muted opacity-40">/</span>
+              <span className="text-[10px] text-desktop-text-muted">{lane.eventCount} updates</span>
             </div>
+            <button
+              type="button"
+              onClick={onOpenViewer}
+              className="text-[10px] font-medium text-desktop-text-secondary transition-colors hover:text-desktop-text-primary"
+            >
+              Open viewer
+            </button>
           </div>
 
-          <div className="border-t border-desktop-border/80 px-2 py-1">
+          <div className="space-y-1 py-0.5">
             {lane.messages.length === 0 ? (
               <div className="text-[11px] text-desktop-text-secondary">No transcript content yet.</div>
             ) : (
-              <div className="space-y-1">
-                {lane.messages.slice(-4).map((laneMessage, index) => (
-                  <div key={`${laneMessage.id}-${index}`} className="[&_button]:text-[11px] [&_.markdown-body]:text-[11px] [&_.markdown-body]:leading-5">
-                    <MessageBubble message={laneMessage} />
-                  </div>
-                ))}
-              </div>
+              lane.messages.slice(-4).map((laneMessage, index) => (
+                <div key={`${laneMessage.id}-${index}`} className="[&_button]:text-[11px] [&_.markdown-body]:text-[11px] [&_.markdown-body]:leading-5">
+                  <MessageBubble message={laneMessage} />
+                </div>
+              ))
             )}
           </div>
         </div>
       )}
 
       {pendingQuestionMessage && onSubmitQuestion && lane?.pendingQuestion && (
-        <div className="border-t border-desktop-border/80 px-3 py-2">
+        <div className="ml-6 border-l-2 border-desktop-border/80 pl-3 pt-1.5">
           <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-desktop-text-muted">
             Awaiting input
           </div>
