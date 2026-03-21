@@ -24,7 +24,7 @@ interface SpecialistSummary {
 }
 
 type NormalizedTaskStatus = "not-started" | "in-progress" | "waiting-review" | "done" | "blocked";
-type TeamMemberStatus = "idle" | "working" | "blocked" | "reviewing";
+type TeamMemberStatus = "idle" | "working" | "blocked" | "reviewing" | "done";
 type CoordinationEventType = "plan" | "assign" | "revision" | "finding" | "complete" | "blocked";
 type RoleTone = "lead" | "qa" | "research" | "frontend" | "backend" | "review" | "ux" | "ops" | "general" | "neutral";
 
@@ -52,8 +52,11 @@ interface TeamActivityItem {
     actor: string;
     roleId?: string;
     badge: string;
+    sessionName?: string;
     preview?: string;
     lastUpdatedLabel: string;
+    eventCount: number;
+    provider?: string;
   };
 }
 
@@ -125,6 +128,8 @@ function statusDotClass(status: TeamMemberStatus): string {
       return "bg-amber-500";
     case "blocked":
       return "bg-rose-500";
+    case "done":
+      return "bg-emerald-500";
     default:
       return "bg-slate-400";
   }
@@ -342,10 +347,6 @@ function resolveDelegationRosterSpecialistId(update?: SessionHistoryEntry["updat
   }
 }
 
-function flattenTaskTree(nodes: TeamTaskNode[]): TeamTaskNode[] {
-  return nodes.flatMap((node) => [node, ...flattenTaskTree(node.children)]);
-}
-
 function inferDeliverableLabel(note: NoteData, ownerId?: string): string {
   const text = `${note.title} ${note.content}`.toLowerCase();
   if (note.metadata.type === "spec") return "spec draft";
@@ -354,6 +355,26 @@ function inferDeliverableLabel(note: NoteData, ownerId?: string): string {
   if (ownerId?.includes("research")) return "findings";
   if (ownerId?.includes("front") || ownerId?.includes("back") || ownerId?.includes("general")) return "patch";
   return note.metadata.type === "task" ? "work package" : "team note";
+}
+
+function toMemberSessionSummary(
+  stream: SessionStreamSummary | undefined,
+  session: SessionInfo,
+  actor: string,
+  roleId?: string,
+) {
+  if (!stream) return undefined;
+  return {
+    sessionId: session.sessionId,
+    actor,
+    roleId,
+    badge: stream.badge,
+    sessionName: session.name ?? session.sessionId,
+    preview: stream.preview,
+    lastUpdatedLabel: stream.lastUpdatedLabel,
+    eventCount: stream.eventCount,
+    provider: session.provider ?? undefined,
+  };
 }
 
 function inferSessionDeliverableLabel(specialistId?: string): string {
@@ -682,17 +703,6 @@ export function TeamRunPageClient() {
       .filter((node): node is TeamTaskNode => Boolean(node));
   }, [notesHook.notes]);
 
-  const flatTasks = useMemo(() => flattenTaskTree(taskTree), [taskTree]);
-  const taskCounts = useMemo(
-    () => ({
-      total: flatTasks.length,
-      done: flatTasks.filter((task) => task.status === "done").length,
-      active: flatTasks.filter((task) => task.status === "in-progress" || task.status === "waiting-review").length,
-      blocked: flatTasks.filter((task) => task.status === "blocked").length,
-    }),
-    [flatTasks],
-  );
-
   const allRunSessions = useMemo(
     () => (session ? [session, ...descendantSessions] : descendantSessions),
     [descendantSessions, session],
@@ -823,14 +833,12 @@ export function TeamRunPageClient() {
               : update.rawOutput?.output,
           ),
           sessionId: linkedStream?.session.sessionId ?? session.sessionId,
-          memberSession: linkedStream ? {
-            sessionId: linkedStream.session.sessionId,
-            actor: linkedStream.actor,
-            roleId: targetRosterId ?? resolveRosterSpecialistId(linkedStream.session),
-            badge: linkedStream.badge,
-            preview: linkedStream.preview,
-            lastUpdatedLabel: linkedStream.lastUpdatedLabel,
-          } : undefined,
+          memberSession: toMemberSessionSummary(
+            linkedStream,
+            linkedStream?.session ?? session,
+            linkedStream?.actor ?? target,
+            targetRosterId ?? resolveRosterSpecialistId(linkedStream?.session ?? session),
+          ),
           sortKey,
         });
       }
@@ -852,14 +860,12 @@ export function TeamRunPageClient() {
         timestamp: formatRelativeTime(child.createdAt),
         summary: summarizeText(child.name ?? child.specialistId ?? child.role ?? child.provider),
         sessionId: child.sessionId,
-        memberSession: sessionStreamsBySessionId.get(child.sessionId) ? {
-          sessionId: child.sessionId,
+        memberSession: toMemberSessionSummary(
+          sessionStreamsBySessionId.get(child.sessionId),
+          child,
           actor,
-          roleId: childRoleId,
-          badge: sessionBadge(child),
-          preview: sessionStreamsBySessionId.get(child.sessionId)?.preview,
-          lastUpdatedLabel: sessionStreamsBySessionId.get(child.sessionId)?.lastUpdatedLabel ?? formatRelativeTime(child.createdAt),
-        } : undefined,
+          childRoleId,
+        ),
         sortKey: childCreatedAt,
       });
 
@@ -881,14 +887,12 @@ export function TeamRunPageClient() {
             timestamp: formatRelativeTime(child.createdAt),
             summary: completion.summary,
             sessionId: child.sessionId,
-            memberSession: sessionStreamsBySessionId.get(child.sessionId) ? {
-              sessionId: child.sessionId,
+            memberSession: toMemberSessionSummary(
+              sessionStreamsBySessionId.get(child.sessionId),
+              child,
               actor,
-              roleId: childRoleId,
-              badge: sessionBadge(child),
-              preview: sessionStreamsBySessionId.get(child.sessionId)?.preview,
-              lastUpdatedLabel: sessionStreamsBySessionId.get(child.sessionId)?.lastUpdatedLabel ?? formatRelativeTime(child.createdAt),
-            } : undefined,
+              childRoleId,
+            ),
             sortKey,
           });
           return;
@@ -904,14 +908,12 @@ export function TeamRunPageClient() {
             timestamp: formatRelativeTime(child.createdAt),
             summary: summarizeText(update.error),
             sessionId: child.sessionId,
-            memberSession: sessionStreamsBySessionId.get(child.sessionId) ? {
-              sessionId: child.sessionId,
+            memberSession: toMemberSessionSummary(
+              sessionStreamsBySessionId.get(child.sessionId),
+              child,
               actor,
-              roleId: childRoleId,
-              badge: sessionBadge(child),
-              preview: sessionStreamsBySessionId.get(child.sessionId)?.preview,
-              lastUpdatedLabel: sessionStreamsBySessionId.get(child.sessionId)?.lastUpdatedLabel ?? formatRelativeTime(child.createdAt),
-            } : undefined,
+              childRoleId,
+            ),
             sortKey,
           });
         }
@@ -954,6 +956,8 @@ export function TeamRunPageClient() {
         status = session.acpStatus === "error" ? "blocked" : "working";
       } else if (latest?.session.acpStatus === "error" || normalizeTaskStatus(latestCompletion?.update?.taskStatus) === "blocked") {
         status = "blocked";
+      } else if (normalizeTaskStatus(latestCompletion?.update?.taskStatus) === "done") {
+        status = "done";
       } else if (normalizeTaskStatus(latestCompletion?.update?.taskStatus) === "waiting-review") {
         status = "reviewing";
       } else if (latest && !latestCompletion) {
@@ -971,8 +975,12 @@ export function TeamRunPageClient() {
     });
   }, [historiesBySessionId, latestSessionBySpecialistId, session, specialists]);
 
-  const actionableTeamMembers = useMemo(
-    () => teamMembers.filter((member) => Boolean(member.sessionId)),
+  const memberCounts = useMemo(
+    () => ({
+      done: teamMembers.filter((member) => member.status === "done").length,
+      active: teamMembers.filter((member) => member.status === "working" || member.status === "reviewing").length,
+      blocked: teamMembers.filter((member) => member.status === "blocked").length,
+    }),
     [teamMembers],
   );
 
@@ -1025,13 +1033,6 @@ export function TeamRunPageClient() {
       .sort((a, b) => b.updatedAt - a.updatedAt)
       .slice(0, 8);
   }, [allRunSessions, descendantSessions, historiesBySessionId, notesHook.notes, specialistsById]);
-
-  const reviewTargetSessionId = useMemo(() => {
-    const reviewingMember = teamMembers.find((member) => member.status === "reviewing" && member.sessionId);
-    if (reviewingMember?.sessionId) return reviewingMember.sessionId;
-    const qaMember = teamMembers.find((member) => member.specialist.id.includes("qa") && member.sessionId);
-    return qaMember?.sessionId ?? sessionId;
-  }, [sessionId, teamMembers]);
 
   if (!session) {
     return (
@@ -1112,41 +1113,80 @@ export function TeamRunPageClient() {
           </div>
         </header>
 
-        <div className="grid min-h-0 flex-1 lg:grid-cols-[320px_minmax(0,1fr)_360px] xl:grid-cols-[340px_minmax(0,1fr)_380px]">
+        <div className="grid min-h-0 flex-1 lg:grid-cols-[280px_minmax(0,1fr)_320px] xl:grid-cols-[300px_minmax(0,1fr)_340px]">
           <section className="min-h-0 overflow-hidden border-r border-desktop-border bg-desktop-bg-secondary">
-            <div className="border-b border-desktop-border px-5 py-4">
+            <div className="border-b border-desktop-border px-4 py-3">
               <div className="text-[13px] font-semibold uppercase tracking-[0.2em] text-desktop-text-muted">Objective</div>
-              <div className="mt-3 rounded-[22px] border border-desktop-border bg-desktop-bg-primary p-4">
-                <div className="text-sm leading-6 text-desktop-text-primary">{objective}</div>
+              <div className="mt-2 rounded-[18px] border border-desktop-border bg-desktop-bg-primary p-3">
+                <div className="text-sm leading-5 text-desktop-text-primary">{objective}</div>
               </div>
-              <div className="mt-3 grid grid-cols-3 gap-2 text-center">
-                <MetricChip label="Done" value={taskCounts.done} tone="emerald" />
-                <MetricChip label="Active" value={taskCounts.active} tone="cyan" />
-                <MetricChip label="Blocked" value={taskCounts.blocked} tone="rose" />
+              <div className="mt-2 grid grid-cols-3 gap-2 text-center">
+                <MetricChip label="Done" value={memberCounts.done} tone="emerald" />
+                <MetricChip label="Active" value={memberCounts.active} tone="cyan" />
+                <MetricChip label="Blocked" value={memberCounts.blocked} tone="rose" />
               </div>
             </div>
 
-            <div className="border-b border-desktop-border px-5 py-3">
+            <div className="border-b border-desktop-border px-4 py-2.5">
               <h2 className="text-base font-semibold text-desktop-text-primary">Plan / Task Tree</h2>
-              <p className="mt-1 text-sm leading-5 text-desktop-text-secondary">Lead decomposition and current execution state.</p>
+              <p className="mt-0.5 text-xs leading-5 text-desktop-text-secondary">Lead decomposition and current execution state.</p>
             </div>
-            <div className="h-[calc(100%-206px)] overflow-y-auto px-3 py-3">
-              {taskTree.length === 0 ? (
-                <EmptyPanel message="No task notes yet." />
-              ) : (
-                <div className="space-y-1.5">
-                  {taskTree.map((node) => <TaskTreeNode key={node.id} node={node} />)}
+            <div className="h-[calc(100%-176px)] overflow-y-auto px-2.5 py-2.5">
+              <div className="space-y-3">
+                {taskTree.length === 0 ? (
+                  <EmptyPanel message="No task notes yet." />
+                ) : (
+                  <div className="space-y-1.5">
+                    {taskTree.map((node) => <TaskTreeNode key={node.id} node={node} />)}
+                  </div>
+                )}
+
+                <div className="border-t border-desktop-border pt-2.5">
+                  <div className="px-1 pb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-desktop-text-muted">
+                    Deliverables
+                  </div>
+                  {deliverables.length === 0 ? (
+                    <EmptyPanel message="No notes or deliverables yet." />
+                  ) : (
+                    <div className="divide-y divide-desktop-border rounded-[14px] border border-desktop-border bg-desktop-bg-primary">
+                      {deliverables.map((item) => (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={() => item.sessionId && setSelectedSessionId(item.sessionId)}
+                          disabled={!item.sessionId}
+                          className={`flex w-full items-start gap-2.5 px-3 py-2.5 text-left transition ${
+                            item.sessionId ? "hover:bg-desktop-bg-active/70" : "cursor-default"
+                          }`}
+                        >
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="truncate text-xs font-semibold text-desktop-text-primary">{item.label}</div>
+                              <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium capitalize ${deliverableTone(item.status)}`}>
+                                {item.status}
+                              </span>
+                            </div>
+                            <div className="mt-0.5 truncate text-[11px] text-desktop-text-secondary">{item.title}</div>
+                            <div className="mt-0.5 text-[10px] text-desktop-text-muted">{item.owner}</div>
+                            {item.summary && (
+                              <div className="mt-1 line-clamp-2 text-[11px] leading-4 text-desktop-text-muted">{item.summary}</div>
+                            )}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
-              )}
+              </div>
             </div>
           </section>
 
-          <section className="min-h-0 overflow-hidden bg-desktop-bg-primary">
-            <div className="border-b border-desktop-border px-5 py-4">
+          <section className="flex min-h-0 flex-col overflow-hidden bg-desktop-bg-primary">
+            <div className="border-b border-desktop-border px-4 py-3">
               <div className="flex flex-wrap items-center justify-between gap-2.5">
                 <div>
                   <h2 className="text-base font-semibold text-desktop-text-primary">Coordination Feed</h2>
-                  <p className="mt-1 text-sm leading-5 text-desktop-text-secondary">
+                  <p className="mt-0.5 text-xs leading-5 text-desktop-text-secondary">
                     Supervision events only: planning, delegation, review, findings, and completion.
                   </p>
                 </div>
@@ -1161,17 +1201,20 @@ export function TeamRunPageClient() {
               </div>
             </div>
 
-            <div className="h-[calc(100%-81px)] overflow-y-auto px-5 py-4">
+            <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
               {coordinationItems.length === 0 ? (
                 <EmptyPanel message="No coordination events yet." />
               ) : (
-                <div className="space-y-4">
+                <div className="space-y-3">
                   {coordinationItems.map((item, index) => (
                     <CoordinationFeedItem
                       key={item.id}
                       item={item}
                       isLast={index === coordinationItems.length - 1}
-                      onInspectSession={item.sessionId ? () => setSelectedSessionId(item.sessionId ?? sessionId) : undefined}
+                      activeSessionId={selectedSessionId}
+                      workspaceId={workspaceId}
+                      onSelectSession={item.sessionId ? () => setSelectedSessionId(item.sessionId ?? sessionId) : undefined}
+                      onOpenViewer={item.sessionId ? () => setSelectedSessionForModal(item.sessionId ?? sessionId) : undefined}
                     />
                   ))}
                 </div>
@@ -1180,200 +1223,63 @@ export function TeamRunPageClient() {
           </section>
 
           <aside className="min-h-0 overflow-hidden border-l border-desktop-border bg-desktop-bg-secondary">
-            <div className="border-b border-desktop-border px-5 py-3">
-              <h2 className="text-base font-semibold text-desktop-text-primary">Sessions</h2>
-              <p className="mt-1 text-sm leading-5 text-desktop-text-secondary">
-                Switch sessions here, then inspect the selected run below.
+            <div className="border-b border-desktop-border px-4 py-2.5">
+              <h2 className="text-base font-semibold text-desktop-text-primary">Team Members</h2>
+              <p className="mt-0.5 text-xs leading-5 text-desktop-text-secondary">
+                Watch who is running, who is idle, and switch to any active member session.
               </p>
             </div>
 
-            <div className="h-[calc(100%-81px)] overflow-y-auto p-4">
-              <div className="space-y-4">
-                <PanelCard title="Session Rail">
-                  {sessionStreams.length <= 1 ? (
-                    <div className="rounded-[16px] border border-dashed border-desktop-border px-3 py-4 text-sm text-desktop-text-secondary">
-                      Only the lead session is active right now. New delegated sessions will appear here automatically.
-                    </div>
-                  ) : (
-                    <div className="max-h-[320px] space-y-2 overflow-y-auto pr-1">
-                      {sessionStreams.map((stream) => (
-                        <SessionRailItem
-                          key={stream.session.sessionId}
-                          stream={stream}
-                          active={stream.session.sessionId === selectedSessionStream?.session.sessionId}
-                          onSelect={() => setSelectedSessionId(stream.session.sessionId)}
-                        />
-                      ))}
-                    </div>
-                  )}
-                </PanelCard>
-
-                <PanelCard title="Session Details">
-                  {selectedSessionStream ? (
-                    <div className="space-y-3">
-                      <div className="rounded-[18px] border border-desktop-border bg-desktop-bg-secondary/70 px-3 py-3">
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <div className="truncate text-sm font-semibold text-desktop-text-primary">
-                              {selectedSessionStream.actor}
-                            </div>
-                            <div className="mt-0.5 truncate text-xs text-desktop-text-secondary">
-                              {selectedSessionStream.session.name ?? selectedSessionStream.session.sessionId}
-                            </div>
+            <div className="min-h-0 flex-1">
+              <div className="min-h-0 flex-1 overflow-y-auto">
+                <div className="divide-y divide-desktop-border">
+                  {teamMembers.map((member) => {
+                    const isSelected = member.sessionId === selectedSessionStream?.session.sessionId;
+                    return (
+                      <button
+                        key={member.specialist.id}
+                        type="button"
+                        onClick={() => member.sessionId && setSelectedSessionId(member.sessionId)}
+                        disabled={!member.sessionId}
+                        className={`flex w-full items-start gap-2.5 px-3 py-2 text-left transition ${
+                          isSelected
+                            ? "bg-cyan-50/80 dark:bg-cyan-950/20"
+                            : member.sessionId
+                              ? "hover:bg-desktop-bg-active/70"
+                              : "opacity-75"
+                        }`}
+                      >
+                        <div className={`relative mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold ${roleAvatarClass(member.specialist.id)}`}>
+                          {member.actor
+                            .split(" ")
+                            .map((part) => part.charAt(0))
+                            .join("")
+                            .slice(0, 2)
+                            .toUpperCase()}
+                          <span className={`absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-white dark:border-[#141821] ${statusDotClass(member.status)}`} />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="truncate text-[11px] font-semibold text-desktop-text-primary">{member.actor}</div>
+                            <span className="shrink-0 text-[10px] uppercase tracking-[0.12em] text-desktop-text-secondary">{member.status}</span>
                           </div>
-                          <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-[0.14em] ${roleChipClass(resolveRosterSpecialistId(selectedSessionStream.session) ?? selectedSessionStream.session.specialistId, "soft")}`}>
-                            {selectedSessionStream.badge}
-                          </span>
-                        </div>
-                        <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] text-desktop-text-muted">
-                          <span>{selectedSessionStream.lastUpdatedLabel}</span>
-                          <span className="opacity-40">/</span>
-                          <span>{selectedSessionStream.eventCount} updates</span>
-                          <span className="opacity-40">/</span>
-                          <span>{selectedSessionStream.session.provider ?? "auto"}</span>
-                        </div>
-                        <div className="mt-3 rounded-[14px] border border-desktop-border bg-desktop-bg-primary px-3 py-2.5 text-xs leading-5 text-desktop-text-secondary">
-                          {selectedSessionStream.preview ?? "No transcript content yet."}
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-2">
-                        <button
-                          type="button"
-                          onClick={() => setSelectedSessionForModal(selectedSessionStream.session.sessionId)}
-                          className="rounded-[16px] border border-desktop-border bg-desktop-bg-primary px-3 py-2.5 text-sm font-medium text-desktop-text-secondary transition-colors hover:bg-desktop-bg-active hover:text-desktop-text-primary"
-                        >
-                          Open viewer
-                        </button>
-                        <Link
-                          href={`/workspace/${workspaceId}/sessions/${selectedSessionStream.session.sessionId}`}
-                          className="rounded-[16px] bg-desktop-accent px-3 py-2.5 text-center text-sm font-medium text-desktop-accent-text transition-colors hover:opacity-90"
-                        >
-                          Raw session
-                        </Link>
-                      </div>
-
-                      {actionableTeamMembers.length > 1 && (
-                        <div className="space-y-2">
-                          <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-desktop-text-muted">
-                            Quick Switch
+                          <div className="mt-0.5 truncate text-[10px] text-desktop-text-secondary">
+                            {member.sessionId ? member.specialist.id : `${member.specialist.id} · no session yet`}
                           </div>
-                          {actionableTeamMembers
-                            .filter((member) => member.sessionId !== selectedSessionStream.session.sessionId)
-                            .map((member) => {
-                          const active = member.sessionId === selectedSessionStream.session.sessionId;
-                          return (
-                            <button
-                              key={member.specialist.id}
-                              type="button"
-                              onClick={() => member.sessionId && setSelectedSessionId(member.sessionId)}
-                              disabled={!member.sessionId}
-                              className={`flex w-full items-start gap-3 rounded-[16px] px-3 py-2.5 text-left transition ${
-                                active
-                                  ? "border border-cyan-300 bg-cyan-50/80 dark:border-cyan-800 dark:bg-cyan-950/20"
-                                  : member.sessionId
-                                    ? "border border-transparent hover:bg-desktop-bg-active/80"
-                                    : "cursor-default opacity-70"
-                              }`}
-                            >
-                              <div className={`relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold ${roleAvatarClass(member.specialist.id)}`}>
-                                {member.actor
-                                  .split(" ")
-                                  .map((part) => part.charAt(0))
-                                  .join("")
-                                  .slice(0, 2)
-                                  .toUpperCase()}
-                                <span className={`absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-white dark:border-[#141821] ${statusDotClass(member.status)}`} />
-                              </div>
-                              <div className="min-w-0 flex-1">
-                                <div className="truncate text-xs font-medium text-desktop-text-primary">{member.actor}</div>
-                                <div className="mt-0.5 truncate text-[11px] text-desktop-text-muted">
-                                  {member.lastUpdatedLabel ?? member.specialist.id}
-                                </div>
-                              </div>
-                            </button>
-                          );
-                        })}
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <EmptyPanel message="No selected session." />
-                  )}
-                </PanelCard>
-
-                <PanelCard title="Deliverables">
-                  <div className="space-y-2">
-                    {deliverables.length === 0 ? (
-                      <EmptyPanel message="No notes or deliverables yet." />
-                    ) : (
-                      deliverables.map((item) => (
-                        <button
-                          key={item.id}
-                          type="button"
-                          onClick={() => item.sessionId && setSelectedSessionId(item.sessionId)}
-                          disabled={!item.sessionId}
-                          className={`flex w-full items-start gap-3 rounded-[18px] px-3 py-3 text-left transition ${
-                            item.sessionId
-                              ? "hover:bg-desktop-bg-active/80"
-                              : "cursor-default"
-                          }`}
-                        >
-                          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-desktop-bg-active text-[10px] font-semibold uppercase tracking-[0.12em] text-desktop-text-primary">
-                            {item.label.slice(0, 2)}
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center justify-between gap-2">
-                              <div className="truncate text-sm font-semibold text-desktop-text-primary">{item.label}</div>
-                              <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium capitalize ${deliverableTone(item.status)}`}>
-                                {item.status}
-                              </span>
-                            </div>
-                            <div className="mt-1 truncate text-xs text-desktop-text-secondary">{item.title}</div>
-                            <div className="mt-1 text-[11px] text-desktop-text-muted">{item.owner}</div>
-                            {item.summary && (
-                              <div className="mt-1.5 line-clamp-2 text-xs leading-5 text-desktop-text-muted">{item.summary}</div>
+                          <div className="mt-0.5 flex items-center gap-1 text-[10px] text-desktop-text-muted">
+                            <span>{member.lastUpdatedLabel ?? "Waiting for delegation"}</span>
+                            {member.preview && (
+                              <>
+                                <span className="opacity-40">/</span>
+                                <span className="truncate">{member.preview}</span>
+                              </>
                             )}
                           </div>
-                        </button>
-                      ))
-                    )}
-                  </div>
-                </PanelCard>
-
-                <PanelCard title="Controls">
-                  <div className="space-y-2">
-                    <ControlButton
-                      title="Pause run"
-                      description="Pause API is not wired yet. Use the raw session for manual intervention."
-                      disabled
-                    />
-                    <ControlButton
-                      title="Ask lead to revise plan"
-                      description="Open the lead session in the shared chat UI and send revision guidance."
-                      onClick={() => setSelectedSessionId(sessionId)}
-                    />
-                    <ControlButton
-                      title="Add context"
-                      description="Open the lead session and append missing requirements or repo context."
-                      onClick={() => setSelectedSessionId(sessionId)}
-                    />
-                    <ControlButton
-                      title="Escalate review"
-                      description="Jump to the current QA or review session when a phase needs scrutiny."
-                      onClick={() => setSelectedSessionId(reviewTargetSessionId)}
-                    />
-                    <Link
-                      href={`/workspace/${workspaceId}/sessions/${selectedSessionStream?.session.sessionId ?? sessionId}`}
-                      className="mt-1 flex items-center gap-2 rounded-[18px] border border-desktop-border px-3 py-3 text-sm text-desktop-text-secondary transition-colors hover:bg-desktop-bg-active hover:text-desktop-text-primary"
-                    >
-                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12.75l6 6 13.5-13.5" />
-                      </svg>
-                      Continue in raw session
-                    </Link>
-                  </div>
-                </PanelCard>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             </div>
           </aside>
@@ -1480,8 +1386,8 @@ function MetricChip({
         ? "border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-300"
         : "border-cyan-200 bg-cyan-50 text-cyan-700 dark:border-cyan-500/20 dark:bg-cyan-500/10 dark:text-cyan-300";
   return (
-    <div className={`rounded-[18px] border px-3 py-2.5 ${toneClass}`}>
-      <div className="text-xl font-semibold tabular-nums">{value}</div>
+    <div className={`rounded-[16px] border px-2.5 py-2 ${toneClass}`}>
+      <div className="text-lg font-semibold tabular-nums">{value}</div>
       <div className="mt-0.5 text-[10px] uppercase tracking-[0.12em]">{label}</div>
     </div>
   );
@@ -1497,7 +1403,7 @@ function TaskTreeNode({
   return (
     <div>
       <div
-        className="rounded-[18px] border border-transparent px-3 py-2.5 transition-colors hover:border-desktop-border hover:bg-desktop-bg-active/70"
+        className="rounded-[16px] border border-transparent px-2.5 py-2 transition-colors hover:border-desktop-border hover:bg-desktop-bg-active/70"
         style={{ marginLeft: level * 16 }}
       >
         <div className="flex items-start gap-3">
@@ -1506,13 +1412,13 @@ function TaskTreeNode({
           </div>
           <div className="min-w-0 flex-1">
             <div className="flex items-center justify-between gap-3">
-              <div className={`text-sm leading-6 ${node.status === "done" ? "text-desktop-text-muted line-through" : "text-desktop-text-primary"}`}>
+              <div className={`text-sm leading-5 ${node.status === "done" ? "text-desktop-text-muted line-through" : "text-desktop-text-primary"}`}>
                 {node.title}
               </div>
               <TaskStatusPill status={node.status} />
             </div>
             {node.details && (
-              <div className="mt-1 line-clamp-2 text-xs leading-5 text-desktop-text-secondary">
+              <div className="mt-1 line-clamp-2 text-[11px] leading-4 text-desktop-text-secondary">
                 {node.details}
               </div>
             )}
@@ -1586,39 +1492,34 @@ function TaskStatusPill({ status }: { status: NormalizedTaskStatus }) {
 function CoordinationFeedItem({
   item,
   isLast,
-  onInspectSession,
+  activeSessionId,
+  workspaceId,
+  onSelectSession,
+  onOpenViewer,
 }: {
   item: TeamActivityItem;
   isLast: boolean;
-  onInspectSession?: () => void;
+  activeSessionId?: string;
+  workspaceId: string;
+  onSelectSession?: () => void;
+  onOpenViewer?: () => void;
 }) {
+  const memberSessionActive = item.memberSession?.sessionId === activeSessionId;
+
   return (
     <div className="relative">
       {!isLast && (
         <div className="absolute bottom-[-18px] left-[15px] top-10 w-px bg-desktop-border" />
       )}
-      <div className="flex gap-3">
+      <div className="flex gap-2.5">
         <div className={`relative z-10 flex h-8 w-8 items-center justify-center rounded-full text-xs font-semibold ${activityTone(item.type)}`}>
           {item.type[0].toUpperCase()}
         </div>
-        <div
-          role={onInspectSession ? "button" : undefined}
-          tabIndex={onInspectSession ? 0 : undefined}
-          onClick={onInspectSession}
-          onKeyDown={onInspectSession ? (event) => {
-            if (event.key === "Enter" || event.key === " ") {
-              event.preventDefault();
-              onInspectSession();
-            }
-          } : undefined}
-          className={`min-w-0 flex-1 rounded-[20px] border border-desktop-border bg-desktop-bg-secondary p-4 text-left transition ${
-            onInspectSession ? "cursor-pointer hover:border-cyan-300 hover:bg-desktop-bg-active/50" : ""
-          }`}
-        >
+        <div className="min-w-0 flex-1 rounded-[16px] border border-desktop-border bg-desktop-bg-secondary p-3 text-left">
           <div className="flex flex-wrap items-center justify-between gap-2.5">
             <div className="min-w-0">
               <div className="text-sm font-semibold text-desktop-text-primary">{item.title}</div>
-              <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs text-desktop-text-secondary">
+              <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px] text-desktop-text-secondary">
                 <span className={`rounded-full border px-2 py-0.5 font-medium ${roleChipClass(item.actorRoleId, "soft")}`}>
                   {item.actor}
                 </span>
@@ -1635,134 +1536,82 @@ function CoordinationFeedItem({
             <span className="text-[11px] text-desktop-text-muted">{item.timestamp}</span>
           </div>
           {item.summary && (
-            <div className="mt-3 rounded-[16px] border border-desktop-border bg-desktop-bg-primary px-3 py-2.5 text-sm leading-6 text-desktop-text-secondary">
+            <div className="mt-2 rounded-[14px] border border-desktop-border bg-desktop-bg-primary px-2.5 py-2 text-[11px] leading-5 text-desktop-text-secondary">
               {item.summary}
             </div>
           )}
           {item.memberSession && (
-            <div className="relative mt-4 pl-6">
+            <div className="relative mt-3 pl-5">
               <div className="absolute bottom-3 left-[11px] top-2 w-px bg-desktop-border" />
               <div className="mb-2 flex items-center gap-2 text-[10px] uppercase tracking-[0.16em] text-desktop-text-muted">
                 <span className="rounded-full border border-desktop-border bg-desktop-bg-primary px-2 py-0.5">Member lane</span>
               </div>
-              <button
-                type="button"
-                onClick={onInspectSession}
-                className={`flex w-full items-start justify-between gap-3 rounded-[16px] border bg-desktop-bg-primary px-3 py-3 text-left transition hover:bg-desktop-bg-active/70 ${roleChipClass(item.memberSession.roleId, "soft")}`}
+              <div
+                className={`rounded-[14px] border px-2.5 py-2.5 ${
+                  memberSessionActive
+                    ? "border-cyan-300 bg-cyan-50/80 dark:border-cyan-800 dark:bg-cyan-950/20"
+                    : `bg-desktop-bg-primary ${roleChipClass(item.memberSession.roleId, "soft")}`
+                }`}
               >
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <span className={`rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] ${roleChipClass(item.memberSession.roleId, "strong")}`}>
-                      {item.memberSession.actor}
-                    </span>
-                    <span className="rounded-full border border-desktop-border px-2 py-0.5 text-[10px] uppercase tracking-[0.14em] text-desktop-text-secondary">
-                      {item.memberSession.badge}
-                    </span>
-                  </div>
-                  <div className="mt-1.5 line-clamp-2 text-xs leading-5 text-desktop-text-secondary">
-                    {item.memberSession.preview ?? item.memberSession.sessionId}
+                <div className="flex items-start justify-between gap-2.5">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={onSelectSession}
+                        className={`rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] transition ${roleChipClass(item.memberSession.roleId, "strong")}`}
+                      >
+                        {item.memberSession.actor}
+                      </button>
+                      <span className="rounded-full border border-desktop-border px-2 py-0.5 text-[10px] uppercase tracking-[0.14em] text-desktop-text-secondary">
+                        {item.memberSession.badge}
+                      </span>
+                      <span className="text-[10px] text-desktop-text-muted">
+                        {item.memberSession.lastUpdatedLabel}
+                      </span>
+                      <span className="text-[10px] text-desktop-text-muted opacity-40">/</span>
+                      <span className="text-[10px] text-desktop-text-muted">
+                        {item.memberSession.eventCount} updates
+                      </span>
+                    </div>
+                    <div className="mt-1 truncate text-[11px] text-desktop-text-secondary">
+                      {item.memberSession.sessionName}
+                    </div>
+                    <div className="mt-1 line-clamp-2 text-[11px] leading-4 text-desktop-text-secondary">
+                      {item.memberSession.preview ?? item.memberSession.sessionId}
+                    </div>
+                    <div className="mt-2 flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={onOpenViewer}
+                        className="rounded-[12px] border border-desktop-border bg-desktop-bg-secondary px-2.5 py-1.5 text-[11px] font-medium text-desktop-text-secondary transition-colors hover:bg-desktop-bg-active hover:text-desktop-text-primary"
+                      >
+                        Open viewer
+                      </button>
+                      <Link
+                        href={`/workspace/${workspaceId}/sessions/${item.memberSession.sessionId}`}
+                        className="rounded-[12px] bg-desktop-accent px-2.5 py-1.5 text-[11px] font-medium text-desktop-accent-text transition-colors hover:opacity-90"
+                      >
+                        Raw session
+                      </Link>
+                      {item.memberSession.provider && (
+                        <span className="text-[10px] text-desktop-text-muted">{item.memberSession.provider}</span>
+                      )}
+                    </div>
                   </div>
                 </div>
-                <div className="shrink-0 text-[11px] text-desktop-text-muted">{item.memberSession.lastUpdatedLabel}</div>
-              </button>
+              </div>
             </div>
           )}
         </div>
       </div>
     </div>
-  );
-}
-
-function SessionRailItem({
-  stream,
-  active,
-  onSelect,
-}: {
-  stream: SessionStreamSummary;
-  active: boolean;
-  onSelect: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onSelect}
-      className={`w-full rounded-[18px] border px-3 py-3 text-left transition ${
-        active
-          ? "border-cyan-300 bg-cyan-50/80 dark:border-cyan-800 dark:bg-cyan-950/20"
-          : "border-desktop-border bg-desktop-bg-primary hover:border-cyan-300 hover:bg-desktop-bg-active/80"
-      }`}
-    >
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <div className="truncate text-sm font-semibold text-desktop-text-primary">{stream.actor}</div>
-          <div className="mt-0.5 truncate text-[11px] text-desktop-text-secondary">
-            {stream.session.name ?? stream.session.sessionId}
-          </div>
-        </div>
-        <span className="shrink-0 rounded-full border border-desktop-border px-2 py-0.5 text-[10px] uppercase tracking-[0.14em] text-desktop-text-secondary">
-          {stream.badge}
-        </span>
-      </div>
-      <div className="mt-2 flex items-center gap-1.5 text-[10px] text-desktop-text-muted">
-        <span>{stream.lastUpdatedLabel}</span>
-        <span className="opacity-40">/</span>
-        <span>{stream.eventCount} updates</span>
-      </div>
-      <div className="mt-2 line-clamp-2 text-xs leading-5 text-desktop-text-secondary">
-        {stream.preview ?? "No transcript content yet."}
-      </div>
-    </button>
-  );
-}
-
-function PanelCard({
-  title,
-  children,
-}: {
-  title: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="rounded-[20px] border border-desktop-border bg-desktop-bg-primary">
-      <div className="border-b border-desktop-border px-4 py-3 text-sm font-semibold text-desktop-text-primary">
-        {title}
-      </div>
-      <div className="p-3">{children}</div>
-    </div>
-  );
-}
-
-function ControlButton({
-  title,
-  description,
-  disabled = false,
-  onClick,
-}: {
-  title: string;
-  description: string;
-  disabled?: boolean;
-  onClick?: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className={`w-full rounded-[18px] border px-3 py-3 text-left transition ${
-        disabled
-          ? "cursor-not-allowed border-desktop-border bg-desktop-bg-secondary/70 text-desktop-text-muted"
-          : "border-desktop-border bg-desktop-bg-primary hover:bg-desktop-bg-active/80"
-      }`}
-    >
-      <div className="text-sm font-medium text-desktop-text-primary">{title}</div>
-      <div className="mt-1 text-xs leading-5 text-desktop-text-secondary">{description}</div>
-    </button>
   );
 }
 
 function EmptyPanel({ message }: { message: string }) {
   return (
-    <div className="rounded-[18px] border border-dashed border-desktop-border px-4 py-6 text-center text-sm text-desktop-text-secondary">
+    <div className="rounded-[16px] border border-dashed border-desktop-border px-3 py-5 text-center text-sm text-desktop-text-secondary">
       {message}
     </div>
   );
