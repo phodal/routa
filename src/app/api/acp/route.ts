@@ -92,6 +92,13 @@ async function loadSpecialistConfig(
   if (!specialistId) return null;
   const normalizedId = specialistId.toLowerCase();
 
+  // Team lead behavior is tuned frequently during UI/coordination work.
+  // Prefer the bundled/file-loaded definition so runtime sessions pick up the
+  // latest prompt immediately instead of lagging behind any synced DB copy.
+  if (normalizedId === "team-agent-lead") {
+    return getSpecialistById(normalizedId, locale) ?? null;
+  }
+
   if (isPostgres()) {
     try {
       const db = getDatabase();
@@ -154,6 +161,34 @@ function buildCoordinatorContextPrompt(input: {
   return `**Your Agent ID:** ${input.agentId}\n` +
     `**Workspace ID:** ${input.workspaceId}\n\n` +
     `## User Request\n\n${input.userRequest}\n`;
+}
+
+function buildCoordinatorFirstPrompt(input: {
+  agentId: string;
+  workspaceId: string;
+  userRequest: string;
+  specialistSystemPrompt?: string;
+  provider?: string;
+}): string {
+  const contextPrompt = buildCoordinatorContextPrompt({
+    agentId: input.agentId,
+    workspaceId: input.workspaceId,
+    userRequest: input.userRequest,
+  });
+
+  if (input.provider === "claude-code-sdk" && input.specialistSystemPrompt) {
+    return contextPrompt;
+  }
+
+  if (input.specialistSystemPrompt) {
+    return `${input.specialistSystemPrompt}\n\n---\n\n${contextPrompt}`;
+  }
+
+  return buildCoordinatorPrompt({
+    agentId: input.agentId,
+    workspaceId: input.workspaceId,
+    userRequest: input.userRequest,
+  });
 }
 
 // ─── Idempotency cache for session/new requests ─────────────────────────
@@ -1061,22 +1096,13 @@ export async function POST(request: NextRequest) {
             // First prompt for this coordinator - wrap with coordinator context
             const isFirstPrompt = !sessionRecord.firstPromptSent;
             if (isFirstPrompt) {
-              if (
-                sessionRecord.provider === "claude-code-sdk" &&
-                sessionRecord.specialistSystemPrompt
-              ) {
-                promptText = buildCoordinatorContextPrompt({
-                  agentId: agent.id,
-                  workspaceId: sessionRecord.workspaceId,
-                  userRequest: promptText,
-                });
-              } else {
-                promptText = buildCoordinatorPrompt({
-                  agentId: agent.id,
-                  workspaceId: sessionRecord.workspaceId,
-                  userRequest: promptText,
-                });
-              }
+              promptText = buildCoordinatorFirstPrompt({
+                agentId: agent.id,
+                workspaceId: sessionRecord.workspaceId,
+                userRequest: promptText,
+                specialistSystemPrompt: sessionRecord.specialistSystemPrompt,
+                provider: sessionRecord.provider,
+              });
               store.markFirstPromptSent(sessionId);
             }
           }
@@ -1087,9 +1113,9 @@ export async function POST(request: NextRequest) {
       {
         const sessionRecord = store.getSession(sessionId);
         if (sessionRecord?.specialistSystemPrompt && !sessionRecord.firstPromptSent) {
-          if (sessionRecord.provider !== "claude-code-sdk") {
-            promptText = `${sessionRecord.specialistSystemPrompt}\n\n---\n\n${promptText}`;
-          }
+          promptText = sessionRecord.provider === "claude-code-sdk"
+            ? promptText
+            : `${sessionRecord.specialistSystemPrompt}\n\n---\n\n${promptText}`;
           store.markFirstPromptSent(sessionId);
           console.log(
             `[ACP Route] Injected specialist systemPrompt for ${sessionRecord.specialistId} into session ${sessionId}`
