@@ -30,7 +30,7 @@ const board: KanbanBoardInfo = {
   updatedAt: "2025-01-01T00:00:00.000Z",
 };
 
-function createTask(id: string, title: string): TaskInfo {
+function createTask(id: string, title: string, overrides: Partial<TaskInfo> = {}): TaskInfo {
   return {
     id,
     title,
@@ -40,6 +40,7 @@ function createTask(id: string, title: string): TaskInfo {
     columnId: "backlog",
     position: 0,
     createdAt: "2025-01-01T00:00:00.000Z",
+    ...overrides,
   };
 }
 
@@ -169,6 +170,76 @@ describe("KanbanTab repo sync indicator", () => {
 
     const syncIndicator = screen.getByTestId("kanban-repo-sync-progress");
     expect(syncIndicator.textContent).toContain("1 repo updated");
+  });
+});
+
+describe("KanbanTab stale worktree recovery", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("clears orphaned worktree ids after the worktree lookup returns 404", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (!init?.method && url === "/api/worktrees/wt-missing") {
+        return {
+          ok: false,
+          status: 404,
+          json: async () => ({ error: "Worktree not found" }),
+        } as Response;
+      }
+      if (init?.method === "PATCH" && url === "/api/tasks/task-1") {
+        return {
+          ok: true,
+          json: async () => ({
+            task: createTask("task-1", "Story One"),
+          }),
+        } as Response;
+      }
+      throw new Error(`Unexpected fetch: ${init?.method ?? "GET"} ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { rerender } = render(
+      <KanbanTab
+        workspaceId="workspace-1"
+        boards={[board]}
+        tasks={[createTask("task-1", "Story One", { worktreeId: "wt-missing" })]}
+        sessions={[]}
+        providers={[]}
+        specialists={[]}
+        codebases={[]}
+        onRefresh={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith("/api/worktrees/wt-missing", { cache: "no-store" });
+      expect(fetchMock).toHaveBeenCalledWith("/api/tasks/task-1", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ worktreeId: null }),
+      });
+    });
+
+    fetchMock.mockClear();
+
+    rerender(
+      <KanbanTab
+        workspaceId="workspace-1"
+        boards={[board]}
+        tasks={[createTask("task-1", "Story One")]}
+        sessions={[]}
+        providers={[]}
+        specialists={[]}
+        codebases={[]}
+        onRefresh={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
   });
 });
 

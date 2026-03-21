@@ -329,6 +329,7 @@ export function KanbanTab({
 
   // Worktree cache: worktreeId -> WorktreeInfo
   const [worktreeCache, setWorktreeCache] = useState<Record<string, WorktreeInfo>>({});
+  const [missingWorktreeIds, setMissingWorktreeIds] = useState<Record<string, true>>({});
   const [liveSessionTails, setLiveSessionTails] = useState<Record<string, string>>({});
   const [backfilledSessions, setBackfilledSessions] = useState<Record<string, SessionInfo>>({});
 
@@ -1206,11 +1207,12 @@ export function KanbanTab({
   // Fetch worktrees for tasks that have worktreeId
   useEffect(() => {
     const worktreeIds = [...new Set(localTasks.map((t) => t.worktreeId).filter((id): id is string => Boolean(id)))];
-    const missing = worktreeIds.filter((id) => !worktreeCache[id]);
+    const missing = worktreeIds.filter((id) => !worktreeCache[id] && !missingWorktreeIds[id]);
     if (missing.length === 0) return;
 
     (async () => {
       const results: Record<string, WorktreeInfo> = {};
+      const staleIds = new Set<string>();
       await Promise.allSettled(
         missing.map(async (id) => {
           try {
@@ -1218,6 +1220,10 @@ export function KanbanTab({
             if (res.ok) {
               const data = await res.json();
               if (data.worktree) results[id] = data.worktree as WorktreeInfo;
+              return;
+            }
+            if (res.status === 404) {
+              staleIds.add(id);
             }
           } catch { /* ignore */ }
         })
@@ -1225,8 +1231,32 @@ export function KanbanTab({
       if (Object.keys(results).length > 0) {
         setWorktreeCache((prev) => ({ ...prev, ...results }));
       }
+      if (staleIds.size > 0) {
+        const staleIdList = [...staleIds];
+        setMissingWorktreeIds((prev) => ({
+          ...prev,
+          ...Object.fromEntries(staleIdList.map((id) => [id, true] as const)),
+        }));
+        setLocalTasks((current) => current.map((task) => (
+          task.worktreeId && staleIds.has(task.worktreeId)
+            ? { ...task, worktreeId: undefined }
+            : task
+        )));
+
+        const linkedTasks = localTasks
+          .filter((task) => task.worktreeId && staleIds.has(task.worktreeId))
+          .map((task) => task.id);
+
+        await Promise.allSettled(linkedTasks.map(async (taskId) => {
+          try {
+            await patchTask(taskId, { worktreeId: null });
+          } catch {
+            // Ignore patch failures; the missing worktree cache prevents repeated 404 noise.
+          }
+        }));
+      }
     })();
-  }, [localTasks, worktreeCache]);
+  }, [localTasks, missingWorktreeIds, patchTask, worktreeCache]);
 
   async function fetchCodebaseWorktrees(codebase: CodebaseData) {
     // Reset live branch info
