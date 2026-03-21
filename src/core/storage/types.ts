@@ -34,6 +34,9 @@ export interface SessionMetadata {
   modeId?: string;
   model?: string;
   parentSessionId?: string;
+  executionMode?: "embedded" | "runner";
+  ownerInstanceId?: string;
+  leaseExpiresAt?: string;
   createdAt: string;
 }
 
@@ -61,6 +64,9 @@ export interface SessionRecord {
   model?: string;
   firstPromptSent?: boolean;
   parentSessionId?: string;
+  executionMode?: "embedded" | "runner";
+  ownerInstanceId?: string;
+  leaseExpiresAt?: string;
   createdAt: string;
   updatedAt: string;
 }

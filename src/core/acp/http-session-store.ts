@@ -48,6 +48,9 @@ export interface RoutaSessionRecord {
   parentSessionId?: string;
   /** The custom specialist ID used for this session (if any) */
   specialistId?: string;
+  executionMode?: "embedded" | "runner";
+  ownerInstanceId?: string;
+  leaseExpiresAt?: string;
   /** Sandbox session context used for permission delegation fallbacks. */
   sandboxId?: string;
   /** Pre-built system prompt header for the specialist (systemPrompt + roleReminder) */
@@ -940,6 +943,9 @@ class HttpSessionStore {
           role: s.role,
           modeId: s.modeId,
           parentSessionId: s.parentSessionId,
+          executionMode: s.executionMode,
+          ownerInstanceId: s.ownerInstanceId,
+          leaseExpiresAt: s.leaseExpiresAt,
           createdAt: s.createdAt?.toISOString() ?? new Date().toISOString(),
         });
       }

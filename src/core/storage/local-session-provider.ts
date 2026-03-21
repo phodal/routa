@@ -62,6 +62,9 @@ export class LocalSessionProvider implements SessionStorageProvider {
       modeId: session.modeId,
       model: session.model,
       parentSessionId: session.parentSessionId,
+      executionMode: session.executionMode,
+      ownerInstanceId: session.ownerInstanceId,
+      leaseExpiresAt: session.leaseExpiresAt,
       createdAt: session.createdAt,
     };
 
@@ -122,6 +125,9 @@ export class LocalSessionProvider implements SessionStorageProvider {
       modeId: metadata.modeId,
       model: metadata.model,
       parentSessionId: metadata.parentSessionId,
+      executionMode: metadata.executionMode,
+      ownerInstanceId: metadata.ownerInstanceId,
+      leaseExpiresAt: metadata.leaseExpiresAt,
       createdAt: metadata.createdAt,
       updatedAt: this.getLastTimestamp(entries) || metadata.createdAt,
     };

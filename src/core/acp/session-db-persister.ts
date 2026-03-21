@@ -38,6 +38,9 @@ export interface SessionPersistData {
   model?: string;
   /** Parent session ID for child (CRAFTER/GATE) sessions */
   parentSessionId?: string;
+  executionMode?: "embedded" | "runner";
+  ownerInstanceId?: string;
+  leaseExpiresAt?: string;
 }
 
 export async function persistSessionToDb(data: SessionPersistData): Promise<void> {
@@ -54,9 +57,13 @@ export async function persistSessionToDb(data: SessionPersistData): Promise<void
     provider: data.provider,
     role: data.role,
     modeId: data.modeId,
+    model: data.model,
     firstPromptSent: false,
     messageHistory: [] as never[],
     parentSessionId: data.parentSessionId,
+    executionMode: data.executionMode,
+    ownerInstanceId: data.ownerInstanceId,
+    leaseExpiresAt: data.leaseExpiresAt ? new Date(data.leaseExpiresAt) : undefined,
     createdAt: now,
     updatedAt: now,
   };
@@ -94,6 +101,9 @@ export async function persistSessionToDb(data: SessionPersistData): Promise<void
         modeId: data.modeId,
         model: data.model,
         parentSessionId: data.parentSessionId,
+        executionMode: data.executionMode,
+        ownerInstanceId: data.ownerInstanceId,
+        leaseExpiresAt: data.leaseExpiresAt,
         createdAt: now.toISOString(),
         updatedAt: now.toISOString(),
       };
@@ -162,6 +172,9 @@ export async function hydrateSessionsFromDb(): Promise<Array<{
   modeId?: string;
   model?: string;
   parentSessionId?: string;
+  executionMode?: "embedded" | "runner";
+  ownerInstanceId?: string;
+  leaseExpiresAt?: string;
   createdAt: Date | null;
 }>> {
   const driver = getDatabaseDriver();
@@ -179,6 +192,50 @@ export async function hydrateSessionsFromDb(): Promise<Array<{
   } catch (err) {
     console.error(`[SessionDB] Failed to load sessions from ${driver}:`, err);
     return [];
+  }
+}
+
+export async function updateSessionExecutionBindingInDb(
+  sessionId: string,
+  binding: {
+    executionMode?: "embedded" | "runner";
+    ownerInstanceId?: string;
+    leaseExpiresAt?: string;
+  }
+): Promise<void> {
+  const driver = getDatabaseDriver();
+  if (driver === "memory") return;
+
+  try {
+    if (driver === "postgres") {
+      const db = getPostgresDatabase();
+      const store = new PgAcpSessionStore(db);
+      const session = await store.get(sessionId);
+      if (!session) return;
+      await store.save({
+        ...session,
+        executionMode: binding.executionMode ?? session.executionMode,
+        ownerInstanceId: binding.ownerInstanceId ?? session.ownerInstanceId,
+        leaseExpiresAt: binding.leaseExpiresAt ?? session.leaseExpiresAt,
+        updatedAt: new Date(),
+      });
+      return;
+    }
+
+    const { getSqliteDatabase } = require("../db/sqlite") as typeof import("../db/sqlite");
+    const db = getSqliteDatabase();
+    const store = new SqliteAcpSessionStore(db);
+    const session = await store.get(sessionId);
+    if (!session) return;
+    await store.save({
+      ...session,
+      executionMode: binding.executionMode ?? session.executionMode,
+      ownerInstanceId: binding.ownerInstanceId ?? session.ownerInstanceId,
+      leaseExpiresAt: binding.leaseExpiresAt ?? session.leaseExpiresAt,
+      updatedAt: new Date(),
+    });
+  } catch (err) {
+    console.error(`[SessionDB] Failed to update execution binding in ${driver}:`, err);
   }
 }
 

@@ -46,6 +46,9 @@ export async function GET(
       createdAt: session.createdAt,
       parentSessionId: session.parentSessionId,
       specialistId: session.specialistId,
+      executionMode: session.executionMode,
+      ownerInstanceId: session.ownerInstanceId,
+      leaseExpiresAt: session.leaseExpiresAt,
     },
   });
 }

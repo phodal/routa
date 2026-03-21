@@ -33,6 +33,9 @@ export interface AcpSession {
   updatedAt: Date;
   /** Parent session ID for child (CRAFTER/GATE) sessions */
   parentSessionId?: string;
+  executionMode?: "embedded" | "runner";
+  ownerInstanceId?: string;
+  leaseExpiresAt?: string;
 }
 
 export interface AcpSessionStore {
@@ -123,4 +126,3 @@ export class InMemoryAcpSessionStore implements AcpSessionStore {
     }
   }
 }
-

@@ -51,11 +51,19 @@ import {
   recordTrace,
 } from "@/core/trace";
 import { persistSessionToDb, renameSessionInDb, saveHistoryToDb } from "@/core/acp/session-db-persister";
+import { updateSessionExecutionBindingInDb } from "@/core/acp/session-db-persister";
 import { resolveSkillContent } from "@/core/skills/skill-resolver";
 import type { SessionUpdateNotification } from "@/core/acp/http-session-store";
 import { SessionWriteBuffer } from "@/core/acp/session-write-buffer";
 import { getTerminalManager } from "@/core/acp/terminal-manager";
 import { createWorkspaceSessionSandbox } from "@/core/sandbox/permissions";
+import {
+  buildExecutionBinding,
+  getAcpRunnerUrl,
+  refreshExecutionBinding,
+  requiresRunnerProxy,
+  shouldUseRunnerForProvider,
+} from "@/core/acp/execution-backend";
 
 export const dynamic = "force-dynamic";
 
@@ -292,6 +300,52 @@ function requireWorkspaceId(value: unknown): string | null {
   return normalized.length > 0 ? normalized : null;
 }
 
+const ACP_FORWARDED_HEADER = "x-routa-acp-forwarded";
+
+function isForwardedAcpRequest(request: NextRequest): boolean {
+  return request.headers.get(ACP_FORWARDED_HEADER) === "1";
+}
+
+async function proxyAcpGetToRunner(request: NextRequest, runnerUrl: string): Promise<Response> {
+  const targetUrl = new URL("/api/acp", runnerUrl);
+  targetUrl.search = request.nextUrl.search;
+
+  const response = await fetch(targetUrl, {
+    method: "GET",
+    headers: {
+      [ACP_FORWARDED_HEADER]: "1",
+    },
+  });
+
+  return new Response(response.body, {
+    status: response.status,
+    headers: response.headers,
+  });
+}
+
+async function proxyAcpPostToRunner(
+  runnerUrl: string,
+  body: Record<string, unknown>
+): Promise<Response> {
+  const targetUrl = new URL("/api/acp", runnerUrl);
+  const response = await fetch(targetUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      [ACP_FORWARDED_HEADER]: "1",
+    },
+    body: JSON.stringify(body),
+  });
+
+  return response;
+}
+
+async function getSessionRoutingRecord(sessionId: string) {
+  const store = getHttpSessionStore();
+  await store.hydrateFromDb();
+  return store.getSession(sessionId);
+}
+
 // ─── GET: SSE stream for session/update ────────────────────────────────
 
 export async function GET(request: NextRequest) {
@@ -301,6 +355,20 @@ export async function GET(request: NextRequest) {
       { error: "Missing sessionId query param" },
       { status: 400 }
     );
+  }
+
+  if (!isForwardedAcpRequest(request)) {
+    const session = await getSessionRoutingRecord(sessionId);
+    const runnerUrl = getAcpRunnerUrl();
+    if (session?.executionMode === "runner") {
+      if (!runnerUrl) {
+        return NextResponse.json(
+          { error: "ACP runner is required for this session but ROUTA_ACP_RUNNER_URL is not configured" },
+          { status: 503 }
+        );
+      }
+      return proxyAcpGetToRunner(request, runnerUrl);
+    }
   }
 
   const store = getHttpSessionStore();
@@ -420,6 +488,91 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    if (!isForwardedAcpRequest(request)) {
+      const runnerUrl = getAcpRunnerUrl();
+
+      if (method === "session/new") {
+        const provider = ((params ?? {}) as Record<string, unknown>).provider as string | undefined;
+        const defaultProvider = isServerlessEnvironment() ? "claude-code-sdk" : "opencode";
+        const effectiveProvider = provider ?? defaultProvider;
+        if (runnerUrl && shouldUseRunnerForProvider(effectiveProvider)) {
+          const forwardedResponse = await proxyAcpPostToRunner(runnerUrl, body as Record<string, unknown>);
+          const forwardedPayload = await forwardedResponse.json() as Record<string, unknown>;
+
+          const result = forwardedPayload.result as Record<string, unknown> | undefined;
+          const sessionId = typeof result?.sessionId === "string" ? result.sessionId : undefined;
+          const workspaceId = requireWorkspaceId(((params ?? {}) as Record<string, unknown>).workspaceId);
+          const cwd = typeof ((params ?? {}) as Record<string, unknown>).cwd === "string"
+            ? (((params ?? {}) as Record<string, unknown>).cwd as string)
+            : process.cwd();
+          const executionBinding = buildExecutionBinding("runner");
+
+          if (sessionId && workspaceId) {
+            getHttpSessionStore().upsertSession({
+              sessionId,
+              name: typeof ((params ?? {}) as Record<string, unknown>).name === "string"
+                ? (((params ?? {}) as Record<string, unknown>).name as string)
+                : undefined,
+              cwd,
+              branch: typeof ((params ?? {}) as Record<string, unknown>).branch === "string"
+                ? (((params ?? {}) as Record<string, unknown>).branch as string)
+                : undefined,
+              workspaceId,
+              provider: effectiveProvider,
+              role: typeof result?.role === "string"
+                ? result.role
+                : (typeof ((params ?? {}) as Record<string, unknown>).role === "string"
+                    ? (((params ?? {}) as Record<string, unknown>).role as string)
+                    : "CRAFTER"),
+              modeId: typeof ((params ?? {}) as Record<string, unknown>).modeId === "string"
+                ? (((params ?? {}) as Record<string, unknown>).modeId as string)
+                : undefined,
+              model: typeof result?.model === "string" ? result.model : undefined,
+              parentSessionId: typeof ((params ?? {}) as Record<string, unknown>).parentSessionId === "string"
+                ? (((params ?? {}) as Record<string, unknown>).parentSessionId as string)
+                : undefined,
+              acpStatus: typeof result?.acpStatus === "string"
+                ? (result.acpStatus as "connecting" | "ready" | "error")
+                : "connecting",
+              createdAt: new Date().toISOString(),
+              ...executionBinding,
+            });
+          }
+
+          if (result) {
+            forwardedPayload.result = {
+              ...result,
+              ...executionBinding,
+            };
+          }
+
+          return NextResponse.json(forwardedPayload, {
+            status: forwardedResponse.status,
+            headers: { "Cache-Control": "no-store" },
+          });
+        }
+      }
+
+      const sessionMethods = new Set([
+        "session/prompt",
+        "session/respond_user_input",
+        "session/cancel",
+        "terminal/write",
+        "terminal/resize",
+        "session/set_mode",
+      ]);
+
+      if (runnerUrl && sessionMethods.has(method)) {
+        const sessionId = ((params ?? {}) as Record<string, unknown>).sessionId as string | undefined;
+        if (sessionId) {
+          const session = await getSessionRoutingRecord(sessionId);
+          if (requiresRunnerProxy(session?.executionMode)) {
+            return proxyAcpPostToRunner(runnerUrl, body as Record<string, unknown>);
+          }
+        }
+      }
+    }
+
     // ── session/new ────────────────────────────────────────────────────
     // Spawn an ACP agent process and create a session.
     // Optional `provider` param selects the agent.
@@ -510,6 +663,9 @@ export async function POST(request: NextRequest) {
             provider: cached.provider,
             role: cached.role,
             sandboxId: cachedSession?.sandboxId,
+            executionMode: cachedSession?.executionMode,
+            ownerInstanceId: cachedSession?.ownerInstanceId,
+            leaseExpiresAt: cachedSession?.leaseExpiresAt,
             cached: true,
           });
         }
@@ -596,6 +752,7 @@ export async function POST(request: NextRequest) {
       }
 
       const now = new Date();
+      const executionBinding = buildExecutionBinding("embedded");
       store.upsertSession({
         sessionId,
         name,
@@ -615,6 +772,7 @@ export async function POST(request: NextRequest) {
         specialistSystemPrompt,
         acpStatus: "connecting",
         createdAt: now.toISOString(),
+        ...executionBinding,
       });
 
       // ── Cache for idempotency ─────────────────────────────────────────
@@ -664,6 +822,7 @@ export async function POST(request: NextRequest) {
         model,
         sandboxId,
         acpStatus: "connecting" as const,
+        ...executionBinding,
       };
 
       // ── Background: spawn ACP process + orchestrator + DB persist ──
@@ -830,6 +989,7 @@ export async function POST(request: NextRequest) {
               });
 
               orchestrator.setSessionRegistrationHandler((childSession) => {
+                const childExecutionBinding = buildExecutionBinding("embedded");
                 store.upsertSession({
                   sessionId: childSession.sessionId,
                   name: childSession.name,
@@ -842,6 +1002,7 @@ export async function POST(request: NextRequest) {
                   parentSessionId: childSession.parentSessionId,
                   sandboxId: childSession.sandboxId,
                   createdAt: new Date().toISOString(),
+                  ...childExecutionBinding,
                 });
                 persistSessionToDb({
                   id: childSession.sessionId,
@@ -852,6 +1013,7 @@ export async function POST(request: NextRequest) {
                   provider: childSession.provider ?? "",
                   role: childSession.role ?? "CRAFTER",
                   parentSessionId: childSession.parentSessionId,
+                  ...childExecutionBinding,
                 }).catch((err: unknown) =>
                   console.error(`[ACP Route] Failed to persist child session ${childSession.sessionId}:`, err)
                 );
@@ -882,6 +1044,7 @@ export async function POST(request: NextRequest) {
             specialistSystemPrompt,
             acpStatus: "ready",
             createdAt: now.toISOString(),
+            ...refreshExecutionBinding(executionBinding),
           });
 
           // Notify client that ACP is ready
@@ -906,6 +1069,7 @@ export async function POST(request: NextRequest) {
             parentSessionId,
             modeId,
             model,
+            ...refreshExecutionBinding(executionBinding),
           }).catch((err) =>
             console.error(`[ACP Route] Background DB persist failed for ${sessionId}:`, err)
           );
@@ -1116,6 +1280,7 @@ export async function POST(request: NextRequest) {
 
           // Persist session for UI listing
           const now = new Date();
+          const executionBinding = buildExecutionBinding("embedded");
           store.upsertSession({
             sessionId,
             cwd,
@@ -1129,6 +1294,7 @@ export async function POST(request: NextRequest) {
             specialistId,
             specialistSystemPrompt,
             createdAt: now.toISOString(),
+            ...executionBinding,
           });
 
           // Also persist to database (SQLite in dev, Postgres in serverless)
@@ -1139,6 +1305,7 @@ export async function POST(request: NextRequest) {
             routaAgentId: acpSessionId,
             provider,
             role,
+            ...executionBinding,
           });
 
           console.log(`[ACP Route] Auto-created session: ${sessionId} (provider: ${provider}, agent session: ${acpSessionId})`);
@@ -1162,6 +1329,17 @@ export async function POST(request: NextRequest) {
             message: `Failed to auto-create session: ${err instanceof Error ? err.message : "Unknown error"}`,
           });
         }
+      }
+
+      const activeSessionRecord = store.getSession(sessionId);
+      if (activeSessionRecord?.executionMode) {
+        const refreshedBinding = refreshExecutionBinding(activeSessionRecord);
+        store.upsertSession(refreshedBinding);
+        void updateSessionExecutionBindingInDb(sessionId, {
+          executionMode: refreshedBinding.executionMode,
+          ownerInstanceId: refreshedBinding.ownerInstanceId,
+          leaseExpiresAt: refreshedBinding.leaseExpiresAt,
+        });
       }
 
       // Check if this is a ROUTA coordinator session - inject coordinator context

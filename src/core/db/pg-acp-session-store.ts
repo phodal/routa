@@ -27,6 +27,9 @@ export class PgAcpSessionStore implements AcpSessionStore {
         firstPromptSent: session.firstPromptSent ?? false,
         messageHistory: session.messageHistory,
         parentSessionId: session.parentSessionId,
+        executionMode: session.executionMode,
+        ownerInstanceId: session.ownerInstanceId,
+        leaseExpiresAt: session.leaseExpiresAt ? new Date(session.leaseExpiresAt) : undefined,
         createdAt: session.createdAt,
         updatedAt: session.updatedAt,
       })
@@ -34,10 +37,19 @@ export class PgAcpSessionStore implements AcpSessionStore {
         target: acpSessions.id,
         set: {
           name: session.name,
+          branch: session.branch,
+          workspaceId: session.workspaceId,
+          routaAgentId: session.routaAgentId,
+          provider: session.provider,
+          role: session.role,
           modeId: session.modeId,
           model: session.model,
           firstPromptSent: session.firstPromptSent ?? false,
           messageHistory: session.messageHistory,
+          parentSessionId: session.parentSessionId,
+          executionMode: session.executionMode,
+          ownerInstanceId: session.ownerInstanceId,
+          leaseExpiresAt: session.leaseExpiresAt ? new Date(session.leaseExpiresAt) : undefined,
           updatedAt: new Date(),
         },
       });
@@ -115,9 +127,11 @@ export class PgAcpSessionStore implements AcpSessionStore {
       firstPromptSent: row.firstPromptSent ?? false,
       messageHistory: row.messageHistory ?? [],
       parentSessionId: row.parentSessionId ?? undefined,
+      executionMode: row.executionMode ?? undefined,
+      ownerInstanceId: row.ownerInstanceId ?? undefined,
+      leaseExpiresAt: row.leaseExpiresAt?.toISOString() ?? undefined,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
     };
   }
 }
-

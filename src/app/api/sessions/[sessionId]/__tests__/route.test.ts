@@ -30,6 +30,9 @@ describe("/api/sessions/[sessionId] GET", () => {
       role: "DEVELOPER",
       acpStatus: "error",
       acpError: "Permission denied: HTTP error: 403 Forbidden",
+      executionMode: "runner",
+      ownerInstanceId: "runner",
+      leaseExpiresAt: "2026-03-19T00:05:00.000Z",
       createdAt: "2026-03-19T00:00:00.000Z",
     });
 
@@ -47,6 +50,8 @@ describe("/api/sessions/[sessionId] GET", () => {
       role: "DEVELOPER",
       acpStatus: "error",
       acpError: "Permission denied: HTTP error: 403 Forbidden",
+      executionMode: "runner",
+      ownerInstanceId: "runner",
     });
   });
 });

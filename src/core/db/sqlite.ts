@@ -229,8 +229,13 @@ function initializeSqliteTables(db: SqliteDatabase): void {
       provider TEXT,
       role TEXT,
       mode_id TEXT,
+      model TEXT,
       first_prompt_sent INTEGER DEFAULT 0,
       message_history TEXT DEFAULT '[]',
+      parent_session_id TEXT,
+      execution_mode TEXT,
+      owner_instance_id TEXT,
+      lease_expires_at INTEGER,
       created_at INTEGER NOT NULL DEFAULT (unixepoch('now') * 1000),
       updated_at INTEGER NOT NULL DEFAULT (unixepoch('now') * 1000)
     )
@@ -238,8 +243,11 @@ function initializeSqliteTables(db: SqliteDatabase): void {
 
   // Add branch column to existing acp_sessions tables
   try { db.run(sql`ALTER TABLE acp_sessions ADD COLUMN branch TEXT`); } catch { /* column already exists */ }
-  // Add parent_session_id column to existing acp_sessions tables
+  try { db.run(sql`ALTER TABLE acp_sessions ADD COLUMN model TEXT`); } catch { /* column already exists */ }
   try { db.run(sql`ALTER TABLE acp_sessions ADD COLUMN parent_session_id TEXT`); } catch { /* column already exists */ }
+  try { db.run(sql`ALTER TABLE acp_sessions ADD COLUMN execution_mode TEXT`); } catch { /* column already exists */ }
+  try { db.run(sql`ALTER TABLE acp_sessions ADD COLUMN owner_instance_id TEXT`); } catch { /* column already exists */ }
+  try { db.run(sql`ALTER TABLE acp_sessions ADD COLUMN lease_expires_at INTEGER`); } catch { /* column already exists */ }
 
   db.run(sql`
     CREATE TABLE IF NOT EXISTS codebases (

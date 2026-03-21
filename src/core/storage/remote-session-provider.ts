@@ -34,6 +34,9 @@ export class RemoteSessionProvider implements SessionStorageProvider {
         firstPromptSent: session.firstPromptSent ?? false,
         messageHistory: [],
         parentSessionId: session.parentSessionId,
+        executionMode: session.executionMode,
+        ownerInstanceId: session.ownerInstanceId,
+        leaseExpiresAt: session.leaseExpiresAt ? new Date(session.leaseExpiresAt) : undefined,
         createdAt: new Date(session.createdAt),
         updatedAt: new Date(session.updatedAt),
       })
@@ -41,8 +44,18 @@ export class RemoteSessionProvider implements SessionStorageProvider {
         target: acpSessions.id,
         set: {
           name: session.name,
+          branch: session.branch,
+          workspaceId: session.workspaceId,
+          routaAgentId: session.routaAgentId,
+          provider: session.provider,
+          role: session.role,
           modeId: session.modeId,
           model: session.model,
+          firstPromptSent: session.firstPromptSent ?? false,
+          parentSessionId: session.parentSessionId,
+          executionMode: session.executionMode,
+          ownerInstanceId: session.ownerInstanceId,
+          leaseExpiresAt: session.leaseExpiresAt ? new Date(session.leaseExpiresAt) : undefined,
           updatedAt: new Date(),
         },
       });
@@ -181,6 +194,9 @@ export class RemoteSessionProvider implements SessionStorageProvider {
       model: row.model ?? undefined,
       firstPromptSent: row.firstPromptSent ?? false,
       parentSessionId: row.parentSessionId ?? undefined,
+      executionMode: row.executionMode ?? undefined,
+      ownerInstanceId: row.ownerInstanceId ?? undefined,
+      leaseExpiresAt: row.leaseExpiresAt?.toISOString() ?? undefined,
       createdAt: row.createdAt?.toISOString() ?? new Date().toISOString(),
       updatedAt: row.updatedAt?.toISOString() ?? new Date().toISOString(),
     };
