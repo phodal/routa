@@ -38,6 +38,12 @@ describe("A2AOutboundClient", () => {
       version: "1.0.0",
       protocolVersion: "0.3.0",
       url: mockRpcEndpoint,
+      capabilities: {
+        streaming: false,
+        pushNotifications: false,
+      },
+      defaultInputModes: ["text/plain"],
+      defaultOutputModes: ["text/plain"],
       skills: [
         {
           id: "test-skill",

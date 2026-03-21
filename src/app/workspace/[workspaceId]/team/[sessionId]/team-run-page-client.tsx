@@ -15,6 +15,7 @@ import { useNotes } from "@/client/hooks/use-notes";
 import { consumePendingPrompt } from "@/client/utils/pending-prompt";
 import { useWorkspaces } from "@/client/hooks/use-workspaces";
 import { desktopAwareFetch } from "@/client/utils/diagnostics";
+import type { ChecklistItem } from "@/client/utils/checklist-parser";
 import { filterSpecialistsByCategory } from "@/client/utils/specialist-categories";
 import { formatRelativeTime, OverlayModal } from "../../ui-components";
 import type { SessionInfo } from "../../types";
@@ -70,7 +71,7 @@ function buildTranscriptMessages(
   const messages: ChatMessage[] = [];
   const streamingMsgIdRef = { current: {} as Record<string, string | null> };
   const streamingThoughtIdRef = { current: {} as Record<string, string | null> };
-  const noopChecklist = (() => {}) as React.Dispatch<React.SetStateAction<never[]>>;
+  const noopChecklist = (() => {}) as React.Dispatch<React.SetStateAction<ChecklistItem[]>>;
   const noopFileChanges = (() => {}) as React.Dispatch<React.SetStateAction<unknown>>;
   const noopUsage = (() => {}) as React.Dispatch<React.SetStateAction<unknown>>;
   const modeUpdates: Record<string, string> = {};
