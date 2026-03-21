@@ -8,6 +8,7 @@ import { WorkspaceSwitcher } from "@/client/components/workspace-switcher";
 import { ChatPanel } from "@/client/components/chat-panel";
 import { getToolEventLabel } from "@/client/components/chat-panel/tool-call-name";
 import type { ChatMessage } from "@/client/components/chat-panel/types";
+import { MarkdownViewer } from "@/client/components/markdown/markdown-viewer";
 import { useAcp } from "@/client/hooks/use-acp";
 import { type NoteData, useNotes } from "@/client/hooks/use-notes";
 import { AskUserQuestionBubble } from "@/client/components/message-bubble";
@@ -2176,6 +2177,20 @@ function SessionTimelineCard({
     },
   } satisfies ChatMessage : null;
 
+  const bubbleToneClass = item.actorRoleId === "user"
+    ? "border-blue-100/70 bg-blue-50/60 text-blue-900 dark:border-blue-900/30 dark:bg-blue-900/10 dark:text-blue-100"
+    : item.tone === "blocked"
+      ? "border-rose-200 bg-rose-50/90 text-rose-900 dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-100"
+      : item.tone === "complete"
+        ? "border-emerald-200 bg-emerald-50/90 text-emerald-900 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-100"
+        : item.tone === "tool"
+          ? "border-cyan-200 bg-cyan-50/90 text-cyan-900 dark:border-cyan-500/20 dark:bg-cyan-500/10 dark:text-cyan-100"
+          : "border-gray-200/70 bg-gray-50/50 text-gray-900 dark:border-gray-800 dark:bg-[#151924] dark:text-gray-100";
+
+  const metaLabel = item.title === "Lead update" || item.title === "Objective set"
+    ? null
+    : item.title;
+
   return (
     <div className="rounded-[12px] border border-desktop-border bg-desktop-bg-secondary">
       <div className="flex items-start justify-between gap-2.5 px-3 py-2">
@@ -2186,34 +2201,34 @@ function SessionTimelineCard({
             </span>
             <span className="text-[10px] text-desktop-text-muted">{item.timestamp}</span>
           </div>
-          <div className="mt-1 text-[13px] font-semibold text-desktop-text-primary">
-            {item.title}
-          </div>
           {item.summary && (
-            <div className={`mt-1 text-[12px] leading-5 ${
-              item.tone === "blocked"
-                ? "text-rose-700 dark:text-rose-300"
-                : "text-desktop-text-secondary"
-            }`}>
-              {item.summary}
+            <div className={`mt-2 rounded-xl border px-3 py-2 ${bubbleToneClass}`}>
+              {metaLabel && (
+                <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.12em] opacity-70">
+                  {metaLabel}
+                </div>
+              )}
+              <MarkdownViewer content={item.summary} className="text-sm leading-6" />
             </div>
           )}
         </div>
-        <div className="flex items-center gap-1.5">
-          <button
-            type="button"
-            onClick={onOpenViewer}
-            className="rounded-[10px] border border-desktop-border bg-desktop-bg-primary px-2 py-1 text-[10px] font-medium text-desktop-text-secondary transition-colors hover:bg-desktop-bg-active hover:text-desktop-text-primary"
-          >
-            Open viewer
-          </button>
-          <Link
-            href={`/workspace/${workspaceId}/sessions/${item.sessionId}`}
-            className="rounded-[10px] bg-desktop-accent px-2 py-1 text-[10px] font-medium text-desktop-accent-text transition-colors hover:opacity-90"
-          >
-            Raw session
-          </Link>
-        </div>
+        {lane ? (
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={onOpenViewer}
+              className="rounded-[10px] border border-desktop-border bg-desktop-bg-primary px-2 py-1 text-[10px] font-medium text-desktop-text-secondary transition-colors hover:bg-desktop-bg-active hover:text-desktop-text-primary"
+            >
+              Open viewer
+            </button>
+            <Link
+              href={`/workspace/${workspaceId}/sessions/${item.sessionId}`}
+              className="rounded-[10px] bg-desktop-accent px-2 py-1 text-[10px] font-medium text-desktop-accent-text transition-colors hover:opacity-90"
+            >
+              Raw session
+            </Link>
+          </div>
+        ) : null}
       </div>
 
       {lane && (
