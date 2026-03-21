@@ -391,7 +391,11 @@ fn build_export_filename(workspace_id: &str) -> String {
         .collect::<String>();
     format!(
         "kanban-{}.yaml",
-        if safe_id.is_empty() { "default" } else { &safe_id }
+        if safe_id.is_empty() {
+            "default"
+        } else {
+            &safe_id
+        }
     )
 }
 
@@ -405,7 +409,10 @@ async fn export_config(
         .filter(|value| !value.is_empty())
         .ok_or_else(|| ServerError::BadRequest("workspaceId is required".to_string()))?;
 
-    state.kanban_store.ensure_default_board(&workspace_id).await?;
+    state
+        .kanban_store
+        .ensure_default_board(&workspace_id)
+        .await?;
 
     let workspace = state.workspace_store.get(&workspace_id).await?;
     let boards = state.kanban_store.list_by_workspace(&workspace_id).await?;

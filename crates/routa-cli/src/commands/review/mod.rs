@@ -1,8 +1,8 @@
 //! `routa review` command modules.
 
-pub mod analyze;
 pub mod acp_runner;
 pub mod aggregator;
+pub mod analyze;
 pub mod candidate_collector;
 pub mod dispatch;
 pub mod errors;

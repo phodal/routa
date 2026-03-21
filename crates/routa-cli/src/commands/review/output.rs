@@ -58,10 +58,12 @@ pub(crate) fn print_security_acp_runtime_diagnostics(
         .unwrap_or_else(|| "<not found in PATH>".to_string());
     let probe_path = std::path::PathBuf::from(&env_home).join(".config");
     let probe_status = match std::fs::metadata(&probe_path) {
-        Ok(meta) if meta.is_dir() => match std::fs::create_dir_all(probe_path.join("routa-acp-debug")) {
-            Ok(()) => "ok".to_string(),
-            Err(err) => format!("write-failed: {}", err),
-        },
+        Ok(meta) if meta.is_dir() => {
+            match std::fs::create_dir_all(probe_path.join("routa-acp-debug")) {
+                Ok(()) => "ok".to_string(),
+                Err(err) => format!("write-failed: {}", err),
+            }
+        }
         Ok(_) => "invalid-config-dir".to_string(),
         Err(err) => format!("missing-config-dir: {}", err),
     };

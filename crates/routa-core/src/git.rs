@@ -163,7 +163,7 @@ pub fn fetch_remote(repo_path: &str) -> bool {
 }
 
 pub fn pull_branch(repo_path: &str) -> Result<(), String> {
-  let output = Command::new("git")
+    let output = Command::new("git")
         .args(["pull", "--ff-only"])
         .current_dir(repo_path)
         .output()
@@ -230,7 +230,9 @@ pub fn reset_local_changes(repo_path: &str) -> Result<(), String> {
         .output()
         .map_err(|e| e.to_string())?;
     if !reset_output.status.success() {
-        return Err(String::from_utf8_lossy(&reset_output.stderr).trim().to_string());
+        return Err(String::from_utf8_lossy(&reset_output.stderr)
+            .trim()
+            .to_string());
     }
 
     let clean_output = Command::new("git")
@@ -239,7 +241,9 @@ pub fn reset_local_changes(repo_path: &str) -> Result<(), String> {
         .output()
         .map_err(|e| e.to_string())?;
     if !clean_output.status.success() {
-        return Err(String::from_utf8_lossy(&clean_output.stderr).trim().to_string());
+        return Err(String::from_utf8_lossy(&clean_output.stderr)
+            .trim()
+            .to_string());
     }
 
     Ok(())

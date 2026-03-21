@@ -34,7 +34,11 @@ enum AcpResponse {
     Sse(Sse<AcpSseStream>),
 }
 
-fn build_coordinator_context_prompt(agent_id: &str, workspace_id: &str, user_request: &str) -> String {
+fn build_coordinator_context_prompt(
+    agent_id: &str,
+    workspace_id: &str,
+    user_request: &str,
+) -> String {
     format!(
         "**Your Agent ID:** {}\n**Workspace ID:** {}\n\n## User Request\n\n{}\n",
         agent_id, workspace_id, user_request
@@ -309,9 +313,7 @@ async fn acp_rpc(
                 .get("specialistId")
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string());
-            let specialist = specialist_id
-                .as_deref()
-                .and_then(SpecialistConfig::resolve);
+            let specialist = specialist_id.as_deref().and_then(SpecialistConfig::resolve);
             let role = params
                 .get("role")
                 .and_then(|v| v.as_str())
@@ -542,7 +544,12 @@ async fn acp_rpc(
                 prompt_text.len()
             );
 
-            let mut persisted_session = state.acp_session_store.get(&session_id).await.ok().flatten();
+            let mut persisted_session = state
+                .acp_session_store
+                .get(&session_id)
+                .await
+                .ok()
+                .flatten();
 
             // ── Auto-create session if it doesn't exist ────────────────────────
             // Check if session exists
@@ -559,20 +566,26 @@ async fn acp_rpc(
                     .get("cwd")
                     .and_then(|v| v.as_str())
                     .map(|value| value.to_string())
-                    .or_else(|| persisted_session.as_ref().map(|session| session.cwd.clone()))
+                    .or_else(|| {
+                        persisted_session
+                            .as_ref()
+                            .map(|session| session.cwd.clone())
+                    })
                     .unwrap_or_else(|| ".".to_string());
                 let provider = params
                     .get("provider")
                     .and_then(|v| v.as_str())
                     .map(|s| s.to_string())
-                    .or_else(|| persisted_session.as_ref().and_then(|session| session.provider.clone()));
+                    .or_else(|| {
+                        persisted_session
+                            .as_ref()
+                            .and_then(|session| session.provider.clone())
+                    });
                 let specialist_id = params
                     .get("specialistId")
                     .and_then(|v| v.as_str())
                     .map(|s| s.to_string());
-                let specialist = specialist_id
-                    .as_deref()
-                    .and_then(SpecialistConfig::resolve);
+                let specialist = specialist_id.as_deref().and_then(SpecialistConfig::resolve);
                 let workspace_id = params
                     .get("workspaceId")
                     .and_then(|v| v.as_str())
@@ -598,7 +611,11 @@ async fn acp_rpc(
                     .get("role")
                     .and_then(|v| v.as_str())
                     .map(|s| s.to_uppercase())
-                    .or_else(|| persisted_session.as_ref().and_then(|session| session.role.clone()))
+                    .or_else(|| {
+                        persisted_session
+                            .as_ref()
+                            .and_then(|session| session.role.clone())
+                    })
                     .or_else(|| specialist.as_ref().map(|s| s.role.as_str().to_string()))
                     .or(Some("CRAFTER".to_string()));
                 let launch_options = SessionLaunchOptions {
@@ -701,7 +718,12 @@ async fn acp_rpc(
                             }
                         }
 
-                        persisted_session = state.acp_session_store.get(&session_id).await.ok().flatten();
+                        persisted_session = state
+                            .acp_session_store
+                            .get(&session_id)
+                            .await
+                            .ok()
+                            .flatten();
                     }
                     Err(e) => {
                         tracing::error!("[ACP Route] Failed to auto-create session: {}", e);
@@ -719,17 +741,30 @@ async fn acp_rpc(
 
             let session_record = state.acp_manager.get_session(&session_id).await;
             if persisted_session.is_none() {
-                persisted_session = state.acp_session_store.get(&session_id).await.ok().flatten();
+                persisted_session = state
+                    .acp_session_store
+                    .get(&session_id)
+                    .await
+                    .ok()
+                    .flatten();
             }
 
             let session_role = session_record
                 .as_ref()
                 .and_then(|session| session.role.clone())
-                .or_else(|| persisted_session.as_ref().and_then(|session| session.role.clone()));
+                .or_else(|| {
+                    persisted_session
+                        .as_ref()
+                        .and_then(|session| session.role.clone())
+                });
             let session_workspace_id = session_record
                 .as_ref()
                 .map(|session| session.workspace_id.clone())
-                .or_else(|| persisted_session.as_ref().map(|session| session.workspace_id.clone()))
+                .or_else(|| {
+                    persisted_session
+                        .as_ref()
+                        .map(|session| session.workspace_id.clone())
+                })
                 .unwrap_or_else(|| "default".to_string());
             let session_specialist_id = session_record
                 .as_ref()
@@ -789,7 +824,8 @@ async fn acp_rpc(
                 if !first_prompt_sent {
                     if let Some(specialist_prompt) = &session.specialist_system_prompt {
                         if session.provider.as_deref() != Some("claude") {
-                            prompt_text = format!("{}\n\n---\n\n{}", specialist_prompt, prompt_text);
+                            prompt_text =
+                                format!("{}\n\n---\n\n{}", specialist_prompt, prompt_text);
                         }
                     }
                 }

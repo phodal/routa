@@ -61,7 +61,12 @@ pub async fn analyze(_state: &AppState, options: ReviewAnalyzeOptions<'_>) -> Re
         return Err("Review workflow completed without producing an output.".to_string());
     }
 
-    print_review_result("Review Result", &final_output, options.as_json, "review output")?;
+    print_review_result(
+        "Review Result",
+        &final_output,
+        options.as_json,
+        "review output",
+    )?;
     Ok(())
 }
 

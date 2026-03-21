@@ -119,7 +119,8 @@ impl AcpAgentCaller {
             .contains("You are acting as the Context Gathering sub-agent for PR review")
         {
             "Context gathered from diff and repository snippets.".to_string()
-        } else if user_prompt.contains("You are acting as the Diff Analysis sub-agent for PR review")
+        } else if user_prompt
+            .contains("You are acting as the Diff Analysis sub-agent for PR review")
             || user_prompt
                 .contains("You are acting as the Finding Validation sub-agent for PR review")
         {

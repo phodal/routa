@@ -6,9 +6,8 @@ use serde_json::Value;
 use super::aggregator::{build_pre_merged_findings_from_evidence, build_security_evidence_pack};
 use super::output::truncate;
 use super::shared::{
-    build_review_input_payload, find_command_in_path, SecurityCandidate,
-    SecurityReviewPayload, ToolTrace, SECURITY_REVIEW_HOME_DIR, SECURITY_REVIEW_VENV_DIR,
-    SECURITY_SEMGREP_RULES_PATH,
+    build_review_input_payload, find_command_in_path, SecurityCandidate, SecurityReviewPayload,
+    ToolTrace, SECURITY_REVIEW_HOME_DIR, SECURITY_REVIEW_VENV_DIR, SECURITY_SEMGREP_RULES_PATH,
 };
 
 pub(crate) fn build_security_review_payload(
@@ -564,14 +563,13 @@ fn maybe_push_candidate_filtered<F>(
     tool_trace.push(ToolTrace {
         tool: "rg".to_string(),
         status: "match".to_string(),
-        details: format!(
-            "pattern={} matched {} locations",
-            pattern,
-            filtered.len()
-        ),
+        details: format!("pattern={} matched {} locations", pattern, filtered.len()),
     });
 
-    template.locations = filtered.iter().map(|entry| compact_location(entry)).collect();
+    template.locations = filtered
+        .iter()
+        .map(|entry| compact_location(entry))
+        .collect();
     template.evidence = filtered
         .iter()
         .take(5)
@@ -598,10 +596,12 @@ fn rg_search(repo_root: &Path, changed_files: &[String], pattern: &str) -> Vec<S
     }
 
     match command.output() {
-        Ok(output) if output.status.success() || !output.stdout.is_empty() => String::from_utf8_lossy(&output.stdout)
-            .lines()
-            .map(str::to_string)
-            .collect(),
+        Ok(output) if output.status.success() || !output.stdout.is_empty() => {
+            String::from_utf8_lossy(&output.stdout)
+                .lines()
+                .map(str::to_string)
+                .collect()
+        }
         _ => Vec::new(),
     }
 }
@@ -641,11 +641,7 @@ pub(crate) fn heuristic_auth_candidates(
 }
 
 fn compact_location(entry: &str) -> String {
-    entry
-        .split(':')
-        .take(2)
-        .collect::<Vec<_>>()
-        .join(":")
+    entry.split(':').take(2).collect::<Vec<_>>().join(":")
 }
 
 fn collect_fitness_review_context(
