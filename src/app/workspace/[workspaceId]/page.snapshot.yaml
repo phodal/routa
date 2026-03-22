@@ -1,9 +1,9 @@
 # page-id: workspace
 # route: /workspace/default
 # source-page: src/app/workspace/[workspaceId]/page.tsx
-# url: http://127.0.0.1:3100/workspace/default
+# url: http://127.0.0.1:3000/workspace/default
 # title: Routa - Multi-Agent Coordinator
-# generated-at: 2026-03-21T01:30:48.470Z
+# generated-at: 2026-03-22T00:46:16.661Z
 # generator: playwright
 # playwright-version: 1.58.2
 - banner:
@@ -34,17 +34,16 @@
     - /url: /settings
     - img
 - main:
-  - text: 1 Sessions 0 Agents 2 Tasks· 1 pending 0 BG Tasks
-  - button "Overview"
-  - button "Notes"
-  - button "Activity"
-  - text: Workspace overview
+  - img
   - heading "Default Workspace" [level=1]
-  - paragraph: This page now stays focused on context and recovery. Use the dedicated Kanban route as the primary operating surface for active task execution.
-  - button "Open Team"
-  - button "Open Kanban"
-  - button "Open traces"
-  - text: Primary surface Default Workspace Board Kanban is the canonical work surface for routing, queue supervision, and lane-based execution. 1 board 1 active tasks 0 background runs
+  - text: "Workspace:"
+  - code: default
+  - text: Default Workspace Board / Snapshot Fixture Session Standby / 1 in flight
+  - button "Refresh"
+  - button "Team"
+  - button "Kanban"
+  - button "Traces"
+  - text: Sessions 1 Workspace aggregate Agents 0 Workspace aggregate Tasks 2 1 pending BG Tasks 0 Workspace aggregate Overview Recovery, routing, and workspace context. Primary surface Default Workspace Board Kanban is the canonical work surface for routing, queue supervision, and lane-based execution. 1 board 1 active tasks 0 background runs
   - button "Go to board"
   - text: Latest recovery point Snapshot Fixture Session Recover the latest session from this workspace or continue task execution from the board. 1 recent sessions 0 notes 0 agents
   - button "Open latest session"
@@ -59,4 +58,28 @@
   - img
   - text: Snapshot Fixture Session crafter·opencode <relative-time>
   - img
+  - text: Activity Background runs and workspace-level execution telemetry.
+  - heading "Background Task Queue" [level=2]
+  - button "Refresh":
+    - img
+    - text: Refresh
+  - button "Refresh now":
+    - img
+  - button "Dispatch Task":
+    - img
+    - text: Dispatch Task
+  - img
+  - paragraph: No background tasks yet.
+  - paragraph: Click “Dispatch Task” to enqueue one.
+  - text: Notes Workspace memory and task-level notes in parallel.
+  - button "Workspace Notes"
+  - button "Task Notes"
+  - heading "Workspace Notes" [level=2]
+  - paragraph: "Free-form context documents for workspace: default"
+  - button "New Note":
+    - img
+    - text: New Note
+  - img
+  - paragraph: No workspace notes yet
+  - paragraph: Create free-form context documents for this workspace.
 - alert

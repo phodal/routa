@@ -25,8 +25,8 @@
     "pageFile": "src/app/workspace/[workspaceId]/page.tsx",
     "snapshotFile": "src/app/workspace/[workspaceId]/page.snapshot.yaml",
     "waitFor": {
-      "strategy": "text",
-      "value": "Default Workspace",
+      "strategy": "selector",
+      "value": "[data-testid=\"workspace-page-shell\"][data-snapshot-ready=\"true\"]",
       "timeoutMs": 20000,
       "settleMs": 1500
     }
@@ -74,8 +74,8 @@
     "pageFile": "src/app/traces/page.tsx",
     "snapshotFile": "src/app/traces/page.snapshot.yaml",
     "waitFor": {
-      "strategy": "text",
-      "value": "Agent Trace Viewer",
+      "strategy": "selector",
+      "value": "[data-testid=\"traces-page-shell\"][data-snapshot-ready=\"true\"]",
       "timeoutMs": 20000,
       "settleMs": 1200
     }

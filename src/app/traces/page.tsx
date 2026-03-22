@@ -48,7 +48,8 @@ function TracePageContent() {
   const [showSidebar, setShowSidebar] = useState(true);
   const [activeTab, setActiveTab] = useState<ViewTab>("chat");
   const [sessionTraces, setSessionTraces] = useState<TraceRecord[]>([]);
-  const [_tracesLoading, setTracesLoading] = useState(false);
+  const [tracesLoading, setTracesLoading] = useState(false);
+  const [sessionTracesLoaded, setSessionTracesLoaded] = useState(false);
   const selectedSessionIdRef = useRef<string | null>(null);
 
   const activeWorkspace = workspaces.find((workspace) => workspace.id === activeWorkspaceId);
@@ -145,8 +146,10 @@ function TracePageContent() {
 
   // Fetch traces for the selected session (shared across all view tabs)
   const fetchSessionTraces = useCallback(async () => {
+    setSessionTracesLoaded(false);
     if (!selectedSessionId) {
       setSessionTraces([]);
+      setSessionTracesLoaded(true);
       return;
     }
     setTracesLoading(true);
@@ -164,6 +167,7 @@ function TracePageContent() {
       console.error("[TracePage] Failed to fetch traces:", err);
     } finally {
       setTracesLoading(false);
+      setSessionTracesLoaded(true);
     }
   }, [activeWorkspaceId, selectedSessionId]);
 
@@ -200,6 +204,13 @@ function TracePageContent() {
       minute: "2-digit",
     });
   };
+  const snapshotReady = !workspacesLoading
+    && !loading
+    && sessionTracesLoaded
+    && !tracesLoading
+    && sessions.length > 0
+    && Boolean(selectedSessionId)
+    && sessionTraces.length > 0;
 
   return (
     <DesktopAppShell
@@ -226,7 +237,11 @@ function TracePageContent() {
         </Link>
       )}
     >
-      <div className="flex h-full flex-col overflow-hidden bg-desktop-bg-primary" data-testid="traces-page-shell">
+      <div
+        className="flex h-full flex-col overflow-hidden bg-desktop-bg-primary"
+        data-testid="traces-page-shell"
+        data-snapshot-ready={snapshotReady ? "true" : "false"}
+      >
         {/* Header */}
         <div
           className="shrink-0 flex items-center justify-between border-b border-desktop-border px-4 py-3"

@@ -51,6 +51,10 @@ export function WorkspacePageClient({
   const [activeTab, setActiveTab] = useState<"overview" | "notes" | "activity">(initialTab);
   const [bgTasks, setBgTasks] = useState<BackgroundTaskInfo[]>([]);
   const [notesSubFilter, setNotesSubFilter] = useState<"general" | "tasks">("general");
+  const [sessionsLoaded, setSessionsLoaded] = useState(false);
+  const [tasksLoaded, setTasksLoaded] = useState(false);
+  const [boardsLoaded, setBoardsLoaded] = useState(false);
+  const [bgTasksLoaded, setBgTasksLoaded] = useState(false);
 
   // Auto-connect ACP
   useEffect(() => {
@@ -62,18 +66,32 @@ export function WorkspacePageClient({
 
   // Fetch sessions
   useEffect(() => {
+    let cancelled = false;
+    setSessionsLoaded(false);
     (async () => {
       try {
         const res = await fetch(`/api/sessions?workspaceId=${encodeURIComponent(workspaceId)}&limit=100`, { cache: "no-store" });
         const data = await res.json();
+        if (cancelled) return;
         setSessions(Array.isArray(data?.sessions) ? data.sessions : []);
-      } catch { /* ignore */ }
+      } catch {
+        if (cancelled) return;
+        setSessions([]);
+      } finally {
+        if (!cancelled) {
+          setSessionsLoaded(true);
+        }
+      }
     })();
+    return () => {
+      cancelled = true;
+    };
   }, [workspaceId, refreshKey]);
 
   // Fetch tasks
   useEffect(() => {
     const controller = new AbortController();
+    setTasksLoaded(false);
     (async () => {
       try {
         setTasks([]);
@@ -87,6 +105,10 @@ export function WorkspacePageClient({
       } catch {
         if (controller.signal.aborted) return;
         setTasks([]);
+      } finally {
+        if (!controller.signal.aborted) {
+          setTasksLoaded(true);
+        }
       }
     })();
     return () => controller.abort();
@@ -95,6 +117,7 @@ export function WorkspacePageClient({
   // Fetch boards
   useEffect(() => {
     const controller = new AbortController();
+    setBoardsLoaded(false);
     (async () => {
       try {
         setBoards([]);
@@ -108,6 +131,10 @@ export function WorkspacePageClient({
       } catch {
         if (controller.signal.aborted) return;
         setBoards([]);
+      } finally {
+        if (!controller.signal.aborted) {
+          setBoardsLoaded(true);
+        }
       }
     })();
     return () => controller.abort();
@@ -115,13 +142,26 @@ export function WorkspacePageClient({
 
   // Fetch background tasks
   useEffect(() => {
+    let cancelled = false;
+    setBgTasksLoaded(false);
     (async () => {
       try {
         const res = await fetch(`/api/background-tasks?workspaceId=${encodeURIComponent(workspaceId)}`, { cache: "no-store" });
         const data = await res.json();
+        if (cancelled) return;
         setBgTasks(Array.isArray(data?.tasks) ? data.tasks : []);
-      } catch { /* ignore */ }
+      } catch {
+        if (cancelled) return;
+        setBgTasks([]);
+      } finally {
+        if (!cancelled) {
+          setBgTasksLoaded(true);
+        }
+      }
     })();
+    return () => {
+      cancelled = true;
+    };
   }, [workspaceId, refreshKey]);
 
   const workspace = workspacesHook.workspaces.find((w) => w.id === workspaceId);
@@ -178,6 +218,16 @@ export function WorkspacePageClient({
   const latestSession = sessions[0];
   const generalNotes = notesHook.notes.filter((note) => note.metadata?.type === "general");
   const taskNotes = notesHook.notes.filter((note) => note.metadata?.type === "task");
+  const snapshotReady = !workspacesHook.loading
+    && !agentsHook.loading
+    && !notesHook.loading
+    && sessionsLoaded
+    && tasksLoaded
+    && boardsLoaded
+    && bgTasksLoaded
+    && Boolean(activeBoard)
+    && Boolean(latestSession)
+    && tasks.length > 0;
 
   const handleDeleteAllGeneralNotes = async () => {
     await Promise.all(
@@ -351,7 +401,11 @@ export function WorkspacePageClient({
       onWorkspaceSelect={handleWorkspaceSelect}
       onWorkspaceCreate={handleWorkspaceCreate}
     >
-      <div className="flex h-full flex-col overflow-hidden bg-desktop-bg-primary" data-testid="workspace-page-shell">
+      <div
+        className="flex h-full flex-col overflow-hidden bg-desktop-bg-primary"
+        data-testid="workspace-page-shell"
+        data-snapshot-ready={snapshotReady ? "true" : "false"}
+      >
         <div className="flex-1 min-h-0 overflow-y-auto">
           <div className="w-full px-4 py-4">
             <header className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-desktop-border pb-3" data-testid="workspace-page-header">

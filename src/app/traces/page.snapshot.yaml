@@ -3,15 +3,15 @@
 # source-page: src/app/traces/page.tsx
 # url: http://127.0.0.1:3000/traces
 # title: Routa - Multi-Agent Coordinator
-# generated-at: 2026-03-19T15:26:26.740Z
+# generated-at: 2026-03-22T00:46:16.860Z
 # generator: playwright
 # playwright-version: 1.58.2
 - banner:
   - img "Routa"
   - text: Routa
-  - button "Default Workspace":
+  - button "Select":
     - img
-    - text: Default Workspace
+    - text: Select
     - img
   - link "Home":
     - /url: /
@@ -21,10 +21,13 @@
       - /url: /
       - img
     - link "Overview":
-      - /url: /workspace/default
+      - /url: /workspace
       - img
     - link "Kanban":
-      - /url: /workspace/default/kanban
+      - /url: /workspace//kanban
+      - img
+    - link "Team":
+      - /url: /workspace//team
       - img
     - link "Traces":
       - /url: /traces
@@ -49,21 +52,21 @@
   - complementary:
     - heading "Sessions" [level=2]
     - paragraph: 5 sessions found
-    - button "<id>… 1 Mar 4, 09:34 PM":
+    - button "<id>… 423 Mar 4, 10:58 PM":
       - code: <id>…
-      - text: 1 Mar 4, 09:34 PM
-    - button "<id>… 1 Mar 4, 09:27 PM":
+      - text: 423 Mar 4, 10:58 PM
+    - button "<id>… 83 Mar 4, 09:28 PM":
       - code: <id>…
-      - text: 1 Mar 4, 09:27 PM
-    - button "<id>… 1 Mar 4, 09:25 PM":
+      - text: 83 Mar 4, 09:28 PM
+    - button "<id>… 3 Mar 4, 09:25 PM":
       - code: <id>…
-      - text: 1 Mar 4, 09:25 PM
-    - button "<id>… 1 Mar 4, 08:33 PM":
+      - text: 3 Mar 4, 09:25 PM
+    - button "<id>… 102 Mar 4, 09:16 PM":
       - code: <id>…
-      - text: 1 Mar 4, 08:33 PM
-    - button "<id>… 1 Mar 4, 08:03 PM":
+      - text: 102 Mar 4, 09:16 PM
+    - button "<id>… 3 Mar 4, 08:03 PM":
       - code: <id>…
-      - text: 1 Mar 4, 08:03 PM
+      - text: 3 Mar 4, 08:03 PM
   - region "Trace content":
     - img
     - text: Agent Trace 423
