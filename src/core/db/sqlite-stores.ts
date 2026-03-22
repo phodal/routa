@@ -597,6 +597,13 @@ export class SqliteTaskStore implements TaskStore {
       .where(eq(sqliteSchema.tasks.id, taskId));
   }
 
+  async deleteByWorkspace(workspaceId: string): Promise<number> {
+    const result = await this.db
+      .delete(sqliteSchema.tasks)
+      .where(eq(sqliteSchema.tasks.workspaceId, workspaceId));
+    return Number(result.rowsAffected ?? 0);
+  }
+
   async atomicUpdate(
     taskId: string,
     expectedVersion: number,

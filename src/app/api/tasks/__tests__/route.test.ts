@@ -8,6 +8,9 @@ const taskStore = {
   listByWorkspace: vi.fn<(_: string) => Promise<Task[]>>(),
   listByAssignee: vi.fn<(_: string) => Promise<Task[]>>(),
   listByStatus: vi.fn<(_: string, __: TaskStatus) => Promise<Task[]>>(),
+  deleteByWorkspace: vi.fn<(_: string) => Promise<number>>(),
+  get: vi.fn<(_: string) => Promise<Task | undefined>>(),
+  delete: vi.fn<(_: string) => Promise<void>>(),
 };
 
 const artifactStore = new InMemoryArtifactStore();
@@ -21,7 +24,7 @@ vi.mock("@/core/routa-system", () => ({
   getRoutaSystem: () => system,
 }));
 
-import { GET, POST } from "../route";
+import { DELETE, GET, POST } from "../route";
 
 describe("/api/tasks GET", () => {
   beforeEach(async () => {
@@ -39,6 +42,9 @@ describe("/api/tasks GET", () => {
     ]);
     taskStore.listByAssignee.mockResolvedValue([]);
     taskStore.listByStatus.mockResolvedValue([]);
+    taskStore.deleteByWorkspace.mockResolvedValue(0);
+    taskStore.get.mockResolvedValue(undefined);
+    taskStore.delete.mockResolvedValue();
     await artifactStore.deleteByTask("task-1");
   });
 
@@ -98,5 +104,28 @@ describe("/api/tasks GET", () => {
 
     expect(response.status).toBe(400);
     expect(data).toEqual({ error: "workspaceId is required" });
+  });
+
+  it("deletes all tasks in a workspace", async () => {
+    taskStore.deleteByWorkspace.mockResolvedValue(3);
+
+    const response = await DELETE(new NextRequest("http://localhost/api/tasks?workspaceId=workspace-1", {
+      method: "DELETE",
+    }));
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(taskStore.deleteByWorkspace).toHaveBeenCalledWith("workspace-1");
+    expect(data).toEqual({ deleted: true, deletedCount: 3 });
+  });
+
+  it("rejects task deletion without taskId or workspaceId", async () => {
+    const response = await DELETE(new NextRequest("http://localhost/api/tasks", {
+      method: "DELETE",
+    }));
+    const data = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(data).toEqual({ error: "taskId or workspaceId is required" });
   });
 });

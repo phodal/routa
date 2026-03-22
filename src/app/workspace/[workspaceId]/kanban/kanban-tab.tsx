@@ -1934,6 +1934,20 @@ export function KanbanTab({
           specialists={specialists}
           specialistLanguage={specialistLanguage}
           onClose={() => setShowSettings(false)}
+          onClearAll={async () => {
+            const response = await fetch(`/api/tasks?workspaceId=${encodeURIComponent(workspaceId)}`, {
+              method: "DELETE",
+            });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) {
+              throw new Error(data.error ?? "Failed to clear tasks");
+            }
+
+            setLocalTasks((current) => current.filter((task) => task.workspaceId !== workspaceId));
+            closeTaskDetail();
+            setShowSettings(false);
+            onRefresh();
+          }}
           onSave={async (newColumns, newColumnAutomation, sessionConcurrencyLimit, devSessionSupervision) => {
             const updatedColumns = newColumns.map((col) => ({
               ...col,

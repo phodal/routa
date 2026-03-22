@@ -15,6 +15,7 @@ export interface TaskStore {
   findReadyTasks(workspaceId: string): Promise<Task[]>;
   updateStatus(taskId: string, status: TaskStatus): Promise<void>;
   delete(taskId: string): Promise<void>;
+  deleteByWorkspace(workspaceId: string): Promise<number>;
 }
 
 export class InMemoryTaskStore implements TaskStore {
@@ -72,5 +73,15 @@ export class InMemoryTaskStore implements TaskStore {
 
   async delete(taskId: string): Promise<void> {
     this.tasks.delete(taskId);
+  }
+
+  async deleteByWorkspace(workspaceId: string): Promise<number> {
+    let deleted = 0;
+    for (const [taskId, task] of this.tasks.entries()) {
+      if (task.workspaceId !== workspaceId) continue;
+      this.tasks.delete(taskId);
+      deleted += 1;
+    }
+    return deleted;
   }
 }

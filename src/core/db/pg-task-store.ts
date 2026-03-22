@@ -164,6 +164,11 @@ export class PgTaskStore implements TaskStore {
     await this.db.delete(tasks).where(eq(tasks.id, taskId));
   }
 
+  async deleteByWorkspace(workspaceId: string): Promise<number> {
+    const result = await this.db.delete(tasks).where(eq(tasks.workspaceId, workspaceId));
+    return result.rowCount;
+  }
+
   /**
    * Atomic update with optimistic locking.
    * Returns true if the update was applied, false if version mismatch.

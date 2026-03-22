@@ -4,6 +4,7 @@
  * GET    /api/tasks?workspaceId=...  → List tasks
  * POST   /api/tasks                   → Create a task
  * DELETE /api/tasks?taskId=...        → Delete a task
+ * DELETE /api/tasks?workspaceId=...   → Delete all tasks in a workspace
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -284,12 +285,24 @@ export async function POST(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   const { searchParams } = request.nextUrl;
   const taskId = searchParams.get("taskId");
+  const workspaceId = requireWorkspaceId(searchParams.get("workspaceId"));
+  const system = getRoutaSystem();
 
-  if (!taskId) {
-    return NextResponse.json({ error: "taskId is required" }, { status: 400 });
+  if (workspaceId) {
+    const deletedCount = await system.taskStore.deleteByWorkspace(workspaceId);
+    getKanbanEventBroadcaster().notify({
+      workspaceId,
+      entity: "task",
+      action: "deleted",
+      source: "user",
+    });
+    return NextResponse.json({ deleted: true, deletedCount });
   }
 
-  const system = getRoutaSystem();
+  if (!taskId) {
+    return NextResponse.json({ error: "taskId or workspaceId is required" }, { status: 400 });
+  }
+
   const task = await system.taskStore.get(taskId);
   await system.taskStore.delete(taskId);
   if (task) {
