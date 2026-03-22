@@ -47,9 +47,9 @@ import {
   proxyRequestToRunner,
   runnerUnavailableResponse,
 } from "@/core/acp/runner-routing";
-import { handleSessionNew } from "@/app/api/acp/acp-session-create";
-import { getSessionWriteBuffer } from "@/app/api/acp/acp-session-history";
-import { handleSessionPrompt } from "@/app/api/acp/acp-session-prompt";
+import { handleSessionNew } from "./acp-session-create";
+import { getSessionWriteBuffer } from "./acp-session-history";
+import { handleSessionPrompt } from "./acp-session-prompt";
 
 export const dynamic = "force-dynamic";
 

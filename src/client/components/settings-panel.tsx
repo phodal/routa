@@ -37,6 +37,7 @@ import {
   sectionHeadCls,
   settingsCardCls,
   type AgentModelConfig,
+  type AgentRoleKey,
   type DefaultProviderSettings,
   type MemoryResponse,
   type ModelDefinition,
