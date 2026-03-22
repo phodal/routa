@@ -1323,6 +1323,8 @@ pub async fn create_column(
         position: board.columns.len() as i64,
         stage: "backlog".to_string(),
         automation: None,
+        visible: Some(true),
+        width: None,
     });
     board.updated_at = Utc::now();
     state.kanban_store.update(&board).await?;
@@ -1764,6 +1766,8 @@ fn build_columns_from_names(names: &[String]) -> Result<Vec<KanbanColumn>, RpcEr
             position: index as i64,
             stage: "backlog".to_string(),
             automation: None,
+            visible: Some(true),
+            width: None,
         });
     }
     Ok(columns)

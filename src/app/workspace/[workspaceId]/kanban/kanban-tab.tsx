@@ -1640,7 +1640,7 @@ export function KanbanTab({
       <div className="flex-1 min-h-0 flex gap-4">
         <div className={`${agentPanelOpen && agentSessionId ? "min-w-0 flex-1" : "w-full"} flex min-h-0 flex-col`}>
           <div className="flex-1 min-h-0 overflow-auto pb-2" data-testid="kanban-board-content">
-            <div className="flex min-h-full items-start gap-3" style={{ minWidth: `${visibleColumns.length * 18}rem` }}>
+            <div className="flex min-w-max min-h-full items-start gap-3 pr-4">
               {board.columns
                 .slice()
                 .sort((left, right) => left.position - right.position)
@@ -1648,6 +1648,8 @@ export function KanbanTab({
                 .map((column) => {
                   const columnTasks = boardTasks.filter((task) => (task.columnId ?? "backlog") === column.id);
                   const laneAutomation = columnAutomation[column.id] ?? column.automation;
+                  const widthClass = column.width === "compact" ? "w-[14rem]" : column.width === "wide" ? "w-[24rem]" : "w-[18rem]";
+                  
                   return (
                     <div
                       key={column.id}
@@ -1657,7 +1659,7 @@ export function KanbanTab({
                         await moveTask(dragTaskId, column.id);
                         setDragTaskId(null);
                       }}
-                      className="flex h-full min-h-26.25 w-[18rem] shrink-0 flex-col rounded-2xl border border-gray-200/70 bg-white p-3 dark:border-[#1c1f2e] dark:bg-[#12141c]"
+                      className={`flex h-full min-h-26.25 shrink-0 flex-col rounded-2xl border border-gray-200/70 bg-white p-3 dark:border-[#1c1f2e] dark:bg-[#12141c] ${widthClass}`}
                       data-testid="kanban-column"
                     >
                       <div className="mb-3 space-y-2">

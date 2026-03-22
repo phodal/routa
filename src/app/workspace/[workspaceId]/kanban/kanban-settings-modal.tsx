@@ -330,6 +330,7 @@ export function KanbanSettingsModal({
     board.devSessionSupervision ?? DEFAULT_DEV_SESSION_SUPERVISION,
   );
   const [selectedColumnId, setSelectedColumnId] = useState<string>(board.columns[0]?.id ?? "");
+  const [activeTab, setActiveTab] = useState<"structure" | "automation">("structure");
   const [saving, setSaving] = useState(false);
   const [showRuntimeSettings, setShowRuntimeSettings] = useState(false);
   const [specialistCategory, setSpecialistCategory] = useState<SpecialistCategory>("kanban");
@@ -460,6 +461,13 @@ export function KanbanSettingsModal({
     setEditableColumns((current) => current.map((column) => (
       column.id === columnId ? updater(column) : column
     )));
+  };
+
+  const updateColumnAutomation = (columnId: string, automation: ColumnAutomationConfig) => {
+    setColumnAutomation((current) => ({
+      ...current,
+      [columnId]: automation,
+    }));
   };
 
   const handleDeleteStage = (columnId: string) => {
@@ -864,57 +872,6 @@ export function KanbanSettingsModal({
                             </div>
                           </div>
 
-                          {active ? (
-                            <div className={`mt-2 space-y-2 rounded-md border px-2 py-2 ${
-                              active
-                                ? "border-white/15 bg-white/5"
-                                : "border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-[#0b1119]"
-                            }`}>
-                              <label className="block space-y-1 text-xs font-medium">
-                                <span className={active ? "text-slate-300" : "text-slate-600 dark:text-slate-300"}>Name</span>
-                                <input
-                                  aria-label="Stage name"
-                                  type="text"
-                                  value={column.name}
-                                  onChange={(event) => updateColumn(column.id, (current) => ({
-                                    ...current,
-                                    name: event.target.value,
-                                  }))}
-                                  className={`h-8 w-full rounded-md border px-2 text-sm outline-none transition ${
-                                    active
-                                      ? "border-white/15 bg-white/10 text-white placeholder:text-slate-400 focus:border-amber-300"
-                                      : "border-slate-200 bg-white text-slate-900 focus:border-amber-400 dark:border-slate-700 dark:bg-[#0b1119] dark:text-slate-100"
-                                  }`}
-                                />
-                              </label>
-
-                              <label className="block space-y-1 text-xs font-medium">
-                                <span className={active ? "text-slate-300" : "text-slate-600 dark:text-slate-300"}>Stage type</span>
-                                <SelectControl
-                                  aria-label="Stage type"
-                                  value={column.stage}
-                                  onChange={(event) => handleStageTypeChange(column.id, event.target.value)}
-                                  className={active ? "border-white/15 bg-white/10 text-white dark:border-white/15 dark:bg-white/10 dark:text-white" : ""}
-                                >
-                                  {STAGE_TYPE_OPTIONS.map((option) => (
-                                    <option key={option.value} value={option.value}>
-                                      {option.label}
-                                    </option>
-                                  ))}
-                                </SelectControl>
-                              </label>
-
-                              {column.stage === "blocked" ? (
-                                <div className={`rounded-md border px-2 py-1.5 text-[11px] leading-5 ${
-                                  active
-                                    ? "border-white/15 bg-white/5 text-slate-300"
-                                    : "border-slate-200 bg-white text-slate-500 dark:border-slate-700 dark:bg-[#0b1119] dark:text-slate-400"
-                                }`}>
-                                  Blocked is treated as a manual-only stage and will not run ACP automation.
-                                </div>
-                              ) : null}
-                            </div>
-                          ) : null}
                         </div>
                       );
                     })}
@@ -956,21 +913,116 @@ export function KanbanSettingsModal({
                     </div>
                   </div>
 
-                  <ColumnAutomationWorkspace
-                    column={selectedColumn}
-                    automation={columnAutomation[selectedColumn.id] ?? { enabled: false }}
-                    availableProviders={availableProviders}
-                    specialists={specialists}
-                    specialistCategory={specialistCategory}
-                    specialistLanguage={specialistLanguage}
-                    onSpecialistCategoryChange={setSpecialistCategory}
-                    onUpdate={(updated) => {
-                      setColumnAutomation((current) => ({
-                        ...current,
-                        [selectedColumn.id]: updated,
-                        }));
-                      }}
-                    />
+                  <div role="tablist" aria-label="Column configuration" className="mb-4 flex border-b border-slate-200 dark:border-slate-800">
+                    <button
+                      role="tab"
+                      id="tab-structure"
+                      aria-selected={activeTab === "structure"}
+                      aria-controls="panel-structure"
+                      onClick={() => setActiveTab("structure")}
+                      className={`px-4 py-2 text-sm font-semibold border-b-2 transition ${activeTab === "structure" ? "border-amber-500 text-amber-600 dark:text-amber-500" : "border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300"}`}
+                    >
+                      Structure
+                    </button>
+                    <button
+                      role="tab"
+                      id="tab-automation"
+                      aria-selected={activeTab === "automation"}
+                      aria-controls="panel-automation"
+                      onClick={() => setActiveTab("automation")}
+                      className={`px-4 py-2 text-sm font-semibold border-b-2 transition ${activeTab === "automation" ? "border-amber-500 text-amber-600 dark:text-amber-500" : "border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300"}`}
+                    >
+                      Automation
+                    </button>
+                  </div>
+
+                  <div id="panel-structure" role="tabpanel" aria-labelledby="tab-structure" hidden={activeTab !== "structure"}>
+                    {activeTab === "structure" && (
+                      <div className="space-y-4 rounded-xl border border-slate-200 bg-slate-50/50 p-4 dark:border-slate-800 dark:bg-[#0d1118]/50">
+                        <label className="block space-y-1 text-sm font-medium">
+                          <span className="text-slate-700 dark:text-slate-300">Name</span>
+                          <input
+                            aria-label="Stage name"
+                            type="text"
+                            value={selectedColumn.name}
+                            onChange={(event) => updateColumn(selectedColumn.id, (current) => ({
+                              ...current,
+                              name: event.target.value,
+                            }))}
+                            className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-amber-400 dark:border-slate-700 dark:bg-[#0b1119] dark:text-slate-100"
+                          />
+                        </label>
+
+                        <div className="grid gap-4 sm:grid-cols-2">
+                          <label className="block space-y-1 text-sm font-medium">
+                            <span className="text-slate-700 dark:text-slate-300">Stage type</span>
+                            <SelectControl
+                              aria-label="Stage type"
+                              value={selectedColumn.stage}
+                              onChange={(event) => handleStageTypeChange(selectedColumn.id, event.target.value)}
+                              className="h-10"
+                            >
+                              {STAGE_TYPE_OPTIONS.map((option) => (
+                                <option key={option.value} value={option.value}>
+                                  {option.label}
+                                </option>
+                              ))}
+                            </SelectControl>
+                          </label>
+
+                          <label className="block space-y-1 text-sm font-medium">
+                            <span className="text-slate-700 dark:text-slate-300">Column Width</span>
+                            <SelectControl
+                              aria-label="Column width"
+                              value={selectedColumn.width || "standard"}
+                              onChange={(event) => updateColumn(selectedColumn.id, (current) => ({
+                                ...current,
+                                width: event.target.value as "compact" | "standard" | "wide",
+                              }))}
+                              className="h-10"
+                            >
+                              <option value="compact">Compact</option>
+                              <option value="standard">Standard</option>
+                              <option value="wide">Wide</option>
+                            </SelectControl>
+                          </label>
+                        </div>
+
+                        <label className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={selectedColumn.visible !== false}
+                            onChange={(event) => updateColumnVisibility(selectedColumn, event.target.checked)}
+                            className="h-4 w-4 rounded border-slate-300 text-amber-500 focus:ring-amber-500"
+                          />
+                          <span className="text-sm font-medium text-slate-700 dark:text-slate-300">Column is visible on board</span>
+                        </label>
+
+                        {selectedColumn.stage === "blocked" ? (
+                          <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-400">
+                            This is a manual-only stage. Automation features are disabled for this column.
+                          </div>
+                        ) : null}
+                      </div>
+                    )}
+                  </div>
+
+                  <div id="panel-automation" role="tabpanel" aria-labelledby="tab-automation" hidden={activeTab !== "automation"}>
+                    {activeTab === "automation" && (
+                      <ColumnAutomationWorkspace
+                        column={selectedColumn}
+                        automation={columnAutomation[selectedColumn.id] ?? { enabled: false }}
+                        availableProviders={availableProviders}
+                        specialists={specialists}
+                        specialistCategory={specialistCategory}
+                        specialistLanguage={specialistLanguage}
+                        onSpecialistCategoryChange={setSpecialistCategory}
+                        onUpdate={(updated) => {
+                          updateColumnAutomation(selectedColumn.id, updated);
+                        }}
+                      />
+                    )}
+                  </div>
                 </div>
               ) : (
                 <div className="rounded-3xl border border-dashed border-slate-300 p-10 text-center text-sm text-slate-500 dark:border-slate-700 dark:text-slate-400">

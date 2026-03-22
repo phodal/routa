@@ -38,6 +38,10 @@ pub struct KanbanColumnConfig {
     pub stage: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub automation: Option<KanbanColumnAutomation>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub visible: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub width: Option<String>,
 }
 
 fn default_workspace_id() -> String {

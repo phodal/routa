@@ -70,6 +70,10 @@ export interface KanbanColumn {
   color?: string;
   position: number;
   stage: KanbanColumnStage;
+  /** Whether the column is structurally visible on the board */
+  visible?: boolean;
+  /** Column visual width configuration */
+  width?: "compact" | "standard" | "wide";
   /** Automation configuration for this column */
   automation?: KanbanColumnAutomation;
 }

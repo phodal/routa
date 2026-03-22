@@ -28,6 +28,8 @@ interface ImportedKanbanColumn {
   color?: string;
   stage: KanbanColumn["stage"];
   automation?: KanbanColumn["automation"];
+  visible?: boolean;
+  width?: "compact" | "standard" | "wide";
 }
 
 function parseKanbanConfig(yamlContent: string): ImportedKanbanConfig {
@@ -52,6 +54,8 @@ function normalizeColumns(columns: ImportedKanbanColumn[]): KanbanColumn[] {
     position: index,
     stage: column.stage,
     automation: column.automation,
+    visible: column.visible,
+    width: column.width,
   }));
 }
 

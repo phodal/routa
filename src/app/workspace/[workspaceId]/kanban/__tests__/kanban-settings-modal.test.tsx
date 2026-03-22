@@ -51,6 +51,7 @@ describe("KanbanSettingsModal", () => {
       />,
     );
 
+    fireEvent.click(screen.getByRole("button", { name: /^Automation$/i }));
     fireEvent.click(screen.getByRole("checkbox", { name: /toggle automation for review/i }));
     fireEvent.click(screen.getByTestId("kanban-settings-provider"));
     fireEvent.click(screen.getByRole("button", { name: /claude code/i }));
@@ -122,6 +123,7 @@ describe("KanbanSettingsModal", () => {
       />,
     );
 
+    fireEvent.click(screen.getByRole("button", { name: /^Automation$/i }));
     expect(screen.getAllByRole("button").some((button) => button.textContent?.trim() === "Kanban")).toBe(true);
     expect(screen.getAllByRole("option", { name: "Review Guard" }).length).toBeGreaterThan(0);
     expect(screen.queryAllByRole("option", { name: "Team QA" })).toHaveLength(0);

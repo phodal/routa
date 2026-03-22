@@ -387,6 +387,8 @@ struct ExportColumn {
     color: Option<String>,
     stage: String,
     automation: Option<routa_core::models::kanban::KanbanColumnAutomation>,
+    visible: Option<bool>,
+    width: Option<String>,
 }
 
 fn to_rpc_error_text(response: &serde_json::Value) -> String {
@@ -518,6 +520,8 @@ pub async fn apply_config(
                 position: idx as i64,
                 stage: col.stage.clone(),
                 automation: col.automation.clone(),
+                visible: col.visible,
+                width: col.width.clone(),
             })
             .collect();
 
@@ -639,6 +643,8 @@ pub async fn export_config(
                     color: col.color,
                     stage: col.stage,
                     automation: col.automation,
+                    visible: col.visible,
+                    width: col.width,
                 })
                 .collect(),
         });

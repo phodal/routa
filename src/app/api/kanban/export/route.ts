@@ -26,6 +26,8 @@ interface ExportKanbanColumn {
   color?: string;
   stage: string;
   automation?: Record<string, unknown>;
+  visible?: boolean;
+  width?: "compact" | "standard" | "wide";
 }
 
 function normalizeAutomation(automation: Record<string, unknown> | undefined): Record<string, unknown> | undefined {
@@ -64,6 +66,8 @@ function toExportConfig(workspaceId: string, workspaceTitle: string | undefined,
     position: number;
     stage: string;
     automation?: Record<string, unknown>;
+    visible?: boolean;
+    width?: "compact" | "standard" | "wide";
   }>;
 }>): ExportKanbanConfig {
   return {
@@ -82,6 +86,8 @@ function toExportConfig(workspaceId: string, workspaceTitle: string | undefined,
           color: column.color ?? undefined,
           stage: column.stage,
           automation: normalizeAutomation(column.automation),
+          visible: column.visible,
+          width: column.width,
         })),
     })),
   };
@@ -120,6 +126,8 @@ export async function GET(request: NextRequest) {
         position: Number(column.position),
         stage: column.stage,
         automation: column.automation as Record<string, unknown> | undefined,
+        visible: column.visible,
+        width: column.width,
       })),
     })),
   );

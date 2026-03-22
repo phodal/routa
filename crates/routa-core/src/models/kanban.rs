@@ -159,6 +159,12 @@ pub struct KanbanColumn {
     pub color: Option<String>,
     pub position: i64,
     pub stage: String,
+    /// Whether the column is visible on the board
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub visible: Option<bool>,
+    /// Column visual width configuration
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub width: Option<String>,
     /// Automation configuration for this column
     #[serde(skip_serializing_if = "Option::is_none")]
     pub automation: Option<KanbanColumnAutomation>,
@@ -185,6 +191,8 @@ pub fn default_kanban_columns() -> Vec<KanbanColumn> {
             position: 0,
             stage: "backlog".to_string(),
             automation: None,
+            visible: Some(true),
+            width: None,
         },
         KanbanColumn {
             id: "todo".to_string(),
@@ -193,6 +201,8 @@ pub fn default_kanban_columns() -> Vec<KanbanColumn> {
             position: 1,
             stage: "todo".to_string(),
             automation: None,
+            visible: Some(true),
+            width: None,
         },
         KanbanColumn {
             id: "dev".to_string(),
@@ -201,6 +211,8 @@ pub fn default_kanban_columns() -> Vec<KanbanColumn> {
             position: 2,
             stage: "dev".to_string(),
             automation: None,
+            visible: Some(true),
+            width: None,
         },
         KanbanColumn {
             id: "review".to_string(),
@@ -209,6 +221,8 @@ pub fn default_kanban_columns() -> Vec<KanbanColumn> {
             position: 3,
             stage: "review".to_string(),
             automation: None,
+            visible: Some(true),
+            width: None,
         },
         KanbanColumn {
             id: "done".to_string(),
@@ -217,6 +231,8 @@ pub fn default_kanban_columns() -> Vec<KanbanColumn> {
             position: 4,
             stage: "done".to_string(),
             automation: None,
+            visible: Some(true),
+            width: None,
         },
         KanbanColumn {
             id: "blocked".to_string(),
@@ -225,6 +241,8 @@ pub fn default_kanban_columns() -> Vec<KanbanColumn> {
             position: 5,
             stage: "blocked".to_string(),
             automation: None,
+            visible: Some(true),
+            width: None,
         },
     ]
 }

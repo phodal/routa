@@ -161,6 +161,7 @@ export interface KanbanColumnInfo {
   position: number;
   stage: string;
   visible?: boolean;
+  width?: "compact" | "standard" | "wide";
   automation?: KanbanColumnAutomationInfo;
 }
 
