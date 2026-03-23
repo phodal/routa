@@ -1,7 +1,7 @@
 ---
 title: "GitHub Virtual Workspace - Zipball-based Repo Browsing for Serverless"
 date: "2026-03-08"
-status: open
+status: resolved
 severity: medium
 area: "workspace"
 tags: ["enhancement", "serverless", "github-integration", "vercel"]
@@ -136,3 +136,21 @@ GET /api/github/search?owner=X&repo=Y&q=Z
 - Existing zipball pattern: `src/app/api/skills/catalog/route.ts`
 - GitHub API: https://docs.github.com/en/rest/repos/contents#download-a-repository-archive-zip
 
+## Resolution
+
+Resolved by the later GitHub virtual workspace implementation.
+
+Evidence in the current repository:
+
+- `src/core/github/github-workspace.ts` now implements zipball download, extraction to `/tmp`, in-memory registry/cache behavior, file indexing, tree browsing, file reads, search, and TTL cleanup.
+- `src/app/api/github/import/route.ts` implements `POST /api/github/import`.
+- The repository also exposes:
+  - `GET /api/github`
+  - `GET /api/github/tree`
+  - `GET /api/github/file`
+  - `GET /api/github/search`
+- `src/core/models/codebase.ts` and the DB schemas now include `sourceType` and `sourceUrl`.
+- `src/app/api/clone/route.ts` now explicitly falls back to GitHub zipball import when `git clone` is unavailable or fails.
+- `docs/product-specs/FEATURE_TREE.md` lists the GitHub virtual workspace endpoints as shipped product surface.
+
+This means the issue is no longer a proposal-only gap. The capability exists and is integrated into both the API surface and the codebase model.

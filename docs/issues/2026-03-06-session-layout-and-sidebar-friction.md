@@ -64,3 +64,8 @@ session 页面应该让聊天主区域保持稳定，把导航、任务摘要、
 
 - 2026-03-23: GitHub issue `#225` was closed after the structural refactor of `session-page-client.tsx` and adjacent ACP route workflows.
 - That work reduced implementation mass and clarified workflow boundaries, but it did not by itself close the UX concerns recorded here around sidebar ownership, duplicate task surfaces, layout stability, and mobile information architecture.
+- 2026-03-23 triage update: this issue remains `open`.
+- Current repository evidence still points to the original UX concern rather than a completed fix:
+  - `src/app/workspace/[workspaceId]/sessions/[sessionId]/left-sidebar.tsx` is still a large mixed-responsibility surface for sessions, tasks, and related controls.
+  - The session page refactor under `#225` mostly improved structural decomposition (`session-page-client.tsx` and workflow hooks), not the information architecture described here.
+  - No later issue or commit in this triage pass provided direct evidence that duplicate task entry points, sidebar focus-stealing behavior, or mobile hierarchy were comprehensively redesigned.
