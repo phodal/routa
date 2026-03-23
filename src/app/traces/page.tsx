@@ -207,10 +207,7 @@ function TracePageContent() {
   const snapshotReady = !workspacesLoading
     && !loading
     && sessionTracesLoaded
-    && !tracesLoading
-    && sessions.length > 0
-    && Boolean(selectedSessionId)
-    && sessionTraces.length > 0;
+    && !tracesLoading;
 
   return (
     <DesktopAppShell
