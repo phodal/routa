@@ -19,6 +19,9 @@ const meta = {
     selectedSessionId: "session-12345678-abcdef",
     showSidebar: true,
     loading: false,
+    onCopyCurrentUrl: () => {},
+    onToggleSidebar: () => {},
+    onRefresh: () => {},
   },
 } satisfies Meta<typeof TracesPageHeader>;
 
@@ -26,27 +29,42 @@ export default meta;
 
 type Story = StoryObj<typeof meta>;
 
-export const Default: Story = {};
+const defaultStoryArgs = {
+  selectedSessionId: "session-12345678-abcdef",
+  showSidebar: true,
+  loading: false,
+  onCopyCurrentUrl: () => {},
+  onToggleSidebar: () => {},
+  onRefresh: () => {},
+};
+
+export const Default: Story = {
+  args: defaultStoryArgs,
+};
 
 export const NoSessionSelected: Story = {
   args: {
+    ...defaultStoryArgs,
     selectedSessionId: null,
   },
 };
 
 export const SidebarHidden: Story = {
   args: {
+    ...defaultStoryArgs,
     showSidebar: false,
   },
 };
 
 export const RefreshLoading: Story = {
   args: {
+    ...defaultStoryArgs,
     loading: true,
   },
 };
 
 export const FocusState: Story = {
+  args: defaultStoryArgs,
   play: async ({ canvasElement }) => {
     const copyButton = canvasElement.querySelector('button[title="Copy shareable URL"]');
     if (copyButton instanceof HTMLElement) {
@@ -56,6 +74,7 @@ export const FocusState: Story = {
 };
 
 export const DarkMode: Story = {
+  args: defaultStoryArgs,
   globals: {
     colorMode: "dark",
   },
