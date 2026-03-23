@@ -42,7 +42,7 @@ export interface CheckRule {
 // ─── Component definitions ────────────────────────────────────────
 
 export type TextVariant = "h1" | "h2" | "h3" | "h4" | "h5" | "body" | "caption";
-export type TextAccent = "success" | "warning" | "error" | "info" | "muted" | "primary" | "violet";
+export type TextAccent = "success" | "warning" | "error" | "info" | "muted" | "primary" | "route";
 export type ImageVariant = "icon" | "avatar" | "smallFeature" | "mediumFeature" | "largeFeature" | "header";
 export type ImageFit = "contain" | "cover" | "fill" | "none" | "scaleDown";
 export type JustifyContent = "start" | "center" | "end" | "spaceBetween" | "spaceAround" | "spaceEvenly" | "stretch";

@@ -97,8 +97,8 @@ function buildStatsSurface(data: DashboardData): A2UIMessage[] {
     { id: "stat_sessions_value", component: "Text", text: { path: "/stats/sessions" }, variant: "h2" },
     { id: "stat_sessions_label", component: "Text", text: "Sessions", variant: "caption" },
 
-    // Agents card — violet accent
-    { id: "stat_agents", component: "Card", child: "stat_agents_inner", accent: "violet", weight: 1 },
+    // Agents card — route accent
+    { id: "stat_agents", component: "Card", child: "stat_agents_inner", accent: "route", weight: 1 },
     { id: "stat_agents_inner", component: "Column", children: ["stat_agents_icon", "stat_agents_value", "stat_agents_sub"], align: "start", gap: "xs" },
     { id: "stat_agents_icon", component: "Icon", name: "people" },
     { id: "stat_agents_value", component: "Text", text: { path: "/stats/agents" }, variant: "h2" },
@@ -171,7 +171,7 @@ function buildAgentRosterSurface(data: DashboardData): A2UIMessage[] {
       direction: "vertical",
     },
     { id: "agent_row", component: "Row", children: ["agent_role_badge", "agent_info", "agent_status_pill"], align: "center", justify: "spaceBetween" },
-    { id: "agent_role_badge", component: "Text", text: { path: "roleInitial" }, variant: "caption", accent: "violet", pill: true },
+    { id: "agent_role_badge", component: "Text", text: { path: "roleInitial" }, variant: "caption", accent: "route", pill: true },
     { id: "agent_info", component: "Column", children: ["agent_name", "agent_role_text"], align: "start", weight: 1, gap: "none" },
     { id: "agent_name", component: "Text", text: { path: "name" }, variant: "h5" },
     { id: "agent_role_text", component: "Text", text: { path: "role" }, variant: "caption", accent: "muted" },
@@ -405,7 +405,7 @@ function buildActivitySurface(data: DashboardData): A2UIMessage[] {
     { id: "act_row", component: "Row", children: ["act_info", "act_meta"], align: "start", justify: "spaceBetween" },
     { id: "act_info", component: "Column", children: ["act_summary", "act_agent"], align: "start", weight: 1, gap: "none" },
     { id: "act_summary", component: "Text", text: { path: "summary" }, variant: "body" },
-    { id: "act_agent", component: "Text", text: { path: "agent" }, variant: "caption", accent: "violet" },
+    { id: "act_agent", component: "Text", text: { path: "agent" }, variant: "caption", accent: "route" },
     { id: "act_meta", component: "Column", children: ["act_time"], align: "end", gap: "none" },
     { id: "act_time", component: "Text", text: { path: "time" }, variant: "caption", accent: "muted" },
   ];
@@ -509,7 +509,7 @@ export function generateAgentMonitorSurface(agents: DashboardData["agents"]): A2
     { id: "am_grid", component: "List", children: { componentId: "agent_card", path: "/agents" }, direction: "horizontal" },
     { id: "agent_card", component: "Card", child: "agent_card_body", accent: { path: "statusAccent" } as never },
     { id: "agent_card_body", component: "Column", children: ["agent_initial", "agent_card_name", "agent_card_role", "agent_card_status"], align: "center", gap: "xs" },
-    { id: "agent_initial", component: "Text", text: { path: "initial" }, variant: "h2", accent: "violet" },
+    { id: "agent_initial", component: "Text", text: { path: "initial" }, variant: "h2", accent: "route" },
     { id: "agent_card_name", component: "Text", text: { path: "name" }, variant: "h5" },
     { id: "agent_card_role", component: "Text", text: { path: "role" }, variant: "caption", accent: "muted" },
     { id: "agent_card_status", component: "Text", text: { path: "status" }, variant: "caption", pill: true, accent: { path: "statusAccent" } as never },
@@ -548,7 +548,7 @@ export function generateTimelineSurface(data: DashboardData): A2UIMessage[] {
   return [
     { version: "v0.10", createSurface: { surfaceId: "template_timeline", catalogId: "https://a2ui.org/specification/v0_10/basic_catalog.json", theme: { agentDisplayName: "Timeline" } } },
     { version: "v0.10", updateComponents: { surfaceId: "template_timeline", components } },
-    { version: "v0.10", updateDataModel: { surfaceId: "template_timeline", value: { items: items.map((i) => ({ ...i, kindAccent: i.kind === "session" ? "info" : "violet" })) } } },
+    { version: "v0.10", updateDataModel: { surfaceId: "template_timeline", value: { items: items.map((i) => ({ ...i, kindAccent: i.kind === "session" ? "info" : "route" })) } } },
   ];
 }
 
@@ -579,7 +579,7 @@ export function generateWorkspaceSummarySurface(data: DashboardData): A2UIMessag
     { id: "ws_r1_val", component: "Text", text: { path: "/counts/sessions" }, variant: "h5", accent: "info" },
     { id: "ws_row2", component: "Row", children: ["ws_r2_label", "ws_r2_val"], align: "center", justify: "spaceBetween" },
     { id: "ws_r2_label", component: "Text", text: "Agents", variant: "body" },
-    { id: "ws_r2_val", component: "Text", text: { path: "/counts/agents" }, variant: "h5", accent: "violet" },
+    { id: "ws_r2_val", component: "Text", text: { path: "/counts/agents" }, variant: "h5", accent: "route" },
     { id: "ws_row3", component: "Row", children: ["ws_r3_label", "ws_r3_val"], align: "center", justify: "spaceBetween" },
     { id: "ws_r3_label", component: "Text", text: "Tasks", variant: "body" },
     { id: "ws_r3_val", component: "Text", text: { path: "/counts/tasks" }, variant: "h5", accent: "success" },

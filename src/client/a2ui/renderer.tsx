@@ -121,7 +121,7 @@ const TEXT_ACCENT_CLASSES: Record<TextAccent, string> = {
   info:     "text-blue-600 dark:text-blue-400",
   muted:    "text-gray-400 dark:text-gray-500",
   primary:  "text-amber-600 dark:text-amber-500",
-  violet:   "text-violet-600 dark:text-violet-400",
+  route:    "text-slate-600 dark:text-slate-300",
 };
 
 const TEXT_ACCENT_PILL_CLASSES: Record<TextAccent, string> = {
@@ -131,7 +131,7 @@ const TEXT_ACCENT_PILL_CLASSES: Record<TextAccent, string> = {
   info:     "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400",
   muted:    "bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400",
   primary:  "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400",
-  violet:   "bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-400",
+  route:    "bg-slate-100 dark:bg-slate-900/30 text-slate-700 dark:text-slate-300",
 };
 
 const JUSTIFY_CLASSES: Record<JustifyContent, string> = {
@@ -336,7 +336,7 @@ function A2UIComponentRenderer({ componentId, ctx }: { componentId: string; ctx:
         warning: "border-t-2 border-t-amber-500",
         error:   "border-t-2 border-t-red-500",
         info:    "border-t-2 border-t-blue-500",
-        violet:  "border-t-2 border-t-violet-500",
+        route:   "border-t-2 border-t-slate-500",
         primary: "border-t-2 border-t-amber-500",
         muted:   "",
       };

@@ -32,17 +32,17 @@ export function StatCard({
   value: number;
   sub?: string;
   icon: React.ReactNode;
-  color: "blue" | "violet" | "emerald" | "amber";
+  color: "blue" | "route" | "emerald" | "amber";
 }) {
   const bgMap = {
     blue: "bg-blue-50 dark:bg-blue-900/15",
-    violet: "bg-violet-50 dark:bg-violet-900/15",
+    route: "bg-slate-100 dark:bg-slate-900/15",
     emerald: "bg-emerald-50 dark:bg-emerald-900/15",
     amber: "bg-amber-50 dark:bg-amber-900/15",
   };
   const textMap = {
     blue: "text-blue-600 dark:text-blue-400",
-    violet: "text-violet-600 dark:text-violet-400",
+    route: "text-slate-600 dark:text-slate-300",
     emerald: "text-emerald-600 dark:text-emerald-400",
     amber: "text-amber-600 dark:text-amber-400",
   };

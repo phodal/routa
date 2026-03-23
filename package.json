@@ -44,6 +44,7 @@
     "start:desktop:bundle": "HOSTNAME=127.0.0.1 PORT=3210 node apps/desktop/src-tauri/bundled/desktop-server/server.js",
     "lint": "eslint .",
     "lint:css": "node scripts/lint-design-system-css.mjs",
+    "lint:brand-semantics": "node scripts/lint-design-system-css.mjs --brand-semantics",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",

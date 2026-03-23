@@ -2,12 +2,12 @@ interface CompactStatProps {
   label: string;
   value: number;
   sub?: string;
-  color: "blue" | "violet" | "emerald" | "amber";
+  color: "blue" | "route" | "emerald" | "amber";
 }
 
 const colorMap = {
   blue: "text-blue-400 border-blue-500/18 bg-blue-500/8",
-  violet: "text-slate-400 border-slate-400/18 bg-slate-400/8",
+  route: "text-slate-400 border-slate-400/18 bg-slate-400/8",
   emerald: "text-emerald-400 border-emerald-500/18 bg-emerald-500/8",
   amber: "text-amber-400 border-amber-500/18 bg-amber-500/8",
 } satisfies Record<CompactStatProps["color"], string>;

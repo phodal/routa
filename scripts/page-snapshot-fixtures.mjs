@@ -87,7 +87,7 @@ const SNAPSHOT_BOARD_COLUMNS = [
   {
     id: "review",
     name: "Review",
-    color: "violet",
+    color: "slate",
     position: 3,
     stage: "review",
     automation: {

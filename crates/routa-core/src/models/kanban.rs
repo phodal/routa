@@ -212,7 +212,7 @@ pub fn default_kanban_columns() -> Vec<KanbanColumn> {
         KanbanColumn {
             id: "review".to_string(),
             name: "Review".to_string(),
-            color: Some("violet".to_string()),
+            color: Some("slate".to_string()),
             position: 3,
             stage: "review".to_string(),
             automation: None,

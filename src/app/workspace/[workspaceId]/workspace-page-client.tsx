@@ -427,7 +427,7 @@ export function WorkspacePageClient({
 
             <div className="mb-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
               <CompactStat label="Sessions" value={sessions.length} color="blue" />
-              <CompactStat label="Agents" value={agentsHook.agents.length} sub={activeAgents.length > 0 ? `${activeAgents.length} active` : undefined} color="violet" />
+              <CompactStat label="Agents" value={agentsHook.agents.length} sub={activeAgents.length > 0 ? `${activeAgents.length} active` : undefined} color="route" />
               <CompactStat label="Tasks" value={tasks.length} sub={pendingTasks.length > 0 ? `${pendingTasks.length} pending` : undefined} color="emerald" />
               <CompactStat label="BG Tasks" value={bgTasks.length} sub={runningBgTasks > 0 ? `${runningBgTasks} running` : undefined} color="amber" />
             </div>

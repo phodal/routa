@@ -15,6 +15,13 @@ metrics:
     tier: normal
     description: "代码层与设计层：桌面 shell 禁止回退为硬编码颜色，并保持 dt token 命名契约"
 
+  - name: design_system_brand_semantic_contract
+    command: npm run lint:brand-semantics 2>&1
+    pattern: "Brand semantic lint passed"
+    hard_gate: false
+    tier: normal
+    description: "语义层：A2UI、workspace stat 与 Kanban 默认色不得重新引入 legacy violet/indigo/purple 语义名，统一改用 brand route/slate"
+
   - name: design_system_storybook_governance
     command: npm run storybook:governance 2>&1
     pattern: "Storybook governance check passed"
@@ -56,6 +63,7 @@ metrics:
 ### 1. 代码层
 
 - 命令：`npm run lint:css`
+- 语义守卫命令：`npm run lint:brand-semantics`
 - 范围：
   - `src/client/components/desktop-app-shell.tsx`
   - `src/client/components/desktop-layout.tsx`
@@ -63,9 +71,18 @@ metrics:
   - `src/client/components/desktop-nav-rail.tsx`
   - `src/client/components/workspace-switcher.tsx`
   - `src/app/styles/desktop-theme.css`
+  - `src/client/a2ui/types.ts`
+  - `src/client/a2ui/renderer.tsx`
+  - `src/client/a2ui/dashboard-generator.ts`
+  - `src/client/components/compact-stat.tsx`
+  - `src/app/workspace/[workspaceId]/ui-components.tsx`
+  - `src/app/workspace/[workspaceId]/workspace-page-client.tsx`
+  - `src/core/models/kanban.ts`
+  - `crates/routa-core/src/models/kanban.rs`
 - 阈值：
   - shell 共享组件不得出现 palette class / hex / rgb 硬编码
   - `desktop-theme.css` 变量前缀只允许 `--dt-*` 与 `--color-desktop-*`
+  - brand semantic 文件不得重新出现 `violet` / `indigo` / `purple` 语义名
 
 ### 2. 设计层
 

@@ -109,7 +109,7 @@ export const DEFAULT_KANBAN_COLUMNS: KanbanColumn[] = [
   { id: "backlog", name: "Backlog", color: "slate", position: 0, stage: "backlog" },
   { id: "todo", name: "Todo", color: "sky", position: 1, stage: "todo" },
   { id: "dev", name: "Dev", color: "amber", position: 2, stage: "dev" },
-  { id: "review", name: "Review", color: "violet", position: 3, stage: "review" },
+  { id: "review", name: "Review", color: "slate", position: 3, stage: "review" },
   { id: "done", name: "Done", color: "emerald", position: 4, stage: "done" },
   { id: "blocked", name: "Blocked", color: "rose", position: 5, stage: "blocked" },
 ];
