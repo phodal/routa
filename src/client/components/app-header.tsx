@@ -109,7 +109,7 @@ export function AppHeader({
             <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
           </svg>
           <div className="flex items-center gap-1.5">
-            <div className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
+            <div className="w-2 h-2 rounded-full bg-blue-500 shrink-0" />
             <span className="text-[13px] font-medium text-gray-700 dark:text-gray-300 truncate max-w-[180px]">
               {workspaceTitle ?? "Workspace"}
             </span>

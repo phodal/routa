@@ -6,10 +6,10 @@ interface CompactStatProps {
 }
 
 const colorMap = {
-  blue: "text-blue-400 border-blue-500/18 bg-blue-500/6",
-  violet: "text-violet-400 border-violet-500/18 bg-violet-500/6",
-  emerald: "text-emerald-400 border-emerald-500/18 bg-emerald-500/6",
-  amber: "text-amber-400 border-amber-500/18 bg-amber-500/6",
+  blue: "text-blue-400 border-blue-500/18 bg-blue-500/8",
+  violet: "text-slate-400 border-slate-400/18 bg-slate-400/8",
+  emerald: "text-emerald-400 border-emerald-500/18 bg-emerald-500/8",
+  amber: "text-amber-400 border-amber-500/18 bg-amber-500/8",
 } satisfies Record<CompactStatProps["color"], string>;
 
 export function CompactStat({ label, value, sub, color }: CompactStatProps) {

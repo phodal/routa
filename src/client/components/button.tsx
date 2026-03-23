@@ -18,20 +18,20 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
 
     const variantStyles: Record<ButtonVariant, string> = {
       primary:
-        "bg-indigo-600 text-white hover:bg-indigo-700 focus:ring-indigo-500 dark:bg-indigo-600 dark:hover:bg-indigo-700",
+        "bg-blue-500 text-white hover:bg-blue-400 focus:ring-blue-500 dark:bg-blue-500 dark:hover:bg-blue-400",
       secondary:
-        "bg-white dark:bg-[#1a1f2e] text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 focus:ring-gray-500",
+        "bg-white dark:bg-[#1a1f2e] text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-700 hover:border-blue-200 hover:bg-blue-50 dark:hover:border-blue-800 dark:hover:bg-blue-950/20 focus:ring-blue-500",
       ghost:
-        "bg-transparent text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 focus:ring-gray-500",
+        "bg-transparent text-gray-600 dark:text-gray-300 hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-blue-950/20 dark:hover:text-blue-300 focus:ring-blue-500",
       danger:
         "bg-red-600 text-white hover:bg-red-700 focus:ring-red-500 dark:bg-red-600 dark:hover:bg-red-700",
       "desktop-secondary":
-        "bg-white dark:bg-[#1a1f2e] text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 focus:ring-gray-500",
+        "border border-transparent bg-desktop-bg-secondary text-desktop-text-secondary hover:bg-desktop-bg-active/70 hover:text-desktop-text-primary focus:ring-[var(--dt-accent)]",
       "desktop-accent":
-        "bg-indigo-600 text-white hover:bg-indigo-700 focus:ring-indigo-500 dark:bg-indigo-600 dark:hover:bg-indigo-700",
+        "border border-transparent bg-desktop-accent text-desktop-accent-text hover:bg-desktop-accent-strong focus:ring-[var(--dt-accent)]",
     };
 
-const sizeStyles: Record<ButtonSize, string> = {
+    const sizeStyles: Record<ButtonSize, string> = {
       xs: "px-2 py-1 text-xs",
       sm: "px-3 py-1.5 text-sm",
       md: "px-4 py-2 text-sm",
