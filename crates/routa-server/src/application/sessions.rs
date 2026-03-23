@@ -163,7 +163,7 @@ impl SessionEntry {
             created_at: Value::String(session.created_at),
             updated_at: None,
             parent_session_id: session.parent_session_id,
-            first_prompt_sent: false,
+            first_prompt_sent: session.first_prompt_sent,
         }
     }
 
@@ -205,7 +205,7 @@ impl SessionEntry {
         if self.routa_agent_id.is_none() {
             self.routa_agent_id = db.routa_agent_id.clone();
         }
-        self.first_prompt_sent = db.first_prompt_sent;
+        self.first_prompt_sent = self.first_prompt_sent || db.first_prompt_sent;
         self.updated_at = Some(Value::Number(db.updated_at.into()));
         self
     }
@@ -533,6 +533,7 @@ mod tests {
             mode_id: Some("default".to_string()),
             model: Some("sonnet".to_string()),
             created_at: created_at.to_string(),
+            first_prompt_sent: false,
             parent_session_id: parent_session_id.map(str::to_string),
             specialist_id: None,
             specialist_system_prompt: None,
@@ -616,6 +617,21 @@ mod tests {
         assert_eq!(sessions.len(), 1);
         assert!(sessions[0].first_prompt_sent);
         assert_eq!(sessions[0].updated_at, Some(Value::Number(5.into())));
+    }
+
+    #[test]
+    fn merge_session_entries_keeps_live_prompt_state_when_db_lags() {
+        let mut live = in_memory_session("session-1", "ws-1", "2026-03-19T10:00:00Z", None);
+        live.first_prompt_sent = true;
+
+        let sessions = merge_session_entries(
+            vec![live],
+            vec![db_session("session-1", "ws-1", 5, None, false)],
+            &ListSessionsQuery::default(),
+        );
+
+        assert_eq!(sessions.len(), 1);
+        assert!(sessions[0].first_prompt_sent);
     }
 
     #[test]

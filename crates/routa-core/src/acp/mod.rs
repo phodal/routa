@@ -66,6 +66,8 @@ pub struct AcpSessionRecord {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
     pub created_at: String,
+    #[serde(default)]
+    pub first_prompt_sent: bool,
     /// Parent session ID for CRAFTER child sessions
     #[serde(skip_serializing_if = "Option::is_none")]
     pub parent_session_id: Option<String>,
@@ -234,6 +236,14 @@ impl AcpManager {
         }
     }
 
+    /// Mark a session as having had its first prompt dispatched.
+    pub async fn mark_first_prompt_sent(&self, session_id: &str) {
+        let mut sessions = self.sessions.write().await;
+        if let Some(session) = sessions.get_mut(session_id) {
+            session.first_prompt_sent = true;
+        }
+    }
+
     /// Create a new ACP session: spawn agent process, initialize, create session.
     /// Supports both static presets and registry-based agents.
     /// **Claude** uses stream-json protocol instead of ACP.
@@ -380,6 +390,7 @@ impl AcpManager {
             mode_id: None,
             model: model.clone(),
             created_at: chrono::Utc::now().to_rfc3339(),
+            first_prompt_sent: false,
             parent_session_id: parent_session_id.clone(),
             specialist_id: options.specialist_id.clone(),
             specialist_system_prompt: options.specialist_system_prompt.clone(),
@@ -405,7 +416,36 @@ impl AcpManager {
         self.notification_channels
             .write()
             .await
-            .insert(session_id.clone(), ntx);
+            .insert(session_id.clone(), ntx.clone());
+
+        // Keep an in-memory transcript for all live sessions, including prompts
+        // dispatched internally by orchestration instead of the HTTP ACP route.
+        let history_manager = self.clone();
+        let history_session_id = session_id.clone();
+        let mut history_rx = ntx.subscribe();
+        tokio::spawn(async move {
+            loop {
+                match history_rx.recv().await {
+                    Ok(message) => {
+                        let params = match message.get("params") {
+                            Some(value) => value.clone(),
+                            None => continue,
+                        };
+                        history_manager
+                            .push_to_history(&history_session_id, params)
+                            .await;
+                    }
+                    Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+                    Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
+                        tracing::warn!(
+                            "[AcpManager] Dropped {} session/update notifications for {}",
+                            skipped,
+                            history_session_id
+                        );
+                    }
+                }
+            }
+        });
 
         // Record SessionStart trace
         let trace = TraceRecord::new(
@@ -434,6 +474,8 @@ impl AcpManager {
 
     /// Send a prompt to an existing session's agent process.
     pub async fn prompt(&self, session_id: &str, text: &str) -> Result<serde_json::Value, String> {
+        self.mark_first_prompt_sent(session_id).await;
+
         let processes = self.processes.read().await;
         let managed = processes
             .get(session_id)
@@ -807,11 +849,68 @@ fn truncate_content(text: &str, max_len: usize) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::get_presets;
+    use super::{get_presets, AcpManager, AcpSessionRecord};
+    use std::collections::HashMap;
+    use std::sync::Arc;
+    use tokio::sync::RwLock;
 
     #[test]
     fn static_presets_include_codex_acp_for_codex_alias() {
         let presets = get_presets();
         assert!(presets.iter().any(|preset| preset.id == "codex-acp"));
+    }
+
+    #[tokio::test]
+    async fn mark_first_prompt_sent_updates_live_session_record() {
+        let manager = AcpManager::new();
+        let session_id = "session-1".to_string();
+        manager.sessions.write().await.insert(
+            session_id.clone(),
+            AcpSessionRecord {
+                session_id: session_id.clone(),
+                name: None,
+                cwd: ".".to_string(),
+                workspace_id: "default".to_string(),
+                routa_agent_id: None,
+                provider: Some("opencode".to_string()),
+                role: Some("CRAFTER".to_string()),
+                mode_id: None,
+                model: None,
+                created_at: chrono::Utc::now().to_rfc3339(),
+                first_prompt_sent: false,
+                parent_session_id: None,
+                specialist_id: None,
+                specialist_system_prompt: None,
+            },
+        );
+
+        manager.mark_first_prompt_sent(&session_id).await;
+
+        let session = manager.get_session(&session_id).await.expect("session");
+        assert!(session.first_prompt_sent);
+    }
+
+    #[tokio::test]
+    async fn push_to_history_skips_parent_child_forwarding_noise() {
+        let manager = AcpManager {
+            sessions: Arc::new(RwLock::new(HashMap::new())),
+            processes: Arc::new(RwLock::new(HashMap::new())),
+            notification_channels: Arc::new(RwLock::new(HashMap::new())),
+            history: Arc::new(RwLock::new(HashMap::new())),
+        };
+
+        manager
+            .push_to_history(
+                "parent",
+                serde_json::json!({
+                    "sessionId": "parent",
+                    "childAgentId": "child-1",
+                    "update": { "sessionUpdate": "agent_message", "content": { "type": "text", "text": "delegated" } }
+                }),
+            )
+            .await;
+
+        let history = manager.get_session_history("parent").await.unwrap_or_default();
+        assert!(history.is_empty());
     }
 }
