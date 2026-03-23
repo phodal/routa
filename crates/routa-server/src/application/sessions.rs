@@ -134,6 +134,7 @@ struct SessionEntry {
     session_id: String,
     name: Option<String>,
     cwd: String,
+    branch: Option<String>,
     workspace_id: String,
     routa_agent_id: Option<String>,
     provider: Option<String>,
@@ -153,6 +154,7 @@ impl SessionEntry {
             session_id: session.session_id,
             name: session.name,
             cwd: session.cwd,
+            branch: None,
             workspace_id: session.workspace_id,
             routa_agent_id: session.routa_agent_id,
             provider: session.provider,
@@ -172,6 +174,7 @@ impl SessionEntry {
             session_id: session.id,
             name: session.name,
             cwd: session.cwd,
+            branch: session.branch,
             workspace_id: session.workspace_id,
             routa_agent_id: session.routa_agent_id,
             provider: session.provider,
@@ -192,6 +195,9 @@ impl SessionEntry {
         }
         if self.provider.is_none() {
             self.provider = db.provider.clone();
+        }
+        if self.branch.is_none() {
+            self.branch = db.branch.clone();
         }
         if self.role.is_none() {
             self.role = db.role.clone();
@@ -223,6 +229,7 @@ impl SessionEntry {
             "sessionId": self.session_id,
             "name": self.name,
             "cwd": self.cwd,
+            "branch": self.branch,
             "workspaceId": self.workspace_id,
             "routaAgentId": self.routa_agent_id,
             "provider": self.provider,
@@ -242,6 +249,7 @@ impl SessionEntry {
             "sessionId": self.session_id,
             "name": self.name,
             "cwd": self.cwd,
+            "branch": self.branch,
             "workspaceId": self.workspace_id,
             "routaAgentId": self.routa_agent_id,
             "provider": self.provider,
@@ -261,6 +269,7 @@ impl SessionEntry {
             "sessionId": self.session_id,
             "name": self.name,
             "cwd": self.cwd,
+            "branch": self.branch,
             "workspaceId": self.workspace_id,
             "routaAgentId": self.routa_agent_id,
             "provider": self.provider,
@@ -551,6 +560,7 @@ mod tests {
             id: session_id.to_string(),
             name: Some(format!("db-{session_id}")),
             cwd: "/tmp".to_string(),
+            branch: Some("main".to_string()),
             workspace_id: workspace_id.to_string(),
             routa_agent_id: Some(format!("agent-{session_id}")),
             provider: Some("codex".to_string()),
@@ -686,6 +696,7 @@ mod tests {
             .create(
                 session_id,
                 "/tmp",
+                Some("main"),
                 "default",
                 Some("claude"),
                 Some("CRAFTER"),

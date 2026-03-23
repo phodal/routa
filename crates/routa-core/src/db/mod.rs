@@ -128,6 +128,7 @@ impl Database {
                     id              TEXT PRIMARY KEY,
                     name            TEXT,
                     cwd             TEXT NOT NULL,
+                    branch          TEXT,
                     workspace_id    TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
                     routa_agent_id  TEXT,
                     provider        TEXT,
@@ -379,6 +380,7 @@ impl Database {
             Self::ignore_duplicate_column(conn.execute("ALTER TABLE tasks ADD COLUMN lane_handoffs TEXT NOT NULL DEFAULT '[]'", []))?;
             // Add session_id to notes if it doesn't exist yet (ignore error if already present)
             Self::ignore_duplicate_column(conn.execute("ALTER TABLE notes ADD COLUMN session_id TEXT", []))?;
+            Self::ignore_duplicate_column(conn.execute("ALTER TABLE acp_sessions ADD COLUMN branch TEXT", []))?;
             // Add parent_session_id to acp_sessions for CRAFTER child session tracking
             Self::ignore_duplicate_column(conn.execute("ALTER TABLE acp_sessions ADD COLUMN parent_session_id TEXT", []))?;
             conn.execute_batch(

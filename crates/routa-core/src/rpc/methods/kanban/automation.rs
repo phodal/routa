@@ -319,6 +319,7 @@ async fn trigger_assigned_task_acp_agent(
         .create(
             &session_id,
             &cwd,
+            None,
             &task.workspace_id,
             Some(provider.as_str()),
             Some(role.as_str()),

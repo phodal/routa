@@ -26,6 +26,7 @@ pub struct AcpSessionRow {
     pub id: String,
     pub name: Option<String>,
     pub cwd: String,
+    pub branch: Option<String>,
     pub workspace_id: String,
     pub routa_agent_id: Option<String>,
     pub provider: Option<String>,
@@ -53,14 +54,14 @@ impl AcpSessionStore {
         self.db
             .with_conn_async(move |conn| {
                 let mut stmt = conn.prepare(
-                    "SELECT id, name, cwd, workspace_id, routa_agent_id, provider, role, mode_id,
+                    "SELECT id, name, cwd, branch, workspace_id, routa_agent_id, provider, role, mode_id,
                             first_prompt_sent, message_history, created_at, updated_at, parent_session_id
                      FROM acp_sessions WHERE id = ?1",
                 )?;
 
                 let row = stmt
                     .query_row([&id], |row| {
-                        let history_json: String = row.get(9)?;
+                        let history_json: String = row.get(10)?;
                         let history: Vec<serde_json::Value> =
                             serde_json::from_str(&history_json).unwrap_or_default();
 
@@ -68,16 +69,17 @@ impl AcpSessionStore {
                             id: row.get(0)?,
                             name: row.get(1)?,
                             cwd: row.get(2)?,
-                            workspace_id: row.get(3)?,
-                            routa_agent_id: row.get(4)?,
-                            provider: row.get(5)?,
-                            role: row.get(6)?,
-                            mode_id: row.get(7)?,
-                            first_prompt_sent: row.get::<_, i32>(8)? != 0,
+                            branch: row.get(3)?,
+                            workspace_id: row.get(4)?,
+                            routa_agent_id: row.get(5)?,
+                            provider: row.get(6)?,
+                            role: row.get(7)?,
+                            mode_id: row.get(8)?,
+                            first_prompt_sent: row.get::<_, i32>(9)? != 0,
                             message_history: history,
-                            created_at: row.get(10)?,
-                            updated_at: row.get(11)?,
-                            parent_session_id: row.get(12)?,
+                            created_at: row.get(11)?,
+                            updated_at: row.get(12)?,
+                            parent_session_id: row.get(13)?,
                         })
                     })
                     .optional()?;
@@ -125,13 +127,13 @@ impl AcpSessionStore {
             .with_conn_async(move |conn| {
                 let (sql, params): (&str, Vec<Box<dyn rusqlite::ToSql>>) = match &workspace_filter {
                     Some(ws) => (
-                        "SELECT id, name, cwd, workspace_id, routa_agent_id, provider, role, mode_id,
+                        "SELECT id, name, cwd, branch, workspace_id, routa_agent_id, provider, role, mode_id,
                                 first_prompt_sent, message_history, created_at, updated_at, parent_session_id
                          FROM acp_sessions WHERE workspace_id = ?1 ORDER BY updated_at DESC LIMIT ?2",
                         vec![Box::new(ws.clone()) as Box<dyn rusqlite::ToSql>, Box::new(limit as i64)],
                     ),
                     None => (
-                        "SELECT id, name, cwd, workspace_id, routa_agent_id, provider, role, mode_id,
+                        "SELECT id, name, cwd, branch, workspace_id, routa_agent_id, provider, role, mode_id,
                                 first_prompt_sent, message_history, created_at, updated_at, parent_session_id
                          FROM acp_sessions ORDER BY updated_at DESC LIMIT ?1",
                         vec![Box::new(limit as i64) as Box<dyn rusqlite::ToSql>],
@@ -141,7 +143,7 @@ impl AcpSessionStore {
                 let mut stmt = conn.prepare(sql)?;
                 let param_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
                 let rows = stmt.query_map(param_refs.as_slice(), |row| {
-                    let history_json: String = row.get(9)?;
+                    let history_json: String = row.get(10)?;
                     let history: Vec<serde_json::Value> =
                         serde_json::from_str(&history_json).unwrap_or_default();
 
@@ -149,16 +151,17 @@ impl AcpSessionStore {
                         id: row.get(0)?,
                         name: row.get(1)?,
                         cwd: row.get(2)?,
-                        workspace_id: row.get(3)?,
-                        routa_agent_id: row.get(4)?,
-                        provider: row.get(5)?,
-                        role: row.get(6)?,
-                        mode_id: row.get(7)?,
-                        first_prompt_sent: row.get::<_, i32>(8)? != 0,
+                        branch: row.get(3)?,
+                        workspace_id: row.get(4)?,
+                        routa_agent_id: row.get(5)?,
+                        provider: row.get(6)?,
+                        role: row.get(7)?,
+                        mode_id: row.get(8)?,
+                        first_prompt_sent: row.get::<_, i32>(9)? != 0,
                         message_history: history,
-                        created_at: row.get(10)?,
-                        updated_at: row.get(11)?,
-                        parent_session_id: row.get(12)?,
+                        created_at: row.get(11)?,
+                        updated_at: row.get(12)?,
+                        parent_session_id: row.get(13)?,
                     })
                 })?;
 
@@ -215,6 +218,7 @@ impl AcpSessionStore {
         &self,
         id: &str,
         cwd: &str,
+        branch: Option<&str>,
         workspace_id: &str,
         provider: Option<&str>,
         role: Option<&str>,
@@ -222,6 +226,7 @@ impl AcpSessionStore {
     ) -> Result<(), ServerError> {
         let id = id.to_string();
         let cwd = cwd.to_string();
+        let branch = branch.map(|s| s.to_string());
         let workspace_id = workspace_id.to_string();
         let provider = provider.map(|s| s.to_string());
         let role = role.map(|s| s.to_string());
@@ -232,12 +237,13 @@ impl AcpSessionStore {
                 let now = chrono::Utc::now().timestamp_millis();
                 conn.execute(
                     "INSERT OR IGNORE INTO acp_sessions
-                        (id, cwd, workspace_id, provider, role, parent_session_id,
+                        (id, cwd, branch, workspace_id, provider, role, parent_session_id,
                          first_prompt_sent, message_history, created_at, updated_at)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0, '[]', ?7, ?7)",
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 0, '[]', ?8, ?8)",
                     rusqlite::params![
                         id,
                         cwd,
+                        branch,
                         workspace_id,
                         provider,
                         role,
@@ -369,6 +375,7 @@ mod tests {
             .create(
                 &session_id,
                 "/tmp",
+                Some("main"),
                 "default",
                 Some("claude"),
                 Some("CRAFTER"),
@@ -382,6 +389,7 @@ mod tests {
         let s = &sessions[0];
         assert_eq!(s.id, session_id);
         assert_eq!(s.cwd, "/tmp");
+        assert_eq!(s.branch.as_deref(), Some("main"));
         assert_eq!(s.workspace_id, "default");
         assert_eq!(s.provider.as_deref(), Some("claude"));
         assert_eq!(s.role.as_deref(), Some("CRAFTER"));
@@ -396,6 +404,7 @@ mod tests {
             .create(
                 &session_id,
                 "/tmp",
+                None,
                 "default",
                 Some("opencode"),
                 Some("CRAFTER"),
@@ -424,6 +433,7 @@ mod tests {
             .create(
                 &session_id,
                 "/tmp",
+                None,
                 "default",
                 Some("opencode"),
                 Some("CRAFTER"),
@@ -448,6 +458,7 @@ mod tests {
             .create(
                 &session_id,
                 "/tmp",
+                None,
                 "default",
                 Some("opencode"),
                 Some("CRAFTER"),
@@ -483,6 +494,7 @@ mod tests {
             .create(
                 &session_id,
                 "/tmp",
+                None,
                 "default",
                 Some("claude"),
                 Some("CRAFTER"),
@@ -521,6 +533,7 @@ mod tests {
             .create(
                 &session_id,
                 "/tmp",
+                None,
                 "default",
                 Some("claude"),
                 Some("CRAFTER"),
@@ -545,6 +558,7 @@ mod tests {
             .create(
                 &session_id,
                 "/tmp",
+                None,
                 "default",
                 Some("claude"),
                 Some("ROUTA"),

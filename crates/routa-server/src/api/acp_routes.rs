@@ -305,6 +305,10 @@ async fn acp_rpc(
                 .and_then(|v| v.as_str())
                 .unwrap_or("default")
                 .to_string();
+            let branch = params
+                .get("branch")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
             let provider = params
                 .get("provider")
                 .and_then(|v| v.as_str())
@@ -435,6 +439,7 @@ async fn acp_rpc(
                         .create(
                             &session_id,
                             &cwd,
+                            branch.as_deref(),
                             &workspace_id,
                             provider.as_deref(),
                             role.as_deref(),
@@ -479,6 +484,7 @@ async fn acp_rpc(
                     persist_session_to_jsonl(
                         &session_id,
                         &cwd,
+                        branch.as_deref(),
                         &workspace_id,
                         provider.as_deref(),
                         role.as_deref(),
@@ -656,6 +662,7 @@ async fn acp_rpc(
                             .create(
                                 &session_id,
                                 &cwd,
+                                persisted_session.as_ref().and_then(|session| session.branch.as_deref()),
                                 &workspace_id,
                                 provider.as_deref(),
                                 role.as_deref(),
@@ -673,6 +680,7 @@ async fn acp_rpc(
                         persist_session_to_jsonl(
                             &session_id,
                             &cwd,
+                            persisted_session.as_ref().and_then(|session| session.branch.as_deref()),
                             &workspace_id,
                             provider.as_deref(),
                             role.as_deref(),
@@ -1110,6 +1118,7 @@ async fn acp_sse(
 async fn persist_session_to_jsonl(
     session_id: &str,
     cwd: &str,
+    branch: Option<&str>,
     workspace_id: &str,
     provider: Option<&str>,
     role: Option<&str>,
@@ -1120,7 +1129,7 @@ async fn persist_session_to_jsonl(
         id: session_id.to_string(),
         name: None,
         cwd: cwd.to_string(),
-        branch: None,
+        branch: branch.map(|value| value.to_string()),
         workspace_id: workspace_id.to_string(),
         routa_agent_id: None,
         provider: provider.map(|s| s.to_string()),
