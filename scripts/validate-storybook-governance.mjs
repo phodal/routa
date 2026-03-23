@@ -9,7 +9,9 @@ const errors = [];
 const requiredMainSnippets = [
   "@storybook/nextjs-vite",
   "stories: [\"../src/**/*.stories.@(ts|tsx)\"]",
+  "@storybook/addon-docs",
   "@storybook/addon-a11y",
+  "@storybook/addon-vitest",
 ];
 
 const requiredPreviewSnippets = [
