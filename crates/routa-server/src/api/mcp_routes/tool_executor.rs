@@ -91,3 +91,21 @@ pub(super) fn tool_result_error(msg: &str) -> serde_json::Value {
         "content": [{ "type": "text", "text": msg }]
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::normalize_tool_name_public;
+
+    #[test]
+    fn normalize_tool_name_supports_compat_prefixes() {
+        assert_eq!(
+            normalize_tool_name_public("routa-coordination_list_agents"),
+            "list_agents"
+        );
+        assert_eq!(
+            normalize_tool_name_public("kanban-planning-mcp_create_card"),
+            "create_card"
+        );
+        assert_eq!(normalize_tool_name_public("list_tasks"), "list_tasks");
+    }
+}

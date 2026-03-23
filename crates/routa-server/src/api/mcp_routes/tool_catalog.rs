@@ -354,3 +354,46 @@ fn tool_def(name: &str, description: &str, input_schema: serde_json::Value) -> s
         "inputSchema": input_schema,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashSet;
+
+    use super::{build_tool_list_for_profile, tool_allowed_for_profile};
+
+    #[test]
+    fn kanban_profile_only_allows_kanban_tools() {
+        assert!(tool_allowed_for_profile(
+            "create_card",
+            Some("kanban-planning")
+        ));
+        assert!(!tool_allowed_for_profile(
+            "list_agents",
+            Some("kanban-planning")
+        ));
+        assert!(tool_allowed_for_profile("list_agents", None));
+    }
+
+    #[test]
+    fn build_tool_list_for_kanban_profile_filters_to_allowed_set() {
+        let tools = build_tool_list_for_profile(Some("kanban-planning"));
+        let names: Vec<&str> = tools
+            .iter()
+            .filter_map(|tool| tool.get("name").and_then(|v| v.as_str()))
+            .collect();
+
+        let allowed: HashSet<&str> = [
+            "create_card",
+            "decompose_tasks",
+            "search_cards",
+            "list_cards_by_column",
+            "update_card",
+            "move_card",
+        ]
+        .into_iter()
+        .collect();
+
+        assert!(!names.is_empty());
+        assert!(names.iter().all(|name| allowed.contains(name)));
+    }
+}

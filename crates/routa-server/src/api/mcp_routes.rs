@@ -323,3 +323,35 @@ fn inject_workspace_id(args: &mut serde_json::Value, workspace_id: &str) {
             .or_insert_with(|| serde_json::json!(workspace_id));
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::inject_workspace_id;
+
+    #[test]
+    fn inject_workspace_id_sets_for_non_object_args() {
+        let mut args = serde_json::json!("not-an-object");
+        inject_workspace_id(&mut args, "workspace-a");
+        assert_eq!(args, serde_json::json!({ "workspaceId": "workspace-a" }));
+    }
+
+    #[test]
+    fn inject_workspace_id_adds_when_missing() {
+        let mut args = serde_json::json!({ "name": "demo" });
+        inject_workspace_id(&mut args, "workspace-b");
+        assert_eq!(
+            args,
+            serde_json::json!({ "name": "demo", "workspaceId": "workspace-b" })
+        );
+    }
+
+    #[test]
+    fn inject_workspace_id_preserves_existing_value() {
+        let mut args = serde_json::json!({ "workspaceId": "existing", "name": "demo" });
+        inject_workspace_id(&mut args, "workspace-new");
+        assert_eq!(
+            args,
+            serde_json::json!({ "workspaceId": "existing", "name": "demo" })
+        );
+    }
+}
