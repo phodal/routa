@@ -35,6 +35,8 @@ const requiredStories = {
   "src/client/components/workspace-switcher.stories.tsx": ["Default", "DesktopCompact", "CreatingWorkspace", "DarkMode"],
   "src/client/components/repo-picker.stories.tsx": ["SelectedRepo", "ExistingReposTab", "CloneTab", "CloneInProgress", "DarkMode"],
   "src/client/components/branch-selector.stories.tsx": ["Default", "RemoteBranches", "Disabled", "DarkMode"],
+  "src/client/components/markdown-viewer.stories.tsx": ["PlainText", "StaticMarkdown", "TaskList", "Streaming", "DarkMode"],
+  "src/client/components/task-progress-bar.stories.tsx": ["Running", "Delegated", "AllCompleted", "WithFileChanges", "DarkMode"],
   "src/client/components/desktop-color-tokens.stories.tsx": ["LightMode", "DarkMode"],
   "src/client/components/desktop-primitives.stories.tsx": ["Default", "InteractiveStates", "DarkMode"],
 };
