@@ -35,6 +35,8 @@ pub mod skills_clone;
 pub mod skills_upload;
 pub mod specialists;
 pub mod tasks;
+pub mod tasks_automation;
+pub mod tasks_github;
 pub mod test_mcp;
 pub mod traces;
 pub mod webhooks;
