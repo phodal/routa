@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { AcpProviderInfo } from "../acp-client";
 import { SettingsPanel } from "./settings-panel";
+import { Button } from "./button";
 import {
   dedupeProviderIds,
   getOrderedVisibleProviderIds,
@@ -212,9 +213,10 @@ export function AcpProviderDropdown({
 
   return (
     <div className="relative">
-      <button
+      <Button
+        variant="ghost"
+        size="xs"
         ref={buttonRef}
-        type="button"
         onClick={toggleDropdown}
         disabled={disabled || providers.length === 0}
         className={buttonClassName ?? defaultButtonClassName}
@@ -231,7 +233,7 @@ export function AcpProviderDropdown({
         <svg className={`w-3 h-3 text-gray-400 transition-transform ${isOpen ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
         </svg>
-      </button>
+      </Button>
 
       {isOpen && dropdownPos && typeof document !== "undefined" && createPortal(
         <div
@@ -254,41 +256,44 @@ export function AcpProviderDropdown({
             <div className="overflow-y-auto">
               <div className="p-2">
                 {allowAuto && (
-                  <button
-                    type="button"
-                    onClick={() => handleSelect("")}
-                    className={`mb-1 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs transition-colors ${
-                      selectedProvider
-                        ? "text-gray-600 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800/50"
-                        : "bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-300"
-                    }`}
-                  >
+          <Button
+            variant="ghost"
+            size="xs"
+            type="button"
+            onClick={() => handleSelect("")}
+            className={`mb-1 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs transition-colors ${
+              selectedProvider
+                ? "text-gray-600 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800/50"
+                : "bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-300"
+            }`}
+          >
                     <span className="h-1.5 w-1.5 rounded-full bg-gray-400" />
                     <span className="font-medium">{autoLabel}</span>
-                  </button>
+                  </Button>
                 )}
                 {visibleProviders.length > 0 ? (
                   <div className="space-y-1">
                     {visibleProviders.map((provider) => (
-                      <button
-                        key={provider.id}
-                        type="button"
-                        onClick={() => handleSelect(provider.id)}
-                        title={provider.unavailableReason ?? provider.description}
-                        className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs transition-colors ${
-                          provider.id === selectedProvider
-                            ? "bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-300"
-                            : provider.status === "available"
-                              ? "text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800/50"
-                              : "text-gray-500 hover:bg-gray-50 dark:text-gray-400 dark:hover:bg-gray-800/50"
-                        }`}
-                      >
+                  <Button
+                    key={provider.id}
+                    variant="ghost"
+                    size="xs"
+                    onClick={() => handleSelect(provider.id)}
+                    title={provider.unavailableReason ?? provider.description}
+                    className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs transition-colors ${
+                      provider.id === selectedProvider
+                        ? "bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-300"
+                        : provider.status === "available"
+                          ? "text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800/50"
+                          : "text-gray-500 hover:bg-gray-50 dark:text-gray-400 dark:hover:bg-gray-800/50"
+                    }`}
+                  >
                         <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${provider.status === "available" ? "bg-green-500" : "bg-gray-300 dark:bg-gray-600"}`} />
                         <span className="min-w-0 flex-1 truncate font-medium">{provider.name}</span>
                         <span className="max-w-[120px] truncate font-mono text-[10px] text-gray-400 dark:text-gray-500">
                           {provider.command}
                         </span>
-                      </button>
+                      </Button>
                     ))}
                   </div>
                 ) : (
@@ -299,8 +304,9 @@ export function AcpProviderDropdown({
               </div>
 
               <div className="border-t border-gray-100 dark:border-gray-800">
-                <button
-                  type="button"
+                <Button
+                  variant="ghost"
+                  size="xs"
                   onClick={() => setSettingsOpen((open) => !open)}
                   className="flex w-full items-center justify-between px-3 py-2 text-left"
                 >
@@ -316,7 +322,7 @@ export function AcpProviderDropdown({
                   >
                     <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
                   </svg>
-                </button>
+                </Button>
               </div>
 
               {settingsOpen && (
@@ -341,7 +347,9 @@ export function AcpProviderDropdown({
                           draggingProviderId === provider.id ? "bg-gray-50 dark:bg-gray-800/60" : ""
                         }`}
                       >
-                        <button
+                        <Button
+                          variant="ghost"
+                          size="xs"
                           type="button"
                           aria-label={`Drag ${provider.name}`}
                           className={`flex h-6 w-6 items-center justify-center rounded text-gray-400 ${
@@ -351,7 +359,7 @@ export function AcpProviderDropdown({
                           <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                             <path strokeLinecap="round" strokeLinejoin="round" d="M8 6h.01M8 12h.01M8 18h.01M16 6h.01M16 12h.01M16 18h.01" />
                           </svg>
-                        </button>
+                        </Button>
                         <input
                           type="checkbox"
                           checked={checked}
@@ -370,13 +378,14 @@ export function AcpProviderDropdown({
               )}
 
               <div className="border-t border-gray-100 p-2 dark:border-gray-800">
-                <button
-                  type="button"
+                <Button
+                  variant="ghost"
+                  size="xs"
                   onClick={handleOpenSettingsPanel}
                   className="w-full rounded-lg border border-gray-200 px-3 py-2 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800/50"
                 >
                   Open Provider Settings
-                </button>
+                </Button>
               </div>
 
               {providers.length > 0 && visibleProviders.length === 0 && (
