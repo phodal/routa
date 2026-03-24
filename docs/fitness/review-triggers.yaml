@@ -31,6 +31,21 @@ review_triggers:
     severity: medium
     action: require_human_review
 
+  - name: api_contract_evidence_gap
+    type: evidence_gap
+    paths:
+      - api-contract.yaml
+    evidence_paths:
+      - docs/fitness/api-contract.md
+      - scripts/check-api-parity.ts
+      - scripts/validate-openapi-schema.ts
+      - src/app/api/**
+      - crates/routa-server/src/api/**
+      - docs/fitness/unit-test.md
+      - docs/fitness/rust-api-test.md
+    severity: high
+    action: require_human_review
+
   - name: cross_boundary_change_web_rust_tools
     type: cross_boundary_change
     boundaries:

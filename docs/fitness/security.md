@@ -43,11 +43,12 @@ metrics:
     description: "检测 npm 依赖中的 high 级别漏洞"
 
   - name: semgrep_warning
-    command: semgrep --config=p/security-audit --severity=WARNING --quiet . 2>&1 && echo "semgrep warning passed" || true
-    pattern: "semgrep warning passed|no matches found|Ran .* rules|0 findings"
+    command: semgrep --config=p/security-audit --severity=WARNING --sarif --quiet . 2>&1 || true
+    evidence_type: sarif
+    pattern: "sarif_results=0"
     hard_gate: false
     tier: deep
-    description: "Semgrep SAST 扫描 - WARNING 级别"
+    description: "Semgrep SAST 扫描 - WARNING 级别（SARIF 归一化）"
 
   - name: trivy_filesystem
     command: trivy fs --severity HIGH,CRITICAL --exit-code 0 . 2>&1 || true

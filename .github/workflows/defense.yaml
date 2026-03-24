@@ -226,6 +226,14 @@ jobs:
         with:
           sarif_file: semgrep-results.sarif
 
+      - name: Upload Semgrep SARIF artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: semgrep-results-sarif
+          path: semgrep-results.sarif
+          if-no-files-found: warn
+
       - name: Semgrep strict (ERROR only, fail on match)
         run: |
           semgrep scan \
@@ -258,6 +266,14 @@ jobs:
         if: always()
         with:
           sarif_file: trivy-results.sarif
+
+      - name: Upload Trivy SARIF artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: trivy-results-sarif
+          path: trivy-results.sarif
+          if-no-files-found: warn
 
   # ══════════════════════════════════════════════════════════════
   # SECURITY DIMENSION: Dockerfile 检查
