@@ -365,6 +365,15 @@ fn history_to_transcript_messages(history: &[Value]) -> Vec<TranscriptMessage> {
                     .and_then(|content| content.get("text"))
                     .and_then(Value::as_str)
                 {
+                    let normalized_text = if kind == "agent_message_chunk"
+                        && last_kind != Some("agent_message_chunk")
+                    {
+                        trim_leading_response_breaks(text)
+                    } else if kind == "agent_message" {
+                        trim_leading_response_breaks(text)
+                    } else {
+                        text.to_string()
+                    };
                     if kind == "agent_message_chunk" && last_kind == Some("agent_message_chunk") {
                         if let Some(existing_idx) = last_assistant_idx {
                             if let Some(existing) = messages.get_mut(existing_idx) {
@@ -374,7 +383,7 @@ fn history_to_transcript_messages(history: &[Value]) -> Vec<TranscriptMessage> {
                             messages.push(TranscriptMessage {
                                 id: fallback_id,
                                 role: "assistant",
-                                content: text.to_string(),
+                                content: normalized_text,
                                 timestamp,
                                 tool_name: None,
                                 tool_status: None,
@@ -389,7 +398,7 @@ fn history_to_transcript_messages(history: &[Value]) -> Vec<TranscriptMessage> {
                         messages.push(TranscriptMessage {
                             id: fallback_id,
                             role: "assistant",
-                            content: text.to_string(),
+                            content: normalized_text,
                             timestamp,
                             tool_name: None,
                             tool_status: None,
@@ -410,6 +419,15 @@ fn history_to_transcript_messages(history: &[Value]) -> Vec<TranscriptMessage> {
                     .and_then(|content| content.get("text"))
                     .and_then(Value::as_str)
                 {
+                    let normalized_text = if kind == "agent_thought_chunk"
+                        && last_kind != Some("agent_thought_chunk")
+                    {
+                        trim_leading_response_breaks(text)
+                    } else if kind == "agent_thought" {
+                        trim_leading_response_breaks(text)
+                    } else {
+                        text.to_string()
+                    };
                     if kind == "agent_thought_chunk" && last_kind == Some("agent_thought_chunk") {
                         if let Some(existing_idx) = last_thought_idx {
                             if let Some(existing) = messages.get_mut(existing_idx) {
@@ -419,7 +437,7 @@ fn history_to_transcript_messages(history: &[Value]) -> Vec<TranscriptMessage> {
                             messages.push(TranscriptMessage {
                                 id: fallback_id,
                                 role: "thought",
-                                content: text.to_string(),
+                                content: normalized_text,
                                 timestamp,
                                 tool_name: None,
                                 tool_status: None,
@@ -434,7 +452,7 @@ fn history_to_transcript_messages(history: &[Value]) -> Vec<TranscriptMessage> {
                         messages.push(TranscriptMessage {
                             id: fallback_id,
                             role: "thought",
-                            content: text.to_string(),
+                            content: normalized_text,
                             timestamp,
                             tool_name: None,
                             tool_status: None,
@@ -545,6 +563,10 @@ fn history_to_transcript_messages(history: &[Value]) -> Vec<TranscriptMessage> {
     }
 
     messages
+}
+
+fn trim_leading_response_breaks(text: &str) -> String {
+    text.trim_start_matches(['\r', '\n']).to_string()
 }
 
 fn traces_to_transcript_messages(
@@ -766,5 +788,29 @@ mod tests {
         assert_eq!(messages.len(), 1);
         assert_eq!(messages[0].role, "assistant");
         assert_eq!(messages[0].content, "hello world");
+    }
+
+    #[test]
+    fn history_transcript_trims_leading_breaks_for_new_assistant_message() {
+        let messages = history_to_transcript_messages(&[
+            json!({"sessionId":"s1","update":{"sessionUpdate":"agent_message_chunk","content":{"text":"\n\nHi!"}}}),
+            json!({"sessionId":"s1","update":{"sessionUpdate":"agent_message_chunk","content":{"text":" How can I help?"}}}),
+        ]);
+
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].role, "assistant");
+        assert_eq!(messages[0].content, "Hi! How can I help?");
+    }
+
+    #[test]
+    fn history_transcript_trims_leading_breaks_for_new_thought_message() {
+        let messages = history_to_transcript_messages(&[
+            json!({"sessionId":"s1","update":{"sessionUpdate":"agent_thought_chunk","content":{"text":"\nThe"}}}),
+            json!({"sessionId":"s1","update":{"sessionUpdate":"agent_thought_chunk","content":{"text":" user"}}}),
+        ]);
+
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].role, "thought");
+        assert_eq!(messages[0].content, "The user");
     }
 }

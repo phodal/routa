@@ -38,13 +38,14 @@ function appendStreamingChunk(
   }
 
   let messageId = streamingIds[sessionId];
+  const nextText = !messageId ? text.replace(/^[\r\n]+/, "") : text;
   if (!messageId) {
     messageId = uuidv4();
     streamingIds[sessionId] = messageId;
   }
 
   const index = messages.findIndex((message) => message.id === messageId);
-  const content = index >= 0 ? messages[index].content + text : text;
+  const content = index >= 0 ? messages[index].content + text : nextText;
   if (index >= 0) {
     messages[index] = { ...messages[index], content };
   } else {

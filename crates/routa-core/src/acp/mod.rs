@@ -145,7 +145,7 @@ impl Default for AcpManager {
 }
 
 impl AcpManager {
-    fn rewrite_notification_session_id(
+    pub fn rewrite_notification_session_id(
         session_id: &str,
         mut notification: serde_json::Value,
     ) -> serde_json::Value {
@@ -248,6 +248,37 @@ impl AcpManager {
             let drain_count = entries.len() - 500;
             entries.drain(0..drain_count);
         }
+    }
+
+    /// Broadcast a synthetic session/update event and persist it into in-memory history.
+    pub async fn emit_session_update(
+        &self,
+        session_id: &str,
+        update: serde_json::Value,
+    ) -> Result<(), String> {
+        let message = serde_json::json!({
+            "jsonrpc": "2.0",
+            "method": "session/update",
+            "params": {
+                "sessionId": session_id,
+                "update": update,
+            }
+        });
+
+        if let Some(channel) = self.notification_channels.read().await.get(session_id).cloned() {
+            let _ = channel.send(message.clone());
+        } else {
+            let params = message
+                .get("params")
+                .cloned()
+                .ok_or_else(|| "Missing params in synthetic session/update".to_string())?;
+            self.push_to_history(
+                session_id,
+                Self::rewrite_notification_session_id(session_id, params),
+            )
+            .await;
+        }
+        Ok(())
     }
 
     /// Mark a session as having had its first prompt dispatched.
@@ -929,6 +960,72 @@ mod tests {
 
         let history = manager.get_session_history("parent").await.unwrap_or_default();
         assert!(history.is_empty());
+    }
+
+    #[tokio::test]
+    async fn emit_session_update_broadcasts_when_channel_exists() {
+        let (tx, mut rx) = tokio::sync::broadcast::channel(8);
+        let manager = AcpManager {
+            sessions: Arc::new(RwLock::new(HashMap::new())),
+            processes: Arc::new(RwLock::new(HashMap::new())),
+            notification_channels: Arc::new(RwLock::new(HashMap::from([(
+                "session-1".to_string(),
+                tx,
+            )]))),
+            history: Arc::new(RwLock::new(HashMap::new())),
+        };
+
+        manager
+            .emit_session_update(
+                "session-1",
+                serde_json::json!({
+                    "sessionUpdate": "turn_complete",
+                    "stopReason": "cancelled"
+                }),
+            )
+            .await
+            .expect("emit should succeed");
+
+        let broadcast = rx.recv().await.expect("broadcast event");
+        assert_eq!(
+            broadcast["params"]["update"]["sessionUpdate"].as_str(),
+            Some("turn_complete")
+        );
+        assert_eq!(
+            broadcast["params"]["update"]["stopReason"].as_str(),
+            Some("cancelled")
+        );
+    }
+
+    #[tokio::test]
+    async fn emit_session_update_persists_history_without_channel() {
+        let manager = AcpManager {
+            sessions: Arc::new(RwLock::new(HashMap::new())),
+            processes: Arc::new(RwLock::new(HashMap::new())),
+            notification_channels: Arc::new(RwLock::new(HashMap::new())),
+            history: Arc::new(RwLock::new(HashMap::new())),
+        };
+
+        manager
+            .emit_session_update(
+                "session-1",
+                serde_json::json!({
+                    "sessionUpdate": "turn_complete",
+                    "stopReason": "cancelled"
+                }),
+            )
+            .await
+            .expect("emit should succeed");
+
+        let history = manager
+            .get_session_history("session-1")
+            .await
+            .expect("history should exist");
+        assert_eq!(history.len(), 1);
+        assert_eq!(
+            history[0]["update"]["sessionUpdate"].as_str(),
+            Some("turn_complete")
+        );
     }
 
     #[test]

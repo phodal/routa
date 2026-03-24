@@ -882,8 +882,16 @@ async fn acp_rpc(
                         loop {
                             match rx.recv().await {
                                 Ok(msg) => {
+                                    let rewritten = match msg.get("params").cloned() {
+                                        Some(params) => serde_json::json!({
+                                            "jsonrpc": "2.0",
+                                            "method": "session/update",
+                                            "params": routa_core::acp::AcpManager::rewrite_notification_session_id(&session_id_clone, params),
+                                        }),
+                                        None => msg.clone(),
+                                    };
                                     // Check if this is turn_complete
-                                    let is_turn_complete = msg
+                                    let is_turn_complete = rewritten
                                         .get("params")
                                         .and_then(|p| p.get("update"))
                                         .and_then(|u| u.get("sessionUpdate"))
@@ -891,7 +899,7 @@ async fn acp_rpc(
                                         == Some("turn_complete");
 
                                     yield Ok::<_, Infallible>(
-                                        Event::default().data(msg.to_string())
+                                        Event::default().data(rewritten.to_string())
                                     );
 
                                     if is_turn_complete {
@@ -978,7 +986,20 @@ async fn acp_rpc(
 
         "session/cancel" => {
             if let Some(sid) = params.get("sessionId").and_then(|v| v.as_str()) {
+                let should_emit_turn_complete = state.acp_manager.is_claude_session(sid).await;
                 state.acp_manager.cancel(sid).await;
+                if should_emit_turn_complete {
+                    let _ = state
+                        .acp_manager
+                        .emit_session_update(
+                            sid,
+                            serde_json::json!({
+                                "sessionUpdate": "turn_complete",
+                                "stopReason": "cancelled"
+                            }),
+                        )
+                        .await;
+                }
             }
             Ok(AcpResponse::Json(Json(serde_json::json!({
                 "jsonrpc": "2.0",

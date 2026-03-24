@@ -180,7 +180,7 @@ export function MarkdownViewer({
   if (complexity === "simple") {
     return (
       <div className={`markdown-viewer simple-content ${className}`}>
-        <p className="whitespace-pre-wrap">{content}</p>
+        <p className="m-0 whitespace-pre-wrap">{content}</p>
       </div>
     );
   }
