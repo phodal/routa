@@ -94,7 +94,6 @@ export function useChatMessages({
       const messages = hydrateTranscriptMessages(serializedMessages);
 
       if (history.length === 0 && messages.length === 0) {
-        loadedHistoryRef.current.add(sessionId);
         return;
       }
       loadedHistoryRef.current.add(sessionId);
@@ -147,6 +146,17 @@ export function useChatMessages({
     setIsSessionRunning(false);
     void fetchSessionHistory(activeSessionId);
   }, [activeSessionId, fetchSessionHistory]);
+
+  useEffect(() => {
+    if (!activeSessionId) return;
+    if (loadedHistoryRef.current.has(activeSessionId)) return;
+    if (updates.length === 0) return;
+    if ((messagesBySession[activeSessionId]?.length ?? 0) > 0) return;
+    const retry = window.setTimeout(() => {
+      void fetchSessionHistory(activeSessionId);
+    }, 0);
+    return () => window.clearTimeout(retry);
+  }, [activeSessionId, updates.length, messagesBySession, fetchSessionHistory]);
 
   // Process SSE updates
   useEffect(() => {
