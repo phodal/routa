@@ -137,6 +137,71 @@ export class ClaudeCodeSdkAdapter {
 
   private lifecycleNotifier?: LifecycleNotifier;
 
+  private splitAssistantText(text: string): string[] {
+    if (!text) return [];
+    if (text.length <= 120) return [text];
+
+    const chunks: string[] = [];
+    for (let i = 0; i < text.length; i += 120) {
+      chunks.push(text.slice(i, i + 120));
+    }
+    return chunks;
+  }
+
+  private createFallbackAssistantNotifications(
+    msg: Extract<SDKMessage, { type: "assistant" }>,
+    sessionId: string,
+  ): JsonRpcMessage[] {
+    const notifications: JsonRpcMessage[] = [];
+
+    for (const block of msg.message.content) {
+      if (block.type === "text" && block.text) {
+        for (const chunk of this.splitAssistantText(block.text)) {
+          notifications.push(
+            createNotification("session/update", {
+              sessionId,
+              update: {
+                sessionUpdate: "agent_message_chunk",
+                content: { type: "text", text: chunk },
+              },
+            }),
+          );
+        }
+        continue;
+      }
+
+      if (block.type === "tool_use") {
+        if (block.name === "AskUserQuestion" && this.pendingUserInputRequests.has(block.id)) {
+          continue;
+        }
+        const toolBlock = block as unknown as Record<string, unknown>;
+        const completedAskUserInput =
+          block.name === "AskUserQuestion"
+            ? this.completedUserInputResponses.get(block.id)
+            : undefined;
+        const rawInput = completedAskUserInput ?? toolBlock.input;
+        if (completedAskUserInput) {
+          this.completedUserInputResponses.delete(block.id);
+        }
+        const rawInputObj = rawInput ? { rawInput } : {};
+        notifications.push(
+          createNotification("session/update", {
+            sessionId,
+            update: {
+              sessionUpdate: "tool_call_update",
+              toolCallId: block.id,
+              title: block.name,
+              status: "completed",
+              ...rawInputObj,
+            },
+          }),
+        );
+      }
+    }
+
+    return notifications;
+  }
+
   constructor(
     cwd: string,
     onNotification: NotificationHandler,
@@ -321,6 +386,8 @@ export class ClaudeCodeSdkAdapter {
         cwd: promptCwd,
         model: this._modelOverride ?? config.model,
         maxTurns: this._maxTurnsOverride ?? 30,
+        // Required for token-level incremental streaming events.
+        includePartialMessages: true,
         abortController: this.abortController,
         permissionMode: "bypassPermissions",
         allowDangerouslySkipPermissions: true,
@@ -379,9 +446,50 @@ export class ClaudeCodeSdkAdapter {
           }
         }
 
+        // Some SDK/provider combinations do not emit `stream_event` deltas even with
+        // includePartialMessages. In that case, split assistant text blocks so the
+        // client still receives incremental chunks instead of a single large payload.
+        if (msg.type === "assistant" && !this._hasSeenStreamTextDelta) {
+          const fallbackNotifications = this.createFallbackAssistantNotifications(msg, sessionId);
+          for (const fallbackNotification of fallbackNotifications) {
+            this.onNotification(fallbackNotification);
+            yield formatSseEvent(fallbackNotification);
+          }
+          const renameNotification = this.detectAgentRenameFromMessage(msg, sessionId);
+          if (renameNotification) {
+            this.onNotification(renameNotification);
+            yield formatSseEvent(renameNotification);
+          }
+          continue;
+        }
+
         // Dispatch message and yield SSE event
         const notification = this.createNotificationFromMessage(msg, sessionId);
         if (notification) {
+          const text = notification
+            .params?.update?.sessionUpdate === "agent_message_chunk"
+            && typeof notification.params?.update?.content === "object"
+            && notification.params.update.content !== null
+            && "text" in notification.params.update.content
+            && typeof notification.params.update.content.text === "string"
+              ? notification.params.update.content.text
+              : undefined;
+
+          if (text && text.length > 120) {
+            for (const chunk of this.splitAssistantText(text)) {
+              const chunkNotification = createNotification("session/update", {
+                sessionId,
+                update: {
+                  sessionUpdate: "agent_message_chunk",
+                  content: { type: "text", text: chunk },
+                },
+              });
+              this.onNotification(chunkNotification);
+              yield formatSseEvent(chunkNotification);
+            }
+            continue;
+          }
+
           // Also call the original notification handler for non-streaming consumers
           this.onNotification(notification);
           // Yield SSE event for streaming response
@@ -508,6 +616,8 @@ export class ClaudeCodeSdkAdapter {
         cwd: promptCwd,
         model: this._modelOverride ?? config.model,
         maxTurns: this._maxTurnsOverride ?? 30,
+        // Keep message semantics aligned with promptStream().
+        includePartialMessages: true,
         abortController: this.abortController,
         // Allow the agent to execute tools without interactive permission prompts.
         // Required for autonomous operation in serverless environments.
