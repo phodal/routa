@@ -43,7 +43,7 @@ flowchart LR
 \`\`\``;
 
 const meta = {
-  title: "Core/Content/MarkdownViewer",
+  title: "Core/Markdown Viewer",
   component: MarkdownViewer,
   tags: ["autodocs"],
   parameters: {

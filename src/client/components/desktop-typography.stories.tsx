@@ -94,7 +94,7 @@ function TypographyGallery() {
 }
 
 const meta = {
-  title: "Foundations/Typography/BaseTypography",
+  title: "Foundations/Typography",
   tags: ["autodocs"],
   parameters: {
     layout: "fullscreen",

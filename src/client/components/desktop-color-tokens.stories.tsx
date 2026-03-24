@@ -330,7 +330,7 @@ function TokenGrid() {
 }
 
 const meta = {
-  title: "Foundations/Tokens/BrandColorSystem",
+  title: "Foundations/Brand Colors",
   tags: ["autodocs"],
   parameters: {
     layout: "fullscreen",

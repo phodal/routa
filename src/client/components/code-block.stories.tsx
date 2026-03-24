@@ -18,7 +18,7 @@ const jsonCode = `{
 const longLineCode = `const report = "Storybook governance should remain readable even when a generated artifact contains a very long line with repeated tokens and metadata that would otherwise force a horizontal scroll in the viewer component."`;
 
 const meta = {
-  title: "Core/Content/CodeBlock",
+  title: "Core/Code Block",
   component: CodeBlock,
   tags: ["autodocs"],
   parameters: {

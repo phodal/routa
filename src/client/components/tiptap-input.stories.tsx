@@ -172,7 +172,7 @@ function TiptapInputStoryHarness({
 }
 
 const meta = {
-  title: "Core/Inputs/TiptapInput",
+  title: "Core/Tiptap Input",
   component: TiptapInput,
   tags: ["autodocs"],
   parameters: {

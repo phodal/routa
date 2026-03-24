@@ -77,7 +77,7 @@ const withNotifications = (notifications: AppNotification[]): Decorator =>
   };
 
 const meta = {
-  title: "Core/Feedback/NotificationBell",
+  title: "Core/Notification Bell",
   component: NotificationBell,
   tags: ["autodocs"],
   parameters: {

@@ -21,7 +21,7 @@ const completedTasks: TaskInfo[] = [
 ];
 
 const meta = {
-  title: "Core/Feedback/TaskProgressBar",
+  title: "Core/Task Progress Bar",
   component: TaskProgressBar,
   tags: ["autodocs"],
   parameters: {
