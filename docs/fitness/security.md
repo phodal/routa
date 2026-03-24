@@ -25,11 +25,11 @@ metrics:
     description: "检测 Rust 依赖中的已知漏洞"
 
   - name: semgrep_critical
-    command: semgrep --config=p/security-audit --config=p/owasp-top-ten --severity=ERROR --error --quiet . 2>&1 && echo "semgrep critical passed" || true
-    pattern: "semgrep critical passed|no matches found|Ran .* rules|0 findings"
+    command: semgrep --config=p/security-audit --config=p/owasp-top-ten --severity=ERROR --sarif --quiet . 2>&1 || true
+    evidence_type: sarif
     hard_gate: true
     tier: deep
-    description: "Semgrep SAST 扫描 - 仅 ERROR 级别"
+    description: "Semgrep SAST 扫描 - 仅 ERROR 级别（SARIF 归一化）"
 
   # ══════════════════════════════════════════════════════════════
   # Soft Gates - 计入评分
