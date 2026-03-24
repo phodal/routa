@@ -276,8 +276,12 @@ function ensureDir(dirPath) {
   fs.mkdirSync(dirPath, { recursive: true });
 }
 
-function projectSlug(projectRoot) {
-  return path.basename(projectRoot.replace(/\/+$/, ""));
+function toFolderSlug(absolutePath) {
+  let cleaned = absolutePath.replace(/^[/\\]+/, "");
+  cleaned = cleaned.replace(/[/\\]+$/, "");
+  cleaned = cleaned.replace(/:/g, "");
+  cleaned = cleaned.replace(/[/\\]+/g, "-");
+  return cleaned;
 }
 
 function initializeFixtureDb(dbPath, projectRoot, homeDir) {
@@ -387,7 +391,20 @@ function initializeFixtureDb(dbPath, projectRoot, homeDir) {
       updated_at INTEGER NOT NULL,
       model TEXT,
       branch TEXT,
-      parent_session_id TEXT
+      parent_session_id TEXT,
+      specialist_id TEXT,
+      execution_mode TEXT,
+      owner_instance_id TEXT,
+      lease_expires_at INTEGER
+    );
+
+    CREATE TABLE IF NOT EXISTS session_messages (
+      id TEXT PRIMARY KEY,
+      session_id TEXT NOT NULL,
+      message_index INTEGER NOT NULL,
+      event_type TEXT NOT NULL,
+      payload TEXT NOT NULL,
+      created_at INTEGER NOT NULL
     );
 
     CREATE TABLE IF NOT EXISTS codebases (
@@ -551,7 +568,7 @@ function writeTraceFixtures(projectRoot, homeDir) {
     homeDir,
     ".routa",
     "projects",
-    projectSlug(projectRoot),
+    toFolderSlug(projectRoot),
     "traces",
     SNAPSHOT_DAY,
   );

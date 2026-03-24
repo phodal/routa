@@ -25,9 +25,16 @@ async function main() {
 
   let devServer = null;
   const snapshotRuntime = await createSnapshotRuntime();
+  const serverReachable = await isServerReachable(options.baseUrl);
+  if (snapshotRuntime.requiresManagedServer && serverReachable) {
+    throw new Error(
+      `Snapshot fixtures require an isolated dev server, but ${options.baseUrl} is already in use. ` +
+      "Stop the existing server or disable fixtures before generating snapshots."
+    );
+  }
   const serverAlreadyRunning = snapshotRuntime.requiresManagedServer
     ? false
-    : await isServerReachable(options.baseUrl);
+    : serverReachable;
   if (!serverAlreadyRunning) {
     console.log(`Starting dev server at ${options.baseUrl}...`);
     devServer = startDevServer(options.baseUrl, snapshotRuntime.env);
