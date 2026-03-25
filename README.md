@@ -168,9 +168,13 @@ routa chat                        # Interactive chat
 
 ## 🏗 Architecture
 
-Routa is centered on ACP-backed session orchestration across dual runtime surfaces: a Next.js web runtime and a Tauri + Axum desktop runtime.
+Routa is built around ACP-backed session orchestration.
+
+The product runs on two runtime surfaces: a Next.js web runtime and a Tauri + Axum desktop runtime. Both feed the same workspace-scoped coordination model for sessions, kanban automation, tasks, tools, and traces.
 
 ![Routa architecture](docs/architecture.svg)
+
+At the center is the ACP orchestration layer. In the current codebase, provider families are normalized through shared provider adapters, provider registry logic, and ACP preset catalogs, so BYOK SDK/API integrations and ACP CLI/Docker providers still converge on the same session lifecycle and streaming model.
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the canonical architecture contract and [docs/architecture.svg](docs/architecture.svg) for the visual overview.
 
