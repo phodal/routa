@@ -662,6 +662,7 @@ async fn execute_specialist_run(
             metrics.history_entry_count,
             metrics.output_chars,
             metrics.last_process_output.as_deref(),
+            None,
         )
         .and_then(|diagnostic| diagnostic.failure_stage_override)
         .unwrap_or("prompt_submission");
@@ -673,6 +674,7 @@ async fn execute_specialist_run(
             metrics.history_entry_count,
             metrics.output_chars,
             metrics.last_process_output.as_deref(),
+            None,
         );
         if let Some(context) = journey_context.as_ref() {
             metrics.elapsed_ms = run_start.elapsed().as_millis();
@@ -710,6 +712,7 @@ async fn execute_specialist_run(
                 metrics.history_entry_count,
                 metrics.output_chars,
                 metrics.last_process_output.as_deref(),
+                Some(specialist_output.as_str()),
             )
             .and_then(|diagnostic| diagnostic.failure_stage_override)
             .unwrap_or(reason.as_str());
@@ -721,6 +724,7 @@ async fn execute_specialist_run(
                 metrics.history_entry_count,
                 metrics.output_chars,
                 metrics.last_process_output.as_deref(),
+                Some(specialist_output.as_str()),
             );
             write_ui_journey_failure_artifacts(context, failure_stage, &failure_summary, &metrics);
             return Err(format!(

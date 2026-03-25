@@ -136,6 +136,7 @@ pub(crate) fn augment_runtime_failure_message(
     history_entry_count: usize,
     output_chars: usize,
     last_process_output: Option<&str>,
+    provider_output: Option<&str>,
 ) -> String {
     let Some(diagnostic) = diagnose_runtime_failure(
         provider,
@@ -144,6 +145,7 @@ pub(crate) fn augment_runtime_failure_message(
         history_entry_count,
         output_chars,
         last_process_output,
+        provider_output,
     ) else {
         return failure_message.to_string();
     };
@@ -161,8 +163,12 @@ pub(crate) fn diagnose_runtime_failure(
     history_entry_count: usize,
     output_chars: usize,
     last_process_output: Option<&str>,
+    provider_output: Option<&str>,
 ) -> Option<ProviderRuntimeDiagnostic> {
     let normalized_process_output = last_process_output
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    let normalized_provider_output = provider_output
         .map(str::trim)
         .filter(|value| !value.is_empty());
     let mut hints = Vec::new();
@@ -171,6 +177,16 @@ pub(crate) fn diagnose_runtime_failure(
     }
 
     let mut failure_stage_override = None;
+    if let Some(output_diagnostic) = diagnose_provider_output(provider, normalized_provider_output)
+    {
+        if let Some(stage) = output_diagnostic.failure_stage_override {
+            failure_stage_override = Some(stage);
+        }
+        if let Some(hint) = output_diagnostic.hint {
+            hints.push(hint);
+        }
+    }
+
     if provider.trim().eq_ignore_ascii_case("opencode")
         && output_chars == 0
         && history_entry_count <= 1
@@ -195,6 +211,31 @@ pub(crate) fn diagnose_runtime_failure(
         failure_stage_override,
         hint: (!hints.is_empty()).then(|| hints.join(" | ")),
     })
+}
+
+fn diagnose_provider_output(
+    provider: &str,
+    provider_output: Option<&str>,
+) -> Option<ProviderRuntimeDiagnostic> {
+    let output = provider_output?;
+    let output_lower = output.to_ascii_lowercase();
+
+    if provider.trim().eq_ignore_ascii_case("claude")
+        && (output_lower.contains("exceeded_current_quota_error")
+            || output_lower.contains("insufficient balance")
+            || output_lower.contains("suspended due to insufficient balance")
+            || (output_lower.contains("api error: 429") && output_lower.contains("quota")))
+    {
+        return Some(ProviderRuntimeDiagnostic {
+            failure_stage_override: Some("provider_rate_limited"),
+            hint: Some(format!(
+                "Claude provider output reports quota/billing failure: {}",
+                truncate(output, 240)
+            )),
+        });
+    }
+
+    None
 }
 
 fn classify_codex_process_output(data: &str) -> CodexProcessOutputEvent {
@@ -502,6 +543,7 @@ mod tests {
             1,
             0,
             Some("provider stderr line"),
+            None,
         );
 
         assert!(message.contains("last process output"));
@@ -535,6 +577,7 @@ mod tests {
             1,
             0,
             Some("provider stderr line"),
+            None,
         )
         .unwrap();
 
@@ -620,6 +663,31 @@ mod tests {
 
         let output = extract_provider_output_from_process_output("codex", &history);
         assert_eq!(output, "<ui-journey-artifact>done");
+    }
+
+    #[test]
+    fn classifies_claude_quota_errors_from_provider_output() {
+        let diagnostic = diagnose_runtime_failure(
+            "claude",
+            SystemTime::now(),
+            Some("acknowledged"),
+            1,
+            262,
+            None,
+            Some(
+                "API Error: 429 {\"error\":{\"message\":\"Your account is suspended due to insufficient balance\",\"type\":\"exceeded_current_quota_error\"}}",
+            ),
+        )
+        .unwrap();
+
+        assert_eq!(
+            diagnostic.failure_stage_override,
+            Some("provider_rate_limited")
+        );
+        assert!(diagnostic
+            .hint
+            .unwrap()
+            .contains("Claude provider output reports quota/billing failure"));
     }
 
     #[test]
