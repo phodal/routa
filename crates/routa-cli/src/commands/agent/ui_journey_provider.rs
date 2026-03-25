@@ -235,6 +235,25 @@ fn diagnose_provider_output(
         });
     }
 
+    if provider.trim().eq_ignore_ascii_case("qoder")
+        || provider.trim().eq_ignore_ascii_case("qodercli")
+    {
+        let denied_permission = output_lower.contains("permission denied by user");
+        let mentions_tooling = output_lower.contains("bash")
+            || output_lower.contains("playwright")
+            || output_lower.contains("agent-browser")
+            || output_lower.contains("skill");
+        if denied_permission && mentions_tooling {
+            return Some(ProviderRuntimeDiagnostic {
+                failure_stage_override: Some("provider_runtime"),
+                hint: Some(format!(
+                    "Qoder ACP denied tool execution despite permission bypass flags: {}",
+                    truncate(output, 240)
+                )),
+            });
+        }
+    }
+
     None
 }
 
@@ -688,6 +707,28 @@ mod tests {
             .hint
             .unwrap()
             .contains("Claude provider output reports quota/billing failure"));
+    }
+
+    #[test]
+    fn classifies_qoder_permission_denials_from_provider_output() {
+        let diagnostic = diagnose_runtime_failure(
+            "qodercli",
+            SystemTime::now(),
+            Some("pending"),
+            18,
+            512,
+            None,
+            Some(
+                "permission denied by user while invoking Bash and agent-browser Skill for Playwright screenshot capture",
+            ),
+        )
+        .unwrap();
+
+        assert_eq!(diagnostic.failure_stage_override, Some("provider_runtime"));
+        assert!(diagnostic
+            .hint
+            .unwrap()
+            .contains("Qoder ACP denied tool execution"));
     }
 
     #[test]
