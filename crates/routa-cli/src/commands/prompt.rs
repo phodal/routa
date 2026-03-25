@@ -1,24 +1,21 @@
-//! `routa -p "requirement"` — Run the full Routa agent flow from CLI.
+//! `routa -p "requirement"` — Run a single quick prompt from CLI.
 //!
-//! Mirrors the web UI flow:
+//! Flow:
 //! 1. Creates a workspace (or uses default)
-//! 2. Spawns a ROUTA coordinator agent
-//! 3. Sends the user's requirement as the initial prompt
-//! 4. Streams session updates (agent messages, tool calls, delegations)
-//! 5. Coordinator generates @@@task blocks → delegates to CRAFTER agents
-//! 6. Waits for all child agents to complete
+//! 2. Spawns a DEVELOPER agent
+//! 3. Sends the user's prompt as-is
+//! 4. Streams session updates (agent messages, tool calls, process output)
+//! 5. Prints a run-scoped summary
 
 use std::collections::HashSet;
-use std::sync::Arc;
 
-use routa_core::orchestration::{OrchestratorConfig, RoutaOrchestrator};
 use routa_core::rpc::RpcRouter;
 use routa_core::state::AppState;
 
 use super::review::stream_parser::{extract_update_text, update_contains_turn_complete};
 use super::tui::TuiRenderer;
 
-/// Run the full Routa coordinator flow for a user prompt.
+/// Run a single DEVELOPER prompt flow for a user prompt.
 pub async fn run(
     state: &AppState,
     prompt: &str,
@@ -81,8 +78,8 @@ pub async fn run(
         }
     };
 
-    // ── 2. Create ROUTA coordinator agent ───────────────────────────────
-    let agent_name = "cli-coordinator";
+    // ── 2. Create DEVELOPER agent ───────────────────────────────────────
+    let agent_name = "cli-developer";
     let create_response = router
         .handle_value(serde_json::json!({
             "jsonrpc": "2.0",
@@ -90,7 +87,7 @@ pub async fn run(
             "method": "agents.create",
             "params": {
                 "name": agent_name,
-                "role": "ROUTA",
+                "role": "DEVELOPER",
                 "workspaceId": &workspace_id
             }
         }))
@@ -106,32 +103,21 @@ pub async fn run(
                 .and_then(|e| e.get("message"))
                 .and_then(|m| m.as_str())
                 .unwrap_or("Unknown error");
-            format!("Failed to create coordinator agent: {}", error_msg)
+            format!("Failed to create developer agent: {}", error_msg)
         })?
         .to_string();
 
-    // ── 3. Build coordinator prompt ─────────────────────────────────────
-    let coordinator_prompt = format!(
-        "{}\n\n---\n\n\
-         **Your Agent ID:** {}\n\
-         **Workspace ID:** {}\n\n\
-         ## User Request\n\n{}\n\n\
-         ---\n**Reminder:** {}\n",
-        QUICK_PROMPT_COORDINATOR_SYSTEM_PROMPT,
-        agent_id,
-        &workspace_id,
-        prompt,
-        QUICK_PROMPT_COORDINATOR_ROLE_REMINDER
-    );
+    // ── 3. Use the raw user prompt without a CLI-specific wrapper ───────
+    let prompt_text = prompt.trim();
 
-    // ── 4. Create ACP session for the coordinator ───────────────────────
+    // ── 4. Create ACP session for the developer ─────────────────────────
     let session_id = uuid::Uuid::new_v4().to_string();
 
     println!("╔══════════════════════════════════════════════════════════╗");
-    println!("║  Routa CLI — Multi-Agent Coordinator                    ║");
+    println!("║  Routa CLI — Quick Prompt                               ║");
     println!("╠══════════════════════════════════════════════════════════╣");
     println!("║  Workspace : {:<42} ║", &workspace_id);
-    println!("║  Agent     : {} (ROUTA)  {:<27} ║", &agent_id[..8], "");
+    println!("║  Agent     : {} (DEVELOPER) {:<23} ║", &agent_id[..8], "");
     println!("║  Provider  : {:<42} ║", provider);
     println!("║  CWD       : {:<42} ║", truncate_path(&cwd, 42));
     println!("╚══════════════════════════════════════════════════════════╝");
@@ -146,7 +132,7 @@ pub async fn run(
             cwd.clone(),
             workspace_id.clone(),
             Some(provider.to_string()),
-            Some("ROUTA".to_string()),
+            Some("DEVELOPER".to_string()),
             None,
             None, // branch
             None, // tool_mode
@@ -156,35 +142,22 @@ pub async fn run(
 
     match spawn_result {
         Ok((sid, _)) => {
-            tracing::info!("Coordinator session created: {}", sid);
+            tracing::info!("Developer session created: {}", sid);
         }
         Err(e) => {
             return Err(format!("Failed to create ACP session: {}", e));
         }
     }
 
-    // ── 5. Register with orchestrator ───────────────────────────────────
-    let acp = Arc::new(state.acp_manager.clone());
-    let orchestrator = RoutaOrchestrator::new(
-        OrchestratorConfig::default(),
-        acp,
-        state.agent_store.clone(),
-        state.task_store.clone(),
-        state.event_bus.clone(),
-    );
-    orchestrator
-        .register_agent_session(&agent_id, &session_id)
-        .await;
-
-    // ── 6. Subscribe to session updates ─────────────────────────────────
+    // ── 5. Subscribe to session updates ─────────────────────────────────
     let mut rx = state
         .acp_manager
         .subscribe(&session_id)
         .await
         .ok_or("Failed to subscribe to session updates")?;
 
-    // ── 7. Send the coordinator prompt ──────────────────────────────────
-    println!("🚀 Sending requirement to coordinator...");
+    // ── 6. Send the raw user prompt ─────────────────────────────────────
+    println!("🚀 Sending prompt to developer...");
     println!();
 
     let mut renderer = TuiRenderer::new();
@@ -196,7 +169,7 @@ pub async fn run(
     let mut prompt_error: Option<String> = None;
     let mut saw_output = false;
     let mut waiting_notice_shown = false;
-    let prompt_future = state.acp_manager.prompt(&session_id, &coordinator_prompt);
+    let prompt_future = state.acp_manager.prompt(&session_id, prompt_text);
     tokio::pin!(prompt_future);
 
     loop {
@@ -236,13 +209,13 @@ pub async fn run(
                         renderer.handle_update(&update);
                         if is_done {
                             renderer.finish();
-                            println!("═══ Coordinator turn complete ═══");
+                            println!("═══ Agent turn complete ═══");
                             break;
                         }
                     }
                     Err(_) => {
                         renderer.finish();
-                        println!("═══ Coordinator session ended ═══");
+                        println!("═══ Agent session ended ═══");
                         break;
                     }
                 }
@@ -253,21 +226,21 @@ pub async fn run(
                     && !saw_output
                     && idle_count >= initial_wait_notice_threshold
                 {
-                    println!("… Waiting for coordinator output");
+                    println!("… Waiting for agent output");
                     waiting_notice_shown = true;
                 }
 
                 if let Some(history) = state.acp_manager.get_session_history(&session_id).await {
                     if update_contains_turn_complete(&history) {
                         renderer.finish();
-                        println!("═══ Coordinator turn complete ═══");
+                        println!("═══ Agent turn complete ═══");
                         break;
                     }
                 }
 
                 if prompt_finished && idle_count >= prompt_finished_idle_threshold {
                     renderer.finish();
-                    println!("═══ Coordinator response complete ═══");
+                    println!("═══ Agent response complete ═══");
                     break;
                 }
 
@@ -279,7 +252,7 @@ pub async fn run(
 
                 if !state.acp_manager.is_alive(&session_id).await {
                     renderer.finish();
-                    println!("═══ Coordinator process exited ═══");
+                    println!("═══ Agent process exited ═══");
                     break;
                 }
             }
@@ -288,7 +261,6 @@ pub async fn run(
 
     if let Some(error) = prompt_error {
         state.acp_manager.kill_session(&session_id).await;
-        orchestrator.cleanup(&session_id).await;
         return Err(error);
     }
 
@@ -298,7 +270,6 @@ pub async fn run(
 
     // ── 10. Cleanup ─────────────────────────────────────────────────────
     state.acp_manager.kill_session(&session_id).await;
-    orchestrator.cleanup(&session_id).await;
 
     Ok(())
 }
@@ -533,30 +504,3 @@ fn lane_session_agent_matches(
 fn agent_id(agent: &serde_json::Value) -> Option<&str> {
     agent.get("id").and_then(|value| value.as_str())
 }
-
-const QUICK_PROMPT_COORDINATOR_SYSTEM_PROMPT: &str = r#"## Routa Quick Coordinator
-
-You are the autonomous coordinator for CLI prompt mode.
-Plan, delegate, verify, and report progress without waiting for user approval between steps.
-You do NOT implement code yourself and should not behave like a Crafter task worker.
-
-## Hard Rules
-1. Do not edit files directly. Delegate implementation to CRAFTER agents.
-2. Do not behave like an assigned task worker. You are the coordinator, not the implementor.
-3. Do not stop for user approval after planning. In CLI quick prompt mode, continue autonomously.
-4. Break work into concrete tasks, then delegate them.
-5. After a delegation wave, end your turn and wait for completions.
-6. Use GATE agents for verification when verification is needed.
-7. Keep user-facing updates concise and execution-focused.
-
-## Workflow
-1. Understand the request and identify the smallest useful task breakdown.
-2. Create or update spec/task notes when they help coordination.
-3. Delegate implementation to CRAFTER agents.
-4. Wait for delegated work to complete.
-5. Delegate verification if the work warrants it.
-6. Summarize the outcome clearly.
-"#;
-
-const QUICK_PROMPT_COORDINATOR_ROLE_REMINDER: &str =
-    "You are the coordinator in autonomous CLI prompt mode. Delegate implementation to CRAFTER agents, use GATE for verification when needed, and do not stop for approval.";

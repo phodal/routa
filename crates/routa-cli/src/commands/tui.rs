@@ -7,6 +7,7 @@
 //! - Process output is printed in gray to stderr
 //! - A status bar at the bottom shows the current activity
 
+use std::borrow::Cow;
 use std::io::Write;
 use std::time::Instant;
 
@@ -17,8 +18,14 @@ pub struct TuiRenderer {
     term: Term,
     /// Whether the last printed character ended with a newline.
     at_line_start: bool,
-    /// The tool call currently being rendered (name, start time).
-    active_tool: Option<(String, Instant)>,
+    /// The tool call currently being rendered (id, label, start time).
+    active_tool: Option<ActiveTool>,
+}
+
+struct ActiveTool {
+    id: Option<String>,
+    label: String,
+    started_at: Instant,
 }
 
 impl Default for TuiRenderer {
@@ -79,7 +86,9 @@ impl TuiRenderer {
                 }
             }
             "tool_call" | "tool_call_start" => {
-                let name = tool_name(inner);
+                let label = tool_label(inner)
+                    .map(|label| label.into_owned())
+                    .unwrap_or_else(|| "tool".to_string());
                 let status = inner
                     .get("status")
                     .and_then(|v| v.as_str())
@@ -89,21 +98,29 @@ impl TuiRenderer {
 
                 match status {
                     "completed" => {
-                        println!("  {} {}", style("✔").green(), style(&name).dim());
+                        println!("  {} {}", style("✔").green(), style(&label).dim());
+                        self.print_tool_result(inner);
                     }
                     "failed" => {
-                        println!("  {} {}", style("✘").red(), style(&name).dim());
+                        println!("  {} {}", style("✘").red(), style(&label).dim());
+                        self.print_tool_result(inner);
                     }
                     _ => {
-                        print!("  {} {} …", style("⠿").yellow(), style(&name).dim());
+                        print!("  {} {} …", style("⠿").yellow(), style(&label).dim());
                         std::io::stdout().flush().ok();
-                        self.active_tool = Some((name, Instant::now()));
+                        self.active_tool = Some(ActiveTool {
+                            id: tool_call_id(inner).map(str::to_string),
+                            label,
+                            started_at: Instant::now(),
+                        });
                         self.at_line_start = false;
                     }
                 }
             }
             "tool_call_update" => {
-                let name = tool_name(inner);
+                let label = self
+                    .resolve_tool_label(inner)
+                    .unwrap_or_else(|| "tool".to_string());
                 let status = inner
                     .get("status")
                     .and_then(|v| v.as_str())
@@ -117,7 +134,7 @@ impl TuiRenderer {
                             let elapsed = self
                                 .active_tool
                                 .as_ref()
-                                .map(|(_, t)| t.elapsed().as_millis())
+                                .map(|tool| tool.started_at.elapsed().as_millis())
                                 .unwrap_or(0);
                             let icon = if status == "completed" {
                                 style("✔").green()
@@ -127,7 +144,7 @@ impl TuiRenderer {
                             println!(
                                 "\r  {} {} {}",
                                 icon,
-                                style(&name).dim(),
+                                style(&label).dim(),
                                 style(format!("({} ms)", elapsed)).dim()
                             );
                             self.active_tool = None;
@@ -138,9 +155,10 @@ impl TuiRenderer {
                             } else {
                                 style("✘").red()
                             };
-                            println!("  {} {}", icon, style(&name).dim());
+                            println!("  {} {}", icon, style(&label).dim());
                             self.at_line_start = true;
                         }
+                        self.print_tool_result(inner);
                     }
                     _ => {}
                 }
@@ -205,6 +223,30 @@ impl TuiRenderer {
         self.finish_active_tool();
         self.ensure_newline();
     }
+
+    fn resolve_tool_label(&self, inner: &serde_json::Value) -> Option<String> {
+        if let Some(label) = tool_label(inner) {
+            return Some(label.into_owned());
+        }
+
+        let tool_call_id = tool_call_id(inner)?;
+        let active_tool = self.active_tool.as_ref()?;
+        if active_tool.id.as_deref() == Some(tool_call_id) {
+            Some(active_tool.label.clone())
+        } else {
+            None
+        }
+    }
+
+    fn print_tool_result(&mut self, inner: &serde_json::Value) {
+        if let Some(result) = tool_result_text(inner) {
+            self.ensure_newline();
+            for line in result.lines().filter(|line| !line.trim().is_empty()) {
+                println!("    {}", style(line).dim());
+            }
+            self.at_line_start = true;
+        }
+    }
 }
 
 fn extract_text(inner: &serde_json::Value) -> &str {
@@ -216,12 +258,102 @@ fn extract_text(inner: &serde_json::Value) -> &str {
         .unwrap_or("")
 }
 
-fn tool_name(inner: &serde_json::Value) -> String {
+fn tool_label(inner: &serde_json::Value) -> Option<Cow<'_, str>> {
+    if let Some(title) = inner.get("title").and_then(|v| v.as_str()) {
+        return Some(Cow::Borrowed(title));
+    }
+
     inner
         .get("kind")
-        .or_else(|| inner.get("title"))
         .or_else(|| inner.get("name"))
+        .or_else(|| inner.get("toolName"))
+        .or_else(|| inner.get("tool"))
         .and_then(|v| v.as_str())
-        .unwrap_or("tool")
-        .to_string()
+        .map(Cow::Borrowed)
+        .or_else(|| {
+            let raw_input = inner.get("rawInput")?;
+            raw_input
+                .get("title")
+                .or_else(|| raw_input.get("name"))
+                .or_else(|| raw_input.get("toolName"))
+                .or_else(|| raw_input.get("tool"))
+                .and_then(|v| v.as_str())
+                .map(Cow::Borrowed)
+                .or_else(|| {
+                    raw_input
+                        .get("command")
+                        .and_then(|v| v.as_str())
+                        .map(|command| Cow::Owned(format!("exec {}", command)))
+                })
+        })
+        .or_else(|| {
+            tool_call_id(inner).map(|tool_call_id| {
+                let tool_name = tool_call_id
+                    .split_once('-')
+                    .map(|(prefix, _)| prefix)
+                    .unwrap_or(tool_call_id);
+                Cow::Owned(tool_name.to_string())
+            })
+        })
+}
+
+fn tool_call_id(inner: &serde_json::Value) -> Option<&str> {
+    inner
+        .get("toolCallId")
+        .or_else(|| inner.get("tool_call_id"))
+        .and_then(|v| v.as_str())
+}
+
+fn tool_result_text(inner: &serde_json::Value) -> Option<String> {
+    if let Some(error) = inner.get("error") {
+        if let Some(message) = error
+            .get("message")
+            .and_then(|value| value.as_str())
+            .or_else(|| error.as_str())
+        {
+            return Some(message.to_string());
+        }
+    }
+
+    let raw_output = inner.get("rawOutput")?;
+    if let Some(text) = raw_output.as_str() {
+        let trimmed = text.trim();
+        if !trimmed.is_empty() {
+            return Some(trimmed.to_string());
+        }
+    }
+
+    let serialized = serde_json::to_string_pretty(raw_output).ok()?;
+    let trimmed = serialized.trim();
+    if trimmed.is_empty() || trimmed == "null" || trimmed == "\"\"" {
+        extract_tool_content_text(inner)
+    } else {
+        Some(trimmed.to_string())
+    }
+}
+
+fn extract_tool_content_text(inner: &serde_json::Value) -> Option<String> {
+    inner
+        .get("content")
+        .and_then(|value| value.as_array())
+        .and_then(|items| {
+            let lines: Vec<String> = items
+                .iter()
+                .filter_map(|item| {
+                    item.get("content")
+                        .and_then(|content| content.get("text"))
+                        .and_then(|text| text.as_str())
+                        .or_else(|| item.get("text").and_then(|text| text.as_str()))
+                        .map(str::trim)
+                        .filter(|text| !text.is_empty())
+                        .map(str::to_string)
+                })
+                .collect();
+
+            if lines.is_empty() {
+                None
+            } else {
+                Some(lines.join("\n"))
+            }
+        })
 }
