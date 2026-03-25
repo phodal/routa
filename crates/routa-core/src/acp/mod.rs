@@ -800,6 +800,14 @@ pub fn get_presets() -> Vec<AcpPreset> {
             env_bin_override: Some("KIRO_BIN".to_string()),
         },
         AcpPreset {
+            id: "qoder".to_string(),
+            name: "Qoder".to_string(),
+            command: "qodercli".to_string(),
+            args: vec!["--acp".to_string(), "--yolo".to_string()],
+            description: "Qoder AI coding agent".to_string(),
+            env_bin_override: Some("QODER_BIN".to_string()),
+        },
+        AcpPreset {
             id: "claude".to_string(),
             name: "Claude Code".to_string(),
             command: "claude".to_string(),
@@ -820,6 +828,7 @@ pub fn get_presets() -> Vec<AcpPreset> {
 pub async fn get_preset_by_id_with_registry(id: &str) -> Result<AcpPreset, String> {
     let normalized_id = match id {
         "codex" => "codex-acp",
+        "qodercli" => "qoder",
         other => other,
     };
 
@@ -915,7 +924,9 @@ fn truncate_content(text: &str, max_len: usize) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{get_presets, truncate_content, AcpManager, AcpSessionRecord};
+    use super::{
+        get_preset_by_id_with_registry, get_presets, truncate_content, AcpManager, AcpSessionRecord,
+    };
     use std::collections::HashMap;
     use std::sync::Arc;
     use tokio::sync::RwLock;
@@ -924,6 +935,22 @@ mod tests {
     fn static_presets_include_codex_acp_for_codex_alias() {
         let presets = get_presets();
         assert!(presets.iter().any(|preset| preset.id == "codex-acp"));
+    }
+
+    #[test]
+    fn static_presets_include_qoder() {
+        let presets = get_presets();
+        assert!(presets.iter().any(|preset| preset.id == "qoder"));
+    }
+
+    #[tokio::test]
+    async fn qodercli_alias_resolves_to_qoder_preset() {
+        let preset = get_preset_by_id_with_registry("qodercli")
+            .await
+            .expect("qodercli alias should resolve");
+        assert_eq!(preset.id, "qodercli");
+        assert_eq!(preset.command, "qodercli");
+        assert_eq!(preset.args, vec!["--acp".to_string(), "--yolo".to_string()]);
     }
 
     #[tokio::test]
