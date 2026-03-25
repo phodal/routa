@@ -1,0 +1,110 @@
+<svg width="1440" height="980" viewBox="0 0 1440 980" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1440" y2="980" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F8FAFC"/>
+      <stop offset="1" stop-color="#EFF6F2"/>
+    </linearGradient>
+    <linearGradient id="uiGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#E7F0FF"/>
+      <stop offset="1" stop-color="#D9E8FF"/>
+    </linearGradient>
+    <linearGradient id="runtimeGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#E8FBF1"/>
+      <stop offset="1" stop-color="#D6F3E5"/>
+    </linearGradient>
+    <linearGradient id="acpGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#FFF3D2"/>
+      <stop offset="1" stop-color="#FFE3A7"/>
+    </linearGradient>
+    <linearGradient id="providerGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#F3E9FF"/>
+      <stop offset="1" stop-color="#E5D7FF"/>
+    </linearGradient>
+    <linearGradient id="execGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#FFE7EA"/>
+      <stop offset="1" stop-color="#FFD7DD"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#0F172A" flood-opacity="0.08"/>
+    </filter>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <path d="M1 1L10 6L1 11" stroke="#526071" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <style>
+      .title { font: 700 30px ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #172033; }
+      .subtitle { font: 500 15px ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #526071; }
+      .section { font: 700 20px ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #172033; }
+      .boxTitle { font: 700 17px ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #172033; }
+      .body { font: 500 14px ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #334155; }
+      .small { font: 500 12px ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #526071; }
+      .pill { font: 700 11px ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #FFFFFF; letter-spacing: 0.04em; }
+    </style>
+  </defs>
+
+  <rect width="1440" height="980" rx="28" fill="url(#bg)"/>
+
+  <text x="60" y="70" class="title">Routa.js Architecture</text>
+  <text x="60" y="100" class="subtitle">ACP-centric view: UI → runtime surfaces → ACP orchestration → provider adapters → execution substrates</text>
+
+  <rect x="60" y="140" width="1320" height="90" rx="22" fill="url(#uiGrad)" stroke="#BCD0F7" filter="url(#shadow)"/>
+  <text x="86" y="176" class="section">Product Surface</text>
+  <text x="86" y="201" class="body">Workspace / Session / Kanban / Team / Settings / Traces</text>
+  <text x="86" y="220" class="small">User entry points stay workspace-scoped, with pages and hooks driving APIs and streams</text>
+
+  <rect x="60" y="270" width="640" height="178" rx="24" fill="url(#runtimeGrad)" stroke="#B9E2CC" filter="url(#shadow)"/>
+  <text x="86" y="308" class="section">Web Runtime</text>
+  <text x="86" y="334" class="body">Next.js pages + route handlers</text>
+  <text x="86" y="357" class="body">提供 REST / ACP / MCP / SSE</text>
+  <text x="86" y="380" class="body">Assembles stores, EventBus, tools, and kanban automation via `RoutaSystem`</text>
+
+  <rect x="740" y="270" width="640" height="178" rx="24" fill="url(#runtimeGrad)" stroke="#B9E2CC" filter="url(#shadow)"/>
+  <text x="766" y="308" class="section">Desktop Runtime</text>
+  <text x="766" y="334" class="body">Tauri shell + Axum server + Rust AppState</text>
+  <text x="766" y="357" class="body">提供本地 REST / ACP / MCP / RPC / sandbox / worktree / filesystem</text>
+  <text x="766" y="380" class="body">More local-first, with fuller support for SQLite, Docker, and native process execution</text>
+
+  <rect x="180" y="500" width="1080" height="190" rx="28" fill="url(#acpGrad)" stroke="#E3C778" filter="url(#shadow)"/>
+  <text x="210" y="540" class="section">ACP / Session Orchestration Core</text>
+  <text x="210" y="566" class="body">This is the real core of the current implementation: unified session lifecycle, provider selection, prompt/stream flow, tool injection, and event fan-in</text>
+
+  <rect x="214" y="598" width="232" height="64" rx="16" fill="#FFFFFF" stroke="#E8D29D"/>
+  <text x="234" y="625" class="boxTitle">Session Lifecycle</text>
+  <text x="234" y="646" class="small">create / prompt / cancel / stream / reconnect</text>
+
+  <rect x="464" y="598" width="232" height="64" rx="16" fill="#FFFFFF" stroke="#E8D29D"/>
+  <text x="484" y="625" class="boxTitle">Protocol Facade</text>
+  <text x="484" y="646" class="small">ACP, MCP, A2A, AG-UI, SSE</text>
+
+  <rect x="714" y="598" width="232" height="64" rx="16" fill="#FFFFFF" stroke="#E8D29D"/>
+  <text x="734" y="625" class="boxTitle">Task / Kanban Binding</text>
+  <text x="734" y="646" class="small">lane automation, queueing, worktree, supervision</text>
+
+  <rect x="964" y="598" width="262" height="64" rx="16" fill="#FFFFFF" stroke="#E8D29D"/>
+  <text x="984" y="625" class="boxTitle">Event + Persistence</text>
+  <text x="984" y="646" class="small">EventBus, SSE, traces, session/task/note/artifact stores</text>
+
+  <rect x="60" y="732" width="1320" height="116" rx="24" fill="url(#providerGrad)" stroke="#D0B3FF" filter="url(#shadow)"/>
+  <text x="86" y="770" class="section">Provider Adapter / BYOK Layer</text>
+  <text x="86" y="795" class="body">Normalizes different execution styles into ACP-like session updates. This deserves its own layer instead of being buried inside a generic shared core.</text>
+  <text x="86" y="819" class="body">Claude Code SDK / OpenCode SDK / API-based providers / Claude CLI translation / provider presets</text>
+
+  <rect x="60" y="876" width="420" height="70" rx="20" fill="url(#execGrad)" stroke="#F2B4BF" filter="url(#shadow)"/>
+  <text x="86" y="907" class="boxTitle">Execution Substrate A: CLI / Runner</text>
+  <text x="86" y="929" class="small">Local CLI processes or a runner proxy, suitable for Codex, Gemini, Copilot, and Claude CLI</text>
+
+  <rect x="510" y="876" width="420" height="70" rx="20" fill="url(#execGrad)" stroke="#F2B4BF" filter="url(#shadow)"/>
+  <text x="536" y="907" class="boxTitle">Execution Substrate B: SDK / BYOK</text>
+  <text x="536" y="929" class="small">Claude Code SDK, OpenCode SDK, or direct APIs, suitable for serverless and remote integration</text>
+
+  <rect x="960" y="876" width="420" height="70" rx="20" fill="url(#execGrad)" stroke="#F2B4BF" filter="url(#shadow)"/>
+  <text x="986" y="907" class="boxTitle">Execution Substrate C: Docker</text>
+  <text x="986" y="929" class="small">Docker OpenCode plus sandboxing, suitable for isolated execution and controlled local infrastructure</text>
+
+  <path d="M720 230V270" stroke="#526071" stroke-width="3" marker-end="url(#arrow)"/>
+  <path d="M380 448V500" stroke="#526071" stroke-width="3" marker-end="url(#arrow)"/>
+  <path d="M1060 448V500" stroke="#526071" stroke-width="3" marker-end="url(#arrow)"/>
+  <path d="M720 690V732" stroke="#526071" stroke-width="3" marker-end="url(#arrow)"/>
+  <path d="M270 848V876" stroke="#526071" stroke-width="3" marker-end="url(#arrow)"/>
+  <path d="M720 848V876" stroke="#526071" stroke-width="3" marker-end="url(#arrow)"/>
+  <path d="M1170 848V876" stroke="#526071" stroke-width="3" marker-end="url(#arrow)"/>
+</svg>

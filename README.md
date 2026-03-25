@@ -168,64 +168,11 @@ routa chat                        # Interactive chat
 
 ## 🏗 Architecture
 
-```mermaid
-flowchart TB
-    subgraph clients["🖥️ AI Clients"]
-        claude["Claude Code"]
-        opencode["OpenCode/Codex"]
-        gemini["Gemini CLI"]
-        a2a_ext["External Agents"]
-    end
+Routa is centered on ACP-backed session orchestration across dual runtime surfaces: a Next.js web runtime and a Tauri + Axum desktop runtime.
 
-    subgraph browser["🌐 Web Interface"]
-        chat["Chat Panel"]
-        kanban["Kanban Board"]
-        agents["Agent Panel"]
-    end
+![Routa architecture](docs/architecture.svg)
 
-    subgraph server["⚙️ Routa Server"]
-        mcp["MCP Server<br/>/api/mcp"]
-        acp["ACP Agent<br/>/api/acp"]
-        a2a["A2A Bridge<br/>/api/a2a"]
-        rest["REST APIs"]
-
-        subgraph core["Core Engine"]
-            tools["Coordination Tools"]
-            orchestrator["Orchestrator"]
-            system["Stores & EventBus"]
-            skill_reg["Skill Registry"]
-        end
-    end
-
-    claude -.->|"SSE + JSON-RPC"| mcp
-    opencode -.->|"stdio + JSON-RPC"| acp
-    gemini -.->|"stdio + JSON-RPC"| acp
-    a2a_ext -.->|"HTTP + JSON-RPC"| a2a
-
-    chat -->|"WebSocket"| acp
-    kanban -->|"REST + SSE"| rest
-    agents -->|"REST"| rest
-
-    mcp --> tools
-    acp --> tools
-    acp --> skill_reg
-    a2a --> tools
-    rest --> system
-
-    tools --> orchestrator
-    orchestrator --> system
-    skill_reg --> system
-
-    classDef clientStyle fill:#e1f5ff,stroke:#0288d1,stroke-width:2px
-    classDef browserStyle fill:#fff3e0,stroke:#f57c00,stroke-width:2px
-    classDef serverStyle fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
-    classDef coreStyle fill:#e8f5e9,stroke:#388e3c,stroke-width:2px
-
-    class claude,opencode,gemini,a2a_ext clientStyle
-    class chat,kanban,agents browserStyle
-    class mcp,acp,a2a,rest serverStyle
-    class tools,orchestrator,system,skill_reg coreStyle
-```
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the canonical architecture contract and [docs/architecture.svg](docs/architecture.svg) for the visual overview.
 
 ## 🎯 Harness Engineering in Practice
 
