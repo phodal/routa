@@ -803,7 +803,7 @@ pub fn get_presets() -> Vec<AcpPreset> {
             id: "qoder".to_string(),
             name: "Qoder".to_string(),
             command: "qodercli".to_string(),
-            args: vec!["--acp".to_string(), "--yolo".to_string()],
+            args: vec!["--acp".to_string()],
             description: "Qoder AI coding agent".to_string(),
             env_bin_override: Some("QODER_BIN".to_string()),
         },
@@ -950,7 +950,7 @@ mod tests {
             .expect("qodercli alias should resolve");
         assert_eq!(preset.id, "qodercli");
         assert_eq!(preset.command, "qodercli");
-        assert_eq!(preset.args, vec!["--acp".to_string(), "--yolo".to_string()]);
+        assert_eq!(preset.args, vec!["--acp".to_string()]);
     }
 
     #[tokio::test]

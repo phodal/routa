@@ -167,9 +167,8 @@ export const ACP_AGENT_PRESETS: readonly AcpAgentPreset[] = [
     id: "qoder",
     name: "Qoder",
     command: "qodercli",
-    // --acp: start as ACP server communicating via stdin/stdout
-    // --yolo: bypass permission checks (equivalent to --allow-all-tools in other agents)
-    args: ["--acp", "--yolo"],
+    // Official ACP docs show qodercli starting in ACP mode with --acp only.
+    args: ["--acp"],
     description: "Qoder AI coding agent",
     envBinOverride: "QODER_BIN",
     capabilities: ["mcp_tool", "code_generation", "file_operations"],
