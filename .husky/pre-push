@@ -7,10 +7,8 @@ if [ -n "$SKIP_HOOKS" ]; then
   exit 0
 fi
 
-# Allow local pushes to continue after fitness hard gates pass,
-# even when review-trigger is matched by large/stacked diffs.
-: "${ROUTA_ALLOW_REVIEW_TRIGGER_PUSH:=1}"
-export ROUTA_ALLOW_REVIEW_TRIGGER_PUSH
+# Verify submodule refs are pushed before the main pre-push checks.
+./scripts/check-submodule-refs.sh
 
 # Run smart check script
 ./scripts/smart-check.sh
