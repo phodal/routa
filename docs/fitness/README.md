@@ -26,13 +26,19 @@ entrix run --tier normal
 entrix run
 
 # Harness Fluency 评估（默认 generic profile，文本报告）
-npm run fitness:fluency
+cargo run -p routa-cli -- fitness fluency
 
 # Harness Fluency 评估（agent_orchestrator profile）
-npm run fitness:fluency -- --profile agent_orchestrator
+cargo run -p routa-cli -- fitness fluency --profile agent_orchestrator
 
 # Harness Fluency 评估（JSON + 与上次快照对比）
-npm run fitness:fluency -- --format json --compare-last
+cargo run -p routa-cli -- fitness fluency --format json --compare-last
+
+# Harness Fluency 评估（只读，不落快照）
+cargo run -p routa-cli -- fitness fluency --no-save
+
+# 兼容脚本入口（保留）
+npm run fitness:fluency
 
 # 并行执行（加速）
 entrix run --parallel

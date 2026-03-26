@@ -8,6 +8,7 @@ pub mod acp_serve;
 pub mod agent;
 pub mod chat;
 pub mod delegate;
+pub mod fitness;
 pub mod kanban;
 pub mod prompt;
 pub mod review;

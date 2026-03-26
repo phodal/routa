@@ -5,6 +5,7 @@
 
 mod commands;
 
+use crate::commands::fitness::FitnessAction;
 use clap::{Parser, Subcommand};
 
 /// Routa.js CLI — Multi-agent coordination platform
@@ -165,6 +166,12 @@ enum Commands {
         /// Fail if any scanner fails
         #[arg(long, default_value_t = false)]
         strict: bool,
+    },
+
+    /// Run repository fitness and fluency assessments
+    Fitness {
+        #[command(subcommand)]
+        action: FitnessAction,
     },
 
     /// Run YAML-defined agent workflows
@@ -1260,6 +1267,8 @@ async fn main() {
                 output_dir,
                 strict,
             } => commands::scan::run(project_dir.as_deref(), &output_dir, strict),
+
+            Commands::Fitness { action } => commands::fitness::run(action),
 
             Commands::Workflow { action } => {
                 let state = commands::init_state(&cli.db).await;

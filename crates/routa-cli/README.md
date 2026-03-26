@@ -87,6 +87,16 @@ routa team run -t "Design and implement Kanban automation" --workspace-id defaul
 routa team status --workspace-id default
 ```
 
+### Fitness and Fluency
+
+Run the Harness Fluency assessment from the Rust CLI:
+
+```bash
+routa fitness fluency
+routa fitness fluency --profile agent_orchestrator
+routa fitness fluency --format json --compare-last --no-save
+```
+
 ## Command Overview
 
 Top-level commands from `routa --help`:
