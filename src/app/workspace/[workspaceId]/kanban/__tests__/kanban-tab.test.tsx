@@ -1097,6 +1097,71 @@ describe("KanbanCardDetail repository health", () => {
     expect(screen.getByText(/403 Forbidden/i)).toBeTruthy();
   });
 
+  it("renders A2A lane targets and remote task metadata in the execution panel", () => {
+    const a2aBoard: KanbanBoardInfo = {
+      ...board,
+      columns: [
+        {
+          id: "review",
+          name: "Review",
+          position: 0,
+          stage: "review",
+          automation: {
+            enabled: true,
+            steps: [{
+              id: "review-a2a",
+              transport: "a2a",
+              role: "GATE",
+              specialistName: "Remote Review",
+              agentCardUrl: "https://agents.example.com/reviewer/agent-card.json",
+              skillId: "review",
+            }],
+            transitionType: "entry",
+          },
+        },
+      ],
+    };
+
+    render(
+      <KanbanCardDetail
+        task={{
+          ...createTask("task-a2a", "Story Remote"),
+          columnId: "review",
+          triggerSessionId: "a2a-session-1",
+          laneSessions: [{
+            sessionId: "a2a-session-1",
+            columnId: "review",
+            columnName: "Review",
+            role: "GATE",
+            specialistName: "Remote Review",
+            transport: "a2a",
+            externalTaskId: "remote-task-1",
+            contextId: "ctx-1",
+            status: "running",
+            startedAt: "2025-01-01T00:00:00.000Z",
+          }],
+        }}
+        boardColumns={a2aBoard.columns}
+        availableProviders={[]}
+        specialists={[{ id: "remote-review", name: "Remote Review", role: "GATE" }]}
+        specialistLanguage="en"
+        codebases={[]}
+        allCodebaseIds={[]}
+        worktreeCache={{}}
+        sessions={[]}
+        fullWidth
+        onPatchTask={vi.fn(async () => createTask("task-a2a", "Story Remote"))}
+        onRetryTrigger={vi.fn()}
+        onDelete={vi.fn()}
+        onRefresh={vi.fn()}
+      />
+    );
+
+    expect(screen.getAllByText(/A2A · GATE · Remote Review · agents\.example\.com\/reviewer\/agent-card\.json · skill:review/i).length).toBeGreaterThan(0);
+    expect(screen.getByText(/A2A Task · remote-task-1/i)).toBeTruthy();
+    expect(screen.getByText(/Context ctx-1/i)).toBeTruthy();
+  });
+
   it("syncs detail fields when the same task updates in the background", async () => {
     const { rerender } = render(
       <KanbanCardDetail
@@ -1332,13 +1397,14 @@ describe("KanbanTab agent prompt flow", () => {
       expect(onAgentPrompt).toHaveBeenCalled();
     });
     expect(onAgentPrompt).toHaveBeenCalledWith(
-      expect.stringContaining("You are the KanbanTask Agent"),
+      "Investigate lane issue",
       expect.objectContaining({
         provider: "claude",
         role: "CRAFTER",
         toolMode: "full",
         allowedNativeTools: [],
         mcpProfile: "kanban-planning",
+        systemPrompt: expect.stringContaining("You are the KanbanTask Agent"),
       }),
     );
 
@@ -1379,13 +1445,14 @@ describe("KanbanTab agent prompt flow", () => {
       expect(onAgentPrompt).toHaveBeenCalled();
     });
     expect(onAgentPrompt).toHaveBeenCalledWith(
-      expect.stringContaining("你是当前工作区的看板任务代理"),
+      "调查 lane 问题",
       expect.objectContaining({
         provider: "claude",
         role: "CRAFTER",
         toolMode: "full",
         allowedNativeTools: [],
         mcpProfile: "kanban-planning",
+        systemPrompt: expect.stringContaining("你是当前工作区的看板任务代理"),
       }),
     );
   });
