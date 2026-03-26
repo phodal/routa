@@ -10,8 +10,9 @@
 [![Next.js](https://img.shields.io/badge/Next.js-16.1-black.svg)](https://nextjs.org/)
 [![Rust](https://img.shields.io/badge/Rust-Axum-orange.svg)](https://github.com/tokio-rs/axum)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Join Slack](https://img.shields.io/badge/Slack-Join%20Community-4A154B?logo=slack&logoColor=white)](https://join.slack.com/t/routa-group/shared_invite/zt-3txzzfxm8-tnRFwNpPvdfjAVoSD6MTJg)
 
-[Why Routa](#why-routa) • [Architecture](#architecture) • [How It Works](#how-it-works) • [Agent Team](#the-agent-team) • [Bring Your Own Agents](#bring-your-own-agents) • [Quick Start](#quick-start)
+[Why Routa](#why-routa) • [Architecture](#architecture) • [How It Works](#how-it-works) • [Agent Team](#the-agent-team) • [Bring Your Own Agents](#bring-your-own-agents) • [Community](#community) • [Quick Start](#quick-start)
 
 </div>
 
@@ -21,7 +22,7 @@
 > This project primarily provides a **Tauri desktop application** (binary distribution).
 > The web version is available for demo purposes only.
 
-[Releases](https://github.com/phodal/routa/releases) · [Docs](https://phodal.github.io/routa/) · [Demo (Bilibili)](https://www.bilibili.com/video/BV16CwyzUED5/) · [Demo (YouTube)](https://www.youtube.com/watch?v=spjmr_1AQLM) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md)
+[Releases](https://github.com/phodal/routa/releases) · [Docs](https://phodal.github.io/routa/) · [Community (Slack)](https://join.slack.com/t/routa-group/shared_invite/zt-3txzzfxm8-tnRFwNpPvdfjAVoSD6MTJg) · [Demo (Bilibili)](https://www.bilibili.com/video/BV16CwyzUED5/) · [Demo (YouTube)](https://www.youtube.com/watch?v=spjmr_1AQLM) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md)
 
 ## Why Routa
 
@@ -170,6 +171,7 @@ routa chat                        # Interactive chat
 
 ## Community
 
+- Join the Slack community: https://join.slack.com/t/routa-group/shared_invite/zt-3txzzfxm8-tnRFwNpPvdfjAVoSD6MTJg
 - Bug reports and feature requests: https://github.com/phodal/routa/issues
 - Security reports: [SECURITY.md](SECURITY.md)
 - Contribution guide: [CONTRIBUTING.md](CONTRIBUTING.md)
