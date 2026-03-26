@@ -3,11 +3,11 @@ name: Routa CLI Release
 on:
   push:
     tags:
-      - 'cli-v*'
+      - 'v*'
   workflow_dispatch:
     inputs:
       version:
-        description: "Semver version to publish (without cli- prefix), ex: 0.2.4"
+        description: "Semver version to publish, ex: 0.2.4 or v0.2.4"
         required: true
         type: string
       publish:
@@ -91,7 +91,8 @@ jobs:
             version="${version#v}"
             version="${version#cli-v}"
           else
-            version="${GITHUB_REF_NAME#cli-v}"
+            version="${GITHUB_REF_NAME#v}"
+            version="${version#cli-v}"
           fi
 
           if [[ -z "${version}" ]]; then
