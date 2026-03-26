@@ -1,11 +1,15 @@
 ---
 title: Pre-push Hook Output Is Buffered, Opaque, and Hard to Extend
 date: "2026-03-25"
-status: open
+status: resolved
+resolved_at: "2026-03-26"
 severity: medium
 area: dx
 tags: [git-hooks, pre-push, entrix, renderer, scripts]
 reported_by: Codex
+
+resolution:
+  - `status` updated to `resolved` based on follow-up changes completed on 2026-03-26.
 ---
 
 ## What Happened
