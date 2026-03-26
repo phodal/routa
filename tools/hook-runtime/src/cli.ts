@@ -19,7 +19,9 @@ import {
 } from "./fitness.js";
 import { loadHookMetrics } from "./metrics.js";
 import { runCommand, tailOutput } from "./process.js";
-import { runSubmoduleRefsCheck } from "./check-submodule-refs.js";
+import {
+  runSubmoduleRefsCheckWithSummary,
+} from "./check-submodule-refs.js";
 import { promptYesNo } from "./prompt.js";
 import { createHumanMetricReporter } from "./renderer.js";
 import { type ReviewPhaseResult, runReviewTriggerPhase } from "./review.js";
@@ -223,7 +225,8 @@ async function runSubmodulePhase(dryRun: boolean, outputMode: "human" | "jsonl")
     return { phase: "submodule", status: "skipped", durationMs: Date.now() - startedAt };
   }
 
-  const passed = await runSubmoduleRefsCheck();
+  const summary = await runSubmoduleRefsCheckWithSummary();
+  const passed = !summary.failures.length;
   const durationMs = Date.now() - startedAt;
 
   const status = passed ? 0 : 1;
@@ -235,10 +238,17 @@ async function runSubmodulePhase(dryRun: boolean, outputMode: "human" | "jsonl")
     durationMs,
     command: "tools/hook-runtime/src/check-submodule-refs.ts",
     exitCode: status,
+    checked: summary.checked,
+    skipped: summary.skipped,
   });
 
   if (!passed) {
-    throw new Error("Submodule ref check failed.");
+    const failureDetails = summary.failures.join(", ");
+    const message = `Submodule ref check failed: ${summary.failures.length} unreachable refs.`;
+    if (outputMode === "human" && failureDetails) {
+      console.error(`[submodule] ${failureDetails}`);
+    }
+    throw new Error(message);
   }
 
   return { phase: "submodule", status: "passed", durationMs };
@@ -386,7 +396,7 @@ async function runReviewPhase(dryRun: boolean, outputMode: "human" | "jsonl"): P
 
   if (dryRun) {
     if (outputMode === "human") {
-      console.log("Review trigger phase skipped in dry-run.");
+      console.log("[phase 3/3] review checks skipped in dry-run.");
       console.log("");
     }
     emitEvent(outputMode, {
@@ -401,6 +411,9 @@ async function runReviewPhase(dryRun: boolean, outputMode: "human" | "jsonl"): P
 
   const startedAt = Date.now();
   const result = await runReviewTriggerPhase(outputMode);
+  if (outputMode === "human") {
+    console.log(`[phase 3/3] review checks ${result.allowed ? "passed" : "blocked"}`);
+  }
   emitEvent(outputMode, {
     event: "phase.complete",
     phase: "review",

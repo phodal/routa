@@ -16,6 +16,7 @@ export type MetricRunOptions = {
 export type MetricFailureSummary = {
   name: string;
   sourceFile: string;
+  command: string;
   durationMs: number;
   outputTail: string;
 };
@@ -35,6 +36,30 @@ function evaluateMetric(metric: HookMetric, exitCode: number, output: string): b
 
   const matcher = new RegExp(metric.pattern, "i");
   return matcher.test(output);
+}
+
+function splitOutputLines(rawOutput: string): string[] {
+  return rawOutput
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+function extractFailureContext(rawOutput: string): string {
+  const lines = splitOutputLines(rawOutput);
+  if (lines.length === 0) {
+    return "";
+  }
+
+  const failureHints =
+    /error|failed|fail|fatal|exception|assert|panic|timed out|timeout|not found|invalid|denied|refused|permission/i;
+
+  const hinted = lines.filter((line) => failureHints.test(line));
+  const linesToShow = hinted.length > 0 ? hinted : lines;
+  const tail = tailOutput(linesToShow.join("\n"), 1500).trim();
+  return tail.length > 0 ? tail : tailOutput(lines.join("\n"), 1500).trim();
 }
 
 export async function runMetric(
@@ -61,8 +86,9 @@ export function summarizeFailures(results: MetricExecution[]): MetricFailureSumm
   return failures.map((failure) => ({
     name: failure.metric.name,
     sourceFile: failure.metric.sourceFile,
+    command: failure.metric.command,
     durationMs: failure.durationMs,
-    outputTail: tailOutput(failure.output).trim(),
+    outputTail: extractFailureContext(failure.output),
   }));
 }
 
@@ -79,9 +105,16 @@ export function printFailureSummary(results: MetricExecution[]): void {
 
   for (const failure of failures) {
     console.log(`- ${failure.name} (${formatDuration(failure.durationMs)})`);
+    console.log(`  source: ${failure.sourceFile}`);
+    console.log(`  cmd: ${failure.command}`);
     if (failure.outputTail) {
-      console.log(failure.outputTail);
-      console.log("");
+      console.log("  failure context:");
+      for (const line of failure.outputTail.split("\n")) {
+        console.log(`    ${line}`);
+      }
+    } else {
+      console.log("  failure context: unavailable");
     }
+    console.log("");
   }
 }

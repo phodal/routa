@@ -64,3 +64,12 @@ entry points later), and prevents policy logic from being hardcoded in hook scri
 - `hooks` entrypoint and phase model now documented in a dedicated README.
 - `pre-push` flow defined as the current baseline behavior.
 - Failure routing and review handoff are explicitly documented as runtime responsibilities.
+
+## Follow-up done (2026-03-26)
+
+针对你提的 4 点，已经对显示面做了收敛优化：
+
+- 子模块检查：减少逐条 `Checking/OK` 日志，改为阶段汇总；只在失败时输出失败路径。
+- phase 显示：补齐 `phase 3/3`（review checks），`dry-run` 下也会显示 skipped 语义。
+- 失败日志：在失败摘要里加入 metric 命令、持续时间，并优先抽取 error/fail/fatal 等失败线索，去除长尾噪音。
+- 难以定位问题：失败时直接给出 `- <metric>` 的命令与关键上下文，便于一眼知道挂在哪个检查点。

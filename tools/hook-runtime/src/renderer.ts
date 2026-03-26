@@ -110,7 +110,12 @@ class DynamicHumanMetricReporter implements HumanMetricReporter {
   }
 
   onMetricOutput(metricName: string, event: CommandOutputEvent): void {
-    this.logBuffer.append(metricName, event.text);
+    const normalized = event.text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+    for (const chunk of normalized.split("\n")) {
+      if (this.shouldCaptureOutputLine(chunk)) {
+        this.logBuffer.append(metricName, `${chunk}\n`);
+      }
+    }
     this.scheduleRender();
   }
 
@@ -217,6 +222,15 @@ class DynamicHumanMetricReporter implements HumanMetricReporter {
   private renderStateLine(state: MetricState): string {
     const suffix = state.durationMs === undefined ? "" : ` ${formatDuration(state.durationMs)}`;
     return `[${state.index}/${this.states.length}] ${state.metric.name} ${this.statusLabel(state.status)}${suffix}`;
+  }
+
+  private shouldCaptureOutputLine(line: string): boolean {
+    if (!line.trim()) {
+      return false;
+    }
+
+    const hint = /error|failed|fail|fatal|panic|exception|denied|unauthorized|timed out|timeout|assert|not found|cannot/i;
+    return hint.test(line);
   }
 
   private statusLabel(status: MetricStatus): string {
