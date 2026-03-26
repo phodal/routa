@@ -28,10 +28,10 @@
     "README.md"
   ],
   "optionalDependencies": {
-    "@phodal/routa-cli-darwin-arm64": "0.0.0",
-    "@phodal/routa-cli-darwin-x64": "0.0.0",
-    "@phodal/routa-cli-linux-x64": "0.0.0",
-    "@phodal/routa-cli-win32-x64": "0.0.0"
+    "routa-cli-darwin-arm64": "0.0.0",
+    "routa-cli-darwin-x64": "0.0.0",
+    "routa-cli-linux-x64": "0.0.0",
+    "routa-cli-windows-x64": "0.0.0"
   },
   "publishConfig": {
     "access": "public"

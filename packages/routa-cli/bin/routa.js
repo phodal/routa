@@ -7,10 +7,10 @@ import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
 
 const PLATFORM_PACKAGES = {
-  "darwin-arm64": "@phodal/routa-cli-darwin-arm64",
-  "darwin-x64": "@phodal/routa-cli-darwin-x64",
-  "linux-x64": "@phodal/routa-cli-linux-x64",
-  "win32-x64": "@phodal/routa-cli-win32-x64",
+  "darwin-arm64": "routa-cli-darwin-arm64",
+  "darwin-x64": "routa-cli-darwin-x64",
+  "linux-x64": "routa-cli-linux-x64",
+  "win32-x64": "routa-cli-windows-x64",
 };
 
 const PLATFORM_KEY = `${process.platform}-${process.arch}`;

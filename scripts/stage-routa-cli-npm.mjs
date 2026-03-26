@@ -68,7 +68,7 @@ const platformPackages = [
   {
     key: "darwin-arm64",
     artifact: "routa-cli-darwin-arm64",
-    packageName: "@phodal/routa-cli-darwin-arm64",
+    packageName: "routa-cli-darwin-arm64",
     os: ["darwin"],
     cpu: ["arm64"],
     binary: "routa",
@@ -77,7 +77,7 @@ const platformPackages = [
   {
     key: "darwin-x64",
     artifact: "routa-cli-darwin-x64",
-    packageName: "@phodal/routa-cli-darwin-x64",
+    packageName: "routa-cli-darwin-x64",
     os: ["darwin"],
     cpu: ["x64"],
     binary: "routa",
@@ -86,7 +86,7 @@ const platformPackages = [
   {
     key: "linux-x64",
     artifact: "routa-cli-linux-x64",
-    packageName: "@phodal/routa-cli-linux-x64",
+    packageName: "routa-cli-linux-x64",
     os: ["linux"],
     cpu: ["x64"],
     binary: "routa",
@@ -95,7 +95,7 @@ const platformPackages = [
   {
     key: "win32-x64",
     artifact: "routa-cli-win32-x64",
-    packageName: "@phodal/routa-cli-win32-x64",
+    packageName: "routa-cli-windows-x64",
     os: ["win32"],
     cpu: ["x64"],
     binary: "routa.exe",
