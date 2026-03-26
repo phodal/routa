@@ -617,18 +617,6 @@ function collectFailingCriteriaForLevel(
   });
 }
 
-function collectFailingCriteriaForNextLevel(
-  modelDimensions: readonly { id: string }[],
-  cellById: ReadonlyMap<string, CellResult>,
-  levelId: string,
-): CriterionResult[] {
-  return modelDimensions.flatMap((dimension) => {
-    return cellById
-      .get(buildCellId(levelId, dimension.id))
-      ?.criteria.filter((criterion) => criterion.status === "fail") ?? [];
-  });
-}
-
 async function loadPreviousSnapshot(snapshotPath: string): Promise<HarnessFluencyReport | null> {
   if (!(await pathExists(snapshotPath))) {
     return null;
@@ -790,7 +778,7 @@ export async function evaluateHarnessFluency(options: EvaluateOptions): Promise<
       ? []
       : blockingTargetLevel.id === overallLevel.id
         ? currentLevelDebt
-        : collectFailingCriteriaForNextLevel(model.dimensions, cellById, blockingTargetLevel.id);
+        : collectFailingCriteriaForLevel(model.dimensions, cellById, blockingTargetLevel.id);
 
   const report: HarnessFluencyReport = {
     modelVersion: model.version,
