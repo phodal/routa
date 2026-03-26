@@ -1,6 +1,13 @@
-use axum::{routing::get, routing::post, Json as AxumJson, Router};
+use axum::{
+    extract::State as AxumState, http::HeaderMap, routing::get, routing::post, Json as AxumJson,
+    Router,
+};
 use std::fs;
 use std::path::PathBuf;
+use std::sync::{
+    atomic::{AtomicUsize, Ordering},
+    Arc,
+};
 use std::time::Duration;
 use tokio::net::TcpListener;
 
@@ -79,17 +86,46 @@ fn json_has_error(resp: &Value, expected: &str) -> bool {
 }
 
 async fn start_mock_a2a_server() -> String {
-    async fn card(axum::extract::State(base_url): axum::extract::State<String>) -> AxumJson<Value> {
+    #[derive(Clone)]
+    struct MockA2AState {
+        base_url: String,
+        get_task_calls: Arc<AtomicUsize>,
+        required_headers: Option<std::collections::HashMap<String, String>>,
+    }
+
+    async fn card(
+        AxumState(state): AxumState<MockA2AState>,
+        headers: HeaderMap,
+    ) -> AxumJson<Value> {
+        if !headers_match(&headers, state.required_headers.as_ref()) {
+            return AxumJson(json!({
+                "error": "missing auth"
+            }));
+        }
         AxumJson(json!({
             "name": "Mock A2A Agent",
             "description": "Test agent",
             "protocolVersion": "0.3.0",
             "version": "0.1.0",
-            "url": format!("{}/rpc", base_url),
+            "url": format!("{}/rpc", state.base_url),
         }))
     }
 
-    async fn rpc(AxumJson(body): AxumJson<Value>) -> AxumJson<Value> {
+    async fn rpc(
+        AxumState(state): AxumState<MockA2AState>,
+        headers: HeaderMap,
+        AxumJson(body): AxumJson<Value>,
+    ) -> AxumJson<Value> {
+        if !headers_match(&headers, state.required_headers.as_ref()) {
+            return AxumJson(json!({
+                "jsonrpc": "2.0",
+                "id": body.get("id").cloned().unwrap_or(json!(null)),
+                "error": {
+                    "code": 401,
+                    "message": "missing auth"
+                }
+            }));
+        }
         let id = body.get("id").cloned().unwrap_or(json!(null));
         let method = body.get("method").and_then(Value::as_str).unwrap_or("");
         let response = match method {
@@ -104,6 +140,149 @@ async fn start_mock_a2a_server() -> String {
                             "state": "submitted",
                             "timestamp": "2026-03-21T00:00:00Z"
                         }
+                    }
+                }
+            }),
+            "GetTask" => {
+                let call = state.get_task_calls.fetch_add(1, Ordering::SeqCst);
+                let state = if call == 0 { "working" } else { "completed" };
+                json!({
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "result": {
+                        "task": {
+                            "id": "remote-task-1",
+                            "contextId": "ctx-1",
+                            "status": {
+                                "state": state,
+                                "timestamp": if state == "completed" {
+                                    "2026-03-21T00:00:05Z"
+                                } else {
+                                    "2026-03-21T00:00:01Z"
+                                }
+                            },
+                            "history": []
+                        }
+                    }
+                })
+            }
+            _ => json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "error": {
+                    "code": -32601,
+                    "message": format!("Unsupported method: {}", method)
+                }
+            }),
+        };
+        AxumJson(response)
+    }
+
+    let listener = TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind mock a2a server");
+    let addr = listener.local_addr().expect("mock a2a local addr");
+    let base_url = format!("http://{}", addr);
+    let state = MockA2AState {
+        base_url: base_url.clone(),
+        get_task_calls: Arc::new(AtomicUsize::new(0)),
+        required_headers: None,
+    };
+    let router = Router::new()
+        .route("/card", get(card))
+        .route("/rpc", post(rpc))
+        .with_state(state);
+
+    tokio::spawn(async move {
+        axum::serve(listener, router)
+            .await
+            .expect("serve mock a2a server");
+    });
+
+    base_url
+}
+
+fn headers_match(
+    headers: &HeaderMap,
+    required_headers: Option<&std::collections::HashMap<String, String>>,
+) -> bool {
+    required_headers.is_none_or(|required_headers| {
+        required_headers.iter().all(|(name, value)| {
+            headers
+                .get(name)
+                .and_then(|header| header.to_str().ok())
+                .is_some_and(|header| header == value)
+        })
+    })
+}
+
+async fn start_mock_a2a_server_with_headers(
+    required_headers: std::collections::HashMap<String, String>,
+) -> String {
+    #[derive(Clone)]
+    struct MockA2AState {
+        base_url: String,
+        _get_task_calls: Arc<AtomicUsize>,
+        required_headers: Option<std::collections::HashMap<String, String>>,
+    }
+
+    async fn card(
+        AxumState(state): AxumState<MockA2AState>,
+        headers: HeaderMap,
+    ) -> AxumJson<Value> {
+        if !headers_match(&headers, state.required_headers.as_ref()) {
+            return AxumJson(json!({ "error": "missing auth" }));
+        }
+        AxumJson(json!({
+            "name": "Mock A2A Agent",
+            "description": "Test agent",
+            "protocolVersion": "0.3.0",
+            "version": "0.1.0",
+            "url": format!("{}/rpc", state.base_url),
+        }))
+    }
+
+    async fn rpc(
+        AxumState(state): AxumState<MockA2AState>,
+        headers: HeaderMap,
+        AxumJson(body): AxumJson<Value>,
+    ) -> AxumJson<Value> {
+        if !headers_match(&headers, state.required_headers.as_ref()) {
+            return AxumJson(json!({
+                "jsonrpc": "2.0",
+                "id": body.get("id").cloned().unwrap_or(json!(null)),
+                "error": { "code": 401, "message": "missing auth" }
+            }));
+        }
+        let id = body.get("id").cloned().unwrap_or(json!(null));
+        let method = body.get("method").and_then(Value::as_str).unwrap_or("");
+        let response = match method {
+            "SendMessage" => json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "result": {
+                    "task": {
+                        "id": "remote-task-1",
+                        "contextId": "ctx-1",
+                        "status": {
+                            "state": "submitted",
+                            "timestamp": "2026-03-21T00:00:00Z"
+                        }
+                    }
+                }
+            }),
+            "GetTask" => json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "result": {
+                    "task": {
+                        "id": "remote-task-1",
+                        "contextId": "ctx-1",
+                        "status": {
+                            "state": "completed",
+                            "timestamp": "2026-03-21T00:00:05Z"
+                        },
+                        "history": []
                     }
                 }
             }),
@@ -124,10 +303,15 @@ async fn start_mock_a2a_server() -> String {
         .expect("bind mock a2a server");
     let addr = listener.local_addr().expect("mock a2a local addr");
     let base_url = format!("http://{}", addr);
+    let state = MockA2AState {
+        base_url: base_url.clone(),
+        required_headers: Some(required_headers),
+        _get_task_calls: Arc::new(AtomicUsize::new(0)),
+    };
     let router = Router::new()
         .route("/card", get(card))
         .route("/rpc", post(rpc))
-        .with_state(base_url.clone());
+        .with_state(state);
 
     tokio::spawn(async move {
         axum::serve(listener, router)
@@ -449,4 +633,206 @@ async fn api_task_create_triggers_a2a_lane_automation_and_persists_lane_metadata
         persisted_json["task"]["laneSessions"][0]["stepId"].as_str(),
         Some("todo-a2a")
     );
+}
+
+#[tokio::test]
+async fn api_task_create_reconciles_a2a_lane_terminal_state() {
+    let fixture = ApiFixture::new().await;
+    let mock_a2a_base = start_mock_a2a_server().await;
+
+    let boards_response = fixture
+        .client
+        .get(fixture.endpoint("/api/kanban/boards?workspaceId=default"))
+        .send()
+        .await
+        .expect("list boards");
+    assert_eq!(boards_response.status(), StatusCode::OK);
+    let boards_json: Value = boards_response.json().await.expect("decode boards");
+    let board_id = boards_json["boards"][0]["id"].as_str().expect("board id");
+
+    let board_response = fixture
+        .client
+        .get(fixture.endpoint(&format!("/api/kanban/boards/{board_id}")))
+        .send()
+        .await
+        .expect("get board");
+    assert_eq!(board_response.status(), StatusCode::OK);
+    let board_json: Value = board_response.json().await.expect("decode board");
+    let mut columns = board_json["board"]["columns"]
+        .as_array()
+        .expect("columns array")
+        .clone();
+    let todo = columns
+        .iter_mut()
+        .find(|column| column["id"].as_str() == Some("todo"))
+        .expect("todo column");
+    todo["automation"] = json!({
+        "enabled": true,
+        "steps": [
+            {
+                "id": "todo-a2a",
+                "transport": "a2a",
+                "role": "CRAFTER",
+                "specialistName": "Todo Remote Worker",
+                "agentCardUrl": format!("{}/card", mock_a2a_base),
+                "skillId": "remote-skill"
+            }
+        ]
+    });
+
+    let update_board = fixture
+        .client
+        .patch(fixture.endpoint(&format!("/api/kanban/boards/{board_id}")))
+        .json(&json!({ "columns": columns }))
+        .send()
+        .await
+        .expect("update board");
+    assert_eq!(update_board.status(), StatusCode::OK);
+
+    let create_task = fixture
+        .client
+        .post(fixture.endpoint("/api/tasks"))
+        .json(&json!({
+            "title": "A2A lane terminal state",
+            "objective": "Track the remote A2A task until completion",
+            "workspaceId": "default",
+            "boardId": board_id,
+            "columnId": "todo"
+        }))
+        .send()
+        .await
+        .expect("create task");
+    assert_eq!(create_task.status(), StatusCode::CREATED);
+    let task_json: Value = create_task.json().await.expect("decode task");
+    let task_id = task_json["task"]["id"].as_str().expect("task id");
+
+    let mut completed_task = None;
+    for _ in 0..40 {
+        let response = fixture
+            .client
+            .get(fixture.endpoint(&format!("/api/tasks/{task_id}")))
+            .send()
+            .await
+            .expect("get task");
+        assert_eq!(response.status(), StatusCode::OK);
+        let persisted_json: Value = response.json().await.expect("decode persisted task");
+        let lane_session = &persisted_json["task"]["laneSessions"][0];
+        if lane_session["status"].as_str() == Some("completed") {
+            completed_task = Some(persisted_json);
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+
+    let persisted_json = completed_task.expect("expected A2A lane session to complete");
+    assert_eq!(persisted_json["task"]["triggerSessionId"], Value::Null);
+    assert_eq!(
+        persisted_json["task"]["laneSessions"][0]["status"].as_str(),
+        Some("completed")
+    );
+    assert_eq!(
+        persisted_json["task"]["laneSessions"][0]["completedAt"].as_str(),
+        Some("2026-03-21T00:00:05Z")
+    );
+    assert_eq!(persisted_json["task"]["lastSyncError"], Value::Null);
+}
+
+#[tokio::test]
+async fn api_task_create_applies_a2a_auth_config_headers() {
+    let fixture = ApiFixture::new().await;
+    let mock_a2a_base = start_mock_a2a_server_with_headers(std::collections::HashMap::from([
+        (
+            "authorization".to_string(),
+            "Bearer secret-token".to_string(),
+        ),
+        ("x-tenant".to_string(), "review-team".to_string()),
+    ]))
+    .await;
+
+    std::env::set_var(
+        "ROUTA_A2A_AUTH_CONFIGS",
+        r#"{"remote-review-auth":{"headers":{"Authorization":"Bearer secret-token","X-Tenant":"review-team"}}}"#,
+    );
+
+    let boards_response = fixture
+        .client
+        .get(fixture.endpoint("/api/kanban/boards?workspaceId=default"))
+        .send()
+        .await
+        .expect("list boards");
+    assert_eq!(boards_response.status(), StatusCode::OK);
+    let boards_json: Value = boards_response.json().await.expect("decode boards");
+    let board_id = boards_json["boards"][0]["id"].as_str().expect("board id");
+
+    let board_response = fixture
+        .client
+        .get(fixture.endpoint(&format!("/api/kanban/boards/{board_id}")))
+        .send()
+        .await
+        .expect("get board");
+    assert_eq!(board_response.status(), StatusCode::OK);
+    let board_json: Value = board_response.json().await.expect("decode board");
+    let mut columns = board_json["board"]["columns"]
+        .as_array()
+        .expect("columns array")
+        .clone();
+    let todo = columns
+        .iter_mut()
+        .find(|column| column["id"].as_str() == Some("todo"))
+        .expect("todo column");
+    todo["automation"] = json!({
+        "enabled": true,
+        "steps": [
+            {
+                "id": "todo-a2a",
+                "transport": "a2a",
+                "role": "CRAFTER",
+                "specialistName": "Todo Remote Worker",
+                "agentCardUrl": format!("{}/card", mock_a2a_base),
+                "skillId": "remote-skill",
+                "authConfigId": "remote-review-auth"
+            }
+        ]
+    });
+
+    let update_board = fixture
+        .client
+        .patch(fixture.endpoint(&format!("/api/kanban/boards/{board_id}")))
+        .json(&json!({ "columns": columns }))
+        .send()
+        .await
+        .expect("update board");
+    assert_eq!(update_board.status(), StatusCode::OK);
+
+    let create_task = fixture
+        .client
+        .post(fixture.endpoint("/api/tasks"))
+        .json(&json!({
+            "title": "A2A lane auth task",
+            "objective": "Trigger remote A2A automation with auth",
+            "workspaceId": "default",
+            "boardId": board_id,
+            "columnId": "todo"
+        }))
+        .send()
+        .await
+        .expect("create task");
+    assert_eq!(create_task.status(), StatusCode::CREATED);
+    let task_json: Value = create_task.json().await.expect("decode task");
+    let task_id = task_json["task"]["id"].as_str().expect("task id");
+
+    let get_task = fixture
+        .client
+        .get(fixture.endpoint(&format!("/api/tasks/{task_id}")))
+        .send()
+        .await
+        .expect("get task");
+    assert_eq!(get_task.status(), StatusCode::OK);
+    let persisted_json: Value = get_task.json().await.expect("decode persisted task");
+    assert_eq!(
+        persisted_json["task"]["laneSessions"][0]["externalTaskId"].as_str(),
+        Some("remote-task-1")
+    );
+
+    std::env::remove_var("ROUTA_A2A_AUTH_CONFIGS");
 }

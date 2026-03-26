@@ -1,12 +1,19 @@
 use chrono::Utc;
-use reqwest::header::{ACCEPT, CONTENT_TYPE};
+use reqwest::header::{HeaderName, HeaderValue, ACCEPT, CONTENT_TYPE};
+use routa_core::events::{AgentEvent, AgentEventType};
 use routa_core::models::kanban::{KanbanAutomationStep, KanbanBoard, KanbanTransport};
 use serde_json::{json, Value};
+use std::collections::HashMap;
+use std::time::{Duration, Instant};
 
 use crate::error::ServerError;
 use crate::models::task::{Task, TaskLaneSession, TaskLaneSessionStatus};
 use crate::state::AppState;
 use routa_core::store::acp_session_store::CreateAcpSessionParams;
+
+const A2A_POLL_INTERVAL: Duration = Duration::from_secs(1);
+const A2A_MAX_WAIT: Duration = Duration::from_secs(300);
+const A2A_AUTH_CONFIGS_ENV: &str = "ROUTA_A2A_AUTH_CONFIGS";
 
 pub async fn resolve_codebase(
     state: &AppState,
@@ -436,7 +443,7 @@ async fn trigger_assigned_task_acp_agent(
 }
 
 async fn trigger_assigned_task_a2a_agent(
-    _state: &AppState,
+    state: &AppState,
     task: &mut Task,
     board: Option<&KanbanBoard>,
     step: Option<&KanbanAutomationStep>,
@@ -446,6 +453,7 @@ async fn trigger_assigned_task_a2a_agent(
         .agent_card_url
         .as_deref()
         .ok_or_else(|| "A2A automation requires agentCardUrl".to_string())?;
+    let auth_headers = resolve_a2a_auth_headers(step.auth_config_id.as_deref())?;
 
     let mut ordered_columns = board.map(|value| value.columns.clone()).unwrap_or_default();
     ordered_columns.sort_by_key(|column| column.position);
@@ -478,40 +486,44 @@ async fn trigger_assigned_task_a2a_agent(
     );
 
     let client = reqwest::Client::new();
-    let rpc_endpoint = resolve_a2a_rpc_endpoint(&client, agent_card_url).await?;
+    let rpc_endpoint =
+        resolve_a2a_rpc_endpoint(&client, agent_card_url, auth_headers.as_ref()).await?;
     let request_id = uuid::Uuid::new_v4().to_string();
     let message_id = uuid::Uuid::new_v4().to_string();
-    let response = client
-        .post(&rpc_endpoint)
-        .header(CONTENT_TYPE, "application/json")
-        .header(ACCEPT, "application/json")
-        .json(&json!({
-            "jsonrpc": "2.0",
-            "id": request_id,
-            "method": "SendMessage",
-            "params": {
-                "message": {
-                    "messageId": message_id,
-                    "role": "user",
-                    "parts": [
-                        { "text": prompt }
-                    ]
-                },
-                "metadata": {
-                    "workspaceId": task.workspace_id,
-                    "taskId": task.id,
-                    "boardId": task.board_id,
-                    "columnId": task.column_id,
-                    "stepId": step.id,
-                    "skillId": step.skill_id,
-                    "authConfigId": step.auth_config_id,
-                    "role": task.assigned_role,
+    let response = apply_a2a_auth_headers(
+        client
+            .post(&rpc_endpoint)
+            .header(CONTENT_TYPE, "application/json")
+            .header(ACCEPT, "application/json")
+            .json(&json!({
+                "jsonrpc": "2.0",
+                "id": request_id,
+                "method": "SendMessage",
+                "params": {
+                    "message": {
+                        "messageId": message_id,
+                        "role": "user",
+                        "parts": [
+                            { "text": prompt }
+                        ]
+                    },
+                    "metadata": {
+                        "workspaceId": task.workspace_id,
+                        "taskId": task.id,
+                        "boardId": task.board_id,
+                        "columnId": task.column_id,
+                        "stepId": step.id,
+                        "skillId": step.skill_id,
+                        "authConfigId": step.auth_config_id,
+                        "role": task.assigned_role,
+                    }
                 }
-            }
-        }))
-        .send()
-        .await
-        .map_err(|error| format!("Failed to send A2A request: {}", error))?;
+            })),
+        auth_headers.as_ref(),
+    )?
+    .send()
+    .await
+    .map_err(|error| format!("Failed to send A2A request: {}", error))?;
 
     if !response.status().is_success() {
         return Err(format!(
@@ -552,12 +564,28 @@ async fn trigger_assigned_task_a2a_agent(
         board,
         Some(step),
         AgentTriggerResult {
-            session_id,
+            session_id: session_id.clone(),
             transport: "a2a".to_string(),
-            external_task_id: Some(external_task_id),
+            external_task_id: Some(external_task_id.clone()),
             context_id,
         },
     );
+
+    let state_clone = state.clone();
+    let task_id = task.id.clone();
+    let workspace_id = task.workspace_id.clone();
+    tokio::spawn(async move {
+        monitor_a2a_task_completion(
+            &state_clone,
+            &workspace_id,
+            &task_id,
+            &session_id,
+            &rpc_endpoint,
+            &external_task_id,
+            auth_headers,
+        )
+        .await;
+    });
 
     Ok(())
 }
@@ -626,6 +654,290 @@ fn apply_trigger_result(
     }
 }
 
+#[derive(Debug)]
+struct A2ATaskTerminalUpdate {
+    status: TaskLaneSessionStatus,
+    completed_at: String,
+    last_activity_at: String,
+    context_id: Option<String>,
+    error: Option<String>,
+}
+
+async fn monitor_a2a_task_completion(
+    state: &AppState,
+    workspace_id: &str,
+    task_id: &str,
+    session_id: &str,
+    rpc_endpoint: &str,
+    external_task_id: &str,
+    auth_headers: Option<HashMap<String, String>>,
+) {
+    let client = reqwest::Client::new();
+    let terminal = match wait_for_a2a_completion(
+        &client,
+        rpc_endpoint,
+        external_task_id,
+        auth_headers.as_ref(),
+    )
+    .await
+    {
+        Ok(terminal) => terminal,
+        Err(error) => {
+            let now = Utc::now().to_rfc3339();
+            let status = if error.contains("did not complete within") {
+                TaskLaneSessionStatus::TimedOut
+            } else {
+                TaskLaneSessionStatus::Failed
+            };
+            A2ATaskTerminalUpdate {
+                status,
+                completed_at: now.clone(),
+                last_activity_at: now,
+                context_id: None,
+                error: Some(error),
+            }
+        }
+    };
+
+    if let Err(error) =
+        reconcile_a2a_lane_session(state, task_id, session_id, external_task_id, terminal).await
+    {
+        tracing::warn!(
+            target: "routa_a2a",
+            workspace_id = %workspace_id,
+            task_id = %task_id,
+            session_id = %session_id,
+            external_task_id = %external_task_id,
+            error = %error,
+            "failed to persist A2A terminal state"
+        );
+        return;
+    }
+
+    emit_kanban_workspace_event(state, workspace_id, task_id).await;
+}
+
+async fn wait_for_a2a_completion(
+    client: &reqwest::Client,
+    rpc_endpoint: &str,
+    task_id: &str,
+    auth_headers: Option<&HashMap<String, String>>,
+) -> Result<A2ATaskTerminalUpdate, String> {
+    let started_at = Instant::now();
+
+    loop {
+        let terminal = get_a2a_task_update(client, rpc_endpoint, task_id, auth_headers).await?;
+        if let Some(terminal) = terminal {
+            return Ok(terminal);
+        }
+        if started_at.elapsed() >= A2A_MAX_WAIT {
+            return Err(format!(
+                "A2A task {task_id} did not complete within {}ms",
+                A2A_MAX_WAIT.as_millis()
+            ));
+        }
+        tokio::time::sleep(A2A_POLL_INTERVAL).await;
+    }
+}
+
+async fn get_a2a_task_update(
+    client: &reqwest::Client,
+    rpc_endpoint: &str,
+    task_id: &str,
+    auth_headers: Option<&HashMap<String, String>>,
+) -> Result<Option<A2ATaskTerminalUpdate>, String> {
+    let request_id = uuid::Uuid::new_v4().to_string();
+    let response = apply_a2a_auth_headers(
+        client
+            .post(rpc_endpoint)
+            .header(CONTENT_TYPE, "application/json")
+            .header(ACCEPT, "application/json")
+            .json(&json!({
+                "jsonrpc": "2.0",
+                "id": request_id,
+                "method": "GetTask",
+                "params": { "id": task_id }
+            })),
+        auth_headers,
+    )?
+    .send()
+    .await
+    .map_err(|error| format!("Failed to poll A2A task: {}", error))?;
+
+    if !response.status().is_success() {
+        return Err(format!(
+            "A2A GetTask failed with HTTP {}",
+            response.status().as_u16()
+        ));
+    }
+
+    let payload: Value = response
+        .json()
+        .await
+        .map_err(|error| format!("Failed to decode A2A task payload: {}", error))?;
+    if let Some(error) = payload.get("error") {
+        let message = error
+            .get("message")
+            .and_then(Value::as_str)
+            .unwrap_or("unknown A2A error");
+        return Err(format!("A2A JSON-RPC error: {}", message));
+    }
+
+    let task = payload
+        .get("result")
+        .and_then(|value| value.get("task"))
+        .ok_or_else(|| "A2A response missing result.task".to_string())?;
+    let state = task
+        .get("status")
+        .and_then(|value| value.get("state"))
+        .and_then(Value::as_str)
+        .ok_or_else(|| "A2A task missing status.state".to_string())?;
+    if !is_terminal_a2a_state(state) {
+        return Ok(None);
+    }
+
+    let timestamp = task
+        .get("status")
+        .and_then(|value| value.get("timestamp"))
+        .and_then(Value::as_str)
+        .map(ToOwned::to_owned)
+        .unwrap_or_else(|| Utc::now().to_rfc3339());
+    let context_id = task
+        .get("contextId")
+        .and_then(Value::as_str)
+        .map(ToOwned::to_owned);
+    let error = if state == "completed" {
+        None
+    } else {
+        Some(
+            extract_a2a_status_message(task)
+                .unwrap_or_else(|| format!("A2A task ended in state: {state}")),
+        )
+    };
+
+    Ok(Some(A2ATaskTerminalUpdate {
+        status: map_a2a_terminal_status(state),
+        completed_at: timestamp.clone(),
+        last_activity_at: timestamp,
+        context_id,
+        error,
+    }))
+}
+
+fn extract_a2a_status_message(task: &Value) -> Option<String> {
+    let parts = task
+        .get("status")
+        .and_then(|value| value.get("message"))
+        .and_then(|value| value.get("parts"))
+        .and_then(Value::as_array)?;
+    let text = parts
+        .iter()
+        .filter_map(|part| part.get("text").and_then(Value::as_str))
+        .map(str::trim)
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ");
+    (!text.is_empty()).then_some(text)
+}
+
+fn is_terminal_a2a_state(state: &str) -> bool {
+    matches!(
+        state,
+        "completed" | "failed" | "canceled" | "rejected" | "auth-required"
+    )
+}
+
+fn map_a2a_terminal_status(state: &str) -> TaskLaneSessionStatus {
+    match state {
+        "completed" => TaskLaneSessionStatus::Completed,
+        _ => TaskLaneSessionStatus::Failed,
+    }
+}
+
+async fn reconcile_a2a_lane_session(
+    state: &AppState,
+    task_id: &str,
+    session_id: &str,
+    external_task_id: &str,
+    terminal: A2ATaskTerminalUpdate,
+) -> Result<(), String> {
+    let mut task = wait_for_task_persistence(state, task_id, session_id).await?;
+    let lane_session = task
+        .lane_sessions
+        .iter_mut()
+        .find(|session| session.session_id == session_id)
+        .ok_or_else(|| format!("Task {task_id} missing lane session {session_id}"))?;
+
+    lane_session.status = terminal.status;
+    lane_session.completed_at = Some(terminal.completed_at.clone());
+    lane_session.last_activity_at = Some(terminal.last_activity_at.clone());
+    if lane_session.external_task_id.is_none() {
+        lane_session.external_task_id = Some(external_task_id.to_string());
+    }
+    if terminal.context_id.is_some() {
+        lane_session.context_id = terminal.context_id.clone();
+    }
+
+    if task.trigger_session_id.as_deref() == Some(session_id) {
+        task.trigger_session_id = None;
+    }
+    task.last_sync_error = terminal.error;
+    task.updated_at = Utc::now();
+
+    state
+        .task_store
+        .save(&task)
+        .await
+        .map_err(|error| format!("Failed to save A2A task reconciliation: {}", error))
+}
+
+async fn wait_for_task_persistence(
+    state: &AppState,
+    task_id: &str,
+    session_id: &str,
+) -> Result<Task, String> {
+    for _ in 0..20 {
+        if let Some(task) = state
+            .task_store
+            .get(task_id)
+            .await
+            .map_err(|error| format!("Failed to load task {task_id}: {}", error))?
+        {
+            if task
+                .lane_sessions
+                .iter()
+                .any(|session| session.session_id == session_id)
+            {
+                return Ok(task);
+            }
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+
+    Err(format!(
+        "Task {task_id} did not persist lane session {session_id} before A2A reconciliation"
+    ))
+}
+
+async fn emit_kanban_workspace_event(state: &AppState, workspace_id: &str, task_id: &str) {
+    state
+        .event_bus
+        .emit(AgentEvent {
+            event_type: AgentEventType::WorkspaceUpdated,
+            agent_id: "kanban-a2a".to_string(),
+            workspace_id: workspace_id.to_string(),
+            data: serde_json::json!({
+                "scope": "kanban",
+                "entity": "task",
+                "action": "updated",
+                "resourceId": task_id,
+                "source": "system",
+            }),
+            timestamp: Utc::now(),
+        })
+        .await;
+}
+
 async fn load_task_board(state: &AppState, task: &Task) -> Result<Option<KanbanBoard>, String> {
     if let Some(board_id) = task.board_id.as_deref() {
         state
@@ -660,14 +972,88 @@ fn is_a2a_step(step: Option<&KanbanAutomationStep>) -> bool {
     })
 }
 
-async fn resolve_a2a_rpc_endpoint(client: &reqwest::Client, url: &str) -> Result<String, String> {
+fn resolve_a2a_auth_headers(
+    auth_config_id: Option<&str>,
+) -> Result<Option<HashMap<String, String>>, String> {
+    let Some(auth_config_id) = auth_config_id
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    else {
+        return Ok(None);
+    };
+    let raw = std::env::var(A2A_AUTH_CONFIGS_ENV).unwrap_or_default();
+    if raw.trim().is_empty() {
+        return Err(format!(
+            "A2A auth config \"{}\" was not found in {}.",
+            auth_config_id, A2A_AUTH_CONFIGS_ENV
+        ));
+    }
+
+    let parsed: Value = serde_json::from_str(&raw)
+        .map_err(|error| format!("Invalid {} JSON: {}", A2A_AUTH_CONFIGS_ENV, error))?;
+    let config = parsed.get(auth_config_id).ok_or_else(|| {
+        format!(
+            "A2A auth config \"{}\" was not found in {}.",
+            auth_config_id, A2A_AUTH_CONFIGS_ENV
+        )
+    })?;
+    let headers = config.get("headers").unwrap_or(config);
+    let headers_obj = headers.as_object().ok_or_else(|| {
+        format!(
+            "{}.{} must be a header map or contain a string header map in \"headers\".",
+            A2A_AUTH_CONFIGS_ENV, auth_config_id
+        )
+    })?;
+
+    let mut resolved = HashMap::new();
+    for (name, value) in headers_obj {
+        let value = value.as_str().ok_or_else(|| {
+            format!(
+                "{}.{} header {} must be a string.",
+                A2A_AUTH_CONFIGS_ENV, auth_config_id, name
+            )
+        })?;
+        resolved.insert(name.clone(), value.to_string());
+    }
+
+    Ok(Some(resolved))
+}
+
+fn apply_a2a_auth_headers(
+    mut request: reqwest::RequestBuilder,
+    auth_headers: Option<&HashMap<String, String>>,
+) -> Result<reqwest::RequestBuilder, String> {
+    if let Some(auth_headers) = auth_headers {
+        for (name, value) in auth_headers {
+            let header_name = HeaderName::try_from(name.as_str())
+                .map_err(|error| format!("Invalid A2A auth header name {}: {}", name, error))?;
+            let header_value = HeaderValue::from_str(value).map_err(|error| {
+                format!(
+                    "Invalid A2A auth header value for {}: {}",
+                    header_name.as_str(),
+                    error
+                )
+            })?;
+            request = request.header(header_name, header_value);
+        }
+    }
+
+    Ok(request)
+}
+
+async fn resolve_a2a_rpc_endpoint(
+    client: &reqwest::Client,
+    url: &str,
+    auth_headers: Option<&HashMap<String, String>>,
+) -> Result<String, String> {
     if url.ends_with(".json") || url.ends_with("/agent-card") || url.ends_with("/card") {
-        let response = client
-            .get(url)
-            .header(ACCEPT, "application/json")
-            .send()
-            .await
-            .map_err(|error| format!("Failed to fetch A2A agent card: {}", error))?;
+        let response = apply_a2a_auth_headers(
+            client.get(url).header(ACCEPT, "application/json"),
+            auth_headers,
+        )?
+        .send()
+        .await
+        .map_err(|error| format!("Failed to fetch A2A agent card: {}", error))?;
         if !response.status().is_success() {
             return Err(format!(
                 "A2A agent card fetch failed with HTTP {}",
