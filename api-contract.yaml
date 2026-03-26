@@ -4475,6 +4475,126 @@ paths:
                     items:
                       type: object
 
+  /api/sessions/{id}/transcript:
+    get:
+      operationId: getSessionTranscript
+      summary: Get preferred transcript payload for a session
+      description: |
+        Returns the chat transcript payload used by the session chat UI.
+        The backend prefers trace-derived messages when they restore a richer
+        transcript than consolidated session history.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Session transcript payload
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - sessionId
+                  - history
+                  - messages
+                  - source
+                  - historyMessageCount
+                  - traceMessageCount
+                properties:
+                  sessionId:
+                    type: string
+                  history:
+                    type: array
+                    items:
+                      type: object
+                  messages:
+                    type: array
+                    items:
+                      type: object
+                      required:
+                        - id
+                        - role
+                        - content
+                        - timestamp
+                      properties:
+                        id:
+                          type: string
+                        role:
+                          type: string
+                          enum: [user, assistant, thought, tool, plan, info, terminal]
+                        content:
+                          type: string
+                        timestamp:
+                          type: string
+                          format: date-time
+                        toolName:
+                          type: string
+                        toolStatus:
+                          type: string
+                        toolCallId:
+                          type: string
+                        toolKind:
+                          type: string
+                        toolRawInput:
+                          type: object
+                        toolRawOutput: {}
+                        delegatedTaskId:
+                          type: string
+                        completionSummary:
+                          type: string
+                        rawData:
+                          type: object
+                        planEntries:
+                          type: array
+                          items:
+                            type: object
+                            required: [content]
+                            properties:
+                              content:
+                                type: string
+                              priority:
+                                type: string
+                                enum: [high, medium, low]
+                              status:
+                                type: string
+                                enum: [pending, in_progress, completed]
+                        usageUsed:
+                          type: number
+                        usageSize:
+                          type: number
+                        costAmount:
+                          type: number
+                        costCurrency:
+                          type: string
+                        terminalId:
+                          type: string
+                        terminalCommand:
+                          type: string
+                        terminalArgs:
+                          type: array
+                          items:
+                            type: string
+                        terminalInteractive:
+                          type: boolean
+                        terminalExited:
+                          type: boolean
+                        terminalExitCode:
+                          type:
+                            - integer
+                            - "null"
+                  source:
+                    type: string
+                    enum: [history, traces, empty]
+                  historyMessageCount:
+                    type: integer
+                  traceMessageCount:
+                    type: integer
+                  latestEventKind:
+                    type: string
+
   /api/sessions/{id}/disconnect:
     post:
       operationId: disconnectSession
