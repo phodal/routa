@@ -920,7 +920,7 @@ function SettingsPanelContent({ onClose, providers, initialTab, onResetOnboardin
   if (isPageVariant) {
     return (
       <div className="flex h-full min-h-0 bg-desktop-bg-primary text-desktop-text-primary">
-        <SettingsCenterNav onBack={onClose} activeConfigTab={activeTab} />
+        <SettingsCenterNav activeConfigTab={activeTab} />
 
         <div className="flex min-w-0 flex-1 flex-col">
           <header className="border-b border-desktop-border px-8 py-8">

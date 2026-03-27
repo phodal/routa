@@ -79,6 +79,12 @@ export interface TranslationDictionary {
   // Settings panel
   settings: {
     title: string;
+    preferences: string;
+    config: string;
+    backToApp: string;
+    workspaceTools: string;
+    standaloneTool: string;
+    focusedConfigDescription: string;
     theme: string;
     light: string;
     dark: string;
@@ -93,6 +99,11 @@ export interface TranslationDictionary {
     workflows: string;
     roleDefaults: string;
     roleDefaultsDesc: string;
+    providersDesc: string;
+    registryDesc: string;
+    rolesDesc: string;
+    modelsDesc: string;
+    webhooksDesc: string;
     provider: string;
     modelOverride: string;
     builtIn: string;

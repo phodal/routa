@@ -55,6 +55,12 @@ interface DesktopAppShellProps {
   titleBarRight?: React.ReactNode;
   /** Optional workspace switcher component */
   workspaceSwitcher?: React.ReactNode;
+  /** Optional icon-only action rendered above the Home item in the sidebar */
+  sidebarTopAction?: {
+    href: string;
+    label: string;
+    icon?: React.ReactNode;
+  };
 }
 
 export function DesktopAppShell({
@@ -63,6 +69,7 @@ export function DesktopAppShell({
   workspaceTitle,
   titleBarRight,
   workspaceSwitcher,
+  sidebarTopAction,
 }: DesktopAppShellProps) {
   const isSidebarCollapsed = useSyncExternalStore(
     subscribeToDesktopSidebarCollapsed,
@@ -101,6 +108,7 @@ export function DesktopAppShell({
           workspaceId={workspaceId}
           collapsed={isSidebarCollapsed}
           onToggleCollapse={() => setSidebarCollapsed(!isSidebarCollapsed)}
+          topAction={sidebarTopAction}
         />
 
         {/* Content */}

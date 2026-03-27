@@ -21,16 +21,24 @@ interface NavItem {
   requiresWorkspace?: boolean;
 }
 
+interface SidebarTopAction {
+  href: string;
+  label: string;
+  icon?: React.ReactNode;
+}
+
 interface DesktopSidebarProps {
   workspaceId?: string | null;
   collapsed?: boolean;
   onToggleCollapse?: () => void;
+  topAction?: SidebarTopAction;
 }
 
 export function DesktopSidebar({
   workspaceId,
   collapsed = false,
   onToggleCollapse,
+  topAction,
 }: DesktopSidebarProps) {
   const pathname = usePathname();
   const normalizedWorkspaceId = workspaceId?.trim() || null;
@@ -215,6 +223,23 @@ export function DesktopSidebar({
       </div>
 
       <nav className={`flex-1 py-3 ${collapsed ? "flex flex-col items-center gap-1" : "px-2 space-y-1"}`}>
+        {topAction ? (
+          <>
+            <Link
+              href={topAction.href}
+              className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-xl text-desktop-text-secondary transition-colors hover:bg-desktop-bg-active hover:text-desktop-text-primary"
+              title={topAction.label}
+              aria-label={topAction.label}
+            >
+              {topAction.icon ?? (
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" />
+                </svg>
+              )}
+            </Link>
+            {!collapsed && <div className="mx-1 mb-2 border-t border-desktop-border" />}
+          </>
+        ) : null}
         {primaryItems.map(renderNavItem)}
         {!collapsed && <div className="mx-1 my-2 border-t border-desktop-border" />}
         {toolItems.map(renderNavItem)}
