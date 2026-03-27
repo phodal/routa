@@ -1,26 +1,7 @@
 import type { Metadata } from "next";
-import Script from "next/script";
 import "./globals.css";
 import { I18nProvider } from "@/i18n";
-
-const THEME_INIT_SCRIPT = `
-(() => {
-  try {
-    const stored = window.localStorage.getItem("routa.theme");
-    const theme = stored === "light" || stored === "dark" || stored === "system" ? stored : "system";
-    const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-    const resolvedTheme = theme === "system" ? (prefersDark ? "dark" : "light") : theme;
-    const root = document.documentElement;
-    root.classList.remove("light", "dark");
-    root.classList.add(resolvedTheme);
-    root.dataset.themePreference = theme;
-    root.style.colorScheme = resolvedTheme;
-  } catch {
-    document.documentElement.classList.add("light");
-    document.documentElement.style.colorScheme = "light";
-  }
-})();
-`;
+import { ThemeInitializer } from "@/client/components/theme-initializer";
 
 export const metadata: Metadata = {
   title: "Routa - Multi-Agent Coordinator",
@@ -39,14 +20,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <head>
-        <Script
-          id="theme-init"
-          strategy="beforeInteractive"
-          dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }}
-        />
-      </head>
+      <head />
       <body className="antialiased">
+        <ThemeInitializer />
         <I18nProvider>{children}</I18nProvider>
       </body>
     </html>

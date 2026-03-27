@@ -41,8 +41,9 @@ const EMPTY_HOME_DATA: WorkspaceHomeData = {
   tasks: [],
 };
 
-function formatRelativeTime(value?: string) {
+function formatRelativeTime(value: string | undefined, hydrated: boolean) {
   if (!value) return "刚刚";
+  if (!hydrated) return "刚刚";
   const diffMs = Date.now() - new Date(value).getTime();
   const mins = Math.floor(diffMs / 60000);
   if (mins < 1) return "刚刚";
@@ -82,6 +83,11 @@ export default function HomePage() {
   const [onboardingCompleted, setOnboardingCompleted] = useState(false);
   const [workspaceHomeData, setWorkspaceHomeData] = useState<Record<string, WorkspaceHomeData>>({});
   const [workspaceHomeLoading, setWorkspaceHomeLoading] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
+
+  useEffect(() => {
+    setHydrated(true);
+  }, []);
 
   useEffect(() => {
     if (!acp.connected && !acp.loading) {
@@ -232,10 +238,12 @@ export default function HomePage() {
 
   const hasWorkspace = workspacesHook.workspaces.length > 0;
   const hasProviderConfig =
-    hasSavedProviderConfiguration(loadDefaultProviders(), loadProviderConnections(), {
-      dockerOpencodeAuthJson: loadDockerOpencodeAuthJson(),
-      customProviderCount: loadCustomAcpProviders().length,
-    });
+    hydrated
+      ? hasSavedProviderConfiguration(loadDefaultProviders(), loadProviderConnections(), {
+        dockerOpencodeAuthJson: loadDockerOpencodeAuthJson(),
+        customProviderCount: loadCustomAcpProviders().length,
+      })
+      : false;
   const needsInlineOnboarding =
     hasWorkspace &&
     !onboardingCompleted &&
@@ -406,7 +414,7 @@ export default function HomePage() {
                                         <div className="mt-3 flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400">
                                           <span>{taskCount} 张卡片</span>
                                           <span>·</span>
-                                          <span>{formatRelativeTime(updatedAt)}</span>
+                                          <span>{formatRelativeTime(updatedAt, hydrated)}</span>
                                         </div>
                                       </Link>
                                     );
@@ -435,7 +443,7 @@ export default function HomePage() {
                                     </div>
                                     <div className="mt-2 flex items-center justify-between gap-3">
                                       <div className="text-[11px] text-slate-500 dark:text-slate-400">
-                                        {formatRelativeTime(task.updatedAt ?? task.createdAt)}
+                                        {formatRelativeTime(task.updatedAt ?? task.createdAt, hydrated)}
                                       </div>
                                       <span className={`rounded-full border px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] ${getTaskTone(task)}`}>
                                         {task.columnId ?? task.status}
@@ -502,7 +510,7 @@ export default function HomePage() {
                         <div className="min-w-0">
                           <div className="truncate text-sm font-semibold">{workspace.title}</div>
                           <div className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
-                            更新于 {formatRelativeTime(workspace.updatedAt)}
+                            更新于 {formatRelativeTime(workspace.updatedAt, hydrated)}
                           </div>
                         </div>
                         {active && (
@@ -531,7 +539,7 @@ export default function HomePage() {
                         {getSessionLabel(session)}
                       </div>
                       <div className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
-                        {formatRelativeTime(session.createdAt)}
+                        {formatRelativeTime(session.createdAt, hydrated)}
                       </div>
                     </Link>
                   )) : (
