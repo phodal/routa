@@ -17,12 +17,13 @@ import { useWorkspaces } from "@/client/hooks/use-workspaces";
 import { useAcp } from "@/client/hooks/use-acp";
 import { useAgentsRpc } from "@/client/hooks/use-agents-rpc";
 import { useNotes } from "@/client/hooks/use-notes";
-import { DesktopLayout } from "@/client/components/desktop-layout";
+import { DesktopAppShell } from "@/client/components/desktop-app-shell";
 import { AgentInstallPanel } from "@/client/components/agent-install-panel";
 import { CompactStat } from "@/client/components/compact-stat";
 import { OverviewCard } from "@/client/components/overview-card";
 import { WorkspaceTabBar } from "@/client/components/workspace-tab-bar";
 import { WorkspacePageHeader } from "@/client/components/workspace-page-header";
+import { WorkspaceSwitcher } from "@/client/components/workspace-switcher";
 import { SessionsOverview } from "@/app/workspace/[workspaceId]/sessions-overview";
 import { BackgroundTaskInfo, TaskInfo, SessionInfo, KanbanBoardInfo } from "@/app/workspace/[workspaceId]/types";
 import { NoteTasksTab } from "@/app/workspace/[workspaceId]/note-tasks-tab";
@@ -397,13 +398,21 @@ export function WorkspacePageClient({
   );
 
   return (
-    <DesktopLayout
+    <DesktopAppShell
       workspaceId={workspaceId}
-      workspaces={workspacesHook.workspaces}
-      activeWorkspaceTitle={workspace?.title ?? (isDefaultWorkspace ? "Default Workspace" : undefined)}
-      workspacesLoading={workspacesHook.loading}
-      onWorkspaceSelect={handleWorkspaceSelect}
-      onWorkspaceCreate={handleWorkspaceCreate}
+      workspaceTitle={workspace?.title ?? (isDefaultWorkspace ? "Default Workspace" : undefined)}
+      workspaceSwitcher={(
+        <WorkspaceSwitcher
+          workspaces={workspacesHook.workspaces}
+          activeWorkspaceId={workspaceId}
+          activeWorkspaceTitle={workspace?.title ?? (isDefaultWorkspace ? "Default Workspace" : undefined)}
+          onSelect={handleWorkspaceSelect}
+          onCreate={handleWorkspaceCreate}
+          loading={workspacesHook.loading}
+          compact
+          desktop
+        />
+      )}
     >
       <div
         className="flex h-full flex-col overflow-hidden bg-desktop-bg-primary"
@@ -489,7 +498,7 @@ export function WorkspacePageClient({
           <AgentInstallPanel />
         </OverlayModal>
       )}
-    </DesktopLayout>
+    </DesktopAppShell>
   );
 }
 
