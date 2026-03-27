@@ -2,6 +2,7 @@
 .github
 .next
 .next-desktop
+.next-page-snapshots
 node_modules
 npm-debug.log*
 

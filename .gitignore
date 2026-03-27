@@ -106,6 +106,7 @@ crates/docs/fitness/reports/
 apps/desktop/src-tauri/icons/android/
 apps/desktop/src-tauri/icons/ios/
 .next-desktop/
+.next-page-snapshots/
 
 # SQLite database files
 *.db
