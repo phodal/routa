@@ -25,7 +25,9 @@ export default function SchedulesSettingsPage() {
           onSelect={setSelectedWorkspaceId}
           onCreate={async (title) => {
             const workspace = await workspacesHook.createWorkspace(title);
-            setSelectedWorkspaceId(workspace.id);
+            if (workspace) {
+              setSelectedWorkspaceId(workspace.id);
+            }
           }}
           loading={workspacesHook.loading}
           compact

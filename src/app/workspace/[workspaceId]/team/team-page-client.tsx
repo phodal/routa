@@ -82,6 +82,7 @@ export function TeamPageClient() {
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
   const [specialists, setSpecialists] = useState<SpecialistSummary[]>([]);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [isBenchPaused, setIsBenchPaused] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -125,6 +126,8 @@ export function TeamPageClient() {
     () => filterSpecialistsByCategory(specialists, "team").sort(compareTeamSpecialists),
     [specialists],
   );
+  const shouldAutoScrollBench = teamSpecialists.length > 4;
+  const benchItems = shouldAutoScrollBench ? [...teamSpecialists, ...teamSpecialists] : teamSpecialists;
 
   const teamRuns = useMemo<TeamRunSummary[]>(() => {
     const childMap = new Map<string, SessionInfo[]>();
@@ -258,39 +261,18 @@ export function TeamPageClient() {
                   </p>
                 </div>
 
-                <div className="mx-auto mt-10 grid w-full max-w-4xl gap-4 md:grid-cols-3">
-                  <div className="rounded-[26px] border border-black/6 bg-white/80 p-5 text-left dark:border-white/8 dark:bg-white/5">
-                    <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-500">
-                      Team Runs
-                    </div>
-                    <div className="mt-3 text-3xl font-semibold text-slate-900 dark:text-slate-100">
-                      {teamRuns.length}
-                    </div>
-                    <p className="mt-2 text-sm leading-6 text-slate-500 dark:text-slate-400">
-                      Top-level lead sessions started from this workspace.
-                    </p>
+                <div className="mx-auto mt-8 flex w-full max-w-3xl flex-wrap items-center justify-center gap-3 text-sm text-slate-500 dark:text-slate-400">
+                  <div className="inline-flex items-center gap-2 rounded-full border border-black/8 bg-white/75 px-4 py-2 dark:border-white/10 dark:bg-white/5">
+                    <span className="text-[10px] font-semibold uppercase tracking-[0.18em]">Runs</span>
+                    <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">{teamRuns.length}</span>
                   </div>
-                  <div className="rounded-[26px] border border-black/6 bg-white/80 p-5 text-left dark:border-white/8 dark:bg-white/5">
-                    <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-500">
-                      Active
-                    </div>
-                    <div className="mt-3 text-3xl font-semibold text-slate-900 dark:text-slate-100">
-                      {activeRuns}
-                    </div>
-                    <p className="mt-2 text-sm leading-6 text-slate-500 dark:text-slate-400">
-                      Runs still connecting or actively coordinating delegate sessions.
-                    </p>
+                  <div className="inline-flex items-center gap-2 rounded-full border border-black/8 bg-white/75 px-4 py-2 dark:border-white/10 dark:bg-white/5">
+                    <span className="text-[10px] font-semibold uppercase tracking-[0.18em]">Active</span>
+                    <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">{activeRuns}</span>
                   </div>
-                  <div className="rounded-[26px] border border-black/6 bg-white/80 p-5 text-left dark:border-white/8 dark:bg-white/5">
-                    <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-500">
-                      Bench
-                    </div>
-                    <div className="mt-3 text-3xl font-semibold text-slate-900 dark:text-slate-100">
-                      {availableMembers}
-                    </div>
-                    <p className="mt-2 text-sm leading-6 text-slate-500 dark:text-slate-400">
-                      Specialists available to the Team lead for delegation.
-                    </p>
+                  <div className="inline-flex items-center gap-2 rounded-full border border-black/8 bg-white/75 px-4 py-2 dark:border-white/10 dark:bg-white/5">
+                    <span className="text-[10px] font-semibold uppercase tracking-[0.18em]">Bench</span>
+                    <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">{availableMembers}</span>
                   </div>
                 </div>
               </section>
@@ -299,16 +281,34 @@ export function TeamPageClient() {
 
           <div className="border-t border-black/6 bg-[#f3f1eb]/92 px-4 py-4 dark:border-white/8 dark:bg-[#0f141c]/92">
             <div className="mx-auto w-full max-w-4xl">
-              <div className="mb-3 max-h-24 overflow-y-auto">
-                <div className="space-y-1">
-                  {teamSpecialists.map((specialist) => {
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-500">
+                  Team Bench
+                </div>
+                <div className="text-[10px] text-slate-500 dark:text-slate-400">
+                  {teamSpecialists.length} specialists
+                </div>
+              </div>
+              <div
+                className="mb-3 overflow-hidden pb-1"
+                onMouseEnter={() => setIsBenchPaused(true)}
+                onMouseLeave={() => setIsBenchPaused(false)}
+              >
+                <div
+                  className="flex w-max gap-2"
+                  style={shouldAutoScrollBench ? {
+                    animation: "teamBenchMarquee 24s linear infinite",
+                    animationPlayState: isBenchPaused ? "paused" : "running",
+                  } : undefined}
+                >
+                  {benchItems.map((specialist, index) => {
                     const roleLabel = specialist.id === TEAM_LEAD_SPECIALIST_ID ? "Lead" : (specialist.role ?? "Specialist");
                     const isLead = specialist.id === TEAM_LEAD_SPECIALIST_ID;
 
                     return (
                       <div
-                        key={specialist.id}
-                        className={`flex items-center rounded-lg px-2.5 py-1.5 text-sm transition-colors ${
+                        key={`${specialist.id}-${index}`}
+                        className={`flex w-[170px] shrink-0 items-center rounded-lg px-2.5 py-1.5 text-sm transition-colors ${
                           isLead
                             ? "bg-white/80 text-slate-900 dark:bg-white/8 dark:text-slate-100"
                             : "bg-black/[0.03] text-slate-700 dark:bg-white/[0.03] dark:text-slate-200"
@@ -341,6 +341,16 @@ export function TeamPageClient() {
               />
             </div>
           </div>
+          <style>{`
+            @keyframes teamBenchMarquee {
+              from {
+                transform: translateX(0);
+              }
+              to {
+                transform: translateX(calc(-50% - 0.5rem));
+              }
+            }
+          `}</style>
         </main>
 
         <aside className="hidden w-[320px] shrink-0 border-l border-black/6 bg-[#efede6] dark:border-white/8 dark:bg-[#11161f] xl:flex xl:flex-col">
@@ -375,17 +385,17 @@ export function TeamPageClient() {
                 </div>
               </div>
             ) : (
-              <div className="space-y-3">
+              <div className="space-y-2">
                 {teamRuns.slice(0, 8).map((run) => (
                   <button
                     key={run.session.sessionId}
                     type="button"
                     onClick={() => router.push(`/workspace/${workspaceId}/team/${run.session.sessionId}`)}
-                    className="w-full rounded-[22px] border border-black/6 bg-[#fbfaf7] p-4 text-left transition-colors hover:bg-white dark:border-white/8 dark:bg-white/[0.04] dark:hover:bg-white/[0.07]"
+                    className="w-full rounded-[18px] border border-black/6 bg-[#fbfaf7] px-4 py-3 text-left transition-colors hover:bg-white dark:border-white/8 dark:bg-white/[0.04] dark:hover:bg-white/[0.07]"
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <div className="truncate text-base font-semibold text-slate-900 dark:text-slate-100">
+                        <div className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">
                           {run.session.name ?? "Unnamed Team run"}
                         </div>
                         <div className="mt-1 flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400">
