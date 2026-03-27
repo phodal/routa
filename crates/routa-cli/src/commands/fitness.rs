@@ -1,11 +1,16 @@
 //! `routa fitness` — repository fitness and fluency assessment entrypoints.
 
-use clap::{Args, Subcommand, ValueEnum};
-use std::ffi::OsString;
-use std::path::{Path, PathBuf};
-use std::process::{Command, ExitStatus, Stdio};
+mod fluency;
 
-const FITNESS_FLUENCY_CLI_RELATIVE_PATH: &str = "tools/harness-fluency/src/cli.ts";
+use clap::{Args, Subcommand, ValueEnum};
+use std::path::{Path, PathBuf};
+
+use self::fluency::{evaluate_harness_fluency, format_text_report, EvaluateOptions};
+
+const DEFAULT_MODEL_RELATIVE_PATH: &str = "docs/fitness/harness-fluency.model.yaml";
+const AGENT_ORCHESTRATOR_MODEL_RELATIVE_PATH: &str =
+    "docs/fitness/harness-fluency.profile.agent_orchestrator.yaml";
+const DEFAULT_SNAPSHOT_RELATIVE_PATH: &str = "docs/fitness/reports/harness-fluency-latest.json";
 
 #[derive(Subcommand, Debug, Clone)]
 pub enum FitnessAction {
@@ -58,21 +63,19 @@ impl FluencyProfile {
             Self::AgentOrchestrator => "agent_orchestrator",
         }
     }
+
+    fn bundled_model_relative_path(self) -> &'static str {
+        match self {
+            Self::Generic => DEFAULT_MODEL_RELATIVE_PATH,
+            Self::AgentOrchestrator => AGENT_ORCHESTRATOR_MODEL_RELATIVE_PATH,
+        }
+    }
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, ValueEnum)]
 pub enum FluencyOutputFormat {
     Text,
     Json,
-}
-
-impl FluencyOutputFormat {
-    fn as_cli_value(self) -> &'static str {
-        match self {
-            Self::Text => "text",
-            Self::Json => "json",
-        }
-    }
 }
 
 pub fn run(action: FitnessAction) -> Result<(), String> {
@@ -83,75 +86,72 @@ pub fn run(action: FitnessAction) -> Result<(), String> {
 
 fn run_fluency(args: &FluencyArgs) -> Result<(), String> {
     let repo_root = resolve_repo_root(args.repo_root.as_deref())?;
-    let tool_root = resolve_tool_root()?;
-    let cli_path = tool_root.join(FITNESS_FLUENCY_CLI_RELATIVE_PATH);
-    let forwarded_args = build_forwarded_args(args, &repo_root);
+    let workspace_root = resolve_workspace_root()?;
+    let model_path = resolve_model_path(args, &repo_root, &workspace_root)?;
+    let snapshot_path = resolve_snapshot_path(args, &repo_root);
 
-    let status = Command::new("node")
-        .arg("--import")
-        .arg("tsx")
-        .arg(&cli_path)
-        .args(forwarded_args)
-        .current_dir(&tool_root)
-        .env("PATH", routa_core::shell_env::full_path())
-        .stdin(Stdio::inherit())
-        .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit())
-        .status()
-        .map_err(|error| match error.kind() {
-            std::io::ErrorKind::NotFound => format!(
-                "failed to launch harness fluency CLI at {}: {error}. Ensure Node.js is installed and `tsx` is available to `node --import`.",
-                cli_path.display()
-            ),
-            _ => format!(
-                "failed to launch harness fluency CLI at {}: {error}",
-                cli_path.display()
-            ),
-        })?;
+    let report = evaluate_harness_fluency(&EvaluateOptions {
+        repo_root,
+        model_path,
+        profile: args.profile.as_cli_value().to_string(),
+        snapshot_path,
+        compare_last: args.compare_last,
+        save: !args.no_save,
+    })?;
 
-    if status.success() {
-        Ok(())
-    } else {
-        Err(format!(
-            "`node --import tsx {}` exited with {}",
-            cli_path.display(),
-            format_exit_status(status)
-        ))
+    match args.format {
+        FluencyOutputFormat::Text => println!("{}", format_text_report(&report)),
+        FluencyOutputFormat::Json => println!(
+            "{}",
+            serde_json::to_string_pretty(&report)
+                .map_err(|error| format!("failed to serialize fluency report: {error}"))?
+        ),
+    }
+
+    Ok(())
+}
+
+fn resolve_model_path(
+    args: &FluencyArgs,
+    repo_root: &Path,
+    workspace_root: &Path,
+) -> Result<PathBuf, String> {
+    if let Some(path) = &args.model {
+        return Ok(resolve_requested_path(path, &std::env::current_dir().map_err(|error| {
+            format!("failed to determine cwd for model resolution: {error}")
+        })?));
+    }
+
+    let repo_candidate = repo_root.join(args.profile.bundled_model_relative_path());
+    if repo_candidate.exists() {
+        return Ok(repo_candidate);
+    }
+
+    let bundled = workspace_root.join(args.profile.bundled_model_relative_path());
+    if bundled.exists() {
+        return Ok(bundled);
+    }
+
+    Err(format!(
+        "harness fluency model is missing for profile {}",
+        args.profile.as_cli_value()
+    ))
+}
+
+fn resolve_snapshot_path(args: &FluencyArgs, repo_root: &Path) -> PathBuf {
+    match &args.snapshot_path {
+        Some(path) => resolve_requested_path(path, &std::env::current_dir().unwrap_or_else(|_| repo_root.to_path_buf())),
+        None => repo_root.join(profile_snapshot_filename(args.profile)),
     }
 }
 
-fn build_forwarded_args(args: &FluencyArgs, repo_root: &Path) -> Vec<OsString> {
-    let mut forwarded = vec![
-        OsString::from("--repo-root"),
-        repo_root.as_os_str().to_os_string(),
-        OsString::from("--profile"),
-        OsString::from(args.profile.as_cli_value()),
-    ];
-
-    if args.format != FluencyOutputFormat::Text {
-        forwarded.push(OsString::from("--format"));
-        forwarded.push(OsString::from(args.format.as_cli_value()));
+fn profile_snapshot_filename(profile: FluencyProfile) -> &'static str {
+    match profile {
+        FluencyProfile::Generic => DEFAULT_SNAPSHOT_RELATIVE_PATH,
+        FluencyProfile::AgentOrchestrator => {
+            "docs/fitness/reports/harness-fluency-agent-orchestrator-latest.json"
+        }
     }
-
-    if let Some(model) = &args.model {
-        forwarded.push(OsString::from("--model"));
-        forwarded.push(OsString::from(model));
-    }
-
-    if let Some(snapshot_path) = &args.snapshot_path {
-        forwarded.push(OsString::from("--snapshot-path"));
-        forwarded.push(OsString::from(snapshot_path));
-    }
-
-    if args.compare_last {
-        forwarded.push(OsString::from("--compare-last"));
-    }
-
-    if args.no_save {
-        forwarded.push(OsString::from("--no-save"));
-    }
-
-    forwarded
 }
 
 fn resolve_repo_root(requested: Option<&str>) -> Result<PathBuf, String> {
@@ -159,14 +159,15 @@ fn resolve_repo_root(requested: Option<&str>) -> Result<PathBuf, String> {
         std::env::current_dir().map_err(|error| format!("failed to determine cwd: {error}"))?;
 
     let repo_root = match requested {
-        Some(path) => resolve_requested_repo_root(Path::new(path), &cwd),
+        Some(path) => resolve_requested_path(path, &cwd),
         None => discover_git_toplevel(&cwd).unwrap_or(cwd),
     };
 
     validate_repo_root(repo_root)
 }
 
-fn resolve_requested_repo_root(requested: &Path, cwd: &Path) -> PathBuf {
+fn resolve_requested_path(requested: &str, cwd: &Path) -> PathBuf {
+    let requested = Path::new(requested);
     if requested.is_absolute() {
         requested.to_path_buf()
     } else {
@@ -175,7 +176,7 @@ fn resolve_requested_repo_root(requested: &Path, cwd: &Path) -> PathBuf {
 }
 
 fn discover_git_toplevel(cwd: &Path) -> Option<PathBuf> {
-    let output = Command::new("git")
+    let output = std::process::Command::new("git")
         .arg("-C")
         .arg(cwd)
         .arg("rev-parse")
@@ -210,9 +211,9 @@ fn validate_repo_root(repo_root: PathBuf) -> Result<PathBuf, String> {
     Ok(repo_root)
 }
 
-fn resolve_tool_root() -> Result<PathBuf, String> {
+fn resolve_workspace_root() -> Result<PathBuf, String> {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let workspace_root = manifest_dir
+    manifest_dir
         .parent()
         .and_then(Path::parent)
         .map(Path::to_path_buf)
@@ -221,77 +222,22 @@ fn resolve_tool_root() -> Result<PathBuf, String> {
                 "failed to resolve workspace root from manifest directory {}",
                 manifest_dir.display()
             )
-        })?;
-
-    let cli_path = workspace_root.join(FITNESS_FLUENCY_CLI_RELATIVE_PATH);
-    if !cli_path.exists() {
-        return Err(format!(
-            "harness fluency CLI is missing at {}",
-            cli_path.display()
-        ));
-    }
-
-    Ok(workspace_root)
-}
-
-fn format_exit_status(status: ExitStatus) -> String {
-    match status.code() {
-        Some(code) => format!("exit code {code}"),
-        None => "termination by signal".to_string(),
-    }
+        })
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        build_forwarded_args, discover_git_toplevel, resolve_requested_repo_root,
-        resolve_tool_root, validate_repo_root, FluencyArgs, FluencyOutputFormat, FluencyProfile,
+        discover_git_toplevel, profile_snapshot_filename, resolve_requested_path,
+        resolve_workspace_root, validate_repo_root, FluencyProfile,
     };
     use std::fs::File;
     use std::path::Path;
     use tempfile::tempdir;
 
     #[test]
-    fn builds_forwarded_args_for_non_default_options() {
-        let args = FluencyArgs {
-            repo_root: Some("/tmp/repo".to_string()),
-            model: Some("docs/custom.yaml".to_string()),
-            snapshot_path: Some("reports/custom.json".to_string()),
-            profile: FluencyProfile::AgentOrchestrator,
-            format: FluencyOutputFormat::Json,
-            compare_last: true,
-            no_save: true,
-        };
-
-        let forwarded = build_forwarded_args(&args, Path::new("/tmp/repo"));
-        let forwarded = forwarded
-            .into_iter()
-            .map(|value| value.to_string_lossy().to_string())
-            .collect::<Vec<_>>();
-
-        assert_eq!(
-            forwarded,
-            vec![
-                "--repo-root",
-                "/tmp/repo",
-                "--profile",
-                "agent_orchestrator",
-                "--format",
-                "json",
-                "--model",
-                "docs/custom.yaml",
-                "--snapshot-path",
-                "reports/custom.json",
-                "--compare-last",
-                "--no-save",
-            ]
-        );
-    }
-
-    #[test]
     fn resolves_relative_repo_root_against_cwd() {
-        let resolved =
-            resolve_requested_repo_root(Path::new("../repo"), Path::new("/tmp/workspace"));
+        let resolved = resolve_requested_path("../repo", Path::new("/tmp/workspace"));
         assert_eq!(resolved, Path::new("/tmp/workspace").join("../repo"));
     }
 
@@ -312,8 +258,20 @@ mod tests {
     }
 
     #[test]
-    fn resolve_tool_root_finds_harness_fluency_cli() {
-        let tool_root = resolve_tool_root().expect("tool root");
-        assert!(tool_root.join("tools/harness-fluency/src/cli.ts").exists());
+    fn resolve_workspace_root_contains_bundled_fluency_model() {
+        let workspace_root = resolve_workspace_root().expect("workspace root");
+        assert!(workspace_root.join("docs/fitness/harness-fluency.model.yaml").exists());
+    }
+
+    #[test]
+    fn profile_snapshot_paths_are_stable() {
+        assert_eq!(
+            profile_snapshot_filename(FluencyProfile::Generic),
+            "docs/fitness/reports/harness-fluency-latest.json"
+        );
+        assert_eq!(
+            profile_snapshot_filename(FluencyProfile::AgentOrchestrator),
+            "docs/fitness/reports/harness-fluency-agent-orchestrator-latest.json"
+        );
     }
 }

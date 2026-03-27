@@ -70,7 +70,7 @@
     "api:schema:report": "node --import tsx scripts/fitness/validate-openapi-schema.ts --report",
     "git:coauthor:stats": "node --import tsx scripts/coauthor-stats.ts",
     "hook:prepush": "node --import tsx tools/hook-runtime/src/cli.ts",
-    "fitness:fluency": "node --import tsx tools/harness-fluency/src/cli.ts",
+    "fitness:fluency": "cargo run -p routa-cli -- fitness fluency",
     "api:validate": "node --import tsx scripts/fitness/validate-api-parity.ts",
     "api:validate:full": "node --import tsx scripts/fitness/validate-api-parity.ts --runtime",
     "docs:specialists:generate": "node --import tsx scripts/docs/generate-specialist-docs.ts --save",

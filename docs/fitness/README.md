@@ -37,7 +37,7 @@ cargo run -p routa-cli -- fitness fluency --format json --compare-last
 # Harness Fluency 评估（只读，不落快照）
 cargo run -p routa-cli -- fitness fluency --no-save
 
-# 兼容脚本入口（保留）
+# 包管理器快捷入口（仍走 Rust CLI）
 npm run fitness:fluency
 
 # 并行执行（加速）
