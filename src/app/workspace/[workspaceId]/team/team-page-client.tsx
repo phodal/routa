@@ -299,35 +299,27 @@ export function TeamPageClient() {
 
           <div className="border-t border-black/6 bg-[#f3f1eb]/92 px-4 py-4 dark:border-white/8 dark:bg-[#0f141c]/92">
             <div className="mx-auto w-full max-w-4xl">
-              <div className="mb-3 max-h-28 overflow-y-auto">
-                <div className="space-y-1.5">
-                  {teamSpecialists.map((specialist, index) => {
-                    const serial = String(index + 1).padStart(2, "0");
+              <div className="mb-3 max-h-24 overflow-y-auto">
+                <div className="space-y-1">
+                  {teamSpecialists.map((specialist) => {
                     const roleLabel = specialist.id === TEAM_LEAD_SPECIALIST_ID ? "Lead" : (specialist.role ?? "Specialist");
                     const isLead = specialist.id === TEAM_LEAD_SPECIALIST_ID;
 
                     return (
                       <div
                         key={specialist.id}
-                        className={`flex items-center gap-2 rounded-xl px-2.5 py-2 text-sm transition-colors ${
+                        className={`flex items-center rounded-lg px-2.5 py-1.5 text-sm transition-colors ${
                           isLead
                             ? "bg-white/80 text-slate-900 dark:bg-white/8 dark:text-slate-100"
                             : "bg-black/[0.03] text-slate-700 dark:bg-white/[0.03] dark:text-slate-200"
                         }`}
                         title={specialist.description ?? specialist.id}
                       >
-                        <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-[10px] font-semibold tracking-[0.16em] ${
-                          isLead
-                            ? "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900"
-                            : "bg-black/8 text-slate-600 dark:bg-white/10 dark:text-slate-300"
-                        }`}>
-                          {serial}
-                        </div>
                         <div className="min-w-0 flex-1">
-                          <div className="truncate text-[13px] font-medium">
+                          <div className="truncate text-[12px] font-medium leading-5">
                             {specialist.name}
                           </div>
-                          <div className="mt-0.5 truncate text-[9px] uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
+                          <div className="truncate text-[9px] uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
                             {roleLabel}
                           </div>
                         </div>
@@ -396,17 +388,17 @@ export function TeamPageClient() {
                         <div className="truncate text-base font-semibold text-slate-900 dark:text-slate-100">
                           {run.session.name ?? "Unnamed Team run"}
                         </div>
-                        <div className="mt-1 text-[11px] uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">
-                          {formatRelativeTime(run.session.createdAt)}
+                        <div className="mt-1 flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400">
+                          <span>{formatRelativeTime(run.session.createdAt)}</span>
+                          {run.session.branch ? (
+                            <>
+                              <span>·</span>
+                              <span className="truncate">{run.session.branch}</span>
+                            </>
+                          ) : null}
                         </div>
                       </div>
                       <StatusPill status={run.session.acpStatus} />
-                    </div>
-
-                    <div className="mt-3 grid gap-2 sm:grid-cols-3">
-                      <RunMetric label="Direct delegates" value={run.directDelegates} />
-                      <RunMetric label="Sub-sessions" value={run.descendants} />
-                      <RunMetric label="Provider" value={run.session.provider ?? "auto"} />
                     </div>
                   </button>
                 ))}
@@ -427,23 +419,4 @@ function StatusPill({ status }: { status?: SessionInfo["acpStatus"] }) {
     return <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-amber-700 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300">connecting</span>;
   }
   return <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300">ready</span>;
-}
-
-function RunMetric({
-  label,
-  value,
-}: {
-  label: string;
-  value: number | string;
-}) {
-  return (
-    <div className="rounded-2xl border border-slate-200/80 bg-white/80 px-3.5 py-2.5 dark:border-slate-800 dark:bg-slate-900/60">
-      <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400 dark:text-slate-500">
-        {label}
-      </div>
-      <div className="mt-1 text-sm font-semibold text-slate-800 dark:text-slate-100">
-        {value}
-      </div>
-    </div>
-  );
 }
