@@ -3,16 +3,10 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "Generate PowerPoint templates from Routa color tokens",
-  "scripts": {
-    "generate": "node src/generate-template.mjs",
-    "generate:all": "node src/generate-all.js",
-    "generate:release:v0.2.7": "node src/release-notes-to-ppt.js",
-    "generate:architecture": "node src/generate-architecture-deck.js",
-    "generate:showcase": "node src/generate-product-showcase-deck.js",
-    "capture:screenshots": "node src/capture-app-screenshots.js"
-  },
+  "description": "Temporary PowerPoint generation workspace with the Routa color token adapter",
   "dependencies": {
-    "pptxgenjs": "^3.12.0"
+    "mathjax-full": "^3.2.1",
+    "pptxgenjs": "^3.12.0",
+    "prismjs": "^1.30.0"
   }
 }
