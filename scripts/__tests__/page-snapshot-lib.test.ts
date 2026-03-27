@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   captureSnapshot,
   getSnapshotTargetsByIds,
+  normalizeSnapshotBody,
   parseCliArgs,
   resolveManagedServerBaseUrl,
   waitForSnapshotTarget,
@@ -101,5 +102,11 @@ describe("page-snapshot-lib", () => {
 
     expect(page.waitForFunction).toHaveBeenCalledOnce();
     expect(page.waitForTimeout).toHaveBeenCalledWith(50);
+  });
+
+  it("normalizes localized datetime strings in snapshot content", () => {
+    expect(
+      normalizeSnapshotBody("- button \"Snapshot Fixture Session 6 Mar 19, 09:00 PM CRAFTER opencode\""),
+    ).toBe("- button \"Snapshot Fixture Session 6 <localized-datetime> CRAFTER opencode\"");
   });
 });

@@ -308,6 +308,7 @@ export function normalizeSnapshotBody(content) {
 
   const escapedRoot = ROOT_DIR.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const rootPattern = new RegExp(escapedRoot, "g");
+  const localizedDateTimePattern = /\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\s+\d{1,2},\s+\d{1,2}:\d{2}\s+(?:AM|PM)\b/g;
 
   return content
     .replace(rootPattern, "<repo-root>")
@@ -319,6 +320,7 @@ export function normalizeSnapshotBody(content) {
       return `[ref=${refMap.get(originalRef)}]`;
     })
     .replace(/\b[0-9a-f]{8}…/gi, "<id>…")
+    .replace(localizedDateTimePattern, "<localized-datetime>")
     .replace(/\b\d{1,2}:\d{2}:\d{2}(?:\s(?:AM|PM))?\b/g, "<time>")
     .replace(/\b(?:just now|\d+\s*[smhdw] ago|\d+\s+(?:second|minute|hour|day|week|month|year)s?\s+ago)\b/gi, "<relative-time>");
 }
