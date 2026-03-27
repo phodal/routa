@@ -1,11 +1,13 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { useCallback, useEffect, useId, useState } from "react";
 import { Select } from "./select";
 
 import { desktopAwareFetch } from "../utils/diagnostics";
 import {
   SPECIALIST_CATEGORY_OPTIONS,
+  filterSpecialistsByCategory,
   getSpecialistCategory,
   type SpecialistCategory,
 } from "../utils/specialist-categories";
@@ -14,11 +16,7 @@ import type { ModelTier } from "./specialist-manager";
 import {
   EMPTY_SPECIALIST_FORM,
   ROLE_CHIP,
-  SETTINGS_PANEL_BODY_MAX_HEIGHT,
   TIER_LABELS,
-  inputCls,
-  labelCls,
-  sectionHeadCls,
   type ModelDefinition,
   type SpecialistForm,
 } from "./settings-panel-shared";
@@ -27,12 +25,38 @@ type SpecialistsTabProps = {
   modelDefs: ModelDefinition[];
 };
 
+const ROLE_LABELS: Record<AgentRole, string> = {
+  ROUTA: "Coordinator",
+  CRAFTER: "Crafter",
+  GATE: "Gate",
+  DEVELOPER: "Solo",
+};
+
+const SOURCE_LABELS: Record<SpecialistConfig["source"], string> = {
+  user: "User",
+  bundled: "Bundled",
+  hardcoded: "Built-in",
+};
+
+const desktopInputCls =
+  "w-full rounded-xl border border-desktop-border bg-desktop-bg-primary px-3 py-2 text-sm text-desktop-text-primary outline-none transition focus:border-desktop-accent/60 focus:ring-2 focus:ring-desktop-accent/20 placeholder:text-desktop-text-muted";
+const desktopLabelCls = "text-[11px] font-semibold uppercase tracking-[0.16em] text-desktop-text-muted";
+const sectionTitleCls = "text-[11px] font-semibold uppercase tracking-[0.16em] text-desktop-text-muted";
+const secondaryButtonCls =
+  "inline-flex items-center justify-center rounded-xl border border-desktop-border bg-desktop-bg-secondary px-3 py-2 text-xs font-medium text-desktop-text-secondary transition hover:bg-desktop-bg-active hover:text-desktop-text-primary disabled:opacity-40";
+const primaryButtonCls =
+  "inline-flex items-center justify-center rounded-xl bg-desktop-accent px-3 py-2 text-xs font-semibold text-white transition hover:brightness-110 disabled:opacity-40";
+
 export function SpecialistsTab({ modelDefs }: SpecialistsTabProps) {
   const [specialists, setSpecialists] = useState<SpecialistConfig[]>([]);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<SpecialistCategory>("all");
+  const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<SpecialistForm>(EMPTY_SPECIALIST_FORM);
   const datalistId = useId();
 
@@ -44,7 +68,7 @@ export function SpecialistsTab({ modelDefs }: SpecialistsTabProps) {
       if (!response.ok) {
         setError(
           response.status === 501
-            ? "Specialist editing requires Postgres; local SQLite uses bundled/file-based specialists"
+            ? "Specialist editing requires Postgres; local SQLite uses bundled or file-based specialists."
             : "Failed to load specialists",
         );
         return;
@@ -52,7 +76,7 @@ export function SpecialistsTab({ modelDefs }: SpecialistsTabProps) {
       const data = await response.json();
       setSpecialists(data.specialists ?? []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load");
+      setError(err instanceof Error ? err.message : "Failed to load specialists");
     } finally {
       setLoading(false);
     }
@@ -62,8 +86,58 @@ export function SpecialistsTab({ modelDefs }: SpecialistsTabProps) {
     void load();
   }, [load]);
 
+  const visibleSpecialists = filterSpecialistsByCategory(specialists, selectedCategory).filter((specialist) => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return true;
+    return [
+      specialist.id,
+      specialist.name,
+      specialist.description ?? "",
+      specialist.role,
+      specialist.model ?? "",
+    ].some((value) => value.toLowerCase().includes(query));
+  });
+
+  const selectedSpecialist = visibleSpecialists.find((specialist) => specialist.id === selectedId) ?? null;
+  const readOnlySelection = selectedSpecialist ? selectedSpecialist.source !== "user" : false;
+
+  useEffect(() => {
+    if (selectedSpecialist) return;
+    if (selectedId && !visibleSpecialists.some((specialist) => specialist.id === selectedId)) {
+      setSelectedId(null);
+    }
+  }, [selectedId, selectedSpecialist, visibleSpecialists]);
+
+  const startCreate = useCallback(() => {
+    setSelectedId(null);
+    setEditingId(null);
+    setError(null);
+    setForm(EMPTY_SPECIALIST_FORM);
+  }, []);
+
+  const startEdit = useCallback((specialist: SpecialistConfig) => {
+    setSelectedId(specialist.id);
+    setEditingId(specialist.source === "user" ? specialist.id : null);
+    setError(null);
+    setForm({
+      id: specialist.id,
+      name: specialist.name,
+      description: specialist.description ?? "",
+      role: specialist.role,
+      defaultModelTier: specialist.defaultModelTier,
+      systemPrompt: specialist.systemPrompt,
+      roleReminder: specialist.roleReminder,
+      model: specialist.model ?? "",
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!selectedSpecialist) return;
+    startEdit(selectedSpecialist);
+  }, [selectedSpecialist, startEdit]);
+
   const handleSave = async () => {
-    setLoading(true);
+    setSaving(true);
     setError(null);
     try {
       const response = await desktopAwareFetch("/api/specialists", {
@@ -76,46 +150,34 @@ export function SpecialistsTab({ modelDefs }: SpecialistsTabProps) {
         throw new Error(data.error ?? "Save failed");
       }
       await load();
-      setShowForm(false);
-      setEditingId(null);
-      setForm(EMPTY_SPECIALIST_FORM);
+      setSelectedId(form.id);
+      setEditingId(form.id);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Save failed");
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
   };
 
-  const handleDelete = async (id: string, name: string) => {
-    if (!confirm(`Delete specialist "${name}"?`)) return;
-    setLoading(true);
+  const handleDelete = async () => {
+    if (!editingId) return;
+    if (!confirm(`Delete specialist "${form.name || editingId}"?`)) return;
+    setSaving(true);
+    setError(null);
     try {
-      await desktopAwareFetch(`/api/specialists?id=${id}`, { method: "DELETE" });
+      await desktopAwareFetch(`/api/specialists?id=${editingId}`, { method: "DELETE" });
       await load();
+      startCreate();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Delete failed");
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
   };
 
-  const handleEdit = (specialist: SpecialistConfig) => {
-    setEditingId(specialist.id);
-    setForm({
-      id: specialist.id,
-      name: specialist.name,
-      description: specialist.description ?? "",
-      role: specialist.role,
-      defaultModelTier: specialist.defaultModelTier,
-      systemPrompt: specialist.systemPrompt,
-      roleReminder: specialist.roleReminder,
-      model: specialist.model ?? "",
-    });
-    setShowForm(true);
-  };
-
   const handleSync = async () => {
-    setLoading(true);
+    setSyncing(true);
+    setError(null);
     try {
       await desktopAwareFetch("/api/specialists", {
         method: "POST",
@@ -126,187 +188,309 @@ export function SpecialistsTab({ modelDefs }: SpecialistsTabProps) {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Sync failed");
     } finally {
-      setLoading(false);
+      setSyncing(false);
     }
   };
 
-  const groupedSpecialists: Array<{
-    category: Exclude<SpecialistCategory, "all">;
-    label: string;
-    specialists: SpecialistConfig[];
-  }> = SPECIALIST_CATEGORY_OPTIONS
-    .filter((option) => option.id !== "all")
-    .map((option) => ({
-      category: option.id as Exclude<SpecialistCategory, "all">,
-      label: option.label,
-      specialists: specialists.filter((specialist) => getSpecialistCategory(specialist.id) === option.id),
-    }))
-    .filter((group) => group.specialists.length > 0);
-
-  if (showForm) {
-    return (
-      <div className="px-4 py-4 space-y-3 overflow-y-auto" style={{ maxHeight: SETTINGS_PANEL_BODY_MAX_HEIGHT }}>
-        <div className="flex items-center gap-2 mb-1">
-          <button onClick={() => { setShowForm(false); setEditingId(null); setForm(EMPTY_SPECIALIST_FORM); }}
-            className="p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500 transition-colors">
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-            </svg>
-          </button>
-          <p className={sectionHeadCls}>{editingId ? "Edit Specialist" : "New Specialist"}</p>
-        </div>
-        {error && <div className="p-2 text-xs bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded text-red-600 dark:text-red-400">{error}</div>}
-        <div className="space-y-3">
-          <div className="grid grid-cols-2 gap-2">
-            <div className="space-y-1">
-              <label className={labelCls}>ID *</label>
-              <input type="text" value={form.id} onChange={(event) => setForm({ ...form, id: event.target.value })}
-                disabled={!!editingId} placeholder="my-specialist" className={`${inputCls} disabled:opacity-50`} />
-            </div>
-            <div className="space-y-1">
-              <label className={labelCls}>Name *</label>
-              <input type="text" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })}
-                placeholder="My Custom Specialist" className={inputCls} />
-            </div>
-          </div>
-          <div className="space-y-1">
-            <label className={labelCls}>Description</label>
-            <input type="text" value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })}
-              placeholder="Brief description" className={inputCls} />
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <div className="space-y-1">
-              <label className={labelCls}>Role *</label>
-              <Select value={form.role} onChange={(event) => setForm({ ...form, role: event.target.value as AgentRole })} className={inputCls}>
-                {(["ROUTA", "CRAFTER", "GATE", "DEVELOPER"] as AgentRole[]).map((role) => (
-                  <option key={role} value={role}>{role}</option>
-                ))}
-              </Select>
-            </div>
-            <div className="space-y-1">
-              <label className={labelCls}>Model Tier *</label>
-              <Select value={form.defaultModelTier} onChange={(event) => setForm({ ...form, defaultModelTier: event.target.value as ModelTier })} className={inputCls}>
-                {(["FAST", "BALANCED", "SMART"] as ModelTier[]).map((tier) => (
-                  <option key={tier} value={tier}>{TIER_LABELS[tier]}</option>
-                ))}
-              </Select>
-            </div>
-          </div>
-          <div className="space-y-1">
-            <label className={labelCls}>Model Override</label>
-            <input type="text" list={datalistId} value={form.model}
-              onChange={(event) => setForm({ ...form, model: event.target.value })}
-              placeholder="alias or model ID (optional)" className={`${inputCls} font-mono`} />
-            <datalist id={datalistId}>
-              {modelDefs.map((definition) => <option key={definition.alias} value={definition.alias} label={`${definition.alias} → ${definition.modelName}`} />)}
-            </datalist>
-            <p className="text-[10px] text-slate-400 dark:text-slate-500">Select a model alias from the Models tab, or enter a raw model ID.</p>
-          </div>
-          <div className="space-y-1">
-            <label className={labelCls}>System Prompt *</label>
-            <textarea value={form.systemPrompt} onChange={(event) => setForm({ ...form, systemPrompt: event.target.value })}
-              placeholder="Enter the system prompt for this specialist..." rows={7} className={`${inputCls} font-mono`} />
-          </div>
-          <div className="space-y-1">
-            <label className={labelCls}>Role Reminder</label>
-            <input type="text" value={form.roleReminder} onChange={(event) => setForm({ ...form, roleReminder: event.target.value })}
-              placeholder="Short reminder shown to the agent" className={inputCls} />
-          </div>
-          <div className="flex gap-2 pt-2">
-            <button onClick={handleSave} disabled={loading || !form.id || !form.name || !form.systemPrompt}
-              className="px-3 py-1.5 text-xs font-medium rounded-md bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-40 transition-colors">
-              {loading ? "Saving…" : editingId ? "Update" : "Create"}
-            </button>
-            <button onClick={() => { setShowForm(false); setEditingId(null); setForm(EMPTY_SPECIALIST_FORM); }}
-              className="px-3 py-1.5 text-xs font-medium rounded-md border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">
-              Cancel
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  const duplicateSelected = () => {
+    if (!selectedSpecialist) return;
+    setSelectedId(null);
+    setEditingId(null);
+    setError(null);
+    setForm({
+      id: selectedSpecialist.source === "user" ? `${selectedSpecialist.id}-copy` : "",
+      name: `${selectedSpecialist.name} Copy`,
+      description: selectedSpecialist.description ?? "",
+      role: selectedSpecialist.role,
+      defaultModelTier: selectedSpecialist.defaultModelTier,
+      systemPrompt: selectedSpecialist.systemPrompt,
+      roleReminder: selectedSpecialist.roleReminder,
+      model: selectedSpecialist.model ?? "",
+    });
+  };
 
   return (
-    <div className="px-4 py-4 space-y-3 overflow-y-auto" style={{ maxHeight: SETTINGS_PANEL_BODY_MAX_HEIGHT }}>
-      <div className="flex items-center justify-between">
-        <div>
-          <p className={sectionHeadCls}>Specialists ({specialists.length})</p>
-          <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">Custom agent configurations with tailored prompts and models.</p>
+    <div className="space-y-5 p-6">
+      <div className="flex flex-wrap items-start justify-between gap-4 rounded-[24px] border border-desktop-border bg-desktop-bg-secondary px-5 py-4">
+        <div className="min-w-0">
+          <p className={sectionTitleCls}>Specialist Management</p>
+          <h2 className="mt-1 text-2xl font-semibold text-desktop-text-primary">Create, update, and remove specialists</h2>
+          <p className="mt-2 max-w-3xl text-sm text-desktop-text-secondary">
+            Desktop-style CRUD workspace for specialist profiles, prompts, and model bindings.
+          </p>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <button onClick={handleSync} disabled={loading}
-            className="px-2.5 py-1.5 text-xs font-medium rounded-md border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-40 transition-colors">
-            {loading ? "…" : "Sync Bundled"}
+        <div className="flex items-center gap-2">
+          <button onClick={handleSync} disabled={syncing || saving} className={secondaryButtonCls}>
+            {syncing ? "Syncing..." : "Sync bundled"}
           </button>
-          <button onClick={() => { setForm(EMPTY_SPECIALIST_FORM); setEditingId(null); setShowForm(true); }}
-            className="px-2.5 py-1.5 text-xs font-medium rounded-md bg-blue-600 text-white hover:bg-blue-700 transition-colors flex items-center gap-1">
-            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-            </svg>
-            New
+          <button onClick={startCreate} disabled={saving} className={primaryButtonCls}>
+            New specialist
           </button>
         </div>
       </div>
-      {error && <div className="p-2 text-xs bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded text-red-600 dark:text-red-400">{error}</div>}
-      {loading && specialists.length === 0 && <p className="text-center text-xs text-slate-400 py-6">Loading…</p>}
-      <div className="space-y-4">
-        {groupedSpecialists.map((group) => (
-          <div key={group.category} className="space-y-2">
-            <div className="flex items-center gap-2">
-              <p className={sectionHeadCls}>{group.label}</p>
-              <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-slate-500 dark:bg-slate-800 dark:text-slate-400">
-                {group.specialists.length}
-              </span>
+
+      {error ? (
+        <div className="rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+          {error}
+        </div>
+      ) : null}
+
+      <div className="grid gap-5 xl:grid-cols-[340px_minmax(0,1fr)]">
+        <aside className="rounded-[24px] border border-desktop-border bg-desktop-bg-secondary p-4">
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className={sectionTitleCls}>Catalog</p>
+                <p className="mt-1 text-sm text-desktop-text-secondary">{specialists.length} total specialists</p>
+              </div>
+              {loading ? <span className="text-xs text-desktop-text-muted">Loading...</span> : null}
             </div>
-            <div className="space-y-2">
-              {group.specialists.map((specialist) => (
-                <div key={specialist.id} className="rounded-lg border border-slate-200 dark:border-slate-700 p-3">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-1.5 mb-1">
-                        <span className="text-xs font-semibold text-slate-800 dark:text-slate-200">{specialist.name}</span>
-                        <span className={`px-1.5 py-0.5 text-[10px] rounded font-medium ${ROLE_CHIP[specialist.role]}`}>{specialist.role}</span>
-                        <span className={`px-1.5 py-0.5 text-[10px] rounded ${specialist.source === "user" ? "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300" : "bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-400"}`}>
-                          {specialist.source}
-                        </span>
-                        {specialist.model && <span className="px-1.5 py-0.5 text-[10px] rounded bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-400 font-mono truncate max-w-[120px]">{specialist.model}</span>}
+
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder="Search specialists"
+              className={desktopInputCls}
+            />
+
+            <div className="flex flex-wrap gap-2">
+              {SPECIALIST_CATEGORY_OPTIONS.map((option) => {
+                const active = selectedCategory === option.id;
+                return (
+                  <button
+                    key={option.id}
+                    onClick={() => setSelectedCategory(option.id)}
+                    className={`rounded-xl px-3 py-2 text-xs font-medium transition ${
+                      active
+                        ? "bg-desktop-bg-active text-desktop-accent ring-1 ring-inset ring-desktop-accent/30"
+                        : "bg-desktop-bg-primary text-desktop-text-secondary hover:bg-desktop-bg-active hover:text-desktop-text-primary"
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="max-h-[720px] space-y-2 overflow-y-auto pr-1">
+              {visibleSpecialists.map((specialist) => {
+                const active = selectedId === specialist.id;
+                return (
+                  <button
+                    key={specialist.id}
+                    onClick={() => setSelectedId(specialist.id)}
+                    className={`w-full rounded-2xl border px-3 py-3 text-left transition ${
+                      active
+                        ? "border-desktop-accent/40 bg-desktop-bg-active"
+                        : "border-desktop-border bg-desktop-bg-primary/70 hover:bg-desktop-bg-active/70"
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-medium text-desktop-text-primary">{specialist.name}</div>
+                        <div className="mt-1 truncate font-mono text-[11px] text-desktop-text-muted">{specialist.id}</div>
                       </div>
-                      {specialist.description && <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-tight">{specialist.description}</p>}
-                      <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">
-                        Tier: {TIER_LABELS[specialist.defaultModelTier]} · ID: <span className="font-mono">{specialist.id}</span>
-                      </p>
+                      <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-semibold ${ROLE_CHIP[specialist.role]}`}>
+                        {specialist.role}
+                      </span>
                     </div>
-                    {specialist.source === "user" && (
-                      <div className="flex gap-1 shrink-0">
-                        <button onClick={() => handleEdit(specialist)}
-                          className="p-1.5 rounded text-slate-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors" title="Edit">
-                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                          </svg>
-                        </button>
-                        <button onClick={() => handleDelete(specialist.id, specialist.name)}
-                          className="p-1.5 rounded text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors" title="Delete">
-                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                          </svg>
-                        </button>
-                      </div>
-                    )}
-                  </div>
+                    <div className="mt-2 flex items-center gap-2 text-[11px] text-desktop-text-secondary">
+                      <span>{SOURCE_LABELS[specialist.source]}</span>
+                      <span>•</span>
+                      <span>{TIER_LABELS[specialist.defaultModelTier]}</span>
+                    </div>
+                  </button>
+                );
+              })}
+
+              {!loading && visibleSpecialists.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-desktop-border px-4 py-8 text-center text-sm text-desktop-text-secondary">
+                  No specialists found.
                 </div>
-              ))}
+              ) : null}
             </div>
           </div>
-        ))}
+        </aside>
+
+        <section className="rounded-[24px] border border-desktop-border bg-desktop-bg-secondary p-5">
+          <div className="flex flex-wrap items-start justify-between gap-4 border-b border-desktop-border pb-4">
+            <div className="min-w-0">
+              <p className={sectionTitleCls}>{editingId ? "Edit Specialist" : "Create Specialist"}</p>
+              <h3 className="mt-1 text-xl font-semibold text-desktop-text-primary">
+                {editingId ? form.name || editingId : "New specialist profile"}
+              </h3>
+              <p className="mt-2 text-sm text-desktop-text-secondary">
+                {readOnlySelection
+                  ? "Bundled and built-in specialists are visible here for inspection. Duplicate them into a custom specialist before editing."
+                  : "Manage the specialist identity, runtime tier, and system prompt from one panel."}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              {selectedSpecialist ? (
+                <button onClick={duplicateSelected} className={secondaryButtonCls}>
+                  Duplicate
+                </button>
+              ) : null}
+              {editingId ? (
+                <button onClick={handleDelete} disabled={saving || readOnlySelection} className={secondaryButtonCls}>
+                  Delete
+                </button>
+              ) : null}
+              <button onClick={handleSave} disabled={saving || readOnlySelection || !form.id || !form.name || !form.systemPrompt} className={primaryButtonCls}>
+                {saving ? "Saving..." : editingId ? "Save changes" : "Create specialist"}
+              </button>
+            </div>
+          </div>
+
+          <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1fr)_300px]">
+            <div className="space-y-4">
+              <div className="grid gap-4 md:grid-cols-2">
+                <Field label="ID">
+                  <input
+                    type="text"
+                    value={form.id}
+                    onChange={(event) => setForm({ ...form, id: event.target.value })}
+                    disabled={!!editingId || readOnlySelection}
+                    placeholder="my-specialist"
+                    className={`${desktopInputCls} font-mono disabled:opacity-60`}
+                  />
+                </Field>
+                <Field label="Name">
+                  <input
+                    type="text"
+                    value={form.name}
+                    onChange={(event) => setForm({ ...form, name: event.target.value })}
+                    disabled={readOnlySelection}
+                    placeholder="Release Orchestrator"
+                    className={`${desktopInputCls} disabled:opacity-60`}
+                  />
+                </Field>
+              </div>
+
+              <Field label="Description">
+                <textarea
+                  value={form.description}
+                  onChange={(event) => setForm({ ...form, description: event.target.value })}
+                  disabled={readOnlySelection}
+                  rows={3}
+                  placeholder="Short description shown in the catalog"
+                  className={`${desktopInputCls} disabled:opacity-60`}
+                />
+              </Field>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <Field label="Role">
+                  <Select
+                    value={form.role}
+                    onChange={(event) => setForm({ ...form, role: event.target.value as AgentRole })}
+                    disabled={readOnlySelection}
+                    className={`${desktopInputCls} disabled:opacity-60`}
+                  >
+                    {(["ROUTA", "CRAFTER", "GATE", "DEVELOPER"] as AgentRole[]).map((role) => (
+                      <option key={role} value={role}>{ROLE_LABELS[role]} · {role}</option>
+                    ))}
+                  </Select>
+                </Field>
+                <Field label="Model Tier">
+                  <Select
+                    value={form.defaultModelTier}
+                    onChange={(event) => setForm({ ...form, defaultModelTier: event.target.value as ModelTier })}
+                    disabled={readOnlySelection}
+                    className={`${desktopInputCls} disabled:opacity-60`}
+                  >
+                    {(["FAST", "BALANCED", "SMART"] as ModelTier[]).map((tier) => (
+                      <option key={tier} value={tier}>{TIER_LABELS[tier]}</option>
+                    ))}
+                  </Select>
+                </Field>
+              </div>
+
+              <Field label="Model Override">
+                <input
+                  type="text"
+                  list={datalistId}
+                  value={form.model}
+                  onChange={(event) => setForm({ ...form, model: event.target.value })}
+                  disabled={readOnlySelection}
+                  placeholder="alias or raw model ID"
+                  className={`${desktopInputCls} font-mono disabled:opacity-60`}
+                />
+                <datalist id={datalistId}>
+                  {modelDefs.map((definition) => (
+                    <option key={definition.alias} value={definition.alias} label={`${definition.alias} -> ${definition.modelName}`} />
+                  ))}
+                </datalist>
+              </Field>
+
+              <Field label="System Prompt">
+                <textarea
+                  value={form.systemPrompt}
+                  onChange={(event) => setForm({ ...form, systemPrompt: event.target.value })}
+                  disabled={readOnlySelection}
+                  rows={15}
+                  placeholder="Define the specialist contract"
+                  className={`${desktopInputCls} min-h-[320px] font-mono text-[13px] leading-6 disabled:opacity-60`}
+                />
+              </Field>
+
+              <Field label="Role Reminder">
+                <textarea
+                  value={form.roleReminder}
+                  onChange={(event) => setForm({ ...form, roleReminder: event.target.value })}
+                  disabled={readOnlySelection}
+                  rows={4}
+                  placeholder="Short runtime reminder"
+                  className={`${desktopInputCls} disabled:opacity-60`}
+                />
+              </Field>
+            </div>
+
+            <div className="space-y-4">
+              <InspectorCard label="Source" value={selectedSpecialist ? SOURCE_LABELS[selectedSpecialist.source] : "New"} />
+              <InspectorCard label="Category" value={selectedSpecialist ? getSpecialistCategory(selectedSpecialist.id) : "custom"} />
+              <InspectorCard label="Writable" value={readOnlySelection ? "No" : "Yes"} />
+              <InspectorCard label="Role" value={form.role} badgeClass={ROLE_CHIP[form.role]} />
+              <InspectorCard label="Tier" value={TIER_LABELS[form.defaultModelTier]} />
+            </div>
+          </div>
+        </section>
       </div>
-      {specialists.length === 0 && !loading && !error && (
-        <div className="text-center py-8">
-          <p className="text-xs text-slate-400 dark:text-slate-500 mb-2">No specialists yet.</p>
-          <button onClick={handleSync} className="text-xs text-blue-600 dark:text-blue-400 hover:underline">
-            Sync bundled specialists to get started
-          </button>
-        </div>
+    </div>
+  );
+}
+
+function Field({
+  label,
+  children,
+}: {
+  label: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <label className={desktopLabelCls}>{label}</label>
+      {children}
+    </div>
+  );
+}
+
+function InspectorCard({
+  label,
+  value,
+  badgeClass,
+}: {
+  label: string;
+  value: string;
+  badgeClass?: string;
+}) {
+  return (
+    <div className="rounded-2xl border border-desktop-border bg-desktop-bg-primary/70 px-4 py-4">
+      <div className={sectionTitleCls}>{label}</div>
+      {badgeClass ? (
+        <span className={`mt-3 inline-flex rounded-md px-2 py-1 text-[11px] font-semibold ${badgeClass}`}>{value}</span>
+      ) : (
+        <div className="mt-3 text-sm font-medium text-desktop-text-primary">{value}</div>
       )}
     </div>
   );
