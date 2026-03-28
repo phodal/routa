@@ -51,6 +51,92 @@ fn loads_generic_model_and_enforces_two_criteria_per_cell() {
 }
 
 #[test]
+fn loads_agent_orchestrator_profile_as_overlay() {
+    let workspace_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap();
+    let generic_model =
+        load_fluency_model(&workspace_root.join("docs/fitness/harness-fluency.model.yaml"))
+            .expect("generic model");
+    let overlay_model = load_fluency_model(
+        &workspace_root.join("docs/fitness/harness-fluency.profile.agent_orchestrator.yaml"),
+    )
+    .expect("overlay model");
+
+    assert_eq!(overlay_model.version, generic_model.version);
+    assert!(overlay_model.criteria.len() > generic_model.criteria.len());
+    assert!(overlay_model
+        .criteria
+        .iter()
+        .any(|criterion| criterion.id == "harness.assisted.runtime_manager"));
+    assert!(overlay_model
+        .criteria
+        .iter()
+        .any(|criterion| criterion.id == "governance.agent_centric.entrix_runtime"));
+}
+
+#[test]
+fn rejects_cyclic_model_extends() {
+    let repo = tempdir().unwrap();
+    let first_model = repo.path().join("first.yaml");
+    let second_model = repo.path().join("second.yaml");
+
+    write(&first_model, "extends: ./second.yaml\n").unwrap();
+    write(&second_model, "extends: ./first.yaml\n").unwrap();
+
+    let error = load_fluency_model(&first_model).expect_err("expected cycle error");
+    assert!(error.contains("cyclic harness fluency model extends"));
+}
+
+#[test]
+fn rejects_invalid_regex_flags_in_model() {
+    let repo = tempdir().unwrap();
+    let model_path = repo.path().join("model.yaml");
+    write(
+        &model_path,
+        r#"version: 1
+levels:
+  - id: awareness
+    name: Awareness
+dimensions:
+  - id: collaboration
+    name: Collaboration
+criteria:
+  - id: collaboration.awareness.file
+    level: awareness
+    dimension: collaboration
+    weight: 1
+    critical: true
+    why_it_matters: one
+    recommended_action: one
+    evidence_hint: AGENTS.md
+    detector:
+      type: file_exists
+      path: AGENTS.md
+  - id: collaboration.awareness.regex
+    level: awareness
+    dimension: collaboration
+    weight: 1
+    critical: false
+    why_it_matters: two
+    recommended_action: two
+    evidence_hint: regex
+    detector:
+      type: command_output_regex
+      command: node -p process.platform
+      pattern: linux
+      flags: xyz
+"#,
+    )
+    .unwrap();
+
+    let error = load_fluency_model(&model_path).expect_err("expected invalid regex error");
+    assert!(error.contains("invalid regex settings"));
+}
+
+#[test]
 fn evaluates_snapshots_commands_and_manual_attestation() {
     let repo = tempdir().unwrap();
     let repo_root = repo.path();
@@ -481,4 +567,344 @@ criteria:
     let text = format_text_report(&report);
     assert!(text.contains("HARNESS FLUENCY REPORT"));
     assert!(text.contains("Comparison To Last Snapshot:"));
+}
+
+#[test]
+fn blocks_next_level_readiness_when_current_level_has_debt() {
+    let repo = tempdir().unwrap();
+    let repo_root = repo.path();
+    create_dir_all(repo_root.join("docs/fitness")).unwrap();
+
+    let model_path = repo_root.join("docs/fitness/model.yaml");
+    let snapshot_path = repo_root.join("docs/fitness/latest.json");
+    write(repo_root.join("README.md"), "# contract\n").unwrap();
+    write_json(
+        &repo_root.join("package.json"),
+        json!({
+            "scripts": {
+                "lint": "eslint .",
+                "test:run": "vitest run"
+            }
+        }),
+    );
+    write(
+        &model_path,
+        r#"version: 1
+levels:
+  - id: awareness
+    name: Awareness
+  - id: assisted
+    name: Assisted
+dimensions:
+  - id: collaboration
+    name: Collaboration
+criteria:
+  - id: collaboration.awareness.contract
+    level: awareness
+    dimension: collaboration
+    weight: 1
+    critical: true
+    why_it_matters: contract
+    recommended_action: add contract
+    evidence_hint: README.md
+    detector:
+      type: file_exists
+      path: README.md
+  - id: collaboration.awareness.agent_doc
+    level: awareness
+    dimension: collaboration
+    weight: 1
+    critical: false
+    why_it_matters: agent doc
+    recommended_action: add AGENTS
+    evidence_hint: AGENTS.md
+    detector:
+      type: file_exists
+      path: AGENTS.md
+  - id: collaboration.assisted.test_script
+    level: assisted
+    dimension: collaboration
+    weight: 1
+    critical: true
+    why_it_matters: tests
+    recommended_action: add tests
+    evidence_hint: package.json scripts.test:run
+    detector:
+      type: json_path_exists
+      path: package.json
+      jsonPath: [scripts, "test:run"]
+  - id: collaboration.assisted.lint_script
+    level: assisted
+    dimension: collaboration
+    weight: 1
+    critical: false
+    why_it_matters: lint
+    recommended_action: add lint
+    evidence_hint: package.json scripts.lint
+    detector:
+      type: json_path_exists
+      path: package.json
+      jsonPath: [scripts, lint]
+"#,
+    )
+    .unwrap();
+
+    let report = evaluate_harness_fluency(&EvaluateOptions {
+        repo_root: repo_root.to_path_buf(),
+        model_path,
+        profile: "generic".to_string(),
+        snapshot_path,
+        compare_last: false,
+        save: false,
+    })
+    .expect("report");
+
+    assert_eq!(report.overall_level, "awareness");
+    assert_eq!(report.current_level_readiness, 0.5);
+    assert_eq!(report.next_level.as_deref(), Some("assisted"));
+    assert_eq!(report.next_level_readiness, None);
+    assert_eq!(report.blocking_target_level.as_deref(), Some("awareness"));
+    assert!(report
+        .blocking_criteria
+        .iter()
+        .any(|criterion| criterion.id == "collaboration.awareness.agent_doc"
+            && criterion.status == CriterionStatus::Fail));
+
+    let text = format_text_report(&report);
+    assert!(text.contains("Current Level Readiness: 50%"));
+    assert!(text.contains("Next Level Readiness: Blocked until Awareness is stable"));
+    assert!(text.contains("Blocking Gaps To Stabilize Awareness"));
+}
+
+#[test]
+fn reports_top_level_without_blockers() {
+    let repo = tempdir().unwrap();
+    let repo_root = repo.path();
+    create_dir_all(repo_root.join("docs/fitness")).unwrap();
+
+    let model_path = repo_root.join("docs/fitness/model.yaml");
+    let snapshot_path = repo_root.join("docs/fitness/latest.json");
+    write(repo_root.join("AGENTS.md"), "# contract\n").unwrap();
+    write_json(
+        &repo_root.join("package.json"),
+        json!({
+            "scripts": {
+                "lint": "eslint .",
+                "test:run": "vitest run"
+            }
+        }),
+    );
+    write(
+        &model_path,
+        r#"version: 1
+levels:
+  - id: awareness
+    name: Awareness
+  - id: assisted
+    name: Assisted
+dimensions:
+  - id: collaboration
+    name: Collaboration
+criteria:
+  - id: collaboration.awareness.contract
+    level: awareness
+    dimension: collaboration
+    weight: 1
+    critical: true
+    why_it_matters: contract
+    recommended_action: add contract
+    evidence_hint: AGENTS.md
+    detector:
+      type: file_exists
+      path: AGENTS.md
+  - id: collaboration.awareness.lint
+    level: awareness
+    dimension: collaboration
+    weight: 1
+    critical: false
+    why_it_matters: lint
+    recommended_action: add lint
+    evidence_hint: package.json scripts.lint
+    detector:
+      type: json_path_exists
+      path: package.json
+      jsonPath: [scripts, lint]
+  - id: collaboration.assisted.test_script
+    level: assisted
+    dimension: collaboration
+    weight: 1
+    critical: true
+    why_it_matters: tests
+    recommended_action: add tests
+    evidence_hint: package.json scripts.test:run
+    detector:
+      type: json_path_exists
+      path: package.json
+      jsonPath: [scripts, "test:run"]
+  - id: collaboration.assisted.lint_script
+    level: assisted
+    dimension: collaboration
+    weight: 1
+    critical: false
+    why_it_matters: lint
+    recommended_action: keep lint
+    evidence_hint: package.json scripts.lint
+    detector:
+      type: json_path_exists
+      path: package.json
+      jsonPath: [scripts, lint]
+"#,
+    )
+    .unwrap();
+
+    let report = evaluate_harness_fluency(&EvaluateOptions {
+        repo_root: repo_root.to_path_buf(),
+        model_path,
+        profile: "generic".to_string(),
+        snapshot_path,
+        compare_last: false,
+        save: false,
+    })
+    .expect("report");
+
+    assert_eq!(report.overall_level, "assisted");
+    assert_eq!(report.current_level_readiness, 1.0);
+    assert_eq!(report.next_level, None);
+    assert_eq!(report.next_level_readiness, None);
+    assert_eq!(report.blocking_target_level, None);
+    assert!(report.blocking_criteria.is_empty());
+
+    let text = format_text_report(&report);
+    assert!(text.contains("Next Level: Reached top level"));
+    assert!(text.contains("Blocking Gaps: none"));
+}
+
+#[test]
+fn rejects_non_allowlisted_command_executables() {
+    let repo = tempdir().unwrap();
+    let repo_root = repo.path();
+    create_dir_all(repo_root.join("docs/fitness")).unwrap();
+    write(repo_root.join("AGENTS.md"), "# contract\n").unwrap();
+
+    let model_path = repo_root.join("docs/fitness/model.yaml");
+    let snapshot_path = repo_root.join("docs/fitness/latest.json");
+    write(
+        &model_path,
+        r#"version: 1
+levels:
+  - id: awareness
+    name: Awareness
+dimensions:
+  - id: collaboration
+    name: Collaboration
+criteria:
+  - id: collaboration.awareness.file
+    level: awareness
+    dimension: collaboration
+    weight: 1
+    critical: true
+    why_it_matters: file
+    recommended_action: file
+    evidence_hint: AGENTS.md
+    detector:
+      type: file_exists
+      path: AGENTS.md
+  - id: collaboration.awareness.command
+    level: awareness
+    dimension: collaboration
+    weight: 1
+    critical: false
+    why_it_matters: command
+    recommended_action: command
+    evidence_hint: bash -lc pwd
+    detector:
+      type: command_exit_code
+      command: bash -lc pwd
+      expected_exit_code: 0
+"#,
+    )
+    .unwrap();
+
+    let report = evaluate_harness_fluency(&EvaluateOptions {
+        repo_root: repo_root.to_path_buf(),
+        model_path,
+        profile: "generic".to_string(),
+        snapshot_path,
+        compare_last: false,
+        save: false,
+    })
+    .expect("report");
+
+    assert!(report.criteria.iter().any(|criterion| {
+        criterion.id == "collaboration.awareness.command"
+            && criterion.status == CriterionStatus::Fail
+            && criterion
+                .detail
+                .contains("command executable \"bash\" is not allowed")
+    }));
+}
+
+#[test]
+fn rejects_path_based_command_executables_before_allowlist_checks() {
+    let repo = tempdir().unwrap();
+    let repo_root = repo.path();
+    create_dir_all(repo_root.join("docs/fitness")).unwrap();
+    write(repo_root.join("AGENTS.md"), "# contract\n").unwrap();
+
+    let model_path = repo_root.join("docs/fitness/model.yaml");
+    let snapshot_path = repo_root.join("docs/fitness/latest.json");
+    write(
+        &model_path,
+        r#"version: 1
+levels:
+  - id: awareness
+    name: Awareness
+dimensions:
+  - id: collaboration
+    name: Collaboration
+criteria:
+  - id: collaboration.awareness.file
+    level: awareness
+    dimension: collaboration
+    weight: 1
+    critical: true
+    why_it_matters: file
+    recommended_action: file
+    evidence_hint: AGENTS.md
+    detector:
+      type: file_exists
+      path: AGENTS.md
+  - id: collaboration.awareness.command
+    level: awareness
+    dimension: collaboration
+    weight: 1
+    critical: false
+    why_it_matters: command
+    recommended_action: command
+    evidence_hint: ./node -p 1
+    detector:
+      type: command_exit_code
+      command: ./node -p 1
+      expected_exit_code: 0
+"#,
+    )
+    .unwrap();
+
+    let report = evaluate_harness_fluency(&EvaluateOptions {
+        repo_root: repo_root.to_path_buf(),
+        model_path,
+        profile: "generic".to_string(),
+        snapshot_path,
+        compare_last: false,
+        save: false,
+    })
+    .expect("report");
+
+    assert!(report.criteria.iter().any(|criterion| {
+        criterion.id == "collaboration.awareness.command"
+            && criterion.status == CriterionStatus::Fail
+            && criterion
+                .detail
+                .contains("must be a bare allowlisted name")
+    }));
 }

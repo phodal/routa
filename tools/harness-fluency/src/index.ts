@@ -37,15 +37,20 @@ export function buildCargoArgs(argv: readonly string[]): string[] {
   return [...ROUTA_ARGS_PREFIX, ...normalizeLegacyArgs(argv)];
 }
 
-export async function runCli(argv: readonly string[]): Promise<number> {
+export function shouldShowHelp(argv: readonly string[]): boolean {
   const normalized = normalizeLegacyArgs(argv);
-  if (normalized.includes("--help") || normalized.includes("-h")) {
+  return normalized.includes("--help") || normalized.includes("-h");
+}
+
+export async function runCli(argv: readonly string[]): Promise<number> {
+  if (shouldShowHelp(argv)) {
     console.error(renderHelp());
-  } else {
-    console.error(
-      "tools/harness-fluency is deprecated; forwarding to `cargo run -p routa-cli -- fitness fluency`.",
-    );
+    return 0;
   }
+
+  console.error(
+    "tools/harness-fluency is deprecated; forwarding to `cargo run -p routa-cli -- fitness fluency`.",
+  );
 
   return await new Promise<number>((resolve, reject) => {
     const child = spawn("cargo", buildCargoArgs(argv), {

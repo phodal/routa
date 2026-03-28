@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildCargoArgs, normalizeLegacyArgs, renderHelp } from "../index.js";
+import { buildCargoArgs, normalizeLegacyArgs, renderHelp, shouldShowHelp } from "../index.js";
 
 describe("harness-fluency legacy wrapper", () => {
   it("drops the historical leading fluency token before forwarding", () => {
@@ -26,5 +26,11 @@ describe("harness-fluency legacy wrapper", () => {
   it("documents the canonical routa-cli command", () => {
     expect(renderHelp()).toContain("Canonical command: cargo run -p routa-cli -- fitness fluency");
     expect(renderHelp()).toContain("--json");
+  });
+
+  it("treats help as a wrapper-only path", () => {
+    expect(shouldShowHelp(["--help"])).toBe(true);
+    expect(shouldShowHelp(["fluency", "-h"])).toBe(true);
+    expect(shouldShowHelp(["--json"])).toBe(false);
   });
 });
