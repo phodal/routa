@@ -65,13 +65,23 @@ function resolveWorkflowGroup(flow: GitHubActionsFlow): WorkflowGroup {
   const eventTokens = normalizeEventTokens(flow.event);
   const eventString = eventTokens.join(",");
   const flowName = flow.name.toLowerCase();
+  const hasEvent = (event: string) => eventString.includes(event);
 
-  if (flowName.includes("release") || eventString.includes("release") || flowName.includes("publish") || flowName.includes("deploy")) {
+  if (
+    flowName.includes("release")
+    || flowName.includes("publish")
+    || flowName.includes("deploy")
+  ) {
     return "发布交付";
   }
-  if (eventString.includes("workflow_dispatch") || eventString.includes("workflow_call")) {
+
+  if (
+    flowName.includes("cli release")
+    || flowName.includes("github pages")
+  ) {
     return "发布交付";
   }
+
   if (
     eventString.includes("issue_comment")
     || eventString.includes("issues")
@@ -80,20 +90,29 @@ function resolveWorkflowGroup(flow: GitHubActionsFlow): WorkflowGroup {
   ) {
     return "Issue 自动化";
   }
+
   if (
-    eventString.includes("schedule")
+    (eventTokens.length === 1 && eventTokens[0] === "schedule")
+    || (eventString.includes("schedule")
+      && !eventString.includes("pull_request")
+      && !eventString.includes("push")
+      && !eventString.includes("workflow_run")
+      && !eventString.includes("workflow_dispatch")
+      && !eventString.includes("workflow_call"))
     || flowName.includes("cleanup")
     || flowName.includes("garbage")
     || flowName.includes("red fixer")
   ) {
     return "定时维护";
   }
+
   if (
     eventString.includes("pull_request")
+    || eventString.includes("pull_request_target")
     || eventString.includes("push")
     || eventString.includes("workflow_run")
-    || eventString.includes("pull_request_target")
-    || eventTokens.length === 0
+    || hasEvent("workflow_call")
+    || hasEvent("workflow_dispatch")
   ) {
     return "变更门禁";
   }
