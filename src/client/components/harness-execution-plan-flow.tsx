@@ -49,7 +49,7 @@ export type PlanResponse = {
   dimensions: PlannedDimension[];
 };
 
-type PlanNodeKind = "root" | "stage" | "dimension" | "metric" | "lane";
+type PlanNodeKind = "root" | "stage" | "dimension" | "metric" | "lane" | "anchor";
 type EdgeStatus = "hard" | "warn" | "pass" | "blocked" | "flow";
 
 type PlanNodeData = {
@@ -58,10 +58,13 @@ type PlanNodeData = {
   subtitle?: string;
   meta?: string[];
   status?: EdgeStatus;
+  badgeText?: string;
   expanded?: boolean;
   onToggle?: () => void;
   frameWidth?: number;
   frameHeight?: number;
+  entryOffsetPx?: number;
+  exitOffsetPx?: number;
 };
 
 type HarnessExecutionPlanFlowProps = {
@@ -112,34 +115,59 @@ function PlanNodeView({ data }: NodeProps<Node<PlanNodeData>>) {
   const tone = getStatusTone(data.status);
   const interactive = typeof data.onToggle === "function";
   const widthClass = data.kind === "metric"
-    ? "w-[232px]"
+    ? "w-[244px]"
     : data.kind === "dimension"
       ? "w-[252px]"
       : data.kind === "lane"
         ? ""
       : "w-[292px]";
+  const kindLabelClass = data.kind === "dimension"
+    ? "text-[11px] font-semibold uppercase tracking-[0.18em] text-desktop-text-secondary"
+    : "text-[10px] font-semibold uppercase tracking-[0.16em] text-desktop-text-secondary";
+  const titleClass = data.kind === "dimension"
+    ? "mt-1 text-[18px] font-semibold leading-7 text-desktop-text-primary [overflow-wrap:anywhere]"
+    : "mt-1 overflow-hidden text-[15px] font-semibold leading-6 text-desktop-text-primary [overflow-wrap:anywhere]";
+  const subtitleClass = data.kind === "dimension"
+    ? "mt-1 overflow-hidden text-[14px] leading-7 text-desktop-text-secondary"
+    : "mt-1 overflow-hidden text-[13px] leading-6 text-desktop-text-secondary";
   const heightClass = data.kind === "metric"
     ? "h-[144px]"
     : data.kind === "dimension"
-      ? "h-[176px]"
+      ? "h-[164px]"
       : data.kind === "lane"
         ? ""
       : "h-[104px]";
-  const visibleMeta = data.kind === "dimension" ? data.meta ?? [] : [];
+  const visibleMeta = data.kind === "dimension" ? [] : [];
 
   if (data.kind === "lane") {
     return (
       <div
-        className="rounded-[28px] border border-desktop-border/70 bg-desktop-bg-primary/35 px-4 py-3 shadow-sm backdrop-blur-[1px]"
+        className="rounded-[28px] border border-desktop-border/70 bg-desktop-bg-primary/35 px-4 py-2 shadow-sm backdrop-blur-[1px]"
         style={{ width: data.frameWidth ?? 640, height: data.frameHeight ?? 220 }}
       >
-        <Handle id="top" type="target" position={Position.Top} className="!h-2.5 !w-2.5 !border-0 !bg-desktop-border" />
-        <Handle id="bottom" type="source" position={Position.Bottom} className="!h-2.5 !w-2.5 !border-0 !bg-desktop-border" />
-        <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-desktop-text-secondary">Detail lane</div>
-        <div className="mt-1 text-[12px] font-semibold text-desktop-text-primary">{data.title}</div>
-        {data.subtitle ? (
-          <div className="mt-1 text-[11px] text-desktop-text-secondary">{data.subtitle}</div>
-        ) : null}
+        <Handle
+          id="entry"
+          type="target"
+          position={Position.Top}
+          style={{ left: data.entryOffsetPx ?? (data.frameWidth ?? 640) / 2 }}
+          className="!h-2.5 !w-2.5 !border-0 !bg-desktop-border"
+        />
+        <Handle
+          id="exit"
+          type="source"
+          position={Position.Bottom}
+          style={{ left: data.exitOffsetPx ?? (data.frameWidth ?? 640) / 2 }}
+          className="!h-2.5 !w-2.5 !border-0 !bg-desktop-border"
+        />
+      </div>
+    );
+  }
+
+  if (data.kind === "anchor") {
+    return (
+      <div className="relative h-0 w-0 overflow-visible">
+        <Handle id="top" type="target" position={Position.Top} className="!h-2 !w-2 !border-0 !bg-desktop-border" />
+        <Handle id="bottom" type="source" position={Position.Bottom} className="!h-2 !w-2 !border-0 !bg-desktop-border" />
       </div>
     );
   }
@@ -157,21 +185,23 @@ function PlanNodeView({ data }: NodeProps<Node<PlanNodeData>>) {
         onClick={() => {
           data.onToggle?.();
         }}
-        className={`${widthClass} ${heightClass} flex flex-col rounded-2xl border bg-desktop-bg-primary/96 px-4 py-3 text-left shadow-sm transition ${tone.border} ${tone.glow} ${interactive ? "cursor-pointer hover:bg-desktop-bg-secondary/90" : "cursor-default"}`}
+        className={`${widthClass} ${heightClass} flex flex-col overflow-hidden rounded-2xl border bg-desktop-bg-primary/96 px-4 py-3 text-left shadow-sm transition ${tone.border} ${tone.glow} ${interactive ? "cursor-pointer hover:bg-desktop-bg-secondary/90" : "cursor-default"}`}
       >
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-desktop-text-secondary">{data.kind}</div>
-            <div className="mt-1 text-[13px] font-semibold text-desktop-text-primary">{data.title}</div>
+            <div className={kindLabelClass}>{data.kind}</div>
+            <div className={titleClass} style={{ maxHeight: data.kind === "metric" ? 48 : undefined }}>
+              {data.title}
+            </div>
             {data.subtitle ? (
-              <div className="mt-1 overflow-hidden text-[11px] leading-5 text-desktop-text-secondary" style={{ maxHeight: data.kind === "metric" ? 44 : 48 }}>
+              <div className={subtitleClass} style={{ maxHeight: data.kind === "metric" ? 72 : 64 }}>
                 {data.subtitle}
               </div>
             ) : null}
           </div>
           {data.status ? (
             <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-medium ${tone.badge}`}>
-              {data.status}
+              {data.badgeText ?? data.status}
             </span>
           ) : null}
         </div>
@@ -185,7 +215,7 @@ function PlanNodeView({ data }: NodeProps<Node<PlanNodeData>>) {
             ))}
           </div>
         ) : null}
-        {interactive ? (
+        {interactive && data.kind !== "dimension" ? (
           <div className="mt-3 text-[10px] text-desktop-text-secondary">
             {data.expanded ? "Click to collapse metrics" : "Click to expand metrics"}
           </div>
@@ -221,8 +251,8 @@ function buildNode(id: string, x: number, y: number, data: PlanNodeData): Node<P
     type: "plan",
     position: { x, y },
     data,
-    draggable: true,
-    selectable: true,
+    draggable: data.kind !== "anchor",
+    selectable: data.kind !== "anchor",
     sourcePosition: data.kind === "metric" ? Position.Right : Position.Bottom,
     targetPosition: data.kind === "metric" ? Position.Left : Position.Top,
   };
@@ -244,7 +274,7 @@ function buildPlanGraph(
   const dimensionRowHeight = 208;
   const metricRowOffsetY = 92;
   const metricSpacingX = 264;
-  const metricRowHeight = 196;
+  const metricRowHeight = 168;
   const metricColumns = 6;
   const rowContentHeight = 176;
   const dimensionPositions = new Map<string, { x: number; y: number }>();
@@ -309,9 +339,9 @@ function buildPlanGraph(
     nodes.push(buildNode(dimensionId, dimensionX, dimensionY, {
       kind: "dimension",
       title: dimension.name,
-      subtitle: `${dimension.sourceFile} · pass ${dimension.thresholdPass} / warn ${dimension.thresholdWarn}`,
-      meta: [`weight ${dimension.weight}`, `${dimension.metrics.length} metrics`],
+      subtitle: `${dimension.sourceFile} · ${dimension.thresholdPass}/${dimension.thresholdWarn}`,
       status: hasHardMetric ? "hard" : "pass",
+      badgeText: `${dimension.thresholdPass}/${dimension.thresholdWarn}`,
       expanded,
       onToggle: () => {
         toggleDimension(dimension.name);
@@ -344,17 +374,24 @@ function buildPlanGraph(
 
   if (activeDimension) {
     const dimensionId = `dimension:${activeDimension.name}`;
+    const activeDimensionPosition = dimensionPositions.get(activeDimension.name) ?? { x: dimensionsStartX, y: dimensionsTopY };
     const detailColumns = Math.min(metricColumns, Math.max(activeDimension.metrics.length, 1));
     const centeredMetricStartX = Math.max(72, stageX - ((detailColumns - 1) * metricSpacingX) / 2);
-    const metricsStartY = currentMetricsY + 44;
+    const metricsStartY = currentMetricsY + 12;
     let metricGridBottom = metricsStartY;
     const metricRows = Math.max(1, Math.ceil(activeDimension.metrics.length / metricColumns));
     const detailLaneId = `lane:${activeDimension.name}`;
     const detailLaneX = centeredMetricStartX - 72;
     const detailLaneY = currentMetricsY - 32;
     const detailLaneWidth = Math.max(420, (detailColumns - 1) * metricSpacingX + 232 + 144);
-    const detailLaneHeight = Math.max(220, 56 + (metricRows - 1) * metricRowHeight + 144 + 56);
+    const detailLaneHeight = Math.max(232, 40 + (metricRows - 1) * metricRowHeight + 144 + 56);
     const activeDimensionHasHardMetric = activeDimension.metrics.some((metric) => metric.hardGate);
+    const activeDimensionCenterX = activeDimensionPosition.x + 126;
+    const laneJunctionId = `lane-junction:${activeDimension.name}`;
+    const laneEntryOffsetPx = Math.max(32, Math.min(detailLaneWidth - 32, activeDimensionCenterX - detailLaneX));
+    const laneExitOffsetPx = Math.max(32, Math.min(detailLaneWidth - 32, stageX - detailLaneX));
+    const detailLaneCenterX = stageX;
+    const laneJunctionY = detailLaneY + detailLaneHeight + 42;
 
     nodes.push(buildNode(detailLaneId, detailLaneX, detailLaneY, {
       kind: "lane",
@@ -362,13 +399,23 @@ function buildPlanGraph(
       subtitle: "Expanded metrics for the selected dimension",
       frameWidth: detailLaneWidth,
       frameHeight: detailLaneHeight,
+      entryOffsetPx: laneEntryOffsetPx,
+      exitOffsetPx: laneExitOffsetPx,
+    }));
+
+    nodes.push(buildNode(laneJunctionId, detailLaneCenterX, laneJunctionY, {
+      kind: "anchor",
+      title: "",
     }));
 
     activeDimension.metrics.forEach((metric, metricIndex) => {
       const metricId = `${dimensionId}:metric:${metric.name}`;
       const metricColumn = metricIndex % metricColumns;
       const metricRow = Math.floor(metricIndex / metricColumns);
-      const metricX = centeredMetricStartX + metricColumn * metricSpacingX;
+      const rowStartIndex = metricRow * metricColumns;
+      const rowCount = Math.min(metricColumns, activeDimension.metrics.length - rowStartIndex);
+      const rowStartX = Math.max(72, stageX - ((rowCount - 1) * metricSpacingX) / 2);
+      const metricX = rowStartX + metricColumn * metricSpacingX;
       const metricY = metricsStartY + metricRow * metricRowHeight;
       const metricStatus: EdgeStatus = metric.hardGate ? "hard" : metric.gate === "warn" ? "warn" : "pass";
 
@@ -380,17 +427,6 @@ function buildPlanGraph(
         status: metricStatus,
       }));
 
-      edges.push({
-        id: `${dimensionId}-${metricId}`,
-        source: dimensionId,
-        target: metricId,
-        type: "smoothstep",
-        sourceHandle: "bottom",
-        targetHandle: "top",
-        style: buildEdgeStyle(metricStatus),
-        markerEnd: { type: MarkerType.ArrowClosed, color: metricStatus === "hard" ? "#dc2626" : metricStatus === "warn" ? "#d97706" : "#059669" },
-      });
-
       maxMetricRight = Math.max(maxMetricRight, metricX + 208);
       metricGridBottom = Math.max(metricGridBottom, metricY + rowContentHeight);
     });
@@ -401,8 +437,19 @@ function buildPlanGraph(
       target: detailLaneId,
       type: "smoothstep",
       sourceHandle: "bottom",
-      targetHandle: "top",
+      targetHandle: "entry",
       style: buildEdgeStyle(activeDimensionHasHardMetric ? "hard" : "pass"),
+      markerEnd: { type: MarkerType.ArrowClosed, color: activeDimensionHasHardMetric ? "#dc2626" : "#059669" },
+    });
+
+    edges.push({
+      id: `${detailLaneId}-${laneJunctionId}`,
+      source: detailLaneId,
+      target: laneJunctionId,
+      type: "smoothstep",
+      sourceHandle: "exit",
+      targetHandle: "top",
+      style: activeDimensionHasHardMetric ? { ...buildEdgeStyle("hard"), strokeWidth: 2.2 } : buildEdgeStyle("pass"),
       markerEnd: { type: MarkerType.ArrowClosed, color: activeDimensionHasHardMetric ? "#dc2626" : "#059669" },
     });
 
@@ -411,7 +458,7 @@ function buildPlanGraph(
 
   const detailLaneY = currentMetricsY;
   const gatesX = stageX;
-  const gatesY = detailLaneY + 24;
+  const gatesY = detailLaneY + 28;
   const reportX = stageX;
   const reportY = gatesY + 148;
 
@@ -444,12 +491,12 @@ function buildPlanGraph(
   });
 
   if (activeDimension) {
-    const detailLaneId = `lane:${activeDimension.name}`;
+    const laneJunctionId = `lane-junction:${activeDimension.name}`;
     const hasHardMetric = activeDimension.metrics.some((metric) => metric.hardGate);
 
     edges.push({
-      id: `${detailLaneId}-report`,
-      source: detailLaneId,
+      id: `${laneJunctionId}-report`,
+      source: laneJunctionId,
       target: "report",
       type: "smoothstep",
       sourceHandle: "bottom",
@@ -460,13 +507,13 @@ function buildPlanGraph(
 
     if (hasHardMetric) {
       edges.push({
-        id: `${detailLaneId}-gates`,
-        source: detailLaneId,
+        id: `${laneJunctionId}-gates`,
+        source: laneJunctionId,
         target: "gates",
         type: "smoothstep",
         sourceHandle: "bottom",
         targetHandle: "top",
-        style: buildEdgeStyle("hard"),
+        style: { ...buildEdgeStyle("hard"), strokeWidth: 2.2 },
         markerEnd: { type: MarkerType.ArrowClosed, color: "#dc2626" },
       });
     }
