@@ -49,7 +49,7 @@ export type PlanResponse = {
   dimensions: PlannedDimension[];
 };
 
-type PlanNodeKind = "root" | "stage" | "dimension" | "metric";
+type PlanNodeKind = "root" | "stage" | "dimension" | "metric" | "lane";
 type EdgeStatus = "hard" | "warn" | "pass" | "blocked" | "flow";
 
 type PlanNodeData = {
@@ -60,6 +60,8 @@ type PlanNodeData = {
   status?: EdgeStatus;
   expanded?: boolean;
   onToggle?: () => void;
+  frameWidth?: number;
+  frameHeight?: number;
 };
 
 type HarnessExecutionPlanFlowProps = {
@@ -113,10 +115,34 @@ function PlanNodeView({ data }: NodeProps<Node<PlanNodeData>>) {
     ? "w-[232px]"
     : data.kind === "dimension"
       ? "w-[252px]"
+      : data.kind === "lane"
+        ? ""
       : "w-[292px]";
-  const visibleMeta = data.kind === "dimension" || data.kind === "metric"
-    ? data.meta ?? []
-    : [];
+  const heightClass = data.kind === "metric"
+    ? "h-[144px]"
+    : data.kind === "dimension"
+      ? "h-[176px]"
+      : data.kind === "lane"
+        ? ""
+      : "h-[104px]";
+  const visibleMeta = data.kind === "dimension" ? data.meta ?? [] : [];
+
+  if (data.kind === "lane") {
+    return (
+      <div
+        className="rounded-[28px] border border-desktop-border/70 bg-desktop-bg-primary/35 px-4 py-3 shadow-sm backdrop-blur-[1px]"
+        style={{ width: data.frameWidth ?? 640, height: data.frameHeight ?? 220 }}
+      >
+        <Handle id="top" type="target" position={Position.Top} className="!h-2.5 !w-2.5 !border-0 !bg-desktop-border" />
+        <Handle id="bottom" type="source" position={Position.Bottom} className="!h-2.5 !w-2.5 !border-0 !bg-desktop-border" />
+        <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-desktop-text-secondary">Detail lane</div>
+        <div className="mt-1 text-[12px] font-semibold text-desktop-text-primary">{data.title}</div>
+        {data.subtitle ? (
+          <div className="mt-1 text-[11px] text-desktop-text-secondary">{data.subtitle}</div>
+        ) : null}
+      </div>
+    );
+  }
 
   return (
     <div className="relative">
@@ -131,14 +157,14 @@ function PlanNodeView({ data }: NodeProps<Node<PlanNodeData>>) {
         onClick={() => {
           data.onToggle?.();
         }}
-        className={`${widthClass} rounded-2xl border bg-desktop-bg-primary/96 px-4 py-3 text-left shadow-sm transition ${tone.border} ${tone.glow} ${interactive ? "cursor-pointer hover:bg-desktop-bg-secondary/90" : "cursor-default"}`}
+        className={`${widthClass} ${heightClass} flex flex-col rounded-2xl border bg-desktop-bg-primary/96 px-4 py-3 text-left shadow-sm transition ${tone.border} ${tone.glow} ${interactive ? "cursor-pointer hover:bg-desktop-bg-secondary/90" : "cursor-default"}`}
       >
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-desktop-text-secondary">{data.kind}</div>
             <div className="mt-1 text-[13px] font-semibold text-desktop-text-primary">{data.title}</div>
             {data.subtitle ? (
-              <div className="mt-1 text-[11px] leading-5 text-desktop-text-secondary">
+              <div className="mt-1 overflow-hidden text-[11px] leading-5 text-desktop-text-secondary" style={{ maxHeight: data.kind === "metric" ? 44 : 48 }}>
                 {data.subtitle}
               </div>
             ) : null}
@@ -149,6 +175,7 @@ function PlanNodeView({ data }: NodeProps<Node<PlanNodeData>>) {
             </span>
           ) : null}
         </div>
+        <div className="mt-auto">
         {visibleMeta.length > 0 ? (
           <div className="mt-3 flex flex-wrap gap-1.5">
             {visibleMeta.map((item) => (
@@ -163,6 +190,7 @@ function PlanNodeView({ data }: NodeProps<Node<PlanNodeData>>) {
             {data.expanded ? "Click to collapse metrics" : "Click to expand metrics"}
           </div>
         ) : null}
+        </div>
       </button>
     </div>
   );
@@ -213,12 +241,12 @@ function buildPlanGraph(
   const dimensionsStartX = 72;
   const dimensionColumnWidth = 284;
   const dimensionColumns = Math.max(plan.dimensions.length, 1);
-  const dimensionRowHeight = 180;
+  const dimensionRowHeight = 208;
   const metricRowOffsetY = 92;
   const metricSpacingX = 264;
-  const metricRowHeight = 176;
-  const metricColumns = 4;
-  const rowContentHeight = 124;
+  const metricRowHeight = 196;
+  const metricColumns = 6;
+  const rowContentHeight = 176;
   const dimensionPositions = new Map<string, { x: number; y: number }>();
 
   nodes.push(
@@ -318,14 +346,30 @@ function buildPlanGraph(
     const dimensionId = `dimension:${activeDimension.name}`;
     const detailColumns = Math.min(metricColumns, Math.max(activeDimension.metrics.length, 1));
     const centeredMetricStartX = Math.max(72, stageX - ((detailColumns - 1) * metricSpacingX) / 2);
-    let metricGridBottom = currentMetricsY;
+    const metricsStartY = currentMetricsY + 44;
+    let metricGridBottom = metricsStartY;
+    const metricRows = Math.max(1, Math.ceil(activeDimension.metrics.length / metricColumns));
+    const detailLaneId = `lane:${activeDimension.name}`;
+    const detailLaneX = centeredMetricStartX - 72;
+    const detailLaneY = currentMetricsY - 32;
+    const detailLaneWidth = Math.max(420, (detailColumns - 1) * metricSpacingX + 232 + 144);
+    const detailLaneHeight = Math.max(220, 56 + (metricRows - 1) * metricRowHeight + 144 + 56);
+    const activeDimensionHasHardMetric = activeDimension.metrics.some((metric) => metric.hardGate);
+
+    nodes.push(buildNode(detailLaneId, detailLaneX, detailLaneY, {
+      kind: "lane",
+      title: activeDimension.name,
+      subtitle: "Expanded metrics for the selected dimension",
+      frameWidth: detailLaneWidth,
+      frameHeight: detailLaneHeight,
+    }));
 
     activeDimension.metrics.forEach((metric, metricIndex) => {
       const metricId = `${dimensionId}:metric:${metric.name}`;
       const metricColumn = metricIndex % metricColumns;
       const metricRow = Math.floor(metricIndex / metricColumns);
       const metricX = centeredMetricStartX + metricColumn * metricSpacingX;
-      const metricY = currentMetricsY + metricRow * metricRowHeight;
+      const metricY = metricsStartY + metricRow * metricRowHeight;
       const metricStatus: EdgeStatus = metric.hardGate ? "hard" : metric.gate === "warn" ? "warn" : "pass";
 
       nodes.push(buildNode(metricId, metricX, metricY, {
@@ -349,6 +393,17 @@ function buildPlanGraph(
 
       maxMetricRight = Math.max(maxMetricRight, metricX + 208);
       metricGridBottom = Math.max(metricGridBottom, metricY + rowContentHeight);
+    });
+
+    edges.push({
+      id: `${dimensionId}-${detailLaneId}`,
+      source: dimensionId,
+      target: detailLaneId,
+      type: "smoothstep",
+      sourceHandle: "bottom",
+      targetHandle: "top",
+      style: buildEdgeStyle(activeDimensionHasHardMetric ? "hard" : "pass"),
+      markerEnd: { type: MarkerType.ArrowClosed, color: activeDimensionHasHardMetric ? "#dc2626" : "#059669" },
     });
 
     currentMetricsY = metricGridBottom;
@@ -389,12 +444,12 @@ function buildPlanGraph(
   });
 
   if (activeDimension) {
-    const dimensionId = `dimension:${activeDimension.name}`;
+    const detailLaneId = `lane:${activeDimension.name}`;
     const hasHardMetric = activeDimension.metrics.some((metric) => metric.hardGate);
 
     edges.push({
-      id: `${dimensionId}-report`,
-      source: dimensionId,
+      id: `${detailLaneId}-report`,
+      source: detailLaneId,
       target: "report",
       type: "smoothstep",
       sourceHandle: "bottom",
@@ -405,8 +460,8 @@ function buildPlanGraph(
 
     if (hasHardMetric) {
       edges.push({
-        id: `${dimensionId}-gates`,
-        source: dimensionId,
+        id: `${detailLaneId}-gates`,
+        source: detailLaneId,
         target: "gates",
         type: "smoothstep",
         sourceHandle: "bottom",
@@ -551,10 +606,9 @@ export function HarnessExecutionPlanFlow({
                 elementsSelectable
                 zoomOnScroll
                 panOnDrag
-                minZoom={0.42}
+                minZoom={0.58}
                 maxZoom={1.2}
-                fitView
-                fitViewOptions={{ padding: 0.07, minZoom: 0.46, maxZoom: 0.95 }}
+                defaultViewport={{ x: 24, y: 12, zoom: 0.72 }}
                 proOptions={{ hideAttribution: true }}
               >
                 <Background color="#d7dee7" gap={20} size={1} />
