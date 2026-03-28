@@ -1,0 +1,271 @@
+import * as fs from "fs";
+import { promises as fsp } from "fs";
+import matter from "gray-matter";
+import * as path from "path";
+import { NextRequest, NextResponse } from "next/server";
+import { getRoutaSystem } from "@/core/routa-system";
+
+type FitnessContext = {
+  workspaceId?: string;
+  codebaseId?: string;
+  repoPath?: string;
+};
+
+type MetricSummary = {
+  name: string;
+  command: string;
+  description: string;
+  tier: string;
+  hardGate: boolean;
+  gate: string;
+  runner: "shell" | "graph" | "sarif";
+  pattern?: string;
+  evidenceType?: string;
+  scope: string[];
+  runWhenChanged: string[];
+};
+
+type FitnessSpecSummary = {
+  name: string;
+  relativePath: string;
+  kind: "rulebook" | "dimension" | "narrative" | "policy";
+  dimension?: string;
+  weight?: number;
+  thresholdPass?: number;
+  thresholdWarn?: number;
+  metricCount: number;
+  metrics: MetricSummary[];
+};
+
+type FitnessSpecsResponse = {
+  generatedAt: string;
+  repoRoot: string;
+  fitnessDir: string;
+  files: FitnessSpecSummary[];
+};
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+function toMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function normalizeContextValue(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function parseContext(searchParams: URLSearchParams): FitnessContext {
+  return {
+    workspaceId: normalizeContextValue(searchParams.get("workspaceId")),
+    codebaseId: normalizeContextValue(searchParams.get("codebaseId")),
+    repoPath: normalizeContextValue(searchParams.get("repoPath")),
+  };
+}
+
+function isRoutaRepoRoot(repoRoot: string): boolean {
+  return (
+    fs.existsSync(path.join(repoRoot, "docs", "fitness", "harness-fluency.model.yaml"))
+    && fs.existsSync(path.join(repoRoot, "crates", "routa-cli"))
+  );
+}
+
+async function resolveRepoRoot(context: FitnessContext): Promise<string> {
+  const workspaceId = normalizeContextValue(context.workspaceId);
+  const codebaseId = normalizeContextValue(context.codebaseId);
+  const repoPath = normalizeContextValue(context.repoPath);
+  const system = getRoutaSystem();
+
+  const directPath = repoPath ? path.resolve(repoPath) : undefined;
+  if (directPath) {
+    if (!fs.existsSync(directPath) || !fs.statSync(directPath).isDirectory()) {
+      throw new Error(`repoPath 不存在或不是目录: ${directPath}`);
+    }
+    if (!isRoutaRepoRoot(directPath)) {
+      throw new Error(`repoPath 不是 Routa 仓库: ${directPath}`);
+    }
+    return directPath;
+  }
+
+  if (codebaseId) {
+    const codebase = await system.codebaseStore.get(codebaseId);
+    if (!codebase) {
+      throw new Error(`Codebase 未找到: ${codebaseId}`);
+    }
+
+    const candidate = path.resolve(codebase.repoPath);
+    if (!fs.existsSync(candidate) || !fs.statSync(candidate).isDirectory()) {
+      throw new Error(`Codebase 的路径不存在或不是目录: ${candidate}`);
+    }
+    if (!isRoutaRepoRoot(candidate)) {
+      throw new Error(`Codebase 的路径不是 Routa 仓库: ${candidate}`);
+    }
+    return candidate;
+  }
+
+  if (!workspaceId) {
+    throw new Error("缺少 fitness 上下文，请提供 workspaceId / codebaseId / repoPath 之一");
+  }
+
+  const codebases = await system.codebaseStore.listByWorkspace(workspaceId);
+  if (codebases.length === 0) {
+    throw new Error(`Workspace 下没有配置 codebase: ${workspaceId}`);
+  }
+
+  const fallback = codebases.find((codebase) => codebase.isDefault) ?? codebases[0];
+  const candidate = path.resolve(fallback.repoPath);
+
+  if (!fs.existsSync(candidate) || !fs.statSync(candidate).isDirectory()) {
+    throw new Error(`默认 codebase 的路径不存在或不是目录: ${candidate}`);
+  }
+  if (!isRoutaRepoRoot(candidate)) {
+    throw new Error(`默认 codebase 的路径不是 Routa 仓库: ${candidate}`);
+  }
+
+  return candidate;
+}
+
+function isContextError(message: string) {
+  return message.includes("缺少 fitness 上下文")
+    || message.includes("Codebase 未找到")
+    || message.includes("Codebase 的路径")
+    || message.includes("repoPath")
+    || message.includes("Workspace 下没有配置 codebase")
+    || message.includes("不是 Routa 仓库")
+    || message.includes("不存在或不是目录");
+}
+
+function mapRunner(metric: Record<string, unknown>): "shell" | "graph" | "sarif" {
+  const evidenceType = typeof metric.evidence_type === "string" ? metric.evidence_type : "";
+  const command = typeof metric.command === "string" ? metric.command : "";
+
+  if (evidenceType === "sarif") return "sarif";
+  if (command.startsWith("graph:")) return "graph";
+  return "shell";
+}
+
+function normalizeStringList(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+}
+
+function parseMarkdownSpec(relativePath: string, raw: string): FitnessSpecSummary {
+  const parsed = matter(raw);
+  const data = parsed.data as Record<string, unknown>;
+  const metrics = Array.isArray(data.metrics) ? data.metrics : [];
+
+  if (relativePath === "README.md") {
+    return {
+      name: relativePath,
+      relativePath,
+      kind: "rulebook",
+      metricCount: 0,
+      metrics: [],
+    };
+  }
+
+  if (metrics.length === 0) {
+    return {
+      name: relativePath,
+      relativePath,
+      kind: "narrative",
+      metricCount: 0,
+      metrics: [],
+    };
+  }
+
+  return {
+    name: relativePath,
+    relativePath,
+    kind: "dimension",
+    dimension: typeof data.dimension === "string" ? data.dimension : "unknown",
+    weight: typeof data.weight === "number" ? data.weight : 0,
+    thresholdPass: typeof data.threshold === "object" && data.threshold && typeof (data.threshold as { pass?: unknown }).pass === "number"
+      ? (data.threshold as { pass: number }).pass
+      : 90,
+    thresholdWarn: typeof data.threshold === "object" && data.threshold && typeof (data.threshold as { warn?: unknown }).warn === "number"
+      ? (data.threshold as { warn: number }).warn
+      : 80,
+    metricCount: metrics.length,
+    metrics: metrics.map((rawMetric, index) => {
+      const metric = (rawMetric && typeof rawMetric === "object" ? rawMetric : {}) as Record<string, unknown>;
+      const hardGate = metric.hard_gate === true;
+      const gate = typeof metric.gate === "string" ? metric.gate : (hardGate ? "hard" : "soft");
+      return {
+        name: typeof metric.name === "string" ? metric.name : `metric-${index + 1}`,
+        command: typeof metric.command === "string" ? metric.command : "",
+        description: typeof metric.description === "string" ? metric.description : "",
+        tier: typeof metric.tier === "string" ? metric.tier : "normal",
+        hardGate,
+        gate,
+        runner: mapRunner(metric),
+        pattern: typeof metric.pattern === "string" ? metric.pattern : undefined,
+        evidenceType: typeof metric.evidence_type === "string" ? metric.evidence_type : undefined,
+        scope: normalizeStringList(metric.scope),
+        runWhenChanged: normalizeStringList(metric.run_when_changed),
+      };
+    }),
+  };
+}
+
+function parseNonMarkdownSpec(relativePath: string): FitnessSpecSummary {
+  return {
+    name: relativePath,
+    relativePath,
+    kind: "policy",
+    metricCount: 0,
+    metrics: [],
+  };
+}
+
+export async function GET(request: NextRequest) {
+  try {
+    const context = parseContext(request.nextUrl.searchParams);
+    const repoRoot = await resolveRepoRoot(context);
+    const fitnessDir = path.join(repoRoot, "docs", "fitness");
+    const entries = await fsp.readdir(fitnessDir, { withFileTypes: true });
+    const files: FitnessSpecSummary[] = [];
+
+    for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+      if (!entry.isFile()) continue;
+
+      const fullPath = path.join(fitnessDir, entry.name);
+      if (entry.name.endsWith(".md")) {
+        const raw = await fsp.readFile(fullPath, "utf-8");
+        files.push(parseMarkdownSpec(entry.name, raw));
+        continue;
+      }
+
+      if (entry.name.endsWith(".yaml") || entry.name.endsWith(".yml")) {
+        files.push(parseNonMarkdownSpec(entry.name));
+      }
+    }
+
+    return NextResponse.json({
+      generatedAt: new Date().toISOString(),
+      repoRoot,
+      fitnessDir,
+      files,
+    } satisfies FitnessSpecsResponse);
+  } catch (error) {
+    const message = toMessage(error);
+    if (isContextError(message)) {
+      return NextResponse.json(
+        {
+          error: "Fitness specs 上下文无效",
+          details: message,
+        },
+        { status: 400 },
+      );
+    }
+
+    return NextResponse.json(
+      {
+        error: "读取 Fitness specs 失败",
+        details: message,
+      },
+      { status: 500 },
+    );
+  }
+}

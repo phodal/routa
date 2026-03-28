@@ -2,6 +2,7 @@ import { spawn } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
 import { NextRequest, NextResponse } from "next/server";
+import { getRoutaSystem } from "@/core/routa-system";
 
 const FITNESS_PROFILES = ["generic", "agent_orchestrator"] as const;
 const DEFAULT_COMPARE_LAST = true;
@@ -98,11 +99,28 @@ type FitnessComparison = {
   criteriaChanges: FitnessCriterionChange[];
 };
 
+type FitnessContext = {
+  workspaceId?: string;
+  codebaseId?: string;
+  repoPath?: string;
+};
+
+type AnalyzePayload = {
+  compareLast: boolean;
+  noSave: boolean;
+};
+
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 function toMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function normalizeContextValue(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
 }
 
 function isValidProfile(value: string | undefined): value is FitnessProfile {
@@ -156,32 +174,93 @@ function parseAnalyzeArgs(body: unknown) {
   const noSave = body && typeof body === "object" && typeof (body as { noSave?: unknown }).noSave === "boolean"
     ? !!(body as { noSave?: boolean }).noSave
     : false;
+
   return {
     compareLast: compareLast ?? DEFAULT_COMPARE_LAST,
     noSave,
   };
 }
 
-function locateRepoRoot(): string {
-  const startingDirectory = process.cwd();
-  const checks: string[] = [
-    startingDirectory,
-    path.resolve(startingDirectory, ".."),
-    path.resolve(startingDirectory, "..", ".."),
-    path.resolve(startingDirectory, "..", "..", ".."),
-    path.resolve(startingDirectory, "..", "..", "..", ".."),
-  ];
-
-  for (const candidate of checks) {
-    if (candidate.includes("node_modules")) continue;
-    if (fs.existsSync(path.join(candidate, "docs", "fitness", "harness-fluency.model.yaml"))
-      && fs.existsSync(path.join(candidate, "crates", "routa-cli"))
-    ) {
-      return candidate;
-    }
+function parseAnalyzeContext(body: unknown): FitnessContext {
+  if (!body || typeof body !== "object") {
+    return {};
   }
 
-  return startingDirectory;
+  const payload = body as {
+    workspaceId?: unknown;
+    codebaseId?: unknown;
+    repoPath?: unknown;
+  };
+
+  return {
+    workspaceId: normalizeContextValue(payload.workspaceId),
+    codebaseId: normalizeContextValue(payload.codebaseId),
+    repoPath: normalizeContextValue(payload.repoPath),
+  };
+}
+
+function isRoutaRepoRoot(repoRoot: string): boolean {
+  return (
+    fs.existsSync(path.join(repoRoot, "docs", "fitness", "harness-fluency.model.yaml"))
+    && fs.existsSync(path.join(repoRoot, "crates", "routa-cli"))
+  );
+}
+
+async function resolveRepoRoot(context: FitnessContext): Promise<string> {
+  const workspaceId = normalizeContextValue(context.workspaceId);
+  const codebaseId = normalizeContextValue(context.codebaseId);
+  const repoPath = normalizeContextValue(context.repoPath);
+  const system = getRoutaSystem();
+
+  const fromPath = repoPath ? path.resolve(repoPath) : undefined;
+  if (fromPath) {
+    if (!fs.existsSync(fromPath) || !fs.statSync(fromPath).isDirectory()) {
+      throw new Error(`repoPath 不存在或不是目录: ${fromPath}`);
+    }
+    if (!isRoutaRepoRoot(fromPath)) {
+      throw new Error(`repoPath 不是 Routa 仓库: ${fromPath}`);
+    }
+
+    return fromPath;
+  }
+
+  if (codebaseId) {
+    const codebase = await system.codebaseStore.get(codebaseId);
+    if (!codebase) {
+      throw new Error(`Codebase 未找到: ${codebaseId}`);
+    }
+
+    const candidate = path.resolve(codebase.repoPath);
+    if (!fs.existsSync(candidate) || !fs.statSync(candidate).isDirectory()) {
+      throw new Error(`Codebase 的路径不存在或不是目录: ${candidate}`);
+    }
+    if (!isRoutaRepoRoot(candidate)) {
+      throw new Error(`Codebase 的路径不是 Routa 仓库: ${candidate}`);
+    }
+
+    return candidate;
+  }
+
+  if (!workspaceId) {
+    throw new Error("缺少 fitness 分析上下文，请提供 workspaceId / codebaseId / repoPath 之一");
+  }
+
+  const codebases = await system.codebaseStore.listByWorkspace(workspaceId);
+  if (codebases.length === 0) {
+    throw new Error(`Workspace 下没有配置 codebase: ${workspaceId}`);
+  }
+
+  const fallback = codebases.find((codebase) => codebase.isDefault) ?? codebases[0];
+  const candidate = path.resolve(fallback.repoPath);
+
+  if (!fs.existsSync(candidate) || !fs.statSync(candidate).isDirectory()) {
+    throw new Error(`默认 codebase 的路径不存在或不是目录: ${candidate}`);
+  }
+  if (!isRoutaRepoRoot(candidate)) {
+    throw new Error(`默认 codebase 的路径不是 Routa 仓库: ${candidate}`);
+  }
+
+  return candidate;
 }
 
 function extractJsonOutput(raw: string): string {
@@ -310,8 +389,21 @@ async function runFitnessProfile(
   });
 }
 
-function buildResponse(profiles: FitnessProfile[], payload: { compareLast: boolean; noSave: boolean }) {
-  const repoRoot = locateRepoRoot();
+function isContextError(message: string) {
+  return message.includes("缺少 fitness 分析上下文")
+    || message.includes("Codebase 未找到")
+    || message.includes("Codebase 的路径")
+    || message.includes("repoPath")
+    || message.includes("Workspace 下没有配置 codebase")
+    || message.includes("不是 Routa 仓库")
+    || message.includes("不存在或不是目录");
+}
+
+function buildResponse(
+  profiles: FitnessProfile[],
+  payload: AnalyzePayload,
+  repoRoot: string,
+) {
   const tasks = profiles.map(async (profile) => {
     const result = await runFitnessProfile(repoRoot, profile, payload.compareLast, payload.noSave);
     const entry: FitnessProfileResult = {
@@ -342,14 +434,27 @@ export async function POST(request: NextRequest) {
     const body = await request.json().catch(() => ({}) as Record<string, unknown>);
     const profiles = normalizeProfiles(body);
     const options = parseAnalyzeArgs(body);
+    const context = parseAnalyzeContext(body);
+    const repoRoot = await resolveRepoRoot(context);
 
-    const payload = await buildResponse(profiles, options);
+    const payload = await buildResponse(profiles, options, repoRoot);
     return NextResponse.json(payload as FitnessAnalyzeResponse);
   } catch (error) {
+    const message = toMessage(error);
+    if (isContextError(message)) {
+      return NextResponse.json(
+        {
+          error: "Fitness 分析上下文无效",
+          details: message,
+        },
+        { status: 400 },
+      );
+    }
+
     return NextResponse.json(
       {
         error: "Fitness 分析调用失败",
-        details: toMessage(error),
+        details: message,
       },
       { status: 500 },
     );

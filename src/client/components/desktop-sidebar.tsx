@@ -44,6 +44,9 @@ export function DesktopSidebar({
   const normalizedWorkspaceId = workspaceId?.trim() || null;
   const fallbackWorkspaceId = normalizedWorkspaceId || "default";
   const workspaceBaseHref = `/workspace/${fallbackWorkspaceId}`;
+  const settingsHarnessHref = normalizedWorkspaceId
+    ? `/settings/harness?workspaceId=${encodeURIComponent(normalizedWorkspaceId)}`
+    : "/settings/harness";
 
   const primaryItems: NavItem[] = [
     {
@@ -116,9 +119,9 @@ export function DesktopSidebar({
       ),
     },
     {
-      id: "fitness",
-      label: "Fitness",
-      href: "/settings/fitness",
+      id: "harness",
+      label: "Harness",
+      href: settingsHarnessHref,
       icon: (
         <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.75v10.5m5.25-5.25H6.75m10.35-3.3L12 3.75m-5.25 10.95L3 12m18 0l-3.75-2.1M7.5 17.25L3 12m18 0-4.5 2.25M8.25 7.5a3.75 3.75 0 117.5 0 3.75 3.75 0 01-7.5 0z" />

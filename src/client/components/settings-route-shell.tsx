@@ -9,6 +9,8 @@ interface SettingsRouteShellProps {
   title: string;
   description: string;
   children: ReactNode;
+  workspaceId?: string | null;
+  workspaceTitle?: string;
   badgeLabel?: string;
   icon?: ReactNode;
   summary?: Array<{ label: string; value: string }>;
@@ -19,6 +21,8 @@ export function SettingsRouteShell({
   title,
   description,
   children,
+  workspaceId,
+  workspaceTitle,
   badgeLabel,
   icon,
   summary = [],
@@ -33,6 +37,8 @@ export function SettingsRouteShell({
 
   return (
     <DesktopAppShell
+      workspaceId={workspaceId}
+      workspaceTitle={workspaceTitle}
       workspaceSwitcher={workspaceSwitcher ?? (
         <div className="flex items-center gap-1.5 rounded-xl border border-desktop-border bg-desktop-bg-secondary px-2.5 py-1.5 text-[11px] text-desktop-text-primary">
           <svg className="h-3 w-3 text-desktop-text-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>

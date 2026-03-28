@@ -131,6 +131,20 @@ const VIEW_MODES: Array<{ id: ViewMode; label: string }> = [
   { id: "raw", label: "原始 JSON" },
 ];
 
+type FitnessAnalysisContext = {
+  workspaceId?: string;
+  codebaseId?: string;
+  repoPath?: string;
+  codebaseLabel?: string;
+};
+
+type FitnessAnalysisPanelProps = {
+  workspaceId?: string;
+  codebaseId?: string;
+  repoPath?: string;
+  codebaseLabel?: string;
+};
+
 const EMPTY_STATE: Record<FitnessProfile, ProfilePanelState> = {
   generic: {
     state: "idle",
@@ -213,7 +227,33 @@ function normalizeApiResponse(payload: unknown): ApiProfileEntry[] {
     .filter((entry) => PROFILE_ORDER.includes(entry.profile));
 }
 
-export function FitnessAnalysisPanel() {
+function buildAnalysisQuery(context: FitnessAnalysisContext): string {
+  const params = new URLSearchParams();
+  if (context.workspaceId?.trim()) params.set("workspaceId", context.workspaceId.trim());
+  if (context.codebaseId?.trim()) params.set("codebaseId", context.codebaseId.trim());
+  if (context.repoPath?.trim()) params.set("repoPath", context.repoPath.trim());
+  return params.toString();
+}
+
+function buildAnalysisPayload(context: FitnessAnalysisContext) {
+  const payload: {
+    workspaceId?: string;
+    codebaseId?: string;
+    repoPath?: string;
+  } = {};
+
+  if (context.workspaceId?.trim()) payload.workspaceId = context.workspaceId.trim();
+  if (context.codebaseId?.trim()) payload.codebaseId = context.codebaseId.trim();
+  if (context.repoPath?.trim()) payload.repoPath = context.repoPath.trim();
+  return payload;
+}
+
+export function FitnessAnalysisPanel({
+  workspaceId,
+  codebaseId,
+  repoPath,
+  codebaseLabel,
+}: FitnessAnalysisPanelProps) {
   const [viewMode, setViewMode] = useState<ViewMode>("overview");
   const [selectedProfile, setSelectedProfile] = useState<FitnessProfile>("generic");
   const [compareLast, setCompareLast] = useState(true);
@@ -222,6 +262,10 @@ export function FitnessAnalysisPanel() {
   const [globalError, setGlobalError] = useState<string | null>(null);
   const [lastSnapshotAt, setLastSnapshotAt] = useState<string | null>(null);
   const [copiedRaw, setCopiedRaw] = useState(false);
+  const hasContext = Boolean(workspaceId && codebaseId);
+  const contextQuery = buildAnalysisQuery({ workspaceId, codebaseId, repoPath });
+  const contextPayload = buildAnalysisPayload({ workspaceId, codebaseId, repoPath });
+  const contextLabel = codebaseLabel || repoPath || null;
 
   const selectedState = profiles[selectedProfile];
   const activeReport = selectedState.report;
@@ -287,10 +331,33 @@ export function FitnessAnalysisPanel() {
     setGlobalError(null);
   }, []);
 
+  const failProfiles = useCallback((targetProfiles: FitnessProfile[], message: string) => {
+    setProfiles((current) => {
+      const next = { ...current };
+      for (const profile of targetProfiles) {
+        next[profile] = {
+          ...next[profile],
+          state: "error",
+          source: "analysis",
+          error: message,
+        };
+      }
+      return next;
+    });
+  }, []);
+
   const syncProfiles = useCallback(async () => {
+    if (!hasContext) {
+      setProfiles(EMPTY_STATE);
+      setLastSnapshotAt(null);
+      setGlobalError("请先选择要分析的 Workspace 与 Repository");
+      return;
+    }
+
     setGlobalError(null);
     try {
-      const response = await desktopAwareFetch("/api/fitness/report", { cache: "no-store" });
+      const reportUrl = contextQuery ? `/api/fitness/report?${contextQuery}` : "/api/fitness/report";
+      const response = await desktopAwareFetch(reportUrl, { cache: "no-store" });
       if (!response.ok) {
         const body = await response.text();
         setGlobalError(`获取快照失败: ${response.status} ${body}`);
@@ -308,7 +375,7 @@ export function FitnessAnalysisPanel() {
     } catch (error) {
       setGlobalError(`获取快照失败: ${toMessage(error)}`);
     }
-  }, [applyProfiles]);
+  }, [applyProfiles, contextQuery, hasContext]);
 
   useEffect(() => {
     void syncProfiles();
@@ -317,6 +384,12 @@ export function FitnessAnalysisPanel() {
   const runProfiles = useCallback(async (targetProfiles: FitnessProfile[]) => {
     const requestProfiles = targetProfiles.slice();
     if (requestProfiles.length === 0) return;
+
+    if (!hasContext) {
+      setGlobalError("请先在上方选择 Workspace 与 Repository");
+      failProfiles(requestProfiles, "请先在上方选择 Workspace 与 Repository");
+      return;
+    }
 
     setProfiles((current) => {
       const next = { ...current };
@@ -343,28 +416,30 @@ export function FitnessAnalysisPanel() {
           profiles: requestProfiles,
           compareLast,
           noSave,
+          ...contextPayload,
         }),
       });
 
       if (!response.ok) {
         const body = await response.text();
-        setProfiles((current) => {
-          const next = { ...current };
-          for (const profile of requestProfiles) {
-            next[profile] = {
-              state: "error",
-              source: "analysis",
-              error: `执行失败: ${response.status} ${body || "空响应"}`,
-            };
-          }
-          return next;
-        });
-        return;
-      }
+      setProfiles((current) => {
+        const next = { ...current };
+        for (const profile of requestProfiles) {
+          next[profile] = {
+            state: "error",
+            source: "analysis",
+            error: `执行失败: ${response.status} ${body || "空响应"}`,
+          };
+        }
+        return next;
+      });
+      setGlobalError(`执行失败: ${response.status} ${body || "空响应"}`);
+      return;
+    }
 
-      const payload: AnalyzeResponse = await response.json().catch(() => ({ profiles: [] }) as AnalyzeResponse);
-      applyProfiles(normalizeApiResponse(payload));
-      setLastSnapshotAt(payload.generatedAt);
+    const payload: AnalyzeResponse = await response.json().catch(() => ({ profiles: [] }) as AnalyzeResponse);
+    applyProfiles(normalizeApiResponse(payload));
+    setLastSnapshotAt(payload.generatedAt);
     } catch (error) {
       setGlobalError(`执行失败: ${toMessage(error)}`);
       setProfiles((current) => {
@@ -379,7 +454,7 @@ export function FitnessAnalysisPanel() {
         return next;
       });
     }
-  }, [applyProfiles, compareLast, noSave]);
+  }, [applyProfiles, compareLast, contextPayload, failProfiles, hasContext, noSave]);
 
   const onRunSelectedProfile = useCallback(() => runProfiles([selectedProfile]), [runProfiles, selectedProfile]);
   const onRunAllProfiles = useCallback(() => runProfiles([...PROFILE_ORDER]), [runProfiles]);
@@ -811,7 +886,7 @@ export function FitnessAnalysisPanel() {
           <button
             type="button"
             onClick={onRunSelectedProfile}
-            disabled={selectedState.state === "loading"}
+            disabled={!hasContext || selectedState.state === "loading"}
             className="rounded-full bg-desktop-accent px-4 py-2 text-sm font-semibold text-desktop-text-on-accent disabled:opacity-60"
           >
             运行当前 Profile
@@ -819,7 +894,11 @@ export function FitnessAnalysisPanel() {
           <button
             type="button"
             onClick={onRunAllProfiles}
-            disabled={profiles.generic.state === "loading" || profiles.agent_orchestrator.state === "loading"}
+            disabled={
+              !hasContext
+              || profiles.generic.state === "loading"
+              || profiles.agent_orchestrator.state === "loading"
+            }
             className="rounded-full border border-desktop-border px-4 py-2 text-sm font-semibold text-desktop-text-primary hover:bg-desktop-bg-primary/80 disabled:opacity-60"
           >
             同时运行两套
@@ -827,19 +906,27 @@ export function FitnessAnalysisPanel() {
           <button
             type="button"
             onClick={() => void syncProfiles()}
+            disabled={!hasContext}
             className="rounded-full border border-desktop-border px-4 py-2 text-sm font-semibold text-desktop-text-primary hover:bg-desktop-bg-primary/80"
           >
             刷新快照
           </button>
         </div>
 
+        <p className="mt-2 text-xs text-desktop-text-secondary">
+          {hasContext
+            ? `当前上下文：${codebaseLabel ?? repoPath ?? "未命名仓库"}`
+            : "上下文未设置，请先选择要分析的 Workspace 与 Repository。"
+          }
+        </p>
+
         {globalError ? (
           <p className="mt-3 text-xs text-rose-700 dark:text-rose-300">{globalError}</p>
         ) : null}
 
-        <div className="mt-3 text-[11px] text-desktop-text-secondary">
-          {lastSnapshotAt ? `最近更新：${lastSnapshotAt}` : "尚未刷新快照"}
-        </div>
+          <div className="mt-3 text-[11px] text-desktop-text-secondary">
+            {hasContext && lastSnapshotAt ? `最近更新：${lastSnapshotAt}` : "尚未刷新快照"}
+          </div>
 
         <div className="mt-4">
           <div className="inline-flex flex-wrap gap-2 rounded-xl border border-desktop-border bg-desktop-bg-primary p-1">

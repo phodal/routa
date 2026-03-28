@@ -372,11 +372,11 @@ export default function HomePage() {
                               </p>
                             </button>
                             <Link
-                              href="/settings/fitness"
+                              href="/settings/harness"
                               className="rounded-[26px] border border-black/6 bg-white/80 p-5 text-left transition-colors hover:bg-white dark:border-white/8 dark:bg-white/5 dark:hover:bg-white/8"
                             >
                               <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-500">
-                                Fitness
+                                Harness
                               </div>
                               <div className="mt-3 text-lg font-semibold text-slate-900 dark:text-slate-100">
                                 AI 工程体检
