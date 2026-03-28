@@ -10,6 +10,7 @@ import {
   type PlanResponse,
   type TierValue,
 } from "@/client/components/harness-execution-plan-flow";
+import { HarnessAgentInstructionsPanel } from "@/client/components/harness-agent-instructions-panel";
 import { HarnessGovernanceLoopGraph } from "@/client/components/harness-governance-loop-graph";
 import { HarnessGitHubActionsFlowPanel } from "@/client/components/harness-github-actions-flow-panel";
 import { HarnessHookRuntimePanel } from "@/client/components/harness-hook-runtime-panel";
@@ -352,6 +353,13 @@ export default function HarnessSettingsPage() {
           planError={planState.error}
           metricCount={planState.plan?.metricCount ?? 0}
           hardGateCount={planState.plan?.hardGateCount ?? 0}
+        />
+
+        <HarnessAgentInstructionsPanel
+          workspaceId={workspaceId}
+          codebaseId={activeCodebase?.id}
+          repoPath={activeCodebase?.repoPath}
+          repoLabel={selectedRepoLabel}
         />
 
         <HarnessHookRuntimePanel

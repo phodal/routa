@@ -11,7 +11,6 @@ import {
   type Node,
   type NodeProps,
 } from "@xyflow/react";
-import { HarnessAgentInstructionsPanel } from "@/client/components/harness-agent-instructions-panel";
 import type { TierValue } from "@/client/components/harness-execution-plan-flow";
 
 type HookPhase = "submodule" | "fitness" | "fitness-fast" | "review";
@@ -693,25 +692,6 @@ export function HarnessGovernanceLoopGraph({
             </div>
           </div>
 
-          <div className="flex flex-wrap gap-2 text-[10px] text-desktop-text-secondary">
-            {(hookSummary?.phaseLabels.length ? hookSummary.phaseLabels : ["submodule", "fitness", "review"]).map((phase) => (
-              <span key={phase} className="rounded-full border border-desktop-border bg-desktop-bg-primary px-2.5 py-1">
-                {phase}
-              </span>
-            ))}
-            {(workflowSummary?.remoteSignals.length ? workflowSummary.remoteSignals : ["workflow_dispatch", "push"]).map((signal) => (
-              <span key={signal} className="rounded-full border border-desktop-border bg-desktop-bg-primary px-2.5 py-1">
-                {signal}
-              </span>
-            ))}
-          </div>
-
-          <HarnessAgentInstructionsPanel
-            workspaceId={workspaceId}
-            codebaseId={codebaseId}
-            repoPath={repoPath}
-            repoLabel={repoLabel}
-          />
         </div>
       ) : null}
     </section>
