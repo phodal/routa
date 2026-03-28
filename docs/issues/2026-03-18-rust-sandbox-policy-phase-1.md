@@ -1,7 +1,7 @@
 ---
 title: "[GitHub #180] Rust sandbox policy Phase 1 — workspace-aware policy resolution and Docker enforcement"
 date: "2026-03-18"
-status: open
+status: resolved
 severity: high
 area: "backend"
 tags: ["github", "gh-180", "sandbox", "rust", "runtime-governance", "phase-1"]
@@ -166,3 +166,18 @@ Rust sandbox 需要先完成一个可运行的 Phase 1：
 - `docs/issues/2026-02-28-gh-41-feat-runtime-governance-for-autonomous-agents-deny-lists-scoped-permissi.md`
 - `docs/issues/2026-03-13-gh-137-implement-automatic-agent-lifecycle-notifications-permission-delegation.md`
 - `docs/issues/2026-03-03-gh-55-sandbox-for-agent-worker.md`
+
+## Resolution
+
+- Rust sandbox Phase 1 is now present in the main execution path:
+  - `crates/routa-core/src/sandbox/policy.rs` resolves workspace-aware policy input into effective Docker policy.
+  - `crates/routa-server/src/api/sandbox.rs` supports `POST /api/sandboxes`, `POST /api/sandboxes/explain`, and permission mutation explain/apply routes with workspace/codebase context resolution.
+  - `crates/routa-core/src/sandbox/manager.rs` enforces the resolved policy at container launch via Docker labels, bind mounts, `-w`, env injection, and network mode.
+- The remaining parity gap was on the web side: TypeScript sandbox types did not model `effectivePolicy`, and explain helpers returned `unknown`.
+- This round aligned web parity by adding typed `ResolvedSandboxPolicy`/mount/capability/env metadata in `src/core/sandbox/types.ts` and by typing explain responses in `src/core/sandbox/permissions.ts`.
+- Added regression coverage in `src/core/sandbox/__tests__/permissions.test.ts` so sandbox create/explain/apply responses keep their policy shape.
+
+## Verification
+
+- `npx vitest run src/core/sandbox/__tests__/permissions.test.ts src/app/api/sandboxes/__tests__/route.test.ts 'src/app/api/sandboxes/[id]/__tests__/route.test.ts'`
+- `entrix run --tier normal` on 2026-03-28: overall `PASS` with final score `98.6%`

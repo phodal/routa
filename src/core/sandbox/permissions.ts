@@ -1,5 +1,6 @@
 import type {
   CreateSandboxRequest,
+  ResolvedSandboxPolicy,
   SandboxInfo,
   SandboxPermissionConstraints,
   SandboxPolicyInput,
@@ -105,7 +106,7 @@ export async function createRustSandbox(
 
 export async function explainRustSandboxPolicy(
   request: CreateSandboxRequest,
-): Promise<{ policy: unknown }> {
+): Promise<{ policy: ResolvedSandboxPolicy }> {
   const response = await proxyRustSandboxRequest("/api/sandboxes/explain", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -116,7 +117,7 @@ export async function explainRustSandboxPolicy(
     throw new Error("Rust sandbox API is not configured. Set ROUTA_SERVER_URL to explain sandbox policies.");
   }
 
-  return parseJsonResponse<{ policy: unknown }>(response);
+  return parseJsonResponse<{ policy: ResolvedSandboxPolicy }>(response);
 }
 
 export async function createWorkspaceSessionSandbox(options: {
@@ -150,7 +151,7 @@ export async function createWorkspaceSessionSandbox(options: {
 export async function explainSandboxPermissionConstraints(
   sandboxId: string,
   constraints: SandboxPermissionConstraints,
-): Promise<{ policy: unknown }> {
+): Promise<{ policy: ResolvedSandboxPolicy }> {
   const response = await fetch(
     `${getInternalApiOrigin()}/api/sandboxes/${encodeURIComponent(sandboxId)}/permissions/explain`,
     {
@@ -160,7 +161,7 @@ export async function explainSandboxPermissionConstraints(
     },
   );
 
-  return parseJsonResponse<{ policy: unknown }>(response);
+  return parseJsonResponse<{ policy: ResolvedSandboxPolicy }>(response);
 }
 
 export async function proxyRustSandboxPermissionMutation(
