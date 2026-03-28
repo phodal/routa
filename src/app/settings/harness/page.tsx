@@ -5,6 +5,11 @@ import { SettingsRouteShell } from "@/client/components/settings-route-shell";
 import { SettingsPageHeader } from "@/client/components/settings-page-header";
 import { WorkspaceSwitcher } from "@/client/components/workspace-switcher";
 import { CodeViewer } from "@/client/components/codemirror/code-viewer";
+import {
+  HarnessExecutionPlanFlow,
+  type PlanResponse,
+  type TierValue,
+} from "@/client/components/harness-execution-plan-flow";
 import { HarnessGitHubActionsFlowPanel } from "@/client/components/harness-github-actions-flow-panel";
 import { HarnessHookRuntimePanel } from "@/client/components/harness-hook-runtime-panel";
 import { useCodebases, useWorkspaces } from "@/client/hooks/use-workspaces";
@@ -48,49 +53,6 @@ type SpecsResponse = {
   fitnessDir: string;
   files: FitnessSpecSummary[];
 };
-
-type TierValue = "fast" | "normal" | "deep";
-type ScopeValue = "local" | "ci" | "staging" | "prod_observation";
-
-type PlannedMetric = {
-  name: string;
-  command: string;
-  description: string;
-  tier: TierValue;
-  gate: string;
-  hardGate: boolean;
-  runner: RunnerKind;
-  executionScope: ScopeValue;
-};
-
-type PlannedDimension = {
-  name: string;
-  weight: number;
-  thresholdPass: number;
-  thresholdWarn: number;
-  sourceFile: string;
-  metrics: PlannedMetric[];
-};
-
-type PlanResponse = {
-  generatedAt: string;
-  tier: TierValue;
-  scope: ScopeValue;
-  repoRoot: string;
-  dimensionCount: number;
-  metricCount: number;
-  hardGateCount: number;
-  runnerCounts: Record<RunnerKind, number>;
-  dimensions: PlannedDimension[];
-};
-
-const FLOW_LABELS = [
-  "README rulebook",
-  "fitness specs",
-  "loader mapping",
-  "runner dispatch",
-  "score + report",
-] as const;
 
 function extractMarkdownCodeBlocks(source: string) {
   const matches = [...source.matchAll(/```([a-zA-Z0-9_-]*)\n([\s\S]*?)```/g)];
@@ -297,8 +259,6 @@ export default function HarnessSettingsPage() {
   }, [selectedSpecName, visibleSpec]);
 
   const dimensionSpecs = specsState.files.filter((file) => file.kind === "dimension");
-  const rulebookFile = specsState.files.find((file) => file.kind === "rulebook") ?? null;
-  const manifestFile = specsState.files.find((file) => file.kind === "manifest") ?? null;
   const primaryFiles = specsState.files.filter((file) => file.kind === "rulebook" || file.kind === "manifest" || file.kind === "dimension");
   const auxiliaryFiles = specsState.files.filter((file) => !primaryFiles.includes(file));
   const selectedRepoLabel = activeCodebase?.label ?? activeCodebase?.repoPath?.split("/").pop() ?? "None";
@@ -310,7 +270,7 @@ export default function HarnessSettingsPage() {
   return (
     <SettingsRouteShell
       title="Harness"
-      description="Harness flows, hook runtime, and fitness orchestration."
+      description="Governance feedback loops for local gates, fitness evidence, and remote automation."
       badgeLabel="AI Health"
       workspaceId={workspaceId}
       workspaceTitle={activeWorkspaceTitle}
@@ -337,17 +297,17 @@ export default function HarnessSettingsPage() {
         </svg>
       )}
       summary={[
-        { label: "Status", value: "Flow + fitness + hook runtime" },
-        { label: "Runtime", value: "GitHub Actions style pipeline map" },
+        { label: "Order", value: "Hook -> fitness -> GitHub Actions" },
+        { label: "Focus", value: "Feedback loops and governance" },
       ]}
     >
       <div className="space-y-6">
         <SettingsPageHeader
           title="Harness"
-          description="GitHub Actions shaped harness flow plus Entrix fitness specs for the selected repository."
+          description="Follow the governance loop in user order: local hook runtime, fitness evidence, then remote GitHub Actions automation."
           metadata={[
-            { label: "specs", value: specsState.loading ? "..." : `${dimensionSpecs.length}` },
-            { label: "plan", value: planState.loading ? "..." : `${planState.plan?.metricCount ?? 0}` },
+            { label: "fitness", value: specsState.loading ? "..." : `${dimensionSpecs.length} dimensions` },
+            { label: "dispatch", value: planState.loading ? "..." : `${planState.plan?.metricCount ?? 0} metrics` },
           ]}
           extra={(
             <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-[11px]">
@@ -375,37 +335,6 @@ export default function HarnessSettingsPage() {
               </div>
             </div>
           )}
-        />
-
-        <section className="rounded-2xl border border-desktop-border bg-desktop-bg-secondary/45 px-4 py-3 shadow-sm">
-          <div className="flex flex-wrap items-center gap-2">
-            {FLOW_LABELS.map((label, index) => (
-              <div key={label} className="flex items-center gap-2">
-                <div className="rounded-full border border-desktop-border bg-desktop-bg-primary px-2.5 py-1 text-[10px] text-desktop-text-secondary">
-                  <span className="mr-1 text-desktop-text-primary">{index + 1}.</span>
-                  {label}
-                </div>
-                {index < FLOW_LABELS.length - 1 ? <div className="h-px w-3 bg-desktop-border" /> : null}
-              </div>
-            ))}
-          </div>
-          <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-desktop-text-secondary">
-            <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-amber-700">README = narrative only</span>
-            <span className="rounded-full border border-desktop-border bg-desktop-bg-primary px-2.5 py-1">frontmatter metrics = executable dimensions</span>
-            {manifestFile ? (
-              <span className="rounded-full border border-desktop-border bg-desktop-bg-primary px-2.5 py-1">manifest detected</span>
-            ) : null}
-            {rulebookFile ? (
-              <span className="rounded-full border border-desktop-border bg-desktop-bg-primary px-2.5 py-1">README detected</span>
-            ) : null}
-          </div>
-        </section>
-
-        <HarnessGitHubActionsFlowPanel
-          workspaceId={workspaceId}
-          codebaseId={activeCodebase?.id}
-          repoPath={activeCodebase?.repoPath}
-          repoLabel={selectedRepoLabel}
         />
 
         <HarnessHookRuntimePanel
@@ -690,113 +619,21 @@ export default function HarnessSettingsPage() {
           </div>
         </section>
 
-        <section className="rounded-2xl border border-desktop-border bg-desktop-bg-secondary/55 p-4 shadow-sm">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-desktop-text-secondary">Execution plan</div>
-              <h3 className="mt-1 text-sm font-semibold text-desktop-text-primary">Policy filter {"->"} runner dispatch {"->"} score/report</h3>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="rounded-full border border-desktop-border bg-desktop-bg-primary p-0.5">
-                {(["fast", "normal", "deep"] as const).map((tier) => (
-                  <button
-                    key={tier}
-                    type="button"
-                    onClick={() => {
-                      setSelectedTier(tier);
-                    }}
-                    className={`rounded-full px-2.5 py-1 text-[10px] transition-colors ${
-                      selectedTier === tier
-                        ? "bg-desktop-accent text-desktop-accent-text"
-                        : "text-desktop-text-secondary hover:bg-desktop-bg-secondary"
-                    }`}
-                  >
-                    {tier}
-                  </button>
-                ))}
-              </div>
-              <div className="rounded-full border border-desktop-border bg-desktop-bg-primary px-2.5 py-1 text-[10px] text-desktop-text-secondary">
-                {selectedRepoLabel}
-              </div>
-            </div>
-          </div>
+        <HarnessExecutionPlanFlow
+          loading={planState.loading}
+          error={planState.error}
+          plan={planState.plan}
+          repoLabel={selectedRepoLabel}
+          selectedTier={selectedTier}
+          onTierChange={setSelectedTier}
+        />
 
-          {planState.loading ? (
-            <div className="mt-4 rounded-xl border border-desktop-border bg-desktop-bg-primary/80 px-4 py-5 text-[11px] text-desktop-text-secondary">
-              Building execution plan...
-            </div>
-          ) : null}
-
-          {planState.error ? (
-            <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-5 text-[11px] text-red-700">
-              {planState.error}
-            </div>
-          ) : null}
-
-          {planState.plan ? (
-            <div className="mt-4 space-y-4">
-              <div className="grid gap-3 lg:grid-cols-4">
-                <div className="rounded-xl border border-desktop-border bg-desktop-bg-primary/80 p-4">
-                  <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-desktop-text-secondary">Filter</div>
-                  <div className="mt-2 text-[12px] font-semibold text-desktop-text-primary">{planState.plan.dimensionCount} dimensions</div>
-                  <div className="mt-1 text-[11px] text-desktop-text-secondary">
-                    tier {"<="} <span className="text-desktop-text-primary">{planState.plan.tier}</span>, scope {"="} <span className="text-desktop-text-primary">{planState.plan.scope}</span>
-                  </div>
-                </div>
-                <div className="rounded-xl border border-desktop-border bg-desktop-bg-primary/80 p-4">
-                  <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-desktop-text-secondary">Dispatch</div>
-                  <div className="mt-2 text-[12px] font-semibold text-desktop-text-primary">{planState.plan.metricCount} metrics</div>
-                  <div className="mt-2 flex flex-wrap gap-2 text-[10px] text-desktop-text-secondary">
-                    <span className="rounded-full border border-desktop-border bg-desktop-bg-secondary px-2 py-1">shell {planState.plan.runnerCounts.shell}</span>
-                    <span className="rounded-full border border-desktop-border bg-desktop-bg-secondary px-2 py-1">graph {planState.plan.runnerCounts.graph}</span>
-                    <span className="rounded-full border border-desktop-border bg-desktop-bg-secondary px-2 py-1">sarif {planState.plan.runnerCounts.sarif}</span>
-                  </div>
-                </div>
-                <div className="rounded-xl border border-desktop-border bg-desktop-bg-primary/80 p-4">
-                  <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-desktop-text-secondary">Gates</div>
-                  <div className="mt-2 text-[12px] font-semibold text-desktop-text-primary">{planState.plan.hardGateCount} hard gates</div>
-                  <div className="mt-1 text-[11px] text-desktop-text-secondary">Hard gate failure blocks the final exit code.</div>
-                </div>
-                <div className="rounded-xl border border-desktop-border bg-desktop-bg-primary/80 p-4">
-                  <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-desktop-text-secondary">Report</div>
-                  <div className="mt-2 text-[12px] font-semibold text-desktop-text-primary">Weighted score</div>
-                  <div className="mt-1 text-[11px] text-desktop-text-secondary">Dimension scores aggregate into final score and block state.</div>
-                </div>
-              </div>
-
-              <div className="space-y-3">
-                {planState.plan.dimensions.map((dimension) => (
-                  <div key={dimension.name} className="rounded-xl border border-desktop-border bg-desktop-bg-primary/80 px-4 py-3">
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                      <div>
-                        <div className="text-[12px] font-semibold text-desktop-text-primary">{dimension.name}</div>
-                        <div className="mt-1 text-[11px] text-desktop-text-secondary">
-                          {dimension.sourceFile} · weight {dimension.weight} · pass {dimension.thresholdPass} / warn {dimension.thresholdWarn}
-                        </div>
-                      </div>
-                      <div className="rounded-full border border-desktop-border bg-desktop-bg-secondary px-2.5 py-1 text-[10px] text-desktop-text-secondary">
-                        {dimension.metrics.length} metrics
-                      </div>
-                    </div>
-
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {dimension.metrics.map((metric) => (
-                        <div key={`${dimension.name}-${metric.name}`} className="rounded-full border border-desktop-border bg-desktop-bg-secondary px-2.5 py-1 text-[10px] text-desktop-text-secondary">
-                          <span className="text-desktop-text-primary">{metric.name}</span>
-                          <span className="mx-1">·</span>
-                          <span>{metric.runner}</span>
-                          <span className="mx-1">·</span>
-                          <span>{metric.tier}</span>
-                          {metric.hardGate ? <span className="ml-1 text-red-600">hard</span> : null}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : null}
-        </section>
+        <HarnessGitHubActionsFlowPanel
+          workspaceId={workspaceId}
+          codebaseId={activeCodebase?.id}
+          repoPath={activeCodebase?.repoPath}
+          repoLabel={selectedRepoLabel}
+        />
       </div>
     </SettingsRouteShell>
   );
