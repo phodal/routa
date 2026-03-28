@@ -159,6 +159,10 @@ function extractFrontmatterSource(raw: string): string | undefined {
   return match ? `---\n${match[1]}\n---` : undefined;
 }
 
+function isFluencyModelSpec(relativePath: string): boolean {
+  return /^harness-fluency(\.profile\.[^.]+|\.model)?\.ya?ml$/u.test(relativePath);
+}
+
 function parseMarkdownSpec(relativePath: string, raw: string): FitnessSpecSummary {
   const parsed = matter(raw);
   const data = parsed.data as Record<string, unknown>;
@@ -271,6 +275,7 @@ export async function GET(request: NextRequest) {
 
     for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
       if (!entry.isFile()) continue;
+      if (isFluencyModelSpec(entry.name)) continue;
 
       const fullPath = path.join(fitnessDir, entry.name);
       if (entry.name.endsWith(".md")) {

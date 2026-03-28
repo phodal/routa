@@ -266,7 +266,11 @@ export function FitnessAnalysisPanel({
   const [globalError, setGlobalError] = useState<string | null>(null);
   const [lastSnapshotAt, setLastSnapshotAt] = useState<string | null>(null);
   const [copiedRaw, setCopiedRaw] = useState(false);
-  const hasContext = Boolean(workspaceId && codebaseId);
+  const hasContext = Boolean(
+    workspaceId?.trim()
+    || codebaseId?.trim()
+    || repoPath?.trim()
+  );
   const contextQuery = buildAnalysisQuery({ workspaceId, codebaseId, repoPath });
   const contextPayload = buildAnalysisPayload({ workspaceId, codebaseId, repoPath });
   const contextLabel = codebaseLabel || repoPath || null;

@@ -287,6 +287,9 @@ async fn get_fitness_specs(
         let Some(name) = path.file_name().and_then(|value| value.to_str()) else {
             continue;
         };
+        if is_fluency_model_spec(name) {
+            continue;
+        }
         let raw = read_to_string(&path).map_err(map_internal_error("读取 Fitness specs 失败"))?;
         let spec = if name.ends_with(".md") {
             parse_markdown_spec(name, &raw)
@@ -639,6 +642,14 @@ fn parse_non_markdown_spec(relative_path: &str, raw: &str) -> Value {
         "metrics": [],
         "source": raw,
     })
+}
+
+fn is_fluency_model_spec(relative_path: &str) -> bool {
+    matches!(
+        relative_path,
+        "harness-fluency.model.yaml" | "harness-fluency.model.yml"
+    ) || (relative_path.starts_with("harness-fluency.profile.")
+        && (relative_path.ends_with(".yaml") || relative_path.ends_with(".yml")))
 }
 
 fn normalize_string_list(value: Option<&Value>) -> Vec<String> {
