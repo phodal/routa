@@ -27,11 +27,24 @@ import { html } from "@codemirror/lang-html";
 import { css } from "@codemirror/lang-css";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { lineNumbers } from "@codemirror/view";
+import hljs from "highlight.js/lib/core";
+import bashLang from "highlight.js/lib/languages/bash";
+import markdownLang from "highlight.js/lib/languages/markdown";
+import sqlLang from "highlight.js/lib/languages/sql";
+import yamlLang from "highlight.js/lib/languages/yaml";
 import {
   isDarkThemeActive,
   subscribeToThemePreference,
   type ResolvedTheme,
 } from "@/client/utils/theme";
+
+hljs.registerLanguage("bash", bashLang);
+hljs.registerLanguage("shell", bashLang);
+hljs.registerLanguage("sh", bashLang);
+hljs.registerLanguage("zsh", bashLang);
+hljs.registerLanguage("yaml", yamlLang);
+hljs.registerLanguage("markdown", markdownLang);
+hljs.registerLanguage("sql", sqlLang);
 
 // ─── Language Support ───────────────────────────────────────────────────────
 
@@ -44,6 +57,10 @@ type SupportedLanguage =
   | "json"
   | "html"
   | "css"
+  | "bash"
+  | "shell"
+  | "sh"
+  | "zsh"
   | "xml"
   | "sql"
   | "markdown"
@@ -65,6 +82,10 @@ const LANGUAGE_MAP: Record<string, LanguageExtension> = {
   json: { name: "JSON", extensions: [json()], aliases: ["json"] },
   html: { name: "HTML", extensions: [html()], aliases: ["html", "htm"] },
   css: { name: "CSS", extensions: [css()], aliases: ["css"] },
+  bash: { name: "Bash", extensions: [], aliases: ["bash", "sh", "zsh", "shell"] },
+  shell: { name: "Shell", extensions: [], aliases: ["shell"] },
+  sh: { name: "Shell", extensions: [], aliases: ["sh"] },
+  zsh: { name: "Zsh", extensions: [], aliases: ["zsh"] },
   xml: { name: "XML", extensions: [html()], aliases: ["xml"] },
   sql: { name: "SQL", extensions: [], aliases: ["sql"] },
   markdown: { name: "Markdown", extensions: [], aliases: ["md", "markdown"] },
@@ -89,6 +110,25 @@ function detectLanguage(filename?: string, language?: string): LanguageExtension
   }
 
   return LANGUAGE_MAP.text;
+}
+
+function resolveHighlightLanguage(filename?: string, language?: string): string | null {
+  if (language && LANGUAGE_MAP[language]) {
+    return language;
+  }
+
+  if (filename) {
+    const ext = filename.split(".").pop()?.toLowerCase();
+    if (ext) {
+      for (const [key, lang] of Object.entries(LANGUAGE_MAP)) {
+        if (lang.aliases?.includes(ext)) {
+          return key;
+        }
+      }
+    }
+  }
+
+  return null;
 }
 
 // ─── Custom Theme ───────────────────────────────────────────────────────────
@@ -185,6 +225,11 @@ export function CodeViewer({
   );
 
   const langInfo = detectLanguage(filename, language);
+  const fallbackLanguage = resolveHighlightLanguage(filename, language);
+  const useHighlightedFallback = langInfo.extensions.length === 0 && fallbackLanguage !== null && fallbackLanguage !== "text";
+  const highlightedCode = useHighlightedFallback && fallbackLanguage
+    ? hljs.highlight(code, { language: fallbackLanguage }).value
+    : "";
 
   useEffect(() => {
     return subscribeToThemePreference((_, nextResolvedTheme) => {
@@ -207,6 +252,7 @@ export function CodeViewer({
 
   // Initialize CodeMirror
   useEffect(() => {
+    if (useHighlightedFallback) return;
     if (!containerRef.current) return;
 
     const extensions: Extension[] = [
@@ -247,7 +293,7 @@ export function CodeViewer({
       view.destroy();
       editorRef.current = null;
     };
-  }, [code, langInfo.extensions, maxHeight, resolvedTheme, showLineNumbers, wordWrap]);
+  }, [code, langInfo.extensions, maxHeight, resolvedTheme, showLineNumbers, useHighlightedFallback, wordWrap]);
 
   // Update code content when it changes
   useEffect(() => {
@@ -335,11 +381,25 @@ export function CodeViewer({
       )}
 
       {/* Editor container */}
-      <div
-        ref={containerRef}
-        className={`cm-container ${collapsed ? "cm-collapsed" : ""}`}
-        style={{ display: collapsed ? "none" : undefined }}
-      />
+      {useHighlightedFallback ? (
+        <div
+          className={`cm-container ${collapsed ? "cm-collapsed" : ""} overflow-auto`}
+          style={{ display: collapsed ? "none" : undefined, maxHeight }}
+        >
+          <pre
+            className={`${resolvedTheme === "dark" ? "bg-[#282c34] text-slate-100" : "bg-[#f8f9fa] text-slate-800"} ${wordWrap ? "whitespace-pre-wrap break-words" : "whitespace-pre"}`}
+            style={{ margin: 0, padding: "12px", fontSize: "12px", lineHeight: 1.6, fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}
+          >
+            <code dangerouslySetInnerHTML={{ __html: highlightedCode }} />
+          </pre>
+        </div>
+      ) : (
+        <div
+          ref={containerRef}
+          className={`cm-container ${collapsed ? "cm-collapsed" : ""}`}
+          style={{ display: collapsed ? "none" : undefined }}
+        />
+      )}
 
       {/* Collapsed preview */}
       {collapsed && (
