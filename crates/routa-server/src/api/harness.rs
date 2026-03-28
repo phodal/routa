@@ -113,6 +113,7 @@ async fn get_harness_hooks(
     let hooks_dir = repo_root.join(".husky");
     let (runtime_profiles, mut warnings) = load_hook_runtime_profiles(&repo_root);
     let config_file = load_hook_runtime_config_source(&repo_root);
+    let review_trigger_file = load_review_trigger_config_source(&repo_root);
     let known_profiles = runtime_profiles
         .iter()
         .filter_map(|profile| profile["name"].as_str())
@@ -127,6 +128,7 @@ async fn get_harness_hooks(
             "repoRoot": repo_root,
             "hooksDir": hooks_dir,
             "configFile": config_file,
+            "reviewTriggerFile": review_trigger_file,
             "hookFiles": [],
             "profiles": profiles,
             "warnings": warnings,
@@ -190,6 +192,7 @@ async fn get_harness_hooks(
         "repoRoot": repo_root,
         "hooksDir": hooks_dir,
         "configFile": config_file,
+        "reviewTriggerFile": review_trigger_file,
         "hookFiles": hook_files,
         "profiles": profiles,
         "warnings": warnings,
@@ -438,6 +441,50 @@ fn load_hook_runtime_config_source(repo_root: &Path) -> Value {
         "relativePath": "docs/fitness/runtime/hooks.yaml",
         "source": source,
         "schema": parsed.get("schema").and_then(serde_yaml::Value::as_str),
+    })
+}
+
+fn load_review_trigger_config_source(repo_root: &Path) -> Value {
+    let config_path = repo_root.join("docs/fitness/review-triggers.yaml");
+    if !config_path.exists() {
+        return Value::Null;
+    }
+
+    let source = std::fs::read_to_string(&config_path).unwrap_or_default();
+    let parsed = serde_yaml::from_str::<serde_yaml::Value>(&source).unwrap_or_default();
+    let rules = parsed
+        .get("review_triggers")
+        .and_then(serde_yaml::Value::as_sequence)
+        .map(|rules| {
+            rules
+                .iter()
+                .filter_map(serde_yaml::Value::as_mapping)
+                .map(|rule| {
+                    let boundaries = rule
+                        .get(serde_yaml::Value::String("boundaries".to_string()))
+                        .and_then(serde_yaml::Value::as_mapping)
+                        .map(|mapping| mapping.len())
+                        .unwrap_or(0);
+                    json!({
+                        "name": yaml_str(rule.get(serde_yaml::Value::String("name".to_string()))).unwrap_or("unknown"),
+                        "type": yaml_str(rule.get(serde_yaml::Value::String("type".to_string()))).unwrap_or("unknown"),
+                        "severity": yaml_str(rule.get(serde_yaml::Value::String("severity".to_string()))).unwrap_or("medium"),
+                        "action": yaml_str(rule.get(serde_yaml::Value::String("action".to_string()))).unwrap_or("require_human_review"),
+                        "pathCount": normalize_yaml_string_list(rule.get(serde_yaml::Value::String("paths".to_string()))).len(),
+                        "evidencePathCount": normalize_yaml_string_list(rule.get(serde_yaml::Value::String("evidence_paths".to_string()))).len(),
+                        "boundaryCount": boundaries,
+                        "directoryCount": normalize_yaml_string_list(rule.get(serde_yaml::Value::String("directories".to_string()))).len(),
+                    })
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+
+    json!({
+        "relativePath": "docs/fitness/review-triggers.yaml",
+        "source": source,
+        "ruleCount": rules.len(),
+        "rules": rules,
     })
 }
 

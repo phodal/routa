@@ -29,6 +29,24 @@ type HookRuntimeProfileSummary = {
   hooks: string[];
 };
 
+type ReviewTriggerRuleSummary = {
+  name: string;
+  type: string;
+  severity: string;
+  action: string;
+  pathCount: number;
+  evidencePathCount: number;
+  boundaryCount: number;
+  directoryCount: number;
+};
+
+type ReviewTriggerConfigSummary = {
+  relativePath: string;
+  source: string;
+  ruleCount: number;
+  rules: ReviewTriggerRuleSummary[];
+};
+
 type HookFileSummary = {
   name: string;
   relativePath: string;
@@ -48,6 +66,7 @@ type HooksResponse = {
     source: string;
     schema?: string;
   } | null;
+  reviewTriggerFile: ReviewTriggerConfigSummary | null;
   hookFiles: HookFileSummary[];
   profiles: HookRuntimeProfileSummary[];
   warnings: string[];
@@ -70,6 +89,10 @@ type HookRuntimeConfigFile = {
     phases?: unknown;
     metrics?: unknown;
   }>;
+};
+
+type ReviewTriggerConfigFile = {
+  review_triggers?: Array<Record<string, unknown>>;
 };
 
 type HookRuntimeProfileConfig = {
@@ -184,6 +207,41 @@ async function loadHookRuntimeConfigSource(repoRoot: string): Promise<HooksRespo
   };
 }
 
+async function loadReviewTriggerConfigSource(repoRoot: string): Promise<HooksResponse["reviewTriggerFile"]> {
+  const relativePath = path.posix.join("docs", "fitness", "review-triggers.yaml");
+  const configPath = path.join(repoRoot, relativePath);
+  if (!fs.existsSync(configPath)) {
+    return null;
+  }
+
+  const source = await fsp.readFile(configPath, "utf-8");
+  const parsed = (yaml.load(source) ?? {}) as ReviewTriggerConfigFile;
+  const rawRules = Array.isArray(parsed.review_triggers) ? parsed.review_triggers : [];
+  const rules = rawRules.map((rule) => {
+    const boundaries = rule.boundaries && typeof rule.boundaries === "object"
+      ? Object.keys(rule.boundaries as Record<string, unknown>)
+      : [];
+
+    return {
+      name: typeof rule.name === "string" && rule.name.trim().length > 0 ? rule.name : "unknown",
+      type: typeof rule.type === "string" && rule.type.trim().length > 0 ? rule.type : "unknown",
+      severity: typeof rule.severity === "string" && rule.severity.trim().length > 0 ? rule.severity : "medium",
+      action: typeof rule.action === "string" && rule.action.trim().length > 0 ? rule.action : "require_human_review",
+      pathCount: normalizeStringList(rule.paths).length,
+      evidencePathCount: normalizeStringList(rule.evidence_paths).length,
+      boundaryCount: boundaries.length,
+      directoryCount: normalizeStringList(rule.directories).length,
+    } satisfies ReviewTriggerRuleSummary;
+  });
+
+  return {
+    relativePath,
+    source,
+    ruleCount: rules.length,
+    rules,
+  };
+}
+
 async function loadMetricLookup(repoRoot: string): Promise<{
   metrics: Map<string, Omit<HookMetricSummary, "resolved">>;
   warnings: string[];
@@ -270,6 +328,7 @@ export async function GET(request: NextRequest) {
     const hooksDir = path.join(repoRoot, ".husky");
     const hookRuntime = await loadHookRuntimeProfiles(repoRoot);
     const configFile = await loadHookRuntimeConfigSource(repoRoot);
+    const reviewTriggerFile = await loadReviewTriggerConfigSource(repoRoot);
     const warnings: string[] = [...hookRuntime.warnings];
     const knownProfiles = new Set(hookRuntime.profiles.map((profile) => profile.name));
 
@@ -279,6 +338,7 @@ export async function GET(request: NextRequest) {
         repoRoot,
         hooksDir,
         configFile,
+        reviewTriggerFile,
         hookFiles: [],
         profiles: buildProfileSummaries([], new Map(), hookRuntime.profiles),
         warnings: [...warnings, 'No ".husky" directory found for this repository.'],
@@ -324,6 +384,7 @@ export async function GET(request: NextRequest) {
       repoRoot,
       hooksDir,
       configFile,
+      reviewTriggerFile,
       hookFiles,
       profiles: buildProfileSummaries(hookFiles, metricLookup.metrics, hookRuntime.profiles),
       warnings,
