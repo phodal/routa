@@ -3,17 +3,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { CodeViewer } from "@/client/components/codemirror/code-viewer";
 
-type WorkflowJobStatus = "ready" | "running" | "blocked";
 type WorkflowJobKind = "job" | "approval" | "release";
 
 type GitHubActionsJob = {
   id: string;
   name: string;
   runner: string;
-  status: WorkflowJobStatus;
   kind: WorkflowJobKind;
-  duration: string;
-  summary: string;
+  stepCount: number | null;
   needs: string[];
 };
 
@@ -21,10 +18,9 @@ type GitHubActionsFlow = {
   id: string;
   name: string;
   event: string;
-  branch: string;
-  cadence: string;
   yaml: string;
   jobs: GitHubActionsJob[];
+  relativePath?: string;
 };
 
 type FlowState = {
@@ -38,12 +34,6 @@ type HarnessGitHubActionsFlowPanelProps = {
   codebaseId?: string;
   repoPath?: string;
   repoLabel: string;
-};
-
-const STATUS_STYLES: Record<WorkflowJobStatus, string> = {
-  ready: "border-sky-200 bg-sky-50 text-sky-700",
-  running: "border-emerald-200 bg-emerald-50 text-emerald-700",
-  blocked: "border-amber-200 bg-amber-50 text-amber-700",
 };
 
 const KIND_STYLES: Record<WorkflowJobKind, string> = {
@@ -194,7 +184,7 @@ export function HarnessGitHubActionsFlowPanel({
   }, [activeFlow]);
 
   const totalJobs = activeFlow?.jobs.length ?? 0;
-  const readyJobs = activeFlow?.jobs.filter((job) => job.status === "ready").length ?? 0;
+  const dependencyCount = activeFlow?.jobs.reduce((sum, job) => sum + job.needs.length, 0) ?? 0;
 
   return (
     <section className="rounded-2xl border border-desktop-border bg-desktop-bg-secondary/55 p-4 shadow-sm">
@@ -280,7 +270,9 @@ export function HarnessGitHubActionsFlowPanel({
                     </div>
                     <div className="mt-2 flex flex-wrap gap-1.5 text-[10px]">
                       <span className="rounded-full border border-desktop-border bg-desktop-bg-primary px-2 py-0.5">{flow.id}</span>
-                      <span className="rounded-full border border-desktop-border bg-desktop-bg-primary px-2 py-0.5">{flow.cadence}</span>
+                      {flow.relativePath ? (
+                        <span className="rounded-full border border-desktop-border bg-desktop-bg-primary px-2 py-0.5">{flow.relativePath}</span>
+                      ) : null}
                     </div>
                   </button>
                 ))}
@@ -294,15 +286,21 @@ export function HarnessGitHubActionsFlowPanel({
                 <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-desktop-text-secondary">Flow graph</div>
                 <h4 className="mt-1 text-sm font-semibold text-desktop-text-primary">{activeFlow.name}</h4>
                 <p className="mt-1 text-[11px] text-desktop-text-secondary">
-                  Triggered by <span className="font-medium text-desktop-text-primary">{activeFlow.event}</span> on <span className="font-medium text-desktop-text-primary">{activeFlow.branch}</span>.
+                  Event source: <span className="font-medium text-desktop-text-primary">{activeFlow.event}</span>
+                  {activeFlow.relativePath ? (
+                    <>
+                      {" · "}
+                      <span className="font-mono text-desktop-text-primary">{activeFlow.relativePath}</span>
+                    </>
+                  ) : null}
                 </p>
               </div>
               <div className="flex flex-wrap gap-2 text-[10px]">
                 <span className="rounded-full border border-desktop-border bg-desktop-bg-secondary px-2.5 py-1 text-desktop-text-secondary">
                   {totalJobs} jobs
                 </span>
-                <span className="rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-sky-700">
-                  {readyJobs} queued
+                <span className="rounded-full border border-desktop-border bg-desktop-bg-secondary px-2.5 py-1 text-desktop-text-secondary">
+                  {dependencyCount} dependencies
                 </span>
               </div>
             </div>
@@ -345,20 +343,16 @@ export function HarnessGitHubActionsFlowPanel({
                                 <div className="text-[12px] font-semibold text-desktop-text-primary">{job.name}</div>
                                 <div className="mt-1 text-[10px] font-mono text-desktop-text-secondary">{job.runner}</div>
                               </div>
-                              <span className={`rounded-full border px-2 py-0.5 text-[10px] ${STATUS_STYLES[job.status]}`}>
-                                {job.status}
-                              </span>
-                            </div>
-                            <div className="mt-2 text-[11px] text-desktop-text-secondary">
-                              {job.summary}
                             </div>
                             <div className="mt-3 flex flex-wrap gap-2 text-[10px]">
                               <span className={`rounded-full border px-2 py-0.5 ${KIND_STYLES[job.kind]}`}>
                                 {job.kind}
                               </span>
-                              <span className="rounded-full border border-desktop-border bg-desktop-bg-secondary px-2 py-0.5 text-desktop-text-secondary">
-                                {job.duration}
-                              </span>
+                              {job.stepCount !== null ? (
+                                <span className="rounded-full border border-desktop-border bg-desktop-bg-secondary px-2 py-0.5 text-desktop-text-secondary">
+                                  {job.stepCount} declared steps
+                                </span>
+                              ) : null}
                               {job.needs.length > 0 ? job.needs.map((need) => (
                                 <span key={need} className="rounded-full border border-desktop-border bg-desktop-bg-secondary px-2 py-0.5 text-desktop-text-secondary">
                                   {need}

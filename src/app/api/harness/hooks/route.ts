@@ -78,24 +78,6 @@ type HookRuntimeProfileConfig = {
   metrics: string[];
 };
 
-const DEFAULT_RUNTIME_PROFILES: HookRuntimeProfileConfig[] = [
-  {
-    name: "pre-push",
-    phases: ["submodule", "fitness", "review"],
-    metrics: ["eslint_pass", "ts_typecheck_pass", "ts_test_pass", "clippy_pass", "rust_test_pass"],
-  },
-  {
-    name: "pre-commit",
-    phases: ["fitness-fast"],
-    metrics: ["eslint_pass"],
-  },
-  {
-    name: "local-validate",
-    phases: ["fitness", "review"],
-    metrics: ["eslint_pass", "ts_typecheck_pass", "ts_test_pass", "clippy_pass", "rust_test_pass"],
-  },
-];
-
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -146,13 +128,9 @@ async function loadHookRuntimeProfiles(repoRoot: string): Promise<{
   const configPath = path.join(repoRoot, "docs", "fitness", "runtime", "hooks.yaml");
   const warnings: string[] = [];
   if (!fs.existsSync(configPath)) {
-    warnings.push("Missing docs/fitness/runtime/hooks.yaml, showing built-in hook runtime defaults.");
+    warnings.push("Missing docs/fitness/runtime/hooks.yaml.");
     return {
-      profiles: DEFAULT_RUNTIME_PROFILES.map((profile) => ({
-        ...profile,
-        phases: [...profile.phases],
-        metrics: [...profile.metrics],
-      })),
+      profiles: [],
       warnings,
     };
   }
@@ -180,13 +158,9 @@ async function loadHookRuntimeProfiles(repoRoot: string): Promise<{
   });
 
   if (!profiles.length) {
-    warnings.push("hooks.yaml does not define any profiles, showing built-in hook runtime defaults.");
+    warnings.push("hooks.yaml does not define any profiles.");
     return {
-      profiles: DEFAULT_RUNTIME_PROFILES.map((profile) => ({
-        ...profile,
-        phases: [...profile.phases],
-        metrics: [...profile.metrics],
-      })),
+      profiles: [],
       warnings,
     };
   }

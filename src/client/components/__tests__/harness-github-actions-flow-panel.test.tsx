@@ -24,28 +24,23 @@ describe("HarnessGitHubActionsFlowPanel", () => {
             id: "defense",
             name: "Defense",
             event: "pull_request",
-            branch: "pull request refs",
-            cadence: "On pull request",
             yaml: "name: Defense",
+            relativePath: ".github/workflows/defense.yaml",
             jobs: [
               {
                 id: "fitness-dimensions",
                 name: "Fitness Dimensions",
                 runner: "ubuntu-latest",
-                status: "running",
                 kind: "job",
-                duration: "7 steps",
-                summary: "7 steps in fitness-dimensions",
+                stepCount: 7,
                 needs: [],
               },
               {
                 id: "review-context",
                 name: "Review Context",
                 runner: "ubuntu-latest",
-                status: "ready",
                 kind: "job",
-                duration: "3 steps",
-                summary: "3 steps in review-context",
+                stepCount: 3,
                 needs: ["fitness-dimensions"],
               },
             ],
@@ -54,28 +49,23 @@ describe("HarnessGitHubActionsFlowPanel", () => {
             id: "release",
             name: "Routa Release",
             event: "workflow_dispatch",
-            branch: "repository default",
-            cadence: "Manual dispatch",
             yaml: "name: Routa Release",
+            relativePath: ".github/workflows/release.yaml",
             jobs: [
               {
                 id: "resolve-version",
                 name: "Resolve Version",
                 runner: "ubuntu-latest",
-                status: "running",
                 kind: "job",
-                duration: "2 steps",
-                summary: "2 steps in resolve-version",
+                stepCount: 2,
                 needs: [],
               },
               {
                 id: "publish",
                 name: "Publish",
                 runner: "ubuntu-latest",
-                status: "ready",
                 kind: "release",
-                duration: "4 steps",
-                summary: "4 steps in publish",
+                stepCount: 4,
                 needs: ["resolve-version"],
               },
             ],
@@ -122,6 +112,7 @@ describe("HarnessGitHubActionsFlowPanel", () => {
     await waitFor(() => {
       expect(screen.getByText("Publish")).not.toBeNull();
       expect(screen.getAllByText("workflow_dispatch").length).toBeGreaterThan(0);
+      expect(screen.getAllByText(".github/workflows/release.yaml").length).toBeGreaterThan(0);
     });
   });
 });

@@ -475,7 +475,7 @@ export function HarnessHookRuntimePanel({
                         <div>
                           <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-desktop-text-secondary">Mapped metrics</div>
                           <div className="mt-1 text-[11px] text-desktop-text-secondary">
-                            Default profile metrics resolved from `docs/fitness/manifest.yaml`
+                            Configured metrics resolved from `docs/fitness/manifest.yaml`
                           </div>
                         </div>
                         <div className="rounded-full border border-desktop-border bg-desktop-bg-primary px-2.5 py-1 text-[10px] text-desktop-text-secondary">

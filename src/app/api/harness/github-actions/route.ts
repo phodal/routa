@@ -5,17 +5,14 @@ import yaml from "js-yaml";
 import { NextRequest, NextResponse } from "next/server";
 import { isContextError, parseContext, resolveRepoRoot } from "../hooks/shared";
 
-type WorkflowJobStatus = "ready" | "running" | "blocked";
 type WorkflowJobKind = "job" | "approval" | "release";
 
 type GitHubActionsJob = {
   id: string;
   name: string;
   runner: string;
-  status: WorkflowJobStatus;
   kind: WorkflowJobKind;
-  duration: string;
-  summary: string;
+  stepCount: number | null;
   needs: string[];
 };
 
@@ -23,8 +20,6 @@ type GitHubActionsFlow = {
   id: string;
   name: string;
   event: string;
-  branch: string;
-  cadence: string;
   yaml: string;
   jobs: GitHubActionsJob[];
   relativePath: string;
@@ -94,41 +89,21 @@ function inferJobKind(job: RawJob): WorkflowJobKind {
   return "job";
 }
 
-function inferStatus(job: RawJob): WorkflowJobStatus {
-  if (job.environment) {
-    return "blocked";
-  }
-  return normalizeStringList(job.needs).length > 0 ? "ready" : "running";
-}
-
-function summarizeEvent(value: unknown): { event: string; cadence: string } {
+function summarizeEvent(value: unknown): { event: string } {
   if (typeof value === "string") {
-    return { event: value, cadence: "Workflow event" };
+    return { event: value };
   }
   if (Array.isArray(value)) {
     const events = value.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0);
     return {
       event: events.join(", ") || "unknown",
-      cadence: "Workflow events",
     };
   }
   if (value && typeof value === "object") {
     const keys = Object.keys(value as Record<string, unknown>);
-    if (keys.includes("workflow_dispatch")) {
-      return { event: "workflow_dispatch", cadence: "Manual dispatch" };
-    }
-    if (keys.includes("pull_request")) {
-      return { event: "pull_request", cadence: "On pull request" };
-    }
-    if (keys.includes("push")) {
-      return { event: "push", cadence: "On push" };
-    }
-    if (keys.includes("schedule")) {
-      return { event: "schedule", cadence: "Scheduled" };
-    }
-    return { event: keys.join(", ") || "unknown", cadence: "Workflow event" };
+    return { event: keys.join(", ") || "unknown" };
   }
-  return { event: "unknown", cadence: "Workflow event" };
+  return { event: "unknown" };
 }
 
 function parseFlow(id: string, relativePath: string, source: string): GitHubActionsFlow | null {
@@ -142,12 +117,8 @@ function parseFlow(id: string, relativePath: string, source: string): GitHubActi
     id: jobId,
     name: typeof job.name === "string" && job.name.trim() ? job.name.trim() : jobId,
     runner: summarizeRunner(job["runs-on"]),
-    status: inferStatus(job),
     kind: inferJobKind(job),
-    duration: Array.isArray(job.steps) ? `${job.steps.length} steps` : "workflow job",
-    summary: Array.isArray(job.steps)
-      ? `${Array.isArray(job.steps) ? job.steps.length : 0} steps in ${jobId}`
-      : `Job ${jobId}`,
+    stepCount: Array.isArray(job.steps) ? job.steps.length : null,
     needs: normalizeStringList(job.needs),
   }));
 
@@ -159,8 +130,6 @@ function parseFlow(id: string, relativePath: string, source: string): GitHubActi
     id,
     name: typeof parsed.name === "string" && parsed.name.trim() ? parsed.name.trim() : id,
     event: eventSummary.event,
-    branch: eventSummary.event === "pull_request" ? "pull request refs" : "repository default",
-    cadence: eventSummary.cadence,
     yaml: source,
     jobs,
     relativePath,
