@@ -11,6 +11,7 @@ import {
   type TierValue,
 } from "@/client/components/harness-execution-plan-flow";
 import { HarnessAgentInstructionsPanel } from "@/client/components/harness-agent-instructions-panel";
+import { HarnessFitnessFilesDashboard } from "@/client/components/harness-fitness-files-dashboard";
 import { HarnessGovernanceLoopGraph } from "@/client/components/harness-governance-loop-graph";
 import { HarnessGitHubActionsFlowPanel } from "@/client/components/harness-github-actions-flow-panel";
 import { HarnessHookRuntimePanel } from "@/client/components/harness-hook-runtime-panel";
@@ -385,132 +386,141 @@ export default function HarnessSettingsPage() {
           error={hooksState.error}
         />
 
-        <section className="grid gap-4 xl:grid-cols-[320px_minmax(0,1fr)]">
-          <div className="rounded-2xl border border-desktop-border bg-desktop-bg-secondary/55 p-3 shadow-sm">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-desktop-text-secondary">Discovery</div>
-                <h3 className="mt-1 text-sm font-semibold text-desktop-text-primary">Fitness files</h3>
+        <section className="space-y-4">
+          <HarnessFitnessFilesDashboard
+            specFiles={specFiles}
+            selectedSpec={visibleSpec}
+            loading={specsState.loading}
+            error={specsState.error}
+            unsupportedMessage={unsupportedRepoMessage}
+          />
+
+          <div className="grid gap-4 xl:grid-cols-[320px_minmax(0,1fr)]">
+            <div className="rounded-2xl border border-desktop-border bg-desktop-bg-secondary/55 p-3 shadow-sm">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-desktop-text-secondary">Discovery</div>
+                  <h3 className="mt-1 text-sm font-semibold text-desktop-text-primary">Fitness files</h3>
+                </div>
+                <div className="rounded-full border border-desktop-border bg-desktop-bg-primary px-2.5 py-1 text-[10px] text-desktop-text-secondary">
+                  {specFiles.length} items
+                </div>
               </div>
-              <div className="rounded-full border border-desktop-border bg-desktop-bg-primary px-2.5 py-1 text-[10px] text-desktop-text-secondary">
-                {specFiles.length} items
-              </div>
-            </div>
 
-            <div className="mt-3 space-y-1.5">
-              {specsState.loading ? (
-                <div className="rounded-lg border border-desktop-border bg-desktop-bg-primary/80 px-3 py-3 text-[11px] text-desktop-text-secondary">
-                  Loading fitness specs...
-                </div>
-              ) : null}
-
-              {unsupportedRepoMessage ? (
-                <HarnessUnsupportedState className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-[11px] text-amber-800" />
-              ) : null}
-
-              {specsState.error && !unsupportedRepoMessage ? (
-                <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-3 text-[11px] text-red-700">
-                  {specsState.error}
-                </div>
-              ) : null}
-
-              {!specsState.loading && !specsState.error && !unsupportedRepoMessage && specFiles.length === 0 ? (
-                <div className="rounded-lg border border-desktop-border bg-desktop-bg-primary/80 px-3 py-3 text-[11px] text-desktop-text-secondary">
-                  No fitness files found for this repository.
-                </div>
-              ) : null}
-
-              {!unsupportedRepoMessage ? primaryFiles.map((file) => (
-                <button
-                  key={file.name}
-                  type="button"
-                  onClick={() => {
-                    setSelectedSpecName(file.name);
-                  }}
-                  className={`w-full rounded-xl border px-3 py-3 text-left transition-colors ${
-                    visibleSpec?.name === file.name
-                      ? "border-desktop-accent bg-desktop-bg-primary text-desktop-text-primary"
-                      : "border-desktop-border bg-desktop-bg-primary/80 text-desktop-text-secondary hover:bg-desktop-bg-primary"
-                  }`}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="text-[11px] font-semibold">{file.name}</div>
-                      <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[10px] text-current/75">
-                        <span>{file.kind === "dimension" ? (file.dimension ?? "dimension") : file.kind}</span>
-                        <span className="font-mono">{file.language}</span>
-                      </div>
-                    </div>
-                    {file.metricCount > 0 ? (
-                      <div className="shrink-0 rounded-full border border-desktop-border bg-desktop-bg-secondary px-2 py-0.5 text-[10px]">
-                        {file.metricCount}
-                      </div>
-                    ) : null}
+              <div className="mt-3 space-y-1.5">
+                {specsState.loading ? (
+                  <div className="rounded-lg border border-desktop-border bg-desktop-bg-primary/80 px-3 py-3 text-[11px] text-desktop-text-secondary">
+                    Loading fitness specs...
                   </div>
-                </button>
-              )) : null}
+                ) : null}
 
-              {!unsupportedRepoMessage && auxiliaryFiles.length > 0 ? (
-                <details className="mt-3 rounded-lg border border-desktop-border bg-desktop-bg-primary/60 px-3 py-2">
-                  <summary className="cursor-pointer list-none text-[10px] font-semibold uppercase tracking-[0.14em] text-desktop-text-secondary">
-                    Auxiliary files
-                  </summary>
-                  <div className="mt-2 space-y-1.5">
-                    {auxiliaryFiles.map((file) => (
-                      <button
-                        key={file.name}
-                        type="button"
-                        onClick={() => {
-                          setSelectedSpecName(file.name);
-                        }}
-                        className={`w-full rounded-lg border px-3 py-2 text-left transition-colors ${
-                          visibleSpec?.name === file.name
-                            ? "border-desktop-accent bg-desktop-bg-primary text-desktop-text-primary"
-                            : "border-desktop-border bg-desktop-bg-primary/80 text-desktop-text-secondary hover:bg-desktop-bg-primary"
-                        }`}
-                      >
-                        <div className="flex items-center justify-between gap-3">
-                          <div className="min-w-0">
-                            <div className="text-[11px] font-semibold">{file.name}</div>
-                            <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[10px] text-current/75">
-                              <span>{file.kind}</span>
-                              <span className="font-mono">{file.language}</span>
+                {unsupportedRepoMessage ? (
+                  <HarnessUnsupportedState className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-[11px] text-amber-800" />
+                ) : null}
+
+                {specsState.error && !unsupportedRepoMessage ? (
+                  <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-3 text-[11px] text-red-700">
+                    {specsState.error}
+                  </div>
+                ) : null}
+
+                {!specsState.loading && !specsState.error && !unsupportedRepoMessage && specFiles.length === 0 ? (
+                  <div className="rounded-lg border border-desktop-border bg-desktop-bg-primary/80 px-3 py-3 text-[11px] text-desktop-text-secondary">
+                    No fitness files found for this repository.
+                  </div>
+                ) : null}
+
+                {!unsupportedRepoMessage ? primaryFiles.map((file) => (
+                  <button
+                    key={file.name}
+                    type="button"
+                    onClick={() => {
+                      setSelectedSpecName(file.name);
+                    }}
+                    className={`w-full rounded-xl border px-3 py-3 text-left transition-colors ${
+                      visibleSpec?.name === file.name
+                        ? "border-desktop-accent bg-desktop-bg-primary text-desktop-text-primary"
+                        : "border-desktop-border bg-desktop-bg-primary/80 text-desktop-text-secondary hover:bg-desktop-bg-primary"
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="text-[11px] font-semibold">{file.name}</div>
+                        <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[10px] text-current/75">
+                          <span>{file.kind === "dimension" ? (file.dimension ?? "dimension") : file.kind}</span>
+                          <span className="font-mono">{file.language}</span>
+                        </div>
+                      </div>
+                      {file.metricCount > 0 ? (
+                        <div className="shrink-0 rounded-full border border-desktop-border bg-desktop-bg-secondary px-2 py-0.5 text-[10px]">
+                          {file.metricCount}
+                        </div>
+                      ) : null}
+                    </div>
+                  </button>
+                )) : null}
+
+                {!unsupportedRepoMessage && auxiliaryFiles.length > 0 ? (
+                  <details className="mt-3 rounded-lg border border-desktop-border bg-desktop-bg-primary/60 px-3 py-2">
+                    <summary className="cursor-pointer list-none text-[10px] font-semibold uppercase tracking-[0.14em] text-desktop-text-secondary">
+                      Auxiliary files
+                    </summary>
+                    <div className="mt-2 space-y-1.5">
+                      {auxiliaryFiles.map((file) => (
+                        <button
+                          key={file.name}
+                          type="button"
+                          onClick={() => {
+                            setSelectedSpecName(file.name);
+                          }}
+                          className={`w-full rounded-lg border px-3 py-2 text-left transition-colors ${
+                            visibleSpec?.name === file.name
+                              ? "border-desktop-accent bg-desktop-bg-primary text-desktop-text-primary"
+                              : "border-desktop-border bg-desktop-bg-primary/80 text-desktop-text-secondary hover:bg-desktop-bg-primary"
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="text-[11px] font-semibold">{file.name}</div>
+                              <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[10px] text-current/75">
+                                <span>{file.kind}</span>
+                                <span className="font-mono">{file.language}</span>
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                </details>
-              ) : null}
-            </div>
-          </div>
-
-          <div className="rounded-2xl border border-desktop-border bg-desktop-bg-secondary/55 p-4 shadow-sm">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-desktop-text-secondary">Source view</div>
-                <h3 className="mt-1 text-sm font-semibold text-desktop-text-primary">{visibleSpec?.name ?? "Select a fitness file"}</h3>
+                        </button>
+                      ))}
+                    </div>
+                  </details>
+                ) : null}
               </div>
-              {visibleSpec?.kind === "dimension" ? (
-                <div className="flex flex-wrap gap-2 text-[10px]">
-                  <span className="rounded-full border border-desktop-border bg-desktop-bg-primary px-2.5 py-1 text-desktop-text-secondary">
-                    weight {visibleSpec.weight ?? 0}
-                  </span>
-                  <span className="rounded-full border border-desktop-border bg-desktop-bg-primary px-2.5 py-1 text-desktop-text-secondary">
-                    pass {visibleSpec.thresholdPass ?? 90}
-                  </span>
-                  <span className="rounded-full border border-desktop-border bg-desktop-bg-primary px-2.5 py-1 text-desktop-text-secondary">
-                    warn {visibleSpec.thresholdWarn ?? 80}
-                  </span>
-                </div>
-              ) : null}
             </div>
 
-            {unsupportedRepoMessage ? (
-              <HarnessUnsupportedState />
-            ) : visibleSpec ? (
-              <div className="mt-4 space-y-3">
+            <div className="rounded-2xl border border-desktop-border bg-desktop-bg-secondary/55 p-4 shadow-sm">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-desktop-text-secondary">Source view</div>
+                  <h3 className="mt-1 text-sm font-semibold text-desktop-text-primary">{visibleSpec?.name ?? "Select a fitness file"}</h3>
+                </div>
+                {visibleSpec?.kind === "dimension" ? (
+                  <div className="flex flex-wrap gap-2 text-[10px]">
+                    <span className="rounded-full border border-desktop-border bg-desktop-bg-primary px-2.5 py-1 text-desktop-text-secondary">
+                      weight {visibleSpec.weight ?? 0}
+                    </span>
+                    <span className="rounded-full border border-desktop-border bg-desktop-bg-primary px-2.5 py-1 text-desktop-text-secondary">
+                      pass {visibleSpec.thresholdPass ?? 90}
+                    </span>
+                    <span className="rounded-full border border-desktop-border bg-desktop-bg-primary px-2.5 py-1 text-desktop-text-secondary">
+                      warn {visibleSpec.thresholdWarn ?? 80}
+                    </span>
+                  </div>
+                ) : null}
+              </div>
+
+              {unsupportedRepoMessage ? (
+                <HarnessUnsupportedState />
+              ) : visibleSpec ? (
+                <div className="mt-4 space-y-3">
                 <div className="rounded-xl border border-desktop-border bg-desktop-bg-primary/80 px-4 py-3">
                   <div className="flex flex-wrap items-center gap-1.5 text-[10px] text-desktop-text-secondary">
                     <span className="rounded-full border border-desktop-border bg-desktop-bg-secondary px-2.5 py-1">{visibleSpec.kind}</span>
@@ -663,6 +673,7 @@ export default function HarnessSettingsPage() {
                 Select a repository and a fitness file to inspect its frontmatter and metric mapping.
               </div>
             )}
+            </div>
           </div>
         </section>
 
