@@ -132,7 +132,8 @@ describe("FitnessAnalysisPanel", () => {
     });
 
     expect(screen.getByText("routa-js")).toBeTruthy();
-    expect(screen.getByText(/Blockers/i)).toBeTruthy();
+    expect(screen.getAllByText(/Blockers/i).length).toBeGreaterThan(0);
+    expect(screen.getByTestId("fitness-dashboard")).toBeTruthy();
     expect(screen.getByTestId("fitness-analysis-content").textContent).toBe("overview");
     expect(screen.queryByText("Report Controls")).toBeNull();
     expect(screen.queryByText("Mode")).toBeNull();

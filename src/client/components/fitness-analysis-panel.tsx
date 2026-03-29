@@ -6,6 +6,7 @@ import { desktopAwareFetch } from "@/client/utils/diagnostics";
 import type { TranslationDictionary } from "@/i18n/types";
 import { useTranslation } from "@/i18n";
 
+import { FitnessAnalysisDashboard } from "./fitness-analysis-dashboard";
 import { FitnessAnalysisContent } from "./fitness-analysis-content";
 import {
   PROFILE_ORDER,
@@ -632,6 +633,8 @@ export function FitnessAnalysisPanel({
           </div>
         ) : null}
       </section>
+
+      <FitnessAnalysisDashboard report={selectedReport} />
 
       <section className="rounded-3xl border border-desktop-border bg-desktop-bg-secondary/60 p-4 shadow-sm">
         <FitnessAnalysisContent

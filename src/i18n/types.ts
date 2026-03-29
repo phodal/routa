@@ -443,6 +443,40 @@ export interface TranslationDictionary {
       agentFirst: string;
       waitingReport: string;
     };
+
+    dashboard: {
+      noReport: string;
+      overallReadiness: string;
+      nextUnlock: string;
+      hardBlockers: string;
+      passRate: string;
+      currentLevelHint: string;
+      targetLevelHint: string;
+      hardBlockersHint: string;
+      passRateHint: string;
+      targetVsCurrent: string;
+      targetVsCurrentHint: string;
+      currentLegend: string;
+      targetLegend: string;
+      unlockRunway: string;
+      unlockRunwayHint: string;
+      currentLevelBar: string;
+      nextLevelBar: string;
+      noNextLevel: string;
+      gateStatus: string;
+      gateStatusHint: string;
+      gatePass: string;
+      gateWarn: string;
+      gateFail: string;
+      noBlockers: string;
+      heatmap: string;
+      heatmapHint: string;
+      fromLastRun: string;
+      changedDimensions: string;
+      changedCriteria: string;
+      noHistory: string;
+      notAvailable: string;
+    };
   };
 
   // Errors
