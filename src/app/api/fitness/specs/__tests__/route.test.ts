@@ -41,5 +41,11 @@ describe("/api/fitness/specs route", () => {
       expect.objectContaining({ key: "dependency_and_static_gates", weight: 25, metricCount: 5 }),
       expect.objectContaining({ key: "implementation_hygiene", weight: 20, metricCount: 3 }),
     ]);
+    expect(codeQuality.metrics).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: "legacy_hotspot_budget_guard", group: "structural_guardrails" }),
+      expect.objectContaining({ name: "duplicate_code_ts", group: "duplication_and_complexity" }),
+      expect.objectContaining({ name: "clippy_pass", group: "dependency_and_static_gates" }),
+      expect.objectContaining({ name: "console_log_check", group: "implementation_hygiene" }),
+    ]));
   });
 });

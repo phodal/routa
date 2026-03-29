@@ -40,5 +40,11 @@ describe("/api/fitness/plan route", () => {
       expect.objectContaining({ key: "implementation_hygiene", metricCount: 3, weight: 20 }),
     ]));
     expect(codeQuality.groups).toHaveLength(4);
+    expect(codeQuality.metrics).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: "legacy_hotspot_budget_guard", group: "structural_guardrails" }),
+      expect.objectContaining({ name: "duplicate_function_name", group: "duplication_and_complexity" }),
+      expect.objectContaining({ name: "eslint_pass", group: "dependency_and_static_gates" }),
+      expect.objectContaining({ name: "console_log_check", group: "implementation_hygiene" }),
+    ]));
   });
 });

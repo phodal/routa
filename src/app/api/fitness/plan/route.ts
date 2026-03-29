@@ -206,6 +206,10 @@ function normalizeMetricGroups(rawGroups: unknown): RawMetricGroup[] {
 }
 
 function buildMetricGroups(groupDefinitions: RawMetricGroup[], metrics: PlannedMetric[]): PlannedMetricGroup[] {
+  if (groupDefinitions.length === 0 && metrics.every((metric) => !metric.group || metric.group.trim().length === 0)) {
+    return [];
+  }
+
   const groups = new Map<string, PlannedMetricGroup>();
 
   for (const definition of groupDefinitions) {
