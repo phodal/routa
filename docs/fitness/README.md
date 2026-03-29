@@ -94,7 +94,7 @@ Fitness = Σ (Weight_i × Score_i) / 100
 
 | 维度 | 权重 | 描述 | 关键指标 | 证据文件 |
 |------|------|------|----------|----------|
-| code_quality | 24% | 代码质量与架构 | Lint通过, 无循环依赖, 文件≤1000行 | [code-quality.md](code-quality.md) |
+| code_quality | 24% | 代码质量与架构 | 结构护栏, 重复与复杂度, 静态门禁, 实现卫生 | [code-quality.md](code-quality.md) |
 | testability | 20% | 测试覆盖与通过率 | 覆盖率≥80%, 通过率100% | [unit-test.md](unit-test.md) |
 | security | 20% | 依赖漏洞与安全扫描 | critical=0, high≤阈值 | [security.md](security.md) |
 | api_contract | 10% | API 契约测试 | Rust API 测试通过, 契约同步 | [rust-api-test.md](rust-api-test.md) |
@@ -122,6 +122,19 @@ Fitness = Σ (Weight_i × Score_i) / 100
 | api_contract_parity | `npm run api:check` | pass |
 | lint_pass | `npm run lint` | 0 errors |
 | no_critical_vulnerabilities | `snyk test` | 0 critical |
+
+## Code Quality 分类模型
+
+`code_quality` 维度不再直接以一长串平铺指标沟通，而是统一折叠成 4 个分类：
+
+| 分类 | 子权重 | 意图 |
+|------|--------|------|
+| 结构护栏 | 30% | 先限制文件、函数、脚本入口和 blast radius 的膨胀 |
+| 重复与复杂度 | 25% | 捕捉复制粘贴、结构性重复与认知负担 |
+| 依赖与静态门禁 | 25% | 用 lint / typecheck / clippy / 依赖图保证静态质量底线 |
+| 实现卫生 | 20% | 收敛 console、TODO、`any` 等实现噪音 |
+
+这 4 个分类只改变 **解释和报表视角**，不改变 `code_quality` 在总 Fitness 中占 `24%` 的事实；`entrix` 仍按 metric 执行，但 UI 和文档会优先展示分类视图，再下钻到单条检查。
 
 ## CI Fan-out
 

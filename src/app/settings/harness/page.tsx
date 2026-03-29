@@ -115,6 +115,16 @@ export default function HarnessSettingsPage() {
     () => (visibleSpec && visibleSpec.language === "markdown" ? extractMarkdownCodeBlocks(visibleSpec.source) : []),
     [visibleSpec],
   );
+  const visibleSpecMetricGroups = useMemo(() => {
+    if (!visibleSpec || visibleSpec.kind !== "dimension" || visibleSpec.groups.length === 0) {
+      return [];
+    }
+
+    return visibleSpec.groups.map((group) => ({
+      ...group,
+      metrics: visibleSpec.metrics.filter((metric) => metric.group === group.key),
+    })).filter((group) => group.metrics.length > 0 || group.weight > 0);
+  }, [visibleSpec]);
   const governanceContextPanel = useMemo(() => {
     switch (selectedGovernanceNodeId) {
       case "coding":
@@ -516,6 +526,60 @@ export default function HarnessSettingsPage() {
                   </details>
                 ) : null}
 
+                {visibleSpec.kind === "dimension" && visibleSpecMetricGroups.length > 0 ? (
+                  <div className="rounded-xl border border-desktop-border bg-desktop-bg-primary/80 p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-desktop-text-secondary">Classification chart</div>
+                        <div className="mt-1 text-sm font-semibold text-desktop-text-primary">Grouped code quality view</div>
+                      </div>
+                      <div className="rounded-full border border-desktop-border bg-desktop-bg-secondary px-2.5 py-1 text-[10px] text-desktop-text-secondary">
+                        {visibleSpecMetricGroups.length} groups
+                      </div>
+                    </div>
+                    <div className="mt-3 grid gap-3 xl:grid-cols-2">
+                      {visibleSpecMetricGroups.map((group) => (
+                        <article key={group.key} className="rounded-xl border border-desktop-border bg-desktop-bg-secondary/55 p-3">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="text-[11px] font-semibold text-desktop-text-primary">{group.name}</div>
+                              {group.description ? (
+                                <div className="mt-1 text-[10px] leading-5 text-desktop-text-secondary">{group.description}</div>
+                              ) : null}
+                            </div>
+                            <span className="rounded-full border border-desktop-border bg-desktop-bg-primary px-2 py-0.5 text-[10px] text-desktop-text-secondary">
+                              {group.weight}%
+                            </span>
+                          </div>
+                          <div className="mt-3 h-2 overflow-hidden rounded-full bg-desktop-bg-primary">
+                            <div
+                              className="h-full rounded-full bg-[linear-gradient(90deg,#2563eb,#14b8a6)]"
+                              style={{ width: `${Math.max(6, Math.min(group.weight, 100))}%` }}
+                            />
+                          </div>
+                          <div className="mt-3 flex flex-wrap gap-1.5 text-[10px] text-desktop-text-secondary">
+                            <span className="rounded-full border border-desktop-border bg-desktop-bg-primary px-2 py-0.5">
+                              {group.metricCount} metrics
+                            </span>
+                            <span className="rounded-full border border-desktop-border bg-desktop-bg-primary px-2 py-0.5">
+                              {group.hardGateCount} hard gates
+                            </span>
+                            <span className="rounded-full border border-desktop-border bg-desktop-bg-primary px-2 py-0.5">
+                              shell {group.runnerCounts.shell}
+                            </span>
+                            <span className="rounded-full border border-desktop-border bg-desktop-bg-primary px-2 py-0.5">
+                              graph {group.runnerCounts.graph}
+                            </span>
+                            <span className="rounded-full border border-desktop-border bg-desktop-bg-primary px-2 py-0.5">
+                              sarif {group.runnerCounts.sarif}
+                            </span>
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
                 {visibleSpec.kind === "manifest" && visibleSpec.manifestEntries && visibleSpec.manifestEntries.length > 0 ? (
                   <div className="rounded-xl border border-desktop-border bg-desktop-bg-primary/80 p-3">
                     <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-desktop-text-secondary">Manifest order</div>
@@ -574,46 +638,101 @@ export default function HarnessSettingsPage() {
                       <div>Metric</div>
                       <div>Dispatch</div>
                     </div>
-                    {visibleSpec.metrics.map((metric) => (
-                      <div key={metric.name} className="grid grid-cols-[minmax(0,1.5fr)_auto] gap-3 border-t border-desktop-border px-3 py-2.5 first:border-t-0">
-                        <div className="min-w-0">
-                          <div className="text-[11px] font-semibold text-desktop-text-primary">{metric.name}</div>
-                          <div className="mt-1 break-all text-[10px] font-mono text-desktop-text-secondary">{metric.command || "No command"}</div>
-                          {metric.description ? (
-                            <div className="mt-1 text-[10px] leading-4 text-desktop-text-secondary">{metric.description}</div>
-                          ) : null}
-                          <div className="mt-2 flex flex-wrap gap-1.5 text-[10px] text-desktop-text-secondary">
-                            {metric.evidenceType ? (
-                              <span className="rounded-full border border-desktop-border bg-desktop-bg-secondary px-2 py-0.5">
-                                evidence {metric.evidenceType}
+                    {(visibleSpecMetricGroups.length > 0
+                      ? visibleSpecMetricGroups.flatMap((group) => [
+                        <div
+                          key={`group:${group.key}`}
+                          className="grid grid-cols-[minmax(0,1.5fr)_auto] gap-3 border-t border-desktop-border bg-desktop-bg-secondary/55 px-3 py-2 first:border-t-0"
+                        >
+                          <div>
+                            <div className="text-[11px] font-semibold text-desktop-text-primary">{group.name}</div>
+                            <div className="mt-1 text-[10px] text-desktop-text-secondary">
+                              {group.metricCount} metrics · {group.hardGateCount} hard gates
+                            </div>
+                          </div>
+                          <div className="text-[10px] text-desktop-text-secondary">{group.weight}%</div>
+                        </div>,
+                        ...group.metrics.map((metric) => (
+                          <div key={metric.name} className="grid grid-cols-[minmax(0,1.5fr)_auto] gap-3 border-t border-desktop-border px-3 py-2.5">
+                            <div className="min-w-0">
+                              <div className="text-[11px] font-semibold text-desktop-text-primary">{metric.name}</div>
+                              <div className="mt-1 break-all text-[10px] font-mono text-desktop-text-secondary">{metric.command || "No command"}</div>
+                              {metric.description ? (
+                                <div className="mt-1 text-[10px] leading-4 text-desktop-text-secondary">{metric.description}</div>
+                              ) : null}
+                              <div className="mt-2 flex flex-wrap gap-1.5 text-[10px] text-desktop-text-secondary">
+                                {metric.evidenceType ? (
+                                  <span className="rounded-full border border-desktop-border bg-desktop-bg-secondary px-2 py-0.5">
+                                    evidence {metric.evidenceType}
+                                  </span>
+                                ) : null}
+                                {metric.pattern ? (
+                                  <span className="rounded-full border border-desktop-border bg-desktop-bg-secondary px-2 py-0.5">
+                                    pattern
+                                  </span>
+                                ) : null}
+                                {metric.scope.map((scope) => (
+                                  <span key={scope} className="rounded-full border border-desktop-border bg-desktop-bg-secondary px-2 py-0.5">
+                                    scope {scope}
+                                  </span>
+                                ))}
+                                {metric.runWhenChanged.map((value) => (
+                                  <span key={value} className="rounded-full border border-desktop-border bg-desktop-bg-secondary px-2 py-0.5">
+                                    changed {value}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                            <div className="flex flex-wrap content-start justify-end gap-1.5 text-[10px]">
+                              <span className="rounded-full border border-desktop-border bg-desktop-bg-secondary px-2.5 py-1 text-desktop-text-secondary">{metric.runner}</span>
+                              <span className="rounded-full border border-desktop-border bg-desktop-bg-secondary px-2.5 py-1 text-desktop-text-secondary">{metric.tier}</span>
+                              <span className={`rounded-full border px-2.5 py-1 ${metric.hardGate ? "border-red-200 bg-red-50 text-red-700" : "border-desktop-border bg-desktop-bg-secondary text-desktop-text-secondary"}`}>
+                                {metric.gate}
                               </span>
+                            </div>
+                          </div>
+                        )),
+                      ])
+                      : visibleSpec.metrics.map((metric) => (
+                        <div key={metric.name} className="grid grid-cols-[minmax(0,1.5fr)_auto] gap-3 border-t border-desktop-border px-3 py-2.5 first:border-t-0">
+                          <div className="min-w-0">
+                            <div className="text-[11px] font-semibold text-desktop-text-primary">{metric.name}</div>
+                            <div className="mt-1 break-all text-[10px] font-mono text-desktop-text-secondary">{metric.command || "No command"}</div>
+                            {metric.description ? (
+                              <div className="mt-1 text-[10px] leading-4 text-desktop-text-secondary">{metric.description}</div>
                             ) : null}
-                            {metric.pattern ? (
-                              <span className="rounded-full border border-desktop-border bg-desktop-bg-secondary px-2 py-0.5">
-                                pattern
-                              </span>
-                            ) : null}
-                            {metric.scope.map((scope) => (
-                              <span key={scope} className="rounded-full border border-desktop-border bg-desktop-bg-secondary px-2 py-0.5">
-                                scope {scope}
-                              </span>
-                            ))}
-                            {metric.runWhenChanged.map((value) => (
-                              <span key={value} className="rounded-full border border-desktop-border bg-desktop-bg-secondary px-2 py-0.5">
-                                changed {value}
-                              </span>
-                            ))}
+                            <div className="mt-2 flex flex-wrap gap-1.5 text-[10px] text-desktop-text-secondary">
+                              {metric.evidenceType ? (
+                                <span className="rounded-full border border-desktop-border bg-desktop-bg-secondary px-2 py-0.5">
+                                  evidence {metric.evidenceType}
+                                </span>
+                              ) : null}
+                              {metric.pattern ? (
+                                <span className="rounded-full border border-desktop-border bg-desktop-bg-secondary px-2 py-0.5">
+                                  pattern
+                                </span>
+                              ) : null}
+                              {metric.scope.map((scope) => (
+                                <span key={scope} className="rounded-full border border-desktop-border bg-desktop-bg-secondary px-2 py-0.5">
+                                  scope {scope}
+                                </span>
+                              ))}
+                              {metric.runWhenChanged.map((value) => (
+                                <span key={value} className="rounded-full border border-desktop-border bg-desktop-bg-secondary px-2 py-0.5">
+                                  changed {value}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                          <div className="flex flex-wrap content-start justify-end gap-1.5 text-[10px]">
+                            <span className="rounded-full border border-desktop-border bg-desktop-bg-secondary px-2.5 py-1 text-desktop-text-secondary">{metric.runner}</span>
+                            <span className="rounded-full border border-desktop-border bg-desktop-bg-secondary px-2.5 py-1 text-desktop-text-secondary">{metric.tier}</span>
+                            <span className={`rounded-full border px-2.5 py-1 ${metric.hardGate ? "border-red-200 bg-red-50 text-red-700" : "border-desktop-border bg-desktop-bg-secondary text-desktop-text-secondary"}`}>
+                              {metric.gate}
+                            </span>
                           </div>
                         </div>
-                        <div className="flex flex-wrap content-start justify-end gap-1.5 text-[10px]">
-                          <span className="rounded-full border border-desktop-border bg-desktop-bg-secondary px-2.5 py-1 text-desktop-text-secondary">{metric.runner}</span>
-                          <span className="rounded-full border border-desktop-border bg-desktop-bg-secondary px-2.5 py-1 text-desktop-text-secondary">{metric.tier}</span>
-                          <span className={`rounded-full border px-2.5 py-1 ${metric.hardGate ? "border-red-200 bg-red-50 text-red-700" : "border-desktop-border bg-desktop-bg-secondary text-desktop-text-secondary"}`}>
-                            {metric.gate}
-                          </span>
-                        </div>
-                      </div>
-                    ))}
+                      )))}
                   </div>
                 ) : null}
               </div>

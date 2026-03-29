@@ -14,10 +14,21 @@ export type MetricSummary = {
   hardGate: boolean;
   gate: string;
   runner: RunnerKind;
+  group?: string;
   pattern?: string;
   evidenceType?: string;
   scope: string[];
   runWhenChanged: string[];
+};
+
+export type MetricGroupSummary = {
+  key: string;
+  name: string;
+  description: string;
+  weight: number;
+  metricCount: number;
+  hardGateCount: number;
+  runnerCounts: Record<RunnerKind, number>;
 };
 
 export type FitnessSpecSummary = {
@@ -30,6 +41,7 @@ export type FitnessSpecSummary = {
   thresholdPass?: number;
   thresholdWarn?: number;
   metricCount: number;
+  groups: MetricGroupSummary[];
   metrics: MetricSummary[];
   source: string;
   frontmatterSource?: string;

@@ -27,6 +27,17 @@ export type PlannedMetric = {
   hardGate: boolean;
   runner: RunnerKind;
   executionScope: ScopeValue;
+  group?: string;
+};
+
+export type PlannedMetricGroup = {
+  key: string;
+  name: string;
+  description: string;
+  weight: number;
+  metricCount: number;
+  hardGateCount: number;
+  runnerCounts: Record<RunnerKind, number>;
 };
 
 export type PlannedDimension = {
@@ -35,6 +46,7 @@ export type PlannedDimension = {
   thresholdPass: number;
   thresholdWarn: number;
   sourceFile: string;
+  groups: PlannedMetricGroup[];
   metrics: PlannedMetric[];
 };
 
@@ -543,6 +555,14 @@ export function HarnessExecutionPlanFlow({
   }, [expandedDimensions, plan, planKey, variant]);
 
   const compactMode = variant === "compact";
+  const activeDimension = useMemo(() => {
+    if (!plan) {
+      return null;
+    }
+    return plan.dimensions.find((dimension) => expandedDimensions.has(dimension.name))
+      ?? plan.dimensions[0]
+      ?? null;
+  }, [expandedDimensions, plan]);
 
   return (
     <section className={variant === "compact"
@@ -646,6 +666,59 @@ export function HarnessExecutionPlanFlow({
               </ReactFlow>
             </div>
           </div>
+          {activeDimension && activeDimension.groups.length > 0 ? (
+            <div className="rounded-2xl border border-desktop-border bg-desktop-bg-primary/80 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-desktop-text-secondary">Classification chart</div>
+                  <h3 className="mt-1 text-sm font-semibold text-desktop-text-primary">{activeDimension.name} breakdown</h3>
+                </div>
+                <div className="rounded-full border border-desktop-border bg-desktop-bg-secondary px-2.5 py-1 text-[10px] text-desktop-text-secondary">
+                  {activeDimension.groups.length} groups
+                </div>
+              </div>
+              <div className="mt-4 grid gap-3 xl:grid-cols-2">
+                {activeDimension.groups.map((group) => (
+                  <article key={`${activeDimension.name}:${group.key}`} className="rounded-xl border border-desktop-border bg-desktop-bg-secondary/55 p-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="text-[11px] font-semibold text-desktop-text-primary">{group.name}</div>
+                        {group.description ? (
+                          <div className="mt-1 text-[10px] leading-5 text-desktop-text-secondary">{group.description}</div>
+                        ) : null}
+                      </div>
+                      <span className="rounded-full border border-desktop-border bg-desktop-bg-primary px-2 py-0.5 text-[10px] text-desktop-text-secondary">
+                        {group.weight}%
+                      </span>
+                    </div>
+                    <div className="mt-3 h-2 overflow-hidden rounded-full bg-desktop-bg-primary">
+                      <div
+                        className="h-full rounded-full bg-[linear-gradient(90deg,#2563eb,#14b8a6)]"
+                        style={{ width: `${Math.max(6, Math.min(group.weight, 100))}%` }}
+                      />
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-1.5 text-[10px] text-desktop-text-secondary">
+                      <span className="rounded-full border border-desktop-border bg-desktop-bg-primary px-2 py-0.5">
+                        {group.metricCount} metrics
+                      </span>
+                      <span className="rounded-full border border-desktop-border bg-desktop-bg-primary px-2 py-0.5">
+                        {group.hardGateCount} hard gates
+                      </span>
+                      <span className="rounded-full border border-desktop-border bg-desktop-bg-primary px-2 py-0.5">
+                        shell {group.runnerCounts.shell}
+                      </span>
+                      <span className="rounded-full border border-desktop-border bg-desktop-bg-primary px-2 py-0.5">
+                        graph {group.runnerCounts.graph}
+                      </span>
+                      <span className="rounded-full border border-desktop-border bg-desktop-bg-primary px-2 py-0.5">
+                        sarif {group.runnerCounts.sarif}
+                      </span>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </div>
+          ) : null}
         </div>
       ) : null}
     </section>

@@ -24,6 +24,17 @@ type PlannedMetric = {
   hardGate: boolean;
   runner: RunnerKind;
   executionScope: ScopeValue;
+  group?: string;
+};
+
+type PlannedMetricGroup = {
+  key: string;
+  name: string;
+  description: string;
+  weight: number;
+  metricCount: number;
+  hardGateCount: number;
+  runnerCounts: Record<RunnerKind, number>;
 };
 
 type PlannedDimension = {
@@ -32,6 +43,7 @@ type PlannedDimension = {
   thresholdPass: number;
   thresholdWarn: number;
   sourceFile: string;
+  groups: PlannedMetricGroup[];
   metrics: PlannedMetric[];
 };
 
@@ -165,6 +177,81 @@ function mapRunner(metric: Record<string, unknown>): RunnerKind {
   return "shell";
 }
 
+function createRunnerCounts(): Record<RunnerKind, number> {
+  return { shell: 0, graph: 0, sarif: 0 };
+}
+
+type RawMetricGroup = {
+  key: string;
+  name: string;
+  description: string;
+  weight: number;
+};
+
+function normalizeMetricGroups(rawGroups: unknown): RawMetricGroup[] {
+  return Array.isArray(rawGroups)
+    ? rawGroups.flatMap((entry) => {
+      if (!entry || typeof entry !== "object") return [];
+      const value = entry as Record<string, unknown>;
+      const key = typeof value.key === "string" ? value.key.trim() : "";
+      if (!key) return [];
+      return [{
+        key,
+        name: typeof value.name === "string" && value.name.trim().length > 0 ? value.name.trim() : key,
+        description: typeof value.description === "string" ? value.description : "",
+        weight: typeof value.weight === "number" ? value.weight : 0,
+      }];
+    })
+    : [];
+}
+
+function buildMetricGroups(groupDefinitions: RawMetricGroup[], metrics: PlannedMetric[]): PlannedMetricGroup[] {
+  const groups = new Map<string, PlannedMetricGroup>();
+
+  for (const definition of groupDefinitions) {
+    groups.set(definition.key, {
+      key: definition.key,
+      name: definition.name,
+      description: definition.description,
+      weight: definition.weight,
+      metricCount: 0,
+      hardGateCount: 0,
+      runnerCounts: createRunnerCounts(),
+    });
+  }
+
+  for (const metric of metrics) {
+    const rawKey = typeof metric.group === "string" ? metric.group.trim() : "";
+    const key = rawKey || "ungrouped";
+    const existing = groups.get(key) ?? {
+      key,
+      name: key === "ungrouped" ? "Ungrouped" : key,
+      description: "",
+      weight: 0,
+      metricCount: 0,
+      hardGateCount: 0,
+      runnerCounts: createRunnerCounts(),
+    };
+
+    existing.metricCount += 1;
+    existing.runnerCounts[metric.runner] += 1;
+    if (metric.hardGate) {
+      existing.hardGateCount += 1;
+    }
+    groups.set(key, existing);
+  }
+
+  return [...groups.values()].sort((left, right) => {
+    if (left.weight !== right.weight) {
+      return right.weight - left.weight;
+    }
+    if (left.metricCount !== right.metricCount) {
+      return right.metricCount - left.metricCount;
+    }
+    return left.name.localeCompare(right.name);
+  });
+}
+
 function tierPasses(metricTier: TierValue, filterTier: TierValue) {
   return TIER_ORDER[metricTier] <= TIER_ORDER[filterTier];
 }
@@ -190,6 +277,7 @@ function normalizeMetric(rawMetric: unknown): PlannedMetric {
     hardGate,
     runner: mapRunner(metric),
     executionScope,
+    group: typeof metric.group === "string" ? metric.group : undefined,
   };
 }
 
@@ -201,6 +289,27 @@ function parseManifestEntries(raw: string): string[] {
     : [];
 }
 
+async function collectFitnessFiles(
+  rootDir: string,
+  relativeDir = "",
+): Promise<Array<{ relativePath: string; fullPath: string }>> {
+  const currentDir = relativeDir ? path.join(rootDir, relativeDir) : rootDir;
+  const entries = await fsp.readdir(currentDir, { withFileTypes: true });
+  const files: Array<{ relativePath: string; fullPath: string }> = [];
+
+  for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+    const nextRelativePath = relativeDir ? path.posix.join(relativeDir, entry.name) : entry.name;
+    const fullPath = path.join(currentDir, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...await collectFitnessFiles(rootDir, nextRelativePath));
+      continue;
+    }
+    files.push({ relativePath: nextRelativePath, fullPath });
+  }
+
+  return files;
+}
+
 export async function GET(request: NextRequest) {
   try {
     const context = parseContext(request.nextUrl.searchParams);
@@ -208,28 +317,22 @@ export async function GET(request: NextRequest) {
     const scope = parseScope(request.nextUrl.searchParams.get("scope"));
     const repoRoot = await resolveRepoRoot(context);
     const fitnessDir = path.join(repoRoot, "docs", "fitness");
-    const entries = await fsp.readdir(fitnessDir, { withFileTypes: true });
     const markdownByPath = new Map<string, { name: string; raw: string }>();
     let manifestEntries: string[] = [];
 
-    for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
-      if (!entry.isFile()) {
+    for (const file of await collectFitnessFiles(fitnessDir)) {
+      if (file.relativePath === "manifest.yaml") {
+        manifestEntries = parseManifestEntries(await fsp.readFile(file.fullPath, "utf-8"));
         continue;
       }
 
-      const fullPath = path.join(fitnessDir, entry.name);
-      if (entry.name === "manifest.yaml") {
-        manifestEntries = parseManifestEntries(await fsp.readFile(fullPath, "utf-8"));
+      if (!file.relativePath.endsWith(".md") || file.relativePath === "README.md" || file.relativePath === "REVIEW.md") {
         continue;
       }
 
-      if (!entry.name.endsWith(".md") || entry.name === "README.md" || entry.name === "REVIEW.md") {
-        continue;
-      }
-
-      const raw = await fsp.readFile(fullPath, "utf-8");
-      markdownByPath.set(entry.name, { name: entry.name, raw });
-      markdownByPath.set(`docs/fitness/${entry.name}`, { name: entry.name, raw });
+      const raw = await fsp.readFile(file.fullPath, "utf-8");
+      markdownByPath.set(file.relativePath, { name: file.relativePath, raw });
+      markdownByPath.set(`docs/fitness/${file.relativePath}`, { name: file.relativePath, raw });
     }
 
     const orderedMarkdown = new Map<string, { name: string; raw: string }>();
@@ -246,7 +349,7 @@ export async function GET(request: NextRequest) {
     }
 
     const dimensions: PlannedDimension[] = [];
-    const runnerCounts: Record<RunnerKind, number> = { shell: 0, graph: 0, sarif: 0 };
+    const runnerCounts: Record<RunnerKind, number> = createRunnerCounts();
     let metricCount = 0;
     let hardGateCount = 0;
 
@@ -274,6 +377,8 @@ export async function GET(request: NextRequest) {
         }
       }
 
+      const groups = buildMetricGroups(normalizeMetricGroups(data.groups), metrics);
+
       const threshold = (data.threshold && typeof data.threshold === "object" ? data.threshold : {}) as { pass?: unknown; warn?: unknown };
       dimensions.push({
         name: typeof data.dimension === "string" ? data.dimension : name.replace(/\.md$/, ""),
@@ -281,6 +386,7 @@ export async function GET(request: NextRequest) {
         thresholdPass: typeof threshold.pass === "number" ? threshold.pass : 90,
         thresholdWarn: typeof threshold.warn === "number" ? threshold.warn : 80,
         sourceFile: name,
+        groups,
         metrics,
       });
     }

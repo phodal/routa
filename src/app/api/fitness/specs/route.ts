@@ -19,10 +19,21 @@ type MetricSummary = {
   hardGate: boolean;
   gate: string;
   runner: "shell" | "graph" | "sarif";
+  group?: string;
   pattern?: string;
   evidenceType?: string;
   scope: string[];
   runWhenChanged: string[];
+};
+
+type MetricGroupSummary = {
+  key: string;
+  name: string;
+  description: string;
+  weight: number;
+  metricCount: number;
+  hardGateCount: number;
+  runnerCounts: Record<"shell" | "graph" | "sarif", number>;
 };
 
 type FitnessSpecSummary = {
@@ -35,6 +46,7 @@ type FitnessSpecSummary = {
   thresholdPass?: number;
   thresholdWarn?: number;
   metricCount: number;
+  groups: MetricGroupSummary[];
   metrics: MetricSummary[];
   source: string;
   frontmatterSource?: string;
@@ -150,6 +162,10 @@ function mapRunner(metric: Record<string, unknown>): "shell" | "graph" | "sarif"
   return "shell";
 }
 
+function createRunnerCounts(): Record<"shell" | "graph" | "sarif", number> {
+  return { shell: 0, graph: 0, sarif: 0 };
+}
+
 function normalizeStringList(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
 }
@@ -163,11 +179,123 @@ function isFluencyModelSpec(relativePath: string): boolean {
   return /^harness-fluency(\.profile\.[^.]+|\.model)?\.ya?ml$/u.test(relativePath);
 }
 
+type RawMetricGroup = {
+  key: string;
+  name: string;
+  description: string;
+  weight: number;
+};
+
+function normalizeMetricGroups(rawGroups: unknown): RawMetricGroup[] {
+  return Array.isArray(rawGroups)
+    ? rawGroups.flatMap((entry) => {
+      if (!entry || typeof entry !== "object") return [];
+      const value = entry as Record<string, unknown>;
+      const key = typeof value.key === "string" ? value.key.trim() : "";
+      if (!key) return [];
+      return [{
+        key,
+        name: typeof value.name === "string" && value.name.trim().length > 0 ? value.name.trim() : key,
+        description: typeof value.description === "string" ? value.description : "",
+        weight: typeof value.weight === "number" ? value.weight : 0,
+      }];
+    })
+    : [];
+}
+
+function buildMetricGroups(groupDefinitions: RawMetricGroup[], metrics: MetricSummary[]): MetricGroupSummary[] {
+  const groups = new Map<string, MetricGroupSummary>();
+
+  for (const definition of groupDefinitions) {
+    groups.set(definition.key, {
+      key: definition.key,
+      name: definition.name,
+      description: definition.description,
+      weight: definition.weight,
+      metricCount: 0,
+      hardGateCount: 0,
+      runnerCounts: createRunnerCounts(),
+    });
+  }
+
+  for (const metric of metrics) {
+    const rawKey = typeof metric.group === "string" ? metric.group.trim() : "";
+    const key = rawKey || "ungrouped";
+    const current = groups.get(key) ?? {
+      key,
+      name: key === "ungrouped" ? "Ungrouped" : key,
+      description: "",
+      weight: 0,
+      metricCount: 0,
+      hardGateCount: 0,
+      runnerCounts: createRunnerCounts(),
+    };
+
+    current.metricCount += 1;
+    current.runnerCounts[metric.runner] += 1;
+    if (metric.hardGate) {
+      current.hardGateCount += 1;
+    }
+    groups.set(key, current);
+  }
+
+  return [...groups.values()].sort((left, right) => {
+    if (left.weight !== right.weight) {
+      return right.weight - left.weight;
+    }
+    if (left.metricCount !== right.metricCount) {
+      return right.metricCount - left.metricCount;
+    }
+    return left.name.localeCompare(right.name);
+  });
+}
+
+async function collectFitnessFiles(
+  rootDir: string,
+  relativeDir = "",
+): Promise<Array<{ relativePath: string; fullPath: string }>> {
+  const currentDir = relativeDir ? path.join(rootDir, relativeDir) : rootDir;
+  const entries = await fsp.readdir(currentDir, { withFileTypes: true });
+  const files: Array<{ relativePath: string; fullPath: string }> = [];
+
+  for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+    const nextRelativePath = relativeDir ? path.posix.join(relativeDir, entry.name) : entry.name;
+    const fullPath = path.join(currentDir, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...await collectFitnessFiles(rootDir, nextRelativePath));
+      continue;
+    }
+    files.push({ relativePath: nextRelativePath, fullPath });
+  }
+
+  return files;
+}
+
 function parseMarkdownSpec(relativePath: string, raw: string): FitnessSpecSummary {
   const parsed = matter(raw);
   const data = parsed.data as Record<string, unknown>;
-  const metrics = Array.isArray(data.metrics) ? data.metrics : [];
+  const rawMetrics = Array.isArray(data.metrics) ? data.metrics : [];
   const frontmatterSource = extractFrontmatterSource(raw);
+  const groups = normalizeMetricGroups(data.groups);
+  const metricSummaries = rawMetrics.map((rawMetric, index) => {
+    const metric = (rawMetric && typeof rawMetric === "object" ? rawMetric : {}) as Record<string, unknown>;
+    const hardGate = metric.hard_gate === true;
+    const gate = typeof metric.gate === "string" ? metric.gate : (hardGate ? "hard" : "soft");
+    return {
+      name: typeof metric.name === "string" ? metric.name : `metric-${index + 1}`,
+      command: typeof metric.command === "string" ? metric.command : "",
+      description: typeof metric.description === "string" ? metric.description : "",
+      tier: typeof metric.tier === "string" ? metric.tier : "normal",
+      hardGate,
+      gate,
+      runner: mapRunner(metric),
+      group: typeof metric.group === "string" ? metric.group : undefined,
+      pattern: typeof metric.pattern === "string" ? metric.pattern : undefined,
+      evidenceType: typeof metric.evidence_type === "string" ? metric.evidence_type : undefined,
+      scope: normalizeStringList(metric.scope),
+      runWhenChanged: normalizeStringList(metric.run_when_changed),
+    } satisfies MetricSummary;
+  });
 
   if (relativePath === "README.md") {
     return {
@@ -176,19 +304,21 @@ function parseMarkdownSpec(relativePath: string, raw: string): FitnessSpecSummar
       kind: "rulebook",
       language: "markdown",
       metricCount: 0,
+      groups: [],
       metrics: [],
       source: raw,
       frontmatterSource,
     };
   }
 
-  if (metrics.length === 0) {
+  if (metricSummaries.length === 0) {
     return {
       name: relativePath,
       relativePath,
       kind: "narrative",
       language: "markdown",
       metricCount: 0,
+      groups: [],
       metrics: [],
       source: raw,
       frontmatterSource,
@@ -208,25 +338,9 @@ function parseMarkdownSpec(relativePath: string, raw: string): FitnessSpecSummar
     thresholdWarn: typeof data.threshold === "object" && data.threshold && typeof (data.threshold as { warn?: unknown }).warn === "number"
       ? (data.threshold as { warn: number }).warn
       : 80,
-    metricCount: metrics.length,
-    metrics: metrics.map((rawMetric, index) => {
-      const metric = (rawMetric && typeof rawMetric === "object" ? rawMetric : {}) as Record<string, unknown>;
-      const hardGate = metric.hard_gate === true;
-      const gate = typeof metric.gate === "string" ? metric.gate : (hardGate ? "hard" : "soft");
-      return {
-        name: typeof metric.name === "string" ? metric.name : `metric-${index + 1}`,
-        command: typeof metric.command === "string" ? metric.command : "",
-        description: typeof metric.description === "string" ? metric.description : "",
-        tier: typeof metric.tier === "string" ? metric.tier : "normal",
-        hardGate,
-        gate,
-        runner: mapRunner(metric),
-        pattern: typeof metric.pattern === "string" ? metric.pattern : undefined,
-        evidenceType: typeof metric.evidence_type === "string" ? metric.evidence_type : undefined,
-        scope: normalizeStringList(metric.scope),
-        runWhenChanged: normalizeStringList(metric.run_when_changed),
-      };
-    }),
+    metricCount: metricSummaries.length,
+    metrics: metricSummaries,
+    groups: buildMetricGroups(groups, metricSummaries),
     source: raw,
     frontmatterSource,
   };
@@ -245,6 +359,7 @@ function parseManifestSpec(relativePath: string, raw: string): FitnessSpecSummar
     kind: "manifest",
     language: "yaml",
     metricCount: manifestEntries.length,
+    groups: [],
     metrics: [],
     source: raw,
     manifestEntries,
@@ -258,6 +373,7 @@ function parseNonMarkdownSpec(relativePath: string, raw: string): FitnessSpecSum
     kind: "policy",
     language: "yaml",
     metricCount: 0,
+    groups: [],
     metrics: [],
     source: raw,
   };
@@ -268,34 +384,31 @@ export async function GET(request: NextRequest) {
     const context = parseContext(request.nextUrl.searchParams);
     const repoRoot = await resolveRepoRoot(context);
     const fitnessDir = path.join(repoRoot, "docs", "fitness");
-    const entries = await fsp.readdir(fitnessDir, { withFileTypes: true });
     const files: FitnessSpecSummary[] = [];
     let manifestSpec: FitnessSpecSummary | null = null;
     const byPath = new Map<string, FitnessSpecSummary>();
 
-    for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
-      if (!entry.isFile()) continue;
-      if (isFluencyModelSpec(entry.name)) continue;
+    for (const file of await collectFitnessFiles(fitnessDir)) {
+      if (isFluencyModelSpec(file.relativePath)) continue;
 
-      const fullPath = path.join(fitnessDir, entry.name);
-      if (entry.name.endsWith(".md")) {
-        const raw = await fsp.readFile(fullPath, "utf-8");
-        const spec = parseMarkdownSpec(entry.name, raw);
+      if (file.relativePath.endsWith(".md")) {
+        const raw = await fsp.readFile(file.fullPath, "utf-8");
+        const spec = parseMarkdownSpec(file.relativePath, raw);
         files.push(spec);
         byPath.set(spec.relativePath, spec);
         byPath.set(`docs/fitness/${spec.relativePath}`, spec);
         continue;
       }
 
-      if (entry.name.endsWith(".yaml") || entry.name.endsWith(".yml")) {
-        const raw = await fsp.readFile(fullPath, "utf-8");
-        const spec = entry.name === "manifest.yaml"
-          ? parseManifestSpec(entry.name, raw)
-          : parseNonMarkdownSpec(entry.name, raw);
+      if (file.relativePath.endsWith(".yaml") || file.relativePath.endsWith(".yml")) {
+        const raw = await fsp.readFile(file.fullPath, "utf-8");
+        const spec = file.relativePath === "manifest.yaml"
+          ? parseManifestSpec(file.relativePath, raw)
+          : parseNonMarkdownSpec(file.relativePath, raw);
         files.push(spec);
         byPath.set(spec.relativePath, spec);
         byPath.set(`docs/fitness/${spec.relativePath}`, spec);
-        if (entry.name === "manifest.yaml") {
+        if (file.relativePath === "manifest.yaml") {
           manifestSpec = spec;
         }
       }
