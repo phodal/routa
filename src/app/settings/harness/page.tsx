@@ -15,6 +15,7 @@ import { HarnessGovernanceLoopGraph } from "@/client/components/harness-governan
 import { HarnessGitHubActionsFlowPanel } from "@/client/components/harness-github-actions-flow-panel";
 import { HarnessHookRuntimePanel } from "@/client/components/harness-hook-runtime-panel";
 import { HarnessUnsupportedState, getHarnessUnsupportedRepoMessage } from "@/client/components/harness-support-state";
+import { HarnessFitnessChartPanel } from "@/client/components/harness-fitness-chart-panel";
 import { useHarnessSettingsData } from "@/client/hooks/use-harness-settings-data";
 import { useCodebases, useWorkspaces } from "@/client/hooks/use-workspaces";
 
@@ -624,6 +625,13 @@ export default function HarnessSettingsPage() {
             )}
           </div>
         </section>
+
+        <HarnessFitnessChartPanel
+          loading={planState.loading}
+          error={planState.error}
+          plan={planState.data}
+          unsupportedMessage={unsupportedRepoMessage}
+        />
 
         <HarnessExecutionPlanFlow
           loading={planState.loading}
