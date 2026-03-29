@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { SettingsRouteShell } from "@/client/components/settings-route-shell";
 import { SettingsPageHeader } from "@/client/components/settings-page-header";
 import { WorkspaceSwitcher } from "@/client/components/workspace-switcher";
@@ -8,7 +8,6 @@ import { CodeViewer } from "@/client/components/codemirror/code-viewer";
 import { RepoPicker, type RepoSelection } from "@/client/components/repo-picker";
 import {
   HarnessExecutionPlanFlow,
-  type PlanResponse,
   type TierValue,
 } from "@/client/components/harness-execution-plan-flow";
 import { HarnessAgentInstructionsPanel } from "@/client/components/harness-agent-instructions-panel";
@@ -16,47 +15,8 @@ import { HarnessGovernanceLoopGraph } from "@/client/components/harness-governan
 import { HarnessGitHubActionsFlowPanel } from "@/client/components/harness-github-actions-flow-panel";
 import { HarnessHookRuntimePanel } from "@/client/components/harness-hook-runtime-panel";
 import { HarnessUnsupportedState, getHarnessUnsupportedRepoMessage } from "@/client/components/harness-support-state";
+import { useHarnessSettingsData } from "@/client/hooks/use-harness-settings-data";
 import { useCodebases, useWorkspaces } from "@/client/hooks/use-workspaces";
-
-type RunnerKind = "shell" | "graph" | "sarif";
-type SpecKind = "rulebook" | "manifest" | "dimension" | "narrative" | "policy";
-
-type MetricSummary = {
-  name: string;
-  command: string;
-  description: string;
-  tier: string;
-  hardGate: boolean;
-  gate: string;
-  runner: RunnerKind;
-  pattern?: string;
-  evidenceType?: string;
-  scope: string[];
-  runWhenChanged: string[];
-};
-
-type FitnessSpecSummary = {
-  name: string;
-  relativePath: string;
-  kind: SpecKind;
-  language: "markdown" | "yaml";
-  dimension?: string;
-  weight?: number;
-  thresholdPass?: number;
-  thresholdWarn?: number;
-  metricCount: number;
-  metrics: MetricSummary[];
-  source: string;
-  frontmatterSource?: string;
-  manifestEntries?: string[];
-};
-
-type SpecsResponse = {
-  generatedAt: string;
-  repoRoot: string;
-  fitnessDir: string;
-  files: FitnessSpecSummary[];
-};
 
 function extractMarkdownCodeBlocks(source: string) {
   const matches = [...source.matchAll(/```([a-zA-Z0-9_-]*)\n([\s\S]*?)```/g)];
@@ -75,28 +35,6 @@ export default function HarnessSettingsPage() {
   const [selectedCodebaseId, setSelectedCodebaseId] = useState("");
   const [selectedRepoOverride, setSelectedRepoOverride] = useState<RepoSelection | null>(null);
   const [selectedTier, setSelectedTier] = useState<TierValue>("normal");
-  const [specsState, setSpecsState] = useState<{
-    loading: boolean;
-    error: string | null;
-    files: FitnessSpecSummary[];
-    repoRoot: string | null;
-    fitnessDir: string | null;
-  }>({
-    loading: false,
-    error: null,
-    files: [],
-    repoRoot: null,
-    fitnessDir: null,
-  });
-  const [planState, setPlanState] = useState<{
-    loading: boolean;
-    error: string | null;
-    plan: PlanResponse | null;
-  }>({
-    loading: false,
-    error: null,
-    plan: null,
-  });
   const [selectedSpecName, setSelectedSpecName] = useState("");
 
   const activeWorkspaceTitle = useMemo(() => {
@@ -111,10 +49,6 @@ export default function HarnessSettingsPage() {
       : (codebases.find((codebase) => codebase.isDefault)?.id ?? codebases[0]?.id ?? "");
     return codebases.find((codebase) => codebase.id === effectiveCodebaseId) ?? null;
   }, [codebases, selectedCodebaseId]);
-
-  useEffect(() => {
-    setSelectedRepoOverride(null);
-  }, [workspaceId]);
 
   const matchedSelectedCodebase = useMemo(() => {
     if (!selectedRepoOverride) {
@@ -143,165 +77,36 @@ export default function HarnessSettingsPage() {
 
   const activeRepoPath = activeRepoSelection?.path;
   const activeRepoCodebaseId = matchedSelectedCodebase?.id;
-
-  useEffect(() => {
-    if (!activeRepoPath) {
-      setSpecsState({
-        loading: false,
-        error: null,
-        files: [],
-        repoRoot: null,
-        fitnessDir: null,
-      });
-      setSelectedSpecName("");
-      return;
-    }
-
-    let cancelled = false;
-    const fetchSpecs = async () => {
-      setSpecsState((current) => ({
-        ...current,
-        loading: true,
-        error: null,
-      }));
-
-      try {
-        const query = new URLSearchParams();
-        query.set("workspaceId", workspaceId);
-        if (activeRepoCodebaseId) {
-          query.set("codebaseId", activeRepoCodebaseId);
-        }
-        query.set("repoPath", activeRepoPath);
-
-        const response = await fetch(`/api/fitness/specs?${query.toString()}`);
-        const payload = await response.json().catch(() => ({}));
-        if (!response.ok) {
-          throw new Error(typeof payload?.details === "string" ? payload.details : "Failed to load fitness specs");
-        }
-
-        if (cancelled) {
-          return;
-        }
-
-        const data = payload as SpecsResponse;
-        setSpecsState({
-          loading: false,
-          error: null,
-          files: Array.isArray(data.files) ? data.files : [],
-          repoRoot: data.repoRoot ?? null,
-          fitnessDir: data.fitnessDir ?? null,
-        });
-      } catch (error) {
-        if (cancelled) {
-          return;
-        }
-
-        setSpecsState({
-          loading: false,
-          error: error instanceof Error ? error.message : String(error),
-          files: [],
-          repoRoot: null,
-          fitnessDir: null,
-        });
-      }
-    };
-
-    void fetchSpecs();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [activeRepoCodebaseId, activeRepoPath, workspaceId]);
-
-  useEffect(() => {
-    if (!activeRepoPath) {
-      setPlanState({
-        loading: false,
-        error: null,
-        plan: null,
-      });
-      return;
-    }
-
-    let cancelled = false;
-    const fetchPlan = async () => {
-      setPlanState({
-        loading: true,
-        error: null,
-        plan: null,
-      });
-
-      try {
-        const query = new URLSearchParams();
-        query.set("workspaceId", workspaceId);
-        if (activeRepoCodebaseId) {
-          query.set("codebaseId", activeRepoCodebaseId);
-        }
-        query.set("repoPath", activeRepoPath);
-        query.set("tier", selectedTier);
-        query.set("scope", "local");
-
-        const response = await fetch(`/api/fitness/plan?${query.toString()}`);
-        const payload = await response.json().catch(() => ({}));
-        if (!response.ok) {
-          throw new Error(typeof payload?.details === "string" ? payload.details : "Failed to load fitness plan");
-        }
-
-        if (cancelled) {
-          return;
-        }
-
-        setPlanState({
-          loading: false,
-          error: null,
-          plan: payload as PlanResponse,
-        });
-      } catch (error) {
-        if (cancelled) {
-          return;
-        }
-
-        setPlanState({
-          loading: false,
-          error: error instanceof Error ? error.message : String(error),
-          plan: null,
-        });
-      }
-    };
-
-    void fetchPlan();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [activeRepoCodebaseId, activeRepoPath, selectedTier, workspaceId]);
+  const {
+    specsState,
+    planState,
+    hooksState,
+    instructionsState,
+    githubActionsState,
+  } = useHarnessSettingsData({
+    workspaceId,
+    codebaseId: activeRepoCodebaseId,
+    repoPath: activeRepoPath,
+    selectedTier,
+  });
+  const specFiles = useMemo(
+    () => specsState.data?.files ?? [],
+    [specsState.data?.files],
+  );
 
   const visibleSpec = useMemo(() => {
-    if (specsState.files.length === 0) {
+    if (specFiles.length === 0) {
       return null;
     }
-    return specsState.files.find((file) => file.name === selectedSpecName)
-      ?? specsState.files.find((file) => file.kind === "dimension")
-      ?? specsState.files[0]
+    return specFiles.find((file) => file.name === selectedSpecName)
+      ?? specFiles.find((file) => file.kind === "dimension")
+      ?? specFiles[0]
       ?? null;
-  }, [selectedSpecName, specsState.files]);
+  }, [selectedSpecName, specFiles]);
 
-  useEffect(() => {
-    if (!visibleSpec) {
-      if (selectedSpecName) {
-        setSelectedSpecName("");
-      }
-      return;
-    }
-
-    if (visibleSpec.name !== selectedSpecName) {
-      setSelectedSpecName(visibleSpec.name);
-    }
-  }, [selectedSpecName, visibleSpec]);
-
-  const dimensionSpecs = specsState.files.filter((file) => file.kind === "dimension");
-  const primaryFiles = specsState.files.filter((file) => file.kind === "rulebook" || file.kind === "manifest" || file.kind === "dimension");
-  const auxiliaryFiles = specsState.files.filter((file) => !primaryFiles.includes(file));
+  const dimensionSpecs = specFiles.filter((file) => file.kind === "dimension");
+  const primaryFiles = specFiles.filter((file) => file.kind === "rulebook" || file.kind === "manifest" || file.kind === "dimension");
+  const auxiliaryFiles = specFiles.filter((file) => !primaryFiles.includes(file));
   const selectedRepoLabel = activeRepoSelection?.name ?? "None";
   const selectedRepo = activeRepoSelection;
   const unsupportedRepoMessage = getHarnessUnsupportedRepoMessage(specsState.error, planState.error);
@@ -322,11 +127,17 @@ export default function HarnessSettingsPage() {
           workspaces={workspacesHook.workspaces}
           activeWorkspaceId={workspaceId || null}
           activeWorkspaceTitle={activeWorkspaceTitle}
-          onSelect={setSelectedWorkspaceId}
+          onSelect={(nextWorkspaceId) => {
+            setSelectedWorkspaceId(nextWorkspaceId);
+            setSelectedRepoOverride(null);
+            setSelectedCodebaseId("");
+          }}
           onCreate={async (title) => {
             const workspace = await workspacesHook.createWorkspace(title);
             if (workspace) {
               setSelectedWorkspaceId(workspace.id);
+              setSelectedRepoOverride(null);
+              setSelectedCodebaseId("");
             }
           }}
           loading={workspacesHook.loading}
@@ -350,7 +161,7 @@ export default function HarnessSettingsPage() {
           description=""
           metadata={[
             { label: "fitness", value: specsState.loading ? "..." : `${dimensionSpecs.length} dimensions` },
-            { label: "dispatch", value: planState.loading ? "..." : `${planState.plan?.metricCount ?? 0} metrics` },
+            { label: "dispatch", value: planState.loading ? "..." : `${planState.data?.metricCount ?? 0} metrics` },
           ]}
           extra={(
             <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-[11px]">
@@ -386,20 +197,25 @@ export default function HarnessSettingsPage() {
         />
 
         <HarnessGovernanceLoopGraph
-          workspaceId={workspaceId}
-          codebaseId={activeRepoCodebaseId}
           repoPath={activeRepoPath}
           repoLabel={selectedRepoLabel}
           selectedTier={selectedTier}
           specsLoading={specsState.loading}
           specsError={specsState.error}
-          fitnessFileCount={specsState.files.length}
+          fitnessFileCount={specFiles.length}
           dimensionCount={dimensionSpecs.length}
           planLoading={planState.loading}
           planError={planState.error}
-          metricCount={planState.plan?.metricCount ?? 0}
-          hardGateCount={planState.plan?.hardGateCount ?? 0}
+          metricCount={planState.data?.metricCount ?? 0}
+          hardGateCount={planState.data?.hardGateCount ?? 0}
           unsupportedMessage={unsupportedRepoMessage}
+          hooksData={hooksState.data}
+          hooksError={hooksState.error}
+          workflowData={githubActionsState.data}
+          workflowError={githubActionsState.error}
+          instructionsData={instructionsState.data}
+          instructionsError={instructionsState.error}
+          fitnessFiles={specFiles}
         />
 
         <HarnessAgentInstructionsPanel
@@ -408,6 +224,9 @@ export default function HarnessSettingsPage() {
           repoPath={activeRepoPath}
           repoLabel={selectedRepoLabel}
           unsupportedMessage={unsupportedRepoMessage}
+          data={instructionsState.data}
+          loading={instructionsState.loading}
+          error={instructionsState.error}
         />
 
         <HarnessHookRuntimePanel
@@ -416,6 +235,9 @@ export default function HarnessSettingsPage() {
           repoPath={activeRepoPath}
           repoLabel={selectedRepoLabel}
           unsupportedMessage={unsupportedRepoMessage}
+          data={hooksState.data}
+          loading={hooksState.loading}
+          error={hooksState.error}
         />
 
         <section className="grid gap-4 xl:grid-cols-[320px_minmax(0,1fr)]">
@@ -426,7 +248,7 @@ export default function HarnessSettingsPage() {
                 <h3 className="mt-1 text-sm font-semibold text-desktop-text-primary">Fitness files</h3>
               </div>
               <div className="rounded-full border border-desktop-border bg-desktop-bg-primary px-2.5 py-1 text-[10px] text-desktop-text-secondary">
-                {specsState.files.length} items
+                {specFiles.length} items
               </div>
             </div>
 
@@ -447,7 +269,7 @@ export default function HarnessSettingsPage() {
                 </div>
               ) : null}
 
-              {!specsState.loading && !specsState.error && !unsupportedRepoMessage && specsState.files.length === 0 ? (
+              {!specsState.loading && !specsState.error && !unsupportedRepoMessage && specFiles.length === 0 ? (
                 <div className="rounded-lg border border-desktop-border bg-desktop-bg-primary/80 px-3 py-3 text-[11px] text-desktop-text-secondary">
                   No fitness files found for this repository.
                 </div>
@@ -702,7 +524,7 @@ export default function HarnessSettingsPage() {
         <HarnessExecutionPlanFlow
           loading={planState.loading}
           error={planState.error}
-          plan={planState.plan}
+          plan={planState.data}
           repoLabel={selectedRepoLabel}
           selectedTier={selectedTier}
           onTierChange={setSelectedTier}
@@ -715,6 +537,9 @@ export default function HarnessSettingsPage() {
           repoPath={activeRepoPath}
           repoLabel={selectedRepoLabel}
           unsupportedMessage={unsupportedRepoMessage}
+          data={githubActionsState.data}
+          loading={githubActionsState.loading}
+          error={githubActionsState.error}
         />
       </div>
     </SettingsRouteShell>

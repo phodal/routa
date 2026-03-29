@@ -9,6 +9,7 @@ import {
 } from "react-complex-tree";
 import { MarkdownViewer } from "@/client/components/markdown/markdown-viewer";
 import { HarnessUnsupportedState } from "@/client/components/harness-support-state";
+import type { InstructionsResponse } from "@/client/hooks/use-harness-settings-data";
 
 type InstructionSection = {
   id: string;
@@ -16,13 +17,6 @@ type InstructionSection = {
   level: number;
   content: string;
   children: string[];
-};
-
-type InstructionsResponse = {
-  fileName: string;
-  relativePath: string;
-  source: string;
-  fallbackUsed: boolean;
 };
 
 type InstructionsState = {
@@ -37,6 +31,9 @@ type HarnessAgentInstructionsPanelProps = {
   repoPath?: string;
   repoLabel: string;
   unsupportedMessage?: string | null;
+  data?: InstructionsResponse | null;
+  loading?: boolean;
+  error?: string | null;
 };
 
 function slugify(value: string) {
@@ -103,7 +100,11 @@ export function HarnessAgentInstructionsPanel({
   repoPath,
   repoLabel,
   unsupportedMessage,
+  data,
+  loading,
+  error,
 }: HarnessAgentInstructionsPanelProps) {
+  const hasExternalState = loading !== undefined || error !== undefined || data !== undefined;
   const [instructionsState, setInstructionsState] = useState<InstructionsState>({
     loading: false,
     error: null,
@@ -112,6 +113,9 @@ export function HarnessAgentInstructionsPanel({
   const [selectedSectionId, setSelectedSectionId] = useState("");
 
   useEffect(() => {
+    if (hasExternalState) {
+      return;
+    }
     if (!workspaceId || !repoPath) {
       setInstructionsState({
         loading: false,
@@ -172,11 +176,19 @@ export function HarnessAgentInstructionsPanel({
     return () => {
       cancelled = true;
     };
-  }, [workspaceId, codebaseId, repoPath]);
+  }, [codebaseId, hasExternalState, repoPath, workspaceId]);
+
+  const resolvedInstructionsState = hasExternalState
+    ? {
+      loading: loading ?? false,
+      error: error ?? null,
+      data: data ?? null,
+    }
+    : instructionsState;
 
   const parsedDocument = useMemo(
-    () => parseInstructionSections(instructionsState.data?.source ?? ""),
-    [instructionsState.data?.source],
+    () => parseInstructionSections(resolvedInstructionsState.data?.source ?? ""),
+    [resolvedInstructionsState.data?.source],
   );
 
   useEffect(() => {
@@ -200,9 +212,9 @@ export function HarnessAgentInstructionsPanel({
         children: parsedDocument.rootChildren,
         data: {
           id: "root",
-          title: instructionsState.data?.fileName ?? "Guide",
+          title: resolvedInstructionsState.data?.fileName ?? "Guide",
           level: 0,
-          content: instructionsState.data?.source ?? "",
+          content: resolvedInstructionsState.data?.source ?? "",
           children: parsedDocument.rootChildren,
         },
       },
@@ -218,7 +230,7 @@ export function HarnessAgentInstructionsPanel({
     });
 
     return items;
-  }, [instructionsState.data?.fileName, instructionsState.data?.source, parsedDocument.rootChildren, parsedDocument.sections]);
+  }, [parsedDocument.rootChildren, parsedDocument.sections, resolvedInstructionsState.data?.fileName, resolvedInstructionsState.data?.source]);
 
   const selectedSection = useMemo(
     () => parsedDocument.sections.find((section) => section.id === selectedSectionId) ?? parsedDocument.sections[0] ?? null,
@@ -247,18 +259,18 @@ export function HarnessAgentInstructionsPanel({
         <div>
           <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-desktop-text-secondary">Instruction file</div>
           <h4 className="mt-1 text-sm font-semibold text-desktop-text-primary">
-            {instructionsState.data?.fileName ?? "CLAUDE.md / AGENTS.md"}
+            {resolvedInstructionsState.data?.fileName ?? "CLAUDE.md / AGENTS.md"}
           </h4>
         </div>
         <div className="flex flex-wrap gap-2 text-[10px]">
           <span className="rounded-full border border-desktop-border bg-desktop-bg-secondary px-2.5 py-1 text-desktop-text-secondary">
             {repoLabel}
           </span>
-          {instructionsState.data?.fallbackUsed ? (
+          {resolvedInstructionsState.data?.fallbackUsed ? (
             <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-amber-800">
               fallback AGENTS.md
             </span>
-          ) : instructionsState.data ? (
+          ) : resolvedInstructionsState.data ? (
             <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-emerald-700">
               preferred CLAUDE.md
             </span>
@@ -266,7 +278,7 @@ export function HarnessAgentInstructionsPanel({
         </div>
       </div>
 
-      {instructionsState.loading ? (
+      {resolvedInstructionsState.loading ? (
         <div className="mt-4 rounded-xl border border-desktop-border bg-desktop-bg-secondary/55 px-4 py-5 text-[11px] text-desktop-text-secondary">
           Loading guidance document...
         </div>
@@ -276,13 +288,13 @@ export function HarnessAgentInstructionsPanel({
         <HarnessUnsupportedState />
       ) : null}
 
-      {instructionsState.error && !unsupportedMessage ? (
+      {resolvedInstructionsState.error && !unsupportedMessage ? (
         <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-5 text-[11px] text-red-700">
-          {instructionsState.error}
+          {resolvedInstructionsState.error}
         </div>
       ) : null}
 
-      {!instructionsState.loading && !instructionsState.error && !unsupportedMessage && instructionsState.data ? (
+      {!resolvedInstructionsState.loading && !resolvedInstructionsState.error && !unsupportedMessage && resolvedInstructionsState.data ? (
         <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
           <div className="flex h-[380px] min-h-0 flex-col">
             <div className="min-h-0 flex-1 overflow-auto rounded-xl border border-desktop-border bg-desktop-bg-primary/80 px-2 py-2 harness-instructions-tree">
@@ -328,7 +340,7 @@ export function HarnessAgentInstructionsPanel({
           <div className="flex h-[380px] min-h-0 flex-col">
             <div className="min-h-0 flex-1 overflow-auto rounded-xl border border-desktop-border bg-desktop-bg-primary/80 px-4 py-3">
               <MarkdownViewer
-                content={selectedSection?.content ?? instructionsState.data.source}
+                content={selectedSection?.content ?? resolvedInstructionsState.data.source}
                 className="text-[12px] leading-6 text-desktop-text-primary"
               />
             </div>

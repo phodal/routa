@@ -2,67 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { HarnessUnsupportedState } from "@/client/components/harness-support-state";
-
-type HookProfileName = string;
-type RuntimePhase = string;
-
-type HookMetricSummary = {
-  name: string;
-  command: string;
-  description: string;
-  hardGate: boolean;
-  resolved: boolean;
-  sourceFile?: string;
-};
-
-type HookRuntimeProfileSummary = {
-  name: HookProfileName;
-  phases: RuntimePhase[];
-  fallbackMetrics: string[];
-  metrics: HookMetricSummary[];
-  hooks: string[];
-};
-
-type ReviewTriggerRuleSummary = {
-  name: string;
-  type: string;
-  severity: string;
-  action: string;
-  pathCount: number;
-  evidencePathCount: number;
-  boundaryCount: number;
-  directoryCount: number;
-};
-
-type HookFileSummary = {
-  name: string;
-  relativePath: string;
-  source: string;
-  triggerCommand: string;
-  kind: "runtime-profile" | "shell-command";
-  runtimeProfileName?: HookProfileName;
-  skipEnvVar?: string;
-};
-
-type HooksResponse = {
-  generatedAt: string;
-  repoRoot: string;
-  hooksDir: string;
-  configFile: {
-    relativePath: string;
-    source: string;
-    schema?: string;
-  } | null;
-  reviewTriggerFile: {
-    relativePath: string;
-    source: string;
-    ruleCount: number;
-    rules: ReviewTriggerRuleSummary[];
-  } | null;
-  hookFiles: HookFileSummary[];
-  profiles: HookRuntimeProfileSummary[];
-  warnings: string[];
-};
+import type { HooksResponse } from "@/client/hooks/use-harness-settings-data";
 
 type HooksPanelProps = {
   workspaceId: string;
@@ -70,6 +10,9 @@ type HooksPanelProps = {
   repoPath?: string;
   repoLabel: string;
   unsupportedMessage?: string | null;
+  data?: HooksResponse | null;
+  loading?: boolean;
+  error?: string | null;
 };
 
 type HooksState = {
@@ -110,7 +53,11 @@ export function HarnessHookRuntimePanel({
   repoPath,
   repoLabel,
   unsupportedMessage,
+  data,
+  loading,
+  error,
 }: HooksPanelProps) {
+  const hasExternalState = loading !== undefined || error !== undefined || data !== undefined;
   const [hooksState, setHooksState] = useState<HooksState>({
     loading: false,
     error: null,
@@ -119,6 +66,9 @@ export function HarnessHookRuntimePanel({
   const [selectedHookName, setSelectedHookName] = useState<string | null>(null);
 
   useEffect(() => {
+    if (hasExternalState) {
+      return;
+    }
     if (!workspaceId || !repoPath) {
       setHooksState({
         loading: false,
@@ -176,11 +126,19 @@ export function HarnessHookRuntimePanel({
     return () => {
       cancelled = true;
     };
-  }, [workspaceId, codebaseId, repoPath]);
+  }, [codebaseId, hasExternalState, repoPath, workspaceId]);
+
+  const resolvedHooksState = hasExternalState
+    ? {
+      loading: loading ?? false,
+      error: error ?? null,
+      data: data ?? null,
+    }
+    : hooksState;
 
   const orderedProfiles = useMemo(() => {
-    const profiles = hooksState.data?.profiles ?? [];
-    const hookOrder = new Map((hooksState.data?.hookFiles ?? []).map((hook, index) => [hook.name, index]));
+    const profiles = resolvedHooksState.data?.profiles ?? [];
+    const hookOrder = new Map((resolvedHooksState.data?.hookFiles ?? []).map((hook, index) => [hook.name, index]));
 
     return profiles
       .map((profile, yamlIndex) => {
@@ -206,10 +164,10 @@ export function HarnessHookRuntimePanel({
         return left.yamlIndex - right.yamlIndex;
       })
       .map(({ profile }) => profile);
-  }, [hooksState.data?.hookFiles, hooksState.data?.profiles]);
+  }, [resolvedHooksState.data?.hookFiles, resolvedHooksState.data?.profiles]);
 
   const hookEntries = useMemo(() => {
-    const hookFilesByName = new Map((hooksState.data?.hookFiles ?? []).map((hook) => [hook.name, hook]));
+    const hookFilesByName = new Map((resolvedHooksState.data?.hookFiles ?? []).map((hook) => [hook.name, hook]));
     const profilesByName = new Map(orderedProfiles.map((profile) => [profile.name, profile]));
 
     return GIT_HOOK_CATALOG.map((hookName) => {
@@ -223,7 +181,7 @@ export function HarnessHookRuntimePanel({
         isConfigured: Boolean(hookFile && runtimeProfile),
       };
     });
-  }, [hooksState.data?.hookFiles, orderedProfiles]);
+  }, [orderedProfiles, resolvedHooksState.data?.hookFiles]);
 
   const defaultSelectableHook = useMemo(
     () => hookEntries.find((entry) => entry.isConfigured) ?? null,
@@ -249,12 +207,12 @@ export function HarnessHookRuntimePanel({
   );
 
   const runtimeProfile = activeHookEntry?.runtimeProfile ?? null;
-  const reviewTriggerFile = hooksState.data?.reviewTriggerFile ?? null;
+  const reviewTriggerFile = resolvedHooksState.data?.reviewTriggerFile ?? null;
   const hasReviewPhase = Boolean(runtimeProfile?.phases.includes("review"));
 
-  const hookCount = hooksState.data?.hookFiles.length ?? 0;
-  const profileCount = hooksState.data?.profiles.length ?? 0;
-  const metricCount = hooksState.data?.profiles.reduce((sum, profile) => sum + profile.metrics.length, 0) ?? 0;
+  const hookCount = resolvedHooksState.data?.hookFiles.length ?? 0;
+  const profileCount = resolvedHooksState.data?.profiles.length ?? 0;
+  const metricCount = resolvedHooksState.data?.profiles.reduce((sum, profile) => sum + profile.metrics.length, 0) ?? 0;
 
   return (
     <section className="rounded-2xl border border-desktop-border bg-desktop-bg-secondary/55 p-4 shadow-sm">
@@ -278,7 +236,7 @@ export function HarnessHookRuntimePanel({
         </div>
       </div>
 
-      {hooksState.loading ? (
+      {resolvedHooksState.loading ? (
         <div className="mt-4 rounded-xl border border-desktop-border bg-desktop-bg-primary/80 px-4 py-5 text-[11px] text-desktop-text-secondary">
           Loading hook runtime...
         </div>
@@ -288,15 +246,15 @@ export function HarnessHookRuntimePanel({
         <HarnessUnsupportedState />
       ) : null}
 
-      {hooksState.error && !unsupportedMessage ? (
+      {resolvedHooksState.error && !unsupportedMessage ? (
         <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-5 text-[11px] text-red-700">
-          {hooksState.error}
+          {resolvedHooksState.error}
         </div>
       ) : null}
 
-      {!unsupportedMessage && hooksState.data?.warnings.length ? (
+      {!unsupportedMessage && resolvedHooksState.data?.warnings.length ? (
         <div className="mt-4 space-y-2">
-          {hooksState.data.warnings.map((warning) => (
+          {resolvedHooksState.data.warnings.map((warning) => (
             <div key={warning} className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-[11px] text-amber-800">
               {warning}
             </div>
@@ -304,13 +262,13 @@ export function HarnessHookRuntimePanel({
         </div>
       ) : null}
 
-      {!hooksState.loading && !hooksState.error && !unsupportedMessage && !hooksState.data?.profiles.length ? (
+      {!resolvedHooksState.loading && !resolvedHooksState.error && !unsupportedMessage && !resolvedHooksState.data?.profiles.length ? (
         <div className="mt-4 rounded-xl border border-desktop-border bg-desktop-bg-primary/80 px-4 py-5 text-[11px] text-desktop-text-secondary">
           No hook profiles found for the selected repository.
         </div>
       ) : null}
 
-      {!unsupportedMessage && hooksState.data ? (
+      {!unsupportedMessage && resolvedHooksState.data ? (
         <div className="mt-4 grid gap-4 xl:grid-cols-[300px_minmax(0,1fr)]">
           <div className="rounded-2xl border border-desktop-border bg-desktop-bg-primary/60 p-4">
             <div className="flex items-center justify-between gap-3">

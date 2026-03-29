@@ -3,26 +3,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { CodeViewer } from "@/client/components/codemirror/code-viewer";
 import { HarnessUnsupportedState } from "@/client/components/harness-support-state";
+import type {
+  GitHubActionsFlow,
+  GitHubActionsJob,
+  GitHubActionsFlowsResponse,
+} from "@/client/hooks/use-harness-settings-data";
 
-type WorkflowJobKind = "job" | "approval" | "release";
-
-type GitHubActionsJob = {
-  id: string;
-  name: string;
-  runner: string;
-  kind: WorkflowJobKind;
-  stepCount: number | null;
-  needs: string[];
-};
-
-type GitHubActionsFlow = {
-  id: string;
-  name: string;
-  event: string;
-  yaml: string;
-  jobs: GitHubActionsJob[];
-  relativePath?: string;
-};
+type WorkflowJobKind = GitHubActionsJob["kind"];
 
 type FlowState = {
   error: string | null;
@@ -36,6 +23,9 @@ type HarnessGitHubActionsFlowPanelProps = {
   repoPath?: string;
   repoLabel: string;
   unsupportedMessage?: string | null;
+  data?: GitHubActionsFlowsResponse | null;
+  loading?: boolean;
+  error?: string | null;
 };
 
 const KIND_STYLES: Record<WorkflowJobKind, string> = {
@@ -191,7 +181,11 @@ export function HarnessGitHubActionsFlowPanel({
   repoPath,
   repoLabel,
   unsupportedMessage,
+  data,
+  loading,
+  error,
 }: HarnessGitHubActionsFlowPanelProps) {
+  const hasExternalState = loading !== undefined || error !== undefined || data !== undefined;
   const hasContext = Boolean(workspaceId && repoPath);
   const contextKey = hasContext ? `${workspaceId}:${codebaseId ?? "repo-only"}:${repoPath}` : "";
   const [flowState, setFlowState] = useState<FlowState>({
@@ -203,6 +197,9 @@ export function HarnessGitHubActionsFlowPanel({
   const [selectedJobId, setSelectedJobId] = useState("");
 
   useEffect(() => {
+    if (hasExternalState) {
+      return;
+    }
     if (!hasContext) {
       return;
     }
@@ -254,13 +251,23 @@ export function HarnessGitHubActionsFlowPanel({
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [codebaseId, contextKey, hasContext, repoPath, workspaceId]);
+  }, [codebaseId, contextKey, hasContext, hasExternalState, repoPath, workspaceId]);
+
+  const resolvedFlowState = hasExternalState
+    ? {
+      error: error ?? null,
+      flows: Array.isArray(data?.flows) ? data.flows : [],
+      loadedContextKey: contextKey,
+    }
+    : flowState;
 
   const visibleFlows = useMemo(
-    () => (hasContext && flowState.loadedContextKey === contextKey ? flowState.flows : []),
-    [contextKey, flowState.flows, flowState.loadedContextKey, hasContext],
+    () => (hasContext && resolvedFlowState.loadedContextKey === contextKey ? resolvedFlowState.flows : []),
+    [contextKey, hasContext, resolvedFlowState.flows, resolvedFlowState.loadedContextKey],
   );
-  const isLoading = hasContext && flowState.loadedContextKey !== contextKey && !flowState.error;
+  const isLoading = hasExternalState
+    ? Boolean(loading)
+    : (hasContext && resolvedFlowState.loadedContextKey !== contextKey && !resolvedFlowState.error);
 
   const activeFlow = useMemo(() => {
     if (visibleFlows.length === 0) {
@@ -307,13 +314,13 @@ export function HarnessGitHubActionsFlowPanel({
         <HarnessUnsupportedState />
       ) : null}
 
-      {flowState.error && !unsupportedMessage ? (
+      {resolvedFlowState.error && !unsupportedMessage ? (
         <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-5 text-[11px] text-red-700">
-          {flowState.error}
+          {resolvedFlowState.error}
         </div>
       ) : null}
 
-      {!isLoading && !flowState.error && !unsupportedMessage && visibleFlows.length === 0 ? (
+      {!isLoading && !resolvedFlowState.error && !unsupportedMessage && visibleFlows.length === 0 ? (
         <div className="mt-4 rounded-xl border border-desktop-border bg-desktop-bg-primary/80 px-4 py-5 text-[11px] text-desktop-text-secondary">
           Select a repository to inspect workflow flows.
         </div>

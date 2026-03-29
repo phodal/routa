@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   Background,
   Handle,
@@ -13,31 +13,15 @@ import {
 } from "@xyflow/react";
 import type { TierValue } from "@/client/components/harness-execution-plan-flow";
 import { HarnessUnsupportedState } from "@/client/components/harness-support-state";
+import type {
+  FitnessSpecSummary,
+  GitHubActionsFlow,
+  GitHubActionsFlowsResponse,
+  HooksResponse,
+  InstructionsResponse,
+} from "@/client/hooks/use-harness-settings-data";
 
 type HookPhase = "submodule" | "fitness" | "fitness-fast" | "review";
-
-type HookRuntimeProfileSummary = {
-  name: string;
-  phases: HookPhase[];
-  metrics: Array<{ name: string }>;
-  hooks: string[];
-};
-
-type HooksResponse = {
-  hookFiles: Array<{ name: string }>;
-  profiles: HookRuntimeProfileSummary[];
-};
-
-type GitHubActionsFlow = {
-  id: string;
-  name: string;
-  event: string;
-  jobs: Array<{ id: string }>;
-};
-
-type GitHubActionsFlowsResponse = {
-  flows: GitHubActionsFlow[];
-};
 
 type HookSummary = {
   hookCount: number;
@@ -59,20 +43,12 @@ type InstructionSummary = {
   fallbackUsed: boolean;
 };
 
-type SummaryState<T> = {
-  data: T | null;
-  error: string | null;
-  loadedContextKey: string;
-};
-
 type LoopDetailSection = {
   title: string;
   items: string[];
 };
 
 type HarnessGovernanceLoopGraphProps = {
-  workspaceId: string;
-  codebaseId?: string;
   repoPath?: string;
   repoLabel: string;
   selectedTier: TierValue;
@@ -85,6 +61,15 @@ type HarnessGovernanceLoopGraphProps = {
   metricCount: number;
   hardGateCount: number;
   unsupportedMessage?: string | null;
+  hooksData?: HooksResponse | null;
+  hooksError?: string | null;
+  workflowData?: GitHubActionsFlowsResponse | null;
+  workflowError?: string | null;
+  instructionsData?: InstructionsResponse | null;
+  instructionsError?: string | null;
+  fitnessFiles?: FitnessSpecSummary[];
+  selectedNodeId?: string;
+  onSelectedNodeChange?: (nodeId: string) => void;
 };
 
 type LoopLayer = "internal" | "commit" | "external";
@@ -455,16 +440,22 @@ function buildDetailSections(args: {
   hooksData: HooksResponse | null;
   workflowData: GitHubActionsFlowsResponse | null;
   instructionSummary: InstructionSummary | null;
+  fitnessFiles: FitnessSpecSummary[];
   dimensionCount: number;
   metricCount: number;
+  hardGateCount: number;
+  selectedTier: TierValue;
 }) {
   const {
     selectedNodeId,
     hooksData,
     workflowData,
     instructionSummary,
+    fitnessFiles,
     dimensionCount,
     metricCount,
+    hardGateCount,
+    selectedTier,
   } = args;
 
   const hookNames = (hooksData?.hookFiles ?? []).map((file) => file.name);
@@ -472,40 +463,49 @@ function buildDetailSections(args: {
   const uniquePhases = [...new Set((hooksData?.profiles ?? []).flatMap((profile) => profile.phases ?? []))];
   const workflowNames = (workflowData?.flows ?? []).map((flow) => flow.name);
   const workflowJobs = (workflowData?.flows ?? []).flatMap((flow) => flow.jobs?.map((job) => `${flow.name}: ${job.id}`) ?? []);
+  const dimensionFiles = fitnessFiles
+    .filter((file) => file.kind === "dimension")
+    .map((file) => file.dimension ?? file.name);
+  const primaryRuleFiles = fitnessFiles
+    .filter((file) => file.kind === "rulebook" || file.kind === "manifest")
+    .map((file) => file.name);
 
   switch (selectedNodeId) {
     case "precommit":
       return [
         { title: "Hook files", items: hookNames.length ? hookNames : ["当前页未发现 hook file"] },
         { title: "Profiles", items: profileNames.length ? profileNames : ["当前页未发现 profile"] },
+        { title: "Related surface", items: ["Hook system panel", "Commit feedback loop"] },
       ] satisfies LoopDetailSection[];
     case "post-commit":
       return [
         { title: "Actions", items: workflowNames.length ? workflowNames.slice(0, 8) : ["当前页未发现 action"] },
         { title: "Jobs", items: workflowJobs.length ? workflowJobs.slice(0, 8) : ["当前页未发现 job"] },
+        { title: "Related surface", items: ["GitHub Actions flow panel", "External feedback loop"] },
       ] satisfies LoopDetailSection[];
     case "lint":
     case "review":
     case "test":
       return [
-        { title: "Fitness", items: [`${dimensionCount} dimensions`, `${metricCount} metrics`] },
+        { title: "Fitness", items: [`tier ${selectedTier}`, `${dimensionCount} dimensions`, `${metricCount} metrics`, `${hardGateCount} hard gates`] },
         { title: "Hook phases", items: uniquePhases.length ? uniquePhases : ["当前页未发现 phase"] },
+        { title: "Dimension files", items: dimensionFiles.length ? dimensionFiles.slice(0, 6) : ["当前页未发现 dimension spec"] },
       ] satisfies LoopDetailSection[];
     case "coding":
       return [
         { title: "Instruction source", items: [instructionSummary?.fileName ?? "AGENTS.md"] },
         { title: "Context", items: ["当前节点受 instructions 面板支撑"] },
+        { title: "Rulebook", items: primaryRuleFiles.length ? primaryRuleFiles.slice(0, 4) : ["当前页未发现 rulebook / manifest"] },
       ] satisfies LoopDetailSection[];
     default:
       return [
         { title: "Current page signals", items: ["点击 `预提交` 查看 pre-commit / pre-push", "点击 `提交后阶段` 查看 actions / jobs"] },
+        { title: "Connected panels", items: ["Instruction file", "Hook system", "Execution plan", "GitHub Actions flow"] },
       ] satisfies LoopDetailSection[];
   }
 }
 
 export function HarnessGovernanceLoopGraph({
-  workspaceId,
-  codebaseId,
   repoPath,
   repoLabel,
   selectedTier,
@@ -515,184 +515,57 @@ export function HarnessGovernanceLoopGraph({
   planLoading,
   planError,
   metricCount,
+  hardGateCount,
   unsupportedMessage,
+  hooksData,
+  hooksError,
+  workflowData,
+  workflowError,
+  instructionsData,
+  instructionsError,
+  fitnessFiles = [],
+  selectedNodeId,
+  onSelectedNodeChange,
 }: HarnessGovernanceLoopGraphProps) {
-  const hasContext = Boolean(workspaceId && repoPath);
-  const contextKey = hasContext ? `${workspaceId}:${codebaseId}:${repoPath}` : "";
-  const [hookState, setHookState] = useState<SummaryState<HookSummary>>({
-    data: null,
-    error: null,
-    loadedContextKey: "",
-  });
-  const [workflowState, setWorkflowState] = useState<SummaryState<WorkflowSummary>>({
-    data: null,
-    error: null,
-    loadedContextKey: "",
-  });
-  const [instructionsState, setInstructionsState] = useState<SummaryState<InstructionSummary>>({
-    data: null,
-    error: null,
-    loadedContextKey: "",
-  });
-  const [hooksRawState, setHooksRawState] = useState<SummaryState<HooksResponse>>({
-    data: null,
-    error: null,
-    loadedContextKey: "",
-  });
-  const [workflowRawState, setWorkflowRawState] = useState<SummaryState<GitHubActionsFlowsResponse>>({
-    data: null,
-    error: null,
-    loadedContextKey: "",
-  });
-  const [selectedNodeId, setSelectedNodeId] = useState("precommit");
-
-  useEffect(() => {
-    if (!hasContext) {
-      return;
+  const hasContext = Boolean(repoPath);
+  const [internalSelectedNodeId, setInternalSelectedNodeId] = useState("precommit");
+  const activeSelectedNodeId = selectedNodeId ?? internalSelectedNodeId;
+  const hookSummary = useMemo(() => {
+    if (!hooksData) {
+      return null;
     }
-
-    let cancelled = false;
-    const query = new URLSearchParams();
-    query.set("workspaceId", workspaceId);
-    if (codebaseId) {
-      query.set("codebaseId", codebaseId);
+    const uniquePhases = new Set(
+      (hooksData.profiles ?? []).flatMap((profile) => profile.phases ?? []).filter((phase): phase is HookPhase => phase in PHASE_LABELS),
+    );
+    return {
+      hookCount: hooksData.hookFiles?.length ?? 0,
+      profileCount: hooksData.profiles?.length ?? 0,
+      mappedMetricCount: (hooksData.profiles ?? []).reduce((sum, profile) => sum + (profile.metrics?.length ?? 0), 0),
+      phaseCount: uniquePhases.size,
+      phaseLabels: [...uniquePhases].map((phase) => PHASE_LABELS[phase]).filter(Boolean),
+    } satisfies HookSummary;
+  }, [hooksData]);
+  const workflowSummary = useMemo(() => {
+    const flows = Array.isArray(workflowData?.flows) ? workflowData.flows : [];
+    if (flows.length === 0) {
+      return null;
     }
-    if (repoPath) {
-      query.set("repoPath", repoPath);
+    return {
+      flowCount: flows.length,
+      jobCount: flows.reduce((sum, flow) => sum + (flow.jobs?.length ?? 0), 0),
+      remoteSignals: summarizeSignals(flows),
+      hasRepairLoop: detectRepairLoop(flows),
+    } satisfies WorkflowSummary;
+  }, [workflowData]);
+  const instructionSummary = useMemo(() => {
+    if (!instructionsData) {
+      return null;
     }
-
-    const queryString = query.toString();
-
-    void fetch(`/api/harness/hooks?${queryString}`)
-      .then(async (response) => {
-        const payload = await response.json().catch(() => ({}));
-        if (!response.ok) {
-          throw new Error(typeof payload?.details === "string" ? payload.details : "Failed to load hook runtime");
-        }
-        if (cancelled) {
-          return;
-        }
-        const data = payload as HooksResponse;
-        const uniquePhases = new Set(
-          (data.profiles ?? []).flatMap((profile) => profile.phases ?? []),
-        );
-        const summary: HookSummary = {
-          hookCount: data.hookFiles?.length ?? 0,
-          profileCount: data.profiles?.length ?? 0,
-          mappedMetricCount: (data.profiles ?? []).reduce((sum, profile) => sum + (profile.metrics?.length ?? 0), 0),
-          phaseCount: uniquePhases.size,
-          phaseLabels: [...uniquePhases].map((phase) => PHASE_LABELS[phase]).filter(Boolean),
-        };
-        setHookState({
-          data: summary,
-          error: null,
-          loadedContextKey: contextKey,
-        });
-        setHooksRawState({
-          data,
-          error: null,
-          loadedContextKey: contextKey,
-        });
-      })
-      .catch((error: unknown) => {
-        if (cancelled) {
-          return;
-        }
-        setHookState({
-          data: null,
-          error: error instanceof Error ? error.message : String(error),
-          loadedContextKey: contextKey,
-        });
-        setHooksRawState({
-          data: null,
-          error: error instanceof Error ? error.message : String(error),
-          loadedContextKey: contextKey,
-        });
-      });
-
-    void fetch(`/api/harness/github-actions?${queryString}`)
-      .then(async (response) => {
-        const payload = await response.json().catch(() => ({}));
-        if (!response.ok) {
-          throw new Error(typeof payload?.details === "string" ? payload.details : "Failed to load GitHub Actions workflows");
-        }
-        if (cancelled) {
-          return;
-        }
-        const data = payload as GitHubActionsFlowsResponse;
-        const flows = Array.isArray(data.flows) ? data.flows : [];
-    const summary: WorkflowSummary = {
-          flowCount: flows.length,
-          jobCount: flows.reduce((sum, flow) => sum + (flow.jobs?.length ?? 0), 0),
-          remoteSignals: summarizeSignals(flows),
-          hasRepairLoop: detectRepairLoop(flows),
-        };
-        setWorkflowState({
-          data: summary,
-          error: null,
-          loadedContextKey: contextKey,
-        });
-        setWorkflowRawState({
-          data,
-          error: null,
-          loadedContextKey: contextKey,
-        });
-      })
-      .catch((error: unknown) => {
-        if (cancelled) {
-          return;
-        }
-        setWorkflowState({
-          data: null,
-          error: error instanceof Error ? error.message : String(error),
-          loadedContextKey: contextKey,
-        });
-        setWorkflowRawState({
-          data: null,
-          error: error instanceof Error ? error.message : String(error),
-          loadedContextKey: contextKey,
-        });
-      });
-
-    void fetch(`/api/harness/instructions?${queryString}`)
-      .then(async (response) => {
-        const payload = await response.json().catch(() => ({}));
-        if (!response.ok) {
-          throw new Error(typeof payload?.details === "string" ? payload.details : "Failed to load guidance document");
-        }
-        if (cancelled) {
-          return;
-        }
-        setInstructionsState({
-          data: {
-            fileName: typeof payload?.fileName === "string" ? payload.fileName : "AGENTS.md",
-            fallbackUsed: Boolean(payload?.fallbackUsed),
-          },
-          error: null,
-          loadedContextKey: contextKey,
-        });
-      })
-      .catch((error: unknown) => {
-        if (cancelled) {
-          return;
-        }
-        setInstructionsState({
-          data: null,
-          error: error instanceof Error ? error.message : String(error),
-          loadedContextKey: contextKey,
-        });
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [codebaseId, contextKey, hasContext, repoPath, workspaceId]);
-
-  const hookSummary = hookState.loadedContextKey === contextKey ? hookState.data : null;
-  const workflowSummary = workflowState.loadedContextKey === contextKey ? workflowState.data : null;
-  const instructionSummary = instructionsState.loadedContextKey === contextKey ? instructionsState.data : null;
-  const hooksRaw = hooksRawState.loadedContextKey === contextKey ? hooksRawState.data : null;
-  const workflowRaw = workflowRawState.loadedContextKey === contextKey ? workflowRawState.data : null;
+    return {
+      fileName: instructionsData.fileName,
+      fallbackUsed: instructionsData.fallbackUsed,
+    } satisfies InstructionSummary;
+  }, [instructionsData]);
 
   const graph = useMemo(
     () => buildGraph({
@@ -706,19 +579,22 @@ export function HarnessGovernanceLoopGraph({
   );
 
   const graphIssues = [...new Set(
-    [specsError, planError, hookState.error, workflowState.error, instructionsState.error]
+    [specsError, planError, hooksError, workflowError, instructionsError]
       .filter((issue): issue is string => Boolean(issue)),
   )];
   const detailSections = useMemo(
     () => buildDetailSections({
-      selectedNodeId,
-      hooksData: hooksRaw,
-      workflowData: workflowRaw,
+      selectedNodeId: activeSelectedNodeId,
+      hooksData: hooksData ?? null,
+      workflowData: workflowData ?? null,
       instructionSummary,
+      fitnessFiles,
       dimensionCount,
       metricCount,
+      hardGateCount,
+      selectedTier,
     }),
-    [selectedNodeId, hooksRaw, workflowRaw, instructionSummary, dimensionCount, metricCount],
+    [activeSelectedNodeId, dimensionCount, fitnessFiles, hardGateCount, hooksData, instructionSummary, metricCount, selectedTier, workflowData],
   );
 
   return (
@@ -807,7 +683,11 @@ export function HarnessGovernanceLoopGraph({
                   maxZoom={1}
                   defaultViewport={{ x: 0, y: 0, zoom: 1 }}
                   onNodeClick={(_event, node) => {
-                    setSelectedNodeId(node.id);
+                    if (onSelectedNodeChange) {
+                      onSelectedNodeChange(node.id);
+                      return;
+                    }
+                    setInternalSelectedNodeId(node.id);
                   }}
                   proOptions={{ hideAttribution: true }}
                 >
@@ -819,7 +699,7 @@ export function HarnessGovernanceLoopGraph({
             <aside className="rounded-2xl border border-desktop-border bg-desktop-bg-secondary/55 p-4 shadow-sm">
               <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-desktop-text-secondary">Node details</div>
               <div className="mt-1 text-sm font-semibold text-desktop-text-primary">
-                {graph.nodes.find((node) => node.id === selectedNodeId)?.data.title ?? "阶段详情"}
+                {graph.nodes.find((node) => node.id === activeSelectedNodeId)?.data.title ?? "阶段详情"}
               </div>
               <div className="mt-3 space-y-3">
                 {detailSections.map((section: LoopDetailSection) => (
