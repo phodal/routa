@@ -24,6 +24,7 @@ const FITNESS_PROFILES: [&str; 2] = ["generic", "agent_orchestrator"];
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/analyze", post(analyze_fitness))
+        .route("/dashboard", get(get_fitness_dashboard))
         .route("/plan", get(get_fitness_plan))
         .route("/report", get(get_fitness_report))
         .route("/specs", get(get_fitness_specs))
@@ -136,6 +137,52 @@ async fn get_fitness_report(
         "requestedProfiles": FITNESS_PROFILES,
         "profiles": profiles,
     })))
+}
+
+async fn get_fitness_dashboard(
+    State(state): State<AppState>,
+    Query(query): Query<RepoContextQuery>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    let repo_root = resolve_repo_root(
+        &state,
+        query.workspace_id.as_deref(),
+        query.codebase_id.as_deref(),
+        query.repo_path.as_deref(),
+        "缺少 fitness 上下文，请提供 workspaceId / codebaseId / repoPath 之一",
+    )
+    .await
+    .map_err(map_context_error(
+        "Fitness Dashboard 上下文无效",
+        "获取 Fitness Dashboard 失败",
+    ))?;
+
+    let snapshot_path = repo_root.join("docs/fitness/reports/dashboard-latest.json");
+    match std::fs::read_to_string(&snapshot_path) {
+        Ok(raw) => match serde_json::from_str::<Value>(&raw) {
+            Ok(dashboard) => Ok(Json(json!({
+                "generatedAt": chrono::Utc::now().to_rfc3339(),
+                "format": "json",
+                "source": "snapshot",
+                "dashboard": dashboard,
+            }))),
+            Err(error) => Ok(Json(json!({
+                "generatedAt": chrono::Utc::now().to_rfc3339(),
+                "format": "json",
+                "source": "snapshot",
+                "error": format!("Dashboard snapshot parse error: {error}"),
+            }))),
+        },
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(Json(json!({
+            "generatedAt": chrono::Utc::now().to_rfc3339(),
+            "format": "json",
+            "source": "missing",
+            "error": "Dashboard snapshot does not exist. Run `routa fitness dashboard` to generate one.",
+        }))),
+        Err(error) => Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json_error("获取 Fitness Dashboard 失败", error.to_string())),
+        )),
+    }
 }
 
 async fn get_fitness_plan(
