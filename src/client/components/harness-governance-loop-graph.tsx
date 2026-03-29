@@ -433,7 +433,7 @@ function buildGraph(args: {
       : []),
   ];
 
-  return { nodes, edges, minHeight: 610 };
+  return { nodes, edges, minHeight: 560 };
 }
 
 function buildDetailSections(args: {
@@ -600,7 +600,7 @@ export function HarnessGovernanceLoopGraph({
   );
 
   return (
-    <section className="rounded-2xl border border-desktop-border bg-desktop-bg-secondary/55 p-4 shadow-sm">
+    <section className="space-y-0">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-desktop-text-secondary">Governance loop</div>
@@ -639,7 +639,7 @@ export function HarnessGovernanceLoopGraph({
       ) : null}
 
       {hasContext && !unsupportedMessage ? (
-        <div className="mt-4 space-y-4">
+        <div className="mt-3 space-y-3">
           <div className="flex flex-wrap gap-2 text-[10px] text-desktop-text-secondary">
             <span className="rounded-full border border-desktop-border bg-desktop-bg-primary px-2.5 py-1">
               {hookSummary ? `${hookSummary.hookCount} hooks` : "loading hooks"}
@@ -652,12 +652,12 @@ export function HarnessGovernanceLoopGraph({
             </span>
           </div>
 
-          <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(380px,460px)]">
+          <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
             <div className="relative overflow-hidden rounded-2xl border border-desktop-border bg-[linear-gradient(180deg,rgba(248,250,252,0.98),rgba(241,245,249,0.98))]">
               <div className="pointer-events-none absolute inset-0">
-                <div className="absolute left-[20px] top-[44px] h-[152px] w-[1068px] rounded-[36px] border border-emerald-300/70 bg-emerald-50/35" />
-                <div className="absolute left-[20px] top-[214px] h-[152px] w-[1068px] rounded-[36px] border border-sky-300/70 bg-sky-50/35" />
-                <div className="absolute left-[20px] top-[386px] h-[152px] w-[1068px] rounded-[36px] border border-violet-300/65 bg-violet-50/35" />
+                <div className="absolute left-[20px] right-[20px] top-[44px] h-[152px] rounded-[36px] border border-emerald-300/70 bg-emerald-50/35" />
+                <div className="absolute left-[20px] right-[20px] top-[214px] h-[152px] rounded-[36px] border border-sky-300/70 bg-sky-50/35" />
+                <div className="absolute left-[20px] right-[20px] top-[386px] h-[152px] rounded-[36px] border border-violet-300/65 bg-violet-50/35" />
 
                 <div className="absolute left-[42px] top-[54px] max-w-[180px] text-left text-slate-600">
                   <div className="text-[11px] font-semibold tracking-[0.06em]">内部反馈环</div>
@@ -681,9 +681,10 @@ export function HarnessGovernanceLoopGraph({
                   elementsSelectable={false}
                   zoomOnScroll={false}
                   panOnDrag={false}
-                  minZoom={1}
+                  minZoom={0.55}
                   maxZoom={1}
-                  defaultViewport={{ x: 0, y: 0, zoom: 1 }}
+                  fitView
+                  fitViewOptions={{ padding: 0.05, minZoom: 0.55, maxZoom: 1 }}
                   onNodeClick={(_event, node) => {
                     if (onSelectedNodeChange) {
                       onSelectedNodeChange(node.id);
@@ -698,15 +699,17 @@ export function HarnessGovernanceLoopGraph({
               </div>
             </div>
 
-            <aside className="rounded-2xl border border-desktop-border bg-desktop-bg-secondary/55 p-4 shadow-sm">
-              <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-desktop-text-secondary">Node details</div>
-              <div className="mt-1 text-sm font-semibold text-desktop-text-primary">
-                {graph.nodes.find((node) => node.id === activeSelectedNodeId)?.data.title ?? "阶段详情"}
-              </div>
+            <aside className="space-y-3">
               {contextPanel ? (
-                <div className="mt-3">{contextPanel}</div>
+                <div>{contextPanel}</div>
               ) : (
-                <div className="mt-3 space-y-3">
+                <div className="space-y-3">
+                  <div className="rounded-xl border border-desktop-border bg-desktop-bg-primary/70 px-3 py-2.5">
+                    <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-desktop-text-secondary">Node details</div>
+                    <div className="mt-1 text-sm font-semibold text-desktop-text-primary">
+                      {graph.nodes.find((node) => node.id === activeSelectedNodeId)?.data.title ?? "阶段详情"}
+                    </div>
+                  </div>
                   {detailSections.map((section: LoopDetailSection) => (
                     <div key={section.title} className="rounded-xl border border-desktop-border bg-desktop-bg-primary/80 p-3">
                       <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-desktop-text-secondary">{section.title}</div>

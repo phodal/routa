@@ -15,6 +15,7 @@ interface SettingsRouteShellProps {
   icon?: ReactNode;
   summary?: Array<{ label: string; value: string }>;
   workspaceSwitcher?: ReactNode;
+  contentClassName?: string;
 }
 
 export function SettingsRouteShell({
@@ -27,6 +28,7 @@ export function SettingsRouteShell({
   icon,
   summary = [],
   workspaceSwitcher,
+  contentClassName,
 }: SettingsRouteShellProps) {
   const { t } = useTranslation();
   void title;
@@ -49,7 +51,7 @@ export function SettingsRouteShell({
       )}
     >
       <main className="h-full overflow-y-auto bg-desktop-bg-primary text-desktop-text-primary">
-        <div className="flex min-h-full w-full flex-col px-8 py-8">
+        <div className={contentClassName ?? "flex min-h-full w-full flex-col px-8 py-8"}>
           {children}
         </div>
       </main>

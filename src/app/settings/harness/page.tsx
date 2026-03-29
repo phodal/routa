@@ -220,6 +220,7 @@ export default function HarnessSettingsPage() {
       title="Harness"
       description=""
       badgeLabel="AI Health"
+      contentClassName="flex min-h-full w-full flex-col px-3 py-4 md:px-4 md:py-5"
       workspaceId={workspaceId}
       workspaceTitle={activeWorkspaceTitle}
       workspaceSwitcher={(
@@ -255,7 +256,7 @@ export default function HarnessSettingsPage() {
         { label: "Focus", value: "Stage-driven feedback loops" },
       ]}
     >
-      <div className="space-y-6">
+      <div className="space-y-4">
         <SettingsPageHeader
           title="Harness"
           description=""
