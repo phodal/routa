@@ -361,6 +361,7 @@ function HookLifecycleRail() {
 
 function HookFlowCanvas() {
   const { activeEntry, compactMode } = useWorkbenchContext();
+  const flowHeight = compactMode ? 440 : 680;
 
   const flow = useMemo(() => {
     if (!activeEntry) {
@@ -368,7 +369,7 @@ function HookFlowCanvas() {
     }
 
     const { nodes, edges } = buildHookFlow(activeEntry);
-    const positionedNodes = nodes.map<Node<FlowNodeData>>((node) => ({
+    const positionedNodes: Node[] = nodes.map((node) => ({
       id: node.id,
       type: "workbench",
       position: {
@@ -397,13 +398,26 @@ function HookFlowCanvas() {
         strokeWidth: edge.tone === "accent" ? 1.8 : 1.5,
       },
     }));
-    return { nodes: positionedNodes, edges: positionedEdges };
-  }, [activeEntry]);
+    const maxNodeY = positionedNodes.reduce((max, node) => Math.max(max, node.position.y), 0);
+    if (maxNodeY < flowHeight - 220) {
+      positionedNodes.push({
+        id: `viewport-anchor:${activeEntry.name}`,
+        position: { x: 520, y: flowHeight - 120 },
+        data: { label: "" },
+        draggable: false,
+        selectable: false,
+        connectable: false,
+        style: {
+          width: 1,
+          height: 1,
+          opacity: 0,
+          pointerEvents: "none",
+        },
+      });
+    }
 
-  const flowHeight = useMemo(() => {
-    const taskCount = Math.max(activeEntry?.tasks.length ?? 0, 1);
-    return Math.max(compactMode ? 440 : 520, 180 + taskCount * 154);
-  }, [activeEntry?.tasks.length, compactMode]);
+    return { nodes: positionedNodes, edges: positionedEdges };
+  }, [activeEntry, flowHeight]);
 
   return (
     <section className="rounded-[28px] border border-desktop-border bg-[linear-gradient(180deg,rgba(255,255,255,0.95),rgba(243,247,255,0.92))] p-4 shadow-sm">
@@ -439,6 +453,7 @@ function HookFlowCanvas() {
             edges={flow.edges}
             nodeTypes={flowNodeTypes}
             fitView
+            fitViewOptions={{ padding: 0.14 }}
             minZoom={0.6}
             maxZoom={1.2}
             proOptions={{ hideAttribution: true }}
