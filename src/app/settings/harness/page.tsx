@@ -14,6 +14,7 @@ import { HarnessAgentInstructionsPanel } from "@/client/components/harness-agent
 import { HarnessGovernanceLoopGraph } from "@/client/components/harness-governance-loop-graph";
 import { HarnessGitHubActionsFlowPanel } from "@/client/components/harness-github-actions-flow-panel";
 import { HarnessHookRuntimePanel } from "@/client/components/harness-hook-runtime-panel";
+import { HarnessReviewTriggersPanel } from "@/client/components/harness-review-triggers-panel";
 import { HarnessUnsupportedState, getHarnessUnsupportedRepoMessage } from "@/client/components/harness-support-state";
 import { useHarnessSettingsData } from "@/client/hooks/use-harness-settings-data";
 import { useCodebases, useWorkspaces } from "@/client/hooks/use-workspaces";
@@ -148,7 +149,6 @@ export default function HarnessSettingsPage() {
         );
       case "build":
       case "lint":
-      case "review":
       case "test":
         return (
           <HarnessExecutionPlanFlow
@@ -159,6 +159,17 @@ export default function HarnessSettingsPage() {
             selectedTier={selectedTier}
             onTierChange={setSelectedTier}
             unsupportedMessage={unsupportedRepoMessage}
+            variant="compact"
+          />
+        );
+      case "review":
+        return (
+          <HarnessReviewTriggersPanel
+            repoLabel={selectedRepoLabel}
+            unsupportedMessage={unsupportedRepoMessage}
+            data={hooksState.data}
+            loading={hooksState.loading}
+            error={hooksState.error}
             variant="compact"
           />
         );
@@ -191,7 +202,7 @@ export default function HarnessSettingsPage() {
               </div>
             </div>
             <div className="rounded-xl border border-desktop-border bg-desktop-bg-primary/80 p-3 text-[11px] text-desktop-text-secondary">
-              选择 `编码`、`预提交`、`测试` 或 `提交后阶段` 节点，可以在这里直接查看对应组件的上下文视图。
+              选择 `编码`、`预提交`、`评审`、`测试` 或 `提交后阶段` 节点，可以在这里直接查看对应组件的上下文视图。
             </div>
           </div>
         );
@@ -340,6 +351,14 @@ export default function HarnessSettingsPage() {
           workspaceId={workspaceId}
           codebaseId={activeRepoCodebaseId}
           repoPath={activeRepoPath}
+          repoLabel={selectedRepoLabel}
+          unsupportedMessage={unsupportedRepoMessage}
+          data={hooksState.data}
+          loading={hooksState.loading}
+          error={hooksState.error}
+        />
+
+        <HarnessReviewTriggersPanel
           repoLabel={selectedRepoLabel}
           unsupportedMessage={unsupportedRepoMessage}
           data={hooksState.data}
