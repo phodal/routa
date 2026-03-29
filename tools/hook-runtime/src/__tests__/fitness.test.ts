@@ -100,4 +100,86 @@ describe("summarizeFailures", () => {
     expect(summary?.outputTail).not.toContain("continues working after a persist failure");
     expect(summary?.outputTail).not.toContain("falls back to session/prompt when agent message fails");
   });
+
+  it("keeps the assertion lines that belong to the failing vitest block", () => {
+    const results = [
+      {
+        durationMs: 25,
+        exitCode: 1,
+        metric: buildMetric({ name: "ts_test_pass" }),
+        output: [
+          "stdout | src/core/acp/__tests__/session-write-buffer.test.ts > SessionWriteBuffer > error handling > does not throw when persistFn fails",
+          "[SessionWriteBuffer] Flush failed for s1: Error: DB down",
+          "stderr | src/core/acp/__tests__/session-write-buffer.test.ts > SessionWriteBuffer > error handling > continues working after a persist failure",
+          "[SessionWriteBuffer] Flush failed for s1: Error: DB down",
+          "FAIL  src/core/acp/__tests__/session-write-buffer.test.ts > SessionWriteBuffer > error handling > does not throw when persistFn fails",
+          "AssertionError: expected promise to resolve but it rejected with 'Error: DB down'",
+          "at src/core/acp/__tests__/session-write-buffer.test.ts:82:15",
+          "stdout | src/core/kanban/__tests__/workflow-orchestrator-singleton.test.ts > workflow orchestrator singleton prompt path > falls back to session/prompt when agent message fails",
+        ].join("\n"),
+        passed: false,
+      },
+    ];
+
+    const [summary] = summarizeFailures(results);
+
+    expect(summary?.outputTail).toContain(
+      "FAIL  src/core/acp/__tests__/session-write-buffer.test.ts > SessionWriteBuffer > error handling > does not throw when persistFn fails",
+    );
+    expect(summary?.outputTail).toContain(
+      "AssertionError: expected promise to resolve but it rejected with 'Error: DB down'",
+    );
+    expect(summary?.outputTail).toContain("at src/core/acp/__tests__/session-write-buffer.test.ts:82:15");
+    expect(summary?.outputTail).not.toContain("workflow orchestrator singleton prompt path");
+  });
+
+  it("keeps full lines when the excerpt is trimmed to the tail", () => {
+    const results = [
+      {
+        durationMs: 25,
+        exitCode: 1,
+        metric: buildMetric({ name: "ts_test_pass" }),
+        output: [
+          ...Array.from({ length: 300 }, (_, index) => `noise ${index}`),
+          "stdout | src/core/acp/__tests__/session-write-buffer.test.ts > SessionWriteBuffer > error handling > does not throw when persistFn fails",
+          "[SessionWriteBuffer] Flush failed for s1: Error: DB down",
+          "at src/core/acp/__tests__/session-write-buffer.test.ts:82:15",
+        ].join("\n"),
+        passed: false,
+      },
+    ];
+
+    const [summary] = summarizeFailures(results);
+
+    expect(summary?.outputTail.startsWith("| src/core/acp")).toBe(false);
+    expect(summary?.outputTail).toContain("stdout | src/core/acp/__tests__/session-write-buffer.test.ts");
+  });
+
+  it("extracts a likely test failure block when vitest does not print a FAIL header", () => {
+    const results = [
+      {
+        durationMs: 25,
+        exitCode: 1,
+        metric: buildMetric({ name: "ts_test_pass" }),
+        output: [
+          "| src/core/acp/__tests__/session-write-buffer.test.ts > SessionWriteBuffer > error handling > does not throw when persistFn fails",
+          "[SessionWriteBuffer] Flush failed for s1: Error: DB down",
+          "at runWithTimeout (file:///Users/phodal/ai/routa-js/node_modules/@vitest/runner/dist/index.js:1627:10)",
+          "stderr | src/core/acp/__tests__/session-write-buffer.test.ts > SessionWriteBuffer > error handling > continues working after a persist failure",
+          "[SessionWriteBuffer] Flush failed for s1: Error: DB down",
+          "stdout | src/core/kanban/__tests__/workflow-orchestrator-singleton.test.ts > workflow orchestrator singleton prompt path > falls back to session/prompt when agent message fails",
+        ].join("\n"),
+        passed: false,
+      },
+    ];
+
+    const [summary] = summarizeFailures(results);
+
+    expect(summary?.outputTail).toContain(
+      "| src/core/acp/__tests__/session-write-buffer.test.ts > SessionWriteBuffer > error handling > does not throw when persistFn fails",
+    );
+    expect(summary?.outputTail).toContain("[SessionWriteBuffer] Flush failed for s1: Error: DB down");
+    expect(summary?.outputTail).toContain("at runWithTimeout");
+    expect(summary?.outputTail).not.toContain("workflow orchestrator singleton prompt path");
+  });
 });

@@ -1,5 +1,5 @@
 import { HookMetric } from "./metrics.js";
-import { runCommand, tailOutput, type CommandOutputEvent } from "./process.js";
+import { runCommand, type CommandOutputEvent } from "./process.js";
 
 export type MetricExecution = {
   durationMs: number;
@@ -53,10 +53,112 @@ function splitOutputLines(rawOutput: string): string[] {
     .filter(Boolean);
 }
 
+function trimLinesToCharBudget(lines: string[], maxChars: number): string {
+  if (lines.length === 0) {
+    return "";
+  }
+
+  const selected: string[] = [];
+  let totalChars = 0;
+
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    const line = lines[index];
+    const nextSize = totalChars + line.length + (selected.length > 0 ? 1 : 0);
+    if (selected.length > 0 && nextSize > maxChars) {
+      break;
+    }
+    selected.unshift(line);
+    totalChars = nextSize;
+  }
+
+  return selected.join("\n");
+}
+
+function isVitestBoundaryLine(line: string): boolean {
+  return /^(stdout|stderr)\s+\|/.test(line)
+    || /^(Test Files|Tests|Start at|Duration)\b/.test(line)
+    || /^[\u2500-\u257f]+$/.test(line)
+    || /^[\u00d7\u2713\u25b6\u203a]\s/.test(line);
+}
+
+function isLikelyTestNameLine(line: string): boolean {
+  return /(?:^|\s|\|)[\w./-]+\.test\.[cm]?[jt]sx?\s*>/.test(line);
+}
+
+function isLikelyFailureDetailLine(line: string): boolean {
+  return /^AssertionError\b/.test(line)
+    || /^TypeError\b/.test(line)
+    || /^ReferenceError\b/.test(line)
+    || /^Error:\s/.test(line)
+    || /^\[[^\]]+\]\s.*(?:Error|failed|fail|timeout|denied|refused)/i.test(line)
+    || /^at\s.+:\d+:\d+\)?$/.test(line)
+    || /^Caused by:/i.test(line)
+    || /^Expected:/i.test(line)
+    || /^Received:/i.test(line)
+    || /^-\s*Expected/i.test(line)
+    || /^\+\s*Received/i.test(line);
+}
+
+function collectVitestFailureBlock(lines: string[], startIndex: number): string[] {
+  const block: string[] = [];
+
+  for (let index = startIndex; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (index > startIndex && /^FAIL\s+/.test(line)) {
+      break;
+    }
+    if (index > startIndex && isVitestBoundaryLine(line)) {
+      break;
+    }
+    if (/^[\u2500-\u257f]+$/.test(line)) {
+      continue;
+    }
+    block.push(line);
+  }
+
+  return block;
+}
+
+function extractLikelyTestFailureContext(lines: string[]): string[] {
+  for (let index = 0; index < lines.length; index += 1) {
+    if (!isLikelyTestNameLine(lines[index])) {
+      continue;
+    }
+
+    const block = [lines[index]];
+    let sawFailureDetail = false;
+
+    for (let cursor = index + 1; cursor < lines.length; cursor += 1) {
+      const line = lines[cursor];
+      if (isVitestBoundaryLine(line) || (isLikelyTestNameLine(line) && block.length > 0)) {
+        break;
+      }
+      if (!isLikelyFailureDetailLine(line)) {
+        if (sawFailureDetail) {
+          break;
+        }
+        continue;
+      }
+      sawFailureDetail = true;
+      block.push(line);
+    }
+
+    if (sawFailureDetail) {
+      return block;
+    }
+  }
+
+  return [];
+}
+
 function extractVitestFailureContext(lines: string[]): string[] {
-  const failedTestHeaders = lines.filter((line) => /^FAIL\s+/.test(line));
-  if (failedTestHeaders.length > 0) {
-    return failedTestHeaders;
+  const failedTestHeaderIndices = lines
+    .map((line, index) => (/^FAIL\s+/.test(line) ? index : -1))
+    .filter((index) => index >= 0);
+  if (failedTestHeaderIndices.length > 0) {
+    return failedTestHeaderIndices
+      .flatMap((index) => collectVitestFailureBlock(lines, index))
+      .filter((line) => !/^(stdout|stderr)\s+\|/.test(line));
   }
 
   const failedSummaryIndex = lines.findIndex((line) => /^Failed Tests\s+\d+/.test(line));
@@ -70,7 +172,7 @@ function extractVitestFailureContext(lines: string[]): string[] {
     if (/^(Test Files|Tests|Start at|Duration)\b/.test(line)) {
       break;
     }
-    if (/^[\u2500-\u257f]+$/.test(line)) {
+    if (isVitestBoundaryLine(line) || /^(stdout|stderr)\s+\|/.test(line)) {
       continue;
     }
     vitestFailureLines.push(line);
@@ -87,7 +189,12 @@ function extractFailureContext(rawOutput: string): string {
 
   const vitestFailureContext = extractVitestFailureContext(lines);
   if (vitestFailureContext.length > 0) {
-    return tailOutput(vitestFailureContext.join("\n"), 1500).trim();
+    return trimLinesToCharBudget(vitestFailureContext, 2500).trim();
+  }
+
+  const likelyTestFailureContext = extractLikelyTestFailureContext(lines);
+  if (likelyTestFailureContext.length > 0) {
+    return trimLinesToCharBudget(likelyTestFailureContext, 2500).trim();
   }
 
   const failureHints =
@@ -95,8 +202,8 @@ function extractFailureContext(rawOutput: string): string {
 
   const hinted = lines.filter((line) => failureHints.test(line));
   const linesToShow = hinted.length > 0 ? hinted : lines;
-  const tail = tailOutput(linesToShow.join("\n"), 1500).trim();
-  return tail.length > 0 ? tail : tailOutput(lines.join("\n"), 1500).trim();
+  const tail = trimLinesToCharBudget(linesToShow, 1500).trim();
+  return tail.length > 0 ? tail : trimLinesToCharBudget(lines, 1500).trim();
 }
 
 export async function runMetric(
@@ -145,12 +252,12 @@ export function printFailureSummary(results: MetricExecution[]): void {
     console.log(`  source: ${failure.sourceFile}`);
     console.log(`  cmd: ${failure.command}`);
     if (failure.outputTail) {
-      console.log("  failure context:");
+      console.log("  failed test excerpt:");
       for (const line of failure.outputTail.split("\n")) {
         console.log(`    ${line}`);
       }
     } else {
-      console.log("  failure context: unavailable");
+      console.log("  failed test excerpt: unavailable");
     }
     console.log("");
   }
