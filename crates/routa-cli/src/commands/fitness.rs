@@ -6,16 +6,26 @@ use clap::{Args, Subcommand, ValueEnum};
 use std::path::{Path, PathBuf};
 
 use self::fluency::{evaluate_harness_fluency, format_text_report, EvaluateOptions, FluencyMode};
+use routa_entrix::dashboard::{
+    build_dashboard, compare_dashboards, dashboard_to_html, FitnessDashboard,
+};
+use routa_entrix::evidence::load_dimensions;
+use routa_entrix::governance::{filter_dimensions, filter_metrics, GovernancePolicy};
+use routa_entrix::runner::ShellRunner;
+use routa_entrix::scoring::{score_dimension, score_report};
 
 const DEFAULT_MODEL_RELATIVE_PATH: &str = "docs/fitness/harness-fluency.model.yaml";
 const AGENT_ORCHESTRATOR_MODEL_RELATIVE_PATH: &str =
     "docs/fitness/harness-fluency.profile.agent_orchestrator.yaml";
 const DEFAULT_SNAPSHOT_RELATIVE_PATH: &str = "docs/fitness/reports/harness-fluency-latest.json";
+const DASHBOARD_SNAPSHOT_RELATIVE_PATH: &str = "docs/fitness/reports/dashboard-latest.json";
 
 #[derive(Subcommand, Debug, Clone)]
 pub enum FitnessAction {
     /// Evaluate the Harness Fluency maturity model
     Fluency(FluencyArgs),
+    /// Generate a fitness function dashboard
+    Dashboard(DashboardArgs),
 }
 
 #[derive(Args, Debug, Clone)]
@@ -55,6 +65,39 @@ pub struct FluencyArgs {
     /// Do not persist the current snapshot.
     #[arg(long, default_value_t = false)]
     pub no_save: bool,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct DashboardArgs {
+    /// Repository root to evaluate. Defaults to the current git toplevel.
+    #[arg(long)]
+    pub repo_root: Option<String>,
+
+    /// Output format.
+    #[arg(long, value_enum, default_value_t = DashboardOutputFormat::Json)]
+    pub format: DashboardOutputFormat,
+
+    /// Output file path. Omit or use `-` for stdout.
+    #[arg(long, short)]
+    pub output: Option<String>,
+
+    /// Compare against the last saved dashboard snapshot.
+    #[arg(long, default_value_t = false)]
+    pub compare_last: bool,
+
+    /// Do not persist the current dashboard snapshot.
+    #[arg(long, default_value_t = false)]
+    pub no_save: bool,
+
+    /// Dry run: load dimensions but do not execute metrics.
+    #[arg(long, default_value_t = false)]
+    pub dry_run: bool,
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq, ValueEnum)]
+pub enum DashboardOutputFormat {
+    Json,
+    Html,
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, ValueEnum)]
@@ -106,6 +149,7 @@ impl FluencyRunMode {
 pub fn run(action: FitnessAction) -> Result<(), String> {
     match action {
         FitnessAction::Fluency(args) => run_fluency(&args),
+        FitnessAction::Dashboard(args) => run_dashboard(&args),
     }
 }
 
@@ -132,6 +176,86 @@ fn run_fluency(args: &FluencyArgs) -> Result<(), String> {
             serde_json::to_string_pretty(&report)
                 .map_err(|error| format!("failed to serialize fluency report: {error}"))?
         ),
+    }
+
+    Ok(())
+}
+
+fn run_dashboard(args: &DashboardArgs) -> Result<(), String> {
+    let repo_root = resolve_repo_root(args.repo_root.as_deref())?;
+    let fitness_dir = repo_root.join("docs/fitness");
+
+    if !fitness_dir.is_dir() {
+        return Err(format!(
+            "fitness directory not found: {}",
+            fitness_dir.display()
+        ));
+    }
+
+    let dimensions = load_dimensions(&fitness_dir);
+    if dimensions.is_empty() {
+        return Err("no fitness dimensions found in docs/fitness/".to_string());
+    }
+
+    let policy = GovernancePolicy {
+        dry_run: args.dry_run,
+        ..GovernancePolicy::default()
+    };
+
+    let filtered_dims = filter_dimensions(&dimensions, &policy);
+    let runner = ShellRunner::new(&repo_root);
+
+    let dimension_scores: Vec<_> = filtered_dims
+        .iter()
+        .map(|dim| {
+            let metrics = filter_metrics(&dim.metrics, &policy);
+            if metrics.is_empty() || args.dry_run {
+                score_dimension(&[], &dim.name, dim.weight)
+            } else {
+                let results = runner.run_batch(&metrics, policy.parallel, false, None);
+                score_dimension(&results, &dim.name, dim.weight)
+            }
+        })
+        .collect();
+
+    let report = score_report(&dimension_scores, policy.min_score);
+    let mut dashboard = build_dashboard(&dimensions, &report, &repo_root.to_string_lossy());
+
+    // Compare with previous snapshot
+    let snapshot_path = repo_root.join(DASHBOARD_SNAPSHOT_RELATIVE_PATH);
+    if args.compare_last {
+        if let Ok(raw) = std::fs::read_to_string(&snapshot_path) {
+            if let Ok(previous) = serde_json::from_str::<FitnessDashboard>(&raw) {
+                dashboard.comparison = Some(compare_dashboards(&dashboard, &previous));
+            }
+        }
+    }
+
+    // Save current snapshot
+    if !args.no_save {
+        if let Some(parent) = snapshot_path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let json_str = serde_json::to_string_pretty(&dashboard)
+            .map_err(|e| format!("failed to serialize dashboard: {e}"))?;
+        std::fs::write(&snapshot_path, format!("{json_str}\n"))
+            .map_err(|e| format!("failed to write dashboard snapshot: {e}"))?;
+    }
+
+    // Produce output
+    let output_str = match args.format {
+        DashboardOutputFormat::Json => serde_json::to_string_pretty(&dashboard)
+            .map_err(|e| format!("failed to serialize dashboard: {e}"))?,
+        DashboardOutputFormat::Html => dashboard_to_html(&dashboard),
+    };
+
+    match &args.output {
+        Some(path) if path != "-" => {
+            std::fs::write(path, &output_str)
+                .map_err(|e| format!("failed to write dashboard output: {e}"))?;
+            eprintln!("Dashboard written to {path}");
+        }
+        _ => println!("{output_str}"),
     }
 
     Ok(())

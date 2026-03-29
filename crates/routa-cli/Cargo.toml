@@ -26,6 +26,9 @@ routa-server = { version = "0.2.4", path = "../routa-server" }
 # Reusable scanner module
 routa-scanner = { version = "0.2.4", path = "../routa-scanner" }
 
+# Fitness function engine
+routa-entrix = { version = "0.2.4", path = "../routa-entrix" }
+
 # CLI argument parsing
 clap = { version = "4", features = ["derive", "env"] }
 

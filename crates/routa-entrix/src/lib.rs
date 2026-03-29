@@ -3,6 +3,7 @@
 //! This crate provides the core logic for evolutionary architecture fitness
 //! functions, matching the behavior of `tools/entrix` (Python).
 
+pub mod dashboard;
 pub mod evidence;
 pub mod governance;
 pub mod model;
