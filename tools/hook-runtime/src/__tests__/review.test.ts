@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const runCommandMock = vi.hoisted(() => vi.fn());
 const runReviewTriggerSpecialistMock = vi.hoisted(() => vi.fn());
@@ -16,9 +16,15 @@ import { runReviewTriggerPhase } from "../review.js";
 describe("runReviewTriggerPhase", () => {
   const originalAllowReviewTriggerPush = process.env.ROUTA_ALLOW_REVIEW_TRIGGER_PUSH;
   const originalAllowReviewUnavailable = process.env.ROUTA_ALLOW_REVIEW_UNAVAILABLE;
+  let consoleLogSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    consoleLogSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+  });
 
   afterEach(() => {
     vi.clearAllMocks();
+    consoleLogSpy.mockRestore();
 
     if (originalAllowReviewTriggerPush === undefined) {
       delete process.env.ROUTA_ALLOW_REVIEW_TRIGGER_PUSH;
@@ -148,6 +154,94 @@ describe("runReviewTriggerPhase", () => {
     expect(result.workingTreeFiles).toEqual(["tools/hook-runtime/src/runtime.ts"]);
     expect(result.untrackedFiles).toEqual(["tmp/debug.txt"]);
     expect(result.message).toContain("regression risk");
+  });
+
+  it("prints a compact human summary table for matched triggers", async () => {
+    delete process.env.ROUTA_ALLOW_REVIEW_TRIGGER_PUSH;
+    runCommandMock
+      .mockResolvedValueOnce({
+        command: "git rev-parse",
+        durationMs: 5,
+        exitCode: 0,
+        output: "origin/main\n",
+      })
+      .mockResolvedValueOnce({
+        command: "git rev-parse --show-toplevel",
+        durationMs: 5,
+        exitCode: 0,
+        output: `${process.cwd()}\n`,
+      })
+      .mockResolvedValueOnce({
+        command: "git diff --name-only --diff-filter=ACMR origin/main",
+        durationMs: 5,
+        exitCode: 0,
+        output: "src/a.ts\nsrc/b.ts\napi-contract.yaml\n",
+      })
+      .mockResolvedValueOnce({
+        command: "git diff --name-only --diff-filter=ACMR",
+        durationMs: 5,
+        exitCode: 0,
+        output: "src/local-only.ts\n",
+      })
+      .mockResolvedValueOnce({
+        command: "git ls-files --others --exclude-standard",
+        durationMs: 5,
+        exitCode: 0,
+        output: "tmp/debug.txt\n",
+      })
+      .mockResolvedValueOnce({
+        command: "entrix review-trigger",
+        durationMs: 10,
+        exitCode: 3,
+        output: JSON.stringify({
+          base: "origin/main",
+          triggers: [
+            {
+              action: "review",
+              name: "high_risk_directory_change",
+              severity: "high",
+              reasons: [
+                "changed path: crates/routa-server/src/api/clone_local.rs",
+                "changed path: crates/routa-server/src/api/codebases.rs",
+                "changed path: crates/routa-server/src/api/mod.rs",
+              ],
+            },
+            {
+              action: "review",
+              name: "oversized_change",
+              severity: "medium",
+              reasons: [
+                "diff touched 32 files (threshold: 12)",
+                "diff added 942 lines (threshold: 600)",
+                "diff deleted 636 lines (threshold: 400)",
+              ],
+            },
+          ],
+          committed_files: ["src/a.ts", "src/b.ts", "api-contract.yaml"],
+          working_tree_files: ["src/local-only.ts"],
+          untracked_files: ["tmp/debug.txt"],
+          diff_stats: { file_count: 32, added_lines: 942, deleted_lines: 636 },
+        }),
+      });
+    runReviewTriggerSpecialistMock.mockResolvedValueOnce({
+      allowed: false,
+      summary: "Automatic review specialist found a regression risk.",
+      findings: [{ severity: "high", title: "Regression risk", reason: "Control flow changed without safeguards." }],
+      raw: "{\"verdict\":\"fail\"}",
+    });
+
+    const result = await runReviewTriggerPhase("human");
+
+    expect(result.allowed).toBe(false);
+    const output = consoleLogSpy.mock.calls.map((call: unknown[]) => String(call[0])).join("\n");
+    expect(output).toContain("Human review required: 2 triggers across 3 committed files.");
+    expect(output).toMatch(/\|\s+Base\s+\|\s+origin\/main\s+\|/);
+    expect(output).toMatch(/\|\s+Added lines\s+\|\s+942\s+\|/);
+    expect(output).toMatch(/\|\s+Workspace residue\s+\|\s+1 tracked, 1 untracked\s+\|/);
+    expect(output).toContain("Matched triggers:");
+    expect(output).toContain("[high] High Risk Directory Change");
+    expect(output).toContain("changed path: 3 items. Examples:");
+    expect(output).not.toContain("- Base: origin/main");
   });
 
   it("allows matched review trigger when bypass env var is set", async () => {
@@ -351,6 +445,63 @@ describe("runReviewTriggerPhase", () => {
     expect(result.status).toBe("unavailable");
     expect(result.message).toContain("Blocking push");
     expect(result.message).toContain("ROUTA_ALLOW_REVIEW_UNAVAILABLE=1");
+  });
+
+  it("prints a short unavailable message in human mode when specialist review fails", async () => {
+    runCommandMock
+      .mockResolvedValueOnce({
+        command: "git rev-parse",
+        durationMs: 5,
+        exitCode: 0,
+        output: "origin/main\n",
+      })
+      .mockResolvedValueOnce({
+        command: "git rev-parse --show-toplevel",
+        durationMs: 5,
+        exitCode: 0,
+        output: `${process.cwd()}\n`,
+      })
+      .mockResolvedValueOnce({
+        command: "git diff --name-only --diff-filter=ACMR origin/main",
+        durationMs: 5,
+        exitCode: 0,
+        output: "tools/hook-runtime/src/review.ts\n",
+      })
+      .mockResolvedValueOnce({
+        command: "git diff --name-only --diff-filter=ACMR",
+        durationMs: 5,
+        exitCode: 0,
+        output: "",
+      })
+      .mockResolvedValueOnce({
+        command: "git ls-files --others --exclude-standard",
+        durationMs: 5,
+        exitCode: 0,
+        output: "",
+      })
+      .mockResolvedValueOnce({
+        command: "entrix review-trigger",
+        durationMs: 10,
+        exitCode: 3,
+        output: JSON.stringify({
+          base: "origin/main",
+          triggers: [{ action: "review", name: "oversized_change", severity: "high" }],
+          committed_files: ["tools/hook-runtime/src/review.ts"],
+          diff_stats: { file_count: 1, added_lines: 10, deleted_lines: 2 },
+        }),
+      });
+    runReviewTriggerSpecialistMock.mockRejectedValueOnce(
+      new Error("Missing ANTHROPIC_AUTH_TOKEN or ANTHROPIC_API_KEY for automatic review specialist."),
+    );
+
+    const result = await runReviewTriggerPhase("human");
+
+    expect(result.allowed).toBe(false);
+    expect(result.status).toBe("unavailable");
+    const output = consoleLogSpy.mock.calls.map((call: unknown[]) => String(call[0])).join("\n");
+    expect(output).toContain("Automatic review specialist unavailable.");
+    expect(output).toContain("Missing ANTHROPIC_AUTH_TOKEN or ANTHROPIC_API_KEY");
+    expect(output).toContain("ROUTA_ALLOW_REVIEW_UNAVAILABLE=1");
   });
 
   it("allows explicit bypass when review evaluation is unavailable", async () => {

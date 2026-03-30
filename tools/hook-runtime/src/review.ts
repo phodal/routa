@@ -121,22 +121,123 @@ function parseReport(reviewOutput: string): ReviewReport {
   }
 }
 
+function titleCaseTriggerName(name: string): string {
+  return name
+    .split("_")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function summarizeReasonValues(values: string[]): string {
+  if (values.length === 0) {
+    return "";
+  }
+  if (values.length === 1) {
+    return values[0];
+  }
+  const preview = values.slice(0, 2).join(", ");
+  const remaining = values.length - 2;
+  return remaining > 0 ? `${preview}, +${remaining} more` : preview;
+}
+
+function summarizeTriggerReasons(reasons: string[]): string[] {
+  const grouped = new Map<string, string[]>();
+  const passthrough: string[] = [];
+
+  for (const reason of reasons) {
+    const separatorIndex = reason.indexOf(":");
+    if (separatorIndex === -1) {
+      passthrough.push(reason);
+      continue;
+    }
+
+    const label = reason.slice(0, separatorIndex).trim();
+    const value = reason.slice(separatorIndex + 1).trim();
+    if (!label || !value) {
+      passthrough.push(reason);
+      continue;
+    }
+
+    const items = value.split(",").map((item) => item.trim()).filter(Boolean);
+    const existing = grouped.get(label) ?? [];
+    grouped.set(label, existing.concat(items.length > 0 ? items : [value]));
+  }
+
+  const summary: string[] = [];
+  for (const [label, values] of grouped) {
+    if (values.length === 1) {
+      summary.push(`${label}: ${values[0]}`);
+      continue;
+    }
+    summary.push(`${label}: ${values.length} items. Examples: ${summarizeReasonValues(values)}`);
+  }
+
+  return [...summary, ...passthrough];
+}
+
+function renderKeyValueTable(rows: Array<[string, string]>): string[] {
+  const normalized = rows.filter(([, value]) => value.trim().length > 0);
+  if (normalized.length === 0) {
+    return [];
+  }
+
+  const keyWidth = Math.max(...normalized.map(([key]) => key.length));
+  const valueWidth = Math.max(...normalized.map(([, value]) => value.length));
+  const border = `+${"-".repeat(keyWidth + 2)}+${"-".repeat(valueWidth + 2)}+`;
+
+  return [
+    border,
+    ...normalized.map(([key, value]) => `| ${key.padEnd(keyWidth)} | ${value.padEnd(valueWidth)} |`),
+    border,
+  ];
+}
+
 function printReviewReport(report: ReviewReport): void {
   const committedFiles = report.committed_files ?? report.changed_files ?? [];
-  console.log("Human review required for pushed commits:");
-  console.log(`- Base: ${report.base ?? "unknown"}`);
-  console.log(`- Review scope files: ${committedFiles.length}`);
-  for (const trigger of report.triggers ?? []) {
-    console.log(`- [${trigger.severity}] ${trigger.name}`);
-    for (const reason of trigger.reasons ?? []) {
-      console.log(`  - ${reason}`);
-    }
-  }
+  const triggers = report.triggers ?? [];
+  const diffStats = report.diff_stats;
   const workingTreeFiles = report.working_tree_files ?? [];
   const untrackedFiles = report.untracked_files ?? [];
+  const residueSummary = [
+    workingTreeFiles.length > 0 ? `${workingTreeFiles.length} tracked` : "",
+    untrackedFiles.length > 0 ? `${untrackedFiles.length} untracked` : "",
+  ]
+    .filter(Boolean)
+    .join(", ");
+
+  console.log(
+    `Human review required: ${triggers.length} trigger${triggers.length === 1 ? "" : "s"} across ${committedFiles.length} committed file${committedFiles.length === 1 ? "" : "s"}.`,
+  );
+  for (const line of renderKeyValueTable([
+    ["Base", report.base ?? "unknown"],
+    ["Committed files", String(committedFiles.length)],
+    ["Trigger count", String(triggers.length)],
+    ["Diff files", diffStats?.file_count === undefined ? "" : String(diffStats.file_count)],
+    ["Added lines", diffStats?.added_lines === undefined ? "" : String(diffStats.added_lines)],
+    ["Deleted lines", diffStats?.deleted_lines === undefined ? "" : String(diffStats.deleted_lines)],
+    ["Workspace residue", residueSummary],
+  ])) {
+    console.log(line);
+  }
+  if (triggers.length > 0) {
+    console.log("Matched triggers:");
+  }
+  for (const trigger of triggers) {
+    const reasons = summarizeTriggerReasons(trigger.reasons ?? []);
+    const title = titleCaseTriggerName(trigger.name);
+    const reasonCount = trigger.reasons?.length ?? 0;
+    console.log(`- [${trigger.severity}] ${title}${reasonCount > 0 ? ` (${reasonCount} signal${reasonCount === 1 ? "" : "s"})` : ""}`);
+    for (const reason of reasons.slice(0, 3)) {
+      console.log(`  - ${reason}`);
+    }
+    if (reasons.length > 3) {
+      console.log(`  - ... ${reasons.length - 3} more summarized reason${reasons.length - 3 === 1 ? "" : "s"}`);
+    }
+  }
   if (workingTreeFiles.length > 0 || untrackedFiles.length > 0) {
     console.log("");
-    console.log("Local workspace residue not included in push decision:");
+    console.log("Local workspace residue excluded from push review:");
     if (workingTreeFiles.length > 0) {
       console.log(`- tracked but uncommitted: ${workingTreeFiles.length}`);
     }
@@ -230,6 +331,12 @@ async function parseDecision(
     const message =
       `Automatic review specialist failed, so the push is blocked. ${detail} ` +
       `Fix the review environment and rerun, or set ${REVIEW_UNAVAILABLE_BYPASS_ENV}=1 to bypass intentionally.`;
+    if (outputMode === "human") {
+      console.log("Automatic review specialist unavailable.");
+      console.log(`- ${detail}`);
+      console.log(`- Fix the review environment and rerun, or set ${REVIEW_UNAVAILABLE_BYPASS_ENV}=1 to bypass intentionally.`);
+      console.log("");
+    }
     return buildResultBase(base, report, "unavailable", false, false, message);
   }
 }
@@ -347,6 +454,12 @@ export async function runReviewTriggerPhase(outputMode: "human" | "jsonl" = "hum
     const message =
       `Unable to evaluate review triggers. Blocking push because the review gate could not be evaluated. ` +
       `Fix the review environment and rerun, or set ${REVIEW_UNAVAILABLE_BYPASS_ENV}=1 to bypass intentionally.`;
+    if (outputMode === "human") {
+      console.log("Review trigger evaluation unavailable.");
+      console.log("- Unable to evaluate review-trigger rules for the current push scope.");
+      console.log(`- Fix the review environment and rerun, or set ${REVIEW_UNAVAILABLE_BYPASS_ENV}=1 to bypass intentionally.`);
+      console.log("");
+    }
     return buildResultBase(reviewBase, report, "unavailable", false, false, message);
   }
 
