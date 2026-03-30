@@ -216,20 +216,6 @@ export default function HarnessSettingsPage() {
             variant="compact"
           />
         );
-      case "agent-hook":
-        return (
-          <HarnessAgentHookPanel
-            workspaceId={workspaceId}
-            codebaseId={activeRepoCodebaseId}
-            repoPath={activeRepoPath}
-            repoLabel={selectedRepoLabel}
-            unsupportedMessage={unsupportedRepoMessage}
-            data={agentHooksState.data}
-            loading={agentHooksState.loading}
-            error={agentHooksState.error}
-            variant="compact"
-          />
-        );
       default:
         return (
           <div className="space-y-3">
@@ -252,9 +238,6 @@ export default function HarnessSettingsPage() {
   }, [
     activeRepoCodebaseId,
     activeRepoPath,
-    agentHooksState.data,
-    agentHooksState.error,
-    agentHooksState.loading,
     githubActionsState.data,
     githubActionsState.error,
     githubActionsState.loading,
@@ -368,8 +351,6 @@ export default function HarnessSettingsPage() {
           workflowError={githubActionsState.error}
           instructionsData={instructionsState.data}
           instructionsError={instructionsState.error}
-          agentHooksData={agentHooksState.data}
-          agentHooksError={agentHooksState.error}
           fitnessFiles={specFiles}
           selectedNodeId={selectedGovernanceNodeId}
           onSelectedNodeChange={setSelectedGovernanceNodeId}

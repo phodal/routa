@@ -17,7 +17,6 @@ import type {
   FitnessSpecSummary,
   GitHubActionsFlow,
   GitHubActionsFlowsResponse,
-  AgentHooksResponse,
   HooksResponse,
   InstructionsResponse,
 } from "@/client/hooks/use-harness-settings-data";
@@ -44,12 +43,6 @@ type InstructionSummary = {
   fallbackUsed: boolean;
 };
 
-type AgentHookSummary = {
-  hookCount: number;
-  blockingCount: number;
-  eventCount: number;
-};
-
 type LoopDetailSection = {
   title: string;
   items: string[];
@@ -70,8 +63,6 @@ type HarnessGovernanceLoopGraphProps = {
   workflowError?: string | null;
   instructionsData?: InstructionsResponse | null;
   instructionsError?: string | null;
-  agentHooksData?: AgentHooksResponse | null;
-  agentHooksError?: string | null;
   fitnessFiles?: FitnessSpecSummary[];
   selectedNodeId?: string;
   onSelectedNodeChange?: (nodeId: string) => void;
@@ -301,7 +292,6 @@ function buildGraph(args: {
   hookSummary: HookSummary | null;
   instructionSummary: InstructionSummary | null;
   workflowSummary: WorkflowSummary | null;
-  agentHookSummary: AgentHookSummary | null;
   metricCount: number;
   hardGateCount: number;
   selectedNodeId: string;
@@ -311,23 +301,21 @@ function buildGraph(args: {
     hookSummary,
     instructionSummary,
     workflowSummary,
-    agentHookSummary,
     metricCount,
     hardGateCount,
     selectedNodeId,
     onSelectNode,
   } = args;
 
-  const selectableNodeIds = new Set(["build", "test", "precommit", "review", "post-commit", "release", "agent-hook"]);
+  const selectableNodeIds = new Set(["build", "test", "precommit", "review", "post-commit", "release"]);
 
   const navigationGraph: Record<string, Partial<Record<"up" | "down" | "left" | "right", string>>> = {
-    build: { right: "test", down: "review", left: "agent-hook" },
+    build: { right: "test", down: "review" },
     test: { left: "build", down: "precommit" },
     precommit: { up: "test", left: "review" },
     review: { up: "build", right: "precommit", left: "post-commit" },
     "post-commit": { right: "review", down: "release" },
     release: { up: "post-commit" },
-    "agent-hook": { right: "build", down: "commit" },
   };
   const handleNavigate = (currentNodeId: string, direction: "up" | "down" | "left" | "right") => {
     const nextNodeId = navigationGraph[currentNodeId]?.[direction];
@@ -361,7 +349,6 @@ function buildGraph(args: {
   };
   const commitRowY = 268;
   const internalRowY = 86;
-  const col0X = 0;
   const col1X = 128;
   const col2X = 330;
   const col3X = 532;
@@ -369,17 +356,6 @@ function buildGraph(args: {
   const externalRowY = 482;
 
   const nodes: Node<LoopNodeData>[] = [
-    buildNode("agent-hook", col0X, internalRowY, {
-      nodeId: "agent-hook",
-      layer: "internal",
-      title: "Agent 治理",
-      tone: "violet",
-      note: agentHookSummary
-        ? `${agentHookSummary.hookCount} hooks / ${agentHookSummary.blockingCount} blocking`
-        : "Agent hook lifecycle",
-      active: Boolean(agentHookSummary),
-      ...buildSelectionState("agent-hook", true),
-    }),
     buildNode("thinking", col1X, internalRowY, {
       nodeId: "thinking",
       layer: "internal",
@@ -499,7 +475,6 @@ function buildGraph(args: {
   ];
 
   const edges: Edge[] = [
-    buildEdge("agent-hook-build", "agent-hook", "build", "source-right", "target-left", "治理", "#8b5cf6", "6 4"),
     buildEdge("thinking-coding", "thinking", "coding", "source-right", "target-left", "澄清", "#64748b"),
     buildEdge("coding-build", "coding", "build", "source-right", "target-left", "实现", "#0ea5e9"),
     buildEdge("build-test", "build", "test", "source-right", "target-left", "验证", "#10b981"),
@@ -576,7 +551,6 @@ function buildDetailSections(args: {
   hooksData: HooksResponse | null;
   workflowData: GitHubActionsFlowsResponse | null;
   instructionSummary: InstructionSummary | null;
-  agentHookSummary: AgentHookSummary | null;
   fitnessFiles: FitnessSpecSummary[];
   dimensionCount: number;
   metricCount: number;
@@ -588,7 +562,6 @@ function buildDetailSections(args: {
     hooksData,
     workflowData,
     instructionSummary,
-    agentHookSummary,
     fitnessFiles,
     dimensionCount,
     metricCount,
@@ -638,12 +611,6 @@ function buildDetailSections(args: {
         { title: "Context", items: ["当前节点受 instructions 面板支撑"] },
         { title: "Rulebook", items: primaryRuleFiles.length ? primaryRuleFiles.slice(0, 4) : ["当前页未发现 rulebook / manifest"] },
       ] satisfies LoopDetailSection[];
-    case "agent-hook":
-      return [
-        { title: "Agent hooks", items: agentHookSummary ? [`${agentHookSummary.hookCount} hooks`, `${agentHookSummary.blockingCount} blocking`, `${agentHookSummary.eventCount} events configured`] : ["当前页未发现 agent hook 配置"] },
-        { title: "Core events", items: ["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "Stop"] },
-        { title: "Related surface", items: ["Agent hook system panel", "Agent instructions"] },
-      ] satisfies LoopDetailSection[];
     default:
       return [
         { title: "Current page signals", items: ["亮色节点可点击，灰色节点表示当前没有对应 panel", "点击 `编码实现`、`本地验证`、`变更门禁`、`代码评审`、`持续交付` 或 `制品发布` 查看上下文"] },
@@ -667,8 +634,6 @@ export function HarnessGovernanceLoopGraph({
   workflowError,
   instructionsData,
   instructionsError,
-  agentHooksData,
-  agentHooksError,
   fitnessFiles = [],
   selectedNodeId,
   onSelectedNodeChange,
@@ -714,24 +679,11 @@ export function HarnessGovernanceLoopGraph({
     } satisfies InstructionSummary;
   }, [instructionsData]);
 
-  const agentHookSummary = useMemo(() => {
-    if (!agentHooksData || !agentHooksData.hooks?.length) {
-      return null;
-    }
-    const events = new Set(agentHooksData.hooks.map((hook) => hook.event));
-    return {
-      hookCount: agentHooksData.hooks.length,
-      blockingCount: agentHooksData.hooks.filter((hook) => hook.blocking).length,
-      eventCount: events.size,
-    } satisfies AgentHookSummary;
-  }, [agentHooksData]);
-
   const graph = useMemo(
     () => buildGraph({
       hookSummary,
       instructionSummary,
       workflowSummary,
-      agentHookSummary,
       metricCount,
       hardGateCount,
       selectedNodeId: activeSelectedNodeId,
@@ -743,11 +695,11 @@ export function HarnessGovernanceLoopGraph({
         setInternalSelectedNodeId(nodeId);
       },
     }),
-    [activeSelectedNodeId, agentHookSummary, hardGateCount, hookSummary, instructionSummary, metricCount, onSelectedNodeChange, workflowSummary],
+    [activeSelectedNodeId, hardGateCount, hookSummary, instructionSummary, metricCount, onSelectedNodeChange, workflowSummary],
   );
 
   const graphIssues = [...new Set(
-    [specsError, planError, hooksError, workflowError, instructionsError, agentHooksError]
+    [specsError, planError, hooksError, workflowError, instructionsError]
       .filter((issue): issue is string => Boolean(issue)),
   )];
   const detailSections = useMemo(
@@ -756,14 +708,13 @@ export function HarnessGovernanceLoopGraph({
       hooksData: hooksData ?? null,
       workflowData: workflowData ?? null,
       instructionSummary,
-      agentHookSummary,
       fitnessFiles,
       dimensionCount,
       metricCount,
       hardGateCount,
       selectedTier,
     }),
-    [activeSelectedNodeId, agentHookSummary, dimensionCount, fitnessFiles, hardGateCount, hooksData, instructionSummary, metricCount, selectedTier, workflowData],
+    [activeSelectedNodeId, dimensionCount, fitnessFiles, hardGateCount, hooksData, instructionSummary, metricCount, selectedTier, workflowData],
   );
 
   return (

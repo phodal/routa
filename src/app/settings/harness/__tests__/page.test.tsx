@@ -110,6 +110,12 @@ vi.mock("@/client/components/harness-hook-runtime-panel", () => ({
   HarnessHookRuntimePanel: () => <div data-testid="hook-runtime-panel" />,
 }));
 
+vi.mock("@/client/components/harness-agent-hook-panel", () => ({
+  HarnessAgentHookPanel: ({ variant = "full" }: { variant?: "full" | "compact" }) => (
+    <div data-testid={`agent-hook-panel-${variant}`}>Agent hook system</div>
+  ),
+}));
+
 vi.mock("@/client/components/harness-repo-signals-panel", () => ({
   HarnessRepoSignalsPanel: () => <div data-testid="repo-signals-panel" />,
 }));
@@ -202,6 +208,13 @@ vi.mock("@/client/hooks/use-harness-settings-data", () => ({
         hookFiles: [],
       },
     },
+    agentHooksState: {
+      loading: false,
+      error: null,
+      data: {
+        hooks: [],
+      },
+    },
     instructionsState: {
       loading: false,
       error: null,
@@ -221,6 +234,7 @@ vi.mock("@/client/hooks/use-harness-settings-data", () => ({
         flows: [],
       },
     },
+    reloadInstructions: vi.fn(async () => {}),
   }),
 }));
 
