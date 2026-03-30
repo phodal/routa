@@ -36,6 +36,7 @@ type WorkflowSummary = {
   jobCount: number;
   remoteSignals: string[];
   hasRepairLoop: boolean;
+  releaseFlowCount: number;
 };
 
 type InstructionSummary = {
@@ -288,6 +289,15 @@ function detectRepairLoop(flows: GitHubActionsFlow[]) {
   });
 }
 
+function detectReleaseWorkflows(flows: GitHubActionsFlow[]) {
+  const releaseKeywords = ["release", "publish", "deploy"];
+  return flows.filter((flow) => {
+    const id = flow.id.toLowerCase();
+    const name = flow.name.toLowerCase();
+    return releaseKeywords.some((keyword) => id.includes(keyword) || name.includes(keyword));
+  }).length;
+}
+
 function buildGraph(args: {
   hookSummary: HookSummary | null;
   instructionSummary: InstructionSummary | null;
@@ -442,8 +452,10 @@ function buildGraph(args: {
       layer: "external",
       title: "制品发布",
       tone: "amber",
-      note: "artifact / release",
-      active: false,
+      note: workflowSummary && workflowSummary.releaseFlowCount > 0
+        ? `${workflowSummary.releaseFlowCount} release flows`
+        : "artifact / release",
+      active: Boolean(workflowSummary && workflowSummary.releaseFlowCount > 0),
       ...buildSelectionState("release", true),
     }),
     buildNode("staging", col2X, externalRowY, {
@@ -674,6 +686,7 @@ export function HarnessGovernanceLoopGraph({
       jobCount: flows.reduce((sum, flow) => sum + (flow.jobs?.length ?? 0), 0),
       remoteSignals: summarizeSignals(flows),
       hasRepairLoop: detectRepairLoop(flows),
+      releaseFlowCount: detectReleaseWorkflows(flows),
     } satisfies WorkflowSummary;
   }, [workflowData]);
   const instructionSummary = useMemo(() => {
