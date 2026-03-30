@@ -95,6 +95,16 @@ function parseInstructionSections(source: string) {
   };
 }
 
+function getAuditStatusClass(status: "ok" | "heuristic" | "error") {
+  if (status === "ok") {
+    return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  }
+  if (status === "heuristic") {
+    return "border-amber-200 bg-amber-50 text-amber-700";
+  }
+  return "border-red-200 bg-red-50 text-red-700";
+}
+
 export function HarnessAgentInstructionsPanel({
   workspaceId,
   codebaseId,
@@ -144,6 +154,7 @@ export function HarnessAgentInstructionsPanel({
           query.set("codebaseId", codebaseId);
         }
         query.set("repoPath", repoPath);
+        query.set("includeAudit", "1");
 
         const response = await fetch(`/api/harness/instructions?${query.toString()}`);
         const payload = await response.json().catch(() => ({}));
@@ -260,6 +271,7 @@ export function HarnessAgentInstructionsPanel({
     ? "grid-cols-1 xl:grid-cols-[minmax(220px,0.82fr)_minmax(0,1.18fr)]"
     : "xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]";
   const contentPanelHeightClass = compactMode ? "h-[320px]" : "h-[380px]";
+  const auditSummary = resolvedInstructionsState.data?.audit ?? null;
 
   return (
     <section className={variant === "compact"
@@ -288,6 +300,78 @@ export function HarnessAgentInstructionsPanel({
           ) : null}
         </div>
       </div>
+
+      {!compactMode && auditSummary ? (
+        <div className="mt-3 rounded-xl border border-desktop-border bg-desktop-bg-secondary/50 px-3 py-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-desktop-text-secondary">
+              Instruction audit
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold ${getAuditStatusClass(auditSummary.status)}`}>
+                {auditSummary.status === "ok"
+                  ? "specialist"
+                  : auditSummary.status === "heuristic"
+                    ? "heuristic fallback"
+                    : "error"}
+              </span>
+              <span className="text-[10px] text-desktop-text-secondary">
+                {auditSummary.provider} · {(auditSummary.durationMs / 1000).toFixed(1)}s
+              </span>
+            </div>
+          </div>
+
+          {auditSummary.status === "error" ? (
+            <div className="mt-2 rounded-lg border border-red-200 bg-red-50 px-2.5 py-2 text-[11px] text-red-700">
+              {auditSummary.error ?? "Audit execution failed."}
+            </div>
+          ) : (
+            <>
+              <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
+                <div className="rounded-lg border border-desktop-border bg-desktop-bg-primary/80 px-2.5 py-2">
+                  <div className="text-[9px] font-semibold uppercase tracking-[0.12em] text-desktop-text-secondary">Total</div>
+                  <div className="mt-1 text-sm font-semibold text-desktop-text-primary">
+                    {auditSummary.totalScore == null ? "—" : `${auditSummary.totalScore}/20`}
+                  </div>
+                </div>
+                <div className="rounded-lg border border-desktop-border bg-desktop-bg-primary/80 px-2.5 py-2">
+                  <div className="text-[9px] font-semibold uppercase tracking-[0.12em] text-desktop-text-secondary">Routing</div>
+                  <div className="mt-1 text-sm font-semibold text-desktop-text-primary">
+                    {auditSummary.principles.routing == null ? "—" : `${auditSummary.principles.routing}/5`}
+                  </div>
+                </div>
+                <div className="rounded-lg border border-desktop-border bg-desktop-bg-primary/80 px-2.5 py-2">
+                  <div className="text-[9px] font-semibold uppercase tracking-[0.12em] text-desktop-text-secondary">Protection</div>
+                  <div className="mt-1 text-sm font-semibold text-desktop-text-primary">
+                    {auditSummary.principles.protection == null ? "—" : `${auditSummary.principles.protection}/5`}
+                  </div>
+                </div>
+                <div className="rounded-lg border border-desktop-border bg-desktop-bg-primary/80 px-2.5 py-2">
+                  <div className="text-[9px] font-semibold uppercase tracking-[0.12em] text-desktop-text-secondary">Reflection</div>
+                  <div className="mt-1 text-sm font-semibold text-desktop-text-primary">
+                    {auditSummary.principles.reflection == null ? "—" : `${auditSummary.principles.reflection}/5`}
+                  </div>
+                </div>
+                <div className="rounded-lg border border-desktop-border bg-desktop-bg-primary/80 px-2.5 py-2">
+                  <div className="text-[9px] font-semibold uppercase tracking-[0.12em] text-desktop-text-secondary">Verification</div>
+                  <div className="mt-1 text-sm font-semibold text-desktop-text-primary">
+                    {auditSummary.principles.verification == null ? "—" : `${auditSummary.principles.verification}/5`}
+                  </div>
+                </div>
+              </div>
+              <div className="mt-2 text-[11px] text-desktop-text-secondary">
+                {auditSummary.overall ? `结论：${auditSummary.overall}` : "结论：—"}
+                {auditSummary.oneSentence ? ` · ${auditSummary.oneSentence}` : ""}
+              </div>
+              {auditSummary.error ? (
+                <div className="mt-1 text-[10px] text-amber-700">
+                  {auditSummary.error}
+                </div>
+              ) : null}
+            </>
+          )}
+        </div>
+      ) : null}
 
       {resolvedInstructionsState.loading ? (
         <div className="mt-4 rounded-xl border border-desktop-border bg-desktop-bg-secondary/55 px-4 py-5 text-[11px] text-desktop-text-secondary">

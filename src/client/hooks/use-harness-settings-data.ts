@@ -121,6 +121,22 @@ export type InstructionsResponse = {
   relativePath: string;
   source: string;
   fallbackUsed: boolean;
+  audit: {
+    status: "ok" | "heuristic" | "error";
+    provider: string;
+    generatedAt: string;
+    durationMs: number;
+    totalScore: number | null;
+    overall: "通过" | "有条件通过" | "不通过" | null;
+    oneSentence: string | null;
+    principles: {
+      routing: number | null;
+      protection: number | null;
+      reflection: number | null;
+      verification: number | null;
+    };
+    error?: string;
+  } | null;
 };
 
 export type GitHubActionsJob = {
@@ -330,7 +346,9 @@ export function useHarnessSettingsData({
     const fetchInstructions = async () => {
       setInstructionsState((current) => ({ ...current, loading: true, error: null }));
       try {
-        const response = await fetch(`/api/harness/instructions?${baseQuery.toString()}`);
+        const query = new URLSearchParams(baseQuery);
+        query.set("includeAudit", "1");
+        const response = await fetch(`/api/harness/instructions?${query.toString()}`);
         const payload = await response.json().catch(() => ({}));
         if (!response.ok) {
           throw new Error(typeof payload?.details === "string" ? payload.details : "Failed to load guidance document");

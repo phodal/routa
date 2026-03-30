@@ -27,6 +27,21 @@ const instructionsData: InstructionsResponse = {
     "Coding details.",
   ].join("\n"),
   fallbackUsed: false,
+  audit: {
+    status: "ok",
+    provider: "codex",
+    generatedAt: "2026-03-29T00:00:01.000Z",
+    durationMs: 1260,
+    totalScore: 16,
+    overall: "通过",
+    oneSentence: "路由、防护、反思、验证均达到工程化可执行标准。",
+    principles: {
+      routing: 4,
+      protection: 4,
+      reflection: 4,
+      verification: 4,
+    },
+  },
 };
 
 describe("HarnessAgentInstructionsPanel", () => {
@@ -57,8 +72,11 @@ describe("HarnessAgentInstructionsPanel", () => {
     );
 
     expect(screen.getByText("Instruction file")).not.toBeNull();
+    expect(screen.getByText("Instruction audit")).not.toBeNull();
     expect(screen.getAllByText("CLAUDE.md").length).toBeGreaterThan(0);
     expect(screen.getByText("preferred CLAUDE.md")).not.toBeNull();
+    expect(screen.getByText("16/20")).not.toBeNull();
+    expect(screen.getAllByText("4/5").length).toBeGreaterThanOrEqual(4);
     expect(screen.getByText((content) => content.includes("# Routa.js"))).not.toBeNull();
   });
 });
