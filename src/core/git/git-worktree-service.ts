@@ -6,13 +6,13 @@
  */
 
 import fs from "fs/promises";
-import os from "os";
 import path from "path";
 import { getServerBridge } from "@/core/platform";
 import type { WorktreeStore } from "../db/pg-worktree-store";
 import type { CodebaseStore } from "../db/pg-codebase-store";
 import type { Worktree } from "../models/worktree";
 import { createWorktree } from "../models/worktree";
+import { getDefaultWorkspaceWorktreeRoot } from "../models/workspace";
 
 /**
  * Shell-escape a single argument for safe interpolation.
@@ -40,13 +40,6 @@ async function execGit(
  */
 function branchToSafeDirName(branch: string): string {
   return branch.replace(/[^a-zA-Z0-9._-]/g, "-");
-}
-
-/**
- * Get the base directory for worktrees: ~/.routa/worktrees/
- */
-function getWorktreeBaseDir(): string {
-  return path.join(os.homedir(), ".routa", "worktrees");
 }
 
 export class GitWorktreeService {
@@ -95,6 +88,7 @@ export class GitWorktreeService {
       branch?: string;
       baseBranch?: string;
       label?: string;
+      worktreeRoot?: string;
     } = {}
   ): Promise<Worktree> {
     const codebase = await this.codebaseStore.get(codebaseId);
@@ -126,12 +120,15 @@ export class GitWorktreeService {
         );
       }
 
+      const worktreeRoot = options.worktreeRoot ?? getDefaultWorkspaceWorktreeRoot(codebase.workspaceId);
+      const codebaseDir = branchToSafeDirName(codebase.label?.trim() || codebaseId);
+      const worktreeDir = branchToSafeDirName(options.label?.trim() || branch);
+
       // Compute worktree path
       const worktreePath = path.join(
-        getWorktreeBaseDir(),
-        codebase.workspaceId,
-        codebaseId,
-        branchToSafeDirName(branch)
+        worktreeRoot,
+        codebaseDir,
+        worktreeDir,
       );
 
       // Create DB record
