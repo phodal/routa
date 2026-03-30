@@ -79,7 +79,6 @@ export function FluencySettingsPageClient({ defaultRepoPath }: FluencySettingsPa
   }, [activeCodebase, codebases, initialRepoPath, selectedRepoOverride]);
 
   const activeRepoCodebaseId = matchedSelectedCodebase?.id;
-  const selectedRepoLabel = activeRepoSelection?.name ?? activeCodebase?.label ?? "Repository";
 
   return (
     <SettingsRouteShell
@@ -158,7 +157,6 @@ export function FluencySettingsPageClient({ defaultRepoPath }: FluencySettingsPa
           workspaceId={workspaceId}
           codebaseId={activeRepoCodebaseId}
           repoPath={activeRepoSelection?.path}
-          codebaseLabel={selectedRepoLabel}
         />
       </div>
     </SettingsRouteShell>

@@ -1,8 +1,9 @@
 "use client";
 
-import { Fragment, useMemo, type ReactNode } from "react";
+import { useMemo, type ReactNode } from "react";
 
 import { useTranslation } from "@/i18n";
+import type { TranslationDictionary } from "@/i18n/types";
 
 import {
   buildFitnessDashboardModel,
@@ -11,7 +12,6 @@ import {
 } from "./fitness-analysis-dashboard-model";
 import {
   formatTime,
-  humanizeToken,
   type FitnessReport,
 } from "./fitness-analysis-types";
 
@@ -31,6 +31,22 @@ function gridTone(score: number) {
   if (score >= 60) return "rgba(245, 158, 11, 0.18)";
   return "rgba(244, 63, 94, 0.18)";
 }
+
+const HEATMAP_DIMENSIONS = [
+  { key: "collaboration", translationKey: "collaboration" },
+  { key: "sdlc", translationKey: "sdlc" },
+  { key: "harness", translationKey: "harness" },
+  { key: "governance", translationKey: "governance" },
+  { key: "context", translationKey: "context" },
+] as const;
+
+const HEATMAP_LEVELS = [
+  { key: "awareness", translationKey: "awareness" },
+  { key: "assisted_coding", translationKey: "assistedCoding" },
+  { key: "structured_ai_coding", translationKey: "structuredAiCoding" },
+  { key: "agent_centric", translationKey: "agentCentric" },
+  { key: "agent_first", translationKey: "agentFirst" },
+] as const;
 
 function polarToCartesian(cx: number, cy: number, radius: number, angleDeg: number) {
   const angle = (angleDeg - 90) * (Math.PI / 180);
@@ -316,6 +332,7 @@ function Heatmap({
   levels,
   dimensions,
   cells,
+  matrix,
   emptyText,
 }: {
   levels: string[];
@@ -330,9 +347,13 @@ function Heatmap({
     passedWeight: number;
     applicableWeight: number;
   }>;
+  matrix: TranslationDictionary["fitness"]["matrix"];
   emptyText: string;
 }) {
-  if (levels.length === 0 || dimensions.length === 0) {
+  const orderedDimensions = HEATMAP_DIMENSIONS.filter(({ key }) => dimensions.includes(key));
+  const orderedLevels = HEATMAP_LEVELS.filter(({ key }) => levels.includes(key));
+
+  if (orderedLevels.length === 0 || orderedDimensions.length === 0) {
     return (
       <div className="rounded-2xl border border-dashed border-desktop-border px-4 py-8 text-sm text-desktop-text-secondary">
         {emptyText}
@@ -344,43 +365,63 @@ function Heatmap({
 
   return (
     <div className="overflow-x-auto">
-      <div className="min-w-[720px]">
+      <div className="min-w-[860px]">
         <div
           className="grid gap-2"
-          style={{ gridTemplateColumns: `minmax(180px, 1.3fr) repeat(${levels.length}, minmax(96px, 1fr))` }}
+          style={{ gridTemplateColumns: `minmax(180px, 1.2fr) repeat(${orderedDimensions.length}, minmax(120px, 1fr))` }}
+          role="table"
+          aria-label="Fluency heatmap"
         >
           <div />
-          {levels.map((level) => (
-            <div key={level} className="px-2 text-center text-[11px] font-semibold uppercase tracking-[0.12em] text-desktop-text-secondary">
-              {humanizeToken(level)}
+          {orderedDimensions.map(({ key, translationKey }) => (
+            <div
+              key={key}
+              className="rounded-2xl border border-desktop-border bg-desktop-bg-primary/80 px-3 py-3 text-center"
+              role="columnheader"
+            >
+              <div className="text-[11px] font-semibold leading-4 text-desktop-text-primary">
+                {matrix[translationKey].title.map((line) => (
+                  <div key={`${key}-${line}`}>{line}</div>
+                ))}
+              </div>
+              <div className="mt-1 text-[10px] leading-4 text-desktop-text-secondary">
+                {matrix[translationKey].subtitle}
+              </div>
             </div>
           ))}
 
-          {dimensions.map((dimension) => {
-            const rowLabel = cells.find((cell) => cell.dimension === dimension)?.dimensionLabel ?? humanizeToken(dimension);
-            return (
-              <Fragment key={dimension}>
-                <div key={`${dimension}-label`} className="flex items-center px-2 text-sm font-semibold text-desktop-text-primary">
-                  {rowLabel}
+          {orderedLevels.flatMap(({ key, translationKey }) => [
+            <div
+              key={`${key}-label`}
+              className="flex flex-col justify-center rounded-2xl border border-desktop-border bg-desktop-bg-primary/70 px-3 py-3"
+              role="rowheader"
+            >
+              <div className="text-[11px] font-semibold leading-4 text-desktop-text-primary">
+                {matrix[translationKey].title.map((line) => (
+                  <div key={`${key}-${line}`}>{line}</div>
+                ))}
+              </div>
+              <div className="mt-1 text-[10px] leading-4 text-desktop-text-secondary">
+                {matrix[translationKey].subtitle}
+              </div>
+            </div>,
+            ...orderedDimensions.map(({ key: dimensionKey }) => {
+              const cell = cellMap.get(`${dimensionKey}:${key}`);
+              return (
+                <div
+                  key={`${dimensionKey}:${key}`}
+                  className="rounded-2xl border border-desktop-border px-3 py-3 text-center"
+                  style={{ backgroundColor: gridTone(cell?.score ?? 0) }}
+                  role="cell"
+                >
+                  <div className="text-lg font-semibold text-desktop-text-primary">{cell ? `${cell.score}%` : "0%"}</div>
+                  <div className="mt-1 text-[11px] text-desktop-text-secondary">
+                    {cell ? `${cell.passedWeight}/${cell.applicableWeight}` : "0/0"}
+                  </div>
                 </div>
-                {levels.map((level) => {
-                  const cell = cellMap.get(`${dimension}:${level}`);
-                  return (
-                    <div
-                      key={`${dimension}:${level}`}
-                      className="rounded-2xl border border-desktop-border px-3 py-3 text-center"
-                      style={{ backgroundColor: gridTone(cell?.score ?? 0) }}
-                    >
-                      <div className="text-lg font-semibold text-desktop-text-primary">{cell ? `${cell.score}%` : "0%"}</div>
-                      <div className="mt-1 text-[11px] text-desktop-text-secondary">
-                        {cell ? `${cell.passedWeight}/${cell.applicableWeight}` : "0/0"}
-                      </div>
-                    </div>
-                  );
-                })}
-              </Fragment>
-            );
-          })}
+              );
+            }),
+          ])}
         </div>
       </div>
     </div>
@@ -503,6 +544,7 @@ export function FitnessAnalysisDashboard({ report }: FitnessAnalysisDashboardPro
           levels={model.heatmapLevels}
           dimensions={model.heatmapDimensions}
           cells={model.heatmapCells}
+          matrix={t.fitness.matrix}
           emptyText={dashboard.noReport}
         />
       </Section>

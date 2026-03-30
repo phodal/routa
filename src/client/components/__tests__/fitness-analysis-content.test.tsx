@@ -113,12 +113,12 @@ describe("FitnessAnalysisContent overview", () => {
       />,
     );
 
-    expect(screen.getByRole("button", { name: "Task Delegation" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Process Expansion" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Workflow Loop" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Verification & Guardrails" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Context Readiness" })).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Verification & Guardrails" }));
+    expect(screen.getByRole("button", { name: "Human-AI Collaboration" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "SDLC Coverage" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "AI Engineering Harness" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Governance & Quality" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Context Engineering" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Governance & Quality" }));
     expect(screen.getByText("Current findings")).toBeTruthy();
     expect(screen.getByText("Recommended actions")).toBeTruthy();
     expect(screen.getByText("Without this")).toBeTruthy();

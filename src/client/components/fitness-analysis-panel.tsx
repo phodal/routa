@@ -26,7 +26,6 @@ type FitnessAnalysisPanelProps = {
   workspaceId?: string;
   codebaseId?: string;
   repoPath?: string;
-  codebaseLabel?: string;
 };
 
 const EMPTY_STATE: Record<FitnessProfile, ProfilePanelState> = {
@@ -236,6 +235,8 @@ function FitnessMatrix({
 
           {matrixColumns.map((column, index) => {
             const cx = plotX + (index + 0.5) * colW;
+            const titleLineHeight = 12 * 1.2;
+            const subtitleY = 34 + ((column.title.length - 1) * titleLineHeight) + 16;
             return (
               <g key={column.key}>
                 <SvgMultilineText
@@ -250,7 +251,7 @@ function FitnessMatrix({
                 {column.subtitle ? (
                   <text
                     x={cx}
-                    y={49}
+                    y={subtitleY}
                     fill={column.color}
                     fontSize={10}
                     fontWeight={700}
@@ -343,7 +344,6 @@ export function FitnessAnalysisPanel({
   workspaceId,
   codebaseId,
   repoPath,
-  codebaseLabel,
 }: FitnessAnalysisPanelProps) {
   const { t } = useTranslation();
   const fitness = t.fitness;
@@ -363,8 +363,6 @@ export function FitnessAnalysisPanel({
   const matrixColumns = buildMatrixColumns(fitness.matrix);
   const matrixRows = buildMatrixRows(fitness.matrix);
   const noDataText = fitness.panel.noData;
-  const contextLabel = codebaseLabel || repoPath || fitness.panel.noContext;
-
   const applyProfiles = useCallback((entries: ReturnType<typeof normalizeApiResponse>) => {
     setProfiles((current) => {
       const next = { ...current };
@@ -582,7 +580,7 @@ export function FitnessAnalysisPanel({
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div className="min-w-0">
             <div className="truncate text-[11px] uppercase tracking-[0.14em] text-desktop-text-secondary">
-              {heroModel.title} {fitness.panel.to} {fitness.panel.repoLabel} <span className="text-desktop-text-primary">{contextLabel}</span>
+              {heroModel.title}
             </div>
             <div className="mt-1 truncate text-[11px] leading-tight text-desktop-text-secondary">
               {heroModel.currentLevel} → {heroModel.targetLevel}

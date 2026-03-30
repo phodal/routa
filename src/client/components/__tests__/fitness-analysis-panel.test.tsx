@@ -34,7 +34,20 @@ const genericReport = {
   blockingTargetLevel: "agent_first",
   blockingTargetLevelName: "Agent-First",
   dimensions: {},
-  cells: [],
+  cells: [
+    {
+      id: "collaboration.structured_ai_coding",
+      level: "structured_ai_coding",
+      levelName: "Structured AI Coding",
+      dimension: "collaboration",
+      dimensionName: "Task Delegation",
+      score: 0.83,
+      passed: false,
+      passedWeight: 5,
+      applicableWeight: 6,
+      criteria: [],
+    },
+  ],
   criteria: [
     {
       id: "governance.agent_first.machine_readable_guardrails",
@@ -123,7 +136,6 @@ describe("FitnessAnalysisPanel", () => {
       <FitnessAnalysisPanel
         workspaceId="default"
         repoPath="/Users/phodal/ai/routa-js"
-        codebaseLabel="routa-js"
       />,
     );
 
@@ -131,8 +143,10 @@ describe("FitnessAnalysisPanel", () => {
       expect(screen.getByText(/Generic/)).toBeTruthy();
     });
 
-    expect(screen.getByText("routa-js")).toBeTruthy();
+    expect(screen.queryByText("routa-js")).toBeNull();
     expect(screen.getAllByText(/Blockers/i).length).toBeGreaterThan(0);
+    expect(screen.getByText("83%")).toBeTruthy();
+    expect(screen.getByText("5/6")).toBeTruthy();
     expect(screen.getByTestId("fitness-dashboard")).toBeTruthy();
     expect(screen.getByTestId("fitness-analysis-content").textContent).toBe("overview");
     expect(screen.queryByText("Report Controls")).toBeNull();
