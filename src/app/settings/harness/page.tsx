@@ -48,7 +48,7 @@ export default function HarnessSettingsPage() {
   });
   const [selectedTier, setSelectedTier] = useState<TierValue>("normal");
   const [selectedSpecName, setSelectedSpecName] = useState("");
-  const [selectedGovernanceNodeId, setSelectedGovernanceNodeId] = useState<string | null>(null);
+  const [selectedGovernanceNodeId, setSelectedGovernanceNodeId] = useState<string | null>("build");
 
   const persistedRepoSelection = useMemo(
     () => loadRepoSelection("harness", workspaceId),
