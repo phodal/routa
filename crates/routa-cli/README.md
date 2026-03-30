@@ -6,11 +6,29 @@ capabilities used by the web and desktop runtimes.
 
 ## Installation
 
+### Via Cargo (Rust)
+
 Install from crates.io:
 
 ```bash
 cargo install routa-cli
 ```
+
+### Via NPM (Node.js)
+
+The CLI is also available via npm with prebuilt binaries:
+
+```bash
+npm install -g routa-cli
+```
+
+Or run without installing:
+
+```bash
+npx -p routa-cli routa --help
+```
+
+### From Source
 
 Install the CLI from the current checkout:
 

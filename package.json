@@ -37,6 +37,7 @@
     "build:docker": "ROUTA_DESKTOP_STANDALONE=1 next build && node scripts/build/build-docker.mjs",
     "start": "next start",
     "release:sync-version": "node scripts/release/sync-release-version.mjs",
+    "release:publish": "bash scripts/release/publish.sh",
     "storybook": "storybook dev -p 6006",
     "storybook:build": "storybook build",
     "storybook:governance": "node scripts/validate-storybook-governance.mjs",
