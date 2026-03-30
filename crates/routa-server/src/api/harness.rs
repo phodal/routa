@@ -14,6 +14,10 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 use tokio::process::Command;
 
+use crate::api::harness_hook_preview_events::{
+    parse_json_lines, to_metric_results, to_phase_results,
+};
+use crate::api::harness_instructions_audit::run_instruction_audit;
 use crate::api::repo_context::{
     extract_frontmatter, json_error, read_to_string, resolve_repo_root, RepoContextQuery,
 };
@@ -56,6 +60,16 @@ struct HookPreviewQuery {
     repo_path: Option<String>,
     profile: Option<String>,
     mode: Option<String>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct InstructionsQuery {
+    workspace_id: Option<String>,
+    codebase_id: Option<String>,
+    repo_path: Option<String>,
+    include_audit: Option<String>,
+    audit_provider: Option<String>,
 }
 
 async fn get_github_actions(
@@ -304,8 +318,30 @@ async fn get_hook_preview(
 
 async fn get_harness_instructions(
     State(state): State<AppState>,
-    Query(query): Query<RepoContextQuery>,
+    Query(query): Query<InstructionsQuery>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    let include_audit = parse_bool_param(query.include_audit.as_deref());
+    let audit_provider = query
+        .audit_provider
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+        .or_else(|| {
+            std::env::var("HARNESS_INSTRUCTION_AUDIT_PROVIDER")
+                .ok()
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty())
+        })
+        .unwrap_or_else(|| "codex".to_string());
+    let workspace_id = query
+        .workspace_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("default")
+        .to_string();
+
     let repo_root = resolve_repo_root(
         &state,
         query.workspace_id.as_deref(),
@@ -329,6 +365,11 @@ async fn get_harness_instructions(
                 .unwrap_or(&absolute_path)
                 .to_string_lossy()
                 .to_string();
+            let audit = if include_audit {
+                run_instruction_audit(&repo_root, &workspace_id, &source, &audit_provider).await
+            } else {
+                Value::Null
+            };
             return Ok(Json(json!({
                 "generatedAt": chrono::Utc::now().to_rfc3339(),
                 "repoRoot": repo_root,
@@ -336,6 +377,7 @@ async fn get_harness_instructions(
                 "relativePath": relative_path,
                 "source": source,
                 "fallbackUsed": file_name != "CLAUDE.md",
+                "audit": audit,
             })));
         }
     }
@@ -347,6 +389,13 @@ async fn get_harness_instructions(
             "details": "Expected one of: CLAUDE.md, AGENTS.md",
         })),
     ))
+}
+
+fn parse_bool_param(value: Option<&str>) -> bool {
+    value
+        .map(str::trim)
+        .map(str::to_lowercase)
+        .is_some_and(|normalized| matches!(normalized.as_str(), "1" | "true" | "yes" | "on"))
 }
 
 fn parse_workflow_flow(repo_root: &Path, path: &Path) -> Result<Option<Value>, String> {
@@ -701,76 +750,6 @@ fn extract_trigger_command(source: &str) -> String {
         .next_back()
         .unwrap_or("(no command detected)")
         .to_string()
-}
-
-fn parse_json_lines(raw: &str) -> Vec<Value> {
-    raw.lines()
-        .filter_map(|line| serde_json::from_str::<Value>(line.trim()).ok())
-        .collect()
-}
-
-fn to_phase_results(events: &[Value]) -> Vec<Value> {
-    events
-        .iter()
-        .filter_map(|event| {
-            let kind = event
-                .get("event")
-                .and_then(Value::as_str)
-                .unwrap_or_default();
-            if kind != "phase.complete" && kind != "phase.skip" {
-                return None;
-            }
-            let phase = event.get("phase").and_then(Value::as_str)?;
-            let status = event.get("status").and_then(Value::as_str)?;
-            Some(json!({
-                "phase": phase,
-                "status": status,
-                "durationMs": event.get("durationMs").and_then(Value::as_u64).unwrap_or(0),
-                "reason": event.get("reason").and_then(Value::as_str),
-                "message": event.get("message").and_then(Value::as_str),
-                "metrics": event.get("metrics").and_then(Value::as_array),
-                "index": event.get("index").and_then(Value::as_u64),
-                "total": event.get("total").and_then(Value::as_u64),
-            }))
-        })
-        .collect()
-}
-
-fn to_metric_results(events: &[Value]) -> Vec<Value> {
-    let mut results = Vec::new();
-    for event in events {
-        match event
-            .get("event")
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-        {
-            "metric.complete" => {
-                if let Some(name) = event.get("name").and_then(Value::as_str) {
-                    results.push(json!({
-                        "name": name,
-                        "status": if event.get("passed").and_then(Value::as_bool).unwrap_or(false) { "passed" } else { "failed" },
-                        "durationMs": event.get("durationMs").and_then(Value::as_u64),
-                        "exitCode": event.get("exitCode").and_then(Value::as_i64),
-                        "command": event.get("command").and_then(Value::as_str),
-                        "sourceFile": event.get("sourceFile").and_then(Value::as_str),
-                        "outputTail": event.get("outputTail").and_then(Value::as_str),
-                    }));
-                }
-            }
-            "metric.skip" => {
-                if let Some(metrics) = event.get("metrics").and_then(Value::as_array) {
-                    for metric in metrics.iter().filter_map(Value::as_str) {
-                        results.push(json!({
-                            "name": metric,
-                            "status": "skipped",
-                        }));
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
-    results
 }
 
 fn summarize_runner(value: Option<&serde_yaml::Value>) -> String {

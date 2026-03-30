@@ -87,6 +87,7 @@ export default function HarnessSettingsPage() {
     hooksState,
     instructionsState,
     githubActionsState,
+    reloadInstructions,
   } = useHarnessSettingsData({
     workspaceId,
     codebaseId: activeRepoCodebaseId,
@@ -326,6 +327,7 @@ export default function HarnessSettingsPage() {
           data={instructionsState.data}
           loading={instructionsState.loading}
           error={instructionsState.error}
+          onAuditRerun={reloadInstructions}
         />
 
         <HarnessHookRuntimePanel

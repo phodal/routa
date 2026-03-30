@@ -35,6 +35,7 @@ type HarnessAgentInstructionsPanelProps = {
   loading?: boolean;
   error?: string | null;
   variant?: "full" | "compact";
+  onAuditRerun?: () => void;
 };
 
 function slugify(value: string) {
@@ -130,6 +131,7 @@ export function HarnessAgentInstructionsPanel({
   loading,
   error,
   variant = "full",
+  onAuditRerun,
 }: HarnessAgentInstructionsPanelProps) {
   const hasExternalState = loading !== undefined || error !== undefined || data !== undefined;
   const [instructionsState, setInstructionsState] = useState<InstructionsState>({
@@ -137,6 +139,7 @@ export function HarnessAgentInstructionsPanel({
     error: null,
     data: null,
   });
+  const [localRefreshToken, setLocalRefreshToken] = useState(0);
   const [selectedSectionId, setSelectedSectionId] = useState("");
 
   useEffect(() => {
@@ -204,7 +207,7 @@ export function HarnessAgentInstructionsPanel({
     return () => {
       cancelled = true;
     };
-  }, [codebaseId, hasExternalState, repoPath, workspaceId]);
+  }, [codebaseId, hasExternalState, localRefreshToken, repoPath, workspaceId]);
 
   const resolvedInstructionsState = hasExternalState
     ? {
@@ -287,6 +290,17 @@ export function HarnessAgentInstructionsPanel({
     : "xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]";
   const contentPanelHeightClass = compactMode ? "h-[320px]" : "h-[380px]";
   const auditSummary = resolvedInstructionsState.data?.audit ?? null;
+  const canRerunAudit = hasExternalState ? Boolean(onAuditRerun) : Boolean(workspaceId && repoPath);
+  const handleRerunAudit = () => {
+    if (hasExternalState) {
+      onAuditRerun?.();
+      return;
+    }
+    if (!workspaceId || !repoPath) {
+      return;
+    }
+    setLocalRefreshToken((current) => current + 1);
+  };
 
   return (
     <section className={variant === "compact"
@@ -323,6 +337,16 @@ export function HarnessAgentInstructionsPanel({
               Instruction audit
             </div>
             <div className="flex flex-wrap items-center gap-2">
+              {canRerunAudit ? (
+                <button
+                  type="button"
+                  onClick={handleRerunAudit}
+                  disabled={resolvedInstructionsState.loading}
+                  className="rounded-full border border-desktop-border bg-desktop-bg-primary px-2.5 py-1 text-[10px] font-semibold text-desktop-text-secondary transition-colors hover:bg-desktop-bg-secondary disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  Re-run
+                </button>
+              ) : null}
               <span className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold ${getAuditStatusClass(auditSummary.status)}`}>
                 {auditSummary.status === "ok"
                   ? "specialist"

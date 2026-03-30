@@ -230,7 +230,7 @@ function parseAuditPayload(
   };
 }
 
-async function executeAuditorCommand(repoRoot: string, source: string, provider: string) {
+async function executeAuditorCommand(repoRoot: string, workspaceId: string, source: string, provider: string) {
   const localBinaryPath = path.join(repoRoot, "target", "debug", "routa");
   let command = localBinaryPath;
   let args = [
@@ -239,7 +239,7 @@ async function executeAuditorCommand(repoRoot: string, source: string, provider:
     AUDIT_SPECIALIST_ID,
     "--json",
     "--workspace-id",
-    "default",
+    workspaceId,
     "--provider",
     provider,
     "--provider-timeout-ms",
@@ -305,10 +305,15 @@ async function executeAuditorCommand(repoRoot: string, source: string, provider:
   });
 }
 
-async function runInstructionAudit(repoRoot: string, source: string, provider: string): Promise<HarnessInstructionAuditSummary> {
+async function runInstructionAudit(
+  repoRoot: string,
+  workspaceId: string,
+  source: string,
+  provider: string,
+): Promise<HarnessInstructionAuditSummary> {
   const start = Date.now();
   try {
-    const { stdout } = await executeAuditorCommand(repoRoot, source, provider);
+    const { stdout } = await executeAuditorCommand(repoRoot, workspaceId, source, provider);
     const parsed = JSON.parse(extractJsonOutput(stdout));
     const durationMs = Date.now() - start;
     return parseAuditPayload(parsed, durationMs, provider);
@@ -321,6 +326,7 @@ async function runInstructionAudit(repoRoot: string, source: string, provider: s
 export async function GET(request: NextRequest) {
   try {
     const context = parseContext(request.nextUrl.searchParams);
+    const workspaceId = context.workspaceId?.trim() || "default";
     const includeAudit = parseBooleanParam(request.nextUrl.searchParams.get("includeAudit"));
     const auditProvider = request.nextUrl.searchParams.get("auditProvider")?.trim() || DEFAULT_AUDIT_PROVIDER;
     const repoRoot = await resolveRepoRoot(context);
@@ -350,7 +356,7 @@ export async function GET(request: NextRequest) {
     }
 
     const source = await fsp.readFile(matched.absolutePath, "utf-8");
-    const audit = includeAudit ? await runInstructionAudit(repoRoot, source, auditProvider) : null;
+    const audit = includeAudit ? await runInstructionAudit(repoRoot, workspaceId, source, auditProvider) : null;
 
     return NextResponse.json({
       generatedAt: new Date().toISOString(),

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { PlanResponse, TierValue } from "@/client/components/harness-execution-plan-flow";
 
 export type RunnerKind = "shell" | "graph" | "sarif";
@@ -215,6 +215,7 @@ export function useHarnessSettingsData({
   const [hooksState, setHooksState] = useState<QueryState<HooksResponse>>(emptyQueryState);
   const [instructionsState, setInstructionsState] = useState<QueryState<InstructionsResponse>>(emptyQueryState);
   const [githubActionsState, setGithubActionsState] = useState<QueryState<GitHubActionsFlowsResponse>>(emptyQueryState);
+  const [instructionsRefreshToken, setInstructionsRefreshToken] = useState(0);
 
   useEffect(() => {
     if (!baseQuery) {
@@ -253,7 +254,7 @@ export function useHarnessSettingsData({
     return () => {
       cancelled = true;
     };
-  }, [baseQuery]);
+  }, [baseQuery, instructionsRefreshToken]);
 
   useEffect(() => {
     if (!baseQuery) {
@@ -416,11 +417,16 @@ export function useHarnessSettingsData({
     };
   }, [baseQuery]);
 
+  const reloadInstructions = useCallback(() => {
+    setInstructionsRefreshToken((current) => current + 1);
+  }, []);
+
   return {
     specsState,
     planState,
     hooksState,
     instructionsState,
     githubActionsState,
+    reloadInstructions,
   };
 }

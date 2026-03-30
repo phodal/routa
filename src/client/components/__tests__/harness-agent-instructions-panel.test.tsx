@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("../markdown/markdown-viewer", () => ({
@@ -78,5 +78,22 @@ describe("HarnessAgentInstructionsPanel", () => {
     expect(screen.getByText("16/20")).not.toBeNull();
     expect(screen.getAllByText("4/5").length).toBeGreaterThanOrEqual(4);
     expect(screen.getByText((content) => content.includes("# Routa.js"))).not.toBeNull();
+  });
+
+  it("supports re-running audit when callback is provided", () => {
+    const onAuditRerun = vi.fn();
+    render(
+      <HarnessAgentInstructionsPanel
+        workspaceId="default"
+        repoPath="/Users/phodal/ai/routa-js"
+        repoLabel="phodal/routa"
+        data={instructionsData}
+        onAuditRerun={onAuditRerun}
+      />,
+    );
+
+    const rerunButton = screen.getByRole("button", { name: "Re-run" });
+    fireEvent.click(rerunButton);
+    expect(onAuditRerun).toHaveBeenCalledTimes(1);
   });
 });
