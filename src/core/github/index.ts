@@ -53,3 +53,13 @@ export {
 export type {
   FetchGitHubIssuesViaGhOptions,
 } from "./github-issue-gh";
+
+export {
+  classifyGitHubWorkflowCategory,
+  normalizeGitHubWorkflowEventTokens,
+} from "./workflow-classifier";
+
+export type {
+  GitHubWorkflowCategory,
+  GitHubWorkflowSummary,
+} from "./workflow-classifier";

@@ -7,7 +7,7 @@ import type {
   GitHubActionsFlow,
   GitHubActionsFlowsResponse,
 } from "@/client/hooks/use-harness-settings-data";
-import type { WorkflowCategoryKey } from "@/client/components/harness-github-actions-flow-gallery";
+import type { GitHubWorkflowCategory as WorkflowCategoryKey } from "@/core/github/workflow-classifier";
 
 type FlowState = {
   error: string | null;

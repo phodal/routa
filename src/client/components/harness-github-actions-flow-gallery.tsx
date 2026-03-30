@@ -3,6 +3,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { CodeViewer } from "@/client/components/codemirror/code-viewer";
 import type { GitHubActionsFlow, GitHubActionsJob } from "@/client/hooks/use-harness-settings-data";
+import {
+  classifyGitHubWorkflowCategory,
+  normalizeGitHubWorkflowEventTokens,
+  type GitHubWorkflowCategory,
+} from "@/core/github/workflow-classifier";
 
 type HarnessGitHubActionsFlowGalleryProps = {
   flows: GitHubActionsFlow[];
@@ -11,7 +16,7 @@ type HarnessGitHubActionsFlowGalleryProps = {
   initialCategory?: WorkflowCategoryKey;
 };
 
-export type WorkflowCategoryKey = "Validation" | "Release" | "Automation" | "Maintenance";
+export type WorkflowCategoryKey = GitHubWorkflowCategory;
 type WorkflowJobKind = GitHubActionsJob["kind"];
 
 type WorkflowCategoryDefinition = {
@@ -52,14 +57,6 @@ function cx(...values: Array<string | false | null | undefined>) {
   return values.filter(Boolean).join(" ");
 }
 
-function normalizeEventTokens(event: string) {
-  return event
-    .toLowerCase()
-    .split(",")
-    .map((token) => token.trim())
-    .filter(Boolean);
-}
-
 function humanizeToken(value: string) {
   return value
     .split(/[_-]/g)
@@ -70,71 +67,6 @@ function humanizeToken(value: string) {
 
 function formatStageLabel(index: number) {
   return `Stage ${String(index + 1).padStart(2, "0")}`;
-}
-
-function classifyWorkflowCategory(flow: GitHubActionsFlow): WorkflowCategoryKey {
-  const eventTokens = normalizeEventTokens(flow.event);
-  const eventString = eventTokens.join(",");
-  const flowName = flow.name.toLowerCase();
-  const hasEvent = (value: string) => eventString.includes(value);
-
-  if (
-    flowName.includes("release")
-    || flowName.includes("publish")
-    || flowName.includes("deploy")
-    || flowName.includes("pages")
-    || flowName.includes("ship")
-  ) {
-    return "Release";
-  }
-
-  if (
-    eventTokens.length === 1
-    && eventTokens[0] === "schedule"
-  ) {
-    return "Maintenance";
-  }
-
-  if (
-    hasEvent("schedule")
-    || flowName.includes("cleanup")
-    || flowName.includes("collector")
-    || flowName.includes("garbage")
-    || flowName.includes("hygiene")
-    || flowName.includes("repair")
-    || flowName.includes("fixer")
-    || flowName.includes("delete merged branches")
-  ) {
-    return "Maintenance";
-  }
-
-  if (
-    hasEvent("issues")
-    || hasEvent("issue")
-    || hasEvent("issue_comment")
-    || hasEvent("discussion")
-    || hasEvent("repository_dispatch")
-    || flowName.includes("issue")
-    || flowName.includes("copilot")
-    || flowName.includes("enricher")
-    || flowName.includes("bot")
-    || flowName.includes("handler")
-  ) {
-    return "Automation";
-  }
-
-  if (
-    hasEvent("pull_request")
-    || hasEvent("pull_request_target")
-    || hasEvent("push")
-    || hasEvent("workflow_run")
-    || hasEvent("merge_group")
-    || hasEvent("workflow_call")
-  ) {
-    return "Validation";
-  }
-
-  return "Automation";
 }
 
 function buildDependencyLanes(jobs: GitHubActionsJob[]) {
@@ -185,7 +117,7 @@ function summarizeFlows(flows: GitHubActionsFlow[]) {
   let totalJobs = 0;
 
   flows.forEach((flow) => {
-    normalizeEventTokens(flow.event).forEach((token) => triggerSet.add(token));
+    normalizeGitHubWorkflowEventTokens(flow.event).forEach((token) => triggerSet.add(token));
     totalJobs += flow.jobs.length;
   });
 
@@ -207,7 +139,7 @@ function summarizeStageCount(flow: GitHubActionsFlow) {
 function createCategoryEntries(flows: GitHubActionsFlow[]): WorkflowCategoryEntry[] {
   return CATEGORY_DEFINITIONS.map((definition) => ({
     ...definition,
-    flows: flows.filter((flow) => classifyWorkflowCategory(flow) === definition.key),
+    flows: flows.filter((flow) => classifyGitHubWorkflowCategory(flow) === definition.key),
   }));
 }
 
@@ -307,7 +239,7 @@ function MiniDagPreview({ flow }: { flow: GitHubActionsFlow }) {
       <div className="flex min-w-max items-start gap-2 overflow-x-auto">
         <div className="w-24 shrink-0 rounded-[16px] border border-sky-200/80 bg-[linear-gradient(135deg,rgba(239,246,255,0.9),rgba(255,255,255,0.96))] px-2 py-2">
           <div className="text-[9px] font-semibold uppercase tracking-[0.18em] text-sky-700">Trigger</div>
-          <div className="mt-1 text-[10px] font-semibold leading-4 text-slate-900">{humanizeToken(normalizeEventTokens(flow.event)[0] ?? flow.event)}</div>
+          <div className="mt-1 text-[10px] font-semibold leading-4 text-slate-900">{humanizeToken(normalizeGitHubWorkflowEventTokens(flow.event)[0] ?? flow.event)}</div>
         </div>
 
         {visibleLanes.map((laneJobs, laneIndex) => (
@@ -362,7 +294,7 @@ function WorkflowCard({
   selected: boolean;
   onSelect: () => void;
 }) {
-  const eventTokens = normalizeEventTokens(flow.event);
+  const eventTokens = normalizeGitHubWorkflowEventTokens(flow.event);
   const visibleTokens = eventTokens.slice(0, 2);
   const hiddenTokenCount = Math.max(eventTokens.length - visibleTokens.length, 0);
   const stageCount = summarizeStageCount(flow);
@@ -430,7 +362,7 @@ function FlowCanvas({
   compactMode: boolean;
 }) {
   const lanes = buildDependencyLanes(flow.jobs);
-  const eventTokens = normalizeEventTokens(flow.event);
+  const eventTokens = normalizeGitHubWorkflowEventTokens(flow.event);
 
   return (
     <section className="rounded-[24px] border border-slate-200/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(245,248,252,0.95))] p-3.5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
@@ -597,7 +529,7 @@ function JobInspector({
       <div className="mt-3 rounded-[20px] border border-slate-200 bg-white/90 px-3 py-2.5">
         <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">Trigger set</div>
         <div className="mt-2 flex flex-wrap gap-1.5">
-          {normalizeEventTokens(flow.event).map((token) => (
+          {normalizeGitHubWorkflowEventTokens(flow.event).map((token) => (
             <span key={`${flow.id}:inspector:${token}`} className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[10px] text-slate-600">
               {token}
             </span>
@@ -685,7 +617,7 @@ function WorkflowDetailDialog({
             <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Pipeline detail</div>
             <h3 className="mt-1 truncate text-[20px] font-semibold tracking-[-0.03em] text-slate-950">{flow.name}</h3>
             <div className="mt-1 flex flex-wrap gap-1.5">
-              {normalizeEventTokens(flow.event).map((token) => (
+              {normalizeGitHubWorkflowEventTokens(flow.event).map((token) => (
                 <span key={`${flow.id}:dialog:${token}`} className="rounded-full border border-slate-200 bg-white/90 px-2.5 py-1 text-[10px] text-slate-600">
                   {token}
                 </span>
