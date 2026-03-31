@@ -256,11 +256,28 @@ The repository is still finishing the workspace-centric normalization. The durab
 
 Treat `"default"` as transition scaffolding, not as the target domain model.
 
+## Architecture Decision Records
+
+The `docs/adr/` directory captures durable architectural decisions that shape boundaries, protocols, and patterns across the codebase. ADRs are the canonical answer to "why is it built this way?"
+
+Discover decisions via: `claude -p "What ADRs exist and what do they decide?"`
+
+Current ADRs:
+
+| ADR | Decision |
+|---|---|
+| [0001](./adr/0001-dual-backend-semantic-parity.md) | Web and desktop share domain semantics via api-contract.yaml |
+| [0002](./adr/0002-provider-normalization-via-acp.md) | All agent runtimes normalized to ACP through adapter layers |
+| [0003](./adr/0003-workspace-first-scope.md) | Workspaces are the top-level coordination boundary |
+| [0004](./adr/0004-kanban-driven-automation.md) | Kanban lanes trigger ACP sessions with queued concurrency |
+| [0005](./adr/0005-specialist-externalization.md) | Specialists as Markdown+YAML with priority loading |
+| [0006](./adr/0006-orchestration-shell-pattern.md) | Complex files use thin shell + domain hooks structure |
+
 ## Related Documents
 
 - Product/API index: [docs/product-specs/FEATURE_TREE.md](./product-specs/FEATURE_TREE.md)
-- Workspace redesign status: [docs/design-docs/workspace-centric-redesign.md](./design-docs/workspace-centric-redesign.md)
-- Active workspace normalization plan: [docs/exec-plans/active/workspace-centric-normalization.md](./exec-plans/active/workspace-centric-normalization.md)
-- Fitness and verification guidance: `docs/fitness/README.md`
-- Repository operating contract: `AGENTS.md`
+- Architecture decisions: [docs/adr/](./adr/)
+- Design intent: [docs/design-docs/](./design-docs/)
+- Fitness and verification: [docs/fitness/README.md](./fitness/README.md)
+- Repository operating contract: [AGENTS.md](../AGENTS.md)
 - [MCP Spec](https://modelcontextprotocol.io/) · [ACP Spec](https://github.com/agentclientprotocol/typescript-sdk) · [A2A Spec](https://a2aprotocol.ai/)

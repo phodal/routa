@@ -88,8 +88,9 @@ describe("HarnessGitHubActionsFlowPanel", () => {
     expect(screen.getByText("Loading GitHub Actions workflows...")).not.toBeNull();
 
     await waitFor(() => {
-      expect(screen.getByText("Actions")).not.toBeNull();
       expect(screen.getByText("Workflows")).not.toBeNull();
+      expect(screen.getByText("Triggers")).not.toBeNull();
+      expect(screen.getByText("Jobs")).not.toBeNull();
       expect(screen.getByRole("button", { name: /Defense/i })).not.toBeNull();
       expect(screen.getAllByRole("button", { name: /Fitness Dimensions/i }).length).toBeGreaterThan(0);
     });
@@ -132,8 +133,8 @@ describe("HarnessGitHubActionsFlowPanel", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText("1 flows in Release")).not.toBeNull();
       expect(screen.getByRole("button", { name: /Routa Release/i })).not.toBeNull();
+      expect(screen.getAllByText("workflow_dispatch").length).toBeGreaterThan(0);
     });
   });
 });

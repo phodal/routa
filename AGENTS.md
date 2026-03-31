@@ -4,6 +4,7 @@
 
 - `docs/product-specs/FEATURE_TREE.md`: Auto-generated product and API surface index. Start here when you need route or endpoint discovery.
 - `docs/ARCHITECTURE.md`: Canonical architecture overview, system boundaries, domain model, protocol stack, and cross-backend invariants.
+- `docs/adr/`: Architecture Decision Records — durable decisions that shape boundaries, protocols, and patterns. Start here when asking "why is it built this way?"
 - `docs/design-docs/`: Human-reviewed design intent and normalized decisions migrated from `.kiro/specs/`.
 - `docs/exec-plans/active/`: Short-lived implementation plans for work in progress.
 - `docs/exec-plans/completed/`: Archived plans that reflect what actually shipped.
@@ -15,6 +16,17 @@
 - `docs/release-guide.md`: Comprehensive release guide for CLI (npm + crates.io), Desktop (Tauri), and multi-platform distribution.
 - `docs/RELEASE_CHECKLIST.md`: Quick release checklist for version publishing.
 - `tools/entrix/docs/adr/README.md`: Entrix-specific ADRs, including long-file analysis heuristics.
+
+## Reading Order
+
+When starting work on this repository, read in this order:
+
+1. This file (`AGENTS.md`) — operating contract and pointers
+2. `docs/ARCHITECTURE.md` — system boundaries and runtime topology
+3. `docs/adr/README.md` — architectural decisions index; read specific ADRs relevant to your task
+4. `docs/fitness/README.md` — quality gates and verification
+5. The specific `docs/design-docs/` or `docs/exec-plans/` files related to your task
+
 
 ## Documentation Rules
 
