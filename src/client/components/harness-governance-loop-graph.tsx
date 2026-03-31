@@ -97,35 +97,35 @@ function getNodeToneClasses(tone: LoopTone) {
   switch (tone) {
     case "sky":
       return {
-        border: "border-sky-200",
-        badge: "border-sky-200 bg-sky-50 text-sky-700",
-        fill: "bg-sky-50",
-        fillActive: "bg-sky-100",
-        shadow: "shadow-sky-100/80",
+        border: "border-sky-300",
+        badge: "border-sky-400 bg-sky-100 text-sky-800",
+        fill: "bg-sky-100",
+        fillActive: "bg-sky-200",
+        shadow: "shadow-sky-200/80",
       };
     case "emerald":
       return {
-        border: "border-emerald-200",
-        badge: "border-emerald-200 bg-emerald-50 text-emerald-700",
-        fill: "bg-emerald-50",
-        fillActive: "bg-emerald-100",
-        shadow: "shadow-emerald-100/80",
+        border: "border-emerald-300",
+        badge: "border-emerald-400 bg-emerald-100 text-emerald-800",
+        fill: "bg-emerald-100",
+        fillActive: "bg-emerald-200",
+        shadow: "shadow-emerald-200/80",
       };
     case "amber":
       return {
-        border: "border-amber-200",
-        badge: "border-amber-200 bg-amber-50 text-amber-700",
-        fill: "bg-amber-50",
-        fillActive: "bg-amber-100",
-        shadow: "shadow-amber-100/80",
+        border: "border-amber-300",
+        badge: "border-amber-400 bg-amber-100 text-amber-800",
+        fill: "bg-amber-100",
+        fillActive: "bg-amber-200",
+        shadow: "shadow-amber-200/80",
       };
     case "violet":
       return {
-        border: "border-violet-200",
-        badge: "border-violet-200 bg-violet-50 text-violet-700",
-        fill: "bg-violet-50",
-        fillActive: "bg-violet-100",
-        shadow: "shadow-violet-100/80",
+        border: "border-violet-300",
+        badge: "border-violet-400 bg-violet-100 text-violet-800",
+        fill: "bg-violet-100",
+        fillActive: "bg-violet-200",
+        shadow: "shadow-violet-200/80",
       };
     default:
       return {
@@ -806,12 +806,12 @@ export function HarnessGovernanceLoopGraph({
       {hasContext && !unsupportedMessage ? (
         <div className="mt-3 grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
             <div className="relative overflow-hidden rounded-2xl border border-desktop-border bg-[linear-gradient(180deg,rgba(248,250,252,0.98),rgba(241,245,249,0.98))]">
-              <div className="pointer-events-none absolute right-3 top-3 z-10 rounded-xl border border-desktop-border bg-white/90 px-2.5 py-1.5 text-[10px] text-slate-700 shadow-sm">
+                <div className="pointer-events-none absolute right-3 top-2 z-10 rounded-xl border border-desktop-border bg-white/90 px-2.5 py-1.5 text-[10px] text-slate-700 shadow-sm">
                 <div className="flex items-center gap-3">
                   <span className="shrink-0 text-desktop-text-secondary">图注:</span>
-                  <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-sky-500" />内部</span>
-                  <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-violet-500" />推送</span>
-                  <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-amber-500" />外部</span>
+                  <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-sky-800" />内部</span>
+                  <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-violet-800" />推送</span>
+                  <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-amber-800" />外部</span>
                 </div>
               </div>
               <div style={{ height: graph.minHeight }}>
