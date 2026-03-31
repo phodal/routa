@@ -25,7 +25,8 @@ export function tailOutput(output: string, maxChars = 6000): string {
 
 export function runCommand(command: string, options: RunCommandOptions = {}): Promise<CommandResult> {
   const startedAt = Date.now();
-  const child = spawn("/bin/bash", ["-lc", command], {
+  const shell = process.platform === "win32" ? "bash.exe" : "/bin/bash";
+  const child = spawn(shell, ["-lc", command], {
     cwd: options.cwd ?? process.cwd(),
     env: { ...process.env, ...options.env },
     stdio: ["inherit", "pipe", "pipe"],

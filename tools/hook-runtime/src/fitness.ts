@@ -82,7 +82,7 @@ function evaluateMetric(metric: HookMetric, exitCode: number, output: string): b
 
   // For other metrics, pattern must match to confirm success
   const matcher = new RegExp(metric.pattern, "i");
-  return matcher.test(output);
+  return matcher.test(stripAnsi(output));
 }
 
 function splitOutputLines(rawOutput: string): string[] {

@@ -9,6 +9,8 @@ function runCommand(args: string[]): { code: number; output: string } {
     encoding: "utf8",
     env: process.env,
     stdio: ["ignore", "pipe", "pipe"],
+    // Windows: spawnSync without shell only resolves .exe, not .cmd
+    shell: process.platform === "win32",
   });
 
   return {

@@ -29,6 +29,8 @@ function runCommand(program: string, args: string[]): CommandResult {
     encoding: "utf8",
     env: process.env,
     stdio: ["ignore", "pipe", "pipe"],
+    // Windows: spawnSync without shell only resolves .exe, not .cmd/.bat
+    shell: process.platform === "win32",
   });
 
   return {
@@ -77,10 +79,12 @@ function extractExternalLinks(filePath: string): string[] {
 }
 
 function checkExternalLink(filePath: string, link: string): MarkdownLinkStatus {
+  // Use NUL on Windows, /dev/null on Unix
+  const nullDevice = process.platform === "win32" ? "NUL" : "/dev/null";
   const result = runCommand("curl", [
     "-sS",
     "-o",
-    "/dev/null",
+    nullDevice,
     "-w",
     "%{http_code}",
     "--connect-timeout",
