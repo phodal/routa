@@ -36,6 +36,15 @@ export interface TranslationDictionary {
     enter: string;
     unavailable: string;
     viewAll: string;
+    new: string;
+    update: string;
+    execute: string;
+    running: string;
+    completed: string;
+    pending: string;
+    enabled: string;
+    disabled: string;
+    workspace: string;
   };
 
   // Home page
@@ -67,7 +76,11 @@ export interface TranslationDictionary {
 
   // Navigation & Header
   nav: {
+    home: string;
+    overview: string;
     kanban: string;
+    team: string;
+    traces: string;
     settings: string;
     notifications: string;
     connected: string;
@@ -135,6 +148,60 @@ export interface TranslationDictionary {
     currentLabel: string;
     recentActivity: string;
     noRecentSessions: string;
+    // Workspace page header
+    workspaceLabel: string;
+    activeAgents: string;
+    standby: string;
+    inFlight: string;
+    noPendingTasks: string;
+    // Workspace page client / overview
+    loadingWorkspace: string;
+    defaultWorkspace: string;
+    noBoard: string;
+    noRecentSession: string;
+    primarySurface: string;
+    kanbanDescription: string;
+    boards: string;
+    activeTasks: string;
+    backgroundRuns: string;
+    goToBoard: string;
+    latestRecoveryPoint: string;
+    recoverSession: string;
+    createFromLauncher: string;
+    recentSessions: string;
+    openLatestSession: string;
+    backToLauncher: string;
+    recoverContext: string;
+    overview: string;
+    recoveryRoutingContext: string;
+    activity: string;
+    activityDescription: string;
+    notes: string;
+    notesDescription: string;
+    workspaceNotes: string;
+    taskNotes: string;
+    installAgents: string;
+    // Workspace page header stats
+    sessions: string;
+    agents: string;
+    tasks: string;
+    bgTasks: string;
+    active: string;
+    pending: string;
+    running: string;
+    // Workspace settings tab
+    linkedRepositories: string;
+    linkedReposDescription: string;
+    noReposLinked: string;
+    addLabel: string;
+    worktreeRootOverride: string;
+    worktreeRootDescription: string;
+    effectivePath: string;
+    editRepository: string;
+    selectOrCloneRepo: string;
+    updatingRepository: string;
+    defaultLabel: string;
+    saving: string;
   };
 
   // Notifications
@@ -213,23 +280,74 @@ export interface TranslationDictionary {
     uploadZip: string;
     cloneFailed: string;
     uploadFailed: string;
+    noSkillsFound: string;
+    skillCatalog: string;
+    installedLabel: string;
+    searchSkills: string;
+    typeToSearch: string;
+    installSkills: string;
+    installingSkills: string;
+    cloneTitle: string;
+    cloneDescription: string;
+    cloneAction: string;
+    results: string;
+    selected: string;
+    load: string;
+    noResults: string;
+    selectRepoOrLoad: string;
+    uploadTitle: string;
+    uploadDescription: string;
+    selectFile: string;
+    uploadAction: string;
+    uploading: string;
   };
 
   // Agents
   agents: {
+    title: string;
+    agentName: string;
+    noAgents: string;
     loadingFromRegistry: string;
     failedToLoad: string;
     installFailed: string;
     uninstallFailed: string;
     failedToFetchRegistry: string;
+    searchAgents: string;
+    noMatchingAgents: string;
+    noAgentsAvailable: string;
+    installed: string;
+    available: string;
+    install: string;
+    uninstall: string;
+    installing: string;
+    uninstalling: string;
   };
 
   // Tasks
   tasks: {
+    title: string;
     objective: string;
     scope: string;
     definitionOfDone: string;
-    title: string;
+    subTasks: string;
+    crafters: string;
+    confirmAll: string;
+    executeAll: string;
+    executing: string;
+    concurrency: string;
+    thinking: string;
+    agentWorking: string;
+    loadingHistory: string;
+    agentFailedToStart: string;
+    noMessagesYet: string;
+    noCraftersYet: string;
+    collaborativeTasks: string;
+    selectAll: string;
+    deselectAll: string;
+    executeSelected: string;
+    noContent: string;
+    execute: string;
+    completed: string;
   };
 
   // Workflows
@@ -239,6 +357,18 @@ export interface TranslationDictionary {
     saving: string;
     executionFailed: string;
     selectWorkspaceFirst: string;
+    workflowId: string;
+    yamlContent: string;
+    workflowIdHint: string;
+    noWorkflows: string;
+    noWorkflowsHint: string;
+    loadingWorkflows: string;
+    workflowGraph: string;
+    noSteps: string;
+    run: string;
+    triggerPayload: string;
+    noActiveWorkspace: string;
+    workspace: string;
   };
 
   // Traces
@@ -246,6 +376,12 @@ export interface TranslationDictionary {
     title: string;
     chat: string;
     eventBridge: string;
+    agentTraceViewer: string;
+    browseTraces: string;
+    session: string;
+    copyLink: string;
+    hideSessions: string;
+    showSessions: string;
   };
 
   // Fitness / Fluency
@@ -484,5 +620,529 @@ export interface TranslationDictionary {
     generic: string;
     saveFailed: string;
     loadFailed: string;
+    deleteFailed: string;
+  };
+
+  // Kanban
+  kanban: {
+    // Board header
+    kanbanBoard: string;
+    tasksCount: string;
+    limit: string;
+    runningLabel: string;
+    queuedLabel: string;
+    kanbanHealth: string;
+    missing: string;
+    sessionMismatch: string;
+    backendAgents: string;
+    boardSettings: string;
+    // Card status
+    queued: string;
+    starting: string;
+    live: string;
+    failed: string;
+    idle: string;
+    syncIssue: string;
+    synced: string;
+    notSynced: string;
+    // Card labels
+    deleteTask: string;
+    openCard: string;
+    dragCard: string;
+    liveSession: string;
+    repoMissing: string;
+    worktreeLoading: string;
+    noObjective: string;
+    automation: string;
+    cardOverride: string;
+    laneDefault: string;
+    done: string;
+    rerun: string;
+    run: string;
+    providerLabel: string;
+    useLaneDefault: string;
+    selectProviderHint: string;
+    role: string;
+    specialist: string;
+    noArtifactsAttached: string;
+    artifacts: string;
+    nextReady: string;
+    needs: string;
+    readyFor: string;
+    before: string;
+    present: string;
+    // Settings modal
+    stageMap: string;
+    stages: string;
+    addStage: string;
+    visible: string;
+    queue: string;
+    runtime: string;
+    hideRuntime: string;
+    sessionQueue: string;
+    maxLabel: string;
+    extraCardsWait: string;
+    devSupervision: string;
+    mode: string;
+    off: string;
+    watchdogRetry: string;
+    ralphLoop: string;
+    idleMin: string;
+    retries: string;
+    completion: string;
+    turnComplete: string;
+    completionSummary: string;
+    verificationReport: string;
+    manualLaneOnly: string;
+    manualLane: string;
+    clearAllCards: string;
+    clearAllConfirm: string;
+    autoFollowsGlobal: string;
+    exportKanban: string;
+    importKanban: string;
+    exportFailed: string;
+    importFailed: string;
+    // Description editor
+    descriptionPlaceholder: string;
+    editingMarkdown: string;
+    renderedMarkdown: string;
+    noDescriptionYet: string;
+    // Repo sync status
+    syncingRepos: string;
+    syncingProgress: string;
+    reposUpdated: string;
+    repoUpdated: string;
+    // Card artifacts
+    artifactsTitle: string;
+    artifactsDescription: string;
+    totalLabel: string;
+    screenshotsLabel: string;
+    readyLabel: string;
+    missingLabel: string;
+    nextLaneSatisfied: string;
+    missingForNextMove: string;
+    artifactManageHint: string;
+    loadingArtifacts: string;
+    noArtifactsYet: string;
+    attachedScreenshot: string;
+    timeUnavailable: string;
+    screenshotType: string;
+    testResultsType: string;
+    codeDiffType: string;
+    logsType: string;
+    byAgent: string;
+    failedToLoadArtifacts: string;
+    // Card activity (residual hardcoded strings)
+    acpSession: string;
+    unknownProvider: string;
+    unknownRole: string;
+    workingDirUnavailable: string;
+    currentLane: string;
+    laneHandoffs: string;
+    noLaneHandoffsYet: string;
+    laneHandoffsDescription: string;
+    requested: string;
+    responded: string;
+    syncedAt: string;
+    linkedLabel: string;
+    workspaceDefault: string;
+    runLabel: string;
+    openLabel: string;
+    backlog: string;
+    baseLabel: string;
+    // Settings modal extras
+    saveBoardSettings: string;
+    clearingAll: string;
+    exportingYaml: string;
+    exportYaml: string;
+    importingYaml: string;
+    importYaml: string;
+    manualLabel: string;
+    automationOn: string;
+    onEntry: string;
+    onExit: string;
+    entryAndExit: string;
+    // Kanban-tab error messages
+    failedToUpdateTask: string;
+    failedToDeleteTask: string;
+    failedToMoveTask: string;
+    failedToSaveSettings: string;
+    failedToClearTasks: string;
+    failedToUpdateRepo: string;
+    failedToRecloneRepo: string;
+    failedToRemoveRepo: string;
+    failedToReplaceRepos: string;
+    failedToDeleteWorktree: string;
+    failedToCreateIssue: string;
+    failedToRemoveWorktree: string;
+    boardName: string;
+    worktreeCleanupPrompt: string;
+  };
+
+  // Kanban card detail
+  kanbanDetail: {
+    priority: string;
+    low: string;
+    medium: string;
+    high: string;
+    urgent: string;
+    column: string;
+    runs: string;
+    description: string;
+    descriptionHint: string;
+    progressNotes: string;
+    progressNotesHint: string;
+    testCases: string;
+    testCasesHint: string;
+    testCasesPlaceholder: string;
+    execution: string;
+    executionHint: string;
+    inheritedFromLane: string;
+    laneMetadataUnavailable: string;
+    noLaneAutomation: string;
+    lanePipeline: string;
+    currentRun: string;
+    nextMove: string;
+    editOverride: string;
+    overrideCard: string;
+    repositories: string;
+    repositoriesHint: string;
+    noRepoLinked: string;
+    sessionMismatch: string;
+    sessionAligned: string;
+    sessionMismatchLabel: string;
+    alignedLabel: string;
+    failedToSwitchRepo: string;
+    failedToUpdateRepos: string;
+  };
+
+  // Kanban modal dialogs
+  kanbanModals: {
+    removeRepo: string;
+    selectOrCloneRepo: string;
+    updatingRepo: string;
+    replaceAllHint: string;
+    replaceAllRepos: string;
+    path: string;
+    branch: string;
+    stored: string;
+    sourceType: string;
+    sourceUrl: string;
+    worktrees: string;
+    worktreeHint: string;
+    noWorktrees: string;
+    linkedTasks: string;
+    removing: string;
+    recloneRepo: string;
+    recloneHint: string;
+    cloning: string;
+    reclone: string;
+    removeRepoTitle: string;
+    removeRepoConfirm: string;
+    removeRepoHint: string;
+    deleting: string;
+    replaceAllTitle: string;
+    replaceAllDesc: string;
+    replaceAllUseful: string;
+    replacing: string;
+    replaceAll: string;
+    deleteTaskTitle: string;
+    deleteTaskConfirm: string;
+    deleteTaskGithubNote: string;
+    more: string;
+  };
+
+  // Notes tabs
+  notesTab: {
+    workspaceNotes: string;
+    clearAll: string;
+    clearing: string;
+    noteTitle: string;
+    writePlaceholder: string;
+    creating: string;
+    createNote: string;
+    loadingNotes: string;
+    noNotesYet: string;
+    noNotesDescription: string;
+    saving: string;
+    // Note Tasks
+    noteTasks: string;
+    sourceSpecs: string;
+    taskNotes: string;
+    clearTaskNotes: string;
+    noteId: string;
+    taskRecord: string;
+    parentSpec: string;
+    taskSpecContent: string;
+    noTaskNotesYet: string;
+    noFilteredTasks: string;
+    all: string;
+    freeformContext: string;
+    newNote: string;
+    bindToSession: string;
+    optional: string;
+    workspaceWide: string;
+    noteLabel: string;
+  };
+
+  // Background Tasks
+  bgTasks: {
+    title: string;
+    autoRefreshOn: string;
+    autoRefreshOff: string;
+    live: string;
+    refreshNow: string;
+    clearHistory: string;
+    clearAll: string;
+    clearing: string;
+    noTasksYet: string;
+    noFilteredTasks: string;
+    collapse: string;
+    expand: string;
+    editTask: string;
+    reDispatch: string;
+    retry: string;
+    killRunning: string;
+    triggerManually: string;
+    editTitle: string;
+    editPrompt: string;
+    priority: string;
+    agent: string;
+    saveChanges: string;
+    dispatchNow: string;
+    dispatching: string;
+    dispatchTitle: string;
+    dispatchPrompt: string;
+    all: string;
+    manual: string;
+    scheduled: string;
+    webhook: string;
+    polling: string;
+    workflow: string;
+    fleet: string;
+  };
+
+  // A2UI Overview
+  a2ui: {
+    agents: string;
+    noAgentsSpawned: string;
+    skills: string;
+    surfaceTemplates: string;
+    addSurfaceDescription: string;
+    importCustomSurface: string;
+    taskBoard: string;
+    taskBoardDesc: string;
+    agentMonitor: string;
+    agentMonitorDesc: string;
+    timeline: string;
+    timelineDesc: string;
+    workspaceSummary: string;
+    workspaceSummaryDesc: string;
+    invalidJson: string;
+  };
+
+  // Team module
+  team: {
+    loadingTeamRun: string;
+    loadingWorkspace: string;
+    runSessions: string;
+    runSessionsDesc: string;
+    sessionTimeline: string;
+    teamMembers: string;
+    noTranscriptYet: string;
+    leadDecomposition: string;
+    launchTeamLead: string;
+    teamRuns: string;
+    teamRunsHero: string;
+    newRun: string;
+    reusesInput: string;
+    teamBench: string;
+    benchDesc: string;
+    runs: string;
+    active: string;
+    members: string;
+    specialists: string;
+    topLevelOnly: string;
+    inspectRunDesc: string;
+    noTeamRunsYet: string;
+    launchAbove: string;
+    directDelegates: string;
+    totalSubSessions: string;
+  };
+
+  // Kanban create modal
+  kanbanCreate: {
+    manualIssue: string;
+    issueTitle: string;
+    description: string;
+    testCases: string;
+    testCasesPlaceholder: string;
+    testCasesHint: string;
+    alsoCreateGithub: string;
+    noGithubLinked: string;
+    linkRepositories: string;
+    noSelectionHint: string;
+    create: string;
+  };
+
+  // Kanban background agents
+  kanbanBgAgent: {
+    backgroundAgents: string;
+    bgAgentDesc: string;
+    addBgAgent: string;
+    workspaceAgents: string;
+    activeAgents: string;
+    queueRoutes: string;
+    pendingTasks: string;
+    noAgentsYet: string;
+    noAgentsHint: string;
+    observedTargets: string;
+    routesCount: string;
+    observedTargetsDesc: string;
+    noQueueActivity: string;
+    scheduleTriggers: string;
+    linked: string;
+    external: string;
+    all: string;
+    pending: string;
+    running: string;
+    finished: string;
+    latestTask: string;
+    noRecentTask: string;
+    workspaceBgAgents: string;
+    activeHotRoutes: string;
+    noTaskRouted: string;
+    addBgAgentTitle: string;
+    addBgAgentDesc: string;
+    agentName: string;
+    agentNamePlaceholder: string;
+    role: string;
+    modelTier: string;
+    creating: string;
+    createAgent: string;
+  };
+
+  // Kanban board surface
+  kanbanBoard: {
+    repos: string;
+    noReposLinked: string;
+    cards: string;
+    manualLane: string;
+    manualLaneOnly: string;
+  };
+
+  // Sessions
+  sessions: {
+    title: string;
+    noSessions: string;
+    rename: string;
+    hierarchy: string;
+    parent: string;
+    sibling: string;
+    child: string;
+    focus: string;
+    kanbanStory: string;
+    previousLane: string;
+    previousRunInLane: string;
+    currentLaneSession: string;
+    openSession: string;
+    open: string;
+  };
+
+  // MCP Servers
+  mcp: {
+    title: string;
+    description: string;
+    newServer: string;
+    editServer: string;
+    noServers: string;
+    addFirst: string;
+    serverType: string;
+    command: string;
+    arguments: string;
+    url: string;
+    headers: string;
+    envVars: string;
+    builtInDesc: string;
+    requiresPostgres: string;
+    deleteFailed: string;
+    toggleFailed: string;
+    deleteConfirm: string;
+  };
+
+  // Models
+  models: {
+    title: string;
+    addModel: string;
+    alias: string;
+    modelName: string;
+    baseUrl: string;
+    apiKey: string;
+    savedModels: string;
+    pressEnterToAdd: string;
+    aliasAlreadyExists: string;
+    deleteConfirm: string;
+    aliasDescription: string;
+  };
+
+  // Schedules
+  schedules: {
+    title: string;
+    noSchedules: string;
+    addFirst: string;
+    newSchedule: string;
+    editSchedule: string;
+    scheduleName: string;
+    cronExpression: string;
+    customCron: string;
+    taskPrompt: string;
+    agent: string;
+    lastRun: string;
+    nextRun: string;
+    runNow: string;
+    deleteConfirm: string;
+    selectWorkspace: string;
+    requiredFields: string;
+    created: string;
+    updated: string;
+    deleted: string;
+    triggered: string;
+    configured: string;
+    noSchedulesTitle: string;
+    noSchedulesDesc: string;
+    createFirst: string;
+    schedule: string;
+    selectAgent: string;
+    promptTip: string;
+    promptTemplateOverride: string;
+    promptTemplateHint: string;
+    last: string;
+    next: string;
+  };
+
+  // Trace
+  trace: {
+    agentTrace: string;
+    refresh: string;
+    export: string;
+    noTracesForSession: string;
+    selectSessionToView: string;
+    sessionStarted: string;
+    sessionEnded: string;
+    totalRecords: string;
+    sessions: string;
+    days: string;
+    currentLaneSession: string;
+    previousLaneSession: string;
+    previousLaneRun: string;
+    eventBridgeView: string;
+    events: string;
+    noMatchingEvents: string;
+    noTracesSession: string;
+    protocolView: string;
+    rawEvents: string;
+    noAGUIEvents: string;
+    selectSessionAGUI: string;
+    selectSessionEventBridge: string;
   };
 }
