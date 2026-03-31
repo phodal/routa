@@ -1426,9 +1426,9 @@ mod tests {
         let created = TerminalManager::global()
             .create(
                 &json!({
-                    "command": "/bin/cat",
-                    "args": [],
-                    "cwd": "/tmp",
+                    "command": if cfg!(windows) { "cmd" } else { "/bin/cat" },
+                    "args": if cfg!(windows) { vec!["/c", "echo"] } else { vec![] },
+                    "cwd": std::env::temp_dir().to_string_lossy().to_string(),
                     "cols": 80,
                     "rows": 24
                 }),

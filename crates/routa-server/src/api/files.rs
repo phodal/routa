@@ -261,11 +261,11 @@ mod tests {
 
         let files = walk_directory(root, root, 1);
         assert_eq!(files.len(), 1);
-        assert!(files[0].starts_with("src/"));
+        assert!(files[0].starts_with("src") && files[0].contains("a.rs"));
 
         let all = walk_directory(root, root, 10);
-        assert!(all.iter().any(|p| p == "src/a.rs"));
-        assert!(all.iter().any(|p| p == "src/b.rs"));
+        assert!(all.iter().any(|p| p.contains("src") && p.contains("a.rs")));
+        assert!(all.iter().any(|p| p.contains("src") && p.contains("b.rs")));
         assert!(!all.iter().any(|p| p.contains(".git")));
         assert!(!all.iter().any(|p| p.contains("node_modules")));
     }

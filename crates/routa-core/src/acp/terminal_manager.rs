@@ -309,6 +309,7 @@ mod tests {
     use super::TerminalManager;
     use tokio::sync::broadcast;
 
+    #[cfg(not(windows))]
     #[tokio::test]
     async fn create_write_and_read_terminal_output() {
         let manager = TerminalManager::default();
@@ -357,6 +358,7 @@ mod tests {
         manager.release(&terminal_id).await;
     }
 
+    #[cfg(not(windows))]
     #[tokio::test]
     async fn resize_tracks_terminal_without_failing() {
         let manager = TerminalManager::default();

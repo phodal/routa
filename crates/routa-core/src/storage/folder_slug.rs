@@ -132,8 +132,14 @@ mod tests {
     #[test]
     fn test_get_project_storage_dir() {
         let dir = get_project_storage_dir("/Users/john/my-project");
-        assert!(dir.to_string_lossy().contains("Users-john-my-project"));
-        assert!(dir.to_string_lossy().contains(".routa/projects"));
+        let dir_str = dir.to_string_lossy();
+        assert!(dir_str.contains("Users-john-my-project"));
+        // Check for .routa with either path separator (cross-platform)
+        assert!(
+            dir_str.contains(".routa/projects") || dir_str.contains(".routa\\projects"),
+            "path should contain .routa/projects or .routa\\projects, got: {}",
+            dir_str
+        );
     }
 
     #[test]

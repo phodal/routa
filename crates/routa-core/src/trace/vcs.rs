@@ -162,7 +162,10 @@ mod tests {
         let vcs = result.unwrap();
         assert_eq!(vcs.branch.as_deref(), Some("main"));
         assert!(vcs.revision.is_some());
-        assert_eq!(vcs.repo_root.as_deref(), repo_root.to_str());
+        // Compare paths by parsing and canonicalizing to handle Windows extended paths (\\?\)
+        let vcs_root = std::path::PathBuf::from(vcs.repo_root.as_deref().unwrap_or(""));
+        let vcs_root_canonical = vcs_root.canonicalize().unwrap_or(vcs_root);
+        assert_eq!(vcs_root_canonical, repo_root);
     }
 
     #[test]
