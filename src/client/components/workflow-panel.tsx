@@ -695,7 +695,7 @@ export function WorkflowPanel() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t.workflows.noWorkflows]);
 
   useEffect(() => {
     fetchWorkflows();

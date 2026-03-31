@@ -260,7 +260,7 @@ export function AgentInstallPanel({ embedded = false }: AgentInstallPanelProps) 
         });
       }
     },
-    [fetchAgents]
+    [fetchAgents, t.agents.installFailed]
   );
 
   // Uninstall agent (Tauri or Web)
@@ -294,7 +294,7 @@ export function AgentInstallPanel({ embedded = false }: AgentInstallPanelProps) 
         });
       }
     },
-    [fetchAgents]
+    [fetchAgents, t.agents.uninstallFailed]
   );
 
   return (

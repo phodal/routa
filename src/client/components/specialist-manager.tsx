@@ -3,7 +3,6 @@
 import { useState, useEffect } from "react";
 import { desktopAwareFetch } from "../utils/diagnostics";
 import { Select } from "./select";
-import { useTranslation } from "@/i18n";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -68,7 +67,6 @@ interface SpecialistForm {
 // ─── Specialist Manager Component ───────────────────────────────────────────
 
 export function SpecialistManager({ open, onClose }: SpecialistManagerProps) {
-  const { t } = useTranslation();
   const [specialists, setSpecialists] = useState<SpecialistConfig[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);

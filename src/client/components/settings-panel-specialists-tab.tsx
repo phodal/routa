@@ -82,7 +82,7 @@ export function SpecialistsTab({ modelDefs }: SpecialistsTabProps) {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t.errors.loadFailed]);
 
   useEffect(() => {
     void load();
