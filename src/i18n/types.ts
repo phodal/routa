@@ -30,6 +30,7 @@ export interface TranslationDictionary {
     import: string;
     clone: string;
     send: string;
+    saveAndClose: string;
     auto: string;
     none: string;
     active: string;
@@ -67,6 +68,7 @@ export interface TranslationDictionary {
     sendHint: string;
     multiAgent: string;
     direct: string;
+    crafter: string;
     multiAgentDesc: string;
     directDesc: string;
     customSpecialist: string;
@@ -87,6 +89,13 @@ export interface TranslationDictionary {
     offline: string;
     openSidebar: string;
     closeSidebar: string;
+    mcpServers: string;
+    schedules: string;
+    harness: string;
+    fluency: string;
+    workflows: string;
+    specialists: string;
+    debug: string;
   };
 
   // Settings panel
@@ -158,6 +167,7 @@ export interface TranslationDictionary {
     loadingWorkspace: string;
     defaultWorkspace: string;
     noBoard: string;
+    activeBoard: string;
     noRecentSession: string;
     primarySurface: string;
     kanbanDescription: string;
@@ -748,6 +758,7 @@ export interface TranslationDictionary {
     workspaceDefault: string;
     runLabel: string;
     openLabel: string;
+    inspectLabel: string;
     backlog: string;
     baseLabel: string;
     // Settings modal extras

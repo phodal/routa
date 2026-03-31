@@ -407,6 +407,8 @@ function AgentCard({
   onInstall,
   onUninstall,
 }: AgentCardProps) {
+  const { t } = useTranslation();
+
   // Determine best available distribution type
   const availableDistType = useMemo(() => {
     if (distributionTypes.includes("npx") && runtimeAvailability.npx) return "npx";

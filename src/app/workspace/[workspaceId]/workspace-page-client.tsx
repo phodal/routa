@@ -268,7 +268,7 @@ export function WorkspacePageClient({
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-desktop-text-muted">
-                {t.workspace.noBoard}
+                {t.workspace.activeBoard}
               </div>
               <div className="mt-2 truncate text-xl font-semibold tracking-tight text-desktop-text-primary">
                 {activeBoard?.name ?? t.workspace.noBoard}

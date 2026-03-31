@@ -877,6 +877,7 @@ function TaskNoteEditor({
   onSave: (update: { title?: string; content?: string }) => Promise<void>;
   onCancel: () => void;
 }) {
+  const { t } = useTranslation();
   const [title, setTitle] = useState(note.title);
   const [content, setContent] = useState(note.content);
   const [saving, setSaving] = useState(false);
@@ -966,7 +967,7 @@ function TaskNoteEditor({
           disabled={saving}
           className="text-xs font-medium px-2.5 py-1 rounded-md bg-emerald-600 text-white hover:bg-emerald-700 transition-colors disabled:opacity-50"
         >
-          {saving ? t.common.loading : t.common.save}
+          {saving ? t.common.loading : t.common.saveAndClose}
         </button>
         <button
           onClick={onCancel}

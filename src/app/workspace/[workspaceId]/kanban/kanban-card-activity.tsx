@@ -84,8 +84,8 @@ function formatExpectedRunTarget(
   boardColumns: KanbanColumnInfo[],
   availableProviders: AcpProviderInfo[],
   specialists: KanbanSpecialistOption[],
+  workspaceDefaultLabel: string,
 ): string {
-  const { t: _t } = useTranslation();
   const resolveSpecialist = createKanbanSpecialistResolver(specialists);
   const effectiveAutomation = resolveEffectiveTaskAutomation(task, boardColumns, resolveSpecialist);
   const specialistName = getSpecialistName(
@@ -106,7 +106,7 @@ function formatExpectedRunTarget(
 
   const providerName = effectiveAutomation.providerId
     ? availableProviders.find((provider) => provider.id === effectiveAutomation.providerId)?.name ?? effectiveAutomation.providerId
-    : _t.kanban.workspaceDefault;
+    : workspaceDefaultLabel;
   return [providerName, effectiveAutomation.role ?? "DEVELOPER", specialistName].join(" · ");
 }
 
@@ -451,7 +451,7 @@ function SessionHistoryPanel({
           );
           const stepLabel = getLaneSessionStepLabel(laneSession);
           const isA2ARun = laneSession?.transport === "a2a";
-          const reconnectLabel = run?.resumeTarget?.type === "external_task" ? t.kanban.openLabel : t.kanban.openLabel;
+          const reconnectLabel = run?.resumeTarget?.type === "external_task" ? t.kanban.inspectLabel : t.kanban.openLabel;
 
           return (
             <button
@@ -555,8 +555,9 @@ export function KanbanEmptySessionPane({
   specialistLanguage?: KanbanSpecialistLanguage;
   onCloseSession?: () => void;
 }) {
+  const { t } = useTranslation();
   const copy = getKanbanSessionCopy(specialistLanguage);
-  const target = formatExpectedRunTarget(task, boardColumns, availableProviders, specialists);
+  const target = formatExpectedRunTarget(task, boardColumns, availableProviders, specialists, t.kanban.workspaceDefault);
 
   return (
     <div className="flex h-full min-w-0 flex-1 flex-col overflow-hidden">

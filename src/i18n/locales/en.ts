@@ -25,6 +25,7 @@ const en: TranslationDictionary = {
     import: "Import",
     clone: "Clone",
     send: "Send",
+    saveAndClose: "Save & Close",
     auto: "Auto",
     none: "None",
     active: "Active",
@@ -62,6 +63,7 @@ const en: TranslationDictionary = {
     sendHint: "⏎ send",
     multiAgent: "Multi-Agent",
     direct: "Direct",
+    crafter: "Crafter",
     multiAgentDesc:
       "Suited for complex tasks · Automatically decompose requirements and assign to multiple specialized agents",
     directDesc: "Suited for quick tasks · Single agent direct execution",
@@ -82,6 +84,13 @@ const en: TranslationDictionary = {
     offline: "Offline",
     openSidebar: "Open sidebar",
     closeSidebar: "Close sidebar",
+    mcpServers: "MCP Servers",
+    schedules: "Schedules",
+    harness: "Harness",
+    fluency: "Fluency",
+    workflows: "Workflows",
+    specialists: "Specialists",
+    debug: "Debug",
   },
 
   settings: {
@@ -152,6 +161,7 @@ const en: TranslationDictionary = {
     loadingWorkspace: "Loading workspace…",
     defaultWorkspace: "Default Workspace",
     noBoard: "No board",
+    activeBoard: "Active board",
     noRecentSession: "No recent session",
     primarySurface: "Primary surface",
     kanbanDescription: "Kanban is the canonical work surface for routing, queue supervision, and lane-based execution.",
@@ -724,6 +734,7 @@ const en: TranslationDictionary = {
     workspaceDefault: "Workspace default",
     runLabel: "Run",
     openLabel: "Open",
+    inspectLabel: "Inspect",
     backlog: "backlog",
     baseLabel: "base",
     // Settings modal extras

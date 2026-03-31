@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Select } from "./select";
+import { useTranslation } from "@/i18n";
 
 import { desktopAwareFetch } from "../utils/diagnostics";
 import {
@@ -75,6 +76,7 @@ export function McpServersTab() {
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<McpServerForm>(EMPTY_MCP_FORM);
+  const { t } = useTranslation();
 
   const load = useCallback(async () => {
     setLoading(true);

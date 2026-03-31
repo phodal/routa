@@ -1,0 +1,69 @@
+# i18n 翻译完善实施计划
+
+## 背景
+
+PR #174 已建立 i18n 基础架构并翻译了大部分顶层组件。但 Kanban 子组件和 Workspace 子组件中仍有大量硬编码英文字符串未替换为翻译键。语言切换器已确认仅在 Settings 面板中使用（符合要求）。
+
+## 需要翻译的文件
+
+### Kanban 子组件（8 个文件）
+
+| 文件 | 行数 | 硬编码字符串数 | 已有 useTranslation |
+|------|------|---------------|-------------------|
+| [kanban-repo-sync-status.tsx](file:///e:/ideaProject/phodal/routa/src/app/workspace/%5BworkspaceId%5D/kanban/kanban-repo-sync-status.tsx) | 109 | ~5 | ❌ |
+| [kanban-description-editor.tsx](file:///e:/ideaProject/phodal/routa/src/app/workspace/%5BworkspaceId%5D/kanban/kanban-description-editor.tsx) | 284 | ~5 | ❌ |
+| [kanban-card-artifacts.tsx](file:///e:/ideaProject/phodal/routa/src/app/workspace/%5BworkspaceId%5D/kanban/kanban-card-artifacts.tsx) | 320 | ~10 | ❌ |
+| [kanban-card-activity.tsx](file:///e:/ideaProject/phodal/routa/src/app/workspace/%5BworkspaceId%5D/kanban/kanban-card-activity.tsx) | 503 | ~15 | ❌ |
+| [kanban-tab-modals.tsx](file:///e:/ideaProject/phodal/routa/src/app/workspace/%5BworkspaceId%5D/kanban/kanban-tab-modals.tsx) | 463 | ~15 | ❌ |
+| [kanban-tab.tsx](file:///e:/ideaProject/phodal/routa/src/app/workspace/%5BworkspaceId%5D/kanban/kanban-tab.tsx) | ~500 | ~10 | ❌ |
+| [kanban-card-detail.tsx](file:///e:/ideaProject/phodal/routa/src/app/workspace/%5BworkspaceId%5D/kanban/kanban-card-detail.tsx) | 889 | ~30 | ❌ |
+| [kanban-settings-modal.tsx](file:///e:/ideaProject/phodal/routa/src/app/workspace/%5BworkspaceId%5D/kanban/kanban-settings-modal.tsx) | 1498 | ~40 | ❌ |
+
+### Workspace 子组件（5 个文件）
+
+| 文件 | 行数 | 硬编码字符串数 | 已有 useTranslation |
+|------|------|---------------|-------------------|
+| [sessions-overview.tsx](file:///e:/ideaProject/phodal/routa/src/app/workspace/%5BworkspaceId%5D/sessions-overview.tsx) | 269 | ~10 | ❌ |
+| [ui-components.tsx](file:///e:/ideaProject/phodal/routa/src/app/workspace/%5BworkspaceId%5D/ui-components.tsx) | 305 | ~3 | ❌ |
+| [left-sidebar.tsx](file:///e:/ideaProject/phodal/routa/src/app/workspace/%5BworkspaceId%5D/sessions/%5BsessionId%5D/left-sidebar.tsx) | ~200 | 需检查 | ❌ |
+| [session-page-client.tsx](file:///e:/ideaProject/phodal/routa/src/app/workspace/%5BworkspaceId%5D/sessions/%5BsessionId%5D/session-page-client.tsx) | ~400 | 需检查 | ❌ |
+| [team-run-page-client.tsx](file:///e:/ideaProject/phodal/routa/src/app/workspace/%5BworkspaceId%5D/team/%5BsessionId%5D/team-run-page-client.tsx) | ~200 | 需检查 | ❌ |
+
+## 执行策略
+
+采用**分批执行**策略，每批操作：
+
+1. **读取目标文件** → 提取所有硬编码英文字符串
+2. **扩展字典** → 在 [types.ts](file:///e:/ideaProject/phodal/routa/src/i18n/types.ts)、[en.ts](file:///e:/ideaProject/phodal/routa/src/i18n/locales/en.ts)、[zh.ts](file:///e:/ideaProject/phodal/routa/src/i18n/locales/zh.ts) 中添加新翻译键
+3. **更新组件** → 导入 `useTranslation`，替换硬编码字符串为 `t.xxx`
+4. **验证** → 运行 i18n 测试确保键对齐
+
+### 字典扩展策略
+
+- 优先复用现有翻译键（`common.*`、`kanban.*` 等）
+- 新键按模块命名（如 `kanban.editLinkedRepos`）
+- 尽量不新增模块，扩展现有模块
+
+### 注意事项
+
+- ⚠️ 部分文件不是 `"use client"` 组件（如 [ui-components.tsx](file:///e:/ideaProject/phodal/routa/src/app/workspace/%5BworkspaceId%5D/ui-components.tsx)），需通过 props 传递 `t` 或将其改为接受翻译文本参数
+- ⚠️ 大文件（[kanban-settings-modal.tsx](file:///e:/ideaProject/phodal/routa/src/app/workspace/%5BworkspaceId%5D/kanban/kanban-settings-modal.tsx) 1498行）需分段处理避免上下文溢出
+- ⚠️ [kanban-card-activity.tsx](file:///e:/ideaProject/phodal/routa/src/app/workspace/%5BworkspaceId%5D/kanban/kanban-card-activity.tsx) 已有自己的 `i18n/kanban-session-copy` 系统
+
+## 验证计划
+
+### 自动化测试
+
+```bash
+npx vitest run src/i18n/__tests__/i18n.test.ts
+```
+
+验证所有翻译键在 en 和 zh 字典中对齐且非空。
+
+### TypeScript 类型检查
+
+```bash
+npx tsc --noEmit 2>&1 | Select-String -Pattern "i18n|kanban|workspace" | Select-Object -First 20
+```
+
+确保新增翻译键的类型定义正确。
