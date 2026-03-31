@@ -162,7 +162,9 @@ describe("KanbanCardArtifacts", () => {
     render(<KanbanCardArtifacts taskId="task-2" refreshSignal={0} />);
 
     expect(await screen.findByText("src/a.ts")).toBeTruthy();
-    expect(screen.getByText("const newValue = 2;")).toBeTruthy();
-    expect(screen.getByText("const oldValue = 1;")).toBeTruthy();
+    const diffViewer = screen.getByText("src/a.ts").closest("details");
+    expect(diffViewer).toBeTruthy();
+    expect(diffViewer?.textContent).toContain("const newValue = 2;");
+    expect(diffViewer?.textContent).toContain("const oldValue = 1;");
   });
 });
