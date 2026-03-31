@@ -68,6 +68,8 @@ jobs:
         (github.event.inputs.dry_run == 'false' || github.event.inputs.dry_run == false) &&
         (github.event.inputs.publish_desktop == 'true' || github.event.inputs.publish_desktop == true)
       )
+    permissions:
+      contents: write
     uses: ./.github/workflows/tauri-release.yml
     with:
       version: ${{ needs.resolve-version.outputs.version }}

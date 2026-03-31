@@ -41,7 +41,7 @@ export class SqliteCodebaseStore implements CodebaseStore {
     return rows.map(this.toModel);
   }
 
-  async update(codebaseId: string, fields: { branch?: string; label?: string }): Promise<void> {
+  async update(codebaseId: string, fields: { branch?: string; label?: string; repoPath?: string }): Promise<void> {
     await this.db
       .update(sqliteSchema.codebases)
       .set({ ...fields, updatedAt: new Date() })

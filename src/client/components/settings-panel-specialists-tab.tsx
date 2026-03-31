@@ -213,24 +213,6 @@ export function SpecialistsTab({ modelDefs }: SpecialistsTabProps) {
 
   return (
     <div className="space-y-5 p-6">
-      <div className="flex flex-wrap items-start justify-between gap-4 rounded-[24px] border border-desktop-border bg-desktop-bg-secondary px-5 py-4">
-        <div className="min-w-0">
-          <p className={sectionTitleCls}>Specialist Management</p>
-          <h2 className="mt-1 text-2xl font-semibold text-desktop-text-primary">Create, update, and remove specialists</h2>
-          <p className="mt-2 max-w-3xl text-sm text-desktop-text-secondary">
-            Desktop-style CRUD workspace for specialist profiles, prompts, and model bindings.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button onClick={handleSync} disabled={syncing || saving} className={secondaryButtonCls}>
-            {syncing ? "Syncing..." : "Sync bundled"}
-          </button>
-          <button onClick={startCreate} disabled={saving} className={primaryButtonCls}>
-            New specialist
-          </button>
-        </div>
-      </div>
-
       {error ? (
         <div className="rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
           {error}
@@ -245,7 +227,12 @@ export function SpecialistsTab({ modelDefs }: SpecialistsTabProps) {
                 <p className={sectionTitleCls}>Catalog</p>
                 <p className="mt-1 text-sm text-desktop-text-secondary">{specialists.length} total specialists</p>
               </div>
-              {loading ? <span className="text-xs text-desktop-text-muted">Loading...</span> : null}
+              <div className="flex items-center gap-2">
+                {loading ? <span className="text-xs text-desktop-text-muted">Loading...</span> : null}
+                <button onClick={handleSync} disabled={syncing || saving} className={secondaryButtonCls}>
+                  {syncing ? "Syncing..." : "Sync bundled"}
+                </button>
+              </div>
             </div>
 
             <input

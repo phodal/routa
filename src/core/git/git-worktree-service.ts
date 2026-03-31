@@ -6,13 +6,13 @@
  */
 
 import fs from "fs/promises";
-import os from "os";
 import path from "path";
 import { getServerBridge } from "@/core/platform";
 import type { WorktreeStore } from "../db/pg-worktree-store";
 import type { CodebaseStore } from "../db/pg-codebase-store";
 import type { Worktree } from "../models/worktree";
 import { createWorktree } from "../models/worktree";
+import { getDefaultWorkspaceWorktreeRoot } from "../models/workspace";
 
 /**
  * Shell-escape a single argument for safe interpolation.
@@ -40,13 +40,6 @@ async function execGit(
  */
 function branchToSafeDirName(branch: string): string {
   return branch.replace(/[^a-zA-Z0-9._-]/g, "-");
-}
-
-/**
- * Get the base directory for worktrees: ~/.routa/worktrees/
- */
-function getWorktreeBaseDir(): string {
-  return path.join(os.homedir(), ".routa", "worktrees");
 }
 
 export class GitWorktreeService {
@@ -95,7 +88,6 @@ export class GitWorktreeService {
       branch?: string;
       baseBranch?: string;
       label?: string;
-      /** Optional workspace worktree root (Req 5): overrides default ~/.routa/worktrees/{workspaceId} base. */
       worktreeRoot?: string;
     } = {}
   ): Promise<Worktree> {
@@ -128,13 +120,16 @@ export class GitWorktreeService {
         );
       }
 
+      const worktreeRoot = options.worktreeRoot ?? getDefaultWorkspaceWorktreeRoot(codebase.workspaceId);
+      const codebaseDir = branchToSafeDirName(codebase.label?.trim() || codebaseId);
+      const worktreeDir = branchToSafeDirName(options.label?.trim() || branch);
+
       // Compute worktree path
-      // Req 5: when worktreeRoot is provided use {worktreeRoot}/{codebaseLabel}/{issueId-slug} format.
-      const codebaseLabel = branchToSafeDirName(codebase.label ?? codebase.id);
-      const worktreeDir = branchToSafeDirName(options.label ?? branch);
-      const worktreePath = options.worktreeRoot
-        ? path.join(options.worktreeRoot, codebaseLabel, worktreeDir)
-        : path.join(getWorktreeBaseDir(), codebase.workspaceId, codebaseId, worktreeDir);
+      const worktreePath = path.join(
+        worktreeRoot,
+        codebaseDir,
+        worktreeDir,
+      );
 
       // Create DB record
       const worktree = createWorktree({

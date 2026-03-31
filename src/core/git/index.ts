@@ -19,6 +19,7 @@ export {
   repoToDirName,
   dirNameToRepo,
   listClonedRepos,
+  normalizeLocalRepoPath,
   validateRepoInput,
   validateBranchName,
   sanitizeBranchName,

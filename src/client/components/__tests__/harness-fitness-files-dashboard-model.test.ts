@@ -22,7 +22,7 @@ const specFiles: FitnessSpecSummary[] = [
     metricCount: 3,
     metrics: [],
     source: "evidence_files: []",
-    manifestEntries: ["api-contract.md", "security.md", "unit-test.md"],
+    manifestEntries: ["docs/fitness/api-contract.md", "docs/fitness/security.md", "docs/fitness/unit-test.md"],
   },
   {
     name: "api-contract.md",
@@ -112,27 +112,16 @@ const specFiles: FitnessSpecSummary[] = [
 ];
 
 describe("buildHarnessFitnessFilesDashboardModel", () => {
-  it("builds spec-derived radar scores from fitness dimension metadata", () => {
+  it("builds radar scores from manifest-linked fitness dimensions", () => {
     const model = buildHarnessFitnessFilesDashboardModel(specFiles, specFiles[2] ?? null);
 
     expect(model.selectedDimension).toEqual(
       expect.objectContaining({
         label: "evolvability",
-        score: 69,
+        score: 100,
       }),
     );
     expect(model.dimensions).toEqual([
-      expect.objectContaining({
-        label: "code_quality",
-        fileName: "code-quality.md",
-        metricCount: 3,
-        hardGateCount: 2,
-        weight: 24,
-        thresholdPass: 90,
-        thresholdWarn: 80,
-        score: 86,
-        isSelected: false,
-      }),
       expect.objectContaining({
         label: "evolvability",
         fileName: "api-contract.md",
@@ -141,8 +130,25 @@ describe("buildHarnessFitnessFilesDashboardModel", () => {
         weight: 8,
         thresholdPass: 100,
         thresholdWarn: 95,
-        score: 69,
+        score: 100,
         isSelected: true,
+      }),
+    ]);
+  });
+
+  it("falls back to all dimension specs when no manifest is present", () => {
+    const model = buildHarnessFitnessFilesDashboardModel(specFiles.slice(2), specFiles[2] ?? null);
+
+    expect(model.dimensions).toEqual([
+      expect.objectContaining({
+        label: "code_quality",
+        fileName: "code-quality.md",
+        score: 86,
+      }),
+      expect.objectContaining({
+        label: "evolvability",
+        fileName: "api-contract.md",
+        score: 69,
       }),
     ]);
   });

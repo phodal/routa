@@ -41,6 +41,7 @@ The repository still contains historical design material under `.kiro/specs/`. T
 ## Related Docs
 
 - [ARCHITECTURE.md](../ARCHITECTURE.md)
+- [Architecture Decision Records](../adr/README.md)
 - [FEATURE_TREE.md](../product-specs/FEATURE_TREE.md)
 - [core-beliefs.md](./core-beliefs.md)
 - [golden-rules.md](./golden-rules.md)

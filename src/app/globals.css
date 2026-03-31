@@ -1,6 +1,7 @@
 @import "@xterm/xterm/css/xterm.css";
 @import "@xyflow/react/dist/style.css";
 @import "react-complex-tree/lib/style-modern.css";
+@import "../client/components/codemirror/code-viewer.css";
 @import "tailwindcss";
 @import "./styles/desktop-theme.css";
 

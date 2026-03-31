@@ -130,6 +130,28 @@ const zh: TranslationDictionary = {
     sessions: "会话",
     refreshSystemInfo: "刷新系统信息",
     language: "语言",
+    harness: {
+      title: "Harness",
+      shellDescription: "用于 AI 工程流程的仓库治理总览。",
+      summaryOrderLabel: "顺序",
+      summaryOrderValue: "需求思考 -> 提交合并 -> 持续交付",
+      summaryFocusLabel: "关注点",
+      summaryFocusValue: "按阶段组织反馈闭环",
+      pageDescription:
+        "把 Spec Sources、Instruction file、Hook systems、Review triggers、Entrix Fitness 与 CI/CD 串成一张仓库治理总览。",
+      repositoryLabel: "仓库",
+      governanceLoop: "治理闭环",
+      specSources: "规范来源",
+      agentInstructions: "Agent 指令",
+      repositorySignals: "仓库信号",
+      hookSystems: "Hook 系统",
+      reviewTriggers: "评审触发器",
+      entrixFitness: "Entrix Fitness",
+      ciCd: "CI/CD",
+      quickNavigation: "快速导航",
+      expandNavigation: "展开导航菜单",
+      collapseNavigation: "收起导航菜单",
+    },
   },
 
   roles: {

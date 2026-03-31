@@ -1,0 +1,1202 @@
+# artifact_tool
+
+`artifact_tool` is a python library for our model to create/edit/update artifacts (spreadsheets, slides, docs).
+It will also support rendering (outputs an image) and formula evaluation (for spreadsheets) for the model to evaluate its work.
+
+## Usage
+
+```python
+from artifact_tool import SpreadsheetArtifact, PresentationArtifact
+from artifact_tool.spreadsheet import SpreadsheetSheet
+from artifact_tool.presentation import PresentationSlide
+```
+
+## Artifact Base (Parent abstract class of SpreadsheetArtifact)
+### `Artifact`
+Base dataclass for any artifact managed by the tool.
+- `allowed_file_extensions(cls) -> list[str]`
+  - Return the list of allowed file extensions for the artifact.
+  - Args
+    - `cls`
+  - Returns
+    - list[str]
+- `allowed_file_mime_types(cls) -> list[str]`
+  - Return the list of allowed mime types for the artifact.
+  - Args
+    - `cls`
+  - Returns
+    - list[str]
+- `allowed_file_types(cls) -> list[FileOutputType]`
+  - Return the list of allowed file output types for the artifact.
+  - Args
+    - `cls`
+  - Returns
+    - list[FileOutputType]
+- `export(self, filename: str | os.PathLike[str] | None = None, overwrite: bool = False) -> Path`
+  - Export the artifact to a file
+  - Args
+    - `self`
+    - `filename` (str | os.PathLike[str] | None): Optional absolute (or relative) path to the exported artifact. If omitted the artifact will be written to the current working directory using the artifact id and default export file type extension.
+    - `overwrite` (bool): Whether to overwrite the file if it already exists.
+  - Returns
+    - Path
+- `from_bytes(cls: type[TArtifact], serialized: bytes, artifact_id: str | None = None) -> TArtifact`
+  - Args
+    - `cls` (type[TArtifact])
+    - `serialized` (bytes)
+    - `artifact_id` (str | None)
+  - Returns
+    - TArtifact
+- `from_dict(cls: type[TArtifact], data: dict[str, Any], artifact_id: str | None = None) -> TArtifact`
+  - Construct an artifact instance from a serialized dictionary.
+  - Args
+    - `cls` (type[TArtifact])
+    - `data` (dict[str, Any])
+    - `artifact_id` (str | None)
+  - Returns
+    - TArtifact
+- `from_json(cls: type[TArtifact], json_str: bytes | str | bytearray, artifact_id: str | None = None) -> TArtifact`
+  - Args
+    - `cls` (type[TArtifact])
+    - `json_str` (bytes | str | bytearray)
+    - `artifact_id` (str | None)
+  - Returns
+    - TArtifact
+- `from_source_file(cls: type[TArtifact], path: Path, artifact_id: str | None = None) -> TArtifact`
+  - Construct an artifact instance from a source file's bytes. This should be based on the artifact type,
+  - Args
+    - `cls` (type[TArtifact])
+    - `path` (Path)
+    - `artifact_id` (str | None)
+  - Returns
+    - TArtifact
+- `get_output_file_name(self, suffix: str | None = None) -> str`
+  - Args
+    - `self`
+    - `suffix` (str | None)
+  - Returns
+    - str
+- `load(cls: type[TArtifact], file_path: str | os.PathLike[str], artifact_id: str | None = None) -> TArtifact`
+  - Load an artifact from a file path and return the artifact instance.
+  - Args
+    - `cls` (type[TArtifact])
+    - `file_path` (str | os.PathLike[str]): The path to the file to load.
+    - `artifact_id` (str | None): Optional identifier to assign to the loaded artifact.
+  - Returns
+    - TArtifact: The artifact instance.
+- `read(cls: type[TArtifact], file_path: str | os.PathLike[str], artifact_id: str | None = None) -> TArtifact`
+  - Read a file and return its contents based on file type.
+  - Args
+    - `cls` (type[TArtifact])
+    - `file_path` (str | os.PathLike[str]): The path to the file to read.
+    - `artifact_id` (str | None): An optional artifact id override. Otherwise, we will use the file name without the extension.
+  - Returns
+    - TArtifact: The artifact instance.
+- `save(self, file_type: FileOutputType = <FileOutputType.C_STAR_PROTO_BINARY: 'c_star_proto_binary'>, filename: str | os.PathLike[str] | None = None, overwrite: bool = False) -> Path`
+  - Persist the spreadsheet to disk
+  - Args
+    - `self`
+    - `file_type` (FileOutputType): The file type to save the artifact as.
+    - `filename` (str | os.PathLike[str] | None): Optional absolute (or relative) path to the output file. If omitted, the artifact is written to the current working directory using the artifact id as the base file name.
+    - `overwrite` (bool): Whether to overwrite the file if it already exists.
+  - Returns
+    - Path: The path to the written file.
+- `to_bytes(self) -> bytes`
+  - Args
+    - `self`
+  - Returns
+    - bytes
+- `to_dict(self) -> dict[str, Any]`
+  - This should only be used to visualize the artifact as a python dictionary. If you want to serialize the artifact into a file,
+  - Args
+    - `self`
+  - Returns
+    - dict[str, Any]
+- `to_json(self) -> str`
+  - Args
+    - `self`
+  - Returns
+    - str
+- `to_source_file(self, file_type: FileOutputType, path: Path) -> Path`
+  - Serialize the artifact to a source file.
+  - Args
+    - `self`
+    - `file_type` (FileOutputType): The file type to save the artifact as.
+    - `path` (Path): The path to save the artifact to.
+  - Returns
+    - Path: The path to the written file.
+
+## Spreadsheet
+### `CellData`
+Data of a cell.
+- `to_dict(self) -> dict[str, object]`
+  - Return a JSON-safe representation for convenience.
+  - Args
+    - `self`
+  - Returns
+    - dict[str, object]
+
+### `SpreadsheetArtifact`
+Top-level spreadsheet artifact that allows reading, writing, calculation, import and export (to/from xlsx) of a spreadsheet.
+- `allowed_file_types(cls) -> list[FileOutputType]`
+  - Args
+    - `cls`
+  - Returns
+    - list[FileOutputType]
+- `base_cell_style_format(self, style_index: int) -> CellStyleFormat | None`
+  - Look up a cell style format by index.
+  - Args
+    - `self`
+    - `style_index` (int): The style index to look up.
+  - Returns
+    - CellStyleFormat | None: The `CellStyleFormat` if present; otherwise None.
+- `base_cell_style_formats(self) -> list[CellStyleFormat]`
+  - Return all known cell style formats
+  - Args
+    - `self`
+  - Returns
+    - list[CellStyleFormat]: A list of `CellStyleFormat`.
+- `calculate(self) -> SpreadsheetArtifact`
+  - Calculate the spreadsheet.
+  - Args
+    - `self`
+  - Returns
+    - SpreadsheetArtifact
+- `cell_format_summary(self, style_index: int | None) -> CellFormatSummary`
+  - Return a denormalized summary for the given style index.
+  - Args
+    - `self`
+    - `style_index` (int | None)
+  - Returns
+    - CellFormatSummary
+- `create_base_cell_style_format(self, text_style: TextStyle | None = None, fill: Fill | None = None, border: Border | None = None, number_format: NumberFormat | None = None) -> int`
+  - Create a reusable base cell style format that can be referenced by other cell formats
+  - Args
+    - `self`
+    - `text_style` (TextStyle | None): Optional ``TextStyle`` component
+    - `fill` (Fill | None): Optional ``Fill`` component
+    - `border` (Border | None): Optional ``Border`` component
+    - `number_format` (NumberFormat | None): Optional ``NumberFormat``
+  - Returns
+    - int: The index of the base cell style format. This is what CellFormat.xf_id should point to.
+- `create_cell_format(self, *, source_format_id: int | None = None, merge_with_existing_components: bool = False, fill: Fill | None = None, text_style: TextStyle | None = None, border: Border | None = None, num_format_id: int | None = None, num_format_code: str | None = None, horizontal_alignment: str | None = None, vertical_alignment: str | None = None, apply_protection: bool | None = None, wrap_text: TextWrapOption | None = None, base_cell_style_format_id: int | None = None) -> int`
+  - Create a new cell format and return its index (``cell.style_index``).
+  - Args
+    - `self`
+    - `source_format_id` (int | None): The id of another CellFormat to merge the new format with. If provided, we fetch the cell format and just copy the components and fields provided as a base in the new cell format. The resulting cell format has no reference to this id. This id is what self.create_cell_format returns as the index of the new cell format. This is typically set to be the original style index of the cell if you just want to apply an additional style setting to the cell and not overwrite the existing style completely.
+    - `merge_with_existing_components` (bool): Only applicable if `source_format_id` is provided and not the default style index of 0. If True, this will merge the fields in `text_style` and `border` into the existing component that already exists in the format that source_format_id references. If False, this will replace the entire component with the new component provided.
+    - `fill` (Fill | None): Optional ``Fill`` proto (or dict). When provided, a new fill is added to the workbook and ``fill_id`` / ``apply_fill`` are updated on the resulting cell format.
+    - `text_style` (TextStyle | None): Optional ``TextStyle`` proto (or dict). When provided, a new font is created and ``font_id`` / ``apply_font`` are set.
+    - `border` (Border | None): Optional ``Border`` proto (or dict). When provided, a new border is created and ``border_id`` / ``apply_border`` are set.
+    - `num_format_id` (int | None): Optional id of a number format to set on the cell format.
+    - `num_format_code` (str | None): Optional code of a number format to set on the cell format. If provided, we will normalize/create the id and set it on the cell format. If both are provided, num_format_id takes precedence.
+    - `horizontal_alignment` (str | None): Optional horizontal alignment to set on the cell format.
+    - `vertical_alignment` (str | None): Optional vertical alignment to set on the cell format.
+    - `apply_protection` (bool | None): Optional protection to set on the cell format.
+    - `wrap_text` (TextWrapOption | None): Optional wrap text setting to set on the cell format.
+    - `base_cell_style_format_id` (int | None): Id of a base cell format (returned from self.create_base_cell_style_format) that we should inherit the styles from. This sets an actual reference to the base cell format in the cell format proto.
+  - Returns
+    - int: The index of the newly created cell format.
+- `create_dxf(self, dxf: DifferentialFormat) -> int`
+  - Create a new differential format and return its index.
+  - Args
+    - `self`
+    - `dxf` (DifferentialFormat): The `DifferentialFormat` to add to the workbook styles.
+  - Returns
+    - int
+- `create_sheet(self, name: str) -> SpreadsheetSheet`
+  - Create a new sheet and return its wrapper.
+  - Args
+    - `self`
+    - `name` (str): The name of the new sheet.
+  - Returns
+    - SpreadsheetSheet: The created `SpreadsheetSheet`, or None if a sheet with the same name already exists.
+- `delete_sheet(self, name: str | None = None, idx: int | None = None) -> None`
+  - Delete a sheet by name or index.
+  - Args
+    - `self`
+    - `name` (str | None)
+    - `idx` (int | None)
+  - Returns
+    - None
+- `export(self, filename: str | os.PathLike[str] | None = None, overwrite: bool = False) -> Path`
+  - Export the workbook to XLSX format.
+  - Args
+    - `self`
+    - `filename` (str | os.PathLike[str] | None)
+    - `overwrite` (bool)
+  - Returns
+    - Path
+- `from_bytes(cls, serialized: bytes, artifact_id: str | None = None) -> SpreadsheetArtifact`
+  - Create an artifact from a serialized `Workbook` byte string.
+  - Args
+    - `cls`
+    - `serialized` (bytes): A serialized `Workbook` proto as bytes.
+    - `artifact_id` (str | None)
+  - Returns
+    - SpreadsheetArtifact: A new `SpreadsheetArtifact` instance.
+- `from_dict(cls, data: dict[str, Any], artifact_id: str | None = None) -> SpreadsheetArtifact`
+  - Create an artifact from a dict representation.
+  - Args
+    - `cls`
+    - `data` (dict[str, Any]): A dict compatible with `Workbook` when parsed via `ParseDict`.
+    - `artifact_id` (str | None)
+  - Returns
+    - SpreadsheetArtifact: A new `SpreadsheetArtifact` instance.
+- `from_json(cls, json_str: str | bytes | bytearray, artifact_id: str | None = None) -> SpreadsheetArtifact`
+  - Args
+    - `cls`
+    - `json_str` (str | bytes | bytearray)
+    - `artifact_id` (str | None)
+  - Returns
+    - SpreadsheetArtifact
+- `from_source_file(cls, path: Path, artifact_id: str | None = None) -> SpreadsheetArtifact`
+  - Construct an artifact from an Excel file on disk using the Granola CLI.
+  - Args
+    - `cls`
+    - `path` (Path)
+    - `artifact_id` (str | None)
+  - Returns
+    - SpreadsheetArtifact
+- `get_border_by_id(self, border_id: int) -> Border | None`
+  - Get a border by index.
+  - Args
+    - `self`
+    - `border_id` (int)
+  - Returns
+    - Border | None
+- `get_cell_format(self, style_index: int) -> CellFormat | None`
+  - Get a cell format by index.
+  - Args
+    - `self`
+    - `style_index` (int)
+  - Returns
+    - CellFormat | None
+- `get_dxf(self, dxf_id: int) -> DifferentialFormat | None`
+  - Get a differential format by index.
+  - Args
+    - `self`
+    - `dxf_id` (int): The index of the differential format to look up if it exists.
+  - Returns
+    - DifferentialFormat | None
+- `get_fill_by_id(self, fill_id: int) -> Fill | None`
+  - Get a fill by index.
+  - Args
+    - `self`
+    - `fill_id` (int)
+  - Returns
+    - Fill | None
+- `get_number_format_by_id(self, number_format_id: int) -> NumberFormat | None`
+  - Get a number format by index.
+  - Args
+    - `self`
+    - `number_format_id` (int)
+  - Returns
+    - NumberFormat | None
+- `get_sheet(self, name: str | None = None, idx: int | None = None) -> SpreadsheetSheet | None`
+  - Returns a sheet wrapper by name or index if the sheet exists.
+  - Args
+    - `self`
+    - `name` (str | None): The sheet name.
+    - `idx` (int | None): The position of the sheet in the workbook.
+  - Returns
+    - SpreadsheetSheet | None: The `SpreadsheetSheet` if present; otherwise None.
+- `get_text_style_by_id(self, text_style_id: int) -> TextStyle | None`
+  - Get a font by index.
+  - Args
+    - `self`
+    - `text_style_id` (int)
+  - Returns
+    - TextStyle | None
+- `recalculate(self) -> SpreadsheetArtifact`
+  - Recalculate the spreadsheet - same as calculate()
+  - Args
+    - `self`
+  - Returns
+    - SpreadsheetArtifact
+- `rename_sheet(self, *, new_name: str, sheet_idx: int | None = None, old_name: str | None = None) -> SpreadsheetSheet`
+  - Set a sheet's name to `new_name`.
+  - Args
+    - `self`
+    - `new_name` (str): The new name of the sheet.
+    - `sheet_idx` (int | None): The position of the sheet in the workbook (0-indexed)
+    - `old_name` (str | None): The old name of the sheet to set the name of. If provided, will use the sheet with this name.
+  - Returns
+    - SpreadsheetSheet: The `SpreadsheetSheet` with the new name.
+- `render(self, output: os.PathLike[str] | str | None = None, *, sheet_name: str | None = None, cell_range: str | None = None, center: str | None = None, width: int | None = None, height: int | None = None, include_headers: bool = True, scale: float = 1.0, performance: bool = False) -> tuple[RenderedPath, ...]`
+  - Render the spreadsheet via the Granola CLI and return the output files.
+  - Args
+    - `self`
+    - `output` (os.PathLike[str] | str | None)
+    - `sheet_name` (str | None)
+    - `cell_range` (str | None)
+    - `center` (str | None)
+    - `width` (int | None)
+    - `height` (int | None)
+    - `include_headers` (bool)
+    - `scale` (float)
+    - `performance` (bool)
+  - Returns
+    - tuple[RenderedPath, ...]
+- `sheet(self, name: str) -> SpreadsheetSheet`
+  - Get a sheet wrapper by name.
+  - Args
+    - `self`
+    - `name` (str): The sheet name.
+  - Returns
+    - SpreadsheetSheet: The `SpreadsheetSheet` if present; otherwise None.
+- `sheets(self) -> list[str]`
+  - Return all sheet names.
+  - Args
+    - `self`
+  - Returns
+    - list[str]
+- `summary(self) -> SpreadsheetSummary`
+  - Return a summary of the spreadsheet.
+  - Args
+    - `self`
+  - Returns
+    - SpreadsheetSummary
+- `to_bytes(self) -> bytes`
+  - Serialize the workbook to bytes.
+  - Args
+    - `self`
+  - Returns
+    - bytes: The serialized `Workbook` bytes.
+- `to_dict(self) -> dict[str, Any]`
+  - Convert the workbook to a JSON-serializable dict.
+  - Args
+    - `self`
+  - Returns
+    - dict[str, Any]: A dict produced by `MessageToDict` with proto field names preserved.
+- `to_json(self) -> str`
+  - Convert the workbook to a JSON-serializable string.
+  - Args
+    - `self`
+  - Returns
+    - str: A JSON-serializable string.
+- `to_source_file(self, file_type: FileOutputType, path: Path) -> Path`
+  - Serialize the workbook to a file supported by Granola.
+  - Args
+    - `self`
+    - `file_type` (FileOutputType)
+    - `path` (Path)
+  - Returns
+    - Path
+- `allowed_file_extensions(cls) -> list[str]`
+  - Return the list of allowed file extensions for the artifact.
+  - Args
+    - `cls`
+  - Returns
+    - list[str]
+- `allowed_file_mime_types(cls) -> list[str]`
+  - Return the list of allowed mime types for the artifact.
+  - Args
+    - `cls`
+  - Returns
+    - list[str]
+- `get_output_file_name(self, suffix: str | None = None) -> str`
+  - Args
+    - `self`
+    - `suffix` (str | None)
+  - Returns
+    - str
+- `load(cls: type[TArtifact], file_path: str | os.PathLike[str], artifact_id: str | None = None) -> TArtifact`
+  - Load an artifact from a file path and return the artifact instance.
+  - Args
+    - `cls` (type[TArtifact])
+    - `file_path` (str | os.PathLike[str]): The path to the file to load.
+    - `artifact_id` (str | None): Optional identifier to assign to the loaded artifact.
+  - Returns
+    - TArtifact: The artifact instance.
+- `read(cls: type[TArtifact], file_path: str | os.PathLike[str], artifact_id: str | None = None) -> TArtifact`
+  - Read a file and return its contents based on file type.
+  - Args
+    - `cls` (type[TArtifact])
+    - `file_path` (str | os.PathLike[str]): The path to the file to read.
+    - `artifact_id` (str | None): An optional artifact id override. Otherwise, we will use the file name without the extension.
+  - Returns
+    - TArtifact: The artifact instance.
+- `save(self, file_type: FileOutputType = <FileOutputType.C_STAR_PROTO_BINARY: 'c_star_proto_binary'>, filename: str | os.PathLike[str] | None = None, overwrite: bool = False) -> Path`
+  - Persist the spreadsheet to disk
+  - Args
+    - `self`
+    - `file_type` (FileOutputType): The file type to save the artifact as.
+    - `filename` (str | os.PathLike[str] | None): Optional absolute (or relative) path to the output file. If omitted, the artifact is written to the current working directory using the artifact id as the base file name.
+    - `overwrite` (bool): Whether to overwrite the file if it already exists.
+  - Returns
+    - Path: The path to the written file.
+
+### `SpreadsheetCellRangeRef`
+High-level reference over a rectangular range in a `SpreadsheetSheet`.
+- `conditional_formats` (ConditionalFormatCollection)
+  - Get a ConditionalFormatCollection object for this range.
+  - Returns
+    - A ConditionalFormatCollection object that can be used to read and set conditional formats onto the range.
+- `format` (RangeFormat)
+  - Get a RangeFormat object for this range.
+  - Returns
+    - A RangeFormat object that can be used to read and set styles onto the range.
+- `formulas` (list[list[str | None]])
+  - Get the formulas of the cells in this range. None means cell formula is not set.
+  - Returns
+    - A 2D sequence of formulas matching the shape of the range. None means cell formula is not set. Note: All cells in a merged cell will have the same formula. Example: [     [ None, None, "=G109*G110" ],     [ None, None, "=G108*G110" ],     [ None, None, "=G107*G110" ] ]
+- `style_indices` (list[list[int]])
+  - Return a 2D list of style indices for this range.
+  - Returns
+    - A matrix of integers (style indices) or None for missing cells. Note: 0 is the default style index for cells e.g. [     [ 10, 12, 14 ],     [ 10, 12, 14 ],     [ 10, 0, 10 ] ]
+- `values` (list[list[SpreadsheetCellValueType]])
+  - Get the values of the cells in this range. None means cell value is not set.
+  - Returns
+    - A 2D sequence of values matching the shape of the range. None means cell value is not set. Note: All cells in a merged cell will have the same value.
+- `data(self) -> list[list[SpreadsheetCellValueType | str | None]]`
+  - Get the data for the range.
+  - Args
+    - `self`
+  - Returns
+    - list[list[SpreadsheetCellValueType | str | None]]
+- `merge(self, raise_on_conflict: bool = False) -> SpreadsheetCellRangeRef`
+  - Merge the cells in the range.
+  - Args
+    - `self`
+    - `raise_on_conflict` (bool)
+  - Returns
+    - SpreadsheetCellRangeRef
+- `unmerge(self) -> SpreadsheetCellRangeRef`
+  - Unmerge the cells in the range.
+  - Args
+    - `self`
+  - Returns
+    - SpreadsheetCellRangeRef
+- `cite(self: VR, *, tether_id: str, start_line_number: int | None = None, end_line_number: int | None = None, content_reference_type: ContentReferenceType = 2, source_type: SourceType = 1) -> VR`
+  - Attach citations and annotate the target cell as a Note.
+  - Args
+    - `self` (VR)
+    - `tether_id` (str): Convenience parameter to create a `ContentReference` with the given tether id. When provided, line range metadata can also be supplied without manually instantiating a proto.
+    - `start_line_number` (int | None): Optional line number where the cite begins.
+    - `end_line_number` (int | None): Optional line number where the cite ends.
+    - `content_reference_type` (ContentReferenceType): Classification of the referenced content. Defaults to `CONTENT_REFERENCE_TYPE_EXTERNAL`.
+    - `source_type` (SourceType): Source classification of the reference (for example, webpage, image, or file). Defaults to `SOURCE_TYPE_WEBPAGE`.
+  - Returns
+    - VR: self (for method chaining)
+- `get_data(self) -> list[list[SpreadsheetCellValueType | str | None]]`
+  - Return a 2D list of cell data for this range.
+  - Args
+    - `self`
+  - Returns
+    - list[list[SpreadsheetCellValueType | str | None]]: A matrix of cell data or None for missing cells. For formulas, the formula will be returned. For cells with no formulas but has a value, the value will be returned.
+- `get_formulas(self) -> list[list[str | None]]`
+  - Same as .formulas()
+  - Args
+    - `self`
+  - Returns
+    - list[list[str | None]]
+- `get_values(self) -> list[list[SpreadsheetCellValueType]]`
+  - Same as .values()
+  - Args
+    - `self`
+  - Returns
+    - list[list[SpreadsheetCellValueType]]
+- `has_merged_cells(self) -> bool`
+  - Returns True if this range contains any merged cells.
+  - Args
+    - `self`
+  - Returns
+    - bool
+- `is_merged_cell(self) -> bool`
+  - Returns True if this range is a single merged cell.
+  - Args
+    - `self`
+  - Returns
+    - bool
+- `is_single_cell(self) -> bool`
+  - Returns True if this range is a single cell.
+  - Args
+    - `self`
+  - Returns
+    - bool
+- `is_single_column(self) -> bool`
+  - Returns True if this range is a column.
+  - Args
+    - `self`
+  - Returns
+    - bool
+- `is_single_row(self) -> bool`
+  - Returns True if this range is a row.
+  - Args
+    - `self`
+  - Returns
+    - bool
+- `render(self, output: os.PathLike[str] | str | None = None, *, include_headers: bool = True, scale: float = 1.0, performance: bool = False) -> RenderedPath`
+  - Render this range via the parent sheet.
+  - Args
+    - `self`
+    - `output` (os.PathLike[str] | str | None)
+    - `include_headers` (bool)
+    - `scale` (float)
+    - `performance` (bool)
+  - Returns
+    - RenderedPath
+- `set_formula(self: VR, formula: str, *, recalculate: bool | None = None) -> VR`
+  - Set all cells in the range to the given formula.
+  - Args
+    - `self` (VR)
+    - `formula` (str): The formula to set. The formula must be a valid formula string, e.g. "=A1*B1" or "". Using "" clears the cell's formula.
+    - `recalculate` (bool | None): Whether to recalculate the spreadsheet after setting the value.
+    - `allow_partial_merge_cells`: Whether to allow setting the value if the range is part of a merged cell.
+  - Returns
+    - VR: self (for method chaining)
+- `set_formulas(self: VR, formulas_matrix: Sequence[Sequence[str]], *, recalculate: bool | None = None) -> VR`
+  - Set the formulas of the cells in this range.
+  - Args
+    - `self` (VR)
+    - `formulas_matrix` (Sequence[Sequence[str]])
+    - `recalculate` (bool | None)
+    - `formulas`: A 2D sequence of formulas matching the shape of the range. Each item must be a valid formula string, e.g. "=A1*B1" or "". Using "" clears the cell's formula.
+  - Returns
+    - VR: self
+- `set_rich_text(self: VR, rich_text: RichTextInput, *, recalculate: bool | None = None, overwrite_existing: bool = True) -> VR`
+  - Set the cell(s) to inline rich text composed of TextRuns.
+  - Args
+    - `self` (VR)
+    - `rich_text` (RichTextInput): Either a sequence of run specs for single-cell ranges or a matrix (rows x columns) of run spec sequences matching the range. Example:  [{"t": "some "}, {"t": "italic ", "i": True}]
+    - `recalculate` (bool | None): Whether to trigger a recalculation after writing the runs.
+    - `overwrite_existing` (bool): Whether to overwrite the existing cell proto, as opposed to merging fields. Defaults to True since rich text typically replaces existing content entirely.
+  - Returns
+    - VR: self
+- `set_style_index(self: VR, style_index: int) -> VR`
+  - Set a uniform style index for all cells in the range.
+  - Args
+    - `self` (VR)
+    - `style_index` (int): The style index to assign to each cell in the range.
+  - Returns
+    - VR
+- `set_value(self: VR, value: SpreadsheetCellValueType, *, recalculate: bool | None = None) -> VR`
+  - Set all cells in the range to the given value.
+  - Args
+    - `self` (VR)
+    - `value` (SpreadsheetCellValueType): The value to set. The type of `value` indicates the data type of the cell. For example, value=5 meeans the cell is a number and the value is 5. but value="5" means the cell is a string and the value is the string "5".
+    - `recalculate` (bool | None): Whether to recalculate the spreadsheet after setting the value. Default is to use the auto recalculate setting of the spreadsheet.
+  - Returns
+    - VR: self (for method chaining)
+- `set_values(self: VR, values_matrix: Sequence[Sequence[SpreadsheetCellValueType]], *, recalculate: bool | None = None) -> VR`
+  - Set the values of the range to the given values_matrix.
+  - Args
+    - `self` (VR)
+    - `values_matrix` (Sequence[Sequence[SpreadsheetCellValueType]])
+    - `recalculate` (bool | None): Whether to recalculate the spreadsheet after setting the values.
+    - `raw_cells_matrix`: A 2D matrix matching the range. None clears the cell's value.
+  - Returns
+    - VR: self
+
+### `SpreadsheetCellRef`
+High-level reference over a cell a `SpreadsheetSheet`
+- `data` (SpreadsheetCellValueType | str | None)
+  - Returns the data of the cell
+- `formula` (str | None)
+  - Get the cell's formula string.
+  - Returns
+    - The cell's formula (e.g., "=A1*B1") or None if the formula is not set.
+- `style_index` (int)
+  - Get the cell's style index. 0 is the default style index.
+- `value` (SpreadsheetCellValueType)
+  - Get the cell's value if it exists.
+- `conditional_formats` (ConditionalFormatCollection)
+  - Get a ConditionalFormatCollection object for this range.
+  - Returns
+    - A ConditionalFormatCollection object that can be used to read and set conditional formats onto the range.
+- `format` (RangeFormat)
+  - Get a RangeFormat object for this range.
+  - Returns
+    - A RangeFormat object that can be used to read and set styles onto the range.
+- `formulas` (list[list[str | None]])
+  - Get the formulas of the cells in this range. None means cell formula is not set.
+  - Returns
+    - A 2D sequence of formulas matching the shape of the range. None means cell formula is not set. Note: All cells in a merged cell will have the same formula. Example: [     [ None, None, "=G109*G110" ],     [ None, None, "=G108*G110" ],     [ None, None, "=G107*G110" ] ]
+- `style_indices` (list[list[int]])
+  - Return a 2D list of style indices for this range.
+  - Returns
+    - A matrix of integers (style indices) or None for missing cells. Note: 0 is the default style index for cells e.g. [     [ 10, 12, 14 ],     [ 10, 12, 14 ],     [ 10, 0, 10 ] ]
+- `values` (list[list[SpreadsheetCellValueType]])
+  - Get the values of the cells in this range. None means cell value is not set.
+  - Returns
+    - A 2D sequence of values matching the shape of the range. None means cell value is not set. Note: All cells in a merged cell will have the same value.
+- `format_summary(self) -> CellFormatSummary`
+  - Return a denormalized summary of the cell's style.
+  - Args
+    - `self`
+  - Returns
+    - CellFormatSummary
+- `get_calculation_error_message(self) -> str | None`
+  - Returns the calculation error message if the cell's value indicates a calculation error.
+  - Args
+    - `self`
+  - Returns
+    - str | None
+- `is_calculation_error(self) -> bool`
+  - Returns True if the cell's value indicates a calculation error.
+  - Args
+    - `self`
+  - Returns
+    - bool
+- `to_dict(self) -> dict[str, object]`
+  - Return a dictionary representation of the cell as the Cell proto.
+  - Args
+    - `self`
+  - Returns
+    - dict[str, object]
+- `cite(self: VR, *, tether_id: str, start_line_number: int | None = None, end_line_number: int | None = None, content_reference_type: ContentReferenceType = 2, source_type: SourceType = 1) -> VR`
+  - Attach citations and annotate the target cell as a Note.
+  - Args
+    - `self` (VR)
+    - `tether_id` (str): Convenience parameter to create a `ContentReference` with the given tether id. When provided, line range metadata can also be supplied without manually instantiating a proto.
+    - `start_line_number` (int | None): Optional line number where the cite begins.
+    - `end_line_number` (int | None): Optional line number where the cite ends.
+    - `content_reference_type` (ContentReferenceType): Classification of the referenced content. Defaults to `CONTENT_REFERENCE_TYPE_EXTERNAL`.
+    - `source_type` (SourceType): Source classification of the reference (for example, webpage, image, or file). Defaults to `SOURCE_TYPE_WEBPAGE`.
+  - Returns
+    - VR: self (for method chaining)
+- `get_data(self) -> list[list[SpreadsheetCellValueType | str | None]]`
+  - Return a 2D list of cell data for this range.
+  - Args
+    - `self`
+  - Returns
+    - list[list[SpreadsheetCellValueType | str | None]]: A matrix of cell data or None for missing cells. For formulas, the formula will be returned. For cells with no formulas but has a value, the value will be returned.
+- `get_formulas(self) -> list[list[str | None]]`
+  - Same as .formulas()
+  - Args
+    - `self`
+  - Returns
+    - list[list[str | None]]
+- `get_values(self) -> list[list[SpreadsheetCellValueType]]`
+  - Same as .values()
+  - Args
+    - `self`
+  - Returns
+    - list[list[SpreadsheetCellValueType]]
+- `has_merged_cells(self) -> bool`
+  - Returns True if this range contains any merged cells.
+  - Args
+    - `self`
+  - Returns
+    - bool
+- `is_merged_cell(self) -> bool`
+  - Returns True if this range is a single merged cell.
+  - Args
+    - `self`
+  - Returns
+    - bool
+- `is_single_cell(self) -> bool`
+  - Returns True if this range is a single cell.
+  - Args
+    - `self`
+  - Returns
+    - bool
+- `is_single_column(self) -> bool`
+  - Returns True if this range is a column.
+  - Args
+    - `self`
+  - Returns
+    - bool
+- `is_single_row(self) -> bool`
+  - Returns True if this range is a row.
+  - Args
+    - `self`
+  - Returns
+    - bool
+- `render(self, output: os.PathLike[str] | str | None = None, *, include_headers: bool = True, scale: float = 1.0, performance: bool = False) -> RenderedPath`
+  - Render this range via the parent sheet.
+  - Args
+    - `self`
+    - `output` (os.PathLike[str] | str | None)
+    - `include_headers` (bool)
+    - `scale` (float)
+    - `performance` (bool)
+  - Returns
+    - RenderedPath
+- `set_formula(self: VR, formula: str, *, recalculate: bool | None = None) -> VR`
+  - Set all cells in the range to the given formula.
+  - Args
+    - `self` (VR)
+    - `formula` (str): The formula to set. The formula must be a valid formula string, e.g. "=A1*B1" or "". Using "" clears the cell's formula.
+    - `recalculate` (bool | None): Whether to recalculate the spreadsheet after setting the value.
+    - `allow_partial_merge_cells`: Whether to allow setting the value if the range is part of a merged cell.
+  - Returns
+    - VR: self (for method chaining)
+- `set_formulas(self: VR, formulas_matrix: Sequence[Sequence[str]], *, recalculate: bool | None = None) -> VR`
+  - Set the formulas of the cells in this range.
+  - Args
+    - `self` (VR)
+    - `formulas_matrix` (Sequence[Sequence[str]])
+    - `recalculate` (bool | None)
+    - `formulas`: A 2D sequence of formulas matching the shape of the range. Each item must be a valid formula string, e.g. "=A1*B1" or "". Using "" clears the cell's formula.
+  - Returns
+    - VR: self
+- `set_rich_text(self: VR, rich_text: RichTextInput, *, recalculate: bool | None = None, overwrite_existing: bool = True) -> VR`
+  - Set the cell(s) to inline rich text composed of TextRuns.
+  - Args
+    - `self` (VR)
+    - `rich_text` (RichTextInput): Either a sequence of run specs for single-cell ranges or a matrix (rows x columns) of run spec sequences matching the range. Example:  [{"t": "some "}, {"t": "italic ", "i": True}]
+    - `recalculate` (bool | None): Whether to trigger a recalculation after writing the runs.
+    - `overwrite_existing` (bool): Whether to overwrite the existing cell proto, as opposed to merging fields. Defaults to True since rich text typically replaces existing content entirely.
+  - Returns
+    - VR: self
+- `set_style_index(self: VR, style_index: int) -> VR`
+  - Set a uniform style index for all cells in the range.
+  - Args
+    - `self` (VR)
+    - `style_index` (int): The style index to assign to each cell in the range.
+  - Returns
+    - VR
+- `set_value(self: VR, value: SpreadsheetCellValueType, *, recalculate: bool | None = None) -> VR`
+  - Set all cells in the range to the given value.
+  - Args
+    - `self` (VR)
+    - `value` (SpreadsheetCellValueType): The value to set. The type of `value` indicates the data type of the cell. For example, value=5 meeans the cell is a number and the value is 5. but value="5" means the cell is a string and the value is the string "5".
+    - `recalculate` (bool | None): Whether to recalculate the spreadsheet after setting the value. Default is to use the auto recalculate setting of the spreadsheet.
+  - Returns
+    - VR: self (for method chaining)
+- `set_values(self: VR, values_matrix: Sequence[Sequence[SpreadsheetCellValueType]], *, recalculate: bool | None = None) -> VR`
+  - Set the values of the range to the given values_matrix.
+  - Args
+    - `self` (VR)
+    - `values_matrix` (Sequence[Sequence[SpreadsheetCellValueType]])
+    - `recalculate` (bool | None): Whether to recalculate the spreadsheet after setting the values.
+    - `raw_cells_matrix`: A 2D matrix matching the range. None clears the cell's value.
+  - Returns
+    - VR: self
+
+### `SpreadsheetSheet`
+A spreadsheet sheet class to allow reading and writing to a single sheet in a spreadsheet.
+- `charts` (SpreadsheetSheetCharts)
+  - Return the charts in the sheet.
+- `default_col_width` (float | None)
+  - Get the default column width for the sheet.
+- `default_row_height` (float | None)
+  - Get the default row height for the sheet.
+- `filled_columns` (int)
+  - Returns the number of columns in the sheet that actually have cells.
+- `filled_rows` (int)
+  - Returns the number of rows in the sheet that actually have cells.
+- `name` (str)
+  - Return the sheet's name.
+- `show_grid_lines` (bool)
+  - Get the show grid lines for the sheet.
+- `add_table(self, ref: str, *, has_headers: bool = True, name: str | None = None, display_name: str | None = None, style_name: str | None = None, totals_row_count: int = 0) -> SpreadsheetTable`
+  - Add a new table to this sheet.
+  - Args
+    - `self`
+    - `ref` (str): A1 range for the full table (including header and totals if present).
+    - `has_headers` (bool): Whether the first row is a header row.
+    - `name` (str | None): Optional internal name for the table; defaults to "Table{n}".
+    - `display_name` (str | None): Optional display name; defaults to ``name``.
+    - `style_name` (str | None): Optional style name assigned to the table.
+    - `totals_row_count` (int): Number of totals rows at the bottom (0 or 1 typical).
+  - Returns
+    - SpreadsheetTable: SpreadsheetTable wrapper for the created table.
+- `cell(self, address: str) -> SpreadsheetCellRef`
+  - Return a cell by address.
+  - Args
+    - `self`
+    - `address` (str): An A1-style address (e.g., "C5")
+  - Returns
+    - SpreadsheetCellRef
+- `cleanup_and_validate_sheet(self) -> None`
+  - Cleanup and validate the sheet.
+  - Args
+    - `self`
+  - Returns
+    - None
+- `clear_cells(self, address: str, fields_to_clear: list[str] | None = None, *, recalculate: bool | None = None) -> SpreadsheetSheet`
+  - Clear the values and formulas for the cells in the range.
+  - Args
+    - `self`
+    - `address` (str): The address range to clear the cells from, e.g. "A1" or "A1:B2"
+    - `fields_to_clear` (list[str] | None): The fields to clear.
+    - `recalculate` (bool | None): Whether to recalculate the range after clearing the fields.
+  - Returns
+    - SpreadsheetSheet: self (for method chaining)
+- `create_conditional_formatting(self, conditional_formatting: ConditionalFormatting | dict[str, Any] | None = None, *, ranges: list[str] | None = None, rules: list[CfRule] | list[dict[str, Any]] | None = None, style: DifferentialFormat | None = None) -> ConditionalFormatting`
+  - Attach a conditional formatting block to the sheet.
+  - Args
+    - `self`
+    - `conditional_formatting` (ConditionalFormatting | dict[str, Any] | None): Optional `ConditionalFormatting` proto or dict representation to seed the entry. Additional `ranges` and `rules` arguments extend (rather than replace) the proto. If conditional_formatting is not provided, both ranges, rules, and style must be provided.
+    - `ranges` (list[str] | None): Iterable of A1-style ranges (e.g. "A1:C3") to associate with the conditional formatting. Sheet metadata is filled in automatically.
+    - `rules` (list[CfRule] | list[dict[str, Any]] | None): Iterable of :class:`CfRule` protos or dict representations. Note: We do not require a dxf_id if style is provided. Note: If dxf_id is provided, a corresponding style must exist in the style proto. Recommended to leave dxf_id as empty and pass in the style instead, which will create a new style.
+    - `style` (DifferentialFormat | None): Optional `DifferentialFormat` proto to set as the style for the conditional formatting. If provided, this creates a new differntial format style and adds it to the style proto.
+  - Returns
+    - ConditionalFormatting: ``self`` to allow fluent-style chaining.
+- `data(self, address: str) -> SpreadsheetCellValueType | str | None`
+  - Get the cell's data or None if the cell does not exist or data is empty.
+  - Args
+    - `self`
+    - `address` (str): The address of a single cell to get the data from.
+  - Returns
+    - SpreadsheetCellValueType | str | None: The cell's data is either the formula if it exists, otherwise the value.
+- `data_by_indices(self, col_idx: int, row_idx: int) -> SpreadsheetCellValueType | str | None`
+  - Same as data but by indices.
+  - Args
+    - `self`
+    - `col_idx` (int)
+    - `row_idx` (int)
+  - Returns
+    - SpreadsheetCellValueType | str | None
+- `delete_conditional_formatting(self, cf: ConditionalFormatting) -> SpreadsheetSheet`
+  - Delete a conditional formatting from the sheet if one exists that is equal to the provided proto.
+  - Args
+    - `self`
+    - `cf` (ConditionalFormatting)
+  - Returns
+    - SpreadsheetSheet
+- `delete_table(self, name_or_id: str | int) -> None`
+  - Delete a table by name/display name or id.
+  - Args
+    - `self`
+    - `name_or_id` (str | int): The table `name`/`display_name` string or numeric id.
+  - Returns
+    - None
+- `exists(self, address: str | tuple[int, int]) -> bool`
+  - Check if a cell by address exists.
+  - Args
+    - `self`
+    - `address` (str | tuple[int, int]): An A1-style address (e.g., "C5") or a tuple of (column index, row index).
+  - Returns
+    - bool
+- `formula(self, address: str) -> str | None`
+  - Get the formula of a cell by address. Empty string means the formula is empty.
+  - Args
+    - `self`
+    - `address` (str)
+  - Returns
+    - str | None
+- `get_cell_field(self, address: str, field_name: str, default_if_present: Any | None = None) -> Any | None`
+  - Generic method to get any field on the cell by address or returns None if the cell does not exist.
+  - Args
+    - `self`
+    - `address` (str)
+    - `field_name` (str)
+    - `default_if_present` (Any | None)
+  - Returns
+    - Any | None
+- `get_cell_field_by_indices(self, col_idx: int, row_idx: int, field_name: str, default_if_present: Any | None = None) -> Any | None`
+  - Generic method to get any field on the cell by indices or returns None if the cell does not exist.
+  - Args
+    - `self`
+    - `col_idx` (int)
+    - `row_idx` (int)
+    - `field_name` (str)
+    - `default_if_present` (Any | None)
+  - Returns
+    - Any | None
+- `get_column_width(self, address: str) -> float | None`
+  - Get the width of a column if it's defined by the user.
+  - Args
+    - `self`
+    - `address` (str)
+  - Returns
+    - float | None
+- `get_conditional_formatting(self) -> list[ConditionalFormatting]`
+  - Return a copy of the sheet's conditional formatting definitions.
+  - Args
+    - `self`
+  - Returns
+    - list[ConditionalFormatting]
+- `get_effective_cell(self, address: str) -> SpreadsheetCellRef`
+  - Return the effective cell by address.
+  - Args
+    - `self`
+    - `address` (str): An A1-style address (e.g., "C5")
+  - Returns
+    - SpreadsheetCellRef
+- `get_first_row_address_range(self) -> str | None`
+  - Return the address range of the first row in the sheet.
+  - Args
+    - `self`
+  - Returns
+    - str | None
+- `get_max_column_letter(self) -> str | None`
+  - Return the letter of the last column in the sheet.
+  - Args
+    - `self`
+  - Returns
+    - str | None
+- `get_min_column_letter(self) -> str | None`
+  - Return the letter of the first column in the sheet.
+  - Args
+    - `self`
+  - Returns
+    - str | None
+- `get_raw_cell_proto(self, address: str, reference: bool = False) -> Cell | None`
+  - Get a cell by address as a proto if it exists, otherwise returns None.
+  - Args
+    - `self`
+    - `address` (str): The address of the cell to get as a proto.
+    - `reference` (bool): Whether to return a reference to the cell proto or a copy.
+  - Returns
+    - Cell | None
+- `get_table(self, name: str | None = None, id: int | None = None) -> SpreadsheetTable | None`
+  - Get a table by name/display name or id.
+  - Args
+    - `self`
+    - `name` (str | None): Table `name` or `display_name` to match.
+    - `id` (int | None): Table id to match (1-based).
+  - Returns
+    - SpreadsheetTable | None: The matching `SpreadsheetTable` if found, otherwise None.
+- `has_merged_cells(self, address_range: str) -> bool`
+  - Check if the address range contains merged cells.
+  - Args
+    - `self`
+    - `address_range` (str)
+  - Returns
+    - bool
+- `is_calculation_error(self, address: str) -> bool`
+  - Check if the cell is a calculation error.
+  - Args
+    - `self`
+    - `address` (str)
+  - Returns
+    - bool
+- `is_empty(self) -> bool`
+  - Return True if the sheet is empty.
+  - Args
+    - `self`
+  - Returns
+    - bool
+- `is_merged_cell(self, address_range: str) -> bool`
+  - Returns True if the range is a single merged cell.
+  - Args
+    - `self`
+    - `address_range` (str)
+  - Returns
+    - bool
+- `merge_cells(self, address_range: str, raise_on_conflict: bool = False, *, recalculate: bool | None = None) -> SpreadsheetSheet`
+  - Merge cells in the sheet. By doing this, the cells will be treated as a single cell and
+  - Args
+    - `self`
+    - `address_range` (str): The address range to merge.
+    - `raise_on_conflict` (bool): Whether to raise an error if there are multiple cells in the range with values.
+    - `recalculate` (bool | None): Whether to recalculate the range after merging the cells.
+  - Returns
+    - SpreadsheetSheet
+- `minimum_address_range_filled(self) -> str`
+  - Return the minimum address range that is filled in the sheet.
+  - Args
+    - `self`
+  - Returns
+    - str
+- `minimum_range(self) -> SpreadsheetCellRangeRef`
+  - Return the minimum range that is filled in the sheet.
+  - Args
+    - `self`
+  - Returns
+    - SpreadsheetCellRangeRef
+- `range(self, address_range: str) -> SpreadsheetCellRangeRef`
+  - Return a range by address_range for an A1-style address range.
+  - Args
+    - `self`
+    - `address_range` (str): An A1-style range such as "A1:C10".
+  - Returns
+    - SpreadsheetCellRangeRef
+- `recalculate(self, address: str | None = None) -> None`
+  - Recalculate the spreadsheet
+  - Args
+    - `self`
+    - `address` (str | None): The address of the cell to recalculate.
+  - Returns
+    - None
+- `rename(self, new_name: str) -> SpreadsheetSheet`
+  - Rename the sheet.
+  - Args
+    - `self`
+    - `new_name` (str)
+  - Returns
+    - SpreadsheetSheet
+- `render(self, output: os.PathLike[str] | str | None = None, *, cell_range: str | None = None, center: str | None = None, width: int | None = None, height: int | None = None, include_headers: bool = True, scale: float = 1.0, performance: bool = False) -> RenderedPath`
+  - Render this sheet to images or JSON via the Granola CLI.
+  - Args
+    - `self`
+    - `output` (os.PathLike[str] | str | None)
+    - `cell_range` (str | None)
+    - `center` (str | None)
+    - `width` (int | None)
+    - `height` (int | None)
+    - `include_headers` (bool)
+    - `scale` (float)
+    - `performance` (bool)
+  - Returns
+    - RenderedPath
+- `set_cell_formulas_to(self, address: str, formula: str, *, recalculate: bool | None = None) -> SpreadsheetSheet`
+  - Sets the value for all cells in the range to the same value.
+  - Args
+    - `self`
+    - `address` (str): The address of the cells to set the value for.
+    - `formula` (str): Sets the formula for all cells in the range to the same formula. Empty string clears the formula.
+    - `recalculate` (bool | None): Whether to recalculate the cells after setting the value.
+  - Returns
+    - SpreadsheetSheet
+- `set_cell_values_to(self, address: str, value: SpreadsheetCellValueType, *, recalculate: bool | None = None) -> SpreadsheetSheet`
+  - Sets the value for all cells in the range to the same value.
+  - Args
+    - `self`
+    - `address` (str): The address of the cells to set the value for.
+    - `value` (SpreadsheetCellValueType): The value to set the cells to. None clears the cell's value.
+    - `recalculate` (bool | None): Whether to recalculate the cells after setting the value.
+  - Returns
+    - SpreadsheetSheet
+- `set_column_widths(self, address_reference: str, width: float) -> SpreadsheetSheet`
+  - Set the column widths for a range of columns to be the same width.
+  - Args
+    - `self`
+    - `address_reference` (str): Excel-style column reference (e.g. "B" or "C:F").
+    - `width` (float): The column width to assign.
+  - Returns
+    - SpreadsheetSheet: ``self`` to allow fluent-style chaining.
+- `set_column_widths_bulk(self, address_reference_to_widths: dict[str, float]) -> SpreadsheetSheet`
+  - Set the column widths for different column ranges to be the widths specified in the dictionary.
+  - Args
+    - `self`
+    - `address_reference_to_widths` (dict[str, float]): A dictionary of address references to column widths.
+    - `Example`: {"B:D": 100, "F": 150}
+  - Returns
+    - SpreadsheetSheet: ``self`` to allow fluent-style chaining.
+- `set_row_height(self, row_index: int, height: float | None) -> SpreadsheetSheet`
+  - Set or clear the height for a specific row.
+  - Args
+    - `self`
+    - `row_index` (int): 1-based row index to update.
+    - `height` (float | None): Desired row height. Provide ``None`` to clear the custom height.
+  - Returns
+    - SpreadsheetSheet
+- `set_row_heights(self, start_row_index: int, end_row_index: int, height: float | None) -> SpreadsheetSheet`
+  - Set the height for a range of rows.
+  - Args
+    - `self`
+    - `start_row_index` (int)
+    - `end_row_index` (int)
+    - `height` (float | None)
+  - Returns
+    - SpreadsheetSheet
+- `set_row_heights_bulk(self, row_index_to_heights: dict[int, float]) -> SpreadsheetSheet`
+  - Set the heights for a range of rows to be the heights specified in the dictionary.
+  - Args
+    - `self`
+    - `row_index_to_heights` (dict[int, float]): A dictionary of row indices to row heights.
+  - Returns
+    - SpreadsheetSheet: ``self`` to allow fluent-style chaining.
+- `set_sheet_styles(self, default_row_height: float | None = None, default_col_width: float | None = None, show_grid_lines: bool | None = None) -> SpreadsheetSheet`
+  - Alter the styles for the sheet for non-None values.
+  - Args
+    - `self`
+    - `default_row_height` (float | None)
+    - `default_col_width` (float | None)
+    - `show_grid_lines` (bool | None)
+  - Returns
+    - SpreadsheetSheet
+- `set_style_index(self, address: str, style_index: int) -> SpreadsheetSheet`
+  - Set the style index of a cell by address.
+  - Args
+    - `self`
+    - `address` (str): The address of the cell to set the style index for.
+    - `style_index` (int): The style index to set. This is the index to a CellFormat in the workbook.styles.cell_xfs.
+  - Returns
+    - SpreadsheetSheet: self
+- `style_index(self, address: str) -> int | None`
+  - Get the style index of a cell by address.
+  - Args
+    - `self`
+    - `address` (str)
+  - Returns
+    - int | None
+- `summary(self) -> SpreadsheetSheetSummary`
+  - Return a summary of the sheet.
+  - Args
+    - `self`
+  - Returns
+    - SpreadsheetSheetSummary
+- `tables(self) -> list[SpreadsheetTable]`
+  - Return all tables on this sheet as wrapper objects.
+  - Args
+    - `self`
+  - Returns
+    - list[SpreadsheetTable]: A list of `SpreadsheetTable` wrappers in sheet order.
+- `to_dict(self) -> dict[str, Any]`
+  - Return the spreadsheet as a dictionary.
+  - Args
+    - `self`
+  - Returns
+    - dict[str, Any]
+- `unmerge_cells(self, address_range: str, *, recalculate: bool | None = None) -> SpreadsheetSheet`
+  - Unmerge cells in the sheet. Only an existing merged cell range can be unmerged.
+  - Args
+    - `self`
+    - `address_range` (str)
+    - `recalculate` (bool | None)
+  - Returns
+    - SpreadsheetSheet
+- `value(self, address: str) -> SpreadsheetCellValueType`
+  - Get the value of a cell by address.
+  - Args
+    - `self`
+    - `address` (str)
+  - Returns
+    - SpreadsheetCellValueType
+- `values(self, address: str) -> list[list[SpreadsheetCellValueType]]`
+  - Get the parsed values of the cells in the range. None means cell value is not set.
+  - Args
+    - `self`
+    - `address` (str)
+  - Returns
+    - list[list[SpreadsheetCellValueType]]
+
+### `SpreadsheetSheetSummary`
+Summary of a spreadsheet sheet.
+- `to_dict(self) -> dict[str, object]`
+  - Return a JSON-safe representation for convenience.
+  - Args
+    - `self`
+  - Returns
+    - dict[str, object]
+
+### `SpreadsheetStyleIndices`
+SpreadsheetStyleIndices(text_style_id: 'int | None' = None, fill_id: 'int | None' = None, border_id: 'int | None' = None, number_format_id: 'int | None' = None, cell_style_format_id: 'int | None' = None, cell_format_id: 'int | None' = None, cell_style_id: 'int | None' = None)
+- `is_empty(self) -> bool`
+  - Args
+    - `self`
+  - Returns
+    - bool
+- `to_dict(self) -> dict[str, int | None]`
+  - Return a JSON-safe representation for convenience.
+  - Args
+    - `self`
+  - Returns
+    - dict[str, int | None]
+
+### `SpreadsheetSummary`
+Summary of a spreadsheet
+- `to_dict(self) -> dict[str, object]`
+  - Return a JSON-safe representation for convenience.
+  - Args
+    - `self`
+  - Returns
+    - dict[str, object]
+
+### Spreadsheet Calculations
+We support calculating most common Excel spreadsheet functions, but not all. However, even if unsupported,
+the formula (if it's officially supported by Excel) can still be stored and exported to XLSX.
+
+When you set a cell's formula to a value that is not supported by the engine, but is a valid Excel formula,
+the cell's value will be set to the error message (e.g. "#NAME?"), which indicates the formula function is not supported.
+Upon export to XLSX and opening in Excel, the cell properly calculates.
+
+To see the full list of supported functions for calculations, see: artifact_tool_spreadsheet_formulas.md
+
+To check on if there's a calculation error:
+- SpreadsheetCellRef.is_calculation_error() to check if the cell's value is an error.
+- SpreadsheetCellRef.get_calculation_error_message() to get the error message if it is an error.
+
+
+If the cell's value is NOT a calculation error, the value will be the result of the formula post-calculation,
+unless the cell was set with recalculate=False
+
+Example: sheet.set_cell(address, value, recalculate=False).
+

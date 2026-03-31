@@ -88,8 +88,9 @@ describe("HarnessGitHubActionsFlowPanel", () => {
     expect(screen.getByText("Loading GitHub Actions workflows...")).not.toBeNull();
 
     await waitFor(() => {
-      expect(screen.getByText("Actions")).not.toBeNull();
       expect(screen.getByText("Workflows")).not.toBeNull();
+      expect(screen.getByText("Triggers")).not.toBeNull();
+      expect(screen.getByText("Jobs")).not.toBeNull();
       expect(screen.getByRole("button", { name: /Defense/i })).not.toBeNull();
       expect(screen.getAllByRole("button", { name: /Fitness Dimensions/i }).length).toBeGreaterThan(0);
     });
@@ -117,6 +118,23 @@ describe("HarnessGitHubActionsFlowPanel", () => {
       expect(screen.getAllByRole("button", { name: /Publish/i }).length).toBeGreaterThan(0);
       expect(screen.getAllByText("workflow_dispatch").length).toBeGreaterThan(0);
       expect(screen.getAllByText(".github/workflows/release.yaml").length).toBeGreaterThan(0);
+    });
+  });
+
+  it("can default the gallery to the release category", async () => {
+    render(
+      <HarnessGitHubActionsFlowPanel
+        workspaceId="workspace-1"
+        codebaseId="codebase-1"
+        repoPath="/tmp/repo"
+        repoLabel="routa-js"
+        initialCategory="Release"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /Routa Release/i })).not.toBeNull();
+      expect(screen.getAllByText("workflow_dispatch").length).toBeGreaterThan(0);
     });
   });
 });

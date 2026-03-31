@@ -77,6 +77,7 @@ type HarnessExecutionPlanFlowProps = {
   onTierChange: (tier: TierValue) => void;
   unsupportedMessage?: string | null;
   variant?: "full" | "compact";
+  embedded?: boolean;
 };
 
 function getStatusTone(status: EdgeStatus | undefined) {
@@ -297,7 +298,7 @@ function buildPlanGraph(
   nodes.push(
     buildNode("root", rootX, stageY, {
       kind: "root",
-      title: "Execution Plan",
+      title: "Entrix Fitness",
       subtitle: `${plan.dimensionCount} dimensions · ${plan.metricCount} metrics`,
       meta: [`tier ${plan.tier}`, `scope ${plan.scope}`, `${plan.hardGateCount} hard gates`],
     }),
@@ -503,6 +504,7 @@ export function HarnessExecutionPlanFlow({
   onTierChange,
   unsupportedMessage,
   variant = "full",
+  embedded = false,
 }: HarnessExecutionPlanFlowProps) {
   const compactMode = variant === "compact";
   const [expandedState, setExpandedState] = useState<{
@@ -562,58 +564,61 @@ export function HarnessExecutionPlanFlow({
   );
   const flowKey = `${variant}:${planKey ?? "empty"}:${[...expandedDimensions].sort().join("|")}`;
 
-  return (
-    <section className={variant === "compact"
-      ? "rounded-2xl border border-desktop-border bg-desktop-bg-primary/60 p-4"
-      : "rounded-2xl border border-desktop-border bg-desktop-bg-secondary/55 p-4 shadow-sm"}
-    >
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-desktop-text-secondary">Execution plan</div>
+  const content = (
+    <>
+      <div className="flex flex-wrap items-center gap-2">
+        {!embedded ? (
+          <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-desktop-text-secondary">Entrix Fitness</div>
+        ) : null}
+        <div className="rounded-full border border-desktop-border bg-desktop-bg-primary px-2.5 py-1 text-[10px] text-desktop-text-secondary">
+          {repoLabel}
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="rounded-full border border-desktop-border bg-desktop-bg-primary p-0.5">
-            {(["fast", "normal", "deep"] as const).map((tier) => (
-              <button
-                key={tier}
-                type="button"
-                onClick={() => {
-                  onTierChange(tier);
-                }}
-                className={`rounded-full px-2.5 py-1 text-[10px] transition-colors ${
-                  selectedTier === tier
-                    ? "bg-desktop-accent text-desktop-accent-text"
-                    : "text-desktop-text-secondary hover:bg-desktop-bg-secondary"
-                }`}
-              >
-                {tier}
-              </button>
-            ))}
-          </div>
-          {!compactMode ? (
+        <div className="rounded-full border border-desktop-border bg-desktop-bg-primary p-0.5">
+          {(["fast", "normal", "deep"] as const).map((tier) => (
             <button
+              key={tier}
               type="button"
               onClick={() => {
-                if (!plan) {
-                  return;
-                }
-                setExpandedState((current) => {
-                  const base = current.planKey === planKey ? current.names : expandedDimensions;
-                  return {
-                    planKey,
-                    names: base.size > 0 ? new Set<string>() : new Set(plan.dimensions.slice(0, 1).map((dimension) => dimension.name)),
-                  };
-                });
+                onTierChange(tier);
               }}
-              className="rounded-full border border-desktop-border bg-desktop-bg-primary px-2.5 py-1 text-[10px] text-desktop-text-secondary"
+              className={`rounded-full px-2.5 py-1 text-[10px] transition-colors ${
+                selectedTier === tier
+                  ? "bg-desktop-accent text-desktop-accent-text"
+                  : "text-desktop-text-secondary hover:bg-desktop-bg-secondary"
+              }`}
             >
-              {expandedDimensions.size > 0 ? "Hide metrics" : "Show metrics"}
+              {tier}
             </button>
-          ) : null}
-          <div className="rounded-full border border-desktop-border bg-desktop-bg-primary px-2.5 py-1 text-[10px] text-desktop-text-secondary">
-            {repoLabel}
-          </div>
+          ))}
         </div>
+        {!compactMode ? (
+          <button
+            type="button"
+            onClick={() => {
+              if (!plan) {
+                return;
+              }
+              setExpandedState((current) => {
+                const base = current.planKey === planKey ? current.names : expandedDimensions;
+                return {
+                  planKey,
+                  names: base.size > 0 ? new Set<string>() : new Set(plan.dimensions.slice(0, 1).map((dimension) => dimension.name)),
+                };
+              });
+            }}
+            className="rounded-full border border-desktop-border bg-desktop-bg-primary px-2.5 py-1 text-[10px] text-desktop-text-secondary"
+          >
+            {expandedDimensions.size > 0 ? "Hide metrics" : "Show metrics"}
+          </button>
+        ) : null}
+        {plan ? (
+          <>
+            <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[10px] text-emerald-700">pass = scoring path</span>
+            <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[10px] text-amber-700">warn = degraded dimension</span>
+            <span className="rounded-full border border-red-200 bg-red-50 px-2.5 py-1 text-[10px] text-red-700">hard = blocking gate</span>
+            <span className="rounded-full border border-slate-300 bg-slate-100 px-2.5 py-1 text-[10px] text-slate-700">blocked = report can stop</span>
+          </>
+        ) : null}
       </div>
 
       {loading ? (
@@ -633,13 +638,7 @@ export function HarnessExecutionPlanFlow({
       ) : null}
 
       {!unsupportedMessage && plan ? (
-        <div className="mt-4 space-y-3">
-          <div className="flex flex-wrap gap-2 text-[10px] text-desktop-text-secondary">
-            <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-emerald-700">pass = scoring path</span>
-            <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-amber-700">warn = degraded dimension</span>
-            <span className="rounded-full border border-red-200 bg-red-50 px-2.5 py-1 text-red-700">hard = blocking gate</span>
-            <span className="rounded-full border border-slate-300 bg-slate-100 px-2.5 py-1 text-slate-700">blocked = report can stop</span>
-          </div>
+        <div className="mt-4">
           <div className="overflow-hidden rounded-2xl border border-desktop-border bg-[radial-gradient(circle_at_top_left,rgba(59,130,246,0.08),transparent_24%),radial-gradient(circle_at_bottom_right,rgba(16,185,129,0.08),transparent_28%)]">
             <div style={{ height: graph.minHeight }}>
               <ReactFlow
@@ -672,6 +671,19 @@ export function HarnessExecutionPlanFlow({
           </div>
         </div>
       ) : null}
+    </>
+  );
+
+  if (embedded) {
+    return content;
+  }
+
+  return (
+    <section className={variant === "compact"
+      ? "rounded-2xl border border-desktop-border bg-desktop-bg-primary/60 p-4"
+      : "rounded-2xl border border-desktop-border bg-desktop-bg-secondary/55 p-4 shadow-sm"}
+    >
+      {content}
     </section>
   );
 }

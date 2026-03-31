@@ -3,14 +3,19 @@
 import { useEffect, useMemo, useState } from "react";
 import { CodeViewer } from "@/client/components/codemirror/code-viewer";
 import type { GitHubActionsFlow, GitHubActionsJob } from "@/client/hooks/use-harness-settings-data";
+import {
+  classifyGitHubWorkflowCategory,
+  normalizeGitHubWorkflowEventTokens,
+  type GitHubWorkflowCategory,
+} from "@/core/github/workflow-classifier";
 
 type HarnessGitHubActionsFlowGalleryProps = {
   flows: GitHubActionsFlow[];
-  repoLabel: string;
   variant?: "full" | "compact";
+  initialCategory?: WorkflowCategoryKey;
 };
 
-type WorkflowCategoryKey = "Validation" | "Release" | "Automation" | "Maintenance";
+export type WorkflowCategoryKey = GitHubWorkflowCategory;
 type WorkflowJobKind = GitHubActionsJob["kind"];
 
 type WorkflowCategoryDefinition = {
@@ -51,14 +56,6 @@ function cx(...values: Array<string | false | null | undefined>) {
   return values.filter(Boolean).join(" ");
 }
 
-function normalizeEventTokens(event: string) {
-  return event
-    .toLowerCase()
-    .split(",")
-    .map((token) => token.trim())
-    .filter(Boolean);
-}
-
 function humanizeToken(value: string) {
   return value
     .split(/[_-]/g)
@@ -69,71 +66,6 @@ function humanizeToken(value: string) {
 
 function formatStageLabel(index: number) {
   return `Stage ${String(index + 1).padStart(2, "0")}`;
-}
-
-function classifyWorkflowCategory(flow: GitHubActionsFlow): WorkflowCategoryKey {
-  const eventTokens = normalizeEventTokens(flow.event);
-  const eventString = eventTokens.join(",");
-  const flowName = flow.name.toLowerCase();
-  const hasEvent = (value: string) => eventString.includes(value);
-
-  if (
-    flowName.includes("release")
-    || flowName.includes("publish")
-    || flowName.includes("deploy")
-    || flowName.includes("pages")
-    || flowName.includes("ship")
-  ) {
-    return "Release";
-  }
-
-  if (
-    eventTokens.length === 1
-    && eventTokens[0] === "schedule"
-  ) {
-    return "Maintenance";
-  }
-
-  if (
-    hasEvent("schedule")
-    || flowName.includes("cleanup")
-    || flowName.includes("collector")
-    || flowName.includes("garbage")
-    || flowName.includes("hygiene")
-    || flowName.includes("repair")
-    || flowName.includes("fixer")
-    || flowName.includes("delete merged branches")
-  ) {
-    return "Maintenance";
-  }
-
-  if (
-    hasEvent("issues")
-    || hasEvent("issue")
-    || hasEvent("issue_comment")
-    || hasEvent("discussion")
-    || hasEvent("repository_dispatch")
-    || flowName.includes("issue")
-    || flowName.includes("copilot")
-    || flowName.includes("enricher")
-    || flowName.includes("bot")
-    || flowName.includes("handler")
-  ) {
-    return "Automation";
-  }
-
-  if (
-    hasEvent("pull_request")
-    || hasEvent("pull_request_target")
-    || hasEvent("push")
-    || hasEvent("workflow_run")
-    || hasEvent("merge_group")
-    || hasEvent("workflow_call")
-  ) {
-    return "Validation";
-  }
-
-  return "Automation";
 }
 
 function buildDependencyLanes(jobs: GitHubActionsJob[]) {
@@ -184,7 +116,7 @@ function summarizeFlows(flows: GitHubActionsFlow[]) {
   let totalJobs = 0;
 
   flows.forEach((flow) => {
-    normalizeEventTokens(flow.event).forEach((token) => triggerSet.add(token));
+    normalizeGitHubWorkflowEventTokens(flow.event).forEach((token) => triggerSet.add(token));
     totalJobs += flow.jobs.length;
   });
 
@@ -206,7 +138,7 @@ function summarizeStageCount(flow: GitHubActionsFlow) {
 function createCategoryEntries(flows: GitHubActionsFlow[]): WorkflowCategoryEntry[] {
   return CATEGORY_DEFINITIONS.map((definition) => ({
     ...definition,
-    flows: flows.filter((flow) => classifyWorkflowCategory(flow) === definition.key),
+    flows: flows.filter((flow) => classifyGitHubWorkflowCategory(flow) === definition.key),
   }));
 }
 
@@ -302,32 +234,34 @@ function MiniDagPreview({ flow }: { flow: GitHubActionsFlow }) {
   const hiddenLaneCount = Math.max(lanes.length - visibleLanes.length, 0);
 
   return (
-    <div className="rounded-[18px] border border-slate-200/80 bg-[linear-gradient(180deg,rgba(248,250,252,0.92),rgba(243,247,252,0.96))] px-2 py-2">
-      <div className="flex min-w-max items-start gap-2 overflow-x-auto">
-        <div className="w-24 shrink-0 rounded-[16px] border border-sky-200/80 bg-[linear-gradient(135deg,rgba(239,246,255,0.9),rgba(255,255,255,0.96))] px-2 py-2">
+    <div className="overflow-x-auto">
+      <div className="flex min-w-max items-start gap-2">
+        <div className="w-[4.5rem] shrink-0 rounded-[14px] border border-sky-200/80 bg-sky-50/80 px-2 py-1.5">
           <div className="text-[9px] font-semibold uppercase tracking-[0.18em] text-sky-700">Trigger</div>
-          <div className="mt-1 text-[10px] font-semibold leading-4 text-slate-900">{humanizeToken(normalizeEventTokens(flow.event)[0] ?? flow.event)}</div>
+          <div className="mt-0.5 text-[10px] font-semibold leading-4 text-slate-900">
+            {humanizeToken(normalizeGitHubWorkflowEventTokens(flow.event)[0] ?? flow.event)}
+          </div>
         </div>
 
         {visibleLanes.map((laneJobs, laneIndex) => (
-          <div key={`${flow.id}:lane:${laneIndex}`} className="flex items-start gap-2">
+          <div key={`${flow.id}:lane:${laneIndex}`} className="flex items-start gap-1.5">
             <div className="flex h-7 items-center text-slate-300">
               <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14m0 0-4-4m4 4-4 4" />
               </svg>
             </div>
-            <div className="w-32 shrink-0 space-y-1">
+            <div className="w-24 shrink-0 space-y-0.5">
               {laneJobs.slice(0, 1).map((job) => (
-                <div key={job.id} className="rounded-[16px] border border-slate-200 bg-white/92 px-2 py-1.5">
-                  <div className="truncate text-[11px] font-semibold text-slate-900">{job.name}</div>
+                <div key={job.id} className="rounded-[14px] border border-slate-200/80 bg-slate-50/75 px-2 py-1">
+                  <div className="truncate text-[10px] font-semibold text-slate-900">{job.name}</div>
                   <div className="mt-0.5 flex items-center justify-between gap-2">
-                    <span className="truncate text-[10px] text-slate-500">{job.runner}</span>
-                    <span className={cx("rounded-full border px-1.5 py-0.5 text-[9px]", JOB_KIND_STYLES[job.kind])}>{job.kind}</span>
+                    <span className="truncate text-[9px] text-slate-500">{job.runner}</span>
+                    <span className={cx("rounded-full border px-1.5 py-0.5 text-[8px]", JOB_KIND_STYLES[job.kind])}>{job.kind}</span>
                   </div>
                 </div>
               ))}
               {laneJobs.length > 1 ? (
-                <div className="rounded-[16px] border border-dashed border-slate-200 bg-white/75 px-2 py-1 text-[10px] text-slate-500">
+                <div className="rounded-[14px] border border-dashed border-slate-200/80 bg-white/70 px-2 py-1 text-[9px] text-slate-500">
                   +{laneJobs.length - 1} more jobs
                 </div>
               ) : null}
@@ -336,13 +270,13 @@ function MiniDagPreview({ flow }: { flow: GitHubActionsFlow }) {
         ))}
 
         {hiddenLaneCount > 0 ? (
-          <div className="flex items-start gap-2">
+          <div className="flex items-start gap-1.5">
             <div className="flex h-7 items-center text-slate-300">
               <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14m0 0-4-4m4 4-4 4" />
               </svg>
             </div>
-            <div className="w-20 shrink-0 rounded-[16px] border border-dashed border-slate-200 bg-white/75 px-2 py-2 text-[10px] text-slate-500">
+            <div className="w-[4.5rem] shrink-0 rounded-[14px] border border-dashed border-slate-200/80 bg-white/70 px-2 py-1.5 text-[9px] text-slate-500">
               +{hiddenLaneCount} more stages
             </div>
           </div>
@@ -361,57 +295,58 @@ function WorkflowCard({
   selected: boolean;
   onSelect: () => void;
 }) {
-  const eventTokens = normalizeEventTokens(flow.event);
-  const visibleTokens = eventTokens.slice(0, 2);
+  const eventTokens = normalizeGitHubWorkflowEventTokens(flow.event);
+  const visibleTokens = eventTokens.slice(0, 3);
   const hiddenTokenCount = Math.max(eventTokens.length - visibleTokens.length, 0);
   const stageCount = summarizeStageCount(flow);
+  const metaPills = [
+    { label: `${flow.jobs.length} jobs`, className: "border-slate-200 bg-slate-50/90 text-slate-600" },
+    { label: `${stageCount} stages`, className: "border-sky-200 bg-sky-50 text-sky-700" },
+    { label: `${countDependencies(flow)} dependencies`, className: "border-emerald-200 bg-emerald-50 text-emerald-700" },
+  ];
 
   return (
     <button
       type="button"
       onClick={onSelect}
       className={cx(
-        "w-full rounded-[22px] border px-3 py-3 text-left transition-all",
+        "w-full rounded-[22px] border px-3 py-2.5 text-left transition-all",
         selected
           ? "border-sky-300 bg-[linear-gradient(180deg,rgba(250,252,255,0.98),rgba(238,246,255,0.98))] shadow-[0_18px_44px_rgba(59,130,246,0.08)]"
           : "border-slate-200/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(245,248,252,0.95))] shadow-[0_1px_2px_rgba(15,23,42,0.04)] hover:border-slate-300 hover:shadow-[0_16px_40px_rgba(15,23,42,0.06)]",
       )}
     >
       <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h4 className="truncate text-[14px] font-semibold tracking-[-0.02em] text-slate-900">{flow.name}</h4>
-        </div>
-        <div className="shrink-0 rounded-full border border-slate-200 bg-white/90 px-2.5 py-1 text-[10px] text-slate-500">
-          {flow.jobs.length} jobs
-        </div>
-      </div>
-
-      <div className="mt-2 flex flex-wrap gap-1">
-        {visibleTokens.map((token) => (
-          <span key={`${flow.id}:${token}`} className="rounded-full border border-slate-200 bg-white/90 px-2.5 py-1 text-[10px] font-medium text-slate-600">
-            {token}
-          </span>
-        ))}
-        {hiddenTokenCount > 0 ? (
-          <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-[10px] text-slate-500">
-            +{hiddenTokenCount}
-          </span>
+        <h4 className="min-w-0 truncate pr-2 text-[15px] font-semibold tracking-[-0.02em] text-slate-900">{flow.name}</h4>
+        {flow.relativePath ? (
+          <div className="shrink-0 truncate rounded-full border border-slate-200 bg-white/90 px-2 py-0.5 font-mono text-[9px] text-slate-500">
+            {flow.relativePath.split("/").pop()}
+          </div>
         ) : null}
       </div>
 
-      <div className="mt-2.5">
-        <MiniDagPreview flow={flow} />
+      <div className="mt-1.5 overflow-x-auto">
+        <div className="flex min-w-max items-center gap-1.5 whitespace-nowrap pr-1">
+          {visibleTokens.map((token) => (
+            <span key={`${flow.id}:${token}`} className="rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-[10px] font-medium text-violet-700">
+              {token}
+            </span>
+          ))}
+          {hiddenTokenCount > 0 ? (
+            <span className="rounded-full border border-slate-200 bg-white/90 px-2 py-1 text-[10px] text-slate-500">
+              +{hiddenTokenCount}
+            </span>
+          ) : null}
+          {metaPills.map((pill) => (
+            <span key={`${flow.id}:${pill.label}`} className={cx("rounded-full border px-2.5 py-1 text-[10px]", pill.className)}>
+              {pill.label}
+            </span>
+          ))}
+        </div>
       </div>
 
-      <div className="mt-2.5 flex flex-wrap gap-1.5 text-[10px] text-slate-500">
-        <div className="flex flex-wrap gap-1.5">
-          <span className="rounded-full border border-slate-200 bg-white/90 px-2.5 py-1">
-            {stageCount} stages
-          </span>
-          <span className="rounded-full border border-slate-200 bg-white/90 px-2.5 py-1">
-            {countDependencies(flow)} dependencies
-          </span>
-        </div>
+      <div className="mt-2 rounded-[16px] bg-white/55 px-2 py-1.5">
+        <MiniDagPreview flow={flow} />
       </div>
     </button>
   );
@@ -429,7 +364,7 @@ function FlowCanvas({
   compactMode: boolean;
 }) {
   const lanes = buildDependencyLanes(flow.jobs);
-  const eventTokens = normalizeEventTokens(flow.event);
+  const eventTokens = normalizeGitHubWorkflowEventTokens(flow.event);
 
   return (
     <section className="rounded-[24px] border border-slate-200/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(245,248,252,0.95))] p-3.5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
@@ -596,7 +531,7 @@ function JobInspector({
       <div className="mt-3 rounded-[20px] border border-slate-200 bg-white/90 px-3 py-2.5">
         <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">Trigger set</div>
         <div className="mt-2 flex flex-wrap gap-1.5">
-          {normalizeEventTokens(flow.event).map((token) => (
+          {normalizeGitHubWorkflowEventTokens(flow.event).map((token) => (
             <span key={`${flow.id}:inspector:${token}`} className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[10px] text-slate-600">
               {token}
             </span>
@@ -684,7 +619,7 @@ function WorkflowDetailDialog({
             <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Pipeline detail</div>
             <h3 className="mt-1 truncate text-[20px] font-semibold tracking-[-0.03em] text-slate-950">{flow.name}</h3>
             <div className="mt-1 flex flex-wrap gap-1.5">
-              {normalizeEventTokens(flow.event).map((token) => (
+              {normalizeGitHubWorkflowEventTokens(flow.event).map((token) => (
                 <span key={`${flow.id}:dialog:${token}`} className="rounded-full border border-slate-200 bg-white/90 px-2.5 py-1 text-[10px] text-slate-600">
                   {token}
                 </span>
@@ -733,8 +668,8 @@ function WorkflowDetailDialog({
 
 export function HarnessGitHubActionsFlowGallery({
   flows,
-  repoLabel,
   variant = "full",
+  initialCategory,
 }: HarnessGitHubActionsFlowGalleryProps) {
   const compactMode = variant === "compact";
   const summary = useMemo(() => summarizeFlows(flows), [flows]);
@@ -744,7 +679,7 @@ export function HarnessGitHubActionsFlowGallery({
     [categories],
   );
 
-  const [selectedCategory, setSelectedCategory] = useState<WorkflowCategoryKey>("Validation");
+  const [selectedCategory, setSelectedCategory] = useState<WorkflowCategoryKey>(initialCategory ?? "Validation");
   const [selectedFlowId, setSelectedFlowId] = useState("");
   const [selectedJobId, setSelectedJobId] = useState("");
   const [isDetailOpen, setIsDetailOpen] = useState(false);
@@ -755,15 +690,8 @@ export function HarnessGitHubActionsFlowGallery({
   const activeJob = activeFlow?.jobs.find((job) => job.id === selectedJobId) ?? activeFlow?.jobs[0] ?? null;
 
   const cardsSection = (
-    <section className="rounded-[24px] border border-slate-200/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(245,248,252,0.95))] p-3 shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex flex-wrap items-center gap-2 text-[10px]">
-          <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Actions</span>
-          <span className="rounded-full border border-slate-200 bg-white/90 px-2 py-1 font-medium text-slate-700">
-            {repoLabel}
-          </span>
-          <span className="text-slate-500">{activeCategory?.flows.length ?? 0} flows in {activeCategory?.key}</span>
-        </div>
+    <>
+      <div className="flex flex-wrap items-center justify-end gap-1.5">
         <div className="flex flex-wrap gap-1.5">
           <MetricCard label="Workflows" value={summary.workflowCount} />
           <MetricCard label="Triggers" value={summary.triggerTypeCount} />
@@ -784,7 +712,7 @@ export function HarnessGitHubActionsFlowGallery({
       </div>
 
       {(activeCategory?.flows.length ?? 0) > 0 ? (
-        <div className={cx("mt-3 grid gap-2.5", compactMode ? "grid-cols-1" : "xl:grid-cols-2")}>
+        <div className={cx("mt-2.5 grid gap-2", compactMode ? "grid-cols-1" : "xl:grid-cols-2")}>
           {activeCategory?.flows.map((flow) => (
             <WorkflowCard
               key={flow.id}
@@ -803,7 +731,7 @@ export function HarnessGitHubActionsFlowGallery({
           {activeCategory?.emptyHint}
         </div>
       )}
-    </section>
+    </>
   );
 
   return (

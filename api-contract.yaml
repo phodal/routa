@@ -2926,6 +2926,41 @@ paths:
           content:
             text/event-stream: {}
 
+  /api/clone/local:
+    post:
+      operationId: loadLocalRepo
+      summary: Load an existing local git repository
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [path]
+              properties:
+                path:
+                  type: string
+      responses:
+        "200":
+          description: Loaded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  name:
+                    type: string
+                  path:
+                    type: string
+                  branch:
+                    type: string
+                  branches:
+                    type: array
+                    items:
+                      type: string
+
   /api/clone/branches:
     get:
       operationId: getBranches
@@ -4462,6 +4497,24 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "500":
           description: Failed to inspect workflows
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/harness/agent-hooks:
+    get:
+      operationId: getHarnessAgentHooks
+      summary: Read and validate agent hook lifecycle configuration
+      responses:
+        "200":
+          description: Agent hook configuration with validation warnings
+          content:
+            application/json:
+              schema:
+                type: object
+        "500":
+          description: Failed to read agent hooks config
           content:
             application/json:
               schema:

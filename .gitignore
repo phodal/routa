@@ -39,6 +39,8 @@ target/
 # Misc
 .DS_Store
 *.pem
+__pycache__/
+*.py[cod]
 scripts/__pycache__/
 tmp/
 

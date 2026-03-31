@@ -21,4 +21,12 @@ describe("DesktopSidebar", () => {
     expect(screen.getByRole("link", { name: "Kanban" }).getAttribute("href")).toBe("/workspace/default/kanban");
     expect(screen.getByRole("link", { name: "Overview" }).getAttribute("href")).toBe("/workspace/default/overview");
   });
+
+  it("keeps the Harness entry available with the workspace-aware settings link", () => {
+    render(<DesktopSidebar workspaceId="default" />);
+
+    expect(screen.getByRole("link", { name: "Harness" }).getAttribute("href")).toBe(
+      "/settings/harness?workspaceId=default",
+    );
+  });
 });

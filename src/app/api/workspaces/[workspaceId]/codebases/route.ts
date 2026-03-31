@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getRoutaSystem } from "@/core/routa-system";
 import { createCodebase } from "@/core/models/codebase";
+import { normalizeLocalRepoPath, validateRepoInput } from "@/core/git";
 
 export const dynamic = "force-dynamic";
 
@@ -29,10 +30,20 @@ export async function POST(
 ) {
   const { workspaceId } = await params;
   const body = await request.json();
-  const { repoPath, branch, label } = body;
+  const repoPathInput = typeof body?.repoPath === "string" ? body.repoPath : "";
+  const { branch, label } = body;
 
-  if (!repoPath) {
+  if (!repoPathInput) {
     return NextResponse.json({ error: "repoPath is required" }, { status: 400 });
+  }
+
+  const repoPath = normalizeLocalRepoPath(repoPathInput);
+  const validation = validateRepoInput(repoPath);
+  if (!validation.valid || validation.isGitHub) {
+    return NextResponse.json(
+      { error: validation.error ?? "repoPath must point to a local git repository" },
+      { status: 400 },
+    );
   }
 
   const system = getRoutaSystem();

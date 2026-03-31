@@ -115,6 +115,7 @@ if (!fs.existsSync(artifactRoot)) {
 }
 
 try {
+  // Stage platform-specific packages
   for (const platform of platformPackages) {
     const sourceBinaryPath = path.join(
       artifactRoot,
@@ -162,6 +163,32 @@ try {
       path.join(outputDir, tarballName),
     );
   }
+
+  // Stage main package (routa-cli)
+  const mainPackageDir = path.join(stagingRoot, "routa-cli");
+  await fsp.mkdir(mainPackageDir, { recursive: true });
+
+  // Copy files from source package
+  const filesToCopy = ["bin", "README.md", "package.json"];
+  for (const file of filesToCopy) {
+    const sourcePath = path.join(sourcePackage, file);
+    const targetPath = path.join(mainPackageDir, file);
+    if (fs.existsSync(sourcePath)) {
+      const stat = await fsp.stat(sourcePath);
+      if (stat.isDirectory()) {
+        await fsp.cp(sourcePath, targetPath, { recursive: true });
+      } else {
+        await fsp.cp(sourcePath, targetPath);
+      }
+    }
+  }
+
+  // Pack main package
+  const mainTarballName = npmPack(mainPackageDir);
+  await fsp.rename(
+    path.join(mainPackageDir, mainTarballName),
+    path.join(outputDir, mainTarballName),
+  );
 
   console.log(`Staged npm tarballs in ${outputDir}`);
 } finally {

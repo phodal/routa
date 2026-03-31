@@ -164,6 +164,21 @@ async fn get_fitness_plan(
     let tier = parse_tier(query.tier.as_deref());
     let scope = parse_scope(query.scope.as_deref());
     let fitness_dir = repo_root.join("docs/fitness");
+
+    // Return empty plan if fitness directory doesn't exist (generic repos may not have it)
+    if !fitness_dir.exists() {
+        return Ok(Json(json!({
+            "generatedAt": chrono::Utc::now().to_rfc3339(),
+            "repoRoot": repo_root,
+            "tier": format!("{tier:?}"),
+            "scope": format!("{scope:?}"),
+            "dimensions": [],
+            "runnerCounts": { "shell": 0, "graph": 0, "sarif": 0 },
+            "metricCount": 0,
+            "hardGateCount": 0,
+        })));
+    }
+
     let entries =
         std::fs::read_dir(&fitness_dir).map_err(map_io_error("构建 Fitness plan 失败"))?;
 
@@ -284,6 +299,17 @@ async fn get_fitness_specs(
     ))?;
 
     let fitness_dir = repo_root.join("docs/fitness");
+
+    // Return empty result if fitness directory doesn't exist (generic repos may not have it)
+    if !fitness_dir.exists() {
+        return Ok(Json(json!({
+            "generatedAt": chrono::Utc::now().to_rfc3339(),
+            "repoRoot": repo_root,
+            "fitnessDir": fitness_dir,
+            "files": [],
+        })));
+    }
+
     let entries =
         std::fs::read_dir(&fitness_dir).map_err(map_io_error("读取 Fitness specs 失败"))?;
 

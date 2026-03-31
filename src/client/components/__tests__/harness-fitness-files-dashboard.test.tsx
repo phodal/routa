@@ -37,6 +37,15 @@ import { HarnessFitnessFilesDashboard } from "../harness-fitness-files-dashboard
 
 const specFiles: FitnessSpecSummary[] = [
   {
+    name: "README.md",
+    relativePath: "docs/fitness/README.md",
+    kind: "rulebook",
+    language: "markdown",
+    metricCount: 0,
+    metrics: [],
+    source: "# README",
+  },
+  {
     name: "code-quality.md",
     relativePath: "docs/fitness/code-quality.md",
     kind: "dimension",

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { HarnessHookWorkbench } from "@/client/components/harness-hook-workbench";
+import { HarnessSectionCard, HarnessSectionStateFrame } from "@/client/components/harness-section-card";
 import { HarnessUnsupportedState } from "@/client/components/harness-support-state";
 import type { HooksResponse } from "@/client/hooks/use-harness-settings-data";
 
@@ -15,6 +16,7 @@ type HooksPanelProps = {
   loading?: boolean;
   error?: string | null;
   variant?: "full" | "compact";
+  embedded?: boolean;
 };
 
 type HooksState = {
@@ -27,12 +29,13 @@ export function HarnessHookRuntimePanel({
   workspaceId,
   codebaseId,
   repoPath,
-  repoLabel,
+  repoLabel: _repoLabel,
   unsupportedMessage,
   data,
   loading,
   error,
   variant = "full",
+  embedded = false,
 }: HooksPanelProps) {
   const hasExternalState = loading !== undefined || error !== undefined || data !== undefined;
   const [hooksState, setHooksState] = useState<HooksState>({
@@ -113,69 +116,48 @@ export function HarnessHookRuntimePanel({
     }
     : hooksState;
 
-  if (resolvedState.loading) {
-    return (
-      <section className={variant === "compact"
-        ? "rounded-2xl border border-desktop-border bg-desktop-bg-primary/60 p-4"
-        : "rounded-2xl border border-desktop-border bg-desktop-bg-secondary/55 p-4 shadow-sm"}
-      >
-        <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-desktop-text-secondary">Hook system</div>
-        <div className="mt-4 rounded-xl border border-desktop-border bg-desktop-bg-primary/80 px-4 py-5 text-[11px] text-desktop-text-secondary">
-          Loading hook runtime...
-        </div>
-      </section>
-    );
-  }
+  const description = "Runtime hooks invoked in local hook workflows.";
 
-  if (unsupportedMessage) {
-    return (
-      <section className={variant === "compact"
-        ? "rounded-2xl border border-desktop-border bg-desktop-bg-primary/60 p-4"
-        : "rounded-2xl border border-desktop-border bg-desktop-bg-secondary/55 p-4 shadow-sm"}
-      >
-        <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-desktop-text-secondary">Hook system</div>
-        <HarnessUnsupportedState />
-      </section>
-    );
-  }
+  const systemAction = <span className="text-[10px] text-desktop-text-secondary">Hook systems</span>;
 
-  if (resolvedState.error) {
-    return (
-      <section className={variant === "compact"
-        ? "rounded-2xl border border-desktop-border bg-desktop-bg-primary/60 p-4"
-        : "rounded-2xl border border-desktop-border bg-desktop-bg-secondary/55 p-4 shadow-sm"}
-      >
-        <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-desktop-text-secondary">Hook system</div>
-        <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-5 text-[11px] text-red-700">
-          {resolvedState.error}
-        </div>
-      </section>
-    );
-  }
+  const runtimeStateFrame = () => {
+    if (resolvedState.loading) {
+      return <HarnessSectionStateFrame>Loading hook runtime...</HarnessSectionStateFrame>;
+    }
 
-  if (!resolvedState.data) {
-    return (
-      <section className={variant === "compact"
-        ? "rounded-2xl border border-desktop-border bg-desktop-bg-primary/60 p-4"
-        : "rounded-2xl border border-desktop-border bg-desktop-bg-secondary/55 p-4 shadow-sm"}
-      >
-        <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-desktop-text-secondary">Hook system</div>
-        <div className="mt-4 rounded-xl border border-desktop-border bg-desktop-bg-primary/80 px-4 py-5 text-[11px] text-desktop-text-secondary">
+    if (unsupportedMessage) {
+      return <HarnessUnsupportedState className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-4 text-[11px] text-amber-800" />;
+    }
+
+    if (resolvedState.error) {
+      return <HarnessSectionStateFrame tone="error">{resolvedState.error}</HarnessSectionStateFrame>;
+    }
+
+    if (!resolvedState.data) {
+      return (
+        <HarnessSectionStateFrame>
           No hook runtime data found for the selected repository.
-        </div>
-      </section>
+        </HarnessSectionStateFrame>
+      );
+    }
+
+    return (
+      <HarnessHookWorkbench
+        data={resolvedState.data}
+        unsupportedMessage={unsupportedMessage}
+        variant={variant}
+        embedded={embedded}
+      />
     );
+  };
+
+  if (embedded) {
+    return <div className="space-y-3">{runtimeStateFrame()}</div>;
   }
 
   return (
-    <HarnessHookWorkbench
-      workspaceId={workspaceId}
-      codebaseId={codebaseId}
-      repoPath={repoPath}
-      repoLabel={repoLabel}
-      data={resolvedState.data}
-      unsupportedMessage={unsupportedMessage}
-      variant={variant}
-    />
+    <HarnessSectionCard title="Hook systems" description={description} actions={systemAction} variant={variant}>
+      {runtimeStateFrame()}
+    </HarnessSectionCard>
   );
 }

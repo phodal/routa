@@ -74,6 +74,18 @@ const routesFor = ({
         ? sseResponse(cloneEvents)
         : jsonResponse({ error: "Clone stream not configured" }, { status: 500 }),
   },
+  {
+    match: (url, init) => url.endsWith("/api/clone/local") && init?.method === "POST",
+    respond: async (_url, init) => {
+      const payload = init?.body ? JSON.parse(String(init.body)) : {};
+      return jsonResponse({
+        success: true,
+        name: "local-routa",
+        path: payload.path ?? "/Users/phodal/ai/routa-js",
+        branch: "main",
+      });
+    },
+  },
 ];
 
 const meta = {
@@ -135,6 +147,25 @@ export const CloneTab: Story = {
     );
     if (cloneTab instanceof HTMLElement) {
       cloneTab.click();
+    }
+  },
+};
+
+export const LocalProjectTab: Story = {
+  args: {
+    ...defaultStoryArgs,
+    value: null,
+  },
+  play: async ({ canvasElement }) => {
+    const trigger = canvasElement.querySelector("button");
+    if (!(trigger instanceof HTMLElement)) return;
+    trigger.click();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const localTab = Array.from(document.querySelectorAll("button")).find((button) =>
+      button.textContent?.includes("Local Project"),
+    );
+    if (localTab instanceof HTMLElement) {
+      localTab.click();
     }
   },
 };

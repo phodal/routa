@@ -20,6 +20,12 @@ export type FitnessFilesDashboardModel = {
   selectedDimension: DimensionDensityDatum | null;
 };
 
+function normalizeFitnessPath(relativePath: string) {
+  return relativePath.startsWith("docs/fitness/")
+    ? relativePath.slice("docs/fitness/".length)
+    : relativePath;
+}
+
 function normalizeWeight(weight: number, maxWeight: number) {
   if (maxWeight <= 0) {
     return 0;
@@ -58,14 +64,22 @@ export function buildHarnessFitnessFilesDashboardModel(
   specFiles: FitnessSpecSummary[],
   selectedSpec: FitnessSpecSummary | null,
 ): FitnessFilesDashboardModel {
+  const manifestEntries = specFiles
+    .find((file) => file.kind === "manifest")
+    ?.manifestEntries
+    ?.map(normalizeFitnessPath) ?? [];
+  const manifestEntrySet = new Set(manifestEntries);
+  const allDimensions = specFiles.filter((file) => file.kind === "dimension");
+  const dimensionFiles = manifestEntrySet.size > 0
+    ? allDimensions.filter((file) => manifestEntrySet.has(normalizeFitnessPath(file.relativePath)))
+    : allDimensions;
   const selectedId = selectedSpec?.kind === "dimension" ? selectedSpec.relativePath : null;
   const maxWeight = Math.max(
-    ...specFiles.filter((file) => file.kind === "dimension").map((file) => file.weight ?? 0),
+    ...dimensionFiles.map((file) => file.weight ?? 0),
     0,
   );
 
-  const dimensions = specFiles
-    .filter((file) => file.kind === "dimension")
+  const dimensions = dimensionFiles
     .map((file) => {
       const weight = file.weight ?? 0;
       const thresholdPass = file.thresholdPass ?? 90;

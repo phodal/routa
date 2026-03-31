@@ -21,6 +21,7 @@
     "group": "workspace",
     "priority": "P0",
     "ci": true,
+    "similarityThreshold": 0.9,
     "route": "/workspace/default/overview",
     "pageFile": "src/app/workspace/[workspaceId]/overview/page.tsx",
     "snapshotFile": "src/app/workspace/[workspaceId]/page.snapshot.yaml",

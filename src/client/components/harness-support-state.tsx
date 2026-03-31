@@ -7,7 +7,6 @@ type HarnessUnsupportedStateProps = {
 };
 
 const UNSUPPORTED_REPO_MARKERS = [
-  "不是 Routa 仓库",
   "不存在或不是目录",
 ] as const;
 
@@ -21,7 +20,7 @@ export function getHarnessUnsupportedRepoMessage(...messages: MaybeMessage[]): s
     return null;
   }
 
-  return "当前仓库未接入 Routa Harness 所需的仓库结构，当前页面仅支持带 .routa 元数据的仓库。";
+  return "当前仓库路径无效或不可访问，当前页面无法渲染该视图。";
 }
 
 export function HarnessUnsupportedState({
@@ -30,7 +29,7 @@ export function HarnessUnsupportedState({
   return (
     <div className={className ?? "mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-5 text-[11px] text-amber-800"}>
       <div className="leading-5">
-        当前仓库未接入 Routa Harness 所需的仓库结构，无法渲染该视图。
+        当前仓库路径无效或不可访问，无法渲染该视图。
       </div>
     </div>
   );

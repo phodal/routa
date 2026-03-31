@@ -24,6 +24,7 @@ export { formatReviewPhaseLabel } from "./runtime.js";
 type CliOptions = HookRuntimeOptions & {
   profilePhases: readonly RuntimePhase[];
   allowReviewUnavailable: boolean;
+  reviewProvider?: string;
 };
 
 function parseOutputMode(raw: string | undefined): "human" | "jsonl" {
@@ -79,6 +80,7 @@ export function parseArgs(argv: string[]): CliOptions {
     profile: requestedProfile,
     profilePhases: profileDefinition.phases,
     allowReviewUnavailable: process.env.ROUTA_ALLOW_REVIEW_UNAVAILABLE === "1",
+    reviewProvider: process.env.ROUTA_REVIEW_PROVIDER?.trim() || undefined,
     tailLines: parsePositiveInt(process.env.ROUTA_HOOK_RUNTIME_TAIL_LINES, DEFAULT_TAIL_LINES),
     verboseMetrics: process.env.ROUTA_HOOK_RUNTIME_VERBOSE_METRICS === "1",
   };
@@ -109,6 +111,15 @@ export function parseArgs(argv: string[]): CliOptions {
     }
     if (arg === "--fix") {
       options.autoFix = true;
+      continue;
+    }
+    if (arg === "--provider" && i + 1 < runtimeArgv.length) {
+      options.reviewProvider = runtimeArgv[i + 1]?.trim() || undefined;
+      i += 1;
+      continue;
+    }
+    if (arg.startsWith("--provider=")) {
+      options.reviewProvider = arg.slice("--provider=".length).trim() || undefined;
       continue;
     }
     if (arg === "--allow-review-unavailable" || arg === "--allow-review-scope-mismatch") {
@@ -216,6 +227,9 @@ export async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2));
   if (options.allowReviewUnavailable) {
     process.env.ROUTA_ALLOW_REVIEW_UNAVAILABLE = "1";
+  }
+  if (options.reviewProvider) {
+    process.env.ROUTA_REVIEW_PROVIDER = options.reviewProvider;
   }
   await runRuntime(options, options.profile);
 }

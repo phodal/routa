@@ -1,7 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { PlanResponse, TierValue } from "@/client/components/harness-execution-plan-flow";
+import type { DesignDecisionResponse } from "@/core/harness/design-decision-types";
+import type { SpecDetectionResponse } from "@/core/harness/spec-detector-types";
 
 export type RunnerKind = "shell" | "graph" | "sarif";
 export type SpecKind = "rulebook" | "manifest" | "dimension" | "narrative" | "policy";
@@ -139,6 +141,37 @@ export type InstructionsResponse = {
   } | null;
 };
 
+export type AgentHookConfigSummary = {
+  event: string;
+  matcher?: string;
+  type: string;
+  command?: string;
+  url?: string;
+  prompt?: string;
+  timeout: number;
+  blocking: boolean;
+  description?: string;
+  source?: string;
+};
+
+export type AgentHooksResponse = {
+  generatedAt: string;
+  repoRoot: string;
+  configFile: {
+    relativePath: string;
+    source: string;
+    schema?: string;
+  } | null;
+  configFiles?: Array<{
+    relativePath: string;
+    source: string;
+    schema?: string;
+    provider?: string;
+  }>;
+  hooks: AgentHookConfigSummary[];
+  warnings: string[];
+};
+
 export type GitHubActionsJob = {
   id: string;
   name: string;
@@ -178,6 +211,11 @@ type HarnessSettingsDataArgs = {
   selectedTier: TierValue;
 };
 
+type InstructionRefreshState = {
+  contextKey: string;
+  token: number;
+};
+
 function buildHarnessQuery(workspaceId: string, codebaseId?: string, repoPath?: string) {
   const query = new URLSearchParams();
   query.set("workspaceId", workspaceId);
@@ -215,6 +253,14 @@ export function useHarnessSettingsData({
   const [hooksState, setHooksState] = useState<QueryState<HooksResponse>>(emptyQueryState);
   const [instructionsState, setInstructionsState] = useState<QueryState<InstructionsResponse>>(emptyQueryState);
   const [githubActionsState, setGithubActionsState] = useState<QueryState<GitHubActionsFlowsResponse>>(emptyQueryState);
+  const [agentHooksState, setAgentHooksState] = useState<QueryState<AgentHooksResponse>>(emptyQueryState);
+  const [specSourcesState, setSpecSourcesState] = useState<QueryState<SpecDetectionResponse>>(emptyQueryState);
+  const [designDecisionsState, setDesignDecisionsState] = useState<QueryState<DesignDecisionResponse>>(emptyQueryState);
+  const [instructionsRefreshState, setInstructionsRefreshState] = useState<InstructionRefreshState>({
+    contextKey: "",
+    token: 0,
+  });
+  const instructionsContextKey = baseQuery?.toString() ?? "";
 
   useEffect(() => {
     if (!baseQuery) {
@@ -347,7 +393,11 @@ export function useHarnessSettingsData({
       setInstructionsState((current) => ({ ...current, loading: true, error: null }));
       try {
         const query = new URLSearchParams(baseQuery);
-        query.set("includeAudit", "1");
+        const includeAudit = (
+          instructionsRefreshState.contextKey === instructionsContextKey &&
+          instructionsRefreshState.token > 0
+        );
+        query.set("includeAudit", includeAudit ? "1" : "0");
         const response = await fetch(`/api/harness/instructions?${query.toString()}`);
         const payload = await response.json().catch(() => ({}));
         if (!response.ok) {
@@ -375,7 +425,7 @@ export function useHarnessSettingsData({
     return () => {
       cancelled = true;
     };
-  }, [baseQuery]);
+  }, [baseQuery, instructionsContextKey, instructionsRefreshState]);
 
   useEffect(() => {
     if (!baseQuery) {
@@ -416,11 +466,139 @@ export function useHarnessSettingsData({
     };
   }, [baseQuery]);
 
+  useEffect(() => {
+    if (!baseQuery) {
+      setAgentHooksState(emptyQueryState());
+      return;
+    }
+
+    let cancelled = false;
+    const fetchAgentHooks = async () => {
+      setAgentHooksState((current) => ({ ...current, loading: true, error: null }));
+      try {
+        const response = await fetch(`/api/harness/agent-hooks?${baseQuery.toString()}`);
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(typeof payload?.details === "string" ? payload.details : "Failed to load agent hooks");
+        }
+        if (!cancelled) {
+          setAgentHooksState({
+            loading: false,
+            error: null,
+            data: payload as AgentHooksResponse,
+          });
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setAgentHooksState({
+            loading: false,
+            error: error instanceof Error ? error.message : String(error),
+            data: null,
+          });
+        }
+      }
+    };
+
+    void fetchAgentHooks();
+    return () => {
+      cancelled = true;
+    };
+  }, [baseQuery]);
+
+  const reloadInstructions = useCallback(() => {
+    setInstructionsRefreshState((current) => ({
+      contextKey: instructionsContextKey,
+      token: current.contextKey === instructionsContextKey ? current.token + 1 : 1,
+    }));
+  }, [instructionsContextKey]);
+
+  useEffect(() => {
+    if (!baseQuery) {
+      setSpecSourcesState(emptyQueryState());
+      return;
+    }
+
+    let cancelled = false;
+    const fetchSpecSources = async () => {
+      setSpecSourcesState((current) => ({ ...current, loading: true, error: null }));
+      try {
+        const response = await fetch(`/api/harness/spec-sources?${baseQuery.toString()}`);
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(typeof payload?.details === "string" ? payload.details : "Failed to load spec sources");
+        }
+        if (!cancelled) {
+          setSpecSourcesState({
+            loading: false,
+            error: null,
+            data: payload as SpecDetectionResponse,
+          });
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setSpecSourcesState({
+            loading: false,
+            error: error instanceof Error ? error.message : String(error),
+            data: null,
+          });
+        }
+      }
+    };
+
+    void fetchSpecSources();
+    return () => {
+      cancelled = true;
+    };
+  }, [baseQuery]);
+
+  useEffect(() => {
+    if (!baseQuery) {
+      setDesignDecisionsState(emptyQueryState());
+      return;
+    }
+
+    let cancelled = false;
+    const fetchDesignDecisions = async () => {
+      setDesignDecisionsState((current) => ({ ...current, loading: true, error: null }));
+      try {
+        const response = await fetch(`/api/harness/design-decisions?${baseQuery.toString()}`);
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(typeof payload?.details === "string" ? payload.details : "Failed to load design decisions");
+        }
+        if (!cancelled) {
+          setDesignDecisionsState({
+            loading: false,
+            error: null,
+            data: payload as DesignDecisionResponse,
+          });
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setDesignDecisionsState({
+            loading: false,
+            error: error instanceof Error ? error.message : String(error),
+            data: null,
+          });
+        }
+      }
+    };
+
+    void fetchDesignDecisions();
+    return () => {
+      cancelled = true;
+    };
+  }, [baseQuery]);
+
   return {
     specsState,
     planState,
     hooksState,
+    agentHooksState,
     instructionsState,
     githubActionsState,
+    specSourcesState,
+    designDecisionsState,
+    reloadInstructions,
   };
 }

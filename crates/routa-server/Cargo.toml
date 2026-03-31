@@ -1,6 +1,6 @@
 [package]
 name = "routa-server"
-version = "0.2.4"
+version = "0.2.9"
 description = "Routa.js HTTP Server — axum adapter on top of routa-core"
 authors = ["phodal"]
 edition = "2021"
@@ -14,7 +14,7 @@ path = "src/lib.rs"
 
 [dependencies]
 # Core domain (with axum IntoResponse support)
-routa-core = { version = "0.2.4", path = "../routa-core", features = ["axum"] }
+routa-core = { version = "0.2.9", path = "../routa-core", features = ["axum"] }
 
 # Web framework
 axum = { version = "0.8", features = ["macros"] }

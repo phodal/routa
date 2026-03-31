@@ -177,7 +177,7 @@ class OpenCodeSession {
       }
       this.pendingRequests.clear()
       for (const { res } of this.sseClients) {
-        try { res.end() } catch { /* ignore client disconnect during shutdown */ }
+        try { res.end() } catch {} // eslint-disable-line no-empty
       }
       this.sseClients.clear()
     })
@@ -240,20 +240,20 @@ class OpenCodeSession {
     for (const [termId, terminal] of this.terminals) {
       if (!terminal.exited) {
         console.log(`[terminal] session cleanup — killing ${termId}`)
-        try { terminal.process.kill('SIGTERM') } catch { /* ignore already-exited process */ }
+        try { terminal.process.kill('SIGTERM') } catch {} // eslint-disable-line no-empty
         setTimeout(() => {
           if (!terminal.exited) {
-            try { terminal.process.kill('SIGKILL') } catch { /* ignore already-exited process */ }
+            try { terminal.process.kill('SIGKILL') } catch {} // eslint-disable-line no-empty
           }
         }, 3000)
       }
     }
     this.terminals.clear()
     if (this.proc) {
-      try { this.proc.kill('SIGTERM') } catch { /* ignore already-exited process */ }
+      try { this.proc.kill('SIGTERM') } catch {} // eslint-disable-line no-empty
       setTimeout(() => {
         if (this.proc && this.proc.exitCode === null) {
-          try { this.proc.kill('SIGKILL') } catch { /* ignore already-exited process */ }
+          try { this.proc.kill('SIGKILL') } catch {} // eslint-disable-line no-empty
         }
       }, 5000)
     }
@@ -263,7 +263,7 @@ class OpenCodeSession {
 
   _write(msg) {
     if (this.proc && this.proc.stdin) {
-      try { this.proc.stdin.write(JSON.stringify(msg) + '\n') } catch { /* ignore write errors on closed stdin */ }
+      try { this.proc.stdin.write(JSON.stringify(msg) + '\n') } catch {} // eslint-disable-line no-empty
     }
   }
 
@@ -288,7 +288,7 @@ class OpenCodeSession {
       else if (line[i] === '}') {
         depth--
         if (!depth && start >= 0) {
-          try { this._handleMsg(JSON.parse(line.slice(start, i + 1))) } catch { /* ignore malformed extracted fragment */ }
+          try { this._handleMsg(JSON.parse(line.slice(start, i + 1))) } catch {} // eslint-disable-line no-empty
           start = -1
         }
       }
@@ -515,7 +515,7 @@ class OpenCodeSession {
             terminal.process.kill('SIGTERM')
             setTimeout(() => {
               if (!terminal.exited) {
-                try { terminal.process.kill('SIGKILL') } catch { /* ignore already-exited process */ }
+                try { terminal.process.kill('SIGKILL') } catch {} // eslint-disable-line no-empty
               }
             }, 3000)
           } catch (err) {
@@ -537,10 +537,10 @@ class OpenCodeSession {
               terminal.process.kill('SIGTERM')
               setTimeout(() => {
                 if (!terminal.exited) {
-                  try { terminal.process.kill('SIGKILL') } catch { /* ignore already-exited process */ }
+                  try { terminal.process.kill('SIGKILL') } catch {} // eslint-disable-line no-empty
                 }
               }, 3000)
-            } catch { /* ignore already-exited process */ }
+            } catch {} // eslint-disable-line no-empty
           }
           this.terminals.delete(termId)
         }

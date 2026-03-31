@@ -1,7 +1,7 @@
-import { spawn } from "child_process";
 import { promises as fsp } from "fs";
 import * as path from "path";
 import { NextRequest, NextResponse } from "next/server";
+import { safeSpawn } from "@/core/utils/safe-exec";
 import { isContextError, parseContext, resolveRepoRoot } from "../hooks/shared";
 
 type AuditStatus = "ok" | "heuristic" | "error";
@@ -230,16 +230,15 @@ function parseAuditPayload(
   };
 }
 
-async function executeAuditorCommand(repoRoot: string, source: string, provider: string) {
+async function executeAuditorCommand(repoRoot: string, workspaceId: string, source: string, provider: string) {
   const localBinaryPath = path.join(repoRoot, "target", "debug", "routa");
   let command = localBinaryPath;
   let args = [
     "specialist",
     "run",
-    AUDIT_SPECIALIST_ID,
     "--json",
     "--workspace-id",
-    "default",
+    workspaceId,
     "--provider",
     provider,
     "--provider-timeout-ms",
@@ -248,6 +247,7 @@ async function executeAuditorCommand(repoRoot: string, source: string, provider:
     "0",
     "-p",
     source,
+    AUDIT_SPECIALIST_ID,
   ];
 
   try {
@@ -258,10 +258,9 @@ async function executeAuditorCommand(repoRoot: string, source: string, provider:
   }
 
   return await new Promise<{ stdout: string; stderr: string }>((resolve, reject) => {
-    const child = spawn(command, args, {
+    const child = safeSpawn(command, args, {
       cwd: repoRoot,
       stdio: ["ignore", "pipe", "pipe"],
-      shell: false,
     });
 
     let stdout = "";
@@ -305,10 +304,15 @@ async function executeAuditorCommand(repoRoot: string, source: string, provider:
   });
 }
 
-async function runInstructionAudit(repoRoot: string, source: string, provider: string): Promise<HarnessInstructionAuditSummary> {
+async function runInstructionAudit(
+  repoRoot: string,
+  workspaceId: string,
+  source: string,
+  provider: string,
+): Promise<HarnessInstructionAuditSummary> {
   const start = Date.now();
   try {
-    const { stdout } = await executeAuditorCommand(repoRoot, source, provider);
+    const { stdout } = await executeAuditorCommand(repoRoot, workspaceId, source, provider);
     const parsed = JSON.parse(extractJsonOutput(stdout));
     const durationMs = Date.now() - start;
     return parseAuditPayload(parsed, durationMs, provider);
@@ -321,6 +325,7 @@ async function runInstructionAudit(repoRoot: string, source: string, provider: s
 export async function GET(request: NextRequest) {
   try {
     const context = parseContext(request.nextUrl.searchParams);
+    const workspaceId = context.workspaceId?.trim() || "default";
     const includeAudit = parseBooleanParam(request.nextUrl.searchParams.get("includeAudit"));
     const auditProvider = request.nextUrl.searchParams.get("auditProvider")?.trim() || DEFAULT_AUDIT_PROVIDER;
     const repoRoot = await resolveRepoRoot(context);
@@ -350,7 +355,7 @@ export async function GET(request: NextRequest) {
     }
 
     const source = await fsp.readFile(matched.absolutePath, "utf-8");
-    const audit = includeAudit ? await runInstructionAudit(repoRoot, source, auditProvider) : null;
+    const audit = includeAudit ? await runInstructionAudit(repoRoot, workspaceId, source, auditProvider) : null;
 
     return NextResponse.json({
       generatedAt: new Date().toISOString(),

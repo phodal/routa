@@ -79,7 +79,8 @@ Protocol Adapters
   REST, MCP, ACP, A2A, AG-UI, SSE, JSON-RPC normalization
 
 Domain Services
-  orchestration, kanban automation, workflow execution, notes, review, scheduling
+  orchestration, kanban automation, workflow execution, notes, review, scheduling,
+  trace, harness, shared sessions, worker dispatch
 
 Stores / Registries
   workspace, task, session, note, codebase, worktree, schedule, artifact, skill
@@ -129,11 +130,24 @@ Important invariant:
 - Workflows convert a higher-level automation definition into multiple background tasks with dependency ordering.
 - Schedule ticks, webhook events, and polling adapters can all enqueue background tasks instead of invoking execution inline.
 
+### Trace And Review
+
+- Traces record session lifecycle, messages, tool calls, file changes, and VCS context for audit and debugging (`src/core/trace/`, `crates/routa-core/src/trace/`).
+- Trace data is a first-class debugging and attribution mechanism, not an incidental log stream.
+- Review provides multi-phase code review with findings, severity, and validation context (`src/core/review/`).
+
+### Harness And Worker
+
+- Harness detects repository signals, script entrypoints, and spec sources to power governance and quality analysis (`src/core/harness/`).
+- Workers abstract local and Docker-based execution environments (`src/core/worker/`).
+- Sandbox policy resolution in Rust enforces workspace-aware Docker constraints (`crates/routa-core/src/sandbox/`).
+
 ### Note, Memory, Artifact
 
 - Notes support collaborative knowledge capture and use CRDT-based real-time behavior on the TypeScript side.
 - Memory endpoints store workspace-scoped contextual records.
 - Artifacts are structured outputs exchanged between agents, workflows, or coordination tools.
+- Shared sessions enable multi-user or multi-agent coordination with event broadcasting and prompt dispatch (`src/core/shared-session/`).
 
 ## System Factories And Shared State
 
@@ -256,11 +270,28 @@ The repository is still finishing the workspace-centric normalization. The durab
 
 Treat `"default"` as transition scaffolding, not as the target domain model.
 
+## Architecture Decision Records
+
+The `docs/adr/` directory captures durable architectural decisions that shape boundaries, protocols, and patterns across the codebase. ADRs are the canonical answer to "why is it built this way?"
+
+Discover decisions via: `claude -p "What ADRs exist and what do they decide?"`
+
+Current ADRs:
+
+| ADR | Decision |
+|---|---|
+| [0001](./adr/0001-dual-backend-semantic-parity.md) | Web and desktop share domain semantics via api-contract.yaml |
+| [0002](./adr/0002-provider-normalization-via-acp.md) | All agent runtimes normalized to ACP through adapter layers |
+| [0003](./adr/0003-workspace-first-scope.md) | Workspaces are the top-level coordination boundary |
+| [0004](./adr/0004-kanban-driven-automation.md) | Kanban lanes trigger ACP sessions with queued concurrency |
+| [0005](./adr/0005-specialist-externalization.md) | Specialists as Markdown+YAML with priority loading |
+| [0006](./adr/0006-orchestration-shell-pattern.md) | Complex files use thin shell + domain hooks structure |
+
 ## Related Documents
 
 - Product/API index: [docs/product-specs/FEATURE_TREE.md](./product-specs/FEATURE_TREE.md)
-- Workspace redesign status: [docs/design-docs/workspace-centric-redesign.md](./design-docs/workspace-centric-redesign.md)
-- Active workspace normalization plan: [docs/exec-plans/active/workspace-centric-normalization.md](./exec-plans/active/workspace-centric-normalization.md)
-- Fitness and verification guidance: `docs/fitness/README.md`
-- Repository operating contract: `AGENTS.md`
+- Architecture decisions: [docs/adr/](./adr/)
+- Design intent: [docs/design-docs/](./design-docs/)
+- Fitness and verification: [docs/fitness/README.md](./fitness/README.md)
+- Repository operating contract: [AGENTS.md](../AGENTS.md)
 - [MCP Spec](https://modelcontextprotocol.io/) · [ACP Spec](https://github.com/agentclientprotocol/typescript-sdk) · [A2A Spec](https://a2aprotocol.ai/)

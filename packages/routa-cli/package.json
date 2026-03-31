@@ -1,6 +1,6 @@
 {
   "name": "routa-cli",
-  "version": "0.2.4",
+  "version": "0.2.9",
   "description": "Routa.js CLI for terminal-first workflows.",
   "type": "module",
   "license": "MIT",
@@ -28,10 +28,10 @@
     "README.md"
   ],
   "optionalDependencies": {
-    "routa-cli-darwin-arm64": "0.2.4",
-    "routa-cli-darwin-x64": "0.2.4",
-    "routa-cli-linux-x64": "0.2.4",
-    "routa-cli-windows-x64": "0.2.4"
+    "routa-cli-darwin-arm64": "0.2.9",
+    "routa-cli-darwin-x64": "0.2.9",
+    "routa-cli-linux-x64": "0.2.9",
+    "routa-cli-windows-x64": "0.2.9"
   },
   "publishConfig": {
     "access": "public"

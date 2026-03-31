@@ -1,5 +1,4 @@
 "use client";
-
 /**
  * RepoPicker - Inline repo selector and cloner
  *
@@ -10,14 +9,12 @@
  *   - Git error handling and user-friendly messages
  *   - Clone status: progress phases, percent
  */
-
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { desktopAwareFetch } from "../utils/diagnostics";
 import { createPortal } from "react-dom";
 import { BranchSelector } from "./branch-selector";
 
 // ─── Types ──────────────────────────────────────────────────────────────
-
 interface RepoStatus {
   clean: boolean;
   ahead: number;
@@ -58,7 +55,7 @@ interface RepoPickerProps {
   }>;
 }
 
-type PickerTab = "existing" | "clone";
+type PickerTab = "existing" | "clone" | "local";
 
 interface CloneProgress {
   phase: string;
@@ -71,8 +68,27 @@ interface RepoActionResult {
   branch?: string;
 }
 
-// ─── Component ──────────────────────────────────────────────────────────
+function isGitHubInput(text: string): boolean {
+  const t = text.trim();
+  return (
+    /^https?:\/\/github\.com\//i.test(t) ||
+    /^git@github\.com:/i.test(t) ||
+    /^github\.com\//i.test(t) ||
+    /^[a-zA-Z0-9\-_]+\/[a-zA-Z0-9\-_.]+$/.test(t)
+  );
+}
 
+function isLikelyLocalPath(text: string): boolean {
+  const t = text.trim();
+  return (
+    t.startsWith("/") ||
+    t.startsWith("~/") ||
+    t.startsWith("./") ||
+    t.startsWith("../") ||
+    /^[a-zA-Z]:[\\/]/.test(t)
+  );
+}
+// ─── Component ──────────────────────────────────────────────────────────
 export function RepoPicker({
   value,
   onChange,
@@ -86,12 +102,13 @@ export function RepoPicker({
   const [showDropdown, setShowDropdown] = useState(false);
   const [activeTab, setActiveTab] = useState<PickerTab>("existing");
   const [searchQuery, setSearchQuery] = useState("");
-
-  // Clone state
   const [cloneUrl, setCloneUrl] = useState("");
   const [cloning, setCloning] = useState(false);
   const [cloneProgress, setCloneProgress] = useState<CloneProgress | null>(null);
   const [cloneError, setCloneError] = useState<string | null>(null);
+  const [localPath, setLocalPath] = useState("");
+  const [loadingLocalRepo, setLoadingLocalRepo] = useState(false);
+  const [localRepoError, setLocalRepoError] = useState<string | null>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -164,20 +181,13 @@ export function RepoPicker({
 
   // ── Auto-detect GitHub URL in search → switch to clone tab ─────────
 
-  const isGitHubInput = (text: string): boolean => {
-    const t = text.trim();
-    return (
-      /^https?:\/\/github\.com\//i.test(t) ||
-      /^git@github\.com:/i.test(t) ||
-      /^github\.com\//i.test(t) ||
-      /^[a-zA-Z0-9\-_]+\/[a-zA-Z0-9\-_.]+$/.test(t)
-    );
-  };
-
   useEffect(() => {
     if (allowClone && searchQuery && isGitHubInput(searchQuery)) {
       setActiveTab("clone");
       setCloneUrl(searchQuery);
+    } else if (searchQuery && isLikelyLocalPath(searchQuery)) {
+      setActiveTab("local");
+      setLocalPath(searchQuery);
     }
   }, [allowClone, searchQuery]);
 
@@ -276,6 +286,49 @@ export function RepoPicker({
     [onChange]
   );
 
+  const handleSelectLocalRepo = useCallback(
+    async (repoPath: string) => {
+      if (!repoPath.trim()) return;
+
+      setLoadingLocalRepo(true);
+      setLocalRepoError(null);
+
+      try {
+        const res = await desktopAwareFetch("/api/clone/local", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ path: repoPath.trim() }),
+        });
+        const data = await res.json().catch(() => ({}));
+
+        if (!res.ok) {
+          throw new Error(
+            typeof data?.error === "string" ? data.error : "Failed to load local repository"
+          );
+        }
+
+        onChange({
+          name:
+            typeof data?.name === "string"
+              ? data.name
+              : repoPath.trim().split("/").pop() || repoPath.trim(),
+          path: typeof data?.path === "string" ? data.path : repoPath.trim(),
+          branch: typeof data?.branch === "string" ? data.branch : "",
+        });
+        setLocalPath("");
+        setSearchQuery("");
+        setShowDropdown(false);
+      } catch (err) {
+        setLocalRepoError(
+          err instanceof Error ? err.message : "Failed to load local repository"
+        );
+      } finally {
+        setLoadingLocalRepo(false);
+      }
+    },
+    [onChange]
+  );
+
   // ── Clear selection ────────────────────────────────────────────────
 
   const handleClear = useCallback(() => {
@@ -318,6 +371,19 @@ export function RepoPicker({
     [fetchRepos, onChange, value]
   );
 
+  const handleLocalPathKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLInputElement>) => {
+      if (e.key === "Enter" && localPath.trim()) {
+        void handleSelectLocalRepo(localPath);
+        return;
+      }
+      if (e.key === "Escape") {
+        setShowDropdown(false);
+      }
+    },
+    [handleSelectLocalRepo, localPath]
+  );
+
   // ── Filtered repos ─────────────────────────────────────────────────
 
   // Merge cloned repos with additional repos (workspace codebases)
@@ -340,8 +406,19 @@ export function RepoPicker({
         }
       }
     }
+
+    if (value && !existingPaths.has(value.path)) {
+      merged.push({
+        name: value.name,
+        path: value.path,
+        dirName: value.path.split("/").pop() || value.name,
+        branch: value.branch || "",
+        branches: value.branch ? [value.branch] : [],
+        status: { clean: true, ahead: 0, behind: 0, modified: 0, untracked: 0 },
+      });
+    }
     return merged;
-  }, [additionalRepos, repos, sourceMode]);
+  }, [additionalRepos, repos, sourceMode, value]);
 
   const filteredRepos = searchQuery.trim()
     ? allRepos.filter((r) =>
@@ -386,7 +463,7 @@ export function RepoPicker({
           className="flex items-center gap-1.5 text-xs text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
         >
           <GitRepoIcon className="w-3.5 h-3.5" />
-          <span>Select or clone a repository...</span>
+          <span>Select, clone, or load a repository...</span>
         </button>
       )}
 
@@ -430,6 +507,15 @@ export function RepoPicker({
                 Clone from GitHub
               </TabButton>
             ) : null}
+            <TabButton
+              active={activeTab === "local"}
+              onClick={() => setActiveTab("local")}
+            >
+              <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 7.5A1.5 1.5 0 014.5 6h4.379a1.5 1.5 0 011.06.44l1.12 1.12a1.5 1.5 0 001.06.44H19.5A1.5 1.5 0 0121 9.5v8A1.5 1.5 0 0119.5 19h-15A1.5 1.5 0 013 17.5v-10z" />
+              </svg>
+              Local Project
+            </TabButton>
           </div>
 
           {/* ── Existing repos tab ── */}
@@ -444,7 +530,7 @@ export function RepoPicker({
                     type="text"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Search repositories or paste GitHub URL..."
+                    placeholder="Search repositories, paste GitHub URL, or enter local path..."
                     className="flex-1 bg-transparent text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 outline-none"
                     onKeyDown={(e) => {
                       if (e.key === "Escape") setShowDropdown(false);
@@ -461,12 +547,12 @@ export function RepoPicker({
                 ) : filteredRepos.length === 0 ? (
                   <EmptyState>
                     {allRepos.length === 0
-                      ? 'No repositories yet. Switch to "Clone from GitHub" to add one.'
+                      ? 'No repositories yet. Switch to "Clone from GitHub" or "Local Project" to add one.'
                       : "No matching repositories."}
                   </EmptyState>
                 ) : (
                   <>
-                    <SectionHeader>Cloned Repositories</SectionHeader>
+                    <SectionHeader>Available Repositories</SectionHeader>
                     {filteredRepos.map((repo) => (
                       <RepoListItem
                         key={repo.path}
@@ -585,6 +671,61 @@ export function RepoPicker({
 
               <div className="text-[10px] text-slate-400 dark:text-slate-500">
                 The repo will be cloned and used as the agent working directory.
+              </div>
+            </div>
+          )}
+
+          {activeTab === "local" && (
+            <div className="p-3 space-y-3">
+              <div>
+                <label className="text-[10px] font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1 block">
+                  Local Repository Path
+                </label>
+                <input
+                  type="text"
+                  value={localPath}
+                  onChange={(e) => {
+                    setLocalPath(e.target.value);
+                    setLocalRepoError(null);
+                  }}
+                  placeholder="/Users/you/project or ~/project"
+                  className="w-full rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#161922] px-3 py-2 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 outline-none"
+                  onKeyDown={handleLocalPathKeyDown}
+                  autoFocus
+                />
+              </div>
+
+              {localRepoError && (
+                <div className="rounded-md bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-800/50 px-3 py-2">
+                  <div className="text-xs text-red-700 dark:text-red-400">
+                    {localRepoError}
+                  </div>
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={() => void handleSelectLocalRepo(localPath)}
+                disabled={loadingLocalRepo || !localPath.trim()}
+                className="w-full flex items-center justify-center gap-2 px-3 py-2 text-xs font-medium text-white bg-emerald-600 hover:bg-emerald-700 rounded-md transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {loadingLocalRepo ? (
+                  <>
+                    <Spinner />
+                    Loading Project...
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M3 7.5A1.5 1.5 0 014.5 6h4.379a1.5 1.5 0 011.06.44l1.12 1.12a1.5 1.5 0 001.06.44H19.5A1.5 1.5 0 0121 9.5v8A1.5 1.5 0 0119.5 19h-15A1.5 1.5 0 013 17.5v-10z" />
+                    </svg>
+                    Use Local Project
+                  </>
+                )}
+              </button>
+
+              <div className="text-[10px] text-slate-400 dark:text-slate-500">
+                The path must exist locally and already be a git repository.
               </div>
             </div>
           )}

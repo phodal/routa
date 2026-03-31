@@ -12,6 +12,8 @@
  * For Tauri, use bridge.git.* (async) instead.
  */
 
+import * as path from "path";
+
 import { getServerBridge } from "@/core/platform";
 
 // ─── GitHub URL Parsing ──────────────────────────────────────────────────
@@ -537,6 +539,32 @@ export interface ValidationResult {
 }
 
 /**
+ * Expand `~` and resolve relative local repo paths against the current cwd.
+ */
+export function normalizeLocalRepoPath(input: string): string {
+  const trimmed = input.trim();
+  if (!trimmed) return trimmed;
+
+  const bridge = getServerBridge();
+  const homeDir = bridge.env.homeDir();
+
+  if (trimmed === "~") {
+    return homeDir;
+  }
+
+  if (trimmed.startsWith("~/") || trimmed.startsWith("~\\")) {
+    const suffix = trimmed.slice(2);
+    return path.join(homeDir, suffix);
+  }
+
+  if (path.isAbsolute(trimmed)) {
+    return path.normalize(trimmed);
+  }
+
+  return path.resolve(bridge.env.currentDir(), trimmed);
+}
+
+/**
  * Validate a repository path or GitHub URL.
  */
 export function validateRepoInput(input: string): ValidationResult {
@@ -568,9 +596,10 @@ export function validateRepoInput(input: string): ValidationResult {
   }
 
   // Local path
+  const normalizedPath = normalizeLocalRepoPath(trimmed);
   const bridge = getServerBridge();
-  if (bridge.fs.existsSync(trimmed)) {
-    if (isGitRepository(trimmed)) {
+  if (bridge.fs.existsSync(normalizedPath)) {
+    if (isGitRepository(normalizedPath)) {
       return { valid: true };
     }
     return {

@@ -17,6 +17,7 @@ import type { FitnessSpecSummary } from "@/client/hooks/use-harness-settings-dat
 
 import { buildHarnessFitnessFilesDashboardModel } from "./harness-fitness-files-dashboard-model";
 import { HarnessUnsupportedState } from "./harness-support-state";
+import { HarnessSectionCard, HarnessSectionStateFrame } from "./harness-section-card";
 
 type HarnessFitnessFilesDashboardProps = {
   specFiles: FitnessSpecSummary[];
@@ -24,6 +25,7 @@ type HarnessFitnessFilesDashboardProps = {
   loading: boolean;
   error?: string | null;
   unsupportedMessage?: string | null;
+  embedded?: boolean;
 };
 
 function DimensionDensityTooltip({ active, payload }: TooltipContentProps<ValueType, NameType>) {
@@ -61,50 +63,33 @@ export function HarnessFitnessFilesDashboard({
   loading,
   error,
   unsupportedMessage,
+  embedded = false,
 }: HarnessFitnessFilesDashboardProps) {
   const model = useMemo(
     () => buildHarnessFitnessFilesDashboardModel(specFiles, selectedSpec),
     [selectedSpec, specFiles],
   );
 
-  return (
-    <section className="rounded-2xl border border-desktop-border bg-desktop-bg-secondary/55 p-4 shadow-sm">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-desktop-text-secondary">Discovery</div>
-          <h3 className="mt-1 text-sm font-semibold text-desktop-text-primary">Fitness files</h3>
-          <p className="mt-1 text-[11px] leading-5 text-desktop-text-secondary">
-            Spec-derived radar score from `docs/fitness`.
-          </p>
-        </div>
-      </div>
-
+  const content = (
+    <>
       {unsupportedMessage ? (
-        <div className="mt-4">
-          <HarnessUnsupportedState className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-[11px] text-amber-800" />
-        </div>
+        <HarnessUnsupportedState className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-4 text-[11px] text-amber-800" />
       ) : null}
 
-      {!unsupportedMessage && loading ? (
-        <div className="mt-4 rounded-2xl border border-desktop-border bg-desktop-bg-primary/80 px-4 py-8 text-sm text-desktop-text-secondary">
-          Loading fitness files...
-        </div>
+      {loading ? (
+        <HarnessSectionStateFrame>Loading fitness files...</HarnessSectionStateFrame>
       ) : null}
 
-      {!unsupportedMessage && error ? (
-        <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-4 text-[11px] leading-5 text-rose-700">
-          {error}
-        </div>
-      ) : null}
+      {error ? <HarnessSectionStateFrame tone="error">{error}</HarnessSectionStateFrame> : null}
 
       {!unsupportedMessage && !loading && !error ? (
-        <div className="mt-4" data-testid="harness-fitness-files-dashboard">
+        <div className="mt-3" data-testid="harness-fitness-files-dashboard">
           <section className="rounded-2xl border border-desktop-border bg-white/80 p-4 shadow-sm dark:bg-white/6">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-desktop-text-secondary">Dimension radar</div>
                 <p className="mt-1 text-[12px] leading-5 text-desktop-text-secondary">
-                  Score blends `weight`, hard-gate coverage, and threshold strictness. It is derived from specs, not runtime fitness output.
+                  Score blends `weight`, hard-gate coverage, and threshold strictness across manifest-linked dimension specs.
                 </p>
               </div>
               {model.selectedDimension ? (
@@ -146,6 +131,23 @@ export function HarnessFitnessFilesDashboard({
           </section>
         </div>
       ) : null}
-    </section>
+    </>
+  );
+
+  if (embedded) {
+    return <div className="space-y-3">{content}</div>;
+  }
+
+  return (
+    <HarnessSectionCard
+      title="Entrix Fitness"
+      description="Entrix fitness manifest and dimension scoring surfaces."
+      variant="full"
+      actions={
+        loading ? <span className="text-[10px] text-desktop-text-secondary">Loading...</span> : null
+      }
+    >
+      {content}
+    </HarnessSectionCard>
   );
 }

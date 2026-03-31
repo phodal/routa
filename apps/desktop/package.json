@@ -1,6 +1,6 @@
 {
   "name": "routa-desktop",
-  "version": "0.2.4",
+  "version": "0.2.9",
   "private": true,
   "scripts": {
     "dev": "npm run tauri dev",

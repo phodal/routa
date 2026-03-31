@@ -1,6 +1,6 @@
 [package]
 name = "routa-scanner"
-version = "0.2.4"
+version = "0.2.9"
 edition = "2021"
 license = "MIT"
 description = "Reusable multi-tool security and quality scanning module for Routa"

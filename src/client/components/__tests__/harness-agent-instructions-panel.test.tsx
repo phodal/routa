@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("../markdown/markdown-viewer", () => ({
@@ -71,12 +71,48 @@ describe("HarnessAgentInstructionsPanel", () => {
       />,
     );
 
-    expect(screen.getByText("Instruction file")).not.toBeNull();
+    expect(screen.getByRole("heading", { name: "Instruction file - CLAUDE.md" })).not.toBeNull();
     expect(screen.getByText("Instruction audit")).not.toBeNull();
-    expect(screen.getAllByText("CLAUDE.md").length).toBeGreaterThan(0);
     expect(screen.getByText("preferred CLAUDE.md")).not.toBeNull();
     expect(screen.getByText("16/20")).not.toBeNull();
     expect(screen.getAllByText("4/5").length).toBeGreaterThanOrEqual(4);
+    expect(screen.getByText("渐进式暴露")).not.toBeNull();
+    expect(screen.getByText("负面约束优先")).not.toBeNull();
+    expect(screen.getByText("反重复机制")).not.toBeNull();
+    expect(screen.getByText("确定性验证")).not.toBeNull();
+    expect(screen.getByLabelText("渐进式暴露 说明")).not.toBeNull();
+    expect(screen.getByText("按任务阶段按需加载最小上下文，先定位，再展开，避免一次性灌入全部背景。")).not.toBeNull();
     expect(screen.getByText((content) => content.includes("# Routa.js"))).not.toBeNull();
+  });
+
+  it("supports re-running audit when callback is provided", () => {
+    const onAuditRerun = vi.fn();
+    render(
+      <HarnessAgentInstructionsPanel
+        workspaceId="default"
+        repoPath="/Users/phodal/ai/routa-js"
+        repoLabel="phodal/routa"
+        data={instructionsData}
+        onAuditRerun={onAuditRerun}
+      />,
+    );
+
+    const rerunButton = screen.getByRole("button", { name: /Re-run audit/i });
+    fireEvent.click(rerunButton);
+    expect(onAuditRerun).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows explicit running feedback while audit is refreshing", () => {
+    render(
+      <HarnessAgentInstructionsPanel
+        workspaceId="default"
+        repoPath="/Users/phodal/ai/routa-js"
+        repoLabel="phodal/routa"
+        data={instructionsData}
+        loading
+      />,
+    );
+
+    expect(screen.getByText("Running specialist audit...")).not.toBeNull();
   });
 });

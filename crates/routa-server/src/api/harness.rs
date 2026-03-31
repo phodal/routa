@@ -10,10 +10,15 @@ use axum::{
 };
 use regex::Regex;
 use routa_core::harness::detect_repo_signals;
+use routa_core::spec_detector::detect_spec_sources;
 use serde::Deserialize;
 use serde_json::{json, Value};
 use tokio::process::Command;
 
+use crate::api::harness_hook_preview_events::{
+    parse_json_lines, to_metric_results, to_phase_results,
+};
+use crate::api::harness_instructions_audit::run_instruction_audit;
 use crate::api::repo_context::{
     extract_frontmatter, json_error, read_to_string, resolve_repo_root, RepoContextQuery,
 };
@@ -22,11 +27,78 @@ use crate::state::AppState;
 
 pub fn router() -> Router<AppState> {
     Router::new()
+        .route("/agent-hooks", get(get_agent_hooks))
         .route("/github-actions", get(get_github_actions))
         .route("/hooks", get(get_harness_hooks))
         .route("/hooks/preview", get(get_hook_preview))
         .route("/instructions", get(get_harness_instructions))
         .route("/repo-signals", get(get_harness_repo_signals))
+        .route("/spec-sources", get(get_spec_sources))
+}
+
+async fn get_agent_hooks(
+    State(state): State<AppState>,
+    Query(query): Query<RepoContextQuery>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    let repo_root = resolve_repo_root(
+        &state,
+        query.workspace_id.as_deref(),
+        query.codebase_id.as_deref(),
+        query.repo_path.as_deref(),
+        "Missing agent hooks context. Provide workspaceId, codebaseId, or repoPath.",
+    )
+    .await
+    .map_err(map_context_error(
+        "Agent hooks context invalid",
+        "Failed to read agent hooks",
+    ))?;
+
+    let mut all_hooks = Vec::new();
+    let mut config_files: Vec<Value> = Vec::new();
+    let mut warnings = Vec::new();
+
+    /* 1. Scan standard hook config files (Claude Code, Qoder, Codex) */
+    let standard_locations = [
+        (".claude/settings.json", "claude-code"),
+        (".claude/settings.local.json", "claude-code"),
+        (".qoder/settings.json", "qoder"),
+        (".qoder/settings.local.json", "qoder"),
+        (".codex/hooks.json", "codex"),
+    ];
+    for (rel_path, provider) in &standard_locations {
+        let full_path = repo_root.join(rel_path);
+        if !full_path.exists() {
+            continue;
+        }
+        if let Ok(raw) = std::fs::read_to_string(&full_path) {
+            let (hooks, cf) = parse_standard_hooks_config(&raw, rel_path, provider, &mut warnings);
+            all_hooks.extend(hooks);
+            config_files.push(cf);
+        }
+    }
+
+    /* 2. Scan custom YAML config (routa-specific) */
+    let (yaml_hooks, yaml_cf, yaml_warnings) = load_agent_hook_config(&repo_root);
+    all_hooks.extend(yaml_hooks);
+    if yaml_cf != Value::Null {
+        config_files.push(yaml_cf);
+    }
+    warnings.extend(yaml_warnings);
+
+    if all_hooks.is_empty() && config_files.is_empty() {
+        warnings.push("No agent hook configuration found.".to_string());
+    }
+
+    let primary_config = config_files.first().cloned().unwrap_or(Value::Null);
+
+    Ok(Json(json!({
+        "generatedAt": chrono::Utc::now().to_rfc3339(),
+        "repoRoot": repo_root,
+        "configFile": primary_config,
+        "configFiles": config_files,
+        "hooks": all_hooks,
+        "warnings": warnings,
+    })))
 }
 
 async fn get_harness_repo_signals(
@@ -48,6 +120,25 @@ async fn get_harness_repo_signals(
     })?))
 }
 
+async fn get_spec_sources(
+    State(state): State<AppState>,
+    Query(query): Query<RepoContextQuery>,
+) -> Result<Json<Value>, ServerError> {
+    let repo_root = resolve_repo_root(
+        &state,
+        query.workspace_id.as_deref(),
+        query.codebase_id.as_deref(),
+        query.repo_path.as_deref(),
+        "Missing spec sources context. Provide workspaceId, codebaseId, or repoPath.",
+    )
+    .await?;
+
+    let report = detect_spec_sources(&repo_root).map_err(ServerError::Internal)?;
+    Ok(Json(serde_json::to_value(report).map_err(|error| {
+        ServerError::Internal(format!("Failed to serialize report: {error}"))
+    })?))
+}
+
 #[derive(Debug, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct HookPreviewQuery {
@@ -56,6 +147,16 @@ struct HookPreviewQuery {
     repo_path: Option<String>,
     profile: Option<String>,
     mode: Option<String>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct InstructionsQuery {
+    workspace_id: Option<String>,
+    codebase_id: Option<String>,
+    repo_path: Option<String>,
+    include_audit: Option<String>,
+    audit_provider: Option<String>,
 }
 
 async fn get_github_actions(
@@ -304,8 +405,30 @@ async fn get_hook_preview(
 
 async fn get_harness_instructions(
     State(state): State<AppState>,
-    Query(query): Query<RepoContextQuery>,
+    Query(query): Query<InstructionsQuery>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    let include_audit = parse_bool_param(query.include_audit.as_deref());
+    let audit_provider = query
+        .audit_provider
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+        .or_else(|| {
+            std::env::var("HARNESS_INSTRUCTION_AUDIT_PROVIDER")
+                .ok()
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty())
+        })
+        .unwrap_or_else(|| "codex".to_string());
+    let workspace_id = query
+        .workspace_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("default")
+        .to_string();
+
     let repo_root = resolve_repo_root(
         &state,
         query.workspace_id.as_deref(),
@@ -329,6 +452,11 @@ async fn get_harness_instructions(
                 .unwrap_or(&absolute_path)
                 .to_string_lossy()
                 .to_string();
+            let audit = if include_audit {
+                run_instruction_audit(&repo_root, &workspace_id, &source, &audit_provider).await
+            } else {
+                Value::Null
+            };
             return Ok(Json(json!({
                 "generatedAt": chrono::Utc::now().to_rfc3339(),
                 "repoRoot": repo_root,
@@ -336,6 +464,7 @@ async fn get_harness_instructions(
                 "relativePath": relative_path,
                 "source": source,
                 "fallbackUsed": file_name != "CLAUDE.md",
+                "audit": audit,
             })));
         }
     }
@@ -347,6 +476,13 @@ async fn get_harness_instructions(
             "details": "Expected one of: CLAUDE.md, AGENTS.md",
         })),
     ))
+}
+
+fn parse_bool_param(value: Option<&str>) -> bool {
+    value
+        .map(str::trim)
+        .map(str::to_lowercase)
+        .is_some_and(|normalized| matches!(normalized.as_str(), "1" | "true" | "yes" | "on"))
 }
 
 fn parse_workflow_flow(repo_root: &Path, path: &Path) -> Result<Option<Value>, String> {
@@ -703,76 +839,6 @@ fn extract_trigger_command(source: &str) -> String {
         .to_string()
 }
 
-fn parse_json_lines(raw: &str) -> Vec<Value> {
-    raw.lines()
-        .filter_map(|line| serde_json::from_str::<Value>(line.trim()).ok())
-        .collect()
-}
-
-fn to_phase_results(events: &[Value]) -> Vec<Value> {
-    events
-        .iter()
-        .filter_map(|event| {
-            let kind = event
-                .get("event")
-                .and_then(Value::as_str)
-                .unwrap_or_default();
-            if kind != "phase.complete" && kind != "phase.skip" {
-                return None;
-            }
-            let phase = event.get("phase").and_then(Value::as_str)?;
-            let status = event.get("status").and_then(Value::as_str)?;
-            Some(json!({
-                "phase": phase,
-                "status": status,
-                "durationMs": event.get("durationMs").and_then(Value::as_u64).unwrap_or(0),
-                "reason": event.get("reason").and_then(Value::as_str),
-                "message": event.get("message").and_then(Value::as_str),
-                "metrics": event.get("metrics").and_then(Value::as_array),
-                "index": event.get("index").and_then(Value::as_u64),
-                "total": event.get("total").and_then(Value::as_u64),
-            }))
-        })
-        .collect()
-}
-
-fn to_metric_results(events: &[Value]) -> Vec<Value> {
-    let mut results = Vec::new();
-    for event in events {
-        match event
-            .get("event")
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-        {
-            "metric.complete" => {
-                if let Some(name) = event.get("name").and_then(Value::as_str) {
-                    results.push(json!({
-                        "name": name,
-                        "status": if event.get("passed").and_then(Value::as_bool).unwrap_or(false) { "passed" } else { "failed" },
-                        "durationMs": event.get("durationMs").and_then(Value::as_u64),
-                        "exitCode": event.get("exitCode").and_then(Value::as_i64),
-                        "command": event.get("command").and_then(Value::as_str),
-                        "sourceFile": event.get("sourceFile").and_then(Value::as_str),
-                        "outputTail": event.get("outputTail").and_then(Value::as_str),
-                    }));
-                }
-            }
-            "metric.skip" => {
-                if let Some(metrics) = event.get("metrics").and_then(Value::as_array) {
-                    for metric in metrics.iter().filter_map(Value::as_str) {
-                        results.push(json!({
-                            "name": metric,
-                            "status": "skipped",
-                        }));
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
-    results
-}
-
 fn summarize_runner(value: Option<&serde_yaml::Value>) -> String {
     match value {
         Some(serde_yaml::Value::String(value)) if !value.trim().is_empty() => {
@@ -890,4 +956,233 @@ fn map_io_error(
             Json(json_error(public_error, error.to_string())),
         )
     }
+}
+
+const KNOWN_AGENT_EVENTS: &[&str] = &[
+    "SessionStart",
+    "UserPromptSubmit",
+    "PreToolUse",
+    "PostToolUse",
+    "Stop",
+];
+
+const BLOCKABLE_AGENT_EVENTS: &[&str] = &["PreToolUse", "UserPromptSubmit", "PermissionRequest"];
+
+const KNOWN_AGENT_HOOK_TYPES: &[&str] = &["command", "http", "prompt", "agent"];
+
+/// Parse standard hooks config files (Claude Code / Qoder / Codex format)
+fn parse_standard_hooks_config(
+    raw: &str,
+    rel_path: &str,
+    provider: &str,
+    warnings: &mut Vec<String>,
+) -> (Vec<Value>, Value) {
+    let parsed: serde_json::Value = match serde_json::from_str(raw) {
+        Ok(v) => v,
+        Err(_) => {
+            warnings.push(format!("Failed to parse {rel_path} as JSON."));
+            return (Vec::new(), json!({ "relativePath": rel_path, "source": raw, "provider": provider }));
+        }
+    };
+
+    let hooks_map = match parsed.get("hooks").and_then(|v| v.as_object()) {
+        Some(m) => m,
+        None => {
+            return (Vec::new(), json!({ "relativePath": rel_path, "source": raw, "provider": provider }));
+        }
+    };
+
+    let blockable: HashSet<&str> = BLOCKABLE_AGENT_EVENTS.iter().copied().collect();
+    let mut hooks = Vec::new();
+
+    for (event_name, groups) in hooks_map {
+        let groups_arr = match groups.as_array() {
+            Some(a) => a,
+            None => continue,
+        };
+
+        for group in groups_arr {
+            let matcher = group
+                .get("matcher")
+                .and_then(|v| v.as_str())
+                .map(|s| s.trim())
+                .filter(|s| !s.is_empty());
+
+            let hook_entries = match group.get("hooks").and_then(|v| v.as_array()) {
+                Some(a) => a,
+                None => continue,
+            };
+
+            for entry in hook_entries {
+                let hook_type = entry
+                    .get("type")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("command");
+                let blocking = blockable.contains(event_name.as_str());
+                let timeout = entry
+                    .get("timeout")
+                    .and_then(|v| v.as_i64())
+                    .filter(|t| *t > 0)
+                    .unwrap_or(10);
+
+                let mut hook = json!({
+                    "event": event_name,
+                    "type": hook_type,
+                    "timeout": timeout,
+                    "blocking": blocking,
+                    "source": format!("{provider}:{rel_path}"),
+                });
+
+                if let Some(m) = matcher {
+                    hook["matcher"] = json!(m);
+                }
+                if let Some(c) = entry.get("command").and_then(|v| v.as_str()) {
+                    hook["command"] = json!(c);
+                }
+                if let Some(u) = entry.get("url").and_then(|v| v.as_str()) {
+                    hook["url"] = json!(u);
+                }
+                if let Some(p) = entry.get("prompt").and_then(|v| v.as_str()) {
+                    hook["prompt"] = json!(p);
+                }
+
+                hooks.push(hook);
+            }
+        }
+    }
+
+    let config_file = json!({
+        "relativePath": rel_path,
+        "source": raw,
+        "provider": provider,
+    });
+
+    (hooks, config_file)
+}
+
+fn load_agent_hook_config(repo_root: &Path) -> (Vec<Value>, Value, Vec<String>) {
+    let config_path = repo_root.join("docs/fitness/runtime/agent-hooks.yaml");
+    let mut warnings = Vec::new();
+
+    if !config_path.exists() {
+        warnings.push(
+            "Missing docs/fitness/runtime/agent-hooks.yaml — no agent hooks configured."
+                .to_string(),
+        );
+        return (Vec::new(), Value::Null, warnings);
+    }
+
+    let raw = match std::fs::read_to_string(&config_path) {
+        Ok(content) => content,
+        Err(_) => {
+            warnings.push("Failed to read agent-hooks.yaml.".to_string());
+            return (Vec::new(), Value::Null, warnings);
+        }
+    };
+
+    let parsed: serde_yaml::Value = serde_yaml::from_str(&raw).unwrap_or_default();
+
+    let config_file = json!({
+        "relativePath": "docs/fitness/runtime/agent-hooks.yaml",
+        "source": raw,
+        "schema": parsed.get("schema").and_then(serde_yaml::Value::as_str),
+    });
+
+    let raw_hooks = match parsed.get("hooks").and_then(serde_yaml::Value::as_sequence) {
+        Some(seq) => seq,
+        None => return (Vec::new(), config_file, warnings),
+    };
+
+    let known_events: HashSet<&str> = KNOWN_AGENT_EVENTS.iter().copied().collect();
+    let blockable_events: HashSet<&str> = BLOCKABLE_AGENT_EVENTS.iter().copied().collect();
+    let known_types: HashSet<&str> = KNOWN_AGENT_HOOK_TYPES.iter().copied().collect();
+
+    let mut hooks = Vec::new();
+
+    for entry in raw_hooks {
+        let mapping = match entry.as_mapping() {
+            Some(m) => m,
+            None => continue,
+        };
+
+        let event = match yaml_str(mapping.get(serde_yaml::Value::String("event".into()))) {
+            Some(e) if !e.trim().is_empty() => e.trim(),
+            _ => {
+                warnings.push("Skipped hook entry with missing event field.".to_string());
+                continue;
+            }
+        };
+
+        if !known_events.contains(event) {
+            warnings.push(format!(
+                "Unknown agent hook event: \"{event}\". Known events: {}.",
+                KNOWN_AGENT_EVENTS.join(", ")
+            ));
+            continue;
+        }
+
+        let hook_type = yaml_str(mapping.get(serde_yaml::Value::String("type".into())))
+            .map(str::trim)
+            .unwrap_or("command");
+
+        if !known_types.contains(hook_type) {
+            warnings.push(format!(
+                "Unknown hook type \"{hook_type}\" for event \"{event}\". Known types: {}.",
+                KNOWN_AGENT_HOOK_TYPES.join(", ")
+            ));
+            continue;
+        }
+
+        let blocking_raw = mapping
+            .get(serde_yaml::Value::String("blocking".into()))
+            .and_then(serde_yaml::Value::as_bool)
+            .unwrap_or(false);
+
+        if blocking_raw && !blockable_events.contains(event) {
+            warnings.push(format!(
+                "Event \"{event}\" does not support blocking. Setting blocking to false."
+            ));
+        }
+        let blocking = blocking_raw && blockable_events.contains(event);
+
+        let timeout = yaml_i64(mapping.get(serde_yaml::Value::String("timeout".into())))
+            .filter(|t| *t > 0)
+            .unwrap_or(10);
+
+        let matcher = yaml_str(mapping.get(serde_yaml::Value::String("matcher".into())))
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty());
+        let command = yaml_str(mapping.get(serde_yaml::Value::String("command".into())));
+        let url = yaml_str(mapping.get(serde_yaml::Value::String("url".into())));
+        let prompt = yaml_str(mapping.get(serde_yaml::Value::String("prompt".into())));
+        let description = yaml_str(mapping.get(serde_yaml::Value::String("description".into())));
+
+        let mut hook = json!({
+            "event": event,
+            "type": hook_type,
+            "timeout": timeout,
+            "blocking": blocking,
+            "source": "routa:docs/fitness/runtime/agent-hooks.yaml",
+        });
+
+        if let Some(m) = matcher {
+            hook["matcher"] = json!(m);
+        }
+        if let Some(c) = command {
+            hook["command"] = json!(c);
+        }
+        if let Some(u) = url {
+            hook["url"] = json!(u);
+        }
+        if let Some(p) = prompt {
+            hook["prompt"] = json!(p);
+        }
+        if let Some(d) = description {
+            hook["description"] = json!(d);
+        }
+
+        hooks.push(hook);
+    }
+
+    (hooks, config_file, warnings)
 }

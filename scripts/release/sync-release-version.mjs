@@ -55,21 +55,52 @@ async function writeJson(relativePath, data) {
 async function updateTomlVersion(relativePath, version) {
   const absolutePath = path.join(repoRoot, relativePath);
   const content = await fs.readFile(absolutePath, "utf8");
+
+  // Check if version is already correct
+  const versionMatch = content.match(/^version = "(.+)"$/m);
+  if (versionMatch && versionMatch[1] === version) {
+    console.log(`${relativePath} already at version ${version}`);
+    return;
+  }
+
   const updated = content.replace(
     /^version = ".*"$/m,
     `version = "${version}"`,
   );
 
   if (updated === content) {
-    throw new Error(`Failed to update version in ${relativePath}`);
+    throw new Error(`Failed to update version in ${relativePath} - no version field found`);
   }
 
   await fs.writeFile(absolutePath, updated, "utf8");
 }
 
-async function updateJsonVersion(relativePath, version) {
+async function updateJsonVersion(relativePath, version, options = {}) {
   const { data } = await readJson(relativePath);
-  data.version = version;
+
+  let changed = false;
+
+  // Update main version
+  if (data.version !== version) {
+    data.version = version;
+    changed = true;
+  }
+
+  // Update optionalDependencies if specified
+  if (options.updateOptionalDeps && data.optionalDependencies) {
+    for (const dep of Object.keys(data.optionalDependencies)) {
+      if (data.optionalDependencies[dep] !== version) {
+        data.optionalDependencies[dep] = version;
+        changed = true;
+      }
+    }
+  }
+
+  if (!changed) {
+    console.log(`${relativePath} already at version ${version}`);
+    return;
+  }
+
   await writeJson(relativePath, data);
 }
 
@@ -87,6 +118,8 @@ await writeJson("package.json", rootPackage.data);
 await updateJsonVersion("apps/desktop/package.json", version);
 await updateTomlVersion("apps/desktop/src-tauri/Cargo.toml", version);
 await updateJsonVersion("apps/desktop/src-tauri/tauri.conf.json", version);
-await updateJsonVersion("packages/routa-cli/package.json", version);
+await updateJsonVersion("packages/routa-cli/package.json", version, {
+  updateOptionalDeps: true,
+});
 
 console.log(`Synchronized release version to ${version}`);

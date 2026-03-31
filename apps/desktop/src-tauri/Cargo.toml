@@ -1,6 +1,6 @@
 [package]
 name = "routa-desktop"
-version = "0.2.4"
+version = "0.2.9"
 description = "Routa.js Desktop - Multi-agent coordination platform"
 authors = ["phodal"]
 edition = "2021"

@@ -136,6 +136,27 @@ export interface TranslationDictionary {
     sessions: string;
     refreshSystemInfo: string;
     language: string;
+    harness: {
+      title: string;
+      shellDescription: string;
+      summaryOrderLabel: string;
+      summaryOrderValue: string;
+      summaryFocusLabel: string;
+      summaryFocusValue: string;
+      pageDescription: string;
+      repositoryLabel: string;
+      governanceLoop: string;
+      specSources: string;
+      agentInstructions: string;
+      repositorySignals: string;
+      hookSystems: string;
+      reviewTriggers: string;
+      entrixFitness: string;
+      ciCd: string;
+      quickNavigation: string;
+      expandNavigation: string;
+      collapseNavigation: string;
+    };
   };
 
   // Role descriptions

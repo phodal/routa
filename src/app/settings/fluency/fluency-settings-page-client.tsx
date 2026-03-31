@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
 import { FitnessAnalysisPanel } from "@/client/components/fitness-analysis-panel";
@@ -9,6 +9,7 @@ import { SettingsPageHeader } from "@/client/components/settings-page-header";
 import { SettingsRouteShell } from "@/client/components/settings-route-shell";
 import { WorkspaceSwitcher } from "@/client/components/workspace-switcher";
 import { useCodebases, useWorkspaces } from "@/client/hooks/use-workspaces";
+import { loadRepoSelection, saveRepoSelection } from "@/client/utils/repo-selection-storage";
 
 type FluencySettingsPageClientProps = {
   defaultRepoPath?: string;
@@ -27,7 +28,21 @@ export function FluencySettingsPageClient({ defaultRepoPath }: FluencySettingsPa
   const { codebases } = useCodebases(workspaceId);
   const [selectedCodebaseId, setSelectedCodebaseId] = useState(requestedCodebaseId);
   const [initialRepoPath, setInitialRepoPath] = useState(initialRequestedRepoPath);
-  const [selectedRepoOverride, setSelectedRepoOverride] = useState<RepoSelection | null>(null);
+  const [selectedRepoOverrideState, setSelectedRepoOverrideState] = useState<{
+    workspaceId: string;
+    selection: RepoSelection | null;
+  }>({
+    workspaceId: "",
+    selection: null,
+  });
+  const persistedRepoSelection = useMemo(
+    () => (requestedRepoPath || requestedCodebaseId ? null : loadRepoSelection("fluency", workspaceId)),
+    [requestedCodebaseId, requestedRepoPath, workspaceId],
+  );
+  const selectedRepoOverride = selectedRepoOverrideState.workspaceId === workspaceId
+    ? selectedRepoOverrideState.selection
+    : null;
+  const effectiveRepoOverride = selectedRepoOverride ?? persistedRepoSelection;
 
   const activeWorkspaceTitle = useMemo(() => {
     return workspacesHook.workspaces.find((workspace) => workspace.id === workspaceId)?.title
@@ -43,21 +58,21 @@ export function FluencySettingsPageClient({ defaultRepoPath }: FluencySettingsPa
   }, [codebases, selectedCodebaseId]);
 
   const matchedSelectedCodebase = useMemo(() => {
-    const selectedPath = selectedRepoOverride?.path ?? initialRepoPath;
+    const selectedPath = effectiveRepoOverride?.path ?? initialRepoPath;
     if (!selectedPath) {
       return activeCodebase;
     }
 
     return codebases.find((codebase) => (
       codebase.repoPath === selectedPath
-      && (selectedRepoOverride?.branch ? (codebase.branch ?? "") === selectedRepoOverride.branch : true)
+      && (effectiveRepoOverride?.branch ? (codebase.branch ?? "") === effectiveRepoOverride.branch : true)
     )) ?? codebases.find((codebase) => codebase.repoPath === selectedPath)
       ?? null;
-  }, [activeCodebase, codebases, initialRepoPath, selectedRepoOverride]);
+  }, [activeCodebase, codebases, effectiveRepoOverride, initialRepoPath]);
 
   const activeRepoSelection = useMemo(() => {
-    if (selectedRepoOverride) {
-      return selectedRepoOverride;
+    if (effectiveRepoOverride) {
+      return effectiveRepoOverride;
     }
     if (initialRepoPath) {
       const matchedCodebase = codebases.find((codebase) => codebase.repoPath === initialRepoPath);
@@ -76,9 +91,17 @@ export function FluencySettingsPageClient({ defaultRepoPath }: FluencySettingsPa
       path: activeCodebase.repoPath,
       branch: activeCodebase.branch ?? "",
     } satisfies RepoSelection;
-  }, [activeCodebase, codebases, initialRepoPath, selectedRepoOverride]);
+  }, [activeCodebase, codebases, effectiveRepoOverride, initialRepoPath]);
 
   const activeRepoCodebaseId = matchedSelectedCodebase?.id;
+
+  useEffect(() => {
+    if (requestedRepoPath || requestedCodebaseId) {
+      return;
+    }
+
+    saveRepoSelection("fluency", workspaceId, activeRepoSelection);
+  }, [activeRepoSelection, requestedCodebaseId, requestedRepoPath, workspaceId]);
 
   return (
     <SettingsRouteShell
@@ -96,7 +119,7 @@ export function FluencySettingsPageClient({ defaultRepoPath }: FluencySettingsPa
             setSelectedWorkspaceId(nextWorkspaceId);
             setSelectedCodebaseId("");
             setInitialRepoPath("");
-            setSelectedRepoOverride(null);
+            setSelectedRepoOverrideState({ workspaceId: nextWorkspaceId, selection: null });
           }}
           onCreate={async (title) => {
             const workspace = await workspacesHook.createWorkspace(title);
@@ -125,7 +148,7 @@ export function FluencySettingsPageClient({ defaultRepoPath }: FluencySettingsPa
                   value={activeRepoSelection}
                   onChange={(selection) => {
                     setInitialRepoPath("");
-                    setSelectedRepoOverride(selection);
+                    setSelectedRepoOverrideState({ workspaceId, selection });
                     if (!selection) {
                       setSelectedCodebaseId("");
                       return;

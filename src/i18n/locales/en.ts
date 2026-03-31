@@ -134,6 +134,28 @@ const en: TranslationDictionary = {
     sessions: "Sessions",
     refreshSystemInfo: "Refresh system info",
     language: "Language",
+    harness: {
+      title: "Harness",
+      shellDescription: "Repository governance view for AI engineering workflows.",
+      summaryOrderLabel: "Order",
+      summaryOrderValue: "Thinking -> Commit -> Delivery",
+      summaryFocusLabel: "Focus",
+      summaryFocusValue: "Stage-driven feedback loops",
+      pageDescription:
+        "Connect Spec Sources, instruction files, hook systems, review triggers, Entrix fitness, and CI/CD into one governance map.",
+      repositoryLabel: "Repository",
+      governanceLoop: "Governance Loop",
+      specSources: "Spec Sources",
+      agentInstructions: "Agent Instructions",
+      repositorySignals: "Repository Signals",
+      hookSystems: "Hook Systems",
+      reviewTriggers: "Review Triggers",
+      entrixFitness: "Entrix Fitness",
+      ciCd: "CI/CD",
+      quickNavigation: "Quick Navigation",
+      expandNavigation: "Expand navigation menu",
+      collapseNavigation: "Collapse navigation menu",
+    },
   },
 
   roles: {

@@ -27,53 +27,14 @@ import {
   type HookWorkbenchEntry,
 } from "./harness-hook-workbench-model";
 
-type PreviewMode = "dry-run" | "live";
 type InspectorTab = "basic" | "inputs" | "tasks" | "script";
 type ScriptTab = "runtime" | "raw" | "review";
 
-type PhasePreview = {
-  phase: string;
-  status: "passed" | "failed" | "skipped";
-  durationMs: number;
-  reason?: string;
-  message?: string;
-  metrics?: string[];
-  index?: number;
-  total?: number;
-};
-
-type MetricPreview = {
-  name: string;
-  status: "passed" | "failed" | "skipped";
-  durationMs?: number;
-  exitCode?: number;
-  command?: string;
-  sourceFile?: string;
-  outputTail?: string;
-};
-
-type HookPreviewResponse = {
-  generatedAt: string;
-  repoRoot: string;
-  profile: string;
-  mode: PreviewMode;
-  ok: boolean;
-  exitCode: number;
-  command: string[];
-  phaseResults: PhasePreview[];
-  metricResults: MetricPreview[];
-  eventSample: Record<string, unknown>[];
-  stderr: string;
-};
-
 type HookWorkbenchProps = {
-  workspaceId: string;
-  codebaseId?: string;
-  repoPath?: string;
-  repoLabel: string;
   data: HooksResponse;
   unsupportedMessage?: string | null;
   variant?: "full" | "compact";
+  embedded?: boolean;
 };
 
 type WorkbenchState = {
@@ -81,21 +42,13 @@ type WorkbenchState = {
   selectedHookName: string;
   inspectorTab: InspectorTab;
   scriptTab: ScriptTab;
-  runMode: PreviewMode;
-  runningHookName: string | null;
-  runError: string | null;
-  previewHistory: Record<string, HookPreviewResponse[]>;
 };
 
 type WorkbenchAction =
   | { type: "sync"; contextKey: string; hookNames: string[]; defaultHookName: string }
   | { type: "select-hook"; hookName: string }
   | { type: "select-tab"; tab: InspectorTab }
-  | { type: "select-script-tab"; tab: ScriptTab }
-  | { type: "set-run-mode"; mode: PreviewMode }
-  | { type: "run-start"; hookName: string }
-  | { type: "run-success"; hookName: string; result: HookPreviewResponse }
-  | { type: "run-error"; message: string };
+  | { type: "select-script-tab"; tab: ScriptTab };
 
 type WorkbenchContextValue = {
   state: WorkbenchState;
@@ -103,10 +56,8 @@ type WorkbenchContextValue = {
   activeEntry: HookWorkbenchEntry | null;
   groupedEntries: ReturnType<typeof groupHookEntries>;
   data: HooksResponse;
-  repoLabel: string;
   compactMode: boolean;
-  previewResult: HookPreviewResponse | null;
-  onRunPreview: () => void;
+  embedded: boolean;
 };
 
 const WorkbenchContext = createContext<WorkbenchContextValue | null>(null);
@@ -157,10 +108,6 @@ function createInitialState(contextKey: string, defaultHookName: string): Workbe
     selectedHookName: defaultHookName,
     inspectorTab: "basic",
     scriptTab: "runtime",
-    runMode: "dry-run",
-    runningHookName: null,
-    runError: null,
-    previewHistory: {},
   };
 }
 
@@ -183,7 +130,6 @@ function workbenchReducer(state: WorkbenchState, action: WorkbenchAction): Workb
       return {
         ...state,
         selectedHookName: action.hookName,
-        runError: null,
       };
     case "select-tab":
       return {
@@ -194,33 +140,6 @@ function workbenchReducer(state: WorkbenchState, action: WorkbenchAction): Workb
       return {
         ...state,
         scriptTab: action.tab,
-      };
-    case "set-run-mode":
-      return {
-        ...state,
-        runMode: action.mode,
-      };
-    case "run-start":
-      return {
-        ...state,
-        runningHookName: action.hookName,
-        runError: null,
-      };
-    case "run-success":
-      return {
-        ...state,
-        runningHookName: null,
-        runError: null,
-        previewHistory: {
-          ...state.previewHistory,
-          [action.hookName]: [action.result, ...(state.previewHistory[action.hookName] ?? [])].slice(0, 5),
-        },
-      };
-    case "run-error":
-      return {
-        ...state,
-        runningHookName: null,
-        runError: action.message,
       };
     default:
       return state;
@@ -716,279 +635,11 @@ function HookInspector() {
   );
 }
 
-function HookRunConsole() {
-  const { activeEntry, compactMode, onRunPreview, previewResult, repoLabel, state, dispatch } = useWorkbenchContext();
-
-  const lastDurationMs = useMemo(() => {
-    if (!previewResult) {
-      return 0;
-    }
-    const phaseDuration = previewResult.phaseResults.reduce((sum, phase) => sum + phase.durationMs, 0);
-    const metricDuration = previewResult.metricResults.reduce((sum, metric) => sum + (metric.durationMs ?? 0), 0);
-    return Math.max(phaseDuration, metricDuration);
-  }, [previewResult]);
-
-  return (
-    <section className="rounded-[28px] border border-desktop-border bg-[linear-gradient(180deg,rgba(251,253,255,0.95),rgba(244,247,252,0.92))] p-4 shadow-sm">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-desktop-text-secondary">Observability</div>
-          <h3 className="mt-1 text-sm font-semibold text-desktop-text-primary">Run console</h3>
-          <div className="mt-1 text-[11px] text-desktop-text-secondary">
-            {activeEntry?.runtimeProfile
-              ? "调用现有 preview route，展示 phase / metric 执行结果与 stderr。"
-              : "只有 runtime-profile hook 支持当前预览执行。"}
-          </div>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={() => {
-              dispatch({ type: "set-run-mode", mode: "dry-run" });
-            }}
-            className={`rounded-full border px-3 py-1 text-[10px] font-medium ${
-              state.runMode === "dry-run"
-                ? "border-sky-300 bg-sky-50 text-sky-700"
-                : "border-desktop-border bg-white text-desktop-text-secondary"
-            }`}
-          >
-            Dry run
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              dispatch({ type: "set-run-mode", mode: "live" });
-            }}
-            className={`rounded-full border px-3 py-1 text-[10px] font-medium ${
-              state.runMode === "live"
-                ? "border-sky-300 bg-sky-50 text-sky-700"
-                : "border-desktop-border bg-white text-desktop-text-secondary"
-            }`}
-          >
-            Live
-          </button>
-          <button
-            type="button"
-            disabled={!activeEntry?.runtimeProfile || state.runningHookName === activeEntry.name}
-            onClick={onRunPreview}
-            className={`rounded-full border px-3 py-1 text-[10px] font-medium transition ${
-              !activeEntry?.runtimeProfile
-                ? "cursor-not-allowed border-desktop-border bg-desktop-bg-primary text-desktop-text-secondary/60"
-                : "border-slate-900 bg-slate-900 text-white hover:bg-slate-800"
-            }`}
-          >
-            {state.runningHookName === activeEntry?.name ? "Running..." : "Run preview"}
-          </button>
-        </div>
-      </div>
-
-      <div className={`mt-4 grid gap-4 ${compactMode ? "grid-cols-1" : "xl:grid-cols-[minmax(0,0.95fr)_minmax(360px,1.05fr)]"}`}>
-        <div className="space-y-4">
-          <div className="rounded-2xl border border-desktop-border bg-white/85 p-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-desktop-text-secondary">Simulated input</div>
-                <div className="mt-1 text-[12px] font-semibold text-desktop-text-primary">{activeEntry?.name ?? "No hook selected"}</div>
-              </div>
-              <div className="flex flex-wrap gap-2 text-[10px]">
-                <span className="rounded-full border border-desktop-border bg-desktop-bg-secondary px-2.5 py-1 text-desktop-text-secondary">
-                  {repoLabel}
-                </span>
-                <span className="rounded-full border border-desktop-border bg-desktop-bg-secondary px-2.5 py-1 text-desktop-text-secondary">
-                  {activeEntry?.cwdLabel ?? "cwd"}
-                </span>
-                <span className="rounded-full border border-desktop-border bg-desktop-bg-secondary px-2.5 py-1 text-desktop-text-secondary">
-                  {state.runMode}
-                </span>
-              </div>
-            </div>
-
-            {activeEntry ? (
-              <div className="mt-3 space-y-3 text-[11px] text-desktop-text-secondary">
-                <div>
-                  <div className="font-semibold uppercase tracking-[0.14em] text-[10px]">argv</div>
-                  <div className="mt-1 flex flex-wrap gap-2">
-                    {activeEntry.argvTemplate.length ? activeEntry.argvTemplate.map((value) => (
-                      <span key={value} className="rounded-full border border-desktop-border bg-desktop-bg-primary px-2 py-0.5 font-mono text-[10px]">
-                        {value}
-                      </span>
-                    )) : "No argv payload"}
-                  </div>
-                </div>
-                <div>
-                  <div className="font-semibold uppercase tracking-[0.14em] text-[10px]">stdin</div>
-                  <div className="mt-1 rounded-xl border border-desktop-border bg-desktop-bg-primary px-3 py-2 font-mono text-[10px] text-desktop-text-primary">
-                    {activeEntry.stdinTemplate ?? "No stdin payload"}
-                  </div>
-                </div>
-                <div>
-                  <div className="font-semibold uppercase tracking-[0.14em] text-[10px]">env</div>
-                  <div className="mt-1 flex flex-wrap gap-2">
-                    {activeEntry.envKeys.map((value) => (
-                      <span key={value} className="rounded-full border border-desktop-border bg-desktop-bg-primary px-2 py-0.5 font-mono text-[10px]">
-                        {value}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            ) : null}
-          </div>
-
-          <div className="rounded-2xl border border-desktop-border bg-white/85 p-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-desktop-text-secondary">Run summary</div>
-                <div className="mt-1 text-[12px] font-semibold text-desktop-text-primary">
-                  {previewResult ? previewResult.profile : "No preview yet"}
-                </div>
-              </div>
-              {previewResult ? (
-                <div className="flex flex-wrap gap-2 text-[10px]">
-                  <span className={`rounded-full border px-2.5 py-1 ${
-                    previewResult.ok
-                      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                      : "border-red-200 bg-red-50 text-red-700"
-                  }`}>
-                    exit {previewResult.exitCode}
-                  </span>
-                  <span className="rounded-full border border-desktop-border bg-desktop-bg-secondary px-2.5 py-1 text-desktop-text-secondary">
-                    {lastDurationMs} ms
-                  </span>
-                </div>
-              ) : null}
-            </div>
-
-            {state.runError ? (
-              <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-3 text-[11px] text-red-700">
-                {state.runError}
-              </div>
-            ) : null}
-
-            {!previewResult && !state.runError ? (
-              <div className="mt-3 rounded-xl border border-desktop-border bg-desktop-bg-primary px-3 py-3 text-[11px] text-desktop-text-secondary">
-                Run preview to inspect phase results, metrics, stderr, and the generated command.
-              </div>
-            ) : null}
-
-            {previewResult ? (
-              <div className="mt-3 space-y-3">
-                <div className="rounded-xl border border-desktop-border bg-desktop-bg-primary px-3 py-3">
-                  <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-desktop-text-secondary">Command</div>
-                  <div className="mt-1 break-all font-mono text-[11px] text-desktop-text-primary">
-                    {previewResult.command.join(" ")}
-                  </div>
-                </div>
-
-                <div className="grid gap-3 lg:grid-cols-2">
-                  <div className="rounded-xl border border-desktop-border bg-desktop-bg-primary px-3 py-3">
-                    <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-desktop-text-secondary">Phase log</div>
-                    <div className="mt-2 space-y-2">
-                      {previewResult.phaseResults.length ? previewResult.phaseResults.map((phase) => (
-                        <div key={`${phase.phase}:${phase.index ?? 0}`} className="rounded-lg border border-desktop-border bg-white px-3 py-2">
-                          <div className="flex flex-wrap items-center justify-between gap-2">
-                            <div className="text-[11px] font-semibold text-desktop-text-primary">{phase.phase}</div>
-                            <span className={`rounded-full border px-2 py-0.5 text-[10px] ${
-                              phase.status === "passed"
-                                ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                                : phase.status === "failed"
-                                  ? "border-red-200 bg-red-50 text-red-700"
-                                  : "border-amber-200 bg-amber-50 text-amber-800"
-                            }`}>
-                              {phase.status}
-                            </span>
-                          </div>
-                          <div className="mt-1 text-[10px] text-desktop-text-secondary">
-                            {phase.durationMs} ms{phase.message ? ` · ${phase.message}` : ""}{phase.reason ? ` · ${phase.reason}` : ""}
-                          </div>
-                        </div>
-                      )) : (
-                        <div className="text-[11px] text-desktop-text-secondary">No phase events.</div>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="rounded-xl border border-desktop-border bg-desktop-bg-primary px-3 py-3">
-                    <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-desktop-text-secondary">Metric log</div>
-                    <div className="mt-2 space-y-2">
-                      {previewResult.metricResults.length ? previewResult.metricResults.map((metric) => (
-                        <div key={`${metric.name}:${metric.command ?? metric.status}`} className="rounded-lg border border-desktop-border bg-white px-3 py-2">
-                          <div className="flex flex-wrap items-center justify-between gap-2">
-                            <div className="text-[11px] font-semibold text-desktop-text-primary">{metric.name}</div>
-                            <span className={`rounded-full border px-2 py-0.5 text-[10px] ${
-                              metric.status === "passed"
-                                ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                                : metric.status === "failed"
-                                  ? "border-red-200 bg-red-50 text-red-700"
-                                  : "border-amber-200 bg-amber-50 text-amber-800"
-                            }`}>
-                              {metric.status}
-                            </span>
-                          </div>
-                          <div className="mt-1 text-[10px] text-desktop-text-secondary">
-                            {typeof metric.exitCode === "number" ? `exit ${metric.exitCode}` : "no exit code"}
-                            {typeof metric.durationMs === "number" ? ` · ${metric.durationMs} ms` : ""}
-                          </div>
-                          {metric.outputTail ? (
-                            <div className="mt-2 rounded-lg border border-desktop-border bg-desktop-bg-primary px-2.5 py-2 font-mono text-[10px] text-desktop-text-primary">
-                              {metric.outputTail}
-                            </div>
-                          ) : null}
-                        </div>
-                      )) : (
-                        <div className="text-[11px] text-desktop-text-secondary">No metric events.</div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ) : null}
-          </div>
-        </div>
-
-        <div className="rounded-2xl border border-desktop-border bg-white/85 p-4">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-desktop-text-secondary">Event sample</div>
-              <div className="mt-1 text-[12px] font-semibold text-desktop-text-primary">stderr + jsonl tail</div>
-            </div>
-            {previewResult ? (
-              <span className="rounded-full border border-desktop-border bg-desktop-bg-secondary px-2.5 py-1 text-[10px] text-desktop-text-secondary">
-                {previewResult.eventSample.length} events
-              </span>
-            ) : null}
-          </div>
-          <div className="mt-3 space-y-3">
-            <CodeViewer
-              code={previewResult?.stderr || "# stderr is empty"}
-              language="text"
-              showHeader={false}
-              maxHeight="180px"
-              className="rounded-2xl"
-            />
-            <CodeViewer
-              code={previewResult ? JSON.stringify(previewResult.eventSample, null, 2) : "[]"}
-              language="json"
-              showHeader={false}
-              maxHeight="420px"
-              className="rounded-2xl"
-            />
-          </div>
-        </div>
-      </div>
-    </section>
-  );
-}
-
 export function HarnessHookWorkbench({
-  workspaceId,
-  codebaseId,
-  repoPath,
-  repoLabel,
   data,
   unsupportedMessage,
   variant = "full",
+  embedded = false,
 }: HookWorkbenchProps) {
   const entries = useMemo(
     () => buildHookWorkbenchEntries(data).filter((entry) => entry.lifecycleGroup === "commit" || entry.lifecycleGroup === "push"),
@@ -996,7 +647,7 @@ export function HarnessHookWorkbench({
   );
   const groupedEntries = useMemo(() => groupHookEntries(entries), [entries]);
   const defaultHook = useMemo(() => getDefaultWorkbenchHook(entries), [entries]);
-  const contextKey = `${workspaceId}:${codebaseId ?? "repo-only"}:${repoPath ?? "unknown"}`;
+  const contextKey = data.repoRoot;
   const [state, dispatch] = useReducer(
     workbenchReducer,
     createInitialState(contextKey, defaultHook?.name ?? ""),
@@ -1015,43 +666,7 @@ export function HarnessHookWorkbench({
     () => entries.find((entry) => entry.name === state.selectedHookName) ?? defaultHook ?? null,
     [defaultHook, entries, state.selectedHookName],
   );
-  const previewResult = activeEntry ? state.previewHistory[activeEntry.name]?.[0] ?? null : null;
   const compactMode = variant === "compact";
-
-  const onRunPreview = async () => {
-    if (!activeEntry?.runtimeProfile || !workspaceId || !repoPath) {
-      return;
-    }
-
-    dispatch({ type: "run-start", hookName: activeEntry.name });
-    try {
-      const query = new URLSearchParams();
-      query.set("workspaceId", workspaceId);
-      if (codebaseId) {
-        query.set("codebaseId", codebaseId);
-      }
-      query.set("repoPath", repoPath);
-      query.set("profile", activeEntry.runtimeProfile.name);
-      query.set("mode", state.runMode);
-
-      const response = await fetch(`/api/harness/hooks/preview?${query.toString()}`);
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(typeof payload?.details === "string" ? payload.details : "Failed to run hook preview");
-      }
-
-      dispatch({
-        type: "run-success",
-        hookName: activeEntry.name,
-        result: payload as HookPreviewResponse,
-      });
-    } catch (error) {
-      dispatch({
-        type: "run-error",
-        message: error instanceof Error ? error.message : String(error),
-      });
-    }
-  };
 
   const contextValue: WorkbenchContextValue = {
     state,
@@ -1059,17 +674,18 @@ export function HarnessHookWorkbench({
     activeEntry,
     groupedEntries,
     data,
-    repoLabel,
     compactMode,
-    previewResult,
-    onRunPreview,
+    embedded,
   };
 
   return (
     <WorkbenchContext.Provider value={contextValue}>
-      <section className={compactMode
-        ? "rounded-[30px] border border-desktop-border bg-[linear-gradient(180deg,rgba(251,253,255,0.95),rgba(241,246,255,0.92))] p-4"
-        : "rounded-[30px] border border-desktop-border bg-[linear-gradient(180deg,rgba(251,253,255,0.98),rgba(238,244,255,0.94))] p-5 shadow-sm"}
+      <section
+        className={embedded
+          ? "space-y-0"
+          : compactMode
+            ? "rounded-[30px] border border-desktop-border bg-[linear-gradient(180deg,rgba(251,253,255,0.95),rgba(241,246,255,0.92))] p-4"
+            : "rounded-[30px] border border-desktop-border bg-[linear-gradient(180deg,rgba(251,253,255,0.98),rgba(238,244,255,0.94))] p-5 shadow-sm"}
       >
         {unsupportedMessage ? (
           <HarnessUnsupportedState className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-[11px] text-amber-800" />
@@ -1092,13 +708,16 @@ export function HarnessHookWorkbench({
         ) : null}
 
         {!unsupportedMessage && entries.length > 0 ? (
-          <div className={`grid gap-4 ${data.warnings.length ? "mt-4" : ""} ${compactMode ? "grid-cols-1" : "2xl:grid-cols-[280px_minmax(0,1fr)_360px]"}`}>
+          <div
+            className={`grid gap-4 ${data.warnings.length ? "mt-4" : ""} ${
+              compactMode
+                ? "grid-cols-1"
+                : "xl:grid-cols-[260px_minmax(0,1fr)_320px] 2xl:grid-cols-[280px_minmax(0,1fr)_360px]"
+            }`}
+          >
             <HookLifecycleRail />
             <HookFlowCanvas />
             <HookInspector />
-            <div className={compactMode ? "" : "2xl:col-span-3"}>
-              <HookRunConsole />
-            </div>
           </div>
         ) : null}
       </section>

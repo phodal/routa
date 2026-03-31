@@ -56,10 +56,7 @@ async fn list_worktrees(
         .await?
         .ok_or_else(|| ServerError::NotFound(format!("Codebase {} not found", codebase_id)))?;
     if codebase.workspace_id != workspace_id {
-        return Err(ServerError::NotFound(format!(
-            "Codebase {} not found",
-            codebase_id
-        )));
+        return Err(ServerError::NotFound(format!("Codebase {} not found", codebase_id)));
     }
 
     let worktrees = state.worktree_store.list_by_codebase(&codebase_id).await?;
@@ -89,19 +86,13 @@ async fn create_worktree(
 
     // Validate codebase belongs to the workspace
     if codebase.workspace_id != workspace_id {
-        return Err(ServerError::NotFound(format!(
-            "Codebase {} not found",
-            codebase_id
-        )));
+        return Err(ServerError::NotFound(format!("Codebase {} not found", codebase_id)));
     }
 
     let repo_path = &codebase.repo_path;
-    let base_branch = body.base_branch.unwrap_or_else(|| {
-        codebase
-            .branch
-            .clone()
-            .unwrap_or_else(|| "main".to_string())
-    });
+    let base_branch = body
+        .base_branch
+        .unwrap_or_else(|| codebase.branch.clone().unwrap_or_else(|| "main".to_string()));
 
     let uuid_str = uuid::Uuid::new_v4().to_string();
     let short_id = &uuid_str[..8];
@@ -119,11 +110,7 @@ async fn create_worktree(
     let _guard = lock.lock().await;
 
     // Check if branch already used by another worktree (inside lock)
-    if let Some(existing) = state
-        .worktree_store
-        .find_by_branch(&codebase_id, &branch)
-        .await?
-    {
+    if let Some(existing) = state.worktree_store.find_by_branch(&codebase_id, &branch).await? {
         return Err(ServerError::Conflict(format!(
             "Branch '{}' is already in use by worktree {}",
             branch, existing.id
@@ -193,11 +180,7 @@ async fn create_worktree(
                 .worktree_store
                 .update_status(&worktree.id, "active", None)
                 .await?;
-            let updated = state
-                .worktree_store
-                .get(&worktree.id)
-                .await?
-                .unwrap_or(worktree);
+            let updated = state.worktree_store.get(&worktree.id).await?.unwrap_or(worktree);
             Ok(Json(serde_json::json!({ "worktree": updated })))
         }
         Err(err) => {
@@ -205,10 +188,7 @@ async fn create_worktree(
                 .worktree_store
                 .update_status(&worktree.id, "error", Some(&err))
                 .await?;
-            Err(ServerError::Internal(format!(
-                "Failed to create worktree: {}",
-                err
-            )))
+            Err(ServerError::Internal(format!("Failed to create worktree: {}", err)))
         }
     }
 }
@@ -253,10 +233,7 @@ async fn delete_worktree(
         let lock = get_repo_lock(repo_path).await;
         let _guard = lock.lock().await;
 
-        state
-            .worktree_store
-            .update_status(&id, "removing", None)
-            .await?;
+        state.worktree_store.update_status(&id, "removing", None).await?;
 
         // Remove worktree from disk
         let _ = git::worktree_remove(repo_path, &worktree.worktree_path, true);
@@ -302,11 +279,7 @@ async fn validate_worktree(
     if !git_file.exists() {
         state
             .worktree_store
-            .update_status(
-                &id,
-                "error",
-                Some("Not a valid worktree (.git file missing)"),
-            )
+            .update_status(&id, "error", Some("Not a valid worktree (.git file missing)"))
             .await?;
         return Ok(Json(
             serde_json::json!({ "healthy": false, "error": "Not a valid worktree (.git file missing)" }),
@@ -315,10 +288,7 @@ async fn validate_worktree(
 
     // Restore to active if was in error state
     if worktree.status == "error" {
-        state
-            .worktree_store
-            .update_status(&id, "active", None)
-            .await?;
+        state.worktree_store.update_status(&id, "active", None).await?;
     }
 
     Ok(Json(serde_json::json!({ "healthy": true })))

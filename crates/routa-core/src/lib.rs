@@ -27,6 +27,7 @@ pub mod rpc;
 pub mod sandbox;
 pub mod shell_env;
 pub mod skills;
+pub mod spec_detector;
 pub mod state;
 pub mod storage;
 pub mod store;

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { HarnessUnsupportedState } from "@/client/components/harness-support-state";
+import { HarnessSectionCard, HarnessSectionStateFrame } from "@/client/components/harness-section-card";
 import type {
   HookFileSummary,
   HooksResponse,
@@ -51,37 +52,42 @@ const TONE_STYLES: Record<
     pill: string;
     bar: string;
     border: string;
-    surface: string;
+    accent: string;
     tag: string;
+    detailSurface: string;
   }
 > = {
   danger: {
-    pill: "bg-rose-600 text-white",
-    bar: "bg-rose-600",
-    border: "border-rose-200",
-    surface: "bg-rose-50/70",
-    tag: "border-rose-200 bg-white text-rose-700",
+    pill: "border-rose-200 bg-rose-50 text-rose-700",
+    bar: "bg-rose-500/85",
+    border: "border-desktop-border",
+    accent: "bg-rose-100/80",
+    tag: "border-rose-200 bg-rose-50/70 text-rose-700",
+    detailSurface: "border-rose-100/80 bg-desktop-bg-primary/85",
   },
   warning: {
-    pill: "bg-amber-500 text-white",
-    bar: "bg-amber-500",
-    border: "border-amber-200",
-    surface: "bg-amber-50/80",
-    tag: "border-amber-200 bg-white text-amber-800",
+    pill: "border-amber-200 bg-amber-50 text-amber-800",
+    bar: "bg-amber-500/85",
+    border: "border-desktop-border",
+    accent: "bg-amber-100/85",
+    tag: "border-amber-200 bg-amber-50/70 text-amber-800",
+    detailSurface: "border-amber-100/80 bg-desktop-bg-primary/85",
   },
   info: {
-    pill: "bg-sky-600 text-white",
-    bar: "bg-sky-600",
-    border: "border-sky-200",
-    surface: "bg-sky-50/75",
-    tag: "border-sky-200 bg-white text-sky-700",
+    pill: "border-sky-200 bg-sky-50 text-sky-700",
+    bar: "bg-sky-500/85",
+    border: "border-desktop-border",
+    accent: "bg-sky-100/85",
+    tag: "border-sky-200 bg-sky-50/70 text-sky-700",
+    detailSurface: "border-sky-100/80 bg-desktop-bg-primary/85",
   },
   success: {
-    pill: "bg-emerald-600 text-white",
-    bar: "bg-emerald-600",
-    border: "border-emerald-200",
-    surface: "bg-emerald-50/80",
-    tag: "border-emerald-200 bg-white text-emerald-700",
+    pill: "border-emerald-200 bg-emerald-50 text-emerald-700",
+    bar: "bg-emerald-500/85",
+    border: "border-desktop-border",
+    accent: "bg-emerald-100/85",
+    tag: "border-emerald-200 bg-emerald-50/70 text-emerald-700",
+    detailSurface: "border-emerald-100/80 bg-desktop-bg-primary/85",
   },
 };
 
@@ -129,12 +135,6 @@ function uniqueLabels(values: string[]): string[] {
 
 function takeLabels(values: string[], limit: number): string[] {
   return uniqueLabels(values).slice(0, limit);
-}
-
-function containerClass(compactMode: boolean): string {
-  return compactMode
-    ? "rounded-2xl border border-amber-200 bg-amber-50/60 p-3"
-    : "rounded-2xl border border-amber-200 bg-amber-50/45 p-3.5 shadow-sm";
 }
 
 function cardGridClass(compactMode: boolean): string {
@@ -385,7 +385,7 @@ function BoundaryGroup({
       <DetailLabel>Boundaries</DetailLabel>
       <div className="mt-1.5 grid gap-1.5">
         {boundaries.map((boundary) => (
-          <div key={boundary.name} className="rounded-lg border border-black/8 bg-white/70 px-2.5 py-2">
+          <div key={boundary.name} className="rounded-lg border border-desktop-border bg-desktop-bg-primary/80 px-2.5 py-2">
             <div className="text-[10px] font-medium text-desktop-text-primary">
               {formatTokenLabel(boundary.name)}
             </div>
@@ -408,14 +408,14 @@ function RuleDetailCard({
   const thresholdTokens = buildThresholdTokens(rule);
 
   return (
-    <div className="rounded-xl border border-black/8 bg-white/78 px-3 py-2.5">
+    <div className={`rounded-xl border px-3 py-2.5 ${styles.detailSurface}`}>
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="text-[11px] font-semibold text-desktop-text-primary">{formatRuleLabel(rule.name)}</div>
         <div className="flex flex-wrap gap-1">
-          <span className={`rounded-full px-2 py-0.5 text-[9px] font-semibold ${styles.pill}`}>
+          <span className={`rounded-full border px-2 py-0.5 text-[9px] font-semibold ${styles.pill}`}>
             {rule.severity}
           </span>
-          <span className="rounded-full border border-black/8 bg-white px-2 py-0.5 text-[9px] text-desktop-text-secondary">
+          <span className="rounded-full border border-desktop-border bg-desktop-bg-primary px-2 py-0.5 text-[9px] text-desktop-text-secondary">
             {formatTokenLabel(rule.type)}
           </span>
         </div>
@@ -444,7 +444,7 @@ function RoutingDetailCard({
       {details.profiles.length ? (
         <div className="grid gap-2">
           {details.profiles.map((profile) => (
-            <div key={profile.name} className="rounded-xl border border-black/8 bg-white/78 px-3 py-2.5">
+            <div key={profile.name} className={`rounded-xl border px-3 py-2.5 ${TONE_STYLES[tone].detailSurface}`}>
               <div className="text-[11px] font-semibold text-desktop-text-primary">
                 {formatTokenLabel(profile.name)}
               </div>
@@ -463,7 +463,7 @@ function RoutingDetailCard({
       {details.hookFiles.length ? (
         <div className="grid gap-2">
           {details.hookFiles.map((file) => (
-            <div key={file.relativePath} className="rounded-xl border border-black/8 bg-white/78 px-3 py-2.5">
+            <div key={file.relativePath} className={`rounded-xl border px-3 py-2.5 ${TONE_STYLES[tone].detailSurface}`}>
               <div className="text-[11px] font-semibold text-desktop-text-primary">{file.relativePath}</div>
               <DetailGroup label="Trigger command" items={[file.triggerCommand]} tone={tone} />
             </div>
@@ -522,44 +522,44 @@ export function HarnessReviewTriggersPanel({
   const detailsVisible = canToggleDetails ? showDetails : true;
 
   return (
-    <section className={containerClass(compactMode)}>
-      <div className="flex items-center justify-between gap-2">
-        <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-amber-800">Review triggers</div>
-        {canToggleDetails && reviewTriggerFile && reviewTriggerFile.rules.length ? (
+    <HarnessSectionCard
+      title="Review triggers"
+      description="Policy profiles and rule summaries that feed review routing and escalation."
+      variant={variant}
+      actions={
+        canToggleDetails && reviewTriggerFile && reviewTriggerFile.rules.length ? (
           <button
             type="button"
-            className="rounded-full border border-amber-200 bg-white/85 px-2.5 py-1 text-[10px] font-semibold text-amber-900 transition-colors hover:bg-white"
+            className="rounded-full border border-desktop-border bg-desktop-bg-primary/65 px-2.5 py-1 text-[10px] font-semibold text-desktop-text-primary transition-colors hover:bg-desktop-bg-primary"
             onClick={() => setShowDetails((current) => !current)}
           >
             {detailsVisible ? "Hide details" : "Show details"}
           </button>
-        ) : null}
-      </div>
-
+        ) : null
+      }
+    >
       {loading ? (
-        <div className="mt-2.5 rounded-xl border border-amber-200 bg-white/90 px-4 py-4 text-[11px] text-amber-900/75">
-          Loading review trigger policies...
-        </div>
+        <HarnessSectionStateFrame tone="warning">Loading review trigger policies...</HarnessSectionStateFrame>
       ) : null}
 
-      {unsupportedMessage ? <HarnessUnsupportedState /> : null}
+      {unsupportedMessage ? (
+        <HarnessUnsupportedState className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-5 text-[11px] text-amber-800" />
+      ) : null}
 
       {error && !unsupportedMessage ? (
-        <div className="mt-2.5 rounded-xl border border-red-200 bg-red-50 px-4 py-4 text-[11px] text-red-700">
-          {error}
-        </div>
+        <HarnessSectionStateFrame tone="error">{error}</HarnessSectionStateFrame>
       ) : null}
 
       {!loading && !error && !unsupportedMessage && !reviewTriggerFile ? (
-        <div className="mt-2.5 rounded-xl border border-amber-200 bg-white/90 px-4 py-4 text-[11px] text-amber-900/75">
+        <HarnessSectionStateFrame tone="warning">
           No `docs/fitness/review-triggers.yaml` file was found for the selected repository.
-        </div>
+        </HarnessSectionStateFrame>
       ) : null}
 
       {!loading && !error && !unsupportedMessage && reviewTriggerFile && !reviewTriggerFile.rules.length ? (
-        <div className="mt-2.5 rounded-xl border border-amber-200 bg-white/90 px-4 py-4 text-[11px] text-amber-900/75">
+        <HarnessSectionStateFrame tone="warning">
           The YAML file loaded successfully, but no `review_triggers` entries were parsed.
-        </div>
+        </HarnessSectionStateFrame>
       ) : null}
 
       {!loading && !error && !unsupportedMessage && reviewTriggerFile && reviewTriggerFile.rules.length ? (
@@ -569,26 +569,26 @@ export function HarnessReviewTriggersPanel({
             return (
               <article
                 key={card.key}
-                className={`rounded-2xl border px-3.5 py-3 shadow-[0_8px_24px_rgba(15,23,42,0.04)] ${styles.border} ${styles.surface}`}
+                className={`rounded-2xl border bg-desktop-bg-primary/80 px-3.5 py-3 shadow-[0_8px_24px_rgba(15,23,42,0.04)] ${styles.border}`}
               >
-                <div className="flex items-start justify-between gap-2">
-                  <h4 className="text-[14px] font-semibold text-desktop-text-primary">{card.title}</h4>
-                  <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-semibold ${styles.pill}`}>
-                    {card.value}
-                  </span>
-                </div>
-
-                <p className="mt-1.5 text-[11px] leading-4 text-desktop-text-secondary">{card.subtitle}</p>
-
-                <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/85">
+                <div className={`mb-3 h-1 rounded-full ${styles.accent}`} aria-hidden="true">
                   <div
                     className={`h-full rounded-full transition-[width] duration-300 ${styles.bar}`}
                     style={{ width: `${Math.max(12, card.barValue * 100)}%` }}
                   />
                 </div>
 
+                <div className="flex items-start justify-between gap-2">
+                  <h4 className="text-[14px] font-semibold text-desktop-text-primary">{card.title}</h4>
+                  <span className={`rounded-full border px-2.5 py-0.5 text-[10px] font-semibold ${styles.pill}`}>
+                    {card.value}
+                  </span>
+                </div>
+
+                <p className="mt-1.5 text-[11px] leading-4 text-desktop-text-secondary">{card.subtitle}</p>
+
                 {detailsVisible ? (
-                  <div className="mt-2.5 border-t border-black/8 pt-2.5">
+                  <div className="mt-2.5 border-t border-desktop-border pt-2.5">
                     {card.key === "routing" && card.routingDetails ? (
                       <RoutingDetailCard details={card.routingDetails} tone={card.tone} />
                     ) : (
@@ -607,6 +607,6 @@ export function HarnessReviewTriggersPanel({
           })}
         </div>
       ) : null}
-    </section>
+    </HarnessSectionCard>
   );
 }

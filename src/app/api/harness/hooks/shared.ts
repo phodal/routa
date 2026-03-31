@@ -29,11 +29,10 @@ export function isHookProfileName(value: string | undefined): value is HookProfi
   return normalizeContextValue(value) !== undefined;
 }
 
-function isRoutaRepoRoot(repoRoot: string): boolean {
-  return (
-    fs.existsSync(path.join(repoRoot, "docs", "fitness", "harness-fluency.model.yaml"))
-    && fs.existsSync(path.join(repoRoot, "crates", "routa-cli"))
-  );
+function validateRepoDirectory(candidate: string, label: string) {
+  if (!fs.existsSync(candidate) || !fs.statSync(candidate).isDirectory()) {
+    throw new Error(`${label}不存在或不是目录: ${candidate}`);
+  }
 }
 
 export async function resolveRepoRoot(context: HarnessContext): Promise<string> {
@@ -44,12 +43,7 @@ export async function resolveRepoRoot(context: HarnessContext): Promise<string> 
 
   const directPath = repoPath ? path.resolve(repoPath) : undefined;
   if (directPath) {
-    if (!fs.existsSync(directPath) || !fs.statSync(directPath).isDirectory()) {
-      throw new Error(`repoPath 不存在或不是目录: ${directPath}`);
-    }
-    if (!isRoutaRepoRoot(directPath)) {
-      throw new Error(`repoPath 不是 Routa 仓库: ${directPath}`);
-    }
+    validateRepoDirectory(directPath, "repoPath ");
     return directPath;
   }
 
@@ -60,12 +54,7 @@ export async function resolveRepoRoot(context: HarnessContext): Promise<string> 
     }
 
     const candidate = path.resolve(codebase.repoPath);
-    if (!fs.existsSync(candidate) || !fs.statSync(candidate).isDirectory()) {
-      throw new Error(`Codebase 的路径不存在或不是目录: ${candidate}`);
-    }
-    if (!isRoutaRepoRoot(candidate)) {
-      throw new Error(`Codebase 的路径不是 Routa 仓库: ${candidate}`);
-    }
+    validateRepoDirectory(candidate, "Codebase 的路径");
     return candidate;
   }
 
@@ -80,12 +69,7 @@ export async function resolveRepoRoot(context: HarnessContext): Promise<string> 
 
   const fallback = codebases.find((codebase) => codebase.isDefault) ?? codebases[0];
   const candidate = path.resolve(fallback.repoPath);
-  if (!fs.existsSync(candidate) || !fs.statSync(candidate).isDirectory()) {
-    throw new Error(`默认 codebase 的路径不存在或不是目录: ${candidate}`);
-  }
-  if (!isRoutaRepoRoot(candidate)) {
-    throw new Error(`默认 codebase 的路径不是 Routa 仓库: ${candidate}`);
-  }
+  validateRepoDirectory(candidate, "默认 codebase 的路径");
   return candidate;
 }
 
@@ -95,6 +79,5 @@ export function isContextError(message: string) {
     || message.includes("Codebase 的路径")
     || message.includes("repoPath")
     || message.includes("Workspace 下没有配置 codebase")
-    || message.includes("不是 Routa 仓库")
     || message.includes("不存在或不是目录");
 }

@@ -7,6 +7,7 @@ describe("handleCliError", () => {
   const originalMetrics = process.env.ROUTA_HOOK_RUNTIME_METRICS;
   const originalProfile = process.env.ROUTA_HOOK_RUNTIME_PROFILE;
   const originalReviewUnavailable = process.env.ROUTA_ALLOW_REVIEW_UNAVAILABLE;
+  const originalReviewProvider = process.env.ROUTA_REVIEW_PROVIDER;
 
   afterEach(() => {
     process.exitCode = undefined;
@@ -29,6 +30,11 @@ describe("handleCliError", () => {
       delete process.env.ROUTA_ALLOW_REVIEW_UNAVAILABLE;
     } else {
       process.env.ROUTA_ALLOW_REVIEW_UNAVAILABLE = originalReviewUnavailable;
+    }
+    if (originalReviewProvider === undefined) {
+      delete process.env.ROUTA_REVIEW_PROVIDER;
+    } else {
+      process.env.ROUTA_REVIEW_PROVIDER = originalReviewProvider;
     }
     vi.restoreAllMocks();
   });
@@ -116,6 +122,20 @@ describe("parseArgs", () => {
 
     expect(options.allowReviewUnavailable).toBe(true);
     expect(process.env.ROUTA_ALLOW_REVIEW_UNAVAILABLE).toBeUndefined();
+  });
+
+  it("accepts --provider and keeps it in parsed options", () => {
+    const options = parseArgs(["run", "--provider", "claude", "--profile", "local-validate"]);
+
+    expect(options.reviewProvider).toBe("claude");
+  });
+
+  it("defaults review provider from environment when not explicitly set", () => {
+    process.env.ROUTA_REVIEW_PROVIDER = "anthropic";
+
+    const options = parseArgs([]);
+
+    expect(options.reviewProvider).toBe("anthropic");
   });
 });
 

@@ -5,6 +5,7 @@ use axum::{
 };
 use serde::Deserialize;
 
+use crate::api::repo_context::{normalize_local_repo_path, validate_local_git_repo_path};
 use crate::error::ServerError;
 use crate::models::codebase::Codebase;
 use crate::state::AppState;
@@ -119,22 +120,26 @@ async fn add_codebase(
     axum::extract::Path(workspace_id): axum::extract::Path<String>,
     Json(body): Json<AddCodebaseRequest>,
 ) -> Result<Json<serde_json::Value>, ServerError> {
+    let repo_path = normalize_local_repo_path(&body.repo_path);
+    validate_local_git_repo_path(&repo_path)?;
+    let repo_path = repo_path.to_string_lossy().to_string();
+
     // Check for duplicate repo_path within the workspace
     if let Some(_existing) = state
         .codebase_store
-        .find_by_repo_path(&workspace_id, &body.repo_path)
+        .find_by_repo_path(&workspace_id, &repo_path)
         .await?
     {
         return Err(ServerError::Conflict(format!(
             "Codebase with repo_path '{}' already exists in workspace {}",
-            body.repo_path, workspace_id
+            repo_path, workspace_id
         )));
     }
 
     let codebase = Codebase::new(
         uuid::Uuid::new_v4().to_string(),
         workspace_id,
-        body.repo_path,
+        repo_path,
         body.branch,
         body.label,
         body.is_default,
@@ -157,12 +162,34 @@ async fn update_codebase(
     axum::extract::Path(id): axum::extract::Path<String>,
     Json(body): Json<UpdateCodebaseRequest>,
 ) -> Result<Json<serde_json::Value>, ServerError> {
-    // Verify codebase exists
-    state
+    let existing = state
         .codebase_store
         .get(&id)
         .await?
         .ok_or_else(|| ServerError::NotFound(format!("Codebase {} not found", id)))?;
+
+    let repo_path = if let Some(repo_path) = body.repo_path.as_deref() {
+        let normalized = normalize_local_repo_path(repo_path);
+        validate_local_git_repo_path(&normalized)?;
+        let normalized = normalized.to_string_lossy().to_string();
+
+        if let Some(duplicate) = state
+            .codebase_store
+            .find_by_repo_path(&existing.workspace_id, &normalized)
+            .await?
+        {
+            if duplicate.id != id {
+                return Err(ServerError::Conflict(format!(
+                    "Codebase with repo_path '{}' already exists in workspace {}",
+                    normalized, existing.workspace_id
+                )));
+            }
+        }
+
+        Some(normalized)
+    } else {
+        None
+    };
 
     state
         .codebase_store
@@ -170,7 +197,7 @@ async fn update_codebase(
             &id,
             body.branch.as_deref(),
             body.label.as_deref(),
-            body.repo_path.as_deref(),
+            repo_path.as_deref(),
         )
         .await?;
 

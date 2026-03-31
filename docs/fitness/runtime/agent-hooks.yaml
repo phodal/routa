@@ -1,0 +1,39 @@
+schema: agent-hooks-v1
+
+hooks:
+  - event: PreToolUse
+    matcher: "Bash|Write"
+    type: command
+    command: "node scripts/check-tool-permission.js"
+    timeout: 10
+    blocking: true
+    description: "Block dangerous shell and write operations"
+
+  - event: PostToolUse
+    matcher: ".*"
+    type: command
+    command: "echo $TOOL_NAME >> /tmp/agent-tool-log.txt"
+    timeout: 5
+    blocking: false
+    description: "Log all tool executions"
+
+  - event: UserPromptSubmit
+    type: command
+    command: "node scripts/check-prompt-policy.js"
+    timeout: 8
+    blocking: true
+    description: "Validate prompt against security policy"
+
+  - event: SessionStart
+    type: command
+    command: "echo session-start >> /tmp/agent-audit.log"
+    timeout: 5
+    blocking: false
+    description: "Audit log for session start"
+
+  - event: Stop
+    type: command
+    command: "node scripts/on-agent-stop.js"
+    timeout: 5
+    blocking: false
+    description: "Post-session cleanup and summary"
