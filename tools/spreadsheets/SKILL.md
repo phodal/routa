@@ -1,3 +1,10 @@
+---
+name: spreadsheets
+description: Use this skill for spreadsheet creation, editing, analysis, formatting, formula modeling, charting, or workbook review. Triggers include requests to create or modify an .xlsx file, build a model or tracker, format a workbook, add formulas or charts, or prepare a shareable spreadsheet deliverable.
+metadata:
+  short-description: Spreadsheet workflows
+---
+
 # Spreadsheet Skill (Create • Edit • Analyze • Visualize)
 
 ## Use the artifact_tool python library or openpyxl
