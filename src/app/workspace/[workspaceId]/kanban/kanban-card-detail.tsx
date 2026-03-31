@@ -32,6 +32,7 @@ import {
   type KanbanSpecialistLanguage,
 } from "./kanban-specialist-language";
 import { parseCanonicalStory } from "@/core/kanban/canonical-story";
+import { useTranslation } from "@/i18n";
 
 export interface KanbanCardDetailProps {
   task: TaskInfo;
@@ -152,6 +153,7 @@ export function KanbanCardDetail({
   onRepositoryChange,
   onSelectSession,
 }: KanbanCardDetailProps) {
+  const { t } = useTranslation();
   const [editTitle, setEditTitle] = useState(task.title);
   const [editObjective, setEditObjective] = useState(task.objective ?? "");
   const [editTestCases, setEditTestCases] = useState((task.testCases ?? []).join("\n"));
@@ -232,14 +234,14 @@ export function KanbanCardDetail({
           />
           <div className={`flex flex-wrap items-center ${compactMode ? "mt-2 gap-1.5" : "mt-3 gap-2"}`}>
             <MetaSelect
-              label="Priority"
+              label={t.kanbanDetail.priority}
               value={displayedPriority}
               compact={compactMode}
               options={[
-                { value: "low", label: "Low" },
-                { value: "medium", label: "Medium" },
-                { value: "high", label: "High" },
-                { value: "urgent", label: "Urgent" },
+                { value: "low", label: t.kanbanDetail.low },
+                { value: "medium", label: t.kanbanDetail.medium },
+                { value: "high", label: t.kanbanDetail.high },
+                { value: "urgent", label: t.kanbanDetail.urgent },
               ]}
               onChange={async (value) => {
                 setEditPriority(value);
@@ -411,7 +413,7 @@ export function KanbanCardDetail({
             onClick={onDelete}
             className="w-full rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700 transition-colors hover:border-red-300 hover:bg-red-100 dark:border-red-900/50 dark:bg-red-900/10 dark:text-red-400 dark:hover:bg-red-900/20"
           >
-            Delete Task
+            {t.kanbanModals.deleteTaskTitle}
           </button>
         </div>
       </div>
@@ -596,6 +598,7 @@ function ExecutionSection({
   onProviderChange?: (providerId: string | null) => void;
   compact?: boolean;
 }) {
+  const { t } = useTranslation();
   const sessionCopy = getKanbanSessionCopy(specialistLanguage);
   const resolveSpecialist = useMemo(
     () => createKanbanSpecialistResolver(specialists),
@@ -729,7 +732,7 @@ function ExecutionSection({
             }}
             className={`w-full rounded-2xl border border-slate-200 bg-white text-sm text-slate-700 outline-none focus:border-amber-400 dark:border-slate-700 dark:bg-[#121620] dark:text-slate-300 ${compact ? "px-2.5 py-2" : "px-3 py-2"}`}
           >
-            <option value="">Use lane default</option>
+            <option value="">{t.kanban.useLaneDefault}</option>
             {availableProviders.map((provider) => (
               <option key={`${provider.id}-${provider.name}`} value={provider.id}>{provider.name}</option>
             ))}
@@ -801,7 +804,7 @@ function ExecutionSection({
             }}
             className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 transition-colors hover:border-amber-300 hover:text-amber-700 dark:border-slate-700 dark:bg-[#121620] dark:text-slate-300 dark:hover:border-amber-600 dark:hover:text-amber-200"
           >
-            Reset override
+            {t.kanbanDetail.resetOverride}
           </button>
         )}
         {canRunTask && (
@@ -812,7 +815,7 @@ function ExecutionSection({
             data-testid="kanban-detail-run"
             className={`rounded-xl bg-emerald-500 px-4 text-sm font-medium text-white transition-colors hover:bg-emerald-600 ${hasCardOverride ? "ml-auto" : ""} ${compact ? "py-2" : "py-2.5"}`}
           >
-            {hasRecordedRuns ? "Rerun" : "Run"}
+            {hasRecordedRuns ? t.kanban.rerun : t.kanban.run}
           </button>
         )}
       </div>

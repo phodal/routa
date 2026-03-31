@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { AcpProviderInfo } from "../acp-client";
 import { SettingsPanel } from "./settings-panel";
+import { useTranslation } from "@/i18n";
 import {
   dedupeProviderIds,
   getOrderedVisibleProviderIds,
@@ -55,11 +56,12 @@ export function AcpProviderDropdown({
   autoLabel = "Auto",
   showStatusDot = true,
   variant = "compact",
-  ariaLabel = "Select provider",
+  ariaLabel,
   buttonClassName,
   labelClassName,
   dataTestId,
 }: AcpProviderDropdownProps) {
+  const { t } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [showSettingsPanel, setShowSettingsPanel] = useState(false);
@@ -135,6 +137,7 @@ export function AcpProviderDropdown({
     ? "font-medium truncate max-w-[160px] text-slate-700 dark:text-slate-200"
     : "truncate max-w-30";
   const panelWidthClassName = variant === "hero" ? "w-80" : "w-72";
+  const resolvedAriaLabel = ariaLabel ?? t.providerDropdown.selectProvider;
 
   const updateVisibleProviders = (nextVisibleIds: string[]) => {
     const normalizedVisibleIds = dedupeProviderIds(nextVisibleIds);
@@ -218,15 +221,15 @@ export function AcpProviderDropdown({
         onClick={toggleDropdown}
         disabled={disabled || providers.length === 0}
         className={buttonClassName ?? defaultButtonClassName}
-        title={ariaLabel}
-        aria-label={ariaLabel}
+        title={resolvedAriaLabel}
+        aria-label={resolvedAriaLabel}
         data-testid={dataTestId}
       >
         {showStatusDot && (
           <span className={`w-1.5 h-1.5 rounded-full ${selectedProviderInfo?.status === "available" ? "bg-emerald-500" : "bg-slate-400"}`} />
         )}
         <span className={labelClassName ?? defaultLabelClassName}>
-          {selectedProviderInfo?.name ?? (allowAuto ? autoLabel : "Select provider")}
+          {selectedProviderInfo?.name ?? (allowAuto ? autoLabel : t.providerDropdown.selectProvider)}
         </span>
         <svg className={`w-3 h-3 text-slate-400 transition-transform ${isOpen ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
@@ -293,7 +296,7 @@ export function AcpProviderDropdown({
                   </div>
                 ) : (
                   <div className="rounded-lg border border-dashed border-slate-200 px-3 py-4 text-center text-xs text-slate-500 dark:border-slate-700 dark:text-slate-400">
-                    勾选下方 Provider 以加入快捷列表。
+                    {t.providerDropdown.addQuickAccessHint}
                   </div>
                 )}
               </div>
@@ -305,7 +308,7 @@ export function AcpProviderDropdown({
                   className="flex w-full items-center justify-between px-3 py-2 text-left"
                 >
                   <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">
-                    Quick Access
+                    {t.providerDropdown.quickAccess}
                   </p>
                   <svg
                     className={`h-3.5 w-3.5 text-slate-400 transition-transform ${settingsOpen ? "rotate-180" : ""}`}
@@ -322,7 +325,7 @@ export function AcpProviderDropdown({
               {settingsOpen && (
                 <div className="p-2 pt-1">
                   <p className="px-2 pb-2 text-[10px] text-slate-400 dark:text-slate-500">
-                    Choose which providers appear in this dropdown and drag checked items to reorder them.
+                    {t.providerDropdown.quickAccessHint}
                   </p>
                   {settingsProviders.map((provider) => {
                     const checked = visibleProviderIds.includes(provider.id);
@@ -375,7 +378,7 @@ export function AcpProviderDropdown({
                   onClick={handleOpenSettingsPanel}
                   className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800/50"
                 >
-                  Open Provider Settings
+                  {t.providerDropdown.openProviderSettings}
                 </button>
               </div>
 
@@ -399,6 +402,7 @@ export function AcpProviderDropdown({
 }
 
 function NoProvidersMessage({ providers }: { providers: AcpProviderInfo[] }) {
+  const { t } = useTranslation();
   const hasOpenCodeSdk = providers.some((provider) => provider.id === "opencode-sdk");
   const hasUnavailable = providers.some((provider) => provider.status !== "available");
 
@@ -406,15 +410,15 @@ function NoProvidersMessage({ providers }: { providers: AcpProviderInfo[] }) {
     <div className="px-3 py-3 text-center text-xs text-slate-500 dark:text-slate-400">
       {hasUnavailable ? (
         <>
-          <p className="font-medium mb-1">No providers available</p>
+          <p className="font-medium mb-1">{t.providerDropdown.noProvidersAvailable}</p>
           <p className="text-[10px] opacity-75">
             {hasOpenCodeSdk
-              ? "Configure OPENCODE_SERVER_URL environment variable to use OpenCode SDK"
-              : "Install a provider to get started"}
+              ? t.providerDropdown.configureOpenCode
+              : t.providerDropdown.installProvider}
           </p>
         </>
       ) : (
-        "Loading providers..."
+        t.providerDropdown.loadingProviders
       )}
     </div>
   );

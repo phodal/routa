@@ -30,6 +30,7 @@ export interface TranslationDictionary {
     import: string;
     clone: string;
     send: string;
+    stop: string;
     saveAndClose: string;
     auto: string;
     none: string;
@@ -136,6 +137,13 @@ export interface TranslationDictionary {
     sessions: string;
     refreshSystemInfo: string;
     language: string;
+    onboardingSection: {
+      title: string;
+      description: string;
+      completed: string;
+      available: string;
+      showAgain: string;
+    };
     harness: {
       title: string;
       shellDescription: string;
@@ -157,6 +165,22 @@ export interface TranslationDictionary {
       expandNavigation: string;
       collapseNavigation: string;
     };
+  };
+
+  repoPicker: {
+    clearSelection: string;
+  };
+
+  providerDropdown: {
+    selectProvider: string;
+    openProviderSettings: string;
+    quickAccess: string;
+    quickAccessHint: string;
+    addQuickAccessHint: string;
+    noProvidersAvailable: string;
+    configureOpenCode: string;
+    installProvider: string;
+    loadingProviders: string;
   };
 
   // Role descriptions
@@ -846,6 +870,7 @@ export interface TranslationDictionary {
     alignedLabel: string;
     failedToSwitchRepo: string;
     failedToUpdateRepos: string;
+    resetOverride: string;
   };
 
   // Kanban modal dialogs

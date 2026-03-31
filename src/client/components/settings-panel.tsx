@@ -62,6 +62,7 @@ export type {
 } from "./settings-panel-shared";
 
 function OnboardingSettingsSection({ onResetOnboarding }: { onResetOnboarding?: () => void }) {
+  const { t } = useTranslation();
   const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState(() => {
     if (typeof window === "undefined") {
       return false;
@@ -81,9 +82,9 @@ function OnboardingSettingsSection({ onResetOnboarding }: { onResetOnboarding?: 
     <div className={settingsCardCls}>
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className={sectionHeadCls}>Onboarding</p>
+          <p className={sectionHeadCls}>{t.settings.onboardingSection.title}</p>
           <p className="mt-1 text-[10px] text-slate-400 dark:text-slate-500">
-            Reopen the home-page setup checklist if you want to walk through workspace setup again.
+            {t.settings.onboardingSection.description}
           </p>
         </div>
         <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] ${
@@ -91,7 +92,7 @@ function OnboardingSettingsSection({ onResetOnboarding }: { onResetOnboarding?: 
             ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/12 dark:text-emerald-300"
             : "bg-amber-100 text-amber-700 dark:bg-amber-500/12 dark:text-amber-300"
         }`}>
-          {hasCompletedOnboarding ? "completed" : "available"}
+          {hasCompletedOnboarding ? t.settings.onboardingSection.completed : t.settings.onboardingSection.available}
         </span>
       </div>
       <div className="mt-3 flex justify-start">
@@ -100,7 +101,7 @@ function OnboardingSettingsSection({ onResetOnboarding }: { onResetOnboarding?: 
           onClick={handleReset}
           className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800"
         >
-          Show onboarding again
+          {t.settings.onboardingSection.showAgain}
         </button>
       </div>
     </div>
@@ -297,6 +298,7 @@ const EMPTY_CUSTOM_PROVIDER_FORM: CustomProviderForm = {
 };
 
 function CustomAcpProvidersSection() {
+  const { t } = useTranslation();
   const [providers, setProviders] = useState<CustomAcpProvider[]>(() => loadCustomAcpProviders());
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -362,7 +364,7 @@ function CustomAcpProvidersSection() {
             onClick={() => { setShowForm(true); setEditingId(null); setForm(EMPTY_CUSTOM_PROVIDER_FORM); }}
             className="text-xs text-blue-500 hover:text-blue-600 dark:hover:text-blue-400"
           >
-            + Add
+            + {t.common.add}
           </button>
         )}
       </div>
@@ -418,7 +420,7 @@ function CustomAcpProvidersSection() {
               onClick={handleSave}
               className="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md"
             >
-              {editingId ? "Save" : "Add"}
+              {editingId ? t.common.save : t.common.add}
             </button>
             <button
               onClick={() => { setShowForm(false); setEditingId(null); setForm(EMPTY_CUSTOM_PROVIDER_FORM); setError(null); }}
@@ -672,6 +674,7 @@ const EXAMPLE_AUTH_JSON = `{
 
 // ─── Docker OpenCode Config Section ───────────────────────────────────────────
 function DockerOpenCodeSection({ embedded = false }: { embedded?: boolean }) {
+  const { t } = useTranslation();
   const [authJson, setAuthJson] = useState(() => loadDockerOpencodeAuthJson());
   const [error, setError] = useState<string | null>(null);
 
@@ -717,7 +720,7 @@ function DockerOpenCodeSection({ embedded = false }: { embedded?: boolean }) {
         onClick={() => handleSave(authJson)}
         className="px-2.5 py-1.5 text-xs font-medium rounded-md bg-blue-600 text-white hover:bg-blue-700 transition-colors"
       >
-        Save
+        {t.common.save}
       </button>
     </div>
   );

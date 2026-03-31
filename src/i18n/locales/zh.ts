@@ -25,6 +25,7 @@ const zh: TranslationDictionary = {
     import: "导入",
     clone: "克隆",
     send: "发送",
+    stop: "停止",
     saveAndClose: "保存并关闭",
     auto: "自动",
     none: "无",
@@ -130,6 +131,13 @@ const zh: TranslationDictionary = {
     sessions: "会话",
     refreshSystemInfo: "刷新系统信息",
     language: "语言",
+    onboardingSection: {
+      title: "新手引导",
+      description: "如果你希望重新走一遍工作区设置流程，可以重新打开首页引导清单。",
+      completed: "已完成",
+      available: "可用",
+      showAgain: "再次显示引导",
+    },
     harness: {
       title: "Harness",
       shellDescription: "用于 AI 工程流程的仓库治理总览。",
@@ -152,6 +160,22 @@ const zh: TranslationDictionary = {
       expandNavigation: "展开导航菜单",
       collapseNavigation: "收起导航菜单",
     },
+  },
+
+  repoPicker: {
+    clearSelection: "清除仓库选择",
+  },
+
+  providerDropdown: {
+    selectProvider: "选择 Provider",
+    openProviderSettings: "打开 Provider 设置",
+    quickAccess: "快速访问",
+    quickAccessHint: "选择要显示在此下拉菜单中的 Provider，并拖动已勾选项调整顺序。",
+    addQuickAccessHint: "勾选下方 Provider 以加入快捷列表。",
+    noProvidersAvailable: "没有可用的 Provider",
+    configureOpenCode: "请配置 OPENCODE_SERVER_URL 环境变量以使用 OpenCode SDK",
+    installProvider: "安装一个 Provider 后即可开始",
+    loadingProviders: "正在加载 Provider...",
   },
 
   roles: {
@@ -817,6 +841,7 @@ const zh: TranslationDictionary = {
     alignedLabel: "已对齐",
     failedToSwitchRepo: "切换到活动会话仓库失败",
     failedToUpdateRepos: "更新仓库失败",
+    resetOverride: "重置覆盖",
   },
 
   kanbanModals: {

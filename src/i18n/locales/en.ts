@@ -25,6 +25,7 @@ const en: TranslationDictionary = {
     import: "Import",
     clone: "Clone",
     send: "Send",
+    stop: "Stop",
     saveAndClose: "Save & Close",
     auto: "Auto",
     none: "None",
@@ -134,6 +135,13 @@ const en: TranslationDictionary = {
     sessions: "Sessions",
     refreshSystemInfo: "Refresh system info",
     language: "Language",
+    onboardingSection: {
+      title: "Onboarding",
+      description: "Reopen the home-page setup checklist if you want to walk through workspace setup again.",
+      completed: "completed",
+      available: "available",
+      showAgain: "Show onboarding again",
+    },
     harness: {
       title: "Harness",
       shellDescription: "Repository governance view for AI engineering workflows.",
@@ -156,6 +164,22 @@ const en: TranslationDictionary = {
       expandNavigation: "Expand navigation menu",
       collapseNavigation: "Collapse navigation menu",
     },
+  },
+
+  repoPicker: {
+    clearSelection: "Clear repo selection",
+  },
+
+  providerDropdown: {
+    selectProvider: "Select provider",
+    openProviderSettings: "Open Provider Settings",
+    quickAccess: "Quick Access",
+    quickAccessHint: "Choose which providers appear in this dropdown and drag checked items to reorder them.",
+    addQuickAccessHint: "Check providers below to add them to quick access.",
+    noProvidersAvailable: "No providers available",
+    configureOpenCode: "Configure OPENCODE_SERVER_URL environment variable to use OpenCode SDK",
+    installProvider: "Install a provider to get started",
+    loadingProviders: "Loading providers...",
   },
 
   roles: {
@@ -822,6 +846,7 @@ const en: TranslationDictionary = {
     alignedLabel: "Aligned",
     failedToSwitchRepo: "Failed to switch to the active session repo",
     failedToUpdateRepos: "Failed to update repositories",
+    resetOverride: "Reset override",
   },
 
   kanbanModals: {

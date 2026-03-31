@@ -101,7 +101,7 @@ describe("SettingsPanel render", () => {
       />,
     );
 
-    expect(screen.getByText("Add a model")).not.toBeNull();
+    expect(screen.getAllByText("Add Model").length).toBeGreaterThan(0);
     expect(screen.getByText("Models")).not.toBeNull();
     await waitFor(() => {
       expect(screen.getByText(/Memory 10\/20 MB/)).not.toBeNull();

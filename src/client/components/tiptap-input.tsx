@@ -35,6 +35,7 @@ import { RepoPicker, type RepoSelection } from "./repo-picker";
 import type { FileMatch } from "../hooks/use-file-search";
 import { isDarkThemeActive } from "../utils/theme";
 import { AcpProviderDropdown } from "./acp-provider-dropdown";
+import { useTranslation } from "@/i18n";
 
 const lowlight = createLowlight(common);
 
@@ -546,6 +547,7 @@ export function TiptapInput({
   onPrefillConsumed,
   variant = "default",
 }: TiptapInputProps) {
+  const { t } = useTranslation();
   const isHero = variant === "hero";
   const [claudeMode, setClaudeMode] = useState<"acceptEdits" | "plan">("acceptEdits");
   const [opencodeMode, setOpencodeMode] = useState<"build" | "plan">("build");
@@ -1118,7 +1120,7 @@ export function TiptapInput({
               type="button"
               onClick={() => onStop?.()}
               className={stopButtonClass}
-              title="Stop"
+              title={t.common.stop}
             >
               <svg className={isHero ? "h-4 w-4" : "w-3 h-3"} fill="currentColor" viewBox="0 0 24 24">
                 <rect x="6" y="6" width="12" height="12" rx="1" />
@@ -1130,9 +1132,9 @@ export function TiptapInput({
               onClick={handleSend}
               disabled={disabled}
               className={sendButtonClass}
-              title="Send"
+              title={t.common.send}
               data-testid="tiptap-send-button"
-              aria-label="Send message"
+              aria-label={t.common.send}
             >
               <svg className={isHero ? "h-4 w-4" : "w-3 h-3"} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14M12 5l7 7-7 7" />

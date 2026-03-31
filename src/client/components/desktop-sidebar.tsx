@@ -229,8 +229,8 @@ export function DesktopSidebar({
           className={`flex items-center rounded-xl text-desktop-text-secondary transition-colors hover:bg-desktop-bg-active hover:text-desktop-text-primary ${
             collapsed ? "h-10 w-10 justify-center" : "h-10 w-10 justify-center"
           }`}
-          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          title={collapsed ? t.nav.openSidebar : t.nav.closeSidebar}
+          aria-label={collapsed ? t.nav.openSidebar : t.nav.closeSidebar}
         >
           <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
             {collapsed ? (

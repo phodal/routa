@@ -13,6 +13,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { desktopAwareFetch } from "../utils/diagnostics";
 import { createPortal } from "react-dom";
 import { BranchSelector } from "./branch-selector";
+import { useTranslation } from "@/i18n";
 
 // ─── Types ──────────────────────────────────────────────────────────────
 interface RepoStatus {
@@ -755,6 +756,7 @@ function SelectedRepoPill({
   onClear: () => void;
   onBranchChange: (branch: string) => void;
 }) {
+  const { t } = useTranslation();
   const currentRepo = repos.find((r) => r.path === value.path);
   const showInlinePath = pathDisplay === "inline";
   const showMutedPath = pathDisplay === "below-muted";
@@ -802,7 +804,7 @@ function SelectedRepoPill({
           type="button"
           onClick={onClear}
           className="ml-0.5 p-0.5 rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
-          title="Clear repo selection"
+          title={t.repoPicker.clearSelection}
         >
           <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
