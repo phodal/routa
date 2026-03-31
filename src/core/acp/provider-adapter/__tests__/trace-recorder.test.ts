@@ -9,6 +9,13 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { TraceRecorder } from "../trace-recorder";
 import type { NormalizedSessionUpdate, NormalizedToolCall } from "../types";
 
+// Helper for cross-platform path matching
+function pathContains(path: string, segments: string): boolean {
+  // Normalize both paths to use forward slashes for comparison
+  const normalizedPath = path.replace(/\\/g, "/");
+  return normalizedPath.includes(segments);
+}
+
 // Mock the trace module
 vi.mock("@/core/trace", () => ({
   createTraceRecord: vi.fn((sessionId, eventType, meta) => ({
@@ -62,18 +69,17 @@ describe("TraceRecorder", () => {
 
       // Should record immediately
       expect(recordTrace).toHaveBeenCalledTimes(1);
-      expect(recordTrace).toHaveBeenCalledWith("/cwd", expect.objectContaining({
-        eventType: "tool_call",
-        tool: expect.objectContaining({
-          name: "view",
-          input: { filePath: "/path/to/file.ts" },
-        }),
-        metadata: expect.objectContaining({
-          toolCallContextDir: expect.stringContaining("/tool-calls/call_123/"),
-          toolCallContentPath: expect.stringContaining("/content.txt"),
-          toolCallMetadataPath: expect.stringContaining("/metadata.json"),
-        }),
-      }));
+      const mockRecordTrace = vi.mocked(recordTrace);
+      const callArgs = mockRecordTrace.mock.calls[0];
+      expect(callArgs?.[0]).toBe("/cwd");
+      const traceArg = callArgs?.[1] as unknown as { eventType: string; tool: { name: string; input: unknown }; metadata: Record<string, unknown> };
+      expect(traceArg.eventType).toBe("tool_call");
+      expect(traceArg.tool.name).toBe("view");
+      expect(traceArg.tool.input).toEqual({ filePath: "/path/to/file.ts" });
+      // Cross-platform path assertions
+      expect(pathContains(traceArg.metadata.toolCallContextDir as string, "/tool-calls/call_123/")).toBe(true);
+      expect(pathContains(traceArg.metadata.toolCallContentPath as string, "/content.txt")).toBe(true);
+      expect(pathContains(traceArg.metadata.toolCallMetadataPath as string, "/metadata.json")).toBe(true);
     });
   });
 
@@ -137,16 +143,15 @@ describe("TraceRecorder", () => {
 
       // Now should record the tool_call trace
       expect(recordTrace).toHaveBeenCalledTimes(1);
-      expect(recordTrace).toHaveBeenCalledWith("/cwd", expect.objectContaining({
-        eventType: "tool_call",
-        tool: expect.objectContaining({
-          name: "read",
-          input: { filePath: "/path/to/file.ts" },
-        }),
-        metadata: expect.objectContaining({
-          toolCallContextDir: expect.stringContaining("/tool-calls/call_opencode_1/"),
-        }),
-      }));
+      const mockRecordTrace = vi.mocked(recordTrace);
+      const callArgs = mockRecordTrace.mock.calls[0];
+      expect(callArgs?.[0]).toBe("/cwd");
+      const traceArg = callArgs?.[1] as unknown as { eventType: string; tool: { name: string; input: unknown }; metadata: Record<string, unknown> };
+      expect(traceArg.eventType).toBe("tool_call");
+      expect(traceArg.tool.name).toBe("read");
+      expect(traceArg.tool.input).toEqual({ filePath: "/path/to/file.ts" });
+      // Cross-platform path assertion
+      expect(pathContains(traceArg.metadata.toolCallContextDir as string, "/tool-calls/call_opencode_1/")).toBe(true);
     });
 
     it("records tool_result when tool completes", () => {

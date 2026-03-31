@@ -14,39 +14,74 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+const isWindows = process.platform === "win32";
+
+/**
+ * Creates a cross-platform fake npx command that responds with scripted behavior.
+ * On Windows: writes a Node.js script + .cmd wrapper
+ * On Unix: writes a Node.js script with shebang
+ */
 function writeFakeNpx(binDir: string, mode: "pass" | "stale" | "fail"): { restore: () => void } {
   const originalPath = process.env.PATH ?? "";
   const counterPath = path.join(binDir, "npx-call-count");
-  const fakeNpx = path.join(binDir, "npx");
-  const script = `#!/bin/sh
-set -eu
-count_file="${counterPath}"
-count=$(cat "${counterPath}" 2>/dev/null || echo 0)
-count=$((count + 1))
-echo "$count" > "${counterPath}"
+  const pathSep = isWindows ? ";" : ":";
 
-if [ "$count" -eq 1 ]; then
-  if [ "${mode}" = "stale" ]; then
-    echo ".next/types/src/app/page.js: Cannot find module './src/app/page.js' or its corresponding type declarations." >&2
-    exit 1
-  fi
-  if [ "${mode}" = "fail" ]; then
-    echo "Type error: Something else" >&2
-    exit 1
-  fi
-fi
+  // Cross-platform Node.js script that mimics npx tsc behavior
+  const script = `#!/usr/bin/env node
+const fs = require("fs");
+const path = require("path");
+const counterFile = ${JSON.stringify(counterPath.replace(/\\/g, "\\\\"))};
+const mode = ${JSON.stringify(mode)};
 
-exit 0
+let count = 0;
+try { count = parseInt(fs.readFileSync(counterFile, "utf8").trim(), 10) || 0; } catch {}
+count += 1;
+try { fs.writeFileSync(counterFile, String(count)); } catch {}
+
+if (count === 1) {
+  if (mode === "stale") {
+    process.stderr.write(".next/types/src/app/page.js: Cannot find module './src/app/page.js' or its corresponding type declarations.\\n");
+    process.exit(1);
+  }
+  if (mode === "fail") {
+    process.stderr.write("Type error: Something else\\n");
+    process.exit(1);
+  }
+}
+
+process.exit(0);
 `;
-  writeFileSync(fakeNpx, `${script}\n`, { mode: 0o755 });
-  process.env.PATH = `${binDir}:${originalPath}`;
-  return {
-    restore: () => {
-      process.env.PATH = originalPath;
-      rmSync(fakeNpx);
-      rmSync(counterPath, { force: true });
-    },
-  };
+
+  if (isWindows) {
+    const npxJs = path.join(binDir, "npx.js");
+    const npxCmd = path.join(binDir, "npx.cmd");
+    writeFileSync(npxJs, script, "utf8");
+    writeFileSync(npxCmd, `@node "${npxJs}" %*\n`, "utf8");
+    process.env.PATH = `${binDir}${pathSep}${originalPath}`;
+    return {
+      restore: () => {
+        process.env.PATH = originalPath;
+        try {
+          rmSync(npxCmd, { force: true });
+          rmSync(npxJs, { force: true });
+          rmSync(counterPath, { force: true });
+        } catch { /* ignore */ }
+      },
+    };
+  } else {
+    const fakeNpx = path.join(binDir, "npx");
+    writeFileSync(fakeNpx, script, { mode: 0o755 });
+    process.env.PATH = `${binDir}${pathSep}${originalPath}`;
+    return {
+      restore: () => {
+        process.env.PATH = originalPath;
+        try {
+          rmSync(fakeNpx, { force: true });
+          rmSync(counterPath, { force: true });
+        } catch { /* ignore */ }
+      },
+    };
+  }
 }
 
 function withTypecheckRepo<T>(mode: "pass" | "stale" | "fail", run: (repoRoot: string) => T): T {

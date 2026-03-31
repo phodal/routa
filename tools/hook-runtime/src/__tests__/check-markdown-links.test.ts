@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import path from "node:path";
-import { mkdtempSync, rmSync, writeFileSync as writeTempFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { execSync } from "node:child_process";
 
@@ -16,58 +16,82 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-function writeFakeCurl(binDir: string): { restore: () => void } {
+const isWindows = process.platform === "win32";
+
+/**
+ * Writes a cross-platform fake curl that responds with scripted output
+ * based on URL pattern matching.
+ *
+ * On Windows: writes a Node.js script + .cmd wrapper (requires shell:true in spawnSync)
+ * On Unix: writes a Node.js script with shebang
+ */
+function writeFakeCurl(
+  binDir: string,
+  responses: Array<{ urlPattern: string; exitCode: number; stdout: string; stderr: string }>,
+  defaultResponse: { exitCode: number; stdout: string; stderr: string },
+): { restore: () => void } {
   const originalPath = process.env.PATH ?? "";
-  const fakeCurl = path.join(binDir, "curl");
-  const script = `#!/bin/sh
-set -eu
+  const pathSep = isWindows ? ";" : ":";
 
-url=""
-for arg in "$@"; do
-  case "$arg" in
-    http*://*)
-      url="$arg"
-      ;;
-  esac
-done
-
-if [ -z "$url" ]; then
-  exit 1
-fi
-
-case "$url" in
-  *good.example.com*)
-    echo "200"
-    ;;
-  *redirect.example.com*)
-    echo "301"
-    ;;
-  *warn.example.com*)
-    echo "404"
-    ;;
-  *rate.example.com*)
-    echo "429"
-    ;;
-  *timeout.example.com*)
-    exit 7
-    ;;
-  *)
-    echo "500"
-    ;;
-esac
+  const script = `#!/usr/bin/env node
+const args = process.argv.slice(2);
+const urlArg = args.find(a => typeof a === 'string' && a.startsWith('http'));
+const responses = ${JSON.stringify(responses)};
+const defaultResponse = ${JSON.stringify(defaultResponse)};
+if (urlArg) {
+  for (const r of responses) {
+    if (urlArg.includes(r.urlPattern)) {
+      process.stdout.write(r.stdout);
+      process.stderr.write(r.stderr);
+      process.exit(r.exitCode);
+    }
+  }
+}
+process.stdout.write(defaultResponse.stdout);
+process.stderr.write(defaultResponse.stderr);
+process.exit(defaultResponse.exitCode);
 `;
-  writeTempFileSync(fakeCurl, `${script}\n`, { mode: 0o755 });
-  process.env.PATH = `${binDir}:${originalPath}`;
 
-  return {
-    restore: () => {
-      process.env.PATH = originalPath;
-      rmSync(fakeCurl);
-    },
-  };
+  if (isWindows) {
+    const curlJs = path.join(binDir, "curl.js");
+    const curlCmd = path.join(binDir, "curl.cmd");
+    writeFileSync(curlJs, script, "utf8");
+    writeFileSync(curlCmd, `@node "${curlJs.replace(/\\/g, "\\\\")}" %*\n`, "utf8");
+    process.env.PATH = `${binDir}${pathSep}${originalPath}`;
+    return {
+      restore: () => {
+        process.env.PATH = originalPath;
+        try {
+          rmSync(curlCmd, { force: true });
+          rmSync(curlJs, { force: true });
+        } catch {
+          /* ignore */
+        }
+      },
+    };
+  } else {
+    const fakeCurl = path.join(binDir, "curl");
+    writeFileSync(fakeCurl, script, { mode: 0o755 });
+    process.env.PATH = `${binDir}${pathSep}${originalPath}`;
+    return {
+      restore: () => {
+        process.env.PATH = originalPath;
+        try {
+          rmSync(fakeCurl, { force: true });
+        } catch {
+          /* ignore */
+        }
+      },
+    };
+  }
 }
 
-function withRepo<T>(files: Array<{ file: string; content: string }>, run: () => T): T {
+function withRepo<T>(
+  files: Array<{ file: string; content: string }>,
+  curlResponses: Array<{ urlPattern: string; exitCode: number; stdout: string; stderr: string }>,
+  curlDefault: { exitCode: number; stdout: string; stderr: string },
+  run: () => T,
+): T {
   const originalCwd = process.cwd();
   const originalPath = process.env.PATH ?? "";
   const repoRoot = mkdtempSync(path.join(tmpdir(), "routa-md-links-"));
@@ -75,15 +99,22 @@ function withRepo<T>(files: Array<{ file: string; content: string }>, run: () =>
 
   process.chdir(repoRoot);
   execSync("git init", { cwd: repoRoot, stdio: "ignore" });
+  execSync("git config user.email test@test.com", { cwd: repoRoot, stdio: "ignore" });
+  execSync("git config user.name Test", { cwd: repoRoot, stdio: "ignore" });
 
   for (const file of files) {
     const absolutePath = path.join(repoRoot, file.file);
-    writeTempFileSync(absolutePath, file.content);
+    const dir = path.dirname(absolutePath);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(absolutePath, file.content);
     execSync(`git add "${file.file}"`, { cwd: repoRoot, stdio: "ignore" });
   }
 
-  const { restore } = writeFakeCurl(fakeBinDir);
+  if (files.length > 0) {
+    execSync("git commit -m init", { cwd: repoRoot, stdio: "ignore" });
+  }
 
+  const { restore } = writeFakeCurl(fakeBinDir, curlResponses, curlDefault);
   try {
     return run();
   } finally {
@@ -97,8 +128,12 @@ function withRepo<T>(files: Array<{ file: string; content: string }>, run: () =>
 
 describe("runMarkdownLinksCheck", () => {
   it("passes when there are no markdown files", () => {
-    const result = withRepo([], () => runMarkdownLinksCheck());
-
+    const result = withRepo(
+      [],
+      [],
+      { exitCode: 0, stdout: "200\n", stderr: "" },
+      () => runMarkdownLinksCheck(),
+    );
     expect(result).toBe(0);
   });
 
@@ -110,6 +145,11 @@ describe("runMarkdownLinksCheck", () => {
           content: "[r1](https://good.example.com)\n[r2](https://redirect.example.com)",
         },
       ],
+      [
+        { urlPattern: "good.example.com", exitCode: 0, stdout: "200\n", stderr: "" },
+        { urlPattern: "redirect.example.com", exitCode: 0, stdout: "301\n", stderr: "" },
+      ],
+      { exitCode: 0, stdout: "200\n", stderr: "" },
       () => runMarkdownLinksCheck(),
     );
 
@@ -124,6 +164,11 @@ describe("runMarkdownLinksCheck", () => {
           content: "[bad](https://warn.example.com)\n[timeout](https://timeout.example.com)",
         },
       ],
+      [
+        { urlPattern: "warn.example.com", exitCode: 0, stdout: "404\n", stderr: "" },
+        { urlPattern: "timeout.example.com", exitCode: 7, stdout: "", stderr: "timeout" },
+      ],
+      { exitCode: 0, stdout: "200\n", stderr: "" },
       () => runMarkdownLinksCheck(),
     );
 
@@ -135,9 +180,11 @@ describe("runMarkdownLinksCheck", () => {
       [
         {
           file: "doc.md",
-          content: "[bad](https://bad.example.com)",
+          content: "[bad](https://fail.example.com/bad)",
         },
       ],
+      [{ urlPattern: "fail.example.com", exitCode: 0, stdout: "500\n", stderr: "" }],
+      { exitCode: 0, stdout: "200\n", stderr: "" },
       () => runMarkdownLinksCheck(),
     );
 

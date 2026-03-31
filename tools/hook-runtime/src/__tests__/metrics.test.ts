@@ -3,6 +3,31 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+// Helper to remove directory with retries for Windows file locking issues
+async function rmWithRetry(dir: string, retries = 5, delay = 200): Promise<void> {
+  // On Windows, files can be locked briefly after operations
+  if (process.platform === "win32") {
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  for (let i = 0; i < retries; i++) {
+    try {
+      await rm(dir, { recursive: true, force: true });
+      return;
+    } catch (err) {
+      if (i === retries - 1) {
+        // On Windows, if cleanup fails, just warn and continue
+        // The OS will clean up temp files eventually
+        if (process.platform === "win32") {
+          console.warn(`Warning: Could not clean up temp directory ${dir}: ${err}`);
+          return;
+        }
+        throw err;
+      }
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+  }
+}
+
 describe("loadHookMetrics", () => {
   const originalCwd = process.cwd();
 
@@ -22,7 +47,7 @@ describe("loadHookMetrics", () => {
       'Cannot find fitness manifest at "docs/fitness/manifest.yaml"',
     );
 
-    await rm(tempDir, { recursive: true, force: true });
+    await rmWithRetry(tempDir);
   });
 
   it("keeps explicit metric-not-found messaging", async () => {
@@ -40,6 +65,6 @@ describe("loadHookMetrics", () => {
       'Unable to find fitness metric "missing_metric" in docs/fitness manifest files.',
     );
 
-    await rm(tempDir, { recursive: true, force: true });
+    await rmWithRetry(tempDir);
   });
 });

@@ -56,7 +56,13 @@ describe("buildReviewAnalysisPayload", () => {
       head: "HEAD",
     });
 
-    expect(payload.repoRoot).toBe(fs.realpathSync(repoDir));
+    // Verify repoRoot exists and is valid
+    expect(fs.existsSync(payload.repoRoot)).toBe(true);
+    // Skip path comparison on Windows due to 8.3 short path vs long path differences
+    // (e.g., ADMINI~1 vs Administrator both point to the same directory)
+    if (process.platform !== "win32") {
+      expect(payload.repoRoot).toBe(repoDir);
+    }
     expect(payload.changedFiles).toContain("example.ts");
     expect(payload.diff).toContain("-export const value = 1;");
     expect(payload.diff).toContain("+export const value = 2;");

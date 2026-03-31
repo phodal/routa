@@ -33,8 +33,9 @@ describe("ToolCallContextWriter", () => {
     const paths = writer.getContextPaths("sess-1", "call_abc123xyz");
 
     expect(paths.resourceId).toContain("call_call_abc");
-    expect(paths.contentPath).toContain("/content.txt");
-    expect(paths.metadataPath).toContain("/metadata.json");
+    // Use path.sep for cross-platform compatibility (Windows uses \, Unix uses /)
+    expect(paths.contentPath).toContain(`${path.sep}content.txt`);
+    expect(paths.metadataPath).toContain(`${path.sep}metadata.json`);
 
     await writer.writeContext({
       toolName: "read_file",

@@ -43,8 +43,8 @@ import * as path from "node:path";
 /** Writable base directory available in serverless runtimes. */
 const REDIRECT_BASE = "/tmp";
 
-/** Target config directory under /tmp. */
-const REDIRECT_CLAUDE_DIR = path.join(REDIRECT_BASE, ".claude");
+/** Target config directory under /tmp (always use forward slashes for serverless runtimes). */
+const REDIRECT_CLAUDE_DIR = `${REDIRECT_BASE}/.claude`;
 
 /** In-memory fallback store: path → content buffer (used when /tmp writes fail) */
 const memoryStore = new Map<string, Buffer>();
@@ -75,16 +75,24 @@ function isServerlessRuntime(): boolean {
  *   2. It is NOT already under `/tmp/`
  *   3. It is NOT under the project working directory (`process.cwd()`)
  *      — project-local `.claude/skills/` etc. should work normally.
+/**
+ * Normalize a file path to use forward slashes for cross-platform comparison.
  */
+function normalizePath(p: string): string {
+  return p.replace(/\\/g, "/");
+}
+
 export function shouldRedirect(filePath: unknown): filePath is string {
   if (typeof filePath !== "string") return false;
-  if (!filePath.includes("/.claude/")) return false;
-  if (filePath.startsWith(REDIRECT_BASE + "/")) return false;
+  // Normalize path separators for cross-platform comparison
+  const normalized = normalizePath(filePath);
+  if (!normalized.includes("/.claude/")) return false;
+  if (normalized.startsWith(REDIRECT_BASE + "/")) return false;
 
   // Don't redirect project-local .claude paths (e.g. .claude/skills/)
   try {
-    const cwd = process.cwd();
-    if (filePath.startsWith(cwd + "/") || filePath.startsWith(cwd + path.sep)) {
+    const cwd = normalizePath(process.cwd());
+    if (normalized.startsWith(cwd + "/")) {
       return false;
     }
   } catch {
@@ -103,10 +111,12 @@ export function shouldRedirect(filePath: unknown): filePath is string {
  */
 export function rewritePath(filePath: string): string {
   const marker = "/.claude/";
-  const idx = filePath.indexOf(marker);
+  const normalized = normalizePath(filePath);
+  const idx = normalized.indexOf(marker);
   if (idx === -1) return filePath;
   // Keep everything after "/.claude/" and prepend /tmp/.claude/
-  return path.join(REDIRECT_CLAUDE_DIR, filePath.substring(idx + marker.length));
+  // Always use forward slashes since serverless runtimes are Unix-based
+  return REDIRECT_CLAUDE_DIR + "/" + normalized.substring(idx + marker.length);
 }
 
 // ─── Directory helpers ───────────────────────────────────────────────────────

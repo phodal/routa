@@ -16,6 +16,8 @@
  * The same algorithm is implemented in Rust (routa-core) for consistency.
  */
 
+import path from "path";
+
 /**
  * Convert an absolute path to a folder slug.
  *
@@ -43,7 +45,7 @@ export function toFolderSlug(absolutePath: string): string {
 export function getProjectStorageDir(absolutePath: string): string {
   const slug = toFolderSlug(absolutePath);
   const homeDir = process.env.HOME || process.env.USERPROFILE || "~";
-  return `${homeDir}/.routa/projects/${slug}`;
+  return path.join(homeDir, ".routa", "projects", slug);
 }
 
 /**
@@ -53,7 +55,7 @@ export function getProjectStorageDir(absolutePath: string): string {
  * @returns Path like ~/.routa/projects/{folder-slug}/sessions
  */
 export function getSessionsDir(absolutePath: string): string {
-  return `${getProjectStorageDir(absolutePath)}/sessions`;
+  return path.join(getProjectStorageDir(absolutePath), "sessions");
 }
 
 /**
@@ -63,7 +65,7 @@ export function getSessionsDir(absolutePath: string): string {
  * @returns Path like ~/.routa/projects/{folder-slug}/traces
  */
 export function getTracesDir(absolutePath: string): string {
-  return `${getProjectStorageDir(absolutePath)}/traces`;
+  return path.join(getProjectStorageDir(absolutePath), "traces");
 }
 
 /**
@@ -74,5 +76,5 @@ export function getTracesDir(absolutePath: string): string {
  * @returns Path like ~/.routa/projects/{folder-slug}/sessions/{sessionId}/tool-calls
  */
 export function getToolCallsDir(absolutePath: string, sessionId: string): string {
-  return `${getSessionsDir(absolutePath)}/${sessionId}/tool-calls`;
+  return path.join(getSessionsDir(absolutePath), sessionId, "tool-calls");
 }

@@ -15,6 +15,7 @@ import * as schema from "./sqlite-schema";
 export type SqliteDatabase = BetterSQLite3Database<typeof schema>;
 
 const GLOBAL_KEY = "__routa_sqlite_db__";
+const GLOBAL_RAW_KEY = "__routa_sqlite_raw__";
 
 /**
  * Get or create a SQLite database instance.
@@ -40,7 +41,9 @@ export function getSqliteDatabase(dbPath?: string): SqliteDatabase {
     // Run migrations / create tables on first use
     initializeSqliteTables(db);
 
+    // Store both the drizzle wrapper and the raw connection
     g[GLOBAL_KEY] = db;
+    g[GLOBAL_RAW_KEY] = sqlite;
   }
   return g[GLOBAL_KEY] as SqliteDatabase;
 }
@@ -471,4 +474,22 @@ function initializeSqliteTables(db: SqliteDatabase): void {
  */
 export function isSqliteConfigured(): boolean {
   return true;
+}
+
+/**
+ * Close the SQLite database connection.
+ * Used primarily for tests to release file locks on Windows.
+ */
+export function closeSqliteDatabase(): void {
+  const g = globalThis as Record<string, unknown>;
+  const rawDb = g[GLOBAL_RAW_KEY] as BetterSqlite3.Database | undefined;
+  if (rawDb) {
+    try {
+      rawDb.close();
+    } catch {
+      // Ignore close errors
+    }
+    delete g[GLOBAL_RAW_KEY];
+  }
+  delete g[GLOBAL_KEY];
 }

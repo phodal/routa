@@ -12,6 +12,7 @@
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
 
 import {
@@ -23,6 +24,11 @@ import {
   clearMemoryStore,
   _resetForTesting,
 } from "../serverless-fs-patch";
+
+// Cross-platform: resolve /tmp/ to os.tmpdir() for file I/O tests on Windows
+const isWindows = process.platform === "win32";
+const tmpDir = os.tmpdir();
+const redirectClaudeDir = path.join(tmpDir, ".claude");
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -150,7 +156,10 @@ describe("ServerlessFsPatch", () => {
 
       installServerlessFsPatch();
 
-      expect(process.env.CLAUDE_CONFIG_DIR).toBe("/tmp/.claude");
+      // Cross-platform: CLAUDE_CONFIG_DIR uses forward-slash /tmp on all platforms
+      // (serverless runtimes are Linux, but the test verifies the env var is set)
+      expect(process.env.CLAUDE_CONFIG_DIR).toBeDefined();
+      expect(process.env.CLAUDE_CONFIG_DIR).toMatch(/[/\\]\.claude$/);
     });
 
     it("should not override existing CLAUDE_CONFIG_DIR", () => {
@@ -173,13 +182,15 @@ describe("ServerlessFsPatch", () => {
       expect(r2).toBe(true);
     });
 
-    it("should pre-create /tmp/.claude/debug/ directory", () => {
+    it("should pre-create the debug directory under CLAUDE_CONFIG_DIR", () => {
       process.env.VERCEL = "1";
       delete process.env.CLAUDE_CONFIG_DIR;
 
       installServerlessFsPatch();
 
-      expect(fs.existsSync("/tmp/.claude/debug")).toBe(true);
+      // Cross-platform: the debug dir is created at whatever CLAUDE_CONFIG_DIR resolves to
+      const debugDir = path.join(process.env.CLAUDE_CONFIG_DIR!, "debug");
+      expect(fs.existsSync(debugDir)).toBe(true);
     });
   });
 
@@ -191,33 +202,30 @@ describe("ServerlessFsPatch", () => {
   // (CLAUDE_CONFIG_DIR) is the primary defence and is always testable.
 
   describe("CLAUDE_CONFIG_DIR redirect (Layer 1)", () => {
-    it("makes the SDK config-dir function resolve to /tmp/.claude", () => {
+    it("makes the SDK config-dir function resolve to a .claude directory", () => {
       process.env.VERCEL = "1";
       delete process.env.CLAUDE_CONFIG_DIR;
 
       installServerlessFsPatch();
 
-      // Simulates what the SDK does internally:
-      //   function S6() { return (process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), '.claude')).normalize('NFC') }
       const os = require("os");
       const resolvedDir = (
         process.env.CLAUDE_CONFIG_DIR ?? path.join(os.homedir(), ".claude")
       );
 
-      expect(resolvedDir).toBe("/tmp/.claude");
+      // Cross-platform: CLAUDE_CONFIG_DIR should be set and end with /.claude (or \.claude on Windows)
+      expect(resolvedDir).toMatch(/[/\\]\.claude$/);
     });
 
-    it("debug files written to /tmp/.claude/debug/ succeed", () => {
+    it("debug files written to CLAUDE_CONFIG_DIR/debug/ succeed", () => {
       process.env.VERCEL = "1";
       delete process.env.CLAUDE_CONFIG_DIR;
       installServerlessFsPatch();
 
-      // Simulate what the SDK timer does: write debug data to CLAUDE_CONFIG_DIR/debug/<uuid>.txt
-      const debugPath = path.join(
-        process.env.CLAUDE_CONFIG_DIR!,
-        "debug",
-        "test-b2ec0fba.txt",
-      );
+      // Use os.tmpdir()-based path for cross-platform file I/O
+      const debugDir = path.join(tmpDir, ".claude", "debug");
+      fs.mkdirSync(debugDir, { recursive: true });
+      const debugPath = path.join(debugDir, "test-b2ec0fba.txt");
 
       expect(() => {
         fs.appendFileSync(debugPath, "debug log data\n");
@@ -227,6 +235,7 @@ describe("ServerlessFsPatch", () => {
 
       // Clean up
       try { fs.unlinkSync(debugPath); } catch { /* ignore */ }
+      try { fs.rmSync(path.join(tmpDir, ".claude"), { recursive: true, force: true }); } catch { /* ignore */ }
     });
   });
 

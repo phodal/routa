@@ -6,57 +6,87 @@ import { tmpdir } from "node:os";
 
 import { runSubmoduleRefsCheck } from "../check-submodule-refs.js";
 
+const isWindows = process.platform === "win32";
+
+/**
+ * Creates a cross-platform fake git command that responds with scripted output.
+ * On Windows: writes a Node.js script + .cmd wrapper
+ * On Unix: writes a Node.js script with shebang
+ */
 function writeFakeGit(binDir: string, mode: "pass" | "fetch-fail"): { restore: () => void } {
   const originalPath = process.env.PATH ?? "";
   const counterPath = path.join(binDir, "git-call-count");
-  const fakeGit = path.join(binDir, "git");
-  const script = `#!/bin/sh
-set -eu
-counter_file="${counterPath}"
-count=$(cat "${counterPath}" 2>/dev/null || echo 0)
-count=$((count + 1))
-echo "$count" > "${counterPath}"
+  const pathSep = isWindows ? ";" : ":";
 
-if [ "$count" -eq 1 ]; then
-  echo "submodule.entrix.path tools/entrix"
-  exit 0
-fi
+  // Cross-platform Node.js script that mimics git behavior based on call count
+  const script = `#!/usr/bin/env node
+const fs = require("fs");
+const path = require("path");
+const counterFile = ${JSON.stringify(counterPath.replace(/\\/g, "\\\\"))};
+const mode = ${JSON.stringify(mode)};
 
-if [ "$count" -eq 2 ]; then
-  echo "https://github.com/phodal/entrix.git"
-  exit 0
-fi
+let count = 0;
+try { count = parseInt(fs.readFileSync(counterFile, "utf8").trim(), 10) || 0; } catch {}
+count += 1;
+try { fs.writeFileSync(counterFile, String(count)); } catch {}
 
-if [ "$count" -eq 3 ]; then
-  echo "160000 commit12345 tools/entrix"
-  exit 0
-fi
-
-if [ "$count" -eq 4 ]; then
-  echo "Initialized empty Git repository in /tmp/routa-submodule-test"
-  exit 0
-fi
-
-if [ "$count" -eq 5 ]; then
-  if [ "${mode}" = "fetch-fail" ]; then
-    echo "fatal: repository not found" >&2
-    exit 128
-  fi
-  echo "From https://github.com/phodal/entrix.git"
-  exit 0
-fi
-
-exit 0
+if (count === 1) {
+  process.stdout.write("submodule.entrix.path tools/entrix\\n");
+  process.exit(0);
+}
+if (count === 2) {
+  process.stdout.write("https://github.com/phodal/entrix.git\\n");
+  process.exit(0);
+}
+if (count === 3) {
+  process.stdout.write("160000 commit12345 tools/entrix\\n");
+  process.exit(0);
+}
+if (count === 4) {
+  process.stdout.write("Initialized empty Git repository in /tmp/routa-submodule-test\\n");
+  process.exit(0);
+}
+if (count === 5) {
+  if (mode === "fetch-fail") {
+    process.stderr.write("fatal: repository not found\\n");
+    process.exit(128);
+  }
+  process.stdout.write("From https://github.com/phodal/entrix.git\\n");
+  process.exit(0);
+}
+process.exit(0);
 `;
-  writeFileSync(fakeGit, `${script}\n`, { mode: 0o755 });
-  process.env.PATH = `${binDir}:${originalPath}`;
-  return {
-    restore: () => {
-      process.env.PATH = originalPath;
-      rmSync(fakeGit);
-      rmSync(counterPath, { force: true });
-    },
-  };
+
+  if (isWindows) {
+    const gitJs = path.join(binDir, "git.js");
+    const gitCmd = path.join(binDir, "git.cmd");
+    writeFileSync(gitJs, script, "utf8");
+    writeFileSync(gitCmd, `@node "${gitJs}" %*\n`, "utf8");
+    process.env.PATH = `${binDir}${pathSep}${originalPath}`;
+    return {
+      restore: () => {
+        process.env.PATH = originalPath;
+        try {
+          rmSync(gitCmd, { force: true });
+          rmSync(gitJs, { force: true });
+          rmSync(counterPath, { force: true });
+        } catch { /* ignore */ }
+      },
+    };
+  } else {
+    const fakeGit = path.join(binDir, "git");
+    writeFileSync(fakeGit, script, { mode: 0o755 });
+    process.env.PATH = `${binDir}${pathSep}${originalPath}`;
+    return {
+      restore: () => {
+        process.env.PATH = originalPath;
+        try {
+          rmSync(fakeGit, { force: true });
+          rmSync(counterPath, { force: true });
+        } catch { /* ignore */ }
+      },
+    };
+  }
 }
 
 async function withSubmoduleRepo<T>(mode: "pass" | "fetch-fail", run: (repoRoot: string) => Promise<T>): Promise<T> {
@@ -98,10 +128,10 @@ describe("runSubmoduleRefsCheck", () => {
       writeFileSync(
         path.join(repoRoot, ".gitmodules"),
         [
-          "[submodule \"entrix\"]",
+          '[submodule "entrix"]',
           "\tpath = tools/entrix",
           "\turl = https://github.com/phodal/entrix.git",
-        "",
+          "",
         ].join("\n"),
       );
       return runSubmoduleRefsCheck();
@@ -115,7 +145,7 @@ describe("runSubmoduleRefsCheck", () => {
       writeFileSync(
         path.join(repoRoot, ".gitmodules"),
         [
-          "[submodule \"entrix\"]",
+          '[submodule "entrix"]',
           "\tpath = tools/entrix",
           "\turl = https://github.com/phodal/entrix.git",
           "",

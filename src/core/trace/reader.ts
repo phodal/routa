@@ -74,7 +74,8 @@ export class TraceReader {
    * Create a TraceReader with a custom base directory.
    */
   static withBaseDir(baseDir: string): TraceReader {
-    return new TraceReader(baseDir.replace(/\.routa\/traces$/, ""));
+    // Cross-platform: handle both / and \ separators
+    return new TraceReader(baseDir.replace(/[/\\]\.routa[/\\]traces$/, ""));
   }
 
   /**
@@ -263,8 +264,8 @@ export class TraceReader {
     const dirs = new Set<string>();
 
     // 1. New storage path: ~/.routa/projects/{folder-slug}/traces/
-    // Strip trailing slash to avoid slug mismatch (e.g. "foo-" vs "foo")
-    const workspaceRoot = this.#baseDir.replace(/\.routa\/traces$/, "").replace(/\/+$/, "");
+    // Strip .routa/traces suffix (cross-platform: handle both / and \ separators)
+    const workspaceRoot = this.#baseDir.replace(/[/\\]\.routa[/\\]traces$/, "").replace(/[/\\]+$/, "");
     const newTraceDir = getTracesDir(workspaceRoot);
     try {
       await fs.access(newTraceDir);

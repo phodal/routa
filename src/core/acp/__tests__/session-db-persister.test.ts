@@ -36,6 +36,21 @@ afterEach(async () => {
   } else {
     process.env.HOME = originalHome;
   }
+
+  // Close SQLite database to release file locks on Windows
+  try {
+    const { closeSqliteDatabase } = await import("../../db/sqlite");
+    closeSqliteDatabase();
+  } catch {
+    // Ignore if import fails
+  }
+
+  // On Windows, file locks may not be released immediately after close
+  // Add a small delay and retry the cleanup
+  if (process.platform === "win32") {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+
   await fs.rm(tmpDir, { recursive: true, force: true });
 });
 
