@@ -182,7 +182,7 @@ function LoopNodeView({ data }: NodeProps<Node<LoopNodeData>>) {
           event.stopPropagation();
           data.onNavigate?.(direction);
         }}
-        className={`flex min-h-[96px] w-[168px] flex-col justify-between rounded-[24px] border px-4 py-3 text-left shadow-sm transition ${
+        className={`flex h-[132px] w-[168px] flex-col justify-between rounded-[24px] border px-4 py-3 text-left shadow-sm transition ${
           interactive ? "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-desktop-accent/70 focus-visible:ring-offset-2 focus-visible:ring-offset-white" : "cursor-not-allowed"
         } ${
           data.active ? `bg-desktop-bg-primary/96 ${tone.border} ${tone.shadow}` : "border-slate-200 bg-slate-100/90 shadow-black/0"
@@ -191,19 +191,30 @@ function LoopNodeView({ data }: NodeProps<Node<LoopNodeData>>) {
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="text-[10px] font-semibold tracking-[0.08em] text-desktop-text-secondary">{layerLabel[data.layer]}</div>
-            <div className={`mt-1 text-[13px] font-semibold ${data.active ? "text-desktop-text-primary" : "text-slate-500"}`}>{data.title}</div>
+            <div
+              className={`mt-1 max-w-[122px] truncate text-[13px] font-semibold ${data.active ? "text-desktop-text-primary" : "text-slate-500"}`}
+              title={data.title}
+            >
+              {data.title}
+            </div>
           </div>
           <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-medium ${data.active ? tone.badge : "border-slate-200 bg-slate-50 text-slate-400"}`}>
             {unavailable ? "Unavailable" : "阶段"}
           </span>
         </div>
         {data.note ? (
-          <div className={`mt-2 text-[10px] leading-4 ${data.active ? "text-desktop-text-secondary" : "text-slate-400"}`}>
+          <div
+            className={`mt-2 min-h-[16px] max-w-[168px] truncate text-[10px] leading-4 ${data.active ? "text-desktop-text-secondary" : "text-slate-400"}`}
+            title={data.note}
+          >
             {data.note}
           </div>
         ) : null}
         {data.unavailableReason ? (
-          <div className="mt-2 rounded-xl border border-dashed border-slate-200 bg-white/70 px-2.5 py-2 text-[10px] leading-4 text-slate-500">
+          <div
+            className="mt-2 min-h-[16px] max-w-[168px] rounded-xl border border-dashed border-slate-200 bg-white/70 px-2.5 py-2 text-[10px] leading-4 text-slate-500 truncate"
+            title={data.unavailableReason}
+          >
             {data.unavailableReason}
           </div>
         ) : null}
@@ -612,19 +623,19 @@ function buildDetailSections(args: {
       return [
         { title: "Fitness", items: [`tier ${selectedTier}`, `${dimensionCount} dimensions`, `${metricCount} metrics`, `${hardGateCount} hard gates`] },
         { title: "Hook phases", items: uniquePhases.length ? uniquePhases : ["当前页未发现 phase"] },
-        { title: "Related surface", items: ["Execution plan", "Hook system panel"] },
+        { title: "Related surface", items: ["Execution plan", "Hook systems panel"] },
       ] satisfies LoopDetailSection[];
     case "post-commit":
       return [
         { title: "Actions", items: workflowNames.length ? workflowNames.slice(0, 8) : ["当前页未发现 action"] },
         { title: "Jobs", items: workflowJobs.length ? workflowJobs.slice(0, 8) : ["当前页未发现 job"] },
-        { title: "Related surface", items: ["GitHub Actions flow panel", "External feedback loop"] },
+        { title: "Related surface", items: ["CI/CD panel", "External feedback loop"] },
       ] satisfies LoopDetailSection[];
     case "release":
       return [
         { title: "Release handoff", items: workflowNames.length ? workflowNames.slice(0, 6) : ["当前页未发现 release workflow"] },
         { title: "Evidence", items: ["GitHub Actions release flows", "artifact / bundle / publish", "workflow_dispatch / tags"] },
-        { title: "Related surface", items: ["GitHub Actions flow panel", "Release category"] },
+        { title: "Related surface", items: ["CI/CD panel", "Release category"] },
       ] satisfies LoopDetailSection[];
     case "review":
     case "test":
@@ -648,7 +659,7 @@ function buildDetailSections(args: {
     default:
       return [
         { title: "Current page signals", items: ["亮色节点可点击，Unavailable 节点会直接说明缺失的信号或面板", "点击 `编码实现`、`本地验证`、`变更门禁`、`代码评审`、`持续交付` 或 `制品发布` 查看上下文"] },
-        { title: "Connected panels", items: ["Instruction file", "Execution plan", "Review triggers", "GitHub Actions flow", "Repo signals"] },
+        { title: "Connected panels", items: ["Instruction file", "Execution plan", "Review triggers", "CI/CD", "Repo signals"] },
       ] satisfies LoopDetailSection[];
   }
 }
