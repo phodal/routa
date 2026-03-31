@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { HarnessSectionCard, HarnessSectionStateFrame } from "@/client/components/harness-section-card";
 import { HarnessUnsupportedState } from "@/client/components/harness-support-state";
 import type {
   HarnessRepoSignalsResponse,
@@ -27,15 +28,11 @@ type QueryState = {
 function categoryTone(mode: HarnessSignalsMode) {
   return mode === "build"
     ? {
-      panel: "border-sky-200 bg-sky-50/45",
-      card: "border-sky-200 bg-white/80",
-      badge: "border-sky-200 bg-white/90 text-sky-800",
+      badge: "border-sky-200 bg-sky-50 text-sky-800",
       title: "text-sky-800",
     }
     : {
-      panel: "border-emerald-200 bg-emerald-50/40",
-      card: "border-emerald-200 bg-white/80",
-      badge: "border-emerald-200 bg-white/90 text-emerald-800",
+      badge: "border-emerald-200 bg-emerald-50 text-emerald-800",
       title: "text-emerald-800",
     };
 }
@@ -115,7 +112,6 @@ export function HarnessRepoSignalsPanel({
     };
   }, [codebaseId, hasContext, repoPath, workspaceId]);
 
-  const compactMode = variant === "compact";
   const tone = categoryTone(mode);
   const focus = state.data?.[mode];
   const scriptGroups = useMemo(() => focus?.entrypointGroups ?? [], [focus]);
@@ -133,41 +129,44 @@ export function HarnessRepoSignalsPanel({
     () => scriptGroups.reduce((count, group) => count + group.scripts.length, 0),
     [scriptGroups],
   );
+  const headerActions = (
+    <div className="flex flex-wrap gap-2 text-[10px]">
+      <span className="rounded-full border border-desktop-border bg-desktop-bg-primary px-2.5 py-1 text-desktop-text-secondary">
+        {repoLabel}
+      </span>
+      {state.data?.packageManager ? (
+        <span className="rounded-full border border-desktop-border bg-desktop-bg-primary px-2.5 py-1 text-desktop-text-secondary">
+          {state.data.packageManager}
+        </span>
+      ) : null}
+      <span className={`rounded-full border px-2.5 py-1 ${tone.badge}`}>{totalScripts} scripts</span>
+      <span className={`rounded-full border px-2.5 py-1 ${tone.badge}`}>{scriptGroups.length} groups</span>
+    </div>
+  );
 
   return (
-    <section className={`rounded-2xl border p-4 shadow-sm ${compactMode ? tone.panel : tone.panel}`}>
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <div className={`text-[10px] font-semibold uppercase tracking-[0.16em] ${tone.title}`}>{title}</div>
-          <div className="mt-1 text-[11px] text-desktop-text-secondary">{summaryText}</div>
-        </div>
-        <div className="flex flex-wrap gap-2 text-[10px]">
-          <span className={`rounded-full border px-2.5 py-1 ${tone.badge}`}>{repoLabel}</span>
-          {state.data?.packageManager ? (
-            <span className={`rounded-full border px-2.5 py-1 ${tone.badge}`}>{state.data.packageManager}</span>
-          ) : null}
-          <span className={`rounded-full border px-2.5 py-1 ${tone.badge}`}>{totalScripts} scripts</span>
-          <span className={`rounded-full border px-2.5 py-1 ${tone.badge}`}>{scriptGroups.length} groups</span>
-        </div>
-      </div>
-
+    <HarnessSectionCard
+      title={title}
+      description={summaryText}
+      actions={headerActions}
+      variant={variant}
+      dataTestId="repo-signals-panel"
+    >
       {state.loading ? (
-        <div className="mt-4 rounded-xl border border-desktop-border bg-white/85 px-4 py-5 text-[11px] text-desktop-text-secondary">
+        <HarnessSectionStateFrame>
           Loading repository signals...
-        </div>
+        </HarnessSectionStateFrame>
       ) : null}
 
       {unsupportedMessage ? <HarnessUnsupportedState /> : null}
 
       {state.error && !unsupportedMessage ? (
-        <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-5 text-[11px] text-red-700">
-          {state.error}
-        </div>
+        <HarnessSectionStateFrame tone="error">{state.error}</HarnessSectionStateFrame>
       ) : null}
 
       {!state.loading && !state.error && !unsupportedMessage && state.data ? (
         <div className="mt-4 space-y-4">
-          <div className={`overflow-hidden rounded-2xl border ${tone.card}`}>
+          <div className="overflow-hidden rounded-2xl border border-desktop-border bg-desktop-bg-primary/80">
             <div className="border-b border-desktop-border/70 px-4 py-3">
               <div className={`text-[10px] font-semibold uppercase tracking-[0.14em] ${tone.title}`}>Overview</div>
             </div>
@@ -197,7 +196,7 @@ export function HarnessRepoSignalsPanel({
             </div>
           </div>
 
-          <div className={`overflow-hidden rounded-2xl border ${tone.card}`}>
+          <div className="overflow-hidden rounded-2xl border border-desktop-border bg-desktop-bg-primary/80">
             <div className="border-b border-desktop-border/70 px-4 py-3">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
@@ -277,6 +276,6 @@ export function HarnessRepoSignalsPanel({
           ) : null}
         </div>
       ) : null}
-    </section>
+    </HarnessSectionCard>
   );
 }
