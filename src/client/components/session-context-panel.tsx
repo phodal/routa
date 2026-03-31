@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import type { LaneHandoffInfo, LaneSessionInfo, SessionKanbanContext } from "@/client/types/kanban-context";
 import { desktopAwareFetch, shouldSuppressTeardownError } from "../utils/diagnostics";
+import { useTranslation } from "@/i18n";
 
 interface SessionInfo {
   sessionId: string;
@@ -46,6 +47,7 @@ export function SessionContextPanel({
   const [renameValue, setRenameValue] = useState("");
   const renameInputRef = useRef<HTMLInputElement>(null);
   const tearingDownRef = useRef(false);
+  const { t } = useTranslation();
 
   useEffect(() => {
     tearingDownRef.current = false;
@@ -136,7 +138,7 @@ export function SessionContextPanel({
   if (loading) {
     return (
       <div className="px-3 py-4 text-center text-slate-400 dark:text-slate-500 text-xs">
-        Loading...
+        {t.common.loading}
       </div>
     );
   }
@@ -183,8 +185,8 @@ export function SessionContextPanel({
   const hasHierarchy = context.parent || context.children.length > 0 || context.siblings.length > 0;
   const focusedSession = focusedSessionId
     ? [context.current, context.parent, ...context.siblings, ...context.children]
-        .filter((session): session is SessionInfo => Boolean(session))
-        .find((session) => session.sessionId === focusedSessionId)
+      .filter((session): session is SessionInfo => Boolean(session))
+      .find((session) => session.sessionId === focusedSessionId)
     : undefined;
 
   /** Inline rename/delete actions for a session row */
@@ -198,7 +200,7 @@ export function SessionContextPanel({
           setRenamingId(sid);
         }}
         className="p-0.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
-        title="Rename"
+        title={t.sessions.rename}
       >
         <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -211,7 +213,7 @@ export function SessionContextPanel({
           handleDelete(sid);
         }}
         className="p-0.5 rounded hover:bg-red-100 dark:hover:bg-red-900/30 text-slate-400 hover:text-red-500"
-        title="Delete"
+        title={t.common.delete}
       >
         <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -268,12 +270,12 @@ export function SessionContextPanel({
                 </div>
                 {isChildSession && (
                   <span className="shrink-0 rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
-                    Child
+                    {t.sessions.child}
                   </span>
                 )}
                 {highlighted && (
                   <span className="shrink-0 rounded-full bg-blue-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
-                    Focus
+                    {t.sessions.focus}
                   </span>
                 )}
               </div>
@@ -374,7 +376,7 @@ export function SessionContextPanel({
               <path strokeLinecap="round" strokeLinejoin="round" d="M8 7h8m-8 5h5m-5 5h8M5 5h14a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2z" />
             </svg>
             <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-              Kanban Story
+              {t.sessions.kanbanStory}
             </span>
           </div>
           <div className="px-3 pb-3 space-y-2">
@@ -405,7 +407,7 @@ export function SessionContextPanel({
                 <div className="mt-2 flex items-center justify-between gap-2 rounded-md border border-blue-100 bg-white/90 px-2.5 py-2 dark:border-blue-900/30 dark:bg-[#11161f]">
                   <div className="min-w-0">
                     <div className="text-[10px] font-semibold uppercase tracking-wide text-blue-500 dark:text-blue-300">
-                      Previous Lane
+                      {t.sessions.previousLane}
                     </div>
                     <div className="mt-0.5 truncate text-[11px] text-slate-700 dark:text-slate-200">
                       {formatLaneSessionLabel(context.kanbanContext.previousLaneSession)}
@@ -415,7 +417,7 @@ export function SessionContextPanel({
                     onClick={() => onSelectSession(context.kanbanContext!.previousLaneSession!.sessionId)}
                     className="shrink-0 rounded-md border border-blue-200 px-2 py-1 text-[10px] font-medium text-blue-600 hover:bg-blue-50 dark:border-blue-800 dark:text-blue-300 dark:hover:bg-blue-900/20"
                   >
-                    Open
+                    {t.sessions.open}
                   </button>
                 </div>
               )}
@@ -423,7 +425,7 @@ export function SessionContextPanel({
                 <div className="mt-2 flex items-center justify-between gap-2 rounded-md border border-slate-200 bg-white/90 px-2.5 py-2 dark:border-slate-800/40 dark:bg-[#11161f]">
                   <div className="min-w-0">
                     <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-300">
-                      Previous Run In Lane
+                      {t.sessions.previousRunInLane}
                     </div>
                     <div className="mt-0.5 truncate text-[11px] text-slate-700 dark:text-slate-200">
                       {formatLaneSessionLabel(context.kanbanContext.previousLaneRun)}
@@ -433,7 +435,7 @@ export function SessionContextPanel({
                     onClick={() => onSelectSession(context.kanbanContext!.previousLaneRun!.sessionId)}
                     className="shrink-0 rounded-md border border-slate-200 px-2 py-1 text-[10px] font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-900/20"
                   >
-                    Open
+                    {t.sessions.open}
                   </button>
                 </div>
               )}
@@ -481,7 +483,7 @@ export function SessionContextPanel({
                           onClick={() => onSelectSession(counterpartSessionId)}
                           className="rounded-md border border-slate-200 px-2 py-1 font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
                         >
-                          Open Session
+                          {t.sessions.openSession}
                         </button>
                       </div>
                     </div>
@@ -507,7 +509,7 @@ export function SessionContextPanel({
               <path strokeLinecap="round" strokeLinejoin="round" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
             </svg>
             <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-              Hierarchy
+              {t.sessions.hierarchy}
             </span>
           </div>
 

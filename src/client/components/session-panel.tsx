@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState, useRef } from "react";
 import { desktopAwareFetch } from "../utils/diagnostics";
+import { useTranslation } from "@/i18n";
 
 export interface SessionInfo {
   sessionId: string;
@@ -47,6 +48,7 @@ export function SessionPanel({
   const [editName, setEditName] = useState("");
   const [hoveredSession, setHoveredSession] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const { t } = useTranslation();
 
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
@@ -65,19 +67,19 @@ export function SessionPanel({
         desktopAwareFetch(workspaceId ? `/api/sessions?workspaceId=${encodeURIComponent(workspaceId)}` : "/api/sessions", { cache: "no-store" }),
         desktopAwareFetch("/api/workspaces?status=active")
       ]);
-      
+
       const sessionsData = await sessionsRes.json();
       const workspacesData = await workspacesRes.json();
-      
+
       const sessions: SessionInfo[] = Array.isArray(sessionsData?.sessions) ? sessionsData.sessions : [];
       const workspaces = Array.isArray(workspacesData?.workspaces) ? workspacesData.workspaces : [];
-      
+
       const grouped = workspaces.map((ws: { id: string; title: any; }) => ({
         id: ws.id,
         title: ws.title,
         sessions: sessions.filter(s => s.workspaceId === ws.id)
       })).filter((g: { sessions: string | any[]; }) => g.sessions.length > 0);
-      
+
       setWorkspaceGroups(grouped);
     } catch (e) {
       console.error("Failed to fetch sessions", e);
@@ -139,7 +141,7 @@ export function SessionPanel({
             <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
           </svg>
           <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-            Sessions
+            {t.sessions.title}
           </span>
           {totalSessions > 0 && (
             <span className="ml-1 px-1.5 py-0.5 text-[10px] bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 rounded-full">
@@ -152,14 +154,14 @@ export function SessionPanel({
           disabled={loading}
           className="text-[11px] text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 disabled:opacity-50 transition-colors"
         >
-          {loading ? "..." : "Refresh"}
+          {loading ? "..." : t.common.refresh}
         </button>
       </div>
 
       <div className="flex-1 overflow-y-auto px-2 py-2 space-y-3">
         {workspaceGroups.length === 0 ? (
           <div className="px-3 py-4 text-center text-slate-400 dark:text-slate-500 text-xs">
-            No sessions yet
+            {t.sessions.noSessions}
           </div>
         ) : (
           workspaceGroups.map((group) => (
@@ -171,14 +173,14 @@ export function SessionPanel({
                 <span className="text-xs font-medium text-slate-700 dark:text-slate-300 truncate">{group.title}</span>
                 <span className="ml-auto text-[10px] text-slate-400">{group.sessions.length}</span>
               </div>
-              
+
               <div className="p-1.5 space-y-1">
                 {(() => {
                   // Separate parent sessions from child (crafter) sessions
                   const parentSessions = group.sessions.filter(s => !s.parentSessionId);
                   const childSessionMap = new Map<string, SessionInfo[]>();
                   const orphanSessions: SessionInfo[] = [];
-                  
+
                   for (const s of group.sessions) {
                     if (s.parentSessionId) {
                       // Check if parent exists in the current session list
@@ -348,6 +350,7 @@ function SessionItem({
   onRename,
   indent,
 }: SessionItemProps) {
+  const { t } = useTranslation();
   const isChild = indent > 0;
   const roleIcon = isChild ? (
     <svg className="w-3 h-3 text-amber-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -390,11 +393,10 @@ function SessionItem({
       ) : (
         <div
           onClick={() => onSelect(s.sessionId)}
-          className={`${isChild ? "px-2 py-1.5" : "px-2.5 py-2"} rounded-md cursor-pointer transition-colors ${
-            active
-              ? "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300"
-              : "hover:bg-white dark:hover:bg-slate-800/50 text-slate-700 dark:text-slate-300"
-          }`}
+          className={`${isChild ? "px-2 py-1.5" : "px-2.5 py-2"} rounded-md cursor-pointer transition-colors ${active
+            ? "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300"
+            : "hover:bg-white dark:hover:bg-slate-800/50 text-slate-700 dark:text-slate-300"
+            }`}
         >
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0 flex-1 flex items-center gap-1.5">
@@ -437,7 +439,7 @@ function SessionItem({
             onClick={() => onStartEdit(s)}
             className="w-full text-left px-3 py-1.5 text-xs hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300"
           >
-            Rename
+            {t.sessions.rename}
           </button>
           <button
             type="button"
@@ -447,7 +449,7 @@ function SessionItem({
             }}
             className="w-full text-left px-3 py-1.5 text-xs hover:bg-red-50 dark:hover:bg-red-900/20 text-red-600 dark:text-red-400"
           >
-            Delete
+            {t.common.delete}
           </button>
         </div>
       )}

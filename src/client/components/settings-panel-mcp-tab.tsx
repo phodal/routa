@@ -88,11 +88,11 @@ export function McpServersTab() {
       const data = await response.json();
       setServers(data.servers ?? []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load");
+      setError(err instanceof Error ? err.message : t.errors.loadFailed);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t.errors.loadFailed]);
 
   useEffect(() => {
     void load();
@@ -135,14 +135,14 @@ export function McpServersTab() {
         body: JSON.stringify(payload),
       });
       if (!response.ok) {
-        throw new Error(await getResponseErrorMessage(response, "Save failed"));
+        throw new Error(await getResponseErrorMessage(response, t.errors.saveFailed));
       }
       await load();
       setShowForm(false);
       setEditingId(null);
       setForm(EMPTY_MCP_FORM);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Save failed");
+      setError(err instanceof Error ? err.message : t.errors.saveFailed);
     } finally {
       setLoading(false);
     }
@@ -154,11 +154,11 @@ export function McpServersTab() {
     try {
       const response = await desktopAwareFetch(`/api/mcp-servers?id=${id}`, { method: "DELETE" });
       if (!response.ok) {
-        throw new Error(await getResponseErrorMessage(response, "Delete failed"));
+        throw new Error(await getResponseErrorMessage(response, t.mcp.deleteFailed));
       }
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Delete failed");
+      setError(err instanceof Error ? err.message : t.mcp.deleteFailed);
     } finally {
       setLoading(false);
     }
@@ -173,11 +173,11 @@ export function McpServersTab() {
         body: JSON.stringify({ id: server.id, enabled: !server.enabled }),
       });
       if (!response.ok) {
-        throw new Error(await getResponseErrorMessage(response, "Toggle failed"));
+        throw new Error(await getResponseErrorMessage(response, t.mcp.toggleFailed));
       }
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Toggle failed");
+      setError(err instanceof Error ? err.message : t.mcp.toggleFailed);
     } finally {
       setLoading(false);
     }
@@ -213,7 +213,7 @@ export function McpServersTab() {
               <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
             </svg>
           </button>
-          <p className={sectionHeadCls}>{editingId ? "Edit MCP Server" : "New MCP Server"}</p>
+          <p className={sectionHeadCls}>{editingId ? t.mcp.editServer : t.mcp.newServer}</p>
         </div>
         {error && <div className="p-2 text-xs bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded text-red-600 dark:text-red-400">{error}</div>}
         <div className="space-y-3">
@@ -297,7 +297,7 @@ export function McpServersTab() {
           <div className="flex gap-2 pt-2">
             <button onClick={handleSave} disabled={!canSave || loading}
               className="flex-1 py-2 text-xs font-semibold rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
-              {editingId ? "Update" : "Create"}
+              {editingId ? t.common.update : t.common.create}
             </button>
             <button onClick={() => { setShowForm(false); setEditingId(null); setForm(EMPTY_MCP_FORM); }}
               className="px-4 py-2 text-xs font-medium rounded-lg border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">

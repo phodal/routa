@@ -12,6 +12,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { Select } from "./select";
+import { useTranslation } from "@/i18n";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -559,6 +560,7 @@ interface WebhookConfigFormProps {
 }
 
 function WebhookConfigForm({ form, setForm, editId, saving, specialists, onSubmit, onCancel, toggleEvent }: WebhookConfigFormProps) {
+  const { t } = useTranslation();
   return (
     <form onSubmit={onSubmit} className="bg-white dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl p-5 mt-2 space-y-4">
       <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
@@ -740,7 +742,7 @@ function WebhookConfigForm({ form, setForm, editId, saving, specialists, onSubmi
           onClick={onCancel}
           className="px-4 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors"
         >
-          Cancel
+          {t.common.cancel}
         </button>
         <button
           data-testid="webhook-submit"
@@ -748,7 +750,7 @@ function WebhookConfigForm({ form, setForm, editId, saving, specialists, onSubmi
           disabled={saving}
           className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg transition-colors"
         >
-          {saving ? "Saving…" : editId ? "Update" : "Create"}
+          {saving ? `${t.common.loading}…` : editId ? t.common.update : t.common.create}
         </button>
       </div>
     </form>

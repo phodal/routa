@@ -20,6 +20,7 @@ import type { RepoSelection } from "./repo-picker";
 import { storePendingPrompt } from "../utils/pending-prompt";
 import { loadProviderConnectionConfig, getModelDefinitionByAlias, DockerConfigModal } from "./settings-panel";
 import { desktopAwareFetch } from "../utils/diagnostics";
+import { useTranslation } from "@/i18n";
 
 type AgentRole = "ROUTA" | "CRAFTER" | "DEVELOPER";
 
@@ -83,6 +84,7 @@ export function HomeInput({
   const acp = useAcp();
   const skillsHook = useSkills();
   const workspacesHook = useWorkspaces();
+  const { t } = useTranslation();
 
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(propWorkspaceId ?? null);
   const { codebases } = useCodebases(selectedWorkspaceId ?? "");
@@ -309,7 +311,7 @@ export function HomeInput({
           {/* TiptapInput */}
           <TiptapInput
             onSend={handleSend}
-            placeholder="What are you working on? (@ files, / skills)"
+            placeholder={t.home.inputPlaceholder}
             disabled={!acp.connected || isSubmitting || (requireRepoSelection && !repoSelection?.path)}
             loading={isSubmitting}
             skills={skillsHook.skills}
@@ -342,7 +344,7 @@ export function HomeInput({
                     <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
                   </svg>
                   <span className="max-w-[140px] truncate">
-                    {selectedSpecialist?.name ?? "Custom Specialist"}
+                    {selectedSpecialist?.name ?? t.home.customSpecialist}
                   </span>
                   {!specialistLocked && (
                     <button
@@ -402,7 +404,7 @@ export function HomeInput({
                       <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v1m0 16v1M4.22 4.22l.707.707m13.857 13.857l.707.707M1 12h1m20 0h1M4.22 19.78l.707-.707m13.857-13.857l.707-.707"/>
                       <circle cx="12" cy="12" r="3" stroke="currentColor" />
                     </svg>
-                    Multi-Agent
+                    {t.home.multiAgent}
                   </button>
                   <button type="button" onClick={() => setSelectedRole("CRAFTER")}
                     title="Single-agent implementation — best for focused coding tasks (Crafter)"
@@ -414,7 +416,7 @@ export function HomeInput({
                     <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={selectedRole === "CRAFTER" ? 2.5 : 2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />
                     </svg>
-                    Crafter
+                    {t.home.crafter}
                   </button>
                 </div>
 
@@ -437,7 +439,7 @@ export function HomeInput({
                       {showSpecialistDropdown && (
                         <div className="absolute bottom-full left-0 z-50 mb-1 w-56 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl dark:border-slate-800 dark:bg-slate-900">
                           <div className="px-2 pt-2 pb-1">
-                            <p className="mb-1 px-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">Custom Specialists</p>
+                            <p className="mb-1 px-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">{t.settings.specialists}</p>
                           </div>
                           <div className="max-h-48 overflow-y-auto border-t border-slate-100 p-1 dark:border-slate-800">
                             {specialists.map((s) => (
@@ -480,7 +482,7 @@ export function HomeInput({
                     />
                   </svg>
                   <span className="max-w-[120px] truncate">
-                    {activeWorkspace?.title ?? "Workspace"}
+                    {activeWorkspace?.title ?? t.workspace.workspaces}
                   </span>
                   <svg
                     className="w-2.5 h-2.5 opacity-40"
@@ -562,7 +564,7 @@ export function HomeInput({
         {repoSelection?.path && (
           <div className="mb-1 flex items-center gap-1.5 text-[10px] text-slate-400 dark:text-slate-500">
             <span className="font-medium text-slate-500 dark:text-slate-400">
-              Repo path
+              {t.home.repoPath}
             </span>
             <span className="font-mono truncate" title={repoSelection.path}>
               {repoSelection.path}
@@ -589,7 +591,7 @@ export function HomeInput({
                 <circle cx="4" cy="4" r="3" />
               </svg>
             </span>
-            <span>适合复杂任务 · 自动拆解需求并分配给多个专属 Agent</span>
+            <span>{t.home.multiAgentDesc}</span>
           </div>
         ) : footerMetaMode === "default" ? (
           <div className="flex items-center gap-1.5 text-[10px] text-slate-400 dark:text-slate-500">
@@ -598,7 +600,7 @@ export function HomeInput({
                 <circle cx="4" cy="4" r="3" />
               </svg>
             </span>
-            <span>适合简单快速任务 · 单 Agent 直接执行</span>
+            <span>{t.home.directDesc}</span>
           </div>
         ) : null}
       </div>

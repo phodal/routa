@@ -12,6 +12,7 @@
 import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useTranslation } from "@/i18n";
 
 interface NavItem {
   id: string;
@@ -41,6 +42,7 @@ export function DesktopSidebar({
   topAction,
 }: DesktopSidebarProps) {
   const pathname = usePathname();
+  const { t } = useTranslation();
   const normalizedWorkspaceId = workspaceId?.trim() || null;
   const fallbackWorkspaceId = normalizedWorkspaceId || "default";
   const workspaceBaseHref = `/workspace/${fallbackWorkspaceId}`;
@@ -54,7 +56,7 @@ export function DesktopSidebar({
   const primaryItems: NavItem[] = [
     {
       id: "home",
-      label: "Home",
+      label: t.nav.home,
       href: "/",
       icon: (
         <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -64,7 +66,7 @@ export function DesktopSidebar({
     },
     {
       id: "kanban",
-      label: "Kanban",
+      label: t.nav.kanban,
       href: workspaceBaseHref ? `${workspaceBaseHref}/kanban` : "/",
       requiresWorkspace: true,
       icon: (
@@ -75,7 +77,7 @@ export function DesktopSidebar({
     },
     {
       id: "overview",
-      label: "Overview",
+      label: t.nav.overview,
       href: workspaceBaseHref ? `${workspaceBaseHref}/overview` : "/",
       requiresWorkspace: true,
       icon: (
@@ -86,7 +88,7 @@ export function DesktopSidebar({
     },
     {
       id: "team",
-      label: "Team",
+      label: t.nav.team,
       href: workspaceBaseHref ? `${workspaceBaseHref}/team` : "/",
       requiresWorkspace: true,
       icon: (
@@ -103,7 +105,7 @@ export function DesktopSidebar({
   const toolItems: NavItem[] = [
     {
       id: "mcp",
-      label: "MCP Servers",
+      label: t.nav.mcpServers,
       href: "/settings/mcp",
       icon: (
         <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -113,7 +115,7 @@ export function DesktopSidebar({
     },
     {
       id: "schedules",
-      label: "Schedules",
+      label: t.nav.schedules,
       href: "/settings/schedules",
       icon: (
         <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -123,7 +125,7 @@ export function DesktopSidebar({
     },
     {
       id: "harness",
-      label: "Harness",
+      label: t.nav.harness,
       href: settingsHarnessHref,
       icon: (
         <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -133,7 +135,7 @@ export function DesktopSidebar({
     },
     {
       id: "fluency",
-      label: "Fluency（试验性）",
+      label: t.nav.fluency,
       href: settingsFluencyHref,
       icon: (
         <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -143,7 +145,7 @@ export function DesktopSidebar({
     },
     {
       id: "workflows",
-      label: "Workflows",
+      label: t.nav.workflows,
       href: "/settings/workflows",
       icon: (
         <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -153,7 +155,7 @@ export function DesktopSidebar({
     },
     {
       id: "specialists",
-      label: "Specialists",
+      label: t.nav.specialists,
       href: "/settings/specialists",
       icon: (
         <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -166,7 +168,7 @@ export function DesktopSidebar({
   const secondaryItems: NavItem[] = [
     {
       id: "config",
-      label: "Settings",
+      label: t.nav.settings,
       href: "/settings",
       icon: (
         <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -177,7 +179,7 @@ export function DesktopSidebar({
     },
     {
       id: "debug",
-      label: "Debug",
+      label: t.nav.debug,
       href: "/traces",
       icon: (
         <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>

@@ -1,3 +1,5 @@
+import { useTranslation } from "@/i18n";
+
 interface WorkspacePageHeaderProps {
   title: string;
   workspaceId: string;
@@ -23,6 +25,7 @@ export function WorkspacePageHeader({
   onTeam,
   onTraces,
 }: WorkspacePageHeaderProps) {
+  const { t } = useTranslation();
   return (
     <header className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-desktop-border pb-3" data-testid="workspace-page-header">
       <div className="min-w-0">
@@ -34,7 +37,7 @@ export function WorkspacePageHeader({
         </div>
         <div className="mt-2 flex flex-wrap gap-2">
           <div className="inline-flex items-center gap-1.5 rounded-full border border-desktop-border bg-desktop-bg-secondary px-2.5 py-1 text-[10px] text-desktop-text-secondary">
-            <span>Workspace:</span>
+            <span>{t.workspace.workspaceLabel}</span>
             <code className="font-mono text-desktop-text-primary">{workspaceId}</code>
           </div>
           <div className="inline-flex items-center gap-1.5 rounded-full border border-desktop-border bg-desktop-bg-secondary px-2.5 py-1 text-[10px] text-desktop-text-secondary">
@@ -43,9 +46,9 @@ export function WorkspacePageHeader({
             <span>{latestSessionName}</span>
           </div>
           <div className="inline-flex items-center gap-1.5 rounded-full border border-desktop-border bg-desktop-bg-secondary px-2.5 py-1 text-[10px] text-desktop-text-secondary">
-            <span>{activeAgentsCount > 0 ? `${activeAgentsCount} active agents` : "Standby"}</span>
+            <span>{activeAgentsCount > 0 ? `${activeAgentsCount} ${t.workspace.activeAgents}` : t.workspace.standby}</span>
             <span className="opacity-40">/</span>
-            <span>{pendingTasksCount > 0 ? `${pendingTasksCount} in flight` : "No pending tasks"}</span>
+            <span>{pendingTasksCount > 0 ? `${pendingTasksCount} ${t.workspace.inFlight}` : t.workspace.noPendingTasks}</span>
           </div>
         </div>
       </div>
@@ -56,7 +59,7 @@ export function WorkspacePageHeader({
           onClick={onRefresh}
           className="rounded-md bg-desktop-bg-secondary px-2.5 py-1.5 text-[11px] font-medium text-desktop-text-secondary transition-colors hover:bg-desktop-bg-active/70 hover:text-desktop-text-primary"
         >
-          Refresh
+          {t.common.refresh}
         </button>
         {onTeam ? (
           <button
@@ -64,7 +67,7 @@ export function WorkspacePageHeader({
             onClick={onTeam}
             className="rounded-md bg-desktop-bg-secondary px-2.5 py-1.5 text-[11px] font-medium text-desktop-text-secondary transition-colors hover:bg-desktop-bg-active/70 hover:text-desktop-text-primary"
           >
-            Team
+            {t.nav.team}
           </button>
         ) : null}
         {onKanban ? (
@@ -73,7 +76,7 @@ export function WorkspacePageHeader({
             onClick={onKanban}
             className="rounded-md bg-desktop-accent px-2.5 py-1.5 text-[11px] font-medium text-desktop-accent-text transition-colors hover:opacity-90"
           >
-            Kanban
+            {t.nav.kanban}
           </button>
         ) : null}
         {onTraces ? (
@@ -82,7 +85,7 @@ export function WorkspacePageHeader({
             onClick={onTraces}
             className="rounded-md bg-desktop-bg-secondary px-2.5 py-1.5 text-[11px] font-medium text-desktop-text-secondary transition-colors hover:bg-desktop-bg-active/70 hover:text-desktop-text-primary"
           >
-            Traces
+            {t.nav.traces}
           </button>
         ) : null}
       </div>

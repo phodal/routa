@@ -16,6 +16,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import Image from "next/image";
 import { isTauriRuntime, desktopAwareFetch } from "@/client/utils/diagnostics";
+import { useTranslation } from "@/i18n";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -139,6 +140,7 @@ export function AgentInstallPanel({ embedded = false }: AgentInstallPanelProps) 
   const [searchQuery, setSearchQuery] = useState("");
   const [installingAgents, setInstallingAgents] = useState<Set<string>>(new Set());
   const isTauri = useRef(isTauriRuntime());
+  const { t } = useTranslation();
 
   // Convert Tauri registry to frontend format
   const convertTauriRegistry = useCallback(
@@ -203,12 +205,12 @@ export function AgentInstallPanel({ embedded = false }: AgentInstallPanelProps) 
           setRuntimeAvailability(data.runtimeAvailability);
         }
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to load agents");
+        setError(err instanceof Error ? err.message : t.agents.failedToLoad);
       } finally {
         setLoading(false);
       }
     },
-    [convertTauriRegistry]
+    [convertTauriRegistry, t.agents.failedToLoad]
   );
 
   useEffect(() => {
@@ -244,12 +246,12 @@ export function AgentInstallPanel({ embedded = false }: AgentInstallPanelProps) 
           });
           if (!res.ok) {
             const data = await res.json();
-            throw new Error(data.error || "Installation failed");
+            throw new Error(data.error || t.agents.installFailed);
           }
         }
         await fetchAgents();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Installation failed");
+        setError(err instanceof Error ? err.message : t.agents.installFailed);
       } finally {
         setInstallingAgents((prev) => {
           const next = new Set(prev);
@@ -278,12 +280,12 @@ export function AgentInstallPanel({ embedded = false }: AgentInstallPanelProps) 
           });
           if (!res.ok) {
             const data = await res.json();
-            throw new Error(data.error || "Uninstallation failed");
+            throw new Error(data.error || t.agents.uninstallFailed);
           }
         }
         await fetchAgents();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Uninstallation failed");
+        setError(err instanceof Error ? err.message : t.agents.uninstallFailed);
       } finally {
         setInstallingAgents((prev) => {
           const next = new Set(prev);
@@ -317,7 +319,7 @@ export function AgentInstallPanel({ embedded = false }: AgentInstallPanelProps) 
               disabled={loading}
               className="text-xs text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 disabled:opacity-50"
             >
-              {loading ? "Loading..." : "Refresh"}
+              {loading ? `${t.common.loading}...` : t.common.refresh}
             </button>
           </div>
         </div>
@@ -337,18 +339,18 @@ export function AgentInstallPanel({ embedded = false }: AgentInstallPanelProps) 
       {error && (
         <div className={`${embedded ? "mb-3" : "mx-5 mt-3"} rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700 dark:bg-red-950/20 dark:text-red-300`}>
           {error}
-          <button onClick={() => setError(null)} className="ml-2 underline">Dismiss</button>
+          <button onClick={() => setError(null)} className="ml-2 underline">{t.common.dismiss}</button>
         </div>
       )}
 
       <div className={`flex-1 overflow-y-auto ${embedded ? "" : "px-5 py-3"}`}>
         {loading && agents.length === 0 ? (
           <div className="flex items-center justify-center h-32 text-gray-400 text-sm">
-            Loading agents from registry...
+            {t.agents.loadingFromRegistry}
           </div>
         ) : filteredAgents.length === 0 ? (
           <div className="flex items-center justify-center h-32 text-gray-400 text-sm">
-            {searchQuery ? "No agents match your search" : "No agents available"}
+            {searchQuery ? t.agents.noMatchingAgents : t.agents.noAgentsAvailable}
           </div>
         ) : (
           <div className="space-y-2">
@@ -438,12 +440,12 @@ function AgentCard({
             </span>
             {installed && (
               <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 dark:bg-emerald-950/20 dark:text-emerald-300">
-                Installed
+                {t.agents.installed}
               </span>
             )}
             {!installed && available && (
               <span className="rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-700 dark:bg-blue-950/20 dark:text-blue-300">
-                Available
+                {t.agents.available}
               </span>
             )}
           </div>
@@ -482,7 +484,7 @@ function AgentCard({
               disabled={installing}
               className="rounded-md border border-red-200 px-3 py-1.5 text-xs font-medium text-red-700 transition-colors hover:bg-red-50 disabled:opacity-50 dark:border-red-800 dark:text-red-300 dark:hover:bg-red-950/20"
             >
-              {installing ? "..." : "Uninstall"}
+              {installing ? "..." : t.agents.uninstall}
             </button>
           ) : (
             <button
@@ -490,7 +492,7 @@ function AgentCard({
               disabled={installing || !canInstall}
               className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {installing ? "Installing..." : canInstall ? "Install" : "Unavailable"}
+              {installing ? t.agents.installing : canInstall ? t.agents.install : t.common.unavailable}
             </button>
           )}
           {agent.repository && (

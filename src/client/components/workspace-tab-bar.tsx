@@ -2,6 +2,7 @@
 
 import React from "react";
 import { Button } from "./button";
+import { useTranslation } from "@/i18n";
 
 export type WorkspaceOverviewTab = "overview" | "notes" | "activity";
 
@@ -20,19 +21,21 @@ export function WorkspaceTabBar({
   onTabChange,
   className,
 }: WorkspaceTabBarProps) {
+  const { t } = useTranslation();
+
   return (
     <div
       className={`flex items-center gap-0 border-b border-desktop-border ${className ?? ""}`.trim()}
       data-testid="workspace-tab-bar"
     >
       <WorkspaceTabButton active={activeTab === "overview"} onClick={() => onTabChange("overview")}>
-        Overview
+        {t.workspace.overview}
       </WorkspaceTabButton>
       <WorkspaceTabButton active={activeTab === "notes"} onClick={() => onTabChange("notes")}>
-        Notes {notesCount > 0 && <span className="ml-1 text-[10px] opacity-60" data-testid="workspace-tab-count">({notesCount})</span>}
+        {t.workspace.notes} {notesCount > 0 && <span className="ml-1 text-[10px] opacity-60" data-testid="workspace-tab-count">({notesCount})</span>}
       </WorkspaceTabButton>
       <WorkspaceTabButton active={activeTab === "activity"} onClick={() => onTabChange("activity")}>
-        Activity {activityCount > 0 && <span className="ml-1 text-[10px] opacity-60" data-testid="workspace-tab-count">({activityCount})</span>}
+        {t.workspace.activity} {activityCount > 0 && <span className="ml-1 text-[10px] opacity-60" data-testid="workspace-tab-count">({activityCount})</span>}
       </WorkspaceTabButton>
     </div>
   );
@@ -53,11 +56,10 @@ function WorkspaceTabButton({
       size="xs"
       variant="desktop-secondary"
       onClick={onClick}
-      className={`rounded-none border-b-2 px-3 py-1.5 text-[12px] ${
-        active
+      className={`rounded-none border-b-2 px-3 py-1.5 text-[12px] ${active
           ? "border-b-desktop-accent bg-desktop-bg-active text-desktop-accent hover:bg-desktop-bg-active"
           : "border-b-transparent bg-transparent text-desktop-text-secondary"
-      }`}
+        }`}
     >
       {children}
     </Button>

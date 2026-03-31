@@ -14,29 +14,30 @@ import type { AGUIBaseEvent } from "@/core/ag-ui/event-adapter";
 import { AGUIEventType } from "@/core/ag-ui/event-adapter";
 import { replayTracesAsAGUI } from "@/core/trace/trace-replay";
 import { MarkdownViewer } from "./markdown/markdown-viewer";
+import { useTranslation } from "@/i18n";
 
 // ─── Event colors (same as ag-ui page) ────────────────────────────────────
 
 const EVENT_COLORS: Record<string, { bg: string; text: string; border: string }> = {
-  RUN_STARTED:              { bg: "bg-emerald-50 dark:bg-emerald-950/30",   text: "text-emerald-700 dark:text-emerald-300",  border: "border-emerald-200 dark:border-emerald-800" },
-  RUN_FINISHED:             { bg: "bg-emerald-50 dark:bg-emerald-950/30",   text: "text-emerald-700 dark:text-emerald-300",  border: "border-emerald-200 dark:border-emerald-800" },
-  RUN_ERROR:                { bg: "bg-red-50 dark:bg-red-950/30",           text: "text-red-700 dark:text-red-300",          border: "border-red-200 dark:border-red-800" },
-  TEXT_MESSAGE_START:        { bg: "bg-blue-50 dark:bg-blue-950/30",         text: "text-blue-700 dark:text-blue-300",        border: "border-blue-200 dark:border-blue-800" },
-  TEXT_MESSAGE_CONTENT:      { bg: "bg-blue-50 dark:bg-blue-950/20",         text: "text-blue-600 dark:text-blue-400",        border: "border-blue-100 dark:border-blue-900" },
-  TEXT_MESSAGE_END:          { bg: "bg-blue-50 dark:bg-blue-950/30",         text: "text-blue-700 dark:text-blue-300",        border: "border-blue-200 dark:border-blue-800" },
-  TOOL_CALL_START:           { bg: "bg-amber-50 dark:bg-amber-950/30",       text: "text-amber-700 dark:text-amber-300",      border: "border-amber-200 dark:border-amber-800" },
-  TOOL_CALL_ARGS:            { bg: "bg-amber-50 dark:bg-amber-950/20",       text: "text-amber-600 dark:text-amber-400",      border: "border-amber-100 dark:border-amber-900" },
-  TOOL_CALL_END:             { bg: "bg-amber-50 dark:bg-amber-950/30",       text: "text-amber-700 dark:text-amber-300",      border: "border-amber-200 dark:border-amber-800" },
-  TOOL_CALL_RESULT:          { bg: "bg-amber-50 dark:bg-amber-950/30",       text: "text-amber-700 dark:text-amber-300",      border: "border-amber-200 dark:border-amber-800" },
-  REASONING_START:           { bg: "bg-slate-50 dark:bg-slate-950/30",       text: "text-slate-700 dark:text-slate-300",      border: "border-slate-200 dark:border-slate-800" },
-  REASONING_MESSAGE_START:   { bg: "bg-slate-50 dark:bg-slate-950/30",       text: "text-slate-700 dark:text-slate-300",      border: "border-slate-200 dark:border-slate-800" },
-  REASONING_MESSAGE_CONTENT: { bg: "bg-slate-50 dark:bg-slate-950/20",       text: "text-slate-600 dark:text-slate-400",      border: "border-slate-100 dark:border-slate-900" },
-  REASONING_MESSAGE_END:     { bg: "bg-slate-50 dark:bg-slate-950/30",       text: "text-slate-700 dark:text-slate-300",      border: "border-slate-200 dark:border-slate-800" },
-  REASONING_END:             { bg: "bg-slate-50 dark:bg-slate-950/30",       text: "text-slate-700 dark:text-slate-300",      border: "border-slate-200 dark:border-slate-800" },
-  STEP_STARTED:              { bg: "bg-slate-50 dark:bg-slate-950/30",       text: "text-slate-700 dark:text-slate-300",      border: "border-slate-200 dark:border-slate-800" },
-  STEP_FINISHED:             { bg: "bg-slate-50 dark:bg-slate-950/30",       text: "text-slate-700 dark:text-slate-300",      border: "border-slate-200 dark:border-slate-800" },
-  CUSTOM:                    { bg: "bg-slate-50 dark:bg-slate-950/30",       text: "text-slate-700 dark:text-slate-300",      border: "border-slate-200 dark:border-slate-800" },
-  RAW:                       { bg: "bg-slate-50 dark:bg-slate-950/30",       text: "text-slate-600 dark:text-slate-400",      border: "border-slate-200 dark:border-slate-800" },
+  RUN_STARTED: { bg: "bg-emerald-50 dark:bg-emerald-950/30", text: "text-emerald-700 dark:text-emerald-300", border: "border-emerald-200 dark:border-emerald-800" },
+  RUN_FINISHED: { bg: "bg-emerald-50 dark:bg-emerald-950/30", text: "text-emerald-700 dark:text-emerald-300", border: "border-emerald-200 dark:border-emerald-800" },
+  RUN_ERROR: { bg: "bg-red-50 dark:bg-red-950/30", text: "text-red-700 dark:text-red-300", border: "border-red-200 dark:border-red-800" },
+  TEXT_MESSAGE_START: { bg: "bg-blue-50 dark:bg-blue-950/30", text: "text-blue-700 dark:text-blue-300", border: "border-blue-200 dark:border-blue-800" },
+  TEXT_MESSAGE_CONTENT: { bg: "bg-blue-50 dark:bg-blue-950/20", text: "text-blue-600 dark:text-blue-400", border: "border-blue-100 dark:border-blue-900" },
+  TEXT_MESSAGE_END: { bg: "bg-blue-50 dark:bg-blue-950/30", text: "text-blue-700 dark:text-blue-300", border: "border-blue-200 dark:border-blue-800" },
+  TOOL_CALL_START: { bg: "bg-amber-50 dark:bg-amber-950/30", text: "text-amber-700 dark:text-amber-300", border: "border-amber-200 dark:border-amber-800" },
+  TOOL_CALL_ARGS: { bg: "bg-amber-50 dark:bg-amber-950/20", text: "text-amber-600 dark:text-amber-400", border: "border-amber-100 dark:border-amber-900" },
+  TOOL_CALL_END: { bg: "bg-amber-50 dark:bg-amber-950/30", text: "text-amber-700 dark:text-amber-300", border: "border-amber-200 dark:border-amber-800" },
+  TOOL_CALL_RESULT: { bg: "bg-amber-50 dark:bg-amber-950/30", text: "text-amber-700 dark:text-amber-300", border: "border-amber-200 dark:border-amber-800" },
+  REASONING_START: { bg: "bg-slate-50 dark:bg-slate-950/30", text: "text-slate-700 dark:text-slate-300", border: "border-slate-200 dark:border-slate-800" },
+  REASONING_MESSAGE_START: { bg: "bg-slate-50 dark:bg-slate-950/30", text: "text-slate-700 dark:text-slate-300", border: "border-slate-200 dark:border-slate-800" },
+  REASONING_MESSAGE_CONTENT: { bg: "bg-slate-50 dark:bg-slate-950/20", text: "text-slate-600 dark:text-slate-400", border: "border-slate-100 dark:border-slate-900" },
+  REASONING_MESSAGE_END: { bg: "bg-slate-50 dark:bg-slate-950/30", text: "text-slate-700 dark:text-slate-300", border: "border-slate-200 dark:border-slate-800" },
+  REASONING_END: { bg: "bg-slate-50 dark:bg-slate-950/30", text: "text-slate-700 dark:text-slate-300", border: "border-slate-200 dark:border-slate-800" },
+  STEP_STARTED: { bg: "bg-slate-50 dark:bg-slate-950/30", text: "text-slate-700 dark:text-slate-300", border: "border-slate-200 dark:border-slate-800" },
+  STEP_FINISHED: { bg: "bg-slate-50 dark:bg-slate-950/30", text: "text-slate-700 dark:text-slate-300", border: "border-slate-200 dark:border-slate-800" },
+  CUSTOM: { bg: "bg-slate-50 dark:bg-slate-950/30", text: "text-slate-700 dark:text-slate-300", border: "border-slate-200 dark:border-slate-800" },
+  RAW: { bg: "bg-slate-50 dark:bg-slate-950/30", text: "text-slate-600 dark:text-slate-400", border: "border-slate-200 dark:border-slate-800" },
 };
 const DEFAULT_EVENT_COLOR = { bg: "bg-slate-50 dark:bg-slate-950/30", text: "text-slate-600 dark:text-slate-400", border: "border-slate-200 dark:border-slate-800" };
 
@@ -279,8 +280,8 @@ function AGUILifecycleBar({ event }: { event: AGUIBaseEvent }) {
   const color = EVENT_COLORS[event.type] ?? DEFAULT_EVENT_COLOR;
   const label = event.type === AGUIEventType.RUN_STARTED ? "Run Started"
     : event.type === AGUIEventType.RUN_FINISHED ? "Run Finished"
-    : event.type === AGUIEventType.RUN_ERROR ? "Run Error"
-    : event.type;
+      : event.type === AGUIEventType.RUN_ERROR ? "Run Error"
+        : event.type;
 
   const detail = event.type === AGUIEventType.RUN_ERROR ? (event.message as string) ?? "" : "";
 
@@ -419,6 +420,7 @@ interface AGUITracePanelProps {
 
 export function AGUITracePanel({ sessionId, traces }: AGUITracePanelProps) {
   const [viewMode, setViewMode] = useState<ViewMode>("chat");
+  const { t } = useTranslation();
 
   // Replay traces through AG-UI adapter
   const agUIEvents = useMemo(() => {
@@ -432,7 +434,7 @@ export function AGUITracePanel({ sessionId, traces }: AGUITracePanelProps) {
   if (!sessionId) {
     return (
       <div className="h-full flex items-center justify-center p-8">
-        <p className="text-sm text-slate-500 dark:text-slate-400">Select a session to view AG-UI events</p>
+        <p className="text-sm text-slate-500 dark:text-slate-400">{t.trace.selectSessionAGUI}</p>
       </div>
     );
   }
@@ -443,10 +445,10 @@ export function AGUITracePanel({ sessionId, traces }: AGUITracePanelProps) {
       <div className="px-4 py-3 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-2">
           <span className="text-sm font-bold text-blue-600 dark:text-blue-400">AG-UI</span>
-          <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">Protocol View</span>
+          <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">{t.trace.protocolView}</span>
           {agUIEvents.length > 0 && (
             <span className="ml-1 rounded-full bg-blue-100 px-1.5 py-0.5 text-[10px] text-blue-600 dark:bg-blue-900/30 dark:text-blue-400">
-              {agUIEvents.length} events
+              {agUIEvents.length} {t.trace.events}
             </span>
           )}
         </div>
@@ -457,11 +459,10 @@ export function AGUITracePanel({ sessionId, traces }: AGUITracePanelProps) {
             <button
               key={mode}
               onClick={() => setViewMode(mode)}
-              className={`px-2 py-1 rounded-md text-[10px] font-semibold transition-all ${
-                viewMode === mode
-                  ? "bg-blue-500 text-white shadow-sm"
-                  : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
-              }`}
+              className={`px-2 py-1 rounded-md text-[10px] font-semibold transition-all ${viewMode === mode
+                ? "bg-blue-500 text-white shadow-sm"
+                : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+                }`}
             >
               {mode === "chat" ? "Chat" : mode === "events" ? "Events" : "Split"}
             </button>
@@ -473,7 +474,7 @@ export function AGUITracePanel({ sessionId, traces }: AGUITracePanelProps) {
       {agUIEvents.length === 0 && (
         <div className="flex-1 flex items-center justify-center p-8">
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            {traces.length === 0 ? "No traces for this session" : "No AG-UI events generated"}
+            {traces.length === 0 ? t.trace.noTracesSession : t.trace.noAGUIEvents}
           </p>
         </div>
       )}
@@ -523,7 +524,7 @@ export function AGUITracePanel({ sessionId, traces }: AGUITracePanelProps) {
             <div className={`${viewMode === "split" ? "w-1/2" : "w-full"} overflow-y-auto`}>
               <div className="p-2 space-y-1">
                 <div className="px-2 py-1 text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
-                  Raw AG-UI Events ({agUIEvents.length})
+                  {t.trace.rawEvents} ({agUIEvents.length})
                 </div>
                 {agUIEvents.map((evt, idx) => (
                   <EventCard key={idx} event={evt} />

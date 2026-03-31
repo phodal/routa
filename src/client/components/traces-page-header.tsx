@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { useTranslation } from "@/i18n";
 import { Button } from "./button";
 
 interface TracesPageHeaderProps {
@@ -20,6 +21,7 @@ export function TracesPageHeader({
   onToggleSidebar,
   onRefresh,
 }: TracesPageHeaderProps) {
+  const { t } = useTranslation();
   return (
     <div
       className="shrink-0 flex items-center justify-between border-b border-desktop-border px-4 py-3"
@@ -31,10 +33,10 @@ export function TracesPageHeader({
         </svg>
         <div className="min-w-0">
           <h1 className="text-[13px] font-semibold text-desktop-text-primary">
-            Agent Trace Viewer
+            {t.traces.agentTraceViewer}
           </h1>
           <p className="text-[11px] text-desktop-text-secondary">
-            Browse and analyze agent execution traces
+            {t.traces.browseTraces}
           </p>
         </div>
         {selectedSessionId && (
@@ -42,7 +44,7 @@ export function TracesPageHeader({
             className="inline-flex items-center gap-1.5 rounded border border-desktop-border px-2 py-1 text-[10px] text-desktop-text-secondary"
             data-testid="traces-selected-session"
           >
-            <span>Session:</span>
+            <span>{t.traces.session}:</span>
             <code className="font-mono text-desktop-text-primary">{selectedSessionId.slice(0, 8)}…</code>
           </div>
         )}
@@ -57,7 +59,7 @@ export function TracesPageHeader({
             className="group gap-1.5"
             title="Copy shareable URL"
           >
-            <span>Copy link</span>
+            <span>{t.traces.copyLink}</span>
             <svg className="w-3.5 h-3.5 text-desktop-text-secondary group-hover:text-desktop-text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
             </svg>
@@ -69,7 +71,7 @@ export function TracesPageHeader({
           variant="secondary"
           onClick={onToggleSidebar}
         >
-          {showSidebar ? "Hide Sessions" : "Show Sessions"}
+          {showSidebar ? t.traces.hideSessions : t.traces.showSessions}
         </Button>
         <Button
           type="button"
@@ -78,7 +80,7 @@ export function TracesPageHeader({
           onClick={onRefresh}
           disabled={loading}
         >
-          {loading ? "Loading..." : "Refresh"}
+          {loading ? t.common.loading : t.common.refresh}
         </Button>
       </div>
     </div>

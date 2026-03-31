@@ -4,6 +4,7 @@ import React from "react";
 import Image from "next/image";
 import Link from "next/link";
 
+import { useTranslation } from "@/i18n";
 import { ShellHeaderControls } from "./shell-header-controls";
 
 interface DesktopShellHeaderProps {
@@ -19,9 +20,10 @@ export function DesktopShellHeader({
   titleBarRight,
   workspaceSwitcher,
 }: DesktopShellHeaderProps) {
+  const { t } = useTranslation();
   const normalizedWorkspaceId = workspaceId?.trim() || null;
   const workspaceHref = normalizedWorkspaceId ? `/workspace/${normalizedWorkspaceId}` : null;
-  const workspaceLabel = workspaceTitle ?? normalizedWorkspaceId ?? "Workspace";
+  const workspaceLabel = workspaceTitle ?? normalizedWorkspaceId ?? t.workspace.workspaces;
 
   return (
     <header

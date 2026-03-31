@@ -3,6 +3,7 @@
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useId, useState } from "react";
 import { Select } from "./select";
+import { useTranslation } from "@/i18n";
 
 import { desktopAwareFetch } from "../utils/diagnostics";
 import {
@@ -48,6 +49,7 @@ const primaryButtonCls =
   "inline-flex items-center justify-center rounded-xl bg-desktop-accent px-3 py-2 text-xs font-semibold text-white transition hover:brightness-110 disabled:opacity-40";
 
 export function SpecialistsTab({ modelDefs }: SpecialistsTabProps) {
+  const { t } = useTranslation();
   const [specialists, setSpecialists] = useState<SpecialistConfig[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<SpecialistCategory>("all");
@@ -69,14 +71,14 @@ export function SpecialistsTab({ modelDefs }: SpecialistsTabProps) {
         setError(
           response.status === 501
             ? "Specialist editing requires Postgres; local SQLite uses bundled or file-based specialists."
-            : "Failed to load specialists",
+            : t.errors.loadFailed,
         );
         return;
       }
       const data = await response.json();
       setSpecialists(data.specialists ?? []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load specialists");
+      setError(err instanceof Error ? err.message : t.errors.loadFailed);
     } finally {
       setLoading(false);
     }
@@ -147,13 +149,13 @@ export function SpecialistsTab({ modelDefs }: SpecialistsTabProps) {
       });
       if (!response.ok) {
         const data = await response.json();
-        throw new Error(data.error ?? "Save failed");
+        throw new Error(data.error ?? t.errors.saveFailed);
       }
       await load();
       setSelectedId(form.id);
       setEditingId(form.id);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Save failed");
+      setError(err instanceof Error ? err.message : t.errors.saveFailed);
     } finally {
       setSaving(false);
     }
@@ -169,7 +171,7 @@ export function SpecialistsTab({ modelDefs }: SpecialistsTabProps) {
       await load();
       startCreate();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Delete failed");
+      setError(err instanceof Error ? err.message : t.errors.deleteFailed);
     } finally {
       setSaving(false);
     }
@@ -316,7 +318,7 @@ export function SpecialistsTab({ modelDefs }: SpecialistsTabProps) {
         <section className="rounded-[24px] border border-desktop-border bg-desktop-bg-secondary p-5">
           <div className="flex flex-wrap items-start justify-between gap-4 border-b border-desktop-border pb-4">
             <div className="min-w-0">
-              <p className={sectionTitleCls}>{editingId ? "Edit Specialist" : "Create Specialist"}</p>
+              <p className={sectionTitleCls}>{editingId ? `${t.common.edit} ${t.settings.specialists}` : `${t.common.new} ${t.settings.specialists}`}</p>
               <h3 className="mt-1 text-xl font-semibold text-desktop-text-primary">
                 {editingId ? form.name || editingId : "New specialist profile"}
               </h3>

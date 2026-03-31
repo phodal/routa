@@ -15,22 +15,23 @@ import type { WorkspaceAgentEvent } from "@/core/acp/agent-event-bridge/types";
 import { replayTracesAsEventBridge } from "@/core/trace/trace-replay";
 import { MarkdownViewer } from "./markdown/markdown-viewer";
 import { CodeBlock } from "./code-block";
+import { useTranslation } from "@/i18n";
 
 // ─── Block colors ──────────────────────────────────────────────────────────
 
 const BLOCK_COLORS: Record<string, { bg: string; text: string; border: string; icon: string }> = {
-  agent_started:      { bg: "bg-emerald-50 dark:bg-emerald-950/30",  text: "text-emerald-700 dark:text-emerald-300", border: "border-emerald-200 dark:border-emerald-800", icon: "▶" },
-  agent_completed:    { bg: "bg-emerald-50 dark:bg-emerald-950/30",  text: "text-emerald-700 dark:text-emerald-300", border: "border-emerald-200 dark:border-emerald-800", icon: "✓" },
-  agent_failed:       { bg: "bg-red-50 dark:bg-red-950/30",          text: "text-red-700 dark:text-red-300",         border: "border-red-200 dark:border-red-800",         icon: "✗" },
-  message_block:      { bg: "bg-blue-50 dark:bg-blue-950/20",        text: "text-blue-700 dark:text-blue-300",       border: "border-blue-200 dark:border-blue-800",       icon: "💬" },
-  thought_block:      { bg: "bg-slate-50 dark:bg-slate-950/20",      text: "text-slate-700 dark:text-slate-300",     border: "border-slate-200 dark:border-slate-800",     icon: "💭" },
-  read_block:         { bg: "bg-blue-50 dark:bg-blue-950/20",        text: "text-blue-700 dark:text-blue-300",       border: "border-blue-200 dark:border-blue-800",       icon: "📖" },
-  file_changes_block: { bg: "bg-amber-50 dark:bg-amber-950/20",      text: "text-amber-700 dark:text-amber-300",     border: "border-amber-200 dark:border-amber-800",     icon: "📝" },
-  terminal_block:     { bg: "bg-slate-50 dark:bg-slate-950/30",      text: "text-slate-700 dark:text-slate-300",     border: "border-slate-200 dark:border-slate-800",     icon: "⌨" },
-  mcp_block:          { bg: "bg-blue-50 dark:bg-blue-950/20",        text: "text-blue-700 dark:text-blue-300",       border: "border-blue-200 dark:border-blue-800",       icon: "🔌" },
-  tool_call_block:    { bg: "bg-amber-50 dark:bg-amber-950/20",      text: "text-amber-700 dark:text-amber-300",     border: "border-amber-200 dark:border-amber-800",     icon: "🔧" },
-  plan_updated:       { bg: "bg-slate-50 dark:bg-slate-950/20",      text: "text-slate-700 dark:text-slate-300",     border: "border-slate-200 dark:border-slate-800",     icon: "📋" },
-  usage_reported:     { bg: "bg-emerald-50 dark:bg-emerald-950/20",        text: "text-emerald-700 dark:text-emerald-300",       border: "border-emerald-200 dark:border-emerald-800",       icon: "📊" },
+  agent_started: { bg: "bg-emerald-50 dark:bg-emerald-950/30", text: "text-emerald-700 dark:text-emerald-300", border: "border-emerald-200 dark:border-emerald-800", icon: "▶" },
+  agent_completed: { bg: "bg-emerald-50 dark:bg-emerald-950/30", text: "text-emerald-700 dark:text-emerald-300", border: "border-emerald-200 dark:border-emerald-800", icon: "✓" },
+  agent_failed: { bg: "bg-red-50 dark:bg-red-950/30", text: "text-red-700 dark:text-red-300", border: "border-red-200 dark:border-red-800", icon: "✗" },
+  message_block: { bg: "bg-blue-50 dark:bg-blue-950/20", text: "text-blue-700 dark:text-blue-300", border: "border-blue-200 dark:border-blue-800", icon: "💬" },
+  thought_block: { bg: "bg-slate-50 dark:bg-slate-950/20", text: "text-slate-700 dark:text-slate-300", border: "border-slate-200 dark:border-slate-800", icon: "💭" },
+  read_block: { bg: "bg-blue-50 dark:bg-blue-950/20", text: "text-blue-700 dark:text-blue-300", border: "border-blue-200 dark:border-blue-800", icon: "📖" },
+  file_changes_block: { bg: "bg-amber-50 dark:bg-amber-950/20", text: "text-amber-700 dark:text-amber-300", border: "border-amber-200 dark:border-amber-800", icon: "📝" },
+  terminal_block: { bg: "bg-slate-50 dark:bg-slate-950/30", text: "text-slate-700 dark:text-slate-300", border: "border-slate-200 dark:border-slate-800", icon: "⌨" },
+  mcp_block: { bg: "bg-blue-50 dark:bg-blue-950/20", text: "text-blue-700 dark:text-blue-300", border: "border-blue-200 dark:border-blue-800", icon: "🔌" },
+  tool_call_block: { bg: "bg-amber-50 dark:bg-amber-950/20", text: "text-amber-700 dark:text-amber-300", border: "border-amber-200 dark:border-amber-800", icon: "🔧" },
+  plan_updated: { bg: "bg-slate-50 dark:bg-slate-950/20", text: "text-slate-700 dark:text-slate-300", border: "border-slate-200 dark:border-slate-800", icon: "📋" },
+  usage_reported: { bg: "bg-emerald-50 dark:bg-emerald-950/20", text: "text-emerald-700 dark:text-emerald-300", border: "border-emerald-200 dark:border-emerald-800", icon: "📊" },
 };
 
 const DEFAULT_COLOR = { bg: "bg-slate-50 dark:bg-slate-950/30", text: "text-slate-600 dark:text-slate-400", border: "border-slate-200 dark:border-slate-800", icon: "•" };
@@ -482,10 +483,10 @@ function AgentGroup({ events }: { events: WorkspaceAgentEvent[] }) {
 // ─── Filter config ────────────────────────────────────────────────────────
 
 const BLOCK_FILTERS = [
-  { key: "all",    label: "All",     active: "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300" },
-  { key: "message",label: "Messages",active: "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300" },
-  { key: "tool",   label: "Tools",   active: "bg-amber-100 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300" },
-  { key: "thought",label: "Thoughts",active: "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300" },
+  { key: "all", label: "All", active: "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300" },
+  { key: "message", label: "Messages", active: "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300" },
+  { key: "tool", label: "Tools", active: "bg-amber-100 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300" },
+  { key: "thought", label: "Thoughts", active: "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300" },
 ] as const;
 
 // ─── Main Component ───────────────────────────────────────────────────────
@@ -497,6 +498,7 @@ interface EventBridgeTracePanelProps {
 
 export function EventBridgeTracePanel({ sessionId, traces }: EventBridgeTracePanelProps) {
   const [filter, setFilter] = useState<string>("all");
+  const { t } = useTranslation();
 
   // Replay traces through AgentEventBridge
   const semanticEvents = useMemo(() => {
@@ -522,7 +524,7 @@ export function EventBridgeTracePanel({ sessionId, traces }: EventBridgeTracePan
   if (!sessionId) {
     return (
       <div className="h-full flex items-center justify-center p-8">
-        <p className="text-sm text-slate-500 dark:text-slate-400">Select a session to view EventBridge blocks</p>
+        <p className="text-sm text-slate-500 dark:text-slate-400">{t.trace.selectSessionEventBridge}</p>
       </div>
     );
   }
@@ -533,10 +535,10 @@ export function EventBridgeTracePanel({ sessionId, traces }: EventBridgeTracePan
       <div className="px-4 py-3 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-2">
           <span className="text-sm">🔗</span>
-          <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">EventBridge View</span>
+          <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">{t.trace.eventBridgeView}</span>
           {semanticEvents.length > 0 && (
             <span className="ml-1 px-1.5 py-0.5 text-[10px] bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 rounded-full">
-              {semanticEvents.length} events
+              {semanticEvents.length} {t.trace.events}
             </span>
           )}
         </div>
@@ -548,11 +550,10 @@ export function EventBridgeTracePanel({ sessionId, traces }: EventBridgeTracePan
           <button
             key={key}
             onClick={() => setFilter(key)}
-            className={`px-2 py-1 text-[11px] font-medium rounded-md whitespace-nowrap transition-colors ${
-              filter === key
-                ? active
-                : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700"
-            }`}
+            className={`px-2 py-1 text-[11px] font-medium rounded-md whitespace-nowrap transition-colors ${filter === key
+              ? active
+              : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700"
+              }`}
           >
             {label}
           </button>
@@ -563,7 +564,7 @@ export function EventBridgeTracePanel({ sessionId, traces }: EventBridgeTracePan
       {filteredEvents.length === 0 && (
         <div className="flex-1 flex items-center justify-center p-8">
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            {traces.length === 0 ? "No traces for this session" : "No matching events"}
+            {traces.length === 0 ? t.trace.noTracesSession : t.trace.noMatchingEvents}
           </p>
         </div>
       )}

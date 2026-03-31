@@ -12,6 +12,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useWorkspaces } from "@/client/hooks/use-workspaces";
 import { Select } from "./select";
+import { useTranslation } from "@/i18n";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -152,12 +153,13 @@ interface WorkflowDagProps {
 }
 
 function WorkflowDag({ steps, onStepClick }: WorkflowDagProps) {
+  const { t } = useTranslation();
   const { nodes, edges } = buildDag(steps);
 
   if (!nodes.length) {
     return (
       <div className="flex items-center justify-center h-24 text-xs text-slate-400 dark:text-slate-500">
-        No steps to visualize
+        {t.workflows.noSteps}
       </div>
     );
   }
@@ -286,6 +288,7 @@ interface EditorModalProps {
 }
 
 function EditorModal({ workflow, onClose, onSaved }: EditorModalProps) {
+  const { t } = useTranslation();
   const isNew = !workflow;
   const [id, setId] = useState(isNew ? "" : workflow!.id);
   const [yamlContent, setYamlContent] = useState(isNew ? DEFAULT_YAML : workflow!.yamlContent);
@@ -317,7 +320,7 @@ function EditorModal({ workflow, onClose, onSaved }: EditorModalProps) {
       }
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        setError(data.error ?? "Save failed");
+        setError(data.error ?? t.workflows.executionFailed);
         return;
       }
       onSaved();
@@ -335,7 +338,7 @@ function EditorModal({ workflow, onClose, onSaved }: EditorModalProps) {
       <div className="relative bg-white dark:bg-[#1a1d2e] rounded-xl shadow-2xl w-full max-w-2xl mx-4 flex flex-col border border-slate-200 dark:border-slate-700" style={{ maxHeight: "85vh" }}>
         <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 dark:border-slate-700 shrink-0">
           <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-            {isNew ? "New Workflow" : `Edit: ${workflow!.name}`}
+            {isNew ? t.workflows.newWorkflow : `${t.workflows.editLabel}${workflow!.name}`}
           </h3>
           <button
             onClick={onClose}
@@ -400,7 +403,7 @@ function EditorModal({ workflow, onClose, onSaved }: EditorModalProps) {
             disabled={saving || (isNew && !id.trim())}
             className="px-3 py-1.5 text-xs font-medium rounded-md bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
-            {saving ? "Saving…" : "Save"}
+            {saving ? t.workflows.saving : t.common.save}
           </button>
         </div>
       </div>
@@ -416,6 +419,7 @@ interface ExecuteModalProps {
 }
 
 function ExecuteModal({ workflow, onClose }: ExecuteModalProps) {
+  const { t } = useTranslation();
   const workspacesHook = useWorkspaces();
   const [payload, setPayload] = useState("");
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState("");
@@ -430,7 +434,7 @@ function ExecuteModal({ workflow, onClose }: ExecuteModalProps) {
 
   const handleExecute = async () => {
     if (!selectedWorkspaceId) {
-      setError("Select a workspace before running this workflow");
+      setError(t.workflows.selectWorkspaceFirst);
       return;
     }
     setExecuting(true);
@@ -447,7 +451,7 @@ function ExecuteModal({ workflow, onClose }: ExecuteModalProps) {
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        setError(data.error ?? "Execution failed");
+        setError(data.error ?? t.workflows.executionFailed);
         return;
       }
       const data = await res.json();
@@ -526,7 +530,7 @@ function ExecuteModal({ workflow, onClose }: ExecuteModalProps) {
             onClick={onClose}
             className="px-3 py-1.5 text-xs font-medium rounded-md border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
           >
-            {result ? "Close" : "Cancel"}
+            {result ? t.common.close : t.common.cancel}
           </button>
           {!result && (
             <button
@@ -534,7 +538,7 @@ function ExecuteModal({ workflow, onClose }: ExecuteModalProps) {
               disabled={executing || workspacesHook.loading || !selectedWorkspaceId}
               className="px-3 py-1.5 text-xs font-medium rounded-md bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
-              {executing ? "Running…" : "▶ Run"}
+              {executing ? t.common.running : `▶ ${t.workflows.run}`}
             </button>
           )}
         </div>
@@ -668,6 +672,7 @@ function WorkflowCard({ workflow, onEdit, onDelete, onRun }: WorkflowCardProps) 
 // ─── Main Panel ───────────────────────────────────────────────────────────────
 
 export function WorkflowPanel() {
+  const { t } = useTranslation();
   const [workflows, setWorkflows] = useState<Workflow[]>([]);
   const [loading, setLoading] = useState(true);
   const [editTarget, setEditTarget] = useState<Workflow | null | undefined>(undefined); // undefined = closed, null = new
@@ -680,7 +685,7 @@ export function WorkflowPanel() {
     try {
       const res = await fetch("/api/workflows");
       if (!res.ok) {
-        setError("Failed to load workflows");
+        setError(t.workflows.noWorkflows);
         return;
       }
       const data = await res.json();
@@ -720,7 +725,7 @@ export function WorkflowPanel() {
           className="px-2.5 py-1 text-xs font-medium rounded-md bg-blue-600 text-white hover:bg-blue-700 transition-colors"
           aria-label="Create new workflow"
         >
-          + New Workflow
+          + {t.workflows.newWorkflow}
         </button>
       </div>
 
@@ -736,15 +741,15 @@ export function WorkflowPanel() {
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
           </svg>
-          Loading workflows…
+          {t.workflows.loadingWorkflows}
         </div>
       )}
 
       {/* Workflow list */}
       {!loading && workflows.length === 0 && (
         <div className="text-center py-8 text-xs text-slate-400 dark:text-slate-500">
-          <p>No workflows found in <code className="font-mono">resources/flows/</code></p>
-          <p className="mt-1">Create your first workflow to get started.</p>
+          <p>{t.workflows.noWorkflows}</p>
+          <p className="mt-1">{t.workflows.noWorkflowsHint}</p>
         </div>
       )}
 

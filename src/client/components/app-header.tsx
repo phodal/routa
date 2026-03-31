@@ -14,6 +14,7 @@ import { Button } from "./button";
 import { WorkspaceSwitcher } from "@/client/components/workspace-switcher";
 import { ShellHeaderControls } from "@/client/components/shell-header-controls";
 import type { WorkspaceData } from "@/client/hooks/use-workspaces";
+import { useTranslation } from "@/i18n";
 
 export interface AppHeaderProps {
   /** Current workspace ID (used for logo link and switcher) */
@@ -60,6 +61,7 @@ export function AppHeader({
   rightSlot,
 }: AppHeaderProps) {
   const isDashboard = variant === "dashboard";
+  const { t } = useTranslation();
 
   return (
     <header
@@ -75,7 +77,7 @@ export function AppHeader({
           variant="ghost"
           size="xs"
           onClick={onToggleMobileSidebar}
-          aria-label={showMobileSidebar ? "Close sidebar" : "Open sidebar"}
+          aria-label={showMobileSidebar ? t.nav.closeSidebar : t.nav.openSidebar}
           className="md:hidden w-8 h-8 flex items-center justify-center rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500"
         >
           <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -110,7 +112,7 @@ export function AppHeader({
           <div className="flex items-center gap-1.5">
             <div className="w-2 h-2 rounded-full bg-blue-500 shrink-0" />
             <span className="text-[13px] font-medium text-gray-700 dark:text-gray-300 truncate max-w-[180px]">
-              {workspaceTitle ?? "Workspace"}
+              {workspaceTitle ?? t.workspace.workspaces}
             </span>
             <WorkspaceSwitcher
               workspaces={workspaces}

@@ -12,6 +12,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { Select } from "./select";
+import { useTranslation } from "@/i18n";
 
 // ─── Client-side cron description (no node-cron dependency) ─────────────────
 
@@ -119,6 +120,7 @@ export function SchedulePanel({ workspaceId }: { workspaceId?: string }) {
   const [success, setSuccess] = useState<string | null>(null);
   const [cronDescription, setCronDescription] = useState<string>("");
   const [now, setNow] = useState(0);
+  const { t } = useTranslation();
 
   useEffect(() => {
     const init = setTimeout(() => setNow(Date.now()), 0);
@@ -202,11 +204,11 @@ export function SchedulePanel({ workspaceId }: { workspaceId?: string }) {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!workspaceId) {
-      setError("Select a workspace before creating schedules.");
+      setError(t.schedules.selectWorkspace);
       return;
     }
     if (!form.name || !form.cronExpr || !form.taskPrompt || !form.agentId) {
-      setError("Please fill in all required fields.");
+      setError(t.schedules.requiredFields);
       return;
     }
 
@@ -240,7 +242,7 @@ export function SchedulePanel({ workspaceId }: { workspaceId?: string }) {
         throw new Error(d.error ?? `HTTP ${res.status}`);
       }
 
-      setSuccess(editId ? "Schedule updated." : "Schedule created.");
+      setSuccess(editId ? t.schedules.updated : t.schedules.created);
       setShowForm(false);
       setEditId(null);
       await loadSchedules();
@@ -252,11 +254,11 @@ export function SchedulePanel({ workspaceId }: { workspaceId?: string }) {
   }
 
   async function handleDelete(id: string) {
-    if (!window.confirm("Delete this schedule?")) return;
+    if (!window.confirm(`${t.schedules.deleteConfirm}?`)) return;
     try {
       const res = await fetch(`/api/schedules/${id}`, { method: "DELETE" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      setSuccess("Schedule deleted.");
+      setSuccess(t.schedules.deleted);
       await loadSchedules();
     } catch (err) {
       setError(String(err));
@@ -312,7 +314,7 @@ export function SchedulePanel({ workspaceId }: { workspaceId?: string }) {
     <div className="flex flex-col h-full overflow-hidden">
       {!workspaceId && (
         <div className="mx-4 mt-3 rounded-lg border border-dashed border-slate-200 px-4 py-6 text-sm text-slate-500 dark:border-[#1c1f2e] dark:text-slate-400">
-          Select a workspace to manage schedules.
+          {t.schedules.selectWorkspace}
         </div>
       )}
       {/* Alerts */}
@@ -334,7 +336,7 @@ export function SchedulePanel({ workspaceId }: { workspaceId?: string }) {
       {/* Header actions */}
       <div className="flex items-center justify-between px-4 pt-3 pb-2">
         <p className="text-xs text-slate-500 dark:text-slate-400">
-          {schedules.length} schedule{schedules.length !== 1 ? "s" : ""} configured
+          {schedules.length} {t.schedules.configured}
         </p>
         <button
           onClick={openCreate}
@@ -343,7 +345,7 @@ export function SchedulePanel({ workspaceId }: { workspaceId?: string }) {
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
           </svg>
-          New Schedule
+          {t.schedules.newSchedule}
         </button>
       </div>
 
@@ -368,7 +370,7 @@ export function SchedulePanel({ workspaceId }: { workspaceId?: string }) {
             {loading ? (
               <div className="flex items-center justify-center py-12 text-slate-400">
                 <div className="w-5 h-5 border-2 border-slate-300 dark:border-slate-600 border-t-blue-500 rounded-full animate-spin mr-2" />
-                Loading…
+                {t.common.loading}
               </div>
             ) : schedules.length === 0 ? (
               <ScheduleEmptyState onAdd={openCreate} />
@@ -398,6 +400,7 @@ export function SchedulePanel({ workspaceId }: { workspaceId?: string }) {
 // ─── Sub-components ──────────────────────────────────────────────────────────
 
 function ScheduleEmptyState({ onAdd }: { onAdd: () => void }) {
+  const { t } = useTranslation();
   return (
     <div className="flex flex-col items-center justify-center py-16 text-center">
       <div className="w-16 h-16 bg-slate-100 dark:bg-slate-800 rounded-2xl flex items-center justify-center mb-4">
@@ -405,16 +408,16 @@ function ScheduleEmptyState({ onAdd }: { onAdd: () => void }) {
           <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
       </div>
-      <h3 className="text-base font-medium text-slate-900 dark:text-slate-100 mb-1">No scheduled triggers configured</h3>
+      <h3 className="text-base font-medium text-slate-900 dark:text-slate-100 mb-1">{t.schedules.noSchedulesTitle}</h3>
       <p className="text-sm text-slate-500 dark:text-slate-400 max-w-sm mb-4">
-        Define recurring cron schedules to automatically run agents for dependency updates,
-        coverage checks, or security audits.
+        {t.schedules.noSchedulesDesc}
+
       </p>
       <button
         onClick={onAdd}
         className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg transition-colors"
       >
-        Create Your First Schedule
+        {t.schedules.createFirst}
       </button>
     </div>
   );
@@ -436,10 +439,11 @@ function ScheduleForm({
   form, setForm, editId, saving, cronDescription, specialists,
   onSubmit, onCancel, onPresetChange,
 }: ScheduleFormProps) {
+  const { t } = useTranslation();
   return (
     <form onSubmit={onSubmit} className="bg-white dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl p-5 mt-2 space-y-4">
       <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-        {editId ? "Edit Schedule" : "New Cron Schedule"}
+        {editId ? t.schedules.editSchedule : t.schedules.newSchedule}
       </h3>
 
       {/* Name */}
@@ -550,7 +554,7 @@ function ScheduleForm({
       {/* Prompt Template (advanced override) */}
       <details className="group">
         <summary className="text-xs text-slate-500 dark:text-slate-400 cursor-pointer hover:text-slate-700 dark:hover:text-slate-300 select-none">
-          Advanced: Prompt Template Override
+          {t.schedules.promptTemplateOverride}
         </summary>
         <div className="mt-2">
           <textarea
@@ -571,7 +575,7 @@ function ScheduleForm({
           onChange={(e) => setForm((p) => ({ ...p, enabled: e.target.checked }))}
           className="accent-blue-600"
         />
-        <span className="text-sm text-slate-700 dark:text-slate-300">Enabled</span>
+        <span className="text-sm text-slate-700 dark:text-slate-300">{t.common.enabled}</span>
       </label>
 
       {/* Actions */}
@@ -581,14 +585,14 @@ function ScheduleForm({
           onClick={onCancel}
           className="px-4 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors"
         >
-          Cancel
+          {t.common.cancel}
         </button>
         <button
           type="submit"
           disabled={saving}
           className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg transition-colors"
         >
-          {saving ? "Saving…" : editId ? "Update Schedule" : "Create Schedule"}
+          {saving ? t.common.loading : editId ? t.schedules.editSchedule : t.schedules.newSchedule}
         </button>
       </div>
     </form>
@@ -606,6 +610,7 @@ interface ScheduleCardProps {
 }
 
 function ScheduleCard({ schedule, onEdit, onDelete, onToggle, onRunNow, isRunning, now }: ScheduleCardProps) {
+  const { t } = useTranslation();
   const description = (() => {
     try { return describeCronExpr(schedule.cronExpr); } catch { return schedule.cronExpr; }
   })();
@@ -660,7 +665,7 @@ function ScheduleCard({ schedule, onEdit, onDelete, onToggle, onRunNow, isRunnin
                 <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                 </svg>
-                Last: {formatRelTime(schedule.lastRunAt) ?? new Date(schedule.lastRunAt).toLocaleDateString()}
+                {t.schedules.last}: {formatRelTime(schedule.lastRunAt) ?? new Date(schedule.lastRunAt).toLocaleDateString()}
               </span>
             )}
             {schedule.nextRunAt && schedule.enabled && (
@@ -668,11 +673,11 @@ function ScheduleCard({ schedule, onEdit, onDelete, onToggle, onRunNow, isRunnin
                 <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
-                Next: {formatRelTime(schedule.nextRunAt) ?? new Date(schedule.nextRunAt).toLocaleDateString()}
+                {t.schedules.next}: {formatRelTime(schedule.nextRunAt) ?? new Date(schedule.nextRunAt).toLocaleDateString()}
               </span>
             )}
             {!schedule.enabled && (
-              <span className="text-amber-500 dark:text-amber-400">Disabled</span>
+              <span className="text-amber-500 dark:text-amber-400">{t.common.disabled}</span>
             )}
           </div>
         </div>
@@ -707,7 +712,7 @@ function ScheduleCard({ schedule, onEdit, onDelete, onToggle, onRunNow, isRunnin
               <path strokeLinecap="round" strokeLinejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z" />
             </svg>
           )}
-          {isRunning ? "Running…" : "Run Now"}
+          {isRunning ? `${t.common.running}…` : t.schedules.runNow}
         </button>
 
         <button
@@ -717,7 +722,7 @@ function ScheduleCard({ schedule, onEdit, onDelete, onToggle, onRunNow, isRunnin
           <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
           </svg>
-          Edit
+          {t.common.edit}
         </button>
 
         <button
@@ -727,7 +732,7 @@ function ScheduleCard({ schedule, onEdit, onDelete, onToggle, onRunNow, isRunnin
           <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
           </svg>
-          Delete
+          {t.common.delete}
         </button>
       </div>
     </div>

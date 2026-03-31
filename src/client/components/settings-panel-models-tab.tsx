@@ -14,6 +14,7 @@ import {
   sectionHeadCls,
   type ModelDefinition,
 } from "./settings-panel-shared";
+import { useTranslation } from "@/i18n";
 
 export function ModelsTab() {
   const [defs, setDefs] = useState<ModelDefinition[]>(() => loadModelDefinitions());
@@ -22,6 +23,7 @@ export function ModelsTab() {
   const [aliasError, setAliasError] = useState("");
   const baseUrlListId = useId();
   const aliasInputRef = useRef<HTMLInputElement>(null);
+  const { t } = useTranslation();
 
   const persist = (next: ModelDefinition[]) => {
     setDefs(next);
@@ -33,7 +35,7 @@ export function ModelsTab() {
   };
 
   const handleDelete = (idx: number) => {
-    if (!confirm(`Delete model "${defs[idx].alias}"?`)) return;
+    if (!confirm(`${t.models.deleteConfirm} "${defs[idx].alias}"?`)) return;
     persist(defs.filter((_, definitionIndex) => definitionIndex !== idx));
     if (expandedIdx === idx) setExpandedIdx(null);
   };
@@ -43,7 +45,7 @@ export function ModelsTab() {
     const modelName = form.modelName.trim();
     if (!alias || !modelName) return;
     if (defs.some((definition) => definition.alias === alias)) {
-      setAliasError(`"${alias}" already exists`);
+      setAliasError(`"${alias}" ${t.models.aliasAlreadyExists}`);
       return;
     }
     persist([...defs, { ...form, alias, modelName }]);
@@ -71,13 +73,13 @@ export function ModelsTab() {
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
             </svg>
           </div>
-          <span className="text-xs font-semibold text-blue-700 dark:text-blue-400">Add a model</span>
-          <span className="text-[10px] text-slate-400 dark:text-slate-500 ml-auto hidden sm:block">Press Enter to add</span>
+          <span className="text-xs font-semibold text-blue-700 dark:text-blue-400">{t.models.addModel}</span>
+          <span className="text-[10px] text-slate-400 dark:text-slate-500 ml-auto hidden sm:block">{t.models.pressEnterToAdd}</span>
         </div>
 
         <div className="grid grid-cols-2 gap-2">
           <div className="space-y-1">
-            <label className={labelCls}>Alias <span className="text-blue-400">*</span></label>
+            <label className={labelCls}>{t.models.alias} <span className="text-blue-400">*</span></label>
             <input
               ref={aliasInputRef}
               autoFocus
@@ -94,7 +96,7 @@ export function ModelsTab() {
             {aliasError && <p className="text-[10px] text-red-500">{aliasError}</p>}
           </div>
           <div className="space-y-1">
-            <label className={labelCls}>Model Name <span className="text-blue-400">*</span></label>
+            <label className={labelCls}>{t.models.modelName} <span className="text-blue-400">*</span></label>
             <input
               type="text"
               value={form.modelName}
@@ -107,7 +109,7 @@ export function ModelsTab() {
         </div>
 
         <div className="space-y-1">
-          <label className={labelCls}>Base URL</label>
+          <label className={labelCls}>{t.models.baseUrl}</label>
           <input
             type="url"
             list={baseUrlListId}
@@ -120,7 +122,7 @@ export function ModelsTab() {
         </div>
 
         <div className="space-y-1">
-          <label className={labelCls}>API Key</label>
+          <label className={labelCls}>{t.models.apiKey}</label>
           <input
             type="password"
             value={form.apiKey ?? ""}
@@ -140,13 +142,13 @@ export function ModelsTab() {
           <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
           </svg>
-          Add Model
+          {t.models.addModel}
         </button>
       </div>
 
       {defs.length > 0 && (
         <div className="space-y-1.5">
-          <p className={sectionHeadCls}>Saved Models</p>
+          <p className={sectionHeadCls}>{t.models.savedModels}</p>
           {defs.map((definition, idx) => {
             const isOpen = expandedIdx === idx;
             return (
@@ -182,24 +184,24 @@ export function ModelsTab() {
                   <div className="p-3 space-y-2.5 border-t border-slate-200 dark:border-slate-700">
                     <div className="grid grid-cols-2 gap-2">
                       <div className="space-y-1">
-                        <label className={labelCls}>Alias</label>
+                        <label className={labelCls}>{t.models.alias}</label>
                         <input type="text" value={definition.alias}
                           onChange={(event) => handleUpdate(idx, "alias", event.target.value)} className={inputCls} />
                       </div>
                       <div className="space-y-1">
-                        <label className={labelCls}>Model Name</label>
+                        <label className={labelCls}>{t.models.modelName}</label>
                         <input type="text" value={definition.modelName}
                           onChange={(event) => handleUpdate(idx, "modelName", event.target.value)} className={`${inputCls} font-mono`} />
                       </div>
                     </div>
                     <div className="space-y-1">
-                      <label className={labelCls}>Base URL</label>
+                      <label className={labelCls}>{t.models.baseUrl}</label>
                       <input type="url" list={baseUrlListId} value={definition.baseUrl ?? ""}
                         onChange={(event) => handleUpdate(idx, "baseUrl", event.target.value || "")}
                         placeholder="https://api.example.com/anthropic" className={`${inputCls} font-mono`} />
                     </div>
                     <div className="space-y-1">
-                      <label className={labelCls}>API Key</label>
+                      <label className={labelCls}>{t.models.apiKey}</label>
                       <input type="password" value={definition.apiKey ?? ""}
                         onChange={(event) => handleUpdate(idx, "apiKey", event.target.value || "")}
                         placeholder="sk-…" autoComplete="off" className={`${inputCls} font-mono`} />
@@ -210,7 +212,7 @@ export function ModelsTab() {
             );
           })}
           <p className="text-[10px] text-slate-400 dark:text-slate-500 pt-1">
-            Aliases appear in the <strong>Providers</strong> tab model selector and resolve to the actual model + connection at session creation.
+            {t.models.aliasDescription}
           </p>
         </div>
       )}

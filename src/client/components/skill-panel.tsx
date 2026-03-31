@@ -16,6 +16,7 @@ import { desktopAwareFetch } from "../utils/diagnostics";
 import { useSkills, type UseSkillsState, type UseSkillsActions, type CatalogType } from "../hooks/use-skills";
 import type { SkillsShSkill, GithubCatalogSkill } from "../skill-client";
 import { MarkdownViewer } from "./markdown/markdown-viewer";
+import { useTranslation } from "@/i18n";
 
 interface SkillPanelProps {
   /** Pass a shared useSkills() instance to keep sidebar and chat in sync */
@@ -49,6 +50,7 @@ export function SkillPanel({ skillsHook: externalHook }: SkillPanelProps) {
   const [showCatalogModal, setShowCatalogModal] = useState(false);
   const [expandedSkill, setExpandedSkill] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState(false);
+  const { t } = useTranslation();
 
   const handleSkillClick = useCallback(
     async (name: string) => {
@@ -80,7 +82,7 @@ export function SkillPanel({ skillsHook: externalHook }: SkillPanelProps) {
           <svg className="w-3.5 h-3.5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
           </svg>
-          <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Skills</span>
+          <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">{t.story.skills}</span>
           {allDisplaySkills.length > 0 && (
             <span className="ml-1 px-1.5 py-0.5 text-[10px] bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 rounded-full">
               {allDisplaySkills.length}
@@ -89,10 +91,10 @@ export function SkillPanel({ skillsHook: externalHook }: SkillPanelProps) {
         </button>
         {!collapsed && (
           <div className="flex items-center gap-2">
-            <button onClick={() => setShowCatalogModal(true)} className="text-[11px] text-amber-600 hover:text-amber-700 dark:text-amber-400 transition-colors" title="Browse skill catalog">Catalog</button>
-            <button onClick={() => setShowCloneModal(true)} className="text-[11px] text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 transition-colors" title="Clone skills from GitHub">Clone</button>
-            <button onClick={() => setShowUploadModal(true)} className="text-[11px] text-blue-500 hover:text-blue-600 dark:text-blue-400 transition-colors" title="Upload skill zip">Upload</button>
-            <button onClick={reloadFromDisk} disabled={loading} className="text-[11px] text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 disabled:opacity-50 transition-colors">{loading ? "..." : "Reload"}</button>
+            <button onClick={() => setShowCatalogModal(true)} className="text-[11px] text-amber-600 hover:text-amber-700 dark:text-amber-400 transition-colors" title={t.skills.browseCatalog}>{t.skills.catalog}</button>
+            <button onClick={() => setShowCloneModal(true)} className="text-[11px] text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 transition-colors" title={t.skills.cloneFromGithub}>{t.skills.cloneSkills}</button>
+            <button onClick={() => setShowUploadModal(true)} className="text-[11px] text-blue-500 hover:text-blue-600 dark:text-blue-400 transition-colors" title={t.skills.uploadZip}>{t.skills.uploadSkill}</button>
+            <button onClick={reloadFromDisk} disabled={loading} className="text-[11px] text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 disabled:opacity-50 transition-colors">{loading ? "..." : t.skills.reload}</button>
           </div>
         )}
       </div>
@@ -100,115 +102,113 @@ export function SkillPanel({ skillsHook: externalHook }: SkillPanelProps) {
       {!collapsed && (
         <>
 
-      {error && (
-        <div className="mx-3 mb-2 px-2 py-1.5 rounded-md bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-[11px]">
-          {error}
-        </div>
-      )}
+          {error && (
+            <div className="mx-3 mb-2 px-2 py-1.5 rounded-md bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-[11px]">
+              {error}
+            </div>
+          )}
 
-      {/* Skill list */}
-      <div className="px-1.5 pb-2">
-        {allDisplaySkills.length === 0 ? (
-          <div className="px-3 py-4 text-center text-slate-400 dark:text-slate-500 text-xs">
-            No skills found. Clone from GitHub, upload a zip, or add SKILL.md files.
-          </div>
-        ) : (
-          allDisplaySkills.map((skill) => (
-            <div key={skill.name}>
-              <button
-                onClick={() => handleSkillClick(skill.name)}
-                title={skill.description}
-                className={`group w-full text-left px-2.5 py-2 mb-0.5 rounded-md transition-all duration-150 ${
-                  expandedSkill === skill.name
-                    ? "bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 ring-1 ring-blue-200 dark:ring-blue-800/50"
-                    : "hover:bg-slate-100/80 dark:hover:bg-slate-800/60 text-slate-700 dark:text-slate-300"
-                }`}
-              >
-                <div className="flex items-center gap-1.5">
-                  <svg
-                    className={`w-3 h-3 shrink-0 transition-transform duration-150 ${
-                      expandedSkill === skill.name
-                        ? "rotate-90 text-blue-500 dark:text-blue-400"
-                        : "text-slate-400 group-hover:text-slate-500 dark:group-hover:text-slate-300"
-                    }`}
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                    strokeWidth={2}
+          {/* Skill list */}
+          <div className="px-1.5 pb-2">
+            {allDisplaySkills.length === 0 ? (
+              <div className="px-3 py-4 text-center text-slate-400 dark:text-slate-500 text-xs">
+                {t.skills.noSkillsFound}
+              </div>
+            ) : (
+              allDisplaySkills.map((skill) => (
+                <div key={skill.name}>
+                  <button
+                    onClick={() => handleSkillClick(skill.name)}
+                    title={skill.description}
+                    className={`group w-full text-left px-2.5 py-2 mb-0.5 rounded-md transition-all duration-150 ${expandedSkill === skill.name
+                      ? "bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 ring-1 ring-blue-200 dark:ring-blue-800/50"
+                      : "hover:bg-slate-100/80 dark:hover:bg-slate-800/60 text-slate-700 dark:text-slate-300"
+                      }`}
                   >
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-                  </svg>
-                  <span className="text-xs font-medium truncate">
-                    /{skill.name}
-                  </span>
-                  {skill.source === "repo" && (
-                    <span className="shrink-0 px-1.5 py-0.5 text-[9px] text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-900/20 rounded">
-                      repo
-                    </span>
-                  )}
-                  {skill.license && (
-                    <span className="ml-auto shrink-0 px-1.5 py-0.5 text-[9px] text-slate-400 bg-slate-100 dark:bg-slate-800 rounded">
-                      {skill.license}
-                    </span>
-                  )}
-                </div>
-                <div className="mt-0.5 ml-[18px] text-[10px] text-slate-400 dark:text-slate-500 line-clamp-2 leading-relaxed">
-                  {skill.shortDescription || skill.description}
-                </div>
-              </button>
+                    <div className="flex items-center gap-1.5">
+                      <svg
+                        className={`w-3 h-3 shrink-0 transition-transform duration-150 ${expandedSkill === skill.name
+                          ? "rotate-90 text-blue-500 dark:text-blue-400"
+                          : "text-slate-400 group-hover:text-slate-500 dark:group-hover:text-slate-300"
+                          }`}
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                        strokeWidth={2}
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                      </svg>
+                      <span className="text-xs font-medium truncate">
+                        /{skill.name}
+                      </span>
+                      {skill.source === "repo" && (
+                        <span className="shrink-0 px-1.5 py-0.5 text-[9px] text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-900/20 rounded">
+                          repo
+                        </span>
+                      )}
+                      {skill.license && (
+                        <span className="ml-auto shrink-0 px-1.5 py-0.5 text-[9px] text-slate-400 bg-slate-100 dark:bg-slate-800 rounded">
+                          {skill.license}
+                        </span>
+                      )}
+                    </div>
+                    <div className="mt-0.5 ml-[18px] text-[10px] text-slate-400 dark:text-slate-500 line-clamp-2 leading-relaxed">
+                      {skill.shortDescription || skill.description}
+                    </div>
+                  </button>
 
-              {/* Expanded skill content */}
-              {expandedSkill === skill.name && loadedSkill?.name === skill.name && (
-                <div className="mx-2.5 mb-2 rounded-md bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800 overflow-hidden">
-                  {/* Full description */}
-                  <div className="px-3 py-2 text-[11px] text-slate-600 dark:text-slate-400 leading-relaxed border-b border-slate-100 dark:border-slate-700">
-                    {loadedSkill.description}
-                  </div>
-                  {/* Skill instructions rendered as markdown */}
-                  {loadedSkill.content && (
-                    <div className="max-h-60 overflow-y-auto skill-content-viewer">
-                      <MarkdownViewer
-                        content={loadedSkill.content}
-                        className="px-3 py-2 text-[11px] leading-relaxed prose-compact"
-                      />
+                  {/* Expanded skill content */}
+                  {expandedSkill === skill.name && loadedSkill?.name === skill.name && (
+                    <div className="mx-2.5 mb-2 rounded-md bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800 overflow-hidden">
+                      {/* Full description */}
+                      <div className="px-3 py-2 text-[11px] text-slate-600 dark:text-slate-400 leading-relaxed border-b border-slate-100 dark:border-slate-700">
+                        {loadedSkill.description}
+                      </div>
+                      {/* Skill instructions rendered as markdown */}
+                      {loadedSkill.content && (
+                        <div className="max-h-60 overflow-y-auto skill-content-viewer">
+                          <MarkdownViewer
+                            content={loadedSkill.content}
+                            className="px-3 py-2 text-[11px] leading-relaxed prose-compact"
+                          />
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
-              )}
-            </div>
-          ))
-        )}
-      </div>
+              ))
+            )}
+          </div>
 
-      {/* Catalog Modal */}
-      {showCatalogModal && (
-        <SkillCatalogModal
-          onClose={() => { setShowCatalogModal(false); clearCatalog(); }}
-          onInstalled={reloadFromDisk}
-          catalogSkills={catalogSkills}
-          githubCatalogSkills={githubCatalogSkills}
-          catalogLoading={catalogLoading}
-          catalogInstalling={catalogInstalling}
-          searchCatalog={searchCatalog}
-          listGithubCatalog={listGithubCatalog}
-          installFromCatalog={installFromCatalog}
-          installFromGithubCatalog={installFromGithubCatalog}
-        />
-      )}
+          {/* Catalog Modal */}
+          {showCatalogModal && (
+            <SkillCatalogModal
+              onClose={() => { setShowCatalogModal(false); clearCatalog(); }}
+              onInstalled={reloadFromDisk}
+              catalogSkills={catalogSkills}
+              githubCatalogSkills={githubCatalogSkills}
+              catalogLoading={catalogLoading}
+              catalogInstalling={catalogInstalling}
+              searchCatalog={searchCatalog}
+              listGithubCatalog={listGithubCatalog}
+              installFromCatalog={installFromCatalog}
+              installFromGithubCatalog={installFromGithubCatalog}
+            />
+          )}
 
-      {/* Clone Modal */}
-      {showCloneModal && (
-        <SkillCloneModal
-          onClose={() => setShowCloneModal(false)}
-          onCloned={reloadFromDisk}
-          cloneFromGithub={cloneFromGithub}
-        />
-      )}
+          {/* Clone Modal */}
+          {showCloneModal && (
+            <SkillCloneModal
+              onClose={() => setShowCloneModal(false)}
+              onCloned={reloadFromDisk}
+              cloneFromGithub={cloneFromGithub}
+            />
+          )}
 
-      {/* Upload Modal */}
-      {showUploadModal && (
-        <SkillUploadModal onClose={() => setShowUploadModal(false)} onUploaded={reloadFromDisk} />
-      )}
+          {/* Upload Modal */}
+          {showUploadModal && (
+            <SkillUploadModal onClose={() => setShowUploadModal(false)} onUploaded={reloadFromDisk} />
+          )}
         </>
       )}
     </div>
@@ -247,6 +247,7 @@ function SkillCatalogModal({
   installFromCatalog: (skills: Array<{ name: string; source: string }>) => Promise<unknown>;
   installFromGithubCatalog: (skills: string[], repo?: string, catalogPath?: string) => Promise<unknown>;
 }) {
+  const { t } = useTranslation();
   const [catalogType, setCatalogType] = useState<CatalogType>("skillssh");
   const [query, setQuery] = useState("");
   const [githubRepo, setGithubRepo] = useState("openai/skills");
@@ -368,7 +369,7 @@ function SkillCatalogModal({
         <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-700">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-              Skill Catalog
+              {t.skills.skillCatalog}
             </h3>
             <button
               onClick={onClose}
@@ -384,11 +385,10 @@ function SkillCatalogModal({
           <div className="flex gap-1 bg-slate-100 dark:bg-slate-800 rounded-lg p-0.5">
             <button
               onClick={() => handleSwitchCatalog("skillssh")}
-              className={`flex-1 px-3 py-1.5 text-[11px] font-medium rounded-md transition-colors ${
-                catalogType === "skillssh"
-                  ? "bg-white dark:bg-[#1e2130] text-amber-700 dark:text-amber-400 shadow-sm"
-                  : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300"
-              }`}
+              className={`flex-1 px-3 py-1.5 text-[11px] font-medium rounded-md transition-colors ${catalogType === "skillssh"
+                ? "bg-white dark:bg-[#1e2130] text-amber-700 dark:text-amber-400 shadow-sm"
+                : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300"
+                }`}
             >
               <span className="flex items-center justify-center gap-1.5">
                 <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -399,11 +399,10 @@ function SkillCatalogModal({
             </button>
             <button
               onClick={() => handleSwitchCatalog("github")}
-              className={`flex-1 px-3 py-1.5 text-[11px] font-medium rounded-md transition-colors ${
-                catalogType === "github"
-                  ? "bg-white dark:bg-[#1e2130] text-slate-900 dark:text-slate-100 shadow-sm"
-                  : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300"
-              }`}
+              className={`flex-1 px-3 py-1.5 text-[11px] font-medium rounded-md transition-colors ${catalogType === "github"
+                ? "bg-white dark:bg-[#1e2130] text-slate-900 dark:text-slate-100 shadow-sm"
+                : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300"
+                }`}
             >
               <span className="flex items-center justify-center gap-1.5">
                 <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor">
@@ -433,7 +432,7 @@ function SkillCatalogModal({
                 type="text"
                 value={query}
                 onChange={(e) => handleSearch(e.target.value)}
-                placeholder="Search skills... (e.g. react, supabase, testing)"
+                placeholder={t.skills.searchSkills}
                 className="flex-1 px-2.5 py-2.5 bg-transparent text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 outline-none"
                 onKeyDown={(e) => {
                   if (e.key === "Escape") onClose();
@@ -474,7 +473,7 @@ function SkillCatalogModal({
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                     </svg>
                   ) : (
-                    "Load"
+                    t.skills.load
                   )}
                 </button>
               </div>
@@ -492,11 +491,10 @@ function SkillCatalogModal({
                       setGithubPath(preset.path);
                       listGithubCatalog(preset.repo, preset.path);
                     }}
-                    className={`px-1.5 py-0.5 text-[10px] font-mono rounded transition-colors ${
-                      githubRepo === preset.repo && githubPath === preset.path
-                        ? "text-blue-700 dark:text-blue-300 bg-blue-100 dark:bg-blue-900/30"
-                        : "text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700"
-                    }`}
+                    className={`px-1.5 py-0.5 text-[10px] font-mono rounded transition-colors ${githubRepo === preset.repo && githubPath === preset.path
+                      ? "text-blue-700 dark:text-blue-300 bg-blue-100 dark:bg-blue-900/30"
+                      : "text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700"
+                      }`}
                   >
                     {preset.label}
                   </button>
@@ -513,10 +511,10 @@ function SkillCatalogModal({
             catalogSkills.length === 0 && !catalogLoading ? (
               <div className="text-center py-6 text-xs text-slate-400 dark:text-slate-500">
                 {query.length >= 2
-                  ? "No skills found. Try a different search term."
+                  ? t.skills.noResults
                   : (
                     <div className="space-y-1">
-                      <div>Type at least 2 characters to search the <a href="https://skills.sh" target="_blank" rel="noopener noreferrer" className="text-amber-500 hover:text-amber-600 dark:hover:text-amber-400">skills.sh</a> catalog.</div>
+                      <div>{t.skills.typeToSearch}</div>
                       <div className="text-[10px] text-slate-300 dark:text-slate-600">e.g. react, supabase, testing, next.js</div>
                     </div>
                   )}
@@ -528,13 +526,12 @@ function SkillCatalogModal({
                   return (
                     <label
                       key={skillKey}
-                      className={`flex items-center gap-2 px-2.5 py-2 rounded-md cursor-pointer transition-colors ${
-                        skill.installed
-                          ? "bg-emerald-50/50 dark:bg-emerald-900/10 opacity-60"
-                          : isSelected(skill)
-                            ? "bg-amber-50 dark:bg-amber-900/20"
-                            : "hover:bg-slate-50 dark:hover:bg-slate-800/50"
-                      }`}
+                      className={`flex items-center gap-2 px-2.5 py-2 rounded-md cursor-pointer transition-colors ${skill.installed
+                        ? "bg-emerald-50/50 dark:bg-emerald-900/10 opacity-60"
+                        : isSelected(skill)
+                          ? "bg-amber-50 dark:bg-amber-900/20"
+                          : "hover:bg-slate-50 dark:hover:bg-slate-800/50"
+                        }`}
                     >
                       <input
                         type="checkbox"
@@ -545,14 +542,13 @@ function SkillCatalogModal({
                       />
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-1.5">
-                          <span className={`text-xs font-medium truncate ${
-                            skill.installed ? "text-slate-400" : "text-slate-800 dark:text-slate-200"
-                          }`}>
+                          <span className={`text-xs font-medium truncate ${skill.installed ? "text-slate-400" : "text-slate-800 dark:text-slate-200"
+                            }`}>
                             {skill.name}
                           </span>
                           {skill.installed && (
                             <span className="shrink-0 px-1 py-0.5 text-[8px] text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 rounded">
-                              installed
+                              {t.skills.installedLabel}
                             </span>
                           )}
                         </div>
@@ -574,20 +570,19 @@ function SkillCatalogModal({
             /* GitHub catalog results */
             githubCatalogSkills.length === 0 && !catalogLoading ? (
               <div className="text-center py-6 text-xs text-slate-400 dark:text-slate-500">
-                Select a repo above or click &quot;Load&quot; to browse skills.
+                {t.skills.selectRepoOrLoad}
               </div>
             ) : (
               <div className="space-y-0.5 max-h-72 overflow-y-auto">
                 {githubCatalogSkills.map((skill) => (
                   <label
                     key={skill.name}
-                    className={`flex items-center gap-2 px-2.5 py-2 rounded-md cursor-pointer transition-colors ${
-                      skill.installed
-                        ? "bg-emerald-50/50 dark:bg-emerald-900/10 opacity-60"
-                        : githubSelected.has(skill.name)
-                          ? "bg-blue-50 dark:bg-blue-900/20"
-                          : "hover:bg-slate-50 dark:hover:bg-slate-800/50"
-                    }`}
+                    className={`flex items-center gap-2 px-2.5 py-2 rounded-md cursor-pointer transition-colors ${skill.installed
+                      ? "bg-emerald-50/50 dark:bg-emerald-900/10 opacity-60"
+                      : githubSelected.has(skill.name)
+                        ? "bg-blue-50 dark:bg-blue-900/20"
+                        : "hover:bg-slate-50 dark:hover:bg-slate-800/50"
+                      }`}
                   >
                     <input
                       type="checkbox"
@@ -597,15 +592,14 @@ function SkillCatalogModal({
                       className="w-3.5 h-3.5 rounded border-slate-300 dark:border-slate-600 text-blue-600 focus:ring-blue-500 disabled:opacity-50 shrink-0"
                     />
                     <div className="flex-1 min-w-0">
-                      <span className={`text-xs font-medium ${
-                        skill.installed ? "text-slate-400" : "text-slate-800 dark:text-slate-200"
-                      }`}>
+                      <span className={`text-xs font-medium ${skill.installed ? "text-slate-400" : "text-slate-800 dark:text-slate-200"
+                        }`}>
                         {skill.name}
                       </span>
                     </div>
                     {skill.installed && (
                       <span className="shrink-0 px-1 py-0.5 text-[8px] text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 rounded">
-                        installed
+                        {t.skills.installedLabel}
                       </span>
                     )}
                   </label>
@@ -620,7 +614,7 @@ function SkillCatalogModal({
               {installResult.installed.length > 0 && (
                 <div className="rounded-md bg-emerald-50 dark:bg-emerald-900/10 border border-emerald-200 dark:border-emerald-800/50 px-3 py-2">
                   <div className="text-xs text-emerald-700 dark:text-emerald-400 font-medium mb-1">
-                    Installed {installResult.installed.length} skill{installResult.installed.length !== 1 ? "s" : ""}
+                    {t.agents.installed} {installResult.installed.length}
                   </div>
                   <div className="flex flex-wrap gap-1">
                     {installResult.installed.map((name) => (
@@ -652,8 +646,8 @@ function SkillCatalogModal({
           <div className="text-[10px] text-slate-400 dark:text-slate-500">
             {totalResults > 0 && (
               <>
-                {totalResults} results
-                {totalSelected > 0 && ` · ${totalSelected} selected`}
+                {totalResults} {t.skills.results}
+                {totalSelected > 0 && ` · ${totalSelected} ${t.skills.selected}`}
               </>
             )}
           </div>
@@ -662,17 +656,16 @@ function SkillCatalogModal({
               onClick={onClose}
               className="px-3 py-1.5 text-xs text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 rounded-md transition-colors"
             >
-              Close
+              {t.common.close}
             </button>
             {totalSelected > 0 && (
               <button
                 onClick={handleInstall}
                 disabled={catalogInstalling}
-                className={`px-4 py-1.5 text-xs font-medium text-white rounded-md transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5 ${
-                  catalogType === "skillssh"
-                    ? "bg-amber-600 hover:bg-amber-700"
-                    : "bg-blue-600 hover:bg-blue-700"
-                }`}
+                className={`px-4 py-1.5 text-xs font-medium text-white rounded-md transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5 ${catalogType === "skillssh"
+                  ? "bg-amber-600 hover:bg-amber-700"
+                  : "bg-blue-600 hover:bg-blue-700"
+                  }`}
               >
                 {catalogInstalling ? (
                   <>
@@ -680,10 +673,10 @@ function SkillCatalogModal({
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                     </svg>
-                    Installing...
+                    {t.skills.installingSkills}
                   </>
                 ) : (
-                  <>Install {totalSelected} skill{totalSelected !== 1 ? "s" : ""}</>
+                  <>{t.skills.installSkills} {totalSelected}</>
                 )}
               </button>
             )}
@@ -708,6 +701,7 @@ function SkillCloneModal({
   const [url, setUrl] = useState("");
   const [cloning, setCloning] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { t } = useTranslation();
   const [result, setResult] = useState<{
     imported: string[];
     count: number;
@@ -729,14 +723,14 @@ function SkillCloneModal({
         onCloned();
         setTimeout(onClose, 2000);
       } else {
-        setError(res.error || "Failed to clone skills");
+        setError(res.error || t.skills.cloneFailed);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Clone failed");
+      setError(err instanceof Error ? err.message : t.skills.cloneFailed);
     } finally {
       setCloning(false);
     }
-  }, [url, cloneFromGithub, onCloned, onClose]);
+  }, [url, cloneFromGithub, onCloned, onClose, t.skills.cloneFailed]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
@@ -759,7 +753,7 @@ function SkillCloneModal({
               <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z" />
             </svg>
             <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-              Clone Skills from GitHub
+              {t.skills.cloneTitle}
             </h3>
           </div>
           <button
@@ -865,7 +859,7 @@ function SkillCloneModal({
           {result && (
             <div className="rounded-md bg-emerald-50 dark:bg-emerald-900/10 border border-emerald-200 dark:border-emerald-800/50 px-3 py-2">
               <div className="text-xs text-emerald-700 dark:text-emerald-400 font-medium mb-1">
-                Imported {result.count} skill{result.count !== 1 ? "s" : ""}!
+                Imported {result.count}!
               </div>
               <div className="flex flex-wrap gap-1">
                 {result.imported.map((name) => (
@@ -887,7 +881,7 @@ function SkillCloneModal({
             onClick={onClose}
             className="px-3 py-1.5 text-xs text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 rounded-md transition-colors"
           >
-            {result ? "Close" : "Cancel"}
+            {result ? t.common.close : t.common.cancel}
           </button>
           {!result && (
             <button
@@ -916,7 +910,7 @@ function SkillCloneModal({
                       d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
                     />
                   </svg>
-                  Cloning...
+                  {t.skills.cloneAction}...
                 </>
               ) : (
                 <>
@@ -933,7 +927,7 @@ function SkillCloneModal({
                       d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
                     />
                   </svg>
-                  Clone &amp; Import
+                  {t.skills.cloneAction}
                 </>
               )}
             </button>
@@ -959,6 +953,7 @@ function SkillUploadModal({
   const [success, setSuccess] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const { t } = useTranslation();
 
   const handleFileSelect = useCallback((file: File) => {
     if (!file.name.endsWith(".zip")) {
@@ -1003,11 +998,11 @@ function SkillUploadModal({
       onUploaded();
       setTimeout(onClose, 1200);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Upload failed");
+      setError(err instanceof Error ? err.message : t.skills.uploadFailed);
     } finally {
       setUploading(false);
     }
-  }, [selectedFile, onUploaded, onClose]);
+  }, [selectedFile, onUploaded, onClose, t.skills.uploadFailed]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
@@ -1019,7 +1014,7 @@ function SkillUploadModal({
         {/* Header */}
         <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between">
           <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-            Upload Skill Package
+            {t.skills.uploadTitle}
           </h3>
           <button
             onClick={onClose}
@@ -1044,13 +1039,12 @@ function SkillUploadModal({
             onDragLeave={() => setDragOver(false)}
             onDrop={handleDrop}
             onClick={() => fileInputRef.current?.click()}
-            className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors ${
-              dragOver
-                ? "border-blue-400 bg-blue-50 dark:bg-blue-900/10"
-                : selectedFile
-                  ? "border-emerald-300 dark:border-emerald-700 bg-emerald-50 dark:bg-emerald-900/10"
-                  : "border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600"
-            }`}
+            className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors ${dragOver
+              ? "border-blue-400 bg-blue-50 dark:bg-blue-900/10"
+              : selectedFile
+                ? "border-emerald-300 dark:border-emerald-700 bg-emerald-50 dark:bg-emerald-900/10"
+                : "border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600"
+              }`}
           >
             <input
               ref={fileInputRef}
@@ -1106,14 +1100,14 @@ function SkillUploadModal({
             onClick={onClose}
             className="px-3 py-1.5 text-xs text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 rounded-md transition-colors"
           >
-            Cancel
+            {t.common.cancel}
           </button>
           <button
             onClick={handleUpload}
             disabled={!selectedFile || uploading || success}
             className="px-4 py-1.5 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            {uploading ? "Uploading..." : success ? "Done!" : "Upload"}
+            {uploading ? t.skills.uploading : success ? "Done!" : t.skills.uploadAction}
           </button>
         </div>
       </div>
