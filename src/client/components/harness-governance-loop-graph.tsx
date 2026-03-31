@@ -809,9 +809,9 @@ export function HarnessGovernanceLoopGraph({
               <div className="pointer-events-none absolute right-3 top-2 z-10 rounded-xl border border-desktop-border bg-white/90 px-2.5 py-1.5 text-[10px] text-slate-700 shadow-sm">
                 <div className="flex items-center gap-3">
                   <span className="shrink-0 text-desktop-text-secondary">图注:</span>
-                  <span className="flex items-center gap-1.5 text-[10px]"><span className="h-2 w-2 rounded-full bg-sky-100" />内部</span>
-                  <span className="flex items-center gap-1.5 text-[10px]"><span className="h-2 w-2 rounded-full bg-violet-100" />推送</span>
-                  <span className="flex items-center gap-1.5 text-[10px]"><span className="h-2 w-2 rounded-full bg-amber-100" />外部</span>
+                  <span className="flex items-center gap-1.5 text-[10px]"><span className="h-2.5 w-2.5 rounded-[3px] border border-sky-300 bg-sky-100" />内部</span>
+                  <span className="flex items-center gap-1.5 text-[10px]"><span className="h-2.5 w-2.5 rounded-[3px] border border-violet-300 bg-violet-100" />推送</span>
+                  <span className="flex items-center gap-1.5 text-[10px]"><span className="h-2.5 w-2.5 rounded-[3px] border border-amber-300 bg-amber-100" />外部</span>
                 </div>
               </div>
               <div style={{ height: graph.minHeight }}>
