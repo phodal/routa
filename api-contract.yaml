@@ -4684,6 +4684,80 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /api/harness/spec-sources:
+    get:
+      operationId: getHarnessSpecSources
+      summary: Detect specification and planning source systems for the selected repository
+      parameters:
+        - name: workspaceId
+          in: query
+          schema:
+            type: string
+        - name: codebaseId
+          in: query
+          schema:
+            type: string
+        - name: repoPath
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Spec source detection payload
+          content:
+            application/json:
+              schema:
+                type: object
+        "400":
+          description: Invalid spec source context
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Failed to detect spec sources
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/harness/design-decisions:
+    get:
+      operationId: getHarnessDesignDecisions
+      summary: Detect architecture and ADR design decision sources for the selected repository
+      parameters:
+        - name: workspaceId
+          in: query
+          schema:
+            type: string
+        - name: codebaseId
+          in: query
+          schema:
+            type: string
+        - name: repoPath
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Design decision source payload
+          content:
+            application/json:
+              schema:
+                type: object
+        "400":
+          description: Invalid design decision context
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Failed to detect design decisions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /api/kanban/events:
     get:
       operationId: streamKanbanEvents
