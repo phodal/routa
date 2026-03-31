@@ -13,6 +13,7 @@ import {
 } from "@/client/components/harness-execution-plan-flow";
 import { HarnessSectionCard } from "@/client/components/harness-section-card";
 import { HarnessAgentInstructionsPanel } from "@/client/components/harness-agent-instructions-panel";
+import { HarnessDesignDecisionPanel } from "@/client/components/harness-design-decision-panel";
 import { HarnessFitnessFilesDashboard } from "@/client/components/harness-fitness-files-dashboard";
 import { HarnessGovernanceLoopGraph } from "@/client/components/harness-governance-loop-graph";
 import { HarnessGitHubActionsFlowPanel } from "@/client/components/harness-github-actions-flow-panel";
@@ -110,6 +111,7 @@ export default function HarnessSettingsPage() {
     instructionsState,
     githubActionsState,
     specSourcesState,
+    designDecisionsState,
     reloadInstructions,
   } = useHarnessSettingsData({
     workspaceId,
@@ -138,22 +140,15 @@ export default function HarnessSettingsPage() {
   const auxiliaryFiles = specFiles.filter((file) => !primaryFiles.includes(file));
   const selectedRepoLabel = activeRepoSelection?.name ?? "None";
   const selectedRepo = activeRepoSelection;
-  const unsupportedRepoMessage = getHarnessUnsupportedRepoMessage(specsState.error, planState.error);
-  const hasArchitectureOrAdrSignal = useMemo(() => {
-    const sources = specSourcesState.data?.sources ?? [];
-    return sources.some((source) => {
-      if (source.system !== "bmad") {
-        return false;
-      }
-      return source.children.some((artifact) => {
-        if (artifact.type === "architecture" || artifact.type === "design") {
-          return true;
-        }
-        const normalizedPath = artifact.path.toLowerCase();
-        return normalizedPath.startsWith("docs/architecture") || normalizedPath.startsWith("docs/architcture") || normalizedPath.startsWith("docs/adr/");
-      });
-    });
-  }, [specSourcesState.data]);
+  const unsupportedRepoMessage = getHarnessUnsupportedRepoMessage(
+    specsState.error,
+    planState.error,
+    designDecisionsState.error,
+  );
+  const hasArchitectureOrAdrSignal = useMemo(
+    () => (designDecisionsState.data?.sources.length ?? 0) > 0,
+    [designDecisionsState.data],
+  );
   const visibleSpecCodeBlocks = useMemo(
     () => (visibleSpec && visibleSpec.language === "markdown" ? extractMarkdownCodeBlocks(visibleSpec.source) : []),
     [visibleSpec],
@@ -192,12 +187,12 @@ export default function HarnessSettingsPage() {
         );
       case "coding":
         return (
-          <HarnessSpecSourcesPanel
+          <HarnessDesignDecisionPanel
             repoLabel={selectedRepoLabel}
             unsupportedMessage={unsupportedRepoMessage}
-            data={specSourcesState.data}
-            loading={specSourcesState.loading}
-            error={specSourcesState.error}
+            data={designDecisionsState.data}
+            loading={designDecisionsState.loading}
+            error={designDecisionsState.error}
             variant="compact"
           />
         );
@@ -326,6 +321,9 @@ export default function HarnessSettingsPage() {
     specSourcesState.data,
     specSourcesState.error,
     specSourcesState.loading,
+    designDecisionsState.data,
+    designDecisionsState.error,
+    designDecisionsState.loading,
     unsupportedRepoMessage,
     workspaceId,
   ]);

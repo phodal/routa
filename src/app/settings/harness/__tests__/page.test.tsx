@@ -60,6 +60,35 @@ const mockHarnessSettingsData = {
       dimensions: [],
     },
   },
+  designDecisionsState: {
+    loading: false,
+    error: null,
+    data: {
+      generatedAt: "2026-03-30T00:00:00.000Z",
+      repoRoot: "/Users/phodal/ai/routa-js",
+      sources: [
+        {
+          kind: "canonical-doc",
+          label: "Architecture",
+          rootPath: "docs",
+          confidence: "high",
+          status: "documents-present",
+          artifacts: [
+            {
+              id: "architecture-top-level",
+              title: "Top-level architecture contract",
+              path: "docs/ARCHITECTURE.md",
+              type: "architecture",
+              status: "canonical",
+              summary: "Canonical architecture overview for runtime boundaries and invariants.",
+              codeRefs: ["Workspace-first scope over hidden global state"],
+            },
+          ],
+        },
+      ],
+      warnings: [],
+    },
+  },
   hooksState: {
     loading: false,
     error: null,

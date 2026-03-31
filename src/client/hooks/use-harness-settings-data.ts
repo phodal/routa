@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { PlanResponse, TierValue } from "@/client/components/harness-execution-plan-flow";
+import type { DesignDecisionResponse } from "@/core/harness/design-decision-types";
 import type { SpecDetectionResponse } from "@/core/harness/spec-detector-types";
 
 export type RunnerKind = "shell" | "graph" | "sarif";
@@ -254,6 +255,7 @@ export function useHarnessSettingsData({
   const [githubActionsState, setGithubActionsState] = useState<QueryState<GitHubActionsFlowsResponse>>(emptyQueryState);
   const [agentHooksState, setAgentHooksState] = useState<QueryState<AgentHooksResponse>>(emptyQueryState);
   const [specSourcesState, setSpecSourcesState] = useState<QueryState<SpecDetectionResponse>>(emptyQueryState);
+  const [designDecisionsState, setDesignDecisionsState] = useState<QueryState<DesignDecisionResponse>>(emptyQueryState);
   const [instructionsRefreshState, setInstructionsRefreshState] = useState<InstructionRefreshState>({
     contextKey: "",
     token: 0,
@@ -549,6 +551,45 @@ export function useHarnessSettingsData({
     };
   }, [baseQuery]);
 
+  useEffect(() => {
+    if (!baseQuery) {
+      setDesignDecisionsState(emptyQueryState());
+      return;
+    }
+
+    let cancelled = false;
+    const fetchDesignDecisions = async () => {
+      setDesignDecisionsState((current) => ({ ...current, loading: true, error: null }));
+      try {
+        const response = await fetch(`/api/harness/design-decisions?${baseQuery.toString()}`);
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(typeof payload?.details === "string" ? payload.details : "Failed to load design decisions");
+        }
+        if (!cancelled) {
+          setDesignDecisionsState({
+            loading: false,
+            error: null,
+            data: payload as DesignDecisionResponse,
+          });
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setDesignDecisionsState({
+            loading: false,
+            error: error instanceof Error ? error.message : String(error),
+            data: null,
+          });
+        }
+      }
+    };
+
+    void fetchDesignDecisions();
+    return () => {
+      cancelled = true;
+    };
+  }, [baseQuery]);
+
   return {
     specsState,
     planState,
@@ -557,6 +598,7 @@ export function useHarnessSettingsData({
     instructionsState,
     githubActionsState,
     specSourcesState,
+    designDecisionsState,
     reloadInstructions,
   };
 }
