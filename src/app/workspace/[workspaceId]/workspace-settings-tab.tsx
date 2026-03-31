@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import { useTranslation } from "@/i18n";
 import { RepoPicker } from "@/client/components/repo-picker";
 import type { RepoSelection } from "@/client/components/repo-picker";
 
@@ -34,6 +35,7 @@ export function WorkspaceSettingsTab({
   defaultWorktreeRootHint,
   onSaveWorktreeRoot,
 }: WorkspaceSettingsTabProps) {
+  const { t } = useTranslation();
   const [repoPickerValue, setRepoPickerValue] = useState<RepoSelection | null>(null);
   const [addError, setAddError] = useState<string | null>(null);
   // Edit state - use RepoPicker for re-selecting/cloning
@@ -52,10 +54,10 @@ export function WorkspaceSettingsTab({
         body: JSON.stringify({ repoPath: selection.path, branch: selection.branch, label: selection.name }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Failed to add repository");
+      if (!res.ok) throw new Error(data.error ?? t.errors.loadFailed);
       await fetchCodebases();
     } catch (err) {
-      setAddError(err instanceof Error ? err.message : "Failed to add repository");
+      setAddError(err instanceof Error ? err.message : t.errors.loadFailed);
     }
     // Always reset so the picker returns to "Add" state
     setRepoPickerValue(null);
@@ -96,12 +98,12 @@ export function WorkspaceSettingsTab({
         body: JSON.stringify({ label: selection.name, repoPath: selection.path, branch: selection.branch }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Failed to update repository");
+      if (!res.ok) throw new Error(data.error ?? t.errors.saveFailed);
       await fetchCodebases();
       setEditingCodebase(null);
       setEditRepoSelection(null);
     } catch (err) {
-      setEditError(err instanceof Error ? err.message : "Failed to update repository");
+      setEditError(err instanceof Error ? err.message : t.errors.saveFailed);
     } finally {
       setEditSaving(false);
     }
@@ -118,11 +120,10 @@ export function WorkspaceSettingsTab({
       {/* ── Linked Repositories ─────────────────────────────────── */}
       <section>
         <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100 mb-1">
-          Linked Repositories
+          {t.workspace.linkedRepositories}
         </h3>
         <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">
-          Repositories linked to this workspace can be selected when creating Kanban tasks.
-          No selection on a task means all linked repos are included.
+          {t.workspace.linkedReposDescription}
         </p>
 
         {codebases.length > 0 && (
@@ -136,7 +137,7 @@ export function WorkspaceSettingsTab({
                 <span className="max-w-50 truncate">{cb.label ?? cb.repoPath.split("/").pop() ?? cb.repoPath}</span>
                 <span className="text-[10px] text-slate-400 truncate max-w-40">{cb.repoPath}</span>
                 {cb.isDefault && (
-                  <span className="text-[10px] text-amber-500 font-medium">default</span>
+                  <span className="text-[10px] text-amber-500 font-medium">{t.workspace.defaultLabel}</span>
                 )}
                 <button
                   onClick={() => handleEdit(cb)}
@@ -159,13 +160,13 @@ export function WorkspaceSettingsTab({
 
         {codebases.length === 0 && (
           <div className="mb-3 text-xs text-slate-400 dark:text-slate-500 italic">
-            No repositories linked yet.
+            {t.workspace.noReposLinked}
           </div>
         )}
 
         {/* RepoPicker for selecting / cloning a repo to link */}
         <div className="flex items-center gap-2">
-          <div className="text-xs text-slate-500 dark:text-slate-400 shrink-0">Add:</div>
+          <div className="text-xs text-slate-500 dark:text-slate-400 shrink-0">{t.workspace.addLabel}</div>
           <RepoPicker value={repoPickerValue} onChange={(sel) => void handlePickerChange(sel)} />
         </div>
         {addError && (
@@ -178,12 +179,11 @@ export function WorkspaceSettingsTab({
       {/* ── Worktree Root Override ───────────────────────────────── */}
       <section data-testid="workspace-worktree-settings">
         <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100 mb-1">
-          Worktree Root Override
+          {t.workspace.worktreeRootOverride}
         </h3>
         <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">
-          You do not need to configure this for the normal flow. By default, this workspace uses{" "}
-          <code className="font-mono text-slate-600 dark:text-slate-300">{defaultWorktreeRootHint}</code>.
-          Only set a custom path if you want to override that location.
+          {t.workspace.worktreeRootDescription}{" "}
+          <code className="font-mono text-slate-600 dark:text-slate-300">{defaultWorktreeRootHint}</code>
         </p>
         <div className="flex gap-2 items-start">
           <div className="flex-1">
@@ -195,7 +195,7 @@ export function WorkspaceSettingsTab({
               data-testid="worktree-root-input"
             />
             <div className="mt-1.5 text-[11px] text-slate-400 dark:text-slate-500">
-              Effective path:{" "}
+              {t.workspace.effectivePath}{" "}
               <code className="font-mono">{displayedWorktreeRoot}</code>
             </div>
             {worktreeRootState.error && (
@@ -215,7 +215,7 @@ export function WorkspaceSettingsTab({
             className="shrink-0 rounded-lg bg-amber-500 px-4 py-2 text-sm font-medium text-white hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-60"
             data-testid="save-worktree-root"
           >
-            {worktreeRootState.saving ? "Saving…" : "Save"}
+            {worktreeRootState.saving ? t.workspace.saving : t.common.save}
           </button>
         </div>
       </section>
@@ -225,12 +225,12 @@ export function WorkspaceSettingsTab({
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
           <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl dark:border-[#1c1f2e] dark:bg-[#12141c]">
             <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-4">
-              Edit Repository
+              {t.workspace.editRepository}
             </h3>
             <div className="space-y-4">
               <div>
                 <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-2">
-                  Select or clone a repository
+                  {t.workspace.selectOrCloneRepo}
                 </label>
                 <RepoPicker
                   value={editRepoSelection}
@@ -241,7 +241,7 @@ export function WorkspaceSettingsTab({
                 <div className="text-xs text-rose-600 dark:text-rose-400">{editError}</div>
               )}
               {editSaving && (
-                <div className="text-xs text-amber-600 dark:text-amber-400">Updating repository...</div>
+                <div className="text-xs text-amber-600 dark:text-amber-400">{t.workspace.updatingRepository}</div>
               )}
             </div>
             <div className="mt-5 flex gap-2 justify-end">
@@ -250,7 +250,7 @@ export function WorkspaceSettingsTab({
                 disabled={editSaving}
                 className="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-[#191c28]"
               >
-                Cancel
+                {t.common.cancel}
               </button>
             </div>
           </div>

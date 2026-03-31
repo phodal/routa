@@ -4,6 +4,8 @@ import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 import { CodeViewer } from "@/client/components/codemirror/code-viewer";
 import type { ArtifactType } from "@/core/models/artifact";
+import { useTranslation } from "@/i18n";
+import type { TranslationDictionary } from "@/i18n";
 import type { ArtifactInfo } from "../types";
 
 interface KanbanCardArtifactsProps {
@@ -13,20 +15,22 @@ interface KanbanCardArtifactsProps {
   refreshSignal?: number;
 }
 
-const ARTIFACT_LABELS: Record<ArtifactType, string> = {
-  screenshot: "Screenshot",
-  test_results: "Test Results",
-  code_diff: "Code Diff",
-  logs: "Logs",
-};
-
-function formatArtifactTypeLabel(type: ArtifactType): string {
-  return ARTIFACT_LABELS[type] ?? type;
+function getArtifactLabels(t: TranslationDictionary): Record<ArtifactType, string> {
+  return {
+    screenshot: t.kanban.screenshotType,
+    test_results: t.kanban.testResultsType,
+    code_diff: t.kanban.codeDiffType,
+    logs: t.kanban.logsType,
+  };
 }
 
-function formatArtifactTimestamp(value: string): string {
+function formatArtifactTypeLabel(type: ArtifactType, labels: Record<ArtifactType, string>): string {
+  return labels[type] ?? type;
+}
+
+function formatArtifactTimestamp(value: string, t: TranslationDictionary): string {
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "Time unavailable";
+  if (Number.isNaN(date.getTime())) return t.kanban.timeUnavailable;
   return date.toLocaleString();
 }
 
@@ -125,6 +129,8 @@ export function KanbanCardArtifacts({
   requiredArtifacts = [],
   refreshSignal = 0,
 }: KanbanCardArtifactsProps) {
+  const { t } = useTranslation();
+  const artifactLabels = useMemo(() => getArtifactLabels(t), [t]);
   const [artifacts, setArtifacts] = useState<ArtifactInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -142,12 +148,12 @@ export function KanbanCardArtifacts({
         const data = await response.json().catch(() => ({}));
         if (controller.signal.aborted) return;
         if (!response.ok) {
-          throw new Error(data.error ?? "Failed to load artifacts");
+          throw new Error(data.error ?? t.kanban.failedToLoadArtifacts);
         }
         setArtifacts(Array.isArray(data.artifacts) ? data.artifacts as ArtifactInfo[] : []);
       } catch (error) {
         if (controller.signal.aborted) return;
-        setLoadError(error instanceof Error ? error.message : "Failed to load artifacts");
+        setLoadError(error instanceof Error ? error.message : t.kanban.failedToLoadArtifacts);
       } finally {
         if (!controller.signal.aborted) {
           setLoading(false);
@@ -157,7 +163,7 @@ export function KanbanCardArtifacts({
 
     void loadArtifacts();
     return () => controller.abort();
-  }, [refreshSignal, taskId]);
+  }, [refreshSignal, taskId, t.kanban.failedToLoadArtifacts]);
 
   const coverage = useMemo(() => {
     const counts = new Map<ArtifactType, number>();
@@ -174,20 +180,20 @@ export function KanbanCardArtifacts({
     <section className={`border border-slate-200/80 bg-white shadow-sm dark:border-[#232736] dark:bg-[#121620] ${compact ? "rounded-2xl p-3" : "rounded-3xl p-4"}`}>
       <div className={compact ? "mb-2" : "mb-3"}>
         <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">
-          Artifacts
+          {t.kanban.artifactsTitle}
         </div>
         <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-          Agent-produced evidence attached to this task.
+          {t.kanban.artifactsDescription}
         </div>
       </div>
 
       <div className="space-y-3">
         <div className="flex flex-wrap items-center gap-2">
           <span className={`inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-900/10 dark:text-emerald-300 ${compact ? "px-2 py-0.5 text-[10px]" : "px-2.5 py-1 text-[11px]"}`}>
-            {artifacts.length} total
+            {artifacts.length} {t.kanban.totalLabel}
           </span>
           <span className={`inline-flex items-center gap-1 rounded-full border border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-900/40 dark:bg-sky-900/10 dark:text-sky-300 ${compact ? "px-2 py-0.5 text-[10px]" : "px-2.5 py-1 text-[11px]"}`}>
-            {screenshotCount} screenshots
+            {screenshotCount} {t.kanban.screenshotsLabel}
           </span>
           {requiredArtifacts.map((type) => {
             const present = (coverage.get(type) ?? 0) > 0;
@@ -197,9 +203,9 @@ export function KanbanCardArtifacts({
                 className={`inline-flex items-center gap-1 rounded-full border ${present
                   ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-900/10 dark:text-emerald-300"
                   : "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900/40 dark:bg-amber-900/10 dark:text-amber-300"
-                } ${compact ? "px-2 py-0.5 text-[10px]" : "px-2.5 py-1 text-[11px]"}`}
+                  } ${compact ? "px-2 py-0.5 text-[10px]" : "px-2.5 py-1 text-[11px]"}`}
               >
-                {present ? "Ready" : "Missing"} {formatArtifactTypeLabel(type)}
+                {present ? t.kanban.readyLabel : t.kanban.missingLabel} {formatArtifactTypeLabel(type, artifactLabels)}
               </span>
             );
           })}
@@ -208,15 +214,15 @@ export function KanbanCardArtifacts({
           {requiredArtifacts.length > 0
             ? (
               missingRequiredArtifacts.length === 0
-                ? `Next-lane requirements satisfied: ${requiredArtifacts.map((type) => formatArtifactTypeLabel(type)).join(", ")}.`
-                : `Missing for next move: ${missingRequiredArtifacts.map((type) => formatArtifactTypeLabel(type)).join(", ")}.`
+                ? `${t.kanban.nextLaneSatisfied}: ${requiredArtifacts.map((type) => formatArtifactTypeLabel(type, artifactLabels)).join(", ")}.`
+                : `${t.kanban.missingForNextMove}: ${missingRequiredArtifacts.map((type) => formatArtifactTypeLabel(type, artifactLabels)).join(", ")}.`
             )
-            : "Use list_artifacts / provide_artifact / capture_screenshot to manage task evidence."}
+            : t.kanban.artifactManageHint}
         </div>
 
         {loading ? (
           <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-500 dark:border-slate-700 dark:bg-[#0d1018] dark:text-slate-400">
-            Loading artifacts...
+            {t.kanban.loadingArtifacts}
           </div>
         ) : loadError ? (
           <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 dark:border-rose-900/40 dark:bg-rose-900/10 dark:text-rose-300">
@@ -224,7 +230,7 @@ export function KanbanCardArtifacts({
           </div>
         ) : artifacts.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-500 dark:border-slate-700 dark:bg-[#0d1018] dark:text-slate-400">
-            No artifacts attached yet.
+            {t.kanban.noArtifactsYet}
           </div>
         ) : (
           <div className="space-y-3">
@@ -243,11 +249,11 @@ export function KanbanCardArtifacts({
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-medium text-amber-800 dark:border-amber-900/40 dark:bg-amber-900/10 dark:text-amber-200">
-                          {formatArtifactTypeLabel(artifact.type)}
+                          {formatArtifactTypeLabel(artifact.type, artifactLabels)}
                         </span>
                         {artifact.providedByAgentId && (
                           <span className="text-xs text-slate-500 dark:text-slate-400">
-                            by {artifact.providedByAgentId}
+                            {t.kanban.byAgent} {artifact.providedByAgentId}
                           </span>
                         )}
                         {artifact.metadata?.filename && (
@@ -257,7 +263,7 @@ export function KanbanCardArtifacts({
                         )}
                       </div>
                       <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                        {formatArtifactTimestamp(artifact.createdAt)}
+                        {formatArtifactTimestamp(artifact.createdAt, t)}
                       </div>
                     </div>
                     <div className="truncate text-[11px] uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">
@@ -272,7 +278,7 @@ export function KanbanCardArtifacts({
                   {screenshotSrc ? (
                     <Image
                       src={screenshotSrc}
-                      alt={artifact.context || "Attached screenshot"}
+                      alt={artifact.context || t.kanban.attachedScreenshot}
                       width={1200}
                       height={800}
                       unoptimized

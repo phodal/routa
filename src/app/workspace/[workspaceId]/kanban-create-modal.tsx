@@ -5,7 +5,7 @@ import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
 import type { CodebaseData } from "@/client/hooks/use-workspaces";
-import { Select } from "@/client/components/select";
+import { useTranslation } from "@/i18n";
 
 export type DraftIssue = {
   title: string;
@@ -83,11 +83,10 @@ function TipTapObjectiveEditor({
             type="button"
             onClick={cmd}
             title={title}
-            className={`rounded px-1.5 py-0.5 text-[11px] font-mono font-semibold transition-colors ${
-              active
+            className={`rounded px-1.5 py-0.5 text-[11px] font-mono font-semibold transition-colors ${active
                 ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"
                 : "text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
-            }`}
+              }`}
           >
             {label}
           </button>
@@ -103,11 +102,10 @@ function TipTapObjectiveEditor({
             type="button"
             onClick={cmd}
             title={title}
-            className={`rounded px-1.5 py-0.5 text-[11px] font-mono font-semibold transition-colors ${
-              active
+            className={`rounded px-1.5 py-0.5 text-[11px] font-mono font-semibold transition-colors ${active
                 ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"
                 : "text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
-            }`}
+              }`}
           >
             {label}
           </button>
@@ -127,15 +125,16 @@ export function KanbanCreateModal({
   codebases,
   allCodebaseIds: _allCodebaseIds,
 }: KanbanCreateModalProps) {
+  const { t } = useTranslation();
   const canCreate = Boolean(draft.title.trim()) && Boolean(draft.objectiveHtml.replace(/<[^>]*>/g, "").trim());
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
       <div className="w-full max-w-2xl rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl dark:border-[#1c1f2e] dark:bg-[#12141c]">
         <div className="mb-4 flex items-center justify-between">
-          <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Manual issue</h3>
+          <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">{t.kanbanCreate.manualIssue}</h3>
           <button onClick={onClose} className="text-sm text-slate-400 hover:text-slate-600 dark:hover:text-slate-300">
-            Close
+            {t.common.close}
           </button>
         </div>
 
@@ -143,12 +142,12 @@ export function KanbanCreateModal({
           <input
             value={draft.title}
             onChange={(e) => setDraft((d) => ({ ...d, title: e.target.value }))}
-            placeholder="Issue title"
+            placeholder={t.kanbanCreate.issueTitle}
             className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus:border-amber-400 focus:outline-none focus:ring-1 focus:ring-amber-400/40 dark:border-slate-700 dark:bg-[#0d1018] dark:text-slate-100"
           />
 
           <div>
-            <div className="mb-1 text-xs font-medium text-slate-500 dark:text-slate-400">Description</div>
+            <div className="mb-1 text-xs font-medium text-slate-500 dark:text-slate-400">{t.kanbanCreate.description}</div>
             <TipTapObjectiveEditor
               value={draft.objectiveHtml}
               onChange={(html) => setDraft((d) => ({ ...d, objectiveHtml: html }))}
@@ -156,21 +155,21 @@ export function KanbanCreateModal({
           </div>
 
           <div>
-            <div className="mb-1 text-xs font-medium text-slate-500 dark:text-slate-400">Test Cases</div>
+            <div className="mb-1 text-xs font-medium text-slate-500 dark:text-slate-400">{t.kanbanCreate.testCases}</div>
             <textarea
               value={draft.testCases}
               onChange={(e) => setDraft((d) => ({ ...d, testCases: e.target.value }))}
-              placeholder={"One test case per line\nExample: User can submit the form successfully"}
+              placeholder={t.kanbanCreate.testCasesPlaceholder}
               rows={4}
               className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus:border-amber-400 focus:outline-none focus:ring-1 focus:ring-amber-400/40 dark:border-slate-700 dark:bg-[#0d1018] dark:text-slate-100"
             />
             <div className="mt-1 text-xs text-slate-400 dark:text-slate-500">
-              Use this for human-readable scenarios. Keep executable commands in verification separately.
+              {t.kanbanCreate.testCasesHint}
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
-            <Select
+            <select
               value={draft.priority}
               onChange={(e) => setDraft((d) => ({ ...d, priority: e.target.value }))}
               className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-[#0d1018] dark:text-slate-200"
@@ -179,7 +178,7 @@ export function KanbanCreateModal({
               <option value="medium">Medium</option>
               <option value="high">High</option>
               <option value="urgent">Urgent</option>
-            </Select>
+            </select>
             <input
               value={draft.labels}
               onChange={(e) => setDraft((d) => ({ ...d, labels: e.target.value }))}
@@ -195,17 +194,17 @@ export function KanbanCreateModal({
               disabled={!githubAvailable}
               onChange={(e) => setDraft((d) => ({ ...d, createGitHubIssue: e.target.checked }))}
             />
-            Also create GitHub issue
+            {t.kanbanCreate.alsoCreateGithub}
           </label>
           {!githubAvailable && (
             <div className="text-xs text-slate-400 dark:text-slate-500">
-              Current default codebase is not linked to a GitHub repo.
+              {t.kanbanCreate.noGithubLinked}
             </div>
           )}
 
           {codebases.length > 0 && (
             <div>
-              <div className="mb-1.5 text-xs font-medium text-slate-500 dark:text-slate-400">Link Repositories</div>
+              <div className="mb-1.5 text-xs font-medium text-slate-500 dark:text-slate-400">{t.kanbanCreate.linkRepositories}</div>
               <div className="flex flex-wrap gap-2" data-testid="repo-selector">
                 {codebases.map((cb) => {
                   const selected = draft.codebaseIds.includes(cb.id);
@@ -221,11 +220,10 @@ export function KanbanCreateModal({
                             : [...d.codebaseIds, cb.id],
                         }))
                       }
-                      className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs transition-colors ${
-                        selected
+                      className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs transition-colors ${selected
                           ? "border-blue-400 bg-blue-50 text-blue-700 dark:border-blue-600 dark:bg-blue-900/20 dark:text-blue-300"
                           : "border-slate-200 bg-white text-slate-600 hover:border-blue-300 dark:border-slate-700 dark:bg-[#0d1018] dark:text-slate-400"
-                      }`}
+                        }`}
                     >
                       <span
                         className={`h-1.5 w-1.5 rounded-full ${cb.sourceType === "github" ? "bg-blue-500" : "bg-emerald-500"}`}
@@ -239,7 +237,7 @@ export function KanbanCreateModal({
               </div>
               {draft.codebaseIds.length === 0 && codebases.length > 0 && (
                 <div className="mt-1 text-xs text-slate-400 dark:text-slate-500">
-                  No selection → all workspace repositories will be linked.
+                  {t.kanbanCreate.noSelectionHint}
                 </div>
               )}
             </div>
@@ -251,14 +249,14 @@ export function KanbanCreateModal({
             onClick={onClose}
             className="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-600 dark:border-slate-700 dark:text-slate-300"
           >
-            Cancel
+            {t.common.cancel}
           </button>
           <button
             onClick={onCreate}
             disabled={!canCreate}
             className="rounded-lg bg-amber-500 px-4 py-2 text-sm font-medium text-white hover:bg-amber-600 disabled:opacity-50"
           >
-            Create
+            {t.kanbanCreate.create}
           </button>
         </div>
       </div>

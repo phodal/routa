@@ -3,8 +3,8 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { OverlayModal, BgTaskStatusIcon, bgTaskStatusClass, formatRelativeTime } from "./ui-components";
+import { useTranslation } from "@/i18n";
 import type { BackgroundTaskInfo } from "./types";
-import { Select } from "@/client/components/select";
 
 interface BgTasksTabProps {
   bgTasks: BackgroundTaskInfo[];
@@ -14,6 +14,7 @@ interface BgTasksTabProps {
 }
 
 export function BgTasksTab({ bgTasks, workspaceId, workspaces, onRefresh }: BgTasksTabProps) {
+  const { t } = useTranslation();
   const router = useRouter();
 
   const [specialists, setSpecialists] = useState<Array<{ id: string; name: string; description?: string }>>([]);
@@ -28,7 +29,7 @@ export function BgTasksTab({ bgTasks, workspaceId, workspaces, onRefresh }: BgTa
     fetch("/api/specialists")
       .then((r) => r.json())
       .then((d) => setSpecialists((d.specialists ?? []).filter((s: { enabled?: boolean }) => s.enabled !== false)))
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
   // Auto-refresh every 10s when enabled
@@ -173,26 +174,25 @@ export function BgTasksTab({ bgTasks, workspaceId, workspaces, onRefresh }: BgTa
     <div className="space-y-4">
       {/* ── Header row ───────────────────────────────────── */}
       <div className="flex items-center justify-between gap-2 flex-wrap">
-        <h2 className="text-[14px] font-semibold text-slate-700 dark:text-slate-300">Background Task Queue</h2>
+        <h2 className="text-[14px] font-semibold text-slate-700 dark:text-slate-300">{t.bgTasks.title}</h2>
         <div className="flex items-center gap-2">
           <button
             onClick={() => setBgAutoRefresh((v) => !v)}
-            title={bgAutoRefresh ? "Auto-refresh ON (10s)" : "Auto-refresh OFF"}
-            className={`flex items-center gap-1 px-2 py-1.5 rounded-md text-[11px] font-medium transition-colors ${
-              bgAutoRefresh
+            title={bgAutoRefresh ? t.bgTasks.autoRefreshOn : t.bgTasks.autoRefreshOff}
+            className={`flex items-center gap-1 px-2 py-1.5 rounded-md text-[11px] font-medium transition-colors ${bgAutoRefresh
                 ? "bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400"
                 : "text-slate-400 dark:text-slate-500 hover:bg-slate-100 dark:hover:bg-[#191c28]"
-            }`}
+              }`}
           >
             <svg className={`w-3.5 h-3.5 ${bgAutoRefresh ? "animate-spin" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
             </svg>
-            {bgAutoRefresh ? "Live" : "Refresh"}
+            {bgAutoRefresh ? t.bgTasks.live : t.common.refresh}
           </button>
           <button
             onClick={onRefresh}
             className="p-1.5 rounded-md text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-[#191c28] transition-colors"
-            title="Refresh now"
+            title={t.bgTasks.refreshNow}
           >
             <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -214,7 +214,7 @@ export function BgTasksTab({ bgTasks, workspaceId, workspaces, onRefresh }: BgTa
                 <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                 </svg>
-                {clearingHistory ? "Clearing…" : `Clear${hasPending ? " All" : " History"} (${clearableCount})`}
+                {clearingHistory ? t.bgTasks.clearing : `${hasPending ? t.bgTasks.clearAll : t.bgTasks.clearHistory} (${clearableCount})`}
               </button>
             );
           })()}
@@ -226,7 +226,7 @@ export function BgTasksTab({ bgTasks, workspaceId, workspaces, onRefresh }: BgTa
             <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
             </svg>
-            Dispatch Task
+            {t.bgTasks.dispatchNow}
           </button>
         </div>
       </div>
@@ -256,13 +256,12 @@ export function BgTasksTab({ bgTasks, workspaceId, workspaces, onRefresh }: BgTa
                   <button
                     key={s}
                     onClick={() => setBgTaskFilter(s)}
-                    className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium transition-all border ${
-                      active
+                    className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium transition-all border ${active
                         ? "ring-2 ring-amber-400 border-amber-400 " + colorMap[s]
                         : "border-transparent " + colorMap[s] + " hover:opacity-80"
-                    }`}
+                      }`}
                   >
-                    <span className="capitalize">{s === "all" ? "All" : s.charAt(0) + s.slice(1).toLowerCase()}</span>
+                    <span className="capitalize">{s === "all" ? t.bgTasks.all : s.charAt(0) + s.slice(1).toLowerCase()}</span>
                     <span className="font-bold">{cnt}</span>
                   </button>
                 );
@@ -275,7 +274,7 @@ export function BgTasksTab({ bgTasks, workspaceId, workspaces, onRefresh }: BgTa
                   const cnt = src === "all" ? bgTasks.length : (srcCounts[src] ?? 0);
                   if (src !== "all" && cnt === 0) return null;
                   const active = bgSourceFilter === src;
-                  const srcLabel: Record<string, string> = { all: "All", manual: "Manual", schedule: "Scheduled", webhook: "Webhook", polling: "Polling", workflow: "Workflow", fleet: "Fleet" };
+                  const srcLabel: Record<string, string> = { all: t.bgTasks.all, manual: t.bgTasks.manual, schedule: t.bgTasks.scheduled, webhook: t.bgTasks.webhook, polling: t.bgTasks.polling, workflow: t.bgTasks.workflow, fleet: t.bgTasks.fleet };
                   const srcColor: Record<string, string> = {
                     all: "text-slate-500 dark:text-slate-400",
                     manual: "text-slate-600 dark:text-slate-400",
@@ -289,11 +288,10 @@ export function BgTasksTab({ bgTasks, workspaceId, workspaces, onRefresh }: BgTa
                     <button
                       key={src}
                       onClick={() => setBgSourceFilter(src)}
-                      className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium transition-all border ${
-                        active
+                      className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium transition-all border ${active
                           ? "border-amber-400 ring-1 ring-amber-400 " + srcColor[src]
                           : "border-slate-200 dark:border-[#252838] " + srcColor[src] + " hover:opacity-80"
-                      }`}
+                        }`}
                     >
                       {srcLabel[src]} <span className="opacity-70">{cnt}</span>
                     </button>
@@ -311,7 +309,7 @@ export function BgTasksTab({ bgTasks, workspaceId, workspaces, onRefresh }: BgTa
           <svg className="w-10 h-10 mb-3 opacity-40" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
-          <p className="text-[13px]">{bgTasks.length === 0 ? "No background tasks yet." : `No ${bgTaskFilter} tasks.`}</p>
+          <p className="text-[13px]">{bgTasks.length === 0 ? t.bgTasks.noTasksYet : t.bgTasks.noFilteredTasks}</p>
           {bgTasks.length === 0 && <p className="text-[11px] mt-1">Click &ldquo;Dispatch Task&rdquo; to enqueue one.</p>}
         </div>
       ) : (
@@ -324,7 +322,7 @@ export function BgTasksTab({ bgTasks, workspaceId, workspaces, onRefresh }: BgTa
                   <button
                     onClick={() => setExpandedTaskId(isExpanded ? null : task.id)}
                     className="mt-0.5 shrink-0 hover:opacity-70 transition-opacity"
-                    title={isExpanded ? "Collapse" : "Expand"}
+                    title={isExpanded ? t.bgTasks.collapse : t.bgTasks.expand}
                   >
                     <BgTaskStatusIcon status={task.status} />
                   </button>
@@ -332,11 +330,10 @@ export function BgTasksTab({ bgTasks, workspaceId, workspaces, onRefresh }: BgTa
                     <div className="flex items-center gap-2 mb-0.5">
                       <div className="text-[13px] font-medium text-slate-700 dark:text-slate-300 truncate">{task.title}</div>
                       {task.priority && task.priority !== "NORMAL" && (
-                        <span className={`shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded ${
-                          task.priority === "HIGH"
+                        <span className={`shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded ${task.priority === "HIGH"
                             ? "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400"
                             : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400"
-                        }`}>
+                          }`}>
                           {task.priority}
                         </span>
                       )}
@@ -352,12 +349,12 @@ export function BgTasksTab({ bgTasks, workspaceId, workspaces, onRefresh }: BgTa
                       )}
                       {task.resultSessionId && (
                         <><span>·</span>
-                        <button
-                          onClick={() => router.push(`/workspace/${workspaceId}/sessions/${task.resultSessionId}`)}
-                          className="text-blue-500 dark:text-blue-400 hover:underline"
-                        >
-                          view session
-                        </button></>
+                          <button
+                            onClick={() => router.push(`/workspace/${workspaceId}/sessions/${task.resultSessionId}`)}
+                            className="text-blue-500 dark:text-blue-400 hover:underline"
+                          >
+                            view session
+                          </button></>
                       )}
                       {task.errorMessage && (
                         <><span>·</span><span className="text-red-500 dark:text-red-400 truncate max-w-[240px]" title={task.errorMessage}>{task.errorMessage}</span></>
@@ -376,7 +373,7 @@ export function BgTasksTab({ bgTasks, workspaceId, workspaces, onRefresh }: BgTa
                           setEditForm({ title: task.title, prompt: task.prompt, agentId: task.agentId, priority: task.priority ?? "NORMAL" });
                         }}
                         className="p-1 rounded hover:bg-slate-100 dark:hover:bg-[#191c28] text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
-                        title="Edit task"
+                        title={t.bgTasks.editTask}
                       >
                         <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                           <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125" />
@@ -387,7 +384,7 @@ export function BgTasksTab({ bgTasks, workspaceId, workspaces, onRefresh }: BgTa
                       <button
                         onClick={() => handleRerunTask(task)}
                         className="text-[10px] font-medium px-2 py-0.5 rounded bg-blue-500 hover:bg-blue-600 text-white transition-colors"
-                        title="Re-dispatch this task with the same prompt and agent"
+                        title={t.bgTasks.reDispatch}
                       >
                         ↺ Rerun
                       </button>
@@ -399,9 +396,9 @@ export function BgTasksTab({ bgTasks, workspaceId, workspaces, onRefresh }: BgTa
                           onRefresh();
                         }}
                         className="text-[10px] font-medium px-2 py-0.5 rounded bg-amber-500 hover:bg-amber-600 text-white transition-colors"
-                        title="Retry (increments attempt counter)"
+                        title={t.bgTasks.retry}
                       >
-                        Retry
+                        {t.common.retry}
                       </button>
                     )}
                     {(task.status === "PENDING" || task.status === "RUNNING") && (
@@ -448,16 +445,16 @@ export function BgTasksTab({ bgTasks, workspaceId, workspaces, onRefresh }: BgTa
                       )}
                       {task.status === "RUNNING" && task.startedAt &&
                         Date.now() - new Date(task.startedAt).getTime() > 30 * 60 * 1000 && (
-                        <div className="pt-1">
-                          <button
-                            onClick={() => handleForceFailTask(task.id)}
-                            className="text-[10px] font-medium px-2 py-1 rounded bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 hover:bg-red-200 dark:hover:bg-red-800/40 transition-colors"
-                            title="Force-fail this task — use when the session is gone but the task is still marked RUNNING"
-                          >
-                            ⚠ Force Fail (stale)
-                          </button>
-                        </div>
-                      )}
+                          <div className="pt-1">
+                            <button
+                              onClick={() => handleForceFailTask(task.id)}
+                              className="text-[10px] font-medium px-2 py-1 rounded bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 hover:bg-red-200 dark:hover:bg-red-800/40 transition-colors"
+                              title="Force-fail this task — use when the session is gone but the task is still marked RUNNING"
+                            >
+                              ⚠ Force Fail (stale)
+                            </button>
+                          </div>
+                        )}
                     </div>
                   </div>
                 )}
@@ -504,7 +501,7 @@ export function BgTasksTab({ bgTasks, workspaceId, workspaces, onRefresh }: BgTa
               <div>
                 <label className="block text-[12px] font-medium text-slate-600 dark:text-slate-400 mb-1">Agent / Provider</label>
                 {specialists.length > 0 ? (
-                  <Select
+                  <select
                     data-testid="dispatch-agent-input"
                     value={dispatchAgentId}
                     onChange={(e) => { setDispatchAgentId(e.target.value); handleCheckDuplicate(dispatchPrompt, e.target.value); }}
@@ -514,7 +511,7 @@ export function BgTasksTab({ bgTasks, workspaceId, workspaces, onRefresh }: BgTa
                     {specialists.map((s) => (
                       <option key={s.id} value={s.id}>{s.name}{s.description ? ` — ${s.description}` : ""}</option>
                     ))}
-                  </Select>
+                  </select>
                 ) : (
                   <input
                     data-testid="dispatch-agent-input"
@@ -528,7 +525,7 @@ export function BgTasksTab({ bgTasks, workspaceId, workspaces, onRefresh }: BgTa
               </div>
               <div>
                 <label className="block text-[12px] font-medium text-slate-600 dark:text-slate-400 mb-1">Priority</label>
-                <Select
+                <select
                   value={dispatchPriority}
                   onChange={(e) => setDispatchPriority(e.target.value)}
                   className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-[#252838] bg-slate-50 dark:bg-[#151720] text-[13px] text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-amber-500/30"
@@ -536,12 +533,12 @@ export function BgTasksTab({ bgTasks, workspaceId, workspaces, onRefresh }: BgTa
                   <option value="LOW">Low</option>
                   <option value="NORMAL">Normal</option>
                   <option value="HIGH">High</option>
-                </Select>
+                </select>
               </div>
             </div>
             <div>
               <label className="block text-[12px] font-medium text-slate-600 dark:text-slate-400 mb-1">Workspace</label>
-              <Select
+              <select
                 value={dispatchWorkspaceId}
                 onChange={(e) => setDispatchWorkspaceId(e.target.value)}
                 className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-[#252838] bg-slate-50 dark:bg-[#151720] text-[13px] text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-amber-500/30"
@@ -552,14 +549,14 @@ export function BgTasksTab({ bgTasks, workspaceId, workspaces, onRefresh }: BgTa
                 {workspaces.length === 0 && (
                   <option value={workspaceId}>{workspaceId} (current)</option>
                 )}
-              </Select>
+              </select>
             </div>
             <div className="flex justify-end gap-2 pt-1">
               <button
                 onClick={() => { setShowDispatchModal(false); setDuplicateWarning(null); }}
                 className="px-3 py-1.5 rounded-md text-[12px] font-medium text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-[#191c28] transition-colors"
               >
-                Cancel
+                {t.common.cancel}
               </button>
               <button
                 data-testid="dispatch-submit-btn"
@@ -567,7 +564,7 @@ export function BgTasksTab({ bgTasks, workspaceId, workspaces, onRefresh }: BgTa
                 disabled={dispatchLoading || !dispatchPrompt.trim() || !dispatchAgentId.trim()}
                 className="px-3 py-1.5 rounded-md text-[12px] font-medium bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white transition-colors"
               >
-                {dispatchLoading ? "Dispatching…" : "Dispatch"}
+                {dispatchLoading ? t.bgTasks.dispatching : t.bgTasks.dispatchNow}
               </button>
             </div>
           </div>
@@ -600,7 +597,7 @@ export function BgTasksTab({ bgTasks, workspaceId, workspaces, onRefresh }: BgTa
               <div>
                 <label className="block text-[12px] font-medium text-slate-600 dark:text-slate-400 mb-1">Agent</label>
                 {specialists.length > 0 ? (
-                  <Select
+                  <select
                     value={editForm.agentId}
                     onChange={(e) => setEditForm((f) => ({ ...f, agentId: e.target.value }))}
                     className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-[#252838] bg-slate-50 dark:bg-[#151720] text-[13px] text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-amber-500/30"
@@ -609,7 +606,7 @@ export function BgTasksTab({ bgTasks, workspaceId, workspaces, onRefresh }: BgTa
                     {specialists.map((s) => (
                       <option key={s.id} value={s.id}>{s.name}</option>
                     ))}
-                  </Select>
+                  </select>
                 ) : (
                   <input
                     type="text"
@@ -621,7 +618,7 @@ export function BgTasksTab({ bgTasks, workspaceId, workspaces, onRefresh }: BgTa
               </div>
               <div>
                 <label className="block text-[12px] font-medium text-slate-600 dark:text-slate-400 mb-1">Priority</label>
-                <Select
+                <select
                   value={editForm.priority}
                   onChange={(e) => setEditForm((f) => ({ ...f, priority: e.target.value }))}
                   className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-[#252838] bg-slate-50 dark:bg-[#151720] text-[13px] text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-amber-500/30"
@@ -629,7 +626,7 @@ export function BgTasksTab({ bgTasks, workspaceId, workspaces, onRefresh }: BgTa
                   <option value="LOW">Low</option>
                   <option value="NORMAL">Normal</option>
                   <option value="HIGH">High</option>
-                </Select>
+                </select>
               </div>
             </div>
             <div className="flex justify-end gap-2 pt-1">
@@ -637,14 +634,14 @@ export function BgTasksTab({ bgTasks, workspaceId, workspaces, onRefresh }: BgTa
                 onClick={() => setEditingTask(null)}
                 className="px-3 py-1.5 rounded-md text-[12px] font-medium text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-[#191c28] transition-colors"
               >
-                Cancel
+                {t.common.cancel}
               </button>
               <button
                 onClick={handleEditTask}
                 disabled={editLoading || !editForm.prompt.trim() || !editForm.agentId.trim()}
                 className="px-3 py-1.5 rounded-md text-[12px] font-medium bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white transition-colors"
               >
-                {editLoading ? "Saving…" : "Save"}
+                {editLoading ? t.notesTab.saving : t.common.save}
               </button>
             </div>
           </div>

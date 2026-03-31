@@ -1,5 +1,7 @@
 "use client";
 
+import React from "react";
+import { useTranslation } from "@/i18n";
 import { useState } from "react";
 import { MessageBubble } from "@/client/components/message-bubble";
 import type { ChatMessage } from "@/client/components/chat-panel/types";
@@ -30,6 +32,7 @@ export function ObjectiveSidebarSection({
   deliverables: DeliverableItem[];
   onFocusSession: (sessionId: string) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <section className="min-h-0 overflow-hidden border-r border-desktop-border bg-desktop-bg-secondary">
       <div className="border-b border-desktop-border px-4 py-2.5">
@@ -46,7 +49,7 @@ export function ObjectiveSidebarSection({
 
       <div className="border-b border-desktop-border px-4 py-2.5">
         <h2 className="text-base font-semibold text-desktop-text-primary">Plan / Task Tree</h2>
-        <p className="mt-0.5 text-xs leading-5 text-desktop-text-secondary">Lead decomposition and current execution state.</p>
+        <p className="mt-0.5 text-xs leading-5 text-desktop-text-secondary">{t.team.leadDecomposition}</p>
       </div>
       <div className="h-[calc(100%-176px)] overflow-y-auto px-2.5 py-2.5">
         <div className="space-y-3">
@@ -72,9 +75,8 @@ export function ObjectiveSidebarSection({
                     type="button"
                     onClick={() => item.sessionId && onFocusSession(item.sessionId)}
                     disabled={!item.sessionId}
-                    className={`flex w-full items-start gap-2.5 px-3 py-2.5 text-left transition ${
-                      item.sessionId ? "hover:bg-desktop-bg-active/70" : "cursor-default"
-                    }`}
+                    className={`flex w-full items-start gap-2.5 px-3 py-2.5 text-left transition ${item.sessionId ? "hover:bg-desktop-bg-active/70" : "cursor-default"
+                      }`}
                   >
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center justify-between gap-2">
@@ -119,12 +121,13 @@ export function SessionTimelineSection({
   onSubmitQuestion?: (sessionId: string, toolCallId: string, response: Record<string, unknown>) => Promise<void>;
   sessionBlockRef: (sessionId: string, node: HTMLDivElement | null) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <section className="flex min-h-0 flex-col overflow-hidden bg-desktop-bg-primary">
       <div className="border-b border-desktop-border px-4 py-3">
         <div className="flex flex-wrap items-center justify-between gap-2.5">
           <div>
-            <h2 className="text-base font-semibold text-desktop-text-primary">Session Timeline</h2>
+            <h2 className="text-base font-semibold text-desktop-text-primary">{t.team.sessionTimeline}</h2>
             <p className="mt-0.5 text-xs leading-5 text-desktop-text-secondary">
               The lead transcript uses the same chat renderer as the raw session. Member sessions appear inline beneath delegation tool calls.
             </p>
@@ -163,7 +166,7 @@ export function SessionTimelineSection({
           </div>
         )}
       </div>
-    </section>
+    </section >
   );
 }
 
@@ -176,10 +179,11 @@ export function TeamMembersSection({
   selectedSessionId?: string;
   onFocusSession: (sessionId: string) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <aside className="min-h-0 overflow-hidden border-l border-desktop-border bg-desktop-bg-secondary">
       <div className="border-b border-desktop-border px-4 py-2.5">
-        <h2 className="text-base font-semibold text-desktop-text-primary">Team Members</h2>
+        <h2 className="text-base font-semibold text-desktop-text-primary">{t.team.teamMembers}</h2>
         <p className="mt-0.5 text-xs leading-5 text-desktop-text-secondary">
           Watch who is running, who is idle, and switch to any active member session.
         </p>
@@ -196,13 +200,12 @@ export function TeamMembersSection({
                   type="button"
                   onClick={() => member.sessionId && onFocusSession(member.sessionId)}
                   disabled={!member.sessionId}
-                  className={`flex w-full items-start gap-2.5 px-3 py-2 text-left transition ${
-                    isSelected
-                      ? "bg-cyan-50/80 dark:bg-cyan-950/20"
-                      : member.sessionId
-                        ? "hover:bg-desktop-bg-active/70"
-                        : "opacity-75"
-                  }`}
+                  className={`flex w-full items-start gap-2.5 px-3 py-2 text-left transition ${isSelected
+                    ? "bg-cyan-50/80 dark:bg-cyan-950/20"
+                    : member.sessionId
+                      ? "hover:bg-desktop-bg-active/70"
+                      : "opacity-75"
+                    }`}
                 >
                   <div className={`relative mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold ${roleAvatarClass(member.roleId)}`}>
                     {member.avatarLabel}
@@ -232,7 +235,7 @@ export function TeamMembersSection({
           </div>
         </div>
       </div>
-    </aside>
+    </aside >
   );
 }
 
@@ -386,6 +389,7 @@ function LeadMessageThread({
   onOpenViewer?: () => void;
   onSubmitQuestion?: (sessionId: string, toolCallId: string, response: Record<string, unknown>) => Promise<void>;
 }) {
+  const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   const isActive = lane?.sessionId === activeSessionId;
   const previewLaneMessage = lane?.messages.at(-1);
@@ -448,7 +452,7 @@ function LeadMessageThread({
 
           <div className="space-y-1 py-0.5">
             {lane.messages.length === 0 ? (
-              <div className="text-[11px] text-desktop-text-secondary">No transcript content yet.</div>
+              <div className="text-[11px] text-desktop-text-secondary">{t.team.noTranscriptYet}</div>
             ) : !expanded && previewLaneMessage ? (
               <>
                 <div className="rounded-[12px] border border-desktop-border bg-desktop-bg-primary px-3 py-2 text-[11px] leading-5 text-desktop-text-secondary line-clamp-2">

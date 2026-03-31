@@ -1,6 +1,9 @@
+"use client";
+
 import type { Dispatch, SetStateAction } from "react";
 import type { CodebaseData } from "@/client/hooks/use-workspaces";
 import { RepoPicker, type RepoSelection } from "@/client/components/repo-picker";
+import { useTranslation } from "@/i18n";
 import type { TaskInfo, WorktreeInfo } from "../types";
 
 export interface KanbanCodebaseModalProps {
@@ -54,6 +57,8 @@ export function KanbanCodebaseModal({
   onRequestRemoveCodebase,
   onClose,
 }: KanbanCodebaseModalProps) {
+  const { t } = useTranslation();
+
   if (!selectedCodebase) return null;
 
   return (
@@ -70,13 +75,13 @@ export function KanbanCodebaseModal({
                   onClick={onRequestRemoveCodebase}
                   className="text-sm text-rose-500 hover:text-rose-600 dark:text-rose-400 dark:hover:text-rose-300"
                 >
-                  Remove
+                  {t.common.remove}
                 </button>
                 <button
                   onClick={onStartEditCodebase}
                   className="text-sm text-amber-500 hover:text-amber-600 dark:text-amber-400 dark:hover:text-amber-300"
                 >
-                  Edit
+                  {t.common.edit}
                 </button>
               </>
             )}
@@ -84,7 +89,7 @@ export function KanbanCodebaseModal({
               onClick={onClose}
               className="text-sm text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
             >
-              Close
+              {t.common.close}
             </button>
           </div>
         </div>
@@ -93,7 +98,7 @@ export function KanbanCodebaseModal({
           <div className="space-y-4">
             <div>
               <label className="mb-2 block text-xs font-medium text-slate-500 dark:text-slate-400">
-                Select or clone a repository
+                {t.kanbanModals.selectOrCloneRepo}
               </label>
               <RepoPicker
                 value={editRepoSelection}
@@ -112,7 +117,7 @@ export function KanbanCodebaseModal({
               <div className="text-xs text-rose-600 dark:text-rose-400">{recloneError}</div>
             )}
             {editSaving && (
-              <div className="text-xs text-amber-600 dark:text-amber-400">Updating repository...</div>
+              <div className="text-xs text-amber-600 dark:text-amber-400">{t.kanbanModals.updatingRepo}</div>
             )}
 
             {codebases.length > 1 && editRepoSelection && (
@@ -123,14 +128,14 @@ export function KanbanCodebaseModal({
                   </svg>
                   <div className="flex-1">
                     <p className="text-xs text-amber-700 dark:text-amber-300">
-                      You have {codebases.length} repositories in this workspace. Would you like to replace all of them with this repository?
+                      You have {codebases.length} {t.kanbanModals.replaceAllHint}
                     </p>
                     <button
                       onClick={() => setShowReplaceAllConfirm(true)}
                       disabled={editSaving || replacingAll}
                       className="mt-2 text-xs font-medium text-amber-600 hover:text-amber-700 dark:text-amber-400 dark:hover:text-amber-300"
                     >
-                      Replace All Repositories →
+                      {t.kanbanModals.replaceAllRepos}
                     </button>
                   </div>
                 </div>
@@ -143,7 +148,7 @@ export function KanbanCodebaseModal({
                 disabled={editSaving || replacingAll}
                 className="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-[#191c28]"
               >
-                Cancel
+                {t.common.cancel}
               </button>
             </div>
           </div>
@@ -151,25 +156,25 @@ export function KanbanCodebaseModal({
           <div className="min-h-0 space-y-4 overflow-y-auto pr-1 text-sm">
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
               <div>
-                <div className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">Path</div>
+                <div className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">{t.kanbanModals.path}</div>
                 <div className="truncate font-mono text-xs text-slate-700 dark:text-slate-300">{selectedCodebase.repoPath}</div>
               </div>
               <div>
-                <div className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">Branch</div>
+                <div className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">{t.kanbanModals.branch}</div>
                 <div className="text-slate-700 dark:text-slate-300">
                   {liveBranchInfo?.current ?? selectedCodebase.branch ?? "—"}
                   {liveBranchInfo && liveBranchInfo.current !== selectedCodebase.branch && selectedCodebase.branch && (
-                    <span className="ml-1 text-[10px] text-amber-500">(stored: {selectedCodebase.branch})</span>
+                    <span className="ml-1 text-[10px] text-amber-500">({t.kanbanModals.stored}: {selectedCodebase.branch})</span>
                   )}
                 </div>
               </div>
               <div>
-                <div className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">Source Type</div>
+                <div className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">{t.kanbanModals.sourceType}</div>
                 <div className="text-slate-700 dark:text-slate-300">{selectedCodebase.sourceType ?? "local"}</div>
               </div>
               {selectedCodebase.sourceUrl && (
                 <div>
-                  <div className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">Source URL</div>
+                  <div className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">{t.kanbanModals.sourceUrl}</div>
                   <a href={selectedCodebase.sourceUrl} target="_blank" rel="noreferrer" className="block truncate text-xs text-amber-600 hover:underline dark:text-amber-400">
                     {selectedCodebase.sourceUrl}
                   </a>
@@ -179,9 +184,9 @@ export function KanbanCodebaseModal({
             <div>
               <div className="mb-2 flex items-center justify-between gap-3">
                 <div className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                  Worktrees ({codebaseWorktrees.length})
+                  {t.kanbanModals.worktrees} ({codebaseWorktrees.length})
                 </div>
-                <div className="text-[11px] text-slate-400 dark:text-slate-500">Manage branches and clean stale worktrees here.</div>
+                <div className="text-[11px] text-slate-400 dark:text-slate-500">{t.kanbanModals.worktreeHint}</div>
               </div>
               {worktreeActionError && (
                 <div className="mb-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-600 dark:border-rose-900/40 dark:bg-rose-900/10 dark:text-rose-300">
@@ -189,7 +194,7 @@ export function KanbanCodebaseModal({
                 </div>
               )}
               {codebaseWorktrees.length === 0 ? (
-                <div className="text-xs text-slate-400 dark:text-slate-500">No worktrees created yet</div>
+                <div className="text-xs text-slate-400 dark:text-slate-500">{t.kanbanModals.noWorktrees}</div>
               ) : (
                 <div className="space-y-2">
                   {codebaseWorktrees.map((worktree) => {
@@ -199,18 +204,17 @@ export function KanbanCodebaseModal({
                         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                           <div className="min-w-0 flex-1 space-y-2">
                             <div className="flex flex-wrap items-center gap-2">
-                              <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
-                                worktree.status === "active"
+                              <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${worktree.status === "active"
                                   ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300"
                                   : worktree.status === "creating"
                                     ? "bg-amber-100 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300"
                                     : "bg-rose-100 text-rose-700 dark:bg-rose-900/20 dark:text-rose-300"
-                              }`}>{worktree.status}</span>
+                                }`}>{worktree.status}</span>
                               <span className="font-mono text-xs text-slate-700 dark:text-slate-300">{worktree.branch}</span>
-                              <span className="text-[11px] text-slate-400 dark:text-slate-500">base {worktree.baseBranch}</span>
+                              <span className="text-[11px] text-slate-400 dark:text-slate-500">{t.kanban.baseLabel} {worktree.baseBranch}</span>
                               {linkedTasks.length > 0 && (
                                 <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-medium text-sky-700 dark:bg-sky-900/20 dark:text-sky-300">
-                                  {linkedTasks.length} linked task{linkedTasks.length > 1 ? "s" : ""}
+                                  {linkedTasks.length} {t.kanbanModals.linkedTasks}{linkedTasks.length > 1 ? "s" : ""}
                                 </span>
                               )}
                             </div>
@@ -224,7 +228,7 @@ export function KanbanCodebaseModal({
                                 ))}
                                 {linkedTasks.length > 4 && (
                                   <span className="rounded-full border border-slate-200 px-2 py-0.5 text-[10px] text-slate-500 dark:border-slate-700 dark:text-slate-400">
-                                    +{linkedTasks.length - 4} more
+                                    +{linkedTasks.length - 4} {t.kanbanModals.more}
                                   </span>
                                 )}
                               </div>
@@ -237,7 +241,7 @@ export function KanbanCodebaseModal({
                               disabled={deletingWorktreeId === worktree.id}
                               className="rounded-lg border border-rose-200 px-3 py-1.5 text-xs font-medium text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-rose-900/40 dark:text-rose-300 dark:hover:bg-rose-900/10"
                             >
-                              {deletingWorktreeId === worktree.id ? "Removing..." : "Remove"}
+                              {deletingWorktreeId === worktree.id ? t.kanbanModals.removing : t.common.remove}
                             </button>
                           </div>
                         </div>
@@ -252,15 +256,15 @@ export function KanbanCodebaseModal({
               <div className="border-t border-slate-200 pt-3 dark:border-slate-700">
                 <div className="flex items-center justify-between">
                   <div>
-                    <div className="text-xs font-medium text-slate-700 dark:text-slate-300">Re-clone Repository</div>
-                    <div className="text-[11px] text-slate-500 dark:text-slate-400">Pull latest or re-clone if the local copy is corrupted</div>
+                    <div className="text-xs font-medium text-slate-700 dark:text-slate-300">{t.kanbanModals.recloneRepo}</div>
+                    <div className="text-[11px] text-slate-500 dark:text-slate-400">{t.kanbanModals.recloneHint}</div>
                   </div>
                   <button
                     onClick={() => void handleReclone()}
                     disabled={recloning}
                     className="rounded-lg bg-blue-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-600 disabled:opacity-50"
                   >
-                    {recloning ? "Cloning..." : "Re-clone"}
+                    {recloning ? t.kanbanModals.cloning : t.kanbanModals.reclone}
                   </button>
                 </div>
                 {recloneError && (
@@ -291,6 +295,8 @@ export function KanbanDeleteCodebaseModal({
   onCancel: () => void;
   onConfirm: () => void | Promise<void>;
 }) {
+  const { t } = useTranslation();
+
   if (!selectedCodebase) return null;
 
   return (
@@ -304,12 +310,12 @@ export function KanbanDeleteCodebaseModal({
               </svg>
             </div>
             <div className="flex-1">
-              <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Remove Repository</h3>
+              <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">{t.kanbanModals.removeRepoTitle}</h3>
               <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
-                Are you sure you want to remove <span className="font-medium text-slate-900 dark:text-slate-100">&quot;{selectedCodebase.label ?? selectedCodebase.repoPath.split("/").pop()}&quot;</span> from this workspace?
+                {t.kanbanModals.removeRepoConfirm} <span className="font-medium text-slate-900 dark:text-slate-100">&quot;{selectedCodebase.label ?? selectedCodebase.repoPath.split("/").pop()}&quot;</span>?
               </p>
               <p className="mt-2 text-xs text-slate-500 dark:text-slate-500">
-                This will only unlink the repository from this workspace. The repository files will not be deleted from your computer.
+                {t.kanbanModals.removeRepoHint}
               </p>
             </div>
           </div>
@@ -322,14 +328,14 @@ export function KanbanDeleteCodebaseModal({
               disabled={deletingCodebase}
               className="flex-1 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:bg-[#0d1018] dark:text-slate-300 dark:hover:bg-[#191c28]"
             >
-              Cancel
+              {t.common.cancel}
             </button>
             <button
               onClick={() => void onConfirm()}
               disabled={deletingCodebase}
               className="flex-1 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50 dark:bg-red-500 dark:hover:bg-red-600"
             >
-              {deletingCodebase ? "Removing..." : "Remove"}
+              {deletingCodebase ? t.kanbanModals.removing : t.common.remove}
             </button>
           </div>
         </div>
@@ -353,6 +359,8 @@ export function KanbanReplaceAllReposModal({
   onCancel: () => void;
   onConfirm: () => void | Promise<void>;
 }) {
+  const { t } = useTranslation();
+
   if (!editRepoSelection) return null;
 
   return (
@@ -366,16 +374,16 @@ export function KanbanReplaceAllReposModal({
               </svg>
             </div>
             <div className="flex-1">
-              <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Replace All Repositories</h3>
+              <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">{t.kanbanModals.replaceAllTitle}</h3>
               <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
-                This will update all <span className="font-medium text-slate-900 dark:text-slate-100">{codebasesCount} repositories</span> in this workspace to use:
+                This will update all <span className="font-medium text-slate-900 dark:text-slate-100">{codebasesCount} {t.kanbanModals.replaceAllDesc}</span> in this workspace to use:
               </p>
               <div className="mt-2 rounded-lg bg-slate-50 p-2 dark:bg-[#0d1018]">
                 <div className="text-sm font-medium text-slate-700 dark:text-slate-300">{editRepoSelection.name}</div>
                 <div className="truncate font-mono text-xs text-slate-500 dark:text-slate-400">{editRepoSelection.path}</div>
               </div>
               <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">
-                This is useful when the codebase path has changed or you need to fix repository references.
+                {t.kanbanModals.replaceAllUseful}
               </p>
             </div>
           </div>
@@ -388,14 +396,14 @@ export function KanbanReplaceAllReposModal({
               disabled={replacingAll}
               className="flex-1 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:bg-[#0d1018] dark:text-slate-300 dark:hover:bg-[#191c28]"
             >
-              Cancel
+              {t.common.cancel}
             </button>
             <button
               onClick={() => void onConfirm()}
               disabled={replacingAll}
               className="flex-1 rounded-lg bg-amber-500 px-4 py-2 text-sm font-medium text-white hover:bg-amber-600 disabled:opacity-50"
             >
-              {replacingAll ? "Replacing..." : "Replace All"}
+              {replacingAll ? t.kanbanModals.replacing : t.kanbanModals.replaceAll}
             </button>
           </div>
         </div>
@@ -415,6 +423,8 @@ export function KanbanDeleteTaskModal({
   onCancel: () => void;
   onConfirm: () => void | Promise<void>;
 }) {
+  const { t } = useTranslation();
+
   if (!deleteConfirmTask) return null;
 
   return (
@@ -428,13 +438,13 @@ export function KanbanDeleteTaskModal({
               </svg>
             </div>
             <div className="flex-1">
-              <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Delete Task</h3>
+              <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">{t.kanbanModals.deleteTaskTitle}</h3>
               <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
-                Are you sure you want to delete <span className="font-medium text-slate-900 dark:text-slate-100">&quot;{deleteConfirmTask.title}&quot;</span>? This action cannot be undone.
+                {t.kanbanModals.deleteTaskConfirm} <span className="font-medium text-slate-900 dark:text-slate-100">&quot;{deleteConfirmTask.title}&quot;</span>?
               </p>
               {deleteConfirmTask.githubNumber && (
                 <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">
-                  Note: This will only delete the local task. The GitHub issue #{deleteConfirmTask.githubNumber} will remain unchanged.
+                  {t.kanbanModals.deleteTaskGithubNote} #{deleteConfirmTask.githubNumber} will remain unchanged.
                 </p>
               )}
             </div>
@@ -445,14 +455,14 @@ export function KanbanDeleteTaskModal({
               disabled={isDeleting}
               className="flex-1 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:bg-[#0d1018] dark:text-slate-300 dark:hover:bg-[#191c28]"
             >
-              Cancel
+              {t.common.cancel}
             </button>
             <button
               onClick={() => void onConfirm()}
               disabled={isDeleting}
               className="flex-1 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50 dark:bg-red-500 dark:hover:bg-red-600"
             >
-              {isDeleting ? "Deleting..." : "Delete"}
+              {isDeleting ? t.kanbanModals.deleting : t.common.delete}
             </button>
           </div>
         </div>

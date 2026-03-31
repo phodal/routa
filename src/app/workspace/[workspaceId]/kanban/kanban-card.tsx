@@ -1,10 +1,10 @@
 "use client";
 
 import { useState, type DragEvent } from "react";
+import { useTranslation } from "@/i18n";
 import type { AcpProviderInfo } from "@/client/acp-client";
 import type { CodebaseData } from "@/client/hooks/use-workspaces";
 import { formatArtifactLabel, resolveKanbanTransitionArtifacts } from "@/core/kanban/transition-artifacts";
-import { Select } from "@/client/components/select";
 import type { KanbanColumnInfo, SessionInfo, TaskInfo, WorktreeInfo } from "../types";
 import {
   findSpecialistById,
@@ -75,11 +75,12 @@ function getSessionTone(sessionStatus?: "connecting" | "ready" | "error", queueP
 }
 
 function getStatusLabel(sessionStatus?: "connecting" | "ready" | "error", queuePosition?: number) {
-  if (queuePosition) return `Queued #${queuePosition}`;
-  if (sessionStatus === "connecting") return "Starting";
-  if (sessionStatus === "ready") return "Live";
-  if (sessionStatus === "error") return "Failed";
-  return "Idle";
+  // Note: This returns English status keys; they will be overridden in the component
+  if (queuePosition) return `queued`;
+  if (sessionStatus === "connecting") return "starting";
+  if (sessionStatus === "ready") return "live";
+  if (sessionStatus === "error") return "failed";
+  return "idle";
 }
 
 function getSyncTone(
@@ -106,11 +107,11 @@ function getSyncLabel(
   hasSyncError: boolean,
   githubSyncedAt?: string,
 ) {
-  if (sessionStatus === "connecting") return "Starting";
-  if (queuePosition) return `Queued #${queuePosition}`;
-  if (sessionStatus === "error" || hasSyncError) return "Sync issue";
-  if (githubSyncedAt) return "Synced";
-  return "Not synced";
+  if (sessionStatus === "connecting") return "starting";
+  if (queuePosition) return `queued`;
+  if (sessionStatus === "error" || hasSyncError) return "syncIssue";
+  if (githubSyncedAt) return "synced";
+  return "notSynced";
 }
 
 function formatArtifactGateBadgeLabel(
@@ -131,7 +132,7 @@ function formatArtifactGateBadgeLabel(
 function formatArtifactCountTooltip(task: TaskInfo): string {
   const summary = task.artifactSummary;
   if (!summary || summary.total === 0) {
-    return "No artifacts attached";
+    return "noArtifactsAttached";
   }
 
   const parts = Object.entries(summary.byType)
@@ -160,6 +161,7 @@ export function KanbanCard({
   onRetryTrigger,
   onRefresh,
 }: KanbanCardProps) {
+  const { t } = useTranslation();
   const sessionStatus = linkedSession?.acpStatus;
   const canRetry = Boolean(task.assignedProvider) && (
     sessionStatus === "error" || (!task.triggerSessionId && task.columnId === "dev")
@@ -171,7 +173,10 @@ export function KanbanCard({
   const priorityTone = getPriorityTone(task.priority);
   const sessionTone = getSessionTone(sessionStatus, queuePosition);
   const statusLabel = getStatusLabel(sessionStatus, queuePosition);
-  const automationSourceLabel = hasCardOverride ? "Card override" : "Lane default";
+  const resolvedStatusLabel = queuePosition
+    ? `${t.kanban.queued} #${queuePosition}`
+    : (t.kanban as Record<string, string>)[statusLabel] ?? statusLabel;
+  const automationSourceLabel = hasCardOverride ? t.kanban.cardOverride : t.kanban.laneDefault;
   const automationSourceTone = hasCardOverride
     ? "bg-blue-100 text-blue-700 ring-1 ring-inset ring-blue-200 dark:bg-blue-900/20 dark:text-blue-300 dark:ring-blue-900/40"
     : "bg-slate-100 text-slate-600 ring-1 ring-inset ring-slate-200 dark:bg-[#181c28] dark:text-slate-300 dark:ring-white/5";
@@ -182,9 +187,12 @@ export function KanbanCard({
     (task.codebaseIds && task.codebaseIds.length > 0 ? task.codebaseIds.length : allCodebaseIds.length) - visibleCodebaseIds.length,
     0,
   );
-  const syncLabel = getSyncLabel(sessionStatus, queuePosition, Boolean(task.lastSyncError), task.githubSyncedAt);
+  const syncLabelKey = getSyncLabel(sessionStatus, queuePosition, Boolean(task.lastSyncError), task.githubSyncedAt);
+  const resolvedSyncLabel = syncLabelKey === "queued"
+    ? `${t.kanban.queued} #${queuePosition}`
+    : (t.kanban as Record<string, string>)[syncLabelKey] ?? syncLabelKey;
   const syncTone = getSyncTone(sessionStatus, queuePosition, Boolean(task.lastSyncError), task.githubSyncedAt);
-  const objectiveText = task.objective?.trim() || "No objective captured yet.";
+  const objectiveText = task.objective?.trim() || t.kanban.noObjective;
   const transitionArtifacts = resolveKanbanTransitionArtifacts(boardColumns, task.columnId);
   const missingNextArtifacts = transitionArtifacts.nextRequiredArtifacts.filter(
     (artifactType) => (task.artifactSummary?.byType?.[artifactType] ?? 0) === 0,
@@ -241,14 +249,14 @@ export function KanbanCard({
       }}
       role="button"
       tabIndex={0}
-      aria-label={`Open ${task.title}`}
+      aria-label={`${t.kanban.openCard} ${task.title}`}
       className="group relative flex cursor-grab flex-col gap-3 rounded-[1.35rem] border border-slate-200/80 bg-white/95 p-3.5 shadow-[0_18px_40px_-28px_rgba(15,23,42,0.45)] transition duration-150 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_24px_48px_-28px_rgba(15,23,42,0.55)] active:cursor-grabbing focus:outline-none focus:ring-2 focus:ring-amber-400/50 dark:border-[#262938] dark:bg-[#0d1018] dark:shadow-[0_18px_40px_-28px_rgba(0,0,0,0.8)] dark:hover:border-[#34384a]"
       data-testid="kanban-card"
     >
       <div
         className="pointer-events-none absolute left-2.5 top-2.5 rounded-md p-1 text-slate-400 opacity-0 transition-opacity group-hover:opacity-100 dark:text-slate-500"
-        title="Drag card"
-        aria-label="Drag card"
+        title={t.kanban.dragCard}
+        aria-label={t.kanban.dragCard}
       >
         <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6h.01M14 6h.01M10 12h.01M14 12h.01M10 18h.01M14 18h.01" />
@@ -261,7 +269,7 @@ export function KanbanCard({
           onDelete();
         }}
         className="absolute right-2.5 top-2.5 rounded-lg p-1 text-red-500 opacity-0 transition-all hover:bg-red-100 hover:text-red-600 group-hover:opacity-100 dark:text-red-400 dark:hover:bg-red-900/20"
-        title="Delete task"
+        title={t.kanban.deleteTask}
         data-testid="kanban-card-delete"
       >
         <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -284,10 +292,10 @@ export function KanbanCard({
               </a>
             ) : null}
             <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] ${sessionTone}`}>
-              {statusLabel}
+              {resolvedStatusLabel}
             </span>
             <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${syncTone}`}>
-              {syncLabel}
+              {resolvedSyncLabel}
             </span>
           </div>
           <div className="line-clamp-2 text-[15px] font-semibold leading-5 text-slate-900 dark:text-slate-100">
@@ -326,7 +334,7 @@ export function KanbanCard({
       {liveMessageTail && (
         <div className="rounded-xl border border-sky-200/80 bg-sky-50/70 px-3 py-2.5 dark:border-sky-900/50 dark:bg-sky-900/10">
           <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-sky-600 dark:text-sky-300">
-            Live Session
+            {t.kanban.liveSession}
           </div>
           <div
             className="mt-1 line-clamp-2 font-mono text-[12px] leading-5 text-sky-700 dark:text-sky-200"
@@ -367,8 +375,8 @@ export function KanbanCard({
                 {cb.label ?? cb.repoPath.split("/").pop() ?? cb.repoPath}
               </span>
             ) : (
-              <span key={cbId} className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-medium text-red-600 ring-1 ring-inset ring-red-200 dark:bg-red-900/20 dark:text-red-400 dark:ring-red-900/40" title="Repository no longer available">
-                ⚠ repo missing
+              <span key={cbId} className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-medium text-red-600 ring-1 ring-inset ring-red-200 dark:bg-red-900/20 dark:text-red-400 dark:ring-red-900/40" title={t.kanban.repoMissing}>
+                {t.kanban.repoMissing}
               </span>
             );
           })}
@@ -388,13 +396,12 @@ export function KanbanCard({
             <button
               onClick={() => void onRetryTrigger(task.id)}
               onClickCapture={stopCardInteraction}
-              className={`shrink-0 rounded-full px-3 py-1 text-[11px] font-medium ${
-                canRetry
-                  ? "border border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100 dark:border-amber-800/50 dark:bg-amber-900/10 dark:text-amber-300"
-                  : "border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-800/50 dark:bg-emerald-900/10 dark:text-emerald-300"
-              }`}
+              className={`shrink-0 rounded-full px-3 py-1 text-[11px] font-medium ${canRetry
+                ? "border border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100 dark:border-amber-800/50 dark:bg-amber-900/10 dark:text-amber-300"
+                : "border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-800/50 dark:bg-emerald-900/10 dark:text-emerald-300"
+                }`}
             >
-              {canRetry ? "Rerun" : "Run"}
+              {canRetry ? t.kanban.rerun : t.kanban.run}
             </button>
           )}
         </div>
@@ -404,7 +411,7 @@ export function KanbanCard({
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-1.5">
                 <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">
-                  Automation
+                  {t.kanban.automation}
                 </div>
                 <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${automationSourceTone}`}>
                   {automationSourceLabel}
@@ -419,16 +426,16 @@ export function KanbanCard({
               }}
               className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-medium text-slate-600 transition hover:bg-slate-100 dark:border-gray-700 dark:bg-[#151826] dark:text-slate-300 dark:hover:bg-[#1b1e2b]"
             >
-              {showAssignment ? "Done" : "Edit"}
+              {showAssignment ? t.kanban.done : t.common.edit}
             </button>
           </div>
           {showAssignment && (
             <div className="mt-1.5 flex items-center gap-2">
               <label className="flex min-w-0 flex-1 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2 py-1 dark:border-gray-700 dark:bg-[#12141c]">
                 <span className="text-[10px] font-medium uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">
-                  Provider
+                  {t.kanban.providerLabel}
                 </span>
-                <Select
+                <select
                   value={task.assignedProvider ?? ""}
                   disabled={availableProviders.length === 0}
                   onMouseDown={stopCardInteraction}
@@ -440,13 +447,13 @@ export function KanbanCard({
                   aria-label={`ACP provider for ${task.title}`}
                   data-testid="kanban-card-acp-select"
                 >
-                  <option value="">Use lane default</option>
+                  <option value="">{t.kanban.useLaneDefault}</option>
                   {availableProviders.map((provider) => (
                     <option key={provider.id} value={provider.id}>
                       {provider.name}
                     </option>
                   ))}
-                </Select>
+                </select>
               </label>
             </div>
           )}
@@ -475,13 +482,14 @@ interface WorktreeBadgeProps {
 }
 
 function WorktreeBadge({ task, worktreeCache, onOpenDetail, stopCardInteraction }: WorktreeBadgeProps) {
+  const { t } = useTranslation();
   if (!task.worktreeId) return null;
 
   const wt = worktreeCache[task.worktreeId];
   if (!wt) {
     return (
       <div className="inline-flex items-center text-[10px] text-slate-500 dark:text-slate-400">
-        worktree loading...
+        worktree {t.common.loading}...
       </div>
     );
   }
@@ -497,7 +505,7 @@ function WorktreeBadge({ task, worktreeCache, onOpenDetail, stopCardInteraction 
       onClick={onOpenDetail}
       onClickCapture={stopCardInteraction}
       className="inline-flex max-w-full items-center gap-1 text-[10px] text-slate-500 transition hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
-      title="Click to view worktree details"
+      title={t.kanban.worktreeLoading}
       data-testid="worktree-badge"
     >
       <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${wtDotColor}`} />
@@ -525,18 +533,19 @@ function AssignmentSection({
   onPatchTask,
   onRefresh,
 }: AssignmentSectionProps) {
+  const { t } = useTranslation();
   return (
     <div className="mt-2 space-y-2 border-t border-slate-200/80 pt-2 dark:border-[#262938]">
       {!task.assignedProvider && (
         <div className="rounded-xl border border-dashed border-slate-200 bg-white/80 px-3 py-2 text-[11px] text-slate-500 dark:border-gray-700 dark:bg-[#10131a] dark:text-gray-400">
-          Select a provider above only if this card needs to override the lane default.
+          {t.kanban.selectProviderHint}
         </div>
       )}
 
       {task.assignedProvider && (
         <div className="flex items-center gap-2">
-          <span className="w-16 shrink-0 text-[10px] font-medium text-slate-500 dark:text-gray-400">Role</span>
-          <Select
+          <span className="w-16 shrink-0 text-[10px] font-medium text-slate-500 dark:text-gray-400">{t.kanban.role}</span>
+          <select
             value={task.assignedRole ?? "DEVELOPER"}
             onClick={stopCardInteraction}
             onChange={async (event) => {
@@ -548,14 +557,14 @@ function AssignmentSection({
             {ROLE_OPTIONS.map((role) => (
               <option key={role} value={role}>{role}</option>
             ))}
-          </Select>
+          </select>
         </div>
       )}
 
       {task.assignedProvider && (
         <div className="flex items-center gap-2">
-          <span className="w-16 shrink-0 text-[10px] font-medium text-slate-500 dark:text-gray-400">Specialist</span>
-          <Select
+          <span className="w-16 shrink-0 text-[10px] font-medium text-slate-500 dark:text-gray-400">{t.kanban.specialist}</span>
+          <select
             value={getLanguageSpecificSpecialistId(task.assignedSpecialistId, specialistLanguage) ?? ""}
             onClick={stopCardInteraction}
             onChange={async (event) => {
@@ -575,7 +584,7 @@ function AssignmentSection({
                 {getSpecialistDisplayName(specialist)}
               </option>
             ))}
-          </Select>
+          </select>
         </div>
       )}
     </div>

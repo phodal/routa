@@ -1,4 +1,5 @@
 import { useState, type Dispatch, type SetStateAction, type RefObject } from "react";
+import { useTranslation } from "@/i18n";
 import type { AcpProviderInfo } from "@/client/acp-client";
 import type { CodebaseData } from "@/client/hooks/use-workspaces";
 import type { UseAcpActions, UseAcpState } from "@/client/hooks/use-acp";
@@ -133,6 +134,7 @@ export function KanbanBoardSurface({
   ) => Promise<string | null>;
   kanbanRepoSelection: RepoSelection | null;
 }) {
+  const { t } = useTranslation();
   const [fileChangesOpen, setFileChangesOpen] = useState(false);
   const fileChangesSummary = getKanbanFileChangesSummary(repoChanges);
 
@@ -147,7 +149,7 @@ export function KanbanBoardSurface({
               onClick={onDismissMoveError}
               className="shrink-0 rounded-lg border border-rose-200 px-2 py-1 text-xs font-medium text-rose-700 transition hover:bg-rose-100 dark:border-rose-900/50 dark:text-rose-300 dark:hover:bg-rose-900/20"
             >
-              Dismiss
+              {t.common.dismiss}
             </button>
           </div>
         </div>
@@ -156,10 +158,10 @@ export function KanbanBoardSurface({
         <div className="flex flex-col gap-1.5 lg:flex-row lg:items-center lg:justify-between lg:gap-3">
           <div className="flex min-w-0 flex-1 flex-col gap-1.5 lg:flex-row lg:items-center lg:gap-2">
             <div className="flex min-w-0 flex-wrap items-center gap-2 xl:max-w-[56rem]">
-              <span className="inline-flex h-8 items-center text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">Repos</span>
+              <span className="inline-flex h-8 items-center text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">{t.kanbanBoard.repos}</span>
               {codebases.length === 0 ? (
                 <div className="flex min-w-0 flex-col gap-2 rounded-xl border border-dashed border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-700 dark:bg-[#0d1018]">
-                  <span className="text-sm text-slate-400 dark:text-slate-500">No repositories linked.</span>
+                  <span className="text-sm text-slate-400 dark:text-slate-500">{t.kanbanBoard.noReposLinked}</span>
                   <div className="flex items-center gap-2">
                     <RepoPicker
                       value={null}
@@ -351,18 +353,18 @@ export function KanbanBoardSurface({
                       <div className="mb-3 space-y-2">
                         <div>
                           <div className="text-sm font-semibold text-slate-800 dark:text-slate-100">{column.name}</div>
-                          <div className="text-[11px] text-slate-400 dark:text-slate-500">{columnTasks.length} cards</div>
+                          <div className="text-[11px] text-slate-400 dark:text-slate-500">{columnTasks.length} {t.kanbanBoard.cards}</div>
                         </div>
                         <div
                           className="truncate text-[10px] leading-4 text-slate-500 dark:text-slate-400"
                           data-testid={`kanban-column-automation-${column.id}`}
-                          title={laneAutomation?.enabled ? formatLaneAutomationSummary(laneAutomation, providers, specialists) : column.stage === "blocked" ? "Manual lane only" : "Manual lane"}
+                          title={laneAutomation?.enabled ? formatLaneAutomationSummary(laneAutomation, providers, specialists) : column.stage === "blocked" ? t.kanbanBoard.manualLaneOnly : t.kanbanBoard.manualLane}
                         >
                           {laneAutomation?.enabled
                             ? formatLaneAutomationSummary(laneAutomation, providers, specialists)
                             : column.stage === "blocked"
-                              ? "Manual lane only"
-                              : "Manual lane"}
+                              ? t.kanbanBoard.manualLaneOnly
+                              : t.kanbanBoard.manualLane}
                         </div>
                       </div>
 

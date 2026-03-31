@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
+import { useTranslation } from "@/i18n";
 import type { AcpProviderInfo } from "@/client/acp-client";
 import { resolveEffectiveTaskAutomation } from "@/core/kanban/effective-task-automation";
 import type { KanbanColumnInfo } from "../types";
@@ -84,6 +85,7 @@ function formatExpectedRunTarget(
   availableProviders: AcpProviderInfo[],
   specialists: KanbanSpecialistOption[],
 ): string {
+  const { t: _t } = useTranslation();
   const resolveSpecialist = createKanbanSpecialistResolver(specialists);
   const effectiveAutomation = resolveEffectiveTaskAutomation(task, boardColumns, resolveSpecialist);
   const specialistName = getSpecialistName(
@@ -104,7 +106,7 @@ function formatExpectedRunTarget(
 
   const providerName = effectiveAutomation.providerId
     ? availableProviders.find((provider) => provider.id === effectiveAutomation.providerId)?.name ?? effectiveAutomation.providerId
-    : "Workspace default";
+    : _t.kanban.workspaceDefault;
   return [providerName, effectiveAutomation.role ?? "DEVELOPER", specialistName].join(" · ");
 }
 
@@ -258,6 +260,7 @@ export function KanbanCardActivityBar({
   onSelectSession?: (sessionId: string) => void;
   onCloseSession?: () => void;
 }) {
+  const { t } = useTranslation();
   const copy = getKanbanSessionCopy(specialistLanguage);
   const { runs, error } = useTaskRuns(
     task.id,
@@ -307,7 +310,7 @@ export function KanbanCardActivityBar({
             const active = sessionId === selectedRunId;
             const laneSession = laneSessionMap.get(sessionId);
             const run = runMap.get(sessionId);
-            const laneLabel = laneSession?.columnName ?? laneSession?.columnId ?? "Run";
+            const laneLabel = laneSession?.columnName ?? laneSession?.columnId ?? t.kanban.runLabel;
             const runLabel = buildSessionDisplayLabel(sessionId, index, sessionMap);
 
             return (
@@ -404,6 +407,7 @@ function SessionHistoryPanel({
   onSelectSession?: (sessionId: string) => void;
   compact?: boolean;
 }) {
+  const { t } = useTranslation();
   const copy = getKanbanSessionCopy(specialistLanguage);
   const laneSessions = task.laneSessions ?? [];
   const orderedSessionIds = runs?.map((run) => run.sessionId ?? run.id) ?? getOrderedSessionIds(task);
@@ -431,7 +435,7 @@ function SessionHistoryPanel({
           </div>
         </div>
         <div className="rounded-full bg-white px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-600 shadow-sm dark:bg-[#0d1018] dark:text-slate-300">
-          Current lane: {task.columnId ?? "backlog"}
+          {t.kanban.currentLane}: {task.columnId ?? t.kanban.backlog}
         </div>
       </div>
       <div className={`overflow-y-auto pr-1 ${compact ? "mt-3 max-h-80 space-y-1.5" : "mt-4 max-h-[34rem] space-y-2"}`}>
@@ -447,7 +451,7 @@ function SessionHistoryPanel({
           );
           const stepLabel = getLaneSessionStepLabel(laneSession);
           const isA2ARun = laneSession?.transport === "a2a";
-          const reconnectLabel = run?.resumeTarget?.type === "external_task" ? "Inspect" : "Open";
+          const reconnectLabel = run?.resumeTarget?.type === "external_task" ? t.kanban.openLabel : t.kanban.openLabel;
 
           return (
             <button
@@ -461,7 +465,7 @@ function SessionHistoryPanel({
             >
               <div className="flex flex-wrap items-center gap-2">
                 <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-700 dark:bg-slate-800 dark:text-slate-300">
-                  Run {index + 1}
+                  {t.kanban.runLabel} {index + 1}
                 </span>
                 {run && (
                   <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-700 dark:bg-[#141926] dark:text-slate-200">
@@ -485,7 +489,7 @@ function SessionHistoryPanel({
                 )}
                 {isCurrent && (
                   <span className="rounded-full bg-amber-200 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-900 dark:bg-amber-800/40 dark:text-amber-200">
-                    Active
+                    {t.common.active}
                   </span>
                 )}
                 {(run?.status ?? laneSession?.status) && (
@@ -497,18 +501,18 @@ function SessionHistoryPanel({
               <div className="mt-2 flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <div className={`truncate font-medium text-slate-900 dark:text-slate-100 ${compact ? "text-[13px]" : "text-sm"}`}>
-                    {laneSession ? formatLaneSessionHeading(laneSession, session) : (session?.name ?? session?.provider ?? "Automation Run")}
+                    {laneSession ? formatLaneSessionHeading(laneSession, session) : (session?.name ?? session?.provider ?? t.kanban.acpSession)}
                   </div>
                   <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
                     {isA2ARun
                       ? [
                         "Remote task",
-                        laneSession?.role ?? "Unknown role",
+                        laneSession?.role ?? t.kanban.unknownRole,
                         laneSpecialist,
                       ].filter(Boolean).join(" · ")
                       : [
-                        run?.provider ?? laneSession?.provider ?? session?.provider ?? "Unknown provider",
-                        laneSession?.role ?? session?.role ?? "Unknown role",
+                        laneSession?.provider ?? session?.provider ?? t.kanban.unknownProvider,
+                        laneSession?.role ?? session?.role ?? t.kanban.unknownRole,
                         laneSpecialist,
                       ].filter(Boolean).join(" · ")}
                   </div>
@@ -524,7 +528,7 @@ function SessionHistoryPanel({
                 <span className="truncate">
                   {isA2ARun
                     ? (run?.contextId ?? laneSession?.contextId) ? `Context ${run?.contextId ?? laneSession?.contextId}` : "Remote task metadata available"
-                    : session?.cwd ?? "Working directory unavailable"}
+                    : session?.cwd ?? t.kanban.workingDirUnavailable}
                 </span>
                 <span className="font-medium text-amber-600 dark:text-amber-300">{reconnectLabel}</span>
               </div>
@@ -579,12 +583,13 @@ export function KanbanEmptySessionPane({
 }
 
 function HandoffPanel({ task, compact = false }: { task: TaskInfo; compact?: boolean }) {
+  const { t } = useTranslation();
   const handoffs = task.laneHandoffs ?? [];
   if (handoffs.length === 0) {
     return (
       <div className={`rounded-2xl border border-dashed border-slate-300 bg-white text-sm text-slate-500 dark:border-slate-700 dark:bg-[#121620] dark:text-slate-400 ${compact ? "px-3 py-4" : "px-4 py-5"}`}>
-        <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">Lane Handoffs</div>
-        <div className="mt-2">No lane handoffs were captured for this card yet.</div>
+        <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">{t.kanban.laneHandoffs}</div>
+        <div className="mt-2">{t.kanban.noLaneHandoffsYet}</div>
       </div>
     );
   }
@@ -596,9 +601,9 @@ function HandoffPanel({ task, compact = false }: { task: TaskInfo; compact?: boo
   return (
     <>
       <div>
-        <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">Lane Handoffs</div>
+        <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">{t.kanban.laneHandoffs}</div>
         <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-          Requests and responses exchanged between adjacent Kanban lanes.
+          {t.kanban.laneHandoffsDescription}
         </div>
       </div>
       <div className={`space-y-2 ${compact ? "mt-3" : "mt-4"}`}>
@@ -622,7 +627,7 @@ function HandoffPanel({ task, compact = false }: { task: TaskInfo; compact?: boo
               </div>
             )}
             <div className="mt-2 text-[11px] text-slate-400 dark:text-slate-500">
-              Requested {formatSessionTimestamp(handoff.requestedAt)}{handoff.respondedAt ? ` · Responded ${formatSessionTimestamp(handoff.respondedAt)}` : ""}
+              {t.kanban.requested} {formatSessionTimestamp(handoff.requestedAt)}{handoff.respondedAt ? ` · ${t.kanban.responded} ${formatSessionTimestamp(handoff.respondedAt)}` : ""}
             </div>
           </div>
         ))}
@@ -632,6 +637,7 @@ function HandoffPanel({ task, compact = false }: { task: TaskInfo; compact?: boo
 }
 
 function GitHubPanel({ task, compact = false }: { task: TaskInfo; compact?: boolean }) {
+  const { t } = useTranslation();
   if (!task.githubNumber) {
     return null;
   }
@@ -641,7 +647,7 @@ function GitHubPanel({ task, compact = false }: { task: TaskInfo; compact?: bool
       <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">GitHub</div>
       <div className="mt-2 flex flex-wrap items-center gap-2">
         <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
-          {task.githubState ?? "linked"}
+          {task.githubState ?? t.kanban.linkedLabel}
         </span>
         {task.githubRepo && (
           <span className="text-xs text-slate-500 dark:text-slate-400">{task.githubRepo}</span>
@@ -657,7 +663,7 @@ function GitHubPanel({ task, compact = false }: { task: TaskInfo; compact?: bool
       </a>
       {task.githubSyncedAt && (
         <div className="mt-2 text-[11px] text-slate-400 dark:text-slate-500">
-          Synced {formatSessionTimestamp(task.githubSyncedAt)}
+          {t.kanban.syncedAt} {formatSessionTimestamp(task.githubSyncedAt)}
         </div>
       )}
     </div>

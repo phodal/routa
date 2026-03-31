@@ -1,9 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useTranslation } from "@/i18n";
 import { formatRelativeTime } from "../ui-components";
 import type { BackgroundTaskInfo } from "../types";
-import { Select } from "@/client/components/select";
 
 interface WorkspaceBackgroundAgent {
   id: string;
@@ -115,6 +115,7 @@ function aggregateAgentStatus(statuses: string[]): string {
 }
 
 export function KanbanBgAgentPanel({ workspaceId }: KanbanBgAgentPanelProps) {
+  const { t } = useTranslation();
   const [agents, setAgents] = useState<WorkspaceBackgroundAgent[]>([]);
   const [bgTasks, setBgTasks] = useState<BackgroundTaskInfo[]>([]);
   const [loading, setLoading] = useState(true);
@@ -348,12 +349,12 @@ export function KanbanBgAgentPanel({ workspaceId }: KanbanBgAgentPanelProps) {
             <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <span className="rounded-full bg-amber-100 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-amber-700 dark:bg-amber-900/20 dark:text-amber-300">
-                  Workspace
+                  {t.common.workspace}
                 </span>
-                <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Background Agents</h2>
+                <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">{t.kanbanBgAgent.backgroundAgents}</h2>
               </div>
               <p className="mt-1 text-[12px] text-slate-500 dark:text-slate-400">
-                Visualize this workspace&apos;s dedicated background agents and the queue routes they are driving.
+                {t.kanbanBgAgent.bgAgentDesc}
               </p>
             </div>
 
@@ -363,7 +364,7 @@ export function KanbanBgAgentPanel({ workspaceId }: KanbanBgAgentPanelProps) {
                 onClick={() => void fetchPanelData()}
                 className="rounded-lg border border-slate-200 px-3 py-2 text-[12px] font-medium text-slate-600 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-[#191c28]"
               >
-                {loading ? "Refreshing…" : "Refresh"}
+                {loading ? t.common.loading : t.common.refresh}
               </button>
               <button
                 type="button"
@@ -374,7 +375,7 @@ export function KanbanBgAgentPanel({ workspaceId }: KanbanBgAgentPanelProps) {
                 data-testid="kanban-bg-agent-add-btn"
                 className="rounded-lg bg-amber-500 px-3 py-2 text-[12px] font-medium text-white transition-colors hover:bg-amber-600"
               >
-                Add BG Agent
+                {t.kanbanBgAgent.addBgAgent}
               </button>
             </div>
           </div>
@@ -382,10 +383,10 @@ export function KanbanBgAgentPanel({ workspaceId }: KanbanBgAgentPanelProps) {
           <div data-testid="kanban-bg-agent-content" className="space-y-4">
             <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
               {[
-                { label: "Workspace Agents", value: groupedAgents.length, tone: "text-blue-600 dark:text-blue-300 bg-blue-50 dark:bg-blue-900/20" },
-                { label: "Active Agents", value: activeAgents, tone: "text-emerald-600 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/20" },
-                { label: "Queue Routes", value: groupedRoutes.length, tone: "text-blue-600 dark:text-blue-300 bg-blue-50 dark:bg-blue-900/20" },
-                { label: "Pending Tasks", value: pendingTasks, tone: "text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20" },
+                { label: t.kanbanBgAgent.workspaceAgents, value: groupedAgents.length, tone: "text-blue-600 dark:text-blue-300 bg-blue-50 dark:bg-blue-900/20" },
+                { label: t.kanbanBgAgent.activeAgents, value: activeAgents, tone: "text-emerald-600 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/20" },
+                { label: t.kanbanBgAgent.queueRoutes, value: groupedRoutes.length, tone: "text-blue-600 dark:text-blue-300 bg-blue-50 dark:bg-blue-900/20" },
+                { label: t.kanbanBgAgent.pendingTasks, value: pendingTasks, tone: "text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20" },
               ].map((item) => (
                 <div key={item.label} className={`rounded-xl px-3 py-2 ${item.tone}`}>
                   <div className="text-[10px] font-semibold uppercase tracking-[0.14em] opacity-75">{item.label}</div>
@@ -402,9 +403,9 @@ export function KanbanBgAgentPanel({ workspaceId }: KanbanBgAgentPanelProps) {
 
             {agents.length === 0 && groupedRoutes.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-5 py-8 text-center dark:border-[#2a3040] dark:bg-[#0d1018]">
-                <div className="text-[13px] font-medium text-slate-700 dark:text-slate-200">No workspace background agents yet</div>
+                <div className="text-[13px] font-medium text-slate-700 dark:text-slate-200">{t.kanbanBgAgent.noAgentsYet}</div>
                 <p className="mt-1 text-[12px] text-slate-500 dark:text-slate-400">
-                  Add a dedicated BG agent for this workspace to keep Kanban automation visible at a glance.
+                  {t.kanbanBgAgent.noAgentsHint}
                 </p>
               </div>
             ) : (
@@ -412,17 +413,17 @@ export function KanbanBgAgentPanel({ workspaceId }: KanbanBgAgentPanelProps) {
                 <div className="space-y-4">
                   <div className="rounded-2xl border border-slate-200/70 bg-slate-50/80 px-4 py-3 dark:border-[#252838] dark:bg-[#0d1018]">
                     <div className="flex items-center justify-between">
-                      <div className="text-[12px] font-semibold text-slate-700 dark:text-slate-300">Observed queue targets</div>
-                      <div className="text-[11px] text-slate-400 dark:text-slate-500">{groupedRoutes.length} routes</div>
+                      <div className="text-[12px] font-semibold text-slate-700 dark:text-slate-300">{t.kanbanBgAgent.observedTargets}</div>
+                      <div className="text-[11px] text-slate-400 dark:text-slate-500">{groupedRoutes.length} {t.kanbanBgAgent.routesCount}</div>
                     </div>
                     <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
-                      These are the agent ids currently used by background tasks in this workspace.
+                      {t.kanbanBgAgent.observedTargetsDesc}
                     </p>
 
                     <div className="mt-3 grid gap-3 md:grid-cols-2 2xl:grid-cols-3">
                       {groupedRoutes.length === 0 ? (
                         <div className="rounded-xl border border-dashed border-slate-200 px-3 py-6 text-center text-[12px] text-slate-400 dark:border-[#2a3040] dark:text-slate-500">
-                          No queue activity yet.
+                          {t.kanbanBgAgent.noQueueActivity}
                         </div>
                       ) : (
                         groupedRoutes.map((route) => {
@@ -439,25 +440,24 @@ export function KanbanBgAgentPanel({ workspaceId }: KanbanBgAgentPanelProps) {
                                   </div>
                                   {route.scheduleTriggerIds.length > 0 && (
                                     <div className="mt-1 text-[10px] text-slate-400 dark:text-slate-500">
-                                      Schedule triggers: {route.scheduleTriggerIds.length}
+                                      {t.kanbanBgAgent.scheduleTriggers}: {route.scheduleTriggerIds.length}
                                     </div>
                                   )}
                                 </div>
                                 <span
-                                  className={`shrink-0 rounded-full px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.12em] ${
-                                    linked
-                                      ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300"
-                                      : "bg-slate-100 text-slate-600 dark:bg-[#20242f] dark:text-slate-300"
-                                  }`}
+                                  className={`shrink-0 rounded-full px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.12em] ${linked
+                                    ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300"
+                                    : "bg-slate-100 text-slate-600 dark:bg-[#20242f] dark:text-slate-300"
+                                    }`}
                                 >
-                                  {linked ? "linked" : "external"}
+                                  {linked ? t.kanbanBgAgent.linked : t.kanbanBgAgent.external}
                                 </span>
                               </div>
                               <div className="mt-3 grid grid-cols-3 gap-2">
                                 {[
-                                  { label: "All", value: route.total },
-                                  { label: "Pending", value: route.pending },
-                                  { label: "Running", value: route.running },
+                                  { label: t.kanbanBgAgent.all, value: route.total },
+                                  { label: t.kanbanBgAgent.pending, value: route.pending },
+                                  { label: t.kanbanBgAgent.running, value: route.running },
                                 ].map((item) => (
                                   <div key={item.label} className="rounded-xl bg-slate-50 px-2 py-1.5 text-center dark:bg-[#0b0e15]">
                                     <div className="text-[9px] uppercase tracking-[0.12em] text-slate-400 dark:text-slate-500">{item.label}</div>
@@ -466,9 +466,9 @@ export function KanbanBgAgentPanel({ workspaceId }: KanbanBgAgentPanelProps) {
                                 ))}
                               </div>
                               <div className="mt-3 rounded-xl border border-dashed border-slate-200 px-3 py-2 text-[11px] text-slate-500 dark:border-[#2a3040] dark:text-slate-400">
-                                <span className="font-medium text-slate-700 dark:text-slate-200">Latest task</span>
+                                <span className="font-medium text-slate-700 dark:text-slate-200">{t.kanbanBgAgent.latestTask}</span>
                                 <div className="mt-1">
-                                  {route.latestTask ? `${route.latestTask.title} · ${formatRelativeTime(route.latestTask.createdAt)}` : "No recent task"}
+                                  {route.latestTask ? `${route.latestTask.title} · ${formatRelativeTime(route.latestTask.createdAt)}` : t.kanbanBgAgent.noRecentTask}
                                 </div>
                               </div>
                             </article>
@@ -480,9 +480,9 @@ export function KanbanBgAgentPanel({ workspaceId }: KanbanBgAgentPanelProps) {
 
                   <div className="space-y-3">
                     <div className="flex items-center justify-between">
-                      <div className="text-[12px] font-semibold text-slate-700 dark:text-slate-300">Workspace background agents</div>
+                      <div className="text-[12px] font-semibold text-slate-700 dark:text-slate-300">{t.kanbanBgAgent.workspaceBgAgents}</div>
                       <div className="text-[11px] text-slate-400 dark:text-slate-500">
-                        {activeAgents} active · {runningRoutes} hot routes
+                        {activeAgents} {t.kanbanBgAgent.activeHotRoutes.replace('{hotRoutes}', String(runningRoutes))}
                       </div>
                     </div>
                     <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-3">
@@ -490,58 +490,58 @@ export function KanbanBgAgentPanel({ workspaceId }: KanbanBgAgentPanelProps) {
                         const displayId = agent.ids[0] ?? "";
                         const extra = Math.max(agent.count - 1, 0);
                         return (
-                        <article
-                          key={agent.key}
-                          data-testid="kanban-bg-agent-card"
-                          className="rounded-2xl border border-slate-200/70 bg-gradient-to-br from-white via-white to-slate-50 px-4 py-3 dark:border-[#252838] dark:from-[#151822] dark:via-[#12141c] dark:to-[#0d1018]"
-                        >
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <div className="truncate text-[13px] font-semibold text-slate-900 dark:text-slate-100">{agent.name}</div>
-                                <span className={`rounded-full px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.14em] ${roleClass(agent.role)}`}>
-                                  {agent.role}
-                                </span>
-                              </div>
-                              <div className="mt-1 truncate font-mono text-[10px] text-slate-400 dark:text-slate-500">
-                                {displayId}
-                                {extra > 0 && ` +${extra} more`}
-                              </div>
-                            </div>
-                            <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] ${statusClass(agent.status)}`}>
-                              {agent.status}
-                            </span>
-                          </div>
-
-                          <div className="mt-3 grid grid-cols-4 gap-2">
-                            {[
-                              { label: "All", value: total },
-                              { label: "Pending", value: pending },
-                              { label: "Running", value: running },
-                              { label: "Finished", value: completed + failed },
-                            ].map((item) => (
-                              <div key={item.label} className="rounded-xl bg-slate-50 px-2 py-1.5 text-center dark:bg-[#0b0e15]">
-                                <div className="text-[9px] uppercase tracking-[0.12em] text-slate-400 dark:text-slate-500">{item.label}</div>
-                                <div className="mt-1 text-[13px] font-semibold text-slate-800 dark:text-slate-100 tabular-nums">{item.value}</div>
-                              </div>
-                            ))}
-                          </div>
-
-                          <div className="mt-3 rounded-xl border border-dashed border-slate-200 px-3 py-2 text-[11px] text-slate-500 dark:border-[#2a3040] dark:text-slate-400">
-                            {latestTask ? (
-                              <>
-                                <div className="font-medium text-slate-700 dark:text-slate-200">{latestTask.title}</div>
-                                <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                                  <span className="capitalize">{latestTask.status.toLowerCase()}</span>
-                                  <span>·</span>
-                                  <span>{formatRelativeTime(latestTask.createdAt)}</span>
+                          <article
+                            key={agent.key}
+                            data-testid="kanban-bg-agent-card"
+                            className="rounded-2xl border border-slate-200/70 bg-gradient-to-br from-white via-white to-slate-50 px-4 py-3 dark:border-[#252838] dark:from-[#151822] dark:via-[#12141c] dark:to-[#0d1018]"
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <div className="truncate text-[13px] font-semibold text-slate-900 dark:text-slate-100">{agent.name}</div>
+                                  <span className={`rounded-full px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.14em] ${roleClass(agent.role)}`}>
+                                    {agent.role}
+                                  </span>
                                 </div>
-                              </>
-                            ) : (
-                              <span>No background task has been routed to this workspace agent yet.</span>
-                            )}
-                          </div>
-                        </article>
+                                <div className="mt-1 truncate font-mono text-[10px] text-slate-400 dark:text-slate-500">
+                                  {displayId}
+                                  {extra > 0 && ` +${extra} more`}
+                                </div>
+                              </div>
+                              <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] ${statusClass(agent.status)}`}>
+                                {agent.status}
+                              </span>
+                            </div>
+
+                            <div className="mt-3 grid grid-cols-4 gap-2">
+                              {[
+                                { label: t.kanbanBgAgent.all, value: total },
+                                { label: t.kanbanBgAgent.pending, value: pending },
+                                { label: t.kanbanBgAgent.running, value: running },
+                                { label: t.kanbanBgAgent.finished, value: completed + failed },
+                              ].map((item) => (
+                                <div key={item.label} className="rounded-xl bg-slate-50 px-2 py-1.5 text-center dark:bg-[#0b0e15]">
+                                  <div className="text-[9px] uppercase tracking-[0.12em] text-slate-400 dark:text-slate-500">{item.label}</div>
+                                  <div className="mt-1 text-[13px] font-semibold text-slate-800 dark:text-slate-100 tabular-nums">{item.value}</div>
+                                </div>
+                              ))}
+                            </div>
+
+                            <div className="mt-3 rounded-xl border border-dashed border-slate-200 px-3 py-2 text-[11px] text-slate-500 dark:border-[#2a3040] dark:text-slate-400">
+                              {latestTask ? (
+                                <>
+                                  <div className="font-medium text-slate-700 dark:text-slate-200">{latestTask.title}</div>
+                                  <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                                    <span className="capitalize">{latestTask.status.toLowerCase()}</span>
+                                    <span>·</span>
+                                    <span>{formatRelativeTime(latestTask.createdAt)}</span>
+                                  </div>
+                                </>
+                              ) : (
+                                <span>{t.kanbanBgAgent.noTaskRouted}</span>
+                              )}
+                            </div>
+                          </article>
                         );
                       })}
                     </div>
@@ -559,9 +559,9 @@ export function KanbanBgAgentPanel({ workspaceId }: KanbanBgAgentPanelProps) {
           <div className="relative w-full max-w-md rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl dark:border-[#1c1f2e] dark:bg-[#12141c]">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Add background agent</h3>
+                <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">{t.kanbanBgAgent.addBgAgentTitle}</h3>
                 <p className="mt-1 text-[12px] text-slate-500 dark:text-slate-400">
-                  Create a workspace-scoped agent so Kanban keeps the background automation topology visible.
+                  {t.kanbanBgAgent.addBgAgentDesc}
                 </p>
               </div>
               <button
@@ -578,21 +578,21 @@ export function KanbanBgAgentPanel({ workspaceId }: KanbanBgAgentPanelProps) {
 
             <div className="mt-4 space-y-3">
               <div>
-                <label className="mb-1 block text-[12px] font-medium text-slate-600 dark:text-slate-400">Agent name</label>
+                <label className="mb-1 block text-[12px] font-medium text-slate-600 dark:text-slate-400">{t.kanbanBgAgent.agentName}</label>
                 <input
                   data-testid="kanban-bg-agent-name-input"
                   type="text"
                   value={createForm.name}
                   onChange={(event) => setCreateForm((current) => ({ ...current, name: event.target.value }))}
-                  placeholder="e.g. Review Bot"
+                  placeholder={t.kanbanBgAgent.agentNamePlaceholder}
                   className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-[13px] text-slate-800 placeholder:text-slate-400 focus:border-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-400/20 dark:border-[#252838] dark:bg-[#0d1018] dark:text-slate-100 dark:placeholder:text-slate-500"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="mb-1 block text-[12px] font-medium text-slate-600 dark:text-slate-400">Role</label>
-                  <Select
+                  <label className="mb-1 block text-[12px] font-medium text-slate-600 dark:text-slate-400">{t.kanbanBgAgent.role}</label>
+                  <select
                     value={createForm.role}
                     onChange={(event) => setCreateForm((current) => ({ ...current, role: event.target.value }))}
                     className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-[13px] text-slate-800 focus:border-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-400/20 dark:border-[#252838] dark:bg-[#0d1018] dark:text-slate-100"
@@ -601,11 +601,11 @@ export function KanbanBgAgentPanel({ workspaceId }: KanbanBgAgentPanelProps) {
                     <option value="CRAFTER">CRAFTER</option>
                     <option value="GATE">GATE</option>
                     <option value="ROUTA">ROUTA</option>
-                  </Select>
+                  </select>
                 </div>
                 <div>
-                  <label className="mb-1 block text-[12px] font-medium text-slate-600 dark:text-slate-400">Model tier</label>
-                  <Select
+                  <label className="mb-1 block text-[12px] font-medium text-slate-600 dark:text-slate-400">{t.kanbanBgAgent.modelTier}</label>
+                  <select
                     value={createForm.modelTier}
                     onChange={(event) => setCreateForm((current) => ({ ...current, modelTier: event.target.value }))}
                     className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-[13px] text-slate-800 focus:border-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-400/20 dark:border-[#252838] dark:bg-[#0d1018] dark:text-slate-100"
@@ -613,7 +613,7 @@ export function KanbanBgAgentPanel({ workspaceId }: KanbanBgAgentPanelProps) {
                     <option value="FAST">FAST</option>
                     <option value="BALANCED">BALANCED</option>
                     <option value="SMART">SMART</option>
-                  </Select>
+                  </select>
                 </div>
               </div>
 
@@ -630,7 +630,7 @@ export function KanbanBgAgentPanel({ workspaceId }: KanbanBgAgentPanelProps) {
                 onClick={() => setShowCreateModal(false)}
                 className="rounded-lg px-3 py-2 text-[12px] font-medium text-slate-500 transition-colors hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-[#191c28]"
               >
-                Cancel
+                {t.common.cancel}
               </button>
               <button
                 type="button"
@@ -639,7 +639,7 @@ export function KanbanBgAgentPanel({ workspaceId }: KanbanBgAgentPanelProps) {
                 data-testid="kanban-bg-agent-submit-btn"
                 className="rounded-lg bg-amber-500 px-3 py-2 text-[12px] font-medium text-white transition-colors hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {creating ? "Creating…" : "Create agent"}
+                {creating ? t.kanbanBgAgent.creating : t.kanbanBgAgent.createAgent}
               </button>
             </div>
           </div>

@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import { useTranslation } from "@/i18n";
 import { A2UIViewer } from "@/client/a2ui/renderer";
 import {
   generateDashboardA2UI,
@@ -53,6 +54,7 @@ export function OverviewA2UITab({
   onAddCustomSurface,
   onInstallAgent,
 }: OverviewA2UITabProps) {
+  const { t } = useTranslation();
   const [showJsonPanel, setShowJsonPanel] = useState(false);
   const [showTemplateGallery, setShowTemplateGallery] = useState(false);
   const [customJsonInput, setCustomJsonInput] = useState("");
@@ -116,14 +118,14 @@ export function OverviewA2UITab({
     if (showSource && !sourceIsOverridden) {
       setSourceEditValue(JSON.stringify(autoMessages, null, 2));
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showSource]);
 
   React.useEffect(() => {
     if (showSource && !sourceIsOverridden) {
       setSourceEditValue(JSON.stringify(autoMessages, null, 2));
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoMessages]);
 
   const handleApplySource = () => {
@@ -217,9 +219,9 @@ export function OverviewA2UITab({
 
         <div className="space-y-6">
           <DashboardCard
-            title="Agents"
+            title={t.a2ui.agents}
             count={agents.length}
-            emptyText="No agents spawned."
+            emptyText={t.a2ui.noAgentsSpawned}
             action={
               <button
                 onClick={onInstallAgent}
@@ -242,7 +244,7 @@ export function OverviewA2UITab({
           </DashboardCard>
 
           {skills.length > 0 && (
-            <DashboardCard title="Skills" count={skills.length}>
+            <DashboardCard title={t.a2ui.skills} count={skills.length}>
               <div className="flex flex-wrap gap-1.5 px-3 py-2">
                 {skills.slice(0, 12).map((sk) => (
                   <span
@@ -278,11 +280,10 @@ export function OverviewA2UITab({
         <div className="flex items-center gap-1.5">
           <button
             onClick={() => { setShowTemplateGallery(!showTemplateGallery); setShowJsonPanel(false); }}
-            className={`flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-medium transition-colors ${
-              showTemplateGallery
+            className={`flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-medium transition-colors ${showTemplateGallery
                 ? "bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400"
                 : "text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-[#191c28]"
-            }`}
+              }`}
           >
             <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z" />
@@ -309,11 +310,10 @@ export function OverviewA2UITab({
           </button>
           <button
             onClick={onToggleSource}
-            className={`flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-medium transition-colors ${
-              showSource
+            className={`flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-medium transition-colors ${showSource
                 ? "bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400"
                 : "text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-[#191c28]"
-            }`}
+              }`}
           >
             <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5" />
@@ -328,8 +328,8 @@ export function OverviewA2UITab({
         <div className="bg-white dark:bg-[#12141c] rounded-xl border border-slate-200/60 dark:border-[#1c1f2e] p-4">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h3 className="text-xs font-semibold text-slate-700 dark:text-slate-300">Surface Templates</h3>
-              <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">Add pre-built surfaces to your dashboard</p>
+              <h3 className="text-xs font-semibold text-slate-700 dark:text-slate-300">{t.a2ui.surfaceTemplates}</h3>
+              <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">{t.a2ui.addSurfaceDescription}</p>
             </div>
             <button
               onClick={() => setShowTemplateGallery(false)}
@@ -344,8 +344,8 @@ export function OverviewA2UITab({
             {[
               {
                 id: "kanban",
-                title: "Task Board",
-                description: "Kanban-style view: Active, Pending, and Done tasks",
+                title: t.a2ui.taskBoard,
+                description: t.a2ui.taskBoardDesc,
                 icon: (
                   <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M9 4.5v15m6-15v15m-10.875 0h15.75c.621 0 1.125-.504 1.125-1.125V5.625c0-.621-.504-1.125-1.125-1.125H4.125C3.504 4.5 3 5.004 3 5.625v12.75c0 .621.504 1.125 1.125 1.125z" />
@@ -357,8 +357,8 @@ export function OverviewA2UITab({
               },
               {
                 id: "agents",
-                title: "Agent Monitor",
-                description: "Live agent status with role badges and health indicators",
+                title: t.a2ui.agentMonitor,
+                description: t.a2ui.agentMonitorDesc,
                 icon: (
                   <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M17.982 18.725A7.488 7.488 0 0012 15.75a7.488 7.488 0 00-5.982 2.975m11.963 0a9 9 0 10-11.963 0m11.963 0A8.966 8.966 0 0112 21a8.966 8.966 0 01-5.982-2.275M15 9.75a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -370,8 +370,8 @@ export function OverviewA2UITab({
               },
               {
                 id: "timeline",
-                title: "Timeline",
-                description: "Chronological activity feed across tasks and traces",
+                title: t.a2ui.timeline,
+                description: t.a2ui.timelineDesc,
                 icon: (
                   <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 3v11.25A2.25 2.25 0 006 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0118 16.5h-2.25m-7.5 0h7.5m-7.5 0l-1 3m8.5-3l1 3m0 0l.5 1.5m-.5-1.5h-9.5m0 0l-.5 1.5m.75-9l3-3 2.148 2.148A12.061 12.061 0 0116.5 7.605" />
@@ -383,8 +383,8 @@ export function OverviewA2UITab({
               },
               {
                 id: "summary",
-                title: "Workspace Summary",
-                description: "High-level metrics: tasks, agents, BG jobs, and codebases",
+                title: t.a2ui.workspaceSummary,
+                description: t.a2ui.workspaceSummaryDesc,
                 icon: (
                   <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 14.25v2.25m3-4.5v4.5m3-6.75v6.75m3-9v9M6 20.25h12A2.25 2.25 0 0020.25 18V6A2.25 2.25 0 0018 3.75H6A2.25 2.25 0 003.75 6v12A2.25 2.25 0 006 20.25z" />
@@ -469,7 +469,7 @@ export function OverviewA2UITab({
       {showJsonPanel && (
         <div className="bg-white dark:bg-[#12141c] rounded-xl border border-slate-200/60 dark:border-[#1c1f2e] p-4">
           <div className="flex items-center justify-between mb-3">
-            <h3 className="text-xs font-semibold text-slate-700 dark:text-slate-300">Import Custom A2UI Surface</h3>
+            <h3 className="text-xs font-semibold text-slate-700 dark:text-slate-300">{t.a2ui.importCustomSurface}</h3>
             <button
               onClick={() => { setShowJsonPanel(false); setJsonError(null); }}
               className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"

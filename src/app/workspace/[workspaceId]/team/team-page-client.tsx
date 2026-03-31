@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { useTranslation } from "@/i18n";
 import { DesktopAppShell } from "@/client/components/desktop-app-shell";
 import { WorkspaceSwitcher } from "@/client/components/workspace-switcher";
 import { HomeInput } from "@/client/components/home-input";
@@ -69,6 +70,7 @@ function isTeamLeadRun(session: SessionInfo): boolean {
 }
 
 export function TeamPageClient() {
+  const { t } = useTranslation();
   const params = useParams();
   const router = useRouter();
   const rawWorkspaceId = params.workspaceId as string;
@@ -221,7 +223,7 @@ export function TeamPageClient() {
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
           </svg>
-          Loading workspace...
+          {t.team.loadingWorkspace}
         </div>
       </div>
     );
@@ -251,27 +253,27 @@ export function TeamPageClient() {
               <section className="flex flex-1 flex-col justify-center">
                 <div className="mx-auto w-full max-w-3xl text-center">
                   <div className="text-sm font-medium text-slate-500 dark:text-slate-400">
-                    {workspace?.title ?? "Workspace"}
+                    {workspace?.title ?? t.common.workspace}
                   </div>
                   <h1 className="mt-4 font-['Avenir_Next_Condensed','Avenir_Next','Segoe_UI','Helvetica_Neue',sans-serif] text-5xl font-semibold tracking-[-0.05em] text-slate-900 dark:text-slate-100 sm:text-6xl">
-                    Start with the Team lead, then fan out.
+                    {t.team.launchTeamLead}
                   </h1>
                   <p className="mx-auto mt-5 max-w-2xl text-base leading-8 text-slate-600 dark:text-slate-300">
-                    Keep orchestration, recent runs, and the team bench on one surface. Start from the same composer as Home, but route directly into the Team flow.
+                    {t.team.reusesInput}
                   </p>
                 </div>
 
                 <div className="mx-auto mt-8 flex w-full max-w-3xl flex-wrap items-center justify-center gap-3 text-sm text-slate-500 dark:text-slate-400">
                   <div className="inline-flex items-center gap-2 rounded-full border border-black/8 bg-white/75 px-4 py-2 dark:border-white/10 dark:bg-white/5">
-                    <span className="text-[10px] font-semibold uppercase tracking-[0.18em]">Runs</span>
+                    <span className="text-[10px] font-semibold uppercase tracking-[0.18em]">{t.team.runs}</span>
                     <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">{teamRuns.length}</span>
                   </div>
                   <div className="inline-flex items-center gap-2 rounded-full border border-black/8 bg-white/75 px-4 py-2 dark:border-white/10 dark:bg-white/5">
-                    <span className="text-[10px] font-semibold uppercase tracking-[0.18em]">Active</span>
+                    <span className="text-[10px] font-semibold uppercase tracking-[0.18em]">{t.team.active}</span>
                     <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">{activeRuns}</span>
                   </div>
                   <div className="inline-flex items-center gap-2 rounded-full border border-black/8 bg-white/75 px-4 py-2 dark:border-white/10 dark:bg-white/5">
-                    <span className="text-[10px] font-semibold uppercase tracking-[0.18em]">Bench</span>
+                    <span className="text-[10px] font-semibold uppercase tracking-[0.18em]">{t.team.members}</span>
                     <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">{availableMembers}</span>
                   </div>
                 </div>
@@ -283,10 +285,10 @@ export function TeamPageClient() {
             <div className="mx-auto w-full max-w-4xl">
               <div className="mb-2 flex items-center justify-between gap-3">
                 <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-500">
-                  Team Bench
+                  {t.team.teamBench}
                 </div>
                 <div className="text-[10px] text-slate-500 dark:text-slate-400">
-                  {teamSpecialists.length} specialists
+                  {teamSpecialists.length} {t.team.specialists}
                 </div>
               </div>
               <div
@@ -358,10 +360,10 @@ export function TeamPageClient() {
             <div className="flex items-start justify-between gap-3">
               <div>
                 <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500 dark:text-slate-500">
-                  Recent Runs
+                  {t.team.teamRuns}
                 </div>
                 <div className="mt-2 text-sm text-slate-600 dark:text-slate-300">
-                  Continue from the latest top-level Team sessions.
+                  {t.team.topLevelOnly}
                 </div>
               </div>
               <button
@@ -369,7 +371,7 @@ export function TeamPageClient() {
                 onClick={handleRefresh}
                 className="rounded-full border border-black/8 bg-white/90 px-3 py-1.5 text-[11px] font-medium text-slate-600 transition-colors hover:bg-white dark:border-white/10 dark:bg-white/5 dark:text-slate-300 dark:hover:bg-white/10"
               >
-                Refresh
+                {t.common.refresh}
               </button>
             </div>
           </div>
@@ -378,10 +380,10 @@ export function TeamPageClient() {
             {teamRuns.length === 0 ? (
               <div className="rounded-[22px] border border-dashed border-black/10 bg-[#f8f6f1] px-5 py-8 text-center dark:border-white/10 dark:bg-white/[0.04]">
                 <div className="text-sm font-medium text-slate-700 dark:text-slate-200">
-                  No Team runs yet.
+                  {t.team.noTeamRunsYet}
                 </div>
                 <div className="mt-1.5 text-sm leading-6 text-slate-500 dark:text-slate-400">
-                  Start a lead session from the composer below.
+                  {t.team.launchAbove}
                 </div>
               </div>
             ) : (

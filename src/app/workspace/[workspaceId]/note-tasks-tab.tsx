@@ -1,10 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import { useTranslation } from "@/i18n";
 import { formatRelativeTime, TaskStatusIcon } from "./ui-components";
 import type { NoteData } from "@/client/hooks/use-notes";
 import type { SessionInfo } from "./types";
-import { Select } from "@/client/components/select";
 
 export function NoteTasksTab({
   notes,
@@ -22,6 +22,7 @@ export function NoteTasksTab({
   onUpdateNoteMetadata: (noteId: string, metadata: Record<string, unknown>) => Promise<void>;
   onDeleteAllTaskNotes: () => Promise<void>;
 }) {
+  const { t } = useTranslation();
   const specNotes = notes.filter(n => n.metadata?.type === "spec").sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
   const taskNotes = notes.filter(n => n.metadata?.type === "task").sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
 
@@ -81,7 +82,7 @@ export function NoteTasksTab({
     <div className="max-w-4xl">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h2 className="text-sm font-semibold text-slate-800 dark:text-slate-200">Note Tasks</h2>
+          <h2 className="text-sm font-semibold text-slate-800 dark:text-slate-200">{t.notesTab.noteTasks}</h2>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
             Spec notes and their derived tasks — created from <code className="font-mono text-[10px]">@@@task</code> blocks
           </p>
@@ -89,7 +90,7 @@ export function NoteTasksTab({
         {taskNotes.length > 0 && (
           <button onClick={handleClearAll} disabled={clearingAll}
             className="text-[11px] text-red-500 dark:text-red-400 hover:text-red-600 transition-colors disabled:opacity-50">
-            {clearingAll ? "Clearing…" : "Clear task notes"}
+            {clearingAll ? t.notesTab.clearing : t.notesTab.clearTaskNotes}
           </button>
         )}
       </div>
@@ -98,7 +99,7 @@ export function NoteTasksTab({
       {specNotes.length > 0 && (
         <div className="mb-8">
           <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-2 flex items-center gap-2">
-            <span>Source Specs</span>
+            <span>{t.notesTab.sourceSpecs}</span>
             <span className="font-mono text-slate-300 dark:text-slate-600">{specNotes.length}</span>
           </div>
           <div className="space-y-2">
@@ -147,7 +148,7 @@ export function NoteTasksTab({
       <div>
         <div className="flex items-center justify-between mb-2">
           <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 flex items-center gap-2">
-            <span>Task Notes</span>
+            <span>{t.notesTab.taskNotes}</span>
             <span className="font-mono text-slate-300 dark:text-slate-600">{taskNotes.length}</span>
           </div>
         </div>
@@ -161,12 +162,11 @@ export function NoteTasksTab({
               const active = statusFilter === s;
               return (
                 <button key={s} onClick={() => setStatusFilter(s)}
-                  className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium transition-all border ${
-                    active
+                  className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium transition-all border ${active
                       ? `ring-2 ring-emerald-400 border-emerald-400 ${statusColor(s)}`
                       : `border-transparent ${statusColor(s)} hover:opacity-80`
-                  }`}>
-                  <span>{s === "all" ? "All" : s.replace(/_/g, " ")}</span>
+                    }`}>
+                  <span>{s === "all" ? t.notesTab.all : s.replace(/_/g, " ")}</span>
                   <span className="font-bold ml-0.5">{cnt}</span>
                 </button>
               );
@@ -181,7 +181,7 @@ export function NoteTasksTab({
             <svg className="w-10 h-10 mx-auto mb-3 text-slate-300 dark:text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
-            <p className="text-sm font-medium">{taskNotes.length === 0 ? "No task notes yet" : `No ${statusFilter.replace(/_/g, " ")} tasks`}</p>
+            <p className="text-sm font-medium">{taskNotes.length === 0 ? t.notesTab.noTaskNotesYet : `${t.notesTab.noFilteredTasks} ${statusFilter.replace(/_/g, " ")}`}</p>
             {taskNotes.length === 0 && (
               <p className="text-[12px] mt-1">Add <code className="font-mono text-[10px]">@@@task</code> blocks to a spec note, then save it to generate tasks.</p>
             )}
@@ -208,14 +208,14 @@ export function NoteTasksTab({
                       {status.replace(/_/g, " ")}
                     </span>
                     <span className="text-[10px] text-slate-400 dark:text-slate-600 font-mono shrink-0">{formatRelativeTime(task.updatedAt)}</span>
-                    <Select
+                    <select
                       value={status}
                       disabled={updatingNoteId === task.id}
                       onChange={(e) => handleStatusChange(task.id, e.target.value)}
                       className="text-[10px] border border-slate-200 dark:border-[#252838] bg-slate-50 dark:bg-[#0e1019] text-slate-600 dark:text-slate-400 rounded-md px-1.5 py-1 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 disabled:opacity-50"
                     >
                       {TASK_STATUSES.map(s => <option key={s} value={s}>{s.replace(/_/g, " ")}</option>)}
-                    </Select>
+                    </select>
                     <button onClick={() => handleDelete(task.id)} disabled={deletingNoteId === task.id}
                       className="p-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-slate-400 hover:text-red-500 transition-colors disabled:opacity-50 shrink-0">
                       <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -231,12 +231,12 @@ export function NoteTasksTab({
                   {isExpanded && (
                     <div className="px-4 pb-4 border-t border-slate-100 dark:border-[#191c28]">
                       <div className="mt-3 space-y-2 text-[12px] text-slate-600 dark:text-slate-400">
-                        <div><span className="font-semibold">Note ID:</span> <code className="font-mono text-[11px]">{task.id}</code></div>
+                        <div><span className="font-semibold">{t.notesTab.noteId}</span> <code className="font-mono text-[11px]">{task.id}</code></div>
                         {task.metadata?.linkedTaskId && (
-                          <div><span className="font-semibold">Task Record:</span> <code className="font-mono text-[11px]">{task.metadata.linkedTaskId}</code></div>
+                          <div><span className="font-semibold">{t.notesTab.taskRecord}</span> <code className="font-mono text-[11px]">{task.metadata.linkedTaskId}</code></div>
                         )}
                         {task.metadata?.parentNoteId && (
-                          <div><span className="font-semibold">Parent Spec:</span> <code className="font-mono text-[11px]">{task.metadata.parentNoteId}</code></div>
+                          <div><span className="font-semibold">{t.notesTab.parentSpec}</span> <code className="font-mono text-[11px]">{task.metadata.parentNoteId}</code></div>
                         )}
                         {task.metadata?.assignedAgentIds && task.metadata.assignedAgentIds.length > 0 && (
                           <div><span className="font-semibold">Assigned:</span> {task.metadata.assignedAgentIds.join(", ")}</div>
@@ -245,7 +245,7 @@ export function NoteTasksTab({
                         <div><span className="font-semibold">Created:</span> {new Date(task.createdAt).toLocaleString()}</div>
                         {task.content && (
                           <div className="mt-2 p-3 bg-slate-50 dark:bg-[#0a0c12] rounded-lg">
-                            <div className="text-[11px] font-semibold mb-1 text-slate-500 dark:text-slate-400">Task Spec Content</div>
+                            <div className="text-[11px] font-semibold mb-1 text-slate-500 dark:text-slate-400">{t.notesTab.taskSpecContent}</div>
                             <pre className="text-[11px] whitespace-pre-wrap font-mono text-slate-500 dark:text-slate-400 max-h-48 overflow-y-auto">{task.content}</pre>
                           </div>
                         )}

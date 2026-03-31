@@ -13,6 +13,7 @@
 
 import React, { useCallback, useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
+import { useTranslation } from "@/i18n";
 import { useWorkspaces } from "@/client/hooks/use-workspaces";
 import { useAcp } from "@/client/hooks/use-acp";
 import { useAgentsRpc } from "@/client/hooks/use-agents-rpc";
@@ -33,6 +34,7 @@ export function WorkspacePageClient({
 }: {
   initialTab?: "overview" | "notes" | "activity";
 }) {
+  const { t } = useTranslation();
   const router = useRouter();
   const params = useParams();
   const rawWorkspaceId = params.workspaceId as string;
@@ -197,7 +199,7 @@ export function WorkspacePageClient({
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
           </svg>
-          Loading workspace…
+          {t.workspace.loadingWorkspace}
         </div>
       </div>
     );
@@ -207,7 +209,7 @@ export function WorkspacePageClient({
 
   const _effectiveWorkspace = workspace ?? {
     id: "default",
-    title: "Default Workspace",
+    title: t.workspace.defaultWorkspace,
     status: "active" as const,
     metadata: {},
     createdAt: new Date().toISOString(),
@@ -266,10 +268,10 @@ export function WorkspacePageClient({
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-desktop-text-muted">
-                Active board
+                {t.workspace.noBoard}
               </div>
               <div className="mt-2 truncate text-xl font-semibold tracking-tight text-desktop-text-primary">
-                {activeBoard?.name ?? "Kanban board"}
+                {activeBoard?.name ?? t.workspace.noBoard}
               </div>
             </div>
             <button
@@ -277,13 +279,13 @@ export function WorkspacePageClient({
               onClick={() => router.push(`/workspace/${workspaceId}/kanban`)}
               className="shrink-0 rounded-full border border-desktop-border px-3 py-1.5 text-[11px] font-medium text-desktop-text-secondary transition-colors hover:bg-desktop-bg-active hover:text-desktop-text-primary"
             >
-              Open board
+              {t.workspace.goToBoard}
             </button>
           </div>
           <div className="mt-4 flex flex-wrap gap-x-4 gap-y-2 text-[11px] text-desktop-text-secondary">
-            <span>{boards.length} board{boards.length === 1 ? "" : "s"}</span>
-            <span>{pendingTasks.length} active tasks</span>
-            <span>{runningBgTasks} background runs</span>
+            <span>{boards.length} {t.workspace.boards}</span>
+            <span>{pendingTasks.length} {t.workspace.activeTasks}</span>
+            <span>{runningBgTasks} {t.workspace.backgroundRuns}</span>
           </div>
         </section>
 
@@ -291,10 +293,10 @@ export function WorkspacePageClient({
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-desktop-text-muted">
-                Latest session
+                {t.workspace.latestRecoveryPoint}
               </div>
               <div className="mt-2 truncate text-base font-semibold text-desktop-text-primary">
-                {latestSession?.name ?? latestSession?.sessionId ?? "No recent session"}
+                {latestSession?.name ?? latestSession?.sessionId ?? t.workspace.noRecentSession}
               </div>
             </div>
             <button
@@ -308,13 +310,13 @@ export function WorkspacePageClient({
               }}
               className="shrink-0 rounded-full border border-desktop-border px-3 py-1.5 text-[11px] font-medium text-desktop-text-secondary transition-colors hover:bg-desktop-bg-active hover:text-desktop-text-primary"
             >
-              {latestSession ? "Resume" : "Launcher"}
+              {latestSession ? t.workspace.recoverSession : t.workspace.createFromLauncher}
             </button>
           </div>
           <div className="mt-4 flex flex-wrap gap-x-4 gap-y-2 text-[11px] text-desktop-text-secondary">
-            <span>{sessions.length} sessions</span>
-            <span>{notesHook.notes.length} notes</span>
-            <span>{agentsHook.agents.length} agents</span>
+            <span>{sessions.length} {t.workspace.sessions}</span>
+            <span>{notesHook.notes.length} {t.workspace.notes}</span>
+            <span>{agentsHook.agents.length} {t.workspace.agents}</span>
           </div>
         </section>
       </div>
@@ -323,7 +325,7 @@ export function WorkspacePageClient({
         <section>
           <div className="mb-2 flex items-center justify-between gap-3">
             <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-desktop-text-muted">
-              Recent sessions
+              {t.workspace.recentSessions}
             </div>
             <div className="text-[11px] text-desktop-text-secondary">
               Latest {recentSessions.length} of {sessions.length}
@@ -367,7 +369,7 @@ export function WorkspacePageClient({
             : "text-desktop-text-secondary hover:bg-desktop-bg-active/70 hover:text-desktop-text-primary"
           }`}
         >
-          Workspace Notes
+          {t.workspace.workspaceNotes}
           {generalNotes.length > 0 && (
             <span className="ml-1 opacity-60">({generalNotes.length})</span>
           )}
@@ -380,7 +382,7 @@ export function WorkspacePageClient({
             : "text-desktop-text-secondary hover:bg-desktop-bg-active/70 hover:text-desktop-text-primary"
           }`}
         >
-          Task Notes
+          {t.workspace.taskNotes}
           {taskNotes.length > 0 && (
             <span className="ml-1 opacity-60">({taskNotes.length})</span>
           )}
@@ -434,7 +436,7 @@ export function WorkspacePageClient({
   return (
     <DesktopAppShell
       workspaceId={workspaceId}
-      workspaceTitle={workspace?.title ?? (isDefaultWorkspace ? "Default Workspace" : undefined)}
+      workspaceTitle={workspace?.title ?? (isDefaultWorkspace ? t.workspace.defaultWorkspace : undefined)}
       workspaceSwitcher={(
         <WorkspaceSwitcher
           workspaces={workspacesHook.workspaces}
@@ -456,26 +458,26 @@ export function WorkspacePageClient({
         <div className="flex-1 min-h-0 overflow-y-auto">
           <div className="w-full px-4 py-4">
             <WorkspacePageHeader
-              title={workspace?.title ?? (isDefaultWorkspace ? "Default Workspace" : "Workspace")}
+              title={workspace?.title ?? (isDefaultWorkspace ? t.workspace.defaultWorkspace : t.workspace.workspaces)}
               workspaceId={workspaceId}
-              boardName={activeBoard?.name ?? "No board"}
-              latestSessionName={latestSession?.name ?? "No recent session"}
+              boardName={activeBoard?.name ?? t.workspace.noBoard}
+              latestSessionName={latestSession?.name ?? t.workspace.noRecentSession}
               activeAgentsCount={activeAgents.length}
               pendingTasksCount={pendingTasks.length}
               onRefresh={handleRefresh}
             />
 
             <div className="mb-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-              <CompactStat label="Sessions" value={sessions.length} color="blue" />
-              <CompactStat label="Agents" value={agentsHook.agents.length} sub={activeAgents.length > 0 ? `${activeAgents.length} active` : undefined} color="route" />
-              <CompactStat label="Tasks" value={tasks.length} sub={pendingTasks.length > 0 ? `${pendingTasks.length} pending` : undefined} color="emerald" />
-              <CompactStat label="BG Tasks" value={bgTasks.length} sub={runningBgTasks > 0 ? `${runningBgTasks} running` : undefined} color="amber" />
+              <CompactStat label={t.workspace.sessions} value={sessions.length} color="blue" />
+              <CompactStat label={t.workspace.agents} value={agentsHook.agents.length} sub={activeAgents.length > 0 ? `${activeAgents.length} ${t.workspace.active}` : undefined} color="route" />
+              <CompactStat label={t.workspace.tasks} value={tasks.length} sub={pendingTasks.length > 0 ? `${pendingTasks.length} ${t.workspace.pending}` : undefined} color="emerald" />
+              <CompactStat label={t.workspace.bgTasks} value={bgTasks.length} sub={runningBgTasks > 0 ? `${runningBgTasks} ${t.workspace.running}` : undefined} color="amber" />
             </div>
 
             <div className="hidden xl:grid xl:grid-cols-12 xl:gap-4">
               <section className="xl:col-span-7">
                 <div className="mb-3 flex items-center justify-between gap-3">
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-desktop-text-muted">Overview</div>
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-desktop-text-muted">{t.workspace.overview}</div>
                 </div>
                 {overviewContent}
               </section>
@@ -484,8 +486,8 @@ export function WorkspacePageClient({
                 <section className="rounded-[24px] border border-desktop-border bg-desktop-bg-secondary p-4">
                   <div className="mb-4 flex items-center justify-between gap-3 border-b border-desktop-border pb-3">
                     <div>
-                      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-desktop-text-muted">Activity</div>
-                      <div className="mt-1 text-sm text-desktop-text-secondary">Background runs and workspace-level execution telemetry.</div>
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-desktop-text-muted">{t.workspace.activity}</div>
+                      <div className="mt-1 text-sm text-desktop-text-secondary">{t.workspace.activityDescription}</div>
                     </div>
                   </div>
                   {activityContent}
@@ -494,8 +496,8 @@ export function WorkspacePageClient({
                 <section className="rounded-[24px] border border-desktop-border bg-desktop-bg-secondary p-4">
                   <div className="mb-4 flex items-center justify-between gap-3 border-b border-desktop-border pb-3">
                     <div>
-                      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-desktop-text-muted">Notes</div>
-                      <div className="mt-1 text-sm text-desktop-text-secondary">Workspace memory and task-level notes in parallel.</div>
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-desktop-text-muted">{t.workspace.notes}</div>
+                      <div className="mt-1 text-sm text-desktop-text-secondary">{t.workspace.notesDescription}</div>
                     </div>
                   </div>
                   {notesContent}
@@ -522,7 +524,7 @@ export function WorkspacePageClient({
 
       {/* Agent Install Popup */}
       {showAgentInstallPopup && (
-        <OverlayModal onClose={() => setShowAgentInstallPopup(false)} title="Install Agents">
+        <OverlayModal onClose={() => setShowAgentInstallPopup(false)} title={t.workspace.installAgents}>
           <AgentInstallPanel />
         </OverlayModal>
       )}

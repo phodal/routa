@@ -1,3 +1,4 @@
+import { useTranslation } from "@/i18n";
 import { Select } from "@/client/components/select";
 import { QueueStatusBadge } from "./kanban-tab-helpers";
 import type { KanbanBoardInfo } from "../types";
@@ -25,6 +26,7 @@ export function KanbanTabHeader({
   onOpenSettings,
   onRefresh,
 }: KanbanTabHeaderProps) {
+  const { t } = useTranslation();
   return (
     <div
       className="shrink-0 border-b border-slate-200/70 px-4 py-1 dark:border-[#1c1f2e]"
@@ -35,10 +37,10 @@ export function KanbanTabHeader({
           <svg className="h-4 w-4 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M9 4.5v15m6-15v15m-10.875 0h15.75c.621 0 1.125-.504 1.125-1.125V5.625c0-.621-.504-1.125-1.125-1.125H4.125C3.504 4.5 3 5.004 3 5.625v12.75c0 .621.504 1.125 1.125 1.125z" />
           </svg>
-          <h1 className="text-[13px] font-semibold text-slate-900 dark:text-slate-100">Kanban Board</h1>
+          <h1 className="text-[13px] font-semibold text-slate-900 dark:text-slate-100">{t.kanban.kanbanBoard}</h1>
           {tasksCount > 0 && (
             <span className="text-[11px] text-slate-500 dark:text-slate-400" data-testid="kanban-task-count">
-              ({tasksCount} tasks)
+              ({tasksCount} {t.kanban.tasksCount})
             </span>
           )}
         </div>
@@ -47,16 +49,16 @@ export function KanbanTabHeader({
           {board && (
             <>
               <span className="inline-flex h-6 items-center rounded-full bg-slate-100 px-2 text-[11px] dark:bg-[#191c28]">
-                Limit {board.sessionConcurrencyLimit ?? 1}
+                {t.kanban.limit} {board.sessionConcurrencyLimit ?? 1}
               </span>
               <QueueStatusBadge
-                label="Running"
+                label={t.kanban.runningLabel}
                 count={boardQueue?.runningCount ?? 0}
                 cards={boardQueue?.runningCards ?? []}
                 className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300"
               />
               <QueueStatusBadge
-                label="Queued"
+                label={t.kanban.queuedLabel}
                 count={boardQueue?.queuedCount ?? 0}
                 cards={boardQueue?.queuedCards ?? []}
                 className="bg-amber-100 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300"
@@ -66,15 +68,15 @@ export function KanbanTabHeader({
 
           {(repoHealth.missingRepoTasks > 0 || repoHealth.cwdMismatchTasks > 0) && (
             <div className="inline-flex h-6 items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-2 text-[11px] text-amber-700 dark:border-amber-900/40 dark:bg-amber-900/10 dark:text-amber-300">
-              <span className="font-medium">Kanban Health</span>
+              <span className="font-medium">{t.kanban.kanbanHealth}</span>
               {repoHealth.missingRepoTasks > 0 && (
                 <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[10px] text-rose-700 dark:bg-rose-900/30 dark:text-rose-300">
-                  {repoHealth.missingRepoTasks} missing
+                  {repoHealth.missingRepoTasks} {t.kanban.missing}
                 </span>
               )}
               {repoHealth.cwdMismatchTasks > 0 && (
                 <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
-                  {repoHealth.cwdMismatchTasks} session mismatch
+                  {repoHealth.cwdMismatchTasks} {t.kanban.sessionMismatch}
                 </span>
               )}
             </div>
@@ -94,14 +96,14 @@ export function KanbanTabHeader({
           <button
             onClick={onOpenSettings}
             className="inline-flex h-6 items-center rounded-md border border-slate-200 bg-white px-2 text-[12px] text-slate-600 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-[#12141c] dark:text-slate-300 dark:hover:bg-[#191c28]"
-            title="Board settings"
+            title={t.kanban.boardSettings}
           >
-            Settings
+            {t.kanban.boardSettings}
           </button>
           <button
             onClick={onRefresh}
             className="inline-flex h-6 w-6 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-[#1f232f] dark:hover:text-slate-200"
-            title="Refresh"
+            title={t.common.refresh}
           >
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.581m15.356 2A8.001 8.001 0 004.581 9m0 0H9m11 11v-5h-.582m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
