@@ -190,7 +190,7 @@ describe("page-snapshot-lib", () => {
     // Inline normalizeSnapshotBody for cross-platform testing
     function normalizeSnapshotBody(body: string): string {
       return body.replace(
-        /\b\d{1,2}\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2},\s+\d{1,2}:\d{2}\s*(?:AM|PM)\b/g,
+        /\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\s+\d{1,2},\s+\d{1,2}:\d{2}\s+(?:AM|PM)\b/g,
         "<localized-datetime>",
       );
     }

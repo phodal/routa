@@ -56,13 +56,11 @@ describe("buildReviewAnalysisPayload", () => {
       head: "HEAD",
     });
 
-    // Verify repoRoot exists and is valid
+    // Verify repoRoot exists and points to the same canonical directory.
+    // This avoids false negatives where equivalent paths differ in presentation
+    // (e.g. /var vs /private/var on macOS, 8.3 aliases on Windows).
     expect(fs.existsSync(payload.repoRoot)).toBe(true);
-    // Skip path comparison on Windows due to 8.3 short path vs long path differences
-    // (e.g., ADMINI~1 vs Administrator both point to the same directory)
-    if (process.platform !== "win32") {
-      expect(payload.repoRoot).toBe(repoDir);
-    }
+    expect(fs.realpathSync.native(payload.repoRoot)).toBe(fs.realpathSync.native(repoDir));
     expect(payload.changedFiles).toContain("example.ts");
     expect(payload.diff).toContain("-export const value = 1;");
     expect(payload.diff).toContain("+export const value = 2;");
