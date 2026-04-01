@@ -20,7 +20,9 @@ import { HarnessGitHubActionsFlowPanel } from "@/client/components/harness-githu
 import { HarnessHookRuntimePanel } from "@/client/components/harness-hook-runtime-panel";
 import { HarnessAgentHookPanel } from "@/client/components/harness-agent-hook-panel";
 import { HarnessRepoSignalsPanel } from "@/client/components/harness-repo-signals-panel";
+import { HarnessCodeownersPanel } from "@/client/components/harness-codeowners-panel";
 import { HarnessReviewTriggersPanel } from "@/client/components/harness-review-triggers-panel";
+import { HarnessReleaseTriggersPanel } from "@/client/components/harness-release-triggers-panel";
 import { HarnessSpecSourcesPanel } from "@/client/components/harness-spec-sources-panel";
 import { HarnessUnsupportedState, getHarnessUnsupportedRepoMessage } from "@/client/components/harness-support-state";
 import { HarnessFloatingNav, type HarnessNavSection } from "@/client/components/harness-floating-nav";
@@ -115,6 +117,7 @@ export default function HarnessSettingsPage() {
     githubActionsState,
     specSourcesState,
     designDecisionsState,
+    codeownersState,
     reloadInstructions,
   } = useHarnessSettingsData({
     workspaceId,
@@ -169,9 +172,11 @@ export default function HarnessSettingsPage() {
     { id: "repo-signals", label: t.settings.harness.repositorySignals },
     { id: "hook-systems", label: t.settings.harness.hookSystems },
     { id: "review-triggers", label: t.settings.harness.reviewTriggers },
+    { id: "release-triggers", label: t.settings.harness.releaseTriggers },
+    { id: "codeowners", label: t.settings.harness.codeowners },
     { id: "entrix-fitness", label: t.settings.harness.entrixFitness },
     { id: "ci-cd", label: t.settings.harness.ciCd },
-  ], [t.settings.harness.agentInstructions, t.settings.harness.ciCd, t.settings.harness.entrixFitness, t.settings.harness.governanceLoop, t.settings.harness.hookSystems, t.settings.harness.repositorySignals, t.settings.harness.reviewTriggers, t.settings.harness.specSources]);
+  ], [t.settings.harness.agentInstructions, t.settings.harness.ciCd, t.settings.harness.codeowners, t.settings.harness.entrixFitness, t.settings.harness.governanceLoop, t.settings.harness.hookSystems, t.settings.harness.releaseTriggers, t.settings.harness.repositorySignals, t.settings.harness.reviewTriggers, t.settings.harness.specSources]);
 
   const hookCount = useMemo(
     () => (hooksState.data?.hookFiles?.length ?? 0) + (agentHooksState.data?.hooks?.length ?? 0),
@@ -282,16 +287,34 @@ export default function HarnessSettingsPage() {
         );
       case "review":
         return (
-          <HarnessReviewTriggersPanel
-            repoLabel={selectedRepoLabel}
-            unsupportedMessage={unsupportedRepoMessage}
-            data={hooksState.data}
-            loading={hooksState.loading}
-            error={hooksState.error}
-            variant="compact"
-            showDetailToggle
-            defaultShowDetails={false}
-          />
+          <div className="space-y-3">
+            <HarnessReviewTriggersPanel
+              repoLabel={selectedRepoLabel}
+              unsupportedMessage={unsupportedRepoMessage}
+              data={hooksState.data}
+              loading={hooksState.loading}
+              error={hooksState.error}
+              variant="compact"
+              showDetailToggle
+              defaultShowDetails={false}
+            />
+            <HarnessReleaseTriggersPanel
+              repoLabel={selectedRepoLabel}
+              unsupportedMessage={unsupportedRepoMessage}
+              data={hooksState.data}
+              loading={hooksState.loading}
+              error={hooksState.error}
+              variant="compact"
+            />
+            <HarnessCodeownersPanel
+              repoLabel={selectedRepoLabel}
+              unsupportedMessage={unsupportedRepoMessage}
+              data={codeownersState.data}
+              loading={codeownersState.loading}
+              error={codeownersState.error}
+              variant="compact"
+            />
+          </div>
         );
       case "commit":
       case "post-commit":
@@ -330,6 +353,9 @@ export default function HarnessSettingsPage() {
   }, [
     activeRepoCodebaseId,
     activeRepoPath,
+    codeownersState.data,
+    codeownersState.error,
+    codeownersState.loading,
     githubActionsState.data,
     githubActionsState.error,
     githubActionsState.loading,
@@ -550,6 +576,25 @@ export default function HarnessSettingsPage() {
           />
         </div>
 
+        <div id="release-triggers">
+          <HarnessReleaseTriggersPanel
+            repoLabel={selectedRepoLabel}
+            unsupportedMessage={unsupportedRepoMessage}
+            data={hooksState.data}
+            loading={hooksState.loading}
+            error={hooksState.error}
+          />
+        </div>
+
+        <div id="codeowners">
+          <HarnessCodeownersPanel
+            repoLabel={selectedRepoLabel}
+            unsupportedMessage={unsupportedRepoMessage}
+            data={codeownersState.data}
+            loading={codeownersState.loading}
+            error={codeownersState.error}
+          />
+        </div>
         <div id="entrix-fitness">
           <HarnessSectionCard
             title="Entrix Fitness"
