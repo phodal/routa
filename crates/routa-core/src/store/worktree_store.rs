@@ -71,7 +71,10 @@ impl WorktreeStore {
             .await
     }
 
-    pub async fn list_by_workspace(&self, workspace_id: &str) -> Result<Vec<Worktree>, ServerError> {
+    pub async fn list_by_workspace(
+        &self,
+        workspace_id: &str,
+    ) -> Result<Vec<Worktree>, ServerError> {
         let workspace_id = workspace_id.to_string();
         self.db
             .with_conn_async(move |conn| {
@@ -87,7 +90,12 @@ impl WorktreeStore {
             .await
     }
 
-    pub async fn update_status(&self, id: &str, status: &str, error_message: Option<&str>) -> Result<(), ServerError> {
+    pub async fn update_status(
+        &self,
+        id: &str,
+        status: &str,
+        error_message: Option<&str>,
+    ) -> Result<(), ServerError> {
         let id = id.to_string();
         let status = status.to_string();
         let error_message = error_message.map(|s| s.to_string());
@@ -103,7 +111,11 @@ impl WorktreeStore {
             .await
     }
 
-    pub async fn assign_session(&self, id: &str, session_id: Option<&str>) -> Result<(), ServerError> {
+    pub async fn assign_session(
+        &self,
+        id: &str,
+        session_id: Option<&str>,
+    ) -> Result<(), ServerError> {
         let id = id.to_string();
         let session_id = session_id.map(|s| s.to_string());
         let now = Utc::now().timestamp_millis();
@@ -128,7 +140,11 @@ impl WorktreeStore {
             .await
     }
 
-    pub async fn find_by_branch(&self, codebase_id: &str, branch: &str) -> Result<Option<Worktree>, ServerError> {
+    pub async fn find_by_branch(
+        &self,
+        codebase_id: &str,
+        branch: &str,
+    ) -> Result<Option<Worktree>, ServerError> {
         let codebase_id = codebase_id.to_string();
         let branch = branch.to_string();
         self.db
@@ -161,9 +177,7 @@ fn row_to_worktree(row: &Row<'_>) -> rusqlite::Result<Worktree> {
         session_id: row.get(7)?,
         label: row.get(8)?,
         error_message: row.get(9)?,
-        created_at: chrono::DateTime::from_timestamp_millis(created_ms)
-            .unwrap_or_else(Utc::now),
-        updated_at: chrono::DateTime::from_timestamp_millis(updated_ms)
-            .unwrap_or_else(Utc::now),
+        created_at: chrono::DateTime::from_timestamp_millis(created_ms).unwrap_or_else(Utc::now),
+        updated_at: chrono::DateTime::from_timestamp_millis(updated_ms).unwrap_or_else(Utc::now),
     })
 }

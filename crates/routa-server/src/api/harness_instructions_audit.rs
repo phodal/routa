@@ -397,7 +397,10 @@ pub(crate) async fn run_instruction_audit(
                 source,
                 to_duration_ms(),
                 provider,
-                Some(&format!("Provider '{}' API key not configured, using heuristic fallback", provider)),
+                Some(&format!(
+                    "Provider '{}' API key not configured, using heuristic fallback",
+                    provider
+                )),
             );
         }
     }

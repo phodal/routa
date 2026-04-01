@@ -9,6 +9,7 @@ use axum::{
     Json, Router,
 };
 use regex::Regex;
+use routa_core::codeowners::detect_codeowners;
 use routa_core::harness::detect_repo_signals;
 use routa_core::spec_detector::detect_spec_sources;
 use serde::{Deserialize, Serialize};
@@ -28,6 +29,7 @@ use crate::state::AppState;
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/agent-hooks", get(get_agent_hooks))
+        .route("/codeowners", get(get_codeowners))
         .route("/design-decisions", get(get_design_decisions))
         .route("/github-actions", get(get_github_actions))
         .route("/hooks", get(get_harness_hooks))
@@ -100,6 +102,25 @@ async fn get_agent_hooks(
         "hooks": all_hooks,
         "warnings": warnings,
     })))
+}
+
+async fn get_codeowners(
+    State(state): State<AppState>,
+    Query(query): Query<RepoContextQuery>,
+) -> Result<Json<Value>, ServerError> {
+    let repo_root = resolve_repo_root(
+        &state,
+        query.workspace_id.as_deref(),
+        query.codebase_id.as_deref(),
+        query.repo_path.as_deref(),
+        "Missing CODEOWNERS context. Provide workspaceId, codebaseId, or repoPath.",
+    )
+    .await?;
+
+    let report = detect_codeowners(&repo_root).map_err(ServerError::Internal)?;
+    Ok(Json(serde_json::to_value(report).map_err(|error| {
+        ServerError::Internal(format!("Failed to serialize CODEOWNERS report: {error}"))
+    })?))
 }
 
 async fn get_harness_repo_signals(

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { PlanResponse, TierValue } from "@/client/components/harness-execution-plan-flow";
 import type { DesignDecisionResponse } from "@/core/harness/design-decision-types";
+import type { CodeownersResponse } from "@/core/harness/codeowners-types";
 import type { SpecDetectionResponse } from "@/core/harness/spec-detector-types";
 
 export type RunnerKind = "shell" | "graph" | "sarif";
@@ -198,6 +199,8 @@ export type GitHubActionsFlowsResponse = {
   warnings: string[];
 };
 
+export type { CodeownersResponse };
+
 export type QueryState<T> = {
   loading: boolean;
   error: string | null;
@@ -256,6 +259,7 @@ export function useHarnessSettingsData({
   const [agentHooksState, setAgentHooksState] = useState<QueryState<AgentHooksResponse>>(emptyQueryState);
   const [specSourcesState, setSpecSourcesState] = useState<QueryState<SpecDetectionResponse>>(emptyQueryState);
   const [designDecisionsState, setDesignDecisionsState] = useState<QueryState<DesignDecisionResponse>>(emptyQueryState);
+  const [codeownersState, setCodeownersState] = useState<QueryState<CodeownersResponse>>(emptyQueryState);
   const [instructionsRefreshState, setInstructionsRefreshState] = useState<InstructionRefreshState>({
     contextKey: "",
     token: 0,
@@ -590,6 +594,45 @@ export function useHarnessSettingsData({
     };
   }, [baseQuery]);
 
+  useEffect(() => {
+    if (!baseQuery) {
+      setCodeownersState(emptyQueryState());
+      return;
+    }
+
+    let cancelled = false;
+    const fetchCodeowners = async () => {
+      setCodeownersState((current) => ({ ...current, loading: true, error: null }));
+      try {
+        const response = await fetch(`/api/harness/codeowners?${baseQuery.toString()}`);
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(typeof payload?.details === "string" ? payload.details : "Failed to load CODEOWNERS");
+        }
+        if (!cancelled) {
+          setCodeownersState({
+            loading: false,
+            error: null,
+            data: payload as CodeownersResponse,
+          });
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setCodeownersState({
+            loading: false,
+            error: error instanceof Error ? error.message : String(error),
+            data: null,
+          });
+        }
+      }
+    };
+
+    void fetchCodeowners();
+    return () => {
+      cancelled = true;
+    };
+  }, [baseQuery]);
+
   return {
     specsState,
     planState,
@@ -599,6 +642,7 @@ export function useHarnessSettingsData({
     githubActionsState,
     specSourcesState,
     designDecisionsState,
+    codeownersState,
     reloadInstructions,
   };
 }

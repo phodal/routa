@@ -41,7 +41,9 @@ export async function resolveRepoRoot(context: HarnessContext): Promise<string> 
   const repoPath = normalizeContextValue(context.repoPath);
   const system = getRoutaSystem();
 
-  const directPath = repoPath ? path.resolve(repoPath) : undefined;
+  const directPath = repoPath
+    ? path.resolve(/* turbopackIgnore: true */ repoPath)
+    : undefined;
   if (directPath) {
     validateRepoDirectory(directPath, "repoPath ");
     return directPath;
@@ -53,7 +55,7 @@ export async function resolveRepoRoot(context: HarnessContext): Promise<string> 
       throw new Error(`Codebase 未找到: ${codebaseId}`);
     }
 
-    const candidate = path.resolve(codebase.repoPath);
+    const candidate = path.resolve(/* turbopackIgnore: true */ codebase.repoPath);
     validateRepoDirectory(candidate, "Codebase 的路径");
     return candidate;
   }
@@ -68,7 +70,7 @@ export async function resolveRepoRoot(context: HarnessContext): Promise<string> 
   }
 
   const fallback = codebases.find((codebase) => codebase.isDefault) ?? codebases[0];
-  const candidate = path.resolve(fallback.repoPath);
+  const candidate = path.resolve(/* turbopackIgnore: true */ fallback.repoPath);
   validateRepoDirectory(candidate, "默认 codebase 的路径");
   return candidate;
 }

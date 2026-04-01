@@ -2,6 +2,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const runCommandMock = vi.hoisted(() => vi.fn());
 const runReviewTriggerSpecialistMock = vi.hoisted(() => vi.fn());
+const loadCodeownersRulesMock = vi.hoisted(() => vi.fn());
+const resolveOwnershipMock = vi.hoisted(() => vi.fn());
+const buildOwnershipRoutingContextMock = vi.hoisted(() => vi.fn());
+const loadReviewTriggerRulesMock = vi.hoisted(() => vi.fn());
 
 vi.mock("../process.js", () => ({
   runCommand: runCommandMock,
@@ -9,6 +13,16 @@ vi.mock("../process.js", () => ({
 
 vi.mock("../specialist-review.js", () => ({
   runReviewTriggerSpecialist: runReviewTriggerSpecialistMock,
+}));
+
+vi.mock("../../../../src/core/harness/codeowners", () => ({
+  loadCodeownersRules: loadCodeownersRulesMock,
+  resolveOwnership: resolveOwnershipMock,
+  buildOwnershipRoutingContext: buildOwnershipRoutingContextMock,
+}));
+
+vi.mock("../../../../src/core/harness/review-triggers", () => ({
+  loadReviewTriggerRules: loadReviewTriggerRulesMock,
 }));
 
 import { runReviewTriggerPhase } from "../review.js";
@@ -23,6 +37,26 @@ describe("runReviewTriggerPhase", () => {
     // Clear environment variables before each test to ensure clean state
     delete process.env.ROUTA_ALLOW_REVIEW_TRIGGER_PUSH;
     delete process.env.ROUTA_ALLOW_REVIEW_UNAVAILABLE;
+    loadCodeownersRulesMock.mockResolvedValue({
+      codeownersFile: ".github/CODEOWNERS",
+      rules: [],
+      warnings: [],
+    });
+    resolveOwnershipMock.mockReturnValue([]);
+    buildOwnershipRoutingContextMock.mockReturnValue({
+      changedFiles: [],
+      touchedOwners: [],
+      touchedOwnerGroupsCount: 0,
+      unownedChangedFiles: [],
+      overlappingChangedFiles: [],
+      highRiskUnownedFiles: [],
+      crossOwnerTriggers: [],
+      triggerCorrelations: [],
+    });
+    loadReviewTriggerRulesMock.mockResolvedValue({
+      relativePath: "docs/fitness/review-triggers.yaml",
+      rules: [],
+    });
   });
 
   afterEach(() => {
@@ -141,6 +175,16 @@ describe("runReviewTriggerPhase", () => {
       findings: [{ severity: "high", title: "Regression risk", reason: "Control flow changed without safeguards." }],
       raw: "{\"verdict\":\"fail\"}",
     });
+    buildOwnershipRoutingContextMock.mockReturnValueOnce({
+      changedFiles: ["tools/hook-runtime/src/review.ts"],
+      touchedOwners: ["@platform-team"],
+      touchedOwnerGroupsCount: 1,
+      unownedChangedFiles: [],
+      overlappingChangedFiles: [],
+      highRiskUnownedFiles: [],
+      crossOwnerTriggers: [],
+      triggerCorrelations: [],
+    });
 
     const result = await runReviewTriggerPhase("jsonl");
 
@@ -226,6 +270,16 @@ describe("runReviewTriggerPhase", () => {
       findings: [{ severity: "high", title: "Regression risk", reason: "Control flow changed without safeguards." }],
       raw: "{\"verdict\":\"fail\"}",
     });
+    buildOwnershipRoutingContextMock.mockReturnValueOnce({
+      changedFiles: ["src/a.ts", "src/b.ts", "api-contract.yaml"],
+      touchedOwners: ["@arch-team", "@platform-team"],
+      touchedOwnerGroupsCount: 2,
+      unownedChangedFiles: ["api-contract.yaml"],
+      overlappingChangedFiles: ["src/a.ts"],
+      highRiskUnownedFiles: ["api-contract.yaml"],
+      crossOwnerTriggers: ["cross_boundary_change_web_rust"],
+      triggerCorrelations: [],
+    });
 
     const result = await runReviewTriggerPhase("human");
 
@@ -235,6 +289,9 @@ describe("runReviewTriggerPhase", () => {
     expect(output).toMatch(/\|\s+Base\s+\|\s+origin\/main\s+\|/);
     expect(output).toMatch(/\|\s+Added lines\s+\|\s+942\s+\|/);
     expect(output).toMatch(/\|\s+Workspace residue\s+\|\s+1 tracked, 1 untracked\s+\|/);
+    expect(output).toContain("@arch-team, @platform-team");
+    expect(output).toContain("api-contract.yaml");
+    expect(output).toContain("cross_boundary_change_web_rust");
     expect(output).toContain("Matched triggers:");
     expect(output).toContain("[high] High Risk Directory Change");
     expect(output).toContain("changed path: 3 items. Examples:");

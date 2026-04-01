@@ -111,9 +111,10 @@ jobs:
       - name: Sync GitHub issues into local docs/issues cache
         if: steps.eligibility.outputs.should_analyze == 'true'
         run: |
+          ISSUE_NUMBER="${{ steps.issue.outputs.number }}"
           echo "### Local issue sync" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          npx tsx .github/scripts/sync-github-issues.ts --state all 2>&1 | tee /tmp/issue-sync-output.txt
+          npx tsx .github/scripts/sync-github-issues.ts --issue "$ISSUE_NUMBER" 2>&1 | tee /tmp/issue-sync-output.txt
           echo '```' >> $GITHUB_STEP_SUMMARY
           head -80 /tmp/issue-sync-output.txt >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY

@@ -92,6 +92,8 @@ const RECOMMENDED_AUTOMATION_BY_STAGE: Partial<Record<KanbanColumnStage, KanbanC
   },
 };
 
+// Migration allowlists for older boards. New default lane automation is defined
+// exclusively by RECOMMENDED_AUTOMATION_BY_STAGE above.
 const LEGACY_SPECIALIST_IDS_BY_STAGE: Partial<Record<KanbanColumnStage, string[]>> = {
   backlog: ["issue-enricher", "kanban-workflow", "kanban-agent"],
   todo: ["routa", "developer", "kanban-workflow"],

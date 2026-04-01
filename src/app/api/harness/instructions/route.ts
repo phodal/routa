@@ -39,6 +39,10 @@ const AUDIT_SPECIALIST_ID = "agents-md-auditor";
 const AUDIT_COMMAND_TIMEOUT_MS = 120_000;
 const DEFAULT_AUDIT_PROVIDER = process.env.HARNESS_INSTRUCTION_AUDIT_PROVIDER ?? "codex";
 
+function joinRepoPath(repoRoot: string, ...relativeSegments: string[]) {
+  return path.join(/* turbopackIgnore: true */ repoRoot, ...relativeSegments);
+}
+
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -332,7 +336,7 @@ export async function GET(request: NextRequest) {
 
     let matched: { fileName: string; absolutePath: string } | null = null;
     for (const fileName of CANDIDATE_FILES) {
-      const absolutePath = path.join(repoRoot, fileName);
+      const absolutePath = joinRepoPath(repoRoot, fileName);
       try {
         const stat = await fsp.stat(absolutePath);
         if (stat.isFile()) {
@@ -361,7 +365,7 @@ export async function GET(request: NextRequest) {
       generatedAt: new Date().toISOString(),
       repoRoot,
       fileName: matched.fileName,
-      relativePath: path.relative(repoRoot, matched.absolutePath),
+      relativePath: path.relative(/* turbopackIgnore: true */ repoRoot, matched.absolutePath),
       source,
       fallbackUsed: matched.fileName !== CANDIDATE_FILES[0],
       audit,

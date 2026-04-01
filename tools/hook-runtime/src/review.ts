@@ -5,6 +5,17 @@ import {
   type ReviewReportPayload,
   type ReviewTrigger,
 } from "./specialist-review.js";
+import type { OwnershipRoutingContext } from "../../../src/core/harness/codeowners-types";
+import * as codeownersModule from "../../../src/core/harness/codeowners";
+import * as reviewTriggersModule from "../../../src/core/harness/review-triggers";
+
+const {
+  buildOwnershipRoutingContext,
+  loadCodeownersRules,
+  resolveOwnership,
+} = codeownersModule;
+
+const { loadReviewTriggerRules } = reviewTriggersModule;
 
 const REVIEW_UNAVAILABLE_BYPASS_ENV = "ROUTA_ALLOW_REVIEW_UNAVAILABLE";
 
@@ -21,6 +32,7 @@ export type ReviewPhaseResult = {
   workingTreeFiles?: string[];
   untrackedFiles?: string[];
   diffFileCount?: number;
+  ownershipRouting?: OwnershipRoutingContext | null;
   message: string;
 };
 
@@ -193,7 +205,17 @@ function renderKeyValueTable(rows: Array<[string, string]>): string[] {
   ];
 }
 
-function printReviewReport(report: ReviewReport): void {
+function summarizeValueList(values: string[], maxItems = 3): string {
+  if (values.length === 0) {
+    return "";
+  }
+  if (values.length <= maxItems) {
+    return values.join(", ");
+  }
+  return `${values.slice(0, maxItems).join(", ")}, +${values.length - maxItems} more`;
+}
+
+function printReviewReport(report: ReviewReport, ownershipRouting?: OwnershipRoutingContext | null): void {
   const committedFiles = report.committed_files ?? report.changed_files ?? [];
   const triggers = report.triggers ?? [];
   const diffStats = report.diff_stats;
@@ -217,6 +239,10 @@ function printReviewReport(report: ReviewReport): void {
     ["Added lines", diffStats?.added_lines === undefined ? "" : String(diffStats.added_lines)],
     ["Deleted lines", diffStats?.deleted_lines === undefined ? "" : String(diffStats.deleted_lines)],
     ["Workspace residue", residueSummary],
+    ["Touched owners", summarizeValueList(ownershipRouting?.touchedOwners ?? [])],
+    ["Unowned changed", summarizeValueList(ownershipRouting?.unownedChangedFiles ?? [])],
+    ["Overlap changed", summarizeValueList(ownershipRouting?.overlappingChangedFiles ?? [])],
+    ["Cross-owner triggers", summarizeValueList(ownershipRouting?.crossOwnerTriggers ?? [])],
   ])) {
     console.log(line);
   }
@@ -254,6 +280,7 @@ function buildResultBase(
   status: ReviewPhaseResult["status"],
   allowed: boolean,
   bypassed: boolean,
+  ownershipRouting: OwnershipRoutingContext | null,
   message: string,
 ): ReviewPhaseResult {
   return {
@@ -267,8 +294,30 @@ function buildResultBase(
     workingTreeFiles: report.working_tree_files,
     untrackedFiles: report.untracked_files,
     diffFileCount: report.diff_stats?.file_count,
+    ownershipRouting,
     message,
   };
+}
+
+async function loadOwnershipRoutingContext(
+  reviewRoot: string,
+  report: ReviewReport,
+): Promise<OwnershipRoutingContext | null> {
+  const changedFiles = report.committed_files ?? report.changed_files ?? [];
+  if (changedFiles.length === 0) {
+    return null;
+  }
+
+  const { rules: codeownersRules } = await loadCodeownersRules(reviewRoot);
+  const matches = resolveOwnership(changedFiles, codeownersRules);
+  const { rules: triggerRules } = await loadReviewTriggerRules(reviewRoot);
+
+  return buildOwnershipRoutingContext({
+    changedFiles,
+    matches,
+    triggerRules,
+    matchedTriggerNames: (report.triggers ?? []).map((trigger) => trigger.name),
+  });
 }
 
 async function parseDecision(
@@ -276,6 +325,7 @@ async function parseDecision(
   base: string,
   reviewRoot: string,
   outputMode: "human" | "jsonl",
+  ownershipRouting: OwnershipRoutingContext | null,
 ): Promise<ReviewPhaseResult> {
   if (process.env.ROUTA_ALLOW_REVIEW_TRIGGER_PUSH === "1") {
     const message = "ROUTA_ALLOW_REVIEW_TRIGGER_PUSH=1 set, bypassing review gate.";
@@ -283,14 +333,17 @@ async function parseDecision(
       console.log(message);
       console.log("");
     }
-    return buildResultBase(base, report, "passed", true, true, message);
+    return buildResultBase(base, report, "passed", true, true, ownershipRouting, message);
   }
 
   try {
     const decision = await runReviewTriggerSpecialist({
       reviewRoot,
       base,
-      report,
+      report: {
+        ...report,
+        ownership_routing: ownershipRouting,
+      },
     });
     const message = decision.summary;
     if (outputMode === "human") {
@@ -315,6 +368,7 @@ async function parseDecision(
       decision.allowed ? "passed" : "blocked",
       decision.allowed,
       false,
+      ownershipRouting,
       message,
     );
   } catch (error) {
@@ -325,7 +379,7 @@ async function parseDecision(
         console.log(message);
         console.log("");
       }
-      return buildResultBase(base, report, "unavailable", true, true, message);
+      return buildResultBase(base, report, "unavailable", true, true, ownershipRouting, message);
     }
 
     const message =
@@ -337,7 +391,7 @@ async function parseDecision(
       console.log(`- Fix the review environment and rerun, or set ${REVIEW_UNAVAILABLE_BYPASS_ENV}=1 to bypass intentionally.`);
       console.log("");
     }
-    return buildResultBase(base, report, "unavailable", false, false, message);
+    return buildResultBase(base, report, "unavailable", false, false, ownershipRouting, message);
   }
 }
 
@@ -356,10 +410,10 @@ export async function runReviewTriggerPhase(outputMode: "human" | "jsonl" = "hum
         console.log(message);
         console.log("");
       }
-      return buildResultBase(reviewBase, emptyReport(), "unavailable", true, true, message);
+      return buildResultBase(reviewBase, emptyReport(), "unavailable", true, true, null, message);
     }
 
-    return buildResultBase(reviewBase, emptyReport(), "unavailable", false, false, message);
+    return buildResultBase(reviewBase, emptyReport(), "unavailable", false, false, null, message);
   }
 
   if (!reviewRoot) {
@@ -372,10 +426,10 @@ export async function runReviewTriggerPhase(outputMode: "human" | "jsonl" = "hum
         console.log(message);
         console.log("");
       }
-      return buildResultBase(reviewBase, emptyReport(), "unavailable", true, true, message);
+      return buildResultBase(reviewBase, emptyReport(), "unavailable", true, true, null, message);
     }
 
-    return buildResultBase(reviewBase, emptyReport(), "unavailable", false, false, message);
+    return buildResultBase(reviewBase, emptyReport(), "unavailable", false, false, null, message);
   }
 
   if (outputMode === "human") {
@@ -408,7 +462,7 @@ export async function runReviewTriggerPhase(outputMode: "human" | "jsonl" = "hum
       }
       console.log("");
     }
-    return buildResultBase(reviewBase, report, "passed", true, false, message);
+    return buildResultBase(reviewBase, report, "passed", true, false, null, message);
   }
   const reviewFilesArg = scopeFiles.committedFiles.map(shellQuote).join(" ");
   const entrixBase = `${reviewBase}...HEAD`;
@@ -429,6 +483,7 @@ export async function runReviewTriggerPhase(outputMode: "human" | "jsonl" = "hum
       "passed",
       true,
       false,
+      null,
       "No review trigger matched.",
     );
   }
@@ -441,6 +496,7 @@ export async function runReviewTriggerPhase(outputMode: "human" | "jsonl" = "hum
     working_tree_files: scopeFiles.workingTreeFiles,
     untracked_files: scopeFiles.untrackedFiles,
   } satisfies ReviewReport;
+  const ownershipRouting = await loadOwnershipRoutingContext(reviewRoot, report);
   if (review.exitCode !== 3) {
     if (shouldBypassUnavailableReviewGate()) {
       const message = `${REVIEW_UNAVAILABLE_BYPASS_ENV}=1 set, bypassing unavailable review gate.`;
@@ -448,7 +504,7 @@ export async function runReviewTriggerPhase(outputMode: "human" | "jsonl" = "hum
         console.log(message);
         console.log("");
       }
-      return buildResultBase(reviewBase, report, "unavailable", true, true, message);
+      return buildResultBase(reviewBase, report, "unavailable", true, true, ownershipRouting, message);
     }
 
     const message =
@@ -460,12 +516,12 @@ export async function runReviewTriggerPhase(outputMode: "human" | "jsonl" = "hum
       console.log(`- Fix the review environment and rerun, or set ${REVIEW_UNAVAILABLE_BYPASS_ENV}=1 to bypass intentionally.`);
       console.log("");
     }
-    return buildResultBase(reviewBase, report, "unavailable", false, false, message);
+    return buildResultBase(reviewBase, report, "unavailable", false, false, ownershipRouting, message);
   }
 
   if (outputMode === "human") {
-    printReviewReport(report);
+    printReviewReport(report, ownershipRouting);
   }
 
-  return parseDecision(report, reviewBase, reviewRoot, outputMode);
+  return parseDecision(report, reviewBase, reviewRoot, outputMode, ownershipRouting);
 }

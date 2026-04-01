@@ -1,4 +1,5 @@
 use glob::{MatchOptions, Pattern};
+use routa_core::codeowners::detect_codeowners;
 use serde_json::Value as JsonValue;
 use std::collections::HashMap;
 use std::ffi::OsStr;
@@ -406,6 +407,20 @@ fn evaluate_detector(
                 evidence: matched,
             })
         }
+        DetectorDefinition::CodeownersRouting {
+            require_codeowners,
+            max_unowned_files,
+            max_sensitive_unowned_files,
+            max_overlapping_files,
+            require_trigger_alignment,
+        } => evaluate_codeowners_routing(
+            context,
+            *require_codeowners,
+            *max_unowned_files,
+            *max_sensitive_unowned_files,
+            *max_overlapping_files,
+            *require_trigger_alignment,
+        ),
         DetectorDefinition::GlobCount { patterns, min } => match collect_glob_matches(
             patterns,
             &context.repo_root,
@@ -601,6 +616,106 @@ fn evaluate_detector(
             evidence: Vec::new(),
         }),
     }
+}
+
+fn evaluate_codeowners_routing(
+    context: &mut EvaluationContext,
+    require_codeowners: bool,
+    max_unowned_files: Option<usize>,
+    max_sensitive_unowned_files: Option<usize>,
+    max_overlapping_files: Option<usize>,
+    require_trigger_alignment: bool,
+) -> Result<DetectorResult, String> {
+    let report = detect_codeowners(&context.repo_root)
+        .map_err(|error| format!("failed to evaluate CODEOWNERS routing: {error}"))?;
+    let mut evidence = Vec::new();
+    if let Some(path) = &report.codeowners_file {
+        evidence.push(path.clone());
+    }
+    if let Some(path) = &report.correlation.review_trigger_file {
+        evidence.push(path.clone());
+    }
+
+    if require_codeowners && report.codeowners_file.is_none() {
+        return Ok(DetectorResult {
+            status: CriterionStatus::Fail,
+            detail: report
+                .warnings
+                .first()
+                .cloned()
+                .unwrap_or_else(|| "missing CODEOWNERS".to_string()),
+            evidence,
+        });
+    }
+
+    let trigger_gap_count = report
+        .correlation
+        .trigger_correlations
+        .iter()
+        .filter(|correlation| correlation.has_ownership_gap)
+        .count();
+    let mut violations = Vec::new();
+
+    if let Some(limit) = max_unowned_files {
+        let count = report.coverage.unowned_files.len();
+        if count > limit {
+            violations.push(format!("unowned files: {count} > {limit}"));
+            evidence.extend(report.coverage.unowned_files.iter().take(5).cloned());
+        }
+    }
+    if let Some(limit) = max_sensitive_unowned_files {
+        let count = report.coverage.sensitive_unowned_files.len();
+        if count > limit {
+            violations.push(format!("sensitive unowned files: {count} > {limit}"));
+            evidence.extend(
+                report
+                    .coverage
+                    .sensitive_unowned_files
+                    .iter()
+                    .take(5)
+                    .cloned(),
+            );
+        }
+    }
+    if let Some(limit) = max_overlapping_files {
+        let count = report.coverage.overlapping_files.len();
+        if count > limit {
+            violations.push(format!("overlapping ownership paths: {count} > {limit}"));
+            evidence.extend(report.coverage.overlapping_files.iter().take(5).cloned());
+        }
+    }
+    if require_trigger_alignment && trigger_gap_count > 0 {
+        violations.push(format!("trigger ownership gaps: {trigger_gap_count}"));
+        evidence.extend(
+            report
+                .correlation
+                .trigger_correlations
+                .iter()
+                .filter(|correlation| correlation.has_ownership_gap)
+                .map(|correlation| format!("trigger:{}", correlation.trigger_name))
+                .take(5),
+        );
+    }
+
+    if !violations.is_empty() {
+        return Ok(DetectorResult {
+            status: CriterionStatus::Fail,
+            detail: violations.join(" | "),
+            evidence,
+        });
+    }
+
+    Ok(DetectorResult {
+        status: CriterionStatus::Pass,
+        detail: format!(
+            "CODEOWNERS routing healthy: {} unowned, {} sensitive gaps, {} overlaps, {} trigger gaps",
+            report.coverage.unowned_files.len(),
+            report.coverage.sensitive_unowned_files.len(),
+            report.coverage.overlapping_files.len(),
+            trigger_gap_count
+        ),
+        evidence,
+    })
 }
 
 fn build_command_failure(error: String) -> DetectorResult {

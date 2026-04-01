@@ -574,6 +574,48 @@ fn parse_detector(value: &JsonValue, label: &str) -> Result<DetectorDefinition, 
                 &format!("{label}.paths"),
             )?,
         }),
+        "codeowners_routing" => Ok(DetectorDefinition::CodeownersRouting {
+            require_codeowners: expect_bool(
+                detector.get("requireCodeowners"),
+                &format!("{label}.requireCodeowners"),
+                true,
+            )?,
+            max_unowned_files: detector
+                .get("maxUnownedFiles")
+                .map(|_| {
+                    expect_usize(
+                        detector.get("maxUnownedFiles"),
+                        &format!("{label}.maxUnownedFiles"),
+                        0,
+                    )
+                })
+                .transpose()?,
+            max_sensitive_unowned_files: detector
+                .get("maxSensitiveUnownedFiles")
+                .map(|_| {
+                    expect_usize(
+                        detector.get("maxSensitiveUnownedFiles"),
+                        &format!("{label}.maxSensitiveUnownedFiles"),
+                        0,
+                    )
+                })
+                .transpose()?,
+            max_overlapping_files: detector
+                .get("maxOverlappingFiles")
+                .map(|_| {
+                    expect_usize(
+                        detector.get("maxOverlappingFiles"),
+                        &format!("{label}.maxOverlappingFiles"),
+                        0,
+                    )
+                })
+                .transpose()?,
+            require_trigger_alignment: expect_bool(
+                detector.get("requireTriggerAlignment"),
+                &format!("{label}.requireTriggerAlignment"),
+                false,
+            )?,
+        }),
         "glob_count" => Ok(DetectorDefinition::GlobCount {
             patterns: if let Some(patterns) = detector.get("patterns") {
                 parse_string_array(patterns, &format!("{label}.patterns"))?

@@ -4,6 +4,7 @@ use super::{evaluate_harness_fluency, format_text_report, EvaluateOptions};
 use serde_json::json;
 use std::fs::{create_dir_all, write};
 use std::path::Path;
+use std::process::Command;
 use tempfile::tempdir;
 
 fn write_json(path: &Path, value: serde_json::Value) {
@@ -12,6 +13,22 @@ fn write_json(path: &Path, value: serde_json::Value) {
         format!("{}\n", serde_json::to_string_pretty(&value).unwrap()),
     )
     .unwrap();
+}
+
+fn init_git_repo(repo_root: &Path) {
+    let init = Command::new("git")
+        .args(["init"])
+        .current_dir(repo_root)
+        .status()
+        .unwrap();
+    assert!(init.success(), "git init should succeed");
+
+    let add = Command::new("git")
+        .args(["add", "."])
+        .current_dir(repo_root)
+        .status()
+        .unwrap();
+    assert!(add.success(), "git add should succeed");
 }
 
 #[test]
@@ -1175,6 +1192,256 @@ criteria:
         .evidence
         .iter()
         .any(|value| value == "package.json"));
+}
+
+#[test]
+fn evaluates_codeowners_routing_detector_failures() {
+    let repo = tempdir().unwrap();
+    let repo_root = repo.path();
+    create_dir_all(repo_root.join("docs/fitness")).unwrap();
+    create_dir_all(repo_root.join(".github")).unwrap();
+    create_dir_all(repo_root.join("src/core")).unwrap();
+    create_dir_all(repo_root.join("crates/routa-server/src/api")).unwrap();
+
+    write(repo_root.join("README.md"), "# repo\n").unwrap();
+    write(
+        repo_root.join(".github/CODEOWNERS"),
+        "src/** @web-team\ncrates/** @rust-team\ndocs/fitness/review-triggers.yaml @governance-team\n",
+    )
+    .unwrap();
+    write(
+        repo_root.join("src/core/review.ts"),
+        "export const review = true;\n",
+    )
+    .unwrap();
+    write(
+        repo_root.join("crates/routa-server/src/api/handler.rs"),
+        "pub fn handler() {}\n",
+    )
+    .unwrap();
+    write(repo_root.join("api-contract.yaml"), "openapi: 3.0.0\n").unwrap();
+    write(
+        repo_root.join("docs/fitness/review-triggers.yaml"),
+        [
+            "review_triggers:",
+            "  - name: cross_boundary_change_web_rust",
+            "    type: cross_boundary_change",
+            "    severity: medium",
+            "    action: require_human_review",
+            "    boundaries:",
+            "      web:",
+            "        - src/**",
+            "      rust:",
+            "        - crates/**",
+            "  - name: sensitive_contract_or_governance_change",
+            "    type: sensitive_file_change",
+            "    severity: high",
+            "    action: require_human_review",
+            "    paths:",
+            "      - api-contract.yaml",
+        ]
+        .join("\n"),
+    )
+    .unwrap();
+    init_git_repo(repo_root);
+
+    let model_path = repo_root.join("docs/fitness/model.yaml");
+    let snapshot_path = repo_root.join("docs/fitness/latest.json");
+    write(
+        &model_path,
+        r#"version: 1
+levels:
+  - id: awareness
+    name: Awareness
+dimensions:
+  - id: governance
+    name: Governance
+criteria:
+  - id: governance.awareness.readme
+    level: awareness
+    dimension: governance
+    weight: 1
+    critical: true
+    why_it_matters: docs
+    recommended_action: docs
+    evidence_hint: README.md
+    detector:
+      type: file_exists
+      path: README.md
+  - id: governance.awareness.codeowners
+    level: awareness
+    dimension: governance
+    weight: 1
+    critical: false
+    why_it_matters: ownership routing
+    recommended_action: align CODEOWNERS with review triggers
+    evidence_hint: .github/CODEOWNERS + docs/fitness/review-triggers.yaml
+    detector:
+      type: codeowners_routing
+      requireCodeowners: true
+      maxSensitiveUnownedFiles: 0
+      requireTriggerAlignment: true
+"#,
+    )
+    .unwrap();
+
+    let report = evaluate_harness_fluency(&EvaluateOptions {
+        repo_root: repo_root.to_path_buf(),
+        model_path,
+        profile: "generic".to_string(),
+        mode: FluencyMode::Deterministic,
+        snapshot_path,
+        compare_last: false,
+        save: false,
+    })
+    .expect("report");
+
+    let criterion = report
+        .criteria
+        .iter()
+        .find(|criterion| criterion.id == "governance.awareness.codeowners")
+        .expect("codeowners criterion");
+    assert_eq!(criterion.status, CriterionStatus::Fail);
+    assert_eq!(criterion.detector_type, "codeowners_routing");
+    assert!(criterion.detail.contains("sensitive unowned files: 1 > 0"));
+    assert!(criterion.detail.contains("trigger ownership gaps: 1"));
+    assert!(criterion
+        .evidence
+        .iter()
+        .any(|value| value == ".github/CODEOWNERS"));
+    assert!(criterion
+        .evidence
+        .iter()
+        .any(|value| value == "docs/fitness/review-triggers.yaml"));
+    assert!(criterion
+        .evidence
+        .iter()
+        .any(|value| value == "api-contract.yaml"));
+    assert!(criterion
+        .evidence
+        .iter()
+        .any(|value| value == "trigger:sensitive_contract_or_governance_change"));
+}
+
+#[test]
+fn evaluates_codeowners_routing_detector_when_ownership_is_aligned() {
+    let repo = tempdir().unwrap();
+    let repo_root = repo.path();
+    create_dir_all(repo_root.join("docs/fitness")).unwrap();
+    create_dir_all(repo_root.join(".github")).unwrap();
+    create_dir_all(repo_root.join("src/core")).unwrap();
+    create_dir_all(repo_root.join("crates/routa-server/src/api")).unwrap();
+
+    write(repo_root.join("README.md"), "# repo\n").unwrap();
+    write(
+        repo_root.join(".github/CODEOWNERS"),
+        "src/** @web-team\ncrates/** @rust-team\napi-contract.yaml @api-team\ndocs/fitness/review-triggers.yaml @governance-team\n",
+    )
+    .unwrap();
+    write(
+        repo_root.join("src/core/review.ts"),
+        "export const review = true;\n",
+    )
+    .unwrap();
+    write(
+        repo_root.join("crates/routa-server/src/api/handler.rs"),
+        "pub fn handler() {}\n",
+    )
+    .unwrap();
+    write(repo_root.join("api-contract.yaml"), "openapi: 3.0.0\n").unwrap();
+    write(
+        repo_root.join("docs/fitness/review-triggers.yaml"),
+        [
+            "review_triggers:",
+            "  - name: cross_boundary_change_web_rust",
+            "    type: cross_boundary_change",
+            "    severity: medium",
+            "    action: require_human_review",
+            "    boundaries:",
+            "      web:",
+            "        - src/**",
+            "      rust:",
+            "        - crates/**",
+            "  - name: sensitive_contract_or_governance_change",
+            "    type: sensitive_file_change",
+            "    severity: high",
+            "    action: require_human_review",
+            "    paths:",
+            "      - api-contract.yaml",
+        ]
+        .join("\n"),
+    )
+    .unwrap();
+    init_git_repo(repo_root);
+
+    let model_path = repo_root.join("docs/fitness/model.yaml");
+    let snapshot_path = repo_root.join("docs/fitness/latest.json");
+    write(
+        &model_path,
+        r#"version: 1
+levels:
+  - id: awareness
+    name: Awareness
+dimensions:
+  - id: governance
+    name: Governance
+criteria:
+  - id: governance.awareness.readme
+    level: awareness
+    dimension: governance
+    weight: 1
+    critical: true
+    why_it_matters: docs
+    recommended_action: docs
+    evidence_hint: README.md
+    detector:
+      type: file_exists
+      path: README.md
+  - id: governance.awareness.codeowners
+    level: awareness
+    dimension: governance
+    weight: 1
+    critical: false
+    why_it_matters: ownership routing
+    recommended_action: align CODEOWNERS with review triggers
+    evidence_hint: .github/CODEOWNERS + docs/fitness/review-triggers.yaml
+    detector:
+      type: codeowners_routing
+      requireCodeowners: true
+      maxSensitiveUnownedFiles: 0
+      requireTriggerAlignment: true
+"#,
+    )
+    .unwrap();
+
+    let report = evaluate_harness_fluency(&EvaluateOptions {
+        repo_root: repo_root.to_path_buf(),
+        model_path,
+        profile: "generic".to_string(),
+        mode: FluencyMode::Deterministic,
+        snapshot_path,
+        compare_last: false,
+        save: false,
+    })
+    .expect("report");
+
+    let criterion = report
+        .criteria
+        .iter()
+        .find(|criterion| criterion.id == "governance.awareness.codeowners")
+        .expect("codeowners criterion");
+    assert_eq!(criterion.status, CriterionStatus::Pass);
+    assert_eq!(criterion.detector_type, "codeowners_routing");
+    assert!(criterion.detail.contains("CODEOWNERS routing healthy"));
+    assert!(criterion.detail.contains("0 sensitive gaps"));
+    assert!(criterion.detail.contains("0 trigger gaps"));
+    assert_eq!(
+        criterion.evidence,
+        vec![
+            ".github/CODEOWNERS".to_string(),
+            "docs/fitness/review-triggers.yaml".to_string()
+        ]
+    );
 }
 
 #[test]

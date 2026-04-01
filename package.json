@@ -164,6 +164,7 @@
     "lowlight": "^3.3.0",
     "marked": "^17.0.2",
     "mermaid": "^11.12.2",
+    "minimatch": "^10.2.5",
     "next": "^16.2.1",
     "node-cron": "^4.2.1",
     "react": "^19.0.0",

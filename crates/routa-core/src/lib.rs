@@ -14,6 +14,7 @@
 //! - `axum` — Enables `IntoResponse` impl on `ServerError` for use in axum handlers.
 
 pub mod acp;
+pub mod codeowners;
 pub mod db;
 pub mod error;
 pub mod events;

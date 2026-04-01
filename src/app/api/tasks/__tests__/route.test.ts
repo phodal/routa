@@ -7,6 +7,17 @@ import { InMemoryArtifactStore } from "@/core/store/artifact-store";
 const notify = vi.fn();
 const processKanbanColumnTransition = vi.fn();
 const emitColumnTransition = vi.fn();
+const createGitHubIssue = vi.fn();
+const buildTaskGitHubIssueBody = vi.fn<(objective: string, testCases?: string[]) => string>(
+  (objective: string) => objective,
+);
+const parseGitHubRepo = vi.fn((sourceUrl?: string) => {
+  if (!sourceUrl?.includes("github.com")) {
+    return undefined;
+  }
+
+  return "acme/platform";
+});
 
 const taskStore = {
   listByWorkspace: vi.fn<(_: string) => Promise<Task[]>>(),
@@ -47,6 +58,13 @@ vi.mock("@/core/kanban/workflow-orchestrator-singleton", () => ({
   processKanbanColumnTransition: (...args: unknown[]) => processKanbanColumnTransition(...args),
 }));
 
+vi.mock("@/core/kanban/github-issues", () => ({
+  createGitHubIssue: (repo: string, payload: unknown) => createGitHubIssue(repo, payload),
+  buildTaskGitHubIssueBody: (objective: string, testCases?: string[]) =>
+    buildTaskGitHubIssueBody(objective, testCases),
+  parseGitHubRepo: (sourceUrl?: string) => parseGitHubRepo(sourceUrl),
+}));
+
 import { DELETE, GET, POST } from "../route";
 
 describe("/api/tasks GET", () => {
@@ -69,6 +87,16 @@ describe("/api/tasks GET", () => {
     taskStore.get.mockResolvedValue(undefined);
     taskStore.delete.mockResolvedValue();
     taskStore.save.mockResolvedValue();
+    createGitHubIssue.mockReset();
+    createGitHubIssue.mockResolvedValue({
+      id: "github-1",
+      number: 42,
+      url: "https://github.com/acme/platform/issues/42",
+      state: "open",
+      repo: "acme/platform",
+    });
+    buildTaskGitHubIssueBody.mockClear();
+    parseGitHubRepo.mockClear();
     system.kanbanBoardStore.get.mockResolvedValue({
       id: "board-1",
       columns: [{ id: "backlog", name: "Backlog", position: 0, stage: "backlog" }],
@@ -201,6 +229,68 @@ describe("/api/tasks GET", () => {
       toColumnName: "Todo",
     }));
     expect(emitColumnTransition).toHaveBeenCalled();
+  });
+
+  it("creates a linked GitHub issue only for manual task creation", async () => {
+    system.codebaseStore.findByRepoPath.mockResolvedValue({
+      id: "codebase-1",
+      repoPath: "/repos/acme/platform",
+      sourceUrl: "https://github.com/acme/platform",
+    });
+
+    const response = await POST(new NextRequest("http://localhost/api/tasks", {
+      method: "POST",
+      body: JSON.stringify({
+        title: "Create linked task",
+        objective: "Track the task in GitHub too",
+        workspaceId: "workspace-1",
+        createGitHubIssue: true,
+        creationSource: "manual",
+        repoPath: "/repos/acme/platform",
+        testCases: ["Task appears on the board"],
+      }),
+      headers: { "Content-Type": "application/json" },
+    }));
+    const data = await response.json();
+
+    expect(response.status).toBe(201);
+    expect(createGitHubIssue).toHaveBeenCalledWith("acme/platform", expect.objectContaining({
+      title: "Create linked task",
+      body: "Track the task in GitHub too",
+    }));
+    expect(data.task).toMatchObject({
+      githubNumber: 42,
+      githubRepo: "acme/platform",
+      githubUrl: "https://github.com/acme/platform/issues/42",
+      githubState: "open",
+    });
+  });
+
+  it("does not create a GitHub issue for non-manual task creation sources", async () => {
+    system.codebaseStore.findByRepoPath.mockResolvedValue({
+      id: "codebase-1",
+      repoPath: "/repos/acme/platform",
+      sourceUrl: "https://github.com/acme/platform",
+    });
+
+    const response = await POST(new NextRequest("http://localhost/api/tasks", {
+      method: "POST",
+      body: JSON.stringify({
+        title: "Automated backlog seed",
+        objective: "Create from API without external issue side effects",
+        workspaceId: "workspace-1",
+        createGitHubIssue: true,
+        creationSource: "api",
+        repoPath: "/repos/acme/platform",
+      }),
+      headers: { "Content-Type": "application/json" },
+    }));
+    const data = await response.json();
+
+    expect(response.status).toBe(201);
+    expect(createGitHubIssue).not.toHaveBeenCalled();
+    expect(data.task.githubNumber).toBeUndefined();
+    expect(data.task.githubRepo).toBeUndefined();
   });
 
   it("deletes all tasks in a workspace", async () => {

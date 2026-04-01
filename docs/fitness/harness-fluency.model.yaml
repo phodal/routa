@@ -647,12 +647,15 @@ criteria:
     recommended_action: Add ownership, security, or contribution policy files.
     evidence_hint: CODEOWNERS, SECURITY.md, or CONTRIBUTING.md
     detector:
-      type: any_file_exists
-      paths:
-        - CODEOWNERS
-        - .github/CODEOWNERS
-        - SECURITY.md
-        - CONTRIBUTING.md
+      type: any_of
+      detectors:
+        - type: codeowners_routing
+          requireCodeowners: true
+          maxSensitiveUnownedFiles: 0
+        - type: file_exists
+          path: SECURITY.md
+        - type: file_exists
+          path: CONTRIBUTING.md
 
   - id: governance.structured_ai_coding.quality_rulebook
     level: structured_ai_coding
@@ -730,8 +733,10 @@ criteria:
           path: docs/fitness/review-triggers.yaml
         - type: any_of
           detectors:
-            - type: file_exists
-              path: .github/CODEOWNERS
+            - type: codeowners_routing
+              requireCodeowners: true
+              maxSensitiveUnownedFiles: 0
+              requireTriggerAlignment: true
             - type: file_exists
               path: renovate.json
             - type: file_exists

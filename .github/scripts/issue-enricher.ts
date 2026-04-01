@@ -23,7 +23,7 @@ import {
   findExistingSyncedGitHubIssueFile,
   syncGitHubIssuesToDirectory,
 } from "@/core/github/github-issue-sync";
-import { fetchGitHubIssuesViaGh } from "@/core/github/github-issue-gh";
+import { fetchGitHubIssueViaGh, fetchGitHubIssuesViaGh } from "@/core/github/github-issue-gh";
 import { readFileSync, existsSync } from "fs";
 import { join, relative } from "path";
 
@@ -124,10 +124,17 @@ function fetchIssue(issueNumber: number): IssueData | null {
 
 function syncLocalIssueContext(issueNumber: number, dryRun: boolean): SyncContext {
   const syncLimit = process.env.ISSUE_SYNC_LIMIT ? parseInt(process.env.ISSUE_SYNC_LIMIT, 10) : undefined;
+  const syncScope = process.env.ISSUE_SYNC_SCOPE === "all" ? "all" : "current";
 
   try {
-    console.log(`\n📚 Syncing GitHub issues into local docs/issues/${syncLimit ? ` (limit: ${syncLimit})` : " (full sync)"}...`);
-    const issues = fetchGitHubIssuesViaGh({ state: "all", limit: syncLimit });
+    const issues = syncScope === "all"
+      ? fetchGitHubIssuesViaGh({ state: "all", limit: syncLimit })
+      : [fetchGitHubIssueViaGh(issueNumber)];
+    const scopeLabel = syncScope === "all"
+      ? (syncLimit ? `all issues (limit: ${syncLimit})` : "full issue set")
+      : `current issue #${issueNumber}`;
+
+    console.log(`\n📚 Syncing ${scopeLabel} into local docs/issues/...`);
     const results = syncGitHubIssuesToDirectory(SYNCED_ISSUES_DIR, issues, { dryRun });
     const currentIssueResult = results.find((result) => result.issueNumber === issueNumber);
     const existingCurrentFile = findExistingSyncedGitHubIssueFile(SYNCED_ISSUES_DIR, issueNumber);

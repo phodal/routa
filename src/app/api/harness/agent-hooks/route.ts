@@ -137,6 +137,10 @@ const STANDARD_CONFIG_LOCATIONS: Array<{ relativePath: string; provider: string 
   { relativePath: ".codex/hooks.json", provider: "codex" },
 ];
 
+function joinRepoPath(repoRoot: string, ...relativeSegments: string[]) {
+  return path.join(/* turbopackIgnore: true */ repoRoot, ...relativeSegments);
+}
+
 function parseStandardHooksConfig(
   raw: string,
   relativePath: string,
@@ -298,7 +302,7 @@ export async function GET(request: NextRequest) {
 
   /* 1. Scan standard hook config files (Claude Code, Qoder, Codex) */
   for (const { relativePath, provider } of STANDARD_CONFIG_LOCATIONS) {
-    const fullPath = path.join(repoRoot, relativePath);
+    const fullPath = joinRepoPath(repoRoot, relativePath);
     if (!fs.existsSync(fullPath)) continue;
 
     try {
@@ -314,7 +318,7 @@ export async function GET(request: NextRequest) {
   }
 
   /* 2. Scan custom YAML config (routa-specific) */
-  const yamlPath = path.join(repoRoot, "docs", "fitness", "runtime", "agent-hooks.yaml");
+  const yamlPath = joinRepoPath(repoRoot, "docs", "fitness", "runtime", "agent-hooks.yaml");
   if (fs.existsSync(yamlPath)) {
     try {
       const rawSource = await fsp.readFile(yamlPath, "utf-8");

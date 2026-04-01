@@ -1,16 +1,14 @@
-import * as fs from "fs";
 import { promises as fsp } from "fs";
 import matter from "gray-matter";
 import yaml from "js-yaml";
 import * as path from "path";
 import { NextRequest, NextResponse } from "next/server";
-import { getRoutaSystem } from "@/core/routa-system";
-
-type FitnessContext = {
-  workspaceId?: string;
-  codebaseId?: string;
-  repoPath?: string;
-};
+import {
+  type FitnessContext,
+  isFitnessContextError,
+  normalizeFitnessContextValue,
+  resolveFitnessRepoRoot,
+} from "@/core/fitness/repo-root";
 
 type MetricSummary = {
   name: string;
@@ -57,9 +55,7 @@ function toMessage(error: unknown): string {
 }
 
 function normalizeContextValue(value: unknown): string | undefined {
-  if (typeof value !== "string") return undefined;
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : undefined;
+  return normalizeFitnessContextValue(value);
 }
 
 function parseContext(searchParams: URLSearchParams): FitnessContext {
@@ -70,57 +66,8 @@ function parseContext(searchParams: URLSearchParams): FitnessContext {
   };
 }
 
-function validateRepoDirectory(candidate: string, label: string) {
-  if (!fs.existsSync(candidate) || !fs.statSync(candidate).isDirectory()) {
-    throw new Error(`${label}不存在或不是目录: ${candidate}`);
-  }
-}
-
-async function resolveRepoRoot(context: FitnessContext): Promise<string> {
-  const workspaceId = normalizeContextValue(context.workspaceId);
-  const codebaseId = normalizeContextValue(context.codebaseId);
-  const repoPath = normalizeContextValue(context.repoPath);
-  const system = getRoutaSystem();
-
-  const directPath = repoPath ? path.resolve(repoPath) : undefined;
-  if (directPath) {
-    validateRepoDirectory(directPath, "repoPath ");
-    return directPath;
-  }
-
-  if (codebaseId) {
-    const codebase = await system.codebaseStore.get(codebaseId);
-    if (!codebase) {
-      throw new Error(`Codebase 未找到: ${codebaseId}`);
-    }
-
-    const candidate = path.resolve(codebase.repoPath);
-    validateRepoDirectory(candidate, "Codebase 的路径");
-    return candidate;
-  }
-
-  if (!workspaceId) {
-    throw new Error("缺少 fitness 上下文，请提供 workspaceId / codebaseId / repoPath 之一");
-  }
-
-  const codebases = await system.codebaseStore.listByWorkspace(workspaceId);
-  if (codebases.length === 0) {
-    throw new Error(`Workspace 下没有配置 codebase: ${workspaceId}`);
-  }
-
-  const fallback = codebases.find((codebase) => codebase.isDefault) ?? codebases[0];
-  const candidate = path.resolve(fallback.repoPath);
-  validateRepoDirectory(candidate, "默认 codebase 的路径");
-  return candidate;
-}
-
 function isContextError(message: string) {
-  return message.includes("缺少 fitness 上下文")
-    || message.includes("Codebase 未找到")
-    || message.includes("Codebase 的路径")
-    || message.includes("repoPath")
-    || message.includes("Workspace 下没有配置 codebase")
-    || message.includes("不存在或不是目录");
+  return isFitnessContextError(message);
 }
 
 function mapRunner(metric: Record<string, unknown>): "shell" | "graph" | "sarif" {
@@ -284,7 +231,7 @@ function parseNonMarkdownSpec(relativePath: string, raw: string): FitnessSpecSum
 export async function GET(request: NextRequest) {
   try {
     const context = parseContext(request.nextUrl.searchParams);
-    const repoRoot = await resolveRepoRoot(context);
+    const repoRoot = await resolveFitnessRepoRoot(context);
     const fitnessDir = path.join(repoRoot, "docs", "fitness");
     const files: FitnessSpecSummary[] = [];
     let manifestSpec: FitnessSpecSummary | null = null;

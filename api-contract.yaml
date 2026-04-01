@@ -4647,6 +4647,43 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /api/harness/codeowners:
+    get:
+      operationId: getHarnessCodeowners
+      summary: Parse CODEOWNERS and report ownership coverage for the selected repository
+      parameters:
+        - name: workspaceId
+          in: query
+          schema:
+            type: string
+        - name: codebaseId
+          in: query
+          schema:
+            type: string
+        - name: repoPath
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: CODEOWNERS rules, owner groups, and coverage samples
+          content:
+            application/json:
+              schema:
+                type: object
+        "400":
+          description: Invalid harness context
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Failed to read CODEOWNERS
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /api/harness/repo-signals:
     get:
       operationId: getHarnessRepoSignals

@@ -8,7 +8,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getRoutaSystem } from "@/core/routa-system";
 import { GitWorktreeService } from "@/core/git/git-worktree-service";
-import { getDefaultWorkspaceWorktreeRoot, getEffectiveWorkspaceMetadata } from "@/core/models/workspace";
 
 export const dynamic = "force-dynamic";
 
@@ -67,16 +66,12 @@ export async function POST(
   }
 
   const service = new GitWorktreeService(system.worktreeStore, system.codebaseStore);
-  const workspace = await system.workspaceStore.get(workspaceId);
 
   try {
     const worktree = await service.createWorktree(codebaseId, {
       branch: branch as string | undefined,
       baseBranch: baseBranch as string | undefined,
       label: label as string | undefined,
-      worktreeRoot: workspace
-        ? getEffectiveWorkspaceMetadata(workspace).worktreeRoot
-        : getDefaultWorkspaceWorktreeRoot(workspaceId),
     });
     return NextResponse.json({ worktree }, { status: 201 });
   } catch (err) {

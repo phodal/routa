@@ -560,11 +560,11 @@ mod tests {
         assert_eq!(task.assigned_role.as_deref(), Some("CRAFTER"));
         assert_eq!(
             task.assigned_specialist_id.as_deref(),
-            Some("kanban-todo-worker")
+            Some("kanban-backlog-refiner")
         );
         assert_eq!(
             task.assigned_specialist_name.as_deref(),
-            Some("Todo Worker")
+            Some("Backlog Refiner")
         );
         assert!(
             task.trigger_session_id.is_some() || task.last_sync_error.is_some(),

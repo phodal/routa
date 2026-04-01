@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import yaml from "js-yaml";
 import { runCommand, tailOutput } from "./process.js";
+import type { OwnershipRoutingContext } from "../../../src/core/harness/codeowners-types";
 
 const DEFAULT_SPECIALIST_ID = "harness-review-trigger";
 const DEFAULT_ANTHROPIC_BASE_URL = "https://api.anthropic.com";
@@ -30,6 +31,7 @@ export type ReviewReportPayload = {
   committed_files?: string[];
   working_tree_files?: string[];
   untracked_files?: string[];
+  ownership_routing?: OwnershipRoutingContext | null;
   diff_stats?: {
     file_count?: number;
     added_lines?: number;
@@ -252,6 +254,7 @@ async function buildReviewPayload(reviewRoot: string, base: string, report: Revi
     committedFiles: report.committed_files ?? report.changed_files ?? [],
     workingTreeFiles: report.working_tree_files ?? [],
     untrackedFiles: report.untracked_files ?? [],
+    ownershipRouting: report.ownership_routing ?? null,
     diffStats: report.diff_stats ?? {},
     diffStat: diffStatResult.output.trim(),
     diff: truncate(diffResult.output, MAX_DIFF_CHARS),

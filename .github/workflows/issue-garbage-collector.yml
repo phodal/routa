@@ -78,15 +78,18 @@ jobs:
           (github.event.inputs.mode == 'full' || github.event.inputs.mode == '' || github.event_name == 'schedule')
         env:
           INPUT_MODE: ${{ github.event.inputs.mode }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "## 🤖 AI Analysis" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          if [ "$INPUT_MODE" == "dry-run" ]; then
-            npx tsx .github/scripts/issue-gc.ts --dry-run 2>&1 | tee -a $GITHUB_STEP_SUMMARY
-          else
+          if [ "$INPUT_MODE" == "full" ] && [ "$EVENT_NAME" == "workflow_dispatch" ]; then
+            echo "Manual full mode: applying issue maintenance changes." >> $GITHUB_STEP_SUMMARY
             npx tsx .github/scripts/issue-gc.ts 2>&1 | tee -a $GITHUB_STEP_SUMMARY
+          else
+            echo "Report-only mode: scheduled and non-full runs do not mutate docs/issues/." >> $GITHUB_STEP_SUMMARY
+            npx tsx .github/scripts/issue-gc.ts --dry-run 2>&1 | tee -a $GITHUB_STEP_SUMMARY
           fi
 
       - name: Skip Phase 2 (No API Key)
@@ -123,7 +126,8 @@ jobs:
       - name: Commit and push changes
         if: |
           steps.changes.outputs.has_changes == 'true' &&
-          github.event.inputs.mode != 'dry-run'
+          github.event_name == 'workflow_dispatch' &&
+          github.event.inputs.mode == 'full'
         run: |
           git add docs/issues/
           git commit -m "chore: automated issue garbage collection
@@ -137,4 +141,3 @@ jobs:
 
           Co-authored-by: github-actions[bot] <github-actions[bot]@users.noreply.github.com>"
           git push
-

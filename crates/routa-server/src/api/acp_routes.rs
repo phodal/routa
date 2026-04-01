@@ -26,6 +26,43 @@ pub fn router() -> Router<AppState> {
     Router::new().route("/", get(acp_sse).post(acp_rpc))
 }
 
+fn has_explicit_cwd(value: Option<&str>) -> bool {
+    value
+        .map(str::trim)
+        .map(|cwd| !cwd.is_empty() && cwd != ".")
+        .unwrap_or(false)
+}
+
+async fn resolve_session_cwd(
+    state: &AppState,
+    workspace_id: &str,
+    requested_cwd: Option<&str>,
+) -> String {
+    if let Some(cwd) = requested_cwd.filter(|value| has_explicit_cwd(Some(value))) {
+        return cwd.trim().to_string();
+    }
+
+    if let Ok(Some(codebase)) = state.codebase_store.get_default(workspace_id).await {
+        if !codebase.repo_path.trim().is_empty() {
+            return codebase.repo_path;
+        }
+    }
+
+    if let Ok(codebases) = state.codebase_store.list_by_workspace(workspace_id).await {
+        if let Some(codebase) = codebases
+            .into_iter()
+            .find(|codebase| !codebase.repo_path.trim().is_empty())
+        {
+            return codebase.repo_path;
+        }
+    }
+
+    std::env::current_dir()
+        .ok()
+        .map(|path| path.to_string_lossy().to_string())
+        .unwrap_or_else(|| ".".to_string())
+}
+
 /// Type alias for the SSE stream used in ACP responses.
 type AcpSseStream =
     std::pin::Pin<Box<dyn tokio_stream::Stream<Item = Result<Event, Infallible>> + Send>>;
@@ -297,11 +334,10 @@ async fn acp_rpc(
         }
 
         "session/new" => {
-            let mut cwd = params
+            let requested_cwd = params
                 .get("cwd")
                 .and_then(|v| v.as_str())
-                .unwrap_or(".")
-                .to_string();
+                .map(str::to_string);
             let workspace_id = params
                 .get("workspaceId")
                 .and_then(|v| v.as_str())
@@ -346,6 +382,8 @@ async fn acp_rpc(
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string());
 
+            let mut cwd =
+                resolve_session_cwd(&state, &workspace_id, requested_cwd.as_deref()).await;
             let session_id = uuid::Uuid::new_v4().to_string();
 
             // If worktreeId is provided, validate and override cwd with worktree path
@@ -400,7 +438,13 @@ async fn acp_rpc(
 
             let launch_options = SessionLaunchOptions {
                 specialist_id: specialist_id.clone(),
-                specialist_system_prompt: params.get("systemPrompt").and_then(|v| v.as_str()).map(str::trim).filter(|prompt| !prompt.is_empty()).map(str::to_string).or_else(|| specialist.as_ref().and_then(build_specialist_system_prompt)),
+                specialist_system_prompt: params
+                    .get("systemPrompt")
+                    .and_then(|v| v.as_str())
+                    .map(str::trim)
+                    .filter(|prompt| !prompt.is_empty())
+                    .map(str::to_string)
+                    .or_else(|| specialist.as_ref().and_then(build_specialist_system_prompt)),
                 allowed_native_tools: derive_allowed_native_tools(specialist_id.as_deref()),
                 ..SessionLaunchOptions::default()
             };
@@ -627,7 +671,13 @@ async fn acp_rpc(
                     .or(Some("CRAFTER".to_string()));
                 let launch_options = SessionLaunchOptions {
                     specialist_id: specialist_id.clone(),
-                    specialist_system_prompt: params.get("systemPrompt").and_then(|v| v.as_str()).map(str::trim).filter(|prompt| !prompt.is_empty()).map(str::to_string).or_else(|| specialist.as_ref().and_then(build_specialist_system_prompt)),
+                    specialist_system_prompt: params
+                        .get("systemPrompt")
+                        .and_then(|v| v.as_str())
+                        .map(str::trim)
+                        .filter(|prompt| !prompt.is_empty())
+                        .map(str::to_string)
+                        .or_else(|| specialist.as_ref().and_then(build_specialist_system_prompt)),
                     allowed_native_tools: derive_allowed_native_tools(specialist_id.as_deref()),
                     ..SessionLaunchOptions::default()
                 };
@@ -1333,12 +1383,13 @@ mod tests {
     use std::sync::Arc;
 
     use axum::{extract::State, Json};
+    use routa_core::models::codebase::Codebase;
     use routa_core::store::acp_session_store::CreateAcpSessionParams;
     use routa_core::{db::Database, state::AppStateInner};
     use serde_json::json;
     use tokio::sync::broadcast;
 
-    use super::{acp_rpc, AcpResponse};
+    use super::{acp_rpc, has_explicit_cwd, resolve_session_cwd, AcpResponse};
     use routa_core::acp::terminal_manager::TerminalManager;
 
     fn json_response_value(response: AcpResponse) -> serde_json::Value {
@@ -1346,6 +1397,61 @@ mod tests {
             AcpResponse::Json(Json(value)) => value,
             AcpResponse::Sse(_) => panic!("expected JSON response"),
         }
+    }
+
+    #[test]
+    fn explicit_cwd_rejects_empty_and_dot() {
+        assert!(has_explicit_cwd(Some("/tmp/repo")));
+        assert!(!has_explicit_cwd(None));
+        assert!(!has_explicit_cwd(Some("")));
+        assert!(!has_explicit_cwd(Some("   ")));
+        assert!(!has_explicit_cwd(Some(".")));
+    }
+
+    #[tokio::test]
+    async fn resolve_session_cwd_prefers_workspace_default_codebase_when_missing() {
+        let db = Database::open_in_memory().expect("db should open");
+        let state = Arc::new(AppStateInner::new(db));
+        state
+            .workspace_store
+            .ensure_default()
+            .await
+            .expect("default workspace should exist");
+
+        let codebase = Codebase::new(
+            "cb-default".to_string(),
+            "default".to_string(),
+            "/Users/phodal/.routa/repos/phodal--routa".to_string(),
+            Some("main".to_string()),
+            Some("routa".to_string()),
+            true,
+            None,
+            None,
+        );
+        state
+            .codebase_store
+            .save(&codebase)
+            .await
+            .expect("codebase should persist");
+
+        let cwd = resolve_session_cwd(&state, "default", None).await;
+
+        assert_eq!(cwd, "/Users/phodal/.routa/repos/phodal--routa");
+    }
+
+    #[tokio::test]
+    async fn resolve_session_cwd_keeps_explicit_repo_path() {
+        let db = Database::open_in_memory().expect("db should open");
+        let state = Arc::new(AppStateInner::new(db));
+        state
+            .workspace_store
+            .ensure_default()
+            .await
+            .expect("default workspace should exist");
+
+        let cwd = resolve_session_cwd(&state, "default", Some("/tmp/explicit-repo")).await;
+
+        assert_eq!(cwd, "/tmp/explicit-repo");
     }
 
     #[tokio::test]

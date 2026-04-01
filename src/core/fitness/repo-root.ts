@@ -27,7 +27,9 @@ export function isRoutaRepoRoot(repoRoot: string): boolean {
 }
 
 export function getCurrentRoutaRepoRoot(): string | undefined {
-  const candidate = path.resolve(process.cwd());
+  const candidate = path.resolve(
+    /* turbopackIgnore: true */ process.cwd(),
+  );
   return isRoutaRepoRoot(candidate) ? candidate : undefined;
 }
 
@@ -46,7 +48,7 @@ export async function resolveFitnessRepoRoot(
   const repoPath = normalizeFitnessContextValue(context.repoPath);
   const system = getRoutaSystem();
 
-  const directPath = repoPath ? path.resolve(repoPath) : undefined;
+  const directPath = repoPath ? path.resolve(/* turbopackIgnore: true */ repoPath) : undefined;
   if (directPath) {
     validateRepoDirectory(directPath, "repoPath ");
     return directPath;

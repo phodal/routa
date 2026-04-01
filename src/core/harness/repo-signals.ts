@@ -52,6 +52,10 @@ type HarnessSurfaceConfig = {
 
 const LOCKFILE_CANDIDATES = ["pnpm-lock.yaml", "package-lock.json", "yarn.lock"];
 
+function joinRepoPath(repoRoot: string, ...relativeSegments: string[]) {
+  return path.join(/* turbopackIgnore: true */ repoRoot, ...relativeSegments);
+}
+
 function toMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
@@ -120,7 +124,7 @@ function buildOverviewRows(
 ): HarnessOverviewRow[] {
   return overview.map((row) => {
     const items = row.source === "files"
-      ? (row.paths ?? []).filter((relativePath) => fs.existsSync(path.join(repoRoot, relativePath)))
+      ? (row.paths ?? []).filter((relativePath) => fs.existsSync(joinRepoPath(repoRoot, relativePath)))
       : (row.rules ?? [])
         .filter((rule) => {
           const anyPass = !rule.whenAny || rule.whenAny.some((condition) => evaluateCondition(condition, repoRoot, scripts, warnings, `${row.id}:${rule.label}`));
@@ -176,7 +180,7 @@ function resolvePackageManager(packageJson: Record<string, unknown>, lockfiles: 
 }
 
 async function loadSurfaceConfig(repoRoot: string, surface: HarnessSignalsMode): Promise<HarnessSurfaceConfig> {
-  const configPath = path.join(repoRoot, "docs", "harness", `${surface}.yml`);
+  const configPath = joinRepoPath(repoRoot, "docs", "harness", `${surface}.yml`);
   const raw = await fsp.readFile(configPath, "utf-8");
   const parsed = (yaml.load(raw) ?? {}) as HarnessSurfaceConfig;
   return parsed;
@@ -202,7 +206,7 @@ async function detectSurfaceSignals(
 
 export async function detectHarnessRepoSignals(repoRoot: string): Promise<HarnessRepoSignalsResponse> {
   const warnings: string[] = [];
-  const packageJsonPath = path.join(repoRoot, "package.json");
+  const packageJsonPath = joinRepoPath(repoRoot, "package.json");
   let packageJson: Record<string, unknown> = {};
 
   if (fs.existsSync(packageJsonPath)) {
@@ -221,7 +225,7 @@ export async function detectHarnessRepoSignals(repoRoot: string): Promise<Harnes
       .map(([name, command]) => ({ name, command: command as string }))
     : [];
 
-  const lockfiles = LOCKFILE_CANDIDATES.filter((relativePath) => fs.existsSync(path.join(repoRoot, relativePath)));
+  const lockfiles = LOCKFILE_CANDIDATES.filter((relativePath) => fs.existsSync(joinRepoPath(repoRoot, relativePath)));
 
   return {
     generatedAt: new Date().toISOString(),

@@ -7,7 +7,7 @@
  * - Tag/Branch events: create, delete
  */
 
-import { describe, it, expect, beforeEach } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   handleGitHubWebhook,
   buildPrompt,
@@ -23,10 +23,20 @@ const WORKSPACE_ID = "workspace-1";
 describe("GitHub Webhook Handler - Phase 2 Events", () => {
   let webhookStore: InMemoryGitHubWebhookStore;
   let backgroundTaskStore: InMemoryBackgroundTaskStore;
+  const originalFetch = global.fetch;
 
   beforeEach(() => {
     webhookStore = new InMemoryGitHubWebhookStore();
     backgroundTaskStore = new InMemoryBackgroundTaskStore();
+    global.fetch = (async () => ({
+      ok: false,
+      status: 404,
+      text: async () => "not found",
+    })) as unknown as typeof fetch;
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
   });
 
   describe("check_suite event", () => {
@@ -313,6 +323,86 @@ describe("GitHub Webhook Handler - Phase 2 Events", () => {
       expect(tasks[0].prompt).toContain("Comment by reviewer");
       expect(tasks[0].prompt).toContain("File: src/app.ts:42");
       expect(tasks[0].prompt).toContain("This line needs refactoring");
+    });
+
+    it("adds ownership routing context when CODEOWNERS can be resolved", async () => {
+      await webhookStore.createConfig({
+        name: "PR Comment Monitor",
+        repo: "owner/repo",
+        githubToken: "ghp_test",
+        webhookSecret: "",
+        eventTypes: ["pull_request_review_comment"],
+        triggerAgentId: "claude-code",
+      });
+
+      global.fetch = (async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes("/contents/.github/CODEOWNERS")) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              content: Buffer.from("src/** @frontend-team\n").toString("base64"),
+              encoding: "base64",
+            }),
+          } as Response;
+        }
+        if (url.includes("/contents/docs/fitness/review-triggers.yaml")) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              content: Buffer.from(
+                "review_triggers:\n  - name: ui_change\n    type: changed_paths\n    severity: medium\n    action: require_human_review\n    paths:\n      - src/**\n",
+              ).toString("base64"),
+              encoding: "base64",
+            }),
+          } as Response;
+        }
+        return {
+          ok: false,
+          status: 404,
+          text: async () => "not found",
+        } as Response;
+      }) as typeof fetch;
+
+      const payload: GitHubWebhookPayload = {
+        action: "created",
+        pull_request: {
+          number: 42,
+          title: "Add new feature",
+          html_url: "https://github.com/owner/repo/pull/42",
+          state: "open",
+          head: { ref: "feature-branch", sha: "abc123" },
+          base: { ref: "main" },
+        },
+        comment: {
+          id: 888,
+          body: "This line needs refactoring",
+          html_url: "https://github.com/owner/repo/pull/42#discussion_r888",
+          user: { login: "reviewer" },
+          path: "src/app.ts",
+          line: 42,
+        },
+        repository: {
+          full_name: "owner/repo",
+          html_url: "https://github.com/owner/repo",
+        },
+      };
+
+      await handleGitHubWebhook({
+        eventType: "pull_request_review_comment",
+        rawBody: JSON.stringify(payload),
+        payload,
+        webhookStore,
+        backgroundTaskStore,
+        workspaceId: WORKSPACE_ID,
+      });
+
+      const tasks = await backgroundTaskStore.listByWorkspace(WORKSPACE_ID);
+      expect(tasks[0].prompt).toContain("Ownership routing context:");
+      expect(tasks[0].prompt).toContain("Touched owners: @frontend-team");
+      expect(tasks[0].prompt).toContain("Cross-owner triggers: none");
     });
   });
 

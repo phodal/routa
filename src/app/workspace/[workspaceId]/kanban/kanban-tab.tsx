@@ -14,7 +14,7 @@ import type {
   TaskInfo,
   WorktreeInfo,
 } from "../types";
-import { EMPTY_DRAFT, type DraftIssue } from "../kanban-create-modal";
+import { EMPTY_DRAFT, type TaskDraft } from "../kanban-create-modal";
 import { KanbanSettingsModal, type ColumnAutomationConfig } from "./kanban-settings-modal";
 import { scheduleKanbanRefreshBurst } from "./kanban-agent-input";
 import {
@@ -125,7 +125,7 @@ export function KanbanTab({
   const autoPatchedTasksRef = useRef(new Set<string>());
   const [dragTaskId, setDragTaskId] = useState<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [draft, setDraft] = useState<DraftIssue>({
+  const [draft, setDraft] = useState<TaskDraft>({
     ...EMPTY_DRAFT,
     createGitHubIssue: false,
   });
@@ -955,7 +955,7 @@ export function KanbanTab({
     }
   }, [localTasks, patchTask]);
 
-  async function createIssue() {
+  async function createTaskCard() {
     const effectiveCodebaseIds = draft.codebaseIds.length > 0 ? draft.codebaseIds : allCodebaseIds;
     const response = await fetch("/api/tasks", {
       method: "POST",
@@ -978,7 +978,7 @@ export function KanbanTab({
     });
     const data = await response.json();
     if (!response.ok) {
-      throw new Error(data.error ?? "Failed to create issue");
+      throw new Error(data.error ?? "Failed to create task");
     }
     setLocalTasks((current) => [...current, data.task as TaskInfo]);
     setDraft({ ...EMPTY_DRAFT, objectiveHtml: "", createGitHubIssue: false });
@@ -1192,7 +1192,7 @@ export function KanbanTab({
         draft={draft}
         setDraft={setDraft}
         onClose={() => setShowCreateModal(false)}
-        onCreate={() => void createIssue()}
+        onCreate={() => void createTaskCard()}
         githubAvailable={githubAvailable}
         codebases={codebases}
         allCodebaseIds={allCodebaseIds}

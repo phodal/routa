@@ -11,7 +11,7 @@ import { KanbanCard } from "./kanban-card";
 import { KanbanCardActivityBar, KanbanCardDetail } from "./kanban-card-detail";
 import { KanbanFileChangesPanel, getKanbanFileChangesSummary } from "./kanban-file-changes-panel";
 import type { KanbanTaskAgentCopy } from "./i18n/kanban-task-agent";
-import { KanbanCreateModal, type DraftIssue } from "../kanban-create-modal";
+import { KanbanCreateModal, type TaskDraft } from "../kanban-create-modal";
 import { KanbanCardActivityPanel, KanbanEmptySessionPane } from "./kanban-card-activity";
 import { formatSessionTimestamp } from "./kanban-card-session-utils";
 import { KanbanRepoSyncStatus, type RepoSyncState } from "./kanban-repo-sync-status";
@@ -461,8 +461,8 @@ export function KanbanCreateTaskModal({
   allCodebaseIds,
 }: {
   showCreateModal: boolean;
-  draft: DraftIssue;
-  setDraft: Dispatch<SetStateAction<DraftIssue>>;
+  draft: TaskDraft;
+  setDraft: Dispatch<SetStateAction<TaskDraft>>;
   onClose: () => void;
   onCreate: () => void;
   githubAvailable: boolean;

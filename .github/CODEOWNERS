@@ -1,0 +1,75 @@
+# Routa.js — ownership routing for review (Harness / GitHub)
+# See: https://github.com/phodal/routa/issues/261
+# Keep rules as non-overlapping as practical so Harness can surface real drift.
+
+# Agent and local workflow assets
+.agents/** @phodal
+.augment/** @phodal
+.claude/** @phodal
+.husky/** @phodal
+.kiro/** @phodal
+.qoder/** @phodal
+.storybook/** @phodal
+
+# Top-level runtime boundaries
+.github/** @phodal
+apps/** @phodal
+architecture/** @phodal
+crates/** @phodal
+docker/** @phodal
+docs/** @phodal
+drizzle/** @phodal
+drizzle-sqlite/** @phodal
+e2e/** @phodal
+packages/** @phodal
+patches/** @phodal
+public/** @phodal
+resources/** @phodal
+scripts/** @phodal
+src/** @phodal
+static/** @phodal
+tests/** @phodal
+tools/** @phodal
+
+# Root governance, release, and config files
+/.dependency-cruiser.cjs @phodal
+/.dockerignore @phodal
+/.env.example @phodal
+/.gitignore @phodal
+/.gitmodules @phodal
+/.npmrc @phodal
+/.semgrepignore @phodal
+/AGENTS.md @phodal
+/Cargo.toml @phodal
+/CLAUDE.md @phodal
+/CHANGELOG.md @phodal
+/CODE_OF_CONDUCT.md @phodal
+/CONTRIBUTING.md @phodal
+/Dockerfile @phodal
+/LICENSE @phodal
+/README.md @phodal
+/RELEASE_SETUP.md @phodal
+/SECURITY.md @phodal
+/SUPPORT.md @phodal
+/api-contract.yaml @phodal
+/docker-compose.yml @phodal
+/docusaurus.config.js @phodal
+/drizzle-sqlite.config.ts @phodal
+/drizzle.config.ts @phodal
+/eslint.config.mjs @phodal
+/implementation_plan.md.resolved @phodal
+/next-env.d.ts @phodal
+/next.config.ts @phodal
+/package-lock.json @phodal
+/package.json @phodal
+/playwright.config.ts @phodal
+/playwright.tauri.config.ts @phodal
+/postcss.config.mjs @phodal
+/sidebars.js @phodal
+/skills-lock.json @phodal
+/tailwind.config.ts @phodal
+/tsconfig.desktop.json @phodal
+/tsconfig.json @phodal
+/vercel.json @phodal
+/vitest.config.ts @phodal
+/vitest.setup.ts @phodal

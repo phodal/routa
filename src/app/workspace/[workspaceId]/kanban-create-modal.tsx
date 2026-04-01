@@ -7,7 +7,7 @@ import Placeholder from "@tiptap/extension-placeholder";
 import type { CodebaseData } from "@/client/hooks/use-workspaces";
 import { useTranslation } from "@/i18n";
 
-export type DraftIssue = {
+export type TaskDraft = {
   title: string;
   objectiveHtml: string;
   testCases: string;
@@ -17,7 +17,7 @@ export type DraftIssue = {
   codebaseIds: string[];
 };
 
-export const EMPTY_DRAFT: DraftIssue = {
+export const EMPTY_DRAFT: TaskDraft = {
   title: "",
   objectiveHtml: "",
   testCases: "",
@@ -28,8 +28,8 @@ export const EMPTY_DRAFT: DraftIssue = {
 };
 
 interface KanbanCreateModalProps {
-  draft: DraftIssue;
-  setDraft: React.Dispatch<React.SetStateAction<DraftIssue>>;
+  draft: TaskDraft;
+  setDraft: React.Dispatch<React.SetStateAction<TaskDraft>>;
   onClose: () => void;
   onCreate: () => void;
   githubAvailable: boolean;
@@ -132,7 +132,7 @@ export function KanbanCreateModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
       <div className="w-full max-w-2xl rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl dark:border-[#1c1f2e] dark:bg-[#12141c]">
         <div className="mb-4 flex items-center justify-between">
-          <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">{t.kanbanCreate.manualIssue}</h3>
+          <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">{t.kanbanCreate.manualTask}</h3>
           <button onClick={onClose} className="text-sm text-slate-400 hover:text-slate-600 dark:hover:text-slate-300">
             {t.common.close}
           </button>
@@ -142,7 +142,7 @@ export function KanbanCreateModal({
           <input
             value={draft.title}
             onChange={(e) => setDraft((d) => ({ ...d, title: e.target.value }))}
-            placeholder={t.kanbanCreate.issueTitle}
+            placeholder={t.kanbanCreate.taskTitle}
             className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus:border-amber-400 focus:outline-none focus:ring-1 focus:ring-amber-400/40 dark:border-slate-700 dark:bg-[#0d1018] dark:text-slate-100"
           />
 
@@ -194,7 +194,7 @@ export function KanbanCreateModal({
               disabled={!githubAvailable}
               onChange={(e) => setDraft((d) => ({ ...d, createGitHubIssue: e.target.checked }))}
             />
-            {t.kanbanCreate.alsoCreateGithub}
+            {t.kanbanCreate.createLinkedGithubIssue}
           </label>
           {!githubAvailable && (
             <div className="text-xs text-slate-400 dark:text-slate-500">

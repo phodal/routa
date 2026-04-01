@@ -10,6 +10,14 @@ import type {
   SpecStatus,
 } from "./spec-detector-types";
 
+function joinRepoPath(repoRoot: string, ...relativeSegments: string[]) {
+  return path.join(/* turbopackIgnore: true */ repoRoot, ...relativeSegments);
+}
+
+function joinDynamicPath(basePath: string, ...relativeSegments: string[]) {
+  return path.join(/* turbopackIgnore: true */ basePath, ...relativeSegments);
+}
+
 function dirExists(p: string): boolean {
   try {
     return fs.statSync(p).isDirectory();
@@ -47,7 +55,7 @@ function listFiles(parent: string): string[] {
 }
 
 function relPath(repoRoot: string, absPath: string): string {
-  return path.relative(repoRoot, absPath);
+  return path.relative(/* turbopackIgnore: true */ repoRoot, absPath);
 }
 
 function inferArtifactType(fileName: string): SpecArtifactType {
@@ -104,8 +112,8 @@ function readJsonFile(filePath: string): Record<string, unknown> | null {
 
 function detectKiro(repoRoot: string): SpecSource[] {
   const sources: SpecSource[] = [];
-  const kiroSpecsDir = path.join(repoRoot, ".kiro", "specs");
-  const kiroRoot = path.join(repoRoot, ".kiro");
+  const kiroSpecsDir = joinRepoPath(repoRoot, ".kiro", "specs");
+  const kiroRoot = joinRepoPath(repoRoot, ".kiro");
 
   if (dirExists(kiroSpecsDir)) {
     const featureDirs = listDirs(kiroSpecsDir);
@@ -180,7 +188,7 @@ function detectKiro(repoRoot: string): SpecSource[] {
   const integrationDirs = ["prompts", "skills", "steering", "agents"];
   const foundIntegrations: string[] = [];
   for (const dir of integrationDirs) {
-    if (dirExists(path.join(kiroRoot, dir))) {
+    if (dirExists(joinDynamicPath(kiroRoot, dir))) {
       foundIntegrations.push(`.kiro/${dir}/`);
     }
   }
@@ -206,18 +214,18 @@ function detectKiro(repoRoot: string): SpecSource[] {
 
 function detectQoder(repoRoot: string): SpecSource[] {
   const sources: SpecSource[] = [];
-  const qoderRoot = path.join(repoRoot, ".qoder");
+  const qoderRoot = joinRepoPath(repoRoot, ".qoder");
 
   if (!dirExists(qoderRoot)) return sources;
 
   // Check for native spec artifacts in .qoder/specs/
-  const qoderSpecsDir = path.join(qoderRoot, "specs");
+  const qoderSpecsDir = joinDynamicPath(qoderRoot, "specs");
   if (dirExists(qoderSpecsDir)) {
     const specFiles = listFiles(qoderSpecsDir).filter((f) => f.endsWith(".md"));
     if (specFiles.length > 0) {
       const artifacts: SpecArtifact[] = specFiles.map((f) => ({
         type: inferArtifactType(f),
-        path: relPath(repoRoot, path.join(qoderSpecsDir, f)),
+        path: relPath(repoRoot, joinDynamicPath(qoderSpecsDir, f)),
       }));
       const evidence = specFiles.map((f) => `.qoder/specs/${f}`);
       sources.push({
@@ -236,7 +244,7 @@ function detectQoder(repoRoot: string): SpecSource[] {
   const integrationDirs = ["commands", "skills", "rules"];
   const foundIntegrations: string[] = [];
   for (const dir of integrationDirs) {
-    if (dirExists(path.join(qoderRoot, dir))) {
+    if (dirExists(joinDynamicPath(qoderRoot, dir))) {
       foundIntegrations.push(`.qoder/${dir}/`);
     }
   }
@@ -260,7 +268,7 @@ function detectQoder(repoRoot: string): SpecSource[] {
 
 function detectOpenSpec(repoRoot: string): SpecSource[] {
   const sources: SpecSource[] = [];
-  const openspecRoot = path.join(repoRoot, "openspec");
+  const openspecRoot = joinRepoPath(repoRoot, "openspec");
 
   if (!dirExists(openspecRoot)) return sources;
 
@@ -355,8 +363,8 @@ function detectOpenSpec(repoRoot: string): SpecSource[] {
 
 function detectSpecKit(repoRoot: string): SpecSource[] {
   const sources: SpecSource[] = [];
-  const specifyRoot = path.join(repoRoot, ".specify");
-  const specsRoot = path.join(repoRoot, "specs");
+  const specifyRoot = joinRepoPath(repoRoot, ".specify");
+  const specsRoot = joinRepoPath(repoRoot, "specs");
 
   let hasFramework = false;
   const evidence: string[] = [];
@@ -365,26 +373,26 @@ function detectSpecKit(repoRoot: string): SpecSource[] {
   // .specify/ => framework root
   if (dirExists(specifyRoot)) {
     hasFramework = true;
-    if (fileExists(path.join(specifyRoot, "memory", "constitution.md"))) {
+    if (fileExists(joinDynamicPath(specifyRoot, "memory", "constitution.md"))) {
       evidence.push(".specify/memory/constitution.md");
       artifacts.push({ type: "context", path: ".specify/memory/constitution.md" });
     }
     for (const dir of ["templates", "presets", "extensions"]) {
-      if (dirExists(path.join(specifyRoot, dir))) {
+      if (dirExists(joinDynamicPath(specifyRoot, dir))) {
         evidence.push(`.specify/${dir}/`);
       }
     }
 
     // .specify/specs/<feature>/
-    const specifySpecsDir = path.join(specifyRoot, "specs");
+    const specifySpecsDir = joinDynamicPath(specifyRoot, "specs");
     if (dirExists(specifySpecsDir)) {
       for (const feature of listDirs(specifySpecsDir)) {
-        const featureDir = path.join(specifySpecsDir, feature);
+        const featureDir = joinDynamicPath(specifySpecsDir, feature);
         for (const file of listFiles(featureDir)) {
           if (file.endsWith(".md")) {
             artifacts.push({
               type: inferArtifactType(file),
-              path: relPath(repoRoot, path.join(featureDir, file)),
+              path: relPath(repoRoot, joinDynamicPath(featureDir, file)),
             });
           }
         }
@@ -396,9 +404,9 @@ function detectSpecKit(repoRoot: string): SpecSource[] {
   // specs/<feature>/ (compat path for Spec Kit)
   if (dirExists(specsRoot)) {
     for (const feature of listDirs(specsRoot)) {
-      const featureDir = path.join(specsRoot, feature);
+      const featureDir = joinDynamicPath(specsRoot, feature);
       const files = listFiles(featureDir);
-      const contractsDir = path.join(featureDir, "contracts");
+      const contractsDir = joinDynamicPath(featureDir, "contracts");
       const specKitFiles = files.filter((f) =>
         /^(spec|plan|tasks|data-model|research|quickstart)\.md$/i.test(f)
       );
@@ -408,7 +416,7 @@ function detectSpecKit(repoRoot: string): SpecSource[] {
           if (file.endsWith(".md")) {
             artifacts.push({
               type: inferArtifactType(file),
-              path: relPath(repoRoot, path.join(featureDir, file)),
+              path: relPath(repoRoot, joinDynamicPath(featureDir, file)),
             });
           }
         }
@@ -418,7 +426,7 @@ function detectSpecKit(repoRoot: string): SpecSource[] {
             if (file.endsWith(".md")) {
               artifacts.push({
                 type: inferArtifactType(file),
-                path: relPath(repoRoot, path.join(contractsDir, file)),
+                path: relPath(repoRoot, joinDynamicPath(contractsDir, file)),
               });
             }
           }
@@ -449,8 +457,8 @@ function detectSpecKit(repoRoot: string): SpecSource[] {
 
 function detectBmad(repoRoot: string): SpecSource[] {
   const sources: SpecSource[] = [];
-  const bmadRoot = path.join(repoRoot, "_bmad");
-  const bmadOutput = path.join(repoRoot, "_bmad-output");
+  const bmadRoot = joinRepoPath(repoRoot, "_bmad");
+  const bmadOutput = joinRepoPath(repoRoot, "_bmad-output");
 
   // BMAD v6
   if (dirExists(bmadRoot) || dirExists(bmadOutput)) {
@@ -460,7 +468,7 @@ function detectBmad(repoRoot: string): SpecSource[] {
     if (dirExists(bmadRoot)) {
       evidence.push("_bmad/");
       for (const dir of ["_config", "core", "bmm"]) {
-        if (dirExists(path.join(bmadRoot, dir))) {
+        if (dirExists(joinDynamicPath(bmadRoot, dir))) {
           evidence.push(`_bmad/${dir}/`);
         }
       }
@@ -468,22 +476,22 @@ function detectBmad(repoRoot: string): SpecSource[] {
 
     if (dirExists(bmadOutput)) {
       evidence.push("_bmad-output/");
-      const planningDir = path.join(bmadOutput, "planning-artifacts");
+      const planningDir = joinDynamicPath(bmadOutput, "planning-artifacts");
       if (dirExists(planningDir)) {
         for (const file of listFiles(planningDir)) {
           if (file.endsWith(".md")) {
             artifacts.push({
               type: inferArtifactType(file),
-              path: relPath(repoRoot, path.join(planningDir, file)),
+              path: relPath(repoRoot, joinDynamicPath(planningDir, file)),
             });
           }
         }
-        if (dirExists(path.join(planningDir, "epics"))) {
-          for (const file of listFiles(path.join(planningDir, "epics"))) {
+        if (dirExists(joinDynamicPath(planningDir, "epics"))) {
+          for (const file of listFiles(joinDynamicPath(planningDir, "epics"))) {
             if (file.endsWith(".md")) {
               artifacts.push({
                 type: "epic",
-                path: relPath(repoRoot, path.join(planningDir, "epics", file)),
+                path: relPath(repoRoot, joinDynamicPath(planningDir, "epics", file)),
               });
             }
           }
@@ -491,12 +499,12 @@ function detectBmad(repoRoot: string): SpecSource[] {
         }
       }
 
-      if (fileExists(path.join(bmadOutput, "project-context.md"))) {
+      if (fileExists(joinDynamicPath(bmadOutput, "project-context.md"))) {
         artifacts.push({ type: "context", path: "_bmad-output/project-context.md" });
         evidence.push("_bmad-output/project-context.md");
       }
 
-      const implDir = path.join(bmadOutput, "implementation-artifacts");
+      const implDir = joinDynamicPath(bmadOutput, "implementation-artifacts");
       if (dirExists(implDir)) {
         evidence.push("_bmad-output/implementation-artifacts/");
       }
@@ -516,7 +524,7 @@ function detectBmad(repoRoot: string): SpecSource[] {
 
   // BMAD legacy/brownfield (docs/ patterns)
   if (!dirExists(bmadRoot) && !dirExists(bmadOutput)) {
-    const docsDir = path.join(repoRoot, "docs");
+    const docsDir = joinRepoPath(repoRoot, "docs");
     if (dirExists(docsDir)) {
       const evidence: string[] = [];
       const artifacts: SpecArtifact[] = [];
@@ -538,8 +546,8 @@ function detectBmad(repoRoot: string): SpecSource[] {
       }
 
       for (const dirName of ["prd", "PRD"]) {
-        if (dirExists(path.join(docsDir, dirName))) {
-          for (const file of listFiles(path.join(docsDir, dirName))) {
+        if (dirExists(joinDynamicPath(docsDir, dirName))) {
+          for (const file of listFiles(joinDynamicPath(docsDir, dirName))) {
             if (file.endsWith(".md")) {
               artifacts.push({
                 type: "prd",
@@ -560,7 +568,7 @@ function detectBmad(repoRoot: string): SpecSource[] {
 
       let hasBmadToolIntegration = false;
       for (const { base, prefix } of bmadToolDirs) {
-        const dir = path.join(repoRoot, base);
+        const dir = joinRepoPath(repoRoot, base);
         if (dirExists(dir)) {
           const entries = listDirs(dir).filter((d) => d.startsWith(prefix));
           if (entries.length > 0) {
@@ -632,7 +640,7 @@ function detectToolIntegrations(repoRoot: string, existingSources: SpecSource[])
     ];
 
     for (const { dir, prefix } of checks) {
-      const fullDir = path.join(repoRoot, dir);
+      const fullDir = joinRepoPath(repoRoot, dir);
       if (!dirExists(fullDir)) continue;
       if (prefix) {
         const matches = (listDirs(fullDir).concat(listFiles(fullDir)))
@@ -674,7 +682,7 @@ function detectToolIntegrations(repoRoot: string, existingSources: SpecSource[])
     ];
 
     for (const dir of toolDirs) {
-      const fullDir = path.join(repoRoot, dir);
+      const fullDir = joinRepoPath(repoRoot, dir);
       if (dirExists(fullDir)) {
         const entries = listFiles(fullDir).concat(listDirs(fullDir));
         const specKitMatches = entries.filter((e) =>

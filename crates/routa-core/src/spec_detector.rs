@@ -207,10 +207,7 @@ fn detect_kiro(repo_root: &Path) -> Vec<SpecSource> {
             }
 
             if !files.is_empty() {
-                evidence.push(format!(
-                    ".kiro/specs/{feature}/ ({} files)",
-                    files.len()
-                ));
+                evidence.push(format!(".kiro/specs/{feature}/ ({} files)", files.len()));
             }
         }
 
@@ -232,9 +229,7 @@ fn detect_kiro(repo_root: &Path) -> Vec<SpecSource> {
                 root_path: rel_path(repo_root, &kiro_specs_dir),
                 confidence: "medium".to_string(),
                 status: "installed-only".to_string(),
-                evidence: vec![
-                    ".kiro/specs/ exists but no feature artifacts found".to_string(),
-                ],
+                evidence: vec![".kiro/specs/ exists but no feature artifacts found".to_string()],
                 children: vec![],
                 features: None,
             });
@@ -394,10 +389,7 @@ fn detect_openspec(repo_root: &Path) -> Vec<SpecSource> {
                         if file.ends_with(".md") {
                             artifacts.push(SpecArtifact {
                                 artifact_type: infer_artifact_type(&file).to_string(),
-                                path: rel_path(
-                                    repo_root,
-                                    &change_specs.join(&domain).join(&file),
-                                ),
+                                path: rel_path(repo_root, &change_specs.join(&domain).join(&file)),
                             });
                         }
                     }
@@ -472,15 +464,13 @@ fn detect_spec_kit(repo_root: &Path) -> Vec<SpecSource> {
     }
 
     if dir_exists(&specs_root) {
-        let re = regex::Regex::new(
-            r"(?i)^(spec|plan|tasks|data-model|research|quickstart)\.md$",
-        )
-        .unwrap();
+        let re = regex::Regex::new(r"(?i)^(spec|plan|tasks|data-model|research|quickstart)\.md$")
+            .unwrap();
         for feature in list_dirs(&specs_root) {
             let feature_dir = specs_root.join(&feature);
             let files = list_files(&feature_dir);
-            let has_spec_kit_files = files.iter().any(|f| re.is_match(f))
-                || dir_exists(&feature_dir.join("contracts"));
+            let has_spec_kit_files =
+                files.iter().any(|f| re.is_match(f)) || dir_exists(&feature_dir.join("contracts"));
 
             if has_spec_kit_files {
                 for file in &files {
@@ -618,7 +608,9 @@ fn detect_bmad(repo_root: &Path) -> Vec<SpecSource> {
             ];
             for file in list_files(&docs_dir) {
                 let normalized = file.to_lowercase();
-                if let Some((_, artifact_type)) = legacy_files.iter().find(|(name, _)| normalized == *name) {
+                if let Some((_, artifact_type)) =
+                    legacy_files.iter().find(|(name, _)| normalized == *name)
+                {
                     let artifact_type = artifact_type.to_string();
                     artifacts.push(SpecArtifact {
                         artifact_type,
@@ -934,11 +926,7 @@ mod tests {
         mkdirp(&root.join(".qoder/skills"));
 
         let report = detect_spec_sources(root).unwrap();
-        let qoder = report
-            .sources
-            .iter()
-            .find(|s| s.system == "qoder")
-            .unwrap();
+        let qoder = report.sources.iter().find(|s| s.system == "qoder").unwrap();
         assert_eq!(qoder.kind, "tool-integration");
         assert_eq!(qoder.status, "installed-only");
     }
@@ -995,10 +983,7 @@ mod tests {
     fn supports_multiple_sources() {
         let tmp = setup();
         let root = tmp.path();
-        write_file(
-            &root.join(".kiro/specs/auth/requirements.md"),
-            "# Req",
-        );
+        write_file(&root.join(".kiro/specs/auth/requirements.md"), "# Req");
         write_file(&root.join("openspec/specs/domain/spec.md"), "# Spec");
         write_file(&root.join("openspec/config.yaml"), "name: test");
         mkdirp(&root.join(".qoder/commands"));

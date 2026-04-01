@@ -294,18 +294,7 @@ async fn trigger_assigned_task_acp_agent(
         .unwrap_or_else(|| "CRAFTER".to_string())
         .to_uppercase();
     let session_id = uuid::Uuid::new_v4().to_string();
-    let cwd = state
-        .codebase_store
-        .get_default(&task.workspace_id)
-        .await
-        .map_err(|error| format!("Failed to resolve default codebase: {}", error))?
-        .map(|codebase| codebase.repo_path)
-        .or_else(|| {
-            std::env::current_dir()
-                .ok()
-                .map(|path| path.to_string_lossy().to_string())
-        })
-        .unwrap_or_else(|| ".".to_string());
+    let cwd = resolve_task_session_cwd(state, &task.workspace_id).await?;
 
     state
         .acp_manager
@@ -475,6 +464,36 @@ async fn trigger_assigned_task_acp_agent(
     );
 
     Ok(())
+}
+
+async fn resolve_task_session_cwd(state: &AppState, workspace_id: &str) -> Result<String, String> {
+    if let Some(codebase) = state
+        .codebase_store
+        .get_default(workspace_id)
+        .await
+        .map_err(|error| format!("Failed to resolve default codebase: {}", error))?
+    {
+        if !codebase.repo_path.trim().is_empty() {
+            return Ok(codebase.repo_path);
+        }
+    }
+
+    let codebases = state
+        .codebase_store
+        .list_by_workspace(workspace_id)
+        .await
+        .map_err(|error| format!("Failed to list workspace codebases: {}", error))?;
+    if let Some(codebase) = codebases
+        .into_iter()
+        .find(|codebase| !codebase.repo_path.trim().is_empty())
+    {
+        return Ok(codebase.repo_path);
+    }
+
+    Ok(std::env::current_dir()
+        .ok()
+        .map(|path| path.to_string_lossy().to_string())
+        .unwrap_or_else(|| ".".to_string()))
 }
 
 async fn trigger_assigned_task_a2a_agent(
@@ -1113,6 +1132,7 @@ pub(super) fn absolutize_url(base_url: &str, maybe_relative: &str) -> Result<Str
 mod tests {
     use super::*;
     use crate::db::Database;
+    use crate::models::codebase::Codebase;
     use crate::models::kanban::{KanbanAutomationStep, KanbanBoard, KanbanColumn};
     use crate::models::task::Task;
     use crate::state::{AppState, AppStateInner};
@@ -1127,6 +1147,30 @@ mod tests {
             .await
             .expect("default workspace should exist");
         state
+    }
+
+    #[tokio::test]
+    async fn resolve_task_session_cwd_falls_back_to_first_workspace_codebase() {
+        let state = setup_state().await;
+        let codebase = Codebase::new(
+            "cb-1".to_string(),
+            "default".to_string(),
+            "/Users/phodal/.routa/repos/phodal--routa".to_string(),
+            Some("main".to_string()),
+            Some("routa".to_string()),
+            false,
+        );
+        state
+            .codebase_store
+            .save(&codebase)
+            .await
+            .expect("codebase save should succeed");
+
+        let cwd = resolve_task_session_cwd(&state, "default")
+            .await
+            .expect("cwd resolution should succeed");
+
+        assert_eq!(cwd, "/Users/phodal/.routa/repos/phodal--routa");
     }
 
     #[tokio::test]

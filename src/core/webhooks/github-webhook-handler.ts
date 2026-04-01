@@ -23,6 +23,13 @@ import { createBackgroundTask } from "../models/background-task";
 import type { WorkflowRunStore } from "../workflows/workflow-store";
 import { WorkflowExecutor } from "../workflows/workflow-executor";
 import { getWorkflowLoader } from "../workflows/workflow-loader";
+import {
+  buildOwnershipRoutingContext,
+  parseCodeownersContent,
+  resolveOwnership,
+} from "../harness/codeowners";
+import type { OwnershipRoutingContext } from "../harness/codeowners-types";
+import { parseReviewTriggerConfig } from "../harness/review-triggers";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -208,6 +215,8 @@ const DEFAULT_PROMPT_TEMPLATE = `A GitHub {{event}} event (action: {{action}}) w
 
 Please analyze this event and take appropriate action.`;
 
+const CODEOWNERS_CANDIDATES = [".github/CODEOWNERS", "CODEOWNERS", "docs/CODEOWNERS"];
+
 export function buildPrompt(
   config: GitHubWebhookConfig,
   eventType: string,
@@ -353,6 +362,155 @@ function buildContextSection(eventType: string, payload: GitHubWebhookPayload): 
   return JSON.stringify(payload, null, 2).slice(0, 1000);
 }
 
+async function fetchGitHubJson<T>(url: string, token: string): Promise<T | null> {
+  const response = await fetch(url, {
+    headers: {
+      Authorization: `token ${token}`,
+      Accept: "application/vnd.github+json",
+      "X-GitHub-Api-Version": "2022-11-28",
+    },
+  });
+
+  if (response.status === 404) {
+    return null;
+  }
+  if (!response.ok) {
+    throw new Error(`GitHub API error ${response.status}: ${await response.text()}`);
+  }
+
+  return response.json() as Promise<T>;
+}
+
+async function fetchRepoTextFile(
+  repo: string,
+  filePath: string,
+  token: string,
+  ref?: string,
+): Promise<string | null> {
+  const query = ref ? `?ref=${encodeURIComponent(ref)}` : "";
+  const payload = await fetchGitHubJson<{
+    content?: string;
+    encoding?: string;
+  }>(`https://api.github.com/repos/${repo}/contents/${filePath}${query}`, token);
+
+  if (!payload?.content) {
+    return null;
+  }
+
+  if ((payload.encoding ?? "").toLowerCase() === "base64") {
+    return Buffer.from(payload.content.replace(/\n/g, ""), "base64").toString("utf-8");
+  }
+
+  return payload.content;
+}
+
+async function fetchFirstRepoTextFile(
+  repo: string,
+  filePaths: string[],
+  token: string,
+  ref?: string,
+): Promise<string | null> {
+  for (const filePath of filePaths) {
+    const content = await fetchRepoTextFile(repo, filePath, token, ref);
+    if (content !== null) {
+      return content;
+    }
+  }
+  return null;
+}
+
+async function fetchPullRequestFiles(
+  repo: string,
+  pullNumber: number,
+  token: string,
+): Promise<string[]> {
+  const files: string[] = [];
+  for (let page = 1; page <= 10; page++) {
+    const payload = await fetchGitHubJson<Array<{ filename?: string }>>(
+      `https://api.github.com/repos/${repo}/pulls/${pullNumber}/files?per_page=100&page=${page}`,
+      token,
+    );
+    if (!payload || payload.length === 0) {
+      break;
+    }
+    for (const file of payload) {
+      if (typeof file.filename === "string" && file.filename.length > 0) {
+        files.push(file.filename);
+      }
+    }
+    if (payload.length < 100) {
+      break;
+    }
+  }
+  return [...new Set(files)];
+}
+
+async function resolveWebhookChangedFiles(
+  config: GitHubWebhookConfig,
+  payload: GitHubWebhookPayload,
+): Promise<string[]> {
+  if (payload.comment?.path) {
+    return [payload.comment.path];
+  }
+
+  const repo = payload.repository?.full_name ?? config.repo;
+  const pullNumber = payload.pull_request?.number;
+  if (!repo || !pullNumber || !config.githubToken) {
+    return [];
+  }
+
+  return fetchPullRequestFiles(repo, pullNumber, config.githubToken);
+}
+
+function summarizeRoutingList(values: string[], maxItems = 4): string {
+  if (values.length === 0) {
+    return "none";
+  }
+  if (values.length <= maxItems) {
+    return values.join(", ");
+  }
+  return `${values.slice(0, maxItems).join(", ")}, +${values.length - maxItems} more`;
+}
+
+function renderOwnershipRoutingContext(ownershipRouting: OwnershipRoutingContext): string {
+  return [
+    "Ownership routing context:",
+    `Touched owners: ${summarizeRoutingList(ownershipRouting.touchedOwners)}`,
+    `Unowned changed files: ${summarizeRoutingList(ownershipRouting.unownedChangedFiles)}`,
+    `Overlapping ownership: ${summarizeRoutingList(ownershipRouting.overlappingChangedFiles)}`,
+    `High-risk unowned files: ${summarizeRoutingList(ownershipRouting.highRiskUnownedFiles)}`,
+    `Cross-owner triggers: ${summarizeRoutingList(ownershipRouting.crossOwnerTriggers)}`,
+  ].join("\n");
+}
+
+async function buildWebhookOwnershipRouting(
+  config: GitHubWebhookConfig,
+  payload: GitHubWebhookPayload,
+): Promise<OwnershipRoutingContext | null> {
+  const repo = payload.repository?.full_name ?? config.repo;
+  if (!repo || !config.githubToken) {
+    return null;
+  }
+
+  const changedFiles = await resolveWebhookChangedFiles(config, payload);
+  if (changedFiles.length === 0) {
+    return null;
+  }
+
+  const ref = payload.pull_request?.base?.ref;
+  const codeownersContent = await fetchFirstRepoTextFile(repo, CODEOWNERS_CANDIDATES, config.githubToken, ref);
+  const reviewTriggerContent = await fetchRepoTextFile(repo, "docs/fitness/review-triggers.yaml", config.githubToken, ref);
+  const codeownersRules = codeownersContent ? parseCodeownersContent(codeownersContent).rules : [];
+  const triggerRules = reviewTriggerContent ? parseReviewTriggerConfig(reviewTriggerContent) : [];
+  const matches = resolveOwnership(changedFiles, codeownersRules);
+
+  return buildOwnershipRoutingContext({
+    changedFiles,
+    matches,
+    triggerRules,
+  });
+}
+
 // ─── Main Handler ─────────────────────────────────────────────────────────────
 
 export async function handleGitHubWebhook(
@@ -432,6 +590,7 @@ export async function handleGitHubWebhook(
           workspaceId: configWorkspaceId,
           eventType,
           payload,
+          config,
           backgroundTaskStore,
           workflowRunStore,
         });
@@ -439,7 +598,11 @@ export async function handleGitHubWebhook(
         taskId = result.taskIds[0]; // First task for logging
       } else {
         // Fallback to single background task
-        const prompt = buildPrompt(config, eventType, payload);
+        const ownershipRouting = await buildWebhookOwnershipRouting(config, payload).catch(() => null);
+        const prompt = [
+          buildPrompt(config, eventType, payload),
+          ownershipRouting ? renderOwnershipRoutingContext(ownershipRouting) : "",
+        ].filter(Boolean).join("\n\n");
         const taskTitle = `[GitHub ${eventType}] ${payload.repository?.full_name ?? config.repo} — ${payload.action ?? "event"}`;
 
         const task = createBackgroundTask({
@@ -494,6 +657,7 @@ interface TriggerWorkflowForWebhookInput {
   workspaceId: string;
   eventType: string;
   payload: GitHubWebhookPayload;
+  config: GitHubWebhookConfig;
   backgroundTaskStore: BackgroundTaskStore;
   workflowRunStore: WorkflowRunStore;
 }
@@ -501,11 +665,13 @@ interface TriggerWorkflowForWebhookInput {
 async function triggerWorkflowForWebhook(
   input: TriggerWorkflowForWebhookInput
 ): Promise<{ workflowRunId: string; taskIds: string[] }> {
-  const { workflowId, workspaceId, eventType, payload, backgroundTaskStore, workflowRunStore } = input;
+  const { workflowId, workspaceId, eventType, payload, config, backgroundTaskStore, workflowRunStore } = input;
 
   // Load workflow definition
   const loader = getWorkflowLoader();
   const definition = await loader.load(workflowId);
+
+  const ownershipRouting = await buildWebhookOwnershipRouting(config, payload).catch(() => null);
 
   // Build trigger payload as JSON string
   const triggerPayload = JSON.stringify({
@@ -529,6 +695,7 @@ async function triggerWorkflowForWebhook(
       labels: payload.issue.labels?.map(l => l.name),
     } : undefined,
     sender: payload.sender?.login,
+    ownershipRouting,
   }, null, 2);
 
   // Create workflow executor and trigger

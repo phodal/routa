@@ -90,6 +90,13 @@ pub(super) enum DetectorDefinition {
     AnyFileExists {
         paths: Vec<String>,
     },
+    CodeownersRouting {
+        require_codeowners: bool,
+        max_unowned_files: Option<usize>,
+        max_sensitive_unowned_files: Option<usize>,
+        max_overlapping_files: Option<usize>,
+        require_trigger_alignment: bool,
+    },
     GlobCount {
         patterns: Vec<String>,
         min: usize,
@@ -133,6 +140,7 @@ impl DetectorDefinition {
             Self::AllOf { .. } => "all_of",
             Self::AnyOf { .. } => "any_of",
             Self::AnyFileExists { .. } => "any_file_exists",
+            Self::CodeownersRouting { .. } => "codeowners_routing",
             Self::GlobCount { .. } => "glob_count",
             Self::GlobContainsRegex { .. } => "glob_contains_regex",
             Self::JsonPathExists { .. } => "json_path_exists",
@@ -388,6 +396,7 @@ impl DetectorDefinition {
             Self::FileExists { .. }
             | Self::FileContainsRegex { .. }
             | Self::AnyFileExists { .. }
+            | Self::CodeownersRouting { .. }
             | Self::GlobCount { .. }
             | Self::GlobContainsRegex { .. }
             | Self::JsonPathExists { .. }
