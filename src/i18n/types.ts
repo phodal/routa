@@ -159,6 +159,7 @@ export interface TranslationDictionary {
       repositorySignals: string;
       hookSystems: string;
       reviewTriggers: string;
+      releaseTriggers: string;
       codeowners: string;
       entrixFitness: string;
       ciCd: string;

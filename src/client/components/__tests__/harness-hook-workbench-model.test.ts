@@ -85,6 +85,7 @@ function createHooksResponse(): HooksResponse {
         ],
       },
     ],
+    releaseTriggerFile: null,
     warnings: [],
   };
 }

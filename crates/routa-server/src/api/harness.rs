@@ -280,6 +280,7 @@ async fn get_harness_hooks(
     let (runtime_profiles, mut warnings) = load_hook_runtime_profiles(&repo_root);
     let config_file = load_hook_runtime_config_source(&repo_root);
     let review_trigger_file = load_review_trigger_config_source(&repo_root);
+    let release_trigger_file = load_release_trigger_config_source(&repo_root);
     let known_profiles = runtime_profiles
         .iter()
         .filter_map(|profile| profile["name"].as_str())
@@ -295,6 +296,7 @@ async fn get_harness_hooks(
             "hooksDir": hooks_dir,
             "configFile": config_file,
             "reviewTriggerFile": review_trigger_file,
+            "releaseTriggerFile": release_trigger_file,
             "hookFiles": [],
             "profiles": profiles,
             "warnings": warnings,
@@ -359,6 +361,7 @@ async fn get_harness_hooks(
         "hooksDir": hooks_dir,
         "configFile": config_file,
         "reviewTriggerFile": review_trigger_file,
+        "releaseTriggerFile": release_trigger_file,
         "hookFiles": hook_files,
         "profiles": profiles,
         "warnings": warnings,
@@ -721,6 +724,78 @@ fn load_review_trigger_config_source(repo_root: &Path) -> Value {
         "rules": rules,
     })
 }
+
+fn load_release_trigger_config_source(repo_root: &Path) -> Value {
+    let config_path = repo_root.join("docs/fitness/release-triggers.yaml");
+    if !config_path.exists() {
+        return Value::Null;
+    }
+
+    let source = std::fs::read_to_string(&config_path).unwrap_or_default();
+    let parsed = serde_yaml::from_str::<serde_yaml::Value>(&source).unwrap_or_default();
+    let rules = parsed
+        .get("release_triggers")
+        .and_then(serde_yaml::Value::as_sequence)
+        .map(|rules| {
+            rules
+                .iter()
+                .filter_map(serde_yaml::Value::as_mapping)
+                .map(|rule| {
+                    let patterns = normalize_yaml_string_list(
+                        rule.get(serde_yaml::Value::String("patterns".to_string())),
+                    );
+                    let apply_to = normalize_yaml_string_list(
+                        rule.get(serde_yaml::Value::String("apply_to".to_string())),
+                    );
+                    let paths = normalize_yaml_string_list(
+                        rule.get(serde_yaml::Value::String("paths".to_string())),
+                    );
+                    let group_by = normalize_yaml_string_list(
+                        rule.get(serde_yaml::Value::String("group_by".to_string())),
+                    );
+                    let pattern_count = patterns.len();
+                    let apply_to_count = apply_to.len();
+                    let path_count = paths.len();
+                    let baseline = rule
+                        .get(serde_yaml::Value::String("baseline".to_string()))
+                        .and_then(serde_yaml::Value::as_str)
+                        .filter(|s| !s.trim().is_empty())
+                        .map(ToString::to_string);
+                    let max_growth_percent = rule
+                        .get(serde_yaml::Value::String("max_growth_percent".to_string()))
+                        .and_then(|v| v.as_f64().or_else(|| v.as_i64().map(|i| i as f64)));
+                    let min_growth_bytes = rule
+                        .get(serde_yaml::Value::String("min_growth_bytes".to_string()))
+                        .and_then(|v| v.as_f64().or_else(|| v.as_i64().map(|i| i as f64)));
+                    json!({
+                        "name": yaml_str(rule.get(serde_yaml::Value::String("name".to_string()))).unwrap_or("unknown"),
+                        "type": yaml_str(rule.get(serde_yaml::Value::String("type".to_string()))).unwrap_or("unknown"),
+                        "severity": yaml_str(rule.get(serde_yaml::Value::String("severity".to_string()))).unwrap_or("medium"),
+                        "action": yaml_str(rule.get(serde_yaml::Value::String("action".to_string()))).unwrap_or("require_human_review"),
+                        "patterns": patterns,
+                        "applyTo": apply_to,
+                        "paths": paths,
+                        "groupBy": group_by,
+                        "baseline": baseline,
+                        "maxGrowthPercent": max_growth_percent,
+                        "minGrowthBytes": min_growth_bytes,
+                        "patternCount": pattern_count,
+                        "applyToCount": apply_to_count,
+                        "pathCount": path_count,
+                    })
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+
+    json!({
+        "relativePath": "docs/fitness/release-triggers.yaml",
+        "source": source,
+        "ruleCount": rules.len(),
+        "rules": rules,
+    })
+}
+
 
 fn build_profile_summaries(
     repo_root: &Path,

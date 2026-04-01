@@ -154,6 +154,7 @@ const zh: TranslationDictionary = {
       repositorySignals: "仓库信号",
       hookSystems: "Hook 系统",
       reviewTriggers: "评审触发器",
+      releaseTriggers: "发布触发器",
       codeowners: "CODEOWNERS",
       entrixFitness: "Entrix Fitness",
       ciCd: "CI/CD",

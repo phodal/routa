@@ -41,6 +41,7 @@ describe("useHarnessSettingsData", () => {
           hooksDir: "/repo/.husky",
           configFile: null,
           reviewTriggerFile: null,
+          releaseTriggerFile: null,
           hookFiles: [],
           profiles: [],
           warnings: [],

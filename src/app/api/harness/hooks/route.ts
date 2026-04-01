@@ -80,6 +80,7 @@ type HooksResponse = {
     schema?: string;
   } | null;
   reviewTriggerFile: ReviewTriggerConfigSummary | null;
+  releaseTriggerFile: ReleaseTriggerConfigSummary | null;
   hookFiles: HookFileSummary[];
   profiles: HookRuntimeProfileSummary[];
   warnings: string[];
@@ -106,6 +107,34 @@ type HookRuntimeConfigFile = {
 
 type ReviewTriggerConfigFile = {
   review_triggers?: Array<Record<string, unknown>>;
+};
+
+type ReleaseTriggerRuleSummary = {
+  name: string;
+  type: string;
+  severity: string;
+  action: string;
+  patterns: string[];
+  applyTo: string[];
+  paths: string[];
+  groupBy: string[];
+  baseline: string | null;
+  maxGrowthPercent: number | null;
+  minGrowthBytes: number | null;
+  patternCount: number;
+  applyToCount: number;
+  pathCount: number;
+};
+
+type ReleaseTriggerConfigSummary = {
+  relativePath: string;
+  source: string;
+  ruleCount: number;
+  rules: ReleaseTriggerRuleSummary[];
+};
+
+type ReleaseTriggerConfigFile = {
+  release_triggers?: Array<Record<string, unknown>>;
 };
 
 type HookRuntimeProfileConfig = {
@@ -168,6 +197,16 @@ function normalizeInteger(value: unknown): number | null {
   return null;
 }
 
+function normalizeNumber(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === "string" && value.trim().length > 0) {
+    const parsed = Number.parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
 async function loadHookRuntimeProfiles(repoRoot: string): Promise<{
   profiles: HookRuntimeProfileConfig[];
   warnings: string[];
@@ -282,6 +321,49 @@ async function loadReviewTriggerConfigSource(repoRoot: string): Promise<HooksRes
   };
 }
 
+async function loadReleaseTriggerConfigSource(repoRoot: string): Promise<HooksResponse["releaseTriggerFile"]> {
+  const relativePath = path.posix.join("docs", "fitness", "release-triggers.yaml");
+  const configPath = path.join(repoRoot, relativePath);
+  if (!fs.existsSync(configPath)) {
+    return null;
+  }
+
+  const source = await fsp.readFile(configPath, "utf-8");
+  const parsed = (yaml.load(source) ?? {}) as ReleaseTriggerConfigFile;
+  const rawRules = Array.isArray(parsed.release_triggers) ? parsed.release_triggers : [];
+  const rules = rawRules.map((rule) => {
+    const patterns = normalizeStringList(rule.patterns);
+    const applyTo = normalizeStringList(rule.apply_to);
+    const paths = normalizeStringList(rule.paths);
+    const groupBy = normalizeStringList(rule.group_by);
+
+    return {
+      name: typeof rule.name === "string" && rule.name.trim().length > 0 ? rule.name : "unknown",
+      type: typeof rule.type === "string" && rule.type.trim().length > 0 ? rule.type : "unknown",
+      severity: typeof rule.severity === "string" && rule.severity.trim().length > 0 ? rule.severity : "medium",
+      action: typeof rule.action === "string" && rule.action.trim().length > 0 ? rule.action : "require_human_review",
+      patterns,
+      applyTo,
+      paths,
+      groupBy,
+      baseline: typeof rule.baseline === "string" && rule.baseline.trim().length > 0 ? rule.baseline : null,
+      maxGrowthPercent: normalizeNumber(rule.max_growth_percent),
+      minGrowthBytes: normalizeNumber(rule.min_growth_bytes),
+      patternCount: patterns.length,
+      applyToCount: applyTo.length,
+      pathCount: paths.length,
+    } satisfies ReleaseTriggerRuleSummary;
+  });
+
+  return {
+    relativePath,
+    source,
+    ruleCount: rules.length,
+    rules,
+  };
+}
+
+
 async function loadMetricLookup(repoRoot: string): Promise<{
   metrics: Map<string, Omit<HookMetricSummary, "resolved">>;
   warnings: string[];
@@ -369,6 +451,7 @@ export async function GET(request: NextRequest) {
     const hookRuntime = await loadHookRuntimeProfiles(repoRoot);
     const configFile = await loadHookRuntimeConfigSource(repoRoot);
     const reviewTriggerFile = await loadReviewTriggerConfigSource(repoRoot);
+    const releaseTriggerFile = await loadReleaseTriggerConfigSource(repoRoot);
     const warnings: string[] = [...hookRuntime.warnings];
     const knownProfiles = new Set(hookRuntime.profiles.map((profile) => profile.name));
 
@@ -379,6 +462,7 @@ export async function GET(request: NextRequest) {
         hooksDir,
         configFile,
         reviewTriggerFile,
+        releaseTriggerFile,
         hookFiles: [],
         profiles: buildProfileSummaries([], new Map(), hookRuntime.profiles),
         warnings: [...warnings, 'No ".husky" directory found for this repository.'],
@@ -425,6 +509,7 @@ export async function GET(request: NextRequest) {
       hooksDir,
       configFile,
       reviewTriggerFile,
+      releaseTriggerFile,
       hookFiles,
       profiles: buildProfileSummaries(hookFiles, metricLookup.metrics, hookRuntime.profiles),
       warnings,

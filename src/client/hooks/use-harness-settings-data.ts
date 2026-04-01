@@ -87,6 +87,23 @@ export type ReviewTriggerRuleSummary = {
   maxDeletedLines: number | null;
 };
 
+export type ReleaseTriggerRuleSummary = {
+  name: string;
+  type: string;
+  severity: string;
+  action: string;
+  patterns: string[];
+  applyTo: string[];
+  paths: string[];
+  groupBy: string[];
+  baseline: string | null;
+  maxGrowthPercent: number | null;
+  minGrowthBytes: number | null;
+  patternCount: number;
+  applyToCount: number;
+  pathCount: number;
+};
+
 export type HookFileSummary = {
   name: string;
   relativePath: string;
@@ -111,6 +128,12 @@ export type HooksResponse = {
     source: string;
     ruleCount: number;
     rules: ReviewTriggerRuleSummary[];
+  } | null;
+  releaseTriggerFile: {
+    relativePath: string;
+    source: string;
+    ruleCount: number;
+    rules: ReleaseTriggerRuleSummary[];
   } | null;
   hookFiles: HookFileSummary[];
   profiles: HookRuntimeProfileSummary[];
