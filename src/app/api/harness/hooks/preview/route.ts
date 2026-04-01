@@ -1,5 +1,5 @@
-import { spawn } from "child_process";
 import { NextRequest, NextResponse } from "next/server";
+import { getServerBridge } from "@/core/platform";
 import {
   isContextError,
   parseContext,
@@ -139,6 +139,7 @@ function toMetricResults(events: Record<string, unknown>[]): MetricPreview[] {
 }
 
 async function runHookPreview(repoRoot: string, profile: HookProfileName, mode: PreviewMode): Promise<HookPreviewResponse> {
+  const bridge = getServerBridge();
   const command = [
     "--import",
     "tsx",
@@ -158,25 +159,24 @@ async function runHookPreview(repoRoot: string, profile: HookProfileName, mode: 
   }
 
   const result = await new Promise<{ stdout: string; stderr: string; exitCode: number }>((resolve, reject) => {
-    const child = spawn("node", command, {
+    const child = bridge.process.spawn("node", command, {
       cwd: repoRoot,
-      env: process.env,
       stdio: ["ignore", "pipe", "pipe"],
     });
 
     let stdout = "";
     let stderr = "";
 
-    child.stdout.on("data", (chunk: Buffer | string) => {
+    child.stdout?.on("data", (chunk: Buffer) => {
       stdout += chunk.toString();
     });
 
-    child.stderr.on("data", (chunk: Buffer | string) => {
+    child.stderr?.on("data", (chunk: Buffer) => {
       stderr += chunk.toString();
     });
 
     child.on("error", reject);
-    child.on("close", (exitCode) => {
+    child.on("exit", (exitCode) => {
       resolve({
         stdout,
         stderr,

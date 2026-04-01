@@ -49,7 +49,7 @@ impl WorktreeStore {
                     "SELECT id, codebase_id, workspace_id, worktree_path, branch, base_branch, status, session_id, label, error_message, created_at, updated_at
                      FROM worktrees WHERE id = ?1",
                 )?;
-                stmt.query_row(rusqlite::params![id], |row| row_to_worktree(row))
+                stmt.query_row(rusqlite::params![id], row_to_worktree)
                     .optional()
             })
             .await
@@ -64,7 +64,7 @@ impl WorktreeStore {
                      FROM worktrees WHERE codebase_id = ?1 ORDER BY created_at DESC",
                 )?;
                 let rows = stmt
-                    .query_map(rusqlite::params![codebase_id], |row| row_to_worktree(row))?
+                    .query_map(rusqlite::params![codebase_id], row_to_worktree)?
                     .collect::<Result<Vec<_>, _>>()?;
                 Ok(rows)
             })
@@ -80,7 +80,7 @@ impl WorktreeStore {
                      FROM worktrees WHERE workspace_id = ?1 ORDER BY created_at DESC",
                 )?;
                 let rows = stmt
-                    .query_map(rusqlite::params![workspace_id], |row| row_to_worktree(row))?
+                    .query_map(rusqlite::params![workspace_id], row_to_worktree)?
                     .collect::<Result<Vec<_>, _>>()?;
                 Ok(rows)
             })
@@ -137,7 +137,7 @@ impl WorktreeStore {
                     "SELECT id, codebase_id, workspace_id, worktree_path, branch, base_branch, status, session_id, label, error_message, created_at, updated_at
                      FROM worktrees WHERE codebase_id = ?1 AND branch = ?2",
                 )?;
-                stmt.query_row(rusqlite::params![codebase_id, branch], |row| row_to_worktree(row))
+                stmt.query_row(rusqlite::params![codebase_id, branch], row_to_worktree)
                     .optional()
             })
             .await
@@ -162,8 +162,8 @@ fn row_to_worktree(row: &Row<'_>) -> rusqlite::Result<Worktree> {
         label: row.get(8)?,
         error_message: row.get(9)?,
         created_at: chrono::DateTime::from_timestamp_millis(created_ms)
-            .unwrap_or_else(|| Utc::now()),
+            .unwrap_or_else(Utc::now),
         updated_at: chrono::DateTime::from_timestamp_millis(updated_ms)
-            .unwrap_or_else(|| Utc::now()),
+            .unwrap_or_else(Utc::now),
     })
 }
