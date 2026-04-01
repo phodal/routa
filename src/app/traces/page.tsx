@@ -13,7 +13,6 @@
 
 import { useCallback, useEffect, useRef, useState, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import Link from "next/link";
 import { TracePanel } from "@/client/components/trace-panel";
 import { EventBridgeTracePanel } from "@/client/components/event-bridge-trace-panel";
 import { DesktopAppShell } from "@/client/components/desktop-app-shell";
@@ -280,15 +279,6 @@ function TracePageContent() {
           desktop
         />
       }
-      titleBarRight={(
-        <Link
-          href="/"
-          className="rounded px-2.5 py-1 text-[11px] text-desktop-text-secondary transition-colors hover:bg-desktop-bg-active hover:text-desktop-text-primary"
-          title="Back to Home"
-        >
-          Home
-        </Link>
-      )}
     >
       <div
         className="flex h-full flex-col overflow-hidden bg-desktop-bg-primary"
