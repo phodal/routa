@@ -3,7 +3,7 @@ use rusqlite::OptionalExtension;
 
 use crate::db::Database;
 use crate::error::ServerError;
-use crate::models::codebase::Codebase;
+use crate::models::codebase::{Codebase, CodebaseSourceType};
 
 pub struct CodebaseStore {
     db: Database,
@@ -19,8 +19,8 @@ impl CodebaseStore {
         self.db
             .with_conn_async(move |conn| {
                 conn.execute(
-                    "INSERT INTO codebases (id, workspace_id, repo_path, branch, label, is_default, created_at, updated_at)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                    "INSERT INTO codebases (id, workspace_id, repo_path, branch, label, is_default, source_type, source_url, created_at, updated_at)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
                     rusqlite::params![
                         cb.id,
                         cb.workspace_id,
@@ -28,6 +28,8 @@ impl CodebaseStore {
                         cb.branch,
                         cb.label,
                         cb.is_default as i32,
+                        cb.source_type.as_ref().map(CodebaseSourceType::as_str),
+                        cb.source_url,
                         cb.created_at.timestamp_millis(),
                         cb.updated_at.timestamp_millis(),
                     ],
@@ -42,7 +44,7 @@ impl CodebaseStore {
         self.db
             .with_conn_async(move |conn| {
                 let mut stmt = conn.prepare(
-                    "SELECT id, workspace_id, repo_path, branch, label, is_default, created_at, updated_at
+                    "SELECT id, workspace_id, repo_path, branch, label, is_default, source_type, source_url, created_at, updated_at
                      FROM codebases WHERE id = ?1",
                 )?;
                 stmt.query_row(rusqlite::params![id], |row| Ok(row_to_codebase(row)))
@@ -59,7 +61,7 @@ impl CodebaseStore {
         self.db
             .with_conn_async(move |conn| {
                 let mut stmt = conn.prepare(
-                    "SELECT id, workspace_id, repo_path, branch, label, is_default, created_at, updated_at
+                    "SELECT id, workspace_id, repo_path, branch, label, is_default, source_type, source_url, created_at, updated_at
                      FROM codebases WHERE workspace_id = ?1 ORDER BY created_at DESC",
                 )?;
                 let rows = stmt
@@ -76,11 +78,15 @@ impl CodebaseStore {
         branch: Option<&str>,
         label: Option<&str>,
         repo_path: Option<&str>,
+        source_type: Option<&str>,
+        source_url: Option<&str>,
     ) -> Result<(), ServerError> {
         let id = id.to_string();
         let branch = branch.map(|s| s.to_string());
         let label = label.map(|s| s.to_string());
         let repo_path = repo_path.map(|s| s.to_string());
+        let source_type = source_type.map(|s| s.to_string());
+        let source_url = source_url.map(|s| s.to_string());
         let now = Utc::now().timestamp_millis();
         self.db
             .with_conn_async(move |conn| {
@@ -99,6 +105,14 @@ impl CodebaseStore {
                 if let Some(ref r) = repo_path {
                     updates.push("repo_path = ?");
                     params.push(Box::new(r.clone()));
+                }
+                if let Some(ref s) = source_type {
+                    updates.push("source_type = ?");
+                    params.push(Box::new(s.clone()));
+                }
+                if let Some(ref s) = source_url {
+                    updates.push("source_url = ?");
+                    params.push(Box::new(s.clone()));
                 }
                 updates.push("updated_at = ?");
                 params.push(Box::new(now));
@@ -134,7 +148,7 @@ impl CodebaseStore {
         self.db
             .with_conn_async(move |conn| {
                 let mut stmt = conn.prepare(
-                    "SELECT id, workspace_id, repo_path, branch, label, is_default, created_at, updated_at
+                    "SELECT id, workspace_id, repo_path, branch, label, is_default, source_type, source_url, created_at, updated_at
                      FROM codebases WHERE workspace_id = ?1 AND is_default = 1",
                 )?;
                 stmt.query_row(rusqlite::params![workspace_id], |row| Ok(row_to_codebase(row)))
@@ -178,7 +192,7 @@ impl CodebaseStore {
         self.db
             .with_conn_async(move |conn| {
                 let mut stmt = conn.prepare(
-                    "SELECT id, workspace_id, repo_path, branch, label, is_default, created_at, updated_at
+                    "SELECT id, workspace_id, repo_path, branch, label, is_default, source_type, source_url, created_at, updated_at
                      FROM codebases WHERE workspace_id = ?1 AND repo_path = ?2",
                 )?;
                 stmt.query_row(rusqlite::params![workspace_id, repo_path], |row| Ok(row_to_codebase(row)))
@@ -192,8 +206,13 @@ use rusqlite::Row;
 
 fn row_to_codebase(row: &Row<'_>) -> Codebase {
     let is_default_int: i32 = row.get(5).unwrap_or(0);
-    let created_ms: i64 = row.get(6).unwrap_or(0);
-    let updated_ms: i64 = row.get(7).unwrap_or(0);
+    let source_type = row
+        .get::<_, Option<String>>(6)
+        .unwrap_or(None)
+        .and_then(|value| CodebaseSourceType::from_str(&value));
+    let source_url = row.get(7).unwrap_or(None);
+    let created_ms: i64 = row.get(8).unwrap_or(0);
+    let updated_ms: i64 = row.get(9).unwrap_or(0);
 
     Codebase {
         id: row.get(0).unwrap_or_default(),
@@ -202,6 +221,8 @@ fn row_to_codebase(row: &Row<'_>) -> Codebase {
         branch: row.get(3).unwrap_or(None),
         label: row.get(4).unwrap_or(None),
         is_default: is_default_int != 0,
+        source_type,
+        source_url,
         created_at: chrono::DateTime::from_timestamp_millis(created_ms).unwrap_or_else(Utc::now),
         updated_at: chrono::DateTime::from_timestamp_millis(updated_ms).unwrap_or_else(Utc::now),
     }
@@ -234,6 +255,8 @@ mod tests {
         branch: Option<&str>,
         label: Option<&str>,
         is_default: bool,
+        source_type: Option<CodebaseSourceType>,
+        source_url: Option<&str>,
     ) -> Codebase {
         Codebase::new(
             id.to_string(),
@@ -242,13 +265,23 @@ mod tests {
             branch.map(str::to_string),
             label.map(str::to_string),
             is_default,
+            source_type,
+            source_url.map(str::to_string),
         )
     }
 
     #[tokio::test]
     async fn save_get_and_find_by_repo_path_roundtrip() {
         let store = setup().await;
-        let cb = make_codebase("cb-1", "/tmp/repo-1", Some("main"), Some("Primary"), false);
+        let cb = make_codebase(
+            "cb-1",
+            "/tmp/repo-1",
+            Some("main"),
+            Some("Primary"),
+            false,
+            Some(CodebaseSourceType::Github),
+            Some("https://github.com/example/repo-1"),
+        );
         store.save(&cb).await.expect("save should succeed");
 
         let loaded = store
@@ -259,6 +292,11 @@ mod tests {
         assert_eq!(loaded.repo_path, "/tmp/repo-1");
         assert_eq!(loaded.branch.as_deref(), Some("main"));
         assert_eq!(loaded.label.as_deref(), Some("Primary"));
+        assert_eq!(loaded.source_type, Some(CodebaseSourceType::Github));
+        assert_eq!(
+            loaded.source_url.as_deref(),
+            Some("https://github.com/example/repo-1")
+        );
 
         let found = store
             .find_by_repo_path("ws-codebase", "/tmp/repo-1")
@@ -271,7 +309,15 @@ mod tests {
     #[tokio::test]
     async fn update_changes_selected_fields() {
         let store = setup().await;
-        let cb = make_codebase("cb-2", "/tmp/repo-2", Some("main"), None, false);
+        let cb = make_codebase(
+            "cb-2",
+            "/tmp/repo-2",
+            Some("main"),
+            None,
+            false,
+            Some(CodebaseSourceType::Local),
+            None,
+        );
         store.save(&cb).await.expect("save should succeed");
 
         store
@@ -280,6 +326,8 @@ mod tests {
                 Some("develop"),
                 Some("Renamed"),
                 Some("/tmp/repo-2b"),
+                Some("github"),
+                Some("https://github.com/example/repo-2"),
             )
             .await
             .expect("update should succeed");
@@ -292,13 +340,18 @@ mod tests {
         assert_eq!(loaded.branch.as_deref(), Some("develop"));
         assert_eq!(loaded.label.as_deref(), Some("Renamed"));
         assert_eq!(loaded.repo_path, "/tmp/repo-2b");
+        assert_eq!(loaded.source_type, Some(CodebaseSourceType::Github));
+        assert_eq!(
+            loaded.source_url.as_deref(),
+            Some("https://github.com/example/repo-2")
+        );
     }
 
     #[tokio::test]
     async fn set_default_switches_default_codebase() {
         let store = setup().await;
-        let first = make_codebase("cb-3", "/tmp/repo-3", None, None, true);
-        let second = make_codebase("cb-4", "/tmp/repo-4", None, None, false);
+        let first = make_codebase("cb-3", "/tmp/repo-3", None, None, true, None, None);
+        let second = make_codebase("cb-4", "/tmp/repo-4", None, None, false, None, None);
         store.save(&first).await.expect("save first should succeed");
         store
             .save(&second)
@@ -328,7 +381,7 @@ mod tests {
     #[tokio::test]
     async fn list_by_workspace_and_delete_work() {
         let store = setup().await;
-        let cb = make_codebase("cb-5", "/tmp/repo-5", None, None, false);
+        let cb = make_codebase("cb-5", "/tmp/repo-5", None, None, false, None, None);
         store.save(&cb).await.expect("save should succeed");
 
         let list = store

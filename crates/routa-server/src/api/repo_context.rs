@@ -53,13 +53,19 @@ pub fn normalize_local_repo_path(value: &str) -> PathBuf {
     }
 }
 
-pub fn validate_local_git_repo_path(candidate: &Path) -> Result<(), ServerError> {
+pub fn validate_repo_path(candidate: &Path, label: &str) -> Result<(), ServerError> {
     if !candidate.exists() || !candidate.is_dir() {
         return Err(ServerError::BadRequest(format!(
-            "Path does not exist or is not a directory: {}",
+            "{label}不存在或不是目录: {}",
             candidate.display()
         )));
     }
+
+    Ok(())
+}
+
+pub fn validate_local_git_repo_path(candidate: &Path) -> Result<(), ServerError> {
+    validate_repo_path(candidate, "Path ")?;
 
     if !git::is_git_repository(&candidate.to_string_lossy()) {
         return Err(ServerError::BadRequest(format!(
@@ -70,9 +76,6 @@ pub fn validate_local_git_repo_path(candidate: &Path) -> Result<(), ServerError>
 
     Ok(())
 }
-
-
-
 pub async fn resolve_repo_root(
     state: &AppState,
     workspace_id: Option<&str>,
@@ -123,16 +126,6 @@ pub async fn resolve_repo_root(
     let candidate = PathBuf::from(&fallback.repo_path);
     validate_repo_path(&candidate, "默认 codebase 的路径")?;
     Ok(candidate)
-}
-
-fn validate_repo_path(candidate: &Path, label: &str) -> Result<(), ServerError> {
-    if !candidate.exists() || !candidate.is_dir() {
-        return Err(ServerError::BadRequest(format!(
-            "{label}不存在或不是目录: {}",
-            candidate.display()
-        )));
-    }
-    Ok(())
 }
 
 pub fn extract_frontmatter(raw: &str) -> Option<(String, String)> {

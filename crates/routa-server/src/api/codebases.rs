@@ -5,9 +5,11 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::api::repo_context::{normalize_local_repo_path, validate_local_git_repo_path};
+use crate::api::repo_context::{
+    normalize_local_repo_path, validate_local_git_repo_path, validate_repo_path,
+};
 use crate::error::ServerError;
-use crate::models::codebase::Codebase;
+use crate::models::codebase::{Codebase, CodebaseSourceType};
 use crate::state::AppState;
 
 fn repo_label_from_path(repo_path: &str) -> String {
@@ -115,6 +117,8 @@ struct AddCodebaseRequest {
     repo_path: String,
     branch: Option<String>,
     label: Option<String>,
+    source_type: Option<CodebaseSourceType>,
+    source_url: Option<String>,
     #[serde(default)]
     is_default: bool,
 }
@@ -124,8 +128,12 @@ async fn add_codebase(
     axum::extract::Path(workspace_id): axum::extract::Path<String>,
     Json(body): Json<AddCodebaseRequest>,
 ) -> Result<Json<serde_json::Value>, ServerError> {
+    let source_type = body.source_type.unwrap_or(CodebaseSourceType::Local);
     let repo_path = normalize_local_repo_path(&body.repo_path);
-    validate_local_git_repo_path(&repo_path)?;
+    match source_type {
+        CodebaseSourceType::Local => validate_local_git_repo_path(&repo_path)?,
+        CodebaseSourceType::Github => validate_repo_path(&repo_path, "Path ")?,
+    }
     let repo_path = repo_path.to_string_lossy().to_string();
 
     // Check for duplicate repo_path within the workspace
@@ -147,6 +155,8 @@ async fn add_codebase(
         body.branch,
         body.label,
         body.is_default,
+        Some(source_type),
+        body.source_url,
     );
 
     state.codebase_store.save(&codebase).await?;
@@ -159,6 +169,8 @@ struct UpdateCodebaseRequest {
     branch: Option<String>,
     label: Option<String>,
     repo_path: Option<String>,
+    source_type: Option<CodebaseSourceType>,
+    source_url: Option<String>,
 }
 
 async fn update_codebase(
@@ -171,10 +183,18 @@ async fn update_codebase(
         .get(&id)
         .await?
         .ok_or_else(|| ServerError::NotFound(format!("Codebase {} not found", id)))?;
+    let requested_source_type = body
+        .source_type
+        .clone()
+        .or_else(|| existing.source_type.clone())
+        .unwrap_or(CodebaseSourceType::Local);
 
     let repo_path = if let Some(repo_path) = body.repo_path.as_deref() {
         let normalized = normalize_local_repo_path(repo_path);
-        validate_local_git_repo_path(&normalized)?;
+        match requested_source_type {
+            CodebaseSourceType::Local => validate_local_git_repo_path(&normalized)?,
+            CodebaseSourceType::Github => validate_repo_path(&normalized, "Path ")?,
+        }
         let normalized = normalized.to_string_lossy().to_string();
 
         if let Some(duplicate) = state
@@ -202,6 +222,8 @@ async fn update_codebase(
             body.branch.as_deref(),
             body.label.as_deref(),
             repo_path.as_deref(),
+            body.source_type.as_ref().map(CodebaseSourceType::as_str),
+            body.source_url.as_deref(),
         )
         .await?;
 
@@ -530,11 +552,7 @@ fn build_focus_directories(tree: &RepoTreeNode) -> Vec<serde_json::Value> {
         .iter()
         .filter(|c| c.node_type == "directory")
         .collect();
-    focus_dirs.sort_by(|a, b| {
-        b.file_count
-            .unwrap_or(0)
-            .cmp(&a.file_count.unwrap_or(0))
-    });
+    focus_dirs.sort_by(|a, b| b.file_count.unwrap_or(0).cmp(&a.file_count.unwrap_or(0)));
 
     focus_dirs
         .into_iter()
@@ -746,11 +764,7 @@ fn find_node_by_path<'a>(tree: &'a RepoTreeNode, target: &str) -> Option<&'a Rep
     let segments: Vec<&str> = target.split('/').collect();
     let mut current = tree;
     for seg in &segments {
-        current = current
-            .children
-            .as_ref()?
-            .iter()
-            .find(|c| c.name == *seg)?;
+        current = current.children.as_ref()?.iter().find(|c| c.name == *seg)?;
     }
     Some(current)
 }
@@ -779,7 +793,11 @@ async fn get_reposlide(
     }
 
     let tree = scan_repo_tree(&codebase.repo_path);
-    let source_type = "local";
+    let source_type = codebase
+        .source_type
+        .as_ref()
+        .map(CodebaseSourceType::as_str)
+        .unwrap_or("local");
     let summary = compute_summary(&tree, source_type, codebase.branch.as_deref());
     let root_files: Vec<String> = tree
         .children
@@ -808,6 +826,7 @@ async fn get_reposlide(
             "label": codebase.label,
             "repoPath": codebase.repo_path,
             "sourceType": source_type,
+            "sourceUrl": codebase.source_url,
             "branch": codebase.branch,
         },
         "summary": summary,
