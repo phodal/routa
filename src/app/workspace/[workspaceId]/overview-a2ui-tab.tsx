@@ -229,7 +229,7 @@ export function OverviewA2UITab({
                 onClick={onInstallAgent}
                 className="text-[11px] text-amber-600 dark:text-amber-500 hover:text-amber-700 dark:hover:text-amber-400 transition-colors"
               >
-                + Install
+                + {t.a2ui.install}
               </button>
             }
           >
@@ -265,10 +265,10 @@ export function OverviewA2UITab({
       {/* ─── A2UI Toolbar ─────────────────────────────────────── */}
       <div className="flex items-center justify-between pt-2 border-t border-slate-200/40 dark:border-[#191c28]">
         <div className="flex items-center gap-3 text-[10px] text-slate-400 dark:text-slate-600">
-          <span className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-[#191c28] font-mono">A2UI v0.10</span>
-          <span>{a2uiMessages.length} messages</span>
+          <span className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-[#191c28] font-mono">{t.a2ui.a2uiVersion}</span>
+          <span>{a2uiMessages.length} {t.a2ui.messagesLabel}</span>
           <span>·</span>
-          <span>{a2uiMessages.filter((m) => "createSurface" in m).length} surfaces</span>
+          <span>{a2uiMessages.filter((m) => "createSurface" in m).length} {t.a2ui.surfacesLabel}</span>
           <span>·</span>
           <a
             href="https://a2ui.org/specification/"
@@ -276,7 +276,7 @@ export function OverviewA2UITab({
             rel="noopener noreferrer"
             className="text-amber-500 hover:text-amber-600 transition-colors"
           >
-            Protocol docs
+            {t.a2ui.protocolDocs}
           </a>
         </div>
         <div className="flex items-center gap-1.5">
@@ -288,21 +288,21 @@ export function OverviewA2UITab({
               }`}
           >
             <LayoutGrid className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
-            Templates
+            {t.a2ui.templates}
           </button>
           <button
             onClick={() => { setShowJsonPanel(!showJsonPanel); setShowTemplateGallery(false); }}
             className="flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-medium text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-[#191c28] transition-colors"
           >
             <Plus className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
-            Import
+            {t.a2ui.importLabel}
           </button>
           <button
             onClick={exportJson}
             className="flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-medium text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-[#191c28] transition-colors"
           >
             <Download className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}/>
-            Export
+            {t.a2ui.exportLabel}
           </button>
           <button
             onClick={onToggleSource}
@@ -312,7 +312,7 @@ export function OverviewA2UITab({
               }`}
           >
             <CodeXml className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
-            Source
+            {t.a2ui.sourceLabel}
           </button>
         </div>
       </div>
@@ -397,7 +397,7 @@ export function OverviewA2UITab({
                   }}
                   className={`w-full py-1.5 rounded-md text-[11px] font-medium transition-colors border ${tpl.bg} ${tpl.accent} border-current/20 hover:opacity-80`}
                 >
-                  Add Surface
+                  {t.a2ui.addSurface}
                 </button>
               </div>
             ))}
@@ -410,10 +410,10 @@ export function OverviewA2UITab({
         <div className="bg-slate-50 dark:bg-[#0a0c12] rounded-xl border border-slate-200/60 dark:border-[#1c1f2e] overflow-hidden">
           <div className="flex items-center justify-between px-4 py-2.5 border-b border-slate-200/40 dark:border-[#191c28]">
             <div className="flex items-center gap-2">
-              <h3 className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">A2UI Protocol Messages (JSON)</h3>
+              <h3 className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">{t.a2ui.protocolMessagesJson}</h3>
               {sourceIsOverridden && (
                 <span className="px-1.5 py-0.5 rounded text-[9px] font-semibold bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 uppercase tracking-wider">
-                  Overridden
+                  {t.a2ui.overridden}
                 </span>
               )}
             </div>
@@ -423,14 +423,14 @@ export function OverviewA2UITab({
                   onClick={handleResetSource}
                   className="px-2 py-1 rounded text-[10px] font-medium text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-[#191c28] transition-colors"
                 >
-                  Reset
+                  {t.a2ui.reset}
                 </button>
               )}
               <button
                 onClick={handleApplySource}
                 className="px-2.5 py-1 rounded-md text-[10px] font-semibold text-white bg-amber-500 hover:bg-amber-600 transition-colors shadow-sm"
               >
-                Apply
+                {t.a2ui.apply}
               </button>
             </div>
           </div>
@@ -479,13 +479,13 @@ export function OverviewA2UITab({
               disabled={!customJsonInput.trim()}
               className="px-4 py-2 rounded-lg text-[12px] font-medium text-white bg-amber-500 hover:bg-amber-600 disabled:opacity-40 transition-colors shadow-sm"
             >
-              Render Surface
+              {t.a2ui.renderSurface}
             </button>
             <button
               onClick={() => setCustomJsonInput(sampleJson)}
               className="px-3 py-2 rounded-lg text-[11px] font-medium text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 transition-colors"
             >
-              Load Example
+              {t.a2ui.loadExample}
             </button>
           </div>
         </div>

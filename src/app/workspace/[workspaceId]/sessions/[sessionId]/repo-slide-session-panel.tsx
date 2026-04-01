@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useTranslation } from "@/i18n";
 
 import { desktopAwareFetch } from "@/client/utils/diagnostics";
 import type { RepoSlideSessionResult } from "@/core/reposlide/extract-reposlide-result";
@@ -22,6 +23,7 @@ export function RepoSlideSessionPanel({
   sessionId,
   codebaseId,
 }: RepoSlideSessionPanelProps) {
+  const { t } = useTranslation();
   const [result, setResult] = useState<RepoSlideSessionResult>({ status: "running" });
   const [latestEventKind, setLatestEventKind] = useState<string | undefined>();
   const [loading, setLoading] = useState(true);
@@ -64,13 +66,13 @@ export function RepoSlideSessionPanel({
 
   const statusLabel = result.deckPath
     ? result.downloadUrl
-      ? "Deck ready for download"
-      : "Deck path detected"
+      ? t.repoSlide.statusReady
+      : t.repoSlide.statusPathDetected
     : result.latestAssistantMessage
-      ? "Waiting for explicit PPTX path"
+      ? t.repoSlide.statusWaitingPath
       : latestEventKind === "agent_message_chunk" || latestEventKind === "agent_message"
-        ? "Agent is drafting slides"
-        : "Session started";
+        ? t.repoSlide.statusDrafting
+        : t.repoSlide.statusStarted;
 
   const handleCopyPath = useCallback(async () => {
     if (!result.deckPath) return;
@@ -87,13 +89,13 @@ export function RepoSlideSessionPanel({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="text-xs font-medium uppercase tracking-[0.18em] text-[var(--dt-accent)]">
-            RepoSlide Run
+            {t.repoSlide.title}
           </div>
           <div className="mt-1 text-sm font-semibold text-[var(--dt-text-primary)]">
             {statusLabel}
           </div>
           <div className="mt-1 text-xs text-[var(--dt-text-secondary)]">
-            This session was launched from RepoSlide and is expected to generate a PPTX deck.
+            {t.repoSlide.description}
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -102,7 +104,7 @@ export function RepoSlideSessionPanel({
               href={`/workspace/${workspaceId}/codebases/${codebaseId}/reposlide`}
               className="rounded-md border border-[var(--dt-border)] px-2.5 py-1 text-xs text-[var(--dt-text-primary)] hover:bg-[var(--dt-bg-active)]"
             >
-              Back to RepoSlide
+              {t.repoSlide.backToRepoSlide}
             </Link>
           )}
           <button
@@ -110,20 +112,20 @@ export function RepoSlideSessionPanel({
             onClick={() => void refreshTranscript()}
             className="rounded-md border border-[var(--dt-border)] px-2.5 py-1 text-xs text-[var(--dt-text-primary)] hover:bg-[var(--dt-bg-active)]"
           >
-            Refresh
+            {t.repoSlide.refresh}
           </button>
         </div>
       </div>
 
       {loading && (
         <div className="mt-3 text-xs text-[var(--dt-text-secondary)]">
-          Loading RepoSlide transcript…
+          {t.repoSlide.loadingTranscript}
         </div>
       )}
 
       {error && (
         <div className="mt-3 rounded-lg border border-rose-300/40 bg-rose-50 px-3 py-2 text-xs text-rose-700 dark:border-rose-500/20 dark:bg-rose-950/20 dark:text-rose-300">
-          Failed to load RepoSlide transcript: {error}
+          {t.repoSlide.loadFailed} {error}
         </div>
       )}
 
@@ -131,7 +133,7 @@ export function RepoSlideSessionPanel({
         <div className="mt-3 grid gap-3 xl:grid-cols-[1.1fr_0.9fr]">
           <div className="rounded-xl border border-[var(--dt-border)] bg-[var(--dt-bg-primary)] px-3 py-3">
             <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-[var(--dt-accent)]">
-              Latest Output
+              {t.repoSlide.latestOutput}
             </div>
             {previewText ? (
               <pre className="mt-2 max-h-52 overflow-auto whitespace-pre-wrap break-words text-xs text-[var(--dt-text-primary)]">
@@ -139,14 +141,14 @@ export function RepoSlideSessionPanel({
               </pre>
             ) : (
               <div className="mt-2 text-xs text-[var(--dt-text-secondary)]">
-                No assistant summary yet. Keep the session running and refresh after the agent responds.
+                {t.repoSlide.noSummary}
               </div>
             )}
           </div>
 
           <div className="rounded-xl border border-[var(--dt-border)] bg-[var(--dt-bg-primary)] px-3 py-3">
             <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-[var(--dt-accent)]">
-              Detected Deck Path
+              {t.repoSlide.deckPath}
             </div>
             {result.deckPath ? (
               <>
@@ -158,7 +160,7 @@ export function RepoSlideSessionPanel({
                   onClick={() => void handleCopyPath()}
                   className="mt-2 rounded-md border border-[var(--dt-border)] px-2.5 py-1 text-xs text-[var(--dt-text-primary)] hover:bg-[var(--dt-bg-active)]"
                 >
-                  {copied ? "Copied" : "Copy path"}
+                  {copied ? t.repoSlide.copied : t.repoSlide.copyPath}
                 </button>
                 {result.downloadUrl ? (
                   <a
@@ -166,17 +168,17 @@ export function RepoSlideSessionPanel({
                     download
                     className="mt-2 ml-2 inline-flex rounded-md border border-[var(--dt-border)] px-2.5 py-1 text-xs text-[var(--dt-text-primary)] hover:bg-[var(--dt-bg-active)]"
                   >
-                    Download PPTX
+                    {t.repoSlide.downloadPptx}
                   </a>
                 ) : (
                   <div className="mt-2 text-xs text-[var(--dt-text-secondary)]">
-                    Deck path was detected, but the file is not downloadable from this session context.
+                    {t.repoSlide.notDownloadable}
                   </div>
                 )}
               </>
             ) : (
               <div className="mt-2 text-xs text-[var(--dt-text-secondary)]">
-                No `.pptx` path detected in the assistant transcript yet.
+                {t.repoSlide.noPathDetected}
               </div>
             )}
           </div>

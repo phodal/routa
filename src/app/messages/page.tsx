@@ -14,6 +14,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { useWorkspaces } from "@/client/hooks/use-workspaces";
 import { Select } from "@/client/components/select";
+import { useTranslation } from "@/i18n";
 
 interface BackgroundTask {
   id: string;

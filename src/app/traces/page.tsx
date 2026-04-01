@@ -13,6 +13,8 @@
 
 import { useCallback, useEffect, useRef, useState, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
+import Link from "next/link";
+import { useTranslation } from "@/i18n";
 import { TracePanel } from "@/client/components/trace-panel";
 import { EventBridgeTracePanel } from "@/client/components/event-bridge-trace-panel";
 import { DesktopAppShell } from "@/client/components/desktop-app-shell";
@@ -50,6 +52,7 @@ function isTracesSnapshotSelection(value: string | null | undefined): boolean {
 }
 
 function TracePageContent() {
+  const { t } = useTranslation();
   const searchParams = useSearchParams();
   const router = useRouter();
   const { workspaces, loading: workspacesLoading, createWorkspace } = useWorkspaces();
@@ -279,6 +282,15 @@ function TracePageContent() {
           desktop
         />
       }
+      titleBarRight={(
+        <Link
+          href="/"
+          className="rounded px-2.5 py-1 text-[11px] text-desktop-text-secondary transition-colors hover:bg-desktop-bg-active hover:text-desktop-text-primary"
+          title={t.trace.backToHome}
+        >
+          {t.trace.home}
+        </Link>
+      )}
     >
       <div
         className="flex h-full flex-col overflow-hidden bg-desktop-bg-primary"
@@ -304,24 +316,24 @@ function TracePageContent() {
             <aside className="flex w-80 flex-col border-r border-desktop-border bg-desktop-bg-primary">
               <div className="border-b border-desktop-border px-4 py-3">
                 <h2 className="text-xs font-semibold text-desktop-text-primary">
-                  Sessions
+                  {t.trace.sessions}
                 </h2>
                 <p className="mt-0.5 text-[11px] text-desktop-text-secondary">
-                  {sessions.length} session{sessions.length !== 1 ? "s" : ""} found
+                  {sessions.length === 1 ? t.trace.sessionFound : t.trace.sessionsFound.replace("{count}", String(sessions.length))}
                 </p>
               </div>
 
               <div className="flex-1 overflow-y-auto">
                 {loading && sessions.length === 0 ? (
                   <div className="p-4 text-center">
-                    <p className="text-xs text-desktop-text-secondary">Loading sessions...</p>
+                    <p className="text-xs text-desktop-text-secondary">{t.trace.loadingSessions}</p>
                   </div>
                 ) : sessions.length === 0 ? (
                   <div className="p-4 text-center">
                     <FileText className="mx-auto mb-3 h-12 w-12 text-desktop-text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}/>
-                    <p className="text-xs text-desktop-text-secondary">No sessions found</p>
+                    <p className="text-xs text-desktop-text-secondary">{t.trace.noSessionsFound}</p>
                     <p className="mt-1 text-[10px] text-desktop-text-muted">
-                      Start a conversation to create traces
+                      {t.trace.startConversationHint}
                     </p>
                   </div>
                 ) : (
@@ -425,10 +437,10 @@ function TracePageContent() {
                 <div className="text-center">
                   <FileText className="mx-auto mb-4 h-16 w-16 text-desktop-text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}/>
                   <p className="mb-2 text-[13px] text-desktop-text-secondary">
-                    No session selected
+                    {t.trace.noSessionSelected}
                   </p>
                   <p className="text-xs text-desktop-text-muted">
-                    Select a session from the sidebar to view traces
+                    {t.trace.selectSessionHint}
                   </p>
                 </div>
               </div>

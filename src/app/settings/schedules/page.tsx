@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useTranslation } from "@/i18n";
 import { SettingsRouteShell } from "@/client/components/settings-route-shell";
 import { SettingsPageHeader } from "@/client/components/settings-page-header";
 import { useWorkspaces } from "@/client/hooks/use-workspaces";
@@ -10,15 +11,16 @@ import { Calendar } from "lucide-react";
 
 
 export default function SchedulesSettingsPage() {
+  const { t } = useTranslation();
   const workspacesHook = useWorkspaces();
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState("");
   const effectiveWorkspaceId = selectedWorkspaceId || workspacesHook.workspaces[0]?.id || "";
 
   return (
     <SettingsRouteShell
-      title="Schedules"
-      description="Recurring jobs."
-      badgeLabel="Background jobs"
+      title={t.settingsExtended.schedulesTitle}
+      description={t.settingsExtended.schedulesDesc}
+      badgeLabel={t.settingsExtended.schedulesBadge}
       workspaceSwitcher={(
         <WorkspaceSwitcher
           workspaces={workspacesHook.workspaces}
@@ -40,16 +42,16 @@ export default function SchedulesSettingsPage() {
         <Calendar className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.7}/>
       )}
       summary={[
-        { label: "Trigger", value: "Cron-driven automation" },
-        { label: "Runtime", value: "Background execution" },
+        { label: t.settingsExtended.triggerLabel, value: t.settingsExtended.triggerValue },
+        { label: t.settingsExtended.runtimeLabel, value: t.settingsExtended.runtimeValue },
       ]}
     >
       <div className="space-y-6">
-        <SettingsPageHeader title="Schedules" />
+        <SettingsPageHeader title={t.settingsExtended.schedulesPageTitle} />
         <div className="flex flex-wrap items-center gap-2 rounded-xl border border-desktop-border bg-desktop-bg-secondary/70 px-3 py-2 text-[11px] text-desktop-text-secondary">
-          <span className="font-medium text-desktop-text-primary">Tick endpoint</span>
+          <span className="font-medium text-desktop-text-primary">{t.settingsExtended.tickEndpoint}</span>
           <code className="rounded bg-desktop-bg-primary px-1.5 py-0.5 font-mono text-desktop-text-primary">/api/schedules/tick</code>
-          <span>Vercel Cron or local scheduler.</span>
+          <span>{t.settingsExtended.vercelCron}</span>
         </div>
         <SchedulePanel workspaceId={effectiveWorkspaceId || undefined} />
       </div>
