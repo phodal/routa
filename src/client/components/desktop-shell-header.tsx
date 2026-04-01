@@ -1,7 +1,6 @@
 "use client";
 
 import React from "react";
-import Image from "next/image";
 import Link from "next/link";
 
 import { useTranslation } from "@/i18n";
@@ -19,7 +18,6 @@ interface DesktopShellHeaderProps {
 export function DesktopShellHeader({
   workspaceId,
   workspaceTitle,
-  titleBarRight,
   workspaceSwitcher,
 }: DesktopShellHeaderProps) {
   const { t } = useTranslation();
@@ -33,11 +31,6 @@ export function DesktopShellHeader({
       data-testid="desktop-shell-header"
     >
       <div className="w-20 h-full app-drag-region" />
-
-      <div className="flex items-center gap-2 px-3">
-        <Image src="/logo.svg" alt="Routa" width={16} height={16} className="rounded" />
-        <span className="text-[11px] font-semibold tracking-[0.01em] text-desktop-text-primary">Routa</span>
-      </div>
 
       <div className="ml-3">
         {workspaceSwitcher ?? (
@@ -60,13 +53,7 @@ export function DesktopShellHeader({
 
       <div className="flex-1 app-drag-region h-full" />
 
-      <ShellHeaderControls className="px-2" showProtocolBadges={false} showSettingsMenu={false} />
-
-      {titleBarRight && (
-        <div className="flex items-center gap-1 px-2">
-          {titleBarRight}
-        </div>
-      )}
+      <ShellHeaderControls className="px-2" showProtocolBadges={false} showSettingsMenu={false} compactStatus />
     </header>
   );
 }

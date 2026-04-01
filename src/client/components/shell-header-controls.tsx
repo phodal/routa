@@ -11,20 +11,22 @@ interface ShellHeaderControlsProps {
   className?: string;
   showProtocolBadges?: boolean;
   showSettingsMenu?: boolean;
+  compactStatus?: boolean;
 }
 
 export function ShellHeaderControls({
   className = "",
   showProtocolBadges = true,
   showSettingsMenu = true,
+  compactStatus = false,
 }: ShellHeaderControlsProps) {
   return (
     <div className={`flex items-center gap-2 ${className}`}>
       <div className="hidden lg:flex">
-        <DockerStatusIndicator />
+        <DockerStatusIndicator compact={compactStatus} />
       </div>
       <div className="hidden lg:flex">
-        <McpStatusIndicator />
+        <McpStatusIndicator compact={compactStatus} />
       </div>
       {showProtocolBadges ? (
         <div className="hidden lg:flex items-center gap-2">

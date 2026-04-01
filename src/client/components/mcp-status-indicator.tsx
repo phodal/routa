@@ -26,7 +26,12 @@ interface McpStatusResponse {
   };
 }
 
-export function McpStatusIndicator() {
+interface McpStatusIndicatorProps {
+  compact?: boolean;
+  className?: string;
+}
+
+export function McpStatusIndicator({ compact = false, className = "" }: McpStatusIndicatorProps) {
   const [status, setStatus] = useState<McpStatusResponse | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -107,6 +112,11 @@ export function McpStatusIndicator() {
     : available
       ? "border-sky-200 text-sky-700 bg-sky-50 hover:bg-sky-100 dark:border-sky-800/60 dark:text-sky-300 dark:bg-sky-900/20 dark:hover:bg-sky-900/30"
       : "border-amber-200 text-amber-700 bg-amber-50 hover:bg-amber-100 dark:border-amber-800/60 dark:text-amber-300 dark:bg-amber-900/20 dark:hover:bg-amber-900/30";
+  const compactToneClass = isChecking
+    ? "text-desktop-text-tertiary"
+    : available
+      ? "text-sky-500"
+      : "text-amber-500";
   const dotClass = isChecking
     ? "bg-gray-400 animate-pulse"
     : available
@@ -135,7 +145,9 @@ export function McpStatusIndicator() {
     <div className="flex items-center">
       <Link
         href={status?.toolsHref ?? "/settings/mcp?tab=tools"}
-        className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] transition-colors ${toneClass}`}
+        className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] transition-colors ${
+          compact ? "border-0 bg-transparent hover:bg-transparent" : toneClass
+        } ${compact ? compactToneClass : toneClass} ${className}`}
         title={title}
         data-testid="mcp-status-indicator"
       >
