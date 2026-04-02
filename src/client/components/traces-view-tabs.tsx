@@ -2,6 +2,7 @@
 
 import React from "react";
 import { Button } from "./button";
+import { useTranslation } from "@/i18n";
 
 export type TraceViewTab = "chat" | "event-bridge";
 
@@ -11,12 +12,14 @@ interface TracesViewTabsProps {
   className?: string;
 }
 
-const TAB_DEFINITIONS: Array<{ key: TraceViewTab; label: string; color: string }> = [
-  { key: "chat", label: "Chat", color: "bg-desktop-trace-chat" },
-  { key: "event-bridge", label: "Trace", color: "bg-desktop-trace-event-bridge" },
-];
-
 export function TracesViewTabs({ activeTab, onTabChange, className }: TracesViewTabsProps) {
+  const { t } = useTranslation();
+
+  const TAB_DEFINITIONS: Array<{ key: TraceViewTab; label: string; color: string }> = [
+    { key: "chat", label: t.traces.chatTab, color: "bg-desktop-trace-chat" },
+    { key: "event-bridge", label: t.traces.traceTab, color: "bg-desktop-trace-event-bridge" },
+  ];
+
   return (
     <div className={className ?? ""}>
       <div

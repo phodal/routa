@@ -195,6 +195,7 @@ function buildMeasureEntries(
     sdlc: MeasureSpec;
     collaboration: MeasureSpec;
   },
+  notReachedText: string,
 ): MeasureEntry[] {
   const measureSpecs = buildMeasureSpecs(measures);
   const fallbackSpec: MeasureSpec = {
@@ -218,7 +219,7 @@ function buildMeasureEntries(
       body: spec.body,
       examples: spec.examples,
       without: spec.without,
-      levelName: dimensionInfo?.levelName ?? "Not reached",
+      levelName: dimensionInfo?.levelName ?? notReachedText,
       score: dimensionInfo?.score ?? 0,
       failedCriteria,
       recommendations,
@@ -291,7 +292,7 @@ function OverviewView({
   report: FitnessReport;
   t: FitnessTranslation;
 }) {
-  const measureEntries = useMemo(() => buildMeasureEntries(report, t.fitness.measures), [report, t.fitness.measures]);
+  const measureEntries = useMemo(() => buildMeasureEntries(report, t.fitness.measures, t.fitness.overview.notReached), [report, t.fitness.measures, t.fitness.overview.notReached]);
   const [selectedMeasure, setSelectedMeasure] = useState(measureEntries[0]?.key ?? "governance");
   const activeMeasure = measureEntries.find((entry) => entry.key === selectedMeasure) ?? measureEntries[0];
 

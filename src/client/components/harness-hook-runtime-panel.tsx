@@ -5,6 +5,7 @@ import { HarnessHookWorkbench } from "@/client/components/harness-hook-workbench
 import { HarnessSectionCard, HarnessSectionStateFrame } from "@/client/components/harness-section-card";
 import { HarnessUnsupportedState } from "@/client/components/harness-support-state";
 import type { HooksResponse } from "@/client/hooks/use-harness-settings-data";
+import { useTranslation } from "@/i18n";
 
 type HooksPanelProps = {
   workspaceId: string;
@@ -37,6 +38,7 @@ export function HarnessHookRuntimePanel({
   variant = "full",
   embedded = false,
 }: HooksPanelProps) {
+  const { t } = useTranslation();
   const hasExternalState = loading !== undefined || error !== undefined || data !== undefined;
   const [hooksState, setHooksState] = useState<HooksState>({
     loading: false,
@@ -116,13 +118,13 @@ export function HarnessHookRuntimePanel({
     }
     : hooksState;
 
-  const description = "Runtime hooks invoked in local hook workflows.";
+  const description = t.harness.hookRuntime.description;
 
-  const systemAction = <span className="text-[10px] text-desktop-text-secondary">Hook systems</span>;
+  const systemAction = <span className="text-[10px] text-desktop-text-secondary">{t.harness.hookRuntime.hookSystems}</span>;
 
   const runtimeStateFrame = () => {
     if (resolvedState.loading) {
-      return <HarnessSectionStateFrame>Loading hook runtime...</HarnessSectionStateFrame>;
+      return <HarnessSectionStateFrame>{t.harness.hookRuntime.loadingHookRuntime}</HarnessSectionStateFrame>;
     }
 
     if (unsupportedMessage) {
@@ -136,7 +138,7 @@ export function HarnessHookRuntimePanel({
     if (!resolvedState.data) {
       return (
         <HarnessSectionStateFrame>
-          No hook runtime data found for the selected repository.
+          {t.harness.hookRuntime.noHookRuntimeData}
         </HarnessSectionStateFrame>
       );
     }
@@ -156,7 +158,7 @@ export function HarnessHookRuntimePanel({
   }
 
   return (
-    <HarnessSectionCard title="Hook systems" description={description} actions={systemAction} variant={variant}>
+    <HarnessSectionCard title={t.harness.hookRuntime.hookSystems} description={description} actions={systemAction} variant={variant}>
       {runtimeStateFrame()}
     </HarnessSectionCard>
   );

@@ -9,6 +9,7 @@ import type {
   GitHubActionsFlowsResponse,
 } from "@/client/hooks/use-harness-settings-data";
 import type { GitHubWorkflowCategory as WorkflowCategoryKey } from "@/core/github/workflow-classifier";
+import { useTranslation } from "@/i18n";
 
 type FlowState = {
   error: string | null;
@@ -41,6 +42,7 @@ export function HarnessGitHubActionsFlowPanel({
   variant = "full",
   initialCategory,
 }: HarnessGitHubActionsFlowPanelProps) {
+  const { t } = useTranslation();
   const hasExternalState = loading !== undefined || error !== undefined || data !== undefined;
   const hasContext = Boolean(workspaceId && repoPath);
   const contextKey = hasContext ? `${workspaceId}:${codebaseId ?? "repo-only"}:${repoPath}` : "";
@@ -122,10 +124,10 @@ export function HarnessGitHubActionsFlowPanel({
     ? Boolean(loading)
     : (hasContext && resolvedFlowState.loadedContextKey !== contextKey && !resolvedFlowState.error);
   const flowsSummary = isLoading
-    ? "Loading..."
+    ? t.harness.githubActions.loading
     : visibleFlows.length === 0
-      ? "No workflows found"
-      : `${visibleFlows.length} workflow${visibleFlows.length !== 1 ? "s" : ""}`;
+      ? t.harness.githubActions.noWorkflowsFound
+      : `${visibleFlows.length} ${visibleFlows.length !== 1 ? t.harness.githubActions.workflows : t.harness.githubActions.workflow}`;
   const stateBadge = (
     <span className="text-[10px] text-desktop-text-secondary">
       {flowsSummary}
@@ -135,12 +137,12 @@ export function HarnessGitHubActionsFlowPanel({
   if (isLoading) {
     return (
       <HarnessSectionCard
-        title="CI/CD"
-        description={`Workflow orchestration for ${repoLabel}.`}
+        title={t.settings.harness.ciCd}
+        description={t.harness.githubActions.workflowOrchestrationDesc.replace("{repoLabel}", repoLabel)}
         actions={stateBadge}
         variant={variant}
       >
-        <HarnessSectionStateFrame>Loading GitHub Actions workflows...</HarnessSectionStateFrame>
+        <HarnessSectionStateFrame>{t.harness.githubActions.loadingWorkflows}</HarnessSectionStateFrame>
       </HarnessSectionCard>
     );
   }
@@ -148,8 +150,8 @@ export function HarnessGitHubActionsFlowPanel({
   if (unsupportedMessage) {
     return (
       <HarnessSectionCard
-        title="CI/CD"
-        description={`Workflow orchestration for ${repoLabel}.`}
+        title={t.settings.harness.ciCd}
+        description={t.harness.githubActions.workflowOrchestrationDesc.replace("{repoLabel}", repoLabel)}
         actions={stateBadge}
         variant={variant}
       >
@@ -161,8 +163,8 @@ export function HarnessGitHubActionsFlowPanel({
   if (resolvedFlowState.error) {
     return (
       <HarnessSectionCard
-        title="CI/CD"
-        description={`Workflow orchestration for ${repoLabel}.`}
+        title={t.settings.harness.ciCd}
+        description={t.harness.githubActions.workflowOrchestrationDesc.replace("{repoLabel}", repoLabel)}
         actions={stateBadge}
         variant={variant}
       >
@@ -174,13 +176,13 @@ export function HarnessGitHubActionsFlowPanel({
   if (visibleFlows.length === 0) {
     return (
       <HarnessSectionCard
-        title="CI/CD"
-        description={`Workflow orchestration for ${repoLabel}.`}
+        title={t.settings.harness.ciCd}
+        description={t.harness.githubActions.workflowOrchestrationDesc.replace("{repoLabel}", repoLabel)}
         actions={stateBadge}
         variant={variant}
       >
         <HarnessSectionStateFrame>
-          Select a repository to inspect workflow flows.
+          {t.harness.githubActions.selectRepoToInspect}
         </HarnessSectionStateFrame>
       </HarnessSectionCard>
     );
@@ -188,8 +190,8 @@ export function HarnessGitHubActionsFlowPanel({
 
   return (
     <HarnessSectionCard
-      title="CI/CD"
-      description={`Workflow orchestration for ${repoLabel}.`}
+      title={t.settings.harness.ciCd}
+      description={t.harness.githubActions.workflowOrchestrationDesc.replace("{repoLabel}", repoLabel)}
       actions={stateBadge}
       variant={variant}
     >

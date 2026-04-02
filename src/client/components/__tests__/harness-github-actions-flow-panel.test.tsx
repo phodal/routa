@@ -88,7 +88,7 @@ describe("HarnessGitHubActionsFlowPanel", () => {
     expect(screen.getByText("Loading GitHub Actions workflows...")).not.toBeNull();
 
     await waitFor(() => {
-      expect(screen.getByText("Workflows")).not.toBeNull();
+      expect(screen.getByText("workflows")).not.toBeNull();
       expect(screen.getByText("Triggers")).not.toBeNull();
       expect(screen.getByText("Jobs")).not.toBeNull();
       expect(screen.getByRole("button", { name: /Defense/i })).not.toBeNull();

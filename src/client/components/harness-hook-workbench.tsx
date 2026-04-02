@@ -15,6 +15,7 @@ import {
 import { CodeViewer } from "@/client/components/codemirror/code-viewer";
 import { HarnessUnsupportedState } from "@/client/components/harness-support-state";
 import type { HooksResponse } from "@/client/hooks/use-harness-settings-data";
+import { useTranslation } from "@/i18n";
 import {
   buildHookFlow,
   buildHookWorkbenchEntries,
@@ -58,6 +59,7 @@ type WorkbenchContextValue = {
   data: HooksResponse;
   compactMode: boolean;
   embedded: boolean;
+  t: ReturnType<typeof useTranslation>["t"];
 };
 
 const WorkbenchContext = createContext<WorkbenchContextValue | null>(null);
@@ -189,14 +191,14 @@ const flowNodeTypes = {
 };
 
 function HookLifecycleRail() {
-  const { activeEntry, dispatch, groupedEntries } = useWorkbenchContext();
+  const { t, activeEntry, dispatch, groupedEntries } = useWorkbenchContext();
 
   return (
     <aside className="rounded-[28px] border border-desktop-border bg-[radial-gradient(circle_at_top,#ffffff,rgba(255,255,255,0.78)_24%,rgba(240,246,255,0.82)_100%)] p-4 shadow-sm">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-desktop-text-secondary">Lifecycle</div>
-          <h3 className="mt-1 text-sm font-semibold text-desktop-text-primary">Git hook map</h3>
+          <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-desktop-secondary">{t.harness.hookWorkbench.lifecycle}</div>
+          <h3 className="mt-1 text-sm font-semibold text-desktop-text-primary">{t.harness.hookWorkbench.hookMap}</h3>
         </div>
         <div className="rounded-full border border-desktop-border bg-white/80 px-2.5 py-1 text-[10px] text-desktop-text-secondary">
           {groupedEntries.reduce((sum, group) => sum + group.entries.length, 0)} hooks
@@ -251,19 +253,19 @@ function HookLifecycleRail() {
                           ? "border-emerald-200 bg-emerald-50 text-emerald-700"
                           : "border-slate-200 bg-slate-100 text-slate-500"
                       }`}>
-                        {entry.enabled ? "enabled" : entry.configured ? "partial" : "missing"}
+                        {entry.enabled ? t.harness.hookWorkbench.enabled : entry.configured ? t.harness.hookWorkbench.partial : t.harness.hookWorkbench.missing}
                       </span>
                     </div>
                     <div className="mt-2 flex flex-wrap gap-1.5">
                       <span className={`rounded-full border px-2 py-0.5 text-[10px] ${dimmed ? "border-slate-200 bg-white text-slate-500" : "border-desktop-border bg-desktop-bg-primary text-desktop-text-secondary"}`}>
-                        {entry.stats.taskCount} tasks
+                        {entry.stats.taskCount} {t.harness.hookWorkbench.tasks}
                       </span>
                       <span className={`rounded-full border px-2 py-0.5 text-[10px] ${dimmed ? "border-slate-200 bg-white text-slate-500" : "border-desktop-border bg-desktop-bg-primary text-desktop-text-secondary"}`}>
-                        {entry.phases.length} phases
+                        {entry.phases.length} {t.harness.hookWorkbench.phases}
                       </span>
                       {entry.stats.reviewGate ? (
                         <span className={`rounded-full border px-2 py-0.5 text-[10px] ${dimmed ? "border-slate-200 bg-white text-slate-500" : "border-amber-200 bg-amber-50 text-amber-800"}`}>
-                          review gate
+                          {t.harness.hookWorkbench.reviewGate}
                         </span>
                       ) : null}
                     </div>
@@ -279,7 +281,7 @@ function HookLifecycleRail() {
 }
 
 function HookFlowCanvas() {
-  const { activeEntry, compactMode } = useWorkbenchContext();
+  const { t, activeEntry, compactMode } = useWorkbenchContext();
   const flowHeight = compactMode ? 440 : 680;
 
   const flow = useMemo(() => {
@@ -342,12 +344,12 @@ function HookFlowCanvas() {
     <section className="rounded-[28px] border border-desktop-border bg-[linear-gradient(180deg,rgba(255,255,255,0.95),rgba(243,247,255,0.92))] p-4 shadow-sm">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-desktop-text-secondary">Pipeline</div>
-          <h3 className="mt-1 text-sm font-semibold text-desktop-text-primary">Hook → Task → Output</h3>
+          <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-desktop-text-secondary">{t.harness.hookWorkbench.pipeline}</div>
+          <h3 className="mt-1 text-sm font-semibold text-desktop-text-primary">{t.harness.hookWorkbench.hookTaskOutput}</h3>
           <div className="mt-1 text-[11px] text-desktop-text-secondary">
             {activeEntry
               ? `${activeEntry.lifecycleLabel} lifecycle · ${activeEntry.hint}`
-              : "Select a hook to inspect its flow topology."}
+              : t.harness.hookWorkbench.selectHookToInspect}
           </div>
         </div>
         {activeEntry ? (
@@ -356,10 +358,10 @@ function HookFlowCanvas() {
               {activeEntry.channelLabel}
             </span>
             <span className="rounded-full border border-desktop-border bg-white/80 px-2.5 py-1 text-desktop-text-secondary">
-              {activeEntry.stats.taskCount} tasks
+              {activeEntry.stats.taskCount} {t.harness.hookWorkbench.tasks}
             </span>
             <span className="rounded-full border border-desktop-border bg-white/80 px-2.5 py-1 text-desktop-text-secondary">
-              {activeEntry.stats.hardGateCount} hard gates
+              {activeEntry.stats.hardGateCount} {t.harness.hookWorkbench.hardGates}
             </span>
           </div>
         ) : null}
@@ -388,7 +390,7 @@ function HookFlowCanvas() {
         </div>
       ) : (
         <div className="mt-4 rounded-2xl border border-desktop-border bg-white/80 px-4 py-8 text-[12px] text-desktop-text-secondary">
-          No hook selected.
+          {t.harness.hookWorkbench.noHookSelected}
         </div>
       )}
     </section>
@@ -396,13 +398,13 @@ function HookFlowCanvas() {
 }
 
 function HookInspector() {
-  const { activeEntry, data, dispatch, state } = useWorkbenchContext();
+  const { t, activeEntry, data, dispatch, state } = useWorkbenchContext();
 
   const tabs: Array<{ id: InspectorTab; label: string }> = [
-    { id: "basic", label: "Basic" },
-    { id: "inputs", label: "Inputs" },
-    { id: "tasks", label: "Tasks" },
-    { id: "script", label: "Source" },
+    { id: "basic", label: t.harness.hookWorkbench.tabBasic },
+    { id: "inputs", label: t.harness.hookWorkbench.tabInputs },
+    { id: "tasks", label: t.harness.hookWorkbench.tabTasks },
+    { id: "script", label: t.harness.hookWorkbench.tabSource },
   ];
 
   const previewSource = useMemo(() => {
@@ -411,28 +413,28 @@ function HookInspector() {
     }
     if (state.scriptTab === "raw") {
       return {
-        code: activeEntry.hookFile?.source ?? "# No raw hook file found",
+        code: activeEntry.hookFile?.source ?? t.harness.hookWorkbench.noRawHookFileFound,
         language: "shell" as const,
       };
     }
     if (state.scriptTab === "review") {
       return {
-        code: data.reviewTriggerFile?.source ?? "# No review trigger file found",
+        code: data.reviewTriggerFile?.source ?? t.harness.hookWorkbench.noReviewTriggerFileFound,
         language: "yaml" as const,
       };
     }
     return {
-      code: buildRuntimeProfileSource(activeEntry) || "# No runtime profile bound to this hook",
+      code: buildRuntimeProfileSource(activeEntry) || t.harness.hookWorkbench.noRuntimeProfileBound,
       language: "yaml" as const,
     };
-  }, [activeEntry, data.reviewTriggerFile?.source, state.scriptTab]);
+  }, [activeEntry, data.reviewTriggerFile?.source, state.scriptTab, t]);
 
   if (!activeEntry) {
     return (
       <section className="rounded-[28px] border border-desktop-border bg-desktop-bg-primary/70 p-4 shadow-sm">
-        <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-desktop-text-secondary">Inspector</div>
+        <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-desktop-text-secondary">{t.harness.hookWorkbench.inspector}</div>
         <div className="mt-3 rounded-2xl border border-desktop-border bg-desktop-bg-primary/80 px-4 py-6 text-[12px] text-desktop-text-secondary">
-          No hook selected.
+          {t.harness.hookWorkbench.noHookSelected}
         </div>
       </section>
     );
@@ -442,7 +444,7 @@ function HookInspector() {
     <section className="rounded-[28px] border border-desktop-border bg-desktop-bg-primary/70 p-4 shadow-sm">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-desktop-text-secondary">Inspector</div>
+          <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-desktop-text-secondary">{t.harness.hookWorkbench.inspector}</div>
           <h3 className="mt-1 text-sm font-semibold text-desktop-text-primary">{activeEntry.name}</h3>
           <div className="mt-1 text-[11px] text-desktop-text-secondary">
             {activeEntry.channelLabel} · {activeEntry.blockingLabel} · {activeEntry.bypassabilityLabel}
@@ -480,12 +482,12 @@ function HookInspector() {
         <div className="mt-4 space-y-3">
           <div className="grid gap-3 sm:grid-cols-2">
             {[
-              ["Lifecycle", activeEntry.lifecycleDescription],
-              ["Run side", activeEntry.channelLabel],
-              ["Blocking", activeEntry.blockingLabel],
-              ["CWD", activeEntry.cwdLabel],
-              ["Bypass", activeEntry.bypassabilityLabel],
-              ["Source path", activeEntry.hookFile?.relativePath ?? "No hook file"],
+              [t.harness.hookWorkbench.labelLifecycle, activeEntry.lifecycleDescription],
+              [t.harness.hookWorkbench.labelRunSide, activeEntry.channelLabel],
+              [t.harness.hookWorkbench.labelBlocking, activeEntry.blockingLabel],
+              [t.harness.hookWorkbench.labelCwd, activeEntry.cwdLabel],
+              [t.harness.hookWorkbench.labelBypass, activeEntry.bypassabilityLabel],
+              [t.harness.hookWorkbench.labelSourcePath, activeEntry.hookFile?.relativePath ?? t.harness.hookWorkbench.noHookFile],
             ].map(([label, value]) => (
               <div key={label} className="rounded-2xl border border-desktop-border bg-desktop-bg-primary/80 px-3 py-3">
                 <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-desktop-text-secondary">{label}</div>
@@ -494,9 +496,9 @@ function HookInspector() {
             ))}
           </div>
           <div className="rounded-2xl border border-desktop-border bg-desktop-bg-primary/85 px-4 py-3">
-            <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-desktop-text-secondary">Command</div>
+            <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-desktop-text-secondary">{t.harness.hookWorkbench.command}</div>
             <div className="mt-1 break-all font-mono text-[11px] text-desktop-text-primary">
-              {activeEntry.hookFile?.triggerCommand ?? "No command detected"}
+              {activeEntry.hookFile?.triggerCommand ?? t.harness.hookWorkbench.noCommandDetected}
             </div>
             <div className="mt-2 text-[11px] text-desktop-text-secondary">
               {activeEntry.hint}
@@ -504,7 +506,7 @@ function HookInspector() {
           </div>
           {activeEntry.phases.length ? (
             <div className="rounded-2xl border border-desktop-border bg-desktop-bg-primary/85 px-4 py-3">
-              <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-desktop-text-secondary">Runtime phases</div>
+              <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-desktop-text-secondary">{t.harness.hookWorkbench.runtimePhases}</div>
               <div className="mt-2 flex flex-wrap gap-2">
                 {activeEntry.phases.map((phase) => (
                   <span key={phase} className={`rounded-full border px-2.5 py-1 text-[10px] ${
@@ -524,25 +526,25 @@ function HookInspector() {
       {state.inspectorTab === "inputs" ? (
         <div className="mt-4 space-y-3">
           <div className="rounded-2xl border border-desktop-border bg-desktop-bg-primary/85 px-4 py-3">
-            <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-desktop-text-secondary">Argv template</div>
+            <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-desktop-text-secondary">{t.harness.hookWorkbench.argvTemplate}</div>
             <div className="mt-2 flex flex-wrap gap-2">
               {activeEntry.argvTemplate.length ? activeEntry.argvTemplate.map((value) => (
                 <span key={value} className="rounded-full border border-desktop-border bg-desktop-bg-secondary px-2.5 py-1 text-[10px] font-mono text-desktop-text-secondary">
                   {value}
                 </span>
               )) : (
-                <span className="text-[11px] text-desktop-text-secondary">No argv payload.</span>
+                <span className="text-[11px] text-desktop-text-secondary">{t.harness.hookWorkbench.noArgvPayload}</span>
               )}
             </div>
           </div>
           <div className="rounded-2xl border border-desktop-border bg-desktop-bg-primary/85 px-4 py-3">
-            <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-desktop-text-secondary">stdin template</div>
+            <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-desktop-text-secondary">{t.harness.hookWorkbench.stdinTemplate}</div>
             <div className="mt-1 font-mono text-[11px] text-desktop-text-primary">
-              {activeEntry.stdinTemplate ?? "No stdin payload."}
+              {activeEntry.stdinTemplate ?? t.harness.hookWorkbench.noStdinPayload}
             </div>
           </div>
           <div className="rounded-2xl border border-desktop-border bg-desktop-bg-primary/85 px-4 py-3">
-            <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-desktop-text-secondary">Environment</div>
+            <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-desktop-text-secondary">{t.harness.hookWorkbench.environment}</div>
             <div className="mt-2 flex flex-wrap gap-2">
               {activeEntry.envKeys.map((key) => (
                 <span key={key} className="rounded-full border border-desktop-border bg-desktop-bg-secondary px-2.5 py-1 text-[10px] font-mono text-desktop-text-secondary">
@@ -574,14 +576,14 @@ function HookInspector() {
                       ? "border-emerald-200 bg-emerald-50 text-emerald-700"
                       : "border-amber-200 bg-amber-50 text-amber-800"
                   }`}>
-                    {task.resolved ? "resolved" : "unresolved"}
+                    {task.resolved ? t.harness.hookWorkbench.resolved : t.harness.hookWorkbench.unresolved}
                   </span>
                   <span className="rounded-full border border-desktop-border bg-desktop-bg-secondary px-2.5 py-1 text-desktop-text-secondary">
                     {task.fileScope}
                   </span>
                   {task.hardGate ? (
                     <span className="rounded-full border border-red-200 bg-red-50 px-2.5 py-1 text-red-700">
-                      hard gate
+                      {t.harness.hookWorkbench.hardGate}
                     </span>
                   ) : null}
                 </div>
@@ -592,7 +594,7 @@ function HookInspector() {
             </div>
           )) : (
             <div className="rounded-2xl border border-desktop-border bg-desktop-bg-primary/85 px-4 py-5 text-[12px] text-desktop-text-secondary">
-              This hook does not expose runtime metrics yet. Use the raw script tab to inspect the executable logic.
+              {t.harness.hookWorkbench.noRuntimeMetricsYet}
             </div>
           )}
         </div>
@@ -602,9 +604,9 @@ function HookInspector() {
         <div className="mt-4 space-y-3">
           <div className="flex flex-wrap gap-2">
             {[
-              { id: "runtime", label: "Runtime manifest" },
-              { id: "raw", label: "Raw hook" },
-              { id: "review", label: "Review triggers" },
+              { id: "runtime", label: t.harness.hookWorkbench.runtimeManifest },
+              { id: "raw", label: t.harness.hookWorkbench.rawHook },
+              { id: "review", label: t.harness.hookWorkbench.reviewTriggers },
             ].map((tab) => (
               <button
                 key={tab.id}
@@ -641,6 +643,7 @@ export function HarnessHookWorkbench({
   variant = "full",
   embedded = false,
 }: HookWorkbenchProps) {
+  const { t } = useTranslation();
   const entries = useMemo(
     () => buildHookWorkbenchEntries(data).filter((entry) => entry.lifecycleGroup === "commit" || entry.lifecycleGroup === "push"),
     [data],
@@ -676,6 +679,7 @@ export function HarnessHookWorkbench({
     data,
     compactMode,
     embedded,
+    t,
   };
 
   return (
@@ -703,7 +707,7 @@ export function HarnessHookWorkbench({
 
         {!unsupportedMessage && entries.length === 0 ? (
           <div className="rounded-2xl border border-desktop-border bg-desktop-bg-primary/80 px-4 py-6 text-[12px] text-desktop-text-secondary">
-            No hook metadata found for the selected repository.
+            {t.harness.hookWorkbench.noHookMetadataFound}
           </div>
         ) : null}
 

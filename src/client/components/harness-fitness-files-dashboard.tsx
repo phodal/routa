@@ -16,6 +16,7 @@ import type { NameType, ValueType } from "recharts/types/component/DefaultToolti
 import type { FitnessSpecSummary } from "@/client/hooks/use-harness-settings-data";
 
 import { buildHarnessFitnessFilesDashboardModel } from "./harness-fitness-files-dashboard-model";
+import { useTranslation } from "@/i18n";
 import { HarnessUnsupportedState } from "./harness-support-state";
 import { HarnessSectionCard, HarnessSectionStateFrame } from "./harness-section-card";
 
@@ -65,6 +66,7 @@ export function HarnessFitnessFilesDashboard({
   unsupportedMessage,
   embedded = false,
 }: HarnessFitnessFilesDashboardProps) {
+  const { t } = useTranslation();
   const model = useMemo(
     () => buildHarnessFitnessFilesDashboardModel(specFiles, selectedSpec),
     [selectedSpec, specFiles],
@@ -77,7 +79,7 @@ export function HarnessFitnessFilesDashboard({
       ) : null}
 
       {loading ? (
-        <HarnessSectionStateFrame>Loading fitness files...</HarnessSectionStateFrame>
+        <HarnessSectionStateFrame>{t.harness.fitnessFiles.loadingFiles}</HarnessSectionStateFrame>
       ) : null}
 
       {error ? <HarnessSectionStateFrame tone="error">{error}</HarnessSectionStateFrame> : null}
@@ -87,9 +89,9 @@ export function HarnessFitnessFilesDashboard({
           <section className="rounded-2xl border border-desktop-border bg-white/80 p-4 shadow-sm dark:bg-white/6">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-desktop-text-secondary">Dimension radar</div>
+                <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-desktop-text-secondary">{t.harness.fitnessFiles.dimensionRadar}</div>
                 <p className="mt-1 text-[12px] leading-5 text-desktop-text-secondary">
-                  Score blends `weight`, hard-gate coverage, and threshold strictness across manifest-linked dimension specs.
+                  {t.harness.fitnessFiles.dimensionRadarDescription}
                 </p>
               </div>
               {model.selectedDimension ? (
@@ -113,7 +115,7 @@ export function HarnessFitnessFilesDashboard({
                     />
                     <Tooltip content={(props) => <DimensionDensityTooltip {...props} />} />
                     <Radar
-                      name="Spec score"
+                      name={t.harness.fitnessFiles.specScore}
                       dataKey="score"
                       stroke="#2563eb"
                       fill="#2563eb"
@@ -125,7 +127,7 @@ export function HarnessFitnessFilesDashboard({
               </div>
             ) : (
               <div className="mt-4 rounded-xl border border-dashed border-desktop-border px-3 py-5 text-sm text-desktop-text-secondary">
-                No dimension files found.
+                {t.harness.fitnessFiles.noDimensionFiles}
               </div>
             )}
           </section>
@@ -140,11 +142,11 @@ export function HarnessFitnessFilesDashboard({
 
   return (
     <HarnessSectionCard
-      title="Entrix Fitness"
-      description="Entrix fitness manifest and dimension scoring surfaces."
+      title={t.harness.fitnessFiles.title}
+      description={t.harness.fitnessFiles.description}
       variant="full"
       actions={
-        loading ? <span className="text-[10px] text-desktop-text-secondary">Loading...</span> : null
+        loading ? <span className="text-[10px] text-desktop-text-secondary">{t.harness.fitnessFiles.loading}</span> : null
       }
     >
       {content}

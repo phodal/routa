@@ -6,6 +6,7 @@ import {
   type CriterionResult,
   type FitnessReport,
 } from "./fitness-analysis-types";
+import { useTranslation } from "@/i18n";
 
 const DIMENSION_ORDER = ["context", "governance", "harness", "collaboration", "sdlc"] as const;
 const LEVEL_ORDER = [
@@ -103,6 +104,7 @@ export function FluencyRadarChart({ report, compact = false }: { report: Fitness
 }
 
 export function FluencyLevelLadder({ report, compact = false }: { report: FitnessReport; compact?: boolean }) {
+  const { t } = useTranslation();
   const currentLevel = report.overallLevel;
   const nextLevel = report.nextLevel;
 
@@ -142,7 +144,7 @@ export function FluencyLevelLadder({ report, compact = false }: { report: Fitnes
                 <div className="flex items-center justify-between gap-2">
                   <div className="text-sm font-semibold text-desktop-text-primary">{levelName}</div>
                   <div className="text-[10px] uppercase tracking-[0.12em] text-desktop-text-secondary">
-                    {isCurrent ? "current" : isNext ? "target" : isCompleted ? "cleared" : "locked"}
+                    {isCurrent ? t.fitness.levels.current : isNext ? t.fitness.levels.target : isCompleted ? t.fitness.levels.cleared : t.fitness.levels.locked}
                   </div>
                 </div>
               </div>

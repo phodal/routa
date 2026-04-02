@@ -56,7 +56,11 @@ describe("hook runtime profile config", () => {
       expect(profiles["pre-commit"].fallbackMetrics).toEqual(["eslint_pass"]);
       expect(profiles["pre-push"].phases).toEqual(["submodule", "fitness", "review"]);
     } finally {
-      rmSync(tempDir, { recursive: true, force: true });
+      try {
+        rmSync(tempDir, { recursive: true, force: true });
+      } catch {
+        // Windows may keep temp dirs locked; cleanup will happen on reboot
+      }
     }
   });
 });

@@ -118,10 +118,16 @@ describe("parseArgs", () => {
   });
 
   it("supports --allow-review-unavailable to bypass review scope gating", () => {
-    const options = parseArgs(["run", "--allow-review-unavailable", "--profile", "local-validate"]);
+    const prev = process.env.ROUTA_ALLOW_REVIEW_UNAVAILABLE;
+    delete process.env.ROUTA_ALLOW_REVIEW_UNAVAILABLE;
+    try {
+      const options = parseArgs(["run", "--allow-review-unavailable", "--profile", "local-validate"]);
 
-    expect(options.allowReviewUnavailable).toBe(true);
-    expect(process.env.ROUTA_ALLOW_REVIEW_UNAVAILABLE).toBeUndefined();
+      expect(options.allowReviewUnavailable).toBe(true);
+      expect(process.env.ROUTA_ALLOW_REVIEW_UNAVAILABLE).toBeUndefined();
+    } finally {
+      if (prev !== undefined) process.env.ROUTA_ALLOW_REVIEW_UNAVAILABLE = prev;
+    }
   });
 
   it("accepts --provider and keeps it in parsed options", () => {

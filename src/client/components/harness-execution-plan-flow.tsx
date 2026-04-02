@@ -13,6 +13,7 @@ import {
   type NodeProps,
 } from "@xyflow/react";
 import { HarnessUnsupportedState } from "@/client/components/harness-support-state";
+import { useTranslation } from "@/i18n";
 
 export type RunnerKind = "shell" | "graph" | "sarif";
 export type TierValue = "fast" | "normal" | "deep";
@@ -116,6 +117,7 @@ function getStatusTone(status: EdgeStatus | undefined) {
 }
 
 function PlanNodeView({ data }: NodeProps<Node<PlanNodeData>>) {
+  const { t } = useTranslation();
   const tone = getStatusTone(data.status);
   const interactive = typeof data.onToggle === "function";
   const widthClass = data.kind === "metric"
@@ -222,7 +224,7 @@ function PlanNodeView({ data }: NodeProps<Node<PlanNodeData>>) {
         ) : null}
         {interactive && data.kind !== "dimension" ? (
           <div className="mt-3 text-[10px] text-desktop-text-secondary">
-            {data.expanded ? "Click to collapse metrics" : "Click to expand metrics"}
+            {data.expanded ? t.harness.executionPlan.clickToCollapseMetrics : t.harness.executionPlan.clickToExpandMetrics}
           </div>
         ) : null}
         </div>
@@ -267,6 +269,7 @@ function buildPlanGraph(
   plan: PlanResponse,
   expandedDimensions: Set<string>,
   toggleDimension: (name: string) => void,
+  t: ReturnType<typeof useTranslation>["t"],
 ): { nodes: Node<PlanNodeData>[]; edges: Edge[]; minHeight: number } {
   const nodes: Node<PlanNodeData>[] = [];
   const edges: Edge[] = [];
@@ -298,36 +301,53 @@ function buildPlanGraph(
   nodes.push(
     buildNode("root", rootX, stageY, {
       kind: "root",
-      title: "Entrix Fitness",
-      subtitle: `${plan.dimensionCount} dimensions · ${plan.metricCount} metrics`,
-      meta: [`tier ${plan.tier}`, `scope ${plan.scope}`, `${plan.hardGateCount} hard gates`],
+      title: t.settings.harness.entrixFitness,
+      subtitle: t.harness.executionPlan.dimensionsAndMetricsSubtitle
+        .replace("{dimensionCount}", String(plan.dimensionCount))
+        .replace("{metricCount}", String(plan.metricCount)),
+      meta: [
+        t.harness.executionPlan.tierLabel.replace("{tier}", plan.tier),
+        t.harness.executionPlan.scopeLabel.replace("{scope}", plan.scope),
+        t.harness.executionPlan.hardGatesCount.replace("{count}", String(plan.hardGateCount)),
+      ],
     }),
     buildNode("filter", filterX, stageY, {
       kind: "stage",
-      title: "Filter",
-      subtitle: "Tier and scope decide which checks survive planning.",
-      meta: [`tier <= ${plan.tier}`, `scope = ${plan.scope}`, `${plan.dimensionCount} dimensions`],
+      title: t.harness.executionPlan.filter,
+      subtitle: t.harness.executionPlan.filterSubtitle,
+      meta: [
+        t.harness.executionPlan.tierLessThan.replace("{tier}", plan.tier),
+        t.harness.executionPlan.scopeEquals.replace("{scope}", plan.scope),
+        t.harness.executionPlan.dimensionCount.replace("{count}", String(plan.dimensionCount)),
+      ],
       status: "pass",
     }),
     buildNode("dispatch", dispatchX, stageY, {
       kind: "stage",
-      title: "Dispatch",
-      subtitle: "Metrics route to shell, graph, or sarif runners.",
-      meta: [`shell ${plan.runnerCounts.shell}`, `graph ${plan.runnerCounts.graph}`, `sarif ${plan.runnerCounts.sarif}`],
+      title: t.harness.executionPlan.dispatch,
+      subtitle: t.harness.executionPlan.dispatchSubtitle,
+      meta: [
+        t.harness.executionPlan.shellCount.replace("{count}", String(plan.runnerCounts.shell)),
+        t.harness.executionPlan.graphCount.replace("{count}", String(plan.runnerCounts.graph)),
+        t.harness.executionPlan.sarifCount.replace("{count}", String(plan.runnerCounts.sarif)),
+      ],
       status: "pass",
     }),
     buildNode("gates", gatesX, stageY, {
       kind: "stage",
-      title: "Gates",
-      subtitle: "Hard-gated dimensions can stop the report path.",
-      meta: [`${plan.hardGateCount} hard`, "blocked on failure"],
+      title: t.harness.executionPlan.gates,
+      subtitle: t.harness.executionPlan.gatesSubtitle,
+      meta: [
+        t.harness.executionPlan.hardCount.replace("{count}", String(plan.hardGateCount)),
+        t.harness.executionPlan.blockedOnFailure,
+      ],
       status: plan.hardGateCount > 0 ? "blocked" : "pass",
     }),
     buildNode("report", reportX, stageY, {
       kind: "stage",
-      title: "Report",
-      subtitle: "Weighted dimension score and final state.",
-      meta: ["weighted score", "thresholds", "final status"],
+      title: t.harness.executionPlan.report,
+      subtitle: t.harness.executionPlan.reportSubtitle,
+      meta: [t.harness.executionPlan.weightedScore, t.harness.executionPlan.thresholds, t.harness.executionPlan.finalStatus],
       status: "pass",
     }),
   );
@@ -445,7 +465,7 @@ function buildPlanGraph(
     nodes.push(buildNode(detailLaneId, detailLaneX, detailLaneY, {
       kind: "lane",
       title: activeDimension.name,
-      subtitle: "Expanded metrics for the selected dimension",
+      subtitle: t.harness.executionPlan.expandedMetricsSubtitle,
       frameWidth: detailLaneWidth,
       frameHeight: detailLaneHeight,
       entryOffsetPx: laneEntryOffsetPx,
@@ -467,7 +487,7 @@ function buildPlanGraph(
         kind: "metric",
         title: metric.name,
         subtitle: metric.description || undefined,
-        meta: [metric.runner, metric.tier, metric.executionScope, metric.hardGate ? "hard gate" : metric.gate || "pass"],
+        meta: [metric.runner, metric.tier, metric.executionScope, metric.hardGate ? t.harness.executionPlan.hardGate : metric.gate || "pass"],
         status: metricStatus,
       }));
 
@@ -506,6 +526,7 @@ export function HarnessExecutionPlanFlow({
   variant = "full",
   embedded = false,
 }: HarnessExecutionPlanFlowProps) {
+  const { t } = useTranslation();
   const compactMode = variant === "compact";
   const [expandedState, setExpandedState] = useState<{
     planKey: string | null;
@@ -550,8 +571,8 @@ export function HarnessExecutionPlanFlow({
         planKey,
         names: expandedDimensions.has(name) ? new Set<string>() : new Set([name]),
       });
-    });
-  }, [expandedDimensions, plan, planKey, variant]);
+    }, t);
+  }, [expandedDimensions, plan, planKey, t, variant]);
 
   const compactMinZoom = compactMode ? 0.18 : 0.58;
   const fitViewOptions = useMemo(
@@ -568,7 +589,7 @@ export function HarnessExecutionPlanFlow({
     <>
       <div className="flex flex-wrap items-center gap-2">
         {!embedded ? (
-          <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-desktop-text-secondary">Entrix Fitness</div>
+          <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-desktop-text-secondary">{t.settings.harness.entrixFitness}</div>
         ) : null}
         <div className="rounded-full border border-desktop-border bg-desktop-bg-primary px-2.5 py-1 text-[10px] text-desktop-text-secondary">
           {repoLabel}
@@ -608,22 +629,22 @@ export function HarnessExecutionPlanFlow({
             }}
             className="rounded-full border border-desktop-border bg-desktop-bg-primary px-2.5 py-1 text-[10px] text-desktop-text-secondary"
           >
-            {expandedDimensions.size > 0 ? "Hide metrics" : "Show metrics"}
+            {expandedDimensions.size > 0 ? t.harness.executionPlan.hideMetrics : t.harness.executionPlan.showMetrics}
           </button>
         ) : null}
         {plan ? (
           <>
-            <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[10px] text-emerald-700">pass = scoring path</span>
-            <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[10px] text-amber-700">warn = degraded dimension</span>
-            <span className="rounded-full border border-red-200 bg-red-50 px-2.5 py-1 text-[10px] text-red-700">hard = blocking gate</span>
-            <span className="rounded-full border border-slate-300 bg-slate-100 px-2.5 py-1 text-[10px] text-slate-700">blocked = report can stop</span>
+            <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[10px] text-emerald-700">{t.harness.executionPlan.legendPass}</span>
+            <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[10px] text-amber-700">{t.harness.executionPlan.legendWarn}</span>
+            <span className="rounded-full border border-red-200 bg-red-50 px-2.5 py-1 text-[10px] text-red-700">{t.harness.executionPlan.legendHard}</span>
+            <span className="rounded-full border border-slate-300 bg-slate-100 px-2.5 py-1 text-[10px] text-slate-700">{t.harness.executionPlan.legendBlocked}</span>
           </>
         ) : null}
       </div>
 
       {loading ? (
         <div className="mt-4 rounded-xl border border-desktop-border bg-desktop-bg-primary/80 px-4 py-5 text-[11px] text-desktop-text-secondary">
-          Building execution topology...
+          {t.harness.executionPlan.buildingTopology}
         </div>
       ) : null}
 

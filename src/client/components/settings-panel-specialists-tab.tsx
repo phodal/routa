@@ -50,6 +50,7 @@ const primaryButtonCls =
 
 export function SpecialistsTab({ modelDefs }: SpecialistsTabProps) {
   const { t } = useTranslation();
+  const tab = t.settings.specialistsTab;
   const [specialists, setSpecialists] = useState<SpecialistConfig[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<SpecialistCategory>("all");
@@ -70,7 +71,7 @@ export function SpecialistsTab({ modelDefs }: SpecialistsTabProps) {
       if (!response.ok) {
         setError(
           response.status === 501
-            ? "Specialist editing requires Postgres; local SQLite uses bundled or file-based specialists."
+            ? tab.requiresPostgres
             : t.errors.loadFailed,
         );
         return;
@@ -82,7 +83,7 @@ export function SpecialistsTab({ modelDefs }: SpecialistsTabProps) {
     } finally {
       setLoading(false);
     }
-  }, [t.errors.loadFailed]);
+  }, [t.errors.loadFailed, tab.requiresPostgres]);
 
   useEffect(() => {
     void load();
@@ -163,7 +164,7 @@ export function SpecialistsTab({ modelDefs }: SpecialistsTabProps) {
 
   const handleDelete = async () => {
     if (!editingId) return;
-    if (!confirm(`Delete specialist "${form.name || editingId}"?`)) return;
+    if (!confirm(`${tab.deleteConfirm} "${form.name || editingId}"?`)) return;
     setSaving(true);
     setError(null);
     try {
@@ -188,7 +189,7 @@ export function SpecialistsTab({ modelDefs }: SpecialistsTabProps) {
       });
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Sync failed");
+      setError(err instanceof Error ? err.message : tab.syncFailed);
     } finally {
       setSyncing(false);
     }
@@ -201,7 +202,7 @@ export function SpecialistsTab({ modelDefs }: SpecialistsTabProps) {
     setError(null);
     setForm({
       id: selectedSpecialist.source === "user" ? `${selectedSpecialist.id}-copy` : "",
-      name: `${selectedSpecialist.name} Copy`,
+      name: `${selectedSpecialist.name} ${tab.copySuffix}`,
       description: selectedSpecialist.description ?? "",
       role: selectedSpecialist.role,
       defaultModelTier: selectedSpecialist.defaultModelTier,
@@ -224,13 +225,13 @@ export function SpecialistsTab({ modelDefs }: SpecialistsTabProps) {
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className={sectionTitleCls}>Catalog</p>
-                <p className="mt-1 text-sm text-desktop-text-secondary">{specialists.length} total specialists</p>
+                <p className={sectionTitleCls}>{tab.catalog}</p>
+                <p className="mt-1 text-sm text-desktop-text-secondary">{tab.totalSpecialists.replace('{count}', String(specialists.length))}</p>
               </div>
               <div className="flex items-center gap-2">
-                {loading ? <span className="text-xs text-desktop-text-muted">Loading...</span> : null}
+                {loading ? <span className="text-xs text-desktop-text-muted">{tab.loading}</span> : null}
                 <button onClick={handleSync} disabled={syncing || saving} className={secondaryButtonCls}>
-                  {syncing ? "Syncing..." : "Sync bundled"}
+                  {syncing ? tab.syncing : tab.syncBundled}
                 </button>
               </div>
             </div>
@@ -239,7 +240,7 @@ export function SpecialistsTab({ modelDefs }: SpecialistsTabProps) {
               type="text"
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
-              placeholder="Search specialists"
+              placeholder={tab.searchPlaceholder}
               className={desktopInputCls}
             />
 
@@ -295,7 +296,7 @@ export function SpecialistsTab({ modelDefs }: SpecialistsTabProps) {
 
               {!loading && visibleSpecialists.length === 0 ? (
                 <div className="rounded-2xl border border-dashed border-desktop-border px-4 py-8 text-center text-sm text-desktop-text-secondary">
-                  No specialists found.
+                  {tab.noSpecialistsFound}
                 </div>
               ) : null}
             </div>
@@ -307,27 +308,27 @@ export function SpecialistsTab({ modelDefs }: SpecialistsTabProps) {
             <div className="min-w-0">
               <p className={sectionTitleCls}>{editingId ? `${t.common.edit} ${t.settings.specialists}` : `${t.common.new} ${t.settings.specialists}`}</p>
               <h3 className="mt-1 text-xl font-semibold text-desktop-text-primary">
-                {editingId ? form.name || editingId : "New specialist profile"}
+                {editingId ? form.name || editingId : tab.newProfile}
               </h3>
               <p className="mt-2 text-sm text-desktop-text-secondary">
                 {readOnlySelection
-                  ? "Bundled and built-in specialists are visible here for inspection. Duplicate them into a custom specialist before editing."
-                  : "Manage the specialist identity, runtime tier, and system prompt from one panel."}
+                  ? tab.bundledReadOnlyHint
+                  : tab.manageHint}
               </p>
             </div>
             <div className="flex items-center gap-2">
               {selectedSpecialist ? (
                 <button onClick={duplicateSelected} className={secondaryButtonCls}>
-                  Duplicate
+                  {tab.duplicate}
                 </button>
               ) : null}
               {editingId ? (
                 <button onClick={handleDelete} disabled={saving || readOnlySelection} className={secondaryButtonCls}>
-                  Delete
+                  {tab.delete}
                 </button>
               ) : null}
               <button onClick={handleSave} disabled={saving || readOnlySelection || !form.id || !form.name || !form.systemPrompt} className={primaryButtonCls}>
-                {saving ? "Saving..." : editingId ? "Save changes" : "Create specialist"}
+                {saving ? tab.saving : editingId ? tab.saveChanges : tab.createSpecialist}
               </button>
             </div>
           </div>
@@ -335,41 +336,41 @@ export function SpecialistsTab({ modelDefs }: SpecialistsTabProps) {
           <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1fr)_300px]">
             <div className="space-y-4">
               <div className="grid gap-4 md:grid-cols-2">
-                <Field label="ID">
+                <Field label={tab.idLabel}>
                   <input
                     type="text"
                     value={form.id}
                     onChange={(event) => setForm({ ...form, id: event.target.value })}
                     disabled={!!editingId || readOnlySelection}
-                    placeholder="my-specialist"
+                    placeholder={tab.idPlaceholder}
                     className={`${desktopInputCls} font-mono disabled:opacity-60`}
                   />
                 </Field>
-                <Field label="Name">
+                <Field label={tab.nameLabel}>
                   <input
                     type="text"
                     value={form.name}
                     onChange={(event) => setForm({ ...form, name: event.target.value })}
                     disabled={readOnlySelection}
-                    placeholder="Release Orchestrator"
+                    placeholder={tab.namePlaceholder}
                     className={`${desktopInputCls} disabled:opacity-60`}
                   />
                 </Field>
               </div>
 
-              <Field label="Description">
+              <Field label={tab.descriptionLabel}>
                 <textarea
                   value={form.description}
                   onChange={(event) => setForm({ ...form, description: event.target.value })}
                   disabled={readOnlySelection}
                   rows={3}
-                  placeholder="Short description shown in the catalog"
+                  placeholder={tab.descriptionPlaceholder}
                   className={`${desktopInputCls} disabled:opacity-60`}
                 />
               </Field>
 
               <div className="grid gap-4 md:grid-cols-2">
-                <Field label="Role">
+                <Field label={tab.roleLabel}>
                   <Select
                     value={form.role}
                     onChange={(event) => setForm({ ...form, role: event.target.value as AgentRole })}
@@ -381,7 +382,7 @@ export function SpecialistsTab({ modelDefs }: SpecialistsTabProps) {
                     ))}
                   </Select>
                 </Field>
-                <Field label="Model Tier">
+                <Field label={tab.modelTierLabel}>
                   <Select
                     value={form.defaultModelTier}
                     onChange={(event) => setForm({ ...form, defaultModelTier: event.target.value as ModelTier })}
@@ -395,14 +396,14 @@ export function SpecialistsTab({ modelDefs }: SpecialistsTabProps) {
                 </Field>
               </div>
 
-              <Field label="Model Override">
+              <Field label={tab.modelOverrideLabel}>
                 <input
                   type="text"
                   list={datalistId}
                   value={form.model}
                   onChange={(event) => setForm({ ...form, model: event.target.value })}
                   disabled={readOnlySelection}
-                  placeholder="alias or raw model ID"
+                  placeholder={tab.modelOverridePlaceholder}
                   className={`${desktopInputCls} font-mono disabled:opacity-60`}
                 />
                 <datalist id={datalistId}>
@@ -412,35 +413,35 @@ export function SpecialistsTab({ modelDefs }: SpecialistsTabProps) {
                 </datalist>
               </Field>
 
-              <Field label="System Prompt">
+              <Field label={tab.systemPromptLabel}>
                 <textarea
                   value={form.systemPrompt}
                   onChange={(event) => setForm({ ...form, systemPrompt: event.target.value })}
                   disabled={readOnlySelection}
                   rows={15}
-                  placeholder="Define the specialist contract"
+                  placeholder={tab.systemPromptPlaceholder}
                   className={`${desktopInputCls} min-h-[320px] font-mono text-[13px] leading-6 disabled:opacity-60`}
                 />
               </Field>
 
-              <Field label="Role Reminder">
+              <Field label={tab.roleReminderLabel}>
                 <textarea
                   value={form.roleReminder}
                   onChange={(event) => setForm({ ...form, roleReminder: event.target.value })}
                   disabled={readOnlySelection}
                   rows={4}
-                  placeholder="Short runtime reminder"
+                  placeholder={tab.roleReminderPlaceholder}
                   className={`${desktopInputCls} disabled:opacity-60`}
                 />
               </Field>
             </div>
 
             <div className="space-y-4">
-              <InspectorCard label="Source" value={selectedSpecialist ? SOURCE_LABELS[selectedSpecialist.source] : "New"} />
-              <InspectorCard label="Category" value={selectedSpecialist ? getSpecialistCategory(selectedSpecialist.id) : "custom"} />
-              <InspectorCard label="Writable" value={readOnlySelection ? "No" : "Yes"} />
-              <InspectorCard label="Role" value={form.role} badgeClass={ROLE_CHIP[form.role]} />
-              <InspectorCard label="Tier" value={TIER_LABELS[form.defaultModelTier]} />
+              <InspectorCard label={tab.sourceLabel} value={selectedSpecialist ? SOURCE_LABELS[selectedSpecialist.source] : tab.newLabel} />
+              <InspectorCard label={tab.categoryLabel} value={selectedSpecialist ? getSpecialistCategory(selectedSpecialist.id) : tab.customLabel} />
+              <InspectorCard label={tab.writableLabel} value={readOnlySelection ? tab.writableNo : tab.writableYes} />
+              <InspectorCard label={tab.roleLabel} value={form.role} badgeClass={ROLE_CHIP[form.role]} />
+              <InspectorCard label={tab.tierLabel} value={TIER_LABELS[form.defaultModelTier]} />
             </div>
           </div>
         </section>
