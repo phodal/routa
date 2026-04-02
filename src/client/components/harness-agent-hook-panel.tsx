@@ -5,6 +5,7 @@ import { HarnessAgentHookWorkbench } from "@/client/components/harness-agent-hoo
 import { HarnessSectionCard, HarnessSectionStateFrame } from "@/client/components/harness-section-card";
 import { HarnessUnsupportedState } from "@/client/components/harness-support-state";
 import type { AgentHooksResponse } from "@/client/hooks/use-harness-settings-data";
+import { useTranslation } from "@/i18n";
 
 type AgentHookPanelProps = {
   workspaceId: string;
@@ -37,6 +38,7 @@ export function HarnessAgentHookPanel({
   variant = "full",
   embedded = false,
 }: AgentHookPanelProps) {
+  const { t } = useTranslation();
   const hasExternalState = loading !== undefined || error !== undefined || data !== undefined;
   const [agentHooksState, setAgentHooksState] = useState<AgentHooksState>({
     loading: false,
@@ -100,12 +102,12 @@ export function HarnessAgentHookPanel({
     ? { loading: loading ?? false, error: error ?? null, data: data ?? null }
     : agentHooksState;
 
-  const description = "Agent hook lifecycle policies that govern runtime behavior.";
-  const systemAction = <span className="text-[10px] text-desktop-text-secondary">Agent hook system</span>;
+  const description = t.harness.agentHook.description;
+  const systemAction = <span className="text-[10px] text-desktop-text-secondary">{t.harness.agentHook.hookSystems}</span>;
 
   const agentHookStateFrame = () => {
     if (resolvedState.loading) {
-      return <HarnessSectionStateFrame>Loading agent hooks...</HarnessSectionStateFrame>;
+      return <HarnessSectionStateFrame>{t.harness.agentHook.loadingHooks}</HarnessSectionStateFrame>;
     }
 
     if (unsupportedMessage) {
@@ -119,7 +121,7 @@ export function HarnessAgentHookPanel({
     if (!resolvedState.data) {
       return (
         <HarnessSectionStateFrame>
-          No agent hook data found for the selected repository.
+          {t.harness.agentHook.noAgentHookData}
         </HarnessSectionStateFrame>
       );
     }
@@ -139,7 +141,7 @@ export function HarnessAgentHookPanel({
   }
 
   return (
-    <HarnessSectionCard title="Agent hook system" description={description} actions={systemAction} variant={variant}>
+    <HarnessSectionCard title={t.harness.agentHook.hookSystems} description={description} actions={systemAction} variant={variant}>
       {agentHookStateFrame()}
     </HarnessSectionCard>
   );

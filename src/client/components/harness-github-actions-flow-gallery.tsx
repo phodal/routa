@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { CodeViewer } from "@/client/components/codemirror/code-viewer";
 import type { GitHubActionsFlow, GitHubActionsJob } from "@/client/hooks/use-harness-settings-data";
+import { useTranslation } from "@/i18n";
 import {
   classifyGitHubWorkflowCategory,
   normalizeGitHubWorkflowEventTokens,
@@ -22,29 +23,30 @@ type WorkflowJobKind = GitHubActionsJob["kind"];
 
 type WorkflowCategoryDefinition = {
   key: WorkflowCategoryKey;
-  emptyHint: string;
+  emptyHintKey: "noValidationWorkflows" | "noReleaseWorkflows" | "noAutomationWorkflows" | "noMaintenanceWorkflows";
 };
 
 type WorkflowCategoryEntry = WorkflowCategoryDefinition & {
   flows: GitHubActionsFlow[];
+  emptyHint?: string;
 };
 
 const CATEGORY_DEFINITIONS: WorkflowCategoryDefinition[] = [
   {
     key: "Validation",
-    emptyHint: "No validation workflows detected.",
+    emptyHintKey: "noValidationWorkflows",
   },
   {
     key: "Release",
-    emptyHint: "No release workflows detected.",
+    emptyHintKey: "noReleaseWorkflows",
   },
   {
     key: "Automation",
-    emptyHint: "No automation workflows detected.",
+    emptyHintKey: "noAutomationWorkflows",
   },
   {
     key: "Maintenance",
-    emptyHint: "No maintenance workflows detected.",
+    emptyHintKey: "noMaintenanceWorkflows",
   },
 ];
 
@@ -66,8 +68,8 @@ function humanizeToken(value: string) {
     .join(" ");
 }
 
-function formatStageLabel(index: number) {
-  return `Stage ${String(index + 1).padStart(2, "0")}`;
+function formatStageLabel(index: number, stageLabel: string) {
+  return `${stageLabel} ${String(index + 1).padStart(2, "0")}`;
 }
 
 function buildDependencyLanes(jobs: GitHubActionsJob[]) {
@@ -223,6 +225,7 @@ function CategoryTabs({
 }
 
 function MiniDagPreview({ flow }: { flow: GitHubActionsFlow }) {
+  const { t } = useTranslation();
   const lanes = buildDependencyLanes(flow.jobs);
   const visibleLanes = lanes.slice(0, 3);
   const hiddenLaneCount = Math.max(lanes.length - visibleLanes.length, 0);
@@ -231,7 +234,7 @@ function MiniDagPreview({ flow }: { flow: GitHubActionsFlow }) {
     <div className="overflow-x-auto">
       <div className="flex min-w-max items-start gap-2">
         <div className="w-[4.5rem] shrink-0 rounded-[14px] border border-sky-200/80 bg-sky-50/80 px-2 py-1.5">
-          <div className="text-[9px] font-semibold uppercase tracking-[0.18em] text-sky-700">Trigger</div>
+          <div className="text-[9px] font-semibold uppercase tracking-[0.18em] text-sky-700">{t.harness.githubActions.trigger}</div>
           <div className="mt-0.5 text-[10px] font-semibold leading-4 text-slate-900">
             {humanizeToken(normalizeGitHubWorkflowEventTokens(flow.event)[0] ?? flow.event)}
           </div>
@@ -254,7 +257,7 @@ function MiniDagPreview({ flow }: { flow: GitHubActionsFlow }) {
               ))}
               {laneJobs.length > 1 ? (
                 <div className="rounded-[14px] border border-dashed border-slate-200/80 bg-white/70 px-2 py-1 text-[9px] text-slate-500">
-                  +{laneJobs.length - 1} more jobs
+                  +{laneJobs.length - 1} {t.harness.githubActions.moreJobs}
                 </div>
               ) : null}
             </div>
@@ -267,7 +270,7 @@ function MiniDagPreview({ flow }: { flow: GitHubActionsFlow }) {
               <ArrowRight className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}/>
             </div>
             <div className="w-[4.5rem] shrink-0 rounded-[14px] border border-dashed border-slate-200/80 bg-white/70 px-2 py-1.5 text-[9px] text-slate-500">
-              +{hiddenLaneCount} more stages
+              +{hiddenLaneCount} {t.harness.githubActions.moreStages}
             </div>
           </div>
         ) : null}
@@ -285,14 +288,15 @@ function WorkflowCard({
   selected: boolean;
   onSelect: () => void;
 }) {
+  const { t } = useTranslation();
   const eventTokens = normalizeGitHubWorkflowEventTokens(flow.event);
   const visibleTokens = eventTokens.slice(0, 3);
   const hiddenTokenCount = Math.max(eventTokens.length - visibleTokens.length, 0);
   const stageCount = summarizeStageCount(flow);
   const metaPills = [
-    { label: `${flow.jobs.length} jobs`, className: "border-slate-200 bg-slate-50/90 text-slate-600" },
-    { label: `${stageCount} stages`, className: "border-sky-200 bg-sky-50 text-sky-700" },
-    { label: `${countDependencies(flow)} dependencies`, className: "border-emerald-200 bg-emerald-50 text-emerald-700" },
+    { label: `${flow.jobs.length} ${t.harness.githubActions.jobs}`, className: "border-slate-200 bg-slate-50/90 text-slate-600" },
+    { label: `${stageCount} ${t.harness.githubActions.stages}`, className: "border-sky-200 bg-sky-50 text-sky-700" },
+    { label: `${countDependencies(flow)} ${t.harness.githubActions.dependencies}`, className: "border-emerald-200 bg-emerald-50 text-emerald-700" },
   ];
 
   return (
@@ -353,6 +357,7 @@ function FlowCanvas({
   onJobSelect: (jobId: string) => void;
   compactMode: boolean;
 }) {
+  const { t } = useTranslation();
   const lanes = buildDependencyLanes(flow.jobs);
   const eventTokens = normalizeGitHubWorkflowEventTokens(flow.event);
 
@@ -360,7 +365,7 @@ function FlowCanvas({
     <section className="rounded-[24px] border border-slate-200/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(245,248,252,0.95))] p-3.5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Pipeline</div>
+          <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">{t.harness.githubActions.pipeline}</div>
           <h3 className="mt-1 text-[17px] font-semibold tracking-[-0.02em] text-slate-900">{flow.name}</h3>
           <div className="mt-1.5 flex flex-wrap gap-1.5">
             {eventTokens.map((token) => (
@@ -372,13 +377,13 @@ function FlowCanvas({
         </div>
         <div className="flex flex-wrap gap-2 text-[10px]">
           <span className="rounded-full border border-slate-200 bg-white/85 px-2.5 py-1 text-slate-600">
-            {flow.jobs.length} jobs
+            {flow.jobs.length} {t.harness.githubActions.jobs}
           </span>
           <span className="rounded-full border border-slate-200 bg-white/85 px-2.5 py-1 text-slate-600">
-            {lanes.length} stages
+            {lanes.length} {t.harness.githubActions.stages}
           </span>
           <span className="rounded-full border border-slate-200 bg-white/85 px-2.5 py-1 text-slate-600">
-            {countDependencies(flow)} edges
+            {countDependencies(flow)} {t.harness.githubActions.edges}
           </span>
         </div>
       </div>
@@ -389,7 +394,7 @@ function FlowCanvas({
             "shrink-0 rounded-[20px] border border-sky-200/80 bg-[linear-gradient(135deg,rgba(239,246,255,0.92),rgba(255,255,255,0.98))] p-3.5",
             compactMode ? "w-44" : "w-52",
           )}>
-            <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-sky-700">Trigger source</div>
+            <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-sky-700">{t.harness.githubActions.triggerSource}</div>
             <div className="mt-2.5 space-y-1.5">
               {eventTokens.map((token) => (
                 <div key={`${flow.id}:trigger:${token}`} className="rounded-[16px] border border-white/70 bg-white/90 px-2.5 py-1.5 text-[10px] font-medium text-slate-700">
@@ -405,7 +410,7 @@ function FlowCanvas({
                 <ArrowRight className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}/>
               </div>
               <div className={cx("shrink-0 space-y-2.5", compactMode ? "w-60" : "w-64")}>
-                <div className="pl-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">{formatStageLabel(laneIndex)}</div>
+                <div className="pl-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">{formatStageLabel(laneIndex, t.harness.githubActions.stage)}</div>
                 {laneJobs.map((job) => {
                   const selected = activeJobId === job.id;
                   return (
@@ -432,7 +437,7 @@ function FlowCanvas({
                       <div className="mt-2.5 flex flex-wrap gap-1.5">
                         {job.stepCount !== null ? (
                           <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] text-slate-500">
-                            {job.stepCount} steps
+                            {job.stepCount} {t.harness.githubActions.steps}
                           </span>
                         ) : null}
                         {job.needs.length > 0 ? job.needs.map((need) => (
@@ -441,7 +446,7 @@ function FlowCanvas({
                           </span>
                         )) : (
                           <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] text-emerald-700">
-                            root
+                            {t.harness.githubActions.root}
                           </span>
                         )}
                       </div>
@@ -466,38 +471,39 @@ function JobInspector({
   activeJob: GitHubActionsJob | null;
   compactMode: boolean;
 }) {
+  const { t } = useTranslation();
   return (
     <aside className="rounded-[24px] border border-slate-200/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(243,247,252,0.95))] p-3.5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Inspector</div>
+          <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">{t.harness.githubActions.inspector}</div>
           <h3 className="mt-1 text-[17px] font-semibold tracking-[-0.02em] text-slate-900">
             {activeJob?.name ?? flow.name}
           </h3>
           <div className="mt-1 text-[11px] leading-5 text-slate-500">
             {activeJob
-              ? "Selected job metadata, upstream dependencies, and execution context."
-              : "Workflow-level metadata and source definition."}
+              ? t.harness.githubActions.jobMetadataDesc
+              : t.harness.githubActions.workflowMetadataDesc}
           </div>
         </div>
         <span className="rounded-full border border-slate-200 bg-white/85 px-2.5 py-1 text-[10px] text-slate-500">
-          {activeJob ? "Job detail" : "Workflow detail"}
+          {activeJob ? t.harness.githubActions.jobDetail : t.harness.githubActions.workflowDetail}
         </span>
       </div>
 
       <div className="mt-3 grid gap-2.5 sm:grid-cols-2 xl:grid-cols-1">
         <div className="rounded-[18px] border border-slate-200 bg-white/90 px-3 py-2.5">
-          <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">Runner</div>
+          <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">{t.harness.githubActions.runner}</div>
           <div className="mt-2 break-all font-mono text-[11px] text-slate-700">{activeJob?.runner ?? "n/a"}</div>
         </div>
         <div className="rounded-[18px] border border-slate-200 bg-white/90 px-3 py-2.5">
-          <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">Step count</div>
+          <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">{t.harness.githubActions.stepCount}</div>
           <div className="mt-2 text-[14px] font-semibold text-slate-900">
-            {activeJob?.stepCount ?? "Unknown"}
+            {activeJob?.stepCount ?? t.harness.githubActions.unknown}
           </div>
         </div>
         <div className="rounded-[18px] border border-slate-200 bg-white/90 px-3 py-2.5">
-          <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">Dependencies</div>
+          <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">{t.harness.githubActions.dependencies}</div>
           <div className="mt-2 flex flex-wrap gap-1.5">
             {activeJob?.needs.length ? activeJob.needs.map((need) => (
               <span key={`${activeJob.id}:${need}`} className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] text-slate-600">
@@ -511,13 +517,13 @@ function JobInspector({
           </div>
         </div>
         <div className="rounded-[18px] border border-slate-200 bg-white/90 px-3 py-2.5">
-          <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">Source path</div>
+          <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">{t.harness.githubActions.sourcePath}</div>
           <div className="mt-2 break-all font-mono text-[11px] text-slate-700">{flow.relativePath ?? "n/a"}</div>
         </div>
       </div>
 
       <div className="mt-3 rounded-[20px] border border-slate-200 bg-white/90 px-3 py-2.5">
-        <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">Trigger set</div>
+        <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">{t.harness.githubActions.triggerSet}</div>
         <div className="mt-2 flex flex-wrap gap-1.5">
           {normalizeGitHubWorkflowEventTokens(flow.event).map((token) => (
             <span key={`${flow.id}:inspector:${token}`} className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[10px] text-slate-600">
@@ -530,7 +536,7 @@ function JobInspector({
       {!compactMode ? (
         <details className="mt-3 rounded-[20px] border border-slate-200 bg-white/90 p-3">
           <summary className="cursor-pointer list-none text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-            Workflow YAML
+            {t.harness.githubActions.workflowYaml}
           </summary>
           <div className="mt-3">
             <CodeViewer
@@ -563,6 +569,7 @@ function WorkflowDetailDialog({
   onClose: () => void;
   onJobSelect: (jobId: string) => void;
 }) {
+  const { t } = useTranslation();
   useEffect(() => {
     if (!open) {
       return;
@@ -592,19 +599,19 @@ function WorkflowDetailDialog({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <button
         type="button"
-        aria-label="Close workflow detail"
+        aria-label={t.common.closeWorkflowDetail}
         className="absolute inset-0 bg-slate-950/28 backdrop-blur-[2px]"
         onClick={onClose}
       />
       <div
         role="dialog"
         aria-modal="true"
-        aria-label={`${flow.name} pipeline detail`}
+        aria-label={`${flow.name} ${t.harness.githubActions.pipelineDetail}`}
         className="relative z-10 flex max-h-[88vh] w-full max-w-[1360px] flex-col overflow-hidden rounded-[28px] border border-slate-200/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.99),rgba(244,248,252,0.97))] shadow-[0_32px_96px_rgba(15,23,42,0.16)]"
       >
         <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-200/80 px-4 py-3.5">
           <div className="min-w-0">
-            <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Pipeline detail</div>
+            <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">{t.harness.githubActions.pipelineDetail}</div>
             <h3 className="mt-1 truncate text-[20px] font-semibold tracking-[-0.03em] text-slate-950">{flow.name}</h3>
             <div className="mt-1 flex flex-wrap gap-1.5">
               {normalizeGitHubWorkflowEventTokens(flow.event).map((token) => (
@@ -621,10 +628,10 @@ function WorkflowDetailDialog({
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <span className="rounded-full border border-slate-200 bg-white/90 px-2.5 py-1 text-[10px] text-slate-600">
-              {flow.jobs.length} jobs
+              {flow.jobs.length} {t.harness.githubActions.jobs}
             </span>
             <span className="rounded-full border border-slate-200 bg-white/90 px-2.5 py-1 text-[10px] text-slate-600">
-              {summarizeStageCount(flow)} stages
+              {summarizeStageCount(flow)} {t.harness.githubActions.stages}
             </span>
             <button
               type="button"
@@ -657,6 +664,7 @@ export function HarnessGitHubActionsFlowGallery({
   variant = "full",
   initialCategory,
 }: HarnessGitHubActionsFlowGalleryProps) {
+  const { t } = useTranslation();
   const compactMode = variant === "compact";
   const summary = useMemo(() => summarizeFlows(flows), [flows]);
   const categories = useMemo(() => createCategoryEntries(flows), [flows]);
@@ -679,9 +687,9 @@ export function HarnessGitHubActionsFlowGallery({
     <>
       <div className="flex flex-wrap items-center justify-end gap-1.5">
         <div className="flex flex-wrap gap-1.5">
-          <MetricCard label="Workflows" value={summary.workflowCount} />
-          <MetricCard label="Triggers" value={summary.triggerTypeCount} />
-          <MetricCard label="Jobs" value={summary.jobCount} />
+          <MetricCard label={t.harness.githubActions.workflows} value={summary.workflowCount} />
+          <MetricCard label={t.harness.githubActions.triggers} value={summary.triggerTypeCount} />
+          <MetricCard label={t.harness.githubActions.jobs} value={summary.jobCount} />
         </div>
       </div>
 
@@ -714,7 +722,7 @@ export function HarnessGitHubActionsFlowGallery({
         </div>
       ) : (
         <div className="mt-4 rounded-[24px] border border-dashed border-slate-200 bg-white/70 px-4 py-10 text-center text-[12px] text-slate-500">
-          {activeCategory?.emptyHint}
+          {activeCategory ? t.harness.githubActions[activeCategory.emptyHintKey] : ""}
         </div>
       )}
     </>

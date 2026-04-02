@@ -153,10 +153,10 @@ export function SessionContextPanel({
     const diffHours = Math.floor(diffMins / 60);
     const diffDays = Math.floor(diffHours / 24);
 
-    if (diffMins < 1) return "just now";
-    if (diffMins < 60) return `${diffMins}m ago`;
-    if (diffHours < 24) return `${diffHours}h ago`;
-    return `${diffDays}d ago`;
+    if (diffMins < 1) return t.sessions.justNow;
+    if (diffMins < 60) return `${diffMins}${t.sessions.minutesAgo}`;
+    if (diffHours < 24) return `${diffHours}${t.sessions.hoursAgo}`;
+    return `${diffDays}${t.sessions.daysAgo}`;
   };
 
   const getDefaultName = (s: SessionInfo) => {
@@ -174,8 +174,8 @@ export function SessionContextPanel({
 
   const formatLaneSessionLabel = (session: LaneSessionInfo) =>
     [
-      session.columnName ?? session.columnId ?? "Unknown lane",
-      session.stepName ?? (typeof session.stepIndex === "number" ? `Step ${session.stepIndex + 1}` : undefined),
+      session.columnName ?? session.columnId ?? t.sessions.unknownLane,
+      session.stepName ?? (typeof session.stepIndex === "number" ? `${t.sessions.step} ${session.stepIndex + 1}` : undefined),
       session.provider,
       session.role,
     ].filter(Boolean).join(" • ");
@@ -319,7 +319,7 @@ export function SessionContextPanel({
                       setRenamingId(context.current.sessionId);
                     }}
                     className="p-0.5 rounded hover:bg-blue-200 dark:hover:bg-blue-800 text-blue-400 hover:text-blue-600 dark:hover:text-blue-300"
-                    title="Rename"
+                    title={t.sessions.rename}
                   >
                     <SquarePen className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
                   </button>
@@ -334,7 +334,7 @@ export function SessionContextPanel({
               )}
               {focusedSession && focusedSession.sessionId !== context.current.sessionId && (
                 <span className="px-1.5 py-0.5 bg-amber-100 dark:bg-amber-900/30 rounded text-amber-700 dark:text-amber-300">
-                  Focus: {focusedSession.name ?? getDefaultName(focusedSession)}
+                  {t.sessions.focus}: {focusedSession.name ?? getDefaultName(focusedSession)}
                 </span>
               )}
               {context.current.provider && (
@@ -372,11 +372,11 @@ export function SessionContextPanel({
                 )}
               </div>
               <div className="mt-1 text-[10px] text-emerald-700/80 dark:text-emerald-300/80">
-                Task {context.kanbanContext.taskId.slice(0, 8)}
+                {t.sessions.task} {context.kanbanContext.taskId.slice(0, 8)}
               </div>
               {context.kanbanContext.currentLaneSession && (
                 <div className="mt-2 text-[10px] text-slate-600 dark:text-slate-300">
-                  Current lane session: {formatLaneSessionLabel(context.kanbanContext.currentLaneSession)}
+                  {t.sessions.currentLaneSession}: {formatLaneSessionLabel(context.kanbanContext.currentLaneSession)}
                   {" · "}
                   <span className="font-semibold uppercase tracking-wide">
                     {context.kanbanContext.currentLaneSession.status}
@@ -490,7 +490,7 @@ export function SessionContextPanel({
             {context.parent && (
               <SessionRow
                 session={context.parent}
-                label="Parent"
+                label={t.sessions.parent}
                 highlighted={context.parent.sessionId === focusedSessionId}
                 icon={
                   <ArrowUp className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
@@ -504,7 +504,7 @@ export function SessionContextPanel({
                 <div className="flex items-center gap-1.5 px-2 py-1">
                   <ArrowUpDown className="w-3 h-3 text-slate-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
                   <span className="text-[10px] text-slate-400 dark:text-slate-500">
-                    {context.siblings.length} Sibling Session{context.siblings.length > 1 ? "s" : ""}
+                    {context.siblings.length} {t.sessions.sibling}{context.siblings.length > 1 ? "s" : ""}
                   </span>
                 </div>
                 {context.siblings.map((sibling) => (
@@ -528,7 +528,7 @@ export function SessionContextPanel({
                 <div className="flex items-center gap-1.5 px-2 py-1">
                   <ArrowDown className="w-3 h-3 text-slate-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
                   <span className="text-[10px] text-slate-400 dark:text-slate-500">
-                    {context.children.length} Child Session{context.children.length > 1 ? "s" : ""}
+                    {context.children.length} {t.sessions.child}{context.children.length > 1 ? "s" : ""}
                   </span>
                 </div>
                 {context.children.map((child) => (

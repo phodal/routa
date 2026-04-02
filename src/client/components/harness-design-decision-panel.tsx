@@ -1,6 +1,7 @@
 "use client";
 import { HarnessSectionCard, HarnessSectionStateFrame } from "@/client/components/harness-section-card";
 import { HarnessUnsupportedState } from "@/client/components/harness-support-state";
+import { useTranslation } from "@/i18n";
 import type {
   DesignDecisionArtifact,
   DesignDecisionConfidence,
@@ -140,6 +141,7 @@ export function HarnessDesignDecisionPanel({
   error,
   variant = "full",
 }: HarnessDesignDecisionPanelProps) {
+  const { t } = useTranslation();
   const sources = data?.sources ?? [];
 
   if (unsupportedMessage) {
@@ -151,35 +153,35 @@ export function HarnessDesignDecisionPanel({
 
   return (
     <HarnessSectionCard
-      title="Design Decisions"
-      eyebrow="Governance"
+      title={t.harness.designDecision.title}
+      eyebrow={t.harness.designDecision.eyebrow}
       variant={variant}
       dataTestId="design-decision-panel"
     >
       {loading ? (
-        <HarnessSectionStateFrame>Loading architecture contract and ADRs…</HarnessSectionStateFrame>
+        <HarnessSectionStateFrame>{t.harness.designDecision.loadingAdrs}</HarnessSectionStateFrame>
       ) : error ? (
         <HarnessSectionStateFrame tone="error">{error}</HarnessSectionStateFrame>
       ) : !data || data.sources.length === 0 ? (
         <HarnessSectionStateFrame tone="warning">
-          No architecture contract or ADR decisions are currently available for this repository.
+          {t.harness.designDecision.noDecisionsAvailable}
         </HarnessSectionStateFrame>
       ) : (
         <div className="mt-3 space-y-3">
           <div className="space-y-3">
             <SourceGroup
-              title="Canonical docs"
+              title={t.harness.designDecision.canonicalDocs}
               sources={groupedSources.canonicalDocs}
             />
             <SourceGroup
-              title="Decision records"
+              title={t.harness.designDecision.decisionRecords}
               sources={groupedSources.decisionRecords}
             />
           </div>
 
           {variant === "compact" && sources.length > visibleSources.length ? (
             <HarnessSectionStateFrame>
-              Showing {visibleSources.length} of {sources.length} architecture decision sources in compact mode.
+              {t.harness.designDecision.showingCompact.replace("{visible}", String(visibleSources.length)).replace("{total}", String(sources.length))}
             </HarnessSectionStateFrame>
           ) : null}
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState, type ReactNode } from "react";
+import { useTranslation, type TranslationDictionary } from "@/i18n";
 import {
   Background,
   Handle,
@@ -59,6 +60,7 @@ type LoopDetailSection = {
 type HarnessGovernanceLoopGraphProps = {
   repoPath?: string;
   selectedTier: TierValue;
+  g: TranslationDictionary["harness"]["governanceLoop"]["graph"];
   specsError: string | null;
   dimensionCount: number;
   planError: string | null;
@@ -165,11 +167,12 @@ function getLayerTone(layer: LoopLayer): LoopTone {
 }
 
 function LoopNodeView({ data }: NodeProps<Node<LoopNodeData>>) {
+  const { t } = useTranslation();
   const tone = getNodeToneClasses(data.tone);
   const layerLabel: Record<LoopLayer, string> = {
-    internal: "内部反馈环",
-    commit: "推送反馈环",
-    external: "外部反馈环",
+    internal: t.harness.governanceLoop.graph.nodeLayers.internal,
+    commit: t.harness.governanceLoop.graph.nodeLayers.commit,
+    external: t.harness.governanceLoop.graph.nodeLayers.external,
   };
   const interactive = typeof data.onSelect === "function";
   const unavailable = !interactive && Boolean(data.unavailableReason);
@@ -237,7 +240,7 @@ function LoopNodeView({ data }: NodeProps<Node<LoopNodeData>>) {
             </div>
           </div>
           <span className={`shrink-0 whitespace-nowrap rounded-full border px-1.5 py-[1px] text-[9px] font-medium leading-none ${data.active ? tone.badge : "border-slate-200 bg-slate-50 text-slate-400"}`}>
-            {unavailable ? "未接入" : "阶段"}
+            {unavailable ? t.harness.governanceLoop.graph.statusLabels.unavailable : t.harness.governanceLoop.graph.statusLabels.phase}
           </span>
         </div>
         {data.note ? (
@@ -365,6 +368,7 @@ function buildGraph(args: {
   designDecisionNodeEnabled?: boolean;
   selectedNodeId: string | null;
   onSelectNode: (nodeId: string) => void;
+  g: TranslationDictionary["harness"]["governanceLoop"]["graph"];
 }) {
   const {
     hookSummary,
@@ -447,41 +451,41 @@ function buildGraph(args: {
     buildNode("thinking", col1X, internalRowY, {
       nodeId: "thinking",
       layer: "internal",
-      title: "需求定义",
+      title: g.nodeLabels.thinking,
       tone: getLayerTone("internal"),
-      note: "Spec / 需求边界",
+      note: g.clues.thinkingNote,
       active: true,
       ...buildSelectionState("thinking", true),
     }),
     buildNode("coding", col2X, internalRowY, {
       nodeId: "coding",
       layer: "internal",
-      title: "设计决策",
+      title: g.nodeLabels.coding,
       tone: getLayerTone("internal"),
-      note: "ADR / 设计取舍",
+      note: g.clues.codingNote,
       active: hasCodingNode,
       unavailableReason: hasCodingNode
         ? undefined
-        : "暂未接入 ADR / 设计决策来源（docs/ARCHITECTURE.md 或 docs/adr）",
+        : g.nodeNotes.codingUnavailable,
       ...buildSelectionState("coding", hasCodingNode),
     }),
     buildNode("build", col3X, internalRowY, {
       nodeId: "build",
       layer: "internal",
-      title: "编码实现",
+      title: g.nodeLabels.build,
       tone: getLayerTone("internal"),
       note: instructionSummary
-        ? `受 ${instructionSummary.fileName} 规范约束`
-        : "代码实现 / 约束执行",
+        ? `${g.clues.buildNotePrefix} ${instructionSummary.fileName} ${g.clues.buildNoteSuffix}`
+        : g.clues.buildNote,
       active: true,
       ...buildSelectionState("build", true),
     }),
     buildNode("test", col4X, internalRowY, {
       nodeId: "test",
       layer: "internal",
-      title: "本地验证",
+      title: g.nodeLabels.test,
       tone: getLayerTone("internal"),
-      note: "测试 / 回归 / smoke",
+      note: g.clues.testNote,
       active: true,
       ...buildSelectionState("test", true),
     }),
@@ -499,7 +503,7 @@ function buildGraph(args: {
     buildNode("precommit", col4X, commitRowY, {
       nodeId: "precommit",
       layer: "commit",
-      title: "变更门禁",
+      title: g.nodeLabels.precommit,
       tone: getLayerTone("commit"),
       note: metricCount > 0
         ? `${metricCount} metrics / ${hardGateCount} hard gates`
@@ -512,26 +516,26 @@ function buildGraph(args: {
     buildNode("review", col3X, commitRowY, {
       nodeId: "review",
       layer: "commit",
-      title: "代码评审",
+      title: g.nodeLabels.review,
       tone: getLayerTone("commit"),
-      note: "规则策略 / 人工 review",
+      note: g.clues.reviewNote,
       active: true,
       ...buildSelectionState("review", true),
     }),
     buildNode("commit", col2X, commitRowY, {
       nodeId: "commit",
       layer: "commit",
-      title: "主干集成",
+      title: g.nodeLabels.commit,
       tone: getLayerTone("commit"),
-      note: "merge / trunk",
+      note: g.clues.commitNote,
       active: false,
-      unavailableReason: "暂未接入 trunk merge / 主干集成信号，当前没有对应上下文面板。",
+      unavailableReason: g.nodeNotes.commitUnavailable,
       ...buildSelectionState("commit", false),
     }),
     buildNode("post-commit", col1X, commitRowY, {
       nodeId: "post-commit",
       layer: "commit",
-      title: "持续交付",
+      title: g.nodeLabels["post-commit"],
       tone: getLayerTone("commit"),
       note: workflowSummary
         ? `${workflowSummary.flowCount} flows / ${workflowSummary.jobCount} jobs`
@@ -542,7 +546,7 @@ function buildGraph(args: {
     buildNode("release", col1X, externalRowY, {
       nodeId: "release",
       layer: "external",
-      title: "制品发布",
+      title: g.nodeLabels.release,
       tone: getLayerTone("external"),
       note: workflowSummary && workflowSummary.releaseFlowCount > 0
         ? `${workflowSummary.releaseFlowCount} release flows`
@@ -550,54 +554,54 @@ function buildGraph(args: {
       active: Boolean(workflowSummary && workflowSummary.releaseFlowCount > 0),
       unavailableReason: workflowSummary && workflowSummary.releaseFlowCount > 0
         ? undefined
-        : "仓库未检测到 release / publish workflow，暂时无法进入发布上下文。",
+        : g.nodeNotes.releaseUnavailable,
       ...buildSelectionState("release", Boolean(workflowSummary && workflowSummary.releaseFlowCount > 0)),
     }),
     buildNode("staging", col2X, externalRowY, {
       nodeId: "staging",
       layer: "external",
-      title: "预生产验证",
+      title: g.nodeLabels.staging,
       tone: getLayerTone("external"),
-      note: "预发验收 / smoke",
+      note: g.clues.stagingNote,
       active: false,
-      unavailableReason: "暂未接入 staging / 预发验证信号，当前没有可展示的验证面板。",
+      unavailableReason: g.nodeNotes.stagingUnavailable,
       ...buildSelectionState("staging", false),
     }),
     buildNode("production", col3X, externalRowY, {
       nodeId: "production",
       layer: "external",
-      title: "生产运行",
+      title: g.nodeLabels.production,
       tone: getLayerTone("external"),
-      note: "真实流量 / 运行状态",
+      note: g.clues.productionNote,
       active: false,
-      unavailableReason: "暂未接入 production runtime / 真实流量信号，当前没有运行时上下文。",
+      unavailableReason: g.nodeNotes.productionUnavailable,
       ...buildSelectionState("production", false),
     }),
     buildNode("metrics", col4X, externalRowY, {
       nodeId: "metrics",
       layer: "external",
-      title: "监控演进",
+      title: g.nodeLabels.metrics,
       tone: getLayerTone("external"),
-      note: "监控 / 反馈闭环",
+      note: g.clues.metricsNote,
       active: false,
-      unavailableReason: "暂未接入 observability / 反馈闭环信号，当前没有监控与回流数据。",
+      unavailableReason: g.nodeNotes.metricsUnavailable,
       ...buildSelectionState("metrics", false),
     }),
   ];
 
   const edges: Edge[] = [
-    buildEdge("thinking-coding", "thinking", "coding", "source-right", "target-left", "澄清", LOOP_EDGE_COLORS.neutral),
-    buildEdge("coding-build", "coding", "build", "source-right", "target-left", "实现", LOOP_EDGE_COLORS.internal),
-    buildEdge("build-agent-hook", "build", "agent-hook", "source-right", "target-left", "治理", LOOP_EDGE_COLORS.internal),
-    buildEdge("agent-hook-test", "agent-hook", "test", "source-left", "target-right", "验证", LOOP_EDGE_COLORS.internal),
+    buildEdge("thinking-coding", "thinking", "coding", "source-right", "target-left", g.edgeLabels.clarify, LOOP_EDGE_COLORS.neutral),
+    buildEdge("coding-build", "coding", "build", "source-right", "target-left", g.edgeLabels.implement, LOOP_EDGE_COLORS.internal),
+    buildEdge("build-agent-hook", "build", "agent-hook", "source-right", "target-left", g.edgeLabels.validate, LOOP_EDGE_COLORS.internal),
+    buildEdge("agent-hook-test", "agent-hook", "test", "source-left", "target-right", g.edgeLabels.validate, LOOP_EDGE_COLORS.internal),
 
-    buildEdge("precommit-review", "precommit", "review", "source-left", "target-right", "送审", LOOP_EDGE_COLORS.internal),
-    buildEdge("review-commit", "review", "commit", "source-left", "target-right", "集成", LOOP_EDGE_COLORS.neutral),
-    buildEdge("commit-post-commit", "commit", "post-commit", "source-left", "target-right", "交付", LOOP_EDGE_COLORS.commit),
+    buildEdge("precommit-review", "precommit", "review", "source-left", "target-right", g.edgeLabels.sendForReview, LOOP_EDGE_COLORS.internal),
+    buildEdge("review-commit", "review", "commit", "source-left", "target-right", g.edgeLabels.integrate, LOOP_EDGE_COLORS.neutral),
+    buildEdge("commit-post-commit", "commit", "post-commit", "source-left", "target-right", g.edgeLabels.deliver, LOOP_EDGE_COLORS.commit),
 
-    buildEdge("release-staging", "release", "staging", "source-right", "target-left", "预发", LOOP_EDGE_COLORS.commit),
-    buildEdge("staging-production", "staging", "production", "source-right", "target-left", "上线", LOOP_EDGE_COLORS.external),
-    buildEdge("production-metrics", "production", "metrics", "source-right", "target-left", "演进", LOOP_EDGE_COLORS.feedback),
+    buildEdge("release-staging", "release", "staging", "source-right", "target-left", g.edgeLabels.preRelease, LOOP_EDGE_COLORS.commit),
+    buildEdge("staging-production", "staging", "production", "source-right", "target-left", g.edgeLabels.deploy, LOOP_EDGE_COLORS.external),
+    buildEdge("production-metrics", "production", "metrics", "source-right", "target-left", g.edgeLabels.evolve, LOOP_EDGE_COLORS.feedback),
 
     buildEdge("test-precommit", "test", "precommit", "source-bottom", "target-top", "", LOOP_EDGE_COLORS.internal, "6 4"),
     buildEdge("post-commit-release", "post-commit", "release", "source-bottom", "target-top", "", LOOP_EDGE_COLORS.commit, "6 4"),
@@ -628,7 +632,7 @@ function buildGraph(args: {
           sourceHandle: "source-right",
           targetHandle: "target-top",
           type: "smoothstep",
-          label: "自动修复重试",
+          label: g.edgeLabels.autoRepairRetry,
           style: {
             stroke: LOOP_EDGE_COLORS.commit,
             strokeWidth: 1.8,
@@ -669,8 +673,9 @@ function buildDetailSections(args: {
   metricCount: number;
   hardGateCount: number;
   selectedTier: TierValue;
+  g: TranslationDictionary["harness"]["governanceLoop"]["graph"];
 }) {
-  const {
+  const g;
     selectedNodeId,
     hooksData,
     agentHooksData,
@@ -878,7 +883,7 @@ export function HarnessGovernanceLoopGraph({
 
       {!hasContext && !unsupportedMessage ? (
         <div className="mt-4 rounded-xl border border-desktop-border bg-desktop-bg-primary/80 px-4 py-5 text-[11px] text-desktop-text-secondary">
-          Select a repository to render the governance loop.
+          {t.harness.governanceLoop.graph.selectRepository}
         </div>
       ) : null}
 
@@ -897,10 +902,10 @@ export function HarnessGovernanceLoopGraph({
             <div className="relative overflow-hidden rounded-2xl border border-desktop-border bg-[linear-gradient(180deg,rgba(248,250,252,0.98),rgba(241,245,249,0.98))]">
               <div className="pointer-events-none absolute right-3 top-2 z-10 rounded-xl border border-desktop-border bg-white/90 px-2.5 py-1.5 text-[10px] text-slate-700 shadow-sm">
                 <div className="flex items-center gap-3">
-                  <span className="shrink-0 text-desktop-text-secondary">Legend:</span>
-                  <span className="flex items-center gap-1.5 text-[10px]"><span className="h-2.5 w-2.5 rounded-[3px] border border-sky-300 bg-sky-100" />Internal</span>
-                  <span className="flex items-center gap-1.5 text-[10px]"><span className="h-2.5 w-2.5 rounded-[3px] border border-violet-300 bg-violet-100" />Push</span>
-                  <span className="flex items-center gap-1.5 text-[10px]"><span className="h-2.5 w-2.5 rounded-[3px] border border-amber-300 bg-amber-100" />External</span>
+                  <span className="shrink-0 text-desktop-text-secondary">{t.harness.governanceLoop.graph.legend}</span>
+                  <span className="flex items-center gap-1.5 text-[10px]"><span className="h-2.5 w-2.5 rounded-[3px] border border-sky-300 bg-sky-100" />{t.harness.governanceLoop.graph.internal}</span>
+                  <span className="flex items-center gap-1.5 text-[10px]"><span className="h-2.5 w-2.5 rounded-[3px] border border-violet-300 bg-violet-100" />{t.harness.governanceLoop.graph.push}</span>
+                  <span className="flex items-center gap-1.5 text-[10px]"><span className="h-2.5 w-2.5 rounded-[3px] border border-amber-300 bg-amber-100" />{t.harness.governanceLoop.graph.external}</span>
                 </div>
               </div>
               <div style={{ height: graph.minHeight }}>
@@ -933,9 +938,9 @@ export function HarnessGovernanceLoopGraph({
               ) : (
                 <div className="space-y-3">
                   <div className="rounded-xl border border-desktop-border bg-desktop-bg-primary/70 px-3 py-2.5">
-                    <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-desktop-text-secondary">Node details</div>
+                    <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-desktop-text-secondary">{t.harness.governanceLoop.graph.nodeDetails}</div>
                     <div className="mt-1 text-sm font-semibold text-desktop-text-primary">
-                      {graph.nodes.find((node) => node.id === activeSelectedNodeId)?.data.title ?? "阶段详情"}
+                      {graph.nodes.find((node) => node.id === activeSelectedNodeId)?.data.title ?? t.harness.governanceLoop.graph.phaseDetails}
                     </div>
                   </div>
                   {detailSections.map((section: LoopDetailSection) => (

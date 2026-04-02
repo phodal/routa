@@ -2,6 +2,7 @@
 
 import React from "react";
 import { Waypoints } from "lucide-react";
+import { useTranslation } from "@/i18n";
 
 interface HarnessMarkProps {
   className?: string;
@@ -14,14 +15,16 @@ interface HarnessMarkProps {
  */
 export function HarnessMark({
   className = "h-5 w-5",
-  title = "Harness",
+  title,
 }: HarnessMarkProps) {
+  const { t } = useTranslation();
+  const resolvedTitle = title ?? t.harness.mark.defaultTitle;
   return (
     <Waypoints
       className={className}
       strokeWidth={1.8}
-      aria-hidden={title ? undefined : true}
-      aria-label={title}
+      aria-hidden={resolvedTitle ? undefined : true}
+      aria-label={resolvedTitle}
     />
   );
 }

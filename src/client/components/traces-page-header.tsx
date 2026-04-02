@@ -57,7 +57,7 @@ export function TracesPageHeader({
             variant="secondary"
             onClick={onCopyCurrentUrl}
             className="group gap-1.5"
-            title="Copy shareable URL"
+            title={t.traces.copyShareableUrl}
           >
             <span>{t.traces.copyLink}</span>
             <Copy className="w-3.5 h-3.5 text-desktop-text-secondary group-hover:text-desktop-text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>

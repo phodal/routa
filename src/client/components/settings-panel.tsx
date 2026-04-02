@@ -195,14 +195,14 @@ function RolesTab({
   return (
     <div className="px-4 py-4 space-y-4 overflow-y-auto h-full">
       <div className={settingsCardCls}>
-        <p className={sectionHeadCls}>Role Defaults</p>
+        <p className={sectionHeadCls}>{t.settings.roleDefaults}</p>
         <p className="mt-1 text-[10px] text-slate-400 dark:text-slate-500">
-          Configure default provider and model override per Routa role. ROUTA-specific settings live here instead of the Providers tab.
+          {t.settings.roleDefaultsDesc}
         </p>
         <div className="mt-4 flex items-center gap-3 mb-2">
           <div className="w-[90px]" />
-          <div className="w-[180px] text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Provider</div>
-          <div className="flex-1 text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Model Override</div>
+          <div className="w-[180px] text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">{t.settings.provider}</div>
+          <div className="flex-1 text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">{t.settings.modelOverride}</div>
         </div>
         <div className="space-y-2.5">
           {AGENT_ROLES.map((role) => (
@@ -216,22 +216,22 @@ function RolesTab({
                 onChange={(event) => onChange(role, "provider", event.target.value)}
                 className="w-[180px] shrink-0 text-xs px-2 py-1.5 rounded-md border border-slate-200 dark:border-slate-600 bg-white dark:bg-[#1e2130] text-slate-900 dark:text-slate-100 focus:ring-1 focus:ring-blue-500 focus:outline-none"
               >
-                <option value="">Auto</option>
+                <option value="">{t.common.auto}</option>
                 {builtinProviders.length > 0 && (
-                  <optgroup label="Built-in">
+                  <optgroup label={t.settings.builtIn}>
                     {builtinProviders.map((provider) => (
                       <option
                         key={provider.id}
                         value={provider.id}
                         disabled={provider.status !== "available"}
                       >
-                        {provider.name}{provider.status === "available" ? "" : " (unavailable)"}
+                        {provider.name}{provider.status === "available" ? "" : `${t.common.unavailable}`}
                       </option>
                     ))}
                   </optgroup>
                 )}
                 {customProviders.length > 0 && (
-                  <optgroup label="Custom">
+                  <optgroup label={t.settings.custom}>
                     {customProviders.map((provider) => (
                       <option
                         key={provider.id}
@@ -244,7 +244,7 @@ function RolesTab({
                   </optgroup>
                 )}
                 {registryProviders.length > 0 && (
-                  <optgroup label="Agent 注册中心（ACP）">
+                  <optgroup label={t.settings.registry}>
                     {registryProviders.map((provider) => (
                       <option
                         key={provider.id}
@@ -262,7 +262,7 @@ function RolesTab({
                 list={datalistId}
                 value={settings[role]?.model ?? ""}
                 onChange={(event) => onChange(role, "model", event.target.value)}
-                placeholder={modelDefs.length > 0 ? "select alias or type model" : "e.g. claude-3-5-haiku"}
+                placeholder={modelDefs.length > 0 ? t.settings.selectAliasOrTypeModel : t.settings.placeholderModelExample}
                 className="flex-1 text-xs px-2 py-1.5 rounded-md border border-slate-200 dark:border-slate-600 bg-white dark:bg-[#1e2130] text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:ring-1 focus:ring-blue-500 focus:outline-none font-mono"
               />
             </div>
@@ -274,9 +274,7 @@ function RolesTab({
           ))}
         </datalist>
         <p className="mt-4 text-[10px] text-slate-400 dark:text-slate-500">
-          Leave model blank to use the provider default. Type a model alias from the{" "}
-          <button onClick={onOpenModelsTab} className="text-blue-500 hover:underline">Models tab</button>
-          {" "}to use custom connection details.
+          {t.settings.leaveModelBlankHint}
         </p>
       </div>
     </div>
@@ -309,8 +307,8 @@ function CustomAcpProvidersSection() {
     setError(null);
     const name = form.name.trim();
     const command = form.command.trim();
-    if (!name) { setError("Name is required"); return; }
-    if (!command) { setError("Command is required"); return; }
+    if (!name) { setError(t.settings.customProviders.nameRequired); return; }
+    if (!command) { setError(t.settings.customProviders.commandRequired); return; }
 
     const args = form.args
       .split(/\s+/)
@@ -358,7 +356,7 @@ function CustomAcpProvidersSection() {
   return (
     <div className={settingsCardCls}>
       <div className="flex items-center justify-between mb-2">
-        <p className={sectionHeadCls}>Custom Providers</p>
+        <p className={sectionHeadCls}>{t.settings.customProviders.title}</p>
         {!showForm && (
           <button
             onClick={() => { setShowForm(true); setEditingId(null); setForm(EMPTY_CUSTOM_PROVIDER_FORM); }}
@@ -369,7 +367,7 @@ function CustomAcpProvidersSection() {
         )}
       </div>
       <p className="text-[10px] text-slate-400 dark:text-slate-500 mb-3">
-        Define your own ACP-compliant agent with a custom command and args.
+        {t.settings.customProviders.description}
       </p>
 
       {error && (
@@ -378,9 +376,9 @@ function CustomAcpProvidersSection() {
 
       {showForm && (
         <div className="mb-3 p-3 rounded-lg bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 space-y-2">
-          <p className={sectionHeadCls}>{editingId ? "Edit Provider" : "New Provider"}</p>
+          <p className={sectionHeadCls}>{editingId ? t.settings.customProviders.editProvider : t.settings.customProviders.newProvider}</p>
           <div>
-            <label className={labelCls}>Name *</label>
+            <label className={labelCls}>{t.settings.customProviders.nameLabel}</label>
             <input
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
@@ -389,7 +387,7 @@ function CustomAcpProvidersSection() {
             />
           </div>
           <div>
-            <label className={labelCls}>Command *</label>
+            <label className={labelCls}>{t.settings.customProviders.commandLabel}</label>
             <input
               value={form.command}
               onChange={(e) => setForm({ ...form, command: e.target.value })}
@@ -398,7 +396,7 @@ function CustomAcpProvidersSection() {
             />
           </div>
           <div>
-            <label className={labelCls}>Args (space-separated, no quoted spaces)</label>
+            <label className={labelCls}>{t.settings.customProviders.argsLabel}</label>
             <input
               value={form.args}
               onChange={(e) => setForm({ ...form, args: e.target.value })}
@@ -407,11 +405,11 @@ function CustomAcpProvidersSection() {
             />
           </div>
           <div>
-            <label className={labelCls}>Description</label>
+            <label className={labelCls}>{t.settings.customProviders.descriptionLabel}</label>
             <input
               value={form.description}
               onChange={(e) => setForm({ ...form, description: e.target.value })}
-              placeholder="Optional description"
+              placeholder={t.settings.customProviders.descriptionPlaceholder}
               className={inputCls}
             />
           </div>
@@ -433,7 +431,7 @@ function CustomAcpProvidersSection() {
       )}
 
       {providers.length === 0 && !showForm ? (
-        <p className="text-xs text-slate-400 dark:text-slate-500 italic">No custom providers yet.</p>
+        <p className="text-xs text-slate-400 dark:text-slate-500 italic">{t.settings.customProviders.noCustomProviders}</p>
       ) : (
         <div className="space-y-2">
           {providers.map((p) => (
@@ -494,14 +492,14 @@ function ProviderCatalogSection({ allProviders }: ProviderCatalogSectionProps) {
   return (
     <div className={settingsCardCls}>
       <div>
-        <p className={sectionHeadCls}>Provider Catalog</p>
+        <p className={sectionHeadCls}>{t.settings.providerCatalog.title}</p>
         <p className="text-[10px] text-slate-500 dark:text-slate-400 mb-3">
-          Built-in, Agent 注册中心（ACP）, and custom providers are listed together here. Hide a provider to remove it from app pickers without deleting its configuration.
+          {t.settings.providerCatalog.description}
         </p>
       </div>
 
       {allProviders.length === 0 ? (
-        <p className="text-xs text-slate-400 dark:text-slate-500 italic">No providers available.</p>
+        <p className="text-xs text-slate-400 dark:text-slate-500 italic">{t.settings.providerCatalog.noProvidersAvailable}</p>
       ) : (
         <div className="space-y-2">
           {allProviders.map((provider) => {
@@ -524,7 +522,7 @@ function ProviderCatalogSection({ allProviders }: ProviderCatalogSectionProps) {
                         {provider.name}
                       </p>
                       <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-slate-500 dark:bg-slate-800 dark:text-slate-400">
-                        {provider.source === "registry" ? "Registry" : isCustomProvider(provider) ? "Custom" : "Built-in"}
+                        {provider.source === "registry" ? t.settings.registry : isCustomProvider(provider) ? t.settings.custom : t.settings.builtIn}
                       </span>
                     </div>
                     <p className="text-[10px] text-slate-400 font-mono truncate">
@@ -534,7 +532,7 @@ function ProviderCatalogSection({ allProviders }: ProviderCatalogSectionProps) {
                 </div>
                 <div className="ml-2 flex items-center gap-2 shrink-0">
                   <span className="text-[10px] text-slate-400 dark:text-slate-500">
-                    {isHidden ? "Hidden" : "Shown"}
+                    {isHidden ? t.settings.providerCatalog.hidden : t.settings.providerCatalog.shown}
                   </span>
                   {provider.status && (
                     <span
@@ -561,7 +559,7 @@ function ProviderCatalogSection({ allProviders }: ProviderCatalogSectionProps) {
           <div className="flex items-start gap-2">
             <TriangleAlert className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
             <span className="text-[11px] text-amber-700 dark:text-amber-300">
-              {hiddenProviderIds.length} provider{hiddenProviderIds.length > 1 ? "s are" : " is"} hidden from provider pickers.
+              {hiddenProviderIds.length === 1 ? t.settings.providerCatalog.oneProviderHidden : t.settings.providerCatalog.multipleProvidersHidden.replace("{count}", String(hiddenProviderIds.length))}
             </span>
           </div>
         </div>
@@ -580,12 +578,12 @@ function WebhooksTab() {
       <div className="h-full flex flex-col">
         <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 dark:border-slate-700">
           <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-            GitHub Webhook Triggers
+            {t.settings.webhooksTab.title}
           </h3>
           <button
             onClick={() => setShowFullPanel(false)}
             className="p-1.5 rounded-md hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
-            title="Back to overview"
+            title={t.settings.webhooksTab.backToOverview}
           >
             <ArrowLeft className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
           </button>
@@ -601,21 +599,20 @@ function WebhooksTab() {
     <div className="p-4 space-y-4">
       <div>
         <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100 mb-1">
-          GitHub Webhook Triggers
+          {t.settings.webhooksTab.title}
         </h3>
         <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">
-          Automatically trigger agents (Claude Code, GLM-4, etc.) when GitHub events occur
-          — issue created, PR opened, CI completed, and more.
+          {t.settings.webhooksTab.description}
         </p>
         <div className="rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 px-3 py-2.5 mb-3">
           <p className="text-xs text-blue-700 dark:text-blue-300">
-            <span className="font-semibold">Webhook URL:</span>{" "}
+            <span className="font-semibold">{t.settings.webhookUrl}:</span>{" "}
             <code className="font-mono bg-blue-100 dark:bg-blue-900/30 px-1 rounded">
               {typeof window !== "undefined" ? window.location.origin : ""}/api/webhooks/github
             </code>
           </p>
           <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
-            Point your GitHub repository webhook at this URL to start receiving events.
+            {t.settings.webhooksTab.webhookHint}
           </p>
         </div>
         {isTauriEnv ? (
@@ -626,7 +623,7 @@ function WebhooksTab() {
             <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
               <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z" />
             </svg>
-            Manage Webhook Triggers
+            {t.settings.webhooksTab.manageTriggers}
           </button>
         ) : (
           <a
@@ -638,7 +635,7 @@ function WebhooksTab() {
             <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
               <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z" />
             </svg>
-            Manage Webhook Triggers
+            {t.settings.webhooksTab.manageTriggers}
           </a>
         )}
       </div>
@@ -680,7 +677,7 @@ function DockerOpenCodeSection({ embedded = false }: { embedded?: boolean }) {
         JSON.parse(value);
         setError(null);
       } catch {
-        setError("Invalid JSON format");
+        setError(t.settings.docker.invalidJson);
         return;
       }
     } else {
@@ -694,7 +691,7 @@ function DockerOpenCodeSection({ embedded = false }: { embedded?: boolean }) {
       {!embedded && (
         <div className="flex items-center gap-2">
           <Package className="w-4 h-4 text-blue-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
-          <span className="text-xs font-semibold text-slate-800 dark:text-slate-200">Docker OpenCode</span>
+          <span className="text-xs font-semibold text-slate-800 dark:text-slate-200">{t.settings.docker.title}</span>
           <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400">auth.json</span>
         </div>
       )}
@@ -744,7 +741,7 @@ function DockerConfigModalContent({ open: _open, errorMessage, onClose, onSaved 
         JSON.parse(authJson);
         setError(null);
       } catch {
-        setError("Invalid JSON format");
+        setError(t.settings.docker.invalidJson);
         return;
       }
     }
@@ -766,7 +763,7 @@ function DockerConfigModalContent({ open: _open, errorMessage, onClose, onSaved 
         <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 dark:border-slate-700">
           <div className="flex items-center gap-2">
             <TriangleAlert className="w-4 h-4 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
-            <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Docker OpenCode — Configuration Required</h3>
+            <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">{t.settings.docker.configRequired}</h3>
           </div>
           <button onClick={onClose} className="p-1 rounded-md hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300">
             <X className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
@@ -780,9 +777,9 @@ function DockerConfigModalContent({ open: _open, errorMessage, onClose, onSaved 
             </div>
           )}
           <div className="space-y-2">
-            <label className="text-xs font-medium text-slate-700 dark:text-slate-300">OpenCode auth.json</label>
+            <label className="text-xs font-medium text-slate-700 dark:text-slate-300">{t.settings.docker.authJsonLabel}</label>
             <p className="text-[10px] text-slate-400 dark:text-slate-500">
-              Paste your local <code className="bg-slate-100 dark:bg-slate-800 px-1 rounded">~/.local/share/opencode/auth.json</code> here.
+              {t.settings.docker.authJsonPasteHint}
             </p>
             <textarea
               value={authJson}
@@ -805,7 +802,7 @@ function DockerConfigModalContent({ open: _open, errorMessage, onClose, onSaved 
             disabled={!authJson.trim()}
             className="px-3 py-1.5 text-xs font-medium rounded-md bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-40 transition-colors"
           >
-            Save & Retry
+            {t.settings.docker.saveAndRetry}
           </button>
         </div>
       </div>
@@ -863,9 +860,9 @@ function SettingsPanelContent({ onClose, providers, initialTab, onResetOnboardin
       {activeTab === "providers" && (
         <div className="px-4 py-4 space-y-4 overflow-y-auto h-full">
           <div className={settingsCardCls}>
-            <p className={sectionHeadCls}>Providers</p>
+            <p className={sectionHeadCls}>{t.settings.providers}</p>
             <p className="mt-1 text-[10px] text-slate-400 dark:text-slate-500">
-              Manage detected ACP providers, install additional agents, hide noisy entries, and configure provider-specific credentials.
+              {t.settings.providersDesc}
             </p>
           </div>
 
@@ -874,7 +871,7 @@ function SettingsPanelContent({ onClose, providers, initialTab, onResetOnboardin
           <ProviderCatalogSection allProviders={providers} />
 
           <div className={settingsCardCls}>
-            <p className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-2">Provider Credentials</p>
+            <p className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-2">{t.settings.providerCredentials}</p>
             <DockerOpenCodeSection embedded={true} />
           </div>
 

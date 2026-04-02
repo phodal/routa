@@ -10,7 +10,7 @@
  * - View scheduled background tasks triggered by each schedule
  */
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { Select } from "./select";
 import { useTranslation } from "@/i18n";
 import { Check, Clock, Plus, SquarePen, Trash2, Play } from "lucide-react";
@@ -85,16 +85,16 @@ interface FormState {
   cronMode: "preset" | "custom";
 }
 
-const CRON_PRESETS = [
-  { label: "Every day at midnight", value: "0 0 * * *" },
-  { label: "Every day at 02:00 UTC", value: "0 2 * * *" },
-  { label: "Every Monday at 09:00", value: "0 9 * * 1" },
-  { label: "Every Sunday at midnight", value: "0 0 * * 0" },
-  { label: "Every hour", value: "0 * * * *" },
-  { label: "Every 6 hours", value: "0 */6 * * *" },
-  { label: "First day of month", value: "0 0 1 * *" },
-  { label: "Every weekday at 09:00", value: "0 9 * * 1-5" },
-  { label: "Custom…", value: "__custom__" },
+const CRON_PRESET_VALUES = [
+  { value: "0 0 * * *" },
+  { value: "0 2 * * *" },
+  { value: "0 9 * * 1" },
+  { value: "0 0 * * 0" },
+  { value: "0 * * * *" },
+  { value: "0 */6 * * *" },
+  { value: "0 0 1 * *" },
+  { value: "0 9 * * 1-5" },
+  { value: "__custom__" },
 ];
 
 const EMPTY_FORM: FormState = {
@@ -188,7 +188,7 @@ export function SchedulePanel({ workspaceId }: { workspaceId?: string }) {
   }
 
   function openEdit(s: Schedule) {
-    const isPreset = CRON_PRESETS.some((p) => p.value === s.cronExpr && p.value !== "__custom__");
+    const isPreset = CRON_PRESET_VALUES.some((p) => p.value === s.cronExpr && p.value !== "__custom__");
     setForm({
       name: s.name,
       cronExpr: s.cronExpr,
@@ -292,7 +292,7 @@ export function SchedulePanel({ workspaceId }: { workspaceId?: string }) {
       }
       const data = await res.json();
       setSuccess(
-        `Schedule "${s.name}" triggered! Task ID: ${data.task?.id?.slice(0, 8)}…`
+        t.settings.schedulesPage.runResult.replace('{name}', s.name).replace('{taskId}', data.task?.id?.slice(0, 8) ?? '')
       );
       await loadSchedules();
     } catch (err) {
@@ -409,7 +409,6 @@ function ScheduleEmptyState({ onAdd }: { onAdd: () => void }) {
       <h3 className="text-base font-medium text-slate-900 dark:text-slate-100 mb-1">{t.schedules.noSchedulesTitle}</h3>
       <p className="text-sm text-slate-500 dark:text-slate-400 max-w-sm mb-4">
         {t.schedules.noSchedulesDesc}
-
       </p>
       <button
         onClick={onAdd}
@@ -438,6 +437,50 @@ function ScheduleForm({
   onSubmit, onCancel, onPresetChange,
 }: ScheduleFormProps) {
   const { t } = useTranslation();
+
+  // 创建翻译的 cron 预设标签
+  const page = t.settings.schedulesPage;
+  const cronPresetLabels: Record<string, string> = {
+    "0 0 * * *": page.cronPresets.everyDayMidnight,
+    "0 2 * * *": page.cronPresets.everyDayAt2,
+    "0 9 * * 1": page.cronPresets.everyMondayAt9,
+    "0 0 * * 0": page.cronPresets.everySundayMidnight,
+    "0 * * * *": page.cronPresets.everyHour,
+    "0 */6 * * *": page.cronPresets.every6Hours,
+    "0 0 1 * *": page.cronPresets.firstDayOfMonth,
+    "0 9 * * 1-5": page.cronPresets.everyWeekdayAt9,
+    "__custom__": page.cronPresets.custom,
+  };
+
+  const cronPresets = CRON_PRESET_VALUES.map(p => ({
+    ...p,
+    label: cronPresetLabels[p.value]
+  }));
+
+  // 将 promptTip 中的 {placeholder} 替换为带样式的 <code> 元素
+  const promptTipParts = useMemo(() => {
+    const tip = page.promptTip;
+    const placeholderPattern = /\{(\w+)\}/g;
+    const parts: React.ReactNode[] = [];
+    let lastIndex = 0;
+    let match;
+    while ((match = placeholderPattern.exec(tip)) !== null) {
+      if (match.index > lastIndex) {
+        parts.push(tip.slice(lastIndex, match.index));
+      }
+      parts.push(
+        <code key={match[1]} className="px-1 bg-slate-100 dark:bg-slate-800 rounded">
+          {match[1]}
+        </code>
+      );
+      lastIndex = match.index + match[0].length;
+    }
+    if (lastIndex < tip.length) {
+      parts.push(tip.slice(lastIndex));
+    }
+    return parts;
+  }, [page.promptTip]);
+
   return (
     <form onSubmit={onSubmit} className="bg-white dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl p-5 mt-2 space-y-4">
       <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
@@ -447,7 +490,7 @@ function ScheduleForm({
       {/* Name */}
       <div>
         <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
-          Name <span className="text-red-500">*</span>
+          {page.name} <span className="text-red-500">*</span>
         </label>
         <input
           type="text"
@@ -462,7 +505,7 @@ function ScheduleForm({
       {/* Cron Expression */}
       <div>
         <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
-          Schedule <span className="text-red-500">*</span>
+          {page.schedule} <span className="text-red-500">*</span>
         </label>
         <div className="space-y-2">
           {/* Preset selector */}
@@ -471,7 +514,7 @@ function ScheduleForm({
             onChange={(e) => onPresetChange(e.target.value)}
             className="w-full px-3 py-2 text-sm bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-slate-100"
           >
-            {CRON_PRESETS.map((p) => (
+            {cronPresets.map((p) => (
               <option key={p.value} value={p.value}>{p.label}</option>
             ))}
           </Select>
@@ -487,7 +530,7 @@ function ScheduleForm({
                 className="w-full px-3 py-2 text-sm font-mono bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-slate-100"
                 required
               />
-              <p className="mt-1 text-xs text-slate-400 font-mono">min  hour  dom  mon  dow</p>
+              <p className="mt-1 text-xs text-slate-400 font-mono">{page.cronFieldHint}</p>
             </div>
           )}
 
@@ -512,7 +555,7 @@ function ScheduleForm({
           className="w-full px-3 py-2 text-sm bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-slate-100"
           required
         >
-          <option value="">— Select an agent —</option>
+          <option value="">{t.schedules.selectAgent}</option>
           {specialists.length > 0 ? (
             specialists.map((s) => (
               <option key={s.id} value={s.id}>{s.name}{s.description ? ` — ${s.description}` : ""}</option>
@@ -530,21 +573,17 @@ function ScheduleForm({
       {/* Task Prompt */}
       <div>
         <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
-          Task Prompt <span className="text-red-500">*</span>
+          {page.taskPromptLabel} <span className="text-red-500">*</span>
         </label>
         <textarea
           value={form.taskPrompt}
           onChange={(e) => setForm((p) => ({ ...p, taskPrompt: e.target.value }))}
           rows={4}
-          placeholder="Check for outdated npm packages and create a PR with the updates. Run tests to verify nothing broke..."
+          placeholder={page.taskPromptPlaceholder}
           className="w-full px-3 py-2 text-sm bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-slate-100 resize-none"
           required
         />
-        <p className="mt-1 text-xs text-slate-400">
-          Tip: You can reference <code className="px-1 bg-slate-100 dark:bg-slate-800 rounded">{"{timestamp}"}</code>,{" "}
-          <code className="px-1 bg-slate-100 dark:bg-slate-800 rounded">{"{cronExpr}"}</code>, or{" "}
-          <code className="px-1 bg-slate-100 dark:bg-slate-800 rounded">{"{scheduleName}"}</code> in your prompt.
-        </p>
+        <p className="mt-1 text-xs text-slate-400">{promptTipParts}</p>
       </div>
 
       {/* Prompt Template (advanced override) */}
@@ -557,7 +596,7 @@ function ScheduleForm({
             value={form.promptTemplate}
             onChange={(e) => setForm((p) => ({ ...p, promptTemplate: e.target.value }))}
             rows={2}
-            placeholder="Leave blank to use Task Prompt directly. When set, this overrides the task prompt."
+            placeholder={t.schedules.promptTemplateHint}
             className="w-full px-3 py-2 text-sm bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-slate-100 resize-none"
           />
         </div>
@@ -607,6 +646,8 @@ interface ScheduleCardProps {
 
 function ScheduleCard({ schedule, onEdit, onDelete, onToggle, onRunNow, isRunning, now }: ScheduleCardProps) {
   const { t } = useTranslation();
+  const page = t.settings.schedulesPage;
+
   const description = (() => {
     try { return describeCronExpr(schedule.cronExpr); } catch { return schedule.cronExpr; }
   })();
@@ -620,11 +661,11 @@ function ScheduleCard({ schedule, onEdit, onDelete, onToggle, onRunNow, isRunnin
     const mins = Math.floor(abs / 60000);
     const hrs = Math.floor(abs / 3600000);
     const days = Math.floor(abs / 86400000);
-    const suffix = diff < 0 ? " ago" : " from now";
+    const suffix = diff < 0 ? ` ${page.ago}` : ` ${page.fromNow}`;
     if (days > 0) return `${days}d${suffix}`;
     if (hrs > 0) return `${hrs}h${suffix}`;
     if (mins > 0) return `${mins}m${suffix}`;
-    return diff < 0 ? "just now" : "in <1m";
+    return diff < 0 ? page.justNow : page.inLessThanMinute;
   };
 
   return (
@@ -677,7 +718,7 @@ function ScheduleCard({ schedule, onEdit, onDelete, onToggle, onRunNow, isRunnin
         {/* Enable toggle */}
         <button
           onClick={onToggle}
-          title={schedule.enabled ? "Disable schedule" : "Enable schedule"}
+          title={schedule.enabled ? page.disableSchedule : page.enableSchedule}
           className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors shrink-0 mt-0.5 ${
             schedule.enabled ? "bg-blue-600" : "bg-slate-300 dark:bg-slate-600"
           }`}
@@ -694,7 +735,7 @@ function ScheduleCard({ schedule, onEdit, onDelete, onToggle, onRunNow, isRunnin
         <button
           onClick={onRunNow}
           disabled={isRunning || !schedule.enabled}
-          title={schedule.enabled ? "Run schedule now" : "Enable schedule to run"}
+          title={schedule.enabled ? page.runScheduleNow : page.enableToRun}
           className="flex items-center gap-1 px-2.5 py-1 text-xs bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 hover:bg-slate-700 dark:hover:bg-slate-300 rounded-md transition-colors disabled:opacity-40"
         >
           {isRunning ? (

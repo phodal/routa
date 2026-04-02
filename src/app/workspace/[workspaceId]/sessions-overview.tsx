@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { formatRelativeTime } from "./ui-components";
+import { useTranslation } from "@/i18n";
 import type { SessionInfo } from "./types";
 import { ChevronDown, ChevronRight, PieChart, RefreshCw, SquareArrowOutUpRight, MessageCircleMore, SquarePen, Trash2 } from "lucide-react";
 
@@ -14,6 +15,7 @@ interface SessionsOverviewProps {
 }
 
 export function SessionsOverview({ sessions, workspaceId, onNavigate, onRefresh }: SessionsOverviewProps) {
+  const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   const [sessionTree, setSessionTree] = useState<Map<string, SessionInfo[]>>(new Map());
   const [loading, setLoading] = useState(false);
@@ -63,7 +65,7 @@ export function SessionsOverview({ sessions, workspaceId, onNavigate, onRefresh 
   };
 
   const handleDeleteSession = async (sessionId: string) => {
-    if (!confirm("Delete this session?")) return;
+    if (!confirm(t.common.deleteThisSession)) return;
     try {
       await fetch(`/api/sessions/${sessionId}`, { method: "DELETE" });
       onRefresh();
@@ -179,7 +181,7 @@ export function SessionsOverview({ sessions, workspaceId, onNavigate, onRefresh 
           <button
             onClick={onRefresh}
             className="p-1.5 rounded-md text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-[#191c28] transition-colors"
-            title="Refresh"
+            title={t.common.refresh}
           >
             <RefreshCw className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
           </button>
@@ -187,7 +189,7 @@ export function SessionsOverview({ sessions, workspaceId, onNavigate, onRefresh 
             onClick={() => setExpanded(!expanded)}
             className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[11px] font-medium text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-[#191c28] transition-colors"
           >
-            {expanded ? "Show Less" : "Show All"}
+            {expanded ? t.common.showLess : t.common.showAll}
             <ChevronDown className={`w-3 h-3 transition-transform ${expanded ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
           </button>
         </div>

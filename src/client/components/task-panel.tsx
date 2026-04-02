@@ -105,7 +105,7 @@ export function TaskPanel({
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2">
             <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-              {crafterAgents.length > 0 ? "ROUTA / CRAFTERs" : t.tasks.subTasks}
+              {crafterAgents.length > 0 ? t.tasks.routaCrafters : t.tasks.subTasks}
             </span>
             <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-300">
               {tasks.length}
@@ -171,7 +171,7 @@ export function TaskPanel({
                   : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700"
                   }`}
               >
-                Tasks
+                {t.tasks.viewTasks}
               </button>
               <button
                 onClick={() => setUserViewMode("crafters")}
@@ -180,7 +180,7 @@ export function TaskPanel({
                   : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700"
                   }`}
               >
-                CRAFTERs ({crafterAgents.length})
+                {t.tasks.viewCrafters} ({crafterAgents.length})
               </button>
             </div>
           )}
@@ -386,7 +386,7 @@ export function CraftersView({
             >
               <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${statusColor} ${agent.status === "running" ? "animate-pulse" : ""}`} />
               <span className="truncate max-w-30">
-                {agent.taskTitle || `CRAFTER #${i + 1}`}
+                {agent.taskTitle || t.tasks.crafterNumber.replace('{index}', String(i + 1))}
               </span>
             </button>
           );
@@ -497,10 +497,10 @@ function CrafterMessageBubble({ message }: { message: CrafterMessage }) {
         >
           <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${statusColor}`} />
           <span className="text-[11px] font-mono text-slate-600 dark:text-slate-300 truncate">
-            {message.toolName ?? "tool"}
+            {message.toolName ?? t.tasks.toolName}
           </span>
           <span className="text-[9px] text-slate-400 dark:text-slate-500 ml-auto">
-            {message.toolStatus ?? "pending"}
+            {message.toolStatus ?? t.tasks.toolStatus}
           </span>
           <ChevronRight className={`w-2.5 h-2.5 text-slate-400 transition-transform duration-150 ${expanded ? "rotate-90" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
         </button>

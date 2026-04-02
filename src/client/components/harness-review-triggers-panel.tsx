@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { HarnessUnsupportedState } from "@/client/components/harness-support-state";
 import { HarnessSectionCard, HarnessSectionStateFrame } from "@/client/components/harness-section-card";
+import { useTranslation } from "@/i18n";
 import type {
   HookFileSummary,
   HooksResponse,
@@ -182,11 +183,28 @@ function buildThresholdTokens(rule: ReviewTriggerRuleSummary): string[] {
   ].filter(Boolean);
 }
 
+type ReviewTriggerTranslations = {
+  risk: string;
+  confidence: string;
+  complexity: string;
+  routing: string;
+  noRules: string;
+  coreEnginePaths: string;
+  noHighRiskTriggers: string;
+  evidenceGap: string;
+  noEvidenceTriggers: string;
+  changeSize: string;
+  noBoundaryTriggers: string;
+  routeAvailable: string;
+  routeIncomplete: string;
+};
+
 function buildReviewDimensionCards(
   rules: ReviewTriggerRuleSummary[],
   reviewProfiles: HooksResponse["profiles"],
   reviewHooks: string[],
   hookFiles: HookFileSummary[],
+  tr: ReviewTriggerTranslations,
 ): ReviewDimensionCard[] {
   const riskRules = rules.filter(isRiskRule);
   const confidenceRules = rules.filter(isConfidenceRule);
@@ -227,44 +245,44 @@ function buildReviewDimensionCards(
   return [
     {
       key: "risk",
-      title: "Risk",
-      value: riskRules.length ? formatCount(riskRules.length, "rule") : "No rules",
+      title: tr.risk,
+      value: riskRules.length ? formatCount(riskRules.length, "rule") : tr.noRules,
       subtitle: riskRules.length
-        ? "Core engine paths and governance files escalate directly to human review."
-        : "No high-risk path or governance triggers are configured.",
+        ? tr.coreEnginePaths
+        : tr.noHighRiskTriggers,
       barValue: riskScore,
       tone: toneFromScore(riskScore),
       rules: riskRules,
     },
     {
       key: "confidence",
-      title: "Confidence",
-      value: confidenceRules.length ? formatCount(confidenceRules.length, "rule") : "No rules",
+      title: tr.confidence,
+      value: confidenceRules.length ? formatCount(confidenceRules.length, "rule") : tr.noRules,
       subtitle: confidenceRules.length
-        ? "Core paths and API contracts need matching evidence before review can clear."
-        : "No evidence-gap triggers are configured.",
+        ? tr.evidenceGap
+        : tr.noEvidenceTriggers,
       barValue: confidenceScore,
       tone: confidenceTone(confidenceScore),
       rules: confidenceRules,
     },
     {
       key: "complexity",
-      title: "Complexity",
-      value: complexityRules.length ? formatCount(complexityRules.length, "rule") : "No rules",
+      title: tr.complexity,
+      value: complexityRules.length ? formatCount(complexityRules.length, "rule") : tr.noRules,
       subtitle: complexityRules.length
-        ? "Cross-boundary or oversized changes are treated as heavier review work."
-        : "No change-size or boundary triggers are configured.",
+        ? tr.changeSize
+        : tr.noBoundaryTriggers,
       barValue: complexityScore,
       tone: toneFromScore(complexityScore),
       rules: complexityRules,
     },
     {
       key: "routing",
-      title: "Routing",
-      value: routingProfiles.length ? formatCount(routingProfiles.length, "profile") : "No route",
+      title: tr.routing,
+      value: routingProfiles.length ? formatCount(routingProfiles.length, "profile") : tr.noRules,
       subtitle: routingReady
-        ? "Matched rules enter the review phase through configured profiles and hooks."
-        : "Rules exist, but review-phase routing is still incomplete.",
+        ? tr.routeAvailable
+        : tr.routeIncomplete,
       barValue: routingScore,
       tone: routingReady ? "success" : "warning",
       rules: [],
@@ -510,6 +528,7 @@ export function HarnessReviewTriggersPanel({
   showDetailToggle = false,
   defaultShowDetails = true,
 }: ReviewTriggersPanelProps) {
+  const { t } = useTranslation();
   const reviewTriggerFile = data?.reviewTriggerFile ?? null;
   const profiles = data?.profiles ?? [];
   const hookFiles = data?.hookFiles ?? [];
@@ -519,14 +538,14 @@ export function HarnessReviewTriggersPanel({
   const canToggleDetails = compactMode && showDetailToggle;
   const [showDetails, setShowDetails] = useState(defaultShowDetails);
   const cards = reviewTriggerFile
-    ? buildReviewDimensionCards(reviewTriggerFile.rules, reviewProfiles, reviewHooks, hookFiles)
+    ? buildReviewDimensionCards(reviewTriggerFile.rules, reviewProfiles, reviewHooks, hookFiles, t.harness.reviewTriggers)
     : [];
   const detailsVisible = canToggleDetails ? showDetails : true;
 
   return (
     <HarnessSectionCard
-      title="Review triggers"
-      description="Policy profiles and rule summaries that feed review routing and escalation."
+      title={t.harness.reviewTriggers.title}
+      description={t.harness.reviewTriggers.description}
       variant={variant}
       actions={
         canToggleDetails && reviewTriggerFile && reviewTriggerFile.rules.length ? (
@@ -535,13 +554,13 @@ export function HarnessReviewTriggersPanel({
             className="rounded-full border border-desktop-border bg-desktop-bg-primary/65 px-2.5 py-1 text-[10px] font-semibold text-desktop-text-primary transition-colors hover:bg-desktop-bg-primary"
             onClick={() => setShowDetails((current) => !current)}
           >
-            {detailsVisible ? "Hide details" : "Show details"}
+            {detailsVisible ? t.harness.reviewTriggers.hideDetails : t.harness.reviewTriggers.showDetails}
           </button>
         ) : null
       }
     >
       {loading ? (
-        <HarnessSectionStateFrame tone="warning">Loading review trigger policies...</HarnessSectionStateFrame>
+        <HarnessSectionStateFrame tone="warning">{t.harness.reviewTriggers.loadingPolicies}</HarnessSectionStateFrame>
       ) : null}
 
       {unsupportedMessage ? (
@@ -554,13 +573,13 @@ export function HarnessReviewTriggersPanel({
 
       {!loading && !error && !unsupportedMessage && !reviewTriggerFile ? (
         <HarnessSectionStateFrame tone="warning">
-          No `docs/fitness/review-triggers.yaml` file was found for the selected repository.
+          {t.harness.reviewTriggers.noYamlFile}
         </HarnessSectionStateFrame>
       ) : null}
 
       {!loading && !error && !unsupportedMessage && reviewTriggerFile && !reviewTriggerFile.rules.length ? (
         <HarnessSectionStateFrame tone="warning">
-          The YAML file loaded successfully, but no `review_triggers` entries were parsed.
+          {t.harness.reviewTriggers.yamlLoadedNoEntries}
         </HarnessSectionStateFrame>
       ) : null}
 

@@ -523,7 +523,7 @@ export function WorkspacePageClient({
 
       {/* Agent Install Popup */}
       {showAgentInstallPopup && (
-        <OverlayModal onClose={() => setShowAgentInstallPopup(false)} title={t.workspace.installAgents}>
+        <OverlayModal onClose={() => setShowAgentInstallPopup(false)} title={t.workspace.installAgents} closeLabel={t.common.closeEsc}>
           <AgentInstallPanel />
         </OverlayModal>
       )}
@@ -537,10 +537,12 @@ function OverlayModal({
   onClose,
   title,
   children,
+  closeLabel,
 }: {
   onClose: () => void;
   title: string;
   children: React.ReactNode;
+  closeLabel?: string;
 }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true">
@@ -555,8 +557,8 @@ function OverlayModal({
             type="button"
             onClick={onClose}
             className="flex h-6 w-6 items-center justify-center rounded text-desktop-text-secondary transition-colors hover:bg-desktop-bg-active hover:text-desktop-accent-text"
-            title="Close (Esc)"
-            aria-label="Close"
+            title={closeLabel ?? "Close (Esc)"}
+            aria-label={closeLabel ?? "Close"}
           >
             <X className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
           </button>

@@ -10,6 +10,7 @@ import type {
   SpecStatus,
 } from "@/core/harness/spec-detector-types";
 import { HarnessSectionCard, HarnessSectionStateFrame } from "@/client/components/harness-section-card";
+import { useTranslation } from "@/i18n";
 import { ChevronDown, ChevronRight } from "lucide-react";
 
 
@@ -283,6 +284,7 @@ export function HarnessSpecSourcesPanel({
   error,
   variant = "full",
 }: SpecSourcesPanelProps) {
+  const { t } = useTranslation();
   const sources = useMemo(
     () => data?.sources ?? [],
     [data?.sources],
@@ -320,7 +322,7 @@ export function HarnessSpecSourcesPanel({
     const showEmptyState = !showLoading && !error && !showUnsupportedMessage && sources.length === 0;
     const showSourceCards = !showLoading && !showUnsupportedMessage;
     const compactHeaderActions = showLoading ? (
-      <span className="text-[10px] text-desktop-text-secondary">Loading...</span>
+      <span className="text-[10px] text-desktop-text-secondary">{t.harness.specSources.loading}</span>
     ) : (
       <span className="rounded-full border border-desktop-border bg-desktop-bg-primary px-2 py-0.5 text-[10px] text-desktop-text-secondary">
         {sources.length} source{sources.length !== 1 ? "s" : ""} · {totalSpecs} spec{totalSpecs !== 1 ? "s" : ""}
@@ -329,8 +331,8 @@ export function HarnessSpecSourcesPanel({
 
     return (
       <HarnessSectionCard
-        title="Spec Sources"
-        description="Detected AI coding spec sources in this repository."
+        title={t.harness.specSources.title}
+        description={t.harness.specSources.descriptionCompact}
         actions={compactHeaderActions}
         variant="compact"
         dataTestId="spec-sources-compact"
@@ -342,7 +344,7 @@ export function HarnessSpecSourcesPanel({
         {unsupportedMessage ? <HarnessSectionStateFrame tone="warning">{unsupportedMessage}</HarnessSectionStateFrame> : null}
 
         {showEmptyState ? (
-          <HarnessSectionStateFrame>No spec sources detected in this repository.</HarnessSectionStateFrame>
+          <HarnessSectionStateFrame>{t.harness.specSources.noSourcesDetected}</HarnessSectionStateFrame>
         ) : null}
 
         {showSourceCards ? sources.map((source) => {
@@ -364,8 +366,8 @@ export function HarnessSpecSourcesPanel({
   // Full variant
   return (
     <HarnessSectionCard
-      title="Spec Sources"
-      description={`Detected AI Coding spec tools, methodology frameworks, and tool integrations for ${repoLabel}`}
+      title={t.harness.specSources.title}
+      description={t.harness.specSources.descriptionFull.replace("{repoLabel}", repoLabel)}
       variant="full"
       actions={
         !loading ? (
@@ -386,7 +388,7 @@ export function HarnessSpecSourcesPanel({
       }
     >
       {loading ? (
-        <HarnessSectionStateFrame>Scanning for spec sources...</HarnessSectionStateFrame>
+        <HarnessSectionStateFrame>{t.harness.specSources.scanningSources}</HarnessSectionStateFrame>
       ) : null}
 
       {unsupportedMessage ? <HarnessSectionStateFrame tone="warning">{unsupportedMessage}</HarnessSectionStateFrame> : null}
@@ -397,16 +399,16 @@ export function HarnessSpecSourcesPanel({
 
       {!loading && !error && !unsupportedMessage && sources.length === 0 ? (
         <HarnessSectionStateFrame>
-          No spec sources detected in this repository. Supported frameworks: Kiro, Qoder, OpenSpec, Spec Kit, BMAD.
+          {t.harness.specSources.noSourcesWithFrameworks}
         </HarnessSectionStateFrame>
       ) : null}
 
       {!loading && !unsupportedMessage && sources.length > 0 ? (
         <div className="mt-3 space-y-3" data-testid="spec-sources-full">
-          <SourceGroup title="Native Tools" sources={nativeTools} expandedKeys={activeExpandedKeys} onToggle={toggleKey} />
-          <SourceGroup title="Frameworks" sources={frameworks} expandedKeys={activeExpandedKeys} onToggle={toggleKey} />
-          <SourceGroup title="Integrations" sources={integrations} expandedKeys={activeExpandedKeys} onToggle={toggleKey} />
-          <SourceGroup title="Legacy" sources={legacy} expandedKeys={activeExpandedKeys} onToggle={toggleKey} />
+          <SourceGroup title={t.harness.specSources.nativeTools} sources={nativeTools} expandedKeys={activeExpandedKeys} onToggle={toggleKey} />
+          <SourceGroup title={t.harness.specSources.frameworks} sources={frameworks} expandedKeys={activeExpandedKeys} onToggle={toggleKey} />
+          <SourceGroup title={t.harness.specSources.integrations} sources={integrations} expandedKeys={activeExpandedKeys} onToggle={toggleKey} />
+          <SourceGroup title={t.harness.specSources.legacy} sources={legacy} expandedKeys={activeExpandedKeys} onToggle={toggleKey} />
         </div>
       ) : null}
 

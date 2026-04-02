@@ -220,9 +220,9 @@ function inferToolName(name: string, input: unknown): string {
   return name;
 }
 
-function formatLaneSessionSummary(session: LaneSessionInfo): string {
+function formatLaneSessionSummary(session: LaneSessionInfo, t: ReturnType<typeof useTranslation>["t"]): string {
   return [
-    session.columnName ?? session.columnId ?? "Unknown lane",
+    session.columnName ?? session.columnId ?? t.traces.unknownLane,
     session.stepName ?? (typeof session.stepIndex === "number" ? `Step ${session.stepIndex + 1}` : undefined),
     session.provider,
     session.role,
@@ -397,14 +397,14 @@ function UserMessageBubble({
       {/* Content */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 mb-1">
-          <span className="text-xs font-semibold text-blue-700 dark:text-blue-300">User</span>
+          <span className="text-xs font-semibold text-blue-700 dark:text-blue-300">{t.trace.user}</span>
           <span className="text-[10px] text-slate-400 dark:text-slate-500 opacity-0 group-hover:opacity-100 transition-opacity">
             {formatTime(trace.timestamp)}
           </span>
         </div>
         <div className="px-4 py-3 rounded-xl bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800/30">
           <p className="text-sm text-slate-800 dark:text-slate-200 whitespace-pre-wrap break-words leading-relaxed">
-            {content || <span className="italic text-slate-400">(empty)</span>}
+            {content || <span className="italic text-slate-400">{t.trace.empty}</span>}
           </p>
         </div>
       </div>
@@ -452,7 +452,7 @@ function AgentResponseBlock({
               : "text-red-500 dark:text-red-400"
               }`}
           >
-            {evt.eventType === "session_start" ? "▶ Session Started" : "■ Session Ended"}
+            {evt.eventType === "session_start" ? `▶ ${t.trace.sessionStarted}` : `■ ${t.trace.sessionEnded}`}
             <span className="ml-2 font-normal text-slate-400">{formatTime(evt.timestamp)}</span>
           </span>
         ))}
@@ -506,7 +506,7 @@ function AgentResponseBlock({
       <div className="flex-1 min-w-0">
         {/* Header */}
         <div className="flex items-center gap-2 mb-2">
-          <span className="text-xs font-semibold text-blue-700 dark:text-blue-300">Agent</span>
+          <span className="text-xs font-semibold text-blue-700 dark:text-blue-300">{t.trace.agent}</span>
           {model && (
             <span className="text-[10px] text-slate-400 dark:text-slate-500 font-mono">{model}</span>
           )}
@@ -523,7 +523,7 @@ function AgentResponseBlock({
             className="flex items-center gap-1.5 mb-2 text-[10px] text-amber-600 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-300"
           >
             <ChevronRight className={`w-3 h-3 transition-transform ${thoughtsExpanded ? "rotate-90" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
-            💭 {thoughts.length} thought{thoughts.length > 1 ? "s" : ""}
+            💭 {thoughts.length} {thoughts.length > 1 ? t.trace.thoughts : t.trace.thoughtSingular}
           </button>
         )}
         {thoughtsExpanded && thoughts.map((t) => <InlineThoughtView key={t.id} trace={t} />)}
@@ -600,11 +600,11 @@ export function TracePanel({ sessionId }: TracePanelProps) {
       setTraces(data.traces || []);
     } catch (err) {
       console.error("[TracePanel] Failed to fetch traces:", err);
-      setError(err instanceof Error ? err.message : "Unknown error");
+      setError(err instanceof Error ? err.message : t.traces.unknownError);
     } finally {
       setLoading(false);
     }
-  }, [sessionId]);
+  }, [sessionId, t]);
 
   const fetchSessionContext = useCallback(async () => {
     if (!sessionId) {
@@ -760,11 +760,11 @@ export function TracePanel({ sessionId }: TracePanelProps) {
       <div className="px-4 py-2 border-b border-slate-200 dark:border-slate-800 flex items-center gap-1.5 shrink-0 overflow-x-auto">
         {(
           [
-            { key: "all", label: "All", active: "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300" },
-            { key: "user_message", label: "User", active: "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300" },
-            { key: "agent_message", label: "Agent", active: "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300" },
-            { key: "tools", label: "Tools", active: "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300" },
-            { key: "agent_thought", label: "Thoughts", active: "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300" },
+            { key: "all", label: t.traces.all, active: "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300" },
+            { key: "user_message", label: t.traces.user, active: "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300" },
+            { key: "agent_message", label: t.traces.agent, active: "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300" },
+            { key: "tools", label: t.traces.tools, active: "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300" },
+            { key: "agent_thought", label: t.traces.thoughts, active: "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300" },
           ] as const
         ).map(({ key, label, active }) => (
           <button
@@ -800,7 +800,7 @@ export function TracePanel({ sessionId }: TracePanelProps) {
           </div>
           {kanbanContext.currentLaneSession && (
             <div className="mt-2 text-[11px] text-slate-600 dark:text-slate-300">
-              {t.trace.currentLaneSession}: {formatLaneSessionSummary(kanbanContext.currentLaneSession)}
+              {t.trace.currentLaneSession}: {formatLaneSessionSummary(kanbanContext.currentLaneSession, t)}
               {" · "}
               <span className="font-semibold uppercase tracking-wide">
                 {kanbanContext.currentLaneSession.status}
@@ -809,12 +809,12 @@ export function TracePanel({ sessionId }: TracePanelProps) {
           )}
           {kanbanContext.previousLaneSession && (
             <div className="mt-1 text-[11px] text-slate-600 dark:text-slate-300">
-              {t.trace.previousLaneSession}: {formatLaneSessionSummary(kanbanContext.previousLaneSession)}
+              {t.trace.previousLaneSession}: {formatLaneSessionSummary(kanbanContext.previousLaneSession, t)}
             </div>
           )}
           {kanbanContext.previousLaneRun && (
             <div className="mt-1 text-[11px] text-slate-600 dark:text-slate-300">
-              {t.trace.previousLaneRun}: {formatLaneSessionSummary(kanbanContext.previousLaneRun)}
+              {t.trace.previousLaneRun}: {formatLaneSessionSummary(kanbanContext.previousLaneRun, t)}
             </div>
           )}
           {kanbanContext.relatedHandoffs.length > 0 && (

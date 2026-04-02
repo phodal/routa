@@ -43,9 +43,9 @@ export function ObjectiveSidebarSection({
           <div className="text-sm leading-5 text-desktop-text-primary [overflow-wrap:anywhere]">{objective}</div>
         </div>
         <div className="mt-2 grid grid-cols-3 gap-2 text-center">
-          <MetricChip label="Done" value={memberCounts.done} tone="emerald" />
-          <MetricChip label="Active" value={memberCounts.active} tone="cyan" />
-          <MetricChip label="Blocked" value={memberCounts.blocked} tone="rose" />
+          <MetricChip label={t.team.done} value={memberCounts.done} tone="emerald" />
+          <MetricChip label={t.common.active} value={memberCounts.active} tone="cyan" />
+          <MetricChip label={t.team.blocked} value={memberCounts.blocked} tone="rose" />
         </div>
       </div>
 
@@ -56,7 +56,7 @@ export function ObjectiveSidebarSection({
       <div className="h-[calc(100%-176px)] overflow-y-auto px-2.5 py-2.5">
         <div className="space-y-3">
           {taskTree.length === 0 ? (
-            <EmptyPanel message="No task notes yet." />
+            <EmptyPanel message={t.team.noTaskNotesYet} />
           ) : (
             <div className="space-y-1.5">
               {taskTree.map((node) => <TaskTreeNode key={node.id} node={node} />)}
@@ -68,7 +68,7 @@ export function ObjectiveSidebarSection({
               Deliverables
             </div>
             {deliverables.length === 0 ? (
-              <EmptyPanel message="No notes or deliverables yet." />
+              <EmptyPanel message={t.team.noNotesOrDeliverablesYet} />
             ) : (
               <div className="divide-y divide-desktop-border rounded-[14px] border border-desktop-border bg-desktop-bg-primary">
                 {deliverables.map((item) => (
@@ -131,15 +131,15 @@ export function SessionTimelineSection({
           <div>
             <h2 className="text-base font-semibold text-desktop-text-primary">{t.team.sessionTimeline}</h2>
             <p className="mt-0.5 text-xs leading-5 text-desktop-text-secondary">
-              The lead transcript uses the same chat renderer as the raw session. Member sessions appear inline beneath delegation tool calls.
+              t.team.timelineDesc
             </p>
           </div>
           <div className="flex items-center gap-1.5 text-[11px] text-desktop-text-secondary">
             <span className="rounded-full border border-desktop-border bg-desktop-bg-secondary px-2.5 py-1">
-              {leadMessages.length} messages
+              {leadMessages.length} {t.team.messages}
             </span>
             <span className="rounded-full border border-desktop-border bg-desktop-bg-secondary px-2.5 py-1">
-              {Math.max(sessionLanes.length - 1, 0)} members
+              {Math.max(sessionLanes.length - 1, 0)} {t.team.membersCount}
             </span>
           </div>
         </div>
@@ -147,7 +147,7 @@ export function SessionTimelineSection({
 
       <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2">
         {leadMessages.length === 0 ? (
-          <EmptyPanel message="No lead timeline yet." />
+          <EmptyPanel message={t.team.noLeadTimelineYet} />
         ) : (
           <div className="space-y-1.5">
             {leadMessages.map((message, index) => {
@@ -187,7 +187,7 @@ export function TeamMembersSection({
       <div className="border-b border-desktop-border px-4 py-2.5">
         <h2 className="text-base font-semibold text-desktop-text-primary">{t.team.teamMembers}</h2>
         <p className="mt-0.5 text-xs leading-5 text-desktop-text-secondary">
-          Watch who is running, who is idle, and switch to any active member session.
+          t.team.watchWhoIsRunning
         </p>
       </div>
 
@@ -219,7 +219,7 @@ export function TeamMembersSection({
                       <span className="shrink-0 text-[10px] uppercase tracking-[0.12em] text-desktop-text-secondary">{member.status}</span>
                     </div>
                     <div className="mt-0.5 truncate text-[10px] text-desktop-text-secondary">
-                      {member.sessionId ? member.roleLabel : `${member.roleLabel} · no session yet`}
+                      {member.sessionId ? member.roleLabel : `${member.roleLabel} · ${t.team.noSessionYet}`}
                     </div>
                     <div className="mt-0.5 flex items-center gap-1 text-[10px] text-desktop-text-muted">
                       <span>{member.lastUpdatedLabel ?? "Waiting for delegation"}</span>
@@ -434,7 +434,7 @@ function LeadMessageThread({
               <SessionStatusPill status={lane.status} />
               <span className="text-[10px] text-desktop-text-muted">{lane.lastUpdatedLabel}</span>
               <span className="text-[10px] text-desktop-text-muted opacity-40">/</span>
-              <span className="text-[10px] text-desktop-text-muted">{lane.eventCount} updates</span>
+              <span className="text-[10px] text-desktop-text-muted">{lane.eventCount} {t.team.updates}</span>
             </div>
             <button
               type="button"
@@ -451,7 +451,7 @@ function LeadMessageThread({
             ) : !expanded && previewLaneMessage ? (
               <>
                 <div className="rounded-[12px] border border-desktop-border bg-desktop-bg-primary px-3 py-2 text-[11px] leading-5 text-desktop-text-secondary line-clamp-2">
-                  {previewText || "Open this thread to inspect the latest update."}
+                  {previewText || t.team.openThisThread}
                 </div>
                 <button
                   type="button"

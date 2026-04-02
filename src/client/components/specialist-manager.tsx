@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { desktopAwareFetch } from "../utils/diagnostics";
 import { Select } from "./select";
+import { useTranslation } from "@/i18n";
 import { SquarePen, Trash2, X, Briefcase } from "lucide-react";
 
 
@@ -104,16 +105,16 @@ export function SpecialistManager({ open, onClose }: SpecialistManagerProps) {
       const response = await desktopAwareFetch("/api/specialists");
       if (!response.ok) {
         if (response.status === 501) {
-          setError("Specialist management requires Postgres database");
+          setError(t.settings.specialistsTab.requiresPostgres);
         } else {
-          throw new Error("Failed to load specialists");
+          throw new Error(t.errors.loadFailed);
         }
         return;
       }
       const data = await response.json();
       setSpecialists(data.specialists || []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load specialists");
+      setError(err instanceof Error ? err.message : t.errors.loadFailed);
     } finally {
       setLoading(false);
     }
@@ -128,10 +129,10 @@ export function SpecialistManager({ open, onClose }: SpecialistManagerProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "sync" }),
       });
-      if (!response.ok) throw new Error("Failed to sync specialists");
+      if (!response.ok) throw new Error(t.settings.specialistsTab.syncFailed);
       await loadSpecialists();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to sync specialists");
+      setError(err instanceof Error ? err.message : t.settings.specialistsTab.syncFailed);
     } finally {
       setSyncing(false);
     }
@@ -148,31 +149,31 @@ export function SpecialistManager({ open, onClose }: SpecialistManagerProps) {
       });
       if (!response.ok) {
         const data = await response.json();
-        throw new Error(data.error || "Failed to save specialist");
+        throw new Error(data.error || t.errors.saveFailed);
       }
       await loadSpecialists();
       setEditingId(null);
       setShowCreateForm(false);
       resetForm();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save specialist");
+      setError(err instanceof Error ? err.message : t.errors.saveFailed);
     } finally {
       setLoading(false);
     }
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this specialist?")) return;
+    if (!confirm(t.settings.specialistsTab.deleteConfirm)) return;
     setLoading(true);
     setError(null);
     try {
       const response = await desktopAwareFetch(`/api/specialists?id=${id}`, {
         method: "DELETE",
       });
-      if (!response.ok) throw new Error("Failed to delete specialist");
+      if (!response.ok) throw new Error(t.errors.deleteFailed);
       await loadSpecialists();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to delete specialist");
+      setError(err instanceof Error ? err.message : t.errors.deleteFailed);
     } finally {
       setLoading(false);
     }
@@ -229,7 +230,7 @@ export function SpecialistManager({ open, onClose }: SpecialistManagerProps) {
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200 dark:border-slate-700 flex-shrink-0">
           <div className="flex items-center gap-2">
             <Briefcase className="w-5 h-5 text-slate-500 dark:text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
-            <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Specialists</h2>
+            <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">{t.settings.specialists}</h2>
           </div>
           <div className="flex items-center gap-2">
             <button
@@ -237,7 +238,7 @@ export function SpecialistManager({ open, onClose }: SpecialistManagerProps) {
               disabled={syncing}
               className="px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 rounded-md hover:bg-slate-200 dark:hover:bg-slate-600 disabled:opacity-50 transition-colors"
             >
-              {syncing ? "Syncing..." : "Sync Bundled"}
+              {syncing ? t.settings.specialistsTab.syncing : t.settings.specialistsTab.syncBundled}
             </button>
             <button
               onClick={onClose}
@@ -261,7 +262,7 @@ export function SpecialistManager({ open, onClose }: SpecialistManagerProps) {
               {/* Specialists List */}
               <div className="mb-4 flex justify-between items-center">
                 <p className="text-sm text-slate-600 dark:text-slate-400">
-                  {specialists.length} specialists configured
+                  {specialists.length} {t.settings.specialistsTab.totalSpecialists.replace("{count}", String(specialists.length))}
                 </p>
                 <button
                   onClick={() => setShowCreateForm(true)}

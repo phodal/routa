@@ -949,8 +949,7 @@ fn extract_trigger_command(source: &str) -> String {
     source
         .lines()
         .map(str::trim)
-        .filter(|line| !line.is_empty() && !line.starts_with('#'))
-        .next_back()
+        .rfind(|line| !line.is_empty() && !line.starts_with('#'))
         .unwrap_or("(no command detected)")
         .to_string()
 }

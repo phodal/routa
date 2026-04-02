@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { HarnessSectionCard, HarnessSectionStateFrame } from "@/client/components/harness-section-card";
 import { HarnessUnsupportedState } from "@/client/components/harness-support-state";
+import { useTranslation } from "@/i18n";
 import type {
   HarnessRepoSignalsResponse,
   HarnessScriptSignal,
@@ -57,6 +58,7 @@ export function HarnessRepoSignalsPanel({
   unsupportedMessage,
   variant = "full",
 }: HarnessRepoSignalsPanelProps) {
+  const { t } = useTranslation();
   const hasContext = Boolean(workspaceId && repoPath);
   const [state, setState] = useState<QueryState>({
     loading: false,
@@ -154,7 +156,7 @@ export function HarnessRepoSignalsPanel({
     >
       {state.loading ? (
         <HarnessSectionStateFrame>
-          Loading repository signals...
+          {t.harness.repoSignals.loadingSignals}
         </HarnessSectionStateFrame>
       ) : null}
 
@@ -169,7 +171,7 @@ export function HarnessRepoSignalsPanel({
           {mode === "build" ? (
             <div className="overflow-hidden rounded-2xl border border-desktop-border bg-desktop-bg-primary/80">
               <div className="border-b border-desktop-border/70 px-4 py-3">
-                <div className={`text-[10px] font-semibold uppercase tracking-[0.14em] ${tone.title}`}>Overview</div>
+                <div className={`text-[10px] font-semibold uppercase tracking-[0.14em] ${tone.title}`}>{t.harness.repoSignals.overview}</div>
               </div>
               <div className="overflow-x-auto">
                 <table className="min-w-full border-collapse text-left">
@@ -186,7 +188,7 @@ export function HarnessRepoSignalsPanel({
                                 {value}
                               </span>
                             )) : (
-                              <span className="text-[11px] text-desktop-text-secondary">No signal</span>
+                              <span className="text-[11px] text-desktop-text-secondary">{t.harness.repoSignals.noSignal}</span>
                             )}
                           </div>
                         </td>
@@ -202,7 +204,7 @@ export function HarnessRepoSignalsPanel({
             <div className="border-b border-desktop-border/70 px-4 py-3">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <div className={`text-[10px] font-semibold uppercase tracking-[0.14em] ${tone.title}`}>Entrypoints</div>
+                  <div className={`text-[10px] font-semibold uppercase tracking-[0.14em] ${tone.title}`}>{t.harness.repoSignals.entrypoints}</div>
                 </div>
               </div>
             </div>
@@ -219,7 +221,7 @@ export function HarnessRepoSignalsPanel({
                             {value}
                           </span>
                         )) : (
-                          <span className="text-[11px] text-desktop-text-secondary">No signal</span>
+                          <span className="text-[11px] text-desktop-text-secondary">{t.harness.repoSignals.noSignal}</span>
                         )}
                       </div>
                     </div>
@@ -278,7 +280,7 @@ export function HarnessRepoSignalsPanel({
               </div>
             ) : (
               <div className="px-4 py-5 text-[11px] text-desktop-text-secondary">
-                No matching scripts were detected for this feedback loop.
+                {t.harness.repoSignals.noMatchingScripts}
               </div>
             )}
           </div>

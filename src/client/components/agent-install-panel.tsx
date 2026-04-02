@@ -306,7 +306,7 @@ export function AgentInstallPanel({ embedded = false }: AgentInstallPanelProps) 
           <div className="flex items-center gap-2">
             {!embedded && <AgentIcon className="h-5 w-5 text-blue-600 dark:text-blue-400" />}
             <h2 className={`${embedded ? "text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400" : "text-base font-semibold text-slate-900 dark:text-slate-100"}`}>
-              Agent 注册中心（ACP）
+              {t.agents.acpRegistryTitle}
             </h2>
             {agents.length > 0 && (
               <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-500 dark:bg-slate-800">
@@ -332,7 +332,7 @@ export function AgentInstallPanel({ embedded = false }: AgentInstallPanelProps) 
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search agents..."
+            placeholder={t.agents.searchAgents}
             className="w-full rounded-lg border border-slate-200 bg-slate-50 py-2 pl-9 pr-4 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 dark:border-slate-700 dark:bg-slate-800/50 dark:text-slate-100"
           />
         </div>
@@ -376,7 +376,7 @@ export function AgentInstallPanel({ embedded = false }: AgentInstallPanelProps) 
 
       {!embedded && (
         <div className="border-t border-slate-100 px-5 py-3 text-xs text-slate-400 dark:border-slate-800">
-          Platform: {platform ?? "unknown"} • Registry: cdn.agentclientprotocol.com
+          Platform: {platform ?? t.agents.unknownPlatform} • Registry: cdn.agentclientprotocol.com
         </div>
       )}
     </div>
@@ -505,7 +505,7 @@ function AgentCard({
               target="_blank"
               rel="noopener noreferrer"
               className="p-1.5 text-slate-400 transition-colors hover:text-slate-600 dark:hover:text-slate-300"
-              title="View repository"
+              title={t.agents.viewRepository}
             >
               <GithubIcon className="w-4 h-4" />
             </a>

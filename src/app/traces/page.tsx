@@ -20,6 +20,7 @@ import { TracesPageHeader } from "@/client/components/traces-page-header";
 import { TracesViewTabs, type TraceViewTab } from "@/client/components/traces-view-tabs";
 import { WorkspaceSwitcher } from "@/client/components/workspace-switcher";
 import { useWorkspaces } from "@/client/hooks/use-workspaces";
+import { useTranslation } from "@/i18n";
 import type { TraceRecord } from "@/core/trace";
 import { FileText } from "lucide-react";
 
@@ -53,6 +54,7 @@ function TracePageContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const { workspaces, loading: workspacesLoading, createWorkspace } = useWorkspaces();
+  const { t } = useTranslation();
 
   const [activeWorkspaceId, setActiveWorkspaceId] = useState("");
   const [sessions, setSessions] = useState<Session[]>([]);
@@ -304,24 +306,24 @@ function TracePageContent() {
             <aside className="flex w-80 flex-col border-r border-desktop-border bg-desktop-bg-primary">
               <div className="border-b border-desktop-border px-4 py-3">
                 <h2 className="text-xs font-semibold text-desktop-text-primary">
-                  Sessions
+                  {t.traces.title}
                 </h2>
                 <p className="mt-0.5 text-[11px] text-desktop-text-secondary">
-                  {sessions.length} session{sessions.length !== 1 ? "s" : ""} found
+                  {t.traces.sessionsFound.replace("{count}", String(sessions.length))}
                 </p>
               </div>
 
               <div className="flex-1 overflow-y-auto">
                 {loading && sessions.length === 0 ? (
                   <div className="p-4 text-center">
-                    <p className="text-xs text-desktop-text-secondary">Loading sessions...</p>
+                    <p className="text-xs text-desktop-text-secondary">{t.traces.loadingSessions}</p>
                   </div>
                 ) : sessions.length === 0 ? (
                   <div className="p-4 text-center">
                     <FileText className="mx-auto mb-3 h-12 w-12 text-desktop-text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}/>
-                    <p className="text-xs text-desktop-text-secondary">No sessions found</p>
+                    <p className="text-xs text-desktop-text-secondary">{t.traces.noSessionsFound}</p>
                     <p className="mt-1 text-[10px] text-desktop-text-muted">
-                      Start a conversation to create traces
+                      {t.traces.startConversationHint}
                     </p>
                   </div>
                 ) : (
@@ -410,7 +412,7 @@ function TracePageContent() {
           )}
 
           {/* Trace Panel */}
-          <section className="flex-1 min-w-0 bg-desktop-bg-primary" aria-label="Trace content">
+          <section className="flex-1 min-w-0 bg-desktop-bg-primary" aria-label={t.traces.traceContent}>
             {selectedSessionId ? (
               <>
                 {activeTab === "chat" && (
@@ -425,10 +427,10 @@ function TracePageContent() {
                 <div className="text-center">
                   <FileText className="mx-auto mb-4 h-16 w-16 text-desktop-text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}/>
                   <p className="mb-2 text-[13px] text-desktop-text-secondary">
-                    No session selected
+                    {t.traces.noSessionSelected}
                   </p>
                   <p className="text-xs text-desktop-text-muted">
-                    Select a session from the sidebar to view traces
+                    {t.traces.selectSessionToViewTraces}
                   </p>
                 </div>
               </div>
@@ -442,12 +444,13 @@ function TracePageContent() {
 
 // Default export with Suspense boundary for useSearchParams()
 export default function TracePage() {
+  const { t } = useTranslation();
   return (
     <Suspense fallback={
       <div className="desktop-theme flex h-screen items-center justify-center bg-desktop-bg-primary">
         <div className="text-center">
           <div className="mx-auto mb-4 h-8 w-8 animate-spin rounded-full border-2 border-desktop-accent border-t-transparent" />
-          <p className="text-sm text-desktop-text-secondary">Loading...</p>
+          <p className="text-sm text-desktop-text-secondary">{t.common.loading}</p>
         </div>
       </div>
     }>

@@ -253,7 +253,7 @@ function SkillCatalogModal({
   // Auto-focus search input
   useEffect(() => {
     inputRef.current?.focus();
-  }, []);
+  }, [t]);
 
   // Load GitHub catalog when switching to github tab
   const handleSwitchCatalog = useCallback((type: CatalogType) => {
@@ -379,7 +379,7 @@ function SkillCatalogModal({
             >
               <span className="flex items-center justify-center gap-1.5">
                 <Search className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
-                skills.sh
+                {t.skills.skillsShCatalog}
               </span>
             </button>
             <button
@@ -428,7 +428,7 @@ function SkillCatalogModal({
                     type="text"
                     value={githubRepo}
                     onChange={(e) => setGithubRepo(e.target.value)}
-                    placeholder="owner/repo"
+                    placeholder={t.skills.repoPlaceholder}
                     className="flex-1 px-1.5 py-2 bg-transparent text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 outline-none font-mono"
                     onKeyDown={(e) => {
                       if (e.key === "Enter") listGithubCatalog(githubRepo, githubPath);
@@ -486,7 +486,7 @@ function SkillCatalogModal({
                   : (
                     <div className="space-y-1">
                       <div>{t.skills.typeToSearch}</div>
-                      <div className="text-[10px] text-slate-300 dark:text-slate-600">e.g. react, supabase, testing, next.js</div>
+                      <div className="text-[10px] text-slate-300 dark:text-slate-600">{t.skills.searchExamples}</div>
                     </div>
                   )}
               </div>
@@ -749,7 +749,7 @@ function SkillCloneModal({
           {/* URL input */}
           <div>
             <label className="text-[10px] font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5 block">
-              Repository URL
+              {t.skills.repoUrlLabel}
             </label>
             <div className="flex items-center rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#161922] overflow-hidden">
               <span className="pl-3 text-[10px] text-slate-400 dark:text-slate-500 font-mono whitespace-nowrap">
@@ -782,7 +782,7 @@ function SkillCloneModal({
           {/* Examples */}
           <div className="flex flex-wrap gap-1.5">
             <span className="text-[10px] text-slate-400 dark:text-slate-500">
-              Examples:
+              {t.skills.examplesLabel}
             </span>
             {[
               "vercel-labs/agent-skills",
@@ -815,7 +815,7 @@ function SkillCloneModal({
           {result && (
             <div className="rounded-md bg-emerald-50 dark:bg-emerald-900/10 border border-emerald-200 dark:border-emerald-800/50 px-3 py-2">
               <div className="text-xs text-emerald-700 dark:text-emerald-400 font-medium mb-1">
-                Imported {result.count}!
+                {t.skills.imported} {result.count}!
               </div>
               <div className="flex flex-wrap gap-1">
                 {result.imported.map((name) => (
@@ -883,7 +883,7 @@ function SkillUploadModal({
 
   const handleFileSelect = useCallback((file: File) => {
     if (!file.name.endsWith(".zip")) {
-      setError("Please select a .zip file");
+      setError(t.skills.invalidZipFile);
       return;
     }
     setError(null);
@@ -953,8 +953,7 @@ function SkillUploadModal({
         {/* Body */}
         <div className="p-5">
           <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">
-            Upload a .zip file containing SKILL.md and any related files.
-            It will be extracted to the <code className="px-1 py-0.5 bg-slate-100 dark:bg-slate-800 rounded text-[10px]">.agents/skills/</code> directory.
+            {t.skills.uploadDescription}
           </p>
 
           {/* Drop zone */}
@@ -995,7 +994,7 @@ function SkillUploadModal({
               <div>
                 <Upload className="w-8 h-8 mx-auto text-slate-300 dark:text-slate-600 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}/>
                 <div className="text-xs text-slate-500 dark:text-slate-400">
-                  Drop a .zip file here or click to browse
+                  {t.skills.dropFilePrompt}
                 </div>
               </div>
             )}

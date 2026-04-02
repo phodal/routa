@@ -15,6 +15,7 @@ import {
 import { CodeViewer } from "@/client/components/codemirror/code-viewer";
 import { HarnessUnsupportedState } from "@/client/components/harness-support-state";
 import type { AgentHooksResponse } from "@/client/hooks/use-harness-settings-data";
+import { useTranslation } from "@/i18n";
 import {
   buildAgentHookFlow,
   buildAgentHookWorkbenchEntries,
@@ -50,6 +51,7 @@ type WorkbenchContextValue = {
   data: AgentHooksResponse;
   compactMode: boolean;
   embedded: boolean;
+  t: ReturnType<typeof useTranslation>["t"];
 };
 
 const WorkbenchContext = createContext<WorkbenchContextValue | null>(null);
@@ -164,17 +166,17 @@ const flowNodeTypes = {
 };
 
 function AgentHookLifecycleRail() {
-  const { activeEntry, dispatch, groupedEntries } = useWorkbenchContext();
+  const { t, activeEntry, dispatch, groupedEntries } = useWorkbenchContext();
 
   return (
     <aside className="rounded-[28px] border border-desktop-border bg-[radial-gradient(circle_at_top,#ffffff,rgba(255,255,255,0.78)_24%,rgba(240,246,255,0.82)_100%)] p-4 shadow-sm">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-desktop-text-secondary">Lifecycle</div>
-          <h3 className="mt-1 text-sm font-semibold text-desktop-text-primary">Agent hook map</h3>
+          <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-desktop-text-secondary">{t.harness.agentHookWorkbench.lifecycle}</div>
+          <h3 className="mt-1 text-sm font-semibold text-desktop-text-primary">{t.harness.agentHook.hookMap}</h3>
         </div>
         <div className="rounded-full border border-desktop-border bg-white/80 px-2.5 py-1 text-[10px] text-desktop-text-secondary">
-          {groupedEntries.reduce((sum, group) => sum + group.entries.length, 0)} events
+          {groupedEntries.reduce((sum, group) => sum + group.entries.length, 0)} {t.harness.agentHookWorkbench.events}
         </div>
       </div>
 
@@ -231,7 +233,7 @@ function AgentHookLifecycleRail() {
 }
 
 function AgentHookFlowCanvas() {
-  const { activeEntry, compactMode } = useWorkbenchContext();
+  const { t, activeEntry, compactMode } = useWorkbenchContext();
   const flowHeight = compactMode ? 440 : 680;
 
   const flow = useMemo(() => {
@@ -294,12 +296,12 @@ function AgentHookFlowCanvas() {
     <section className="rounded-[28px] border border-desktop-border bg-[linear-gradient(180deg,rgba(255,255,255,0.95),rgba(243,247,255,0.92))] p-4 shadow-sm">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-desktop-text-secondary">Pipeline</div>
-          <h3 className="mt-1 text-sm font-semibold text-desktop-text-primary">Event → Hook → Outcome</h3>
+          <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-desktop-text-secondary">{t.harness.agentHookWorkbench.pipeline}</div>
+          <h3 className="mt-1 text-sm font-semibold text-desktop-text-primary">{t.harness.agentHookWorkbench.eventHookOutcome}</h3>
           <div className="mt-1 text-[11px] text-desktop-text-secondary">
             {activeEntry
               ? `${activeEntry.lifecycleLabel} lifecycle · ${activeEntry.hint}`
-              : "Select an event to inspect its flow topology."}
+              : t.harness.agentHookWorkbench.selectEventToInspect}
           </div>
         </div>
         {activeEntry ? (
@@ -340,7 +342,7 @@ function AgentHookFlowCanvas() {
         </div>
       ) : (
         <div className="mt-4 rounded-2xl border border-desktop-border bg-white/80 px-4 py-8 text-[12px] text-desktop-text-secondary">
-          No event selected.
+          {t.harness.agentHookWorkbench.noEventSelected}
         </div>
       )}
     </section>
@@ -348,7 +350,7 @@ function AgentHookFlowCanvas() {
 }
 
 function AgentHookInspector() {
-  const { activeEntry, data } = useWorkbenchContext();
+  const { t, activeEntry, data } = useWorkbenchContext();
   const [activeTab, setActiveTab] = useState<"basic" | "source">("basic");
 
   const configSource = useMemo(() => {
@@ -359,9 +361,9 @@ function AgentHookInspector() {
   return (
     <aside className="rounded-[28px] border border-desktop-border bg-[radial-gradient(circle_at_top,#ffffff,rgba(255,255,255,0.78)_24%,rgba(240,246,255,0.82)_100%)] p-4 shadow-sm">
       <div>
-        <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-desktop-text-secondary">Inspector</div>
+        <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-desktop-text-secondary">{t.harness.agentHookWorkbench.inspector}</div>
         <h3 className="mt-1 text-sm font-semibold text-desktop-text-primary">
-          {activeEntry?.event ?? "Event details"}
+          {activeEntry?.event ?? t.harness.agentHookWorkbench.eventDetails}
         </h3>
       </div>
 
@@ -388,7 +390,7 @@ function AgentHookInspector() {
 
         {data.warnings.length > 0 ? (
           <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
-            <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-amber-800">Warnings</div>
+            <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-amber-800">{t.harness.agentHookWorkbench.warnings}</div>
             <ul className="mt-1 space-y-1">
               {data.warnings.map((warning) => (
                 <li key={warning} className="text-[11px] text-amber-700">• {warning}</li>
@@ -410,7 +412,7 @@ function AgentHookInspector() {
               <div className="text-[12px] font-semibold text-desktop-text-primary">Hooks</div>
               {activeEntry.hooks.length === 0 ? (
                 <div className="mt-2 rounded-lg border border-desktop-border bg-desktop-bg-primary/70 p-2.5 text-[11px] text-desktop-text-secondary">
-                  No hooks configured for this event.
+                  {t.harness.agentHookWorkbench.noHooksConfigured}
                 </div>
               ) : (
                 <ul className="mt-2 divide-y divide-desktop-border rounded-xl border border-desktop-border bg-desktop-bg-primary/80">
@@ -419,7 +421,7 @@ function AgentHookInspector() {
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
                           <div className="text-[12px] font-semibold text-desktop-text-primary">
-                            {hook.description || `${hook.type} hook`}
+                            {hook.description || `${hook.type} ${t.harness.agentHookWorkbench.hook}`}
                           </div>
                           {hook.matcher ? (
                             <div className="mt-0.5 text-[10px] text-desktop-text-secondary">
@@ -429,7 +431,7 @@ function AgentHookInspector() {
                         </div>
                         <div className="flex shrink-0 flex-wrap justify-end gap-1">
                           {hook.blocking ? (
-                            <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] text-amber-800">blocking</span>
+                            <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] text-amber-800">{t.harness.agentHookWorkbench.blocking}</span>
                           ) : null}
                           <span className="rounded-full border border-desktop-border bg-desktop-bg-secondary px-2 py-0.5 text-[10px] text-desktop-text-secondary">
                             {hook.type}
@@ -474,6 +476,7 @@ export function HarnessAgentHookWorkbench({
   variant = "full",
   embedded = false,
 }: AgentHookWorkbenchProps) {
+  const { t } = useTranslation();
   const compactMode = variant === "compact";
   const entries = useMemo(() => buildAgentHookWorkbenchEntries(data), [data]);
   const groupedEntries = useMemo(() => groupAgentHookEntries(entries), [entries]);
@@ -519,15 +522,15 @@ export function HarnessAgentHookWorkbench({
         {!embedded ? (
           <div className="mb-3 flex items-center justify-between gap-3">
             <div>
-              <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-desktop-text-secondary">Hook systems</div>
-              <h3 className="mt-0.5 text-sm font-semibold text-desktop-text-primary">Hook Systems Workbench</h3>
+              <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-desktop-text-secondary">{t.harness.agentHookWorkbench.hookSystems}</div>
+              <h3 className="mt-0.5 text-sm font-semibold text-desktop-text-primary">{t.harness.agentHookWorkbench.workbenchTitle}</h3>
             </div>
             <div className="flex gap-2">
               <span className="rounded-full border border-desktop-border bg-desktop-bg-primary px-2.5 py-1 text-[10px] text-desktop-text-secondary">
                 {entries.reduce((sum, entry) => sum + entry.stats.hookCount, 0)} hooks
               </span>
               <span className="rounded-full border border-desktop-border bg-desktop-bg-primary px-2.5 py-1 text-[10px] text-desktop-text-secondary">
-                {entries.filter((entry) => entry.stats.hookCount > 0).length} / {entries.length} events
+                {entries.filter((entry) => entry.stats.hookCount > 0).length} / {entries.length} {t.harness.agentHookWorkbench.events}
               </span>
             </div>
           </div>

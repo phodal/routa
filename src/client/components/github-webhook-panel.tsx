@@ -13,6 +13,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Select } from "./select";
 import { useTranslation } from "@/i18n";
+import type { TranslationDictionary } from "@/i18n/types";
 import { Plus, RefreshCw, SquarePen, Trash2, Link2, Circle, CircleOff } from "lucide-react";
 
 
@@ -94,6 +95,8 @@ const EMPTY_FORM: FormState = {
 // ─── Component ───────────────────────────────────────────────────────────────
 
 export function GitHubWebhookPanel() {
+  const { t } = useTranslation();
+  const wt = t.webhook;
   const [configs, setConfigs] = useState<WebhookConfig[]>([]);
   const [logs, setLogs] = useState<TriggerLog[]>([]);
   const [loading, setLoading] = useState(true);
@@ -194,7 +197,7 @@ export function GitHubWebhookPanel() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!form.name || !form.repo || !form.triggerAgentId || form.eventTypes.length === 0) {
-      setError("Please fill in all required fields and select at least one event.");
+      setError(wt.requiredFieldsError);
       return;
     }
 
@@ -227,7 +230,7 @@ export function GitHubWebhookPanel() {
         throw new Error(d.error ?? `HTTP ${res.status}`);
       }
 
-      setSuccess(editId ? "Webhook config updated." : "Webhook config created.");
+      setSuccess(editId ? wt.configUpdated : wt.configCreated);
       setShowForm(false);
       setEditId(null);
       await loadData();
@@ -239,11 +242,11 @@ export function GitHubWebhookPanel() {
   }
 
   async function handleDelete(id: string) {
-    if (!window.confirm("Delete this webhook configuration?")) return;
+    if (!window.confirm(wt.deleteConfirm)) return;
     try {
       const res = await fetch(`/api/webhooks/configs?id=${id}`, { method: "DELETE" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      setSuccess("Webhook config deleted.");
+      setSuccess(wt.configDeleted);
       await loadData();
     } catch (err) {
       setError(String(err));
@@ -278,10 +281,10 @@ export function GitHubWebhookPanel() {
       }
       const data = await res.json();
       setSuccess(
-        `Webhook registered on GitHub! Hook ID: ${data.hook?.id}. URL: ${webhookUrl}`
+        wt.registerSuccess.replace("{hookId}", String(data.hook?.id)).replace("{url}", webhookUrl)
       );
     } catch (err) {
-      setError(`Failed to register webhook: ${err}`);
+      setError(wt.registerFailed.replace("{error}", String(err)));
     } finally {
       setRegistering(null);
     }
@@ -315,9 +318,9 @@ export function GitHubWebhookPanel() {
       const data = await res.json();
       setPollingEnabled(data.config?.enabled ?? false);
       setPollingRunning(data.config?.isRunning ?? false);
-      setSuccess(newEnabled ? "Polling enabled" : "Polling disabled");
+      setSuccess(newEnabled ? wt.pollingEnabled : wt.pollingDisabled);
     } catch (err) {
-      setError(`Failed to toggle polling: ${err}`);
+      setError(wt.togglePollingFailed.replace("{error}", String(err)));
     }
   }
 
@@ -329,10 +332,10 @@ export function GitHubWebhookPanel() {
       const data = await res.json();
       setPollingLastChecked(data.checkedAt);
       const { totalEventsProcessed, totalEventsSkipped } = data.summary;
-      setSuccess(`Check complete: ${totalEventsProcessed} events processed, ${totalEventsSkipped} skipped`);
+      setSuccess(wt.checkComplete.replace("{processed}", String(totalEventsProcessed)).replace("{skipped}", String(totalEventsSkipped)));
       await loadData(); // Refresh logs
     } catch (err) {
-      setError(`Manual check failed: ${err}`);
+      setError(wt.manualCheckFailed.replace("{error}", String(err)));
     } finally {
       setPollingChecking(false);
     }
@@ -349,7 +352,7 @@ export function GitHubWebhookPanel() {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setPollingInterval(newInterval);
     } catch (err) {
-      setError(`Failed to update interval: ${err}`);
+      setError(wt.updateIntervalFailed.replace("{error}", String(err)));
     }
   }
 
@@ -387,7 +390,7 @@ export function GitHubWebhookPanel() {
                   : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300"
               }`}
             >
-              {tab === "configs" ? "Configurations" : "Trigger Logs"}
+              {tab === "configs" ? wt.tabs.configurations : wt.tabs.triggerLogs}
             </button>
           ))}
         </div>
@@ -398,7 +401,7 @@ export function GitHubWebhookPanel() {
             className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg transition-colors"
           >
             <Plus className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
-            Add Trigger
+            {wt.addTrigger}
           </button>
         )}
       </div>
@@ -413,14 +416,14 @@ export function GitHubWebhookPanel() {
                 <div className="flex items-center gap-3">
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                      Local Polling
+                      {wt.localPolling}
                     </span>
                     <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${
                       pollingRunning
                         ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
                         : "bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-400"
                     }`}>
-                      {pollingRunning ? "Running" : "Stopped"}
+                      {pollingRunning ? wt.running : wt.stopped}
                     </span>
                   </div>
                   <button
@@ -428,7 +431,7 @@ export function GitHubWebhookPanel() {
                     className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
                       pollingEnabled ? "bg-blue-600" : "bg-slate-300 dark:bg-slate-600"
                     }`}
-                    title={pollingEnabled ? "Disable polling" : "Enable polling (alternative to webhooks for local dev)"}
+                    title={pollingEnabled ? wt.disablePolling : wt.enablePolling}
                   >
                     <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
                       pollingEnabled ? "translate-x-4.5" : "translate-x-1"
@@ -451,24 +454,24 @@ export function GitHubWebhookPanel() {
                     onClick={handleManualCheck}
                     disabled={pollingChecking}
                     className="flex items-center gap-1 px-2 py-1 text-xs bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded hover:bg-slate-50 dark:hover:bg-slate-600 disabled:opacity-50 text-slate-700 dark:text-slate-300"
-                    title="Manually check for new events now"
+                    title={wt.manuallyCheckNow}
                   >
                     {pollingChecking ? (
                       <div className="w-3 h-3 border border-slate-400 border-t-blue-500 rounded-full animate-spin" />
                     ) : (
                       <RefreshCw className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
                     )}
-                    Check Now
+                    {wt.checkNow}
                   </button>
                 </div>
               </div>
               {pollingLastChecked && (
                 <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-                  Last checked: {new Date(pollingLastChecked).toLocaleString()}
+                  {wt.lastChecked}: {new Date(pollingLastChecked).toLocaleString()}
                 </div>
               )}
               <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                Alternative to webhooks for local development. Polls GitHub API for events.
+                {wt.localPollingHint}
               </p>
             </div>
 
@@ -490,10 +493,10 @@ export function GitHubWebhookPanel() {
                 {loading ? (
                   <div className="flex items-center justify-center py-12 text-slate-400">
                     <div className="w-5 h-5 border-2 border-slate-300 dark:border-slate-600 border-t-blue-500 rounded-full animate-spin mr-2" />
-                    Loading…
+                    {wt.loading}
                   </div>
                 ) : configs.length === 0 ? (
-                  <EmptyState onAdd={openCreate} />
+                  <EmptyState onAdd={openCreate} t={wt} />
                 ) : (
                   <div className="space-y-3 mt-2">
                     {configs.map((config) => (
@@ -524,21 +527,21 @@ export function GitHubWebhookPanel() {
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
 
-function EmptyState({ onAdd }: { onAdd: () => void }) {
+function EmptyState({ onAdd, t }: { onAdd: () => void; t: TranslationDictionary["webhook"] }) {
   return (
     <div className="flex flex-col items-center justify-center py-16 text-center">
       <div className="w-16 h-16 bg-slate-100 dark:bg-slate-800 rounded-2xl flex items-center justify-center mb-4">
         <Link2 className="w-8 h-8 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}/>
       </div>
-      <h3 className="text-base font-medium text-slate-900 dark:text-slate-100 mb-1">No webhook triggers configured</h3>
+      <h3 className="text-base font-medium text-slate-900 dark:text-slate-100 mb-1">{t.emptyTitle}</h3>
       <p className="text-sm text-slate-500 dark:text-slate-400 max-w-sm mb-4">
-        Connect a GitHub repository to automatically trigger agents when issues are created, PRs are opened, or builds complete.
+        {t.emptyDescription}
       </p>
       <button
         onClick={onAdd}
         className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg transition-colors"
       >
-        Add Your First Trigger
+        {t.addFirstTrigger}
       </button>
     </div>
   );
@@ -560,20 +563,20 @@ function WebhookConfigForm({ form, setForm, editId, saving, specialists, onSubmi
   return (
     <form onSubmit={onSubmit} className="bg-white dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl p-5 mt-2 space-y-4">
       <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-        {editId ? "Edit Webhook Trigger" : "New Webhook Trigger"}
+        {editId ? t.webhook.editWebhookTrigger : t.webhook.newWebhookTrigger}
       </h3>
 
       {/* Name */}
       <div>
         <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
-          Name <span className="text-red-500">*</span>
+          {t.webhook.nameLabel} <span className="text-red-500">*</span>
         </label>
         <input
           data-testid="webhook-name"
           type="text"
           value={form.name}
           onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
-          placeholder="e.g. Issue Handler — data-mesh-spike"
+          placeholder={t.webhook.namePlaceholder}
           className="w-full px-3 py-2 text-sm bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-slate-100"
           required
         />
@@ -582,8 +585,8 @@ function WebhookConfigForm({ form, setForm, editId, saving, specialists, onSubmi
       {/* Repository */}
       <div>
         <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
-          GitHub Repository <span className="text-red-500">*</span>
-          <span className="ml-1 text-slate-400 font-normal">(owner/repo)</span>
+          {t.webhook.githubRepository} <span className="text-red-500">*</span>
+          <span className="ml-1 text-slate-400 font-normal">{t.webhook.repoFormatHint}</span>
         </label>
         <input
           data-testid="webhook-repo"
@@ -599,25 +602,25 @@ function WebhookConfigForm({ form, setForm, editId, saving, specialists, onSubmi
       {/* GitHub Token */}
       <div>
         <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
-          GitHub Token <span className="text-red-500">{editId ? "" : "*"}</span>
-          {editId && <span className="ml-1 text-slate-400 font-normal">(leave blank to keep existing)</span>}
+          {t.webhook.githubToken} <span className="text-red-500">{editId ? "" : "*"}</span>
+          {editId && <span className="ml-1 text-slate-400 font-normal">{t.webhook.tokenKeepHint}</span>}
         </label>
         <input
           data-testid="webhook-token"
           type="password"
           value={form.githubToken}
           onChange={(e) => setForm((p) => ({ ...p, githubToken: e.target.value }))}
-          placeholder={editId ? "Leave blank to keep existing token" : "github_pat_..."}
+          placeholder={editId ? t.webhook.tokenEditPlaceholder : t.webhook.tokenPlaceholder}
           className="w-full px-3 py-2 text-sm bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-slate-100"
           required={!editId}
         />
       </div>
 
-      {/* Webhook Secret */}
+      {/* {t.webhook.webhookSecret} */}
       <div>
         <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
-          Webhook Secret
-          <span className="ml-1 text-slate-400 font-normal">(used to verify payloads)</span>
+          {t.webhook.webhookSecret}
+          <span className="ml-1 text-slate-400 font-normal">{t.webhook.secretHint}</span>
         </label>
         <input
           data-testid="webhook-secret"
@@ -632,7 +635,7 @@ function WebhookConfigForm({ form, setForm, editId, saving, specialists, onSubmi
       {/* Events */}
       <div>
         <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-2">
-          Events to Subscribe <span className="text-red-500">*</span>
+          {t.webhook.eventsToSubscribe} <span className="text-red-500">*</span>
         </label>
         <div className="grid grid-cols-2 gap-2">
           {SUPPORTED_EVENTS.map((ev) => (
@@ -663,15 +666,15 @@ function WebhookConfigForm({ form, setForm, editId, saving, specialists, onSubmi
       {/* Label filter */}
       <div>
         <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
-          Label Filter
-          <span className="ml-1 text-slate-400 font-normal">(comma-separated; only trigger for issues with these labels)</span>
+          {t.webhook.labelFilter}
+          <span className="ml-1 text-slate-400 font-normal">{t.webhook.labelFilterHint}</span>
         </label>
         <input
           data-testid="webhook-label-filter"
           type="text"
           value={form.labelFilter}
           onChange={(e) => setForm((p) => ({ ...p, labelFilter: e.target.value }))}
-          placeholder="feature, enhancement, bug"
+          placeholder={t.webhook.labelFilterPlaceholder}
           className="w-full px-3 py-2 text-sm bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-slate-100"
         />
       </div>
@@ -679,7 +682,7 @@ function WebhookConfigForm({ form, setForm, editId, saving, specialists, onSubmi
       {/* Trigger Agent */}
       <div>
         <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
-          Trigger Agent <span className="text-red-500">*</span>
+          {t.webhook.triggerAgent} <span className="text-red-500">*</span>
         </label>
         <Select
           data-testid="webhook-agent"
@@ -688,7 +691,7 @@ function WebhookConfigForm({ form, setForm, editId, saving, specialists, onSubmi
           className="w-full px-3 py-2 text-sm bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-slate-100"
           required
         >
-          <option value="">— Select an agent —</option>
+          <option value="">{t.webhook.selectAgent}</option>
           {specialists.length > 0 ? (
             specialists.map((s) => (
               <option key={s.id} value={s.id}>{s.name}{s.description ? ` — ${s.description}` : ""}</option>
@@ -706,15 +709,15 @@ function WebhookConfigForm({ form, setForm, editId, saving, specialists, onSubmi
       {/* Prompt Template */}
       <div>
         <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
-          Prompt Template
-          <span className="ml-1 text-slate-400 font-normal">(optional; use {`{{event}}`}, {`{{action}}`}, {`{{repo}}`}, {`{{context}}`})</span>
+          {t.webhook.promptTemplate}
+          <span className="ml-1 text-slate-400 font-normal">{t.webhook.promptTemplateHint}</span>
         </label>
         <textarea
           data-testid="webhook-prompt"
           value={form.promptTemplate}
           onChange={(e) => setForm((p) => ({ ...p, promptTemplate: e.target.value }))}
           rows={3}
-          placeholder="Leave blank for default prompt…"
+          placeholder={t.webhook.promptTemplatePlaceholder}
           className="w-full px-3 py-2 text-sm bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-slate-100 resize-none"
         />
       </div>
@@ -728,7 +731,7 @@ function WebhookConfigForm({ form, setForm, editId, saving, specialists, onSubmi
           onChange={(e) => setForm((p) => ({ ...p, enabled: e.target.checked }))}
           className="accent-blue-600"
         />
-        <span className="text-sm text-slate-700 dark:text-slate-300">Enabled</span>
+        <span className="text-sm text-slate-700 dark:text-slate-300">{t.webhook.enabled}</span>
       </label>
 
       {/* Actions */}
@@ -763,6 +766,7 @@ interface WebhookConfigCardProps {
 }
 
 function WebhookConfigCard({ config, onEdit, onDelete, onRegister, onToggle, registering }: WebhookConfigCardProps) {
+  const { t } = useTranslation();
   return (
     <div className={`bg-white dark:bg-slate-800/50 border rounded-xl p-4 transition-colors ${
       config.enabled
@@ -800,7 +804,7 @@ function WebhookConfigCard({ config, onEdit, onDelete, onRegister, onToggle, reg
         {/* Enabled toggle */}
         <button
           onClick={onToggle}
-          title={config.enabled ? "Disable" : "Enable"}
+          title={config.enabled ? t.webhook.disable : t.webhook.enable}
           className="p-1 rounded-md text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
         >
           {config.enabled ? (
@@ -825,7 +829,7 @@ function WebhookConfigCard({ config, onEdit, onDelete, onRegister, onToggle, reg
               <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z" />
             </svg>
           )}
-          Register on GitHub
+          {t.webhook.registerOnGithub}
         </button>
 
         <button
@@ -833,7 +837,7 @@ function WebhookConfigCard({ config, onEdit, onDelete, onRegister, onToggle, reg
           className="flex items-center gap-1 px-2.5 py-1 text-xs text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-md transition-colors"
         >
           <SquarePen className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
-          Edit
+          {t.webhook.edit}
         </button>
 
         <button
@@ -841,7 +845,7 @@ function WebhookConfigCard({ config, onEdit, onDelete, onRegister, onToggle, reg
           className="flex items-center gap-1 px-2.5 py-1 text-xs text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-md transition-colors ml-auto"
         >
           <Trash2 className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
-          Delete
+          {t.webhook.delete}
         </button>
       </div>
     </div>
@@ -855,25 +859,26 @@ interface TriggerLogsTableProps {
 }
 
 function TriggerLogsTable({ logs, configs, onRefresh }: TriggerLogsTableProps) {
+  const { t } = useTranslation();
   const configMap = Object.fromEntries(configs.map((c) => [c.id, c.name]));
 
   return (
     <div className="mt-2">
       <div className="flex items-center justify-between mb-3">
-        <p className="text-xs text-slate-500 dark:text-slate-400">{logs.length} recent events</p>
+        <p className="text-xs text-slate-500 dark:text-slate-400">{logs.length} {t.webhook.recentEvents}</p>
         <button
           onClick={onRefresh}
           className="flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300"
         >
           <RefreshCw className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
-          Refresh
+          {t.webhook.refresh}
         </button>
       </div>
 
       {logs.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-12 text-center">
-          <p className="text-sm text-slate-500 dark:text-slate-400">No webhook events received yet.</p>
-          <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">Events will appear here once GitHub sends webhook payloads.</p>
+          <p className="text-sm text-slate-500 dark:text-slate-400">{t.webhook.noEventsYet}</p>
+          <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">{t.webhook.noEventsHint}</p>
         </div>
       ) : (
         <div className="space-y-2">
@@ -894,7 +899,7 @@ function TriggerLogsTable({ logs, configs, onRefresh }: TriggerLogsTableProps) {
                   <p className="text-xs text-red-500 truncate">{log.errorMessage}</p>
                 )}
                 {log.backgroundTaskId && (
-                  <p className="text-xs text-slate-500 dark:text-slate-400">Task: {log.backgroundTaskId}</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">{t.webhook.taskLabel}: {log.backgroundTaskId}</p>
                 )}
               </div>
               <span className="shrink-0 text-xs text-slate-400">

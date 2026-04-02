@@ -25,6 +25,7 @@ import {
   getKanbanTaskAgentCopy,
 } from "./i18n/kanban-task-agent";
 import { createKanbanSpecialistResolver } from "./kanban-card-session-utils";
+import { useTranslation } from "@/i18n";
 import { normalizeKanbanAutomation } from "@/core/models/kanban";
 import type { RepoSelection } from "@/client/components/repo-picker";
 import type { RepoSyncState } from "./kanban-repo-sync-status";
@@ -101,6 +102,7 @@ export function KanbanTab({
   acp,
   onAgentPrompt,
 }: KanbanTabProps) {
+  const { t } = useTranslation();
   const kanbanTaskAgentCopy = getKanbanTaskAgentCopy(specialistLanguage);
   const resolveSpecialist = useMemo(
     () => createKanbanSpecialistResolver(specialists),
@@ -1092,7 +1094,7 @@ export function KanbanTab({
   }
 
   async function _createBoard() {
-    const name = window.prompt("Board name");
+    const name = window.prompt(t.kanban.boardName);
     if (!name?.trim()) return;
     const response = await fetch("/api/kanban/boards", {
       method: "POST",

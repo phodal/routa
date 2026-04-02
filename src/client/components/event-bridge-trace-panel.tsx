@@ -85,18 +85,19 @@ function groupSemanticEvents(events: WorkspaceAgentEvent[]): EventGroup[] {
 // ─── Sub-components ───────────────────────────────────────────────────────
 
 function LifecycleBar({ event }: { event: WorkspaceAgentEvent }) {
+  const { t } = useTranslation();
   const color = BLOCK_COLORS[event.type] ?? DEFAULT_COLOR;
   let label = "";
   let detail = "";
 
   if (event.type === "agent_started") {
-    label = "Session Started";
+    label = t.trace.sessionStarted;
     detail = event.provider;
   } else if (event.type === "agent_completed") {
-    label = "Completed";
+    label = t.trace.completed;
     detail = event.stopReason;
   } else if (event.type === "agent_failed") {
-    label = "Failed";
+    label = t.trace.failed;
     detail = event.message;
   }
 
@@ -116,6 +117,7 @@ function LifecycleBar({ event }: { event: WorkspaceAgentEvent }) {
 }
 
 function UserBubble({ event }: { event: WorkspaceAgentEvent & { type: "message_block" } }) {
+  const { t } = useTranslation();
   return (
     <div className="flex items-start gap-3 group">
       <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-100 dark:bg-blue-950/30">
@@ -123,14 +125,14 @@ function UserBubble({ event }: { event: WorkspaceAgentEvent & { type: "message_b
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 mb-1">
-          <span className="text-xs font-semibold text-blue-700 dark:text-blue-300">User</span>
+          <span className="text-xs font-semibold text-blue-700 dark:text-blue-300">{t.trace.user}</span>
           <span className="text-[10px] text-slate-400 dark:text-slate-500 opacity-0 group-hover:opacity-100 transition-opacity">
             {event.timestamp.toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" })}
           </span>
         </div>
         <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 dark:border-blue-800/40 dark:bg-blue-950/20">
           <p className="text-sm text-slate-800 dark:text-slate-200 whitespace-pre-wrap break-words leading-relaxed">
-            {event.content || <span className="italic text-slate-400">(empty)</span>}
+            {event.content || <span className="italic text-slate-400">{t.trace.empty}</span>}
           </p>
         </div>
       </div>
@@ -165,6 +167,7 @@ function MessageBubble({ event }: { event: WorkspaceAgentEvent & { type: "messag
 }
 
 function ReadBlockCard({ event }: { event: WorkspaceAgentEvent & { type: "read_block" } }) {
+  const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   const color = BLOCK_COLORS.read_block;
   const statusIcon = event.status === "completed" ? "✓" : event.status === "failed" ? "✗" : "⏳";
@@ -178,7 +181,7 @@ function ReadBlockCard({ event }: { event: WorkspaceAgentEvent & { type: "read_b
         <span className="text-[10px]">{color.icon}</span>
         <span className={`text-[11px] font-medium ${color.text}`}>{event.toolName}</span>
         <span className={`text-[10px] ${event.status === "completed" ? "text-emerald-600" : event.status === "failed" ? "text-red-600" : "text-amber-600"}`}>{statusIcon}</span>
-        <span className="text-[10px] text-slate-500 dark:text-slate-400 ml-auto">{event.files.length} file{event.files.length !== 1 ? "s" : ""}</span>
+        <span className="text-[10px] text-slate-500 dark:text-slate-400 ml-auto">{event.files.length} {t.trace.files}</span>
         <ChevronRight className={`w-3 h-3 text-slate-400 transition-transform ${expanded ? "rotate-90" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
       </button>
       {expanded && (
@@ -193,6 +196,7 @@ function ReadBlockCard({ event }: { event: WorkspaceAgentEvent & { type: "read_b
 }
 
 function FileChangesCard({ event }: { event: WorkspaceAgentEvent & { type: "file_changes_block" } }) {
+  const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   const color = BLOCK_COLORS.file_changes_block;
   const statusIcon = event.status === "completed" ? "✓" : event.status === "failed" ? "✗" : "⏳";
@@ -208,7 +212,7 @@ function FileChangesCard({ event }: { event: WorkspaceAgentEvent & { type: "file
         <span className="text-[10px]">{color.icon}</span>
         <span className={`text-[11px] font-medium ${color.text}`}>{event.toolName}</span>
         <span className={`text-[10px] ${event.status === "completed" ? "text-emerald-600" : event.status === "failed" ? "text-red-600" : "text-amber-600"}`}>{statusIcon}</span>
-        <span className="text-[10px] text-slate-500 dark:text-slate-400 ml-auto">{event.changes.length} change{event.changes.length !== 1 ? "s" : ""}</span>
+        <span className="text-[10px] text-slate-500 dark:text-slate-400 ml-auto">{event.changes.length} {t.trace.fileChanges}</span>
         <ChevronRight className={`w-3 h-3 text-slate-400 transition-transform ${expanded ? "rotate-90" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
       </button>
       {expanded && (
@@ -228,6 +232,7 @@ function FileChangesCard({ event }: { event: WorkspaceAgentEvent & { type: "file
 }
 
 function TerminalCard({ event }: { event: WorkspaceAgentEvent & { type: "terminal_block" } }) {
+  const { t } = useTranslation();
   const [expanded, setExpanded] = useState(true);
   const color = BLOCK_COLORS.terminal_block;
   const statusIcon = event.status === "completed" ? "✓" : event.status === "failed" ? "✗" : "⏳";
@@ -239,7 +244,7 @@ function TerminalCard({ event }: { event: WorkspaceAgentEvent & { type: "termina
         className={`group flex items-center gap-2 px-3 py-1.5 rounded-lg ${color.bg} border ${color.border} hover:opacity-80 transition-colors w-full text-left`}
       >
         <span className="text-[10px]">{color.icon}</span>
-        <span className={`text-[11px] font-medium ${color.text}`}>Terminal</span>
+        <span className={`text-[11px] font-medium ${color.text}`}>{t.trace.terminal}</span>
         <span className={`text-[10px] ${event.status === "completed" ? "text-emerald-600" : event.status === "failed" ? "text-red-600" : "text-amber-600"}`}>{statusIcon}</span>
         {event.command && (
           <code className="text-[10px] font-mono text-slate-500 dark:text-slate-400 truncate max-w-xs">{event.command}</code>
@@ -269,6 +274,7 @@ function TerminalCard({ event }: { event: WorkspaceAgentEvent & { type: "termina
 }
 
 function McpCard({ event }: { event: WorkspaceAgentEvent & { type: "mcp_block" } }) {
+  const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   const color = BLOCK_COLORS.mcp_block;
   const statusIcon = event.status === "completed" ? "✓" : event.status === "failed" ? "✗" : "⏳";
@@ -290,7 +296,7 @@ function McpCard({ event }: { event: WorkspaceAgentEvent & { type: "mcp_block" }
         <div className="mt-1 ml-4 space-y-2 border-l-2 border-blue-200 pl-3 dark:border-blue-800/40">
           {event.input && (
             <div>
-              <span className="text-[10px] font-semibold text-slate-500 uppercase">Input</span>
+              <span className="text-[10px] font-semibold text-slate-500 uppercase">{t.trace.input}</span>
               <pre className="text-[10px] font-mono text-slate-600 dark:text-slate-400 whitespace-pre-wrap mt-0.5 max-h-40 overflow-auto">
                 {JSON.stringify(event.input, null, 2)}
               </pre>
@@ -298,7 +304,7 @@ function McpCard({ event }: { event: WorkspaceAgentEvent & { type: "mcp_block" }
           )}
           {outputStr && (
             <div>
-              <span className="text-[10px] font-semibold text-slate-500 uppercase">Output</span>
+              <span className="text-[10px] font-semibold text-slate-500 uppercase">{t.trace.output}</span>
               <CodeBlock content={outputStr} language="json" variant="simple" className="!border-0 mt-0.5" wordWrap={true} />
             </div>
           )}
@@ -309,6 +315,7 @@ function McpCard({ event }: { event: WorkspaceAgentEvent & { type: "mcp_block" }
 }
 
 function GenericToolCard({ event }: { event: WorkspaceAgentEvent & { type: "tool_call_block" } }) {
+  const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   const color = BLOCK_COLORS.tool_call_block;
   const statusIcon = event.status === "completed" ? "✓" : event.status === "failed" ? "✗" : "⏳";
@@ -331,7 +338,7 @@ function GenericToolCard({ event }: { event: WorkspaceAgentEvent & { type: "tool
         <div className="mt-1 ml-4 pl-3 border-l-2 border-amber-200 dark:border-amber-800/40 space-y-2">
           {event.input && (
             <div>
-              <span className="text-[10px] font-semibold text-slate-500 uppercase">Input</span>
+              <span className="text-[10px] font-semibold text-slate-500 uppercase">{t.trace.input}</span>
               <pre className="text-[10px] font-mono text-slate-600 dark:text-slate-400 whitespace-pre-wrap mt-0.5 max-h-40 overflow-auto">
                 {JSON.stringify(event.input, null, 2)}
               </pre>
@@ -339,7 +346,7 @@ function GenericToolCard({ event }: { event: WorkspaceAgentEvent & { type: "tool
           )}
           {outputStr && (
             <div>
-              <span className="text-[10px] font-semibold text-slate-500 uppercase">Output</span>
+              <span className="text-[10px] font-semibold text-slate-500 uppercase">{t.trace.output}</span>
               <CodeBlock content={outputStr} language="auto" variant="simple" className="!border-0 mt-0.5" wordWrap={true} />
             </div>
           )}
@@ -350,6 +357,7 @@ function GenericToolCard({ event }: { event: WorkspaceAgentEvent & { type: "tool
 }
 
 function PlanCard({ event }: { event: WorkspaceAgentEvent & { type: "plan_updated" } }) {
+  const { t } = useTranslation();
   const color = BLOCK_COLORS.plan_updated;
   const statusIcons: Record<string, string> = { done: "✓", in_progress: "⏳", failed: "✗", canceled: "⊘", pending: "○" };
 
@@ -357,7 +365,7 @@ function PlanCard({ event }: { event: WorkspaceAgentEvent & { type: "plan_update
     <div className={`my-2 px-3 py-2 rounded-lg ${color.bg} border ${color.border}`}>
       <div className="flex items-center gap-2 mb-1.5">
         <span className="text-[10px]">{color.icon}</span>
-        <span className={`text-[11px] font-medium ${color.text}`}>Plan Updated</span>
+        <span className={`text-[11px] font-medium ${color.text}`}>{t.trace.planUpdated}</span>
       </div>
       <div className="space-y-1 ml-4">
         {event.items.map((item, i) => (
@@ -374,11 +382,12 @@ function PlanCard({ event }: { event: WorkspaceAgentEvent & { type: "plan_update
 }
 
 function UsageCard({ event }: { event: WorkspaceAgentEvent & { type: "usage_reported" } }) {
+  const { t } = useTranslation();
   const color = BLOCK_COLORS.usage_reported;
   return (
     <div className={`my-2 px-3 py-2 rounded-lg ${color.bg} border ${color.border} flex items-center gap-4`}>
       <span className="text-[10px]">{color.icon}</span>
-      <span className={`text-[11px] font-medium ${color.text}`}>Usage</span>
+      <span className={`text-[11px] font-medium ${color.text}`}>{t.trace.usage}</span>
       {event.usage.inputTokens != null && (
         <span className="text-[10px] text-slate-500">in: {event.usage.inputTokens.toLocaleString()}</span>
       )}
@@ -423,6 +432,7 @@ function SemanticEventCard({ event }: { event: WorkspaceAgentEvent }) {
 
 /** Agent response group — avatar + content block */
 function AgentGroup({ events }: { events: WorkspaceAgentEvent[] }) {
+  const { t } = useTranslation();
   // Merge consecutive assistant message_block events while preserving order
   const orderedEvents: WorkspaceAgentEvent[] = [];
   for (const evt of events) {
@@ -454,7 +464,7 @@ function AgentGroup({ events }: { events: WorkspaceAgentEvent[] }) {
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 mb-2">
-          <span className="text-xs font-semibold text-blue-700 dark:text-blue-300">Agent</span>
+          <span className="text-xs font-semibold text-blue-700 dark:text-blue-300">{t.trace.agent}</span>
           <span className="text-[10px] text-slate-400 dark:text-slate-500 opacity-0 group-hover:opacity-100 transition-opacity">
             {firstTimestamp?.toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" })}
             {!sameSecond && lastTimestamp && ` → ${lastTimestamp.toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" })}`}
@@ -471,15 +481,6 @@ function AgentGroup({ events }: { events: WorkspaceAgentEvent[] }) {
     </div>
   );
 }
-
-// ─── Filter config ────────────────────────────────────────────────────────
-
-const BLOCK_FILTERS = [
-  { key: "all", label: "All", active: "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300" },
-  { key: "message", label: "Messages", active: "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300" },
-  { key: "tool", label: "Tools", active: "bg-amber-100 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300" },
-  { key: "thought", label: "Thoughts", active: "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300" },
-] as const;
 
 // ─── Main Component ───────────────────────────────────────────────────────
 
@@ -513,6 +514,14 @@ export function EventBridgeTracePanel({ sessionId, traces }: EventBridgeTracePan
   // Group into conversation structure
   const groups = useMemo(() => groupSemanticEvents(filteredEvents), [filteredEvents]);
 
+  // Filter config — must be inside the component so it can access `t`
+  const blockFilters = [
+    { key: "all", label: t.trace.all, active: "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300" },
+    { key: "message", label: t.trace.chat, active: "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300" },
+    { key: "tool", label: t.trace.tools, active: "bg-amber-100 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300" },
+    { key: "thought", label: t.trace.thoughts, active: "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300" },
+  ] as const;
+
   if (!sessionId) {
     return (
       <div className="h-full flex items-center justify-center p-8">
@@ -538,7 +547,7 @@ export function EventBridgeTracePanel({ sessionId, traces }: EventBridgeTracePan
 
       {/* Filter bar */}
       <div className="px-4 py-2 border-b border-slate-200 dark:border-slate-800 flex items-center gap-1.5 shrink-0">
-        {BLOCK_FILTERS.map(({ key, label, active }) => (
+        {blockFilters.map(({ key, label, active }) => (
           <button
             key={key}
             onClick={() => setFilter(key)}
