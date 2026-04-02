@@ -11,7 +11,8 @@ import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTranslation } from "@/i18n";
-import { Columns2, LayoutGrid, Settings, House, Share2 } from "lucide-react";
+import { SettingsPopupMenu } from "./settings-popup-menu";
+import { Columns2, LayoutGrid, House, Share2 } from "lucide-react";
 
 
 interface DesktopNavRailProps {
@@ -95,19 +96,12 @@ export function DesktopNavRail({
       </nav>
       <div className="mx-2 border-t border-desktop-border" />
       <div className="flex flex-col items-center py-2 gap-0.5">
-        <Link
-          href="/settings"
-          className={`
-            w-10 h-10 flex items-center justify-center rounded-md transition-colors
-            ${pathname === "/settings" || pathname.startsWith("/settings/") || pathname === "/traces" || pathname.startsWith("/traces/")
-              ? "bg-desktop-bg-active text-desktop-accent"
-              : "text-desktop-text-secondary hover:bg-desktop-bg-active/70 hover:text-desktop-text-primary"
-            }
-          `}
-          title={t.nav.settings}
-        >
-          <Settings className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}/>
-        </Link>
+        <SettingsPopupMenu
+          position="sidebar"
+          showLabel={false}
+          isActive={pathname === "/settings" || pathname.startsWith("/settings/")}
+          buttonClassName="w-10 h-10 px-0 py-0 justify-center"
+        />
       </div>
     </aside>
   );

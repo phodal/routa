@@ -16,6 +16,7 @@ import { HarnessAgentInstructionsPanel } from "@/client/components/harness-agent
 import { HarnessDesignDecisionPanel } from "@/client/components/harness-design-decision-panel";
 import { HarnessFitnessFilesDashboard } from "@/client/components/harness-fitness-files-dashboard";
 import { HarnessGovernanceLoopGraph } from "@/client/components/harness-governance-loop-graph";
+import { HarnessLifecycleView } from "@/client/components/harness-lifecycle-view";
 import { HarnessGitHubActionsFlowPanel } from "@/client/components/harness-github-actions-flow-panel";
 import { HarnessHookRuntimePanel } from "@/client/components/harness-hook-runtime-panel";
 import { HarnessAgentHookPanel } from "@/client/components/harness-agent-hook-panel";
@@ -58,6 +59,7 @@ export default function HarnessSettingsPage() {
   const [selectedTier, setSelectedTier] = useState<TierValue>("normal");
   const [selectedSpecName, setSelectedSpecName] = useState("");
   const [selectedGovernanceNodeId, setSelectedGovernanceNodeId] = useState<string | null>(null);
+  const [governanceView, setGovernanceView] = useState<"lifecycle" | "loop">("lifecycle");
 
   const persistedRepoSelection = useMemo(
     () => loadRepoSelection("harness", workspaceId),
@@ -493,29 +495,72 @@ export default function HarnessSettingsPage() {
         />
 
         <div id="governance-loop">
-          <HarnessGovernanceLoopGraph
-            repoPath={activeRepoPath}
-            selectedTier={selectedTier}
-            specsError={specsState.error}
-            dimensionCount={dimensionSpecs.length}
-            planError={planState.error}
-            metricCount={planState.data?.metricCount ?? 0}
-            hardGateCount={planState.data?.hardGateCount ?? 0}
-            unsupportedMessage={unsupportedRepoMessage}
-            hooksData={hooksState.data}
-            hooksError={hooksState.error}
-            agentHooksData={agentHooksState.data}
-            agentHooksError={agentHooksState.error}
-            workflowData={githubActionsState.data}
-            workflowError={githubActionsState.error}
-            instructionsData={instructionsState.data}
-            instructionsError={instructionsState.error}
-            fitnessFiles={specFiles}
-            designDecisionNodeEnabled={hasArchitectureOrAdrSignal}
-            selectedNodeId={selectedGovernanceNodeId}
-            onSelectedNodeChange={setSelectedGovernanceNodeId}
-            contextPanel={governanceContextPanel}
-          />
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <h3 className="text-[15px] font-semibold text-desktop-text-primary">
+                {governanceView === "lifecycle" ? "Lifecycle View" : "Governance Loop"}
+              </h3>
+              <p className="mt-0.5 text-[12px] leading-6 text-desktop-text-secondary">
+                {governanceView === "lifecycle"
+                  ? "从需求到交付的完整生命周期治理视图"
+                  : "治理拓扑与反馈网络视图"}
+              </p>
+            </div>
+            <div className="inline-flex items-center rounded-lg border border-desktop-border bg-desktop-bg-secondary p-0.5">
+              {(["lifecycle", "loop"] as const).map((view) => (
+                <button
+                  key={view}
+                  type="button"
+                  onClick={() => setGovernanceView(view)}
+                  className={`rounded-md px-3 py-1.5 text-[11px] font-semibold transition-all ${
+                    governanceView === view
+                      ? "bg-desktop-accent text-white shadow-sm"
+                      : "text-desktop-text-secondary hover:bg-desktop-bg-active/70 hover:text-desktop-text-primary"
+                  }`}
+                >
+                  {view === "lifecycle" ? "Lifecycle" : "Loop"}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {governanceView === "lifecycle" ? (
+            <HarnessLifecycleView
+              selectedNodeId={selectedGovernanceNodeId}
+              onSelectedNodeChange={setSelectedGovernanceNodeId}
+              contextPanel={governanceContextPanel}
+              designDecisionNodeEnabled={hasArchitectureOrAdrSignal}
+              dimensionCount={dimensionSpecs.length}
+              metricCount={planState.data?.metricCount ?? 0}
+              hardGateCount={planState.data?.hardGateCount ?? 0}
+              hookCount={hookCount}
+              workflowCount={workflowCount}
+            />
+          ) : (
+            <HarnessGovernanceLoopGraph
+              repoPath={activeRepoPath}
+              selectedTier={selectedTier}
+              specsError={specsState.error}
+              dimensionCount={dimensionSpecs.length}
+              planError={planState.error}
+              metricCount={planState.data?.metricCount ?? 0}
+              hardGateCount={planState.data?.hardGateCount ?? 0}
+              unsupportedMessage={unsupportedRepoMessage}
+              hooksData={hooksState.data}
+              hooksError={hooksState.error}
+              agentHooksData={agentHooksState.data}
+              agentHooksError={agentHooksState.error}
+              workflowData={githubActionsState.data}
+              workflowError={githubActionsState.error}
+              instructionsData={instructionsState.data}
+              instructionsError={instructionsState.error}
+              fitnessFiles={specFiles}
+              designDecisionNodeEnabled={hasArchitectureOrAdrSignal}
+              selectedNodeId={selectedGovernanceNodeId}
+              onSelectedNodeChange={setSelectedGovernanceNodeId}
+              contextPanel={governanceContextPanel}
+            />
+          )}
         </div>
 
         <div id="spec-sources">

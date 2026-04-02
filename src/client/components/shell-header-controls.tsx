@@ -1,35 +1,39 @@
 "use client";
 
-import React from "react";
-
 import { ProtocolBadge } from "@/app/protocol-badge";
 
 import { DockerStatusIndicator } from "./docker-status-indicator";
-import { LanguageSwitcher } from "./language-switcher";
-import { ThemeSwitcher } from "./theme-switcher";
+import { SettingsPopupMenu } from "./settings-popup-menu";
+import { McpStatusIndicator } from "./mcp-status-indicator";
+
 
 interface ShellHeaderControlsProps {
   className?: string;
   showProtocolBadges?: boolean;
+  showSettingsMenu?: boolean;
+  compactStatus?: boolean;
 }
 
 export function ShellHeaderControls({
   className = "",
   showProtocolBadges = true,
+  showSettingsMenu = true,
+  compactStatus = false,
 }: ShellHeaderControlsProps) {
   return (
     <div className={`flex items-center gap-2 ${className}`}>
       <div className="hidden lg:flex">
-        <DockerStatusIndicator />
+        <DockerStatusIndicator compact={compactStatus} />
+      </div>
+      <div className="hidden lg:flex">
+        <McpStatusIndicator compact={compactStatus} />
       </div>
       {showProtocolBadges ? (
         <div className="hidden lg:flex items-center gap-2">
-          <ProtocolBadge name="MCP" endpoint="/api/mcp" />
           <ProtocolBadge name="ACP" endpoint="/api/acp" />
         </div>
       ) : null}
-      <LanguageSwitcher />
-      <ThemeSwitcher compact />
+      {showSettingsMenu ? <SettingsPopupMenu showLabel position="topbar" buttonClassName="h-8 gap-1" /> : null}
     </div>
   );
 }
