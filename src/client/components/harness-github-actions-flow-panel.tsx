@@ -34,7 +34,7 @@ export function HarnessGitHubActionsFlowPanel({
   workspaceId,
   codebaseId,
   repoPath,
-  repoLabel,
+  repoLabel: _repoLabel,
   unsupportedMessage,
   data,
   loading,
@@ -138,7 +138,7 @@ export function HarnessGitHubActionsFlowPanel({
     return (
       <HarnessSectionCard
         title={t.settings.harness.ciCd}
-        description={t.harness.githubActions.workflowOrchestrationDesc.replace("{repoLabel}", repoLabel)}
+        description={t.harness.githubActions.workflowOrchestrationDesc.replace("{repoLabel}", _repoLabel)}
         actions={stateBadge}
         variant={variant}
       >
@@ -151,11 +151,11 @@ export function HarnessGitHubActionsFlowPanel({
     return (
       <HarnessSectionCard
         title={t.settings.harness.ciCd}
-        description={t.harness.githubActions.workflowOrchestrationDesc.replace("{repoLabel}", repoLabel)}
+        description={t.harness.githubActions.workflowOrchestrationDesc.replace("{repoLabel}", _repoLabel)}
         actions={stateBadge}
         variant={variant}
       >
-        <HarnessUnsupportedState className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-4 text-[11px] text-amber-800" />
+        <HarnessUnsupportedState className="rounded-sm border border-amber-200 bg-amber-50 px-4 py-4 text-[11px] text-amber-800" />
       </HarnessSectionCard>
     );
   }
@@ -164,7 +164,7 @@ export function HarnessGitHubActionsFlowPanel({
     return (
       <HarnessSectionCard
         title={t.settings.harness.ciCd}
-        description={t.harness.githubActions.workflowOrchestrationDesc.replace("{repoLabel}", repoLabel)}
+        description={t.harness.githubActions.workflowOrchestrationDesc.replace("{repoLabel}", _repoLabel)}
         actions={stateBadge}
         variant={variant}
       >
@@ -177,7 +177,7 @@ export function HarnessGitHubActionsFlowPanel({
     return (
       <HarnessSectionCard
         title={t.settings.harness.ciCd}
-        description={t.harness.githubActions.workflowOrchestrationDesc.replace("{repoLabel}", repoLabel)}
+        description={t.harness.githubActions.workflowOrchestrationDesc.replace("{repoLabel}", _repoLabel)}
         actions={stateBadge}
         variant={variant}
       >
@@ -191,7 +191,7 @@ export function HarnessGitHubActionsFlowPanel({
   return (
     <HarnessSectionCard
       title={t.settings.harness.ciCd}
-      description={t.harness.githubActions.workflowOrchestrationDesc.replace("{repoLabel}", repoLabel)}
+      description={t.harness.githubActions.workflowOrchestrationDesc.replace("{repoLabel}", _repoLabel)}
       actions={stateBadge}
       variant={variant}
     >

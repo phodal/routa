@@ -19,6 +19,7 @@ export function DesktopShellHeader({
   workspaceId,
   workspaceTitle,
   workspaceSwitcher,
+  titleBarRight,
 }: DesktopShellHeaderProps) {
   const { t } = useTranslation();
   const normalizedWorkspaceId = workspaceId?.trim() || null;
@@ -40,18 +41,24 @@ export function DesktopShellHeader({
             className="flex items-center gap-1.5 rounded-xl border border-desktop-border bg-desktop-bg-secondary px-2.5 py-1.5 text-[11px] text-desktop-text-primary transition-colors hover:bg-desktop-bg-active"
           >
             <Folder className="w-3 h-3 text-desktop-text-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
-            <span className="max-w-[120px] truncate">{workspaceLabel}</span>
+            <span className="max-w-30 truncate">{workspaceLabel}</span>
           </Link>
           ) : (
             <div className="flex items-center gap-1.5 rounded-xl border border-desktop-border bg-desktop-bg-secondary px-2.5 py-1.5 text-[11px] text-desktop-text-secondary">
               <Folder className="w-3 h-3 text-desktop-text-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
-              <span className="max-w-[120px] truncate">{workspaceLabel}</span>
+              <span className="max-w-30 truncate">{workspaceLabel}</span>
             </div>
           )
         )}
       </div>
 
       <div className="flex-1 app-drag-region h-full" />
+
+      {titleBarRight ? (
+        <div className="mr-2 flex items-center gap-2">
+          {titleBarRight}
+        </div>
+      ) : null}
 
       <ShellHeaderControls className="px-2" showProtocolBadges={false} showSettingsMenu={false} compactStatus />
     </header>

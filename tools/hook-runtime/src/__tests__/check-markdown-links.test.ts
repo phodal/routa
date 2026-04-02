@@ -96,9 +96,12 @@ function withRepo<T>(
   const originalPath = process.env.PATH ?? "";
   const repoRoot = mkdtempSync(path.join(tmpdir(), "routa-md-links-"));
   const fakeBinDir = mkdtempSync(path.join(tmpdir(), "routa-md-links-bin-"));
+  const emptyHooksDir = path.join(repoRoot, ".git-test-hooks");
 
   process.chdir(repoRoot);
   execSync("git init", { cwd: repoRoot, stdio: "ignore" });
+  mkdirSync(emptyHooksDir, { recursive: true });
+  execSync(`git config core.hooksPath "${emptyHooksDir}"`, { cwd: repoRoot, stdio: "ignore" });
   execSync("git config user.email test@test.com", { cwd: repoRoot, stdio: "ignore" });
   execSync("git config user.name Test", { cwd: repoRoot, stdio: "ignore" });
 
@@ -108,10 +111,6 @@ function withRepo<T>(
     mkdirSync(dir, { recursive: true });
     writeFileSync(absolutePath, file.content);
     execSync(`git add "${file.file}"`, { cwd: repoRoot, stdio: "ignore" });
-  }
-
-  if (files.length > 0) {
-    execSync("git commit -m init", { cwd: repoRoot, stdio: "ignore" });
   }
 
   const { restore } = writeFakeCurl(fakeBinDir, curlResponses, curlDefault);

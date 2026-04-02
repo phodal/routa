@@ -102,16 +102,13 @@ export function HarnessAgentHookPanel({
     ? { loading: loading ?? false, error: error ?? null, data: data ?? null }
     : agentHooksState;
 
-  const description = t.harness.agentHook.description;
-  const systemAction = <span className="text-[10px] text-desktop-text-secondary">{t.harness.agentHook.hookSystems}</span>;
-
   const agentHookStateFrame = () => {
     if (resolvedState.loading) {
       return <HarnessSectionStateFrame>{t.harness.agentHook.loadingHooks}</HarnessSectionStateFrame>;
     }
 
     if (unsupportedMessage) {
-      return <HarnessUnsupportedState className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-4 text-[11px] text-amber-800" />;
+      return <HarnessUnsupportedState className="rounded-sm border border-amber-200 bg-amber-50 px-4 py-4 text-[11px] text-amber-800" />;
     }
 
     if (resolvedState.error) {
@@ -141,7 +138,7 @@ export function HarnessAgentHookPanel({
   }
 
   return (
-    <HarnessSectionCard title={t.harness.agentHook.hookSystems} description={description} actions={systemAction} variant={variant}>
+    <HarnessSectionCard title="Agent hook system" variant={variant}>
       {agentHookStateFrame()}
     </HarnessSectionCard>
   );

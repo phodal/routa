@@ -405,7 +405,7 @@ function BoundaryGroup({
       <DetailLabel>Boundaries</DetailLabel>
       <div className="mt-1.5 grid gap-1.5">
         {boundaries.map((boundary) => (
-          <div key={boundary.name} className="rounded-lg border border-desktop-border bg-desktop-bg-primary/80 px-2.5 py-2">
+          <div key={boundary.name} className="rounded-sm border border-desktop-border bg-desktop-bg-primary/80 px-2.5 py-2">
             <div className="text-[10px] font-medium text-desktop-text-primary">
               {formatTokenLabel(boundary.name)}
             </div>
@@ -428,7 +428,7 @@ function RuleDetailCard({
   const thresholdTokens = buildThresholdTokens(rule);
 
   return (
-    <div className={`rounded-xl border px-3 py-2.5 ${styles.detailSurface}`}>
+    <div className={`rounded-sm border px-3 py-2.5 ${styles.detailSurface}`}>
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="text-[11px] font-semibold text-desktop-text-primary">{formatRuleLabel(rule.name)}</div>
         <div className="flex flex-wrap gap-1">
@@ -464,7 +464,7 @@ function RoutingDetailCard({
       {details.profiles.length ? (
         <div className="grid gap-2">
           {details.profiles.map((profile) => (
-            <div key={profile.name} className={`rounded-xl border px-3 py-2.5 ${TONE_STYLES[tone].detailSurface}`}>
+            <div key={profile.name} className={`rounded-sm border px-3 py-2.5 ${TONE_STYLES[tone].detailSurface}`}>
               <div className="text-[11px] font-semibold text-desktop-text-primary">
                 {formatTokenLabel(profile.name)}
               </div>
@@ -483,7 +483,7 @@ function RoutingDetailCard({
       {details.hookFiles.length ? (
         <div className="grid gap-2">
           {details.hookFiles.map((file) => (
-            <div key={file.relativePath} className={`rounded-xl border px-3 py-2.5 ${TONE_STYLES[tone].detailSurface}`}>
+            <div key={file.relativePath} className={`rounded-sm border px-3 py-2.5 ${TONE_STYLES[tone].detailSurface}`}>
               <div className="text-[11px] font-semibold text-desktop-text-primary">{file.relativePath}</div>
               <DetailGroup label="Trigger command" items={[file.triggerCommand]} tone={tone} />
             </div>
@@ -545,13 +545,12 @@ export function HarnessReviewTriggersPanel({
   return (
     <HarnessSectionCard
       title={t.harness.reviewTriggers.title}
-      description={t.harness.reviewTriggers.description}
       variant={variant}
       actions={
         canToggleDetails && reviewTriggerFile && reviewTriggerFile.rules.length ? (
           <button
             type="button"
-            className="rounded-full border border-desktop-border bg-desktop-bg-primary/65 px-2.5 py-1 text-[10px] font-semibold text-desktop-text-primary transition-colors hover:bg-desktop-bg-primary"
+            className="rounded-sm border border-desktop-border bg-desktop-bg-primary/65 px-2.5 py-1 text-[10px] font-semibold text-desktop-text-primary transition-colors hover:bg-desktop-bg-primary"
             onClick={() => setShowDetails((current) => !current)}
           >
             {detailsVisible ? t.harness.reviewTriggers.hideDetails : t.harness.reviewTriggers.showDetails}
@@ -564,7 +563,7 @@ export function HarnessReviewTriggersPanel({
       ) : null}
 
       {unsupportedMessage ? (
-        <HarnessUnsupportedState className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-5 text-[11px] text-amber-800" />
+        <HarnessUnsupportedState className="rounded-sm border border-amber-200 bg-amber-50 px-4 py-5 text-[11px] text-amber-800" />
       ) : null}
 
       {error && !unsupportedMessage ? (
@@ -590,11 +589,11 @@ export function HarnessReviewTriggersPanel({
             return (
               <article
                 key={card.key}
-                className={`rounded-2xl border bg-desktop-bg-primary/80 px-3.5 py-3 shadow-[0_8px_24px_rgba(15,23,42,0.04)] ${styles.border}`}
+                className={`rounded-sm border bg-desktop-bg-primary/80 px-3.5 py-3 ${styles.border}`}
               >
-                <div className={`mb-3 h-1 rounded-full ${styles.accent}`} aria-hidden="true">
+                <div className={`mb-3 h-1 rounded-sm ${styles.accent}`} aria-hidden="true">
                   <div
-                    className={`h-full rounded-full transition-[width] duration-300 ${styles.bar}`}
+                    className={`h-full rounded-sm transition-[width] duration-300 ${styles.bar}`}
                     style={{ width: `${Math.max(12, card.barValue * 100)}%` }}
                   />
                 </div>

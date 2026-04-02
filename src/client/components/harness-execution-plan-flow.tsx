@@ -87,31 +87,31 @@ function getStatusTone(status: EdgeStatus | undefined) {
       return {
         badge: "border-red-200 bg-red-50 text-red-700",
         border: "border-red-200",
-        glow: "shadow-red-100/80",
+        glow: "",
       };
     case "warn":
       return {
         badge: "border-amber-200 bg-amber-50 text-amber-700",
         border: "border-amber-200",
-        glow: "shadow-amber-100/80",
+        glow: "",
       };
     case "pass":
       return {
         badge: "border-emerald-200 bg-emerald-50 text-emerald-700",
         border: "border-emerald-200",
-        glow: "shadow-emerald-100/80",
+        glow: "",
       };
     case "blocked":
       return {
         badge: "border-slate-300 bg-slate-100 text-slate-700",
         border: "border-slate-300",
-        glow: "shadow-slate-200/80",
+        glow: "",
       };
     default:
       return {
         badge: "border-desktop-border bg-desktop-bg-secondary text-desktop-text-secondary",
         border: "border-desktop-border",
-        glow: "shadow-black/5",
+        glow: "",
       };
   }
 }
@@ -149,7 +149,7 @@ function PlanNodeView({ data }: NodeProps<Node<PlanNodeData>>) {
   if (data.kind === "lane") {
     return (
       <div
-        className="rounded-[28px] border border-desktop-border/70 bg-desktop-bg-primary/35 px-3 py-1.5 shadow-sm backdrop-blur-[1px]"
+        className="rounded-sm border border-desktop-border bg-desktop-bg-primary/40 px-3 py-1.5"
         style={{ width: data.frameWidth ?? 640, height: data.frameHeight ?? 220 }}
       >
         <Handle
@@ -192,7 +192,7 @@ function PlanNodeView({ data }: NodeProps<Node<PlanNodeData>>) {
         onClick={() => {
           data.onToggle?.();
         }}
-        className={`${widthClass} ${heightClass} ${contentPaddingClass} flex flex-col overflow-hidden rounded-2xl border bg-desktop-bg-primary/96 text-left shadow-sm transition ${tone.border} ${tone.glow} ${interactive ? "cursor-pointer hover:bg-desktop-bg-secondary/90" : "cursor-default"}`}
+        className={`${widthClass} ${heightClass} ${contentPaddingClass} flex flex-col overflow-hidden rounded-sm border bg-desktop-bg-primary text-left transition ${tone.border} ${tone.glow} ${interactive ? "cursor-pointer hover:bg-desktop-bg-secondary/90" : "cursor-default"}`}
       >
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
@@ -411,9 +411,8 @@ function buildPlanGraph(
     nodes.push(buildNode(dimensionId, dimensionX, dimensionY, {
       kind: "dimension",
       title: dimension.name,
-      subtitle: `${dimension.sourceFile} · ${dimension.thresholdPass}/${dimension.thresholdWarn}`,
+      subtitle: dimension.sourceFile,
       status: hasHardMetric ? "hard" : "pass",
-      badgeText: `${dimension.thresholdPass}/${dimension.thresholdWarn}`,
       expanded,
       onToggle: () => {
         toggleDimension(dimension.name);
@@ -519,7 +518,7 @@ export function HarnessExecutionPlanFlow({
   loading,
   error,
   plan,
-  repoLabel,
+  repoLabel: _repoLabel,
   selectedTier,
   onTierChange,
   unsupportedMessage,
@@ -591,9 +590,6 @@ export function HarnessExecutionPlanFlow({
         {!embedded ? (
           <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-desktop-text-secondary">{t.settings.harness.entrixFitness}</div>
         ) : null}
-        <div className="rounded-full border border-desktop-border bg-desktop-bg-primary px-2.5 py-1 text-[10px] text-desktop-text-secondary">
-          {repoLabel}
-        </div>
         <div className="rounded-full border border-desktop-border bg-desktop-bg-primary p-0.5">
           {(["fast", "normal", "deep"] as const).map((tier) => (
             <button
@@ -632,7 +628,7 @@ export function HarnessExecutionPlanFlow({
             {expandedDimensions.size > 0 ? t.harness.executionPlan.hideMetrics : t.harness.executionPlan.showMetrics}
           </button>
         ) : null}
-        {plan ? (
+{plan ? (
           <>
             <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[10px] text-emerald-700">{t.harness.executionPlan.legendPass}</span>
             <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[10px] text-amber-700">{t.harness.executionPlan.legendWarn}</span>
@@ -653,14 +649,14 @@ export function HarnessExecutionPlanFlow({
       ) : null}
 
       {error && !unsupportedMessage ? (
-        <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-5 text-[11px] text-red-700">
+        <div className="mt-4 rounded-sm border border-red-200 bg-red-50 px-4 py-5 text-[11px] text-red-700">
           {error}
         </div>
       ) : null}
 
       {!unsupportedMessage && plan ? (
         <div className="mt-4">
-          <div className="overflow-hidden rounded-2xl border border-desktop-border bg-[radial-gradient(circle_at_top_left,rgba(59,130,246,0.08),transparent_24%),radial-gradient(circle_at_bottom_right,rgba(16,185,129,0.08),transparent_28%)]">
+          <div className="overflow-hidden rounded-sm border border-desktop-border bg-desktop-bg-primary">
             <div style={{ height: graph.minHeight }}>
               <ReactFlow
                 key={flowKey}
@@ -701,8 +697,8 @@ export function HarnessExecutionPlanFlow({
 
   return (
     <section className={variant === "compact"
-      ? "rounded-2xl border border-desktop-border bg-desktop-bg-primary/60 p-4"
-      : "rounded-2xl border border-desktop-border bg-desktop-bg-secondary/55 p-4 shadow-sm"}
+      ? "rounded-sm border border-desktop-border bg-desktop-bg-primary/60 p-4"
+      : "rounded-sm border border-desktop-border bg-desktop-bg-secondary/40 p-4"}
     >
       {content}
     </section>

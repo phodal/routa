@@ -5,7 +5,6 @@ import { HarnessHookWorkbench } from "@/client/components/harness-hook-workbench
 import { HarnessSectionCard, HarnessSectionStateFrame } from "@/client/components/harness-section-card";
 import { HarnessUnsupportedState } from "@/client/components/harness-support-state";
 import type { HooksResponse } from "@/client/hooks/use-harness-settings-data";
-import { useTranslation } from "@/i18n";
 
 type HooksPanelProps = {
   workspaceId: string;
@@ -38,7 +37,6 @@ export function HarnessHookRuntimePanel({
   variant = "full",
   embedded = false,
 }: HooksPanelProps) {
-  const { t } = useTranslation();
   const hasExternalState = loading !== undefined || error !== undefined || data !== undefined;
   const [hooksState, setHooksState] = useState<HooksState>({
     loading: false,
@@ -118,17 +116,13 @@ export function HarnessHookRuntimePanel({
     }
     : hooksState;
 
-  const description = t.harness.hookRuntime.description;
-
-  const systemAction = <span className="text-[10px] text-desktop-text-secondary">{t.harness.hookRuntime.hookSystems}</span>;
-
   const runtimeStateFrame = () => {
     if (resolvedState.loading) {
-      return <HarnessSectionStateFrame>{t.harness.hookRuntime.loadingHookRuntime}</HarnessSectionStateFrame>;
+      return <HarnessSectionStateFrame>Loading hook runtime...</HarnessSectionStateFrame>;
     }
 
     if (unsupportedMessage) {
-      return <HarnessUnsupportedState className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-4 text-[11px] text-amber-800" />;
+      return <HarnessUnsupportedState className="rounded-sm border border-amber-200 bg-amber-50 px-4 py-4 text-[11px] text-amber-800" />;
     }
 
     if (resolvedState.error) {
@@ -138,7 +132,7 @@ export function HarnessHookRuntimePanel({
     if (!resolvedState.data) {
       return (
         <HarnessSectionStateFrame>
-          {t.harness.hookRuntime.noHookRuntimeData}
+          No hook runtime data found for the selected repository.
         </HarnessSectionStateFrame>
       );
     }
@@ -158,7 +152,7 @@ export function HarnessHookRuntimePanel({
   }
 
   return (
-    <HarnessSectionCard title={t.harness.hookRuntime.hookSystems} description={description} actions={systemAction} variant={variant}>
+    <HarnessSectionCard title="Hook systems" variant={variant}>
       {runtimeStateFrame()}
     </HarnessSectionCard>
   );

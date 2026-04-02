@@ -53,7 +53,7 @@ export function HarnessRepoSignalsPanel({
   workspaceId,
   codebaseId,
   repoPath,
-  repoLabel,
+  repoLabel: _repoLabel,
   mode,
   unsupportedMessage,
   variant = "full",
@@ -118,39 +118,16 @@ export function HarnessRepoSignalsPanel({
   const focus = state.data?.[mode];
   const scriptGroups = useMemo(() => focus?.entrypointGroups ?? [], [focus]);
   const title = mode === "build" ? "构建反馈环" : "测试反馈环";
-  const summaryText = focus?.summary ?? (mode === "build"
-    ? "把 package manager、workspace manifests 和发布目标放在一个视图里。"
-    : "把测试脚本、配置文件和 coverage / reports 证据放在一个视图里。");
   const summaryRows = useMemo(() => {
     return focus?.overviewRows.map((row) => ({
       label: row.label,
       values: row.items,
     })) ?? [];
   }, [focus]);
-  const totalScripts = useMemo(
-    () => scriptGroups.reduce((count, group) => count + group.scripts.length, 0),
-    [scriptGroups],
-  );
-  const headerActions = (
-    <div className="flex flex-wrap gap-2 text-[10px]">
-      <span className="rounded-full border border-desktop-border bg-desktop-bg-primary px-2.5 py-1 text-desktop-text-secondary">
-        {repoLabel}
-      </span>
-      {state.data?.packageManager ? (
-        <span className="rounded-full border border-desktop-border bg-desktop-bg-primary px-2.5 py-1 text-desktop-text-secondary">
-          {state.data.packageManager}
-        </span>
-      ) : null}
-      <span className={`rounded-full border px-2.5 py-1 ${tone.badge}`}>{totalScripts} scripts</span>
-      <span className={`rounded-full border px-2.5 py-1 ${tone.badge}`}>{scriptGroups.length} groups</span>
-    </div>
-  );
 
   return (
     <HarnessSectionCard
       title={title}
-      description={summaryText}
-      actions={headerActions}
       variant={variant}
       dataTestId="repo-signals-panel"
     >
@@ -169,7 +146,7 @@ export function HarnessRepoSignalsPanel({
       {!state.loading && !state.error && !unsupportedMessage && state.data ? (
         <div className={`mt-4 ${mode === "test" ? "grid gap-3 md:grid-cols-2" : "space-y-4"}`}>
           {mode === "build" ? (
-            <div className="overflow-hidden rounded-2xl border border-desktop-border bg-desktop-bg-primary/80">
+            <div className="overflow-hidden rounded-sm border border-desktop-border bg-desktop-bg-primary/80">
               <div className="border-b border-desktop-border/70 px-4 py-3">
                 <div className={`text-[10px] font-semibold uppercase tracking-[0.14em] ${tone.title}`}>{t.harness.repoSignals.overview}</div>
               </div>
@@ -200,7 +177,7 @@ export function HarnessRepoSignalsPanel({
             </div>
           ) : null}
 
-          <div className={`overflow-hidden rounded-2xl border border-desktop-border bg-desktop-bg-primary/80 ${mode === "test" ? "md:col-span-2" : ""}`}>
+          <div className={`overflow-hidden rounded-sm border border-desktop-border bg-desktop-bg-primary/80 ${mode === "test" ? "md:col-span-2" : ""}`}>
             <div className="border-b border-desktop-border/70 px-4 py-3">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
@@ -288,7 +265,7 @@ export function HarnessRepoSignalsPanel({
           {state.data.warnings.length > 0 ? (
             <div className={`space-y-2 ${mode === "test" ? "md:col-span-2" : ""}`}>
               {state.data.warnings.map((warning) => (
-                <div key={warning} className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-[11px] text-amber-800">
+                <div key={warning} className="rounded-sm border border-amber-200 bg-amber-50 px-3 py-3 text-[11px] text-amber-800">
                   {warning}
                 </div>
               ))}

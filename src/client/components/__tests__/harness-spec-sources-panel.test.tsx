@@ -47,7 +47,7 @@ describe("HarnessSpecSourcesPanel", () => {
     );
 
     expect(screen.getByTestId("spec-sources-compact")).not.toBeNull();
-    expect(screen.getByText("Loading...")).not.toBeNull();
+    expect(screen.getByText("Scanning for spec sources...")).not.toBeNull();
     expect(screen.queryByText("bmad")).toBeNull();
   });
 

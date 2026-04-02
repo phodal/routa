@@ -15,7 +15,6 @@ import {
 import type { TierValue } from "@/client/components/harness-execution-plan-flow";
 import { HarnessUnsupportedState } from "@/client/components/harness-support-state";
 import type {
-  AgentHooksResponse,
   FitnessSpecSummary,
   GitHubActionsFlow,
   GitHubActionsFlowsResponse,
@@ -31,12 +30,6 @@ type HookSummary = {
   mappedMetricCount: number;
   phaseCount: number;
   phaseLabels: string[];
-};
-
-type AgentHookSummary = {
-  hookCount: number;
-  blockingCount: number;
-  eventCount: number;
 };
 
 type WorkflowSummary = {
@@ -68,8 +61,6 @@ type HarnessGovernanceLoopGraphProps = {
   unsupportedMessage?: string | null;
   hooksData?: HooksResponse | null;
   hooksError?: string | null;
-  agentHooksData?: AgentHooksResponse | null;
-  agentHooksError?: string | null;
   workflowData?: GitHubActionsFlowsResponse | null;
   workflowError?: string | null;
   instructionsData?: InstructionsResponse | null;
@@ -120,7 +111,7 @@ function getNodeToneClasses(tone: LoopTone) {
         badge: "border-sky-400 bg-sky-100 text-sky-800",
         fill: "bg-sky-100",
         fillActive: "bg-sky-200",
-        shadow: "shadow-sky-200/80",
+        shadow: "",
       };
     case "emerald":
       return {
@@ -128,7 +119,7 @@ function getNodeToneClasses(tone: LoopTone) {
         badge: "border-emerald-400 bg-emerald-100 text-emerald-800",
         fill: "bg-emerald-100",
         fillActive: "bg-emerald-200",
-        shadow: "shadow-emerald-200/80",
+        shadow: "",
       };
     case "amber":
       return {
@@ -136,7 +127,7 @@ function getNodeToneClasses(tone: LoopTone) {
         badge: "border-amber-400 bg-amber-100 text-amber-800",
         fill: "bg-amber-100",
         fillActive: "bg-amber-200",
-        shadow: "shadow-amber-200/80",
+        shadow: "",
       };
     case "violet":
       return {
@@ -144,7 +135,7 @@ function getNodeToneClasses(tone: LoopTone) {
         badge: "border-violet-400 bg-violet-100 text-violet-800",
         fill: "bg-violet-100",
         fillActive: "bg-violet-200",
-        shadow: "shadow-violet-200/80",
+        shadow: "",
       };
     default:
       return {
@@ -152,7 +143,7 @@ function getNodeToneClasses(tone: LoopTone) {
         badge: "border-desktop-border bg-desktop-bg-secondary text-desktop-text-secondary",
         fill: "bg-desktop-bg-secondary",
         fillActive: "bg-desktop-bg-primary/96",
-        shadow: "shadow-black/5",
+        shadow: "",
       };
   }
 }
@@ -222,10 +213,10 @@ function LoopNodeView({ data }: NodeProps<Node<LoopNodeData>>) {
           event.stopPropagation();
           data.onNavigate?.(direction);
         }}
-        className={`flex h-[132px] w-[168px] flex-col justify-between rounded-[24px] border px-4 py-3 text-left shadow-sm transition ${
+        className={`flex h-[132px] w-[168px] flex-col justify-between rounded-sm border px-4 py-3 text-left transition ${
           interactive ? "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-desktop-accent/70 focus-visible:ring-offset-2 focus-visible:ring-offset-white" : "cursor-not-allowed"
         } ${
-          data.active ? `${tone.fillActive} ${tone.border} ${tone.shadow}` : `${tone.fill} ${tone.border} shadow-black/0`
+          data.active ? `${tone.fillActive} ${tone.border} ${tone.shadow}` : `${tone.fill} ${tone.border}`
         } ${selectedClasses}`}
       >
         <div className="flex items-start justify-between gap-3">
@@ -251,13 +242,13 @@ function LoopNodeView({ data }: NodeProps<Node<LoopNodeData>>) {
           </div>
         ) : null}
         {data.unavailableReason ? (
-          <div
-            id={unavailableReasonId}
-            className="mt-2 min-h-[16px] max-w-[168px] rounded-xl border border-dashed border-slate-200 bg-white/70 px-2.5 py-2 text-[10px] leading-4 text-slate-500 truncate"
-            title={data.unavailableReason}
-          >
-            {data.unavailableReason}
-          </div>
+        <div
+          id={unavailableReasonId}
+          className="mt-2 min-h-[16px] max-w-[168px] rounded-sm border border-dashed border-slate-200 bg-white/70 px-2.5 py-2 text-[10px] leading-4 text-slate-500 truncate"
+          title={data.unavailableReason}
+        >
+          {data.unavailableReason}
+        </div>
         ) : null}
       </button>
     </div>
@@ -359,7 +350,6 @@ function detectReleaseWorkflows(flows: GitHubActionsFlow[]) {
 
 function buildGraph(args: {
   hookSummary: HookSummary | null;
-  agentHookSummary: AgentHookSummary | null;
   instructionSummary: InstructionSummary | null;
   workflowSummary: WorkflowSummary | null;
   metricCount: number;
@@ -371,7 +361,6 @@ function buildGraph(args: {
 }) {
   const {
     hookSummary,
-    agentHookSummary,
     instructionSummary,
     workflowSummary,
     metricCount,
@@ -387,7 +376,6 @@ function buildGraph(args: {
     "thinking",
     ...(hasCodingNode ? ["coding"] : []),
     "build",
-    "agent-hook",
     "test",
     "precommit",
     "review",
@@ -400,9 +388,8 @@ function buildGraph(args: {
     ...(hasCodingNode ? {
       coding: { left: "thinking", right: "build" },
     } : {}),
-    build: { left: hasCodingNode ? "coding" : "thinking", right: "agent-hook", down: "review" },
-    "agent-hook": { left: "test", down: "precommit" },
-    test: { left: "agent-hook", down: "precommit" },
+    build: { left: hasCodingNode ? "coding" : "thinking", right: "test", down: "review" },
+    test: { left: "build", down: "precommit" },
     precommit: { up: "test", left: "review" },
     review: { up: "build", right: "precommit", left: "post-commit" },
     "post-commit": { right: "review", down: "release" },
@@ -444,7 +431,6 @@ function buildGraph(args: {
   const col2X = 330;
   const col3X = 532;
   const col4X = 734;
-  const col5X = 936;
   const externalRowY = 482;
 
   const nodes: Node<LoopNodeData>[] = [
@@ -488,17 +474,6 @@ function buildGraph(args: {
       note: g.clues.testNote,
       active: true,
       ...buildSelectionState("test", true),
-    }),
-    buildNode("agent-hook", col5X, internalRowY, {
-      nodeId: "agent-hook",
-      layer: "internal",
-      title: "Agent 治理",
-      tone: getLayerTone("internal"),
-      note: agentHookSummary
-        ? `${agentHookSummary.hookCount} hooks / ${agentHookSummary.eventCount} events`
-        : "Agent Hook 策略与生命周期治理",
-      active: true,
-      ...buildSelectionState("agent-hook", true),
     }),
     buildNode("precommit", col4X, commitRowY, {
       nodeId: "precommit",
@@ -592,8 +567,7 @@ function buildGraph(args: {
   const edges: Edge[] = [
     buildEdge("thinking-coding", "thinking", "coding", "source-right", "target-left", g.edgeLabels.clarify, LOOP_EDGE_COLORS.neutral),
     buildEdge("coding-build", "coding", "build", "source-right", "target-left", g.edgeLabels.implement, LOOP_EDGE_COLORS.internal),
-    buildEdge("build-agent-hook", "build", "agent-hook", "source-right", "target-left", g.edgeLabels.sendForReview, LOOP_EDGE_COLORS.internal),
-    buildEdge("agent-hook-test", "agent-hook", "test", "source-left", "target-right", g.edgeLabels.validate, LOOP_EDGE_COLORS.internal),
+    buildEdge("build-test", "build", "test", "source-right", "target-left", g.edgeLabels.validate, LOOP_EDGE_COLORS.internal),
 
     buildEdge("precommit-review", "precommit", "review", "source-left", "target-right", g.edgeLabels.sendForReview, LOOP_EDGE_COLORS.internal),
     buildEdge("review-commit", "review", "commit", "source-left", "target-right", g.edgeLabels.integrate, LOOP_EDGE_COLORS.neutral),
@@ -665,7 +639,6 @@ function buildGraph(args: {
 function buildDetailSections(args: {
   selectedNodeId: string | null;
   hooksData: HooksResponse | null;
-  agentHooksData: AgentHooksResponse | null;
   workflowData: GitHubActionsFlowsResponse | null;
   instructionSummary: InstructionSummary | null;
   fitnessFiles: FitnessSpecSummary[];
@@ -678,7 +651,6 @@ function buildDetailSections(args: {
   const {
     selectedNodeId,
     hooksData,
-    agentHooksData,
     workflowData,
     instructionSummary,
     fitnessFiles,
@@ -698,9 +670,6 @@ function buildDetailSections(args: {
   const primaryRuleFiles = fitnessFiles
     .filter((file) => file.kind === "rulebook" || file.kind === "manifest")
     .map((file) => file.name);
-  const agentHookCount = agentHooksData?.hooks?.length ?? 0;
-  const agentEventCount = new Set((agentHooksData?.hooks ?? []).map((hook) => hook.event)).size;
-  const agentBlockingCount = (agentHooksData?.hooks ?? []).filter((hook) => hook.blocking).length;
 
   switch (selectedNodeId) {
     case "precommit":
@@ -734,12 +703,6 @@ function buildDetailSections(args: {
         { title: g.detailSections.build.contextTitle, items: [g.detailSections.build.contextItem] },
         { title: g.detailSections.build.rulebookTitle, items: primaryRuleFiles.length ? primaryRuleFiles.slice(0, 4) : [g.detailSections.build.noRulebookManifest] },
       ] satisfies LoopDetailSection[];
-    case "agent-hook":
-      return [
-        { title: "Agent hook summary", items: [`${agentHookCount} hooks`, `${agentEventCount} events`, `${agentBlockingCount} blocking`] },
-        { title: "Related surface", items: ["Agent hook system panel", "Event → Hook → Outcome"] },
-        { title: "Source priority", items: ["docs/fitness/runtime/agent-hooks.yaml", ".claude/.qoder/.codex hooks config"] },
-      ] satisfies LoopDetailSection[];
     case "thinking":
       return [
         { title: g.detailSections.thinking.specSourcesTitle, items: [g.detailSections.thinking.specSourcesItem] },
@@ -772,8 +735,6 @@ export function HarnessGovernanceLoopGraph({
   unsupportedMessage,
   hooksData,
   hooksError,
-  agentHooksData,
-  agentHooksError,
   workflowData,
   workflowError,
   instructionsData,
@@ -815,17 +776,6 @@ export function HarnessGovernanceLoopGraph({
       releaseFlowCount: detectReleaseWorkflows(flows),
     } satisfies WorkflowSummary;
   }, [workflowData]);
-  const agentHookSummary = useMemo(() => {
-    if (!agentHooksData) {
-      return null;
-    }
-    const hooks = agentHooksData.hooks ?? [];
-    return {
-      hookCount: hooks.length,
-      blockingCount: hooks.filter((hook) => hook.blocking).length,
-      eventCount: new Set(hooks.map((hook) => hook.event)).size,
-    } satisfies AgentHookSummary;
-  }, [agentHooksData]);
   const instructionSummary = useMemo(() => {
     if (!instructionsData) {
       return null;
@@ -839,7 +789,6 @@ export function HarnessGovernanceLoopGraph({
   const graph = useMemo(
     () => buildGraph({
       hookSummary,
-      agentHookSummary,
       instructionSummary,
       workflowSummary,
       metricCount,
@@ -855,18 +804,17 @@ export function HarnessGovernanceLoopGraph({
       },
       g: t.harness.governanceLoop.graph,
     }),
-    [activeSelectedNodeId, agentHookSummary, designDecisionNodeEnabled, hardGateCount, hookSummary, instructionSummary, metricCount, onSelectedNodeChange, t.harness.governanceLoop.graph, workflowSummary],
+    [activeSelectedNodeId, designDecisionNodeEnabled, hardGateCount, hookSummary, instructionSummary, metricCount, onSelectedNodeChange, t.harness.governanceLoop.graph, workflowSummary],
   );
 
   const graphIssues = [...new Set(
-    [specsError, planError, hooksError, agentHooksError, workflowError, instructionsError]
+    [specsError, planError, hooksError, workflowError, instructionsError]
       .filter((issue): issue is string => Boolean(issue)),
   )];
   const detailSections = useMemo(
     () => buildDetailSections({
       selectedNodeId: activeSelectedNodeId,
       hooksData: hooksData ?? null,
-      agentHooksData: agentHooksData ?? null,
       workflowData: workflowData ?? null,
       instructionSummary,
       fitnessFiles,
@@ -876,7 +824,7 @@ export function HarnessGovernanceLoopGraph({
       selectedTier,
       g: t.harness.governanceLoop.graph,
     }),
-    [activeSelectedNodeId, agentHooksData, dimensionCount, fitnessFiles, hardGateCount, hooksData, instructionSummary, metricCount, selectedTier, t.harness.governanceLoop.graph, workflowData],
+    [activeSelectedNodeId, dimensionCount, fitnessFiles, hardGateCount, hooksData, instructionSummary, metricCount, selectedTier, t.harness.governanceLoop.graph, workflowData],
   );
 
   return (
@@ -886,7 +834,7 @@ export function HarnessGovernanceLoopGraph({
       ) : null}
 
       {!hasContext && !unsupportedMessage ? (
-        <div className="mt-4 rounded-xl border border-desktop-border bg-desktop-bg-primary/80 px-4 py-5 text-[11px] text-desktop-text-secondary">
+        <div className="mt-4 rounded-sm border border-desktop-border bg-desktop-bg-primary/80 px-4 py-5 text-[11px] text-desktop-text-secondary">
           {t.harness.governanceLoop.graph.selectRepository}
         </div>
       ) : null}
@@ -894,7 +842,7 @@ export function HarnessGovernanceLoopGraph({
       {hasContext && !unsupportedMessage && graphIssues.length > 0 ? (
         <div className="mt-4 space-y-2">
           {graphIssues.map((issue) => (
-            <div key={issue} className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-[11px] text-amber-800">
+            <div key={issue} className="rounded-sm border border-amber-200 bg-amber-50 px-3 py-3 text-[11px] text-amber-800">
               {issue}
             </div>
           ))}
@@ -903,15 +851,7 @@ export function HarnessGovernanceLoopGraph({
 
       {hasContext && !unsupportedMessage ? (
         <div className="mt-3 grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-            <div className="relative overflow-hidden rounded-2xl border border-desktop-border bg-[linear-gradient(180deg,rgba(248,250,252,0.98),rgba(241,245,249,0.98))]">
-              <div className="pointer-events-none absolute right-3 top-2 z-10 rounded-xl border border-desktop-border bg-white/90 px-2.5 py-1.5 text-[10px] text-slate-700 shadow-sm">
-                <div className="flex items-center gap-3">
-                  <span className="shrink-0 text-desktop-text-secondary">{t.harness.governanceLoop.graph.legend}</span>
-                  <span className="flex items-center gap-1.5 text-[10px]"><span className="h-2.5 w-2.5 rounded-[3px] border border-sky-300 bg-sky-100" />{t.harness.governanceLoop.graph.internal}</span>
-                  <span className="flex items-center gap-1.5 text-[10px]"><span className="h-2.5 w-2.5 rounded-[3px] border border-violet-300 bg-violet-100" />{t.harness.governanceLoop.graph.push}</span>
-                  <span className="flex items-center gap-1.5 text-[10px]"><span className="h-2.5 w-2.5 rounded-[3px] border border-amber-300 bg-amber-100" />{t.harness.governanceLoop.graph.external}</span>
-                </div>
-              </div>
+            <div className="relative overflow-hidden rounded-sm border border-desktop-border bg-desktop-bg-primary">
               <div style={{ height: graph.minHeight }}>
                 <ReactFlow
                   nodes={graph.nodes}
@@ -941,14 +881,14 @@ export function HarnessGovernanceLoopGraph({
                 <div>{contextPanel}</div>
               ) : (
                 <div className="space-y-3">
-                  <div className="rounded-xl border border-desktop-border bg-desktop-bg-primary/70 px-3 py-2.5">
+                  <div className="rounded-sm border border-desktop-border bg-desktop-bg-primary/70 px-3 py-2.5">
                     <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-desktop-text-secondary">{t.harness.governanceLoop.graph.nodeDetails}</div>
                     <div className="mt-1 text-sm font-semibold text-desktop-text-primary">
                       {graph.nodes.find((node) => node.id === activeSelectedNodeId)?.data.title ?? t.harness.governanceLoop.graph.phaseDetails}
                     </div>
                   </div>
                   {detailSections.map((section: LoopDetailSection) => (
-                    <div key={section.title} className="rounded-xl border border-desktop-border bg-desktop-bg-primary/80 p-3">
+                    <div key={section.title} className="rounded-sm border border-desktop-border bg-desktop-bg-primary/80 p-3">
                       <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-desktop-text-secondary">{section.title}</div>
                       <div className="mt-2 flex flex-wrap gap-2">
                         {section.items.map((item: string) => (

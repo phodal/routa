@@ -62,35 +62,35 @@ function toneStyles(tone: AgentHookFlowNodeTone) {
       return {
         border: "border-emerald-200",
         badge: "border-emerald-200 bg-emerald-50 text-emerald-700",
-        glow: "shadow-emerald-100/70",
+        glow: "",
         line: "#059669",
       };
     case "warning":
       return {
         border: "border-amber-200",
         badge: "border-amber-200 bg-amber-50 text-amber-800",
-        glow: "shadow-amber-100/70",
+        glow: "",
         line: "#d97706",
       };
     case "danger":
       return {
         border: "border-red-200",
         badge: "border-red-200 bg-red-50 text-red-700",
-        glow: "shadow-red-100/70",
+        glow: "",
         line: "#dc2626",
       };
     case "accent":
       return {
         border: "border-sky-200",
         badge: "border-sky-200 bg-sky-50 text-sky-700",
-        glow: "shadow-sky-100/70",
+        glow: "",
         line: "#0284c7",
       };
     default:
       return {
         border: "border-desktop-border",
         badge: "border-desktop-border bg-desktop-bg-secondary text-desktop-text-secondary",
-        glow: "shadow-black/5",
+        glow: "",
         line: "#94a3b8",
       };
   }
@@ -141,7 +141,7 @@ function FlowNodeView({ data }: NodeProps<Node<FlowNodeData>>) {
     <div className="relative">
       <Handle id="left" type="target" position={Position.Left} className="!h-2.5 !w-2.5 !border-0 !bg-desktop-border" />
       <Handle id="right" type="source" position={Position.Right} className="!h-2.5 !w-2.5 !border-0 !bg-desktop-border" />
-      <div className={`${widthClass} ${heightClass} rounded-2xl border bg-desktop-bg-primary/95 px-4 py-3 shadow-sm ${tone.border} ${tone.glow}`}>
+      <div className={`${widthClass} ${heightClass} rounded-sm border bg-desktop-bg-primary px-4 py-3 ${tone.border} ${tone.glow}`}>
         <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-desktop-text-secondary">{data.kind}</div>
         <div className="mt-1 text-[15px] font-semibold leading-6 text-desktop-text-primary">{data.title}</div>
         {data.subtitle ? (
@@ -169,7 +169,7 @@ function AgentHookLifecycleRail() {
   const { t, activeEntry, dispatch, groupedEntries } = useWorkbenchContext();
 
   return (
-    <aside className="rounded-[28px] border border-desktop-border bg-[radial-gradient(circle_at_top,#ffffff,rgba(255,255,255,0.78)_24%,rgba(240,246,255,0.82)_100%)] p-4 shadow-sm">
+    <aside className="rounded-sm border border-desktop-border bg-desktop-bg-primary p-4">
       <div className="flex items-center justify-between gap-3">
         <div>
           <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-desktop-text-secondary">{t.harness.agentHookWorkbench.lifecycle}</div>
@@ -198,9 +198,9 @@ function AgentHookLifecycleRail() {
                     key={entry.event}
                     type="button"
                     onClick={() => dispatch({ type: "select-event", event: entry.event })}
-                    className={`w-full rounded-xl border px-2.5 py-2 text-left transition ${
+                    className={`w-full rounded-sm border px-2.5 py-2 text-left transition ${
                       selected
-                        ? "border-sky-300 bg-sky-50/80 shadow-sm"
+                        ? "border-sky-300 bg-sky-50/80"
                         : "border-desktop-border bg-white/85 hover:bg-desktop-bg-primary"
                     }`}
                   >
@@ -293,7 +293,7 @@ function AgentHookFlowCanvas() {
   }, [activeEntry, flowHeight]);
 
   return (
-    <section className="rounded-[28px] border border-desktop-border bg-[linear-gradient(180deg,rgba(255,255,255,0.95),rgba(243,247,255,0.92))] p-4 shadow-sm">
+    <section className="rounded-sm border border-desktop-border bg-desktop-bg-primary p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-desktop-text-secondary">{t.harness.agentHookWorkbench.pipeline}</div>
@@ -320,7 +320,7 @@ function AgentHookFlowCanvas() {
       </div>
 
       {activeEntry ? (
-        <div className="mt-4 overflow-hidden rounded-3xl border border-desktop-border bg-white/75" style={{ height: flowHeight }}>
+        <div className="mt-4 overflow-hidden rounded-sm border border-desktop-border bg-desktop-bg-primary/80" style={{ height: flowHeight }}>
           <ReactFlow
             nodes={flow.nodes}
             edges={flow.edges}
@@ -341,7 +341,7 @@ function AgentHookFlowCanvas() {
           </ReactFlow>
         </div>
       ) : (
-        <div className="mt-4 rounded-2xl border border-desktop-border bg-white/80 px-4 py-8 text-[12px] text-desktop-text-secondary">
+        <div className="mt-4 rounded-sm border border-desktop-border bg-desktop-bg-primary/80 px-4 py-8 text-[12px] text-desktop-text-secondary">
           {t.harness.agentHookWorkbench.noEventSelected}
         </div>
       )}
@@ -359,7 +359,7 @@ function AgentHookInspector() {
   }, [activeEntry]);
 
   return (
-    <aside className="rounded-[28px] border border-desktop-border bg-[radial-gradient(circle_at_top,#ffffff,rgba(255,255,255,0.78)_24%,rgba(240,246,255,0.82)_100%)] p-4 shadow-sm">
+    <aside className="rounded-sm border border-desktop-border bg-desktop-bg-primary p-4">
       <div>
         <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-desktop-text-secondary">{t.harness.agentHookWorkbench.inspector}</div>
         <h3 className="mt-1 text-sm font-semibold text-desktop-text-primary">
@@ -368,7 +368,7 @@ function AgentHookInspector() {
       </div>
 
       <div className="mt-4 space-y-2">
-        <div className="flex flex-wrap gap-1 rounded-xl border border-desktop-border bg-desktop-bg-primary/80 p-1">
+        <div className="flex flex-wrap gap-1 rounded-sm border border-desktop-border bg-desktop-bg-primary/80 p-1">
           {[
             { id: "basic", label: "Basic" },
             { id: "source", label: "Source" },
@@ -377,7 +377,7 @@ function AgentHookInspector() {
               key={tab.id}
               type="button"
               onClick={() => setActiveTab(tab.id as "basic" | "source")}
-              className={`rounded-lg px-2.5 py-1 text-[10px] font-medium transition ${
+              className={`rounded-sm px-2.5 py-1 text-[10px] font-medium transition ${
                 activeTab === tab.id
                   ? "border border-sky-200 bg-sky-50 text-sky-700"
                   : "border border-transparent text-desktop-text-secondary hover:bg-desktop-bg-secondary"
@@ -389,7 +389,7 @@ function AgentHookInspector() {
         </div>
 
         {data.warnings.length > 0 ? (
-          <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
+          <div className="rounded-sm border border-amber-200 bg-amber-50 p-3">
             <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-amber-800">{t.harness.agentHookWorkbench.warnings}</div>
             <ul className="mt-1 space-y-1">
               {data.warnings.map((warning) => (
@@ -401,7 +401,7 @@ function AgentHookInspector() {
 
         {activeTab === "basic" && activeEntry ? (
           <div className="space-y-2">
-            <div className="rounded-xl border border-desktop-border bg-desktop-bg-primary/80 p-3 text-[11px] text-desktop-text-secondary">
+            <div className="rounded-sm border border-desktop-border bg-desktop-bg-primary/80 p-3 text-[11px] text-desktop-text-secondary">
               <div>Lifecycle: <span className="font-medium text-desktop-text-primary">{activeEntry.lifecycleLabel}</span></div>
               <div className="mt-1">Can block: <span className="font-medium text-desktop-text-primary">{activeEntry.canBlock ? "yes" : "no"}</span></div>
               <div className="mt-1">Hint: {activeEntry.hint}</div>
@@ -411,11 +411,11 @@ function AgentHookInspector() {
             <div>
               <div className="text-[12px] font-semibold text-desktop-text-primary">Hooks</div>
               {activeEntry.hooks.length === 0 ? (
-                <div className="mt-2 rounded-lg border border-desktop-border bg-desktop-bg-primary/70 p-2.5 text-[11px] text-desktop-text-secondary">
+                <div className="mt-2 rounded-sm border border-desktop-border bg-desktop-bg-primary/70 p-2.5 text-[11px] text-desktop-text-secondary">
                   {t.harness.agentHookWorkbench.noHooksConfigured}
                 </div>
               ) : (
-                <ul className="mt-2 divide-y divide-desktop-border rounded-xl border border-desktop-border bg-desktop-bg-primary/80">
+                <ul className="mt-2 divide-y divide-desktop-border rounded-sm border border-desktop-border bg-desktop-bg-primary/80">
                   {activeEntry.hooks.map((hook, index) => (
                     <li key={`${hook.event}:${index}`} className="px-3 py-2.5">
                       <div className="flex items-start justify-between gap-2">
@@ -456,7 +456,7 @@ function AgentHookInspector() {
         ) : null}
 
         {activeTab === "source" && activeEntry && configSource ? (
-          <div className="overflow-hidden rounded-xl border border-desktop-border">
+          <div className="overflow-hidden rounded-sm border border-desktop-border">
             <CodeViewer
               code={configSource}
               language="yaml"
@@ -519,7 +519,7 @@ export function HarnessAgentHookWorkbench({
 
   return (
     <WorkbenchContext.Provider value={contextValue}>
-      <section className={embedded ? "space-y-0" : "rounded-2xl border border-desktop-border bg-desktop-bg-secondary/55 p-3 shadow-sm"}>
+      <section className={embedded ? "space-y-0" : "rounded-sm border border-desktop-border bg-desktop-bg-secondary/40 p-3"}>
         {!embedded ? (
           <div className="mb-3 flex items-center justify-between gap-3">
             <div>

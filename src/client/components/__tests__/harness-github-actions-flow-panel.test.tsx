@@ -107,10 +107,17 @@ describe("HarnessGitHubActionsFlowPanel", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: /Release/i })).not.toBeNull();
+      expect(screen.getByRole("button", { name: "Release category" })).not.toBeNull();
+      expect(screen.getByRole("button", { name: /Routa Release/i })).not.toBeNull();
     });
 
-    fireEvent.click(screen.getByRole("button", { name: /Release/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Release category" }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: /Routa Release/i })).toBeNull();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Release category" }));
 
     fireEvent.click(screen.getByRole("button", { name: /Routa Release/i }));
 
@@ -128,11 +135,13 @@ describe("HarnessGitHubActionsFlowPanel", () => {
         codebaseId="codebase-1"
         repoPath="/tmp/repo"
         repoLabel="routa-js"
+        variant="compact"
         initialCategory="Release"
       />,
     );
 
     await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Release category" }).getAttribute("aria-expanded")).toBe("true");
       expect(screen.getByRole("button", { name: /Routa Release/i })).not.toBeNull();
       expect(screen.getAllByText("workflow_dispatch").length).toBeGreaterThan(0);
     });

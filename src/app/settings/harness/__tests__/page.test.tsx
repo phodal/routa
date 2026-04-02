@@ -6,6 +6,7 @@ import type { SpecDetectionResponse } from "@/core/harness/spec-detector-types";
 import HarnessSettingsPage from "../page";
 
 const repoPickerMock = vi.fn();
+
 function createSpecSourcesData(
   overrides: Partial<SpecDetectionResponse> = {},
 ): SpecDetectionResponse {
@@ -73,17 +74,7 @@ const mockHarnessSettingsData = {
           rootPath: "docs",
           confidence: "high",
           status: "documents-present",
-          artifacts: [
-            {
-              id: "architecture-top-level",
-              title: "Top-level architecture contract",
-              path: "docs/ARCHITECTURE.md",
-              type: "architecture",
-              status: "canonical",
-              summary: "Canonical architecture overview for runtime boundaries and invariants.",
-              codeRefs: ["Workspace-first scope over hidden global state"],
-            },
-          ],
+          artifacts: [],
         },
       ],
       warnings: [],
@@ -114,6 +105,7 @@ const mockHarnessSettingsData = {
       relativePath: "CLAUDE.md",
       source: "# Routa.js",
       fallbackUsed: false,
+      audit: null,
     },
   },
   githubActionsState: {
@@ -128,8 +120,14 @@ const mockHarnessSettingsData = {
     error: null,
     data: createSpecSourcesData(),
   },
+  codeownersState: {
+    loading: false,
+    error: null,
+    data: null,
+  },
   reloadInstructions: vi.fn(async () => {}),
 };
+
 const localStorageMock = (() => {
   const store = new Map<string, string>();
   return {
@@ -151,26 +149,27 @@ Object.defineProperty(window, "localStorage", {
   value: localStorageMock,
 });
 
-vi.mock("@/client/components/settings-route-shell", () => ({
-  SettingsRouteShell: ({ children }: { children: ReactNode }) => (
-    <div data-testid="settings-route-shell">{children}</div>
-  ),
+vi.mock("@/client/components/codemirror/code-viewer", () => ({
+  CodeViewer: ({ code }: { code: string }) => <pre data-testid="code-viewer">{code}</pre>,
 }));
 
-vi.mock("@/client/components/settings-page-header", () => ({
-  SettingsPageHeader: ({ extra }: { extra?: ReactNode }) => (
-    <div data-testid="settings-page-header">
-      {extra}
+vi.mock("@/client/components/desktop-app-shell", () => ({
+  DesktopAppShell: ({ children, workspaceSwitcher, titleBarRight }: { children: ReactNode; workspaceSwitcher?: ReactNode; titleBarRight?: ReactNode }) => (
+    <div data-testid="desktop-shell-root">
+      <aside data-testid="desktop-shell-sidebar" />
+      <div>
+        <div data-testid="desktop-shell-header">
+          {workspaceSwitcher}
+          {titleBarRight}
+        </div>
+        <main data-testid="desktop-shell-main">{children}</main>
+      </div>
     </div>
   ),
 }));
 
 vi.mock("@/client/components/workspace-switcher", () => ({
   WorkspaceSwitcher: () => <div data-testid="workspace-switcher" />,
-}));
-
-vi.mock("@/client/components/codemirror/code-viewer", () => ({
-  CodeViewer: ({ value }: { value: string }) => <pre data-testid="code-viewer">{value}</pre>,
 }));
 
 vi.mock("@/client/components/repo-picker", () => ({
@@ -197,21 +196,14 @@ vi.mock("@/client/components/harness-execution-plan-flow", () => ({
 }));
 
 vi.mock("@/client/components/harness-agent-instructions-panel", () => ({
-  HarnessAgentInstructionsPanel: ({
-    variant = "full",
-    onAuditRerun,
-  }: {
-    variant?: "full" | "compact";
-    onAuditRerun?: () => void;
-  }) => (
-    <div data-testid={`instruction-panel-${variant}`}>
-      <span>Instruction file - CLAUDE.md</span>
-      {onAuditRerun ? (
-        <button type="button" onClick={onAuditRerun}>
-          rerun-audit-{variant}
-        </button>
-      ) : null}
-    </div>
+  HarnessAgentInstructionsPanel: ({ variant = "full" }: { variant?: "full" | "compact" }) => (
+    <div data-testid={`instruction-panel-${variant}`}>Instruction file</div>
+  ),
+}));
+
+vi.mock("@/client/components/harness-design-decision-panel", () => ({
+  HarnessDesignDecisionPanel: ({ variant = "full" }: { variant?: "full" | "compact" }) => (
+    <div data-testid={`design-decision-panel-${variant}`}>Design decisions</div>
   ),
 }));
 
@@ -220,53 +212,28 @@ vi.mock("@/client/components/harness-fitness-files-dashboard", () => ({
 }));
 
 vi.mock("@/client/components/harness-governance-loop-graph", () => ({
-  HarnessGovernanceLoopGraph: ({
-    contextPanel,
-    selectedNodeId,
-    onSelectedNodeChange,
-  }: {
-    contextPanel?: ReactNode;
-    selectedNodeId?: string | null;
-    onSelectedNodeChange?: (nodeId: string) => void;
-  }) => (
-    <div data-testid="governance-loop-graph">
-      <div data-testid="selected-node-id">{selectedNodeId}</div>
-      <div data-testid="context-panel-state">{contextPanel ? "present" : "absent"}</div>
-      <button type="button" onClick={() => onSelectedNodeChange?.("thinking")}>select-thinking</button>
-      <button type="button" onClick={() => onSelectedNodeChange?.("release")}>select-release</button>
-      {contextPanel}
-    </div>
-  ),
+  HarnessGovernanceLoopGraph: () => <div data-testid="governance-loop-graph" />,
 }));
 
 vi.mock("@/client/components/harness-lifecycle-view", () => ({
   HarnessLifecycleView: ({
     selectedNodeId,
     onSelectedNodeChange,
-    contextPanel,
   }: {
     selectedNodeId?: string | null;
     onSelectedNodeChange?: (nodeId: string) => void;
     contextPanel?: ReactNode;
   }) => (
-    <div data-testid="governance-loop-graph">
+    <div data-testid="lifecycle-view">
       <div data-testid="selected-node-id">{selectedNodeId ?? ""}</div>
-      <div data-testid="context-panel-state">{contextPanel ? "present" : "absent"}</div>
-      <button type="button" onClick={() => onSelectedNodeChange?.("thinking")}>
-        select-thinking
-      </button>
-      <button type="button" onClick={() => onSelectedNodeChange?.("release")}>
-        select-release
-      </button>
-      {contextPanel}
+      <button type="button" onClick={() => onSelectedNodeChange?.("thinking")}>select-thinking</button>
+      <button type="button" onClick={() => onSelectedNodeChange?.("release")}>select-release</button>
     </div>
   ),
 }));
 
 vi.mock("@/client/components/harness-github-actions-flow-panel", () => ({
-  HarnessGitHubActionsFlowPanel: ({ initialCategory }: { initialCategory?: "Validation" | "Release" | "Automation" | "Maintenance" }) => (
-    <div data-testid="github-actions-flow-panel">{initialCategory ?? "default"}</div>
-  ),
+  HarnessGitHubActionsFlowPanel: () => <div data-testid="github-actions-flow-panel" />,
 }));
 
 vi.mock("@/client/components/harness-hook-runtime-panel", () => ({
@@ -275,26 +242,42 @@ vi.mock("@/client/components/harness-hook-runtime-panel", () => ({
 
 vi.mock("@/client/components/harness-agent-hook-panel", () => ({
   HarnessAgentHookPanel: ({ variant = "full" }: { variant?: "full" | "compact" }) => (
-    <div data-testid={`agent-hook-panel-${variant}`}>Hook systems</div>
+    <div data-testid={`agent-hook-panel-${variant}`}>Agent hooks</div>
   ),
 }));
 
 vi.mock("@/client/components/harness-repo-signals-panel", () => ({
-  HarnessRepoSignalsPanel: () => <div data-testid="repo-signals-panel" />,
+  HarnessRepoSignalsPanel: ({ variant = "full" }: { variant?: "full" | "compact" }) => (
+    <div data-testid={`repo-signals-panel-${variant}`}>Repo signals</div>
+  ),
+}));
+
+vi.mock("@/client/components/harness-codeowners-panel", () => ({
+  HarnessCodeownersPanel: ({ variant = "full" }: { variant?: "full" | "compact" }) => (
+    <div data-testid={`codeowners-panel-${variant}`}>Codeowners</div>
+  ),
 }));
 
 vi.mock("@/client/components/harness-review-triggers-panel", () => ({
-  HarnessReviewTriggersPanel: () => <div data-testid="review-triggers-panel" />,
+  HarnessReviewTriggersPanel: ({ variant = "full" }: { variant?: "full" | "compact" }) => (
+    <div data-testid={`review-triggers-panel-${variant}`}>Review triggers</div>
+  ),
+}));
+
+vi.mock("@/client/components/harness-release-triggers-panel", () => ({
+  HarnessReleaseTriggersPanel: ({ variant = "full" }: { variant?: "full" | "compact" }) => (
+    <div data-testid={`release-triggers-panel-${variant}`}>Release triggers</div>
+  ),
 }));
 
 vi.mock("@/client/components/harness-spec-sources-panel", () => ({
-  HarnessSpecSourcesPanel: (props: { variant?: string }) => (
-    <div data-testid={props.variant === "compact" ? "spec-sources-compact" : "spec-sources-full"} />
+  HarnessSpecSourcesPanel: ({ variant = "full" }: { variant?: "full" | "compact" }) => (
+    <div data-testid={`spec-sources-${variant}`}>Spec sources</div>
   ),
 }));
 
 vi.mock("@/client/components/harness-support-state", () => ({
-  HarnessUnsupportedState: () => <div data-testid="unsupported-state" />,
+  HarnessUnsupportedState: ({ className }: { className?: string }) => <div className={className} data-testid="unsupported-state" />,
   getHarnessUnsupportedRepoMessage: () => null,
 }));
 
@@ -312,6 +295,8 @@ vi.mock("@/client/hooks/use-workspaces", () => ({
     ],
     loading: false,
     fetchWorkspaces: vi.fn(async () => {}),
+    createWorkspace: vi.fn(async () => null),
+    archiveWorkspace: vi.fn(async () => {}),
   }),
   useCodebases: () => ({
     codebases: [
@@ -320,6 +305,7 @@ vi.mock("@/client/hooks/use-workspaces", () => ({
         label: "phodal/routa",
         repoPath: "/Users/phodal/ai/routa-js",
         branch: "main",
+        isDefault: true,
       },
     ],
     fetchCodebases: vi.fn(async () => {}),
@@ -342,38 +328,25 @@ describe("HarnessSettingsPage", () => {
     };
   });
 
-  it("defaults the governance loop to overview mode without rendering a compact context panel", async () => {
-    const { findByTestId } = render(<HarnessSettingsPage />);
-
-    // Wait for initial node selection to resolve
-    await findByTestId("selected-node-id");
-
-    expect(screen.getByTestId("selected-node-id").textContent).toBe("");
-    expect(screen.getByTestId("context-panel-state").textContent).toBe("absent");
-    expect(screen.getAllByText("Instruction file - CLAUDE.md")).toHaveLength(1);
-    expect(screen.getByTestId("instruction-panel-full")).not.toBeNull();
-    expect(screen.queryByTestId("instruction-panel-compact")).toBeNull();
-  });
-
-  it("wires the instruction audit rerun action to harness data reload", () => {
+  it("renders the console workbench at /settings/harness without overview side panels", () => {
     render(<HarnessSettingsPage />);
 
-    fireEvent.click(screen.getByRole("button", { name: "rerun-audit-full" }));
-
-    expect(mockHarnessSettingsData.reloadInstructions).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId("desktop-shell-sidebar")).not.toBeNull();
+    expect(screen.getAllByTestId("harness-console-explorer")).toHaveLength(1);
+    expect(screen.getByTestId("workspace-switcher")).not.toBeNull();
+    expect(screen.queryByTestId("harness-console-bottom-panel")).toBeNull();
+    expect(screen.queryByPlaceholderText("Search sections")).toBeNull();
+    expect(screen.getByText("CLAUDE.md")).not.toBeNull();
+    expect(screen.queryByText("Workbench Context")).toBeNull();
+    expect(screen.queryByText("Quick Actions")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Open context" })).toBeNull();
+    expect(screen.queryByText("repo: phodal/routa")).toBeNull();
+    expect(screen.queryByText("dimensions: 1")).toBeNull();
+    expect(screen.queryByText("metrics: 2")).toBeNull();
+    expect(screen.queryByText("hard gates: 1")).toBeNull();
   });
 
-  it("switches the governance context to the release GitHub Actions view", () => {
-    render(<HarnessSettingsPage />);
-
-    fireEvent.click(screen.getByRole("button", { name: "select-release" }));
-
-    expect(screen.getByTestId("selected-node-id").textContent).toBe("release");
-    expect(screen.getByTestId("context-panel-state").textContent).toBe("present");
-    expect(within(screen.getByTestId("governance-loop-graph")).getByTestId("github-actions-flow-panel").textContent).toBe("Release");
-  });
-
-  it("renders the compact spec sources panel for the thinking node while keeping the full panel visible", () => {
+  it("opens the bottom panel with compact context when clicking a lifecycle node", () => {
     mockHarnessSettingsData.specSourcesState = {
       loading: false,
       error: null,
@@ -394,38 +367,43 @@ describe("HarnessSettingsPage", () => {
 
     render(<HarnessSettingsPage />);
 
-    expect(screen.getByTestId("spec-sources-full")).not.toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "select-thinking" }));
+
+    const bottomPanel = screen.getByTestId("harness-console-bottom-panel");
+    expect(bottomPanel).not.toBeNull();
+    expect(screen.getByTestId("selected-node-id").textContent).toBe("thinking");
+    expect(within(bottomPanel).getByTestId("spec-sources-compact")).not.toBeNull();
+  });
+
+  it("resizes the explorer pane via the drag handle", () => {
+    render(<HarnessSettingsPage />);
+
+    const explorer = screen.getByTestId("harness-console-explorer");
+    const resizer = screen.getByTestId("harness-console-explorer-resizer");
+
+    expect(explorer.getAttribute("style")).toContain("296px");
+
+    fireEvent.mouseDown(resizer, { clientX: 296 });
+    fireEvent.mouseMove(document, { clientX: 360 });
+    fireEvent.mouseUp(document);
+
+    expect(explorer.getAttribute("style")).toContain("360px");
+  });
+
+  it("resizes the bottom panel via the drag handle", () => {
+    render(<HarnessSettingsPage />);
 
     fireEvent.click(screen.getByRole("button", { name: "select-thinking" }));
 
-    expect(screen.getByTestId("selected-node-id").textContent).toBe("thinking");
-    expect(within(screen.getByTestId("governance-loop-graph")).getByTestId("spec-sources-compact")).not.toBeNull();
-    expect(screen.getByTestId("spec-sources-full")).not.toBeNull();
-  });
+    const bottomPanel = screen.getByTestId("harness-console-bottom-panel");
+    const resizer = screen.getByTestId("harness-console-bottom-resizer");
 
-  it("renders the test feedback loop panel in the main layout", () => {
-    render(<HarnessSettingsPage />);
+    expect(bottomPanel.getAttribute("style")).toContain("280px");
 
-    expect(screen.getByTestId("repo-signals-panel")).not.toBeNull();
-  });
+    fireEvent.mouseDown(resizer, { clientY: 400 });
+    fireEvent.mouseMove(document, { clientY: 340 });
+    fireEvent.mouseUp(document);
 
-  it("defaults the fitness source view to README when no spec is selected", () => {
-    render(<HarnessSettingsPage />);
-
-    expect(screen.getByRole("heading", { name: "README.md" })).not.toBeNull();
-    expect(screen.getByText(/Entrix loader skips README/i)).not.toBeNull();
-  });
-
-  it("persists the selected local repository for the workspace", () => {
-    const { unmount } = render(<HarnessSettingsPage />);
-
-    fireEvent.click(screen.getByTestId("repo-picker"));
-
-    expect(window.localStorage.getItem("routa.repoSelection.harness.default")).toContain("/Users/phodal/ai/codex");
-
-    unmount();
-    render(<HarnessSettingsPage />);
-
-    expect(screen.getByTestId("repo-picker").textContent).toBe("/Users/phodal/ai/codex");
+    expect(bottomPanel.getAttribute("style")).toContain("340px");
   });
 });

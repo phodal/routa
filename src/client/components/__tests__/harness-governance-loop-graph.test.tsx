@@ -104,14 +104,18 @@ describe("HarnessGovernanceLoopGraph", () => {
       />,
     );
 
-    fireEvent.click(screen.getByText("flow-node-release"));
-    fireEvent.click(screen.getByText("flow-node-agent-hook"));
+    fireEvent.click(screen.getByRole("button", {
+      name: /外部反馈环 制品发布/i,
+    }));
+    fireEvent.click(screen.getByRole("button", {
+      name: /推送反馈环 变更门禁/i,
+    }));
 
     expect(onSelectedNodeChange).toHaveBeenCalledWith("release");
-    expect(onSelectedNodeChange).toHaveBeenCalledWith("agent-hook");
+    expect(onSelectedNodeChange).toHaveBeenCalledWith("precommit");
   });
 
-  it("uses ArrowLeft for the Agent Hook -> Test transition", () => {
+  it("uses ArrowLeft for the Test -> Build transition", () => {
     const onSelectedNodeChange = vi.fn();
 
     render(
@@ -126,19 +130,19 @@ describe("HarnessGovernanceLoopGraph", () => {
         instructionsData={null}
         hooksData={null}
         workflowData={null}
-        selectedNodeId="agent-hook"
+        selectedNodeId="test"
         onSelectedNodeChange={onSelectedNodeChange}
       />,
     );
 
-    const agentHookNode = screen.getByRole("button", {
-      name: /内部反馈环 Agent 治理/i,
+    const testNode = screen.getByRole("button", {
+      name: /内部反馈环 本地验证/i,
     });
 
-    fireEvent.keyDown(agentHookNode, { key: "ArrowRight" });
+    fireEvent.keyDown(testNode, { key: "ArrowRight" });
     expect(onSelectedNodeChange).toHaveBeenCalledTimes(0);
 
-    fireEvent.keyDown(agentHookNode, { key: "ArrowLeft" });
-    expect(onSelectedNodeChange).toHaveBeenCalledWith("test");
+    fireEvent.keyDown(testNode, { key: "ArrowLeft" });
+    expect(onSelectedNodeChange).toHaveBeenCalledWith("build");
   });
 });
