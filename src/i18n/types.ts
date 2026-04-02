@@ -47,6 +47,48 @@ export interface TranslationDictionary {
     enabled: string;
     disabled: string;
     workspace: string;
+    closeEsc: string;
+    copyToClipboard: string;
+    uncommittedChanges: string;
+    fetchRemoteBranches: string;
+    filterBranches: string;
+    selectCodebase: string;
+    clearSpecialist: string;
+    agentMode: string;
+    closeWorkflowDetail: string;
+    openInNewTab: string;
+    full: string;
+    essential: string;
+    blocked: string;
+    done: string;
+    open: string;
+    showLess: string;
+    showAll: string;
+    total: string;
+    quickRun: string;
+    spec: string;
+    tasks: string;
+    quickAccess: string;
+    expandSidebar: string;
+    collapseSidebar: string;
+    newSession: string;
+    recentSessions: string;
+    deleteThisSession: string;
+    noSessionsYetStartAbove: string;
+    deleteSpec: string;
+    noSpecContentYet: string;
+    noSpecNoteYet: string;
+    specAvailable: string;
+    openTasks: string;
+    specPreview: string;
+    taskSnapshot: string;
+    session: string;
+    installAgents: string;
+    openInNewTabLabel: string;
+    customSpecialists: string;
+    concurrency: string;
+    crafters: string;
+    routaModeToast: string;
   };
 
   // Home page
@@ -179,6 +221,182 @@ export interface TranslationDictionary {
         hooks: string;
         cicd: string;
       };
+    };
+    backToHome: string;
+    fluencyDescription: string;
+    diagnosticsBeta: string;
+    repository: string;
+    specialistsDescription: string;
+    executionRoles: string;
+    purpose: string;
+    focusedExecutionPersonas: string;
+    binding: string;
+    promptModelPairing: string;
+    webhooksPageTitle: string;
+    webhooksPageDescription: string;
+    webhookUrl: string;
+    howItWorks: string;
+    webhookInfoBanner: string;
+    specialistsTab: {
+      catalog: string;
+      totalSpecialists: string;
+      loading: string;
+      syncing: string;
+      syncBundled: string;
+      searchPlaceholder: string;
+      noSpecialistsFound: string;
+      newProfile: string;
+      bundledReadOnlyHint: string;
+      manageHint: string;
+      deleteConfirm: string;
+      duplicate: string;
+      delete: string;
+      saving: string;
+      saveChanges: string;
+      createSpecialist: string;
+      requiresPostgres: string;
+      syncFailed: string;
+      copySuffix: string;
+      idLabel: string;
+      nameLabel: string;
+      descriptionLabel: string;
+      descriptionPlaceholder: string;
+      roleLabel: string;
+      modelTierLabel: string;
+      modelOverrideLabel: string;
+      modelOverridePlaceholder: string;
+      systemPromptLabel: string;
+      systemPromptPlaceholder: string;
+      roleReminderLabel: string;
+      roleReminderPlaceholder: string;
+      idPlaceholder: string;
+      namePlaceholder: string;
+      sourceLabel: string;
+      categoryLabel: string;
+      writableLabel: string;
+      writableYes: string;
+      writableNo: string;
+      tierLabel: string;
+      newLabel: string;
+      customLabel: string;
+    };
+    workflowsPage: {
+      workflowIdLabel: string;
+      workflowIdPlaceholder: string;
+      workflowIdHint: string;
+      yamlContentLabel: string;
+      yamlContentPlaceholder: string;
+      cancel: string;
+      runTitle: string;
+      collapse: string;
+      showGraph: string;
+      editWorkflow: string;
+      deleteWorkflow: string;
+      clickAgainToConfirm: string;
+      stepsCount: string;
+      createNew: string;
+      manual: string;
+      webhook: string;
+      schedule: string;
+    };
+    mcpTab: {
+      idLabel: string;
+      nameLabel: string;
+      descriptionLabel: string;
+      typeLabel: string;
+      typeStdio: string;
+      typeStdioLocal: string;
+      typeHttp: string;
+      typeHttpStream: string;
+      typeSse: string;
+      typeSseSse: string;
+      commandLabel: string;
+      argumentsLabel: string;
+      urlLabel: string;
+      headersLabel: string;
+      envVarsLabel: string;
+      builtInLabel: string;
+      builtInHttp: string;
+      builtInDesc: string;
+      loadingLabel: string;
+      editTitle: string;
+      deleteTitle: string;
+      newButton: string;
+      serverCount: string;
+      editButton: string;
+      deleteButton: string;
+    };
+    schedulesPage: {
+      name: string;
+      schedule: string;
+      cronPlaceholder: string;
+      cronFieldHint: string;
+      taskPromptLabel: string;
+      taskPromptPlaceholder: string;
+      promptTip: string;
+      disableSchedule: string;
+      enableSchedule: string;
+      runScheduleNow: string;
+      enableToRun: string;
+      ago: string;
+      fromNow: string;
+      justNow: string;
+      inLessThanMinute: string;
+      runResult: string;
+      cronPresets: {
+        everyDayMidnight: string;
+        everyDayAt2: string;
+        everyMondayAt9: string;
+        everySundayMidnight: string;
+        everyHour: string;
+        every6Hours: string;
+        firstDayOfMonth: string;
+        everyWeekdayAt9: string;
+        custom: string;
+      };
+    };
+    selectAliasOrTypeModel: string;
+    placeholderModelExample: string;
+    leaveModelBlankHint: string;
+    providerCredentials: string;
+    customProviders: {
+      title: string;
+      description: string;
+      nameRequired: string;
+      commandRequired: string;
+      editProvider: string;
+      newProvider: string;
+      nameLabel: string;
+      commandLabel: string;
+      argsLabel: string;
+      descriptionLabel: string;
+      descriptionPlaceholder: string;
+      noCustomProviders: string;
+    };
+    providerCatalog: {
+      title: string;
+      description: string;
+      noProvidersAvailable: string;
+      hidden: string;
+      shown: string;
+      oneProviderHidden: string;
+      multipleProvidersHidden: string;
+    };
+    webhooksTab: {
+      title: string;
+      description: string;
+      webhookHint: string;
+      backToOverview: string;
+      manageTriggers: string;
+    };
+    docker: {
+      title: string;
+      authJsonDescription: string;
+      authJsonLabel: string;
+      authJsonPasteHint: string;
+      invalidJson: string;
+      configRequired: string;
+      saveAndRetry: string;
     };
   };
 
@@ -370,6 +588,17 @@ export interface TranslationDictionary {
     selectFile: string;
     uploadAction: string;
     uploading: string;
+    skillsShCatalog: string;
+    githubCatalog: string;
+    searchExamples: string;
+    invalidZipFile: string;
+    imported: string;
+    repoPlaceholder: string;
+    repoUrlLabel: string;
+    examplesLabel: string;
+    dropFilePrompt: string;
+    uploadSuccess: string;
+    done: string;
   };
 
   // Agents
@@ -391,6 +620,12 @@ export interface TranslationDictionary {
     uninstall: string;
     installing: string;
     uninstalling: string;
+    agentInstallation: string;
+    installAndManage: string;
+    learnAboutACP: string;
+    acpRegistryTitle: string;
+    unknownPlatform: string;
+    viewRepository: string;
   };
 
   // Tasks
@@ -418,6 +653,12 @@ export interface TranslationDictionary {
     noContent: string;
     execute: string;
     completed: string;
+    routaCrafters: string;
+    viewTasks: string;
+    viewCrafters: string;
+    crafterNumber: string;
+    toolName: string;
+    toolStatus: string;
   };
 
   // Workflows
@@ -439,6 +680,12 @@ export interface TranslationDictionary {
     triggerPayload: string;
     noActiveWorkspace: string;
     workspace: string;
+    description: string;
+    automation: string;
+    focus: string;
+    reusableAutomationFlows: string;
+    output: string;
+    tasksAndGraphExecution: string;
   };
 
   // Traces
@@ -452,6 +699,25 @@ export interface TranslationDictionary {
     copyLink: string;
     hideSessions: string;
     showSessions: string;
+    loadingSessions: string;
+    noSessionsFound: string;
+    sessionsFound: string;
+    startConversationHint: string;
+    noSessionSelected: string;
+    selectSessionToViewTraces: string;
+    traceContent: string;
+    backToHome: string;
+    chatTab: string;
+    traceTab: string;
+    copyShareableUrl: string;
+    unknownLane: string;
+    unknownError: string;
+    all: string;
+    user: string;
+    agent: string;
+    tools: string;
+    thoughts: string;
+    kanbanStory: string;
   };
 
   // Fitness / Fluency
@@ -570,6 +836,7 @@ export interface TranslationDictionary {
       noReportTextNotReady: string;
       noProfileErrorText: string;
       noReportForProfileText: string;
+      notReached: string;
     };
 
     measures: {
@@ -648,6 +915,10 @@ export interface TranslationDictionary {
       agentCentric: string;
       agentFirst: string;
       waitingReport: string;
+      current: string;
+      target: string;
+      cleared: string;
+      locked: string;
     };
 
     dashboard: {
@@ -848,6 +1119,63 @@ export interface TranslationDictionary {
     failedToRemoveWorktree: string;
     boardName: string;
     worktreeCleanupPrompt: string;
+    // Settings modal - automation fields
+    transport: string;
+    agentCardUrl: string;
+    agentCardUrlPlaceholder: string;
+    skillId: string;
+    skillIdPlaceholder: string;
+    authConfigId: string;
+    authConfigIdPlaceholder: string;
+    trigger: string;
+    defaults: string;
+    visibleOnBoard: string;
+    structure: string;
+    name: string;
+    stageType: string;
+    columnWidth: string;
+    compact: string;
+    standard: string;
+    wide: string;
+    noColumnsAvailable: string;
+    blockedManualOnly: string;
+    blockedManualOnlyDesc: string;
+    automationUnavailable: string;
+    advanced: string;
+    automationSteps: string;
+    addStep: string;
+    autoAdvanceOnSuccess: string;
+    autoAdvanceOnSuccessDesc: string;
+    turnOnAutomationHint: string;
+    bothDirections: string;
+    changesApplyHint: string;
+    screenshot: string;
+    screenshotHint: string;
+    testResults: string;
+    testResultsHint: string;
+    codeDiff: string;
+    codeDiffHint: string;
+    up: string;
+    down: string;
+    del: string;
+    remove: string;
+    // File changes panel
+    fileChanges: string;
+    reposChangedFiles: string;
+    dirty: string;
+    hide: string;
+    loadingRepoChanges: string;
+    noReposLinkedPanel: string;
+    unavailable: string;
+    clean: string;
+    modifiedCount: string;
+    untrackedCount: string;
+    noLocalChanges: string;
+    showLess: string;
+    showAllFiles: string;
+    aheadCount: string;
+    behindCount: string;
+    fromPath: string;
   };
 
   // Kanban card detail
@@ -992,6 +1320,33 @@ export interface TranslationDictionary {
     polling: string;
     workflow: string;
     fleet: string;
+    clickToEnqueue: string;
+    cancelTask: string;
+    deleteTask: string;
+    forceFailTask: string;
+    dispatchModalTitle: string;
+    titlePlaceholder: string;
+    promptPlaceholder: string;
+    agentProvider: string;
+    agentPlaceholder: string;
+    low: string;
+    normal: string;
+    high: string;
+    selectAgent: string;
+    source: string;
+    rerun: string;
+    forceFailStale: string;
+    viewSession: string;
+    duplicateWarning: string;
+    clearTasksTitle: string;
+    labelPrompt: string;
+    labelId: string;
+    labelAttempts: string;
+    labelTokens: string;
+    labelStarted: string;
+    labelCompleted: string;
+    labelError: string;
+    current: string;
   };
 
   // A2UI Overview
@@ -1040,6 +1395,28 @@ export interface TranslationDictionary {
     launchAbove: string;
     directDelegates: string;
     totalSubSessions: string;
+    // Team run page sections
+    objective: string;
+    done: string;
+    blocked: string;
+    planTaskTree: string;
+    noTaskNotesYet: string;
+    deliverables: string;
+    noNotesOrDeliverablesYet: string;
+    timelineDesc: string;
+    messages: string;
+    membersCount: string;
+    noLeadTimelineYet: string;
+    openViewer: string;
+    expandThread: string;
+    showLessThread: string;
+    openThisThread: string;
+    awaitingInput: string;
+    updates: string;
+    waitingForDelegation: string;
+    noSessionYet: string;
+    watchWhoIsRunning: string;
+    routaModeToast: string;
   };
 
   // Kanban create modal
@@ -1119,6 +1496,30 @@ export interface TranslationDictionary {
     currentLaneSession: string;
     openSession: string;
     open: string;
+    delete: string;
+    sessionInfo: string;
+    placeholder: string;
+    repoPath: string;
+    unknownLane: string;
+    step: string;
+    task: string;
+    justNow: string;
+    minutesAgo: string;
+    hoursAgo: string;
+    daysAgo: string;
+  };
+
+  // Chat panel
+  chat: {
+    viewToggle: {
+      chat: string;
+      trace: string;
+    };
+    authRequiredTitle: string;
+    typeMessage: string;
+    typeCreateSession: string;
+    connectFirst: string;
+    availableAuthMethods: string;
   };
 
   // MCP Servers
@@ -1140,6 +1541,11 @@ export interface TranslationDictionary {
     deleteFailed: string;
     toggleFailed: string;
     deleteConfirm: string;
+    integration: string;
+    transport: string;
+    stdioHttpSse: string;
+    scope: string;
+    workspaceIntegrations: string;
   };
 
   // Models
@@ -1155,6 +1561,10 @@ export interface TranslationDictionary {
     aliasAlreadyExists: string;
     deleteConfirm: string;
     aliasDescription: string;
+    placeholderAlias: string;
+    placeholderModelName: string;
+    placeholderBaseUrl: string;
+    placeholderApiKey: string;
   };
 
   // Schedules
@@ -1190,6 +1600,14 @@ export interface TranslationDictionary {
     promptTemplateHint: string;
     last: string;
     next: string;
+    description: string;
+    backgroundJobs: string;
+    trigger: string;
+    cronDrivenAutomation: string;
+    runtime: string;
+    backgroundExecution: string;
+    tickEndpoint: string;
+    vercelCronOrLocal: string;
   };
 
   // Trace
@@ -1216,5 +1634,482 @@ export interface TranslationDictionary {
     noAGUIEvents: string;
     selectSessionAGUI: string;
     selectSessionEventBridge: string;
+    // EventBridge trace panel labels
+    user: string;
+    agent: string;
+    terminal: string;
+    input: string;
+    output: string;
+    usage: string;
+    completed: string;
+    failed: string;
+    planUpdated: string;
+    all: string;
+    tools: string;
+    thoughts: string;
+    files: string;
+    fileChanges: string;
+    // AG-UI trace panel labels
+    args: string;
+    result: string;
+    runStarted: string;
+    runFinished: string;
+    runError: string;
+    chat: string;
+    split: string;
+    empty: string;
+    truncated: string;
+    // Additional trace labels
+    toolContext: string;
+    thoughtSingular: string;
+  };
+
+  harness: {
+    githubActions: {
+      loadingWorkflows: string;
+      loading: string;
+      noWorkflowsFound: string;
+      workflow: string;
+      workflows: string;
+      workflowOrchestrationDesc: string;
+      selectRepoToInspect: string;
+      trigger: string;
+      triggerSource: string;
+      triggerSet: string;
+      pipeline: string;
+      pipelineDetail: string;
+      stage: string;
+      stages: string;
+      jobs: string;
+      steps: string;
+      edges: string;
+      dependencies: string;
+      root: string;
+      moreJobs: string;
+      moreStages: string;
+      triggers: string;
+      noValidationWorkflows: string;
+      noReleaseWorkflows: string;
+      noAutomationWorkflows: string;
+      noMaintenanceWorkflows: string;
+      inspector: string;
+      jobDetail: string;
+      workflowDetail: string;
+      jobMetadataDesc: string;
+      workflowMetadataDesc: string;
+      runner: string;
+      stepCount: string;
+      sourcePath: string;
+      workflowYaml: string;
+      unknown: string;
+    };
+    executionPlan: {
+      dimensionsAndMetricsSubtitle: string;
+      tierLabel: string;
+      scopeLabel: string;
+      hardGatesCount: string;
+      filter: string;
+      filterSubtitle: string;
+      tierLessThan: string;
+      scopeEquals: string;
+      dimensionCount: string;
+      dispatch: string;
+      dispatchSubtitle: string;
+      shellCount: string;
+      graphCount: string;
+      sarifCount: string;
+      gates: string;
+      gatesSubtitle: string;
+      hardCount: string;
+      blockedOnFailure: string;
+      report: string;
+      reportSubtitle: string;
+      weightedScore: string;
+      thresholds: string;
+      finalStatus: string;
+      expandedMetricsSubtitle: string;
+      hardGate: string;
+      clickToCollapseMetrics: string;
+      clickToExpandMetrics: string;
+      hideMetrics: string;
+      showMetrics: string;
+      legendPass: string;
+      legendWarn: string;
+      legendHard: string;
+      legendBlocked: string;
+      buildingTopology: string;
+    };
+    fitnessFiles: {
+      loadingFiles: string;
+      loading: string;
+      title: string;
+      description: string;
+      noDimensionFiles: string;
+      dimensionRadar: string;
+      dimensionRadarDescription: string;
+      specScore: string;
+    };
+    designDecision: {
+      loadingAdrs: string;
+      title: string;
+      eyebrow: string;
+      noDecisionsAvailable: string;
+      canonicalDocs: string;
+      decisionRecords: string;
+      showingCompact: string;
+    };
+    agentHook: {
+      loadingHooks: string;
+      hookMap: string;
+      description: string;
+      hookSystems: string;
+      noAgentHookData: string;
+    };
+    hookWorkbench: {
+      inspector: string;
+      lifecycle: string;
+      hookMap: string;
+      selectHookToInspect: string;
+      noHookSelected: string;
+      pipeline: string;
+      hookTaskOutput: string;
+      tasks: string;
+      hardGates: string;
+      tabBasic: string;
+      tabInputs: string;
+      tabTasks: string;
+      tabSource: string;
+      labelLifecycle: string;
+      labelRunSide: string;
+      labelBlocking: string;
+      labelCwd: string;
+      labelBypass: string;
+      labelSourcePath: string;
+      noHookFile: string;
+      command: string;
+      noCommandDetected: string;
+      runtimePhases: string;
+      argvTemplate: string;
+      noArgvPayload: string;
+      stdinTemplate: string;
+      noStdinPayload: string;
+      environment: string;
+      resolved: string;
+      unresolved: string;
+      hardGate: string;
+      noRuntimeMetricsYet: string;
+      runtimeManifest: string;
+      rawHook: string;
+      reviewTriggers: string;
+      noRawHookFileFound: string;
+      noReviewTriggerFileFound: string;
+      noRuntimeProfileBound: string;
+      noHookMetadataFound: string;
+      enabled: string;
+      partial: string;
+      missing: string;
+      phases: string;
+      reviewGate: string;
+    };
+    hookRuntime: {
+      description: string;
+      hookSystems: string;
+      loadingHookRuntime: string;
+      noHookRuntimeData: string;
+    };
+    agentHookWorkbench: {
+      lifecycle: string;
+      events: string;
+      blocking: string;
+      pipeline: string;
+      eventHookOutcome: string;
+      hooks: string;
+      selectEventToInspect: string;
+      noEventSelected: string;
+      inspector: string;
+      eventDetails: string;
+      warnings: string;
+      noHooksConfigured: string;
+      hook: string;
+      hookSystems: string;
+      workbenchTitle: string;
+    };
+    specSources: {
+      title: string;
+      descriptionCompact: string;
+      loading: string;
+      noSourcesDetected: string;
+      descriptionFull: string;
+      scanningSources: string;
+      noSourcesWithFrameworks: string;
+      nativeTools: string;
+      frameworks: string;
+      integrations: string;
+      legacy: string;
+    };
+    repoSignals: {
+      loadingSignals: string;
+      noSignal: string;
+      overview: string;
+      entrypoints: string;
+      noMatchingScripts: string;
+    };
+    reviewTriggers: {
+      title: string;
+      description: string;
+      hideDetails: string;
+      showDetails: string;
+      loadingPolicies: string;
+      noYamlFile: string;
+      yamlLoadedNoEntries: string;
+      risk: string;
+      confidence: string;
+      complexity: string;
+      routing: string;
+      noRules: string;
+      coreEnginePaths: string;
+      noHighRiskTriggers: string;
+      evidenceGap: string;
+      noEvidenceTriggers: string;
+      changeSize: string;
+      noBoundaryTriggers: string;
+      routeAvailable: string;
+      routeIncomplete: string;
+      rulesCount: string;
+      profilesCount: string;
+    };
+    governanceLoop: {
+      graph: {
+        nodeLayers: {
+          internal: string;
+          commit: string;
+          external: string;
+        };
+        statusLabels: {
+          unavailable: string;
+          phase: string;
+        };
+        nodeNotes: {
+          codingUnavailable: string;
+          commitUnavailable: string;
+          stagingUnavailable: string;
+          productionUnavailable: string;
+          metricsUnavailable: string;
+          releaseUnavailable: string;
+        };
+        detailSections: {
+          fitness: {
+            title: string;
+            noPhase: string;
+            hookPhasesTitle: string;
+            relatedSurface: string;
+            relatedItems: string[];
+          };
+          workflow: {
+            title: string;
+            noAction: string;
+            noJob: string;
+            jobsTitle: string;
+            relatedSurface: string;
+            relatedItems: string[];
+          };
+          release: {
+            title: string;
+            noReleaseWorkflow: string;
+            evidenceTitle: string;
+            evidenceItems: string[];
+            relatedSurface: string;
+            relatedItems: string[];
+          };
+          test: {
+            noDimensionSpec: string;
+            hookPhasesTitle: string;
+            dimensionFilesTitle: string;
+          };
+          build: {
+            noRulebookManifest: string;
+            instructionSourceTitle: string;
+            contextTitle: string;
+            contextItem: string;
+            rulebookTitle: string;
+          };
+          thinking: {
+            specSourcesTitle: string;
+            specSourcesItem: string;
+            frameworksTitle: string;
+            frameworksItems: string[];
+            evidenceModelTitle: string;
+            evidenceModelItems: string[];
+          };
+          coding: {
+            designDecisionTitle: string;
+            designDecisionItem: string;
+            evidenceLocationsTitle: string;
+            evidenceLocationsItems: string[];
+            relatedSurface: string;
+            relatedItems: string[];
+          };
+          default: {
+            highlightedNodesClickable: string;
+            selectNodePreview: string;
+            connectedPanelsTitle: string;
+            connectedPanelsItems: string[];
+          };
+        };
+        nodeLabels: {
+          thinking: string;
+          coding: string;
+          build: string;
+          test: string;
+          precommit: string;
+          review: string;
+          commit: string;
+          "post-commit": string;
+          release: string;
+          staging: string;
+          production: string;
+          metrics: string;
+        };
+        clues: {
+          thinkingNote: string;
+          codingNote: string;
+          buildNote: string;
+          buildNotePrefix: string;
+          buildNoteSuffix: string;
+          testNote: string;
+          precommitNote: string;
+          reviewNote: string;
+          commitNote: string;
+          postCommitNote: string;
+          releaseNote: string;
+          stagingNote: string;
+          productionNote: string;
+          metricsNote: string;
+        };
+        edgeLabels: {
+          clarify: string;
+          implement: string;
+          validate: string;
+          sendForReview: string;
+          integrate: string;
+          deliver: string;
+          preRelease: string;
+          deploy: string;
+          evolve: string;
+          autoRepairRetry: string;
+        };
+        nodeDetails: string;
+        phaseDetails: string;
+        selectRepository: string;
+        legend: string;
+        internal: string;
+        push: string;
+        external: string;
+      };
+    };
+    supportState: {
+      invalidRepoPath: string;
+    };
+    mark: {
+      defaultTitle: string;
+    };
+  };
+  webhook: {
+    tabs: {
+      configurations: string;
+      triggerLogs: string;
+    };
+    addTrigger: string;
+    localPolling: string;
+    running: string;
+    stopped: string;
+    disablePolling: string;
+    enablePolling: string;
+    manuallyCheckNow: string;
+    checkNow: string;
+    lastChecked: string;
+    localPollingHint: string;
+    emptyTitle: string;
+    emptyDescription: string;
+    addFirstTrigger: string;
+    editWebhookTrigger: string;
+    newWebhookTrigger: string;
+    nameLabel: string;
+    namePlaceholder: string;
+    githubRepository: string;
+    repoFormatHint: string;
+    githubToken: string;
+    tokenKeepHint: string;
+    tokenRequired: string;
+    tokenPlaceholder: string;
+    tokenEditPlaceholder: string;
+    webhookSecret: string;
+    secretHint: string;
+    eventsToSubscribe: string;
+    labelFilter: string;
+    labelFilterHint: string;
+    labelFilterPlaceholder: string;
+    triggerAgent: string;
+    selectAgent: string;
+    promptTemplate: string;
+    promptTemplateHint: string;
+    promptTemplatePlaceholder: string;
+    enabled: string;
+    registerOnGithub: string;
+    edit: string;
+    delete: string;
+    recentEvents: string;
+    refresh: string;
+    noEventsYet: string;
+    noEventsHint: string;
+    taskLabel: string;
+    events: {
+      issues: string;
+      issuesDesc: string;
+      pullRequests: string;
+      pullRequestsDesc: string;
+      prReviews: string;
+      prReviewsDesc: string;
+      prReviewComments: string;
+      prReviewCommentsDesc: string;
+      checkRuns: string;
+      checkRunsDesc: string;
+      checkSuites: string;
+      checkSuitesDesc: string;
+      workflowRuns: string;
+      workflowRunsDesc: string;
+      workflowJobs: string;
+      workflowJobsDesc: string;
+      push: string;
+      pushDesc: string;
+      create: string;
+      createDesc: string;
+      delete: string;
+      deleteDesc: string;
+      issueComments: string;
+      issueCommentsDesc: string;
+    };
+    configCreated: string;
+    configUpdated: string;
+    configDeleted: string;
+    requiredFieldsError: string;
+    deleteConfirm: string;
+    registerPrompt: string;
+    registerSuccess: string;
+    pollingEnabled: string;
+    pollingDisabled: string;
+    checkComplete: string;
+    togglePollingFailed: string;
+    manualCheckFailed: string;
+    updateIntervalFailed: string;
+    registerFailed: string;
+    loading: string;
+    disable: string;
+    enable: string;
+  };
+
+  a2aPage: {
+    workspaceIdOptional: string;
+    describeWhatYouNeed: string;
   };
 }
