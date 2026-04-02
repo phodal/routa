@@ -68,6 +68,7 @@ export function HarnessCodeownersPanel({
   hideHeader = false,
 }: HarnessCodeownersPanelProps) {
   const compactMode = variant === "compact";
+  const rulesTableMaxHeight = compactMode ? "14rem" : "min(36rem, calc(100vh - 24rem))";
 
   return (
     <HarnessSectionCard
@@ -193,7 +194,10 @@ export function HarnessCodeownersPanel({
           ) : null}
 
           {data.rules.length > 0 ? (
-            <div className="max-h-56 overflow-x-auto overflow-y-auto rounded-sm border border-desktop-border">
+            <div
+              className="overflow-x-auto overflow-y-auto rounded-sm border border-desktop-border desktop-scrollbar-thin"
+              style={{ maxHeight: rulesTableMaxHeight }}
+            >
               <table className="w-full min-w-[480px] border-collapse text-left text-[11px]">
                 <thead>
                   <tr className="border-b border-desktop-border bg-desktop-bg-secondary/60">
