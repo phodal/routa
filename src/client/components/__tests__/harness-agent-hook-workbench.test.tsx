@@ -66,9 +66,11 @@ describe("HarnessAgentHookWorkbench", () => {
     expect(screen.getByText("Event → Hook → Outcome")).not.toBeNull();
     expect(flow).not.toBeNull();
     expect(within(flow).getByText("PreToolUse")).not.toBeNull();
-    expect(within(flow).getByText("Guard dangerous shell commands")).not.toBeNull();
     expect(within(flow).getByText("Allow")).not.toBeNull();
     expect(within(flow).getByText("Block")).not.toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Hooks" }));
+    expect(screen.getAllByText("Guard dangerous shell commands").length).toBeGreaterThan(0);
   });
 
   it("updates the flow when switching to another event", () => {
@@ -78,7 +80,18 @@ describe("HarnessAgentHookWorkbench", () => {
 
     const flow = screen.getByTestId("agent-hook-flow");
 
-    expect(within(flow).getByText("Audit tool results")).not.toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Hooks" }));
+    expect(screen.getAllByText("Audit tool results").length).toBeGreaterThan(0);
     expect(within(flow).getByText("Signal")).not.toBeNull();
+  });
+
+  it("resets inspector to Basic tab when the selected event changes", () => {
+    render(<HarnessAgentHookWorkbench data={createAgentHooksResponse()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Source/i }));
+    expect(screen.queryByText("Lifecycle:")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: /PostToolUse/i }));
+    expect(screen.getByText("Lifecycle:")).not.toBeNull();
   });
 });

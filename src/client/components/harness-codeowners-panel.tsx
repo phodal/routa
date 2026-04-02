@@ -17,10 +17,12 @@ function ListBlock({
   title,
   items,
   tone,
+  rowLimit = 8,
 }: {
   title: string;
   items: string[];
   tone: "neutral" | "amber" | "rose";
+  rowLimit?: number;
 }) {
   const border =
     tone === "rose"
@@ -31,10 +33,14 @@ function ListBlock({
   if (items.length === 0) {
     return null;
   }
+  const visibleRows = `${Math.min(items.length, rowLimit) * 1.5}rem`;
   return (
     <div className={`rounded-xl border px-3 py-2 ${border}`}>
       <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-desktop-text-secondary">{title}</div>
-      <ul className="mt-1.5 max-h-40 list-inside list-disc space-y-0.5 overflow-y-auto font-mono text-[11px] text-desktop-text-primary">
+      <ul
+        className="mt-1.5 list-inside list-disc space-y-0.5 overflow-y-auto font-mono text-[11px] text-desktop-text-primary"
+        style={{ maxHeight: visibleRows }}
+      >
         {items.map((path) => (
           <li key={path}>{path}</li>
         ))}
@@ -133,7 +139,7 @@ export function HarnessCodeownersPanel({
           ) : null}
 
           {data.rules.length > 0 ? (
-            <div className="overflow-x-auto rounded-xl border border-desktop-border">
+            <div className="max-h-56 overflow-x-auto overflow-y-auto rounded-xl border border-desktop-border">
               <table className="w-full min-w-[480px] border-collapse text-left text-[11px]">
                 <thead>
                   <tr className="border-b border-desktop-border bg-desktop-bg-secondary/60">
@@ -156,13 +162,19 @@ export function HarnessCodeownersPanel({
           ) : null}
 
           <div className="grid gap-3 md:grid-cols-2">
-            <ListBlock title="Unowned files (sample)" items={data.coverage.unownedFiles} tone="amber" />
-            <ListBlock title="Overlapping matches (sample)" items={data.coverage.overlappingFiles} tone="neutral" />
+            <ListBlock title="Unowned files (sample)" items={data.coverage.unownedFiles} tone="amber" rowLimit={compactMode ? 5 : 8} />
+            <ListBlock
+              title="Overlapping matches (sample)"
+              items={data.coverage.overlappingFiles}
+              tone="neutral"
+              rowLimit={compactMode ? 5 : 8}
+            />
           </div>
           <ListBlock
             title="Sensitive paths without ownership"
             items={data.coverage.sensitiveUnownedFiles}
             tone="rose"
+            rowLimit={compactMode ? 5 : 8}
           />
 
           {data.correlation?.triggerCorrelations.length ? (
@@ -170,25 +182,28 @@ export function HarnessCodeownersPanel({
               <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-desktop-text-secondary">
                 Trigger Correlation
               </div>
-              <div className="space-y-2">
+              <div className="grid gap-2 sm:grid-cols-2 md:grid-cols-4 xl:grid-cols-6">
                 {data.correlation.triggerCorrelations.map((correlation) => (
                   <div
                     key={correlation.triggerName}
                     className="rounded-xl border border-desktop-border bg-desktop-bg-primary/80 px-3 py-2"
                   >
-                    <div className="flex flex-wrap items-center gap-2">
+                    <div className="grid gap-1.5">
                       <span className="font-medium text-desktop-text-primary">
                         {formatTriggerLabel(correlation.triggerName)}
                       </span>
-                      <span className="rounded-full border border-desktop-border bg-desktop-bg-secondary px-2 py-0.5 text-[10px] text-desktop-text-secondary">
-                        {correlation.severity}
-                      </span>
-                      <span className="text-[10px] text-desktop-text-secondary">
-                        {correlation.touchedFileCount} files
-                      </span>
+                      <div className="grid gap-1 text-[10px] text-desktop-text-secondary">
+                        <span className="inline-flex items-center gap-2">
+                          <span className="font-medium text-desktop-text-primary">Severity</span>
+                          <span className="rounded-full border border-desktop-border bg-desktop-bg-secondary px-2 py-0.5">
+                            {correlation.severity}
+                          </span>
+                        </span>
+                        <span>{correlation.touchedFileCount} files</span>
+                        <span>{correlation.ownerGroupCount} owner groups</span>
+                      </div>
                     </div>
                     <div className="mt-2 flex flex-wrap gap-2 text-[10px] text-desktop-text-secondary">
-                      <span>{correlation.ownerGroupCount} owner groups</span>
                       {correlation.hasOwnershipGap ? (
                         <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-amber-800">
                           ownership gap

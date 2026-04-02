@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useMemo, useReducer, type Dispatch } from "react";
+import { createContext, useContext, useEffect, useMemo, useReducer, useState, type Dispatch } from "react";
 import {
   Background,
   Controls,
@@ -349,6 +349,7 @@ function AgentHookFlowCanvas() {
 
 function AgentHookInspector() {
   const { activeEntry, data } = useWorkbenchContext();
+  const [activeTab, setActiveTab] = useState<"basic" | "hooks" | "source">("basic");
 
   const configSource = useMemo(() => {
     if (!activeEntry) return "";
@@ -365,6 +366,27 @@ function AgentHookInspector() {
       </div>
 
       <div className="mt-4 space-y-2">
+        <div className="flex flex-wrap gap-1 rounded-xl border border-desktop-border bg-desktop-bg-primary/80 p-1">
+          {[
+            { id: "basic", label: "Basic" },
+            { id: "hooks", label: "Hooks" },
+            { id: "source", label: "Source" },
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setActiveTab(tab.id as "basic" | "hooks" | "source")}
+              className={`rounded-lg px-2.5 py-1 text-[10px] font-medium transition ${
+                activeTab === tab.id
+                  ? "border border-sky-200 bg-sky-50 text-sky-700"
+                  : "border border-transparent text-desktop-text-secondary hover:bg-desktop-bg-secondary"
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
         {data.warnings.length > 0 ? (
           <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
             <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-amber-800">Warnings</div>
@@ -376,7 +398,16 @@ function AgentHookInspector() {
           </div>
         ) : null}
 
-        {activeEntry ? (
+        {activeTab === "basic" && activeEntry ? (
+          <div className="rounded-xl border border-desktop-border bg-desktop-bg-primary/80 p-3 text-[11px] text-desktop-text-secondary">
+            <div>Lifecycle: <span className="font-medium text-desktop-text-primary">{activeEntry.lifecycleLabel}</span></div>
+            <div className="mt-1">Can block: <span className="font-medium text-desktop-text-primary">{activeEntry.canBlock ? "yes" : "no"}</span></div>
+            <div className="mt-1">Hint: {activeEntry.hint}</div>
+            <div className="mt-1">Description: {activeEntry.lifecycleDescription}</div>
+          </div>
+        ) : null}
+
+        {activeTab === "hooks" && activeEntry ? (
           activeEntry.hooks.length === 0 ? (
             <div className="rounded-xl border border-desktop-border bg-desktop-bg-primary/80 p-3 text-[11px] text-desktop-text-secondary">
               No hooks configured for this event.
@@ -418,7 +449,7 @@ function AgentHookInspector() {
           )
         ) : null}
 
-        {activeEntry && configSource ? (
+        {activeTab === "source" && activeEntry && configSource ? (
           <div className="overflow-hidden rounded-xl border border-desktop-border">
             <CodeViewer
               code={configSource}
@@ -507,7 +538,7 @@ export function HarnessAgentHookWorkbench({
         >
           <AgentHookLifecycleRail />
           <AgentHookFlowCanvas />
-          <AgentHookInspector />
+          <AgentHookInspector key={activeEntry?.event ?? "__no_event__"} />
         </div>
       </section>
     </WorkbenchContext.Provider>

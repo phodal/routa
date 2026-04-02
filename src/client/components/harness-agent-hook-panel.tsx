@@ -100,8 +100,8 @@ export function HarnessAgentHookPanel({
     ? { loading: loading ?? false, error: error ?? null, data: data ?? null }
     : agentHooksState;
 
-  const description = "Policy hooks that configure agent-side runtime behavior.";
-  const systemAction = <span className="text-[10px] text-desktop-text-secondary">Hook systems</span>;
+  const description = "Agent hook lifecycle policies that govern runtime behavior.";
+  const systemAction = <span className="text-[10px] text-desktop-text-secondary">Agent hook system</span>;
 
   const agentHookStateFrame = () => {
     if (resolvedState.loading) {
@@ -139,7 +139,7 @@ export function HarnessAgentHookPanel({
   }
 
   return (
-    <HarnessSectionCard title="Hook systems" description={description} actions={systemAction} variant={variant}>
+    <HarnessSectionCard title="Agent hook system" description={description} actions={systemAction} variant={variant}>
       {agentHookStateFrame()}
     </HarnessSectionCard>
   );

@@ -105,7 +105,40 @@ describe("HarnessGovernanceLoopGraph", () => {
     );
 
     fireEvent.click(screen.getByText("flow-node-release"));
+    fireEvent.click(screen.getByText("flow-node-agent-hook"));
 
     expect(onSelectedNodeChange).toHaveBeenCalledWith("release");
+    expect(onSelectedNodeChange).toHaveBeenCalledWith("agent-hook");
+  });
+
+  it("uses ArrowLeft for the Agent Hook -> Test transition", () => {
+    const onSelectedNodeChange = vi.fn();
+
+    render(
+      <HarnessGovernanceLoopGraph
+        repoPath="/Users/phodal/ai/routa-js"
+        selectedTier="normal"
+        specsError={null}
+        dimensionCount={8}
+        planError={null}
+        metricCount={31}
+        hardGateCount={13}
+        instructionsData={null}
+        hooksData={null}
+        workflowData={null}
+        selectedNodeId="agent-hook"
+        onSelectedNodeChange={onSelectedNodeChange}
+      />,
+    );
+
+    const agentHookNode = screen.getByRole("button", {
+      name: /内部反馈环 Agent 治理/i,
+    });
+
+    fireEvent.keyDown(agentHookNode, { key: "ArrowRight" });
+    expect(onSelectedNodeChange).toHaveBeenCalledTimes(0);
+
+    fireEvent.keyDown(agentHookNode, { key: "ArrowLeft" });
+    expect(onSelectedNodeChange).toHaveBeenCalledWith("test");
   });
 });
