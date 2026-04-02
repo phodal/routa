@@ -97,19 +97,6 @@ function extractMarkdownCodeBlocks(source: string) {
   })).filter((block) => block.code.length > 0);
 }
 
-function sectionBadgeClass(active: boolean) {
-  return active
-    ? "desktop-badge desktop-badge-accent"
-    : "desktop-badge";
-}
-
-function statValue(value: string | number | null | undefined) {
-  if (value === null || value === undefined || value === "") {
-    return "-";
-  }
-  return String(value);
-}
-
 export default function HarnessConsolePage() {
   const workspacesHook = useWorkspaces();
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState("");
@@ -317,31 +304,6 @@ export default function HarnessConsolePage() {
     return SECTIONS.filter((section) => [section.label, section.shortLabel, section.code]
       .some((value) => value.toLowerCase().includes(normalizedFilter)));
   }, [sectionFilter]);
-
-  const sectionBadges = useMemo((): Map<SectionId, string | null> => {
-    const map = new Map<SectionId, string | null>();
-    map.set("spec-sources", specSourcesState.data ? `${specSourcesState.data.sources?.length ?? 0}` : null);
-    map.set("agent-instructions", instructionsState.data ? "1" : null);
-    map.set("design-decisions", designDecisionsState.data ? `${designDecisionsState.data.sources?.length ?? 0}` : null);
-    map.set("hook-systems", hookCount > 0 ? `${hookCount}` : null);
-    map.set("review-triggers", hooksState.data?.hookFiles ? `${hooksState.data.hookFiles.length}` : null);
-    map.set("release-triggers", hooksState.data?.hookFiles ? `${hooksState.data.hookFiles.length}` : null);
-    map.set("codeowners", resolvedCodeownersState.data ? "OK" : null);
-    map.set("entrix-fitness", specFiles.length > 0 ? `${dimensionSpecs.length}d/${planState.data?.metricCount ?? 0}m` : null);
-    map.set("ci-cd", workflowCount > 0 ? `${workflowCount}` : null);
-    return map;
-  }, [
-    specSourcesState.data,
-    instructionsState.data,
-    designDecisionsState.data,
-    hookCount,
-    hooksState.data,
-    resolvedCodeownersState.data,
-    specFiles.length,
-    dimensionSpecs.length,
-    planState.data?.metricCount,
-    workflowCount,
-  ]);
 
   const selectedGovernanceSection = selectedGovernanceNodeId
     ? (GOVERNANCE_NODE_SECTION_MAP[selectedGovernanceNodeId] ?? null)
@@ -579,60 +541,58 @@ export default function HarnessConsolePage() {
 
   function renderOverview() {
     return (
-      <div className="space-y-4">
-        <div className="desktop-panel overflow-hidden">
-          <div className="desktop-panel-header">
-            <span>{governanceView === "lifecycle" ? "Lifecycle View" : "Governance Loop"}</span>
-            <div className="inline-flex items-center gap-0.5 rounded border border-desktop-border bg-desktop-bg-primary p-0.5 normal-case tracking-normal">
-              {(["lifecycle", "loop"] as const).map((view) => (
-                <button
-                  key={view}
-                  type="button"
-                  onClick={() => setGovernanceView(view)}
-                  className={`rounded px-2.5 py-1 text-[10px] font-medium ${
-                    governanceView === view
-                      ? "bg-desktop-accent text-desktop-accent-text"
-                      : "text-desktop-text-secondary hover:bg-desktop-bg-active hover:text-desktop-text-primary"
-                  }`}
-                >
-                  {view === "lifecycle" ? "Lifecycle" : "Loop"}
-                </button>
-              ))}
-            </div>
+      <div className="space-y-3">
+        <div className="flex items-center justify-between border-b border-desktop-border pb-2">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-desktop-text-secondary">
+            {governanceView === "lifecycle" ? "Lifecycle View" : "Governance Loop"}
           </div>
-          <div className="p-3">
-            {governanceView === "lifecycle" ? (
-              <HarnessLifecycleView
-                selectedNodeId={selectedGovernanceNodeId}
-                onSelectedNodeChange={handleGovernanceNodeClick}
-                contextPanel={null}
-                designDecisionNodeEnabled={hasArchitectureOrAdrSignal}
-              />
-            ) : (
-              <HarnessGovernanceLoopGraph
-                repoPath={activeRepoPath}
-                selectedTier={selectedTier}
-                specsError={specsState.error}
-                dimensionCount={dimensionSpecs.length}
-                planError={planState.error}
-                metricCount={planState.data?.metricCount ?? 0}
-                hardGateCount={planState.data?.hardGateCount ?? 0}
-                unsupportedMessage={unsupportedRepoMessage}
-                hooksData={hooksState.data}
-                hooksError={hooksState.error}
-                workflowData={githubActionsState.data}
-                workflowError={githubActionsState.error}
-                instructionsData={instructionsState.data}
-                instructionsError={instructionsState.error}
-                fitnessFiles={specFiles}
-                designDecisionNodeEnabled={hasArchitectureOrAdrSignal}
-                selectedNodeId={selectedGovernanceNodeId}
-                onSelectedNodeChange={handleGovernanceNodeClick}
-                contextPanel={null}
-              />
-            )}
+          <div className="inline-flex items-center gap-0.5 rounded border border-desktop-border bg-desktop-bg-primary p-0.5 normal-case tracking-normal">
+            {(["lifecycle", "loop"] as const).map((view) => (
+              <button
+                key={view}
+                type="button"
+                onClick={() => setGovernanceView(view)}
+                className={`rounded px-2.5 py-1 text-[10px] font-medium ${
+                  governanceView === view
+                    ? "bg-desktop-accent text-desktop-accent-text"
+                    : "text-desktop-text-secondary hover:bg-desktop-bg-active hover:text-desktop-text-primary"
+                }`}
+              >
+                {view === "lifecycle" ? "Lifecycle" : "Loop"}
+              </button>
+            ))}
           </div>
         </div>
+        {governanceView === "lifecycle" ? (
+          <HarnessLifecycleView
+            selectedNodeId={selectedGovernanceNodeId}
+            onSelectedNodeChange={handleGovernanceNodeClick}
+            contextPanel={null}
+            designDecisionNodeEnabled={hasArchitectureOrAdrSignal}
+          />
+        ) : (
+          <HarnessGovernanceLoopGraph
+            repoPath={activeRepoPath}
+            selectedTier={selectedTier}
+            specsError={specsState.error}
+            dimensionCount={dimensionSpecs.length}
+            planError={planState.error}
+            metricCount={planState.data?.metricCount ?? 0}
+            hardGateCount={planState.data?.hardGateCount ?? 0}
+            unsupportedMessage={unsupportedRepoMessage}
+            hooksData={hooksState.data}
+            hooksError={hooksState.error}
+            workflowData={githubActionsState.data}
+            workflowError={githubActionsState.error}
+            instructionsData={instructionsState.data}
+            instructionsError={instructionsState.error}
+            fitnessFiles={specFiles}
+            designDecisionNodeEnabled={hasArchitectureOrAdrSignal}
+            selectedNodeId={selectedGovernanceNodeId}
+            onSelectedNodeChange={handleGovernanceNodeClick}
+            contextPanel={null}
+          />
+        )}
       </div>
     );
   }
@@ -766,10 +726,7 @@ export default function HarnessConsolePage() {
         >
           <div className="border-b border-desktop-border px-3 py-3">
             <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-desktop-text-secondary">Explorer</div>
-            <div className="mt-1 flex items-center gap-2 text-[11px] text-desktop-text-secondary">
-              <span className="truncate">{selectedRepoLabel}</span>
-              <span className="desktop-badge">{selectedTier}</span>
-            </div>
+            <div className="mt-1 truncate text-[11px] text-desktop-text-secondary">{selectedRepoLabel}</div>
           </div>
 
           <div className="border-b border-desktop-border px-3 py-2">
@@ -786,7 +743,6 @@ export default function HarnessConsolePage() {
             <div className="space-y-1">
               {visibleSections.map((section) => {
                 const isActive = activeSection === section.id;
-                const badge = sectionBadges.get(section.id) ?? null;
                 return (
                   <button
                     key={section.id}
@@ -798,30 +754,10 @@ export default function HarnessConsolePage() {
                         : "border-transparent"
                     }`}
                   >
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[12px] font-medium text-desktop-text-primary">{section.label}</span>
-                      <span className="block truncate text-[10px] text-desktop-text-secondary">{section.shortLabel}</span>
-                    </span>
-                    {badge ? <span className={sectionBadgeClass(isActive)}>{badge}</span> : null}
+                    <span className="min-w-0 flex-1 truncate text-[12px] font-medium text-desktop-text-primary">{section.label}</span>
                   </button>
                 );
               })}
-            </div>
-          </div>
-
-          <div className="border-t border-desktop-border p-3">
-            <div className="desktop-panel overflow-hidden">
-              <div className="desktop-panel-header">
-                <span>Summary</span>
-                <span className="text-desktop-text-secondary">live</span>
-              </div>
-              <div className="space-y-1.5 p-3 text-[11px] text-desktop-text-secondary">
-                <div className="flex items-center justify-between gap-3"><span>Dimensions</span><span className="text-desktop-text-primary">{statValue(specsState.loading ? "..." : dimensionSpecs.length)}</span></div>
-                <div className="flex items-center justify-between gap-3"><span>Metrics</span><span className="text-desktop-text-primary">{statValue(planState.loading ? "..." : planState.data?.metricCount)}</span></div>
-                <div className="flex items-center justify-between gap-3"><span>Hard gates</span><span className="text-desktop-text-primary">{statValue(planState.loading ? "..." : planState.data?.hardGateCount)}</span></div>
-                <div className="flex items-center justify-between gap-3"><span>Hooks</span><span className="text-desktop-text-primary">{hookCount}</span></div>
-                <div className="flex items-center justify-between gap-3"><span>Workflows</span><span className="text-desktop-text-primary">{workflowCount}</span></div>
-              </div>
             </div>
           </div>
         </aside>
@@ -869,9 +805,6 @@ export default function HarnessConsolePage() {
               })}
             </div>
 
-            <div className="hidden items-center gap-2 text-[10px] text-desktop-text-secondary lg:flex">
-              <span className="rounded-full border border-desktop-border bg-desktop-bg-primary px-2 py-1">workspace: {activeWorkspaceTitle ?? "-"}</span>
-            </div>
           </div>
 
           <div className="min-h-0 flex-1 overflow-y-auto bg-desktop-bg-primary p-4 desktop-scrollbar">

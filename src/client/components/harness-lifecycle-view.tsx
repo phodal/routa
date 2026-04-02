@@ -78,58 +78,56 @@ export function HarnessLifecycleView({
   }, [designDecisionNodeEnabled]);
 
   return (
-    <div className="rounded-sm border border-desktop-border bg-desktop-bg-secondary/40 p-3">
-      <div className="space-y-4">
-        <div className="min-w-0 rounded-sm border border-desktop-border bg-desktop-bg-primary p-3">
-          <div className="relative overflow-x-auto">
-            {/* Base SVG */}
-            <div className="relative" style={{ minWidth: "800px", maxWidth: "100%" }}>
-              <Image
-                src="/harness-lifecycle-view.svg"
-                alt="Harness Lifecycle View"
-                width={2048}
-                height={320}
-                className="w-full h-auto"
-                priority
-              />
+    <div className="space-y-4">
+      <div className="min-w-0 rounded-sm border border-desktop-border bg-desktop-bg-primary">
+        <div className="relative overflow-x-auto p-3">
+          {/* Base SVG */}
+          <div className="relative" style={{ minWidth: "800px", maxWidth: "100%" }}>
+            <Image
+              src="/harness-lifecycle-view.svg"
+              alt="Harness Lifecycle View"
+              width={2048}
+              height={320}
+              className="w-full h-auto"
+              priority
+            />
 
-              {/* Overlay interactive hotspots */}
-              <svg
-                viewBox="0 0 2048 320"
-                className="absolute inset-0 w-full h-full pointer-events-none"
-              >
-                {selectableNodes.map((node) => (
-                  <rect
-                    key={node.nodeId}
-                    x={node.x}
-                    y={node.y}
-                    width={node.width}
-                    height={node.height}
-                    fill="transparent"
-                    stroke={activeSelectedNodeId === node.nodeId ? "#3b82f6" : "transparent"}
-                    strokeWidth={activeSelectedNodeId === node.nodeId ? 3 : 0}
-                    className="cursor-pointer transition-all hover:fill-blue-500/5 pointer-events-auto"
-                    onClick={() => handleNodeClick(node.nodeId)}
-                    role="button"
-                    aria-label={node.title}
-                    tabIndex={0}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        handleNodeClick(node.nodeId);
-                      }
-                    }}
-                  />
-                ))}
-              </svg>
-            </div>
+            {/* Overlay interactive hotspots */}
+            <svg
+              viewBox="0 0 2048 320"
+              className="absolute inset-0 w-full h-full pointer-events-none"
+            >
+              {selectableNodes.map((node) => (
+                <rect
+                  key={node.nodeId}
+                  x={node.x}
+                  y={node.y}
+                  width={node.width}
+                  height={node.height}
+                  fill="transparent"
+                  stroke={activeSelectedNodeId === node.nodeId ? "#3b82f6" : "transparent"}
+                  strokeWidth={activeSelectedNodeId === node.nodeId ? 3 : 0}
+                  className="cursor-pointer transition-all hover:fill-blue-500/5 pointer-events-auto"
+                  onClick={() => handleNodeClick(node.nodeId)}
+                  role="button"
+                  aria-label={node.title}
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      handleNodeClick(node.nodeId);
+                    }
+                  }}
+                />
+              ))}
+            </svg>
           </div>
         </div>
-
-        {contextPanel ? (
-          <div className="min-w-0">{contextPanel}</div>
-        ) : null}
       </div>
+
+      {contextPanel ? (
+        <div className="min-w-0">{contextPanel}</div>
+      ) : null}
     </div>
   );
 }
