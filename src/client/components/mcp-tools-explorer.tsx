@@ -150,7 +150,7 @@ export function McpToolsExplorer() {
   }, [argsJson, selectedTool]);
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[320px,minmax(0,1fr)]">
+    <div className="grid gap-4 md:grid-cols-[300px,minmax(0,1fr)]">
       <aside className="rounded-2xl border border-desktop-border bg-desktop-bg-secondary/70 shadow-sm">
         <div className="border-b border-desktop-border px-4 py-3">
           <div className="flex items-center justify-between gap-3">
@@ -265,7 +265,7 @@ export function McpToolsExplorer() {
               </div>
             </div>
 
-            <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr),minmax(0,1fr)]">
+            <div className="grid gap-4 md:grid-cols-[minmax(0,1fr),minmax(0,1fr)]">
               <div className="rounded-2xl border border-desktop-border bg-desktop-bg-secondary/70 p-5 shadow-sm">
                 <div className="mb-3 flex items-center justify-between">
                   <h4 className="text-[13px] font-semibold text-desktop-text-primary">Arguments</h4>
