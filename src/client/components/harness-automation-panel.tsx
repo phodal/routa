@@ -287,6 +287,7 @@ export function HarnessAutomationPanel({
 }: HarnessAutomationPanelProps) {
   const dataTestId = variant === "compact" ? "automations-compact" : "automations-full";
   const showData = !loading && !error && !unsupportedMessage && Boolean(data);
+  const visibleData = showData ? data : null;
   const showMissingContext = !loading && !error && !unsupportedMessage && !data;
   const summary = useMemo(() => ({
     definitions: data?.definitions.length ?? 0,
@@ -328,7 +329,7 @@ export function HarnessAutomationPanel({
         </HarnessSectionStateFrame>
       ) : null}
 
-      {showData ? (
+      {visibleData ? (
         <div className="space-y-4">
           <div className="overflow-hidden rounded-sm border border-desktop-border bg-desktop-bg-primary/80">
             <div className="border-b border-desktop-border/70 px-4 py-3">
@@ -347,10 +348,10 @@ export function HarnessAutomationPanel({
             </div>
 
             <div className="p-3">
-              {data.configFile ? (
+              {visibleData.configFile ? (
                 <CodeViewer
-                  code={data.configFile.source}
-                  filename={data.configFile.relativePath}
+                  code={visibleData.configFile.source}
+                  filename={visibleData.configFile.relativePath}
                   language="yaml"
                   maxHeight="320px"
                   showHeader={false}
@@ -370,13 +371,13 @@ export function HarnessAutomationPanel({
             <SummaryStat label="Recent Executions" value={summary.recentRuns} />
           </div>
 
-          <DefinitionTable definitions={data.definitions} />
-          <PendingSignalsTable pendingSignals={data.pendingSignals} />
-          <RecentRunsTable recentRuns={data.recentRuns} />
+          <DefinitionTable definitions={visibleData.definitions} />
+          <PendingSignalsTable pendingSignals={visibleData.pendingSignals} />
+          <RecentRunsTable recentRuns={visibleData.recentRuns} />
 
-          {data.warnings.length > 0 ? (
+          {visibleData.warnings.length > 0 ? (
             <HarnessSectionStateFrame tone="warning">
-              {data.warnings.join(" ")}
+              {visibleData.warnings.join(" ")}
             </HarnessSectionStateFrame>
           ) : null}
         </div>
