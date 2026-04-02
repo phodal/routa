@@ -8,6 +8,7 @@
  */
 
 import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
 import { AgentInstallPanel } from "@/client/components/agent-install-panel";
 import { useTranslation } from "@/i18n";
 

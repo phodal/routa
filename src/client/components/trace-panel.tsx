@@ -387,6 +387,7 @@ function UserMessageBubble({
   formatTime: (timestamp: string) => string;
 }) {
   const content = trace.conversation?.fullContent || trace.conversation?.contentPreview || "";
+  const { t } = useTranslation();
 
   return (
     <div className="flex items-start gap-3 group">
@@ -420,6 +421,7 @@ function AgentResponseBlock({
   turn: ConversationTurn;
   formatTime: (timestamp: string) => string;
 }) {
+  const { t } = useTranslation();
   const [thoughtsExpanded, setThoughtsExpanded] = useState(false);
 
   // Separate thoughts from other content

@@ -510,7 +510,8 @@ export function HarnessAgentHookWorkbench({
     data,
     compactMode,
     embedded,
-  }), [activeEntry, compactMode, data, embedded, groupedEntries, state]);
+    t,
+  }), [activeEntry, compactMode, data, embedded, groupedEntries, state, t]);
 
   if (unsupportedMessage) {
     return <HarnessUnsupportedState />;

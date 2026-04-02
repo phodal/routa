@@ -60,7 +60,6 @@ type LoopDetailSection = {
 type HarnessGovernanceLoopGraphProps = {
   repoPath?: string;
   selectedTier: TierValue;
-  g: TranslationDictionary["harness"]["governanceLoop"]["graph"];
   specsError: string | null;
   dimensionCount: number;
   planError: string | null;
@@ -380,6 +379,7 @@ function buildGraph(args: {
     designDecisionNodeEnabled,
     selectedNodeId,
     onSelectNode,
+    g,
   } = args;
 
   const hasCodingNode = Boolean(designDecisionNodeEnabled);
@@ -509,7 +509,7 @@ function buildGraph(args: {
         ? `${metricCount} metrics / ${hardGateCount} hard gates`
         : hookSummary
           ? `pre-push / ${hookSummary.phaseCount} phases`
-          : "pre-push / Entrix Fitness",
+          : g.clues.precommitNote,
       active: true,
       ...buildSelectionState("precommit", true),
     }),
@@ -539,7 +539,7 @@ function buildGraph(args: {
       tone: getLayerTone("commit"),
       note: workflowSummary
         ? `${workflowSummary.flowCount} flows / ${workflowSummary.jobCount} jobs`
-        : "CI/CD / 自动交付",
+        : g.clues.postCommitNote,
       active: true,
       ...buildSelectionState("post-commit", true),
     }),
@@ -550,7 +550,7 @@ function buildGraph(args: {
       tone: getLayerTone("external"),
       note: workflowSummary && workflowSummary.releaseFlowCount > 0
         ? `${workflowSummary.releaseFlowCount} release flows`
-        : "artifact / release",
+        : g.clues.releaseNote,
       active: Boolean(workflowSummary && workflowSummary.releaseFlowCount > 0),
       unavailableReason: workflowSummary && workflowSummary.releaseFlowCount > 0
         ? undefined
@@ -592,7 +592,7 @@ function buildGraph(args: {
   const edges: Edge[] = [
     buildEdge("thinking-coding", "thinking", "coding", "source-right", "target-left", g.edgeLabels.clarify, LOOP_EDGE_COLORS.neutral),
     buildEdge("coding-build", "coding", "build", "source-right", "target-left", g.edgeLabels.implement, LOOP_EDGE_COLORS.internal),
-    buildEdge("build-agent-hook", "build", "agent-hook", "source-right", "target-left", g.edgeLabels.validate, LOOP_EDGE_COLORS.internal),
+    buildEdge("build-agent-hook", "build", "agent-hook", "source-right", "target-left", g.edgeLabels.sendForReview, LOOP_EDGE_COLORS.internal),
     buildEdge("agent-hook-test", "agent-hook", "test", "source-left", "target-right", g.edgeLabels.validate, LOOP_EDGE_COLORS.internal),
 
     buildEdge("precommit-review", "precommit", "review", "source-left", "target-right", g.edgeLabels.sendForReview, LOOP_EDGE_COLORS.internal),
@@ -675,7 +675,7 @@ function buildDetailSections(args: {
   selectedTier: TierValue;
   g: TranslationDictionary["harness"]["governanceLoop"]["graph"];
 }) {
-  const g;
+  const {
     selectedNodeId,
     hooksData,
     agentHooksData,
@@ -686,6 +686,7 @@ function buildDetailSections(args: {
     metricCount,
     hardGateCount,
     selectedTier,
+    g,
   } = args;
 
   const uniquePhases = [...new Set((hooksData?.profiles ?? []).flatMap((profile) => profile.phases ?? []))];
@@ -704,34 +705,34 @@ function buildDetailSections(args: {
   switch (selectedNodeId) {
     case "precommit":
       return [
-        { title: "Fitness", items: [`tier ${selectedTier}`, `${dimensionCount} dimensions`, `${metricCount} metrics`, `${hardGateCount} hard gates`] },
-        { title: "Hook phases", items: uniquePhases.length ? uniquePhases : ["当前页未发现 phase"] },
-        { title: "Related surface", items: ["Entrix Fitness", "Hook systems panel"] },
+        { title: g.detailSections.fitness.title, items: [`tier ${selectedTier}`, `${dimensionCount} dimensions`, `${metricCount} metrics`, `${hardGateCount} hard gates`] },
+        { title: g.detailSections.fitness.hookPhasesTitle, items: uniquePhases.length ? uniquePhases : [g.detailSections.fitness.noPhase] },
+        { title: g.detailSections.fitness.relatedSurface, items: g.detailSections.fitness.relatedItems },
       ] satisfies LoopDetailSection[];
     case "post-commit":
       return [
-        { title: "Actions", items: workflowNames.length ? workflowNames.slice(0, 8) : ["当前页未发现 action"] },
-        { title: "Jobs", items: workflowJobs.length ? workflowJobs.slice(0, 8) : ["当前页未发现 job"] },
-        { title: "Related surface", items: ["CI/CD panel", "External feedback loop"] },
+        { title: g.detailSections.workflow.title, items: workflowNames.length ? workflowNames.slice(0, 8) : [g.detailSections.workflow.noAction] },
+        { title: g.detailSections.workflow.jobsTitle, items: workflowJobs.length ? workflowJobs.slice(0, 8) : [g.detailSections.workflow.noJob] },
+        { title: g.detailSections.workflow.relatedSurface, items: g.detailSections.workflow.relatedItems },
       ] satisfies LoopDetailSection[];
     case "release":
       return [
-        { title: "Release handoff", items: workflowNames.length ? workflowNames.slice(0, 6) : ["当前页未发现 release workflow"] },
-        { title: "Evidence", items: ["GitHub Actions release flows", "artifact / bundle / publish", "workflow_dispatch / tags"] },
-        { title: "Related surface", items: ["CI/CD panel", "Release category"] },
+        { title: g.detailSections.release.title, items: workflowNames.length ? workflowNames.slice(0, 6) : [g.detailSections.release.noReleaseWorkflow] },
+        { title: g.detailSections.release.evidenceTitle, items: g.detailSections.release.evidenceItems },
+        { title: g.detailSections.release.relatedSurface, items: g.detailSections.release.relatedItems },
       ] satisfies LoopDetailSection[];
     case "review":
     case "test":
       return [
-        { title: "Fitness", items: [`tier ${selectedTier}`, `${dimensionCount} dimensions`, `${metricCount} metrics`, `${hardGateCount} hard gates`] },
-        { title: "Hook phases", items: uniquePhases.length ? uniquePhases : ["当前页未发现 phase"] },
-        { title: "Dimension files", items: dimensionFiles.length ? dimensionFiles.slice(0, 6) : ["当前页未发现 dimension spec"] },
+        { title: g.detailSections.fitness.title, items: [`tier ${selectedTier}`, `${dimensionCount} dimensions`, `${metricCount} metrics`, `${hardGateCount} hard gates`] },
+        { title: g.detailSections.test.hookPhasesTitle, items: uniquePhases.length ? uniquePhases : [g.detailSections.fitness.noPhase] },
+        { title: g.detailSections.test.dimensionFilesTitle, items: dimensionFiles.length ? dimensionFiles.slice(0, 6) : [g.detailSections.test.noDimensionSpec] },
       ] satisfies LoopDetailSection[];
     case "build":
       return [
-        { title: "Instruction source", items: [instructionSummary?.fileName ?? "AGENTS.md"] },
-        { title: "Context", items: ["当前节点受 instructions 面板支撑"] },
-        { title: "Rulebook", items: primaryRuleFiles.length ? primaryRuleFiles.slice(0, 4) : ["当前页未发现 rulebook / manifest"] },
+        { title: g.detailSections.build.instructionSourceTitle, items: [instructionSummary?.fileName ?? "AGENTS.md"] },
+        { title: g.detailSections.build.contextTitle, items: [g.detailSections.build.contextItem] },
+        { title: g.detailSections.build.rulebookTitle, items: primaryRuleFiles.length ? primaryRuleFiles.slice(0, 4) : [g.detailSections.build.noRulebookManifest] },
       ] satisfies LoopDetailSection[];
     case "agent-hook":
       return [
@@ -741,20 +742,20 @@ function buildDetailSections(args: {
       ] satisfies LoopDetailSection[];
     case "thinking":
       return [
-        { title: "Spec Sources", items: ["Detects AI Coding spec tools and methodology frameworks"] },
-        { title: "Frameworks", items: ["Kiro", "Qoder", "OpenSpec", "Spec Kit", "BMAD"] },
-        { title: "Evidence model", items: ["artifacts-present", "installed-only", "archived", "legacy"] },
+        { title: g.detailSections.thinking.specSourcesTitle, items: [g.detailSections.thinking.specSourcesItem] },
+        { title: g.detailSections.thinking.frameworksTitle, items: g.detailSections.thinking.frameworksItems },
+        { title: g.detailSections.thinking.evidenceModelTitle, items: g.detailSections.thinking.evidenceModelItems },
       ] satisfies LoopDetailSection[];
     case "coding":
       return [
-        { title: "Design decision evidence", items: ["ADR / architecture decision files"] },
-        { title: "Evidence locations", items: ["docs/ARCHITECTURE.md", "docs/adr/*.md"] },
-        { title: "Related surface", items: ["Spec Sources panel", "Build / coding pipeline"] },
+        { title: g.detailSections.coding.designDecisionTitle, items: [g.detailSections.coding.designDecisionItem] },
+        { title: g.detailSections.coding.evidenceLocationsTitle, items: g.detailSections.coding.evidenceLocationsItems },
+        { title: g.detailSections.coding.relatedSurface, items: g.detailSections.coding.relatedItems },
       ] satisfies LoopDetailSection[];
     default:
       return [
-        { title: "Current page signals", items: ["Highlighted nodes are clickable. Unavailable nodes explain missing signals directly.", "Select a node (coding, local verification, change gate, review, delivery, release) to preview the matching context panel."] },
-        { title: "Connected panels", items: ["Instruction file - CLAUDE.md", "Entrix Fitness", "Review triggers", "CI/CD", "Repo signals"] },
+        { title: g.detailSections.default.connectedPanelsTitle, items: [g.detailSections.default.highlightedNodesClickable, g.detailSections.default.selectNodePreview] },
+        { title: g.detailSections.default.connectedPanelsTitle, items: g.detailSections.default.connectedPanelsItems },
       ] satisfies LoopDetailSection[];
   }
 }
@@ -782,6 +783,7 @@ export function HarnessGovernanceLoopGraph({
   onSelectedNodeChange,
   contextPanel,
 }: HarnessGovernanceLoopGraphProps) {
+  const { t } = useTranslation();
   const hasContext = Boolean(repoPath);
   const [internalSelectedNodeId, setInternalSelectedNodeId] = useState("build");
   const activeSelectedNodeId = selectedNodeId !== undefined ? selectedNodeId : internalSelectedNodeId;
@@ -851,8 +853,9 @@ export function HarnessGovernanceLoopGraph({
         }
         setInternalSelectedNodeId(nodeId);
       },
+      g: t.harness.governanceLoop.graph,
     }),
-    [activeSelectedNodeId, agentHookSummary, designDecisionNodeEnabled, hardGateCount, hookSummary, instructionSummary, metricCount, onSelectedNodeChange, workflowSummary],
+    [activeSelectedNodeId, agentHookSummary, designDecisionNodeEnabled, hardGateCount, hookSummary, instructionSummary, metricCount, onSelectedNodeChange, t.harness.governanceLoop.graph, workflowSummary],
   );
 
   const graphIssues = [...new Set(
@@ -871,8 +874,9 @@ export function HarnessGovernanceLoopGraph({
       metricCount,
       hardGateCount,
       selectedTier,
+      g: t.harness.governanceLoop.graph,
     }),
-    [activeSelectedNodeId, agentHooksData, dimensionCount, fitnessFiles, hardGateCount, hooksData, instructionSummary, metricCount, selectedTier, workflowData],
+    [activeSelectedNodeId, agentHooksData, dimensionCount, fitnessFiles, hardGateCount, hooksData, instructionSummary, metricCount, selectedTier, t.harness.governanceLoop.graph, workflowData],
   );
 
   return (

@@ -71,6 +71,7 @@ interface SpecialistForm {
 
 export function SpecialistManager({ open, onClose }: SpecialistManagerProps) {
   const [specialists, setSpecialists] = useState<SpecialistConfig[]>([]);
+  const { t } = useTranslation();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);

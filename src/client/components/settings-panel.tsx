@@ -191,6 +191,7 @@ function RolesTab({
   onOpenModelsTab: () => void;
 }) {
   const datalistId = useId();
+  const { t } = useTranslation();
 
   return (
     <div className="px-4 py-4 space-y-4 overflow-y-auto h-full">
@@ -475,6 +476,7 @@ interface ProviderCatalogSectionProps {
 
 function ProviderCatalogSection({ allProviders }: ProviderCatalogSectionProps) {
   const [hiddenProviderIds, setHiddenProviderIds] = useState<string[]>(() => loadHiddenProviders());
+  const { t } = useTranslation();
 
   const handleToggle = (providerId: string) => {
     const nextHiddenProviderIds = hiddenProviderIds.includes(providerId)
@@ -570,6 +572,7 @@ function ProviderCatalogSection({ allProviders }: ProviderCatalogSectionProps) {
 
 function WebhooksTab() {
   const [showFullPanel, setShowFullPanel] = useState(false);
+  const { t } = useTranslation();
   const isTauriEnv = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
   // In Tauri, show the full panel directly
@@ -733,6 +736,7 @@ export function DockerConfigModal(props: DockerConfigModalProps) {
 
 function DockerConfigModalContent({ open: _open, errorMessage, onClose, onSaved }: DockerConfigModalProps) {
   const [authJson, setAuthJson] = useState(() => loadDockerOpencodeAuthJson());
+  const { t } = useTranslation();
   const [error, setError] = useState<string | null>(null);
 
   const handleSave = useCallback(() => {
