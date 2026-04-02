@@ -105,10 +105,10 @@ describe("HarnessGovernanceLoopGraph", () => {
     );
 
     fireEvent.click(screen.getByRole("button", {
-      name: /外部反馈环 制品发布/i,
+      name: /External loop Release/i,
     }));
     fireEvent.click(screen.getByRole("button", {
-      name: /推送反馈环 变更门禁/i,
+      name: /Push loop Change gates/i,
     }));
 
     expect(onSelectedNodeChange).toHaveBeenCalledWith("release");
@@ -136,7 +136,7 @@ describe("HarnessGovernanceLoopGraph", () => {
     );
 
     const testNode = screen.getByRole("button", {
-      name: /内部反馈环 本地验证/i,
+      name: /Internal loop Local verification/i,
     });
 
     fireEvent.keyDown(testNode, { key: "ArrowRight" });

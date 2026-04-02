@@ -625,7 +625,7 @@ export function KanbanSettingsModal({
     }
   };
   const handleClearAll = async () => {
-    if (!window.confirm("t.kanban.clearAllConfirm")) return;
+    if (!window.confirm(t.kanban.clearAllConfirm)) return;
     setClearingAll(true);
     try {
       await onClearAll();
