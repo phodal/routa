@@ -239,6 +239,30 @@ vi.mock("@/client/components/harness-governance-loop-graph", () => ({
   ),
 }));
 
+vi.mock("@/client/components/harness-lifecycle-view", () => ({
+  HarnessLifecycleView: ({
+    selectedNodeId,
+    onSelectedNodeChange,
+    contextPanel,
+  }: {
+    selectedNodeId?: string | null;
+    onSelectedNodeChange?: (nodeId: string) => void;
+    contextPanel?: ReactNode;
+  }) => (
+    <div data-testid="governance-loop-graph">
+      <div data-testid="selected-node-id">{selectedNodeId ?? ""}</div>
+      <div data-testid="context-panel-state">{contextPanel ? "present" : "absent"}</div>
+      <button type="button" onClick={() => onSelectedNodeChange?.("thinking")}>
+        select-thinking
+      </button>
+      <button type="button" onClick={() => onSelectedNodeChange?.("release")}>
+        select-release
+      </button>
+      {contextPanel}
+    </div>
+  ),
+}));
+
 vi.mock("@/client/components/harness-github-actions-flow-panel", () => ({
   HarnessGitHubActionsFlowPanel: ({ initialCategory }: { initialCategory?: "Validation" | "Release" | "Automation" | "Maintenance" }) => (
     <div data-testid="github-actions-flow-panel">{initialCategory ?? "default"}</div>

@@ -239,6 +239,8 @@ async fn api_mcp_kanban_profile_filters_tools_list() {
         "list_cards_by_column",
         "update_card",
         "move_card",
+        "request_previous_lane_handoff",
+        "submit_lane_handoff",
     ]
     .into_iter()
     .collect();
