@@ -180,7 +180,7 @@ function RolesTab({
   customProviders,
   registryProviders,
   onChange,
-  onOpenModelsTab,
+  onOpenModelsTab: _onOpenModelsTab,
 }: {
   settings: DefaultProviderSettings;
   modelDefs: ModelDefinition[];
@@ -687,7 +687,7 @@ function DockerOpenCodeSection({ embedded = false }: { embedded?: boolean }) {
       setError(null);
     }
     saveDockerOpencodeAuthJson(value);
-  }, []);
+  }, [t.settings.docker.invalidJson]);
 
   return (
     <div className={`space-y-2 ${embedded ? "" : "rounded-lg border border-slate-200 p-3 dark:border-slate-700"}`}>
@@ -751,7 +751,7 @@ function DockerConfigModalContent({ open: _open, errorMessage, onClose, onSaved 
     }
     saveDockerOpencodeAuthJson(authJson);
     onSaved(authJson);
-  }, [authJson, onSaved]);
+  }, [authJson, onSaved, t.settings.docker.invalidJson]);
 
   // Simplify the error message for display
   const displayError = errorMessage

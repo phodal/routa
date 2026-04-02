@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { desktopAwareFetch } from "../utils/diagnostics";
 import { Select } from "./select";
 import { useTranslation } from "@/i18n";
@@ -97,6 +97,7 @@ export function SpecialistManager({ open, onClose }: SpecialistManagerProps) {
     if (open) {
       loadSpecialists();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   const loadSpecialists = async () => {

@@ -888,7 +888,7 @@ function SkillUploadModal({
     }
     setError(null);
     setSelectedFile(file);
-  }, []);
+  }, [t.skills.invalidZipFile]);
 
   const handleDrop = useCallback(
     (e: React.DragEvent) => {
