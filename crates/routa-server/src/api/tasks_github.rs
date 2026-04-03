@@ -26,6 +26,27 @@ pub struct GitHubIssueListItem {
     pub updated_at: Option<String>,
 }
 
+#[derive(Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitHubPullListItem {
+    pub id: String,
+    pub number: i64,
+    pub title: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub body: Option<String>,
+    pub url: String,
+    pub state: String,
+    pub labels: Vec<String>,
+    pub assignees: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub updated_at: Option<String>,
+    pub draft: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub merged_at: Option<String>,
+    pub head_ref: String,
+    pub base_ref: String,
+}
+
 pub fn resolve_github_repo(repo_path: Option<&str>) -> Option<String> {
     let repo_path = repo_path?;
     let output = Command::new("git")
@@ -179,6 +200,131 @@ pub async fn list_github_issues(
                 .get("updated_at")
                 .and_then(|value| value.as_str())
                 .map(str::to_string),
+        })
+        .collect())
+}
+
+pub async fn list_github_pulls(
+    repo: &str,
+    state: Option<&str>,
+    per_page: Option<usize>,
+) -> Result<Vec<GitHubPullListItem>, String> {
+    let client = reqwest::Client::new();
+    let token = github_token();
+    let per_page = per_page.unwrap_or(50).clamp(1, 100);
+    let state = state.unwrap_or("open");
+    let url = format!(
+        "https://api.github.com/repos/{repo}/pulls?state={state}&sort=updated&direction=desc&per_page={per_page}"
+    );
+
+    let response = github_request(client.get(url), token)
+        .send()
+        .await
+        .map_err(|error| format!("GitHub pull request list failed: {}", error))?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let text = response.text().await.unwrap_or_default();
+        return Err(format!(
+            "GitHub pull request list failed: {} {}",
+            status, text
+        ));
+    }
+
+    let data = response
+        .json::<Vec<serde_json::Value>>()
+        .await
+        .map_err(|error| format!("GitHub pull request list failed: {}", error))?;
+
+    Ok(data
+        .into_iter()
+        .map(|item| GitHubPullListItem {
+            id: item
+                .get("id")
+                .and_then(|value| value.as_i64())
+                .unwrap_or_default()
+                .to_string(),
+            number: item
+                .get("number")
+                .and_then(|value| value.as_i64())
+                .unwrap_or_default(),
+            title: item
+                .get("title")
+                .and_then(|value| value.as_str())
+                .unwrap_or_default()
+                .to_string(),
+            body: item
+                .get("body")
+                .and_then(|value| value.as_str())
+                .map(str::to_string),
+            url: item
+                .get("html_url")
+                .and_then(|value| value.as_str())
+                .unwrap_or_default()
+                .to_string(),
+            state: item
+                .get("state")
+                .and_then(|value| value.as_str())
+                .unwrap_or("open")
+                .to_string(),
+            labels: item
+                .get("labels")
+                .and_then(|value| value.as_array())
+                .map(|labels| {
+                    labels
+                        .iter()
+                        .filter_map(|label| {
+                            label
+                                .get("name")
+                                .and_then(|value| value.as_str())
+                                .map(str::trim)
+                                .filter(|value| !value.is_empty())
+                                .map(str::to_string)
+                        })
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default(),
+            assignees: item
+                .get("assignees")
+                .and_then(|value| value.as_array())
+                .map(|assignees| {
+                    assignees
+                        .iter()
+                        .filter_map(|assignee| {
+                            assignee
+                                .get("login")
+                                .and_then(|value| value.as_str())
+                                .map(str::trim)
+                                .filter(|value| !value.is_empty())
+                                .map(str::to_string)
+                        })
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default(),
+            updated_at: item
+                .get("updated_at")
+                .and_then(|value| value.as_str())
+                .map(str::to_string),
+            draft: item
+                .get("draft")
+                .and_then(|value| value.as_bool())
+                .unwrap_or(false),
+            merged_at: item
+                .get("merged_at")
+                .and_then(|value| value.as_str())
+                .map(str::to_string),
+            head_ref: item
+                .get("head")
+                .and_then(|value| value.get("ref"))
+                .and_then(|value| value.as_str())
+                .unwrap_or_default()
+                .to_string(),
+            base_ref: item
+                .get("base")
+                .and_then(|value| value.get("ref"))
+                .and_then(|value| value.as_str())
+                .unwrap_or_default()
+                .to_string(),
         })
         .collect())
 }

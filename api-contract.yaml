@@ -3075,6 +3075,117 @@ paths:
         "200":
           description: Deleted
 
+  /api/harness/templates:
+    get:
+      operationId: listHarnessTemplates
+      summary: List harness templates for a repo context
+      parameters:
+        - name: workspaceId
+          in: query
+          schema:
+            type: string
+        - name: codebaseId
+          in: query
+          schema:
+            type: string
+        - name: repoPath
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Harness template list
+        "400":
+          description: Invalid harness context
+
+  /api/harness/templates/validate:
+    get:
+      operationId: validateHarnessTemplate
+      summary: Validate a harness template for a repo context
+      parameters:
+        - name: workspaceId
+          in: query
+          schema:
+            type: string
+        - name: codebaseId
+          in: query
+          schema:
+            type: string
+        - name: repoPath
+          in: query
+          schema:
+            type: string
+        - name: templateId
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Harness template validation result
+        "400":
+          description: Invalid harness context or missing templateId
+
+  /api/harness/templates/doctor:
+    get:
+      operationId: doctorHarnessTemplates
+      summary: Run harness template diagnostics for a repo context
+      parameters:
+        - name: workspaceId
+          in: query
+          schema:
+            type: string
+        - name: codebaseId
+          in: query
+          schema:
+            type: string
+        - name: repoPath
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Harness template doctor result
+        "400":
+          description: Invalid harness context
+
+  /api/fitness/architecture:
+    get:
+      operationId: getFitnessArchitecture
+      summary: Get backend architecture quality report for a repo context
+      parameters:
+        - name: workspaceId
+          in: query
+          schema:
+            type: string
+        - name: codebaseId
+          in: query
+          schema:
+            type: string
+        - name: repoPath
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Architecture report
+        "400":
+          description: Invalid fitness context
+
+  /api/tasks/{taskId}/changes:
+    get:
+      operationId: getTaskChanges
+      summary: Get repository or worktree changes associated with a task
+      parameters:
+        - name: taskId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Task repository change summary
+
   # ── A2A ──
   /api/a2a/sessions:
     get:
@@ -3270,6 +3381,37 @@ paths:
                             type: string
                         updatedAt:
                           type: string
+        "400":
+          description: Missing workspace or non-GitHub codebase
+        "404":
+          description: Workspace codebase not found
+        "502":
+          description: GitHub upstream request failed
+
+  /api/github/pulls:
+    get:
+      operationId: listGitHubPulls
+      summary: List GitHub pull requests for a workspace codebase
+      parameters:
+        - name: workspaceId
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: codebaseId
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: state
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [open, closed, all]
+      responses:
+        "200":
+          description: GitHub pull requests
         "400":
           description: Missing workspace or non-GitHub codebase
         "404":

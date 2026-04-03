@@ -65,6 +65,12 @@ metrics:
 | codebase | `POST /api/codebases/{id}/default` | set default | 默认目标可读返回正确 | VERIFIED | `crates/routa-server/tests/rust_api_end_to_end.rs::api_codebase_and_file_search_flow` |
 | codebase | `DELETE /api/codebases/{id}` | delete | 删除成功返回 ok | VERIFIED | `crates/routa-server/tests/rust_api_end_to_end.rs::api_codebase_and_file_search_flow` |
 | clone | `DELETE /api/clone/branches` | delete local branch | 成功删除本地 issue 分支；当前分支返回 409；缺失分支返回 404 | TODO | `src/app/api/clone/branches/__tests__/route.test.ts` |
+| github | `GET /api/github/pulls` | list workspace-linked pulls | workspace/codebase 解析、400/404 负向路径、返回 PR 元数据 | TODO | `src/app/api/github/pulls/route.ts`, `crates/routa-server/src/api/github.rs` |
+| harness | `GET /api/harness/templates` | list templates | repo context 解析与模板列表返回 | TODO | `src/app/api/harness/templates/route.ts`, `crates/routa-server/src/api/harness_templates.rs` |
+| harness | `GET /api/harness/templates/validate` | validate template | 缺失 templateId 返回 400；成功返回验证结果 | TODO | `src/app/api/harness/templates/validate/route.ts`, `crates/routa-server/src/api/harness_templates.rs` |
+| harness | `GET /api/harness/templates/doctor` | doctor templates | repo context 解析与诊断结果返回 | TODO | `src/app/api/harness/templates/doctor/route.ts`, `crates/routa-server/src/api/harness_templates.rs` |
+| fitness | `GET /api/fitness/architecture` | architecture report | repo context 解析与架构报告返回 | TODO | `src/app/api/fitness/architecture/route.ts`, `crates/routa-server/src/api/fitness.rs` |
+| task | `GET /api/tasks/{id}/changes` | repo/worktree change summary | 任务缺失返回 404；无 repo 时返回空变更；有 repo 时返回 status/files | TODO | `src/app/api/tasks/[taskId]/changes/route.ts`, `crates/routa-server/src/api/tasks.rs` |
 | github | `GET /api/github/issues` | list workspace-linked issues | workspace/codebase 解析、400/404 负向路径、返回 issue 元数据 | BLOCKED | `env: 需要可控 GitHub API stub 或可注入 base URL 的 rust_api_end_to_end harness` |
 | ACP | `POST /api/acp` | initialize | 初始化返回协议元信息 | VERIFIED | `crates/routa-server/tests/rust_api_end_to_end.rs::api_session_contract_with_negative_paths` |
 | ACP | `POST /api/acp` | unknown method | method 不存在返回结构固定 | VERIFIED | `crates/routa-server/tests/rust_api_end_to_end.rs::api_session_contract_with_negative_paths` |
