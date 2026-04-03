@@ -1108,6 +1108,102 @@ describe.skip("KanbanTab card detail manual runs", () => {
     expect(screen.getByText("ctx-1")).toBeTruthy();
   });
 
+  it("selects the active ACP session after targeted session backfill succeeds", async () => {
+    const acp = {
+      connected: true,
+      sessionId: null,
+      updates: [],
+      providers: [{ id: "codex", name: "Codex", description: "Codex provider", command: "codex-acp" }],
+      selectedProvider: "codex",
+      loading: false,
+      error: null,
+      authError: null,
+      dockerConfigError: null,
+      connect: vi.fn(),
+      createSession: vi.fn(),
+      selectSession: vi.fn(),
+      setProvider: vi.fn(),
+      setMode: vi.fn(),
+      prompt: vi.fn(),
+      promptSession: vi.fn(),
+      respondToUserInput: vi.fn(),
+      respondToUserInputForSession: vi.fn(),
+      writeTerminal: vi.fn(),
+      resizeTerminal: vi.fn(),
+      cancel: vi.fn(),
+      disconnect: vi.fn(),
+      clearAuthError: vi.fn(),
+      clearDockerConfigError: vi.fn(),
+      listProviderModels: vi.fn(),
+    } satisfies Partial<UseAcpState & UseAcpActions> as UseAcpState & UseAcpActions;
+
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/sessions/session-123") {
+        return {
+          ok: true,
+          json: async () => ({
+            session: {
+              sessionId: "session-123",
+              workspaceId: "workspace-1",
+              cwd: "/tmp/repo",
+              provider: "codex",
+              role: "CRAFTER",
+              createdAt: "2025-01-01T00:00:00.000Z",
+              name: "Backfilled live run",
+            },
+          }),
+        } as Response;
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <KanbanTab
+        workspaceId="workspace-1"
+        boards={[board]}
+        tasks={[{
+          ...createTask("task-1", "Story One", {
+            triggerSessionId: "session-123",
+            laneSessions: [
+              {
+                sessionId: "session-123",
+                provider: "codex",
+                role: "CRAFTER",
+                specialistId: "backlog",
+                specialistName: "Backlog Refiner",
+                status: "running",
+                columnId: "backlog",
+                columnName: "Backlog",
+                startedAt: "2025-01-01T00:00:00.000Z",
+              },
+            ],
+          }),
+        }]}
+        sessions={[]}
+        providers={[]}
+        specialists={[]}
+        codebases={[]}
+        onRefresh={vi.fn()}
+        acp={acp}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Story One" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith("/api/sessions/session-123", expect.objectContaining({
+        cache: "no-store",
+        signal: expect.any(AbortSignal),
+      }));
+    });
+
+    await waitFor(() => {
+      expect(acp.selectSession).toHaveBeenCalledWith("session-123");
+    });
+  });
+
   it("closes the card detail from the run tabs close button", async () => {
     vi.stubGlobal("scrollIntoView", vi.fn());
     window.HTMLElement.prototype.scrollIntoView = vi.fn();

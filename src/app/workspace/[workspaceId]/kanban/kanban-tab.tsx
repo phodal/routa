@@ -481,6 +481,13 @@ export function KanbanTab({
   }, [activeSessionId, activeTask, preferredActiveTaskSessionId, sessionMap]);
 
   useEffect(() => {
+    if (!activeTask || !activeSessionId || !acp) return;
+    if (!canSelectTaskSessionInAcp(activeTask, activeSessionId, sessionMap)) return;
+    if (acp.sessionId === activeSessionId) return;
+    acp.selectSession(activeSessionId);
+  }, [acp, activeSessionId, activeTask, sessionMap]);
+
+  useEffect(() => {
     if (!activeTask) {
       emptySessionRecoveryRef.current = null;
       return;
