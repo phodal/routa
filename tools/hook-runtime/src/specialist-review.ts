@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import yaml from "js-yaml";
 import { runCommand, tailOutput } from "./process.js";
@@ -205,6 +206,34 @@ function resolveReviewProvider(defaultAdapter?: string): string {
   return provider.toLowerCase();
 }
 
+function isClaudeProvider(provider: string): boolean {
+  return ["claude", "claude-code", "claude-code-sdk", "claudecode"].includes(provider);
+}
+
+function normalizeOptionalProvider(value: string | undefined): string | undefined {
+  const normalized = value?.trim().toLowerCase();
+  return normalized ? normalized : undefined;
+}
+
+function resolveFallbackReviewProvider(primaryProvider: string, defaultAdapter?: string): string | undefined {
+  const configuredFallback = normalizeOptionalProvider(process.env.ROUTA_REVIEW_FALLBACK_PROVIDER);
+  if (configuredFallback) {
+    return configuredFallback === primaryProvider ? undefined : configuredFallback;
+  }
+
+  const explicitProvider = normalizeOptionalProvider(process.env.ROUTA_REVIEW_PROVIDER);
+  if (explicitProvider) {
+    return undefined;
+  }
+
+  const normalizedDefaultAdapter = normalizeOptionalProvider(defaultAdapter);
+  if (normalizedDefaultAdapter && !isClaudeProvider(normalizedDefaultAdapter)) {
+    return undefined;
+  }
+
+  return isClaudeProvider(primaryProvider) ? "codex" : undefined;
+}
+
 async function callClaudeCli(prompt: string): Promise<string> {
   const command = `printf '%s' ${shellQuote(prompt)} | claude -p --permission-mode bypassPermissions`;
   const result = await runCommand(command, { stream: false });
@@ -215,13 +244,36 @@ async function callClaudeCli(prompt: string): Promise<string> {
   return result.output.trim();
 }
 
-async function callReviewProvider(params: {
+async function callCodexCli(prompt: string): Promise<string> {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "routa-review-codex-"));
+  const outputFile = path.join(tempDir, "last-message.txt");
+  const command = [
+    `printf '%s' ${shellQuote(prompt)}`,
+    `| codex -a never exec -s read-only -C ${shellQuote(process.cwd())}`,
+    `--color never --output-last-message ${shellQuote(outputFile)} -`,
+  ].join(" ");
+
+  try {
+    const result = await runCommand(command, { stream: false });
+    const output = fs.existsSync(outputFile)
+      ? fs.readFileSync(outputFile, "utf-8")
+      : result.output;
+    if (result.exitCode !== 0) {
+      throw new Error(`Automatic review specialist failed via codex CLI: ${tailOutput(output) || `exit ${result.exitCode}`}`);
+    }
+
+    return output.trim();
+  } finally {
+    fs.rmSync(tempDir, { force: true, recursive: true });
+  }
+}
+
+async function callReviewProviderOnce(params: {
   prompt: string;
   model: string;
-  defaultAdapter?: string;
+  provider: string;
 }): Promise<string> {
-  const provider = resolveReviewProvider(params.defaultAdapter);
-  switch (provider) {
+  switch (params.provider) {
     case "claude":
     case "claude-code":
     case "claude-code-sdk":
@@ -231,10 +283,51 @@ async function callReviewProvider(params: {
     case "anthropic-api":
     case "anthropic-compatible":
       return callAnthropicCompatible(params.prompt, params.model);
+    case "codex":
+    case "codex-cli":
+    case "openai":
+    case "openai-codex":
+      return callCodexCli(params.prompt);
     default:
       throw new Error(
-        `Unsupported review provider "${provider}". Use --provider claude for Claude CLI or --provider anthropic for direct API calls.`,
+        `Unsupported review provider "${params.provider}". Use --provider claude, --provider codex, or --provider anthropic.`,
       );
+  }
+}
+
+async function callReviewProvider(params: {
+  prompt: string;
+  model: string;
+  defaultAdapter?: string;
+}): Promise<string> {
+  const primaryProvider = resolveReviewProvider(params.defaultAdapter);
+  const fallbackProvider = resolveFallbackReviewProvider(primaryProvider, params.defaultAdapter);
+
+  try {
+    return await callReviewProviderOnce({
+      prompt: params.prompt,
+      model: params.model,
+      provider: primaryProvider,
+    });
+  } catch (primaryError) {
+    if (!fallbackProvider) {
+      throw primaryError;
+    }
+
+    try {
+      return await callReviewProviderOnce({
+        prompt: params.prompt,
+        model: params.model,
+        provider: fallbackProvider,
+      });
+    } catch (fallbackError) {
+      const primaryDetail = primaryError instanceof Error ? primaryError.message : String(primaryError);
+      const fallbackDetail = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
+      throw new Error(
+        `Automatic review specialist failed with provider "${primaryProvider}" (${primaryDetail}) and fallback "${fallbackProvider}" (${fallbackDetail}).`,
+        { cause: fallbackError },
+      );
+    }
   }
 }
 
