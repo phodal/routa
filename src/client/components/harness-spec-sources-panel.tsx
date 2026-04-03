@@ -161,7 +161,7 @@ function KiroFeatureTree({ features, labels }: { features: SpecFeature[]; labels
 
             {isExpanded && feature.documents.map((doc) => (
               <div key={doc.path} className="ml-5 flex items-center gap-1.5 rounded px-1.5 py-0.5 text-[10px]">
-                <SpecTypeTag type={doc.type} label={labels.typeLabels[doc.type] ?? doc.type} />
+                <SpecTypeTag label={labels.typeLabels[doc.type] ?? doc.type} />
                 <span className="min-w-0 truncate font-mono text-desktop-text-primary">{doc.path}</span>
               </div>
             ))}
@@ -177,7 +177,7 @@ function FlatSpecList({ specs, labels }: { specs: SpecSource["children"]; labels
     <div className="space-y-0.5">
       {specs.map((spec) => (
         <div key={spec.path} className="flex items-center gap-2 rounded px-1.5 py-0.5 text-[10px] hover:bg-desktop-bg-secondary/60">
-          <SpecTypeTag type={spec.type} label={labels.typeLabels[spec.type] ?? spec.type} />
+          <SpecTypeTag label={labels.typeLabels[spec.type] ?? spec.type} />
           <span className="min-w-0 truncate font-mono text-desktop-text-primary">{spec.path}</span>
         </div>
       ))}
