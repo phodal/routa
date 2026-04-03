@@ -228,12 +228,12 @@ export async function loadSessionFromDb(sessionId: string): Promise<{
   try {
     if (driver === "postgres") {
       const db = getPostgresDatabase();
-      return await new PgAcpSessionStore(db).get(sessionId);
+      return await new PgAcpSessionStore(db).get(sessionId) ?? null;
     }
 
     const { getSqliteDatabase } = await loadSqliteDatabaseModule();
     const db = getSqliteDatabase();
-    return await new SqliteAcpSessionStore(db).get(sessionId);
+    return await new SqliteAcpSessionStore(db).get(sessionId) ?? null;
   } catch (err) {
     console.error(`[SessionDB] Failed to load session ${sessionId} from ${driver}:`, err);
     return null;

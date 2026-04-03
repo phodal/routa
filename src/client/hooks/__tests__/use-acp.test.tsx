@@ -1,5 +1,6 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { AcpProviderInfo } from "@/client/acp-client";
 
 const {
   initializeMock,
@@ -9,7 +10,15 @@ const {
   disconnectMock,
 } = vi.hoisted(() => ({
   initializeMock: vi.fn(async () => {}),
-  listProvidersMock: vi.fn(async () => []),
+  listProvidersMock: vi.fn<(checkLocal?: boolean, checkRegistry?: boolean) => Promise<{
+    id: string;
+    name: string;
+    description: string;
+    command: string;
+    status?: "available" | "unavailable" | "checking";
+    source?: "static" | "registry";
+    unavailableReason?: string;
+  }[]>>(async () => []),
   onUpdateMock: vi.fn(),
   onConnectionIssueMock: vi.fn(),
   disconnectMock: vi.fn(),
@@ -52,17 +61,15 @@ describe("useAcp selected provider persistence", () => {
   beforeEach(() => {
     localStorage.clear();
     vi.clearAllMocks();
+    const providers: AcpProviderInfo[] = [
+      { id: "opencode", name: "OpenCode", command: "opencode", description: "OpenCode provider", status: "available", source: "static" },
+      { id: "codex", name: "Codex", command: "codex-acp", description: "Codex provider", status: "available", source: "static" },
+    ];
     listProvidersMock.mockImplementation(async (checkLocal?: boolean, checkRegistry?: boolean) => {
       if (!checkLocal && !checkRegistry) {
-        return [
-          { id: "opencode", name: "OpenCode", command: "opencode", status: "available", source: "static" },
-          { id: "codex", name: "Codex", command: "codex-acp", status: "available", source: "static" },
-        ];
+        return providers;
       }
-      return [
-        { id: "opencode", name: "OpenCode", command: "opencode", status: "available", source: "static" },
-        { id: "codex", name: "Codex", command: "codex-acp", status: "available", source: "static" },
-      ];
+      return providers;
     });
   });
 

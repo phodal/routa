@@ -138,6 +138,7 @@ describe("/api/kanban/boards GET", () => {
           sessionId: "session-1",
           columnId: "backlog",
           status: "running",
+          startedAt: "2025-01-01T00:00:00.000Z",
         }],
       },
     ]);

@@ -284,11 +284,14 @@ describe("KanbanTab GitHub import", () => {
         specialists={[]}
         codebases={[{
           id: "codebase-1",
+          workspaceId: "workspace-1",
           repoPath: "/Users/phodal/repos/routa-js",
           sourceUrl: "https://github.com/phodal/routa-js",
           isDefault: true,
           label: "routa-js",
           branch: "main",
+          createdAt: "2025-01-01T00:00:00.000Z",
+          updatedAt: "2025-01-01T00:00:00.000Z",
         }]}
         acp={{
           connected: true,
@@ -307,13 +310,20 @@ describe("KanbanTab GitHub import", () => {
           createSessionWithOptions: vi.fn(),
           createSessionWithWorkspace: vi.fn(),
           prompt: vi.fn(),
+          promptSession: vi.fn(),
+          setMode: vi.fn(),
+          respondToUserInput: vi.fn(),
+          respondToUserInputForSession: vi.fn(),
+          clearDockerConfigError: vi.fn(),
+          writeTerminal: vi.fn(),
+          resizeTerminal: vi.fn(),
           cancel: vi.fn(),
           listSessions: vi.fn(),
           selectSession: vi.fn(),
           deleteSession: vi.fn(),
           listProviderModels: vi.fn(),
           clearAuthError: vi.fn(),
-        } as UseAcpState & UseAcpActions}
+        } as unknown as UseAcpState & UseAcpActions}
         onRefresh={vi.fn()}
       />,
     );
@@ -388,11 +398,14 @@ describe("KanbanTab manual card creation", () => {
         specialists={[]}
         codebases={[{
           id: "codebase-1",
+          workspaceId: "workspace-1",
           repoPath: "/Users/phodal/repos/routa-js",
           sourceUrl: "https://github.com/phodal/routa-js",
           isDefault: true,
           label: "routa-js",
           branch: "main",
+          createdAt: "2025-01-01T00:00:00.000Z",
+          updatedAt: "2025-01-01T00:00:00.000Z",
         }]}
         acp={{
           connected: true,
@@ -411,13 +424,20 @@ describe("KanbanTab manual card creation", () => {
           createSessionWithOptions: vi.fn(),
           createSessionWithWorkspace: vi.fn(),
           prompt: vi.fn(),
+          promptSession: vi.fn(),
+          setMode: vi.fn(),
+          respondToUserInput: vi.fn(),
+          respondToUserInputForSession: vi.fn(),
+          clearDockerConfigError: vi.fn(),
+          writeTerminal: vi.fn(),
+          resizeTerminal: vi.fn(),
           cancel: vi.fn(),
           listSessions: vi.fn(),
           selectSession: vi.fn(),
           deleteSession: vi.fn(),
           listProviderModels: vi.fn(),
           clearAuthError: vi.fn(),
-        } as UseAcpState & UseAcpActions}
+        } as unknown as UseAcpState & UseAcpActions}
         onRefresh={vi.fn()}
       />,
     );
@@ -1233,7 +1253,7 @@ describe.skip("KanbanTab card detail manual runs", () => {
       listProviderModels: vi.fn(),
     } satisfies Partial<UseAcpState & UseAcpActions> as UseAcpState & UseAcpActions;
 
-    const firstTask = {
+    const firstTask: TaskInfo = {
       ...createTask("task-1", "Story One", {
         triggerSessionId: "session-123",
         sessionIds: ["session-123"],
@@ -1244,7 +1264,7 @@ describe.skip("KanbanTab card detail manual runs", () => {
             role: "CRAFTER",
             specialistId: "todo",
             specialistName: "Todo Crafter",
-            status: "completed",
+            status: "completed" as const,
             columnId: "todo",
             columnName: "Todo",
             startedAt: "2025-01-01T00:00:00.000Z",
@@ -1253,7 +1273,7 @@ describe.skip("KanbanTab card detail manual runs", () => {
       }),
     };
 
-    const secondTask = {
+    const secondTask: TaskInfo = {
       ...firstTask,
       triggerSessionId: "session-456",
       sessionIds: ["session-123", "session-456"],
@@ -1265,7 +1285,7 @@ describe.skip("KanbanTab card detail manual runs", () => {
           role: "CRAFTER",
           specialistId: "dev",
           specialistName: "Dev Crafter",
-          status: "running",
+          status: "running" as const,
           columnId: "dev",
           columnName: "Dev",
           startedAt: "2025-01-01T00:10:00.000Z",
