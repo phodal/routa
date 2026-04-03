@@ -733,6 +733,8 @@ export interface ExtendedTranslationDictionarySections extends TailTranslationDi
     completion: string;
     latestRun: string;
     reportPresent: string;
+    recoverLiveRun: string;
+    recoverLiveRunHint: string;
     reportMissing: string;
     summaryPresent: string;
     summaryMissing: string;

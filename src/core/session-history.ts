@@ -1,5 +1,9 @@
 import { consolidateMessageHistory, getHttpSessionStore } from "@/core/acp/http-session-store";
-import { loadHistoryFromDb, normalizeSessionHistory } from "@/core/acp/session-db-persister";
+import {
+  loadHistoryFromDb,
+  loadSessionFromLocalStorage,
+  normalizeSessionHistory,
+} from "@/core/acp/session-db-persister";
 import type { AcpSessionNotification } from "@/core/store/acp-session-store";
 
 export function mergeHistorySources<T>(inMemoryHistory: T[], dbHistory: T[]): T[] {
@@ -24,7 +28,8 @@ export async function loadSessionHistory(
   const store = getHttpSessionStore();
   const initialInMemoryHistory = store.getHistory(sessionId);
   const sessionRecord = store.getSession(sessionId);
-  const dbHistory = await loadHistoryFromDb(sessionId, sessionRecord?.cwd);
+  const localSession = sessionRecord ? null : await loadSessionFromLocalStorage(sessionId);
+  const dbHistory = await loadHistoryFromDb(sessionId, sessionRecord?.cwd ?? localSession?.cwd);
   const inMemoryHistory = store.getHistory(sessionId);
 
   let history: AcpSessionNotification[];

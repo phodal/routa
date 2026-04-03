@@ -728,6 +728,8 @@ export const enExtended: ExtendedTranslationDictionarySections = {
     completion: "Completion",
     latestRun: "Latest run",
     reportPresent: "Verification report present",
+    recoverLiveRun: "Recover Live Run",
+    recoverLiveRunHint: "Use Recover Live Run to start a fresh session for this card on the current instance instead of trying to resume the expired embedded process.",
     reportMissing: "Verification report missing",
     summaryPresent: "Completion summary present",
     summaryMissing: "Completion summary missing",

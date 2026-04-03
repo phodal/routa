@@ -56,6 +56,7 @@ export function useChatMessages({
   const lastUpdateKindRef = useRef<Record<string, string | null>>({});
   const loadedHistoryRef = useRef<Set<string>>(new Set());
   const processedMessageIdsRef = useRef<Set<string>>(new Set());
+  const transcriptRetryCountRef = useRef<Record<string, number>>({});
 
   const resetStreamingRefs = useCallback((sessionId: string) => {
     streamingMsgIdRef.current[sessionId] = null;
@@ -97,6 +98,7 @@ export function useChatMessages({
         return;
       }
       loadedHistoryRef.current.add(sessionId);
+      delete transcriptRetryCountRef.current[sessionId];
 
       // Check if session is still running
       if (history.length > 0 || typeof data?.latestEventKind === "string") {
@@ -141,6 +143,7 @@ export function useChatMessages({
     if (!activeSessionId) {
       return;
     }
+    transcriptRetryCountRef.current[activeSessionId] = 0;
     processedMessageIdsRef.current.clear();
     // eslint-disable-next-line react-hooks/set-state-in-effect -- reset running state on session change
     setIsSessionRunning(false);
@@ -150,13 +153,16 @@ export function useChatMessages({
   useEffect(() => {
     if (!activeSessionId) return;
     if (loadedHistoryRef.current.has(activeSessionId)) return;
-    if (updates.length === 0) return;
     if ((messagesBySession[activeSessionId]?.length ?? 0) > 0) return;
+    const attempt = transcriptRetryCountRef.current[activeSessionId] ?? 0;
+    if (attempt >= 4) return;
+    const delayMs = attempt === 0 ? 250 : 1000;
     const retry = window.setTimeout(() => {
+      transcriptRetryCountRef.current[activeSessionId] = attempt + 1;
       void fetchSessionHistory(activeSessionId);
-    }, 0);
+    }, delayMs);
     return () => window.clearTimeout(retry);
-  }, [activeSessionId, updates.length, messagesBySession, fetchSessionHistory]);
+  }, [activeSessionId, messagesBySession, fetchSessionHistory]);
 
   // Process SSE updates
   useEffect(() => {

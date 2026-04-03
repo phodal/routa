@@ -728,6 +728,8 @@ export const zhExtended: ExtendedTranslationDictionarySections = {
     completion: "完成",
     latestRun: "最近运行",
     reportPresent: "已提供验证报告",
+    recoverLiveRun: "恢复实时运行",
+    recoverLiveRunHint: "使用“恢复实时运行”会在当前实例上为这张卡启动一个新的 session，而不是继续恢复已经过期的嵌入式进程。",
     reportMissing: "缺少验证报告",
     summaryPresent: "已提供完成总结",
     summaryMissing: "缺少完成总结",
