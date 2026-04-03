@@ -2,8 +2,9 @@ use chrono::Utc;
 
 use crate::error::ServerError;
 use crate::models::kanban::{column_id_to_task_status, task_status_to_column_id};
-use crate::models::task::{Task, TaskPriority, TaskStatus};
+use crate::models::task::{InvestValidation, Task, TaskPriority, TaskStatus};
 use crate::state::AppState;
+use routa_core::invest_validation::resolve_invest_validation;
 use routa_core::kanban::{
     ensure_task_board_context, set_task_column, sync_task_column_from_status,
     sync_task_status_from_column,
@@ -46,6 +47,7 @@ impl TaskApplicationService {
             assigned_specialist_name,
             create_github_issue,
             repo_path,
+            invest_validation,
         } = command;
 
         let workspace_id = workspace_id.unwrap_or_else(|| "default".to_string());
@@ -77,6 +79,8 @@ impl TaskApplicationService {
         task.assigned_role = assigned_role;
         task.assigned_specialist_id = assigned_specialist_id;
         task.assigned_specialist_name = assigned_specialist_name;
+        task.invest_validation =
+            resolve_invest_validation(Some(&task.objective), invest_validation, None);
         let entering_dev = task.column_id.as_deref() == Some("dev");
 
         let column_automation =
@@ -151,6 +155,7 @@ impl TaskApplicationService {
         let has_assigned_provider_update = command.assigned_provider.is_some();
         let has_assigned_role_update = command.assigned_role.is_some();
         let has_assigned_specialist_update = command.assigned_specialist_id.is_some();
+        let objective_updated = command.objective.is_some();
         let retry_trigger = command.retry_trigger.unwrap_or(false);
         let should_sync_github = command.sync_to_github != Some(false);
         let repo_path = command.repo_path.clone();
@@ -252,6 +257,15 @@ impl TaskApplicationService {
         if let Some(wt) = command.worktree_id {
             task.worktree_id = wt.as_str().map(|s| s.to_string());
         }
+        task.invest_validation = resolve_invest_validation(
+            if objective_updated {
+                Some(task.objective.as_str())
+            } else {
+                None
+            },
+            command.invest_validation,
+            task.invest_validation.as_ref(),
+        );
 
         if retry_trigger {
             task.trigger_session_id = None;
@@ -381,6 +395,7 @@ pub struct CreateTaskCommand {
     pub assigned_specialist_name: Option<String>,
     pub create_github_issue: Option<bool>,
     pub repo_path: Option<String>,
+    pub invest_validation: Option<InvestValidation>,
 }
 
 #[derive(Debug, Default)]
@@ -414,6 +429,7 @@ pub struct UpdateTaskCommand {
     pub parallel_group: Option<String>,
     pub completion_summary: Option<String>,
     pub verification_report: Option<String>,
+    pub invest_validation: Option<InvestValidation>,
     pub sync_to_github: Option<bool>,
     pub retry_trigger: Option<bool>,
     pub repo_path: Option<String>,
@@ -505,6 +521,7 @@ mod tests {
                 assigned_specialist_name: None,
                 create_github_issue: None,
                 repo_path: None,
+                invest_validation: None,
             })
             .await
             .expect("build seed task");
@@ -550,6 +567,7 @@ mod tests {
                 assigned_specialist_name: None,
                 create_github_issue: Some(true),
                 repo_path: Some("/tmp/repo".to_string()),
+                invest_validation: None,
             })
             .await
             .expect("create task plan");
@@ -600,11 +618,58 @@ mod tests {
                 assigned_specialist_name: None,
                 create_github_issue: None,
                 repo_path: None,
+                invest_validation: None,
             })
             .await
             .expect_err("invalid priority should fail");
 
         assert!(error.to_string().contains("Invalid priority"));
+        let _ = fs::remove_file(db_path);
+    }
+
+    #[tokio::test]
+    async fn create_task_auto_derives_invest_validation_for_plain_story() {
+        let (service, db_path) = setup_service().await;
+
+        let plan = service
+            .create_task(CreateTaskCommand {
+                title: "Task service".to_string(),
+                objective: "## Summary\nCreate an automatic INVEST snapshot.\n\n## Acceptance Criteria\n- The task stores invest validation.\n- Reviewers can inspect warnings.\n\n## Dependencies\n- None. This can start now.".to_string(),
+                workspace_id: None,
+                session_id: None,
+                scope: None,
+                acceptance_criteria: None,
+                verification_commands: None,
+                test_cases: None,
+                dependencies: None,
+                parallel_group: None,
+                board_id: None,
+                column_id: None,
+                position: None,
+                priority: None,
+                labels: None,
+                assignee: None,
+                assigned_provider: None,
+                assigned_role: None,
+                assigned_specialist_id: None,
+                assigned_specialist_name: None,
+                create_github_issue: None,
+                repo_path: None,
+                invest_validation: None,
+            })
+            .await
+            .expect("create task plan");
+
+        let validation = plan.task.invest_validation.expect("invest validation");
+        assert_eq!(
+            validation.overall,
+            crate::models::task::InvestValidationStatus::Warning
+        );
+        assert_eq!(
+            validation.independent.status,
+            crate::models::task::InvestValidationStatus::Pass
+        );
+
         let _ = fs::remove_file(db_path);
     }
 
@@ -661,6 +726,38 @@ mod tests {
         assert_eq!(plan.task.last_sync_error, None);
         assert!(plan.should_trigger_agent);
         assert!(!plan.should_sync_github);
+
+        let _ = fs::remove_file(db_path);
+    }
+
+    #[tokio::test]
+    async fn update_task_recomputes_invest_validation_when_objective_changes() {
+        let (service, db_path) = setup_service().await;
+        let task = seed_task(&service, Some("backlog")).await;
+
+        let plan = service
+            .update_task(
+                &task.id,
+                UpdateTaskCommand {
+                    objective: Some(
+                        "## Summary\nRefresh a story without canonical YAML.\n\n## Acceptance Criteria\n- The updated task stores an automatic INVEST snapshot.\n- Reviewers can inspect warnings.\n\n## Dependencies\n- None. This can start now."
+                            .to_string(),
+                    ),
+                    ..UpdateTaskCommand::default()
+                },
+            )
+            .await
+            .expect("update task plan");
+
+        let validation = plan.task.invest_validation.expect("invest validation");
+        assert_eq!(
+            validation.overall,
+            crate::models::task::InvestValidationStatus::Warning
+        );
+        assert_eq!(
+            validation.testable.status,
+            crate::models::task::InvestValidationStatus::Pass
+        );
 
         let _ = fs::remove_file(db_path);
     }

@@ -33,6 +33,7 @@ import { ToolResult, successResult, errorResult } from "./tool-result";
 import { EventBus } from "../events/event-bus";
 import { emitColumnTransition } from "../kanban/column-transition";
 import { getKanbanEventBroadcaster } from "../kanban/kanban-event-broadcaster";
+import { resolveInvestValidation } from "../kanban/invest-validation";
 import { markTaskLaneSessionStatus } from "../kanban/task-lane-history";
 import {
   createTaskLaneHandoff,
@@ -150,6 +151,7 @@ export class KanbanTools {
     description?: string;
     priority?: "low" | "medium" | "high" | "urgent";
     labels?: string[];
+    investValidation?: import("../models/task").InvestValidation;
     workspaceId: string;
   }): Promise<ToolResult> {
     const board = await this.resolveBoard(params.workspaceId, params.boardId);
@@ -184,6 +186,10 @@ export class KanbanTools {
       status: columnIdToTaskStatus(targetColumnId),
       priority: params.priority as TaskPriority | undefined,
       labels: params.labels,
+      investValidation: resolveInvestValidation({
+        objective: params.description ?? "",
+        provided: params.investValidation,
+      }),
     });
 
     await this.taskStore.save(task);
@@ -293,6 +299,7 @@ export class KanbanTools {
     comment?: string;
     priority?: "low" | "medium" | "high" | "urgent";
     labels?: string[];
+    investValidation?: import("../models/task").InvestValidation;
   }): Promise<ToolResult> {
     const task = await this.taskStore.get(params.cardId);
     if (!task) {
@@ -311,6 +318,11 @@ export class KanbanTools {
     if (params.comment !== undefined) task.comment = appendTaskComment(task.comment, params.comment);
     if (params.priority !== undefined) task.priority = params.priority as TaskPriority;
     if (params.labels !== undefined) task.labels = params.labels;
+    task.investValidation = resolveInvestValidation({
+      objective: params.description !== undefined ? task.objective : undefined,
+      provided: params.investValidation,
+      keepExisting: task.investValidation,
+    });
     task.updatedAt = new Date();
 
     await this.taskStore.save(task);
@@ -678,6 +690,7 @@ export class KanbanTools {
       priority: task.priority,
       labels: task.labels,
       assignee: task.assignee,
+      investValidation: task.investValidation,
       createdAt: task.createdAt,
       updatedAt: task.updatedAt,
     };

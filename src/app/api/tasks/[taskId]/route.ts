@@ -16,15 +16,18 @@ import {
   processKanbanColumnTransition,
 } from "@/core/kanban/workflow-orchestrator-singleton";
 import { buildRemainingLaneStepsMessage, resolveCurrentLaneAutomationState } from "@/core/kanban/lane-automation-state";
+import { deriveInvestValidationFromObjective, resolveInvestValidation } from "@/core/kanban/invest-validation";
 import { buildTaskEvidenceSummary } from "../task-evidence-summary";
 
 export const dynamic = "force-dynamic";
 
 async function serializeTask(task: Task, system: ReturnType<typeof getRoutaSystem>) {
   const evidenceSummary = await buildTaskEvidenceSummary(task, system);
+  const investValidation = task.investValidation ?? deriveInvestValidationFromObjective(task.objective);
 
   return {
     ...task,
+    ...(investValidation != null && { investValidation }),
     artifactSummary: evidenceSummary.artifact,
     evidenceSummary,
     githubSyncedAt: task.githubSyncedAt?.toISOString(),
@@ -180,6 +183,7 @@ export async function PATCH(
   if (body.completionSummary !== undefined) nextTask.completionSummary = body.completionSummary;
   if (body.verificationVerdict !== undefined) nextTask.verificationVerdict = body.verificationVerdict;
   if (body.verificationReport !== undefined) nextTask.verificationReport = body.verificationReport;
+  if (body.investValidation !== undefined) nextTask.investValidation = body.investValidation;
   if (body.codebaseIds !== undefined && Array.isArray(body.codebaseIds)) {
     nextTask.codebaseIds = body.codebaseIds.filter((id): id is string => typeof id === "string");
   }
@@ -235,6 +239,12 @@ export async function PATCH(
   if (body.status && !body.columnId) {
     nextTask.columnId = taskStatusToColumnId(body.status);
   }
+
+  nextTask.investValidation = resolveInvestValidation({
+    objective: nextTask.objective,
+    provided: body.investValidation,
+    keepExisting: existing.investValidation,
+  });
 
   Object.assign(nextTask, await ensureTaskBoardContext(system, nextTask));
 

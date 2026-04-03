@@ -29,7 +29,7 @@ import {
   ModelTier,
   createAgent as createAgentModel,
 } from "../models/agent";
-import { Task, TaskStatus, createTask as createTaskModel } from "../models/task";
+import { Task, TaskStatus, createTask as createTaskModel, type InvestValidation } from "../models/task";
 import { MessageRole, createMessage, CompletionReport } from "../models/message";
 import {
   ArtifactType,
@@ -754,6 +754,7 @@ export class AgentTools {
       completionSummary?: string;
       verificationVerdict?: string;
       verificationReport?: string;
+      investValidation?: InvestValidation;
       assignedTo?: string;
       acceptanceCriteria?: string[];
       testCases?: string[];
@@ -791,6 +792,7 @@ export class AgentTools {
       task.verificationVerdict = updates.verificationVerdict as import("../models/task").VerificationVerdict;
     }
     if (updates.verificationReport !== undefined) task.verificationReport = updates.verificationReport;
+    if (updates.investValidation !== undefined) task.investValidation = updates.investValidation;
     if (updates.assignedTo !== undefined) task.assignedTo = updates.assignedTo;
     if (updates.acceptanceCriteria !== undefined) task.acceptanceCriteria = updates.acceptanceCriteria;
     if (updates.testCases !== undefined) task.testCases = updates.testCases;

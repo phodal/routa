@@ -278,6 +278,7 @@ export class RoutaMcpToolManager {
         completionSummary: z.string().optional().describe("Set completion summary"),
         verificationVerdict: z.enum(["APPROVED", "NOT_APPROVED", "BLOCKED"]).optional().describe("Set verification verdict"),
         verificationReport: z.string().optional().describe("Set verification report"),
+        investValidation: z.object({}).passthrough().optional().describe("Persisted INVEST validation snapshot"),
         assignedTo: z.string().optional().describe("Assign to agent ID"),
         acceptanceCriteria: z.array(z.string()).optional().describe("Update acceptance criteria"),
         testCases: z.array(z.string()).optional().describe("Update test cases"),
@@ -287,7 +288,10 @@ export class RoutaMcpToolManager {
         const result = await this.tools.updateTask({
           taskId,
           expectedVersion,
-          updates,
+          updates: {
+            ...updates,
+            investValidation: updates.investValidation as import("../models/task").InvestValidation | undefined,
+          },
           agentId,
         });
         return this.toMcpResult(result);
@@ -1038,6 +1042,7 @@ Note: taskId must be a UUID from create_task, not a task name.`,
         comment: z.string().optional().describe("Comment or progress note to append"),
         priority: z.enum(["low", "medium", "high", "urgent"]).optional().describe("New priority"),
         labels: z.array(z.string()).optional().describe("New labels"),
+        investValidation: z.object({}).passthrough().optional().describe("Persisted INVEST validation snapshot"),
       },
       async (params) => {
         if (!this.kanbanTools) {
@@ -1050,6 +1055,7 @@ Note: taskId must be a UUID from create_task, not a task name.`,
           comment: params.comment,
           priority: params.priority,
           labels: params.labels,
+          investValidation: params.investValidation as import("../models/task").InvestValidation | undefined,
         });
         return this.toMcpResult(result);
       }

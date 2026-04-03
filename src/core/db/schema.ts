@@ -17,7 +17,7 @@ import {
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 import type { KanbanColumn } from "../models/kanban";
-import type { TaskLaneHandoff, TaskLaneSession } from "../models/task";
+import type { InvestValidation, TaskLaneHandoff, TaskLaneSession } from "../models/task";
 
 // ─── Workspaces ─────────────────────────────────────────────────────
 
@@ -107,6 +107,7 @@ export const tasks = pgTable("tasks", {
   completionSummary: text("completion_summary"),
   verificationVerdict: text("verification_verdict"),
   verificationReport: text("verification_report"),
+  investValidation: jsonb("invest_validation").$type<InvestValidation>(),
   /** Optimistic-locking version for atomic updates */
   version: integer("version").notNull().default(1),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

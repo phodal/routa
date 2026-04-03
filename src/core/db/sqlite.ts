@@ -134,6 +134,7 @@ function initializeSqliteTables(db: SqliteDatabase): void {
       completion_summary TEXT,
       verification_verdict TEXT,
       verification_report TEXT,
+      invest_validation TEXT,
       version INTEGER NOT NULL DEFAULT 1,
       created_at INTEGER NOT NULL DEFAULT (unixepoch('now') * 1000),
       updated_at INTEGER NOT NULL DEFAULT (unixepoch('now') * 1000)
@@ -165,6 +166,7 @@ function initializeSqliteTables(db: SqliteDatabase): void {
   runAddColumn(sql`ALTER TABLE tasks ADD COLUMN session_ids TEXT DEFAULT '[]'`);
   runAddColumn(sql`ALTER TABLE tasks ADD COLUMN lane_sessions TEXT DEFAULT '[]'`);
   runAddColumn(sql`ALTER TABLE tasks ADD COLUMN lane_handoffs TEXT DEFAULT '[]'`);
+  runAddColumn(sql`ALTER TABLE tasks ADD COLUMN invest_validation TEXT`);
 
   db.run(sql`
     CREATE TABLE IF NOT EXISTS notes (

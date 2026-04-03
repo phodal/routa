@@ -67,6 +67,52 @@ vi.mock("@/core/kanban/github-issues", () => ({
 
 import { DELETE, GET, POST } from "../route";
 
+const CANONICAL_STORY_OBJECTIVE = `Story summary
+
+\`\`\`yaml
+story:
+  version: 1
+  language: en
+  title: Validate INVEST
+  problem_statement: Missing validation visibility.
+  user_value: Teams can inspect a persisted validation result.
+  acceptance_criteria:
+    - id: AC1
+      text: Persist INVEST validation.
+      testable: true
+    - id: AC2
+      text: Show validation on the card detail.
+      testable: true
+  constraints_and_affected_areas:
+    - src/app/api/tasks/route.ts
+  dependencies_and_sequencing:
+    independent_story_check: pass
+    depends_on:
+      - none
+    unblock_condition: none
+  out_of_scope:
+    - Full LLM specialist orchestration
+  invest:
+    independent:
+      status: pass
+      reason: Self-contained feature.
+    negotiable:
+      status: warning
+      reason: Follow-up refinement is still possible.
+    valuable:
+      status: pass
+      reason: The result is visible to users.
+    estimable:
+      status: pass
+      reason: Scope is constrained.
+    small:
+      status: pass
+      reason: Implementation is narrow.
+    testable:
+      status: pass
+      reason: API responses can assert the snapshot.
+\`\`\``;
+
 describe("/api/tasks GET", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -229,6 +275,57 @@ describe("/api/tasks GET", () => {
       toColumnName: "Todo",
     }));
     expect(emitColumnTransition).toHaveBeenCalled();
+  });
+
+  it("derives investValidation from canonical story YAML when creating a task", async () => {
+    const response = await POST(new NextRequest("http://localhost/api/tasks", {
+      method: "POST",
+      body: JSON.stringify({
+        title: "Create validated story",
+        objective: CANONICAL_STORY_OBJECTIVE,
+        workspaceId: "workspace-1",
+      }),
+      headers: { "Content-Type": "application/json" },
+    }));
+    const data = await response.json();
+
+    expect(response.status).toBe(201);
+    expect(data.task.investValidation).toMatchObject({
+      overall: "warning",
+      independent: { status: "pass" },
+      negotiable: { status: "warning" },
+      issues: ["Negotiable: Follow-up refinement is still possible."],
+    });
+    expect(data.task.investValidation.validatedAt).toEqual(expect.any(String));
+  });
+
+  it("auto-validates plain markdown stories when creating a task", async () => {
+    const response = await POST(new NextRequest("http://localhost/api/tasks", {
+      method: "POST",
+      body: JSON.stringify({
+        title: "Create plain story",
+        objective: `## Summary
+Create an automatic INVEST snapshot for plain stories.
+
+## Acceptance Criteria
+- The task is stored with an investValidation payload.
+- The payload highlights warnings for reviewers.
+
+## Dependencies
+- None. This work can start now.`,
+        workspaceId: "workspace-1",
+      }),
+      headers: { "Content-Type": "application/json" },
+    }));
+    const data = await response.json();
+
+    expect(response.status).toBe(201);
+    expect(data.task.investValidation).toMatchObject({
+      overall: "warning",
+      independent: { status: "pass" },
+      negotiable: { status: "warning" },
+      testable: { status: "pass" },
+    });
   });
 
   it("creates a linked GitHub issue only for manual task creation", async () => {

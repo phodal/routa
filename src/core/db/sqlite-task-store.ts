@@ -54,6 +54,7 @@ export class SqliteTaskStore implements TaskStore {
         completionSummary: task.completionSummary,
         verificationVerdict: task.verificationVerdict,
         verificationReport: task.verificationReport,
+        investValidation: task.investValidation,
         version,
         createdAt: task.createdAt,
         updatedAt: task.updatedAt,
@@ -99,6 +100,7 @@ export class SqliteTaskStore implements TaskStore {
           completionSummary: task.completionSummary,
           verificationVerdict: task.verificationVerdict,
           verificationReport: task.verificationReport,
+          investValidation: task.investValidation,
           version: sql`${sqliteSchema.tasks.version} + 1`,
           updatedAt: new Date(),
         },
@@ -184,6 +186,7 @@ export class SqliteTaskStore implements TaskStore {
         | "completionSummary"
         | "verificationVerdict"
         | "verificationReport"
+        | "investValidation"
         | "assignedTo"
       >
     >,
@@ -243,6 +246,7 @@ export class SqliteTaskStore implements TaskStore {
       completionSummary: row.completionSummary ?? undefined,
       verificationVerdict: row.verificationVerdict as import("../models/task").VerificationVerdict | undefined,
       verificationReport: row.verificationReport ?? undefined,
+      investValidation: row.investValidation as import("../models/task").InvestValidation | undefined,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
     };

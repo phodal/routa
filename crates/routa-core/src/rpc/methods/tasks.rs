@@ -14,6 +14,7 @@ use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
+use crate::invest_validation::derive_invest_validation_from_objective;
 use crate::models::artifact::{Artifact, ArtifactStatus, ArtifactType};
 use crate::models::kanban::KanbanBoard;
 use crate::models::task::{Task, TaskLaneSessionStatus, TaskStatus};
@@ -155,7 +156,7 @@ pub struct CreateResult {
 }
 
 pub async fn create(state: &AppState, params: CreateParams) -> Result<CreateResult, RpcError> {
-    let task = Task::new(
+    let mut task = Task::new(
         uuid::Uuid::new_v4().to_string(),
         params.title,
         params.objective,
@@ -168,6 +169,7 @@ pub async fn create(state: &AppState, params: CreateParams) -> Result<CreateResu
         params.dependencies,
         params.parallel_group,
     );
+    task.invest_validation = derive_invest_validation_from_objective(&task.objective);
 
     state.task_store.save(&task).await?;
     Ok(CreateResult {
@@ -378,6 +380,18 @@ async fn serialize_task_with_evidence(
     let task_object = task_value.as_object_mut().ok_or_else(|| {
         RpcError::Internal("Task payload must serialize to a JSON object".to_string())
     })?;
+    if task.invest_validation.is_none() {
+        if let Some(validation) = derive_invest_validation_from_objective(&task.objective) {
+            task_object.insert(
+                "investValidation".to_string(),
+                serde_json::to_value(validation).map_err(|error| {
+                    RpcError::Internal(format!(
+                        "Failed to serialize task invest validation: {error}"
+                    ))
+                })?,
+            );
+        }
+    }
     task_object.insert(
         "artifactSummary".to_string(),
         serde_json::to_value(&evidence_summary.artifact).map_err(|error| {

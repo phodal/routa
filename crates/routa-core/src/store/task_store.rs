@@ -149,7 +149,7 @@ impl TaskStore {
                      trigger_session_id, github_id, github_number, github_url, github_repo, github_state,
                      github_synced_at, last_sync_error, dependencies, parallel_group, workspace_id, session_id,
                      session_ids, lane_sessions, lane_handoffs, completion_summary, verification_verdict,
-                     verification_report, codebase_ids, worktree_id, created_at, updated_at
+                     verification_report, codebase_ids, worktree_id, invest_validation, created_at, updated_at
                      FROM tasks WHERE id = ?1",
                 )?;
                 stmt.query_row(rusqlite::params![id], |row| Ok(row_to_task(row)))
@@ -169,7 +169,7 @@ impl TaskStore {
                      trigger_session_id, github_id, github_number, github_url, github_repo, github_state,
                      github_synced_at, last_sync_error, dependencies, parallel_group, workspace_id, session_id,
                      session_ids, lane_sessions, lane_handoffs, completion_summary, verification_verdict,
-                     verification_report, codebase_ids, worktree_id, created_at, updated_at
+                     verification_report, codebase_ids, worktree_id, invest_validation, created_at, updated_at
                      FROM tasks WHERE workspace_id = ?1 ORDER BY created_at DESC",
                 )?;
                 let rows = stmt
@@ -191,7 +191,7 @@ impl TaskStore {
                      trigger_session_id, github_id, github_number, github_url, github_repo, github_state,
                      github_synced_at, last_sync_error, dependencies, parallel_group, workspace_id, session_id,
                      session_ids, lane_sessions, lane_handoffs, completion_summary, verification_verdict,
-                     verification_report, codebase_ids, worktree_id, created_at, updated_at
+                     verification_report, codebase_ids, worktree_id, invest_validation, created_at, updated_at
                      FROM tasks WHERE session_id = ?1 ORDER BY created_at DESC",
                 )?;
                 let rows = stmt
@@ -218,7 +218,7 @@ impl TaskStore {
                      trigger_session_id, github_id, github_number, github_url, github_repo, github_state,
                      github_synced_at, last_sync_error, dependencies, parallel_group, workspace_id, session_id,
                      session_ids, lane_sessions, lane_handoffs, completion_summary, verification_verdict,
-                     verification_report, codebase_ids, worktree_id, created_at, updated_at
+                     verification_report, codebase_ids, worktree_id, invest_validation, created_at, updated_at
                      FROM tasks WHERE workspace_id = ?1 AND status = ?2 ORDER BY created_at DESC",
                 )?;
                 let rows = stmt
@@ -242,7 +242,7 @@ impl TaskStore {
                      trigger_session_id, github_id, github_number, github_url, github_repo, github_state,
                      github_synced_at, last_sync_error, dependencies, parallel_group, workspace_id, session_id,
                      session_ids, lane_sessions, lane_handoffs, completion_summary, verification_verdict,
-                     verification_report, codebase_ids, worktree_id, created_at, updated_at
+                     verification_report, codebase_ids, worktree_id, invest_validation, created_at, updated_at
                      FROM tasks WHERE assigned_to = ?1 ORDER BY created_at DESC",
                 )?;
                 let rows = stmt
@@ -303,8 +303,8 @@ impl TaskStore {
 use rusqlite::Row;
 
 fn row_to_task(row: &Row<'_>) -> Task {
-    let created_ms: i64 = row.get(40).unwrap_or(0);
-    let updated_ms: i64 = row.get(41).unwrap_or(0);
+    let created_ms: i64 = row.get(41).unwrap_or(0);
+    let updated_ms: i64 = row.get(42).unwrap_or(0);
 
     let acceptance_criteria: Option<Vec<String>> = row
         .get::<_, Option<String>>(5)
@@ -387,12 +387,12 @@ fn row_to_task(row: &Row<'_>) -> Task {
             .and_then(|s| serde_json::from_str(&s).ok())
             .unwrap_or_default(),
         worktree_id: row.get(39).unwrap_or(None),
-        created_at: chrono::DateTime::from_timestamp_millis(created_ms).unwrap_or_else(Utc::now),
-        updated_at: chrono::DateTime::from_timestamp_millis(updated_ms).unwrap_or_else(Utc::now),
         invest_validation: row
-            .get::<_, Option<String>>(42)
+            .get::<_, Option<String>>(40)
             .unwrap_or(None)
             .and_then(|s| serde_json::from_str(&s).ok()),
+        created_at: chrono::DateTime::from_timestamp_millis(created_ms).unwrap_or_else(Utc::now),
+        updated_at: chrono::DateTime::from_timestamp_millis(updated_ms).unwrap_or_else(Utc::now),
     }
 }
 

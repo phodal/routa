@@ -1103,6 +1103,11 @@ export interface TranslationDictionary {
     failedToSwitchRepo: string;
     failedToUpdateRepos: string;
     resetOverride: string;
+    investValidation: string;
+    investValidationHint: string;
+    validatedAt: string;
+    issueCount: string;
+    issues: string;
   };
 
   // Kanban modal dialogs

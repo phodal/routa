@@ -181,6 +181,7 @@ pub(super) async fn execute(
                 "comment": args.get("comment").cloned(),
                 "priority": args.get("priority").cloned(),
                 "labels": args.get("labels").cloned(),
+                "investValidation": args.get("investValidation").cloned(),
             }),
         )
         .await

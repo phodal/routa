@@ -302,6 +302,16 @@ export function KanbanCardDetail({
             </DetailSection>
           )}
 
+          {task.investValidation && (
+            <DetailSection
+              title={t.kanbanDetail.investValidation}
+              description={compactMode ? undefined : t.kanbanDetail.investValidationHint}
+              compact={compactMode}
+            >
+              <InvestValidationPanel validation={task.investValidation} compact={compactMode} />
+            </DetailSection>
+          )}
+
           <DetailSection
             title="Progress Notes"
             description={compactMode ? undefined : "Read-only notes appended by downstream stages after the story description is frozen."}
@@ -492,6 +502,68 @@ function CanonicalStoryPanel({
           <span className="font-medium">Depends on:</span> {story.dependencies_and_sequencing.depends_on.join(", ")}
         </div>
       </div>
+    </div>
+  );
+}
+
+function InvestValidationPanel({
+  validation,
+  compact = false,
+}: {
+  validation: NonNullable<TaskInfo["investValidation"]>;
+  compact?: boolean;
+}) {
+  const { t } = useTranslation();
+  const checks = [
+    ["Independent", validation.independent],
+    ["Negotiable", validation.negotiable],
+    ["Valuable", validation.valuable],
+    ["Estimable", validation.estimable],
+    ["Small", validation.small],
+    ["Testable", validation.testable],
+  ] as const;
+
+  const badgeClass = validation.overall === "fail"
+    ? "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-200"
+    : validation.overall === "warning"
+      ? "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-200"
+      : "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200";
+
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3 dark:border-slate-700 dark:bg-[#0d1018]">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${badgeClass}`}>
+          {validation.overall.toUpperCase()}
+        </span>
+        <span className="text-xs text-slate-600 dark:text-slate-300">{t.kanbanDetail.validatedAt} {new Date(validation.validatedAt).toLocaleString()}</span>
+        <span className="text-xs text-slate-600 dark:text-slate-300">{t.kanbanDetail.issueCount.replace("{count}", String(validation.issues.length))}</span>
+      </div>
+      <div className={`mt-3 grid gap-2 ${compact ? "grid-cols-1" : "grid-cols-2"}`}>
+        {checks.map(([label, check]) => (
+          <div
+            key={label}
+            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-[#121620]"
+          >
+            <div className="flex items-center justify-between gap-3">
+              <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                {label}
+              </div>
+              <div className="font-medium text-slate-900 dark:text-slate-100">{check.status.toUpperCase()}</div>
+            </div>
+            <div className="mt-1 text-xs leading-5 text-slate-600 dark:text-slate-300">{check.reason}</div>
+          </div>
+        ))}
+      </div>
+      {validation.issues.length > 0 && (
+        <div className="mt-3 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-[#121620]">
+          <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">{t.kanbanDetail.issues}</div>
+          <ul className="mt-2 space-y-1 text-slate-700 dark:text-slate-200">
+            {validation.issues.map((issue) => (
+              <li key={issue}>- {issue}</li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }

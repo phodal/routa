@@ -1074,6 +1074,11 @@ const zh: TranslationDictionary = {
     failedToSwitchRepo: "切换到活动会话仓库失败",
     failedToUpdateRepos: "更新仓库失败",
     resetOverride: "重置覆盖",
+    investValidation: "INVEST 校验",
+    investValidationHint: "此故事的持久化校验快照，包含 warning 和 fail。",
+    validatedAt: "校验时间",
+    issueCount: "{count} 个问题",
+    issues: "问题",
   },
 
   kanbanModals: {

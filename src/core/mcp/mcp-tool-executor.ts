@@ -157,6 +157,7 @@ export async function executeMcpTool(
             completionSummary: args.completionSummary as string | undefined,
             verificationVerdict: args.verificationVerdict as string | undefined,
             verificationReport: args.verificationReport as string | undefined,
+            investValidation: args.investValidation as import("../models/task").InvestValidation | undefined,
             assignedTo: args.assignedTo as string | undefined,
             acceptanceCriteria: args.acceptanceCriteria as string[] | undefined,
             testCases: args.testCases as string[] | undefined,
@@ -477,6 +478,7 @@ export async function executeMcpTool(
           comment: args.comment as string | undefined,
           priority: args.priority as "low" | "medium" | "high" | "urgent" | undefined,
           labels: args.labels as string[] | undefined,
+          investValidation: args.investValidation as import("../models/task").InvestValidation | undefined,
         })
       );
     case "delete_card":
@@ -916,6 +918,7 @@ export function getMcpToolDefinitions(
           completionSummary: { type: "string" },
           verificationVerdict: { type: "string", enum: ["APPROVED", "NOT_APPROVED", "BLOCKED"] },
           verificationReport: { type: "string" },
+          investValidation: { type: "object", description: "Persisted INVEST validation snapshot" },
           assignedTo: { type: "string" },
           acceptanceCriteria: { type: "array", items: { type: "string" } },
           testCases: { type: "array", items: { type: "string" } },
@@ -1172,6 +1175,7 @@ export function getMcpToolDefinitions(
           comment: { type: "string", description: "Comment or progress note to append to the card" },
           priority: { type: "string", enum: ["low", "medium", "high", "urgent"], description: "Card priority" },
           labels: { type: "array", items: { type: "string" }, description: "Card labels" },
+          investValidation: { type: "object", description: "Persisted INVEST validation snapshot" },
         },
         required: ["cardId"],
       },

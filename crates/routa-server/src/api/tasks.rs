@@ -22,6 +22,7 @@ use crate::application::tasks::{CreateTaskCommand, TaskApplicationService, Updat
 use crate::error::ServerError;
 use crate::models::task::TaskStatus;
 use crate::state::AppState;
+use routa_core::invest_validation::derive_invest_validation_from_objective;
 
 const KANBAN_HAPPY_PATH_COLUMN_ORDER: [&str; 5] = ["backlog", "todo", "dev", "review", "done"];
 
@@ -351,6 +352,7 @@ struct CreateTaskRequest {
     assigned_specialist_name: Option<String>,
     create_github_issue: Option<bool>,
     repo_path: Option<String>,
+    invest_validation: Option<routa_core::models::task::InvestValidation>,
 }
 
 async fn create_task(
@@ -489,6 +491,7 @@ struct UpdateTaskRequest {
     parallel_group: Option<String>,
     completion_summary: Option<String>,
     verification_report: Option<String>,
+    invest_validation: Option<routa_core::models::task::InvestValidation>,
     sync_to_github: Option<bool>,
     retry_trigger: Option<bool>,
     repo_path: Option<String>,
@@ -520,6 +523,7 @@ fn create_task_command(body: CreateTaskRequest) -> CreateTaskCommand {
         assigned_specialist_name: body.assigned_specialist_name,
         create_github_issue: body.create_github_issue,
         repo_path: body.repo_path,
+        invest_validation: body.invest_validation,
     }
 }
 
@@ -554,6 +558,7 @@ fn update_task_command(body: UpdateTaskRequest) -> UpdateTaskCommand {
         parallel_group: body.parallel_group,
         completion_summary: body.completion_summary,
         verification_report: body.verification_report,
+        invest_validation: body.invest_validation,
         sync_to_github: body.sync_to_github,
         retry_trigger: body.retry_trigger,
         repo_path: body.repo_path,
@@ -686,6 +691,18 @@ async fn serialize_task_with_evidence(
     let task_object = task_value.as_object_mut().ok_or_else(|| {
         ServerError::Internal("Task payload must serialize to a JSON object".to_string())
     })?;
+    if task.invest_validation.is_none() {
+        if let Some(validation) = derive_invest_validation_from_objective(&task.objective) {
+            task_object.insert(
+                "investValidation".to_string(),
+                serde_json::to_value(validation).map_err(|error| {
+                    ServerError::Internal(format!(
+                        "Failed to serialize task invest validation: {error}"
+                    ))
+                })?,
+            );
+        }
+    }
     task_object.insert(
         "artifactSummary".to_string(),
         serde_json::to_value(&evidence_summary.artifact).map_err(|error| {

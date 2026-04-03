@@ -72,6 +72,52 @@ vi.mock("@/core/kanban/workflow-orchestrator-singleton", () => ({
 
 import { GET, PATCH } from "../route";
 
+const CANONICAL_STORY_OBJECTIVE = `Story summary
+
+\`\`\`yaml
+story:
+  version: 1
+  language: en
+  title: Recompute INVEST
+  problem_statement: INVEST validation should refresh when the story changes.
+  user_value: Card detail shows an up-to-date validation snapshot.
+  acceptance_criteria:
+    - id: AC1
+      text: Recalculate validation on objective changes.
+      testable: true
+    - id: AC2
+      text: Persist the updated snapshot.
+      testable: true
+  constraints_and_affected_areas:
+    - src/app/api/tasks/[taskId]/route.ts
+  dependencies_and_sequencing:
+    independent_story_check: pass
+    depends_on:
+      - none
+    unblock_condition: none
+  out_of_scope:
+    - Specialist orchestration
+  invest:
+    independent:
+      status: pass
+      reason: No blocking dependency.
+    negotiable:
+      status: pass
+      reason: Details can still evolve.
+    valuable:
+      status: pass
+      reason: Reviewers can see the result.
+    estimable:
+      status: warning
+      reason: The exact invocation path is still partial.
+    small:
+      status: pass
+      reason: Scope is intentionally minimal.
+    testable:
+      status: pass
+      reason: Route tests cover the behavior.
+\`\`\``;
+
 describe("/api/tasks/[taskId]", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -376,5 +422,62 @@ describe("/api/tasks/[taskId]", () => {
       toColumnId: "todo",
       toColumnName: "Todo",
     }));
+  });
+
+  it("recomputes investValidation when the objective changes", async () => {
+    const request = new NextRequest("http://localhost/api/tasks/task-1", {
+      method: "PATCH",
+      body: JSON.stringify({ objective: CANONICAL_STORY_OBJECTIVE }),
+      headers: { "Content-Type": "application/json" },
+    });
+
+    const response = await PATCH(request, {
+      params: Promise.resolve({ taskId: "task-1" }),
+    });
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(taskStore.save).toHaveBeenCalledWith(expect.objectContaining({
+      id: "task-1",
+      investValidation: expect.objectContaining({
+        overall: "warning",
+        estimable: expect.objectContaining({ status: "warning" }),
+      }),
+    }));
+    expect(data.task.investValidation).toMatchObject({
+      overall: "warning",
+      estimable: { status: "warning" },
+    });
+  });
+
+  it("auto-validates plain markdown when the objective changes", async () => {
+    const request = new NextRequest("http://localhost/api/tasks/task-1", {
+      method: "PATCH",
+      body: JSON.stringify({
+        objective: `## Summary
+Refresh a story without canonical YAML.
+
+## Acceptance Criteria
+- The updated task stores an automatic INVEST snapshot.
+- Reviewers can inspect warnings from the API.
+
+## Dependencies
+- None. This can start now.`,
+      }),
+      headers: { "Content-Type": "application/json" },
+    });
+
+    const response = await PATCH(request, {
+      params: Promise.resolve({ taskId: "task-1" }),
+    });
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.task.investValidation).toMatchObject({
+      overall: "warning",
+      independent: { status: "pass" },
+      negotiable: { status: "warning" },
+      testable: { status: "pass" },
+    });
   });
 });

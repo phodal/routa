@@ -1,6 +1,7 @@
 // Shared types for workspace dashboard components
 
 import type { McpServerProfile } from "@/core/mcp/mcp-server-profiles";
+import type { InvestValidation } from "@/core/models/task";
 
 export interface SessionInfo {
   sessionId: string;
@@ -183,6 +184,7 @@ export interface TaskInfo {
   worktreeId?: string;
   artifactSummary?: ArtifactSummaryInfo;
   evidenceSummary?: TaskEvidenceSummaryInfo;
+  investValidation?: InvestValidation;
   createdAt: string;
   updatedAt?: string;
 }

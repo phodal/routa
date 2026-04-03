@@ -278,7 +278,8 @@ fn build_tool_list_inner() -> Vec<serde_json::Value> {
                 "description": { "type": "string", "description": "New description" },
                 "comment": { "type": "string", "description": "Comment or progress note to append" },
                 "priority": { "type": "string", "enum": ["low", "medium", "high", "urgent"], "description": "New priority" },
-                "labels": { "type": "array", "items": { "type": "string" }, "description": "New labels" }
+                "labels": { "type": "array", "items": { "type": "string" }, "description": "New labels" },
+                "investValidation": { "type": "object", "description": "Persisted INVEST validation snapshot" }
             },
             "required": ["cardId"]
         })),

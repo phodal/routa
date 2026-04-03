@@ -17,6 +17,7 @@ import {
   normalizeTaskCreationSource,
   shouldCreateGitHubIssueOnTaskCreate,
 } from "@/core/kanban/task-creation-policy";
+import { deriveInvestValidationFromObjective, resolveInvestValidation } from "@/core/kanban/invest-validation";
 import { columnIdToTaskStatus } from "@/core/models/kanban";
 import { getKanbanEventBroadcaster } from "@/core/kanban/kanban-event-broadcaster";
 import { emitColumnTransition } from "@/core/kanban/column-transition";
@@ -259,7 +260,10 @@ export async function POST(request: NextRequest) {
     githubSyncedAt,
     lastSyncError,
     codebaseIds: normalizedCodebaseIds,
-    investValidation: normalizedInvestValidation,
+    investValidation: resolveInvestValidation({
+      objective: normalizedObjective,
+      provided: normalizedInvestValidation,
+    }),
   });
 
   await system.taskStore.save(task);
@@ -329,6 +333,7 @@ export async function DELETE(request: NextRequest) {
 
 async function serializeTask(task: Task, system: ReturnType<typeof getRoutaSystem>) {
   const evidenceSummary = await buildTaskEvidenceSummary(task, system);
+  const investValidation = task.investValidation ?? deriveInvestValidationFromObjective(task.objective);
 
   return {
     id: task.id,
@@ -370,7 +375,7 @@ async function serializeTask(task: Task, system: ReturnType<typeof getRoutaSyste
     completionSummary: task.completionSummary,
     ...(task.verificationVerdict != null && { verificationVerdict: task.verificationVerdict }),
     ...(task.verificationReport != null && { verificationReport: task.verificationReport }),
-    ...(task.investValidation != null && { investValidation: task.investValidation }),
+    ...(investValidation != null && { investValidation }),
     artifactSummary: evidenceSummary.artifact,
     evidenceSummary,
     createdAt: task.createdAt instanceof Date ? task.createdAt.toISOString() : task.createdAt,

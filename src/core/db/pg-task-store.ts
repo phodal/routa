@@ -58,6 +58,7 @@ export class PgTaskStore implements TaskStore {
         completionSummary: task.completionSummary,
         verificationVerdict: task.verificationVerdict,
         verificationReport: task.verificationReport,
+        investValidation: task.investValidation,
         version,
         createdAt: task.createdAt,
         updatedAt: task.updatedAt,
@@ -103,6 +104,7 @@ export class PgTaskStore implements TaskStore {
           completionSummary: task.completionSummary,
           verificationVerdict: task.verificationVerdict,
           verificationReport: task.verificationReport,
+          investValidation: task.investValidation,
           version: sql`${tasks.version} + 1`,
           updatedAt: new Date(),
         },
@@ -178,7 +180,7 @@ export class PgTaskStore implements TaskStore {
   async atomicUpdate(
     taskId: string,
     expectedVersion: number,
-    updates: Partial<Pick<Task, "status" | "completionSummary" | "verificationVerdict" | "verificationReport" | "assignedTo">>
+    updates: Partial<Pick<Task, "status" | "completionSummary" | "verificationVerdict" | "verificationReport" | "investValidation" | "assignedTo">>
   ): Promise<boolean> {
     const result = await this.db
       .update(tasks)
@@ -236,6 +238,7 @@ export class PgTaskStore implements TaskStore {
       completionSummary: row.completionSummary ?? undefined,
       verificationVerdict: row.verificationVerdict as import("../models/task").VerificationVerdict | undefined,
       verificationReport: row.verificationReport ?? undefined,
+      investValidation: row.investValidation as import("../models/task").InvestValidation | undefined,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
     };

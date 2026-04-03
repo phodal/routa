@@ -1079,6 +1079,11 @@ const en: TranslationDictionary = {
     failedToSwitchRepo: "Failed to switch to the active session repo",
     failedToUpdateRepos: "Failed to update repositories",
     resetOverride: "Reset override",
+    investValidation: "INVEST Validation",
+    investValidationHint: "Persisted validation snapshot for this story, including warnings and failures.",
+    validatedAt: "Validated",
+    issueCount: "{count} issue(s)",
+    issues: "Issues",
   },
 
   kanbanModals: {
