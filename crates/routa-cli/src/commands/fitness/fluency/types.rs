@@ -6,6 +6,7 @@ pub(super) const CELL_PASS_THRESHOLD: f64 = 0.8;
 pub(super) const MAX_REGEX_PATTERN_LENGTH: usize = 256;
 pub(super) const MAX_REGEX_INPUT_LENGTH: usize = 20_000;
 pub(super) const MAX_RECOMMENDATIONS: usize = 5;
+pub(super) const TOP_PRIORITIZED_ACTION_LIMIT: usize = 3;
 
 pub(super) const ALLOWED_COMMAND_EXECUTABLES: &[&str] = &[
     "cargo", "entrix", "git", "node", "npm", "npx", "pnpm", "python", "python3", "uv",
@@ -325,6 +326,59 @@ pub struct Recommendation {
     pub weight: u32,
 }
 
+#[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum AutonomyBand {
+    #[default]
+    Low,
+    Medium,
+    High,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct AutonomyRecommendation {
+    #[serde(default)]
+    pub band: AutonomyBand,
+    #[serde(default)]
+    pub rationale: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct MissingDimensionInsight {
+    pub dimension: String,
+    pub name: String,
+    pub failing_criteria: usize,
+    pub critical_failures: usize,
+    pub failed_weight: u32,
+    pub blocking_failures: usize,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct SensorPlacementTierSummary {
+    pub applicable_criteria: usize,
+    pub passing_criteria: usize,
+    pub failing_criteria: usize,
+    pub critical_failures: usize,
+    #[serde(default)]
+    pub evidence_modes: HashMap<String, usize>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct LifecycleSensorPlacementSummary {
+    #[serde(default)]
+    pub fast: SensorPlacementTierSummary,
+    #[serde(default)]
+    pub normal: SensorPlacementTierSummary,
+    #[serde(default)]
+    pub full_or_deep: SensorPlacementTierSummary,
+    #[serde(default)]
+    pub continuous: SensorPlacementTierSummary,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DimensionChange {
@@ -430,6 +484,14 @@ pub struct HarnessFluencyReport {
     pub criteria: Vec<CriterionResult>,
     pub blocking_criteria: Vec<CriterionResult>,
     pub recommendations: Vec<Recommendation>,
+    #[serde(default)]
+    pub top_prioritized_actions: Vec<Recommendation>,
+    #[serde(default)]
+    pub dominant_missing_dimensions: Vec<MissingDimensionInsight>,
+    #[serde(default)]
+    pub autonomy_recommendation: AutonomyRecommendation,
+    #[serde(default)]
+    pub lifecycle_sensor_placement: LifecycleSensorPlacementSummary,
     pub comparison: Option<ReportComparison>,
 }
 

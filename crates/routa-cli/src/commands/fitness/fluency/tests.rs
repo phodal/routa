@@ -1,5 +1,8 @@
 use super::model::load_fluency_model;
-use super::types::{CriterionStatus, EvidenceMode, FluencyFraming, FluencyMode, LevelChange};
+use super::types::{
+    AutonomyBand, CriterionStatus, EvidenceMode, FluencyFraming, FluencyMode, HarnessFluencyReport,
+    LevelChange,
+};
 use super::{evaluate_harness_fluency, format_text_report, EvaluateOptions};
 use serde_json::json;
 use std::fs::{create_dir_all, write};
@@ -667,6 +670,23 @@ criteria:
             "comparison": null
         }),
     );
+    let parsed_snapshot = serde_json::from_str::<HarnessFluencyReport>(
+        &std::fs::read_to_string(&snapshot_path).expect("snapshot file"),
+    )
+    .expect("legacy snapshot should remain compatible");
+    assert!(parsed_snapshot.top_prioritized_actions.is_empty());
+    assert!(parsed_snapshot.dominant_missing_dimensions.is_empty());
+    assert_eq!(
+        parsed_snapshot.autonomy_recommendation.band,
+        AutonomyBand::Low
+    );
+    assert_eq!(
+        parsed_snapshot
+            .lifecycle_sensor_placement
+            .fast
+            .applicable_criteria,
+        0
+    );
 
     let report = evaluate_harness_fluency(&EvaluateOptions {
         repo_root: repo_root.to_path_buf(),
@@ -694,6 +714,12 @@ criteria:
     assert!(harnessability_text.contains("HARNESSABILITY REPORT"));
     assert!(harnessability_text.contains("Overall Harnessability Stage"));
     assert!(harnessability_text.contains("Prioritized Harnessability Actions:"));
+
+    let serialized = serde_json::to_value(&report).expect("serialize");
+    assert!(serialized.get("topPrioritizedActions").is_some());
+    assert!(serialized.get("dominantMissingDimensions").is_some());
+    assert!(serialized.get("autonomyRecommendation").is_some());
+    assert!(serialized.get("lifecycleSensorPlacement").is_some());
 }
 
 #[test]
@@ -904,6 +930,430 @@ criteria:
     let text = format_text_report(&report);
     assert!(text.contains("Next Level: Reached top level"));
     assert!(text.contains("Blocking Gaps: none"));
+}
+
+#[test]
+fn computes_baseline_insights_deterministically() {
+    let repo = tempdir().unwrap();
+    let repo_root = repo.path();
+    create_dir_all(repo_root.join("docs/fitness")).unwrap();
+    write(repo_root.join("README.md"), "# repo\n").unwrap();
+
+    let model_path = repo_root.join("docs/fitness/model.yaml");
+    let snapshot_path = repo_root.join("docs/fitness/latest.json");
+    write(
+        &model_path,
+        r#"version: 1
+levels:
+  - id: awareness
+    name: Awareness
+  - id: assisted_coding
+    name: Assisted Coding
+dimensions:
+  - id: collaboration
+    name: Collaboration
+  - id: governance
+    name: Governance
+criteria:
+  - id: collaboration.awareness.readme_missing
+    level: awareness
+    dimension: collaboration
+    weight: 4
+    critical: true
+    why_it_matters: readme
+    recommended_action: add readme
+    evidence_hint: README.md
+    detector:
+      type: file_exists
+      path: MISSING-README.md
+  - id: collaboration.awareness.agent_contract
+    level: awareness
+    dimension: collaboration
+    weight: 3
+    critical: true
+    why_it_matters: agent contract
+    recommended_action: add agents
+    evidence_hint: AGENTS.md
+    detector:
+      type: file_exists
+      path: AGENTS.md
+  - id: governance.awareness.policy
+    level: awareness
+    dimension: governance
+    weight: 2
+    critical: false
+    why_it_matters: policy
+    recommended_action: add policy
+    evidence_hint: docs/policy.md
+    detector:
+      type: file_exists
+      path: docs/policy.md
+  - id: governance.awareness.policy_duplicate
+    level: awareness
+    dimension: governance
+    weight: 1
+    critical: false
+    why_it_matters: policy duplicate
+    recommended_action: add policy
+    evidence_hint: docs/policy-extra.md
+    detector:
+      type: file_exists
+      path: docs/policy-extra.md
+  - id: collaboration.assisted.contract
+    level: assisted_coding
+    dimension: collaboration
+    weight: 2
+    critical: true
+    why_it_matters: contract
+    recommended_action: add contract checks
+    evidence_hint: AGENTS.md
+    detector:
+      type: file_exists
+      path: AGENTS.md
+  - id: collaboration.assisted.keep_readme
+    level: assisted_coding
+    dimension: collaboration
+    weight: 1
+    critical: false
+    why_it_matters: keep readme
+    recommended_action: keep readme
+    evidence_hint: README.md
+    detector:
+      type: file_exists
+      path: README.md
+  - id: governance.assisted.runtime
+    level: assisted_coding
+    dimension: governance
+    weight: 1
+    critical: false
+    why_it_matters: runtime
+    recommended_action: stabilize runtime checks
+    evidence_hint: cargo --version
+    detector:
+      type: command_exit_code
+      command: cargo --version
+      expectedExitCode: 42
+  - id: governance.assisted.runtime_pass
+    level: assisted_coding
+    dimension: governance
+    weight: 1
+    critical: false
+    why_it_matters: runtime pass
+    recommended_action: keep runtime checks
+    evidence_hint: cargo --version
+    detector:
+      type: command_exit_code
+      command: cargo --version
+      expectedExitCode: 0
+"#,
+    )
+    .unwrap();
+
+    let report = evaluate_harness_fluency(&EvaluateOptions {
+        repo_root: repo_root.to_path_buf(),
+        model_path,
+        profile: "generic".to_string(),
+        mode: FluencyMode::Deterministic,
+        snapshot_path,
+        compare_last: false,
+        save: false,
+    })
+    .expect("report");
+
+    assert_eq!(
+        report
+            .recommendations
+            .iter()
+            .map(|item| item.action.as_str())
+            .collect::<Vec<_>>(),
+        vec!["add readme", "add agents", "add policy"]
+    );
+    assert_eq!(
+        report
+            .top_prioritized_actions
+            .iter()
+            .map(|item| item.action.as_str())
+            .collect::<Vec<_>>(),
+        vec!["add readme", "add agents", "add policy"]
+    );
+
+    assert_eq!(report.dominant_missing_dimensions.len(), 2);
+    assert_eq!(
+        report.dominant_missing_dimensions[0].dimension,
+        "collaboration"
+    );
+    assert_eq!(report.dominant_missing_dimensions[0].failing_criteria, 3);
+    assert_eq!(report.dominant_missing_dimensions[0].blocking_failures, 2);
+    assert_eq!(
+        report.dominant_missing_dimensions[1].dimension,
+        "governance"
+    );
+
+    assert_eq!(report.autonomy_recommendation.band, AutonomyBand::Low);
+    assert!(report
+        .autonomy_recommendation
+        .rationale
+        .contains("Band set to low"));
+
+    assert_eq!(
+        report.lifecycle_sensor_placement.fast.applicable_criteria,
+        4
+    );
+    assert_eq!(report.lifecycle_sensor_placement.fast.failing_criteria, 4);
+    assert_eq!(report.lifecycle_sensor_placement.fast.critical_failures, 2);
+
+    assert_eq!(
+        report.lifecycle_sensor_placement.normal.applicable_criteria,
+        4
+    );
+    assert_eq!(report.lifecycle_sensor_placement.normal.passing_criteria, 2);
+    assert_eq!(report.lifecycle_sensor_placement.normal.failing_criteria, 2);
+    assert_eq!(
+        report.lifecycle_sensor_placement.normal.critical_failures,
+        1
+    );
+    assert_eq!(
+        report
+            .lifecycle_sensor_placement
+            .normal
+            .evidence_modes
+            .get("runtime")
+            .copied(),
+        Some(2)
+    );
+    assert_eq!(
+        report
+            .lifecycle_sensor_placement
+            .full_or_deep
+            .applicable_criteria,
+        0
+    );
+    assert_eq!(
+        report
+            .lifecycle_sensor_placement
+            .continuous
+            .applicable_criteria,
+        0
+    );
+
+    let serialized = serde_json::to_value(&report).expect("serialize");
+    assert_eq!(
+        serialized
+            .get("autonomyRecommendation")
+            .and_then(|value| value.get("band"))
+            .and_then(|value| value.as_str()),
+        Some("low")
+    );
+    assert!(serialized.get("dominantMissingDimensions").is_some());
+    assert!(serialized.get("topPrioritizedActions").is_some());
+    assert!(serialized.get("lifecycleSensorPlacement").is_some());
+}
+
+#[test]
+fn summarizes_lifecycle_sensor_placement_across_all_tiers() {
+    let repo = tempdir().unwrap();
+    let repo_root = repo.path();
+    create_dir_all(repo_root.join("docs/fitness")).unwrap();
+    write(repo_root.join("README.md"), "# repo\n").unwrap();
+
+    let model_path = repo_root.join("docs/fitness/model.yaml");
+    let snapshot_path = repo_root.join("docs/fitness/latest.json");
+    write(
+        &model_path,
+        r#"version: 1
+levels:
+  - id: awareness
+    name: Awareness
+  - id: assisted_coding
+    name: Assisted Coding
+  - id: structured_ai_coding
+    name: Structured AI Coding
+  - id: agent_first
+    name: Agent-First
+dimensions:
+  - id: collaboration
+    name: Collaboration
+criteria:
+  - id: collaboration.awareness.contract_fail
+    level: awareness
+    dimension: collaboration
+    weight: 2
+    critical: true
+    why_it_matters: contract
+    recommended_action: add contract
+    evidence_hint: AGENTS.md
+    detector:
+      type: file_exists
+      path: AGENTS.md
+  - id: collaboration.awareness.docs_fail
+    level: awareness
+    dimension: collaboration
+    weight: 1
+    critical: false
+    why_it_matters: docs
+    recommended_action: add docs
+    evidence_hint: docs/intro.md
+    detector:
+      type: file_exists
+      path: docs/intro.md
+  - id: collaboration.assisted.runtime_fail
+    level: assisted_coding
+    dimension: collaboration
+    weight: 1
+    critical: false
+    why_it_matters: runtime fail
+    recommended_action: fix runtime
+    evidence_hint: cargo --version
+    detector:
+      type: command_exit_code
+      command: cargo --version
+      expectedExitCode: 42
+  - id: collaboration.assisted.readme_pass
+    level: assisted_coding
+    dimension: collaboration
+    weight: 1
+    critical: false
+    why_it_matters: readme pass
+    recommended_action: keep readme
+    evidence_hint: README.md
+    detector:
+      type: file_exists
+      path: README.md
+  - id: collaboration.structured_ai_coding.runtime_pass
+    level: structured_ai_coding
+    dimension: collaboration
+    weight: 1
+    critical: false
+    why_it_matters: runtime pass
+    recommended_action: keep runtime
+    evidence_hint: cargo --version
+    detector:
+      type: command_exit_code
+      command: cargo --version
+      expectedExitCode: 0
+  - id: collaboration.structured_ai_coding.docs_fail
+    level: structured_ai_coding
+    dimension: collaboration
+    weight: 1
+    critical: false
+    why_it_matters: docs fail
+    recommended_action: add docs
+    evidence_hint: docs/structured.md
+    detector:
+      type: file_exists
+      path: docs/structured.md
+  - id: collaboration.agent_first.merge_fail
+    level: agent_first
+    dimension: collaboration
+    weight: 1
+    critical: true
+    why_it_matters: merge fail
+    recommended_action: automate merge
+    evidence_hint: .github/workflows/merge.yml
+    detector:
+      type: file_exists
+      path: .github/workflows/merge.yml
+  - id: collaboration.agent_first.release_fail
+    level: agent_first
+    dimension: collaboration
+    weight: 1
+    critical: false
+    why_it_matters: release fail
+    recommended_action: add release flow
+    evidence_hint: resources/flows/release.yaml
+    detector:
+      type: file_exists
+      path: resources/flows/release.yaml
+"#,
+    )
+    .unwrap();
+
+    let report = evaluate_harness_fluency(&EvaluateOptions {
+        repo_root: repo_root.to_path_buf(),
+        model_path,
+        profile: "generic".to_string(),
+        mode: FluencyMode::Deterministic,
+        snapshot_path,
+        compare_last: false,
+        save: false,
+    })
+    .expect("report");
+
+    assert_eq!(
+        report.lifecycle_sensor_placement.fast.applicable_criteria,
+        2
+    );
+    assert_eq!(report.lifecycle_sensor_placement.fast.failing_criteria, 2);
+    assert_eq!(report.lifecycle_sensor_placement.fast.critical_failures, 1);
+
+    assert_eq!(
+        report.lifecycle_sensor_placement.normal.applicable_criteria,
+        2
+    );
+    assert_eq!(report.lifecycle_sensor_placement.normal.passing_criteria, 1);
+    assert_eq!(report.lifecycle_sensor_placement.normal.failing_criteria, 1);
+    assert_eq!(
+        report
+            .lifecycle_sensor_placement
+            .normal
+            .evidence_modes
+            .get("runtime")
+            .copied(),
+        Some(1)
+    );
+
+    assert_eq!(
+        report
+            .lifecycle_sensor_placement
+            .full_or_deep
+            .applicable_criteria,
+        2
+    );
+    assert_eq!(
+        report
+            .lifecycle_sensor_placement
+            .full_or_deep
+            .passing_criteria,
+        1
+    );
+    assert_eq!(
+        report
+            .lifecycle_sensor_placement
+            .full_or_deep
+            .failing_criteria,
+        1
+    );
+    assert_eq!(
+        report
+            .lifecycle_sensor_placement
+            .full_or_deep
+            .evidence_modes
+            .get("runtime")
+            .copied(),
+        Some(1)
+    );
+
+    assert_eq!(
+        report
+            .lifecycle_sensor_placement
+            .continuous
+            .applicable_criteria,
+        2
+    );
+    assert_eq!(
+        report
+            .lifecycle_sensor_placement
+            .continuous
+            .failing_criteria,
+        2
+    );
+    assert_eq!(
+        report
+            .lifecycle_sensor_placement
+            .continuous
+            .critical_failures,
+        1
+    );
 }
 
 #[test]

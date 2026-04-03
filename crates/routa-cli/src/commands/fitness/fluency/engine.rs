@@ -8,9 +8,11 @@ use super::snapshot::{
     build_comparison, can_compare_reports, load_previous_snapshot, persist_snapshot,
 };
 use super::types::{
-    CapabilityGroupResult, CellResult, CriterionResult, CriterionStatus, DimensionResult,
-    EvaluateOptions, FluencyDimension, FluencyFraming, FluencyLevel, FluencyTermMapping,
-    HarnessFluencyReport, Recommendation, CELL_PASS_THRESHOLD, MAX_RECOMMENDATIONS,
+    AutonomyBand, AutonomyRecommendation, CapabilityGroupResult, CellResult, CriterionResult,
+    CriterionStatus, DimensionResult, EvaluateOptions, FluencyDimension, FluencyFraming,
+    FluencyLevel, FluencyTermMapping, HarnessFluencyReport, LifecycleSensorPlacementSummary,
+    MissingDimensionInsight, Recommendation, SensorPlacementTierSummary, CELL_PASS_THRESHOLD,
+    MAX_RECOMMENDATIONS, TOP_PRIORITIZED_ACTION_LIMIT,
 };
 
 struct MutableCellAccumulator {
@@ -32,6 +34,22 @@ struct MutableCapabilityGroupAccumulator {
     applicable_weight: u32,
     passed_weight: u32,
     evidence_modes: HashMap<String, usize>,
+}
+
+#[derive(Default)]
+struct MissingDimensionAccumulator {
+    failing_criteria: usize,
+    critical_failures: usize,
+    failed_weight: u32,
+    blocking_failures: usize,
+}
+
+#[derive(Copy, Clone)]
+enum LifecycleTierBucket {
+    Fast,
+    Normal,
+    FullOrDeep,
+    Continuous,
 }
 
 pub fn evaluate_harness_fluency(options: &EvaluateOptions) -> Result<HarnessFluencyReport, String> {
@@ -230,6 +248,26 @@ pub fn evaluate_harness_fluency(options: &EvaluateOptions) -> Result<HarnessFlue
     blocking_criteria.sort_by(|left, right| left.id.cmp(&right.id));
 
     criteria_results.sort_by(|left, right| left.id.cmp(&right.id));
+    let recommendations = collect_recommendations(&blocking_criteria);
+    let top_prioritized_actions = recommendations
+        .iter()
+        .take(TOP_PRIORITIZED_ACTION_LIMIT)
+        .cloned()
+        .collect::<Vec<_>>();
+    let dominant_missing_dimensions = collect_dominant_missing_dimensions(
+        &criteria_results,
+        &dimension_by_id,
+        &blocking_criteria,
+    );
+    let autonomy_recommendation = derive_autonomy_recommendation(
+        overall_level_index,
+        current_level_readiness,
+        &blocking_criteria,
+        &overall_level.name,
+    );
+    let lifecycle_sensor_placement =
+        summarize_lifecycle_sensor_placement(&criteria_results, &level_order, model.levels.len());
+
     let mut report = HarnessFluencyReport {
         model_version: model.version,
         model_path: options.model_path.display().to_string(),
@@ -254,7 +292,11 @@ pub fn evaluate_harness_fluency(options: &EvaluateOptions) -> Result<HarnessFlue
         cells,
         criteria: criteria_results,
         blocking_criteria: blocking_criteria.clone(),
-        recommendations: collect_recommendations(&blocking_criteria),
+        recommendations,
+        top_prioritized_actions,
+        dominant_missing_dimensions,
+        autonomy_recommendation,
+        lifecycle_sensor_placement,
         comparison: None,
     };
 
@@ -309,7 +351,7 @@ fn build_capability_group_results(
         let Some(group_id) = criterion.capability_group.clone() else {
             continue;
         };
-        let evidence_mode = format!("{:?}", criterion.evidence_mode).to_lowercase();
+        let evidence_mode = evidence_mode_key(criterion);
         let accumulator = accumulators.entry(group_id.clone()).or_insert_with(|| {
             MutableCapabilityGroupAccumulator {
                 id: group_id.clone(),
@@ -370,6 +412,10 @@ fn build_capability_group_results(
         .collect()
 }
 
+fn evidence_mode_key(criterion: &CriterionResult) -> String {
+    format!("{:?}", criterion.evidence_mode).to_lowercase()
+}
+
 fn deterministic_priority(detector_type: &str) -> u8 {
     if detector_type == "manual_attestation" {
         1
@@ -410,6 +456,181 @@ fn collect_recommendations(criteria: &[CriterionResult]) -> Vec<Recommendation> 
             weight: criterion.weight,
         })
         .collect()
+}
+
+fn collect_dominant_missing_dimensions(
+    criteria: &[CriterionResult],
+    dimension_by_id: &HashMap<String, FluencyDimension>,
+    blocking_criteria: &[CriterionResult],
+) -> Vec<MissingDimensionInsight> {
+    let mut accumulators = HashMap::<String, MissingDimensionAccumulator>::new();
+
+    for criterion in criteria
+        .iter()
+        .filter(|criterion| criterion.status == CriterionStatus::Fail)
+    {
+        let accumulator = accumulators.entry(criterion.dimension.clone()).or_default();
+        accumulator.failing_criteria += 1;
+        accumulator.failed_weight += criterion.weight;
+        if criterion.critical {
+            accumulator.critical_failures += 1;
+        }
+    }
+
+    for criterion in blocking_criteria
+        .iter()
+        .filter(|criterion| criterion.status == CriterionStatus::Fail)
+    {
+        if let Some(accumulator) = accumulators.get_mut(&criterion.dimension) {
+            accumulator.blocking_failures += 1;
+        }
+    }
+
+    let mut ranked = accumulators
+        .into_iter()
+        .map(|(dimension, accumulator)| MissingDimensionInsight {
+            name: dimension_by_id
+                .get(&dimension)
+                .map(|entry| entry.name.clone())
+                .unwrap_or_else(|| dimension.clone()),
+            dimension,
+            failing_criteria: accumulator.failing_criteria,
+            critical_failures: accumulator.critical_failures,
+            failed_weight: accumulator.failed_weight,
+            blocking_failures: accumulator.blocking_failures,
+        })
+        .collect::<Vec<_>>();
+    ranked.sort_by(|left, right| {
+        right
+            .blocking_failures
+            .cmp(&left.blocking_failures)
+            .then(right.critical_failures.cmp(&left.critical_failures))
+            .then(right.failed_weight.cmp(&left.failed_weight))
+            .then(right.failing_criteria.cmp(&left.failing_criteria))
+            .then(left.dimension.cmp(&right.dimension))
+    });
+    ranked
+}
+
+fn derive_autonomy_recommendation(
+    overall_level_index: usize,
+    current_level_readiness: f64,
+    blocking_criteria: &[CriterionResult],
+    overall_level_name: &str,
+) -> AutonomyRecommendation {
+    let blocking_count = blocking_criteria.len();
+    let critical_blockers = blocking_criteria
+        .iter()
+        .filter(|criterion| criterion.critical)
+        .count();
+
+    let mut score = (overall_level_index as i32) * 2;
+    if current_level_readiness >= CELL_PASS_THRESHOLD {
+        score += 2;
+    } else if current_level_readiness >= 0.5 {
+        score += 1;
+    }
+
+    if critical_blockers == 0 {
+        score += 2;
+    } else if critical_blockers == 1 {
+        score += 1;
+    }
+
+    if blocking_count == 0 {
+        score += 1;
+    }
+
+    let band = if score >= 10 {
+        AutonomyBand::High
+    } else if score >= 5 {
+        AutonomyBand::Medium
+    } else {
+        AutonomyBand::Low
+    };
+    let readiness_percent = (current_level_readiness * 100.0).round() as i32;
+    let rationale = format!(
+        "Band set to {}: {} readiness is {}% with {} blocking gaps ({} critical).",
+        autonomy_band_label(band),
+        overall_level_name,
+        readiness_percent,
+        blocking_count,
+        critical_blockers
+    );
+
+    AutonomyRecommendation { band, rationale }
+}
+
+fn autonomy_band_label(band: AutonomyBand) -> &'static str {
+    match band {
+        AutonomyBand::Low => "low",
+        AutonomyBand::Medium => "medium",
+        AutonomyBand::High => "high",
+    }
+}
+
+fn summarize_lifecycle_sensor_placement(
+    criteria: &[CriterionResult],
+    level_order: &HashMap<String, usize>,
+    level_count: usize,
+) -> LifecycleSensorPlacementSummary {
+    let mut summary = LifecycleSensorPlacementSummary::default();
+
+    for criterion in criteria {
+        if criterion.status == CriterionStatus::Skipped {
+            continue;
+        }
+
+        let tier = resolve_lifecycle_tier(&criterion.level, level_order, level_count);
+        let tier_summary = tier_summary_mut(&mut summary, tier);
+        tier_summary.applicable_criteria += 1;
+        *tier_summary
+            .evidence_modes
+            .entry(evidence_mode_key(criterion))
+            .or_insert(0) += 1;
+
+        match criterion.status {
+            CriterionStatus::Pass => tier_summary.passing_criteria += 1,
+            CriterionStatus::Fail => {
+                tier_summary.failing_criteria += 1;
+                if criterion.critical {
+                    tier_summary.critical_failures += 1;
+                }
+            }
+            CriterionStatus::Skipped => {}
+        }
+    }
+
+    summary
+}
+
+fn resolve_lifecycle_tier(
+    level_id: &str,
+    level_order: &HashMap<String, usize>,
+    level_count: usize,
+) -> LifecycleTierBucket {
+    let level_index = level_order.get(level_id).copied().unwrap_or(0);
+    if level_index == 0 {
+        LifecycleTierBucket::Fast
+    } else if level_index == 1 {
+        LifecycleTierBucket::Normal
+    } else if level_count >= 4 && level_index + 1 == level_count {
+        LifecycleTierBucket::Continuous
+    } else {
+        LifecycleTierBucket::FullOrDeep
+    }
+}
+
+fn tier_summary_mut(
+    summary: &mut LifecycleSensorPlacementSummary,
+    tier: LifecycleTierBucket,
+) -> &mut SensorPlacementTierSummary {
+    match tier {
+        LifecycleTierBucket::Fast => &mut summary.fast,
+        LifecycleTierBucket::Normal => &mut summary.normal,
+        LifecycleTierBucket::FullOrDeep => &mut summary.full_or_deep,
+        LifecycleTierBucket::Continuous => &mut summary.continuous,
+    }
 }
 
 fn average_cell_scores(
