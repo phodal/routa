@@ -10,6 +10,8 @@ const enqueueKanbanTaskSession = vi.fn();
 const processKanbanColumnTransition = vi.fn();
 const archiveActiveTaskSession = vi.fn<(task: Task) => void>();
 const prepareTaskForColumnChange = vi.fn<(fromColumnId?: string, task?: Task) => boolean>(() => false);
+const buildTaskDeliveryReadiness = vi.fn();
+const buildTaskDeliveryTransitionError = vi.fn(() => null);
 let capturedEnqueueTask: Task | undefined;
 
 const taskStore = {
@@ -63,6 +65,11 @@ vi.mock("@/core/kanban/task-session-transition", () => ({
     prepareTaskForColumnChange(fromColumnId, task),
 }));
 
+vi.mock("@/core/kanban/task-delivery-readiness", () => ({
+  buildTaskDeliveryReadiness: (...args: unknown[]) => buildTaskDeliveryReadiness(...args),
+  buildTaskDeliveryTransitionError: (...args: unknown[]) => buildTaskDeliveryTransitionError(...args),
+}));
+
 vi.mock("@/core/kanban/workflow-orchestrator-singleton", () => ({
   enqueueKanbanTaskSession: (currentSystem: typeof system, params: { task: Task }) =>
     enqueueKanbanTaskSession(currentSystem, params),
@@ -76,6 +83,20 @@ describe("/api/tasks/[taskId]", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     capturedEnqueueTask = undefined;
+    buildTaskDeliveryReadiness.mockResolvedValue({
+      checked: false,
+      modified: 0,
+      untracked: 0,
+      ahead: 0,
+      behind: 0,
+      commitsSinceBase: 0,
+      hasCommitsSinceBase: false,
+      hasUncommittedChanges: false,
+      isGitHubRepo: false,
+      canCreatePullRequest: false,
+      reason: "Task has no linked repository or worktree.",
+    });
+    buildTaskDeliveryTransitionError.mockReturnValue(null);
     taskStore.save.mockResolvedValue();
     system.kanbanBoardStore.get = vi.fn().mockResolvedValue(null);
     system.artifactStore = undefined;
@@ -387,6 +408,122 @@ describe("/api/tasks/[taskId]", () => {
     expect(data.error).toContain("Verifier");
     expect(taskStore.save).not.toHaveBeenCalled();
     expect(enqueueKanbanTaskSession).not.toHaveBeenCalled();
+  });
+
+  it("blocks moving a card to review when no committed changes are available", async () => {
+    const existingTask = createTask({
+      id: "task-1",
+      title: "Review blocked without commit",
+      objective: "Need a real code commit before review",
+      workspaceId: "workspace-1",
+      boardId: "board-1",
+      columnId: "dev",
+      status: TaskStatus.IN_PROGRESS,
+    });
+    taskStore.get.mockResolvedValue(existingTask);
+    system.kanbanBoardStore.get = vi.fn().mockResolvedValue({
+      id: "board-1",
+      columns: [
+        { id: "dev", name: "Dev", position: 1, stage: "dev" },
+        { id: "review", name: "Review", position: 2, stage: "review" },
+      ],
+    });
+    buildTaskDeliveryReadiness.mockResolvedValue({
+      checked: true,
+      branch: "issue/task-1",
+      baseBranch: "main",
+      baseRef: "origin/main",
+      modified: 0,
+      untracked: 0,
+      ahead: 0,
+      behind: 0,
+      commitsSinceBase: 0,
+      hasCommitsSinceBase: false,
+      hasUncommittedChanges: false,
+      isGitHubRepo: true,
+      canCreatePullRequest: false,
+    });
+    buildTaskDeliveryTransitionError.mockReturnValue(
+      'Cannot move task to "Review": no committed changes detected on branch "issue/task-1" relative to "origin/main". Commit your implementation before requesting review.',
+    );
+
+    const request = new NextRequest("http://localhost/api/tasks/task-1", {
+      method: "PATCH",
+      body: JSON.stringify({ columnId: "review" }),
+      headers: { "Content-Type": "application/json" },
+    });
+
+    const response = await PATCH(request, {
+      params: Promise.resolve({ taskId: "task-1" }),
+    });
+    const data = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(data.error).toContain("no committed changes detected");
+    expect(data.deliveryReadiness).toMatchObject({
+      checked: true,
+      commitsSinceBase: 0,
+      hasCommitsSinceBase: false,
+    });
+    expect(taskStore.save).not.toHaveBeenCalled();
+  });
+
+  it("blocks moving a card to done when a GitHub task is not PR-ready", async () => {
+    const existingTask = createTask({
+      id: "task-1",
+      title: "Done blocked until PR is ready",
+      objective: "Need a clean feature branch before completion",
+      workspaceId: "workspace-1",
+      boardId: "board-1",
+      columnId: "review",
+      status: TaskStatus.REVIEW_REQUIRED,
+    });
+    taskStore.get.mockResolvedValue(existingTask);
+    system.kanbanBoardStore.get = vi.fn().mockResolvedValue({
+      id: "board-1",
+      columns: [
+        { id: "review", name: "Review", position: 2, stage: "review" },
+        { id: "done", name: "Done", position: 3, stage: "done" },
+      ],
+    });
+    buildTaskDeliveryReadiness.mockResolvedValue({
+      checked: true,
+      branch: "main",
+      baseBranch: "main",
+      baseRef: "origin/main",
+      modified: 0,
+      untracked: 0,
+      ahead: 1,
+      behind: 0,
+      commitsSinceBase: 1,
+      hasCommitsSinceBase: true,
+      hasUncommittedChanges: false,
+      isGitHubRepo: true,
+      canCreatePullRequest: false,
+    });
+    buildTaskDeliveryTransitionError.mockReturnValue(
+      'Cannot move task to "Done": GitHub repo is not PR-ready yet. Use a feature branch instead of "main" so this task can open a pull request cleanly.',
+    );
+
+    const request = new NextRequest("http://localhost/api/tasks/task-1", {
+      method: "PATCH",
+      body: JSON.stringify({ columnId: "done" }),
+      headers: { "Content-Type": "application/json" },
+    });
+
+    const response = await PATCH(request, {
+      params: Promise.resolve({ taskId: "task-1" }),
+    });
+    const data = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(data.error).toContain("PR-ready");
+    expect(data.deliveryReadiness).toMatchObject({
+      checked: true,
+      branch: "main",
+      canCreatePullRequest: false,
+    });
+    expect(taskStore.save).not.toHaveBeenCalled();
   });
 
   it("processes non-dev automated column transitions before returning", async () => {

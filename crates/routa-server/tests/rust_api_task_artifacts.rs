@@ -505,7 +505,10 @@ async fn api_task_artifact_flow_and_gate() {
         listed_task["evidenceSummary"]["artifact"]["requiredSatisfied"],
         json!(true)
     );
-    assert_eq!(listed_task["investValidation"]["source"], json!("heuristic"));
+    assert_eq!(
+        listed_task["investValidation"]["source"],
+        json!("heuristic")
+    );
 
     let ready_tasks = fixture
         .client

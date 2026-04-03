@@ -73,6 +73,33 @@ function gitExecSync(command: string, cwd: string): string {
   return bridge.process.execSync(command, { cwd }).trim();
 }
 
+function shellQuote(value: string): string {
+  return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
+function hasGitRef(repoPath: string, ref: string): boolean {
+  try {
+    gitExecSync(`git rev-parse --verify ${shellQuote(ref)}`, repoPath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function resolveBaseRef(repoPath: string, baseBranch?: string | null): string | undefined {
+  const normalizedBaseBranch = baseBranch?.trim();
+  const candidates = Array.from(new Set([
+    normalizedBaseBranch ? `origin/${normalizedBaseBranch}` : null,
+    normalizedBaseBranch ?? null,
+    "origin/main",
+    "main",
+    "origin/master",
+    "master",
+  ].filter((candidate): candidate is string => Boolean(candidate))));
+
+  return candidates.find((candidate) => hasGitRef(repoPath, candidate));
+}
+
 // ─── Git Repository Inspection ──────────────────────────────────────────
 
 export interface RepoBranchInfo {
@@ -100,6 +127,19 @@ export interface RepoChanges {
   branch: string;
   status: RepoStatus;
   files: GitFileChange[];
+}
+
+export interface RepoDeliveryStatus {
+  branch: string;
+  baseBranch?: string;
+  baseRef?: string;
+  status: RepoStatus;
+  commitsSinceBase: number;
+  hasCommitsSinceBase: boolean;
+  hasUncommittedChanges: boolean;
+  remoteUrl: string | null;
+  isGitHubRepo: boolean;
+  canCreatePullRequest: boolean;
 }
 
 /**
@@ -268,6 +308,58 @@ export function getRepoChanges(repoPath: string): RepoChanges {
       files: [],
     };
   }
+}
+
+export function getRepoDeliveryStatus(
+  repoPath: string,
+  options?: {
+    baseBranch?: string | null;
+    sourceType?: "local" | "github";
+    sourceUrl?: string | null;
+  },
+): RepoDeliveryStatus {
+  const branch = getCurrentBranch(repoPath) ?? "unknown";
+  const status = getRepoStatus(repoPath);
+  const remoteUrl = getRemoteUrl(repoPath);
+  const baseRef = resolveBaseRef(repoPath, options?.baseBranch);
+  const normalizedBaseBranch = options?.baseBranch?.trim() || baseRef?.replace(/^origin\//, "");
+  let commitsSinceBase = status.ahead;
+
+  if (baseRef) {
+    try {
+      commitsSinceBase = Number.parseInt(
+        gitExecSync(`git rev-list --count ${shellQuote(baseRef)}..HEAD`, repoPath),
+        10,
+      ) || 0;
+    } catch {
+      commitsSinceBase = status.ahead;
+    }
+  }
+
+  const hasUncommittedChanges = !status.clean || status.modified > 0 || status.untracked > 0;
+  const isGitHubRepo = options?.sourceType === "github"
+    || Boolean(options?.sourceUrl && isGitHubUrl(options.sourceUrl))
+    || Boolean(remoteUrl && isGitHubUrl(remoteUrl));
+  const hasCommitsSinceBase = commitsSinceBase > 0;
+  const canCreatePullRequest = isGitHubRepo
+    && hasCommitsSinceBase
+    && !hasUncommittedChanges
+    && Boolean(branch)
+    && Boolean(normalizedBaseBranch)
+    && branch !== normalizedBaseBranch;
+
+  return {
+    branch,
+    baseBranch: normalizedBaseBranch,
+    baseRef,
+    status,
+    commitsSinceBase,
+    hasCommitsSinceBase,
+    hasUncommittedChanges,
+    remoteUrl,
+    isGitHubRepo,
+    canCreatePullRequest,
+  };
 }
 
 // ─── Repo Directory Helpers ─────────────────────────────────────────────

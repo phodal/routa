@@ -103,10 +103,7 @@ fn to_json_response<T: serde::Serialize>(
     Ok(Json(serde_json::to_value(value).map_err(|error| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json_error(
-                &format!("序列化{label}失败"),
-                error.to_string(),
-            )),
+            Json(json_error(&format!("序列化{label}失败"), error.to_string())),
         )
     })?))
 }
@@ -124,16 +121,11 @@ fn map_context_error(error: ServerError) -> (StatusCode, Json<Value>) {
     }
 }
 
-fn map_domain_error(
-    label: &'static str,
-) -> impl Fn(String) -> (StatusCode, Json<Value>) + Clone {
+fn map_domain_error(label: &'static str) -> impl Fn(String) -> (StatusCode, Json<Value>) + Clone {
     move |error| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json_error(
-                &format!("读取 Harness {label}失败"),
-                error,
-            )),
+            Json(json_error(&format!("读取 Harness {label}失败"), error)),
         )
     }
 }

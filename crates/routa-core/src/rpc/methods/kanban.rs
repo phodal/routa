@@ -84,7 +84,9 @@ mod tests {
             .expect("task lookup should succeed")
             .expect("task should exist");
         task.scope = Some("Implement the requested change within the current lane.".to_string());
-        task.acceptance_criteria = Some(vec!["The acceptance criteria are explicitly captured.".to_string()]);
+        task.acceptance_criteria = Some(vec![
+            "The acceptance criteria are explicitly captured.".to_string()
+        ]);
         task.verification_commands = Some(vec!["cargo test -p routa-core".to_string()]);
         state
             .task_store

@@ -669,9 +669,7 @@ pub fn build_task_invest_validation(task: &Task) -> TaskInvestValidation {
                 };
             }
 
-            issues.push(
-                "Canonical story YAML is missing one or more INVEST checks.".to_string(),
-            );
+            issues.push("Canonical story YAML is missing one or more INVEST checks.".to_string());
         }
     } else if let Err(error) = parse_canonical_story(&task.objective) {
         issues.push(error);

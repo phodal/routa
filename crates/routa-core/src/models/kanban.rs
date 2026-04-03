@@ -578,9 +578,7 @@ pub fn apply_recommended_automation_to_columns(columns: Vec<KanbanColumn>) -> Ve
     normalize_default_kanban_column_positions(columns)
 }
 
-pub fn apply_new_board_story_readiness_defaults(
-    columns: Vec<KanbanColumn>,
-) -> Vec<KanbanColumn> {
+pub fn apply_new_board_story_readiness_defaults(columns: Vec<KanbanColumn>) -> Vec<KanbanColumn> {
     columns
         .into_iter()
         .map(|mut column| {

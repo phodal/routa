@@ -339,7 +339,10 @@ pub(super) fn build_task_prompt(
                 "## INVEST Snapshot".to_string(),
                 String::new(),
                 format!("Source: {}", summary.source),
-                format!("Overall: {}", summary.overall_status.as_str().to_uppercase()),
+                format!(
+                    "Overall: {}",
+                    summary.overall_status.as_str().to_uppercase()
+                ),
                 format!(
                     "Independent: {} — {}",
                     checks.independent.status.as_str().to_uppercase(),

@@ -8,8 +8,8 @@ use crate::state::AppState;
 
 use super::automation::{
     ensure_required_artifacts_present, ensure_required_task_fields_present,
-    maybe_apply_lane_automation_defaults,
-    maybe_trigger_lane_automation, resolve_transition_automation_column,
+    maybe_apply_lane_automation_defaults, maybe_trigger_lane_automation,
+    resolve_transition_automation_column,
 };
 use super::shared::{
     default_workspace_id, emit_kanban_workspace_event, ensure_column_exists,
