@@ -254,6 +254,37 @@ impl VerificationVerdict {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub enum InvestValidationStatus {
+    #[serde(rename = "pass")]
+    Pass,
+    #[serde(rename = "fail")]
+    Fail,
+    #[serde(rename = "warning")]
+    Warning,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InvestValidation {
+    pub independent: InvestValidationPrinciple,
+    pub negotiable: InvestValidationPrinciple,
+    pub valuable: InvestValidationPrinciple,
+    pub estimable: InvestValidationPrinciple,
+    pub small: InvestValidationPrinciple,
+    pub testable: InvestValidationPrinciple,
+    pub overall: InvestValidationStatus,
+    pub validated_at: String,
+    pub issues: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InvestValidationPrinciple {
+    pub status: InvestValidationStatus,
+    pub reason: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Task {
@@ -340,6 +371,8 @@ pub struct Task {
     pub verification_verdict: Option<VerificationVerdict>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub verification_report: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub invest_validation: Option<InvestValidation>,
 }
 
 impl Task {
@@ -401,6 +434,7 @@ impl Task {
             completion_summary: None,
             verification_verdict: None,
             verification_report: None,
+            invest_validation: None,
         }
     }
 }

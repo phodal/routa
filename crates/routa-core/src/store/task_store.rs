@@ -41,10 +41,10 @@ impl TaskStore {
                                          trigger_session_id, github_id, github_number, github_url, github_repo, github_state,
                                          github_synced_at, last_sync_error, dependencies, parallel_group, workspace_id, session_id,
                                          session_ids, lane_sessions, lane_handoffs, completion_summary, verification_verdict,
-                                         verification_report, codebase_ids, worktree_id, version, created_at, updated_at)
+                                         verification_report, codebase_ids, worktree_id, invest_validation, version, created_at, updated_at)
                                          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18,
                                          ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29, ?30, ?31, ?32, ?33, ?34, ?35, ?36,
-                                         ?37, ?38, ?39, ?40, 1, ?41, ?42)
+                                         ?37, ?38, ?39, ?40, ?41, 1, ?42, ?43)
                      ON CONFLICT(id) DO UPDATE SET
                        title = excluded.title,
                        objective = excluded.objective,
@@ -83,9 +83,10 @@ impl TaskStore {
                        completion_summary = excluded.completion_summary,
                        verification_verdict = excluded.verification_verdict,
                        verification_report = excluded.verification_report,
-                       codebase_ids = excluded.codebase_ids,
-                       worktree_id = excluded.worktree_id,
-                       updated_at = excluded.updated_at",
+                        codebase_ids = excluded.codebase_ids,
+                        worktree_id = excluded.worktree_id,
+                        invest_validation = excluded.invest_validation,
+                        updated_at = excluded.updated_at",
                     rusqlite::params![
                         t.id,
                         t.title,
@@ -127,6 +128,7 @@ impl TaskStore {
                         t.verification_report,
                         serde_json::to_string(&t.codebase_ids).unwrap_or_default(),
                         t.worktree_id,
+                        t.invest_validation.as_ref().map(|v| serde_json::to_string(v).unwrap_or_default()),
                         t.created_at.timestamp_millis(),
                         t.updated_at.timestamp_millis(),
                     ],
@@ -387,6 +389,10 @@ fn row_to_task(row: &Row<'_>) -> Task {
         worktree_id: row.get(39).unwrap_or(None),
         created_at: chrono::DateTime::from_timestamp_millis(created_ms).unwrap_or_else(Utc::now),
         updated_at: chrono::DateTime::from_timestamp_millis(updated_ms).unwrap_or_else(Utc::now),
+        invest_validation: row
+            .get::<_, Option<String>>(42)
+            .unwrap_or(None)
+            .and_then(|s| serde_json::from_str(&s).ok()),
     }
 }
 

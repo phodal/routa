@@ -123,6 +123,7 @@ export async function POST(request: NextRequest) {
     creationSource,
     repoPath,
     codebaseIds,
+    investValidation,
   } = body;
 
   const normalizedTitle = typeof title === "string" ? title : "";
@@ -159,6 +160,10 @@ export async function POST(request: NextRequest) {
   const requestedCodebaseIds = Array.isArray(codebaseIds)
     ? codebaseIds.filter((id): id is string => typeof id === "string")
     : [];
+
+  const normalizedInvestValidation = typeof investValidation === "object" && investValidation !== null
+    ? investValidation as import("@/core/models/task").InvestValidation
+    : undefined;
 
   if (!normalizedTitle) {
     return NextResponse.json({ error: "title is required" }, { status: 400 });
@@ -254,6 +259,7 @@ export async function POST(request: NextRequest) {
     githubSyncedAt,
     lastSyncError,
     codebaseIds: normalizedCodebaseIds,
+    investValidation: normalizedInvestValidation,
   });
 
   await system.taskStore.save(task);
@@ -364,6 +370,7 @@ async function serializeTask(task: Task, system: ReturnType<typeof getRoutaSyste
     completionSummary: task.completionSummary,
     ...(task.verificationVerdict != null && { verificationVerdict: task.verificationVerdict }),
     ...(task.verificationReport != null && { verificationReport: task.verificationReport }),
+    ...(task.investValidation != null && { investValidation: task.investValidation }),
     artifactSummary: evidenceSummary.artifact,
     evidenceSummary,
     createdAt: task.createdAt instanceof Date ? task.createdAt.toISOString() : task.createdAt,

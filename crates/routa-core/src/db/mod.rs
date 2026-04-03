@@ -218,6 +218,7 @@ impl Database {
                     verification_report     TEXT,
                     codebase_ids            TEXT NOT NULL DEFAULT '[]',
                     worktree_id             TEXT,
+                    invest_validation       TEXT,
                     version                 INTEGER NOT NULL DEFAULT 1,
                     created_at              INTEGER NOT NULL,
                     updated_at              INTEGER NOT NULL

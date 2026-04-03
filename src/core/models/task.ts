@@ -101,6 +101,18 @@ export interface TaskLaneHandoff {
   responseSummary?: string;
 }
 
+export interface InvestValidation {
+  independent: { status: "pass" | "fail" | "warning"; reason: string };
+  negotiable: { status: "pass" | "fail" | "warning"; reason: string };
+  valuable: { status: "pass" | "fail" | "warning"; reason: string };
+  estimable: { status: "pass" | "fail" | "warning"; reason: string };
+  small: { status: "pass" | "fail" | "warning"; reason: string };
+  testable: { status: "pass" | "fail" | "warning"; reason: string };
+  overall: "pass" | "fail" | "warning";
+  validatedAt: string;
+  issues: string[];
+}
+
 export interface Task {
   id: string;
   title: string;
@@ -150,6 +162,7 @@ export interface Task {
   completionSummary?: string;
   verificationVerdict?: VerificationVerdict;
   verificationReport?: string;
+  investValidation?: InvestValidation;
 }
 
 export function createTask(params: {
@@ -186,6 +199,7 @@ export function createTask(params: {
   status?: TaskStatus;
   codebaseIds?: string[];
   worktreeId?: string;
+  investValidation?: InvestValidation;
 }): Task {
   const now = new Date();
   return {
@@ -225,6 +239,7 @@ export function createTask(params: {
     codebaseIds: params.codebaseIds ?? [],
     worktreeId: params.worktreeId,
     triggerSessionId: params.triggerSessionId,
+    investValidation: params.investValidation,
     createdAt: now,
     updatedAt: now,
   };
