@@ -9,8 +9,8 @@ use super::snapshot::{
 };
 use super::types::{
     CapabilityGroupResult, CellResult, CriterionResult, CriterionStatus, DimensionResult,
-    EvaluateOptions, FluencyDimension, FluencyLevel, HarnessFluencyReport, Recommendation,
-    CELL_PASS_THRESHOLD, MAX_RECOMMENDATIONS,
+    EvaluateOptions, FluencyDimension, FluencyFraming, FluencyLevel, FluencyTermMapping,
+    HarnessFluencyReport, Recommendation, CELL_PASS_THRESHOLD, MAX_RECOMMENDATIONS,
 };
 
 struct MutableCellAccumulator {
@@ -235,6 +235,8 @@ pub fn evaluate_harness_fluency(options: &EvaluateOptions) -> Result<HarnessFlue
         model_path: options.model_path.display().to_string(),
         profile: options.profile.clone(),
         mode: options.mode.clone(),
+        framing: FluencyFraming::default(),
+        term_mapping: FluencyTermMapping::default(),
         repo_root: options.repo_root.display().to_string(),
         generated_at: Utc::now().to_rfc3339(),
         snapshot_path: options.snapshot_path.display().to_string(),

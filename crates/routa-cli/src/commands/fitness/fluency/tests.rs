@@ -1,5 +1,5 @@
 use super::model::load_fluency_model;
-use super::types::{CriterionStatus, EvidenceMode, FluencyMode, LevelChange};
+use super::types::{CriterionStatus, EvidenceMode, FluencyFraming, FluencyMode, LevelChange};
 use super::{evaluate_harness_fluency, format_text_report, EvaluateOptions};
 use serde_json::json;
 use std::fs::{create_dir_all, write};
@@ -348,6 +348,23 @@ criteria:
         criterion.id == "collaboration.assisted.attestation"
             && criterion.status == CriterionStatus::Skipped
     }));
+    assert_eq!(report.framing, FluencyFraming::HarnessFluency);
+    assert_eq!(report.term_mapping.internal_term, "Harness Fluency");
+    assert_eq!(report.term_mapping.public_term, "Harnessability");
+    assert_eq!(report.term_mapping.active_term, "Harness Fluency");
+
+    let serialized = serde_json::to_value(&report).expect("serialize");
+    assert_eq!(
+        serialized.get("framing").and_then(|value| value.as_str()),
+        Some("harness_fluency")
+    );
+    assert_eq!(
+        serialized
+            .get("termMapping")
+            .and_then(|value| value.get("activeTerm"))
+            .and_then(|value| value.as_str()),
+        Some("Harness Fluency")
+    );
 }
 
 #[test]
@@ -670,6 +687,13 @@ criteria:
     let text = format_text_report(&report);
     assert!(text.contains("HARNESS FLUENCY REPORT"));
     assert!(text.contains("Comparison To Last Snapshot:"));
+
+    let mut harnessability_report = report.clone();
+    harnessability_report.apply_framing(FluencyFraming::Harnessability);
+    let harnessability_text = format_text_report(&harnessability_report);
+    assert!(harnessability_text.contains("HARNESSABILITY REPORT"));
+    assert!(harnessability_text.contains("Overall Harnessability Stage"));
+    assert!(harnessability_text.contains("Prioritized Harnessability Actions:"));
 }
 
 #[test]

@@ -9,7 +9,7 @@ mod types;
 
 pub use engine::evaluate_harness_fluency;
 pub use report::format_text_report;
-pub use types::{EvaluateOptions, FluencyMode};
+pub use types::{EvaluateOptions, FluencyFraming, FluencyMode};
 
 #[cfg(test)]
 mod tests;

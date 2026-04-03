@@ -5,7 +5,9 @@ mod fluency;
 use clap::{Args, Subcommand, ValueEnum};
 use std::path::{Path, PathBuf};
 
-use self::fluency::{evaluate_harness_fluency, format_text_report, EvaluateOptions, FluencyMode};
+use self::fluency::{
+    evaluate_harness_fluency, format_text_report, EvaluateOptions, FluencyFraming, FluencyMode,
+};
 
 const DEFAULT_MODEL_RELATIVE_PATH: &str = "docs/fitness/harness-fluency.model.yaml";
 const AGENT_ORCHESTRATOR_MODEL_RELATIVE_PATH: &str =
@@ -43,6 +45,10 @@ pub struct FluencyArgs {
     /// Output format.
     #[arg(long, value_enum, default_value_t = FluencyOutputFormat::Text)]
     pub format: FluencyOutputFormat,
+
+    /// Output framing terminology.
+    #[arg(long, value_enum, default_value_t = FluencyFramingArg::HarnessFluency)]
+    pub framing: FluencyFramingArg,
 
     /// Shortcut for `--format json` kept for legacy harness-fluency compatibility.
     #[arg(long, default_value_t = false)]
@@ -103,6 +109,22 @@ impl FluencyRunMode {
     }
 }
 
+#[derive(Copy, Clone, Debug, Eq, PartialEq, ValueEnum)]
+pub enum FluencyFramingArg {
+    #[value(alias = "harness_fluency", alias = "fluency")]
+    HarnessFluency,
+    Harnessability,
+}
+
+impl FluencyFramingArg {
+    fn into_fluency_framing(self) -> FluencyFraming {
+        match self {
+            Self::HarnessFluency => FluencyFraming::HarnessFluency,
+            Self::Harnessability => FluencyFraming::Harnessability,
+        }
+    }
+}
+
 pub fn run(action: FitnessAction) -> Result<(), String> {
     match action {
         FitnessAction::Fluency(args) => run_fluency(&args),
@@ -115,7 +137,7 @@ fn run_fluency(args: &FluencyArgs) -> Result<(), String> {
     let model_path = resolve_model_path(args, &repo_root, &workspace_root)?;
     let snapshot_path = resolve_snapshot_path(args, &repo_root);
 
-    let report = evaluate_harness_fluency(&EvaluateOptions {
+    let mut report = evaluate_harness_fluency(&EvaluateOptions {
         repo_root,
         model_path,
         profile: args.profile.as_cli_value().to_string(),
@@ -124,6 +146,7 @@ fn run_fluency(args: &FluencyArgs) -> Result<(), String> {
         compare_last: args.compare_last,
         save: !args.no_save,
     })?;
+    report.apply_framing(args.framing.into_fluency_framing());
 
     match resolved_output_format(args) {
         FluencyOutputFormat::Text => println!("{}", format_text_report(&report)),
@@ -270,7 +293,8 @@ mod tests {
     use super::{
         discover_git_toplevel, profile_snapshot_filename, resolve_requested_path,
         resolve_workspace_root, resolved_output_format, validate_repo_root, FluencyArgs,
-        FluencyMode, FluencyOutputFormat, FluencyProfile, FluencyRunMode,
+        FluencyFraming, FluencyFramingArg, FluencyMode, FluencyOutputFormat, FluencyProfile,
+        FluencyRunMode,
     };
     use std::fs::File;
     use std::path::Path;
@@ -327,6 +351,7 @@ mod tests {
             profile: FluencyProfile::Generic,
             mode: FluencyRunMode::Deterministic,
             format: FluencyOutputFormat::Text,
+            framing: FluencyFramingArg::HarnessFluency,
             json: true,
             compare_last: false,
             no_save: false,
@@ -346,5 +371,17 @@ mod tests {
             FluencyMode::Hybrid
         );
         assert_eq!(FluencyRunMode::Ai.into_fluency_mode(), FluencyMode::Ai);
+    }
+
+    #[test]
+    fn fluency_framing_arg_maps_to_internal_framing() {
+        assert_eq!(
+            FluencyFramingArg::HarnessFluency.into_fluency_framing(),
+            FluencyFraming::HarnessFluency
+        );
+        assert_eq!(
+            FluencyFramingArg::Harnessability.into_fluency_framing(),
+            FluencyFraming::Harnessability
+        );
     }
 }

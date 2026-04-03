@@ -55,6 +55,45 @@ pub enum FluencyMode {
     Ai,
 }
 
+#[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum FluencyFraming {
+    #[default]
+    HarnessFluency,
+    Harnessability,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct FluencyTermMapping {
+    pub internal_term: String,
+    pub public_term: String,
+    pub active_term: String,
+}
+
+impl FluencyTermMapping {
+    pub fn for_framing(framing: FluencyFraming) -> Self {
+        let internal_term = "Harness Fluency".to_string();
+        let public_term = "Harnessability".to_string();
+        let active_term = match framing {
+            FluencyFraming::HarnessFluency => internal_term.clone(),
+            FluencyFraming::Harnessability => public_term.clone(),
+        };
+
+        Self {
+            internal_term,
+            public_term,
+            active_term,
+        }
+    }
+}
+
+impl Default for FluencyTermMapping {
+    fn default() -> Self {
+        Self::for_framing(FluencyFraming::HarnessFluency)
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum CriterionStatus {
@@ -367,6 +406,10 @@ pub struct HarnessFluencyReport {
     pub profile: String,
     #[serde(default)]
     pub mode: FluencyMode,
+    #[serde(default)]
+    pub framing: FluencyFraming,
+    #[serde(default)]
+    pub term_mapping: FluencyTermMapping,
     pub repo_root: String,
     pub generated_at: String,
     pub snapshot_path: String,
@@ -388,6 +431,13 @@ pub struct HarnessFluencyReport {
     pub blocking_criteria: Vec<CriterionResult>,
     pub recommendations: Vec<Recommendation>,
     pub comparison: Option<ReportComparison>,
+}
+
+impl HarnessFluencyReport {
+    pub fn apply_framing(&mut self, framing: FluencyFraming) {
+        self.framing = framing;
+        self.term_mapping = FluencyTermMapping::for_framing(framing);
+    }
 }
 
 impl DetectorDefinition {

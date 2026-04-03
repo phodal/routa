@@ -1,7 +1,29 @@
 use super::support::{format_percent, level_change_label};
-use super::types::{HarnessFluencyReport, LevelChange};
+use super::types::{FluencyFraming, HarnessFluencyReport, LevelChange};
+
+struct ReportLabels {
+    header: &'static str,
+    overall_level_label: &'static str,
+    recommendation_header: &'static str,
+}
+
+fn labels_for_framing(framing: FluencyFraming) -> ReportLabels {
+    match framing {
+        FluencyFraming::HarnessFluency => ReportLabels {
+            header: "HARNESS FLUENCY REPORT",
+            overall_level_label: "Overall Level",
+            recommendation_header: "Recommended Next Actions:",
+        },
+        FluencyFraming::Harnessability => ReportLabels {
+            header: "HARNESSABILITY REPORT",
+            overall_level_label: "Overall Harnessability Stage",
+            recommendation_header: "Prioritized Harnessability Actions:",
+        },
+    }
+}
 
 pub fn format_text_report(report: &HarnessFluencyReport) -> String {
+    let labels = labels_for_framing(report.framing);
     let next_level_readiness_line = if report.next_level_name.is_some()
         && report.next_level_readiness.is_none()
         && report.blocking_target_level == Some(report.overall_level.clone())
@@ -25,13 +47,17 @@ pub fn format_text_report(report: &HarnessFluencyReport) -> String {
     };
 
     let mut lines = vec![
-        "HARNESS FLUENCY REPORT".to_string(),
+        labels.header.to_string(),
         String::new(),
         format!("Repository: {}", report.repo_root),
         format!("Profile: {}", report.profile),
         format!("Mode: {:?}", report.mode),
         format!("Model Version: {}", report.model_version),
-        format!("Overall Level: {}", report.overall_level_name),
+        format!("Framing: {}", report.term_mapping.active_term),
+        format!(
+            "{}: {}",
+            labels.overall_level_label, report.overall_level_name
+        ),
         format!(
             "Current Level Readiness: {}",
             format_percent(Some(report.current_level_readiness))
@@ -101,7 +127,7 @@ pub fn format_text_report(report: &HarnessFluencyReport) -> String {
     }
 
     lines.push(String::new());
-    lines.push("Recommended Next Actions:".to_string());
+    lines.push(labels.recommendation_header.to_string());
     if report.recommendations.is_empty() {
         lines.push("- None".to_string());
     } else {
