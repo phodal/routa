@@ -61,6 +61,45 @@ export type FitnessRecommendation = {
   weight: number;
 };
 
+export type FluencyFraming = "harness_fluency" | "harnessability";
+
+export type FluencyTermMapping = {
+  internalTerm: string;
+  publicTerm: string;
+  activeTerm: string;
+};
+
+export type AutonomyBand = "low" | "medium" | "high";
+
+export type AutonomyRecommendation = {
+  band: AutonomyBand;
+  rationale: string;
+};
+
+export type MissingDimensionInsight = {
+  dimension: string;
+  name: string;
+  failingCriteria: number;
+  criticalFailures: number;
+  failedWeight: number;
+  blockingFailures: number;
+};
+
+export type SensorPlacementTierSummary = {
+  applicableCriteria: number;
+  passingCriteria: number;
+  failingCriteria: number;
+  criticalFailures: number;
+  evidenceModes?: Record<string, number>;
+};
+
+export type LifecycleSensorPlacementSummary = {
+  fast: SensorPlacementTierSummary;
+  normal: SensorPlacementTierSummary;
+  fullOrDeep: SensorPlacementTierSummary;
+  continuous: SensorPlacementTierSummary;
+};
+
 export type FitnessComparison = {
   previousGeneratedAt: string;
   previousOverallLevel: string;
@@ -83,6 +122,8 @@ export type FitnessReport = {
   modelPath: string;
   profile: FitnessProfile;
   mode?: string;
+  framing?: FluencyFraming;
+  termMapping?: FluencyTermMapping;
   repoRoot: string;
   generatedAt: string;
   snapshotPath: string;
@@ -102,6 +143,10 @@ export type FitnessReport = {
   recommendations: FitnessRecommendation[];
   comparison?: FitnessComparison;
   blockingCriteria?: CriterionResult[];
+  topPrioritizedActions?: FitnessRecommendation[];
+  dominantMissingDimensions?: MissingDimensionInsight[];
+  autonomyRecommendation?: AutonomyRecommendation;
+  lifecycleSensorPlacement?: LifecycleSensorPlacementSummary;
 };
 
 export type FitnessEvidenceExcerpt = {
@@ -226,7 +271,7 @@ export function normalizeApiResponse(payload: unknown): ApiProfileEntry[] {
       profile: value.profile,
       status: value.status,
       source: value.source,
-      report: value.report as FitnessReport | undefined,
+      report: value.report && typeof value.report === "object" ? value.report as FitnessReport : undefined,
       error: typeof value.error === "string" ? value.error : undefined,
       durationMs: typeof value.durationMs === "number" && Number.isFinite(value.durationMs) ? value.durationMs : undefined,
     });

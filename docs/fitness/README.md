@@ -69,6 +69,15 @@ Harness Fluency 默认跑通用 `generic` 模型；如果要评估编排型 agen
 
 `tools/harness-fluency` 已降级为兼容层，唯一权威实现是 `routa fitness fluency`。后续 detector、profile、输出格式与测试应只在 Rust CLI 侧演进。
 
+### 术语映射与对外表述
+
+- **Harness Fluency（内部术语）**：内部模型与命令族保持 `fitness fluency` 命名，作为实现与演进的主语。
+- **harnessability（对外表述）**：用于对外/非内部语境的沟通表述，不改变底层评分与规则执行逻辑。
+- JSON 报告通过 `framing` + `termMapping` 显式声明当前术语上下文：
+  - `framing`: `harness_fluency`（内部）或 `harnessability`（对外）
+  - `termMapping`: `internalTerm` / `publicTerm` / `activeTerm`
+- 报告基线洞察字段（`topPrioritizedActions`、`dominantMissingDimensions`、`autonomyRecommendation`、`lifecycleSensorPlacement`）属于**增量字段**，用于补充解释层，不替代既有顶层 fluency 字段。
+
 ### Tier 分层
 
 - **fast** (<30s): Lints, 静态分析, 契约检查

@@ -114,6 +114,60 @@ const report: FitnessReport = {
     },
   ],
   recommendations: [],
+  topPrioritizedActions: [
+    {
+      criterionId: "governance.agent_first.machine_readable_guardrails",
+      action: "Add CODEOWNERS and ownership routing.",
+      whyItMatters: "Ownership is missing.",
+      evidenceHint: ".github/CODEOWNERS",
+      critical: true,
+      weight: 2,
+    },
+  ],
+  dominantMissingDimensions: [
+    {
+      dimension: "governance",
+      name: "Verification & Guardrails",
+      failingCriteria: 2,
+      criticalFailures: 1,
+      failedWeight: 3,
+      blockingFailures: 1,
+    },
+  ],
+  autonomyRecommendation: {
+    band: "low",
+    rationale: "Critical governance blockers remain unresolved.",
+  },
+  lifecycleSensorPlacement: {
+    fast: {
+      applicableCriteria: 3,
+      passingCriteria: 1,
+      failingCriteria: 2,
+      criticalFailures: 1,
+      evidenceModes: { static: 2, runtime: 1 },
+    },
+    normal: {
+      applicableCriteria: 2,
+      passingCriteria: 1,
+      failingCriteria: 1,
+      criticalFailures: 0,
+      evidenceModes: { static: 1, manual: 1 },
+    },
+    fullOrDeep: {
+      applicableCriteria: 1,
+      passingCriteria: 0,
+      failingCriteria: 1,
+      criticalFailures: 0,
+      evidenceModes: { ai: 1 },
+    },
+    continuous: {
+      applicableCriteria: 0,
+      passingCriteria: 0,
+      failingCriteria: 0,
+      criticalFailures: 0,
+      evidenceModes: {},
+    },
+  },
   blockingCriteria: [
     {
       id: "governance.agent_first.machine_readable_guardrails",
@@ -171,5 +225,77 @@ describe("buildFitnessDashboardModel", () => {
     ]);
     expect(model.heatmapLevels).toEqual(["awareness", "agent_centric"]);
     expect(model.heatmapDimensions).toEqual(["governance", "context"]);
+    expect(model.baselineInsights).toEqual({
+      topPrioritizedActions: [
+        {
+          criterionId: "governance.agent_first.machine_readable_guardrails",
+          action: "Add CODEOWNERS and ownership routing.",
+          critical: true,
+          weight: 2,
+        },
+      ],
+      dominantMissingDimensions: [
+        {
+          dimension: "governance",
+          name: "Verification & Guardrails",
+          failingCriteria: 2,
+          criticalFailures: 1,
+          failedWeight: 3,
+          blockingFailures: 1,
+        },
+      ],
+      autonomyRecommendation: {
+        band: "low",
+        rationale: "Critical governance blockers remain unresolved.",
+      },
+      lifecycleSensorPlacement: report.lifecycleSensorPlacement,
+    });
+  });
+
+  it("falls back to top 3 recommendations when topPrioritizedActions is absent", () => {
+    const model = buildFitnessDashboardModel({
+      ...report,
+      topPrioritizedActions: undefined,
+      recommendations: [
+        {
+          criterionId: "a",
+          action: "A",
+          whyItMatters: "w",
+          evidenceHint: "e",
+          critical: false,
+          weight: 1,
+        },
+        {
+          criterionId: "b",
+          action: "B",
+          whyItMatters: "w",
+          evidenceHint: "e",
+          critical: true,
+          weight: 2,
+        },
+        {
+          criterionId: "c",
+          action: "C",
+          whyItMatters: "w",
+          evidenceHint: "e",
+          critical: false,
+          weight: 1,
+        },
+        {
+          criterionId: "d",
+          action: "D",
+          whyItMatters: "w",
+          evidenceHint: "e",
+          critical: true,
+          weight: 3,
+        },
+      ],
+    });
+
+    expect(model.baselineInsights.topPrioritizedActions).toEqual([
+      { criterionId: "a", action: "A", critical: false, weight: 1 },
+      { criterionId: "b", action: "B", critical: true, weight: 2 },
+      { criterionId: "c", action: "C", critical: false, weight: 1 },
+    ]);
   });
 });

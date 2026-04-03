@@ -58,6 +58,8 @@ type FitnessReport = {
   modelPath: string;
   profile: FitnessProfile;
   mode?: string;
+  framing?: "harness_fluency" | "harnessability";
+  termMapping?: FitnessTermMapping;
   repoRoot: string;
   generatedAt: string;
   snapshotPath: string;
@@ -76,6 +78,10 @@ type FitnessReport = {
   criteria: Array<unknown>;
   blockingCriteria: Array<unknown>;
   recommendations: Array<FitnessRecommendation>;
+  topPrioritizedActions?: Array<FitnessRecommendation>;
+  dominantMissingDimensions?: Array<FitnessMissingDimensionInsight>;
+  autonomyRecommendation?: FitnessAutonomyRecommendation;
+  lifecycleSensorPlacement?: FitnessLifecycleSensorPlacement;
   comparison?: FitnessComparison | null;
 };
 
@@ -98,6 +104,41 @@ type FitnessRecommendation = {
   evidenceHint: string;
   critical: boolean;
   weight: number;
+};
+
+type FitnessTermMapping = {
+  internalTerm: string;
+  publicTerm: string;
+  activeTerm: string;
+};
+
+type FitnessMissingDimensionInsight = {
+  dimension: string;
+  name: string;
+  failingCriteria: number;
+  criticalFailures: number;
+  failedWeight: number;
+  blockingFailures: number;
+};
+
+type FitnessAutonomyRecommendation = {
+  band: "low" | "medium" | "high";
+  rationale: string;
+};
+
+type FitnessSensorPlacementTierSummary = {
+  applicableCriteria: number;
+  passingCriteria: number;
+  failingCriteria: number;
+  criticalFailures: number;
+  evidenceModes?: Record<string, number>;
+};
+
+type FitnessLifecycleSensorPlacement = {
+  fast: FitnessSensorPlacementTierSummary;
+  normal: FitnessSensorPlacementTierSummary;
+  fullOrDeep: FitnessSensorPlacementTierSummary;
+  continuous: FitnessSensorPlacementTierSummary;
 };
 
 type FitnessDimensionChange = {

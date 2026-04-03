@@ -52,6 +52,25 @@ export type DashboardHeatmapCell = {
   applicableWeight: number;
 };
 
+export type DashboardBaselineInsights = {
+  topPrioritizedActions: Array<{
+    criterionId: string;
+    action: string;
+    critical: boolean;
+    weight: number;
+  }>;
+  dominantMissingDimensions: Array<{
+    dimension: string;
+    name: string;
+    failingCriteria: number;
+    criticalFailures: number;
+    failedWeight: number;
+    blockingFailures: number;
+  }>;
+  autonomyRecommendation: NonNullable<FitnessReport["autonomyRecommendation"]> | null;
+  lifecycleSensorPlacement: NonNullable<FitnessReport["lifecycleSensorPlacement"]> | null;
+};
+
 export type FitnessDashboardModel = {
   metrics: DashboardMetricModel;
   radar: DashboardRadarDatum[];
@@ -60,6 +79,7 @@ export type FitnessDashboardModel = {
   heatmapLevels: string[];
   heatmapDimensions: string[];
   heatmapCells: DashboardHeatmapCell[];
+  baselineInsights: DashboardBaselineInsights;
 };
 
 const DIMENSION_ORDER = ["collaboration", "sdlc", "harness", "governance", "context"] as const;
@@ -158,6 +178,33 @@ function buildHeatmap(report: FitnessReport) {
   };
 }
 
+function buildBaselineInsights(report: FitnessReport): DashboardBaselineInsights {
+  const topPrioritizedActions = (report.topPrioritizedActions ?? report.recommendations.slice(0, 3))
+    .slice(0, 3)
+    .map((item) => ({
+      criterionId: item.criterionId,
+      action: item.action,
+      critical: item.critical,
+      weight: item.weight,
+    }));
+
+  const dominantMissingDimensions = (report.dominantMissingDimensions ?? []).map((item) => ({
+    dimension: item.dimension,
+    name: item.name,
+    failingCriteria: item.failingCriteria,
+    criticalFailures: item.criticalFailures,
+    failedWeight: item.failedWeight,
+    blockingFailures: item.blockingFailures,
+  }));
+
+  return {
+    topPrioritizedActions,
+    dominantMissingDimensions,
+    autonomyRecommendation: report.autonomyRecommendation ?? null,
+    lifecycleSensorPlacement: report.lifecycleSensorPlacement ?? null,
+  };
+}
+
 export function toDashboardGateState(value: number): DashboardGateState {
   if (value >= 90) return "pass";
   if (value >= 70) return "warn";
@@ -189,5 +236,6 @@ export function buildFitnessDashboardModel(report: FitnessReport): FitnessDashbo
     heatmapLevels,
     heatmapDimensions,
     heatmapCells,
+    baselineInsights: buildBaselineInsights(report),
   };
 }
