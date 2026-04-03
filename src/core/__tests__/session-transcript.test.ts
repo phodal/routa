@@ -91,6 +91,31 @@ describe("buildPreferredTranscriptPayload", () => {
     expect(messages[0]?.toolName).toBe("update_card");
   });
 
+  it("normalizes delegated task tools so chat views can suppress duplicate prompt previews", () => {
+    const messages = historyNotificationsToMessages(
+      [
+        {
+          sessionId: "s1",
+          update: {
+            sessionUpdate: "tool_call",
+            toolCallId: "call-1",
+            tool: "delegate_task_to_agent",
+            kind: "delegate_task_to_agent",
+            status: "running",
+            rawInput: {
+              description: "Run review",
+              prompt: "You are assigned to Kanban task: Run review",
+            },
+          },
+        },
+      ],
+      "s1",
+    );
+
+    expect(messages).toHaveLength(1);
+    expect(messages[0]?.toolKind).toBe("task");
+  });
+
   it("restores consolidated user and agent messages from history", () => {
     const payload = buildPreferredTranscriptPayload({
       sessionId: "s1",

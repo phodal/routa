@@ -9,7 +9,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { getHttpSessionStore } from "@/core/acp/http-session-store";
-import { renameSessionInDb, deleteSessionFromDb } from "@/core/acp/session-db-persister";
+import { loadSessionFromDb, loadSessionFromLocalStorage, renameSessionInDb, deleteSessionFromDb } from "@/core/acp/session-db-persister";
 import {
   getRequiredRunnerUrl,
   isForwardedAcpRequest,
@@ -27,8 +27,45 @@ export async function GET(
   const store = getHttpSessionStore();
   await store.hydrateFromDb();
   const session = store.getSession(sessionId);
+  const persistedSession = session ? null : await loadSessionFromDb(sessionId);
+  const localSession = session || persistedSession ? null : await loadSessionFromLocalStorage(sessionId);
+  const resolvedSession = session ?? (persistedSession ? {
+    sessionId: persistedSession.id,
+    name: persistedSession.name,
+    cwd: persistedSession.cwd,
+    branch: persistedSession.branch,
+    workspaceId: persistedSession.workspaceId,
+    routaAgentId: persistedSession.routaAgentId,
+    provider: persistedSession.provider,
+    role: persistedSession.role,
+    modeId: persistedSession.modeId,
+    model: persistedSession.model,
+    parentSessionId: persistedSession.parentSessionId,
+    specialistId: persistedSession.specialistId,
+    executionMode: persistedSession.executionMode,
+    ownerInstanceId: persistedSession.ownerInstanceId,
+    leaseExpiresAt: persistedSession.leaseExpiresAt,
+    createdAt: persistedSession.createdAt?.toISOString() ?? new Date().toISOString(),
+  } : localSession ? {
+    sessionId: localSession.id,
+    name: localSession.name,
+    cwd: localSession.cwd,
+    branch: localSession.branch,
+    workspaceId: localSession.workspaceId,
+    routaAgentId: localSession.routaAgentId,
+    provider: localSession.provider,
+    role: localSession.role,
+    modeId: localSession.modeId,
+    model: localSession.model,
+    parentSessionId: localSession.parentSessionId,
+    specialistId: localSession.specialistId,
+    executionMode: localSession.executionMode,
+    ownerInstanceId: localSession.ownerInstanceId,
+    leaseExpiresAt: localSession.leaseExpiresAt,
+    createdAt: localSession.createdAt,
+  } : null);
 
-  if (!session) {
+  if (!resolvedSession) {
     return NextResponse.json(
       { error: "Session not found" },
       { status: 404 }
@@ -37,24 +74,24 @@ export async function GET(
 
   return NextResponse.json({
     session: {
-      sessionId: session.sessionId,
-      name: session.name,
-      cwd: session.cwd,
-      branch: session.branch,
-      workspaceId: session.workspaceId,
-      routaAgentId: session.routaAgentId,
-      provider: session.provider,
-      role: session.role,
-      acpStatus: session.acpStatus,
-      acpError: session.acpError,
-      modeId: session.modeId,
-      model: session.model,
-      createdAt: session.createdAt,
-      parentSessionId: session.parentSessionId,
-      specialistId: session.specialistId,
-      executionMode: session.executionMode,
-      ownerInstanceId: session.ownerInstanceId,
-      leaseExpiresAt: session.leaseExpiresAt,
+      sessionId: resolvedSession.sessionId,
+      name: resolvedSession.name,
+      cwd: resolvedSession.cwd,
+      branch: resolvedSession.branch,
+      workspaceId: resolvedSession.workspaceId,
+      routaAgentId: resolvedSession.routaAgentId,
+      provider: resolvedSession.provider,
+      role: resolvedSession.role,
+      acpStatus: resolvedSession.acpStatus,
+      acpError: resolvedSession.acpError,
+      modeId: resolvedSession.modeId,
+      model: resolvedSession.model,
+      createdAt: resolvedSession.createdAt,
+      parentSessionId: resolvedSession.parentSessionId,
+      specialistId: resolvedSession.specialistId,
+      executionMode: resolvedSession.executionMode,
+      ownerInstanceId: resolvedSession.ownerInstanceId,
+      leaseExpiresAt: resolvedSession.leaseExpiresAt,
     },
   });
 }

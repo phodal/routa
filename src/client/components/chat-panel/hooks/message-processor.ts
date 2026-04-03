@@ -17,7 +17,7 @@ import {
   extractFileChangeFromToolResult,
   extractFilesModified,
 } from "../../../utils/file-changes-tracker";
-import { getToolEventLabel, getToolEventName } from "../tool-call-name";
+import { getToolEventLabel, getToolEventName, normalizeToolKind } from "../tool-call-name";
 
 type SetState<T> = React.Dispatch<React.SetStateAction<T>>;
 type StreamingRole = "assistant" | "thought";
@@ -86,7 +86,7 @@ function buildToolCallPreview(update: Record<string, unknown>): {
   const toolCallId = update.toolCallId as string | undefined;
   const toolName = getToolEventLabel(update);
   const status = (update.status as string) ?? "running";
-  const toolKind = update.kind as string | undefined;
+  const toolKind = normalizeToolKind(update.kind as string | undefined);
   const rawInput = asRecord(update.rawInput);
   const contentParts: string[] = [];
 
@@ -142,7 +142,7 @@ function buildToolUpdatePayload(update: Record<string, unknown>) {
     rawOutput: update.rawOutput,
     status: update.status as string | undefined,
     toolCallId: update.toolCallId as string | undefined,
-    toolKind: update.kind as string | undefined,
+    toolKind: normalizeToolKind(update.kind as string | undefined),
     toolName: getToolEventName(update) ?? (update.kind as string | undefined),
   };
 }
@@ -403,7 +403,7 @@ export function processUpdate(
     case "tool_call_start": {
       const toolCallId = update.toolCallId as string | undefined;
       const toolName = getToolEventName(update);
-      const toolKind = update.kind as string | undefined;
+      const toolKind = normalizeToolKind(update.kind as string | undefined);
       if (toolCallId) {
         arr.push({
           id: toolCallId,

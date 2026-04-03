@@ -11,7 +11,7 @@
 import { getDatabaseDriver, getPostgresDatabase } from "@/core/db/index";
 import { PgAcpSessionStore } from "@/core/db/pg-acp-session-store";
 import { SqliteAcpSessionStore } from "@/core/db/sqlite-stores";
-import { LocalSessionProvider } from "@/core/storage/local-session-provider";
+import { findLocalSessionRecord, LocalSessionProvider } from "@/core/storage/local-session-provider";
 import type { AcpSession } from "@/core/store/acp-session-store";
 import type { SessionRecord, SessionJsonlEntry } from "@/core/storage/types";
 
@@ -202,6 +202,64 @@ export async function hydrateSessionsFromDb(): Promise<Array<{
     console.error(`[SessionDB] Failed to load sessions from ${driver}:`, err);
     return [];
   }
+}
+
+export async function loadSessionFromDb(sessionId: string): Promise<{
+  id: string;
+  name?: string;
+  cwd: string;
+  branch?: string;
+  workspaceId: string;
+  routaAgentId?: string;
+  provider?: string;
+  role?: string;
+  modeId?: string;
+  model?: string;
+  parentSessionId?: string;
+  specialistId?: string;
+  executionMode?: "embedded" | "runner";
+  ownerInstanceId?: string;
+  leaseExpiresAt?: string;
+  createdAt: Date | null;
+} | null> {
+  const driver = getDatabaseDriver();
+  if (driver === "memory") return null;
+
+  try {
+    if (driver === "postgres") {
+      const db = getPostgresDatabase();
+      return await new PgAcpSessionStore(db).get(sessionId);
+    }
+
+    const { getSqliteDatabase } = await loadSqliteDatabaseModule();
+    const db = getSqliteDatabase();
+    return await new SqliteAcpSessionStore(db).get(sessionId);
+  } catch (err) {
+    console.error(`[SessionDB] Failed to load session ${sessionId} from ${driver}:`, err);
+    return null;
+  }
+}
+
+export async function loadSessionFromLocalStorage(sessionId: string): Promise<{
+  id: string;
+  name?: string;
+  cwd: string;
+  branch?: string;
+  workspaceId: string;
+  routaAgentId?: string;
+  provider?: string;
+  role?: string;
+  modeId?: string;
+  model?: string;
+  parentSessionId?: string;
+  specialistId?: string;
+  executionMode?: "embedded" | "runner";
+  ownerInstanceId?: string;
+  leaseExpiresAt?: string;
+  createdAt: string;
+  updatedAt: string;
+} | null> {
+  return (await findLocalSessionRecord(sessionId)) ?? null;
 }
 
 export async function updateSessionExecutionBindingInDb(

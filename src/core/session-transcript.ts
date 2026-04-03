@@ -2,7 +2,7 @@ import { v4 as uuidv4 } from "uuid";
 import type { TraceRecord } from "@/core/trace";
 import type { AcpSessionNotification } from "@/core/store/acp-session-store";
 import type { ChatMessage, PlanEntry } from "@/client/components/chat-panel/types";
-import { getToolEventLabel, getToolEventName } from "@/client/components/chat-panel/tool-call-name";
+import { getToolEventLabel, getToolEventName, normalizeToolKind } from "@/client/components/chat-panel/tool-call-name";
 
 export type TranscriptSource = "history" | "traces" | "empty";
 
@@ -80,7 +80,7 @@ function buildToolCallPreview(update: Record<string, unknown>): {
   const toolCallId = update.toolCallId as string | undefined;
   const toolName = getToolEventLabel(update);
   const status = (update.status as string) ?? "running";
-  const toolKind = update.kind as string | undefined;
+  const toolKind = normalizeToolKind(update.kind as string | undefined);
   const rawInput = asRecord(update.rawInput);
   const contentParts: string[] = [];
 
@@ -139,7 +139,7 @@ function applyToolCallUpdate(messages: ChatMessage[], update: Record<string, unk
       ...existing,
       toolStatus: (update.status as string | undefined) ?? existing.toolStatus,
       toolName,
-      toolKind: (update.kind as string | undefined) ?? existing.toolKind,
+      toolKind: normalizeToolKind(update.kind as string | undefined) ?? existing.toolKind,
       delegatedTaskId: (update.delegatedTaskId as string | undefined) ?? existing.delegatedTaskId,
       toolRawInput: asRecord(update.rawInput) ?? existing.toolRawInput,
       toolRawOutput: update.rawOutput ?? existing.toolRawOutput,
@@ -158,7 +158,7 @@ function applyToolCallUpdate(messages: ChatMessage[], update: Record<string, unk
     toolStatus: (update.status as string | undefined) ?? "completed",
     toolCallId,
     toolName,
-    toolKind: update.kind as string | undefined,
+    toolKind: normalizeToolKind(update.kind as string | undefined),
     toolRawInput: asRecord(update.rawInput),
     toolRawOutput: update.rawOutput,
     delegatedTaskId: update.delegatedTaskId as string | undefined,

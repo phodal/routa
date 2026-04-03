@@ -21,6 +21,95 @@ import type {
   SessionSummary,
 } from "./types";
 
+function getProjectsRootDir(): string {
+  const homeDir = process.env.HOME || process.env.USERPROFILE || "~";
+  return path.join(homeDir, ".routa", "projects");
+}
+
+function toSessionRecord(
+  sessionId: string,
+  entries: SessionJsonlEntry[],
+): SessionRecord | undefined {
+  if (entries.length === 0) return undefined;
+
+  const metadata = entries.find(
+    (entry) => (entry as SessionMetadata).type === "metadata",
+  ) as SessionMetadata | undefined;
+
+  if (!metadata) return undefined;
+
+  const summary = entries.find(
+    (entry) => (entry as SessionSummary).type === "summary",
+  ) as SessionSummary | undefined;
+
+  const deriveLabel = (): string | undefined => {
+    for (const entry of entries) {
+      const msg = entry as { type?: string; message?: unknown };
+      if (msg.type === "user_message") {
+        const text =
+          typeof msg.message === "string"
+            ? msg.message
+            : JSON.stringify(msg.message);
+        return text.length > 80 ? `${text.slice(0, 80)}…` : text;
+      }
+    }
+    return undefined;
+  };
+
+  const getLastTimestamp = (): string | undefined => {
+    for (let index = entries.length - 1; index >= 0; index -= 1) {
+      const timestamp = (entries[index] as { timestamp?: string }).timestamp;
+      if (timestamp) return timestamp;
+    }
+    return undefined;
+  };
+
+  return {
+    id: sessionId,
+    name: metadata.name || summary?.summary || deriveLabel() || "Routa Session",
+    cwd: metadata.cwd,
+    branch: metadata.branch,
+    workspaceId: metadata.workspaceId,
+    routaAgentId: metadata.routaAgentId,
+    provider: metadata.provider,
+    role: metadata.role,
+    modeId: metadata.modeId,
+    model: metadata.model,
+    parentSessionId: metadata.parentSessionId,
+    specialistId: metadata.specialistId,
+    executionMode: metadata.executionMode,
+    ownerInstanceId: metadata.ownerInstanceId,
+    leaseExpiresAt: metadata.leaseExpiresAt,
+    createdAt: metadata.createdAt,
+    updatedAt: getLastTimestamp() || metadata.createdAt,
+  };
+}
+
+export async function findLocalSessionRecord(sessionId: string): Promise<SessionRecord | undefined> {
+  const projectsRoot = getProjectsRootDir();
+
+  try {
+    const projectDirs = await fs.readdir(projectsRoot, { withFileTypes: true });
+    for (const entry of projectDirs) {
+      if (!entry.isDirectory()) continue;
+      const filePath = path.join(projectsRoot, entry.name, "sessions", `${sessionId}.jsonl`);
+      try {
+        await fs.access(filePath);
+      } catch {
+        continue;
+      }
+
+      const entries = await readJsonlFile<SessionJsonlEntry>(filePath);
+      const session = toSessionRecord(sessionId, entries);
+      if (session) return session;
+    }
+  } catch {
+    return undefined;
+  }
+
+  return undefined;
+}
+
 export class LocalSessionProvider implements SessionStorageProvider {
   private writers = new Map<string, JsonlWriter>();
 
@@ -95,44 +184,7 @@ export class LocalSessionProvider implements SessionStorageProvider {
   async get(sessionId: string): Promise<SessionRecord | undefined> {
     const filePath = this.sessionFilePath(sessionId);
     const entries = await readJsonlFile<SessionJsonlEntry>(filePath);
-    if (entries.length === 0) return undefined;
-
-    const metadata = entries.find(
-      (e) => (e as SessionMetadata).type === "metadata"
-    ) as SessionMetadata | undefined;
-
-    if (!metadata) return undefined;
-
-    // Derive name from summary or first user message
-    const summary = entries.find(
-      (e) => (e as SessionSummary).type === "summary"
-    ) as SessionSummary | undefined;
-
-    const name =
-      metadata.name ||
-      summary?.summary ||
-      this.deriveLabel(entries) ||
-      "Routa Session";
-
-    return {
-      id: sessionId,
-      name,
-      cwd: metadata.cwd,
-      branch: metadata.branch,
-      workspaceId: metadata.workspaceId,
-      routaAgentId: metadata.routaAgentId,
-      provider: metadata.provider,
-      role: metadata.role,
-      modeId: metadata.modeId,
-      model: metadata.model,
-      parentSessionId: metadata.parentSessionId,
-      specialistId: metadata.specialistId,
-      executionMode: metadata.executionMode,
-      ownerInstanceId: metadata.ownerInstanceId,
-      leaseExpiresAt: metadata.leaseExpiresAt,
-      createdAt: metadata.createdAt,
-      updatedAt: this.getLastTimestamp(entries) || metadata.createdAt,
-    };
+    return toSessionRecord(sessionId, entries);
   }
 
   async list(workspaceId?: string, limit?: number): Promise<SessionRecord[]> {
@@ -211,31 +263,5 @@ export class LocalSessionProvider implements SessionStorageProvider {
 
     await fs.writeFile(filePath, content ? `${content}\n` : "", "utf-8");
     this.writers.delete(sessionId);
-  }
-
-  // ─── Helpers ────────────────────────────────────────────────────────
-
-  /** Derive a label from the first user message (truncated to 80 chars). */
-  private deriveLabel(entries: SessionJsonlEntry[]): string | undefined {
-    for (const entry of entries) {
-      const msg = entry as { type?: string; message?: unknown };
-      if (msg.type === "user_message") {
-        const text =
-          typeof msg.message === "string"
-            ? msg.message
-            : JSON.stringify(msg.message);
-        return text.length > 80 ? text.slice(0, 80) + "…" : text;
-      }
-    }
-    return undefined;
-  }
-
-  /** Get the last timestamp from entries. */
-  private getLastTimestamp(entries: SessionJsonlEntry[]): string | undefined {
-    for (let i = entries.length - 1; i >= 0; i--) {
-      const ts = (entries[i] as { timestamp?: string }).timestamp;
-      if (ts) return ts;
-    }
-    return undefined;
   }
 }

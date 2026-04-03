@@ -8,6 +8,7 @@ import {TaskProgressBar, TaskInfo} from "@/client/components/task-progress-bar";
 import {summarizeToolOutput, ToolInputTable, ToolOutputView} from "@/client/components/tool-call-content";
 import {normalizeThoughtContent} from "@/client/components/chat-panel/thought-content";
 import { inferToolDisplayName } from "@/client/components/tool-display-name";
+import { normalizeToolKind } from "@/client/components/chat-panel/tool-call-name";
 import { useTranslation } from "@/i18n";
 import { ChevronDown, ChevronRight, FileText, Search, SquarePen, Terminal, Globe, Settings } from "lucide-react";
 
@@ -188,33 +189,6 @@ function formatToolInputInline(rawInput?: Record<string, unknown>, maxLen = 60):
     const firstVal = rawInput[firstKey];
     const str = typeof firstVal === "string" ? firstVal : JSON.stringify(firstVal);
     return str.length > maxLen ? `${str.slice(0, maxLen)}…` : str;
-}
-
-/**
- * Normalize tool kind from any provider (Claude Code, OpenCode, etc.)
- * to a canonical kind used for icon/styling.
- */
-function normalizeToolKind(kind?: string): string | undefined {
-    if (!kind) return undefined;
-    const k = kind.toLowerCase();
-    // Shell / command execution
-    if (k === "shell" || k === "bash" || k.includes("run_command") || k.includes("execute_command") || k.includes("run_terminal")) return "shell";
-    // File read
-    if (k === "read-file" || k === "read_file" || k === "ls" || k === "list_directory") return "read-file";
-    // File write
-    if (k === "write-file" || k === "write_file" || k === "create_file") return "write-file";
-    // File edit
-    if (k === "edit-file" || k === "edit_file" || k === "patch_file" || k === "str_replace") return "edit-file";
-    // Glob / file search
-    if (k === "glob" || k === "find_files" || k === "search_files" || k === "list_files") return "glob";
-    // Grep / code search
-    if (k === "grep" || k === "search_code" || k === "search_text" || k === "ripgrep") return "grep";
-    // Web
-    if (k === "web-search" || k === "web_search" || k === "search_web") return "web-search";
-    if (k === "web-fetch" || k === "web_fetch" || k === "fetch_url" || k === "http_get") return "web-fetch";
-    // Task / agent delegation
-    if (k === "task" || k.includes("delegate_task") || k.includes("spawn_agent")) return "task";
-    return kind;
 }
 
 /**
@@ -540,7 +514,7 @@ function TaskBubble({
     content: string; toolStatus?: string; rawInput?: Record<string, unknown>;
 }) {
     const { t } = useTranslation();
-    const [expanded, setExpanded] = useState(true);
+    const [expanded, setExpanded] = useState(false);
     const statusColor =
         toolStatus === "completed" ? "bg-emerald-500"
             : toolStatus === "failed" ? "bg-red-500"

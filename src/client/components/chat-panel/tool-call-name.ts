@@ -67,3 +67,89 @@ export function getToolEventName(update: Record<string, unknown>): string | unde
 export function getToolEventLabel(update: Record<string, unknown>): string {
   return getToolEventName(update) ?? "tool";
 }
+
+export function normalizeToolKind(kind?: string): string | undefined {
+  if (!kind) return undefined;
+  const normalized = kind.toLowerCase();
+
+  if (
+    normalized === "shell"
+    || normalized === "bash"
+    || normalized.includes("run_command")
+    || normalized.includes("execute_command")
+    || normalized.includes("run_terminal")
+  ) {
+    return "shell";
+  }
+
+  if (
+    normalized === "read-file"
+    || normalized === "read_file"
+    || normalized === "ls"
+    || normalized === "list_directory"
+  ) {
+    return "read-file";
+  }
+
+  if (
+    normalized === "write-file"
+    || normalized === "write_file"
+    || normalized === "create_file"
+  ) {
+    return "write-file";
+  }
+
+  if (
+    normalized === "edit-file"
+    || normalized === "edit_file"
+    || normalized === "patch_file"
+    || normalized === "str_replace"
+  ) {
+    return "edit-file";
+  }
+
+  if (
+    normalized === "glob"
+    || normalized === "find_files"
+    || normalized === "search_files"
+    || normalized === "list_files"
+  ) {
+    return "glob";
+  }
+
+  if (
+    normalized === "grep"
+    || normalized === "search_code"
+    || normalized === "search_text"
+    || normalized === "ripgrep"
+  ) {
+    return "grep";
+  }
+
+  if (
+    normalized === "web-search"
+    || normalized === "web_search"
+    || normalized === "search_web"
+  ) {
+    return "web-search";
+  }
+
+  if (
+    normalized === "web-fetch"
+    || normalized === "web_fetch"
+    || normalized === "fetch_url"
+    || normalized === "http_get"
+  ) {
+    return "web-fetch";
+  }
+
+  if (
+    normalized === "task"
+    || normalized.includes("delegate_task")
+    || normalized.includes("spawn_agent")
+  ) {
+    return "task";
+  }
+
+  return kind;
+}
