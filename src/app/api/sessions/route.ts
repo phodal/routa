@@ -6,9 +6,29 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { getHttpSessionStore } from "@/core/acp/http-session-store";
+import { getHttpSessionStore, type RoutaSessionRecord } from "@/core/acp/http-session-store";
 
 export const dynamic = "force-dynamic";
+
+function toSessionSummary(session: RoutaSessionRecord) {
+  return {
+    sessionId: session.sessionId,
+    name: session.name,
+    cwd: session.cwd,
+    branch: session.branch,
+    workspaceId: session.workspaceId,
+    routaAgentId: session.routaAgentId,
+    provider: session.provider,
+    role: session.role,
+    acpStatus: session.acpStatus,
+    acpError: session.acpError,
+    modeId: session.modeId,
+    model: session.model,
+    parentSessionId: session.parentSessionId,
+    specialistId: session.specialistId,
+    createdAt: session.createdAt,
+  };
+}
 
 export async function GET(request: NextRequest) {
   const store = getHttpSessionStore();
@@ -32,7 +52,7 @@ export async function GET(request: NextRequest) {
     sessions = sessions.filter((s) => s.parentSessionId === parentSessionId);
     // When querying children, include sessions that haven't sent a prompt yet
     return NextResponse.json(
-      { sessions: limit ? sessions.slice(0, limit) : sessions },
+      { sessions: (limit ? sessions.slice(0, limit) : sessions).map(toSessionSummary) },
       { headers: { "Cache-Control": "no-store" } }
     );
   }
@@ -41,7 +61,7 @@ export async function GET(request: NextRequest) {
   sessions = sessions.filter((s) => s.firstPromptSent !== false);
 
   return NextResponse.json(
-    { sessions: limit ? sessions.slice(0, limit) : sessions },
+    { sessions: (limit ? sessions.slice(0, limit) : sessions).map(toSessionSummary) },
     { headers: { "Cache-Control": "no-store" } }
   );
 }

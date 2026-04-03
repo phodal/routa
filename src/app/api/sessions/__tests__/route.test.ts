@@ -22,8 +22,14 @@ describe("/api/sessions GET", () => {
     listSessions.mockReturnValue([
       {
         sessionId: "session-3",
+        name: "Session 3",
         workspaceId: "workspace-1",
         cwd: "/tmp/project",
+        branch: "main",
+        provider: "codex",
+        role: "DEVELOPER",
+        toolMode: "full",
+        allowedNativeTools: ["Bash"],
         createdAt: "2026-04-03T10:02:00.000Z",
       },
       {
@@ -80,6 +86,15 @@ describe("/api/sessions GET", () => {
       "session-3",
       "session-2",
     ]);
+    expect(data.sessions[0]).toMatchObject({
+      sessionId: "session-3",
+      name: "Session 3",
+      branch: "main",
+      provider: "codex",
+      role: "DEVELOPER",
+    });
+    expect(data.sessions[0].toolMode).toBeUndefined();
+    expect(data.sessions[0].allowedNativeTools).toBeUndefined();
   });
 
   it("keeps child session queries inclusive but still honors limit", async () => {
