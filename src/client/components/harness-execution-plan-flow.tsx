@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Background,
   Controls,
@@ -8,6 +8,8 @@ import {
   MarkerType,
   Position,
   ReactFlow,
+  useNodesInitialized,
+  useReactFlow,
   type Edge,
   type Node,
   type NodeProps,
@@ -68,6 +70,12 @@ type PlanNodeData = {
   exitOffsetPx?: number;
 };
 
+type FitViewOptions = {
+  padding: number;
+  minZoom: number;
+  maxZoom: number;
+};
+
 type HarnessExecutionPlanFlowProps = {
   loading: boolean;
   error: string | null;
@@ -79,6 +87,86 @@ type HarnessExecutionPlanFlowProps = {
   variant?: "full" | "compact";
   embedded?: boolean;
 };
+
+function getPlanNodeInitialSize(data: PlanNodeData) {
+  switch (data.kind) {
+    case "metric":
+      return { width: 244, height: 184 };
+    case "dimension":
+      return { width: 252, height: 208 };
+    case "lane":
+      return { width: data.frameWidth ?? 640, height: data.frameHeight ?? 220 };
+    case "anchor":
+      return { width: 1, height: 1 };
+    default:
+      return { width: 292, height: 124 };
+  }
+}
+
+function ExecutionPlanViewportController({
+  flowId,
+  layoutKey,
+  fitViewOptions,
+}: {
+  flowId: string;
+  layoutKey: string;
+  fitViewOptions: FitViewOptions;
+}) {
+  const nodesInitialized = useNodesInitialized();
+  const { fitView } = useReactFlow<Node<PlanNodeData>, Edge>();
+  const rafRef = useRef<number | null>(null);
+  const timeoutRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!nodesInitialized || typeof window === "undefined") {
+      return;
+    }
+
+    const clearScheduledFitView = () => {
+      if (rafRef.current != null) {
+        window.cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
+      if (timeoutRef.current != null) {
+        window.clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
+    };
+
+    const runFitView = () => {
+      void fitView(fitViewOptions);
+    };
+
+    const scheduleFitView = () => {
+      clearScheduledFitView();
+      rafRef.current = window.requestAnimationFrame(() => {
+        rafRef.current = window.requestAnimationFrame(() => {
+          runFitView();
+        });
+      });
+      timeoutRef.current = window.setTimeout(runFitView, 160);
+    };
+
+    scheduleFitView();
+
+    const flowElement = document.getElementById(flowId);
+    if (typeof ResizeObserver === "undefined" || !flowElement) {
+      return clearScheduledFitView;
+    }
+
+    const resizeObserver = new ResizeObserver(() => {
+      scheduleFitView();
+    });
+    resizeObserver.observe(flowElement);
+
+    return () => {
+      resizeObserver.disconnect();
+      clearScheduledFitView();
+    };
+  }, [fitView, fitViewOptions, flowId, layoutKey, nodesInitialized]);
+
+  return null;
+}
 
 function getStatusTone(status: EdgeStatus | undefined) {
   switch (status) {
@@ -251,11 +339,14 @@ function buildEdgeStyle(status: EdgeStatus) {
 }
 
 function buildNode(id: string, x: number, y: number, data: PlanNodeData): Node<PlanNodeData> {
+  const size = getPlanNodeInitialSize(data);
   return {
     id,
     type: "plan",
     position: { x, y },
     data,
+    initialWidth: size.width,
+    initialHeight: size.height,
     draggable: data.kind !== "anchor",
     selectable: data.kind !== "anchor",
     sourcePosition: data.kind === "metric" ? Position.Right : Position.Bottom,
@@ -563,6 +654,7 @@ export function HarnessExecutionPlanFlow({
     [compactMode],
   );
   const flowKey = `${variant}:${planKey ?? "empty"}:${[...expandedDimensions].sort().join("|")}`;
+  const flowId = `harness-execution-plan-${flowKey.replace(/[^a-zA-Z0-9_-]+/g, "-")}`;
 
   const content = (
     <>
@@ -632,7 +724,7 @@ export function HarnessExecutionPlanFlow({
             <div style={{ height: graph.minHeight }}>
               <ReactFlow
                 key={flowKey}
-                id={compactMode ? "harness-execution-plan-compact" : "harness-execution-plan-full"}
+                id={flowId}
                 nodes={graph.nodes}
                 edges={graph.edges}
                 nodeTypes={nodeTypes}
@@ -643,10 +735,14 @@ export function HarnessExecutionPlanFlow({
                 panOnDrag
                 minZoom={compactMinZoom}
                 maxZoom={1.2}
-                fitView
                 fitViewOptions={fitViewOptions}
                 proOptions={{ hideAttribution: true }}
               >
+                <ExecutionPlanViewportController
+                  flowId={flowId}
+                  layoutKey={flowKey}
+                  fitViewOptions={fitViewOptions}
+                />
                 <Background color="#d7dee7" gap={20} size={1} />
                 <Controls
                   showInteractive={false}
