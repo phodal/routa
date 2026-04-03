@@ -20,6 +20,10 @@ export interface SessionTranscriptPayload {
   latestEventKind?: string;
 }
 
+function isRenderableTranscriptRole(role: ChatMessage["role"]): boolean {
+  return role === "user" || role === "assistant" || role === "thought" || role === "plan";
+}
+
 function appendStreamingChunk(
   messages: ChatMessage[],
   streamingIds: Record<string, string | null>,
@@ -169,6 +173,13 @@ function normalizeMessageText(value?: string): string {
   return value?.replace(/\s+/g, " ").trim() ?? "";
 }
 
+function isDuplicateUserPrompt(existing: string, next: string): boolean {
+  if (!existing || !next) {
+    return false;
+  }
+  return existing === next || existing.startsWith(next) || next.startsWith(existing);
+}
+
 export function historyNotificationsToMessages(
   history: AcpSessionNotification[],
   sessionId: string,
@@ -288,7 +299,10 @@ export function traceRecordsToMessages(traces: TraceRecord[], sessionId: string)
       const content = trace.conversation?.fullContent || trace.conversation?.contentPreview || "";
       if (!content) continue;
       const lastMessage = messages.at(-1);
-      if (lastMessage?.role === "user" && normalizeMessageText(lastMessage.content) === normalizeMessageText(content)) {
+      if (
+        lastMessage?.role === "user"
+        && isDuplicateUserPrompt(normalizeMessageText(lastMessage.content), normalizeMessageText(content))
+      ) {
         continue;
       }
       messages.push({ id: trace.id, role: "user", content, timestamp: new Date(trace.timestamp) });
@@ -367,6 +381,14 @@ export function serializeTranscriptMessages(messages: ChatMessage[]): Serialized
     ...message,
     timestamp: message.timestamp.toISOString(),
   }));
+}
+
+export function shouldFetchTranscriptTraces(historyMessages: ChatMessage[]): boolean {
+  if (historyMessages.length === 0) {
+    return true;
+  }
+
+  return !historyMessages.some((message) => isRenderableTranscriptRole(message.role));
 }
 
 export function hydrateTranscriptMessages(messages: SerializedChatMessage[]): ChatMessage[] {
