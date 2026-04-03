@@ -154,6 +154,19 @@ jobs:
       - name: Prepare frontend for Tauri bundling
         run: node scripts/prepare-frontend.mjs
 
+      - name: Clean previous Tauri bundle outputs
+        shell: bash
+        run: |
+          for root in target apps/desktop/src-tauri/target; do
+            if [[ ! -d "$root" ]]; then
+              continue
+            fi
+
+            while IFS= read -r bundle_dir; do
+              rm -rf "$bundle_dir"
+            done < <(find "$root" -type d -path '*/release/bundle' -prune -print)
+          done
+
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0
         env:
@@ -167,10 +180,22 @@ jobs:
         with:
           name: tauri-build-${{ inputs.version || github.event.inputs.version || 'snapshot' }}-${{ matrix.platform }}-${{ matrix.arch }}
           path: |
+            target/**/release/bundle/**/*.dmg
+            target/**/release/bundle/**/*.app
+            target/**/release/bundle/**/*.deb
+            target/**/release/bundle/**/*.AppImage
+            target/**/release/bundle/**/*.msi
+            target/**/release/bundle/**/*.exe
             apps/desktop/src-tauri/target/release/bundle/**/*.dmg
             apps/desktop/src-tauri/target/release/bundle/**/*.app
             apps/desktop/src-tauri/target/release/bundle/**/*.deb
             apps/desktop/src-tauri/target/release/bundle/**/*.AppImage
             apps/desktop/src-tauri/target/release/bundle/**/*.msi
             apps/desktop/src-tauri/target/release/bundle/**/*.exe
+            apps/desktop/src-tauri/target/**/release/bundle/**/*.dmg
+            apps/desktop/src-tauri/target/**/release/bundle/**/*.app
+            apps/desktop/src-tauri/target/**/release/bundle/**/*.deb
+            apps/desktop/src-tauri/target/**/release/bundle/**/*.AppImage
+            apps/desktop/src-tauri/target/**/release/bundle/**/*.msi
+            apps/desktop/src-tauri/target/**/release/bundle/**/*.exe
           retention-days: 7
