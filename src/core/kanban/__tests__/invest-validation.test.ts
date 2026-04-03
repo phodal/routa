@@ -60,9 +60,12 @@ describe("deriveInvestValidationFromObjective", () => {
     const validation = deriveInvestValidationFromObjective(CANONICAL_STORY_WITH_EXPLICIT_INVEST);
 
     expect(validation).toMatchObject({
-      overall: "warning",
-      independent: { status: "pass" },
-      negotiable: { status: "warning" },
+      source: "canonical_story",
+      overallStatus: "warning",
+      checks: {
+        independent: { status: "pass" },
+        negotiable: { status: "warning" },
+      },
       issues: ["Negotiable: Details can still be refined."],
     });
   });
@@ -71,12 +74,14 @@ describe("deriveInvestValidationFromObjective", () => {
     const validation = deriveInvestValidationFromObjective(PLAIN_MARKDOWN_STORY);
 
     expect(validation).toMatchObject({
-      overall: "warning",
-      independent: { status: "pass" },
-      negotiable: { status: "warning" },
-      testable: { status: "pass" },
+      source: "heuristic",
+      overallStatus: "warning",
+      checks: {
+        independent: { status: "pass" },
+        negotiable: { status: "warning" },
+        testable: { status: "pass" },
+      },
     });
-    expect(validation?.validatedAt).toEqual(expect.any(String));
     expect(validation?.issues).toContain(
       "Negotiable: Story is actionable, but negotiability still depends on team discussion.",
     );
@@ -94,8 +99,10 @@ Ship a follow-up only after another task lands.
 `);
 
     expect(validation).toMatchObject({
-      overall: "fail",
-      independent: { status: "fail" },
+      overallStatus: "fail",
+      checks: {
+        independent: { status: "fail" },
+      },
     });
     expect(validation?.issues).toContain(
       "Independent: Blocking or prerequisite work is still declared.",

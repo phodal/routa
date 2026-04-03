@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createArtifact } from "@/core/models/artifact";
 import { createTask, TaskStatus, VerificationVerdict, type Task } from "@/core/models/task";
 import { InMemoryArtifactStore } from "@/core/store/artifact-store";
+import type { TaskDeliveryReadiness } from "@/core/kanban/task-delivery-readiness";
 
 const notify = vi.fn();
 const removeCardJob = vi.fn();
@@ -10,6 +11,12 @@ const enqueueKanbanTaskSession = vi.fn();
 const processKanbanColumnTransition = vi.fn();
 const archiveActiveTaskSession = vi.fn<(task: Task) => void>();
 const prepareTaskForColumnChange = vi.fn<(fromColumnId?: string, task?: Task) => boolean>(() => false);
+const buildTaskDeliveryReadiness = vi.fn<
+  (task: Task, currentSystem: typeof system) => Promise<TaskDeliveryReadiness>
+>();
+const buildTaskDeliveryTransitionError = vi.fn<
+  (readiness: TaskDeliveryReadiness, targetColumnName: string, targetColumnId: string) => string | null
+>(() => null);
 let capturedEnqueueTask: Task | undefined;
 
 const taskStore = {
@@ -61,6 +68,16 @@ vi.mock("@/core/kanban/task-session-transition", () => ({
   archiveActiveTaskSession: (task: Task) => archiveActiveTaskSession(task),
   prepareTaskForColumnChange: (fromColumnId?: string, task?: Task) =>
     prepareTaskForColumnChange(fromColumnId, task),
+}));
+
+vi.mock("@/core/kanban/task-delivery-readiness", () => ({
+  buildTaskDeliveryReadiness: (task: Task, currentSystem: typeof system) =>
+    buildTaskDeliveryReadiness(task, currentSystem),
+  buildTaskDeliveryTransitionError: (
+    readiness: TaskDeliveryReadiness,
+    targetColumnName: string,
+    targetColumnId: string,
+  ) => buildTaskDeliveryTransitionError(readiness, targetColumnName, targetColumnId),
 }));
 
 vi.mock("@/core/kanban/workflow-orchestrator-singleton", () => ({
@@ -122,6 +139,20 @@ describe("/api/tasks/[taskId]", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     capturedEnqueueTask = undefined;
+    buildTaskDeliveryReadiness.mockResolvedValue({
+      checked: false,
+      modified: 0,
+      untracked: 0,
+      ahead: 0,
+      behind: 0,
+      commitsSinceBase: 0,
+      hasCommitsSinceBase: false,
+      hasUncommittedChanges: false,
+      isGitHubRepo: false,
+      canCreatePullRequest: false,
+      reason: "Task has no linked repository or worktree.",
+    });
+    buildTaskDeliveryTransitionError.mockReturnValue(null);
     taskStore.save.mockResolvedValue();
     system.kanbanBoardStore.get = vi.fn().mockResolvedValue(null);
     system.artifactStore = undefined;
@@ -182,6 +213,15 @@ describe("/api/tasks/[taskId]", () => {
         total: 0,
         latestStatus: "idle",
       },
+    });
+    expect(data.task.storyReadiness).toMatchObject({
+      ready: true,
+      missing: [],
+      requiredTaskFields: [],
+    });
+    expect(data.task.investValidation).toMatchObject({
+      source: "heuristic",
+      overallStatus: "fail",
     });
   });
 
@@ -260,6 +300,57 @@ describe("/api/tasks/[taskId]", () => {
         total: 1,
         latestStatus: "running",
       },
+    });
+    expect(data.task.storyReadiness).toMatchObject({
+      ready: true,
+      requiredTaskFields: [],
+    });
+  });
+
+  it("blocks moving a card into a lane when required task fields are missing", async () => {
+    const existingTask = createTask({
+      id: "task-1",
+      title: "Prepare dev handoff",
+      objective: "Need scope and verification plan",
+      workspaceId: "workspace-1",
+      boardId: "board-1",
+      columnId: "todo",
+      status: TaskStatus.PENDING,
+    });
+    taskStore.get.mockResolvedValue(existingTask);
+    system.kanbanBoardStore.get = vi.fn().mockResolvedValue({
+      id: "board-1",
+      columns: [
+        { id: "todo", name: "Todo", position: 0, stage: "todo" },
+        {
+          id: "dev",
+          name: "Dev",
+          position: 1,
+          stage: "dev",
+          automation: {
+            requiredTaskFields: ["scope", "acceptance_criteria", "verification_plan"],
+          },
+        },
+      ],
+    });
+
+    const request = new NextRequest("http://localhost/api/tasks/task-1", {
+      method: "PATCH",
+      body: JSON.stringify({ columnId: "dev" }),
+      headers: { "Content-Type": "application/json" },
+    });
+
+    const response = await PATCH(request, {
+      params: Promise.resolve({ taskId: "task-1" }),
+    });
+    const data = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(data.error).toContain('Cannot move task to "Dev": missing required task fields');
+    expect(data.missingTaskFields).toEqual(["scope", "acceptance criteria", "verification plan"]);
+    expect(data.storyReadiness).toMatchObject({
+      ready: false,
+      missing: ["scope", "acceptance_criteria", "verification_plan"],
     });
   });
 
@@ -375,6 +466,122 @@ describe("/api/tasks/[taskId]", () => {
     expect(enqueueKanbanTaskSession).not.toHaveBeenCalled();
   });
 
+  it("blocks moving a card to review when no committed changes are available", async () => {
+    const existingTask = createTask({
+      id: "task-1",
+      title: "Review blocked without commit",
+      objective: "Need a real code commit before review",
+      workspaceId: "workspace-1",
+      boardId: "board-1",
+      columnId: "dev",
+      status: TaskStatus.IN_PROGRESS,
+    });
+    taskStore.get.mockResolvedValue(existingTask);
+    system.kanbanBoardStore.get = vi.fn().mockResolvedValue({
+      id: "board-1",
+      columns: [
+        { id: "dev", name: "Dev", position: 1, stage: "dev" },
+        { id: "review", name: "Review", position: 2, stage: "review" },
+      ],
+    });
+    buildTaskDeliveryReadiness.mockResolvedValue({
+      checked: true,
+      branch: "issue/task-1",
+      baseBranch: "main",
+      baseRef: "origin/main",
+      modified: 0,
+      untracked: 0,
+      ahead: 0,
+      behind: 0,
+      commitsSinceBase: 0,
+      hasCommitsSinceBase: false,
+      hasUncommittedChanges: false,
+      isGitHubRepo: true,
+      canCreatePullRequest: false,
+    });
+    buildTaskDeliveryTransitionError.mockReturnValue(
+      'Cannot move task to "Review": no committed changes detected on branch "issue/task-1" relative to "origin/main". Commit your implementation before requesting review.',
+    );
+
+    const request = new NextRequest("http://localhost/api/tasks/task-1", {
+      method: "PATCH",
+      body: JSON.stringify({ columnId: "review" }),
+      headers: { "Content-Type": "application/json" },
+    });
+
+    const response = await PATCH(request, {
+      params: Promise.resolve({ taskId: "task-1" }),
+    });
+    const data = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(data.error).toContain("no committed changes detected");
+    expect(data.deliveryReadiness).toMatchObject({
+      checked: true,
+      commitsSinceBase: 0,
+      hasCommitsSinceBase: false,
+    });
+    expect(taskStore.save).not.toHaveBeenCalled();
+  });
+
+  it("blocks moving a card to done when a GitHub task is not PR-ready", async () => {
+    const existingTask = createTask({
+      id: "task-1",
+      title: "Done blocked until PR is ready",
+      objective: "Need a clean feature branch before completion",
+      workspaceId: "workspace-1",
+      boardId: "board-1",
+      columnId: "review",
+      status: TaskStatus.REVIEW_REQUIRED,
+    });
+    taskStore.get.mockResolvedValue(existingTask);
+    system.kanbanBoardStore.get = vi.fn().mockResolvedValue({
+      id: "board-1",
+      columns: [
+        { id: "review", name: "Review", position: 2, stage: "review" },
+        { id: "done", name: "Done", position: 3, stage: "done" },
+      ],
+    });
+    buildTaskDeliveryReadiness.mockResolvedValue({
+      checked: true,
+      branch: "main",
+      baseBranch: "main",
+      baseRef: "origin/main",
+      modified: 0,
+      untracked: 0,
+      ahead: 1,
+      behind: 0,
+      commitsSinceBase: 1,
+      hasCommitsSinceBase: true,
+      hasUncommittedChanges: false,
+      isGitHubRepo: true,
+      canCreatePullRequest: false,
+    });
+    buildTaskDeliveryTransitionError.mockReturnValue(
+      'Cannot move task to "Done": GitHub repo is not PR-ready yet. Use a feature branch instead of "main" so this task can open a pull request cleanly.',
+    );
+
+    const request = new NextRequest("http://localhost/api/tasks/task-1", {
+      method: "PATCH",
+      body: JSON.stringify({ columnId: "done" }),
+      headers: { "Content-Type": "application/json" },
+    });
+
+    const response = await PATCH(request, {
+      params: Promise.resolve({ taskId: "task-1" }),
+    });
+    const data = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(data.error).toContain("PR-ready");
+    expect(data.deliveryReadiness).toMatchObject({
+      checked: true,
+      branch: "main",
+      canCreatePullRequest: false,
+    });
+    expect(taskStore.save).not.toHaveBeenCalled();
+  });
+
   it("processes non-dev automated column transitions before returning", async () => {
     const existingTask = createTask({
       id: "task-1",
@@ -440,13 +647,17 @@ describe("/api/tasks/[taskId]", () => {
     expect(taskStore.save).toHaveBeenCalledWith(expect.objectContaining({
       id: "task-1",
       investValidation: expect.objectContaining({
-        overall: "warning",
-        estimable: expect.objectContaining({ status: "warning" }),
+        overallStatus: "warning",
+        checks: expect.objectContaining({
+          estimable: expect.objectContaining({ status: "warning" }),
+        }),
       }),
     }));
     expect(data.task.investValidation).toMatchObject({
-      overall: "warning",
-      estimable: { status: "warning" },
+      overallStatus: "warning",
+      checks: {
+        estimable: { status: "warning" },
+      },
     });
   });
 
@@ -474,10 +685,12 @@ Refresh a story without canonical YAML.
 
     expect(response.status).toBe(200);
     expect(data.task.investValidation).toMatchObject({
-      overall: "warning",
-      independent: { status: "pass" },
-      negotiable: { status: "warning" },
-      testable: { status: "pass" },
+      overallStatus: "warning",
+      checks: {
+        independent: { status: "pass" },
+        negotiable: { status: "warning" },
+        testable: { status: "pass" },
+      },
     });
   });
 });

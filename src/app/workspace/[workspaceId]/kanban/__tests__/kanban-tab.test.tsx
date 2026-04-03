@@ -1263,6 +1263,81 @@ describe("KanbanCardDetail repository health", () => {
       expect((screen.getByRole("combobox", { name: "Priority" }) as HTMLSelectElement).value).toBe("high");
     });
   });
+
+  it("shows story readiness and evidence summaries near the top of card detail", () => {
+    render(
+      <KanbanCardDetail
+        task={{
+          ...createTask("task-summary", "Story Summary"),
+          columnId: "todo",
+          storyReadiness: {
+            ready: false,
+            missing: ["scope", "verification_plan"],
+            requiredTaskFields: ["scope", "acceptance_criteria", "verification_plan"],
+            checks: {
+              scope: false,
+              acceptanceCriteria: true,
+              verificationCommands: false,
+              testCases: true,
+              verificationPlan: true,
+              dependenciesDeclared: false,
+            },
+          },
+          investValidation: {
+            source: "heuristic",
+            overallStatus: "warning",
+            checks: {
+              independent: { status: "pass", reason: "No blocking prerequisite was detected." },
+              negotiable: { status: "warning", reason: "Human review still needed." },
+              valuable: { status: "pass", reason: "Objective is clear enough." },
+              estimable: { status: "warning", reason: "Scope is incomplete." },
+              small: { status: "pass", reason: "Story remains narrow." },
+              testable: { status: "pass", reason: "Test cases exist." },
+            },
+            issues: [],
+          },
+          evidenceSummary: {
+            artifact: {
+              total: 1,
+              byType: { screenshot: 1 },
+              requiredSatisfied: false,
+              missingRequired: ["test_results"],
+            },
+            verification: {
+              hasVerdict: false,
+              hasReport: true,
+            },
+            completion: {
+              hasSummary: false,
+            },
+            runs: {
+              total: 2,
+              latestStatus: "completed",
+            },
+          },
+        }}
+        boardColumns={board.columns}
+        availableProviders={[]}
+        specialists={[]}
+        specialistLanguage="en"
+        codebases={[]}
+        allCodebaseIds={[]}
+        worktreeCache={{}}
+        sessions={[]}
+        fullWidth
+        onPatchTask={vi.fn(async () => createTask("task-summary", "Story Summary"))}
+        onRetryTrigger={vi.fn()}
+        onDelete={vi.fn()}
+        onRefresh={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("Story Readiness")).toBeTruthy();
+    expect(screen.getByText("Blocked for Dev")).toBeTruthy();
+    expect(screen.getByText("Evidence Bundle")).toBeTruthy();
+    expect(screen.getByText("Evidence incomplete")).toBeTruthy();
+    expect(screen.getByText(/test_results/i)).toBeTruthy();
+  });
 });
 
 describe("KanbanTab live session tail", () => {

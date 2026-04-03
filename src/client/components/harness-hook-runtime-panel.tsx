@@ -6,6 +6,7 @@ import { HarnessSectionCard, HarnessSectionStateFrame } from "@/client/component
 import { HarnessUnsupportedState } from "@/client/components/harness-support-state";
 import type { HooksResponse } from "@/client/hooks/use-harness-settings-data";
 import { desktopAwareFetch } from "@/client/utils/diagnostics";
+import { useTranslation } from "@/i18n";
 
 type HooksPanelProps = {
   workspaceId: string;
@@ -38,6 +39,7 @@ export function HarnessHookRuntimePanel({
   variant = "full",
   embedded = false,
 }: HooksPanelProps) {
+  const { t } = useTranslation();
   const hasExternalState = loading !== undefined || error !== undefined || data !== undefined;
   const [hooksState, setHooksState] = useState<HooksState>({
     loading: false,
@@ -119,7 +121,7 @@ export function HarnessHookRuntimePanel({
 
   const runtimeStateFrame = () => {
     if (resolvedState.loading) {
-      return <HarnessSectionStateFrame>Loading hook runtime...</HarnessSectionStateFrame>;
+      return <HarnessSectionStateFrame>{t.harness.hookRuntime.loadingHookRuntime}</HarnessSectionStateFrame>;
     }
 
     if (unsupportedMessage) {
@@ -133,7 +135,7 @@ export function HarnessHookRuntimePanel({
     if (!resolvedState.data) {
       return (
         <HarnessSectionStateFrame>
-          No hook runtime data found for the selected repository.
+          {t.harness.hookRuntime.noHookRuntimeData}
         </HarnessSectionStateFrame>
       );
     }

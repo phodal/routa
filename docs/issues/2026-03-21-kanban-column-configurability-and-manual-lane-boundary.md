@@ -1,11 +1,15 @@
 ---
 title: "Kanban columns are not first-class configurable and manual lanes lack a clear product boundary"
 date: "2026-03-21"
-status: open
+status: resolved
+resolved_at: "2026-03-22"
 severity: high
 area: "kanban"
 tags: ["kanban", "columns", "ux", "automation", "workflow"]
 reported_by: "OpenAI Codex"
+github_issue: 219
+github_state: "closed"
+github_url: "https://github.com/phodal/routa/issues/219"
 related_issues:
   - "2026-03-19-kanban-flow-observability-and-control-gaps.md"
   - "https://github.com/phodal/routa/issues/219"
@@ -66,3 +70,21 @@ That means the product should clearly distinguish between:
 
 - Local browser screenshot captured during review: `/tmp/kanban-review-fresh.png`
 - GitHub issue: `https://github.com/phodal/routa/issues/219`
+
+## Resolution
+
+This issue is resolved in the current codebase and the upstream GitHub issue is
+closed.
+
+Evidence in current implementation:
+
+- `src/core/models/kanban.ts` now models columns with structural properties
+  including `visible` and `width`, in addition to automation.
+- `src/app/workspace/[workspaceId]/kanban/kanban-settings-modal.tsx` defines
+  `MANUAL_ONLY_STAGES`, treats `blocked` as a manual-only lane, and separates
+  workflow mode from automation state.
+- The same settings modal now exposes column-level controls for stage, width,
+  board visibility, and a manual-only badge for `blocked`, instead of treating
+  the surface as automation-only configuration.
+- `crates/routa-core/src/models/kanban.rs` carries matching structural fields
+  for Rust-side board data, including `visible` and `width`.

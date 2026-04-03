@@ -337,7 +337,10 @@ async function detectIssueScannerSuspects(repoRoot: string, warnings: string[]) 
   }
 
   try {
-    const { stdout } = await execFile("python3", [absolutePath, "--suspects-only"], {
+    // On Windows, `python3` is a Microsoft Store alias that does not work with
+    // Node.js execFile; fall back to `python`.
+    const pythonBin = process.platform === "win32" ? "python" : "python3";
+    const { stdout } = await execFile(pythonBin, [absolutePath, "--suspects-only"], {
       cwd: repoRoot,
       maxBuffer: 8 * 1024 * 1024,
     });

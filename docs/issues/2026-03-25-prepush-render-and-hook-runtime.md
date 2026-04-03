@@ -9,7 +9,7 @@ tags: [git-hooks, pre-push, entrix, renderer, scripts]
 reported_by: Codex
 
 resolution:
-  - `status` updated to `resolved` based on follow-up changes completed on 2026-03-26.
+  - "status updated to resolved based on follow-up changes completed on 2026-03-26."
 ---
 
 ## What Happened

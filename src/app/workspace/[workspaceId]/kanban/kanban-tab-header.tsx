@@ -2,7 +2,7 @@ import { useTranslation } from "@/i18n";
 import { Select } from "@/client/components/select";
 import { QueueStatusBadge } from "./kanban-tab-helpers";
 import type { KanbanBoardInfo } from "../types";
-import { Columns2, RefreshCw } from "lucide-react";
+import { Columns2, Download, RefreshCw } from "lucide-react";
 
 
 interface KanbanTabHeaderProps {
@@ -13,6 +13,8 @@ interface KanbanTabHeaderProps {
   boards: KanbanBoardInfo[];
   selectedBoardId: string | null;
   onSelectBoard: (boardId: string) => void;
+  githubImportEnabled: boolean;
+  onOpenGitHubImport: () => void;
   onOpenSettings: () => void;
   onRefresh: () => void;
 }
@@ -25,6 +27,8 @@ export function KanbanTabHeader({
   boards,
   selectedBoardId,
   onSelectBoard,
+  githubImportEnabled,
+  onOpenGitHubImport,
   onOpenSettings,
   onRefresh,
 }: KanbanTabHeaderProps) {
@@ -93,6 +97,15 @@ export function KanbanTabHeader({
               ))}
             </Select>
           )}
+          <button
+            onClick={onOpenGitHubImport}
+            disabled={!githubImportEnabled}
+            className="inline-flex h-6 items-center gap-1 rounded-md border border-slate-200 bg-white px-2 text-[12px] text-slate-600 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-[#12141c] dark:text-slate-300 dark:hover:bg-[#191c28]"
+            title={t.kanban.importGithubIssues}
+          >
+            <Download className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
+            {t.kanban.importGithubIssues}
+          </button>
           <button
             onClick={onOpenSettings}
             className="inline-flex h-6 items-center rounded-md border border-slate-200 bg-white px-2 text-[12px] text-slate-600 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-[#12141c] dark:text-slate-300 dark:hover:bg-[#191c28]"

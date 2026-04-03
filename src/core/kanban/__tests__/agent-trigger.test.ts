@@ -120,6 +120,77 @@ describe("buildTaskPrompt", () => {
     expect(prompt).toContain("Do not treat `update_card` text as artifact evidence");
   });
 
+  it("injects normalized readiness, INVEST, and evidence summaries into the prompt", () => {
+    const task = createTask({
+      id: "task-ctx-1",
+      title: "Prepare implementation brief",
+      objective: "Clarify the story before development",
+      workspaceId: "default",
+      boardId: "board-1",
+      columnId: "todo",
+    });
+
+    const prompt = buildTaskPrompt(task, [
+      { id: "todo", name: "Todo", position: 0, stage: "todo" },
+      { id: "dev", name: "Dev", position: 1, stage: "dev" },
+    ], {
+      summaryContext: {
+        storyReadiness: {
+          ready: false,
+          missing: ["scope", "verification_plan"],
+          requiredTaskFields: ["scope", "acceptance_criteria", "verification_plan"],
+          checks: {
+            scope: false,
+            acceptanceCriteria: true,
+            verificationCommands: false,
+            testCases: true,
+            verificationPlan: true,
+            dependenciesDeclared: false,
+          },
+        },
+        investValidation: {
+          source: "heuristic",
+          overallStatus: "warning",
+          checks: {
+            independent: { status: "pass", reason: "No blocking prerequisite was detected." },
+            negotiable: { status: "warning", reason: "Human review still needed." },
+            valuable: { status: "pass", reason: "Objective is clear enough." },
+            estimable: { status: "warning", reason: "Scope is incomplete." },
+            small: { status: "pass", reason: "Story remains narrow." },
+            testable: { status: "pass", reason: "Test cases exist." },
+          },
+          issues: [],
+        },
+        evidenceSummary: {
+          artifact: {
+            total: 1,
+            byType: { screenshot: 1 },
+            requiredSatisfied: false,
+            missingRequired: ["test_results"],
+          },
+          verification: {
+            hasVerdict: false,
+            hasReport: true,
+          },
+          completion: {
+            hasSummary: false,
+          },
+          runs: {
+            total: 2,
+            latestStatus: "completed",
+          },
+        },
+      },
+    });
+
+    expect(prompt).toContain("## Story Readiness");
+    expect(prompt).toContain("Missing fields: scope, verification_plan");
+    expect(prompt).toContain("## INVEST Snapshot");
+    expect(prompt).toContain("Overall: WARNING");
+    expect(prompt).toContain("## Evidence Bundle");
+    expect(prompt).toContain("Missing required artifacts: test_results");
+  });
+
   it("adds previous-lane handoff guidance for review sessions", () => {
     const task = createTask({
       id: "task-4",

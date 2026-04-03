@@ -1,14 +1,19 @@
 ---
 title: "Kanban story/lane automation stalls after the first ACP session and lacks story-level workflow state"
 date: "2026-03-14"
-status: open
+status: resolved
+resolved_at: "2026-03-15"
 severity: high
 area: "kanban"
 tags: ["kanban", "automation", "session", "workflow", "story", "lane", "acp"]
 reported_by: "codex"
+github_issue: 163
+github_state: "closed"
+github_url: "https://github.com/phodal/routa/issues/163"
 related_issues:
   - "docs/issues/2026-03-12-gh-124-kanban-column-automation-does-not-start-sessions-manual-issue-modal-cras.md"
   - "docs/issues/2026-03-14-kanban-session-concurrency-queue.md"
+  - "https://github.com/phodal/routa/issues/163"
 ---
 
 # Kanban story/lane automation stalls after the first ACP session and lacks story-level workflow state
@@ -108,3 +113,30 @@ The user hypothesis that "each Todo/Backend lane creates one session and then ca
 - User report on 2026-03-14 describing expected flow: input -> ACP session -> story creation -> backlog automation -> todo automation -> continued lane progression
 - `docs/issues/2026-03-12-gh-124-kanban-column-automation-does-not-start-sessions-manual-issue-modal-cras.md`
 - `docs/issues/2026-03-14-kanban-session-concurrency-queue.md`
+
+## Resolution
+
+This issue is resolved in the current codebase and the upstream GitHub issue is
+closed.
+
+Evidence in current implementation:
+
+- `src/core/acp/http-session-store.ts` now bridges ACP semantic lifecycle
+  events back into the global `EventBus`, emitting `AGENT_COMPLETED` and
+  `AGENT_FAILED` for Kanban-tracked sessions.
+- `src/core/models/task.ts` now persists durable story-level lane execution
+  state via `sessionIds`, `laneSessions`, and `laneHandoffs` instead of relying
+  only on a single `triggerSessionId`.
+- `src/core/kanban/workflow-orchestrator-singleton.ts` records each triggered
+  lane session with `upsertTaskLaneSession(...)`, and
+  `src/core/kanban/workflow-orchestrator.ts` marks lane session status,
+  advances within multi-step automation, and auto-advances cards into the next
+  automated lane when `autoAdvanceOnSuccess` is enabled.
+- `src/app/workspace/[workspaceId]/kanban/kanban-tab-helpers.tsx` and related
+  Kanban detail surfaces now prefer the latest `laneSessions` entry when
+  resolving the active run instead of assuming one durable session pointer.
+- `src/core/kanban/__tests__/workflow-orchestrator.test.ts` contains focused
+  chained-lane regression cases such as
+  `clears the previous lane session before auto-advancing into the next automation`
+  and
+  `does not let the previous lane cleanup timer delete the next lane automation`.

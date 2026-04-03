@@ -6,6 +6,20 @@ export type KanbanDevSessionCompletionRequirement =
   | "turn_complete"
   | "completion_summary"
   | "verification_report";
+export const KANBAN_REQUIRED_TASK_FIELDS = [
+  "scope",
+  "acceptance_criteria",
+  "verification_commands",
+  "test_cases",
+  "verification_plan",
+  "dependencies_declared",
+] as const;
+export type KanbanRequiredTaskField = typeof KANBAN_REQUIRED_TASK_FIELDS[number];
+export const DEFAULT_DEV_REQUIRED_TASK_FIELDS = [
+  "scope",
+  "acceptance_criteria",
+  "verification_plan",
+] as const satisfies KanbanRequiredTaskField[];
 
 export type KanbanTransport = "acp" | "a2a";
 
@@ -60,6 +74,8 @@ export interface KanbanColumnAutomation {
   transitionType?: "entry" | "exit" | "both";
   /** Artifacts required before transition is allowed */
   requiredArtifacts?: ("screenshot" | "test_results" | "code_diff")[];
+  /** Task fields that must be present before transition is allowed */
+  requiredTaskFields?: KanbanRequiredTaskField[];
   /** Automatically advance card to next column on agent success */
   autoAdvanceOnSuccess?: boolean;
 }
@@ -147,6 +163,12 @@ export function cloneKanbanColumns(columns: KanbanColumn[]): KanbanColumn[] {
     automation: column.automation
       ? {
         ...column.automation,
+        requiredArtifacts: column.automation.requiredArtifacts
+          ? [...column.automation.requiredArtifacts]
+          : undefined,
+        requiredTaskFields: column.automation.requiredTaskFields
+          ? [...column.automation.requiredTaskFields]
+          : undefined,
         steps: column.automation.steps?.map((step) => ({ ...step })),
       }
       : undefined,

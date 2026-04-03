@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { HarnessUnsupportedState } from "@/client/components/harness-support-state";
 import { HarnessSectionCard, HarnessSectionStateFrame } from "@/client/components/harness-section-card";
+import { useTranslation } from "@/i18n";
 import type {
   HookFileSummary,
   HooksResponse,
@@ -183,11 +184,28 @@ function buildThresholdTokens(rule: ReviewTriggerRuleSummary): string[] {
   ].filter(Boolean);
 }
 
+type ReviewTriggerTranslations = {
+  risk: string;
+  confidence: string;
+  complexity: string;
+  routing: string;
+  noRules: string;
+  coreEnginePaths: string;
+  noHighRiskTriggers: string;
+  evidenceGap: string;
+  noEvidenceTriggers: string;
+  changeSize: string;
+  noBoundaryTriggers: string;
+  routeAvailable: string;
+  routeIncomplete: string;
+};
+
 function buildReviewDimensionCards(
   rules: ReviewTriggerRuleSummary[],
   reviewProfiles: HooksResponse["profiles"],
   reviewHooks: string[],
   hookFiles: HookFileSummary[],
+  tr: ReviewTriggerTranslations,
 ): ReviewDimensionCard[] {
   const riskRules = rules.filter(isRiskRule);
   const confidenceRules = rules.filter(isConfidenceRule);
@@ -228,44 +246,44 @@ function buildReviewDimensionCards(
   return [
     {
       key: "risk",
-      title: "Risk",
-      value: riskRules.length ? formatCount(riskRules.length, "rule") : "No rules",
+      title: tr.risk,
+      value: riskRules.length ? formatCount(riskRules.length, "rule") : tr.noRules,
       subtitle: riskRules.length
-        ? "Core engine paths and governance files escalate directly to human review."
-        : "No high-risk path or governance triggers are configured.",
+        ? tr.coreEnginePaths
+        : tr.noHighRiskTriggers,
       barValue: riskScore,
       tone: toneFromScore(riskScore),
       rules: riskRules,
     },
     {
       key: "confidence",
-      title: "Confidence",
-      value: confidenceRules.length ? formatCount(confidenceRules.length, "rule") : "No rules",
+      title: tr.confidence,
+      value: confidenceRules.length ? formatCount(confidenceRules.length, "rule") : tr.noRules,
       subtitle: confidenceRules.length
-        ? "Core paths and API contracts need matching evidence before review can clear."
-        : "No evidence-gap triggers are configured.",
+        ? tr.evidenceGap
+        : tr.noEvidenceTriggers,
       barValue: confidenceScore,
       tone: confidenceTone(confidenceScore),
       rules: confidenceRules,
     },
     {
       key: "complexity",
-      title: "Complexity",
-      value: complexityRules.length ? formatCount(complexityRules.length, "rule") : "No rules",
+      title: tr.complexity,
+      value: complexityRules.length ? formatCount(complexityRules.length, "rule") : tr.noRules,
       subtitle: complexityRules.length
-        ? "Cross-boundary or oversized changes are treated as heavier review work."
-        : "No change-size or boundary triggers are configured.",
+        ? tr.changeSize
+        : tr.noBoundaryTriggers,
       barValue: complexityScore,
       tone: toneFromScore(complexityScore),
       rules: complexityRules,
     },
     {
       key: "routing",
-      title: "Routing",
-      value: routingProfiles.length ? formatCount(routingProfiles.length, "profile") : "No route",
+      title: tr.routing,
+      value: routingProfiles.length ? formatCount(routingProfiles.length, "profile") : tr.noRules,
       subtitle: routingReady
-        ? "Matched rules enter the review phase through configured profiles and hooks."
-        : "Rules exist, but review-phase routing is still incomplete.",
+        ? tr.routeAvailable
+        : tr.routeIncomplete,
       barValue: routingScore,
       tone: routingReady ? "success" : "warning",
       rules: [],
@@ -283,27 +301,27 @@ type CompactPreviewSection = {
   items: string[];
 };
 
-function buildCompactPreviewSections(card: ReviewDimensionCard): CompactPreviewSection[] {
+function buildCompactPreviewSections(card: ReviewDimensionCard, labels: { hooks: string; routing: string; watchPaths: string; evidencePaths: string; boundaries: string; thresholds: string; directories: string }): CompactPreviewSection[] {
   if (card.key === "routing" && card.routingDetails) {
     const hookFiles = takeLabels(card.routingDetails.hookFiles.map((file) => file.relativePath), 2);
     const profiles = takeLabels(card.routingDetails.profiles.map((profile) => formatTokenLabel(profile.name)), 2);
     const actions = takeLabels(card.routingDetails.actions, 2);
 
     return [
-      { label: "Hooks", items: hookFiles },
-      { label: "Routing", items: profiles.length ? profiles : actions },
+      { label: labels.hooks, items: hookFiles },
+      { label: labels.routing, items: profiles.length ? profiles : actions },
     ].filter((section) => section.items.length > 0);
   }
 
   if (card.key === "risk") {
-    return [{ label: "Watch paths", items: takeLabels(card.rules.flatMap((rule) => rule.paths), 3) }]
+    return [{ label: labels.watchPaths, items: takeLabels(card.rules.flatMap((rule) => rule.paths), 3) }]
       .filter((section) => section.items.length > 0);
   }
 
   if (card.key === "confidence") {
     return [
-      { label: "Watch paths", items: takeLabels(card.rules.flatMap((rule) => rule.paths), 2) },
-      { label: "Evidence paths", items: takeLabels(card.rules.flatMap((rule) => rule.evidencePaths), 2) },
+      { label: labels.watchPaths, items: takeLabels(card.rules.flatMap((rule) => rule.paths), 2) },
+      { label: labels.evidencePaths, items: takeLabels(card.rules.flatMap((rule) => rule.evidencePaths), 2) },
     ].filter((section) => section.items.length > 0);
   }
 
@@ -312,8 +330,8 @@ function buildCompactPreviewSections(card: ReviewDimensionCard): CompactPreviewS
   const directories = takeLabels(card.rules.flatMap((rule) => rule.directories), 2);
 
   return [
-    { label: "Boundaries", items: boundaries },
-    { label: "Thresholds", items: thresholds.length ? thresholds : directories },
+    { label: labels.boundaries, items: boundaries },
+    { label: labels.thresholds, items: thresholds.length ? thresholds : directories },
   ].filter((section) => section.items.length > 0);
 }
 
@@ -375,9 +393,11 @@ function DetailGroup({
 function BoundaryGroup({
   boundaries,
   tone,
+  label,
 }: {
   boundaries: ReviewTriggerBoundarySummary[];
   tone: ReviewDimensionTone;
+  label: string;
 }) {
   if (!boundaries.length) {
     return null;
@@ -385,7 +405,7 @@ function BoundaryGroup({
 
   return (
     <div className="mt-2">
-      <DetailLabel>Boundaries</DetailLabel>
+      <DetailLabel>{label}</DetailLabel>
       <div className="mt-1.5 grid gap-1.5">
         {boundaries.map((boundary) => (
           <div key={boundary.name} className="rounded-sm border border-desktop-border bg-desktop-bg-primary/80 px-2.5 py-2">
@@ -403,9 +423,11 @@ function BoundaryGroup({
 function RuleDetailCard({
   rule,
   tone,
+  labels,
 }: {
   rule: ReviewTriggerRuleSummary;
   tone: ReviewDimensionTone;
+  labels: { watchPaths: string; evidencePaths: string; boundaries: string; directories: string; thresholds: string };
 }) {
   const styles = TONE_STYLES[tone];
   const thresholdTokens = buildThresholdTokens(rule);
@@ -424,11 +446,11 @@ function RuleDetailCard({
         </div>
       </div>
 
-      <DetailGroup label="Watch paths" items={rule.paths} tone={tone} />
-      <DetailGroup label="Evidence paths" items={rule.evidencePaths} tone={tone} />
-      <BoundaryGroup boundaries={rule.boundaries} tone={tone} />
-      <DetailGroup label="Directories" items={rule.directories} tone={tone} />
-      <DetailGroup label="Thresholds" items={thresholdTokens} tone={tone} />
+      <DetailGroup label={labels.watchPaths} items={rule.paths} tone={tone} />
+      <DetailGroup label={labels.evidencePaths} items={rule.evidencePaths} tone={tone} />
+      <BoundaryGroup boundaries={rule.boundaries} tone={tone} label={labels.boundaries} />
+      <DetailGroup label={labels.directories} items={rule.directories} tone={tone} />
+      <DetailGroup label={labels.thresholds} items={thresholdTokens} tone={tone} />
     </div>
   );
 }
@@ -436,9 +458,11 @@ function RuleDetailCard({
 function RoutingDetailCard({
   details,
   tone,
+  labels,
 }: {
   details: ReviewRoutingDetails;
   tone: ReviewDimensionTone;
+  labels: { hooks: string; fallbackMetrics: string; triggerCommand: string };
 }) {
   return (
     <div className="grid gap-2">
@@ -452,9 +476,9 @@ function RoutingDetailCard({
                 {formatTokenLabel(profile.name)}
               </div>
               <DetailGroup label="Phases" items={profile.phases.map(formatTokenLabel)} tone={tone} />
-              <DetailGroup label="Hooks" items={profile.hooks} tone={tone} />
+              <DetailGroup label={labels.hooks} items={profile.hooks} tone={tone} />
               <DetailGroup
-                label="Fallback metrics"
+                label={labels.fallbackMetrics}
                 items={profile.fallbackMetrics}
                 tone={tone}
               />
@@ -468,7 +492,7 @@ function RoutingDetailCard({
           {details.hookFiles.map((file) => (
             <div key={file.relativePath} className={`rounded-sm border px-3 py-2.5 ${TONE_STYLES[tone].detailSurface}`}>
               <div className="text-[11px] font-semibold text-desktop-text-primary">{file.relativePath}</div>
-              <DetailGroup label="Trigger command" items={[file.triggerCommand]} tone={tone} />
+              <DetailGroup label={labels.triggerCommand} items={[file.triggerCommand]} tone={tone} />
             </div>
           ))}
         </div>
@@ -479,10 +503,12 @@ function RoutingDetailCard({
 
 function CompactPreview({
   card,
+  labels,
 }: {
   card: ReviewDimensionCard;
+  labels: { hooks: string; routing: string; watchPaths: string; evidencePaths: string; boundaries: string; thresholds: string; directories: string };
 }) {
-  const sections = buildCompactPreviewSections(card);
+  const sections = buildCompactPreviewSections(card, labels);
   if (!sections.length) {
     return null;
   }
@@ -512,6 +538,7 @@ export function HarnessReviewTriggersPanel({
   defaultShowDetails = true,
   hideHeader = false,
 }: ReviewTriggersPanelProps) {
+  const { t } = useTranslation();
   const reviewTriggerFile = data?.reviewTriggerFile ?? null;
   const profiles = data?.profiles ?? [];
   const hookFiles = data?.hookFiles ?? [];
@@ -521,13 +548,13 @@ export function HarnessReviewTriggersPanel({
   const canToggleDetails = compactMode && showDetailToggle;
   const [showDetails, setShowDetails] = useState(defaultShowDetails);
   const cards = reviewTriggerFile
-    ? buildReviewDimensionCards(reviewTriggerFile.rules, reviewProfiles, reviewHooks, hookFiles)
+    ? buildReviewDimensionCards(reviewTriggerFile.rules, reviewProfiles, reviewHooks, hookFiles, t.harness.reviewTriggers)
     : [];
   const detailsVisible = canToggleDetails ? showDetails : true;
 
   return (
     <HarnessSectionCard
-      title="Review triggers"
+      title={t.harness.reviewTriggers.title}
       hideHeader={hideHeader}
       variant={variant}
       actions={
@@ -537,13 +564,13 @@ export function HarnessReviewTriggersPanel({
             className="rounded-sm border border-desktop-border bg-desktop-bg-primary/65 px-2.5 py-1 text-[10px] font-semibold text-desktop-text-primary transition-colors hover:bg-desktop-bg-primary"
             onClick={() => setShowDetails((current) => !current)}
           >
-            {detailsVisible ? "Hide details" : "Show details"}
+            {detailsVisible ? t.harness.reviewTriggers.hideDetails : t.harness.reviewTriggers.showDetails}
           </button>
         ) : null
       }
     >
       {loading ? (
-        <HarnessSectionStateFrame tone="warning">Loading review trigger policies...</HarnessSectionStateFrame>
+        <HarnessSectionStateFrame tone="warning">{t.harness.reviewTriggers.loadingPolicies}</HarnessSectionStateFrame>
       ) : null}
 
       {unsupportedMessage ? (
@@ -556,13 +583,13 @@ export function HarnessReviewTriggersPanel({
 
       {!loading && !error && !unsupportedMessage && !reviewTriggerFile ? (
         <HarnessSectionStateFrame tone="warning">
-          No `docs/fitness/review-triggers.yaml` file was found for the selected repository.
+          {t.harness.reviewTriggers.noYamlFile}
         </HarnessSectionStateFrame>
       ) : null}
 
       {!loading && !error && !unsupportedMessage && reviewTriggerFile && !reviewTriggerFile.rules.length ? (
         <HarnessSectionStateFrame tone="warning">
-          The YAML file loaded successfully, but no `review_triggers` entries were parsed.
+          {t.harness.reviewTriggers.yamlLoadedNoEntries}
         </HarnessSectionStateFrame>
       ) : null}
 
@@ -594,17 +621,35 @@ export function HarnessReviewTriggersPanel({
                 {detailsVisible ? (
                   <div className="mt-2.5 border-t border-desktop-border pt-2.5">
                     {card.key === "routing" && card.routingDetails ? (
-                      <RoutingDetailCard details={card.routingDetails} tone={card.tone} />
+                      <RoutingDetailCard details={card.routingDetails} tone={card.tone} labels={{
+                        hooks: t.harness.reviewTriggers.compactHooks,
+                        fallbackMetrics: t.harness.reviewTriggers.detailFallbackMetrics,
+                        triggerCommand: t.harness.reviewTriggers.detailTriggerCommand,
+                      }} />
                     ) : (
                       <div className="grid gap-2">
                         {card.rules.map((rule) => (
-                          <RuleDetailCard key={`${card.key}-${rule.name}`} rule={rule} tone={card.tone} />
+                          <RuleDetailCard key={`${card.key}-${rule.name}`} rule={rule} tone={card.tone} labels={{
+                            watchPaths: t.harness.reviewTriggers.compactWatchPaths,
+                            evidencePaths: t.harness.reviewTriggers.compactEvidencePaths,
+                            boundaries: t.harness.reviewTriggers.compactBoundaries,
+                            directories: t.harness.reviewTriggers.compactDirectories,
+                            thresholds: t.harness.reviewTriggers.compactThresholds,
+                          }} />
                         ))}
                       </div>
                     )}
                   </div>
                 ) : (
-                  <CompactPreview card={card} />
+                  <CompactPreview card={card} labels={{
+                    hooks: t.harness.reviewTriggers.compactHooks,
+                    routing: t.harness.reviewTriggers.compactRouting,
+                    watchPaths: t.harness.reviewTriggers.compactWatchPaths,
+                    evidencePaths: t.harness.reviewTriggers.compactEvidencePaths,
+                    boundaries: t.harness.reviewTriggers.compactBoundaries,
+                    thresholds: t.harness.reviewTriggers.compactThresholds,
+                    directories: t.harness.reviewTriggers.compactDirectories,
+                  }} />
                 )}
               </article>
             );

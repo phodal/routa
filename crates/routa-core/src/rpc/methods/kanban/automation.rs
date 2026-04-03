@@ -6,7 +6,11 @@ use std::time::{Duration, Instant};
 
 use crate::events::{AgentEvent, AgentEventType};
 use crate::models::kanban::{KanbanAutomationStep, KanbanBoard, KanbanColumn, KanbanTransport};
-use crate::models::task::{Task, TaskLaneSession, TaskLaneSessionStatus};
+use crate::models::task::{
+    build_task_evidence_summary, build_task_invest_validation, build_task_story_readiness, Task,
+    TaskEvidenceSummary, TaskInvestValidation, TaskLaneSession, TaskLaneSessionStatus,
+    TaskStoryReadiness,
+};
 use crate::rpc::error::RpcError;
 use crate::state::AppState;
 use crate::store::acp_session_store::CreateAcpSessionParams;
@@ -66,6 +70,98 @@ pub(super) async fn ensure_required_artifacts_present(
         target_column.name,
         missing_artifacts.join(", ")
     )))
+}
+
+pub(super) fn ensure_required_task_fields_present(
+    task: &Task,
+    target_column: &KanbanColumn,
+) -> Result<(), RpcError> {
+    let Some(required_task_fields) = target_column
+        .automation
+        .as_ref()
+        .and_then(|automation| automation.required_task_fields.as_ref())
+    else {
+        return Ok(());
+    };
+    if required_task_fields.is_empty() {
+        return Ok(());
+    }
+
+    let readiness = build_task_story_readiness(task, required_task_fields);
+    if readiness.ready {
+        return Ok(());
+    }
+
+    let missing_task_fields = readiness
+        .missing
+        .iter()
+        .map(|field| match field.as_str() {
+            "acceptance_criteria" => "acceptance criteria",
+            "verification_commands" => "verification commands",
+            "test_cases" => "test cases",
+            "verification_plan" => "verification plan",
+            "dependencies_declared" => "dependency declaration",
+            other => other,
+        })
+        .collect::<Vec<_>>();
+
+    Err(RpcError::BadRequest(format!(
+        "Cannot move card to \"{}\": missing required task fields: {}. Please complete this story definition before moving the card.",
+        target_column.name,
+        missing_task_fields.join(", ")
+    )))
+}
+
+fn resolve_next_required_artifacts(
+    board: Option<&KanbanBoard>,
+    current_column_id: Option<&str>,
+) -> Vec<String> {
+    let current_column_id = current_column_id.unwrap_or("backlog").to_ascii_lowercase();
+    let next_column_id = ["backlog", "todo", "dev", "review", "done"]
+        .iter()
+        .position(|column_id| *column_id == current_column_id)
+        .and_then(|index| ["backlog", "todo", "dev", "review", "done"].get(index + 1))
+        .copied();
+    let Some(next_column_id) = next_column_id else {
+        return Vec::new();
+    };
+
+    board
+        .and_then(|board| {
+            board
+                .columns
+                .iter()
+                .find(|column| column.id == next_column_id)
+        })
+        .and_then(|column| column.automation.as_ref())
+        .and_then(|automation| automation.required_artifacts.clone())
+        .unwrap_or_default()
+}
+
+fn resolve_next_required_task_fields(
+    board: Option<&KanbanBoard>,
+    current_column_id: Option<&str>,
+) -> Vec<String> {
+    let current_column_id = current_column_id.unwrap_or("backlog").to_ascii_lowercase();
+    let next_column_id = ["backlog", "todo", "dev", "review", "done"]
+        .iter()
+        .position(|column_id| *column_id == current_column_id)
+        .and_then(|index| ["backlog", "todo", "dev", "review", "done"].get(index + 1))
+        .copied();
+    let Some(next_column_id) = next_column_id else {
+        return Vec::new();
+    };
+
+    board
+        .and_then(|board| {
+            board
+                .columns
+                .iter()
+                .find(|column| column.id == next_column_id)
+        })
+        .and_then(|column| column.automation.as_ref())
+        .and_then(|automation| automation.required_task_fields.clone())
+        .unwrap_or_default()
 }
 
 pub(super) fn maybe_apply_lane_automation_defaults(
@@ -176,6 +272,9 @@ pub(super) fn build_task_prompt(
     board_id: Option<&str>,
     next_column_id: Option<&str>,
     available_columns: &str,
+    story_readiness: Option<&TaskStoryReadiness>,
+    invest_validation: Option<&TaskInvestValidation>,
+    evidence_summary: Option<&TaskEvidenceSummary>,
 ) -> String {
     let labels = if task.labels.is_empty() {
         "Labels: none".to_string()
@@ -198,6 +297,154 @@ pub(super) fn build_task_prompt(
             format!("You are in the `{lane_id}` lane. Keep work scoped to this card and this lane only."),
         ],
     };
+    let story_readiness_section = story_readiness
+        .map(|summary| {
+            vec![
+                "## Story Readiness".to_string(),
+                String::new(),
+                format!(
+                    "Ready for next move: {}",
+                    if summary.ready { "yes" } else { "no" }
+                ),
+                if summary.required_task_fields.is_empty() {
+                    "Required fields: none configured".to_string()
+                } else {
+                    format!(
+                        "Required fields: {}",
+                        summary.required_task_fields.join(", ")
+                    )
+                },
+                if summary.missing.is_empty() {
+                    "Missing fields: none".to_string()
+                } else {
+                    format!("Missing fields: {}", summary.missing.join(", "))
+                },
+                format!(
+                    "Checks: scope={}, acceptanceCriteria={}, verificationCommands={}, testCases={}, verificationPlan={}, dependenciesDeclared={}",
+                    if summary.checks.scope { "present" } else { "missing" },
+                    if summary.checks.acceptance_criteria { "present" } else { "missing" },
+                    if summary.checks.verification_commands { "present" } else { "missing" },
+                    if summary.checks.test_cases { "present" } else { "missing" },
+                    if summary.checks.verification_plan { "present" } else { "missing" },
+                    if summary.checks.dependencies_declared { "present" } else { "missing" },
+                ),
+                String::new(),
+            ]
+        })
+        .unwrap_or_default();
+    let invest_section = invest_validation
+        .map(|summary| {
+            let checks = &summary.checks;
+            let mut section = vec![
+                "## INVEST Snapshot".to_string(),
+                String::new(),
+                format!("Source: {}", summary.source),
+                format!(
+                    "Overall: {}",
+                    summary.overall_status.as_str().to_uppercase()
+                ),
+                format!(
+                    "Independent: {} — {}",
+                    checks.independent.status.as_str().to_uppercase(),
+                    checks.independent.reason
+                ),
+                format!(
+                    "Negotiable: {} — {}",
+                    checks.negotiable.status.as_str().to_uppercase(),
+                    checks.negotiable.reason
+                ),
+                format!(
+                    "Valuable: {} — {}",
+                    checks.valuable.status.as_str().to_uppercase(),
+                    checks.valuable.reason
+                ),
+                format!(
+                    "Estimable: {} — {}",
+                    checks.estimable.status.as_str().to_uppercase(),
+                    checks.estimable.reason
+                ),
+                format!(
+                    "Small: {} — {}",
+                    checks.small.status.as_str().to_uppercase(),
+                    checks.small.reason
+                ),
+                format!(
+                    "Testable: {} — {}",
+                    checks.testable.status.as_str().to_uppercase(),
+                    checks.testable.reason
+                ),
+            ];
+            if !summary.issues.is_empty() {
+                section.push(format!("Issues: {}", summary.issues.join(" | ")));
+            }
+            section.push(String::new());
+            section
+        })
+        .unwrap_or_default();
+    let evidence_bundle_section = evidence_summary
+        .map(|summary| {
+            vec![
+                "## Evidence Bundle".to_string(),
+                String::new(),
+                format!("Artifacts total: {}", summary.artifact.total),
+                format!(
+                    "Artifacts by type: {}",
+                    summary
+                        .artifact
+                        .by_type
+                        .iter()
+                        .map(|(artifact_type, count)| format!("{artifact_type}={count}"))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ),
+                format!(
+                    "Required artifacts satisfied: {}",
+                    if summary.artifact.required_satisfied {
+                        "yes"
+                    } else {
+                        "no"
+                    }
+                ),
+                format!(
+                    "Missing required artifacts: {}",
+                    if summary.artifact.missing_required.is_empty() {
+                        "none".to_string()
+                    } else {
+                        summary.artifact.missing_required.join(", ")
+                    }
+                ),
+                format!(
+                    "Verification verdict: {}",
+                    summary
+                        .verification
+                        .verdict
+                        .clone()
+                        .unwrap_or_else(|| "none".to_string())
+                ),
+                format!(
+                    "Verification report present: {}",
+                    if summary.verification.has_report {
+                        "yes"
+                    } else {
+                        "no"
+                    }
+                ),
+                format!(
+                    "Completion summary present: {}",
+                    if summary.completion.has_summary {
+                        "yes"
+                    } else {
+                        "no"
+                    }
+                ),
+                format!(
+                    "Runs: total={}, latestStatus={}",
+                    summary.runs.total, summary.runs.latest_status
+                ),
+                String::new(),
+            ]
+        })
+        .unwrap_or_default();
 
     [
         format!("You are assigned to Kanban task: {}", task.title),
@@ -232,10 +479,13 @@ pub(super) fn build_task_prompt(
         String::new(),
         task.objective.clone(),
         String::new(),
+        story_readiness_section.join("\n"),
+        invest_section.join("\n"),
         "## Board Columns".to_string(),
         String::new(),
         available_columns.to_string(),
         String::new(),
+        evidence_bundle_section.join("\n"),
         "## Lane Guidance".to_string(),
         String::new(),
         lane_guidance.join("\n"),
@@ -354,6 +604,20 @@ async fn trigger_assigned_task_acp_agent(
             .or(task.board_id.as_deref()),
         next_column_id.as_deref(),
         &available_columns,
+        Some(&build_task_story_readiness(
+            task,
+            &resolve_next_required_task_fields(board, task.column_id.as_deref()),
+        )),
+        Some(&build_task_invest_validation(task)),
+        Some(&build_task_evidence_summary(
+            task,
+            &state
+                .artifact_store
+                .list_by_task(&task.id)
+                .await
+                .map_err(|error| format!("Failed to load task artifacts: {}", error))?,
+            &resolve_next_required_artifacts(board, task.column_id.as_deref()),
+        )),
     );
     let state_clone = state.clone();
     let session_id_clone = session_id.clone();
@@ -537,6 +801,20 @@ async fn trigger_assigned_task_a2a_agent(
             .or(task.board_id.as_deref()),
         next_column_id.as_deref(),
         &available_columns,
+        Some(&build_task_story_readiness(
+            task,
+            &resolve_next_required_task_fields(board, task.column_id.as_deref()),
+        )),
+        Some(&build_task_invest_validation(task)),
+        Some(&build_task_evidence_summary(
+            task,
+            &state
+                .artifact_store
+                .list_by_task(&task.id)
+                .await
+                .map_err(|error| format!("Failed to load task artifacts: {}", error))?,
+            &resolve_next_required_artifacts(board, task.column_id.as_deref()),
+        )),
     );
 
     let client = reqwest::Client::new();

@@ -427,7 +427,8 @@ mod tests {
 
     #[test]
     fn resolves_workspace_team_root_tree_placeholder() {
-        let (target, content_type) = resolve_static_target("/workspace/default/team/__next._tree.txt");
+        let (target, content_type) =
+            resolve_static_target("/workspace/default/team/__next._tree.txt");
         assert_eq!(target, "workspace/__placeholder__/team/__next._tree.txt");
         assert_eq!(content_type, "text/x-component; charset=utf-8");
     }

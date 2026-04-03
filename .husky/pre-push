@@ -7,5 +7,13 @@ if [ -n "$SKIP_HOOKS" ]; then
   exit 0
 fi
 
+# Fix Windows git-bash TEMP resolution (git bash sets TEMP=/tmp,
+# which causes Node.js mkdtemp to fail with ENOENT on Windows)
+if [ "$(uname -s 2>/dev/null | cut -c1-5)" = "MINGW" ] || [ "$(uname -s 2>/dev/null | cut -c1-10)" = "MSYS_NT" ]; then
+  win_temp="$(cygpath -w "$LOCALAPPDATA/Temp" 2>/dev/null || echo "$USERPROFILE/AppData/Local/Temp")"
+  export TEMP="$win_temp"
+  export TMP="$win_temp"
+fi
+
 # Run hook runtime directly for full pre-push checks.
 node --import tsx tools/hook-runtime/src/cli.ts --profile pre-push "$@"

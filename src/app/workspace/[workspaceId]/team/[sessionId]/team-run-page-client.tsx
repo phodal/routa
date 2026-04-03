@@ -64,6 +64,7 @@ import {
   TeamMembersSection,
 } from "./team-run-page-sections";
 import { useRealTeamRunParams } from "./use-real-team-run-params";
+import { useTranslation } from "@/i18n";
 import { ChevronLeft, Sparkles } from "lucide-react";
 
 
@@ -139,6 +140,7 @@ function delegationRoleMatchesSession(targetRosterId: string, child: SessionInfo
 }
 
 export function TeamRunPageClient() {
+  const { t } = useTranslation();
   const router = useRouter();
   const { workspaceId, sessionId, isResolved } = useRealTeamRunParams();
 
@@ -1312,7 +1314,7 @@ export function TeamRunPageClient() {
   if (!session) {
     return (
       <div className="desktop-theme flex h-screen items-center justify-center bg-desktop-bg-primary">
-        <div className="text-sm text-desktop-text-secondary">Loading Team run...</div>
+        <div className="text-sm text-desktop-text-secondary">{t.team.loadingTeamRun}</div>
       </div>
     );
   }

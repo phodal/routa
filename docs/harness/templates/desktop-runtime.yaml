@@ -1,0 +1,98 @@
+schema: harness-template-v1
+version: "0.1.0"
+id: desktop-runtime
+name: Desktop / runtime workflow
+description: >
+  Harness template for a Tauri desktop application backed by a Rust Axum server.
+  Covers Rust-side route/runtime checks, cross-backend API contract parity,
+  and the desktop release pipeline.
+
+topology:
+  app_type: desktop
+  runtimes:
+    - tauri
+    - axum
+    - rust
+  protocols:
+    - rest
+    - ipc
+  boundaries:
+    - path: crates/routa-server/src/api
+      role: http-transport
+    - path: crates/routa-core/src
+      role: domain-logic
+    - path: apps/desktop/src-tauri
+      role: desktop-shell
+
+guides:
+  required:
+    - path: AGENTS.md
+      purpose: Operating contract and reading order
+    - path: docs/ARCHITECTURE.md
+      purpose: Runtime topology and boundary definitions
+    - path: docs/fitness/README.md
+      purpose: Executable fitness rulebook
+  recommended:
+    - path: docs/adr/0001-dual-backend-semantic-parity.md
+      purpose: Dual-backend parity rationale
+    - path: docs/release-guide.md
+      purpose: Full release guide for CLI/Desktop/distribution
+
+sensors:
+  fitness_manifest: docs/fitness/manifest.yaml
+  review_triggers: docs/fitness/review-triggers.yaml
+  release_triggers: docs/fitness/release-triggers.yaml
+  surfaces:
+    - docs/harness/build.yml
+    - docs/harness/test.yml
+  hard_gates:
+    fast:
+      - id: rust_check
+        command: cargo check --workspace
+      - id: rust_clippy
+        command: cargo clippy --workspace -- -D warnings
+      - id: api_contract_check
+        command: npm run api:check
+    normal:
+      - id: rust_test
+        command: cargo test --workspace
+      - id: rust_api_test
+        dimension: rust_api_test
+      - id: code_quality
+        dimension: code_quality
+    full:
+      - id: tauri_build
+        command: npm run tauri:build
+      - id: e2e
+        command: npm run test:e2e
+      - id: security
+        dimension: security
+
+specialists:
+  - id: harness-build
+    role: Build surface validation
+  - id: harness-test
+    role: Test surface validation
+  - id: review-trigger-guard
+    role: Review gate enforcement
+
+automations:
+  ref: docs/harness/automations.yml
+
+lifecycle_tiers:
+  fast:
+    description: Cargo check, clippy, API contract (~30s)
+    column_gate: coding
+  normal:
+    description: Cargo test, Rust API tests, code quality (~5min)
+    column_gate: review
+  full:
+    description: Tauri build, E2E, security (~15min)
+    column_gate: release
+
+drift:
+  strategy: checksum-on-evidence-files
+  notify_on:
+    - guide_missing
+    - sensor_file_missing
+    - gate_command_failing

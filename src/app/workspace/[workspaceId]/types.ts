@@ -1,7 +1,8 @@
 // Shared types for workspace dashboard components
 
 import type { McpServerProfile } from "@/core/mcp/mcp-server-profiles";
-import type { InvestValidation } from "@/core/models/task";
+import type { KanbanRequiredTaskField } from "@/core/models/kanban";
+import type { TaskAnalysisStatus, TaskInvestValidation, TaskStoryReadiness } from "@/core/models/task";
 
 export interface SessionInfo {
   sessionId: string;
@@ -115,6 +116,9 @@ export interface TaskInfo {
   title: string;
   objective?: string;
   comment?: string;
+  scope?: string;
+  acceptanceCriteria?: string[];
+  verificationCommands?: string[];
   testCases?: string[];
   status: string;
   boardId?: string;
@@ -178,14 +182,37 @@ export interface TaskInfo {
   githubSyncedAt?: string;
   lastSyncError?: string;
   sessionId?: string;
+  dependencies?: string[];
+  parallelGroup?: string;
   /** Associated codebase IDs for this task */
   codebaseIds?: string[];
   /** Git worktree ID for this task */
   worktreeId?: string;
+  completionSummary?: string;
+  verificationVerdict?: string;
+  verificationReport?: string;
   artifactSummary?: ArtifactSummaryInfo;
   evidenceSummary?: TaskEvidenceSummaryInfo;
-  investValidation?: InvestValidation;
+  storyReadiness?: TaskStoryReadiness & {
+    missing: KanbanRequiredTaskField[];
+    requiredTaskFields: KanbanRequiredTaskField[];
+  };
+  investValidation?: TaskInvestValidation & {
+    overallStatus: TaskAnalysisStatus;
+  };
   createdAt: string;
+  updatedAt?: string;
+}
+
+export interface GitHubIssueListItemInfo {
+  id: string;
+  number: number;
+  title: string;
+  body?: string;
+  url: string;
+  state: "open" | "closed";
+  labels: string[];
+  assignees: string[];
   updatedAt?: string;
 }
 
@@ -214,6 +241,7 @@ export interface KanbanColumnAutomationInfo {
   authConfigId?: string;
   transitionType?: "entry" | "exit" | "both";
   requiredArtifacts?: ("screenshot" | "test_results" | "code_diff")[];
+  requiredTaskFields?: KanbanRequiredTaskField[];
   autoAdvanceOnSuccess?: boolean;
 }
 

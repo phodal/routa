@@ -157,7 +157,7 @@ export async function executeMcpTool(
             completionSummary: args.completionSummary as string | undefined,
             verificationVerdict: args.verificationVerdict as string | undefined,
             verificationReport: args.verificationReport as string | undefined,
-            investValidation: args.investValidation as import("../models/task").InvestValidation | undefined,
+            investValidation: args.investValidation as import("../models/task").TaskInvestValidation | undefined,
             assignedTo: args.assignedTo as string | undefined,
             acceptanceCriteria: args.acceptanceCriteria as string[] | undefined,
             testCases: args.testCases as string[] | undefined,
@@ -478,7 +478,7 @@ export async function executeMcpTool(
           comment: args.comment as string | undefined,
           priority: args.priority as "low" | "medium" | "high" | "urgent" | undefined,
           labels: args.labels as string[] | undefined,
-          investValidation: args.investValidation as import("../models/task").InvestValidation | undefined,
+          investValidation: args.investValidation as import("../models/task").TaskInvestValidation | undefined,
         })
       );
     case "delete_card":

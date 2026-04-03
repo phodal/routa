@@ -51,7 +51,11 @@ afterEach(async () => {
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
 
-  await fs.rm(tmpDir, { recursive: true, force: true });
+  try {
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  } catch {
+    // Windows may keep file locks; cleanup will happen on reboot
+  }
 });
 
 describe("session-db-persister", () => {

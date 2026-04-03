@@ -1,11 +1,14 @@
 ---
 title: "Kanban card detail session pane can stall when ACP session appears after the detail view opens"
 date: "2026-03-19"
-status: open
+status: resolved
+resolved_at: "2026-03-19"
 severity: high
 area: "kanban"
 tags: [kanban, acp, session, ui, refresh, sse]
 reported_by: "Codex"
+github_state: null
+github_url: null
 related_issues: [
   "docs/issues/2026-03-12-kanban-column-automation-and-manual-issue-modal.md",
   "docs/issues/2026-03-14-kanban-story-lane-automation-stalls-after-first-session.md"
@@ -77,6 +80,29 @@ There are three likely contributors in the current implementation:
 
 4. Add a manual refresh button in the card detail UI:
    - let users recover explicitly even if the automatic path misses a change
+
+## Resolution
+
+This issue is resolved in the current codebase.
+
+Evidence in current implementation:
+
+- `src/app/workspace/[workspaceId]/kanban/kanban-tab.tsx` now keeps
+  `activeSessionId` synchronized with `getPreferredTaskSessionId(activeTask)`,
+  but avoids clobbering a user-selected historical session that still belongs to
+  the card.
+- The same file maintains `backfilledSessions` and performs a targeted fetch to
+  `/api/sessions/[sessionId]` when the preferred active session is known but
+  missing from the current sessions list.
+- The same file triggers `scheduleKanbanRefreshBurst(onRefresh)` for cards that
+  should have automation but are still in the empty-session state, covering the
+  task/session convergence race.
+- `src/app/workspace/[workspaceId]/kanban/kanban-card-detail.tsx` now exposes a
+  visible `Refresh` button in the detail header as a manual recovery path.
+- `src/app/workspace/[workspaceId]/kanban/__tests__/kanban-tab.test.tsx`
+  contains a focused regression test,
+  `recovers when the trigger session appears after the detail view is already open`,
+  which verifies the targeted session backfill path.
 
 5. Later, evaluate whether to unify the Next.js and Rust Kanban SSE semantics:
    - make both runtimes emit compatible `kanban:changed` payloads

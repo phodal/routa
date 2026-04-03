@@ -323,7 +323,6 @@ mod tests {
                 hard_gate_failures: Vec::new(),
                 results: Vec::new(),
             }],
-            ..Default::default()
         };
         assert_eq!(enforce(&report, &GovernancePolicy::default()), 1);
     }
@@ -343,7 +342,6 @@ mod tests {
                 hard_gate_failures: Vec::new(),
                 results: Vec::new(),
             }],
-            ..Default::default()
         };
         assert_eq!(enforce(&report, &GovernancePolicy::default()), 2);
     }

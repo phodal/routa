@@ -212,6 +212,48 @@ describe("KanbanSettingsModal", () => {
     expect(screen.queryByText("Configure in stage map")).toBeNull();
   });
 
+  it("applies the default story-readiness gate for the dev lane", async () => {
+    const onSave = vi.fn(async () => {});
+    const devBoard: KanbanBoardInfo = {
+      ...board,
+      columns: [{ id: "dev", name: "Dev", position: 0, stage: "dev" }],
+    };
+
+    render(
+      <KanbanSettingsModal
+        board={devBoard}
+        columnAutomation={{}}
+        availableProviders={[{ id: "claude", name: "Claude Code", description: "Claude Code provider", command: "claude" }]}
+        specialists={[{ id: "kanban-dev-executor", name: "Dev Crafter", role: "CRAFTER" }]}
+        specialistLanguage="en"
+        onClose={vi.fn()}
+        onClearAll={vi.fn(async () => {})}
+        onSave={onSave}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("checkbox", { name: /toggle automation for dev/i }));
+    fireEvent.click(screen.getByRole("button", { name: /save board settings/i }));
+
+    await waitFor(() => {
+      expect(onSave).toHaveBeenCalledWith(
+        [expect.objectContaining({ id: "dev", visible: true, position: 0 })],
+        {
+          dev: expect.objectContaining({
+            requiredTaskFields: ["scope", "acceptance_criteria", "verification_plan"],
+          }),
+        },
+        2,
+        {
+          mode: "watchdog_retry",
+          inactivityTimeoutMinutes: 10,
+          maxRecoveryAttempts: 1,
+          completionRequirement: "turn_complete",
+        },
+      );
+    });
+  });
+
   it("clears all cards after confirmation", async () => {
     const onClearAll = vi.fn(async () => {});
     const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);

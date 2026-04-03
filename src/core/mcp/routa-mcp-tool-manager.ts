@@ -290,7 +290,7 @@ export class RoutaMcpToolManager {
           expectedVersion,
           updates: {
             ...updates,
-            investValidation: updates.investValidation as import("../models/task").InvestValidation | undefined,
+            investValidation: updates.investValidation as import("../models/task").TaskInvestValidation | undefined,
           },
           agentId,
         });
@@ -1055,7 +1055,7 @@ Note: taskId must be a UUID from create_task, not a task name.`,
           comment: params.comment,
           priority: params.priority,
           labels: params.labels,
-          investValidation: params.investValidation as import("../models/task").InvestValidation | undefined,
+          investValidation: params.investValidation as import("../models/task").TaskInvestValidation | undefined,
         });
         return this.toMcpResult(result);
       }

@@ -27,6 +27,7 @@ import {TracePanel} from "@/client/components/trace-panel";
 import type {WorkspaceData, CodebaseData} from "../hooks/use-workspaces";
 import {getFileChangesSummary} from "../utils/file-changes-tracker";
 import { TriangleAlert, X, KeyRound } from "lucide-react";
+import { useTranslation } from "@/i18n";
 
 
 // ─── Message Types ─────────────────────────────────────────────────────
@@ -121,6 +122,7 @@ export function ChatPanel({
   inputPrefill,
   onInputPrefillConsumed,
 }: ChatPanelProps) {
+  const { t } = useTranslation();
   const { connected, loading, error, authError, updates, prompt, clearAuthError } = acp;
   const messagesEndRef = useRef<HTMLDivElement>(null);
   // View mode: 'chat' or 'trace'
@@ -162,14 +164,14 @@ export function ChatPanel({
 
         return {
           id: msg.id,
-          title: description || msg.toolName || "Task",
+          title: description || msg.toolName || t.common.tasks,
           description,
           subagentType,
           status,
           completionSummary: msg.completionSummary,
         };
       });
-  }, [visibleMessages]);
+  }, [visibleMessages, t]);
 
   // Extract plan entries from plan messages
   const planTasks = useMemo<TaskInfo[]>(() => {
@@ -366,7 +368,7 @@ export function ChatPanel({
           <div className="flex items-center gap-2">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
             <span className="text-[11px] text-slate-500 dark:text-slate-400 font-mono">
-              Session: {activeSessionId.slice(0, 12)}...
+              {t.sessions.sessionInfo} {activeSessionId.slice(0, 12)}...
             </span>
           </div>
           {/* View toggle: Chat | Trace */}
@@ -379,7 +381,7 @@ export function ChatPanel({
                   : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300"
               }`}
             >
-              Chat
+              {t.chat.viewToggle.chat}
             </button>
             <button
               onClick={() => setViewMode("trace")}
@@ -389,7 +391,7 @@ export function ChatPanel({
                   : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300"
               }`}
             >
-              Trace
+              {t.chat.viewToggle.trace}
             </button>
           </div>
         </div>
@@ -411,7 +413,7 @@ export function ChatPanel({
             <div className="flex-1 min-w-0">
               <div className="flex items-center justify-between gap-2">
                 <h4 className="text-sm font-medium text-amber-800 dark:text-amber-200">
-                  Authentication Required
+                  {t.chat.authRequiredTitle}
                   {authError.agentInfo && (
                     <span className="ml-2 text-xs font-normal text-amber-600 dark:text-amber-400">
                       ({authError.agentInfo.name} v{authError.agentInfo.version})
@@ -421,7 +423,7 @@ export function ChatPanel({
                 <button
                   onClick={clearAuthError}
                   className="shrink-0 p-1 rounded hover:bg-amber-100 dark:hover:bg-amber-800/30 transition-colors"
-                  title="Dismiss"
+                  title={t.common.dismiss}
                 >
                   <X className="w-4 h-4 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
                 </button>
@@ -432,7 +434,7 @@ export function ChatPanel({
               {authError.authMethods.length > 0 && (
                 <div className="mt-3 space-y-2">
                   <p className="text-xs font-medium text-amber-700 dark:text-amber-300">
-                    Available authentication methods:
+                    {t.chat.availableAuthMethods}
                   </p>
                   <div className="space-y-1.5">
                     {authError.authMethods.map((method) => (
@@ -492,7 +494,7 @@ export function ChatPanel({
             <div className="max-w-3xl mx-auto px-5 py-5 space-y-2">
               {visibleMessages.length === 0 && activeSessionId && (
                 <div className="text-center py-20 text-sm text-slate-400 dark:text-slate-500">
-                  Send a message to start.
+                  {t.sessions.placeholder}
                 </div>
               )}
               {visibleMessages
@@ -561,9 +563,9 @@ export function ChatPanel({
                   placeholder={
                     connected
                       ? activeSessionId
-                        ? "Type a message... @ file, # agent, / skill"
-                        : "Type a message to auto-create a session..."
-                      : "Connect first..."
+                        ? t.chat.typeMessage
+                        : t.chat.typeCreateSession
+                      : t.chat.connectFirst
                   }
                   disabled={!connected}
                   loading={loading || isSessionRunning}
@@ -586,7 +588,7 @@ export function ChatPanel({
               {repoSelection?.path && (
                 <div className="flex items-center gap-1.5 px-1 text-[10px] text-slate-400 dark:text-slate-500">
                   <span className="font-medium text-slate-500 dark:text-slate-400">
-                    Repo path
+                    {t.sessions.repoPath}
                   </span>
                   <span className="truncate font-mono" title={repoSelection.path}>
                     {repoSelection.path}

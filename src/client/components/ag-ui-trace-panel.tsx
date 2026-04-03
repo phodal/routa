@@ -277,10 +277,11 @@ function EventCard({ event }: { event: AGUIBaseEvent }) {
 }
 
 function AGUILifecycleBar({ event }: { event: AGUIBaseEvent }) {
+  const { t } = useTranslation();
   const color = EVENT_COLORS[event.type] ?? DEFAULT_EVENT_COLOR;
-  const label = event.type === AGUIEventType.RUN_STARTED ? "Run Started"
-    : event.type === AGUIEventType.RUN_FINISHED ? "Run Finished"
-      : event.type === AGUIEventType.RUN_ERROR ? "Run Error"
+  const label = event.type === AGUIEventType.RUN_STARTED ? t.trace.runStarted
+    : event.type === AGUIEventType.RUN_FINISHED ? t.trace.runFinished
+      : event.type === AGUIEventType.RUN_ERROR ? t.trace.runError
         : event.type;
 
   const detail = event.type === AGUIEventType.RUN_ERROR ? (event.message as string) ?? "" : "";
@@ -294,6 +295,7 @@ function AGUILifecycleBar({ event }: { event: AGUIBaseEvent }) {
 }
 
 function AGUIUserBubble({ message }: { message: AssembledMessage }) {
+  const { t } = useTranslation();
   return (
     <div className="flex items-start gap-3 group">
       <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center shrink-0">
@@ -301,11 +303,11 @@ function AGUIUserBubble({ message }: { message: AssembledMessage }) {
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 mb-1">
-          <span className="text-xs font-semibold text-blue-700 dark:text-blue-300">User</span>
+          <span className="text-xs font-semibold text-blue-700 dark:text-blue-300">{t.trace.user}</span>
         </div>
         <div className="px-4 py-3 rounded-xl bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800/30">
           <p className="text-sm text-slate-800 dark:text-slate-200 whitespace-pre-wrap break-words leading-relaxed">
-            {message.content || <span className="italic text-slate-400">(empty)</span>}
+            {message.content || <span className="italic text-slate-400">{t.trace.empty}</span>}
           </p>
         </div>
       </div>
@@ -340,6 +342,7 @@ function AGUIReasoningBubble({ message }: { message: AssembledMessage }) {
 }
 
 function AGUIToolCard({ tool }: { tool: ToolCallGroup }) {
+  const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   const hasResult = !!tool.result;
 
@@ -360,7 +363,7 @@ function AGUIToolCard({ tool }: { tool: ToolCallGroup }) {
         <div className="mt-1 ml-4 pl-3 border-l-2 border-amber-200 dark:border-amber-800/40 space-y-2">
           {tool.args && (
             <div>
-              <span className="text-[10px] font-semibold text-slate-500 uppercase">Args</span>
+              <span className="text-[10px] font-semibold text-slate-500 uppercase">{t.trace.args}</span>
               <pre className="text-[10px] font-mono text-slate-600 dark:text-slate-400 whitespace-pre-wrap mt-0.5 max-h-32 overflow-auto">
                 {tool.args}
               </pre>
@@ -368,9 +371,9 @@ function AGUIToolCard({ tool }: { tool: ToolCallGroup }) {
           )}
           {tool.result && (
             <div>
-              <span className="text-[10px] font-semibold text-slate-500 uppercase">Result</span>
+              <span className="text-[10px] font-semibold text-slate-500 uppercase">{t.trace.result}</span>
               <pre className="text-[10px] font-mono text-slate-600 dark:text-slate-400 whitespace-pre-wrap mt-0.5 max-h-40 overflow-auto">
-                {tool.result.slice(0, 2000)}{tool.result.length > 2000 ? "\n...(truncated)" : ""}
+                {tool.result.slice(0, 2000)}{tool.result.length > 2000 ? `\n${t.trace.truncated}` : ""}
               </pre>
             </div>
           )}
@@ -460,7 +463,7 @@ export function AGUITracePanel({ sessionId, traces }: AGUITracePanelProps) {
                 : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
                 }`}
             >
-              {mode === "chat" ? "Chat" : mode === "events" ? "Events" : "Split"}
+              {mode === "chat" ? t.trace.chat : mode === "events" ? t.trace.events : t.trace.split}
             </button>
           ))}
         </div>

@@ -1,0 +1,96 @@
+schema: harness-template-v1
+version: "0.1.0"
+id: web-agent-orchestrated
+name: Agent-orchestrated web workflow
+description: >
+  Harness template for a Next.js web application with API routes, fitness gates,
+  review triggers, and agent-oriented delivery.
+  Covers the inner feedback loop (requirement → local validation) plus the push
+  feedback loop (trunk integration → artifact release).
+
+topology:
+  app_type: web
+  runtimes:
+    - nextjs
+    - nodejs
+  protocols:
+    - rest
+    - mcp
+    - acp
+    - sse
+  boundaries:
+    - path: src/app
+      role: presentation
+    - path: src/core
+      role: domain-services
+    - path: src/core/db
+      role: persistence
+
+guides:
+  required:
+    - path: AGENTS.md
+      purpose: Operating contract and reading order
+    - path: docs/ARCHITECTURE.md
+      purpose: Runtime topology and boundary definitions
+    - path: docs/fitness/README.md
+      purpose: Executable fitness rulebook
+  recommended:
+    - path: docs/adr/README.md
+      purpose: Architecture decision index
+    - path: docs/design-docs/
+      purpose: Human-reviewed design intent
+
+sensors:
+  fitness_manifest: docs/fitness/manifest.yaml
+  review_triggers: docs/fitness/review-triggers.yaml
+  release_triggers: docs/fitness/release-triggers.yaml
+  surfaces:
+    - docs/harness/build.yml
+    - docs/harness/test.yml
+  hard_gates:
+    fast:
+      - id: lint
+        command: npm run lint
+      - id: typecheck
+        command: npx tsc --noEmit
+      - id: api_contract_check
+        command: npm run api:check
+    normal:
+      - id: unit_test
+        command: npm run test
+      - id: code_quality
+        dimension: code_quality
+    full:
+      - id: e2e
+        command: npm run test:e2e
+      - id: security
+        dimension: security
+
+specialists:
+  - id: harness-build
+    role: Build surface validation
+  - id: harness-test
+    role: Test surface validation
+  - id: review-trigger-guard
+    role: Review gate enforcement
+
+automations:
+  ref: docs/harness/automations.yml
+
+lifecycle_tiers:
+  fast:
+    description: Static analysis, lints, contract checks (~30s)
+    column_gate: coding
+  normal:
+    description: Unit/API tests, code quality (~5min)
+    column_gate: review
+  full:
+    description: E2E, security, visual regression (~15min)
+    column_gate: release
+
+drift:
+  strategy: checksum-on-evidence-files
+  notify_on:
+    - guide_missing
+    - sensor_file_missing
+    - gate_command_failing

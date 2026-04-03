@@ -69,6 +69,9 @@ pub struct KanbanColumnAutomation {
     /// Required artifacts before advancing
     #[serde(skip_serializing_if = "Option::is_none")]
     pub required_artifacts: Option<Vec<String>>,
+    /// Required task fields before advancing
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub required_task_fields: Option<Vec<String>>,
     /// Automatically advance card on session success
     #[serde(skip_serializing_if = "Option::is_none")]
     pub auto_advance_on_success: Option<bool>,
@@ -341,6 +344,7 @@ fn build_recommended_automation(
         transition_type: Some("entry".to_string()),
         auto_advance_on_success: Some(auto_advance_on_success),
         required_artifacts: None,
+        required_task_fields: None,
         provider_id: None,
         role: None,
         specialist_id: None,
@@ -554,6 +558,7 @@ pub fn apply_recommended_automation_to_columns(columns: Vec<KanbanColumn>) -> Ve
                                     .required_artifacts
                                     .or(normalized_recommended.required_artifacts.clone())
                             },
+                            required_task_fields: current.required_task_fields,
                             auto_advance_on_success: normalized_recommended.auto_advance_on_success,
                         };
 
@@ -571,6 +576,24 @@ pub fn apply_recommended_automation_to_columns(columns: Vec<KanbanColumn>) -> Ve
         .collect();
 
     normalize_default_kanban_column_positions(columns)
+}
+
+pub fn apply_new_board_story_readiness_defaults(columns: Vec<KanbanColumn>) -> Vec<KanbanColumn> {
+    columns
+        .into_iter()
+        .map(|mut column| {
+            if column.stage == "dev" {
+                if let Some(automation) = column.automation.as_mut() {
+                    automation.required_task_fields = Some(vec![
+                        "scope".to_string(),
+                        "acceptance_criteria".to_string(),
+                        "verification_plan".to_string(),
+                    ]);
+                }
+            }
+            column
+        })
+        .collect()
 }
 
 fn get_primary_step(automation: &KanbanColumnAutomation) -> Option<KanbanAutomationStep> {

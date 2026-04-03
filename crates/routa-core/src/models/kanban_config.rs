@@ -5,6 +5,14 @@ use super::kanban::KanbanColumnAutomation;
 const VALID_STAGES: &[&str] = &["backlog", "todo", "dev", "review", "blocked", "done"];
 const VALID_TRANSITION_TYPES: &[&str] = &["entry", "exit", "both"];
 const VALID_ARTIFACTS: &[&str] = &["screenshot", "test_results", "code_diff"];
+const VALID_REQUIRED_TASK_FIELDS: &[&str] = &[
+    "scope",
+    "acceptance_criteria",
+    "verification_commands",
+    "test_cases",
+    "verification_plan",
+    "dependencies_declared",
+];
 
 /// Top-level YAML config for declarative Kanban setup.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -137,6 +145,17 @@ impl KanbanConfig {
                             }
                         }
                     }
+                    if let Some(required_task_fields) = &auto.required_task_fields {
+                        for field in required_task_fields {
+                            if !VALID_REQUIRED_TASK_FIELDS.contains(&field.as_str()) {
+                                errors.push(format!(
+                                    "{auto_prefix}.requiredTaskFields contains invalid value '{}', expected one of: {}",
+                                    field,
+                                    VALID_REQUIRED_TASK_FIELDS.join(", ")
+                                ));
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -200,6 +219,9 @@ boards:
           requiredArtifacts:
             - test_results
             - code_diff
+          requiredTaskFields:
+            - scope
+            - verification_plan
           autoAdvanceOnSuccess: false
 "#;
         let config = KanbanConfig::from_yaml(yaml).unwrap();
@@ -208,6 +230,7 @@ boards:
         assert!(auto.enabled);
         assert_eq!(auto.provider_id.as_deref(), Some("routa-native"));
         assert_eq!(auto.required_artifacts.as_ref().unwrap().len(), 2);
+        assert_eq!(auto.required_task_fields.as_ref().unwrap().len(), 2);
         assert!(config.validate().is_ok());
     }
 
@@ -314,6 +337,27 @@ boards:
         let config = KanbanConfig::from_yaml(yaml).unwrap();
         let errs = config.validate().unwrap_err();
         assert!(errs.iter().any(|e| e.contains("'bad_artifact'")));
+    }
+
+    #[test]
+    fn validate_rejects_invalid_required_task_fields() {
+        let yaml = r#"
+version: 1
+boards:
+  - id: b1
+    name: Board
+    columns:
+      - id: c1
+        name: Col
+        stage: dev
+        automation:
+          enabled: true
+          requiredTaskFields:
+            - bad_field
+"#;
+        let config = KanbanConfig::from_yaml(yaml).unwrap();
+        let errs = config.validate().unwrap_err();
+        assert!(errs.iter().any(|e| e.contains("'bad_field'")));
     }
 
     #[test]

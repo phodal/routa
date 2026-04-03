@@ -4,8 +4,8 @@ use rusqlite::OptionalExtension;
 use crate::db::Database;
 use crate::error::ServerError;
 use crate::models::kanban::{
-    apply_recommended_automation_to_columns, default_kanban_board,
-    normalize_default_kanban_column_positions, KanbanBoard,
+    apply_new_board_story_readiness_defaults, apply_recommended_automation_to_columns,
+    default_kanban_board, normalize_default_kanban_column_positions, KanbanBoard,
 };
 
 #[derive(Clone)]
@@ -134,9 +134,10 @@ impl KanbanStore {
         }
 
         let mut board = default_kanban_board(workspace_id.to_string());
-        board.columns = normalize_default_kanban_column_positions(
-            apply_recommended_automation_to_columns(board.columns),
-        );
+        board.columns =
+            normalize_default_kanban_column_positions(apply_new_board_story_readiness_defaults(
+                apply_recommended_automation_to_columns(board.columns),
+            ));
         match self.create(&board).await {
             Ok(()) => Ok(board),
             Err(error) => {

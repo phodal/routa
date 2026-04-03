@@ -10,6 +10,7 @@ import type {
 } from "@/client/hooks/use-harness-settings-data";
 import { desktopAwareFetch } from "@/client/utils/diagnostics";
 import type { GitHubWorkflowCategory as WorkflowCategoryKey } from "@/core/github/workflow-classifier";
+import { useTranslation } from "@/i18n";
 
 type FlowState = {
   error: string | null;
@@ -58,6 +59,7 @@ export function HarnessGitHubActionsFlowPanel({
   initialCategory,
   hideHeader = false,
 }: HarnessGitHubActionsFlowPanelProps) {
+  const { t } = useTranslation();
   const hasExternalState = loading !== undefined || error !== undefined || data !== undefined;
   const hasContext = Boolean(workspaceId && repoPath);
   const contextKey = hasContext ? `${workspaceId}:${codebaseId ?? "repo-only"}:${repoPath}` : "";
@@ -138,15 +140,33 @@ export function HarnessGitHubActionsFlowPanel({
   const isLoading = hasExternalState
     ? Boolean(loading)
     : (hasContext && resolvedFlowState.loadedContextKey !== contextKey && !resolvedFlowState.error);
+  const flowsSummary = isLoading
+    ? t.harness.githubActions.loading
+    : unsupportedMessage
+      ? t.harness.githubActions.unsupported
+      : resolvedFlowState.error
+        ? t.harness.githubActions.fetchError
+        : !hasContext
+          ? t.harness.githubActions.noRepo
+          : visibleFlows.length === 0
+            ? t.harness.githubActions.noWorkflowsFound
+            : `${visibleFlows.length} ${visibleFlows.length !== 1 ? t.harness.githubActions.workflows : t.harness.githubActions.workflow}`;
+  const stateBadge = (
+    <span className="text-[10px] text-desktop-text-secondary">
+      {flowsSummary}
+    </span>
+  );
 
   if (isLoading) {
     return (
       <HarnessSectionCard
-        title="CI/CD"
+        title={t.settings.harness.ciCd}
         hideHeader={hideHeader}
+        description={t.harness.githubActions.workflowOrchestrationDesc.replace("{repoLabel}", _repoLabel)}
+        actions={stateBadge}
         variant={variant}
       >
-        <HarnessSectionStateFrame>Loading GitHub Actions workflows...</HarnessSectionStateFrame>
+        <HarnessSectionStateFrame>{t.harness.githubActions.loadingWorkflows}</HarnessSectionStateFrame>
       </HarnessSectionCard>
     );
   }
@@ -154,8 +174,10 @@ export function HarnessGitHubActionsFlowPanel({
   if (unsupportedMessage) {
     return (
       <HarnessSectionCard
-        title="CI/CD"
+        title={t.settings.harness.ciCd}
         hideHeader={hideHeader}
+        description={t.harness.githubActions.workflowOrchestrationDesc.replace("{repoLabel}", _repoLabel)}
+        actions={stateBadge}
         variant={variant}
       >
         <HarnessUnsupportedState className="rounded-sm border border-amber-200 bg-amber-50 px-4 py-4 text-[11px] text-amber-800" />
@@ -166,8 +188,10 @@ export function HarnessGitHubActionsFlowPanel({
   if (resolvedFlowState.error) {
     return (
       <HarnessSectionCard
-        title="CI/CD"
+        title={t.settings.harness.ciCd}
         hideHeader={hideHeader}
+        description={t.harness.githubActions.workflowOrchestrationDesc.replace("{repoLabel}", _repoLabel)}
+        actions={stateBadge}
         variant={variant}
       >
         <HarnessSectionStateFrame tone="error">{resolvedFlowState.error}</HarnessSectionStateFrame>
@@ -178,12 +202,14 @@ export function HarnessGitHubActionsFlowPanel({
   if (visibleFlows.length === 0) {
     return (
       <HarnessSectionCard
-        title="CI/CD"
+        title={t.settings.harness.ciCd}
         hideHeader={hideHeader}
+        description={t.harness.githubActions.workflowOrchestrationDesc.replace("{repoLabel}", _repoLabel)}
+        actions={stateBadge}
         variant={variant}
       >
         <HarnessSectionStateFrame>
-          Select a repository to inspect workflow flows.
+          {t.harness.githubActions.selectRepoToInspect}
         </HarnessSectionStateFrame>
       </HarnessSectionCard>
     );
@@ -191,8 +217,10 @@ export function HarnessGitHubActionsFlowPanel({
 
   return (
     <HarnessSectionCard
-      title="CI/CD"
+      title={t.settings.harness.ciCd}
       hideHeader={hideHeader}
+      description={t.harness.githubActions.workflowOrchestrationDesc.replace("{repoLabel}", _repoLabel)}
+      actions={stateBadge}
       variant={variant}
     >
       <HarnessGitHubActionsFlowGallery

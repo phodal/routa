@@ -1,11 +1,15 @@
 ---
 title: "resources/specialists directory mixes runtime formats, taxonomy concerns, and locale overlays, causing loader divergence across TS and Rust"
 date: "2026-03-19"
-status: open
+status: resolved
+resolved_at: "2026-03-26"
 severity: medium
 area: "specialist-system"
 tags: ["specialist", "resources", "prompt-loading", "locale", "yaml", "markdown"]
 reported_by: "codex"
+github_issue: 204
+github_state: "closed"
+github_url: "https://github.com/phodal/routa/issues/204"
 related_issues:
   - "2026-03-08-cli-specialist-at-mention.md"
   - "https://github.com/phodal/routa/issues/204"
@@ -180,3 +184,23 @@ resources/specialists/
 - Runtime loaders inspected:
   - `src/core/specialists/specialist-file-loader.ts`
   - `crates/routa-core/src/workflow/specialist.rs`
+
+## Resolution
+
+This issue is resolved in the current codebase and the upstream GitHub issue is
+closed.
+
+Evidence in current implementation:
+
+- `resources/specialists/` is now organized into taxonomy directories such as
+  `core/`, `team/`, `review/`, `issue/`, `tools/`, and `workflows/kanban/`.
+- `src/core/specialists/specialist-file-loader.ts` loads YAML runtime
+  definitions from nested directories, loads locale overlays only from
+  `locales/<locale>/` or legacy locale folders, and rejects duplicate
+  specialist IDs.
+- `crates/routa-core/src/workflow/specialist.rs` mirrors the same YAML-only,
+  recursive, locale-overlay-aware loading rules and duplicate-ID protection on
+  the Rust side.
+- `src/core/specialists/__tests__/specialist-file-loader.test.ts` covers locale
+  overlay paths, Markdown exclusion from runtime loading, and duplicate ID
+  failures.

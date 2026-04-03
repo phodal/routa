@@ -26,7 +26,17 @@ export function tailOutput(output: string, maxChars = 6000): string {
 export function runCommand(command: string, options: RunCommandOptions = {}): Promise<CommandResult> {
   const startedAt = Date.now();
   const shell = process.platform === "win32" ? "bash.exe" : "/bin/bash";
-  const child = spawn(shell, ["-lc", command], {
+
+  // On Windows git-bash, login shells (-l) source .bash_profile which
+  // re-imports Windows user env vars via PowerShell; the PowerShell output
+  // carries \r\n line-endings, leaving TEMP/TMP with a trailing \r that
+  // breaks Node.js mkdtemp (EINVAL/ENOENT).  Prepend an inline fix that
+  // runs *after* .bash_profile has been sourced.
+  const finalCommand = process.platform === "win32"
+    ? `TEMP=$(printf '%s' "$TEMP" | tr -d '\\r') TMP=$(printf '%s' "$TMP" | tr -d '\\r') ${command}`
+    : command;
+
+  const child = spawn(shell, ["-lc", finalCommand], {
     cwd: options.cwd ?? process.cwd(),
     env: { ...process.env, ...options.env },
     stdio: ["inherit", "pipe", "pipe"],

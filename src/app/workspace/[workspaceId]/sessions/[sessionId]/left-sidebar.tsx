@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useMemo, useRef, useEffect } from "react";
+import { useTranslation } from "@/i18n";
 import {SessionContextPanel} from "@/client/components/session-context-panel";
 import {type CrafterAgent, TaskPanel} from "@/client/components/task-panel";
 import {CollaborativeTaskEditor} from "@/client/components/collaborative-task-editor";
@@ -68,6 +69,7 @@ function SpecViewer({ specNote, onDeleteNote }: {
   specNote?: NoteData;
   onDeleteNote?: (noteId: string) => Promise<void>;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="flex flex-col h-full">
       {/* Spec header */}
@@ -75,13 +77,13 @@ function SpecViewer({ specNote, onDeleteNote }: {
         <div className="flex items-center gap-1.5">
           <FileText className="w-3.5 h-3.5 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
           <span className="text-xs font-semibold text-blue-600 dark:text-blue-400">
-            {specNote?.title || "Spec"}
+            {specNote?.title || t.common.spec}
           </span>
         </div>
         {specNote && onDeleteNote && (
           <button
             onClick={() => onDeleteNote(specNote.id)}
-            title="Delete spec"
+            title={t.common.deleteSpec}
             className="p-0.5 rounded text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
           >
             <X className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
@@ -92,12 +94,12 @@ function SpecViewer({ specNote, onDeleteNote }: {
       <div className="flex-1 min-h-0 overflow-y-auto px-3 py-2">
         {specNote ? (
           <MarkdownViewer
-            content={specNote.content || "No spec content yet."}
+            content={specNote.content || t.common.noSpecContentYet}
             className="text-[12px] text-slate-700 dark:text-slate-300"
           />
         ) : (
           <div className="h-full rounded-xl border border-dashed border-blue-200 bg-blue-50/60 px-3 py-4 text-[12px] text-blue-700 dark:border-blue-900/50 dark:bg-blue-950/20 dark:text-blue-200">
-            No spec note yet. Keep this tab visible so the session structure stays predictable.
+            {t.common.noSpecNoteYet}
           </div>
         )}
       </div>
@@ -120,6 +122,7 @@ function TaskSnapshotSummary({
   onOpenTasks: () => void;
   onOpenSpec?: () => void;
 }) {
+  const { t } = useTranslation();
   if (taskCount === 0 && !hasSpec) return null;
 
   return (
@@ -132,7 +135,7 @@ function TaskSnapshotSummary({
           <p className="mt-1 text-[12px] text-slate-600 dark:text-slate-300">
             {taskCount > 0
               ? `${taskCount} task${taskCount === 1 ? "" : "s"}${runningCount > 0 ? `, ${runningCount} running` : ""}`
-              : "Spec available for this session."}
+              : t.common.specAvailable}
           </p>
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
@@ -534,6 +537,7 @@ export function LeftSidebar({
   crafterAgents,
   onSelectNoteTask,
 }: LeftSidebarProps) {
+  const { t } = useTranslation();
   const canCreateSession = hasProviders && hasSelectedProvider;
   const [activeTab, setActiveTab] = useState<SidebarTab>("sessions");
   const isDesktopCollapsed = isCollapsed && !showMobileSidebar;
@@ -566,7 +570,7 @@ export function LeftSidebar({
             <button
               onClick={onToggleCollapse}
               className="p-1.5 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
-              title="Expand sidebar"
+              title={t.common.expandSidebar}
             >
               <ChevronsRight className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
             </button>
@@ -576,7 +580,7 @@ export function LeftSidebar({
               onClick={() => { onCreateSession(""); }}
               disabled={!canCreateSession}
               className="p-1.5 rounded-md text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-              title="New Session"
+              title={t.common.newSession}
             >
               <Plus className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
             </button>
@@ -585,7 +589,7 @@ export function LeftSidebar({
             <button
               onClick={() => { onToggleCollapse(); setActiveTab("sessions"); }}
               className={`p-1.5 rounded-md transition-colors ${activeTab === "sessions" ? "text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20" : "text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"}`}
-              title="Sessions"
+              title={t.sessions.title}
             >
               <MessageSquareMore className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
             </button>
@@ -594,7 +598,7 @@ export function LeftSidebar({
             <button
               onClick={() => { onToggleCollapse(); setActiveTab("spec"); }}
               className={`p-1.5 rounded-md transition-colors ${activeTab === "spec" ? "text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20" : "text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"}`}
-              title="Spec"
+              title={t.common.spec}
             >
               <FileText className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
             </button>
@@ -603,7 +607,7 @@ export function LeftSidebar({
             <button
               onClick={() => { onToggleCollapse(); setActiveTab("tasks"); }}
               className={`relative p-1.5 rounded-md transition-colors ${activeTab === "tasks" ? "text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20" : "text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"}`}
-              title="Tasks"
+              title={t.common.tasks}
             >
               <ClipboardCheck className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
               {taskCount > 0 && (
@@ -629,7 +633,7 @@ export function LeftSidebar({
                     onToggleCollapse();
                   }}
                   className="p-1 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors shrink-0"
-                  title={showMobileSidebar ? "Close sidebar" : "Collapse sidebar"}
+                  title={showMobileSidebar ? t.nav.closeSidebar : t.common.collapseSidebar}
                 >
                   <ChevronsLeft className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
                 </button>
@@ -649,11 +653,11 @@ export function LeftSidebar({
                     onCloseMobileSidebar?.();
                   }}
                   disabled={!canCreateSession}
-                  title="New Session"
+                  title={t.common.newSession}
                   className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   <Plus className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
-                  <span className="hidden sm:inline">New</span>
+                  <span className="hidden sm:inline">{t.common.new}</span>
                 </button>
               </div>
             </div>
@@ -662,7 +666,7 @@ export function LeftSidebar({
             <div className="flex items-end px-1 pt-1 border-b border-slate-200 dark:border-slate-700 shrink-0 gap-0.5 overflow-x-auto">
               <TabButton
                 active={activeTab === "sessions"}
-                label="Sessions"
+                label={t.sessions.title}
                 onClick={() => setActiveTab("sessions")}
                 icon={
                   <MessageSquareMore className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
@@ -670,7 +674,7 @@ export function LeftSidebar({
               />
               <TabButton
                 active={activeTab === "spec"}
-                label="Spec"
+                label={t.common.spec}
                 onClick={() => setActiveTab("spec")}
                 icon={
                   <FileText className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
@@ -678,7 +682,7 @@ export function LeftSidebar({
               />
               <TabButton
                 active={activeTab === "tasks"}
-                label="Tasks"
+                label={t.common.tasks}
                 badge={taskCount}
                 badgePulse={hasRunningTasks}
                 onClick={() => setActiveTab("tasks")}

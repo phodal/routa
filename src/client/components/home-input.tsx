@@ -352,7 +352,7 @@ export function HomeInput({
                       onClick={() => setSelectedSpecialistId(null)}
                       className="ml-0.5 text-amber-400 transition-colors hover:text-amber-700 dark:hover:text-amber-200"
                       title="Switch to built-in role"
-                      aria-label="Clear specialist"
+                      aria-label={t.common.clearSpecialist}
                     >
                       ×
                     </button>
@@ -390,7 +390,7 @@ export function HomeInput({
             ) : (
               /* ── Built-in role mode: segmented toggle + optional specialist picker ── */
               <>
-                <div className="flex items-center gap-0.5 rounded-[18px] border border-blue-100 bg-white/88 p-1 shadow-[0_10px_28px_-22px_rgba(37,99,235,0.42)] dark:border-slate-800 dark:bg-slate-900" role="group" aria-label="Agent mode">
+                <div className="flex items-center gap-0.5 rounded-[18px] border border-blue-100 bg-white/88 p-1 shadow-[0_10px_28px_-22px_rgba(37,99,235,0.42)] dark:border-slate-800 dark:bg-slate-900" role="group" aria-label={t.common.agentMode}>
                   <button type="button" onClick={() => setSelectedRole("ROUTA")}
                     title="Multi-agent orchestration — spawns specialized agents for complex multi-step tasks (Routa)"
                     className={`flex items-center gap-1.5 rounded-[14px] px-3 py-1.5 text-xs font-medium transition-all ${

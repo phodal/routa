@@ -2,7 +2,7 @@ use chrono::Utc;
 
 use crate::error::ServerError;
 use crate::models::kanban::{column_id_to_task_status, task_status_to_column_id};
-use crate::models::task::{InvestValidation, Task, TaskPriority, TaskStatus};
+use crate::models::task::{Task, TaskInvestValidation, TaskPriority, TaskStatus};
 use crate::state::AppState;
 use routa_core::invest_validation::resolve_invest_validation;
 use routa_core::kanban::{
@@ -47,6 +47,12 @@ impl TaskApplicationService {
             assigned_specialist_name,
             create_github_issue,
             repo_path,
+            codebase_ids,
+            github_id,
+            github_number,
+            github_url,
+            github_repo,
+            github_state,
             invest_validation,
         } = command;
 
@@ -79,6 +85,12 @@ impl TaskApplicationService {
         task.assigned_role = assigned_role;
         task.assigned_specialist_id = assigned_specialist_id;
         task.assigned_specialist_name = assigned_specialist_name;
+        task.codebase_ids = codebase_ids.unwrap_or_default();
+        task.github_id = github_id;
+        task.github_number = github_number;
+        task.github_url = github_url;
+        task.github_repo = github_repo;
+        task.github_state = github_state;
         task.invest_validation =
             resolve_invest_validation(Some(&task.objective), invest_validation, None);
         let entering_dev = task.column_id.as_deref() == Some("dev");
@@ -131,9 +143,12 @@ impl TaskApplicationService {
             }
         }
 
+        let should_create_github_issue =
+            create_github_issue.unwrap_or(false) && task.github_number.is_none();
+
         Ok(CreateTaskPlan {
             task,
-            create_github_issue: create_github_issue.unwrap_or(false),
+            create_github_issue: should_create_github_issue,
             should_trigger_agent: entering_dev || column_automation.is_some(),
             entering_dev,
             repo_path,
@@ -395,7 +410,13 @@ pub struct CreateTaskCommand {
     pub assigned_specialist_name: Option<String>,
     pub create_github_issue: Option<bool>,
     pub repo_path: Option<String>,
-    pub invest_validation: Option<InvestValidation>,
+    pub codebase_ids: Option<Vec<String>>,
+    pub github_id: Option<String>,
+    pub github_number: Option<i64>,
+    pub github_url: Option<String>,
+    pub github_repo: Option<String>,
+    pub github_state: Option<String>,
+    pub invest_validation: Option<TaskInvestValidation>,
 }
 
 #[derive(Debug, Default)]
@@ -429,7 +450,7 @@ pub struct UpdateTaskCommand {
     pub parallel_group: Option<String>,
     pub completion_summary: Option<String>,
     pub verification_report: Option<String>,
-    pub invest_validation: Option<InvestValidation>,
+    pub invest_validation: Option<TaskInvestValidation>,
     pub sync_to_github: Option<bool>,
     pub retry_trigger: Option<bool>,
     pub repo_path: Option<String>,
@@ -521,6 +542,12 @@ mod tests {
                 assigned_specialist_name: None,
                 create_github_issue: None,
                 repo_path: None,
+                codebase_ids: None,
+                github_id: None,
+                github_number: None,
+                github_url: None,
+                github_repo: None,
+                github_state: None,
                 invest_validation: None,
             })
             .await
@@ -567,6 +594,12 @@ mod tests {
                 assigned_specialist_name: None,
                 create_github_issue: Some(true),
                 repo_path: Some("/tmp/repo".to_string()),
+                codebase_ids: None,
+                github_id: None,
+                github_number: None,
+                github_url: None,
+                github_repo: None,
+                github_state: None,
                 invest_validation: None,
             })
             .await
@@ -618,6 +651,12 @@ mod tests {
                 assigned_specialist_name: None,
                 create_github_issue: None,
                 repo_path: None,
+                codebase_ids: None,
+                github_id: None,
+                github_number: None,
+                github_url: None,
+                github_repo: None,
+                github_state: None,
                 invest_validation: None,
             })
             .await
@@ -655,6 +694,12 @@ mod tests {
                 assigned_specialist_name: None,
                 create_github_issue: None,
                 repo_path: None,
+                codebase_ids: None,
+                github_id: None,
+                github_number: None,
+                github_url: None,
+                github_repo: None,
+                github_state: None,
                 invest_validation: None,
             })
             .await
@@ -662,12 +707,12 @@ mod tests {
 
         let validation = plan.task.invest_validation.expect("invest validation");
         assert_eq!(
-            validation.overall,
-            crate::models::task::InvestValidationStatus::Warning
+            validation.overall_status,
+            crate::models::task::TaskAnalysisStatus::Warning
         );
         assert_eq!(
-            validation.independent.status,
-            crate::models::task::InvestValidationStatus::Pass
+            validation.checks.independent.status,
+            crate::models::task::TaskAnalysisStatus::Pass
         );
 
         let _ = fs::remove_file(db_path);
@@ -751,12 +796,12 @@ mod tests {
 
         let validation = plan.task.invest_validation.expect("invest validation");
         assert_eq!(
-            validation.overall,
-            crate::models::task::InvestValidationStatus::Warning
+            validation.overall_status,
+            crate::models::task::TaskAnalysisStatus::Warning
         );
         assert_eq!(
-            validation.testable.status,
-            crate::models::task::InvestValidationStatus::Pass
+            validation.checks.testable.status,
+            crate::models::task::TaskAnalysisStatus::Pass
         );
 
         let _ = fs::remove_file(db_path);

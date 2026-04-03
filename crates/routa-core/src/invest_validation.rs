@@ -1,9 +1,10 @@
-use chrono::Utc;
 use regex::Regex;
 use serde_yaml::Value;
 use std::sync::LazyLock;
 
-use crate::models::task::{InvestValidation, InvestValidationPrinciple, InvestValidationStatus};
+use crate::models::task::{
+    TaskAnalysisStatus, TaskInvestCheckSummary, TaskInvestValidation, TaskInvestValidationChecks,
+};
 
 static YAML_BLOCK_REGEX: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?is)```yaml\s*\n([\s\S]*?)\n```").unwrap());
@@ -38,7 +39,7 @@ struct ObjectiveSignals {
 
 pub fn derive_invest_validation_from_objective(
     objective: impl AsRef<str>,
-) -> Option<InvestValidation> {
+) -> Option<TaskInvestValidation> {
     let objective = objective.as_ref();
     if let Some(explicit) = derive_explicit_invest_validation(objective) {
         return Some(explicit);
@@ -48,9 +49,9 @@ pub fn derive_invest_validation_from_objective(
 
 pub fn resolve_invest_validation(
     objective: Option<&str>,
-    provided: Option<InvestValidation>,
-    keep_existing: Option<&InvestValidation>,
-) -> Option<InvestValidation> {
+    provided: Option<TaskInvestValidation>,
+    keep_existing: Option<&TaskInvestValidation>,
+) -> Option<TaskInvestValidation> {
     if let Some(validation) = provided {
         return Some(validation);
     }
@@ -63,7 +64,7 @@ pub fn resolve_invest_validation(
     None
 }
 
-fn derive_explicit_invest_validation(objective: &str) -> Option<InvestValidation> {
+fn derive_explicit_invest_validation(objective: &str) -> Option<TaskInvestValidation> {
     let root = load_story_root(objective)?;
     let invest = root.get("invest")?.as_mapping()?;
     let validation = ExplicitValidation {
@@ -75,6 +76,7 @@ fn derive_explicit_invest_validation(objective: &str) -> Option<InvestValidation
         testable: read_explicit_principle(invest, "testable")?,
     };
     Some(build_validation(
+        "canonical_story",
         validation.independent,
         validation.negotiable,
         validation.valuable,
@@ -84,7 +86,7 @@ fn derive_explicit_invest_validation(objective: &str) -> Option<InvestValidation
     ))
 }
 
-fn build_heuristic_validation(objective: &str) -> Option<InvestValidation> {
+fn build_heuristic_validation(objective: &str) -> Option<TaskInvestValidation> {
     let signals = extract_objective_signals(objective);
     if signals.summary.is_empty()
         && signals.problem_statement.is_empty()
@@ -94,6 +96,7 @@ fn build_heuristic_validation(objective: &str) -> Option<InvestValidation> {
     }
 
     Some(build_validation(
+        "heuristic",
         evaluate_independent(&signals),
         evaluate_negotiable(&signals),
         evaluate_valuable(&signals),
@@ -104,62 +107,62 @@ fn build_heuristic_validation(objective: &str) -> Option<InvestValidation> {
 }
 
 fn build_validation(
-    independent: InvestValidationPrinciple,
-    negotiable: InvestValidationPrinciple,
-    valuable: InvestValidationPrinciple,
-    estimable: InvestValidationPrinciple,
-    small: InvestValidationPrinciple,
-    testable: InvestValidationPrinciple,
-) -> InvestValidation {
-    let statuses = [
-        &independent.status,
-        &negotiable.status,
-        &valuable.status,
-        &estimable.status,
-        &small.status,
-        &testable.status,
-    ];
-    let overall = if statuses
-        .iter()
-        .any(|status| **status == InvestValidationStatus::Fail)
-    {
-        InvestValidationStatus::Fail
-    } else if statuses
-        .iter()
-        .any(|status| **status == InvestValidationStatus::Warning)
-    {
-        InvestValidationStatus::Warning
-    } else {
-        InvestValidationStatus::Pass
-    };
-
-    let issues = [
-        ("Independent", &independent),
-        ("Negotiable", &negotiable),
-        ("Valuable", &valuable),
-        ("Estimable", &estimable),
-        ("Small", &small),
-        ("Testable", &testable),
-    ]
-    .into_iter()
-    .filter(|(_, principle)| principle.status != InvestValidationStatus::Pass)
-    .map(|(label, principle)| format!("{label}: {}", principle.reason))
-    .collect::<Vec<_>>();
-
-    InvestValidation {
+    source: &str,
+    independent: TaskInvestCheckSummary,
+    negotiable: TaskInvestCheckSummary,
+    valuable: TaskInvestCheckSummary,
+    estimable: TaskInvestCheckSummary,
+    small: TaskInvestCheckSummary,
+    testable: TaskInvestCheckSummary,
+) -> TaskInvestValidation {
+    let checks = TaskInvestValidationChecks {
         independent,
         negotiable,
         valuable,
         estimable,
         small,
         testable,
-        overall,
-        validated_at: Utc::now().to_rfc3339(),
+    };
+    let overall_status = summarize_statuses([
+        &checks.independent.status,
+        &checks.negotiable.status,
+        &checks.valuable.status,
+        &checks.estimable.status,
+        &checks.small.status,
+        &checks.testable.status,
+    ]);
+    let issues = [
+        ("Independent", &checks.independent),
+        ("Negotiable", &checks.negotiable),
+        ("Valuable", &checks.valuable),
+        ("Estimable", &checks.estimable),
+        ("Small", &checks.small),
+        ("Testable", &checks.testable),
+    ]
+    .into_iter()
+    .filter(|(_, principle)| principle.status != TaskAnalysisStatus::Pass)
+    .map(|(label, principle)| format!("{label}: {}", principle.reason))
+    .collect::<Vec<_>>();
+
+    TaskInvestValidation {
+        source: source.to_string(),
+        overall_status,
+        checks,
         issues,
     }
 }
 
-fn evaluate_independent(signals: &ObjectiveSignals) -> InvestValidationPrinciple {
+fn summarize_statuses(statuses: [&TaskAnalysisStatus; 6]) -> TaskAnalysisStatus {
+    if statuses.contains(&&TaskAnalysisStatus::Fail) {
+        TaskAnalysisStatus::Fail
+    } else if statuses.contains(&&TaskAnalysisStatus::Warning) {
+        TaskAnalysisStatus::Warning
+    } else {
+        TaskAnalysisStatus::Pass
+    }
+}
+
+fn evaluate_independent(signals: &ObjectiveSignals) -> TaskInvestCheckSummary {
     let text = signals.dependency_notes.join(" ");
     if contains_any(
         &text,
@@ -182,7 +185,7 @@ fn evaluate_independent(signals: &ObjectiveSignals) -> InvestValidationPrinciple
         ],
     ) {
         return principle(
-            InvestValidationStatus::Fail,
+            TaskAnalysisStatus::Fail,
             "Blocking or prerequisite work is still declared.",
         );
     }
@@ -201,64 +204,64 @@ fn evaluate_independent(signals: &ObjectiveSignals) -> InvestValidationPrinciple
     }) || (signals.has_canonical_yaml && signals.dependency_notes.is_empty())
     {
         return principle(
-            InvestValidationStatus::Pass,
+            TaskAnalysisStatus::Pass,
             "No blocking dependencies are declared.",
         );
     }
     principle(
-        InvestValidationStatus::Warning,
+        TaskAnalysisStatus::Warning,
         "No explicit dependency plan proves the story is independent.",
     )
 }
 
-fn evaluate_negotiable(_signals: &ObjectiveSignals) -> InvestValidationPrinciple {
+fn evaluate_negotiable(_signals: &ObjectiveSignals) -> TaskInvestCheckSummary {
     principle(
-        InvestValidationStatus::Warning,
+        TaskAnalysisStatus::Warning,
         "Story is actionable, but negotiability still depends on team discussion.",
     )
 }
 
-fn evaluate_valuable(signals: &ObjectiveSignals) -> InvestValidationPrinciple {
+fn evaluate_valuable(signals: &ObjectiveSignals) -> TaskInvestCheckSummary {
     if !signals.problem_statement.is_empty() && !signals.user_value.is_empty() {
         return principle(
-            InvestValidationStatus::Pass,
+            TaskAnalysisStatus::Pass,
             "Problem statement and user value are both explicit.",
         );
     }
     if !signals.summary.is_empty() && !signals.acceptance_criteria.is_empty() {
         return principle(
-            InvestValidationStatus::Warning,
+            TaskAnalysisStatus::Warning,
             "Outcome is described, but the user or business value remains implicit.",
         );
     }
     principle(
-        InvestValidationStatus::Fail,
+        TaskAnalysisStatus::Fail,
         "Story does not clearly explain why this work matters.",
     )
 }
 
-fn evaluate_estimable(signals: &ObjectiveSignals) -> InvestValidationPrinciple {
+fn evaluate_estimable(signals: &ObjectiveSignals) -> TaskInvestCheckSummary {
     if signals.acceptance_criteria.len() >= 2
         && (!signals.scope_notes.is_empty() || signals.word_count <= 260)
     {
         return principle(
-            InvestValidationStatus::Pass,
+            TaskAnalysisStatus::Pass,
             "Acceptance criteria and scope are concrete enough to estimate.",
         );
     }
     if !signals.acceptance_criteria.is_empty() || signals.summary.len() >= 40 {
         return principle(
-            InvestValidationStatus::Warning,
+            TaskAnalysisStatus::Warning,
             "There is enough context to start discussion, but estimation is still fuzzy.",
         );
     }
     principle(
-        InvestValidationStatus::Fail,
+        TaskAnalysisStatus::Fail,
         "Story lacks enough detail to estimate effort confidently.",
     )
 }
 
-fn evaluate_small(signals: &ObjectiveSignals) -> InvestValidationPrinciple {
+fn evaluate_small(signals: &ObjectiveSignals) -> TaskInvestCheckSummary {
     let broad_scope_text = format!(
         "{} {} {}",
         signals.summary,
@@ -279,26 +282,26 @@ fn evaluate_small(signals: &ObjectiveSignals) -> InvestValidationPrinciple {
 
     if signals.word_count > 450 || signals.acceptance_criteria.len() > 6 {
         return principle(
-            InvestValidationStatus::Fail,
+            TaskAnalysisStatus::Fail,
             "Story appears too large for a single focused iteration.",
         );
     }
     if signals.word_count > 240 || signals.acceptance_criteria.len() > 4 || broad_scope {
         return principle(
-            InvestValidationStatus::Warning,
+            TaskAnalysisStatus::Warning,
             "Scope may still need trimming before implementation.",
         );
     }
     principle(
-        InvestValidationStatus::Pass,
+        TaskAnalysisStatus::Pass,
         "Scope looks focused enough for a single iteration.",
     )
 }
 
-fn evaluate_testable(signals: &ObjectiveSignals) -> InvestValidationPrinciple {
+fn evaluate_testable(signals: &ObjectiveSignals) -> TaskInvestCheckSummary {
     if signals.acceptance_criteria.is_empty() {
         return principle(
-            InvestValidationStatus::Fail,
+            TaskAnalysisStatus::Fail,
             "No explicit acceptance criteria or verification checks were provided.",
         );
     }
@@ -319,12 +322,12 @@ fn evaluate_testable(signals: &ObjectiveSignals) -> InvestValidationPrinciple {
         )
     }) {
         return principle(
-            InvestValidationStatus::Warning,
+            TaskAnalysisStatus::Warning,
             "Some acceptance criteria use vague wording that is hard to verify objectively.",
         );
     }
     principle(
-        InvestValidationStatus::Pass,
+        TaskAnalysisStatus::Pass,
         "Acceptance criteria are concrete enough to verify objectively.",
     )
 }
@@ -535,12 +538,12 @@ fn read_yaml_strings(value: &Value) -> Vec<String> {
 fn read_explicit_principle(
     invest: &serde_yaml::Mapping,
     key: &str,
-) -> Option<InvestValidationPrinciple> {
+) -> Option<TaskInvestCheckSummary> {
     let value = invest.get(Value::String(key.to_string()))?.as_mapping()?;
     let status = match value.get(Value::String("status".to_string()))?.as_str()? {
-        "pass" => InvestValidationStatus::Pass,
-        "fail" => InvestValidationStatus::Fail,
-        "warning" => InvestValidationStatus::Warning,
+        "pass" => TaskAnalysisStatus::Pass,
+        "fail" => TaskAnalysisStatus::Fail,
+        "warning" => TaskAnalysisStatus::Warning,
         _ => return None,
     };
     let reason = value
@@ -551,7 +554,7 @@ fn read_explicit_principle(
     if reason.is_empty() {
         return None;
     }
-    Some(InvestValidationPrinciple { status, reason })
+    Some(TaskInvestCheckSummary { status, reason })
 }
 
 fn contains_any(haystack: &str, needles: &[&str]) -> bool {
@@ -559,8 +562,8 @@ fn contains_any(haystack: &str, needles: &[&str]) -> bool {
     needles.iter().any(|needle| haystack.contains(needle))
 }
 
-fn principle(status: InvestValidationStatus, reason: &str) -> InvestValidationPrinciple {
-    InvestValidationPrinciple {
+fn principle(status: TaskAnalysisStatus, reason: &str) -> TaskInvestCheckSummary {
+    TaskInvestCheckSummary {
         status,
         reason: reason.to_string(),
     }
@@ -581,18 +584,18 @@ impl StringExt for String {
 }
 
 struct ExplicitValidation {
-    independent: InvestValidationPrinciple,
-    negotiable: InvestValidationPrinciple,
-    valuable: InvestValidationPrinciple,
-    estimable: InvestValidationPrinciple,
-    small: InvestValidationPrinciple,
-    testable: InvestValidationPrinciple,
+    independent: TaskInvestCheckSummary,
+    negotiable: TaskInvestCheckSummary,
+    valuable: TaskInvestCheckSummary,
+    estimable: TaskInvestCheckSummary,
+    small: TaskInvestCheckSummary,
+    testable: TaskInvestCheckSummary,
 }
 
 #[cfg(test)]
 mod tests {
     use super::{derive_invest_validation_from_objective, resolve_invest_validation};
-    use crate::models::task::InvestValidationStatus;
+    use crate::models::task::TaskAnalysisStatus;
 
     #[test]
     fn keeps_explicit_yaml_invest_snapshot() {
@@ -638,10 +641,10 @@ story:
         )
         .expect("validation");
 
-        assert_eq!(validation.overall, InvestValidationStatus::Warning);
+        assert_eq!(validation.overall_status, TaskAnalysisStatus::Warning);
         assert_eq!(
-            validation.negotiable.status,
-            InvestValidationStatus::Warning
+            validation.checks.negotiable.status,
+            TaskAnalysisStatus::Warning
         );
     }
 
@@ -661,9 +664,12 @@ Validate stories automatically when they are created.
         )
         .expect("validation");
 
-        assert_eq!(validation.overall, InvestValidationStatus::Warning);
-        assert_eq!(validation.independent.status, InvestValidationStatus::Pass);
-        assert_eq!(validation.testable.status, InvestValidationStatus::Pass);
+        assert_eq!(validation.overall_status, TaskAnalysisStatus::Warning);
+        assert_eq!(
+            validation.checks.independent.status,
+            TaskAnalysisStatus::Pass
+        );
+        assert_eq!(validation.checks.testable.status, TaskAnalysisStatus::Pass);
     }
 
     #[test]
@@ -672,6 +678,6 @@ Validate stories automatically when they are created.
             derive_invest_validation_from_objective("## Summary\nKeep the prior result.")
                 .expect("existing validation");
         let resolved = resolve_invest_validation(None, None, Some(&existing)).expect("resolved");
-        assert_eq!(resolved.overall, existing.overall);
+        assert_eq!(resolved.overall_status, existing.overall_status);
     }
 }

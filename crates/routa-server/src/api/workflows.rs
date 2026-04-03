@@ -366,6 +366,12 @@ async fn trigger_workflow(
                     assigned_specialist_name: Some(step.specialist.clone()),
                     create_github_issue: Some(false),
                     repo_path: None,
+                    codebase_ids: None,
+                    github_id: None,
+                    github_number: None,
+                    github_url: None,
+                    github_repo: None,
+                    github_state: None,
                     invest_validation: None,
                 })
                 .await?;

@@ -38,7 +38,10 @@ async fn list_skills(
 
         if let Some(repo_path) = query.repo_path.as_deref() {
             let discovered = routa_core::git::discover_skills_from_path(Path::new(repo_path));
-            if let Some(skill) = discovered.into_iter().find(|candidate| candidate.name == *name) {
+            if let Some(skill) = discovered
+                .into_iter()
+                .find(|candidate| candidate.name == *name)
+            {
                 let content = read_skill_body(&skill.source)?;
                 return Ok(Json(skill_response(
                     &skill.name,

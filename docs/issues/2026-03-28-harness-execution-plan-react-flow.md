@@ -1,11 +1,15 @@
 ---
 title: "Harness execution plan should be visualized as a React Flow topology"
 date: "2026-03-28"
-status: open
+status: resolved
+resolved_at: "2026-03-28"
 severity: medium
 area: "ui"
 tags: ["harness", "fitness", "react-flow", "execution-plan"]
 reported_by: "codex"
+github_issue: 241
+github_state: "closed"
+github_url: "https://github.com/phodal/routa/issues/241"
 related_issues: ["https://github.com/phodal/routa/issues/241"]
 ---
 
@@ -49,3 +53,20 @@ related_issues: ["https://github.com/phodal/routa/issues/241"]
 - 页面已经有 repository / workspace / tier 上下文，不需要新增上游数据源。
 
 ## References
+
+## Resolution
+
+This issue is resolved in the current codebase and the upstream GitHub issue is
+closed.
+
+Evidence in current implementation:
+
+- `src/client/components/harness-execution-plan-flow.tsx` now renders the
+  execution plan as a React Flow topology with nodes, edges, viewport fitting,
+  and flow controls.
+- The `PlanResponse` contract in that component carries the graph-oriented
+  structure the issue originally requested: dimensions, metrics, runner counts,
+  hard gates, and execution scope.
+- `src/app/settings/harness/harness-console-page.tsx` uses
+  `HarnessExecutionPlanFlow` both as a full panel and as an embedded compact
+  view inside governance context flows.

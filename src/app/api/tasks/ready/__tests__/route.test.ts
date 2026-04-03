@@ -100,6 +100,14 @@ describe("/api/tasks/ready GET", () => {
           latestStatus: "idle",
         },
       },
+      storyReadiness: {
+        ready: true,
+        missing: [],
+        requiredTaskFields: [],
+      },
+      investValidation: {
+        source: "heuristic",
+      },
     });
   });
 

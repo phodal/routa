@@ -367,7 +367,13 @@ async fn api_task_flow_with_validation() {
     let conflict = fixture
         .client
         .patch(fixture.endpoint(&format!("/api/tasks/{task_id}")))
-        .json(&json!({"status":"COMPLETED","columnId":"dev"}))
+        .json(&json!({
+            "status":"COMPLETED",
+            "columnId":"dev",
+            "scope":"Drive API validation coverage through the Dev lane.",
+            "acceptanceCriteria":["The workflow state must remain internally consistent."],
+            "verificationCommands":["cargo test -p routa-server --test rust_api_end_to_end -- api_task_flow_with_validation"]
+        }))
         .send()
         .await
         .expect("invalid task transition");

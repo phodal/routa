@@ -35,6 +35,11 @@ import { getHttpSessionStore } from "../acp/http-session-store";
 import { consumeAcpPromptResponse } from "../acp/prompt-response";
 import { getSpecialistById } from "../orchestration/specialist-prompts";
 import type { ColumnTransitionData } from "./column-transition";
+import {
+  buildTaskEvidenceSummary,
+  buildTaskInvestValidation,
+  buildTaskStoryReadiness,
+} from "./task-derived-summary";
 
 // Use globalThis to survive HMR in Next.js dev mode
 const GLOBAL_KEY = "__routa_workflow_orchestrator__";
@@ -217,6 +222,11 @@ async function startKanbanTaskSession(
     assignedSpecialistId: sessionStep?.specialistId ?? effectiveAutomation.specialistId,
     assignedSpecialistName: sessionStep?.specialistName ?? effectiveAutomation.specialistName,
   };
+  const summaryContext = {
+    evidenceSummary: await buildTaskEvidenceSummary(taskForSession, system),
+    storyReadiness: await buildTaskStoryReadiness(taskForSession, system),
+    investValidation: buildTaskInvestValidation(taskForSession),
+  };
 
   const triggerResult = await triggerAssignedTaskAgent({
     origin: getInternalApiOrigin(),
@@ -227,6 +237,7 @@ async function startKanbanTaskSession(
     step: sessionStep,
     specialistLocale: sessionStep?.specialistLocale ?? effectiveAutomation.step?.specialistLocale,
     boardColumns: board?.columns ?? [],
+    summaryContext,
     eventBus: system.eventBus,
   });
 

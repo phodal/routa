@@ -1,6 +1,7 @@
 import { v4 as uuidv4 } from "uuid";
 import {
   createKanbanBoard,
+  DEFAULT_DEV_REQUIRED_TASK_FIELDS,
   DEFAULT_KANBAN_COLUMNS,
   type KanbanColumn,
   getKanbanAutomationSteps,
@@ -204,7 +205,20 @@ export function applyRecommendedAutomationToColumns(columns: KanbanColumn[]): Ka
 }
 
 function createRecommendedDefaultColumns(): KanbanColumn[] {
-  return normalizeDefaultKanbanColumnPositions(applyRecommendedAutomationToColumns(DEFAULT_KANBAN_COLUMNS));
+  return normalizeDefaultKanbanColumnPositions(applyRecommendedAutomationToColumns(DEFAULT_KANBAN_COLUMNS))
+    .map((column) => (
+      column.stage === "dev"
+        ? {
+            ...column,
+            automation: column.automation
+              ? {
+                  ...column.automation,
+                  requiredTaskFields: [...DEFAULT_DEV_REQUIRED_TASK_FIELDS],
+                }
+              : column.automation,
+          }
+        : column
+    ));
 }
 
 export async function ensureDefaultBoard(system: RoutaSystem, workspaceId: string): Promise<ReturnType<typeof createKanbanBoard>> {

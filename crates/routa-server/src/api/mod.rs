@@ -20,6 +20,7 @@ pub(crate) mod harness_github_actions;
 pub(crate) mod harness_hook_preview_events;
 pub(crate) mod harness_instructions_audit;
 pub(crate) mod harness_repo_views;
+pub mod harness_templates;
 pub mod kanban;
 pub mod mcp_routes;
 pub mod mcp_server_mgmt;
@@ -83,6 +84,7 @@ pub fn api_router() -> Router<AppState> {
         .nest("/api/mcp-servers", mcp_servers::router())
         .nest("/api/github", github::router())
         .nest("/api/harness", harness::router())
+        .nest("/api/harness/templates", harness_templates::router())
         .nest("/api/webhooks", webhooks::router())
         .nest("/api/background-tasks", background_tasks::router())
         .nest("/api/test-mcp", test_mcp::router())

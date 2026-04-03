@@ -238,7 +238,7 @@ export class PgTaskStore implements TaskStore {
       completionSummary: row.completionSummary ?? undefined,
       verificationVerdict: row.verificationVerdict as import("../models/task").VerificationVerdict | undefined,
       verificationReport: row.verificationReport ?? undefined,
-      investValidation: row.investValidation as import("../models/task").InvestValidation | undefined,
+      investValidation: row.investValidation as import("../models/task").TaskInvestValidation | undefined,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
     };

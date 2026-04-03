@@ -1,5 +1,5 @@
 import { v4 as uuidv4 } from "uuid";
-import type { Task } from "../models/task";
+import type { Task, TaskEvidenceSummary, TaskInvestValidation, TaskStoryReadiness } from "../models/task";
 import { getNextHappyPathColumnId, type KanbanColumn } from "../models/kanban";
 import { AgentEventType, type EventBus } from "../events/event-bus";
 import { isClaudeCodeSdkConfigured } from "../acp/claude-code-sdk-adapter";
@@ -11,6 +11,12 @@ import type { TaskLaneSession } from "../models/task";
 import { resolveCurrentLaneAutomationState } from "./lane-automation-state";
 import { getLatestLaneSessionForColumn, getPreviousLaneRun } from "./task-lane-history";
 import type { KanbanAutomationStep, KanbanTransport } from "../models/kanban";
+
+export interface TaskPromptSummaryContext {
+  evidenceSummary?: TaskEvidenceSummary;
+  storyReadiness?: TaskStoryReadiness;
+  investValidation?: TaskInvestValidation;
+}
 
 function formatHandoffRequestType(
   value: "environment_preparation" | "runtime_context" | "clarification" | "rerun_command",
@@ -58,7 +64,7 @@ export function getInternalApiOrigin(): string {
 export function buildTaskPrompt(
   task: Task,
   boardColumns: KanbanColumn[] = [],
-  options?: { currentSessionId?: string },
+  options?: { currentSessionId?: string; summaryContext?: TaskPromptSummaryContext },
 ): string {
   const labels = task.labels.length > 0 ? `Labels: ${task.labels.join(", ")}` : "Labels: none";
   const currentColumnId = task.columnId ?? "backlog";
@@ -78,6 +84,7 @@ export function buildTaskPrompt(
     : [];
   const laneAutomationState = resolveCurrentLaneAutomationState(task, boardColumns, options);
   const canAdvanceToNextColumn = !isBacklogPlanning && !laneAutomationState.hasRemainingSteps;
+  const summaryContext = options?.summaryContext;
 
   // Determine the next column for move_card guidance
   const fallbackNextColumnId = getNextHappyPathColumnId(currentColumnId);
@@ -211,6 +218,64 @@ export function buildTaskPrompt(
       ]
     : [];
 
+  const storyReadinessSection = summaryContext?.storyReadiness
+    ? [
+        "## Story Readiness",
+        "",
+        `Ready for next move: ${summaryContext.storyReadiness.ready ? "yes" : "no"}`,
+        summaryContext.storyReadiness.requiredTaskFields.length > 0
+          ? `Required fields: ${summaryContext.storyReadiness.requiredTaskFields.join(", ")}`
+          : "Required fields: none configured",
+        summaryContext.storyReadiness.missing.length > 0
+          ? `Missing fields: ${summaryContext.storyReadiness.missing.join(", ")}`
+          : "Missing fields: none",
+        `Checks: scope=${summaryContext.storyReadiness.checks.scope ? "present" : "missing"}, `
+          + `acceptanceCriteria=${summaryContext.storyReadiness.checks.acceptanceCriteria ? "present" : "missing"}, `
+          + `verificationCommands=${summaryContext.storyReadiness.checks.verificationCommands ? "present" : "missing"}, `
+          + `testCases=${summaryContext.storyReadiness.checks.testCases ? "present" : "missing"}, `
+          + `verificationPlan=${summaryContext.storyReadiness.checks.verificationPlan ? "present" : "missing"}, `
+          + `dependenciesDeclared=${summaryContext.storyReadiness.checks.dependenciesDeclared ? "present" : "missing"}`,
+        "",
+      ]
+    : [];
+
+  const investSection = summaryContext?.investValidation
+    ? [
+        "## INVEST Snapshot",
+        "",
+        `Source: ${summaryContext.investValidation.source}`,
+        `Overall: ${summaryContext.investValidation.overallStatus.toUpperCase()}`,
+        `Independent: ${summaryContext.investValidation.checks.independent.status.toUpperCase()} — ${summaryContext.investValidation.checks.independent.reason}`,
+        `Negotiable: ${summaryContext.investValidation.checks.negotiable.status.toUpperCase()} — ${summaryContext.investValidation.checks.negotiable.reason}`,
+        `Valuable: ${summaryContext.investValidation.checks.valuable.status.toUpperCase()} — ${summaryContext.investValidation.checks.valuable.reason}`,
+        `Estimable: ${summaryContext.investValidation.checks.estimable.status.toUpperCase()} — ${summaryContext.investValidation.checks.estimable.reason}`,
+        `Small: ${summaryContext.investValidation.checks.small.status.toUpperCase()} — ${summaryContext.investValidation.checks.small.reason}`,
+        `Testable: ${summaryContext.investValidation.checks.testable.status.toUpperCase()} — ${summaryContext.investValidation.checks.testable.reason}`,
+        ...(summaryContext.investValidation.issues.length > 0
+          ? [`Issues: ${summaryContext.investValidation.issues.join(" | ")}`]
+          : []),
+        "",
+      ]
+    : [];
+
+  const evidenceBundleSection = summaryContext?.evidenceSummary
+    ? [
+        "## Evidence Bundle",
+        "",
+        `Artifacts total: ${summaryContext.evidenceSummary.artifact.total}`,
+        `Artifacts by type: ${Object.entries(summaryContext.evidenceSummary.artifact.byType)
+          .map(([type, count]) => `${type}=${count}`)
+          .join(", ") || "none"}`,
+        `Required artifacts satisfied: ${summaryContext.evidenceSummary.artifact.requiredSatisfied ? "yes" : "no"}`,
+        `Missing required artifacts: ${summaryContext.evidenceSummary.artifact.missingRequired.join(", ") || "none"}`,
+        `Verification verdict: ${summaryContext.evidenceSummary.verification.verdict ?? "none"}`,
+        `Verification report present: ${summaryContext.evidenceSummary.verification.hasReport ? "yes" : "no"}`,
+        `Completion summary present: ${summaryContext.evidenceSummary.completion.hasSummary ? "yes" : "no"}`,
+        `Runs: total=${summaryContext.evidenceSummary.runs.total}, latestStatus=${summaryContext.evidenceSummary.runs.latestStatus}`,
+        "",
+      ]
+    : [];
+
   return [
     `You are assigned to Kanban task: ${task.title}`,
     "",
@@ -234,7 +299,10 @@ export function buildTaskPrompt(
     "",
     task.objective,
     "",
+    ...storyReadinessSection,
+    ...investSection,
     ...artifactGateSection,
+    ...evidenceBundleSection,
     ...laneRunHistorySection,
     ...laneHandoffSection,
     ...devVerificationSection,
@@ -316,6 +384,7 @@ async function triggerAcpTaskAgent(params: {
   task: Task;
   specialistLocale?: string;
   boardColumns: KanbanColumn[];
+  summaryContext?: TaskPromptSummaryContext;
   eventBus?: EventBus;
 }): Promise<AutomationRunHandle | { error: string }> {
   const provider = resolveKanbanAutomationProvider(params.task.assignedProvider);
@@ -361,7 +430,13 @@ async function triggerAcpTaskAgent(params: {
           workspaceId: params.workspaceId,
           provider,
           cwd: params.cwd,
-          prompt: [{ type: "text", text: buildTaskPrompt(params.task, params.boardColumns, { currentSessionId: sessionId }) }],
+          prompt: [{
+            type: "text",
+            text: buildTaskPrompt(params.task, params.boardColumns, {
+              currentSessionId: sessionId,
+              summaryContext: params.summaryContext,
+            }),
+          }],
         },
       }),
     });
@@ -400,6 +475,7 @@ async function triggerA2ATaskAgent(params: {
   task: Task;
   boardColumns: KanbanColumn[];
   step?: KanbanAutomationStep;
+  summaryContext?: TaskPromptSummaryContext;
   eventBus?: EventBus;
 }): Promise<AutomationRunHandle | { error: string }> {
   const agentCardUrl = params.step?.agentCardUrl?.trim();
@@ -438,7 +514,10 @@ async function triggerA2ATaskAgent(params: {
 
   const taskHandle = await client.sendMessage(
     agentCardUrl,
-    buildTaskPrompt(params.task, params.boardColumns, { currentSessionId: localSessionId }),
+    buildTaskPrompt(params.task, params.boardColumns, {
+      currentSessionId: localSessionId,
+      summaryContext: params.summaryContext,
+    }),
     metadata,
   );
 
@@ -492,9 +571,21 @@ export async function triggerAssignedTaskAgent(params: {
   step?: KanbanAutomationStep;
   specialistLocale?: string;
   boardColumns?: KanbanColumn[];
+  summaryContext?: TaskPromptSummaryContext;
   eventBus?: EventBus;
 }): Promise<{ sessionId?: string; error?: string; transport?: KanbanTransport; externalTaskId?: string; contextId?: string; displayTarget?: string }> {
-  const { origin, workspaceId, cwd, branch, task, step, specialistLocale, boardColumns = [], eventBus } = params;
+  const {
+    origin,
+    workspaceId,
+    cwd,
+    branch,
+    task,
+    step,
+    specialistLocale,
+    boardColumns = [],
+    summaryContext,
+    eventBus,
+  } = params;
   const transport = getStepTransport(step);
   const runHandle = transport === "a2a"
     ? await triggerA2ATaskAgent({
@@ -502,6 +593,7 @@ export async function triggerAssignedTaskAgent(params: {
         task,
         boardColumns,
         step,
+        summaryContext,
         eventBus,
       })
     : await triggerAcpTaskAgent({
@@ -512,6 +604,7 @@ export async function triggerAssignedTaskAgent(params: {
         task,
         specialistLocale,
         boardColumns,
+        summaryContext,
         eventBus,
       });
 

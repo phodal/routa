@@ -1,6 +1,6 @@
 import * as yaml from "js-yaml";
 import { extractCanonicalStoryYaml } from "./canonical-story";
-import type { InvestValidation } from "../models/task";
+import type { TaskAnalysisStatus, TaskInvestCheckSummary, TaskInvestValidation } from "../models/task";
 
 const INVEST_LABELS = {
   independent: "Independent",
@@ -171,9 +171,9 @@ function extractObjectiveSignals(objective: string | null | undefined): Objectiv
 }
 
 function classifyStatus(
-  status: InvestValidation["overall"],
+  status: TaskAnalysisStatus,
   reason: string,
-): { status: InvestValidation["overall"]; reason: string } {
+): TaskInvestCheckSummary {
   return { status, reason };
 }
 
@@ -187,7 +187,7 @@ function hasVagueAcceptanceCriteria(acceptanceCriteria: string[]): boolean {
   );
 }
 
-function evaluateIndependent(signals: ObjectiveSignals): InvestValidation["independent"] {
+function evaluateIndependent(signals: ObjectiveSignals): TaskInvestCheckSummary {
   const dependencyText = signals.dependencyNotes.join(" ");
   if (dependencyText && /\b(blocked by|depends on|waiting for|after\b|prerequisite)\b/i.test(dependencyText)
     && !/\b(no dependencies|none|n\/a|independent|can start now|not blocked)\b/i.test(dependencyText)) {
@@ -204,7 +204,7 @@ function evaluateIndependent(signals: ObjectiveSignals): InvestValidation["indep
   return classifyStatus("warning", "No explicit dependency plan proves the story is independent.");
 }
 
-function evaluateNegotiable(signals: ObjectiveSignals): InvestValidation["negotiable"] {
+function evaluateNegotiable(signals: ObjectiveSignals): TaskInvestCheckSummary {
   const rigidityText = [signals.summary, signals.problemStatement, ...signals.scopeNotes].join(" ");
   if (/\b(must use|exactly|only|hardcode|strictly|do not change anything else)\b/i.test(rigidityText)) {
     return classifyStatus("fail", "Story is overly implementation-prescriptive and leaves little room for negotiation.");
@@ -213,7 +213,7 @@ function evaluateNegotiable(signals: ObjectiveSignals): InvestValidation["negoti
   return classifyStatus("warning", "Story is actionable, but negotiability still depends on team discussion.");
 }
 
-function evaluateValuable(signals: ObjectiveSignals): InvestValidation["valuable"] {
+function evaluateValuable(signals: ObjectiveSignals): TaskInvestCheckSummary {
   if (signals.problemStatement && signals.userValue) {
     return classifyStatus("pass", "Problem statement and user value are both explicit.");
   }
@@ -231,7 +231,7 @@ function evaluateValuable(signals: ObjectiveSignals): InvestValidation["valuable
   return classifyStatus("fail", "Story does not clearly explain why this work matters.");
 }
 
-function evaluateEstimable(signals: ObjectiveSignals): InvestValidation["estimable"] {
+function evaluateEstimable(signals: ObjectiveSignals): TaskInvestCheckSummary {
   if (signals.acceptanceCriteria.length >= 2 && (signals.scopeNotes.length > 0 || signals.wordCount <= 260)) {
     return classifyStatus("pass", "Acceptance criteria and scope are concrete enough to estimate.");
   }
@@ -243,7 +243,7 @@ function evaluateEstimable(signals: ObjectiveSignals): InvestValidation["estimab
   return classifyStatus("fail", "Story lacks enough detail to estimate effort confidently.");
 }
 
-function evaluateSmall(signals: ObjectiveSignals): InvestValidation["small"] {
+function evaluateSmall(signals: ObjectiveSignals): TaskInvestCheckSummary {
   const broadScope = /\b(end-to-end|across the stack|multiple systems|large refactor|platform-wide)\b/i.test(
     [signals.summary, signals.problemStatement, ...signals.scopeNotes].join(" "),
   );
@@ -259,7 +259,7 @@ function evaluateSmall(signals: ObjectiveSignals): InvestValidation["small"] {
   return classifyStatus("pass", "Scope looks focused enough for a single iteration.");
 }
 
-function evaluateTestable(signals: ObjectiveSignals): InvestValidation["testable"] {
+function evaluateTestable(signals: ObjectiveSignals): TaskInvestCheckSummary {
   if (signals.acceptanceCriteria.length === 0) {
     return classifyStatus("fail", "No explicit acceptance criteria or verification checks were provided.");
   }
@@ -273,8 +273,7 @@ function evaluateTestable(signals: ObjectiveSignals): InvestValidation["testable
 
 function buildHeuristicValidation(
   objective: string | null | undefined,
-  validatedAt = new Date().toISOString(),
-): InvestValidation | undefined {
+): TaskInvestValidation | undefined {
   const signals = extractObjectiveSignals(objective);
   if (!signals.summary && !signals.problemStatement && signals.acceptanceCriteria.length === 0) {
     return undefined;
@@ -290,14 +289,14 @@ function buildHeuristicValidation(
   };
 
   return {
-    ...validation,
-    overall: computeOverallStatus(validation),
-    validatedAt,
+    source: "heuristic",
+    checks: validation,
+    overallStatus: computeOverallStatus(validation),
     issues: collectIssues(validation),
   };
 }
 
-function computeOverallStatus(validation: Omit<InvestValidation, "overall" | "validatedAt" | "issues">): InvestValidation["overall"] {
+function computeOverallStatus(validation: Record<InvestKey, TaskInvestCheckSummary>): TaskAnalysisStatus {
   const statuses = [
     validation.independent.status,
     validation.negotiable.status,
@@ -316,7 +315,7 @@ function computeOverallStatus(validation: Omit<InvestValidation, "overall" | "va
   return "pass";
 }
 
-function collectIssues(validation: Omit<InvestValidation, "overall" | "validatedAt" | "issues">): string[] {
+function collectIssues(validation: Record<InvestKey, TaskInvestCheckSummary>): string[] {
   return (Object.entries(INVEST_LABELS) as [InvestKey, string][])
     .flatMap(([key, label]) => {
       const check = validation[key];
@@ -326,26 +325,25 @@ function collectIssues(validation: Omit<InvestValidation, "overall" | "validated
 
 export function deriveInvestValidationFromObjective(
   objective: string | null | undefined,
-  validatedAt = new Date().toISOString(),
-): InvestValidation | undefined {
+): TaskInvestValidation | undefined {
   const rawYaml = extractCanonicalStoryYaml(objective);
   if (!rawYaml) {
-    return buildHeuristicValidation(objective, validatedAt);
+    return buildHeuristicValidation(objective);
   }
 
   let parsed: unknown;
   try {
     parsed = yaml.load(rawYaml);
   } catch {
-    return buildHeuristicValidation(objective, validatedAt);
+    return buildHeuristicValidation(objective);
   }
 
   if (!isRecord(parsed) || !isRecord(parsed.story) || !isRecord(parsed.story.invest)) {
-    return buildHeuristicValidation(objective, validatedAt);
+    return buildHeuristicValidation(objective);
   }
 
   const invest = parsed.story.invest;
-  const validation = {} as Omit<InvestValidation, "overall" | "validatedAt" | "issues">;
+  const validation = {} as Record<InvestKey, TaskInvestCheckSummary>;
 
   for (const key of Object.keys(INVEST_LABELS) as InvestKey[]) {
     const value = invest[key];
@@ -359,18 +357,18 @@ export function deriveInvestValidationFromObjective(
   }
 
   return {
-    ...validation,
-    overall: computeOverallStatus(validation),
-    validatedAt,
+    source: "canonical_story",
+    checks: validation,
+    overallStatus: computeOverallStatus(validation),
     issues: collectIssues(validation),
   };
 }
 
 export function resolveInvestValidation(params: {
   objective: string | null | undefined;
-  provided?: InvestValidation;
-  keepExisting?: InvestValidation;
-}): InvestValidation | undefined {
+  provided?: TaskInvestValidation;
+  keepExisting?: TaskInvestValidation;
+}): TaskInvestValidation | undefined {
   if (params.provided) {
     return params.provided;
   }

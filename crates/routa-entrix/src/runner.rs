@@ -165,8 +165,8 @@ impl ShellRunner {
         thread::scope(|scope| {
             let handles: Vec<_> = metrics
                 .iter()
-                .cloned()
                 .map(|metric| {
+                    let metric = metric.clone();
                     scope.spawn(move || {
                         if let Some(cb) = progress_callback {
                             cb("start", &metric, None);
@@ -223,10 +223,18 @@ fn run_command_with_timeout(
     env: &HashMap<String, String>,
     timeout: u64,
 ) -> io::Result<CommandRunOutput> {
-    let mut cmd = Command::new("/bin/bash");
-    cmd.arg("-lc")
-        .arg(command_str)
-        .current_dir(project_root)
+    let mut cmd;
+    #[cfg(unix)]
+    {
+        cmd = Command::new("/bin/bash");
+        cmd.arg("-lc").arg(command_str);
+    }
+    #[cfg(windows)]
+    {
+        cmd = Command::new("cmd");
+        cmd.arg("/C").arg(command_str);
+    }
+    cmd.current_dir(project_root)
         .envs(env)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
@@ -350,9 +358,11 @@ mod tests {
     use std::path::Path;
     use std::sync::{Arc, Mutex};
 
+    type ProgressEvent = (String, String, Option<String>);
+
     #[test]
     fn test_dry_run() {
-        let runner = ShellRunner::new(Path::new("/tmp"));
+        let runner = ShellRunner::new(&tmp_dir());
         let m = Metric::new("test", "echo hello");
         let result = runner.run(&m, true);
         assert!(result.passed);
@@ -362,25 +372,45 @@ mod tests {
 
     #[test]
     fn test_run_success_exit_code() {
-        let runner = ShellRunner::new(Path::new("/tmp"));
+        let runner = ShellRunner::new(&tmp_dir());
         let m = Metric::new("echo_test", "echo ok");
         let result = runner.run(&m, false);
         assert!(result.passed);
         assert!(result.output.contains("ok"));
     }
 
+    fn tmp_dir() -> PathBuf {
+        #[cfg(unix)]
+        {
+            PathBuf::from("/tmp")
+        }
+        #[cfg(windows)]
+        {
+            std::env::temp_dir()
+        }
+    }
+
     #[test]
     fn test_run_failure_exit_code() {
-        let runner = ShellRunner::new(Path::new("/tmp"));
-        let m = Metric::new("fail_test", "exit 1");
+        let runner = ShellRunner::new(&tmp_dir());
+        #[cfg(unix)]
+        let cmd = "exit 1";
+        #[cfg(windows)]
+        let cmd = "cmd /c exit 1";
+        let m = Metric::new("fail_test", cmd);
         let result = runner.run(&m, false);
         assert!(!result.passed);
     }
 
     #[test]
     fn test_run_pattern_match() {
-        let runner = ShellRunner::new(Path::new("/tmp"));
-        let mut m = Metric::new("pattern_test", "echo 'Tests 42 passed'");
+        let runner = ShellRunner::new(&tmp_dir());
+        let cmd = if cfg!(windows) {
+            "echo Tests 42 passed"
+        } else {
+            "echo 'Tests 42 passed'"
+        };
+        let mut m = Metric::new("pattern_test", cmd);
         m.pattern = r"Tests\s+\d+\s+passed".to_string();
         let result = runner.run(&m, false);
         assert!(result.passed);
@@ -388,14 +418,20 @@ mod tests {
 
     #[test]
     fn test_run_pattern_no_match() {
-        let runner = ShellRunner::new(Path::new("/tmp"));
-        let mut m = Metric::new("pattern_fail", "echo 'Tests 0 failed'");
+        let runner = ShellRunner::new(&tmp_dir());
+        let cmd = if cfg!(windows) {
+            "echo Tests 0 failed"
+        } else {
+            "echo 'Tests 0 failed'"
+        };
+        let mut m = Metric::new("pattern_fail", cmd);
         m.pattern = r"Tests\s+\d+\s+passed".to_string();
         let result = runner.run(&m, false);
         assert!(!result.passed);
     }
 
     #[test]
+    #[cfg(unix)]
     fn test_run_timeout() {
         let runner = ShellRunner::new(Path::new("/tmp")).with_timeout(1);
         let m = Metric::new("slow", "sleep 10");
@@ -405,6 +441,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn test_run_metric_specific_timeout() {
         let runner = ShellRunner::new(Path::new("/tmp")).with_timeout(5);
         let mut m = Metric::new("slow", "sleep 2");
@@ -415,6 +452,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn test_run_timeout_kills_background_processes() {
         let leak_path = format!("/tmp/routa-entrix-timeout-{}.txt", std::process::id());
         let _ = std::fs::remove_file(&leak_path);
@@ -432,7 +470,7 @@ mod tests {
 
     #[test]
     fn test_run_hard_gate_preserved() {
-        let runner = ShellRunner::new(Path::new("/tmp"));
+        let runner = ShellRunner::new(&tmp_dir());
         let m = Metric::new("gate", "echo ok").with_hard_gate(true);
         let result = runner.run(&m, false);
         assert!(result.hard_gate);
@@ -440,7 +478,7 @@ mod tests {
 
     #[test]
     fn test_run_batch_serial() {
-        let runner = ShellRunner::new(Path::new("/tmp"));
+        let runner = ShellRunner::new(&tmp_dir());
         let metrics = vec![Metric::new("a", "echo a"), Metric::new("b", "echo b")];
         let results = runner.run_batch(&metrics, false, false, None);
         assert_eq!(results.len(), 2);
@@ -450,7 +488,7 @@ mod tests {
 
     #[test]
     fn test_run_batch_parallel() {
-        let runner = ShellRunner::new(Path::new("/tmp"));
+        let runner = ShellRunner::new(&tmp_dir());
         let metrics = vec![Metric::new("a", "echo a"), Metric::new("b", "echo b")];
         let results = runner.run_batch(&metrics, true, false, None);
         assert_eq!(results.len(), 2);
@@ -460,6 +498,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn test_run_batch_parallel_executes_concurrently() {
         let runner = ShellRunner::new(Path::new("/tmp"));
         let metrics = vec![Metric::new("a", "sleep 2"), Metric::new("b", "sleep 2")];
@@ -493,7 +532,7 @@ mod tests {
 
     #[test]
     fn test_run_batch_dry_run() {
-        let runner = ShellRunner::new(Path::new("/tmp"));
+        let runner = ShellRunner::new(&tmp_dir());
         let metrics = vec![Metric::new("x", "rm -rf /")];
         let results = runner.run_batch(&metrics, false, true, None);
         assert!(results[0].passed);
@@ -502,10 +541,9 @@ mod tests {
 
     #[test]
     fn test_run_batch_emits_progress_events() {
-        let runner = ShellRunner::new(Path::new("/tmp"));
+        let runner = ShellRunner::new(&tmp_dir());
         let metrics = vec![Metric::new("a", "echo a"), Metric::new("b", "echo b")];
-        let events: Arc<Mutex<Vec<(String, String, Option<String>)>>> =
-            Arc::new(Mutex::new(Vec::new()));
+        let events: Arc<Mutex<Vec<ProgressEvent>>> = Arc::new(Mutex::new(Vec::new()));
 
         let events_clone = events.clone();
         let cb: ProgressCallback = Box::new(move |event, metric, result| {

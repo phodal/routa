@@ -1,11 +1,15 @@
 ---
 title: "Kanban card override can hide ACP provider runtime failures"
 date: "2026-03-19"
-status: open
+status: resolved
+resolved_at: "2026-03-19"
 severity: high
 area: "kanban"
 tags: [kanban, acp, provider, runtime-error, ui, automation]
 reported_by: "Codex"
+github_issue: 201
+github_state: "closed"
+github_url: "https://github.com/phodal/routa/issues/201"
 related_issues: [
   "docs/issues/2026-03-11-card-detail-rerun-mechanism-issues.md",
   "docs/issues/2026-03-17-dev-acp-session-watchdog-auto-recovery.md",
@@ -68,3 +72,24 @@ Observed behavior in this flow:
 
 - User report and screenshot from the 2026-03-19 Kanban debugging session
 - GitHub issue: https://github.com/phodal/routa/issues/201
+
+## Resolution
+
+This issue is resolved in the current codebase and the upstream GitHub issue is
+closed.
+
+Evidence in current implementation:
+
+- `src/app/workspace/[workspaceId]/kanban/kanban-card-detail.tsx` now derives a
+  failure message from `sessionInfo.acpError` or `task.lastSyncError` via
+  `getPromptFailureMessage(...)`.
+- The same execution panel renders an explicit failure banner:
+  `Current run failed on ...` together with actionable next steps for ACP or
+  A2A reruns.
+- `src/app/api/acp/acp-session-prompt.ts` marks prompt failures by updating the
+  session ACP status to `error`, and `src/core/acp/prompt-response.ts` extracts
+  explicit SSE error messages from streamed error envelopes.
+- `src/app/workspace/[workspaceId]/kanban/__tests__/kanban-tab.test.tsx`
+  contains a focused regression test,
+  `surfaces provider runtime failures in the execution panel`, which verifies
+  that the provider failure banner renders with the ACP error message.

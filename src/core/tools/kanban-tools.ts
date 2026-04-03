@@ -44,6 +44,11 @@ import {
 } from "../kanban/task-lane-history";
 import { buildRemainingLaneStepsMessage, resolveCurrentLaneAutomationState } from "../kanban/lane-automation-state";
 import { getInternalApiOrigin } from "../kanban/agent-trigger";
+import {
+  formatRequiredTaskFieldLabel,
+  resolveTargetRequiredTaskFields,
+  validateTaskReadiness,
+} from "../kanban/task-derived-summary";
 
 const DESCRIPTION_FROZEN_STAGES = new Set<KanbanColumnStage>(["dev", "review", "blocked", "done"]);
 
@@ -151,7 +156,7 @@ export class KanbanTools {
     description?: string;
     priority?: "low" | "medium" | "high" | "urgent";
     labels?: string[];
-    investValidation?: import("../models/task").InvestValidation;
+    investValidation?: import("../models/task").TaskInvestValidation;
     workspaceId: string;
   }): Promise<ToolResult> {
     const board = await this.resolveBoard(params.workspaceId, params.boardId);
@@ -256,6 +261,18 @@ export class KanbanTools {
       }
     }
 
+    const requiredTaskFields = resolveTargetRequiredTaskFields(board.columns, targetColumn.id);
+    if (requiredTaskFields.length > 0) {
+      const readiness = validateTaskReadiness(task, requiredTaskFields);
+      if (!readiness.ready) {
+        const missingTaskFields = readiness.missing.map(formatRequiredTaskFieldLabel);
+        return errorResult(
+          `Cannot move card to "${targetColumn.name}": missing required task fields: ${missingTaskFields.join(", ")}. `
+          + "Please complete this story definition before moving the card.",
+        );
+      }
+    }
+
     // Preserve the current active session in history before clearing
     // This allows the next column's automation to create a fresh session
     if (task.triggerSessionId) {
@@ -299,7 +316,7 @@ export class KanbanTools {
     comment?: string;
     priority?: "low" | "medium" | "high" | "urgent";
     labels?: string[];
-    investValidation?: import("../models/task").InvestValidation;
+    investValidation?: import("../models/task").TaskInvestValidation;
   }): Promise<ToolResult> {
     const task = await this.taskStore.get(params.cardId);
     if (!task) {

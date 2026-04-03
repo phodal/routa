@@ -2,11 +2,14 @@
 title: "Homepage and Kanban Entry Surface Fragmentation"
 date: 2026-03-19
 agent: Codex (GPT-5)
-status: open
+status: resolved
+resolved_at: "2026-03-19"
 severity: medium
 area: frontend
 tags: [homepage, kanban, workspace, information-architecture, ux]
 github_issue: 203
+github_state: "closed"
+github_url: "https://github.com/phodal/routa/issues/203"
 ---
 
 # Homepage and Kanban Entry Surface Fragmentation
@@ -60,3 +63,19 @@ Local issue file: `docs/issues/2026-03-19-homepage-kanban-entry-surface-fragment
 - Phase 2: `/workspace/{workspaceId}` was converted from a second Kanban shell into a true overview surface
 - Phase 3: desktop navigation semantics were unified to `Overview / Kanban / Traces`
 - Decision for now: keep `/workspace/{workspaceId}` as an overview route instead of redirecting, because it still provides recovery/context functions that are distinct from active board execution
+
+## Resolution
+
+This issue is resolved in the current codebase and the upstream GitHub issue is
+closed.
+
+Evidence in current implementation:
+
+- `src/app/workspace/[workspaceId]/page.tsx` now redirects the workspace root to
+  `/workspace/{workspaceId}/kanban`, making Kanban the canonical operating
+  surface.
+- `src/app/workspace/[workspaceId]/overview/page.tsx` keeps overview as an
+  explicit sibling route instead of a second implicit Kanban shell.
+- `src/client/components/desktop-sidebar.tsx` exposes distinct `Kanban`,
+  `Overview`, and `Team` navigation entries, which removes the earlier route
+  ambiguity from the main desktop shell.

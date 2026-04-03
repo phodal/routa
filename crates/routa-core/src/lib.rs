@@ -21,6 +21,7 @@ pub mod events;
 pub mod git;
 pub mod harness;
 pub mod harness_automation;
+pub mod harness_template;
 pub mod invest_validation;
 pub mod kanban;
 pub mod mcp;

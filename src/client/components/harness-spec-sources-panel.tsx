@@ -10,6 +10,7 @@ import type {
   SpecStatus,
 } from "@/core/harness/spec-detector-types";
 import { HarnessSectionCard, HarnessSectionStateFrame } from "@/client/components/harness-section-card";
+import { useTranslation } from "@/i18n";
 import { ChevronDown, ChevronRight } from "lucide-react";
 
 
@@ -23,17 +24,14 @@ type SpecSourcesPanelProps = {
   hideHeader?: boolean;
 };
 
-const KIND_LABELS: Record<SpecSourceKind, string> = {
-  "native-tool": "Native Tool",
-  framework: "Framework",
-  "tool-integration": "Integration",
-};
-
-const STATUS_LABELS: Record<SpecStatus, string> = {
-  "artifacts-present": "Has Specs",
-  "installed-only": "Installed Only",
-  archived: "Archived",
-  legacy: "Legacy",
+type SpecSourceI18nLabels = {
+  kindLabels: Record<SpecSourceKind, string>;
+  statusLabels: Record<SpecStatus, string>;
+  typeLabels: Record<string, string>;
+  docsCount: (count: number) => string;
+  specCount: (count: number) => string;
+  qoderIntegration: string;
+  integrationDetected: (system: string) => string;
 };
 
 const CONFIDENCE_STYLES: Record<SpecConfidence, { bg: string; text: string }> = {
@@ -98,28 +96,28 @@ function ConfidenceBadge({ confidence }: { confidence: SpecConfidence }) {
   );
 }
 
-function StatusBadge({ status }: { status: SpecStatus }) {
+function StatusBadge({ status, label }: { status: SpecStatus; label: string }) {
   const style = STATUS_STYLES[status];
   return (
     <span className={`inline-flex items-center rounded-full border px-1.5 py-0.5 text-[9px] font-medium ${style.bg} ${style.text} ${style.border}`}>
-      {STATUS_LABELS[status]}
+      {label}
     </span>
   );
 }
 
-function KindBadge({ kind }: { kind: SpecSourceKind }) {
+function KindBadge({ kind, label }: { kind: SpecSourceKind; label: string }) {
   const style = KIND_STYLES[kind];
   return (
     <span className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-medium ${style.bg} ${style.text}`}>
-      {KIND_LABELS[kind]}
+      {label}
     </span>
   );
 }
 
-function SpecTypeTag({ type }: { type: string }) {
+function SpecTypeTag({ label }: { label: string }) {
   return (
     <span className="inline-flex items-center rounded border border-desktop-border bg-desktop-bg-primary px-1.5 py-0.5 text-[9px] font-mono text-desktop-text-secondary">
-      {type}
+      {label}
     </span>
   );
 }
@@ -130,7 +128,7 @@ function ChevronIcon({ expanded, className }: { expanded: boolean; className?: s
   );
 }
 
-function KiroFeatureTree({ features }: { features: SpecFeature[] }) {
+function KiroFeatureTree({ features, labels }: { features: SpecFeature[]; labels: SpecSourceI18nLabels }) {
   const [expandedFeatures, setExpandedFeatures] = useState<Set<string> | null>(null);
   const activeExpandedFeatures = expandedFeatures ?? new Set<string>();
 
@@ -157,13 +155,13 @@ function KiroFeatureTree({ features }: { features: SpecFeature[] }) {
               <ChevronIcon expanded={isExpanded} />
               <span className="font-medium text-desktop-text-primary">{feature.name}</span>
               <span className="ml-auto text-[9px] text-desktop-text-secondary">
-                {feature.documents.length} doc{feature.documents.length !== 1 ? "s" : ""}
+                {labels.docsCount(feature.documents.length)}
               </span>
             </button>
 
             {isExpanded && feature.documents.map((doc) => (
               <div key={doc.path} className="ml-5 flex items-center gap-1.5 rounded px-1.5 py-0.5 text-[10px]">
-                <SpecTypeTag type={doc.type} />
+                <SpecTypeTag label={labels.typeLabels[doc.type] ?? doc.type} />
                 <span className="min-w-0 truncate font-mono text-desktop-text-primary">{doc.path}</span>
               </div>
             ))}
@@ -174,12 +172,12 @@ function KiroFeatureTree({ features }: { features: SpecFeature[] }) {
   );
 }
 
-function FlatSpecList({ specs }: { specs: SpecSource["children"] }) {
+function FlatSpecList({ specs, labels }: { specs: SpecSource["children"]; labels: SpecSourceI18nLabels }) {
   return (
     <div className="space-y-0.5">
       {specs.map((spec) => (
         <div key={spec.path} className="flex items-center gap-2 rounded px-1.5 py-0.5 text-[10px] hover:bg-desktop-bg-secondary/60">
-          <SpecTypeTag type={spec.type} />
+          <SpecTypeTag label={labels.typeLabels[spec.type] ?? spec.type} />
           <span className="min-w-0 truncate font-mono text-desktop-text-primary">{spec.path}</span>
         </div>
       ))}
@@ -187,7 +185,7 @@ function FlatSpecList({ specs }: { specs: SpecSource["children"] }) {
   );
 }
 
-function SpecSourceCard({ source, expanded, onToggle }: { source: SpecSource; expanded: boolean; onToggle: () => void }) {
+function SpecSourceCard({ source, expanded, onToggle, labels }: { source: SpecSource; expanded: boolean; onToggle: () => void; labels: SpecSourceI18nLabels }) {
   const icon = SYSTEM_ICONS[source.system] ?? source.system.charAt(0).toUpperCase();
   const hasFeatures = source.features && source.features.length > 0;
   const specCount = hasFeatures ? source.features!.length : source.children.length;
@@ -207,11 +205,11 @@ function SpecSourceCard({ source, expanded, onToggle }: { source: SpecSource; ex
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <span className="text-[12px] font-semibold capitalize text-desktop-text-primary">{source.system}</span>
-            <KindBadge kind={source.kind} />
+            <KindBadge kind={source.kind} label={labels.kindLabels[source.kind]} />
             <ConfidenceBadge confidence={source.confidence} />
           </div>
           <div className="mt-0.5 flex items-center gap-2">
-            <StatusBadge status={source.status} />
+            <StatusBadge status={source.status} label={labels.statusLabels[source.status]} />
             <span className="text-[10px] text-desktop-text-secondary">
               {source.rootPath}
             </span>
@@ -220,7 +218,7 @@ function SpecSourceCard({ source, expanded, onToggle }: { source: SpecSource; ex
         <div className="flex shrink-0 items-center gap-2">
           {specCount > 0 && (
             <span className="rounded-full border border-desktop-border bg-desktop-bg-secondary px-2 py-0.5 text-[10px] text-desktop-text-secondary">
-              {specCount} spec{specCount !== 1 ? "s" : ""}
+              {labels.specCount(specCount)}
             </span>
           )}
           <ChevronDown className={`h-3.5 w-3.5 text-desktop-text-secondary transition-transform ${expanded ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
@@ -230,14 +228,14 @@ function SpecSourceCard({ source, expanded, onToggle }: { source: SpecSource; ex
       {expanded && (
         <div className="max-h-80 overflow-y-auto border-t border-desktop-border px-3 py-2">
           {hasFeatures ? (
-            <KiroFeatureTree features={source.features!} />
+            <KiroFeatureTree features={source.features!} labels={labels} />
           ) : source.children.length > 0 ? (
-            <FlatSpecList specs={source.children} />
+            <FlatSpecList specs={source.children} labels={labels} />
           ) : source.status === "installed-only" ? (
             <div className="rounded-sm border border-sky-200 bg-sky-50/50 px-2.5 py-2 text-[10px] text-sky-700">
               {source.system === "qoder"
-                ? "Qoder integration detected. No spec documents found."
-                : `${source.system} integration detected, but no spec documents found.`}
+                ? labels.qoderIntegration
+                : labels.integrationDetected(source.system)}
             </div>
           ) : null}
         </div>
@@ -246,11 +244,12 @@ function SpecSourceCard({ source, expanded, onToggle }: { source: SpecSource; ex
   );
 }
 
-function SourceGroup({ title, sources, expandedKeys, onToggle }: {
+function SourceGroup({ title, sources, expandedKeys, onToggle, labels }: {
   title: string;
   sources: SpecSource[];
   expandedKeys: Set<string>;
   onToggle: (key: string) => void;
+  labels: SpecSourceI18nLabels;
 }) {
   if (sources.length === 0) return null;
 
@@ -268,6 +267,7 @@ function SourceGroup({ title, sources, expandedKeys, onToggle }: {
               source={source}
               expanded={expandedKeys.has(key)}
               onToggle={() => onToggle(key)}
+              labels={labels}
             />
           );
         })}
@@ -285,6 +285,7 @@ export function HarnessSpecSourcesPanel({
   variant = "full",
   hideHeader = false,
 }: SpecSourcesPanelProps) {
+  const { t } = useTranslation();
   const sources = useMemo(
     () => data?.sources ?? [],
     [data?.sources],
@@ -305,6 +306,44 @@ export function HarnessSpecSourcesPanel({
   };
   const { nativeTools, frameworks, integrations, legacy } = groupSourcesByCategory(sources);
 
+  const labels: SpecSourceI18nLabels = useMemo(() => ({
+    kindLabels: {
+      "native-tool": t.harness.specSources.kindNativeTool,
+      framework: t.harness.specSources.kindFramework,
+      "tool-integration": t.harness.specSources.kindIntegration,
+    },
+    statusLabels: {
+      "artifacts-present": t.harness.specSources.statusHasSpecs,
+      "installed-only": t.harness.specSources.statusInstalledOnly,
+      archived: t.harness.specSources.statusArchived,
+      legacy: t.harness.specSources.statusLegacyLabel,
+    },
+    typeLabels: {
+      requirements: t.harness.specSources.typeRequirements,
+      design: t.harness.specSources.typeDesign,
+      tasks: t.harness.specSources.typeTasks,
+      bugfix: t.harness.specSources.typeBugfix,
+      spec: t.harness.specSources.typeSpec,
+      proposal: t.harness.specSources.typeProposal,
+      plan: t.harness.specSources.typePlan,
+      prd: t.harness.specSources.typePrd,
+      architecture: t.harness.specSources.typeArchitecture,
+      epic: t.harness.specSources.typeEpic,
+      story: t.harness.specSources.typeStory,
+      context: t.harness.specSources.typeContext,
+      config: t.harness.specSources.typeConfig,
+      other: t.harness.specSources.typeOther,
+    },
+    docsCount: (count: number) => count === 1
+      ? t.harness.specSources.docsSingular.replace('{count}', `${count}`)
+      : t.harness.specSources.docsCount.replace('{count}', `${count}`),
+    specCount: (count: number) => count === 1
+      ? t.harness.specSources.specSingular.replace('{count}', `${count}`)
+      : t.harness.specSources.specCount.replace('{count}', `${count}`),
+    qoderIntegration: t.harness.specSources.qoderIntegration,
+    integrationDetected: (system: string) => t.harness.specSources.integrationDetected.replace('{system}', system),
+  }), [t]);
+
   const isCompact = variant === "compact";
 
   if (isCompact) {
@@ -314,7 +353,7 @@ export function HarnessSpecSourcesPanel({
     const showSourceCards = !showLoading && !showUnsupportedMessage;
     return (
       <HarnessSectionCard
-        title="Spec Sources"
+        title={t.harness.specSources.title}
         hideHeader={hideHeader}
         variant="compact"
         dataTestId="spec-sources-compact"
@@ -324,13 +363,13 @@ export function HarnessSpecSourcesPanel({
         ) : null}
 
         {showLoading && !unsupportedMessage && !error ? (
-          <HarnessSectionStateFrame>Scanning for spec sources...</HarnessSectionStateFrame>
+          <HarnessSectionStateFrame>{t.harness.specSources.scanningSources}</HarnessSectionStateFrame>
         ) : null}
 
         {unsupportedMessage ? <HarnessSectionStateFrame tone="warning">{unsupportedMessage}</HarnessSectionStateFrame> : null}
 
         {showEmptyState ? (
-          <HarnessSectionStateFrame>No spec sources detected in this repository.</HarnessSectionStateFrame>
+          <HarnessSectionStateFrame>{t.harness.specSources.noSourcesDetected}</HarnessSectionStateFrame>
         ) : null}
 
         {showSourceCards ? sources.map((source) => {
@@ -342,6 +381,7 @@ export function HarnessSpecSourcesPanel({
               source={source}
               expanded={activeExpandedKeys.has(key)}
               onToggle={() => toggleKey(key)}
+              labels={labels}
             />
           );
         }) : null}
@@ -352,12 +392,12 @@ export function HarnessSpecSourcesPanel({
   // Full variant
   return (
     <HarnessSectionCard
-      title="Spec Sources"
+      title={t.harness.specSources.title}
       hideHeader={hideHeader}
       variant="full"
     >
       {loading ? (
-        <HarnessSectionStateFrame>Scanning for spec sources...</HarnessSectionStateFrame>
+        <HarnessSectionStateFrame>{t.harness.specSources.scanningSources}</HarnessSectionStateFrame>
       ) : null}
 
       {unsupportedMessage ? <HarnessSectionStateFrame tone="warning">{unsupportedMessage}</HarnessSectionStateFrame> : null}
@@ -368,16 +408,16 @@ export function HarnessSpecSourcesPanel({
 
       {!loading && !error && !unsupportedMessage && sources.length === 0 ? (
         <HarnessSectionStateFrame>
-          No spec sources detected in this repository. Supported frameworks: Kiro, Qoder, OpenSpec, Spec Kit, BMAD.
+          {t.harness.specSources.noSourcesWithFrameworks}
         </HarnessSectionStateFrame>
       ) : null}
 
       {!loading && !unsupportedMessage && sources.length > 0 ? (
         <div className="mt-3 space-y-3" data-testid="spec-sources-full">
-          <SourceGroup title="Native Tools" sources={nativeTools} expandedKeys={activeExpandedKeys} onToggle={toggleKey} />
-          <SourceGroup title="Frameworks" sources={frameworks} expandedKeys={activeExpandedKeys} onToggle={toggleKey} />
-          <SourceGroup title="Integrations" sources={integrations} expandedKeys={activeExpandedKeys} onToggle={toggleKey} />
-          <SourceGroup title="Legacy" sources={legacy} expandedKeys={activeExpandedKeys} onToggle={toggleKey} />
+          <SourceGroup title={t.harness.specSources.nativeTools} sources={nativeTools} expandedKeys={activeExpandedKeys} onToggle={toggleKey} labels={labels} />
+          <SourceGroup title={t.harness.specSources.frameworks} sources={frameworks} expandedKeys={activeExpandedKeys} onToggle={toggleKey} labels={labels} />
+          <SourceGroup title={t.harness.specSources.integrations} sources={integrations} expandedKeys={activeExpandedKeys} onToggle={toggleKey} labels={labels} />
+          <SourceGroup title={t.harness.specSources.legacy} sources={legacy} expandedKeys={activeExpandedKeys} onToggle={toggleKey} labels={labels} />
         </div>
       ) : null}
 

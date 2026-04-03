@@ -25,15 +25,23 @@ Multi-agent coordination platform. This document is auto-generated from:
 | A2A Protocol Test Page | `/a2a` | Interactive testing interface for the Agent-to-Agent (A2A) protocol |
 | AG-UI Protocol Test Page | `/ag-ui` | Standalone page for testing AG-UI protocol integration |
 | Debug / Acp Replay | `/debug/acp-replay` |  |
-| MCP Tools Explorer | `/mcp-tools` | Browse and test Model Context Protocol (MCP) tools |
+| Mcp Tools | `/mcp-tools` |  |
 | Messages Page - Notification & PR Agent Execution History | `/messages` | Shows: - All notifications with filtering - PR Agent execution history from back |
 | Settings Page | `/settings` | Provides a full-page UI for all Routa settings: - Providers (default agent provi |
 | Agent Installation Settings Page | `/settings/agents` | Provides a full-page UI for managing ACP agent installations |
-| Scheduled Triggers Settings Page | `/settings/schedules` | Provides a full-page UI for configuring cron-based scheduled agent triggers |
+| Settings / Fitness | `/settings/fitness` |  |
+| Settings / Fluency | `/settings/fluency` |  |
+| Settings / Harness | `/settings/harness` |  |
+| Settings / Mcp | `/settings/mcp` |  |
+| Settings / Schedules | `/settings/schedules` |  |
+| Settings / Specialists | `/settings/specialists` |  |
 | GitHub Webhook Trigger Settings Page | `/settings/webhooks` | Provides a full-page UI for configuring GitHub webhook event-driven triggers |
+| Settings / Workflows | `/settings/workflows` |  |
 | Trace Page | `/traces` | Full-page view for browsing and analyzing Agent Trace records |
-| Workspace Page (Server Component Wrapper) | `/workspace/:workspaceId` | This server component provides generateStaticParams for static export and render |
+| Workspace Page (Server Component Wrapper) | `/workspace/:workspaceId` | This server component provides generateStaticParams for static export and redire |
+| Codebases / Reposlide | `/workspace/:workspaceId/codebases/:codebaseId/reposlide` |  |
 | Workspace / Kanban | `/workspace/:workspaceId/kanban` |  |
+| Workspace / Overview | `/workspace/:workspaceId/overview` |  |
 | Workspace Session Page (Server Component Wrapper) | `/workspace/:workspaceId/sessions/:sessionId` | This server component provides generateStaticParams for static export and render |
 | Workspace / Team | `/workspace/:workspaceId/team` |  |
 | Workspace / Team | `/workspace/:workspaceId/team/:sessionId` |  |
@@ -110,7 +118,7 @@ Multi-agent coordination platform. This document is auto-generated from:
 | DELETE | `/api/background-tasks/{id}` | Cancel a background task |
 | POST | `/api/background-tasks/{id}/retry` | Retry a failed background task |
 
-### Clone (7)
+### Clone (8)
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
@@ -118,6 +126,7 @@ Multi-agent coordination platform. This document is auto-generated from:
 | POST | `/api/clone` | Clone a GitHub repository |
 | PATCH | `/api/clone` | Switch branch on cloned repo |
 | POST | `/api/clone/progress` | Clone with SSE progress |
+| POST | `/api/clone/local` | Load an existing local git repository |
 | GET | `/api/clone/branches` | Get branch info |
 | POST | `/api/clone/branches` | Fetch remote branches |
 | PATCH | `/api/clone/branches` | Checkout branch |
@@ -142,16 +151,41 @@ Multi-agent coordination platform. This document is auto-generated from:
 |--------|----------|-------------|
 | GET | `/api/files/search` | Search files in a codebase |
 
-### GitHub (6)
+### Fitness (4)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/fitness/analyze` | Run harness fitness fluency analysis for one or more profiles |
+| GET | `/api/fitness/plan` | Build the executable fitness plan for a repository context |
+| GET | `/api/fitness/report` | Read persisted fitness fluency report snapshots |
+| GET | `/api/fitness/specs` | Inspect docs/fitness source files and parsed metric metadata |
+
+### GitHub (7)
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/api/github` | List active GitHub virtual workspaces |
 | POST | `/api/github/import` | Import a GitHub repo as a virtual workspace (zipball download) |
+| GET | `/api/github/issues` | List GitHub issues for a workspace codebase |
 | GET | `/api/github/tree` | Get file tree for an imported GitHub repo |
 | GET | `/api/github/file` | Read a file from an imported GitHub repo |
 | GET | `/api/github/search` | Search files in an imported GitHub repo |
 | POST | `/api/github/pr-comment` | Post a comment on a GitHub pull request |
+
+### Harness (10)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/harness/github-actions` | Inspect repository GitHub Actions workflow files |
+| GET | `/api/harness/agent-hooks` | Read and validate agent hook lifecycle configuration |
+| GET | `/api/harness/hooks` | Inspect hook runtime profiles, bound hook files, and resolved metrics |
+| GET | `/api/harness/hooks/preview` | Run hook runtime preview for a configured profile |
+| GET | `/api/harness/instructions` | Read repository guidance documents used by harness views |
+| GET | `/api/harness/codeowners` | Parse CODEOWNERS and report ownership coverage for the selected repository |
+| GET | `/api/harness/repo-signals` | Detect YAML-driven build and test harness surfaces for the selected repository |
+| GET | `/api/harness/automations` | Inspect repo-defined automation definitions, pending findings, and runtime schedule state |
+| GET | `/api/harness/spec-sources` | Detect specification and planning source systems for the selected repository |
+| GET | `/api/harness/design-decisions` | Detect architecture and ADR design decision sources for the selected repository |
 
 ### Health (1)
 
@@ -274,12 +308,14 @@ Multi-agent coordination platform. This document is auto-generated from:
 | GET | `/api/schedules/tick` | Get tick status for scheduled tasks |
 | POST | `/api/schedules/tick` | Manually trigger the schedule tick |
 
-### Sessions (8)
+### Sessions (10)
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/api/sessions` | List ACP sessions |
 | GET | `/api/sessions/{sessionId}/context` | Get hierarchical context for a session |
+| GET | `/api/sessions/{sessionId}/reposlide-result` | Read the RepoSlide result payload extracted from a session transcript |
+| GET | `/api/sessions/{sessionId}/reposlide-result/download` | Download the generated RepoSlide PPTX artifact for a completed session |
 | GET | `/api/sessions/{id}` | Get session by ID |
 | PATCH | `/api/sessions/{id}` | Update session metadata |
 | DELETE | `/api/sessions/{id}` | Delete a session |
@@ -325,7 +361,7 @@ Multi-agent coordination platform. This document is auto-generated from:
 | PUT | `/api/specialists` | Update an existing specialist |
 | DELETE | `/api/specialists` | Delete a specialist |
 
-### Tasks (10)
+### Tasks (11)
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
@@ -339,6 +375,7 @@ Multi-agent coordination platform. This document is auto-generated from:
 | GET | `/api/tasks/ready` | Find tasks with all dependencies satisfied |
 | GET | `/api/tasks/{id}/artifacts` | List all artifacts for a task |
 | POST | `/api/tasks/{id}/artifacts` | Attach an artifact to a task |
+| GET | `/api/tasks/{id}/runs` | List normalized execution runs for a task |
 
 ### Test-Mcp (1)
 
@@ -381,7 +418,7 @@ Multi-agent coordination platform. This document is auto-generated from:
 | DELETE | `/api/workflows/{id}` | Delete a workflow YAML file |
 | POST | `/api/workflows/{id}/trigger` | Trigger a workflow run inside a workspace |
 
-### Workspaces (10)
+### Workspaces (12)
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
@@ -393,6 +430,8 @@ Multi-agent coordination platform. This document is auto-generated from:
 | POST | `/api/workspaces/{id}/archive` | Archive or unarchive a workspace |
 | GET | `/api/workspaces/{id}/codebases` | List codebases in a workspace |
 | POST | `/api/workspaces/{id}/codebases` | Add a codebase to a workspace |
+| GET | `/api/workspaces/{id}/codebases/changes` | List git change summaries for workspace codebases |
+| GET | `/api/workspaces/{workspaceId}/codebases/{codebaseId}/reposlide` | Get RepoSlide launch context for an agent-driven deck generation session |
 | GET | `/api/workspaces/{workspace_id}/codebases/{codebase_id}/worktrees` | List worktrees for a codebase |
 | POST | `/api/workspaces/{workspace_id}/codebases/{codebase_id}/worktrees` | Create a new git worktree |
 

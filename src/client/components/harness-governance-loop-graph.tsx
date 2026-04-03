@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState, type ReactNode } from "react";
+import { useTranslation, type TranslationDictionary } from "@/i18n";
 import {
   Background,
   Handle,
@@ -156,11 +157,12 @@ function getLayerTone(layer: LoopLayer): LoopTone {
 }
 
 function LoopNodeView({ data }: NodeProps<Node<LoopNodeData>>) {
+  const { t } = useTranslation();
   const tone = getNodeToneClasses(data.tone);
   const layerLabel: Record<LoopLayer, string> = {
-    internal: "内部反馈环",
-    commit: "推送反馈环",
-    external: "外部反馈环",
+    internal: t.harness.governanceLoop.graph.nodeLayers.internal,
+    commit: t.harness.governanceLoop.graph.nodeLayers.commit,
+    external: t.harness.governanceLoop.graph.nodeLayers.external,
   };
   const interactive = typeof data.onSelect === "function";
   const unavailable = !interactive && Boolean(data.unavailableReason);
@@ -228,7 +230,7 @@ function LoopNodeView({ data }: NodeProps<Node<LoopNodeData>>) {
             </div>
           </div>
           <span className={`shrink-0 whitespace-nowrap rounded-full border px-1.5 py-[1px] text-[9px] font-medium leading-none ${data.active ? tone.badge : "border-slate-200 bg-slate-50 text-slate-400"}`}>
-            {unavailable ? "未接入" : "阶段"}
+            {unavailable ? t.harness.governanceLoop.graph.statusLabels.unavailable : t.harness.governanceLoop.graph.statusLabels.phase}
           </span>
         </div>
         {data.note ? (
@@ -355,6 +357,7 @@ function buildGraph(args: {
   designDecisionNodeEnabled?: boolean;
   selectedNodeId: string | null;
   onSelectNode: (nodeId: string) => void;
+  g: TranslationDictionary["harness"]["governanceLoop"]["graph"];
 }) {
   const {
     hookSummary,
@@ -365,6 +368,7 @@ function buildGraph(args: {
     designDecisionNodeEnabled,
     selectedNodeId,
     onSelectNode,
+    g,
   } = args;
 
   const hasCodingNode = Boolean(designDecisionNodeEnabled);
@@ -433,145 +437,145 @@ function buildGraph(args: {
     buildNode("thinking", col1X, internalRowY, {
       nodeId: "thinking",
       layer: "internal",
-      title: "需求定义",
+      title: g.nodeLabels.thinking,
       tone: getLayerTone("internal"),
-      note: "Spec / 需求边界",
+      note: g.clues.thinkingNote,
       active: true,
       ...buildSelectionState("thinking", true),
     }),
     buildNode("coding", col2X, internalRowY, {
       nodeId: "coding",
       layer: "internal",
-      title: "设计决策",
+      title: g.nodeLabels.coding,
       tone: getLayerTone("internal"),
-      note: "ADR / 设计取舍",
+      note: g.clues.codingNote,
       active: hasCodingNode,
       unavailableReason: hasCodingNode
         ? undefined
-        : "暂未接入 ADR / 设计决策来源（docs/ARCHITECTURE.md 或 docs/adr）",
+        : g.nodeNotes.codingUnavailable,
       ...buildSelectionState("coding", hasCodingNode),
     }),
     buildNode("build", col3X, internalRowY, {
       nodeId: "build",
       layer: "internal",
-      title: "编码实现",
+      title: g.nodeLabels.build,
       tone: getLayerTone("internal"),
       note: instructionSummary
-        ? `受 ${instructionSummary.fileName} 规范约束`
-        : "代码实现 / 约束执行",
+        ? `${g.clues.buildNotePrefix} ${instructionSummary.fileName} ${g.clues.buildNoteSuffix}`
+        : g.clues.buildNote,
       active: true,
       ...buildSelectionState("build", true),
     }),
     buildNode("test", col4X, internalRowY, {
       nodeId: "test",
       layer: "internal",
-      title: "本地验证",
+      title: g.nodeLabels.test,
       tone: getLayerTone("internal"),
-      note: "测试 / 回归 / smoke",
+      note: g.clues.testNote,
       active: true,
       ...buildSelectionState("test", true),
     }),
     buildNode("precommit", col4X, commitRowY, {
       nodeId: "precommit",
       layer: "commit",
-      title: "变更门禁",
+      title: g.nodeLabels.precommit,
       tone: getLayerTone("commit"),
       note: metricCount > 0
-        ? `${metricCount} metrics / ${hardGateCount} hard gates`
+        ? g.detailChips.metricsAndGates.replace("{metrics}", String(metricCount)).replace("{gates}", String(hardGateCount))
         : hookSummary
-          ? `pre-push / ${hookSummary.phaseCount} phases`
-          : "pre-push / Entrix Fitness",
+          ? g.detailChips.prePushPhases.replace("{count}", String(hookSummary.phaseCount))
+          : g.clues.precommitNote,
       active: true,
       ...buildSelectionState("precommit", true),
     }),
     buildNode("review", col3X, commitRowY, {
       nodeId: "review",
       layer: "commit",
-      title: "代码评审",
+      title: g.nodeLabels.review,
       tone: getLayerTone("commit"),
-      note: "规则策略 / 人工 review",
+      note: g.clues.reviewNote,
       active: true,
       ...buildSelectionState("review", true),
     }),
     buildNode("commit", col2X, commitRowY, {
       nodeId: "commit",
       layer: "commit",
-      title: "主干集成",
+      title: g.nodeLabels.commit,
       tone: getLayerTone("commit"),
-      note: "merge / trunk",
+      note: g.clues.commitNote,
       active: false,
-      unavailableReason: "暂未接入 trunk merge / 主干集成信号，当前没有对应上下文面板。",
+      unavailableReason: g.nodeNotes.commitUnavailable,
       ...buildSelectionState("commit", false),
     }),
     buildNode("post-commit", col1X, commitRowY, {
       nodeId: "post-commit",
       layer: "commit",
-      title: "持续交付",
+      title: g.nodeLabels["post-commit"],
       tone: getLayerTone("commit"),
       note: workflowSummary
-        ? `${workflowSummary.flowCount} flows / ${workflowSummary.jobCount} jobs`
-        : "CI/CD / 自动交付",
+        ? g.detailChips.flowsAndJobs.replace("{flows}", String(workflowSummary.flowCount)).replace("{jobs}", String(workflowSummary.jobCount))
+        : g.clues.postCommitNote,
       active: true,
       ...buildSelectionState("post-commit", true),
     }),
     buildNode("release", col1X, externalRowY, {
       nodeId: "release",
       layer: "external",
-      title: "制品发布",
+      title: g.nodeLabels.release,
       tone: getLayerTone("external"),
       note: workflowSummary && workflowSummary.releaseFlowCount > 0
-        ? `${workflowSummary.releaseFlowCount} release flows`
-        : "artifact / release",
+        ? g.detailChips.releaseFlows.replace("{count}", String(workflowSummary.releaseFlowCount))
+        : g.clues.releaseNote,
       active: Boolean(workflowSummary && workflowSummary.releaseFlowCount > 0),
       unavailableReason: workflowSummary && workflowSummary.releaseFlowCount > 0
         ? undefined
-        : "仓库未检测到 release / publish workflow，暂时无法进入发布上下文。",
+        : g.nodeNotes.releaseUnavailable,
       ...buildSelectionState("release", Boolean(workflowSummary && workflowSummary.releaseFlowCount > 0)),
     }),
     buildNode("staging", col2X, externalRowY, {
       nodeId: "staging",
       layer: "external",
-      title: "预生产验证",
+      title: g.nodeLabels.staging,
       tone: getLayerTone("external"),
-      note: "预发验收 / smoke",
+      note: g.clues.stagingNote,
       active: false,
-      unavailableReason: "暂未接入 staging / 预发验证信号，当前没有可展示的验证面板。",
+      unavailableReason: g.nodeNotes.stagingUnavailable,
       ...buildSelectionState("staging", false),
     }),
     buildNode("production", col3X, externalRowY, {
       nodeId: "production",
       layer: "external",
-      title: "生产运行",
+      title: g.nodeLabels.production,
       tone: getLayerTone("external"),
-      note: "真实流量 / 运行状态",
+      note: g.clues.productionNote,
       active: false,
-      unavailableReason: "暂未接入 production runtime / 真实流量信号，当前没有运行时上下文。",
+      unavailableReason: g.nodeNotes.productionUnavailable,
       ...buildSelectionState("production", false),
     }),
     buildNode("metrics", col4X, externalRowY, {
       nodeId: "metrics",
       layer: "external",
-      title: "监控演进",
+      title: g.nodeLabels.metrics,
       tone: getLayerTone("external"),
-      note: "监控 / 反馈闭环",
+      note: g.clues.metricsNote,
       active: false,
-      unavailableReason: "暂未接入 observability / 反馈闭环信号，当前没有监控与回流数据。",
+      unavailableReason: g.nodeNotes.metricsUnavailable,
       ...buildSelectionState("metrics", false),
     }),
   ];
 
   const edges: Edge[] = [
-    buildEdge("thinking-coding", "thinking", "coding", "source-right", "target-left", "澄清", LOOP_EDGE_COLORS.neutral),
-    buildEdge("coding-build", "coding", "build", "source-right", "target-left", "实现", LOOP_EDGE_COLORS.internal),
-    buildEdge("build-test", "build", "test", "source-right", "target-left", "验证", LOOP_EDGE_COLORS.internal),
+    buildEdge("thinking-coding", "thinking", "coding", "source-right", "target-left", g.edgeLabels.clarify, LOOP_EDGE_COLORS.neutral),
+    buildEdge("coding-build", "coding", "build", "source-right", "target-left", g.edgeLabels.implement, LOOP_EDGE_COLORS.internal),
+    buildEdge("build-test", "build", "test", "source-right", "target-left", g.edgeLabels.validate, LOOP_EDGE_COLORS.internal),
 
-    buildEdge("precommit-review", "precommit", "review", "source-left", "target-right", "送审", LOOP_EDGE_COLORS.internal),
-    buildEdge("review-commit", "review", "commit", "source-left", "target-right", "集成", LOOP_EDGE_COLORS.neutral),
-    buildEdge("commit-post-commit", "commit", "post-commit", "source-left", "target-right", "交付", LOOP_EDGE_COLORS.commit),
+    buildEdge("precommit-review", "precommit", "review", "source-left", "target-right", g.edgeLabels.sendForReview, LOOP_EDGE_COLORS.internal),
+    buildEdge("review-commit", "review", "commit", "source-left", "target-right", g.edgeLabels.integrate, LOOP_EDGE_COLORS.neutral),
+    buildEdge("commit-post-commit", "commit", "post-commit", "source-left", "target-right", g.edgeLabels.deliver, LOOP_EDGE_COLORS.commit),
 
-    buildEdge("release-staging", "release", "staging", "source-right", "target-left", "预发", LOOP_EDGE_COLORS.commit),
-    buildEdge("staging-production", "staging", "production", "source-right", "target-left", "上线", LOOP_EDGE_COLORS.external),
-    buildEdge("production-metrics", "production", "metrics", "source-right", "target-left", "演进", LOOP_EDGE_COLORS.feedback),
+    buildEdge("release-staging", "release", "staging", "source-right", "target-left", g.edgeLabels.preRelease, LOOP_EDGE_COLORS.commit),
+    buildEdge("staging-production", "staging", "production", "source-right", "target-left", g.edgeLabels.deploy, LOOP_EDGE_COLORS.external),
+    buildEdge("production-metrics", "production", "metrics", "source-right", "target-left", g.edgeLabels.evolve, LOOP_EDGE_COLORS.feedback),
 
     buildEdge("test-precommit", "test", "precommit", "source-bottom", "target-top", "", LOOP_EDGE_COLORS.internal, "6 4"),
     buildEdge("post-commit-release", "post-commit", "release", "source-bottom", "target-top", "", LOOP_EDGE_COLORS.commit, "6 4"),
@@ -602,7 +606,7 @@ function buildGraph(args: {
           sourceHandle: "source-right",
           targetHandle: "target-top",
           type: "smoothstep",
-          label: "自动修复重试",
+          label: g.edgeLabels.autoRepairRetry,
           style: {
             stroke: LOOP_EDGE_COLORS.commit,
             strokeWidth: 1.8,
@@ -642,6 +646,7 @@ function buildDetailSections(args: {
   metricCount: number;
   hardGateCount: number;
   selectedTier: TierValue;
+  g: TranslationDictionary["harness"]["governanceLoop"]["graph"];
 }) {
   const {
     selectedNodeId,
@@ -653,6 +658,7 @@ function buildDetailSections(args: {
     metricCount,
     hardGateCount,
     selectedTier,
+    g,
   } = args;
 
   const uniquePhases = [...new Set((hooksData?.profiles ?? []).flatMap((profile) => profile.phases ?? []))];
@@ -668,51 +674,51 @@ function buildDetailSections(args: {
   switch (selectedNodeId) {
     case "precommit":
       return [
-        { title: "Fitness", items: [`tier ${selectedTier}`, `${dimensionCount} dimensions`, `${metricCount} metrics`, `${hardGateCount} hard gates`] },
-        { title: "Hook phases", items: uniquePhases.length ? uniquePhases : ["当前页未发现 phase"] },
-        { title: "Related surface", items: ["Entrix Fitness", "Hook systems panel"] },
+        { title: g.detailSections.fitness.title, items: [g.detailChips.tier.replace("{tier}", String(selectedTier)), g.detailChips.dimensions.replace("{count}", String(dimensionCount)), g.detailChips.metricsLabel.replace("{count}", String(metricCount)), g.detailChips.hardGatesLabel.replace("{count}", String(hardGateCount))] },
+        { title: g.detailSections.fitness.hookPhasesTitle, items: uniquePhases.length ? uniquePhases : [g.detailSections.fitness.noPhase] },
+        { title: g.detailSections.fitness.relatedSurface, items: g.detailSections.fitness.relatedItems },
       ] satisfies LoopDetailSection[];
     case "post-commit":
       return [
-        { title: "Actions", items: workflowNames.length ? workflowNames.slice(0, 8) : ["当前页未发现 action"] },
-        { title: "Jobs", items: workflowJobs.length ? workflowJobs.slice(0, 8) : ["当前页未发现 job"] },
-        { title: "Related surface", items: ["CI/CD panel", "External feedback loop"] },
+        { title: g.detailSections.workflow.title, items: workflowNames.length ? workflowNames.slice(0, 8) : [g.detailSections.workflow.noAction] },
+        { title: g.detailSections.workflow.jobsTitle, items: workflowJobs.length ? workflowJobs.slice(0, 8) : [g.detailSections.workflow.noJob] },
+        { title: g.detailSections.workflow.relatedSurface, items: g.detailSections.workflow.relatedItems },
       ] satisfies LoopDetailSection[];
     case "release":
       return [
-        { title: "Release handoff", items: workflowNames.length ? workflowNames.slice(0, 6) : ["当前页未发现 release workflow"] },
-        { title: "Evidence", items: ["GitHub Actions release flows", "artifact / bundle / publish", "workflow_dispatch / tags"] },
-        { title: "Related surface", items: ["CI/CD panel", "Release category"] },
+        { title: g.detailSections.release.title, items: workflowNames.length ? workflowNames.slice(0, 6) : [g.detailSections.release.noReleaseWorkflow] },
+        { title: g.detailSections.release.evidenceTitle, items: g.detailSections.release.evidenceItems },
+        { title: g.detailSections.release.relatedSurface, items: g.detailSections.release.relatedItems },
       ] satisfies LoopDetailSection[];
     case "review":
     case "test":
       return [
-        { title: "Fitness", items: [`tier ${selectedTier}`, `${dimensionCount} dimensions`, `${metricCount} metrics`, `${hardGateCount} hard gates`] },
-        { title: "Hook phases", items: uniquePhases.length ? uniquePhases : ["当前页未发现 phase"] },
-        { title: "Dimension files", items: dimensionFiles.length ? dimensionFiles.slice(0, 6) : ["当前页未发现 dimension spec"] },
+        { title: g.detailSections.fitness.title, items: [g.detailChips.tier.replace("{tier}", String(selectedTier)), g.detailChips.dimensions.replace("{count}", String(dimensionCount)), g.detailChips.metricsLabel.replace("{count}", String(metricCount)), g.detailChips.hardGatesLabel.replace("{count}", String(hardGateCount))] },
+        { title: g.detailSections.test.hookPhasesTitle, items: uniquePhases.length ? uniquePhases : [g.detailSections.fitness.noPhase] },
+        { title: g.detailSections.test.dimensionFilesTitle, items: dimensionFiles.length ? dimensionFiles.slice(0, 6) : [g.detailSections.test.noDimensionSpec] },
       ] satisfies LoopDetailSection[];
     case "build":
       return [
-        { title: "Instruction source", items: [instructionSummary?.fileName ?? "AGENTS.md"] },
-        { title: "Context", items: ["当前节点受 instructions 面板支撑"] },
-        { title: "Rulebook", items: primaryRuleFiles.length ? primaryRuleFiles.slice(0, 4) : ["当前页未发现 rulebook / manifest"] },
+        { title: g.detailSections.build.instructionSourceTitle, items: [instructionSummary?.fileName ?? "AGENTS.md"] },
+        { title: g.detailSections.build.contextTitle, items: [g.detailSections.build.contextItem] },
+        { title: g.detailSections.build.rulebookTitle, items: primaryRuleFiles.length ? primaryRuleFiles.slice(0, 4) : [g.detailSections.build.noRulebookManifest] },
       ] satisfies LoopDetailSection[];
     case "thinking":
       return [
-        { title: "Spec Sources", items: ["Detects AI Coding spec tools and methodology frameworks"] },
-        { title: "Frameworks", items: ["Kiro", "Qoder", "OpenSpec", "Spec Kit", "BMAD"] },
-        { title: "Evidence model", items: ["artifacts-present", "installed-only", "archived", "legacy"] },
+        { title: g.detailSections.thinking.specSourcesTitle, items: [g.detailSections.thinking.specSourcesItem] },
+        { title: g.detailSections.thinking.frameworksTitle, items: g.detailSections.thinking.frameworksItems },
+        { title: g.detailSections.thinking.evidenceModelTitle, items: g.detailSections.thinking.evidenceModelItems },
       ] satisfies LoopDetailSection[];
     case "coding":
       return [
-        { title: "Design decision evidence", items: ["ADR / architecture decision files"] },
-        { title: "Evidence locations", items: ["docs/ARCHITECTURE.md", "docs/adr/*.md"] },
-        { title: "Related surface", items: ["Spec Sources panel", "Build / coding pipeline"] },
+        { title: g.detailSections.coding.designDecisionTitle, items: [g.detailSections.coding.designDecisionItem] },
+        { title: g.detailSections.coding.evidenceLocationsTitle, items: g.detailSections.coding.evidenceLocationsItems },
+        { title: g.detailSections.coding.relatedSurface, items: g.detailSections.coding.relatedItems },
       ] satisfies LoopDetailSection[];
     default:
       return [
-        { title: "Current page signals", items: ["Highlighted nodes are clickable. Unavailable nodes explain missing signals directly.", "Select a node (coding, local verification, change gate, review, delivery, release) to preview the matching context panel."] },
-        { title: "Connected panels", items: ["Instruction file - CLAUDE.md", "Entrix Fitness", "Review triggers", "CI/CD", "Repo signals"] },
+        { title: g.detailSections.default.connectedPanelsTitle, items: [g.detailSections.default.highlightedNodesClickable, g.detailSections.default.selectNodePreview] },
+        { title: g.detailSections.default.connectedPanelsTitle, items: g.detailSections.default.connectedPanelsItems },
       ] satisfies LoopDetailSection[];
   }
 }
@@ -738,6 +744,7 @@ export function HarnessGovernanceLoopGraph({
   onSelectedNodeChange,
   contextPanel,
 }: HarnessGovernanceLoopGraphProps) {
+  const { t } = useTranslation();
   const hasContext = Boolean(repoPath);
   const [internalSelectedNodeId, setInternalSelectedNodeId] = useState("build");
   const activeSelectedNodeId = selectedNodeId !== undefined ? selectedNodeId : internalSelectedNodeId;
@@ -795,8 +802,9 @@ export function HarnessGovernanceLoopGraph({
         }
         setInternalSelectedNodeId(nodeId);
       },
+      g: t.harness.governanceLoop.graph,
     }),
-    [activeSelectedNodeId, designDecisionNodeEnabled, hardGateCount, hookSummary, instructionSummary, metricCount, onSelectedNodeChange, workflowSummary],
+    [activeSelectedNodeId, designDecisionNodeEnabled, hardGateCount, hookSummary, instructionSummary, metricCount, onSelectedNodeChange, t.harness.governanceLoop.graph, workflowSummary],
   );
 
   const graphIssues = [...new Set(
@@ -814,8 +822,9 @@ export function HarnessGovernanceLoopGraph({
       metricCount,
       hardGateCount,
       selectedTier,
+      g: t.harness.governanceLoop.graph,
     }),
-    [activeSelectedNodeId, dimensionCount, fitnessFiles, hardGateCount, hooksData, instructionSummary, metricCount, selectedTier, workflowData],
+    [activeSelectedNodeId, dimensionCount, fitnessFiles, hardGateCount, hooksData, instructionSummary, metricCount, selectedTier, t.harness.governanceLoop.graph, workflowData],
   );
 
   return (
@@ -826,7 +835,7 @@ export function HarnessGovernanceLoopGraph({
 
       {!hasContext && !unsupportedMessage ? (
         <div className="mt-4 rounded-sm border border-desktop-border bg-desktop-bg-primary/80 px-4 py-5 text-[11px] text-desktop-text-secondary">
-          Select a repository to render the governance loop.
+          {t.harness.governanceLoop.graph.selectRepository}
         </div>
       ) : null}
 
@@ -873,9 +882,9 @@ export function HarnessGovernanceLoopGraph({
               ) : (
                 <div className="space-y-3">
                   <div className="rounded-sm border border-desktop-border bg-desktop-bg-primary/70 px-3 py-2.5">
-                    <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-desktop-text-secondary">Node details</div>
+                    <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-desktop-text-secondary">{t.harness.governanceLoop.graph.nodeDetails}</div>
                     <div className="mt-1 text-sm font-semibold text-desktop-text-primary">
-                      {graph.nodes.find((node) => node.id === activeSelectedNodeId)?.data.title ?? "阶段详情"}
+                      {graph.nodes.find((node) => node.id === activeSelectedNodeId)?.data.title ?? t.harness.governanceLoop.graph.phaseDetails}
                     </div>
                   </div>
                   {detailSections.map((section: LoopDetailSection) => (

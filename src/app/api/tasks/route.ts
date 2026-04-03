@@ -12,17 +12,25 @@ import { getRoutaSystem } from "@/core/routa-system";
 import { createTask, Task, TaskStatus, TaskPriority } from "@/core/models/task";
 import { v4 as uuidv4 } from "uuid";
 import { ensureDefaultBoard } from "@/core/kanban/boards";
-import { buildTaskGitHubIssueBody, createGitHubIssue, parseGitHubRepo } from "@/core/kanban/github-issues";
+import {
+  buildTaskGitHubIssueBody,
+  createGitHubIssue,
+  resolveGitHubRepo,
+} from "@/core/kanban/github-issues";
 import {
   normalizeTaskCreationSource,
   shouldCreateGitHubIssueOnTaskCreate,
 } from "@/core/kanban/task-creation-policy";
-import { deriveInvestValidationFromObjective, resolveInvestValidation } from "@/core/kanban/invest-validation";
+import { resolveInvestValidation } from "@/core/kanban/invest-validation";
 import { columnIdToTaskStatus } from "@/core/models/kanban";
 import { getKanbanEventBroadcaster } from "@/core/kanban/kanban-event-broadcaster";
 import { emitColumnTransition } from "@/core/kanban/column-transition";
 import { processKanbanColumnTransition } from "@/core/kanban/workflow-orchestrator-singleton";
-import { buildTaskEvidenceSummary } from "./task-evidence-summary";
+import {
+  buildTaskEvidenceSummary,
+  buildTaskInvestValidation,
+  buildTaskStoryReadiness,
+} from "./task-evidence-summary";
 
 export const dynamic = "force-dynamic";
 
@@ -125,6 +133,11 @@ export async function POST(request: NextRequest) {
     repoPath,
     codebaseIds,
     investValidation,
+    githubId,
+    githubNumber,
+    githubUrl,
+    githubRepo,
+    githubState,
   } = body;
 
   const normalizedTitle = typeof title === "string" ? title : "";
@@ -161,9 +174,25 @@ export async function POST(request: NextRequest) {
   const requestedCodebaseIds = Array.isArray(codebaseIds)
     ? codebaseIds.filter((id): id is string => typeof id === "string")
     : [];
+  const normalizedGitHubId = typeof githubId === "string" && githubId.trim()
+    ? githubId.trim()
+    : undefined;
+  const normalizedGitHubNumber = typeof githubNumber === "number" && Number.isFinite(githubNumber)
+    ? githubNumber
+    : undefined;
+  const normalizedGitHubUrl = typeof githubUrl === "string" && githubUrl.trim()
+    ? githubUrl.trim()
+    : undefined;
+  const normalizedGitHubRepo = typeof githubRepo === "string" && githubRepo.trim()
+    ? githubRepo.trim()
+    : undefined;
+  const normalizedGitHubState = typeof githubState === "string" && githubState.trim()
+    ? githubState.trim()
+    : undefined;
+  const hasImportedGitHubIssue = Boolean(normalizedGitHubRepo && normalizedGitHubNumber !== undefined);
 
   const normalizedInvestValidation = typeof investValidation === "object" && investValidation !== null
-    ? investValidation as import("@/core/models/task").InvestValidation
+    ? investValidation as import("@/core/models/task").TaskInvestValidation
     : undefined;
 
   if (!normalizedTitle) {
@@ -190,23 +219,35 @@ export async function POST(request: NextRequest) {
     ? requestedCodebaseIds
     : workspaceCodebases.map((codebase) => codebase.id);
 
+  if (hasImportedGitHubIssue) {
+    const existingTask = (await system.taskStore.listByWorkspace(normalizedWorkspaceId)).find((task) =>
+      task.githubRepo === normalizedGitHubRepo && task.githubNumber === normalizedGitHubNumber
+    );
+    if (existingTask) {
+      return NextResponse.json(
+        { error: `GitHub issue #${normalizedGitHubNumber} is already imported as task ${existingTask.id}` },
+        { status: 409 },
+      );
+    }
+  }
+
   const codebase = normalizedRepoPath
     ? await system.codebaseStore.findByRepoPath(normalizedWorkspaceId, normalizedRepoPath)
     : normalizedCodebaseIds.length > 0
       ? await system.codebaseStore.get(normalizedCodebaseIds[0])
       : await system.codebaseStore.getDefault(normalizedWorkspaceId);
 
-  const repo = parseGitHubRepo(codebase?.sourceUrl);
+  const repo = resolveGitHubRepo(codebase?.sourceUrl, codebase?.repoPath ?? normalizedRepoPath);
 
-  let githubId: string | undefined;
-  let githubNumber: number | undefined;
-  let githubUrl: string | undefined;
-  let githubRepo: string | undefined;
-  let githubState: string | undefined;
-  let githubSyncedAt: Date | undefined;
+  let nextGitHubId: string | undefined = normalizedGitHubId;
+  let nextGitHubNumber: number | undefined = normalizedGitHubNumber;
+  let nextGitHubUrl: string | undefined = normalizedGitHubUrl;
+  let nextGitHubRepo: string | undefined = normalizedGitHubRepo;
+  let nextGitHubState: string | undefined = normalizedGitHubState;
+  let githubSyncedAt: Date | undefined = hasImportedGitHubIssue ? new Date() : undefined;
   let lastSyncError: string | undefined;
 
-  if (normalizedCreateGitHubIssue) {
+  if (normalizedCreateGitHubIssue && !hasImportedGitHubIssue) {
     if (!repo) {
       lastSyncError = "Selected codebase is not linked to a GitHub repository.";
     } else {
@@ -217,11 +258,11 @@ export async function POST(request: NextRequest) {
           labels: normalizedLabels,
           assignees: normalizedAssignee ? [normalizedAssignee] : undefined,
         });
-        githubId = issue.id;
-        githubNumber = issue.number;
-        githubUrl = issue.url;
-        githubRepo = issue.repo;
-        githubState = issue.state;
+        nextGitHubId = issue.id;
+        nextGitHubNumber = issue.number;
+        nextGitHubUrl = issue.url;
+        nextGitHubRepo = issue.repo;
+        nextGitHubState = issue.state;
         githubSyncedAt = new Date();
       } catch (error) {
         lastSyncError = error instanceof Error ? error.message : "GitHub issue create failed";
@@ -252,11 +293,11 @@ export async function POST(request: NextRequest) {
     assignedRole: normalizedAssignedRole,
     assignedSpecialistId: normalizedAssignedSpecialistId,
     assignedSpecialistName: normalizedAssignedSpecialistName,
-    githubId,
-    githubNumber,
-    githubUrl,
-    githubRepo,
-    githubState,
+    githubId: nextGitHubId,
+    githubNumber: nextGitHubNumber,
+    githubUrl: nextGitHubUrl,
+    githubRepo: nextGitHubRepo,
+    githubState: nextGitHubState,
     githubSyncedAt,
     lastSyncError,
     codebaseIds: normalizedCodebaseIds,
@@ -333,7 +374,8 @@ export async function DELETE(request: NextRequest) {
 
 async function serializeTask(task: Task, system: ReturnType<typeof getRoutaSystem>) {
   const evidenceSummary = await buildTaskEvidenceSummary(task, system);
-  const investValidation = task.investValidation ?? deriveInvestValidationFromObjective(task.objective);
+  const storyReadiness = await buildTaskStoryReadiness(task, system);
+  const investValidation = buildTaskInvestValidation(task);
 
   return {
     id: task.id,
@@ -378,6 +420,8 @@ async function serializeTask(task: Task, system: ReturnType<typeof getRoutaSyste
     ...(investValidation != null && { investValidation }),
     artifactSummary: evidenceSummary.artifact,
     evidenceSummary,
+    storyReadiness,
+    investValidation,
     createdAt: task.createdAt instanceof Date ? task.createdAt.toISOString() : task.createdAt,
     updatedAt: task.updatedAt instanceof Date ? task.updatedAt.toISOString() : task.updatedAt,
   };

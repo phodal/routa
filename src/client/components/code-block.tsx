@@ -22,6 +22,7 @@ import { CodeViewer } from "./codemirror";
 import { common, createLowlight } from "lowlight";
 import { toHtml } from "hast-util-to-html";
 import { Check, Copy } from "lucide-react";
+import { useTranslation } from "@/i18n";
 
 
 const lowlight = createLowlight(common);
@@ -129,6 +130,7 @@ export function CodeBlock({
   wordWrap = false,
   showHeader = true,
 }: CodeBlockProps) {
+  const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
   const codeContent = code || content || "";
 
@@ -161,7 +163,7 @@ export function CodeBlock({
             type="button"
             onClick={handleCopy}
             className="code-block-copy-btn"
-            title="Copy to clipboard"
+            title={t.common.copyToClipboard}
           >
             {copied ? (
               <Check className="w-3.5 h-3.5 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>

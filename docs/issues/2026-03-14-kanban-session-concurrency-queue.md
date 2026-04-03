@@ -1,11 +1,15 @@
 ---
 title: "Kanban automation can overrun limited ACP provider capacity without queueing"
 date: "2026-03-14"
-status: open
+status: resolved
+resolved_at: "2026-03-15"
 severity: high
 area: "kanban"
 tags: ["kanban", "automation", "queue", "concurrency", "acp"]
 reported_by: "codex"
+github_issue: 148
+github_state: "closed"
+github_url: "https://github.com/phodal/routa/issues/148"
 related_issues:
   - https://github.com/phodal/routa/issues/148
 ---
@@ -48,3 +52,21 @@ Kanban should expose an explicit queueing mechanism and a configurable concurren
 ## References
 
 - Local implementation task requested by user on 2026-03-14
+
+## Resolution
+
+This issue is resolved in the current codebase. The local status was updated during
+issue hygiene on 2026-04-03 after verifying that the queueing and concurrency
+controls are already implemented.
+
+Evidence in current implementation:
+
+- `src/core/kanban/kanban-session-queue.ts` enforces a per-board session queue,
+  tracks queued and running cards, and drains queued work when slots reopen.
+- `src/core/kanban/workflow-orchestrator-singleton.ts` routes Kanban automation
+  through `enqueueKanbanTaskSession(...)` instead of starting ACP sessions
+  unbounded.
+- `src/app/workspace/[workspaceId]/kanban/kanban-settings-modal.tsx` exposes the
+  board-level `Session queue` limit in the settings UI.
+- `src/core/kanban/__tests__/kanban-session-queue.test.ts` covers saturation,
+  draining, and stale queued-card cleanup behavior.

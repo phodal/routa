@@ -12,18 +12,21 @@
 //! GET    /api/github/search       - Search files in an imported repo
 
 use axum::{
-    extract::Query,
+    extract::{Query, State},
     routing::{get, post},
     Json, Router,
 };
 use serde::Deserialize;
 
+use crate::api::tasks_github::{list_github_issues, resolve_github_repo_for_codebase};
+use crate::error::ServerError;
 use crate::state::AppState;
 
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/", get(list_workspaces))
         .route("/import", post(import_repo))
+        .route("/issues", get(list_issues))
         .route("/tree", get(get_tree))
         .route("/file", get(get_file))
         .route("/search", get(search_files))
@@ -176,6 +179,85 @@ async fn search_files(Query(q): Query<SearchQuery>) -> Json<serde_json::Value> {
         "query": q.q.as_deref().unwrap_or(""),
         "note": "GitHub virtual workspaces are not available in desktop mode."
     }))
+}
+
+// ─── Issues ──────────────────────────────────────────────────────────────────
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct IssueQuery {
+    workspace_id: Option<String>,
+    codebase_id: Option<String>,
+    state: Option<String>,
+}
+
+async fn list_issues(
+    State(state): State<AppState>,
+    Query(q): Query<IssueQuery>,
+) -> Result<Json<serde_json::Value>, ServerError> {
+    let workspace_id = q
+        .workspace_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| ServerError::BadRequest("workspaceId is required".to_string()))?;
+    let state_filter = match q.state.as_deref().unwrap_or("open") {
+        "open" | "closed" | "all" => q.state.as_deref().unwrap_or("open"),
+        _ => {
+            return Err(ServerError::BadRequest(
+                "state must be one of: open, closed, all".to_string(),
+            ))
+        }
+    };
+
+    let workspace_codebases = state.codebase_store.list_by_workspace(workspace_id).await?;
+    if workspace_codebases.is_empty() {
+        return Err(ServerError::NotFound(
+            "No codebases linked to this workspace".to_string(),
+        ));
+    }
+
+    let codebase = match q.codebase_id.as_deref() {
+        Some(codebase_id) => workspace_codebases
+            .iter()
+            .find(|item| item.id == codebase_id)
+            .cloned(),
+        None => workspace_codebases
+            .iter()
+            .find(|item| item.is_default)
+            .cloned()
+            .or_else(|| workspace_codebases.first().cloned()),
+    }
+    .ok_or_else(|| ServerError::NotFound("Codebase not found in this workspace".to_string()))?;
+
+    let repo = resolve_github_repo_for_codebase(
+        codebase.source_url.as_deref(),
+        Some(codebase.repo_path.as_str()),
+    )
+    .ok_or_else(|| {
+        ServerError::BadRequest(
+            "Selected codebase is not linked to a GitHub repository.".to_string(),
+        )
+    })?;
+
+    let issues = list_github_issues(&repo, Some(state_filter), Some(50))
+        .await
+        .map_err(ServerError::Internal)?;
+
+    Ok(Json(serde_json::json!({
+        "repo": repo,
+        "codebase": {
+            "id": codebase.id,
+            "label": codebase.label.clone().unwrap_or_else(|| {
+                std::path::Path::new(&codebase.repo_path)
+                    .file_name()
+                    .and_then(|value| value.to_str())
+                    .unwrap_or(&codebase.repo_path)
+                    .to_string()
+            }),
+        },
+        "issues": issues,
+    })))
 }
 
 // ─── PR Comment ───────────────────────────────────────────────────────────────

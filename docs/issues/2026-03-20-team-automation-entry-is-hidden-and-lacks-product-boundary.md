@@ -1,7 +1,8 @@
 ---
 title: "Team automation already exists in specialists/CLI, but the product has no clear Team surface or boundary in the workspace UI"
 date: "2026-03-20"
-status: open
+status: resolved
+resolved_at: "2026-03-22"
 severity: medium
 area: "ui"
 tags: ["team", "automation", "specialist", "workspace", "navigation", "information-architecture", "product"]
@@ -12,7 +13,7 @@ related_issues:
   - "2026-03-19-specialist-resource-layout-drift-and-loader-divergence.md"
   - "https://github.com/phodal/routa/issues/205"
 github_issue: 205
-github_state: "open"
+github_state: "closed"
 github_url: "https://github.com/phodal/routa/issues/205"
 ---
 
@@ -101,3 +102,22 @@ If Team is intended to be a first-class capability, the product should make that
   - `docs/issues/2026-03-17-design-system-unified-desktop-sidebar-theme-routing.md`
   - `docs/issues/2026-03-19-homepage-kanban-entry-surface-fragmentation.md`
   - `docs/issues/2026-03-19-specialist-resource-layout-drift-and-loader-divergence.md`
+
+## Resolution
+
+This issue is resolved in the current codebase and the upstream GitHub issue is
+closed.
+
+Evidence in current implementation:
+
+- `src/client/components/desktop-sidebar.tsx` now exposes a first-class `Team`
+  entry in workspace navigation.
+- `src/app/workspace/[workspaceId]/team/page.tsx` and
+  `src/app/workspace/[workspaceId]/team/team-page-client.tsx` provide a
+  dedicated Team launch surface instead of hiding the capability behind generic
+  specialist selection.
+- `src/app/workspace/[workspaceId]/team/[sessionId]/page.tsx` and related
+  Team-run components provide a dedicated runtime surface for Team sessions.
+- `src/client/utils/specialist-categories.ts` and the Team page filter Team
+  specialists structurally from the specialist catalog, matching the
+  product-level Team concept.

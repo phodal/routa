@@ -83,7 +83,7 @@ describe("detectHarnessAutomations", () => {
       ],
     });
 
-    expect(report.configFile?.relativePath).toBe("docs/harness/automations.yml");
+    expect(report.configFile?.relativePath?.replace(/\\/g, "/")).toBe("docs/harness/automations.yml");
     expect(report.definitions).toHaveLength(2);
     expect(report.definitions.find((item) => item.id === "long-file-window")).toMatchObject({
       runtimeStatus: "pending",
@@ -158,6 +158,6 @@ describe("detectHarnessAutomations", () => {
     const report = await detectHarnessAutomations(tmpDir);
     expect(report.configFile).toBeNull();
     expect(report.definitions).toEqual([]);
-    expect(report.warnings[0]).toContain("docs/harness/automations.yml");
+    expect(report.warnings[0].replace(/\\/g, "/")).toContain("docs/harness/automations.yml");
   });
 });

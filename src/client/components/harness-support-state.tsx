@@ -1,5 +1,6 @@
 "use client";
 import { TriangleAlert } from "lucide-react";
+import { useTranslation } from "@/i18n";
 
 
 type MaybeMessage = string | null | undefined;
@@ -28,6 +29,8 @@ export function getHarnessUnsupportedRepoMessage(...messages: MaybeMessage[]): s
 export function HarnessUnsupportedState({
   className,
 }: HarnessUnsupportedStateProps) {
+  const { t } = useTranslation();
+
   return (
     <div className={className ?? "mt-4 flex items-start gap-3 rounded-sm border border-amber-300 bg-amber-50 px-4 py-4 dark:border-amber-700 dark:bg-amber-950/30"}>
       <TriangleAlert className="h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" viewBox="0 0 20 20" fill="currentColor"/>
@@ -36,7 +39,7 @@ export function HarnessUnsupportedState({
           仓库不支持 Harness
         </div>
         <div className="mt-1 text-[12px] leading-5 text-amber-800 dark:text-amber-200">
-          当前仓库路径无效或不可访问，无法渲染该视图。
+          {t.harness.supportState.invalidRepoPath}
         </div>
       </div>
     </div>

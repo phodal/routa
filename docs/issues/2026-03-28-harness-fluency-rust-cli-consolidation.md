@@ -1,11 +1,15 @@
 ---
 title: Consolidate Harness Fluency on routa-cli and retire the standalone TS engine
 date: "2026-03-28"
-status: investigating
+status: resolved
+resolved_at: "2026-03-28"
 severity: medium
 area: cli
 tags: [fitness, fluency, routa-cli, typescript, rust]
 reported_by: Codex
+github_issue: 238
+github_state: "closed"
+github_url: "https://github.com/phodal/routa/issues/238"
 related_issues: ["https://github.com/phodal/routa/issues/238"]
 ---
 
@@ -68,3 +72,20 @@ Harness Fluency 应该只有一个权威实现，CLI、文档、测试和后续 
 - `docs/fitness/README.md`
 - `crates/routa-cli/README.md`
 - `https://github.com/phodal/routa/issues/238`
+
+## Resolution
+
+This issue is resolved in the current codebase and the upstream GitHub issue is
+closed.
+
+Evidence in current implementation:
+
+- `crates/routa-cli/src/commands/fitness.rs` is now the canonical fluency
+  command surface and explicitly keeps `--json` for legacy compatibility.
+- `package.json` and `docs/fitness/README.md` point to `cargo run -p routa-cli
+  -- fitness fluency` as the primary entrypoint.
+- `tools/harness-fluency/src/index.ts` is now a deprecated compatibility wrapper
+  that only forwards to `routa-cli`; the old TypeScript engine/model files are
+  gone.
+- `tools/harness-fluency/` now contains only the wrapper entrypoints, which is
+  consistent with the issue's goal of retiring the standalone TS implementation.

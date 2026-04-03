@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { useTranslation } from "@/i18n";
 import type { KanbanRepoChanges, KanbanFileChangeItem, KanbanFileChangeStatus } from "./kanban-file-changes-types";
 import { ChevronRight } from "lucide-react";
 
@@ -25,12 +26,12 @@ const STATUS_BADGE: Record<KanbanFileChangeStatus, { short: string; className: s
   conflicted: { short: "U", className: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300" },
 };
 
-function formatChangeSummary(repo: KanbanRepoChanges): string {
-  if (repo.error) return "Unavailable";
-  if (repo.status.clean) return "Clean";
+function formatChangeSummary(repo: KanbanRepoChanges, t: Record<string, string>): string {
+  if (repo.error) return t.unavailable;
+  if (repo.status.clean) return t.clean;
   const segments: string[] = [];
-  if (repo.status.modified > 0) segments.push(`${repo.status.modified} modified`);
-  if (repo.status.untracked > 0) segments.push(`${repo.status.untracked} untracked`);
+  if (repo.status.modified > 0) segments.push(t.modifiedCount.replace("{count}", String(repo.status.modified)));
+  if (repo.status.untracked > 0) segments.push(t.untrackedCount.replace("{count}", String(repo.status.untracked)));
   return segments.join(" · ");
 }
 
@@ -68,6 +69,7 @@ export function KanbanFileChangesPanel({
   open,
   onClose,
 }: KanbanFileChangesPanelProps) {
+  const { t } = useTranslation();
   const [expandedRepos, setExpandedRepos] = React.useState<Record<string, boolean>>({});
   const [showAllRepos, setShowAllRepos] = React.useState<Record<string, boolean>>({});
   const summary = getKanbanFileChangesSummary(repos);
@@ -87,15 +89,15 @@ export function KanbanFileChangesPanel({
           >
             <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3 dark:border-[#191c28]">
               <div className="min-w-0">
-                <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">File Changes</div>
+                <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">{t.kanban.fileChanges}</div>
                 <div className="text-[11px] text-slate-400 dark:text-slate-500">
-                  {repos.length} repos · {summary.changedFiles} changed files
+                  {t.kanban.reposChangedFiles.replace("{repos}", String(repos.length)).replace("{files}", String(summary.changedFiles))}
                 </div>
               </div>
               <div className="flex items-center gap-2">
                 {summary.changedRepos > 0 && (
                   <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
-                    {summary.changedRepos} dirty
+                    {summary.changedRepos} {t.kanban.dirty}
                   </span>
                 )}
                 <button
@@ -111,11 +113,11 @@ export function KanbanFileChangesPanel({
             <div className="min-h-0 flex-1 overflow-y-auto p-3">
               {loading ? (
                 <div className="flex items-center justify-center py-10 text-sm text-slate-400 dark:text-slate-500">
-                  Loading repository changes...
+                  {t.kanban.loadingRepoChanges}
                 </div>
               ) : repos.length === 0 ? (
                 <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-400 dark:border-slate-700 dark:bg-[#0d1018] dark:text-slate-500">
-                  No repositories linked.
+                  {t.kanban.noReposLinkedPanel}
                 </div>
               ) : (
                 <div className="space-y-3">
@@ -142,9 +144,9 @@ export function KanbanFileChangesPanel({
                               <span className="rounded-full bg-slate-200 px-2 py-0.5 font-medium text-slate-600 dark:bg-[#191c28] dark:text-slate-300">
                                 @{repo.branch}
                               </span>
-                              {repo.status.ahead > 0 && <span>{repo.status.ahead} ahead</span>}
-                              {repo.status.behind > 0 && <span>{repo.status.behind} behind</span>}
-                              <span>{formatChangeSummary(repo)}</span>
+                              {repo.status.ahead > 0 && <span>{t.kanban.aheadCount.replace("{count}", String(repo.status.ahead))}</span>}
+                              {repo.status.behind > 0 && <span>{t.kanban.behindCount.replace("{count}", String(repo.status.behind))}</span>}
+                              <span>{formatChangeSummary(repo, t.kanban)}</span>
                             </div>
                           </div>
                           <ChevronRight className={`mt-1 h-4 w-4 shrink-0 text-slate-400 transition-transform ${expanded ? "rotate-90" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}/>
@@ -158,7 +160,7 @@ export function KanbanFileChangesPanel({
                               </div>
                             ) : repo.files.length === 0 ? (
                               <div className="rounded-xl border border-dashed border-slate-200 bg-white/70 px-3 py-4 text-center text-[11px] text-slate-400 dark:border-slate-700 dark:bg-[#12141c] dark:text-slate-500">
-                                No local changes
+                                {t.kanban.noLocalChanges}
                               </div>
                             ) : (
                               <div className="space-y-2">
@@ -171,7 +173,7 @@ export function KanbanFileChangesPanel({
                                     onClick={() => setShowAllRepos((current) => ({ ...current, [repo.codebaseId]: !showAll }))}
                                     className="w-full rounded-xl border border-slate-200 px-3 py-2 text-[11px] font-medium text-slate-600 transition hover:bg-white dark:border-slate-700 dark:text-slate-300 dark:hover:bg-[#12141c]"
                                   >
-                                    {showAll ? "Show less" : `Show all ${repo.files.length} files`}
+                                    {showAll ? t.kanban.showLess : t.kanban.showAllFiles.replace('{count}', String(repo.files.length))}
                                   </button>
                                 )}
                               </div>

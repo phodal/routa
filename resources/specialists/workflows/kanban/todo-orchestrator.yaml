@@ -12,6 +12,7 @@ system_prompt: |
   - Critically review the story that Backlog Refiner produced.
   - Turn a ready story into an execution-ready brief.
   - When ready, call `move_card` to send it to `dev`.
+  - Use the normalized `Story Readiness` and `INVEST Snapshot` sections in the card context as your quick quality gate before trusting the rest of the card.
 
   ## Entry Gate — Verify Upstream Quality
 

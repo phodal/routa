@@ -401,7 +401,15 @@ async fn api_task_artifact_flow_and_gate() {
     );
     assert_eq!(
         task_json["task"]["evidenceSummary"]["runs"]["latestStatus"],
-        json!("running")
+        json!("idle")
+    );
+    assert_eq!(
+        task_json["task"]["storyReadiness"]["requiredTaskFields"],
+        json!([])
+    );
+    assert_eq!(
+        task_json["task"]["investValidation"]["source"],
+        json!("heuristic")
     );
 
     let blocked_move = fixture
@@ -457,6 +465,10 @@ async fn api_task_artifact_flow_and_gate() {
         get_task_json["task"]["evidenceSummary"]["artifact"]["byType"]["screenshot"],
         json!(1)
     );
+    assert_eq!(
+        get_task_json["task"]["storyReadiness"]["requiredTaskFields"],
+        json!([])
+    );
 
     let list_artifacts = fixture
         .client
@@ -493,6 +505,10 @@ async fn api_task_artifact_flow_and_gate() {
         listed_task["evidenceSummary"]["artifact"]["requiredSatisfied"],
         json!(true)
     );
+    assert_eq!(
+        listed_task["investValidation"]["source"],
+        json!("heuristic")
+    );
 
     let ready_tasks = fixture
         .client
@@ -513,6 +529,7 @@ async fn api_task_artifact_flow_and_gate() {
         ready_task["evidenceSummary"]["artifact"]["requiredSatisfied"],
         json!(true)
     );
+    assert_eq!(ready_task["storyReadiness"]["ready"], json!(true));
 
     let allowed_move = fixture
         .client
@@ -522,6 +539,84 @@ async fn api_task_artifact_flow_and_gate() {
         .await
         .expect("move allowed");
     assert_eq!(allowed_move.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn api_blocks_transition_when_required_task_fields_are_missing() {
+    let fixture = ApiFixture::new().await;
+
+    let board_response = fixture
+        .client
+        .get(fixture.endpoint("/api/kanban/boards?workspaceId=default"))
+        .send()
+        .await
+        .expect("list boards");
+    assert_eq!(board_response.status(), StatusCode::OK);
+    let boards_json: Value = board_response.json().await.expect("decode boards");
+    let board_id = boards_json["boards"][0]["id"]
+        .as_str()
+        .expect("default board id")
+        .to_string();
+
+    let board_detail = fixture
+        .client
+        .get(fixture.endpoint(&format!("/api/kanban/boards/{board_id}")))
+        .send()
+        .await
+        .expect("get board");
+    assert_eq!(board_detail.status(), StatusCode::OK);
+    let mut board_json: Value = board_detail.json().await.expect("decode board");
+    let columns = board_json["board"]["columns"]
+        .as_array_mut()
+        .expect("columns array");
+    let dev = columns
+        .iter_mut()
+        .find(|column| column["id"].as_str() == Some("dev"))
+        .expect("dev column");
+    dev["automation"] = json!({
+        "enabled": true,
+        "requiredTaskFields": ["scope", "acceptance_criteria", "verification_plan"]
+    });
+
+    let update_board = fixture
+        .client
+        .patch(fixture.endpoint(&format!("/api/kanban/boards/{board_id}")))
+        .json(&json!({ "columns": columns }))
+        .send()
+        .await
+        .expect("update board");
+    assert_eq!(update_board.status(), StatusCode::OK);
+
+    let create_task = fixture
+        .client
+        .post(fixture.endpoint("/api/tasks"))
+        .json(&json!({
+            "title": "Missing scope",
+            "objective": "This story is not ready for dev",
+            "workspaceId": "default",
+            "boardId": board_id,
+            "columnId": "todo"
+        }))
+        .send()
+        .await
+        .expect("create task");
+    assert_eq!(create_task.status(), StatusCode::CREATED);
+    let task_json: Value = create_task.json().await.expect("decode task");
+    let task_id = task_json["task"]["id"].as_str().expect("task id");
+
+    let blocked_move = fixture
+        .client
+        .patch(fixture.endpoint(&format!("/api/tasks/{task_id}")))
+        .json(&json!({ "columnId": "dev" }))
+        .send()
+        .await
+        .expect("move blocked");
+    assert_eq!(blocked_move.status(), StatusCode::BAD_REQUEST);
+    let blocked_json: Value = blocked_move.json().await.expect("decode blocked move");
+    assert!(json_has_error(
+        &blocked_json,
+        "missing required task fields"
+    ));
 }
 
 #[tokio::test]

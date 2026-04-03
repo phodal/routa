@@ -144,19 +144,117 @@ jobs:
       - name: Install Entrix
         run: python -m pip install -e tools/entrix
 
+      - name: Clean previous Tauri bundle outputs
+        shell: bash
+        run: |
+          for root in target apps/desktop/src-tauri/target; do
+            if [[ ! -d "$root" ]]; then
+              continue
+            fi
+
+            while IFS= read -r bundle_dir; do
+              rm -rf "$bundle_dir"
+            done < <(find "$root" -type d -path '*/release/bundle' -prune -print)
+          done
+
+      - name: Prepare macOS signing keychain
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY_CONTENT: ${{ secrets.APPLE_API_KEY_CONTENT }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          required_vars=(
+            APPLE_CERTIFICATE
+            APPLE_CERTIFICATE_PASSWORD
+            KEYCHAIN_PASSWORD
+          )
+
+          for var_name in "${required_vars[@]}"; do
+            if [[ -z "${!var_name}" ]]; then
+              echo "Missing required macOS signing/notarization secret: ${var_name}" >&2
+              exit 1
+            fi
+          done
+
+          echo "$APPLE_CERTIFICATE" | base64 --decode > certificate.p12
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          security set-keychain-settings -t 3600 -u build.keychain
+          security import certificate.p12 -k build.keychain -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" build.keychain
+
+          if [[ -n "$APPLE_API_KEY" && -n "$APPLE_API_ISSUER" && -n "$APPLE_API_KEY_CONTENT" ]]; then
+            api_key_path="$RUNNER_TEMP/appstoreconnect-${{ matrix.key }}.p8"
+            printf '%s' "$APPLE_API_KEY_CONTENT" > "$api_key_path"
+            chmod 600 "$api_key_path"
+            echo "APPLE_API_KEY_PATH=$api_key_path" >> "$GITHUB_ENV"
+            echo "Using App Store Connect API key for notarization"
+          elif [[ -n "$APPLE_ID" && -n "$APPLE_PASSWORD" && -n "$APPLE_TEAM_ID" ]]; then
+            echo "Using Apple ID credentials for notarization"
+          else
+            echo "Missing notarization credentials. Configure either APPLE_ID/APPLE_PASSWORD/APPLE_TEAM_ID or APPLE_API_KEY/APPLE_API_ISSUER/APPLE_API_KEY_CONTENT." >&2
+            exit 1
+          fi
+
+          cert_id="$APPLE_SIGNING_IDENTITY"
+          if [[ -z "$cert_id" ]]; then
+            cert_id="$(security find-identity -v -p codesigning build.keychain | awk -F'\"' 'NR==1 { print $2 }')"
+          fi
+
+          if [[ -z "$cert_id" ]]; then
+            echo "Unable to resolve a codesigning identity from build.keychain" >&2
+            exit 1
+          fi
+
+          echo "APPLE_SIGNING_IDENTITY=$cert_id" >> "$GITHUB_ENV"
+          security find-identity -v -p codesigning build.keychain
+
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ env.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY_PATH: ${{ env.APPLE_API_KEY_PATH }}
         with:
           projectPath: apps/desktop
           args: ${{ matrix.args }}
+
+      - name: Verify macOS signing and notarization
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          mkdir -p dist/release
+          artifacts_list="dist/release/macos-artifacts-${{ matrix.key }}.txt"
+          verification_log="dist/release/macos-verification-${{ matrix.key }}.log"
+          bash scripts/release/verify-macos-signing.sh \
+            --search-root target \
+            --search-root apps/desktop/src-tauri/target \
+            --list-out "$artifacts_list" \
+            --log "$verification_log"
 
       - name: Generate release manifest
         shell: bash
         run: |
           node scripts/release/generate-release-manifest.mjs \
-            --tauri-bundle-dir apps/desktop/src-tauri/target \
+            --tauri-bundle-dir target,apps/desktop/src-tauri/target \
             --static-dir apps/desktop/src-tauri/frontend \
             --channel latest \
             --out dist/release/manifest-${{ matrix.key }}.json
@@ -198,6 +296,12 @@ jobs:
             target/**/release/bundle/**/*.AppImage
             target/**/release/bundle/**/*.msi
             target/**/release/bundle/**/*.exe
+            apps/desktop/src-tauri/target/**/release/bundle/**/*.dmg
+            apps/desktop/src-tauri/target/**/release/bundle/**/*.app
+            apps/desktop/src-tauri/target/**/release/bundle/**/*.deb
+            apps/desktop/src-tauri/target/**/release/bundle/**/*.AppImage
+            apps/desktop/src-tauri/target/**/release/bundle/**/*.msi
+            apps/desktop/src-tauri/target/**/release/bundle/**/*.exe
           if-no-files-found: error
 
       - name: Upload release manifest
@@ -205,6 +309,15 @@ jobs:
         with:
           name: routa-release-manifest-tauri-${{ matrix.key }}
           path: dist/release/manifest-${{ matrix.key }}.json
+
+      - name: Upload macOS verification logs
+        if: runner.os == 'macOS'
+        uses: actions/upload-artifact@v4
+        with:
+          name: tauri-macos-verification-${{ matrix.key }}
+          path: |
+            dist/release/macos-artifacts-${{ matrix.key }}.txt
+            dist/release/macos-verification-${{ matrix.key }}.log
 
   verify-tauri:
     name: Verify staged desktop release

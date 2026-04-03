@@ -90,7 +90,7 @@ export function ModelsTab() {
                 setAliasError("");
               }}
               onKeyDown={handleFormKey}
-              placeholder="deepseek-v4"
+              placeholder={t.models.placeholderAlias}
               className={`${inputCls} ${aliasError ? "border-red-400 dark:border-red-500 focus:ring-red-400" : ""}`}
             />
             {aliasError && <p className="text-[10px] text-red-500">{aliasError}</p>}
@@ -102,7 +102,7 @@ export function ModelsTab() {
               value={form.modelName}
               onChange={(event) => setForm({ ...form, modelName: event.target.value })}
               onKeyDown={handleFormKey}
-              placeholder="deepseek-chat"
+              placeholder={t.models.placeholderModelName}
               className={`${inputCls} font-mono`}
             />
           </div>
@@ -116,7 +116,7 @@ export function ModelsTab() {
             value={form.baseUrl ?? ""}
             onChange={(event) => setForm({ ...form, baseUrl: event.target.value })}
             onKeyDown={handleFormKey}
-            placeholder="https://api.deepseek.com/anthropic"
+            placeholder={t.models.placeholderBaseUrl}
             className={`${inputCls} font-mono`}
           />
         </div>
@@ -128,7 +128,7 @@ export function ModelsTab() {
             value={form.apiKey ?? ""}
             onChange={(event) => setForm({ ...form, apiKey: event.target.value })}
             onKeyDown={handleFormKey}
-            placeholder="sk-…"
+            placeholder={t.models.placeholderApiKey}
             autoComplete="off"
             className={`${inputCls} font-mono`}
           />
@@ -168,7 +168,7 @@ export function ModelsTab() {
                   <button
                     onClick={() => handleDelete(idx)}
                     className="shrink-0 p-1 rounded text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
-                    title="Delete"
+                    title={t.common.delete}
                   >
                     <Trash2 className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
                   </button>
@@ -191,13 +191,13 @@ export function ModelsTab() {
                       <label className={labelCls}>{t.models.baseUrl}</label>
                       <input type="url" list={baseUrlListId} value={definition.baseUrl ?? ""}
                         onChange={(event) => handleUpdate(idx, "baseUrl", event.target.value || "")}
-                        placeholder="https://api.example.com/anthropic" className={`${inputCls} font-mono`} />
+                        placeholder={t.models.placeholderBaseUrl} className={`${inputCls} font-mono`} />
                     </div>
                     <div className="space-y-1">
                       <label className={labelCls}>{t.models.apiKey}</label>
                       <input type="password" value={definition.apiKey ?? ""}
                         onChange={(event) => handleUpdate(idx, "apiKey", event.target.value || "")}
-                        placeholder="sk-…" autoComplete="off" className={`${inputCls} font-mono`} />
+                        placeholder={t.models.placeholderApiKey} autoComplete="off" className={`${inputCls} font-mono`} />
                     </div>
                   </div>
                 )}

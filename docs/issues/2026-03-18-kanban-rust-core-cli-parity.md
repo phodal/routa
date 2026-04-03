@@ -1,13 +1,14 @@
 ---
 title: "Kanban board/card operations are not first-class in Rust core RPC, which blocks CLI parity and duplicates workflow semantics"
 date: "2026-03-18"
-status: open
+status: resolved
+resolved_at: "2026-03-18"
 severity: medium
 area: "kanban"
 tags: ["kanban", "rust-core", "cli", "rpc", "architecture", "parity"]
 reported_by: "codex"
 github_issue: 192
-github_state: "open"
+github_state: "closed"
 github_url: "https://github.com/phodal/routa/issues/192"
 related_issues:
   - "docs/issues/2026-03-08-gh-96-feat-kanban-implement-generic-local-first-kanban-data-model.md"
@@ -61,3 +62,22 @@ The current shape raises several risks:
 ## Notes
 
 This issue is about shared backend contract and CLI parity, not full Kanban automation. Story-level workflow execution, lane/session lifecycle, and automation reliability remain broader follow-up concerns.
+
+## Resolution
+
+This issue is resolved in the current codebase and the upstream GitHub issue is
+closed.
+
+Evidence in current implementation:
+
+- `crates/routa-core/src/rpc/router.rs` now exposes first-class `kanban.*`
+  methods including board, card, column, query, decomposition, and handoff
+  operations.
+- `crates/routa-core/src/rpc/methods/kanban.rs` and its submodules contain the
+  shared Rust-side implementation rather than leaving these semantics to
+  server-only handlers.
+- `crates/routa-cli/src/commands/kanban.rs` consumes those RPC methods through
+  thin command adapters, matching the intended CLI architecture.
+
+Broader Kanban automation reliability remains a separate follow-up surface, but
+the contract/parity gap described here is no longer open.

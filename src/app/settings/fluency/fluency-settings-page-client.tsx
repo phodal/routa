@@ -10,12 +10,14 @@ import { SettingsRouteShell } from "@/client/components/settings-route-shell";
 import { WorkspaceSwitcher } from "@/client/components/workspace-switcher";
 import { useCodebases, useWorkspaces } from "@/client/hooks/use-workspaces";
 import { loadRepoSelection, saveRepoSelection } from "@/client/utils/repo-selection-storage";
+import { useTranslation } from "@/i18n";
 
 type FluencySettingsPageClientProps = {
   defaultRepoPath?: string;
 };
 
 export function FluencySettingsPageClient({ defaultRepoPath }: FluencySettingsPageClientProps) {
+  const { t } = useTranslation();
   const searchParams = useSearchParams();
   const workspacesHook = useWorkspaces();
   const requestedWorkspaceId = searchParams.get("workspaceId") ?? "";
@@ -105,9 +107,9 @@ export function FluencySettingsPageClient({ defaultRepoPath }: FluencySettingsPa
 
   return (
     <SettingsRouteShell
-      title="Fluency"
-      description="Analyze repository fluency, blockers, and next actions across the default profiles."
-      badgeLabel="Diagnostics beta"
+      title={t.nav.fluency}
+      description={t.settings.fluencyDescription}
+      badgeLabel={t.settings.diagnosticsBeta}
       workspaceId={workspaceId}
       workspaceTitle={activeWorkspaceTitle}
       workspaceSwitcher={(
@@ -135,14 +137,14 @@ export function FluencySettingsPageClient({ defaultRepoPath }: FluencySettingsPa
     >
       <div className="space-y-4">
         <SettingsPageHeader
-          title="Fluency"
+          title={t.nav.fluency}
           description=""
           metadata={[]}
           extra={(
             <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-[11px]">
               <div className="flex min-w-0 items-center gap-2">
                 <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-desktop-text-secondary">
-                  Repository
+                  {t.settings.repository}
                 </span>
                 <RepoPicker
                   value={activeRepoSelection}

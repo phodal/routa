@@ -86,6 +86,17 @@ function summarizeEntries(entries) {
   };
 }
 
+function parsePathListArg(rawValue) {
+  if (!rawValue) {
+    return [];
+  }
+
+  return rawValue
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+}
+
 async function summarizeDirectory(rootDir, relativeTo = rootDir) {
   const entries = [];
 
@@ -194,12 +205,23 @@ async function collectNpmTarballs(npmDir, channel) {
   return artifacts;
 }
 
-async function collectTauriBundles(bundleDir, channel) {
-  if (!bundleDir || !fs.existsSync(bundleDir)) {
+async function collectTauriBundles(bundleDirs, channel) {
+  if (!bundleDirs || bundleDirs.length === 0) {
     return [];
   }
 
   const bundleRoots = [];
+  const seenBundleRoots = new Set();
+
+  function addBundleRoot(bundleRoot) {
+    const normalized = path.resolve(bundleRoot);
+    if (seenBundleRoots.has(normalized)) {
+      return;
+    }
+    seenBundleRoots.add(normalized);
+    bundleRoots.push(normalized);
+  }
+
   async function findBundleRoots(currentDir) {
     const dirEntries = await fsp.readdir(currentDir, { withFileTypes: true });
     for (const entry of dirEntries) {
@@ -208,16 +230,23 @@ async function collectTauriBundles(bundleDir, channel) {
       }
       const fullPath = path.join(currentDir, entry.name);
       if (entry.name === "bundle") {
-        bundleRoots.push(fullPath);
+        addBundleRoot(fullPath);
         continue;
       }
       await findBundleRoots(fullPath);
     }
   }
 
-  if (path.basename(bundleDir) === "bundle") {
-    bundleRoots.push(bundleDir);
-  } else {
+  for (const bundleDir of bundleDirs) {
+    if (!fs.existsSync(bundleDir)) {
+      continue;
+    }
+
+    if (path.basename(bundleDir) === "bundle") {
+      addBundleRoot(bundleDir);
+      continue;
+    }
+
     await findBundleRoots(bundleDir);
   }
 
@@ -306,6 +335,7 @@ async function collectStaticAssets(staticDir, channel) {
 const args = parseArgs(process.argv.slice(2));
 const outPath = path.resolve(args.out || "dist/release/manifest.json");
 const channel = args.channel || "latest";
+const tauriBundleDirs = parsePathListArg(args["tauri-bundle-dir"]).map((dir) => path.resolve(dir));
 
 const artifacts = [
   ...(await collectCliBinaryArtifacts(
@@ -313,10 +343,7 @@ const artifacts = [
     channel,
   )),
   ...(await collectNpmTarballs(args["npm-dir"] ? path.resolve(args["npm-dir"]) : null, channel)),
-  ...(await collectTauriBundles(
-    args["tauri-bundle-dir"] ? path.resolve(args["tauri-bundle-dir"]) : null,
-    channel,
-  )),
+  ...(await collectTauriBundles(tauriBundleDirs, channel)),
   ...(await collectStaticAssets(
     args["static-dir"] ? path.resolve(args["static-dir"]) : null,
     channel,

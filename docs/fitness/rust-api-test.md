@@ -64,6 +64,7 @@ metrics:
 | codebase | `PATCH /api/codebases/{id}` | update | 更新字段成功 | VERIFIED | `crates/routa-server/tests/rust_api_end_to_end.rs::api_codebase_and_file_search_flow` |
 | codebase | `POST /api/codebases/{id}/default` | set default | 默认目标可读返回正确 | VERIFIED | `crates/routa-server/tests/rust_api_end_to_end.rs::api_codebase_and_file_search_flow` |
 | codebase | `DELETE /api/codebases/{id}` | delete | 删除成功返回 ok | VERIFIED | `crates/routa-server/tests/rust_api_end_to_end.rs::api_codebase_and_file_search_flow` |
+| github | `GET /api/github/issues` | list workspace-linked issues | workspace/codebase 解析、400/404 负向路径、返回 issue 元数据 | BLOCKED | `env: 需要可控 GitHub API stub 或可注入 base URL 的 rust_api_end_to_end harness` |
 | ACP | `POST /api/acp` | initialize | 初始化返回协议元信息 | VERIFIED | `crates/routa-server/tests/rust_api_end_to_end.rs::api_session_contract_with_negative_paths` |
 | ACP | `POST /api/acp` | unknown method | method 不存在返回结构固定 | VERIFIED | `crates/routa-server/tests/rust_api_end_to_end.rs::api_session_contract_with_negative_paths` |
 | agents | `POST /api/agents` | create/list/get | 成功创建与查询链路 | VERIFIED | `crates/routa-server/tests/rust_api_end_to_end.rs::api_agent_flow_with_validation` |

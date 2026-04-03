@@ -1,8 +1,11 @@
 ---
+title: "Flaky test suite was partially skipped to unblock pre-push"
 date: 2026-03-29
 severity: medium
-status: documented
-labels: [testing, flaky-tests, vitest]
+status: investigating
+area: testing
+tags: [testing, flaky-tests, vitest]
+reported_by: "codex"
 ---
 
 # Flaky Test Suite - Skipped 39 Tests to Unblock Pre-push
@@ -98,4 +101,3 @@ Test Files  124 passed | 1 skipped (125)
 **Status**: Tests skipped temporarily to unblock development. Root cause analysis and fixes tracked separately.
 
 **Commit**: This issue document will be committed along with the skipped test changes.
-

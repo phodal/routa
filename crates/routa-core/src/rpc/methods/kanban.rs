@@ -76,6 +76,25 @@ mod tests {
         state
     }
 
+    async fn populate_story_readiness_fields(state: &AppState, task_id: &str) {
+        let mut task = state
+            .task_store
+            .get(task_id)
+            .await
+            .expect("task lookup should succeed")
+            .expect("task should exist");
+        task.scope = Some("Implement the requested change within the current lane.".to_string());
+        task.acceptance_criteria = Some(vec![
+            "The acceptance criteria are explicitly captured.".to_string()
+        ]);
+        task.verification_commands = Some(vec!["cargo test -p routa-core".to_string()]);
+        state
+            .task_store
+            .save(&task)
+            .await
+            .expect("task should save");
+    }
+
     #[tokio::test]
     async fn list_boards_ensures_default_board_exists() {
         let state = setup_state().await;
@@ -164,6 +183,9 @@ mod tests {
             Some("board-1"),
             Some("dev"),
             "- todo (Todo) stage=todo position=1\n- dev (Dev) stage=dev position=2",
+            None,
+            None,
+            None,
         );
 
         assert!(prompt.contains("You are in the `todo` lane."));
@@ -357,6 +379,7 @@ mod tests {
         )
         .await
         .expect("create card should succeed");
+        populate_story_readiness_fields(&state, &created.card.id).await;
 
         let moved = move_card(
             &state,
@@ -401,6 +424,7 @@ mod tests {
         )
         .await
         .expect("create card should succeed");
+        populate_story_readiness_fields(&state, &created.card.id).await;
         move_card(
             &state,
             MoveCardParams {
@@ -752,6 +776,76 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn move_card_blocks_transition_when_required_task_fields_are_missing() {
+        let state = setup_state().await;
+        let boards = list_boards(
+            &state,
+            ListBoardsParams {
+                workspace_id: "default".to_string(),
+            },
+        )
+        .await
+        .expect("list boards should succeed");
+        let board_id = boards.boards[0].id.clone();
+
+        let mut board = state
+            .kanban_store
+            .get(&board_id)
+            .await
+            .expect("board load should succeed")
+            .expect("default board should exist");
+        let dev = board
+            .columns
+            .iter_mut()
+            .find(|column| column.id == "dev")
+            .expect("dev column should exist");
+        dev.automation = Some(KanbanColumnAutomation {
+            enabled: true,
+            required_task_fields: Some(vec![
+                "scope".to_string(),
+                "acceptance_criteria".to_string(),
+                "verification_plan".to_string(),
+            ]),
+            ..Default::default()
+        });
+        state
+            .kanban_store
+            .update(&board)
+            .await
+            .expect("board update should succeed");
+
+        let created = create_card(
+            &state,
+            CreateCardParams {
+                workspace_id: "default".to_string(),
+                board_id: Some(board_id),
+                column_id: Some("todo".to_string()),
+                title: "Need scope".to_string(),
+                description: Some("Missing scope and verification plan".to_string()),
+                priority: None,
+                labels: None,
+            },
+        )
+        .await
+        .expect("create card should succeed");
+
+        let err = move_card(
+            &state,
+            MoveCardParams {
+                card_id: created.card.id,
+                target_column_id: "dev".to_string(),
+                position: None,
+            },
+        )
+        .await
+        .expect_err("transition should be blocked");
+
+        assert!(
+            matches!(err, RpcError::BadRequest(message) if message.contains("missing required task fields"))
+        );
+    }
+
+    #[tokio::test]
     async fn delete_column_moves_cards_to_backlog_when_not_deleting_cards() {
         let state = setup_state().await;
         let created = create_card(
@@ -839,6 +933,7 @@ mod tests {
         )
         .await
         .expect("create card should succeed");
+        populate_story_readiness_fields(&state, &second.card.id).await;
         move_card(
             &state,
             MoveCardParams {

@@ -1,6 +1,7 @@
 "use client";
 import { HarnessSectionCard, HarnessSectionStateFrame } from "@/client/components/harness-section-card";
 import { HarnessUnsupportedState } from "@/client/components/harness-support-state";
+import { useTranslation } from "@/i18n";
 import type {
   DesignDecisionArtifact,
   DesignDecisionConfidence,
@@ -34,19 +35,33 @@ const DECISION_STATUS_STYLES: Record<DesignDecisionStatus, { bg: string; text: s
 };
 
 function ConfidenceBadge({ confidence }: { confidence: DesignDecisionConfidence }) {
+  const { t } = useTranslation();
   const style = CONFIDENCE_STYLES[confidence];
+  const confidenceLabels: Record<DesignDecisionConfidence, string> = {
+    high: t.harness.designDecision.confidenceHigh,
+    medium: t.harness.designDecision.confidenceMedium,
+    low: t.harness.designDecision.confidenceLow,
+  };
   return (
     <span className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider ${style.bg} ${style.text}`}>
-      {confidence}
+      {confidenceLabels[confidence]}
     </span>
   );
 }
 
 function DecisionStatusBadge({ status }: { status: DesignDecisionStatus }) {
+  const { t } = useTranslation();
   const style = DECISION_STATUS_STYLES[status];
+  const statusLabelMap: Record<DesignDecisionStatus, string> = {
+    canonical: t.harness.designDecision.statusCanonical,
+    accepted: t.harness.designDecision.statusAccepted,
+    superseded: t.harness.designDecision.statusSuperseded,
+    deprecated: t.harness.designDecision.statusDeprecated,
+    unknown: t.harness.designDecision.statusUnknown,
+  };
   return (
     <span className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-medium ${style.bg} ${style.text}`}>
-      {style.label}
+      {statusLabelMap[status]}
     </span>
   );
 }
@@ -142,6 +157,7 @@ export function HarnessDesignDecisionPanel({
   variant = "full",
   hideHeader = false,
 }: HarnessDesignDecisionPanelProps) {
+  const { t } = useTranslation();
   const sources = data?.sources ?? [];
   const warnings = data?.warnings ?? [];
 
@@ -154,35 +170,35 @@ export function HarnessDesignDecisionPanel({
 
   return (
     <HarnessSectionCard
-      title="Design Decisions"
+      title={t.harness.designDecision.title}
       hideHeader={hideHeader}
       variant={variant}
       dataTestId="design-decision-panel"
     >
       {loading ? (
-        <HarnessSectionStateFrame>Loading architecture contract and ADRs…</HarnessSectionStateFrame>
+        <HarnessSectionStateFrame>{t.harness.designDecision.loadingAdrs}</HarnessSectionStateFrame>
       ) : error ? (
         <HarnessSectionStateFrame tone="error">{error}</HarnessSectionStateFrame>
       ) : !data || sources.length === 0 ? (
         <HarnessSectionStateFrame tone="warning">
-          No architecture contract or ADR decisions are currently available for this repository.
+          {t.harness.designDecision.noDecisionsAvailable}
         </HarnessSectionStateFrame>
       ) : (
         <div className="mt-3 space-y-3">
           <div className="space-y-3">
             <SourceGroup
-              title="Canonical docs"
+              title={t.harness.designDecision.canonicalDocs}
               sources={groupedSources.canonicalDocs}
             />
             <SourceGroup
-              title="Decision records"
+              title={t.harness.designDecision.decisionRecords}
               sources={groupedSources.decisionRecords}
             />
           </div>
 
           {variant === "compact" && sources.length > visibleSources.length ? (
             <HarnessSectionStateFrame>
-              Showing {visibleSources.length} of {sources.length} architecture decision sources in compact mode.
+              {t.harness.designDecision.showingCompact.replace("{visible}", String(visibleSources.length)).replace("{total}", String(sources.length))}
             </HarnessSectionStateFrame>
           ) : null}
 

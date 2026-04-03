@@ -11,6 +11,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useTranslation } from "@/i18n";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -137,6 +138,7 @@ function TaskRow({ task, onSelect }: { task: A2ATask; onSelect: (t: A2ATask) => 
 // ── Main Page ──────────────────────────────────────────────────────────────
 
 export default function A2APage() {
+  const { t } = useTranslation();
   const [agentCard, setAgentCard] = useState<AgentCard | null>(null);
   const [tasks, setTasks] = useState<A2ATask[]>([]);
   const [selectedTask, setSelectedTask] = useState<A2ATask | null>(null);
@@ -271,14 +273,14 @@ export default function A2APage() {
             <form onSubmit={handleSend} className="space-y-3">
               <input
                 type="text"
-                placeholder="Workspace ID (optional)"
+                placeholder={t.a2aPage.workspaceIdOptional}
                 value={workspaceId}
                 onChange={(e) => setWorkspaceId(e.target.value)}
                 className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-sm text-slate-700 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400"
               />
               <textarea
                 rows={3}
-                placeholder="Describe what you need — e.g. 'Build a REST API for user management'"
+                placeholder={t.a2aPage.describeWhatYouNeed}
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
                 onKeyDown={(e) => {

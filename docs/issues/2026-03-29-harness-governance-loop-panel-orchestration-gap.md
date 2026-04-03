@@ -1,11 +1,15 @@
 ---
 title: "Harness governance loop is not orchestrated with sibling panels"
 date: "2026-03-29"
-status: open
+status: resolved
+resolved_at: "2026-03-30"
 severity: medium
 area: "ui"
 tags: ["harness", "governance-loop", "orchestration", "react-flow"]
 reported_by: "codex"
+github_issue: 245
+github_state: "closed"
+github_url: "https://github.com/phodal/routa/issues/245"
 related_issues: ["https://github.com/phodal/routa/issues/245"]
 ---
 
@@ -54,3 +58,23 @@ related_issues: ["https://github.com/phodal/routa/issues/245"]
 - 页面已经持有 repository / workspace / tier 上下文，适合作为 orchestration shell。
 - `Execution plan` 和 `Governance loop` 都已经是 React Flow，可复用统一的节点上下文切换思路。
 - 现有 API 已足够支撑重构，不需要新增后端接口。
+
+## Resolution
+
+This issue is resolved in the current codebase and the upstream GitHub issue is
+closed.
+
+Evidence in current implementation:
+
+- `src/app/settings/harness/harness-console-page.tsx` owns the shared
+  repository/workspace/tier state and loads harness data once through
+  `useHarnessSettingsData(...)`.
+- The same page keeps `selectedGovernanceNodeId` at page scope and maps node
+  selection to real sibling panels through `GOVERNANCE_NODE_SECTION_MAP` and
+  `governanceContextPanel`.
+- The bottom panel wiring now lets governance-node selection open compact
+  `Context`, `Execution Plan`, and `Fitness` views instead of leaving the graph
+  isolated.
+- `src/client/components/harness-governance-loop-graph.tsx` now accepts
+  `selectedNodeId` and `onSelectedNodeChange` props from the page shell instead
+  of acting as a self-contained data island.

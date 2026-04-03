@@ -19,7 +19,7 @@ import {
   uniqueIndex,
 } from "drizzle-orm/sqlite-core";
 import type { KanbanColumn } from "../models/kanban";
-import type { InvestValidation, TaskLaneHandoff, TaskLaneSession } from "../models/task";
+import type { TaskInvestValidation, TaskLaneHandoff, TaskLaneSession } from "../models/task";
 
 // ─── Workspaces ─────────────────────────────────────────────────────
 
@@ -109,7 +109,7 @@ export const tasks = sqliteTable("tasks", {
   completionSummary: text("completion_summary"),
   verificationVerdict: text("verification_verdict"),
   verificationReport: text("verification_report"),
-  investValidation: text("invest_validation", { mode: "json" }).$type<InvestValidation>(),
+  investValidation: text("invest_validation", { mode: "json" }).$type<TaskInvestValidation>(),
   version: integer("version").notNull().default(1),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),

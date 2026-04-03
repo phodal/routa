@@ -17,7 +17,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use crate::invest_validation::derive_invest_validation_from_objective;
 use crate::models::artifact::{Artifact, ArtifactStatus, ArtifactType};
 use crate::models::kanban::KanbanBoard;
-use crate::models::task::{Task, TaskLaneSessionStatus, TaskStatus};
+use crate::models::task::{
+    build_task_invest_validation, build_task_story_readiness, Task, TaskLaneSessionStatus,
+    TaskStatus,
+};
 use crate::rpc::error::RpcError;
 use crate::state::AppState;
 
@@ -375,23 +378,20 @@ async fn serialize_task_with_evidence(
     task: &Task,
 ) -> Result<serde_json::Value, RpcError> {
     let evidence_summary = build_task_evidence_summary(state, task).await?;
+    let board = match task.board_id.as_deref() {
+        Some(board_id) => state.kanban_store.get(board_id).await?,
+        None => None,
+    };
+    let story_readiness = build_task_story_readiness(
+        task,
+        &resolve_next_required_task_fields(board.as_ref(), task.column_id.as_deref()),
+    );
+    let invest_validation = build_task_invest_validation(task);
     let mut task_value = serde_json::to_value(task)
         .map_err(|error| RpcError::Internal(format!("Failed to serialize task: {error}")))?;
     let task_object = task_value.as_object_mut().ok_or_else(|| {
         RpcError::Internal("Task payload must serialize to a JSON object".to_string())
     })?;
-    if task.invest_validation.is_none() {
-        if let Some(validation) = derive_invest_validation_from_objective(&task.objective) {
-            task_object.insert(
-                "investValidation".to_string(),
-                serde_json::to_value(validation).map_err(|error| {
-                    RpcError::Internal(format!(
-                        "Failed to serialize task invest validation: {error}"
-                    ))
-                })?,
-            );
-        }
-    }
     task_object.insert(
         "artifactSummary".to_string(),
         serde_json::to_value(&evidence_summary.artifact).map_err(|error| {
@@ -405,6 +405,22 @@ async fn serialize_task_with_evidence(
         serde_json::to_value(&evidence_summary).map_err(|error| {
             RpcError::Internal(format!(
                 "Failed to serialize task evidence summary: {error}"
+            ))
+        })?,
+    );
+    task_object.insert(
+        "storyReadiness".to_string(),
+        serde_json::to_value(&story_readiness).map_err(|error| {
+            RpcError::Internal(format!(
+                "Failed to serialize task story readiness summary: {error}"
+            ))
+        })?,
+    );
+    task_object.insert(
+        "investValidation".to_string(),
+        serde_json::to_value(&invest_validation).map_err(|error| {
+            RpcError::Internal(format!(
+                "Failed to serialize task INVEST validation summary: {error}"
             ))
         })?,
     );
@@ -500,6 +516,32 @@ fn resolve_next_required_artifacts(
         })
         .and_then(|column| column.automation.as_ref())
         .and_then(|automation| automation.required_artifacts.clone())
+        .unwrap_or_default()
+}
+
+fn resolve_next_required_task_fields(
+    board: Option<&KanbanBoard>,
+    current_column_id: Option<&str>,
+) -> Vec<String> {
+    let current_column_id = current_column_id.unwrap_or("backlog").to_ascii_lowercase();
+    let next_column_id = KANBAN_HAPPY_PATH_COLUMN_ORDER
+        .iter()
+        .position(|column_id| *column_id == current_column_id)
+        .and_then(|index| KANBAN_HAPPY_PATH_COLUMN_ORDER.get(index + 1))
+        .copied();
+    let Some(next_column_id) = next_column_id else {
+        return Vec::new();
+    };
+
+    board
+        .and_then(|board| {
+            board
+                .columns
+                .iter()
+                .find(|column| column.id == next_column_id)
+        })
+        .and_then(|column| column.automation.as_ref())
+        .and_then(|automation| automation.required_task_fields.clone())
         .unwrap_or_default()
 }
 
@@ -611,6 +653,11 @@ mod tests {
         dev_column.automation = Some(KanbanColumnAutomation {
             enabled: true,
             required_artifacts: Some(vec!["screenshot".to_string()]),
+            required_task_fields: Some(vec![
+                "scope".to_string(),
+                "acceptance_criteria".to_string(),
+                "verification_plan".to_string(),
+            ]),
             ..Default::default()
         });
         state
@@ -713,6 +760,18 @@ mod tests {
             get_value["evidenceSummary"]["runs"]["latestStatus"],
             serde_json::json!("running")
         );
+        assert_eq!(
+            get_value["storyReadiness"]["requiredTaskFields"],
+            serde_json::json!(["scope", "acceptance_criteria", "verification_plan"])
+        );
+        assert_eq!(
+            get_value["storyReadiness"]["ready"],
+            serde_json::json!(false)
+        );
+        assert_eq!(
+            get_value["investValidation"]["source"],
+            serde_json::json!("heuristic")
+        );
 
         let listed = list(
             &state,
@@ -730,6 +789,10 @@ mod tests {
             listed.tasks[0]["evidenceSummary"]["completion"]["hasSummary"],
             serde_json::json!(true)
         );
+        assert_eq!(
+            listed.tasks[0]["storyReadiness"]["ready"],
+            serde_json::json!(false)
+        );
 
         let ready = find_ready(
             &state,
@@ -743,6 +806,10 @@ mod tests {
         assert_eq!(
             ready.tasks[0]["artifactSummary"]["byType"]["screenshot"],
             serde_json::json!(1)
+        );
+        assert_eq!(
+            ready.tasks[0]["investValidation"]["source"],
+            serde_json::json!("heuristic")
         );
 
         let created = create(
@@ -769,6 +836,10 @@ mod tests {
         assert_eq!(
             created.task["evidenceSummary"]["runs"]["latestStatus"],
             serde_json::json!("idle")
+        );
+        assert_eq!(
+            created.task["storyReadiness"]["requiredTaskFields"],
+            serde_json::json!([])
         );
     }
 }

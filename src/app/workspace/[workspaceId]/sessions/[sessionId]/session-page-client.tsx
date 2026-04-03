@@ -33,6 +33,7 @@ import { type AgentRole, type SpecialistOption, useSessionPageBootstrap } from "
 import { useSessionCrafters } from "./use-session-crafters";
 import { RepoSlideSessionPanel } from "./repo-slide-session-panel";
 import { Select } from "@/client/components/select";
+import { useTranslation } from "@/i18n";
 import { ChevronDown, X } from "lucide-react";
 
 
@@ -53,6 +54,7 @@ const BUILTIN_ROLES: { value: AgentRole; label: string }[] = [
 ];
 
 export function SessionPageClient() {
+  const { t } = useTranslation();
   const router = useRouter();
   const searchParams = useSearchParams();
   const { workspaceId, sessionId, isResolved } = useRealSessionParams();
@@ -605,7 +607,7 @@ export function SessionPageClient() {
   if (!isResolved || (workspacesHook.loading && !isDefaultWorkspace)) {
     return (
       <div className="desktop-theme h-screen flex items-center justify-center bg-[var(--dt-bg-primary)]">
-        <div className="text-[var(--dt-text-secondary)]">Loading...</div>
+        <div className="text-[var(--dt-text-secondary)]">{t.common.loading}</div>
       </div>
     );
   }
@@ -614,7 +616,7 @@ export function SessionPageClient() {
   if (!workspace && !isDefaultWorkspace) {
     return (
       <div className="desktop-theme h-screen flex items-center justify-center bg-[var(--dt-bg-primary)]">
-        <div className="text-[var(--dt-text-secondary)]">Loading...</div>
+        <div className="text-[var(--dt-text-secondary)]">{t.common.loading}</div>
       </div>
     );
   }
@@ -659,7 +661,7 @@ export function SessionPageClient() {
                 <option key={r.value} value={r.value}>{r.label}</option>
               ))}
               {specialists.length > 0 && (
-                <optgroup label="Custom Specialists">
+                <optgroup label={t.common.customSpecialists}>
                   {specialists.map((s) => (
                     <option key={s.id} value={`specialist:${s.id}`}>
                       {s.name}{s.model ? ` (${s.model})` : ""}
@@ -674,8 +676,8 @@ export function SessionPageClient() {
         rightSlot={
           <>
             {/* Tool Mode Toggle */}
-            <label className="hidden md:flex items-center gap-1.5 cursor-pointer select-none" title={`Tool Mode: ${toolMode === "essential" ? "Essential (7 tools)" : "Full (34 tools)"}`}>
-              <span className="text-[10px] text-[var(--dt-text-secondary)]">Full</span>
+            <label className="hidden md:flex items-center gap-1.5 cursor-pointer select-none" title={t.sessions.toolModeTitle.replace('{mode}', toolMode === "essential" ? "Essential (7 tools)" : "Full (34 tools)")}>
+              <span className="text-[10px] text-[var(--dt-text-secondary)]">{t.common.full}</span>
               <div className="relative">
                 <input
                   type="checkbox"
@@ -686,13 +688,13 @@ export function SessionPageClient() {
                 <div className="w-7 h-3.5 bg-[var(--dt-bg-active)] rounded-full peer peer-checked:bg-[var(--dt-accent)] transition-colors" />
                 <div className="absolute left-0.5 top-0.5 w-2.5 h-2.5 bg-[var(--dt-accent-text)] rounded-full transition-transform peer-checked:translate-x-3.5" />
               </div>
-              <span className="text-[10px] text-[var(--dt-accent)] font-medium">Essential</span>
+              <span className="text-[10px] text-[var(--dt-accent)] font-medium">{t.common.essential}</span>
             </label>
             <a href="/mcp-tools" className="hidden md:inline-flex px-2.5 py-1 rounded-md bg-[var(--dt-bg-secondary)] text-[11px] font-medium text-[var(--dt-text-primary)] hover:bg-[var(--dt-bg-active)] transition-colors">
-              MCP Tools
+              {t.sessions.mcpTools}
             </a>
             <a href="/traces" className="hidden md:inline-flex px-2.5 py-1 rounded-md bg-[var(--dt-bg-secondary)] text-[11px] font-medium text-[var(--dt-text-primary)] hover:bg-[var(--dt-bg-active)] transition-colors">
-              Traces
+              {t.sessions.tracesLabel}
             </a>
           </>
         }
@@ -797,7 +799,7 @@ export function SessionPageClient() {
               <div className="px-3 py-2 border-b border-[var(--dt-border)] flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <span className="text-xs font-semibold text-[var(--dt-text-primary)]">
-                    CRAFTERs
+                    {t.sessions.craftersLabel}
                   </span>
                   <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-[var(--dt-bg-active)] text-[var(--dt-accent)]">
                     {crafterAgents.length}
@@ -806,7 +808,7 @@ export function SessionPageClient() {
                 {/* Concurrency control */}
                 <div className="flex items-center gap-2">
                   <span className="text-[10px] font-medium text-[var(--dt-text-secondary)] uppercase tracking-wider">
-                    Concurrency
+                    {t.sessions.concurrencyLabel}
                   </span>
                   <div className="flex items-center rounded-md border border-[var(--dt-border)] overflow-hidden">
                     {[1, 2].map((n) => (
@@ -862,7 +864,7 @@ export function SessionPageClient() {
             <div className="h-11 px-4 border-b border-[var(--dt-border)] flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div id="agent-install-title" className="text-sm font-semibold text-[var(--dt-text-primary)]">
-                  Install Agents
+                  {t.sessions.installAgents}
                 </div>
                 <a
                   href="/settings/agents"
@@ -870,7 +872,7 @@ export function SessionPageClient() {
                   rel="noopener noreferrer"
                   className="text-[11px] text-[var(--dt-text-secondary)] hover:text-[var(--dt-text-primary)] transition-colors"
                 >
-                  Open in new tab
+                  {t.sessions.openInNewTab}
                 </a>
               </div>
               <button
@@ -878,8 +880,8 @@ export function SessionPageClient() {
                 type="button"
                 onClick={() => setShowAgentInstallPopup(false)}
                 className="w-7 h-7 flex items-center justify-center rounded-md hover:bg-[var(--dt-bg-active)] text-[var(--dt-text-secondary)] hover:text-[var(--dt-text-primary)] transition-colors"
-                title="Close (Esc)"
-                aria-label="Close"
+                title={t.common.closeEsc}
+                aria-label={t.common.close}
               >
                 <X className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
               </button>
@@ -894,7 +896,7 @@ export function SessionPageClient() {
       {/* ─── Agent Toast ──────────────────────────────────────────── */}
       {showAgentToast && (
         <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-lg bg-[var(--dt-text-primary)] text-[var(--dt-accent-text)] text-sm font-medium shadow-lg animate-fade-in">
-          ROUTA mode: Coordinator will plan, delegate to CRAFTER agents, and verify with GATE.
+          {t.common.routaModeToast}
         </div>
       )}
 

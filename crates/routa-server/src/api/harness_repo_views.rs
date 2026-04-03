@@ -60,7 +60,10 @@ pub async fn get_harness_automations(
     let report = detect_repo_automations(&repo_root, &schedules).map_err(|error| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json_error("读取 Harness automation definitions 失败", error)),
+            Json(json_error(
+                "读取 Harness automation definitions 失败",
+                error,
+            )),
         )
     })?;
 

@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 const source = readFileSync(
   resolve(__dirname, "../kanban-page-client.tsx"),
   "utf8",
-);
+).replace(/\r\n/g, "\n");
 
 describe("kanban page desktop fetch wiring", () => {
   it("uses desktopAwareFetch for page-level data loading and warmup", () => {

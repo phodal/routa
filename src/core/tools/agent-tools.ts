@@ -29,7 +29,7 @@ import {
   ModelTier,
   createAgent as createAgentModel,
 } from "../models/agent";
-import { Task, TaskStatus, createTask as createTaskModel, type InvestValidation } from "../models/task";
+import { Task, TaskStatus, createTask as createTaskModel, type TaskInvestValidation } from "../models/task";
 import { MessageRole, createMessage, CompletionReport } from "../models/message";
 import {
   ArtifactType,
@@ -754,7 +754,7 @@ export class AgentTools {
       completionSummary?: string;
       verificationVerdict?: string;
       verificationReport?: string;
-      investValidation?: InvestValidation;
+      investValidation?: TaskInvestValidation;
       assignedTo?: string;
       acceptanceCriteria?: string[];
       testCases?: string[];

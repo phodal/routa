@@ -3188,6 +3188,78 @@ paths:
         "413":
           description: Repository too large
 
+  /api/github/issues:
+    get:
+      operationId: listGitHubIssues
+      summary: List GitHub issues for a workspace codebase
+      parameters:
+        - name: workspaceId
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: codebaseId
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: state
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [open, closed, all]
+      responses:
+        "200":
+          description: GitHub issues
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  repo:
+                    type: string
+                  codebase:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      label:
+                        type: string
+                  issues:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        number:
+                          type: integer
+                        title:
+                          type: string
+                        body:
+                          type: string
+                        url:
+                          type: string
+                        state:
+                          type: string
+                        labels:
+                          type: array
+                          items:
+                            type: string
+                        assignees:
+                          type: array
+                          items:
+                            type: string
+                        updatedAt:
+                          type: string
+        "400":
+          description: Missing workspace or non-GitHub codebase
+        "404":
+          description: Workspace codebase not found
+        "502":
+          description: GitHub upstream request failed
+
   /api/github/tree:
     get:
       operationId: getGitHubTree

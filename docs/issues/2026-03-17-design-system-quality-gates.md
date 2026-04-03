@@ -1,7 +1,8 @@
 ---
 title: "Design System Quality Gates: layered quality system"
 date: "2026-03-17"
-status: open
+status: resolved
+resolved_at: "2026-03-30"
 severity: high
 area: "design-system"
 tags:
@@ -13,7 +14,9 @@ tags:
 reported_by: "phodal"
 related_issues:
   - "https://github.com/phodal/routa/issues/183"
-github_issue: 184
+github_issue: 5
+github_state: "closed"
+github_url: "https://github.com/phodal/entrix/issues/5"
 ---
 
 # Design System Quality Gates: layered quality system
@@ -95,3 +98,23 @@ github_issue: 184
 - [ ] 新增 `npm run test:accessibility` / `npm run test:performance`
 - [ ] Playwright 与（可选）Chromatic 页面级截图覆盖新增完成
 - [ ] 新 issue/工作流能独立验证 shell 变更后未引入未授权色值、dead-link 与明显视觉回归
+
+## Resolution
+
+This issue is resolved in the current codebase. The local record was updated
+during issue hygiene on 2026-04-03 after verifying that the layered gates are
+already wired in, and the upstream tracking issue now lives in `phodal/entrix`.
+
+Evidence in current implementation:
+
+- `docs/fitness/design-system-quality-layers.md` defines the layered quality
+  gates and their executable metrics.
+- `package.json` includes `lint:css`, `test:accessibility`,
+  `test:performance`, `storybook:governance`, `chromatic`, and
+  `snapshots:validate`.
+- `scripts/validate-storybook-governance.mjs`,
+  `scripts/fitness/check-accessibility-smoke.mjs`,
+  `scripts/fitness/check-performance-smoke.mjs`, and the page snapshot tooling
+  provide the automation chain described in the original proposal.
+- Storybook stories and desktop-shell/page snapshot coverage now exist for the
+  shell and key route surfaces called out in the issue.

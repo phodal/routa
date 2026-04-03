@@ -6,6 +6,7 @@ import { HarnessSectionCard, HarnessSectionStateFrame } from "@/client/component
 import { HarnessUnsupportedState } from "@/client/components/harness-support-state";
 import type { AgentHooksResponse } from "@/client/hooks/use-harness-settings-data";
 import { desktopAwareFetch } from "@/client/utils/diagnostics";
+import { useTranslation } from "@/i18n";
 
 type AgentHookPanelProps = {
   workspaceId: string;
@@ -38,6 +39,7 @@ export function HarnessAgentHookPanel({
   variant = "full",
   embedded = false,
 }: AgentHookPanelProps) {
+  const { t } = useTranslation();
   const hasExternalState = loading !== undefined || error !== undefined || data !== undefined;
   const [agentHooksState, setAgentHooksState] = useState<AgentHooksState>({
     loading: false,
@@ -103,7 +105,7 @@ export function HarnessAgentHookPanel({
 
   const agentHookStateFrame = () => {
     if (resolvedState.loading) {
-      return <HarnessSectionStateFrame>Loading agent hooks...</HarnessSectionStateFrame>;
+      return <HarnessSectionStateFrame>{t.harness.agentHook.loadingHooks}</HarnessSectionStateFrame>;
     }
 
     if (unsupportedMessage) {
@@ -117,7 +119,7 @@ export function HarnessAgentHookPanel({
     if (!resolvedState.data) {
       return (
         <HarnessSectionStateFrame>
-          No agent hook data found for the selected repository.
+          {t.harness.agentHook.noAgentHookData}
         </HarnessSectionStateFrame>
       );
     }

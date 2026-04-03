@@ -11,8 +11,8 @@ const createGitHubIssue = vi.fn();
 const buildTaskGitHubIssueBody = vi.fn<(objective: string, testCases?: string[]) => string>(
   (objective: string) => objective,
 );
-const parseGitHubRepo = vi.fn((sourceUrl?: string) => {
-  if (!sourceUrl?.includes("github.com")) {
+const resolveGitHubRepo = vi.fn((sourceUrl?: string, repoPath?: string) => {
+  if (!sourceUrl?.includes("github.com") && repoPath !== "/repos/acme/platform") {
     return undefined;
   }
 
@@ -62,7 +62,7 @@ vi.mock("@/core/kanban/github-issues", () => ({
   createGitHubIssue: (repo: string, payload: unknown) => createGitHubIssue(repo, payload),
   buildTaskGitHubIssueBody: (objective: string, testCases?: string[]) =>
     buildTaskGitHubIssueBody(objective, testCases),
-  parseGitHubRepo: (sourceUrl?: string) => parseGitHubRepo(sourceUrl),
+  resolveGitHubRepo: (sourceUrl?: string, repoPath?: string) => resolveGitHubRepo(sourceUrl, repoPath),
 }));
 
 import { DELETE, GET, POST } from "../route";
@@ -142,7 +142,7 @@ describe("/api/tasks GET", () => {
       repo: "acme/platform",
     });
     buildTaskGitHubIssueBody.mockClear();
-    parseGitHubRepo.mockClear();
+    resolveGitHubRepo.mockClear();
     system.kanbanBoardStore.get.mockResolvedValue({
       id: "board-1",
       columns: [{ id: "backlog", name: "Backlog", position: 0, stage: "backlog" }],
@@ -207,6 +207,14 @@ describe("/api/tasks GET", () => {
           total: 0,
           latestStatus: "idle",
         },
+      },
+      storyReadiness: {
+        ready: true,
+        missing: [],
+        requiredTaskFields: [],
+      },
+      investValidation: {
+        source: "heuristic",
       },
     });
   });
@@ -291,12 +299,14 @@ describe("/api/tasks GET", () => {
 
     expect(response.status).toBe(201);
     expect(data.task.investValidation).toMatchObject({
-      overall: "warning",
-      independent: { status: "pass" },
-      negotiable: { status: "warning" },
+      source: "canonical_story",
+      overallStatus: "warning",
+      checks: {
+        independent: { status: "pass" },
+        negotiable: { status: "warning" },
+      },
       issues: ["Negotiable: Follow-up refinement is still possible."],
     });
-    expect(data.task.investValidation.validatedAt).toEqual(expect.any(String));
   });
 
   it("auto-validates plain markdown stories when creating a task", async () => {
@@ -321,10 +331,13 @@ Create an automatic INVEST snapshot for plain stories.
 
     expect(response.status).toBe(201);
     expect(data.task.investValidation).toMatchObject({
-      overall: "warning",
-      independent: { status: "pass" },
-      negotiable: { status: "warning" },
-      testable: { status: "pass" },
+      source: "heuristic",
+      overallStatus: "warning",
+      checks: {
+        independent: { status: "pass" },
+        negotiable: { status: "warning" },
+        testable: { status: "pass" },
+      },
     });
   });
 
@@ -388,6 +401,73 @@ Create an automatic INVEST snapshot for plain stories.
     expect(createGitHubIssue).not.toHaveBeenCalled();
     expect(data.task.githubNumber).toBeUndefined();
     expect(data.task.githubRepo).toBeUndefined();
+  });
+
+  it("imports an existing GitHub issue without creating a new one", async () => {
+    system.codebaseStore.get.mockResolvedValue({
+      id: "codebase-1",
+      repoPath: "/repos/acme/platform",
+      sourceUrl: "https://github.com/acme/platform",
+    });
+    taskStore.listByWorkspace.mockResolvedValue([]);
+
+    const response = await POST(new NextRequest("http://localhost/api/tasks", {
+      method: "POST",
+      body: JSON.stringify({
+        title: "Imported issue",
+        objective: "Imported from GitHub",
+        workspaceId: "workspace-1",
+        codebaseIds: ["codebase-1"],
+        githubId: "issue-77",
+        githubNumber: 77,
+        githubUrl: "https://github.com/acme/platform/issues/77",
+        githubRepo: "acme/platform",
+        githubState: "open",
+      }),
+      headers: { "Content-Type": "application/json" },
+    }));
+    const data = await response.json();
+
+    expect(response.status).toBe(201);
+    expect(createGitHubIssue).not.toHaveBeenCalled();
+    expect(data.task).toMatchObject({
+      githubId: "issue-77",
+      githubNumber: 77,
+      githubRepo: "acme/platform",
+      githubUrl: "https://github.com/acme/platform/issues/77",
+      githubState: "open",
+      codebaseIds: ["codebase-1"],
+    });
+  });
+
+  it("rejects importing the same GitHub issue twice into one workspace", async () => {
+    taskStore.listByWorkspace.mockResolvedValue([
+      createTask({
+        id: "task-77",
+        title: "Existing task",
+        objective: "Already imported",
+        workspaceId: "workspace-1",
+        githubRepo: "acme/platform",
+        githubNumber: 77,
+      }),
+    ]);
+
+    const response = await POST(new NextRequest("http://localhost/api/tasks", {
+      method: "POST",
+      body: JSON.stringify({
+        title: "Duplicate import",
+        objective: "Should fail",
+        workspaceId: "workspace-1",
+        githubNumber: 77,
+        githubRepo: "acme/platform",
+      }),
+      headers: { "Content-Type": "application/json" },
+    }));
+    const data = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(data.error).toContain("already imported");
+    expect(taskStore.save).not.toHaveBeenCalled();
   });
 
   it("deletes all tasks in a workspace", async () => {

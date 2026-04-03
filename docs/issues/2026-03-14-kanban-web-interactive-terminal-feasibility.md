@@ -1,11 +1,15 @@
 ---
 title: "Kanban ACP sessions do not support browser-embedded interactive terminal control"
 date: "2026-03-14"
-status: open
+status: resolved
+resolved_at: "2026-03-19"
 severity: medium
 area: "kanban"
 tags: ["kanban", "acp", "terminal", "xterm", "web", "session-ui"]
 reported_by: "codex"
+github_issue: 156
+github_state: "closed"
+github_url: "https://github.com/phodal/routa/issues/156"
 related_issues:
   - "docs/issues/2026-03-07-opencode-bridge-terminal-requests.md"
   - "docs/issues/2026-03-06-session-layout-and-sidebar-friction.md"
@@ -63,3 +67,31 @@ Kanban should be able to offer an explicit browser-side interactive terminal mod
 ## References
 
 - `resources/specialists/issue-enricher.md`
+
+## Resolution
+
+This issue is resolved in the current codebase and the upstream GitHub issue is
+closed.
+
+Evidence in current implementation:
+
+- `src/app/workspace/[workspaceId]/kanban/kanban-tab-panels.tsx` renders ACP
+  task sessions through `ChatPanel`, so the Kanban session pane now reuses the
+  same browser terminal interaction path as the main session UI.
+- `src/client/components/message-bubble.tsx` passes
+  `interactive={Boolean(message.terminalInteractive) ...}` into
+  `TerminalBubble`, together with `onInput` and `onResize` handlers.
+- `src/client/components/terminal/terminal-bubble.tsx` enables browser stdin
+  when `interactive` is true, wires `terminal.onData(...)` and
+  `terminal.onResize(...)`, and no longer behaves as output-only in that mode.
+- `src/client/hooks/use-acp.ts` exposes `writeTerminal(...)` and
+  `resizeTerminal(...)`, `src/client/components/chat-panel.tsx` calls those
+  hooks, and `src/app/api/acp/route.ts` implements the `terminal/write` and
+  `terminal/resize` RPC methods.
+
+Current scope note:
+
+- This browser-interactive terminal path is available for ACP chat/session
+  panes. A2A task panes still use a different metadata-oriented surface, so the
+  interactive terminal capability is not universal across every Kanban session
+  transport.

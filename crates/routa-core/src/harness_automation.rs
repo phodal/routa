@@ -586,7 +586,10 @@ fn detect_issue_scanner_suspects(
         return Vec::new();
     }
 
-    let output = match Command::new("python3")
+    // On Windows `python3` is a Microsoft Store alias that does not work
+    // with Command::new; fall back to `python`.
+    let python_bin = if cfg!(windows) { "python" } else { "python3" };
+    let output = match Command::new(python_bin)
         .arg(&absolute_path)
         .arg("--suspects-only")
         .current_dir(repo_root)

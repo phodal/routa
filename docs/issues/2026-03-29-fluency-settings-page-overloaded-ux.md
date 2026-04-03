@@ -1,7 +1,8 @@
 ---
 title: "Fluency settings page mixes configuration, conclusions, and debug payloads into one overloaded surface"
 date: "2026-03-29"
-status: open
+status: resolved
+resolved_at: "2026-03-30"
 severity: medium
 area: "ui"
 tags: ["fluency", "settings", "ux", "dx", "information-architecture", "fitness"]
@@ -78,3 +79,27 @@ Fluency 页面应该优先呈现一条清晰工作流：
 ## References
 
 - `http://localhost:3000/settings/fluency?workspaceId=default`
+
+## Resolution
+
+This issue is resolved in the current codebase.
+
+Evidence in current implementation:
+
+- `src/app/settings/fluency/fluency-settings-page-client.tsx` now renders the
+  page as a repo selector plus a single `FitnessAnalysisPanel`, without the
+  old overloaded multi-surface shell.
+- `src/client/components/fitness-analysis-panel.tsx` is now summary-first:
+  it shows one hero summary, direct run/refresh actions, the capability matrix,
+  the dashboard, and a single `overview` content view.
+- `src/client/components/fitness-analysis-types.ts` no longer exposes
+  `Console` or `Raw JSON` as primary page views. The available view modes are
+  `overview`, `capabilities`, `recommendations`, and `changes`.
+- `src/client/components/__tests__/fitness-analysis-panel.test.tsx` contains a
+  focused regression test,
+  `surfaces a summary-first workflow without advanced debug views`, which
+  asserts that `Report Controls`, `Mode`, and `Views` are absent from the new
+  surface.
+- `src/client/components/__tests__/fitness-analysis-content.test.tsx` verifies
+  the new `overview` inspector, including current findings and recommended
+  actions, instead of a debug-first transcript surface.
