@@ -161,6 +161,51 @@ function CompactDisclosure({
   );
 }
 
+function AcceptanceCriteriaList({
+  criteria,
+  compact = false,
+  testableLabel,
+  failLabel,
+}: {
+  criteria: Array<{ id: string; text: string; testable: boolean }>;
+  compact?: boolean;
+  testableLabel: string;
+  failLabel: string;
+}) {
+  return (
+    <ul className={joinClasses("list-none", compact ? "mt-2 space-y-1.5" : "mt-3 space-y-2")}>
+      {criteria.map((criterion) => (
+        <li
+          key={criterion.id}
+          className={joinClasses(
+            "border-b border-slate-200/70 last:border-b-0 dark:border-slate-700",
+            compact ? "py-1.5" : "py-2",
+          )}
+        >
+          <div className={joinClasses("flex items-start gap-3", compact ? "text-[13px] leading-6" : "text-sm leading-6")}>
+            <span className="shrink-0 font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">
+              {criterion.id}
+            </span>
+            <span className="min-w-0 flex-1 whitespace-pre-wrap break-words text-slate-700 dark:text-slate-200">
+              {criterion.text}
+            </span>
+            <span
+              className={joinClasses(
+                "shrink-0 text-[10px] font-semibold uppercase tracking-[0.14em]",
+                criterion.testable
+                  ? "text-emerald-600 dark:text-emerald-300"
+                  : "text-rose-600 dark:text-rose-300",
+              )}
+            >
+              {criterion.testable ? testableLabel : failLabel}
+            </span>
+          </div>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 export function CanonicalStoryRenderer({
   parseResult,
   compact = false,
@@ -249,31 +294,12 @@ export function CanonicalStoryRenderer({
           summary={`#${story.acceptance_criteria.length}`}
           defaultOpen
         >
-          <div className="space-y-0">
-            {story.acceptance_criteria.map((criterion) => (
-              <div
-                key={criterion.id}
-                className="border-b border-slate-200/70 py-2.5 last:border-b-0 dark:border-slate-700"
-              >
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">
-                    {criterion.id}
-                  </span>
-                  <span className={joinClasses(
-                    "text-[10px] font-semibold uppercase tracking-[0.14em]",
-                    criterion.testable
-                      ? "text-emerald-600 dark:text-emerald-300"
-                      : "text-rose-600 dark:text-rose-300",
-                  )}>
-                    {criterion.testable ? t.kanbanDetail.investTestable : t.kanbanDetail.fail}
-                  </span>
-                </div>
-                <div className="mt-1.5 whitespace-pre-wrap break-words text-[13px] leading-6 text-slate-700 dark:text-slate-200">
-                  {criterion.text}
-                </div>
-              </div>
-            ))}
-          </div>
+          <AcceptanceCriteriaList
+            criteria={story.acceptance_criteria}
+            compact
+            testableLabel={t.kanbanDetail.investTestable}
+            failLabel={t.kanbanDetail.fail}
+          />
         </CompactDisclosure>
 
         <CompactDisclosure
@@ -379,31 +405,11 @@ export function CanonicalStoryRenderer({
           <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
             {t.kanbanDetail.acceptanceCriteria}
           </div>
-          <div className="mt-3 space-y-2">
-            {story.acceptance_criteria.map((criterion) => (
-              <div
-                key={criterion.id}
-                className="border-b border-slate-200/70 py-3 last:border-b-0 dark:border-slate-700"
-              >
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                    {criterion.id}
-                  </span>
-                  <span className={joinClasses(
-                    "text-[11px] font-semibold uppercase tracking-wide",
-                    criterion.testable
-                      ? "text-emerald-600 dark:text-emerald-300"
-                      : "text-rose-600 dark:text-rose-300",
-                  )}>
-                    {criterion.testable ? t.kanbanDetail.investTestable : t.kanbanDetail.fail}
-                  </span>
-                </div>
-                <div className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-700 dark:text-slate-200">
-                  {criterion.text}
-                </div>
-              </div>
-            ))}
-          </div>
+          <AcceptanceCriteriaList
+            criteria={story.acceptance_criteria}
+            testableLabel={t.kanbanDetail.investTestable}
+            failLabel={t.kanbanDetail.fail}
+          />
         </div>
 
         <div className="border-t border-slate-200/70 pt-3 dark:border-slate-700">
