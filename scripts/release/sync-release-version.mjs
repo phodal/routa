@@ -52,27 +52,41 @@ async function writeJson(relativePath, data) {
   await fs.writeFile(absolutePath, `${JSON.stringify(data, null, 2)}\n`, "utf8");
 }
 
-async function updateTomlVersion(relativePath, version) {
+async function updateTomlVersion(relativePath, version, options = {}) {
   const absolutePath = path.join(repoRoot, relativePath);
   const content = await fs.readFile(absolutePath, "utf8");
 
-  // Check if version is already correct
+  let updated = content;
+
+  // Update main version
   const versionMatch = content.match(/^version = "(.+)"$/m);
-  if (versionMatch && versionMatch[1] === version) {
+  if (!versionMatch || versionMatch[1] !== version) {
+    updated = updated.replace(
+      /^version = ".*"$/m,
+      `version = "${version}"`,
+    );
+  }
+
+  // Update workspace dependencies if specified
+  if (options.updateWorkspaceDeps) {
+    const crateNames = ["routa-core", "routa-rpc", "routa-scanner", "routa-server"];
+    for (const crateName of crateNames) {
+      // Match: routa-core = { version = "0.2.9", path = "../routa-core" }
+      const depPattern = new RegExp(
+        `(${crateName}\\s*=\\s*{[^}]*version\\s*=\\s*)"[^"]*"`,
+        "g"
+      );
+      updated = updated.replace(depPattern, `$1"${version}"`);
+    }
+  }
+
+  if (updated === content) {
     console.log(`${relativePath} already at version ${version}`);
     return;
   }
 
-  const updated = content.replace(
-    /^version = ".*"$/m,
-    `version = "${version}"`,
-  );
-
-  if (updated === content) {
-    throw new Error(`Failed to update version in ${relativePath} - no version field found`);
-  }
-
   await fs.writeFile(absolutePath, updated, "utf8");
+  console.log(`Updated ${relativePath} to version ${version}`);
 }
 
 async function updateJsonVersion(relativePath, version, options = {}) {
@@ -121,5 +135,12 @@ await updateJsonVersion("apps/desktop/src-tauri/tauri.conf.json", version);
 await updateJsonVersion("packages/routa-cli/package.json", version, {
   updateOptionalDeps: true,
 });
+
+// Update Rust crates versions (and their workspace dependencies)
+await updateTomlVersion("crates/routa-core/Cargo.toml", version);
+await updateTomlVersion("crates/routa-rpc/Cargo.toml", version, { updateWorkspaceDeps: true });
+await updateTomlVersion("crates/routa-scanner/Cargo.toml", version);
+await updateTomlVersion("crates/routa-server/Cargo.toml", version, { updateWorkspaceDeps: true });
+await updateTomlVersion("crates/routa-cli/Cargo.toml", version, { updateWorkspaceDeps: true });
 
 console.log(`Synchronized release version to ${version}`);
