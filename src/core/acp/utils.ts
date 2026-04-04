@@ -27,6 +27,20 @@ export function needsShell(command: string): boolean {
   return lower.endsWith(".cmd") || lower.endsWith(".bat");
 }
 
+/**
+ * Quote Windows wrapper paths before handing them to `spawn(..., { shell: true })`.
+ *
+ * Without the extra quotes, cmd.exe splits paths like
+ * `C:\Program Files\nodejs\npx.cmd` at the first space.
+ */
+export function quoteShellCommandPath(command: string): string {
+  if (!needsShell(command) || !/\s/.test(command)) {
+    return command;
+  }
+
+  return `"${command}"`;
+}
+
 function preferSpawnableWindowsPath(candidates: string[]): string | null {
   const normalized = candidates
     .map((candidate) => candidate.trim())

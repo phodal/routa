@@ -18,7 +18,7 @@ import {
   getRegistryAgent,
   detectPlatformTarget,
 } from "./acp-registry";
-import { needsShell, which } from "./utils";
+import { needsShell, quoteShellCommandPath, which } from "./utils";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -303,12 +303,13 @@ async function runPreloadCommand(options: PreloadCommandOptions): Promise<Instal
   const { agentId, binaryName, args, distributionType, packageName, successSignal } = options;
   const resolvedCommand = await which(binaryName);
   const command = resolvedCommand ?? binaryName;
+  const shellCommand = quoteShellCommandPath(command);
 
   console.log(`[AcpInstaller] Running: ${binaryName} ${args.join(" ")}`);
 
   return new Promise((resolve) => {
     try {
-      const proc = spawn(command, args, {
+      const proc = spawn(shellCommand, args, {
         stdio: ["ignore", "pipe", "pipe"],
         timeout: 120000,
         shell: needsShell(command),

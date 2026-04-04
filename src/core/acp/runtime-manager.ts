@@ -21,7 +21,7 @@ import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
 import { spawn } from "child_process";
-import { needsShell, which } from "./utils";
+import { needsShell, quoteShellCommandPath, which } from "./utils";
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -240,9 +240,10 @@ export class AcpRuntimeManager {
   async getVersion(rt: RuntimeType): Promise<string | null> {
     const binPath = await this.getRuntimePath(rt);
     if (!binPath) return null;
+    const shellCommand = quoteShellCommandPath(binPath);
 
     return new Promise((resolve) => {
-      const proc = spawn(binPath, ["--version"], {
+      const proc = spawn(shellCommand, ["--version"], {
         stdio: ["ignore", "pipe", "pipe"],
         timeout: 10_000,
         shell: needsShell(binPath),
