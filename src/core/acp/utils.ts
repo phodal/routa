@@ -8,6 +8,13 @@ import { getServerBridge } from "@/core/platform";
 
 const WINDOWS_SPAWNABLE_EXTENSIONS = [".cmd", ".bat", ".exe", ".com"];
 
+function getCandidateDirectory(candidate: string): string {
+  const normalized = candidate.trim().replace(/[\\/]+$/, "");
+  const lastSeparator = Math.max(normalized.lastIndexOf("/"), normalized.lastIndexOf("\\"));
+  if (lastSeparator < 0) return "";
+  return normalized.slice(0, lastSeparator).toLowerCase();
+}
+
 /**
  * Whether a command path requires the shell to be invoked (Windows only).
  *
@@ -24,13 +31,22 @@ function preferSpawnableWindowsPath(candidates: string[]): string | null {
   const normalized = candidates
     .map((candidate) => candidate.trim())
     .filter((candidate) => candidate.length > 0);
+  const firstCandidate = normalized[0];
+  if (!firstCandidate) return null;
+
+  const firstDirectory = getCandidateDirectory(firstCandidate);
+  const sameDirectoryCandidates = normalized.filter(
+    (candidate) => getCandidateDirectory(candidate) === firstDirectory
+  );
 
   for (const ext of WINDOWS_SPAWNABLE_EXTENSIONS) {
-    const match = normalized.find((candidate) => candidate.toLowerCase().endsWith(ext));
+    const match = sameDirectoryCandidates.find((candidate) =>
+      candidate.toLowerCase().endsWith(ext)
+    );
     if (match) return match;
   }
 
-  return normalized.at(0) ?? null;
+  return firstCandidate;
 }
 
 /**
