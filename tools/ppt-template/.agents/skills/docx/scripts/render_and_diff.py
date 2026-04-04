@@ -34,6 +34,7 @@ import json
 import os
 import subprocess
 import zipfile
+import sys
 from pathlib import Path
 
 from lxml import etree
@@ -45,7 +46,7 @@ NS = {"w": W_NS}
 
 def _run_render(render_py: str, docx: str, outdir: str) -> None:
     os.makedirs(outdir, exist_ok=True)
-    cmd = ["python", render_py, docx, "--output_dir", outdir]
+    cmd = [sys.executable, render_py, docx, "--output_dir", outdir]
     subprocess.check_call(cmd)
 
 
