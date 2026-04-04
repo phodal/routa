@@ -330,6 +330,109 @@ impl AcpManager {
         .await
     }
 
+    fn spawn_history_mirror(
+        &self,
+        session_id: &str,
+        ntx: &broadcast::Sender<serde_json::Value>,
+    ) {
+        let history_manager = self.clone();
+        let history_session_id = session_id.to_string();
+        let mut history_rx = ntx.subscribe();
+        tokio::spawn(async move {
+            loop {
+                match history_rx.recv().await {
+                    Ok(message) => {
+                        let params = match message.get("params") {
+                            Some(value) => value.clone(),
+                            None => continue,
+                        };
+                        history_manager
+                            .push_to_history(
+                                &history_session_id,
+                                Self::rewrite_notification_session_id(&history_session_id, params),
+                            )
+                            .await;
+                    }
+                    Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+                    Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
+                        tracing::warn!(
+                            "[AcpManager] Dropped {} session/update notifications for {}",
+                            skipped,
+                            history_session_id
+                        );
+                    }
+                }
+            }
+        });
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn register_managed_session(
+        &self,
+        session_id: String,
+        cwd: String,
+        workspace_id: String,
+        provider_name: String,
+        role: Option<String>,
+        model: Option<String>,
+        parent_session_id: Option<String>,
+        options: &SessionLaunchOptions,
+        process_type: AgentProcessType,
+        acp_session_id: String,
+        ntx: broadcast::Sender<serde_json::Value>,
+    ) {
+        let created_at = chrono::Utc::now().to_rfc3339();
+        let trace_writer = TraceWriter::new(&cwd);
+        let record = AcpSessionRecord {
+            session_id: session_id.clone(),
+            name: None,
+            cwd: cwd.clone(),
+            workspace_id: workspace_id.clone(),
+            routa_agent_id: None,
+            provider: Some(provider_name.clone()),
+            role: role.clone().or(Some("CRAFTER".to_string())),
+            mode_id: None,
+            model: model.clone(),
+            created_at: created_at.clone(),
+            first_prompt_sent: false,
+            parent_session_id: parent_session_id.clone(),
+            specialist_id: options.specialist_id.clone(),
+            specialist_system_prompt: options.specialist_system_prompt.clone(),
+        };
+
+        self.sessions.write().await.insert(session_id.clone(), record);
+        self.processes.write().await.insert(
+            session_id.clone(),
+            ManagedProcess {
+                process: process_type,
+                acp_session_id: acp_session_id.clone(),
+                preset_id: provider_name.clone(),
+                created_at,
+                trace_writer: trace_writer.clone(),
+                cwd: cwd.clone(),
+            },
+        );
+        self.notification_channels
+            .write()
+            .await
+            .insert(session_id.clone(), ntx.clone());
+        self.spawn_history_mirror(&session_id, &ntx);
+
+        let trace = TraceRecord::new(
+            &session_id,
+            TraceEventType::SessionStart,
+            Contributor::new(&provider_name, None),
+        )
+        .with_workspace_id(&workspace_id)
+        .with_metadata(
+            "role",
+            serde_json::json!(role.as_deref().unwrap_or("CRAFTER")),
+        )
+        .with_metadata("cwd", serde_json::json!(cwd));
+
+        trace_writer.append_safe(&trace).await;
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub async fn create_session_from_inline(
         &self,
@@ -361,87 +464,20 @@ impl AcpManager {
             .await?;
 
         let acp_session_id = process.new_session(&cwd).await?;
-        let trace_writer = TraceWriter::new(&cwd);
-
-        let record = AcpSessionRecord {
-            session_id: session_id.clone(),
-            name: None,
-            cwd: cwd.clone(),
-            workspace_id: workspace_id.clone(),
-            routa_agent_id: None,
-            provider: Some(provider_name.clone()),
-            role: role.clone().or(Some("CRAFTER".to_string())),
-            mode_id: None,
-            model: model.clone(),
-            created_at: chrono::Utc::now().to_rfc3339(),
-            first_prompt_sent: false,
-            parent_session_id: parent_session_id.clone(),
-            specialist_id: options.specialist_id.clone(),
-            specialist_system_prompt: options.specialist_system_prompt.clone(),
-        };
-
-        self.sessions.write().await.insert(session_id.clone(), record);
-
-        self.processes.write().await.insert(
+        self.register_managed_session(
             session_id.clone(),
-            ManagedProcess {
-                process: AgentProcessType::Acp(Arc::new(process)),
-                acp_session_id: acp_session_id.clone(),
-                preset_id: provider_name.clone(),
-                created_at: chrono::Utc::now().to_rfc3339(),
-                trace_writer: trace_writer.clone(),
-                cwd: cwd.clone(),
-            },
-        );
-
-        self.notification_channels
-            .write()
-            .await
-            .insert(session_id.clone(), ntx.clone());
-
-        let history_manager = self.clone();
-        let history_session_id = session_id.clone();
-        let mut history_rx = ntx.subscribe();
-        tokio::spawn(async move {
-            loop {
-                match history_rx.recv().await {
-                    Ok(message) => {
-                        let params = match message.get("params") {
-                            Some(value) => value.clone(),
-                            None => continue,
-                        };
-                        history_manager
-                            .push_to_history(
-                                &history_session_id,
-                                Self::rewrite_notification_session_id(&history_session_id, params),
-                            )
-                            .await;
-                    }
-                    Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
-                    Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
-                        tracing::warn!(
-                            "[AcpManager] Dropped {} session/update notifications for {}",
-                            skipped,
-                            history_session_id
-                        );
-                    }
-                }
-            }
-        });
-
-        let trace = TraceRecord::new(
-            &session_id,
-            TraceEventType::SessionStart,
-            Contributor::new(&provider_name, None),
+            cwd.clone(),
+            workspace_id.clone(),
+            provider_name.clone(),
+            role.clone(),
+            model.clone(),
+            parent_session_id.clone(),
+            &options,
+            AgentProcessType::Acp(Arc::new(process)),
+            acp_session_id.clone(),
+            ntx.clone(),
         )
-        .with_workspace_id(&workspace_id)
-        .with_metadata(
-            "role",
-            serde_json::json!(role.as_deref().unwrap_or("CRAFTER")),
-        )
-        .with_metadata("cwd", serde_json::json!(cwd));
-
-        trace_writer.append_safe(&trace).await;
+        .await;
 
         tracing::info!(
             "[AcpManager] Session {} created from inline command (provider: {}, agent session: {})",
@@ -553,95 +589,20 @@ impl AcpManager {
             (AgentProcessType::Acp(Arc::new(process)), agent_session_id)
         };
 
-        // Create TraceWriter for this session
-        let trace_writer = TraceWriter::new(&cwd);
-
-        // Store everything
-        let record = AcpSessionRecord {
-            session_id: session_id.clone(),
-            name: None,
-            cwd: cwd.clone(),
-            workspace_id: workspace_id.clone(),
-            routa_agent_id: None,
-            provider: Some(provider_name.to_string()),
-            role: role.clone().or(Some("CRAFTER".to_string())),
-            mode_id: None,
-            model: model.clone(),
-            created_at: chrono::Utc::now().to_rfc3339(),
-            first_prompt_sent: false,
-            parent_session_id: parent_session_id.clone(),
-            specialist_id: options.specialist_id.clone(),
-            specialist_system_prompt: options.specialist_system_prompt.clone(),
-        };
-
-        self.sessions
-            .write()
-            .await
-            .insert(session_id.clone(), record);
-
-        self.processes.write().await.insert(
+        self.register_managed_session(
             session_id.clone(),
-            ManagedProcess {
-                process: process_type,
-                acp_session_id: acp_session_id.clone(),
-                preset_id: provider_name.to_string(),
-                created_at: chrono::Utc::now().to_rfc3339(),
-                trace_writer: trace_writer.clone(),
-                cwd: cwd.clone(),
-            },
-        );
-
-        self.notification_channels
-            .write()
-            .await
-            .insert(session_id.clone(), ntx.clone());
-
-        // Keep an in-memory transcript for all live sessions, including prompts
-        // dispatched internally by orchestration instead of the HTTP ACP route.
-        let history_manager = self.clone();
-        let history_session_id = session_id.clone();
-        let mut history_rx = ntx.subscribe();
-        tokio::spawn(async move {
-            loop {
-                match history_rx.recv().await {
-                    Ok(message) => {
-                        let params = match message.get("params") {
-                            Some(value) => value.clone(),
-                            None => continue,
-                        };
-                        history_manager
-                            .push_to_history(
-                                &history_session_id,
-                                Self::rewrite_notification_session_id(&history_session_id, params),
-                            )
-                            .await;
-                    }
-                    Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
-                    Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
-                        tracing::warn!(
-                            "[AcpManager] Dropped {} session/update notifications for {}",
-                            skipped,
-                            history_session_id
-                        );
-                    }
-                }
-            }
-        });
-
-        // Record SessionStart trace
-        let trace = TraceRecord::new(
-            &session_id,
-            TraceEventType::SessionStart,
-            Contributor::new(provider_name, None),
+            cwd.clone(),
+            workspace_id.clone(),
+            provider_name.to_string(),
+            role.clone(),
+            model.clone(),
+            parent_session_id.clone(),
+            &options,
+            process_type,
+            acp_session_id.clone(),
+            ntx.clone(),
         )
-        .with_workspace_id(&workspace_id)
-        .with_metadata(
-            "role",
-            serde_json::json!(role.as_deref().unwrap_or("CRAFTER")),
-        )
-        .with_metadata("cwd", serde_json::json!(cwd));
-
-        trace_writer.append_safe(&trace).await;
+        .await;
 
         tracing::info!(
             "[AcpManager] Session {} created (provider: {}, agent session: {})",
