@@ -9,6 +9,7 @@ pub mod agent;
 pub mod chat;
 pub mod delegate;
 pub mod fitness;
+pub mod graph;
 pub mod harness;
 pub mod kanban;
 pub mod prompt;

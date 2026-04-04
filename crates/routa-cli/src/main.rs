@@ -7,6 +7,7 @@ mod commands;
 
 use crate::commands::acp::AcpAction;
 use crate::commands::fitness::FitnessAction;
+use crate::commands::graph::GraphAction;
 use crate::commands::harness::HarnessAction;
 use clap::{Parser, Subcommand};
 
@@ -197,6 +198,12 @@ enum Commands {
     Review {
         #[command(subcommand)]
         action: ReviewAction,
+    },
+
+    /// Analyze code dependency graph using TreeSitter
+    Graph {
+        #[command(subcommand)]
+        action: GraphAction,
     },
 
     /// Team coordination with an agent lead
@@ -1353,6 +1360,8 @@ async fn main() {
                     }
                 }
             }
+
+            Commands::Graph { action } => commands::graph::run(action),
 
             Commands::Team { action } => {
                 // Resolve full shell PATH so child processes can be found

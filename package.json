@@ -74,6 +74,8 @@
     "codemod:lucide-icons": "node --import tsx tools/codemods/replace-inline-svg-with-lucide.ts --write",
     "fitness:fluency": "cargo run -p routa-cli -- fitness fluency",
     "test:arch:backend-core": "node --import tsx scripts/fitness/check-backend-architecture.ts",
+    "test:arch:dsl": "node --import tsx scripts/fitness/architecture-rule-dsl.ts --json",
+    "scripts:test:arch-dsl": "vitest run scripts/__tests__/architecture-rule-dsl.test.ts",
     "api:validate": "node --import tsx scripts/fitness/validate-api-parity.ts",
     "api:validate:full": "node --import tsx scripts/fitness/validate-api-parity.ts --runtime",
     "docs:specialists:generate": "node --import tsx scripts/docs/generate-specialist-docs.ts --save",

@@ -1,0 +1,50 @@
+version: "1"
+name: "backend-core"
+description: "Core backend architecture rules for Routa — enforces module boundaries and prevents circular dependencies."
+
+rules:
+  - id: core-no-server-imports
+    title: "routa-core must not import from routa-server"
+    suite: boundaries
+    source:
+      folder: "crates/routa-core/src"
+    constraint:
+      type: must_not_depend_on
+      target:
+        folder: "crates/routa-server/src"
+
+  - id: cli-thin-orchestration
+    title: "routa-cli must not depend on routa-server internals"
+    suite: boundaries
+    source:
+      folder: "crates/routa-cli/src"
+    constraint:
+      type: must_not_depend_on
+      target:
+        folder: "crates/routa-server/src/internal"
+
+  - id: scanner-no-core-state
+    title: "routa-scanner must not depend on routa-core state"
+    suite: boundaries
+    source:
+      folder: "crates/routa-scanner/src"
+    constraint:
+      type: must_not_depend_on
+      target:
+        folder: "crates/routa-core/src/state"
+
+  - id: no-cycles-src-core
+    title: "No circular dependencies in src/core TypeScript modules"
+    suite: cycles
+    source:
+      folder: "src/core"
+    constraint:
+      type: no_cycles
+
+  - id: no-cycles-src-app
+    title: "No circular dependencies in src/app TypeScript modules"
+    suite: cycles
+    source:
+      folder: "src/app"
+    constraint:
+      type: no_cycles

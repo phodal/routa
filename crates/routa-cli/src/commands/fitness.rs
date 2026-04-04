@@ -1,5 +1,6 @@
 //! `routa fitness` — repository fitness and fluency assessment entrypoints.
 
+mod arch_dsl;
 mod fluency;
 
 use clap::{Args, Subcommand, ValueEnum};
@@ -11,11 +12,30 @@ const DEFAULT_MODEL_RELATIVE_PATH: &str = "docs/fitness/harness-fluency.model.ya
 const AGENT_ORCHESTRATOR_MODEL_RELATIVE_PATH: &str =
     "docs/fitness/harness-fluency.profile.agent_orchestrator.yaml";
 const DEFAULT_SNAPSHOT_RELATIVE_PATH: &str = "docs/fitness/reports/harness-fluency-latest.json";
+const DEFAULT_ARCHDSL_RELATIVE_PATH: &str = "architecture/rules/backend-core.archdsl.yaml";
 
 #[derive(Subcommand, Debug, Clone)]
 pub enum FitnessAction {
     /// Evaluate the Harness Fluency maturity model
     Fluency(FluencyArgs),
+    /// Parse, validate and emit an execution plan for an architecture rule DSL file
+    #[command(name = "arch-dsl-poc")]
+    ArchDslPoc(ArchDslPocArgs),
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct ArchDslPocArgs {
+    /// Path to the architecture DSL file. Defaults to architecture/rules/backend-core.archdsl.yaml.
+    #[arg(long)]
+    pub dsl: Option<String>,
+
+    /// Repository root. Defaults to the current git toplevel.
+    #[arg(long)]
+    pub repo_root: Option<String>,
+
+    /// Emit JSON output instead of human-readable text.
+    #[arg(long, default_value_t = false)]
+    pub json: bool,
 }
 
 #[derive(Args, Debug, Clone)]
@@ -106,6 +126,7 @@ impl FluencyRunMode {
 pub fn run(action: FitnessAction) -> Result<(), String> {
     match action {
         FitnessAction::Fluency(args) => run_fluency(&args),
+        FitnessAction::ArchDslPoc(args) => run_arch_dsl_poc(&args),
     }
 }
 
@@ -135,6 +156,72 @@ fn run_fluency(args: &FluencyArgs) -> Result<(), String> {
     }
 
     Ok(())
+}
+
+fn run_arch_dsl_poc(args: &ArchDslPocArgs) -> Result<(), String> {
+    let repo_root = resolve_repo_root(args.repo_root.as_deref())?;
+    let workspace_root = resolve_workspace_root()?;
+
+    let dsl_path = match &args.dsl {
+        Some(path) => resolve_requested_path(
+            path,
+            &std::env::current_dir()
+                .map_err(|e| format!("failed to determine cwd: {e}"))?,
+        ),
+        None => {
+            let candidate = repo_root.join(DEFAULT_ARCHDSL_RELATIVE_PATH);
+            if candidate.exists() {
+                candidate
+            } else {
+                workspace_root.join(DEFAULT_ARCHDSL_RELATIVE_PATH)
+            }
+        }
+    };
+
+    let report = arch_dsl::run(&dsl_path, &repo_root);
+
+    if args.json {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&report)
+                .map_err(|e| format!("failed to serialize arch-dsl report: {e}"))?
+        );
+    } else {
+        println!("Architecture DSL: {} — {}", report.name, report.description);
+        if report.valid {
+            println!("Rules ({}):", report.rule_count);
+            for step in &report.execution_plan {
+                let source_mark = if step.source_exists { "ok" } else { "missing" };
+                let target_info = match step.target_exists {
+                    Some(true) => " [target: ok]".to_string(),
+                    Some(false) => " [target: missing]".to_string(),
+                    None => String::new(),
+                };
+                println!(
+                    "  [{suite}] {id}: {desc}  (source: {source_mark}{target_info})",
+                    suite = step.suite,
+                    id = step.rule_id,
+                    desc = step.description,
+                    source_mark = source_mark,
+                    target_info = target_info,
+                );
+            }
+        } else {
+            eprintln!("DSL validation failed:");
+            for error in &report.errors {
+                eprintln!("  [{}] {}", error.field, error.message);
+            }
+        }
+    }
+
+    if report.valid {
+        Ok(())
+    } else {
+        Err(format!(
+            "arch-dsl-poc: {} validation error(s)",
+            report.errors.len()
+        ))
+    }
 }
 
 fn resolved_output_format(args: &FluencyArgs) -> FluencyOutputFormat {
