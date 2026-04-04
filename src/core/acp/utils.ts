@@ -6,6 +6,8 @@
 
 import { getServerBridge } from "@/core/platform";
 
+const WINDOWS_SPAWNABLE_EXTENSIONS = [".cmd", ".bat", ".exe", ".com"];
+
 /**
  * Whether a command path requires the shell to be invoked (Windows only).
  *
@@ -16,6 +18,19 @@ import { getServerBridge } from "@/core/platform";
 export function needsShell(command: string): boolean {
   const lower = command.toLowerCase();
   return lower.endsWith(".cmd") || lower.endsWith(".bat");
+}
+
+function preferSpawnableWindowsPath(candidates: string[]): string | null {
+  const normalized = candidates
+    .map((candidate) => candidate.trim())
+    .filter((candidate) => candidate.length > 0);
+
+  for (const ext of WINDOWS_SPAWNABLE_EXTENSIONS) {
+    const match = normalized.find((candidate) => candidate.toLowerCase().endsWith(ext));
+    if (match) return match;
+  }
+
+  return normalized.at(0) ?? null;
 }
 
 /**
@@ -68,5 +83,12 @@ export async function which(command: string): Promise<string | null> {
   }
 
   // 3. Check system PATH using bridge.process.which
-  return bridge.process.which(command);
+  const resolved = await bridge.process.which(command);
+  if (!resolved) return null;
+
+  if (!isWindows) {
+    return resolved;
+  }
+
+  return preferSpawnableWindowsPath(resolved.split(/\r?\n/));
 }

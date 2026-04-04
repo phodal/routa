@@ -21,7 +21,7 @@ import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
 import { spawn } from "child_process";
-import { which } from "./utils";
+import { needsShell, which } from "./utils";
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -245,6 +245,7 @@ export class AcpRuntimeManager {
       const proc = spawn(binPath, ["--version"], {
         stdio: ["ignore", "pipe", "pipe"],
         timeout: 10_000,
+        shell: needsShell(binPath),
       });
 
       let output = "";

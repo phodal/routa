@@ -95,7 +95,22 @@ class WebProcess implements IPlatformProcess {
     try {
       const whichCmd = process.platform === "win32" ? "where" : "which";
       const result = this.execSync(`${whichCmd} ${command}`);
-      return result.trim().split("\n")[0] || null;
+      const candidates = result
+        .split(/\r?\n/)
+        .map((line: string) => line.trim())
+        .filter(Boolean);
+
+      if (process.platform !== "win32") {
+        return candidates[0] ?? null;
+      }
+
+      const preferred = [".cmd", ".bat", ".exe", ".com"];
+      for (const ext of preferred) {
+        const match = candidates.find((candidate: string) => candidate.toLowerCase().endsWith(ext));
+        if (match) return match;
+      }
+
+      return candidates[0] ?? null;
     } catch {
       return null;
     }

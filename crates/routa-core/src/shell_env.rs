@@ -154,43 +154,105 @@ pub fn which(cmd: &str) -> Option<String> {
     let path = full_path();
     tracing::debug!("[shell_env] Looking for '{}' in PATH", cmd);
 
-    #[cfg(windows)]
-    let extensions: Vec<&str> = {
-        let pathext =
-            std::env::var("PATHEXT").unwrap_or_else(|_| ".COM;.EXE;.BAT;.CMD;.PS1".to_string());
-        // Leak the string so we get 'static references — fine for a one-time init
-        let leaked: &'static str = Box::leak(pathext.into_boxed_str());
-        leaked.split(';').collect()
-    };
-
-    for dir in path.split(PATH_SEP) {
-        let base = Path::new(dir).join(cmd);
-
-        // On Unix: just check the exact name
-        #[cfg(not(windows))]
-        {
+    #[cfg(not(windows))]
+    {
+        for dir in path.split(PATH_SEP) {
+            let base = Path::new(dir).join(cmd);
             if base.is_file() {
                 let result = base.to_string_lossy().to_string();
                 tracing::debug!("[shell_env] Found '{}' at: {}", cmd, result);
                 return Some(result);
             }
         }
+    }
 
-        // On Windows: check with each PATHEXT extension
-        #[cfg(windows)]
-        {
-            // Check exact name first (e.g. cmd already has .exe)
-            if base.is_file() {
-                return Some(base.to_string_lossy().to_string());
-            }
+    #[cfg(windows)]
+    {
+        let pathext =
+            std::env::var("PATHEXT").unwrap_or_else(|_| ".COM;.EXE;.BAT;.CMD;.PS1".to_string());
+        if let Some(resolved) = which_in_path_windows(cmd, path, &pathext) {
+            tracing::debug!("[shell_env] Found '{}' at: {}", cmd, resolved);
+            return Some(resolved);
+        }
+    }
+
+    tracing::warn!("[shell_env] Command '{}' not found in PATH", cmd);
+    None
+}
+
+#[cfg(windows)]
+fn which_in_path_windows(cmd: &str, path: &str, pathext: &str) -> Option<String> {
+    let extensions: Vec<&str> = pathext
+        .split(';')
+        .map(str::trim)
+        .filter(|ext| !ext.is_empty())
+        .collect();
+    let cmd_has_extension = Path::new(cmd).extension().is_some();
+
+    for dir in path.split(PATH_SEP) {
+        if dir.trim().is_empty() {
+            continue;
+        }
+
+        let base = Path::new(dir).join(cmd);
+
+        if cmd_has_extension && base.is_file() {
+            return Some(base.to_string_lossy().to_string());
+        }
+
+        if !cmd_has_extension {
             for ext in &extensions {
                 let with_ext = base.with_extension(ext.trim_start_matches('.'));
                 if with_ext.is_file() {
                     return Some(with_ext.to_string_lossy().to_string());
                 }
             }
+
+            if base.is_file() {
+                return Some(base.to_string_lossy().to_string());
+            }
         }
     }
-    tracing::warn!("[shell_env] Command '{}' not found in PATH", cmd);
+
     None
+}
+
+#[cfg(all(test, windows))]
+mod tests {
+    use super::which_in_path_windows;
+
+    #[test]
+    fn windows_which_prefers_spawnable_extension_before_shim() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let cmd_shim = temp.path().join("npx");
+        let cmd_file = temp.path().join("npx.cmd");
+
+        std::fs::write(&cmd_shim, "shim").expect("write shim");
+        std::fs::write(&cmd_file, "@echo off").expect("write cmd");
+
+        let resolved = which_in_path_windows(
+            "npx",
+            temp.path().to_string_lossy().as_ref(),
+            ".COM;.EXE;.BAT;.CMD;.PS1",
+        )
+        .expect("should resolve npx");
+
+        assert_eq!(resolved.to_lowercase(), cmd_file.to_string_lossy().to_lowercase());
+    }
+
+    #[test]
+    fn windows_which_keeps_explicit_extension_resolution() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let exe_file = temp.path().join("uv.exe");
+        std::fs::write(&exe_file, "binary").expect("write exe");
+
+        let resolved = which_in_path_windows(
+            "uv.exe",
+            temp.path().to_string_lossy().as_ref(),
+            ".COM;.EXE;.BAT;.CMD;.PS1",
+        )
+        .expect("should resolve uv.exe");
+
+        assert_eq!(resolved.to_lowercase(), exe_file.to_string_lossy().to_lowercase());
+    }
 }
