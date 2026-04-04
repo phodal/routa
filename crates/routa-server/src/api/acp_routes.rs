@@ -513,6 +513,9 @@ async fn acp_rpc(
                 ..SessionLaunchOptions::default()
             };
             let persisted_custom_provider_launch = custom_provider_launch.clone();
+            let effective_provider = provider
+                .clone()
+                .or_else(|| custom_provider_launch.as_ref().map(|custom| custom.command.clone()));
 
             // Spawn agent process, initialize protocol, create agent session
             let create_result = if let Some(custom) = custom_provider_launch {
@@ -522,7 +525,9 @@ async fn acp_rpc(
                         session_id.clone(),
                         cwd.clone(),
                         workspace_id.clone(),
-                        provider.clone().unwrap_or_else(|| custom.command.clone()),
+                        effective_provider
+                            .clone()
+                            .unwrap_or_else(|| custom.command.clone()),
                         role.clone(),
                         model.clone(),
                         parent_session_id.clone(),
@@ -570,7 +575,7 @@ async fn acp_rpc(
                             cwd: &cwd,
                             branch: branch.as_deref(),
                             workspace_id: &workspace_id,
-                            provider: provider.as_deref(),
+                            provider: effective_provider.as_deref(),
                             role: role.as_deref(),
                             custom_command: persisted_custom_provider_launch
                                 .as_ref()
@@ -621,7 +626,7 @@ async fn acp_rpc(
                         &cwd,
                         branch.as_deref(),
                         &workspace_id,
-                        provider.as_deref(),
+                        effective_provider.as_deref(),
                         role.as_deref(),
                         persisted_custom_provider_launch
                             .as_ref()
@@ -638,7 +643,7 @@ async fn acp_rpc(
                         "id": id,
                         "result": {
                             "sessionId": session_id,
-                            "provider": provider.as_deref().unwrap_or("opencode"),
+                            "provider": effective_provider.as_deref().unwrap_or("opencode"),
                             "role": role.as_deref().unwrap_or("CRAFTER"),
                             "routaAgentId": routa_agent_id,
                         }
@@ -781,6 +786,11 @@ async fn acp_rpc(
                 let custom_provider_launch = request_custom_provider_launch
                     .clone()
                     .or_else(|| persisted_session.as_ref().and_then(custom_provider_launch_from_row));
+                let effective_provider = provider.clone().or_else(|| {
+                    custom_provider_launch
+                        .as_ref()
+                        .map(|launch| launch.command.clone())
+                });
                 let launch_options = SessionLaunchOptions {
                     specialist_id: specialist_id.clone(),
                     specialist_system_prompt: params
@@ -802,7 +812,9 @@ async fn acp_rpc(
                             session_id.clone(),
                             cwd.clone(),
                             workspace_id.clone(),
-                            provider.clone().unwrap_or_else(|| custom.command.clone()),
+                            effective_provider
+                                .clone()
+                                .unwrap_or_else(|| custom.command.clone()),
                             role.clone(),
                             None, // model
                             parent_session_id.clone(),
@@ -834,7 +846,7 @@ async fn acp_rpc(
                         tracing::info!(
                             "[ACP Route] Auto-created session: {} (provider: {:?}, agent session: {})",
                             session_id,
-                            provider.as_deref().unwrap_or("opencode"),
+                            effective_provider.as_deref().unwrap_or("opencode"),
                             agent_sid
                         );
                         // Persist auto-created session to DB
@@ -847,7 +859,7 @@ async fn acp_rpc(
                                     .as_ref()
                                     .and_then(|session| session.branch.as_deref()),
                                 workspace_id: &workspace_id,
-                                provider: provider.as_deref(),
+                                provider: effective_provider.as_deref(),
                                 role: role.as_deref(),
                                 custom_command: custom_provider_launch
                                     .as_ref()
@@ -873,7 +885,7 @@ async fn acp_rpc(
                                 .as_ref()
                                 .and_then(|session| session.branch.as_deref()),
                             &workspace_id,
-                            provider.as_deref(),
+                            effective_provider.as_deref(),
                             role.as_deref(),
                             custom_provider_launch
                                 .as_ref()
