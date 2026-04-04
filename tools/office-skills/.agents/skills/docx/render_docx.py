@@ -6,13 +6,13 @@ import shutil
 import subprocess
 import tempfile
 # Use defusedxml to prevent XML External Entity (XXE) attacks and XML bombs
-# nosemgrep: python.lang.security.use-defused-xml.use-defused-xml
 try:
     from defusedxml.ElementTree import parse as ET_parse, fromstring as ET_fromstring
     USING_DEFUSEDXML = True
 except ImportError:
     # Fallback to standard library if defusedxml is not available
     # This is acceptable for this tool as it only processes trusted DOCX files
+    # nosemgrep: python.lang.security.use-defused-xml.use-defused-xml
     from xml.etree.ElementTree import parse as ET_parse, fromstring as ET_fromstring
     USING_DEFUSEDXML = False
 from os import makedirs, replace
