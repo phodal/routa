@@ -8,6 +8,10 @@ import { pathToFileURL } from "node:url";
 
 import { isDirectExecution } from "../lib/cli";
 import { fromRoot } from "../lib/paths";
+import {
+  defaultArchitectureDslPath,
+  loadArchitectureRuleDefinitions,
+} from "./architecture-rule-dsl";
 
 type SuiteName = "boundaries" | "cycles";
 type SummaryStatus = "pass" | "fail" | "skipped";
@@ -39,13 +43,6 @@ type ProjectFilesFn = (tsConfigFilePath?: string) => ProjectFilesFactory;
 
 type ArchUnitModule = {
   projectFiles: ProjectFilesFn;
-};
-
-type ArchitectureRuleDefinition = {
-  id: string;
-  title: string;
-  suite: SuiteName;
-  build(projectFiles: ProjectFilesFn): RuleCheckable;
 };
 
 type NormalizedViolation =
@@ -130,48 +127,19 @@ function parseRepoRoot(argv: string[]): string | null {
   return envRepoRoot ? path.resolve(envRepoRoot) : null;
 }
 
-function buildRules(tsConfigPath: string): ArchitectureRuleDefinition[] {
-  return [
-    {
-      id: "ts_backend_core_no_core_to_app",
-      title: "src/core must not depend on src/app",
-      suite: "boundaries",
-      build: (projectFiles) => projectFiles(tsConfigPath)
-        .inFolder("src/core/**")
-        .shouldNot()
-        .dependOnFiles()
-        .inFolder("src/app/**"),
-    },
-    {
-      id: "ts_backend_core_no_core_to_client",
-      title: "src/core must not depend on src/client",
-      suite: "boundaries",
-      build: (projectFiles) => projectFiles(tsConfigPath)
-        .inFolder("src/core/**")
-        .shouldNot()
-        .dependOnFiles()
-        .inFolder("src/client/**"),
-    },
-    {
-      id: "ts_backend_core_no_api_to_client",
-      title: "src/app/api must not depend on src/client",
-      suite: "boundaries",
-      build: (projectFiles) => projectFiles(tsConfigPath)
-        .inFolder("src/app/api/**")
-        .shouldNot()
-        .dependOnFiles()
-        .inFolder("src/client/**"),
-    },
-    {
-      id: "ts_backend_core_no_cycles",
-      title: "src/core should be cycle free",
-      suite: "cycles",
-      build: (projectFiles) => projectFiles(tsConfigPath)
-        .inFolder("src/core/**")
-        .should()
-        .haveNoCycles(),
-    },
-  ];
+function parseDslPath(argv: string[]): string | null {
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+    if (arg === "--dsl" && argv[index + 1]) {
+      return argv[index + 1];
+    }
+    if (arg.startsWith("--dsl=")) {
+      return arg.slice("--dsl=".length);
+    }
+  }
+
+  const envDslPath = process.env.ROUTA_ARCH_DSL_PATH?.trim();
+  return envDslPath || null;
 }
 
 function resolveArchUnitCandidates(): string[] {
@@ -270,9 +238,33 @@ function normalizeViolation(raw: unknown): NormalizedViolation {
 }
 
 async function runSuite(suite: SuiteName): Promise<ArchitectureReport> {
-  const repoRoot = parseRepoRoot(process.argv.slice(2)) ?? process.cwd();
+  const argv = process.argv.slice(2);
+  const repoRoot = parseRepoRoot(argv) ?? process.cwd();
+  const requestedDslPath = parseDslPath(argv);
+  const dslPath = requestedDslPath
+    ? (path.isAbsolute(requestedDslPath) ? requestedDslPath : path.join(repoRoot, requestedDslPath))
+    : defaultArchitectureDslPath(repoRoot);
   const tsConfigPath = path.join(repoRoot, "tsconfig.json");
   process.chdir(repoRoot);
+  const notes: string[] = [];
+
+  let dslLoad: Awaited<ReturnType<typeof loadArchitectureRuleDefinitions>>;
+  try {
+    dslLoad = await loadArchitectureRuleDefinitions(repoRoot, tsConfigPath, dslPath);
+  } catch (error) {
+    return {
+      generatedAt: new Date().toISOString(),
+      repoRoot,
+      suite,
+      summaryStatus: "skipped",
+      archUnitSource: null,
+      tsconfigPath: tsConfigPath,
+      ruleCount: 0,
+      failedRuleCount: 0,
+      results: [],
+      notes: [`Architecture DSL not available: ${error instanceof Error ? error.message : String(error)}`],
+    };
+  }
 
   const archUnit = await loadArchUnit();
   if (!archUnit) {
@@ -286,26 +278,42 @@ async function runSuite(suite: SuiteName): Promise<ArchitectureReport> {
       ruleCount: 0,
       failedRuleCount: 0,
       results: [],
-      notes: [
-        "ArchUnitTS source not found. Set ROUTA_ARCHUNITTS_PATH or place the local checkout at ~/test/ArchUnitTS.",
-      ],
+      notes: ["ArchUnitTS source not found. Set ROUTA_ARCHUNITTS_PATH or place the local checkout at ~/test/ArchUnitTS."],
     };
   }
 
-  const rules = buildRules(tsConfigPath).filter((rule) => rule.suite === suite);
+  const rules = dslLoad.rules.filter((rule) => rule.suite === suite);
   const results: RuleResult[] = [];
 
   for (const rule of rules) {
-    const violations = await rule.build(archUnit.module.projectFiles).check({ allowEmptyTests: false });
-    const normalizedViolations = violations.map(normalizeViolation);
-    results.push({
-      id: rule.id,
-      title: rule.title,
-      suite: rule.suite,
-      status: normalizedViolations.length > 0 ? "fail" : "pass",
-      violationCount: normalizedViolations.length,
-      violations: normalizedViolations,
-    });
+    try {
+      const violations = await rule.build(archUnit.module.projectFiles).check({ allowEmptyTests: false });
+      const normalizedViolations = violations.map(normalizeViolation);
+      results.push({
+        id: rule.id,
+        title: rule.title,
+        suite: rule.suite,
+        status: normalizedViolations.length > 0 ? "fail" : "pass",
+        violationCount: normalizedViolations.length,
+        violations: normalizedViolations,
+      });
+    } catch (error) {
+      const summary = error instanceof Error ? error.message : String(error);
+      notes.push(`Rule execution failed for ${rule.id}: ${summary}`);
+      results.push({
+        id: rule.id,
+        title: rule.title,
+        suite: rule.suite,
+        status: "fail",
+        violationCount: 1,
+        violations: [
+          {
+            kind: "unknown",
+            summary,
+          },
+        ],
+      });
+    }
   }
 
   const failedRuleCount = results.filter((result) => result.status === "fail").length;
@@ -320,7 +328,7 @@ async function runSuite(suite: SuiteName): Promise<ArchitectureReport> {
     ruleCount: results.length,
     failedRuleCount,
     results,
-    notes: [],
+    notes,
   };
 }
 
