@@ -5,7 +5,28 @@
       "Bash(ln -sfn ../agents/skills .claude/skills)",
       "Bash(ln -sfn ../.agents/skills .claude/skills)",
       "Bash(git add:*)",
-      "Bash(git commit -m ':*)"
+      "Bash(git commit -m ':*)",
+      "Bash(python3 render_docx.py /Users/phodal/ai/routa-js/Routa-项目介绍.docx --output_dir /Users/phodal/ai/routa-js/docx-render)",
+      "Bash(python3 /tmp/create_routa_doc.py)",
+      "Bash(python3 render_docx.py /tmp/routa_project_intro.docx --output_dir /tmp/docx_render --emit_pdf)",
+      "Bash(python3 render_docx.py /tmp/routa_project_intro.docx --output_dir /tmp/docx_render)",
+      "Bash(ls:*)",
+      "Bash(brew install:*)",
+      "Bash(brew link:*)",
+      "Read(//opt/homebrew/Cellar/poppler/**)",
+      "Read(//usr/local/**)",
+      "Bash(brew unlink:*)",
+      "Bash(pdfinfo --version)",
+      "Bash(/opt/homebrew/bin/pdfinfo:*)",
+      "Bash(export PATH=\"/opt/homebrew/bin:$PATH\")",
+      "Bash(pip3 install:*)",
+      "Bash(python3 -c \"import sys; print\\(sys.executable\\)\")",
+      "Bash(python3 -c \"import pdf2image; print\\('pdf2image OK'\\)\")",
+      "Bash(/usr/local/bin/python3 -m pip install pdf2image)",
+      "Bash(/usr/local/bin/python3 -c \"import sys; print\\(sys.path\\)\")",
+      "Bash(/usr/local/bin/python3 -c \"import pdf2image; print\\(pdf2image.__file__\\)\")",
+      "Bash(/usr/local/bin/python3 /Users/phodal/ai/routa-js/tools/ppt-template/.claude/skills/docx/render_docx.py /tmp/routa_project_intro.docx --output_dir /tmp/docx_render)",
+      "Bash(file /tmp/docx_render/*.png)"
     ]
   }
 }
