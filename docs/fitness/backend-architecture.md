@@ -73,13 +73,15 @@ metrics:
 ## Local Commands
 
 ```bash
+npm run test:arch:dsl
 npm run test:arch:backend-core -- --suite boundaries
 npm run test:arch:backend-core -- --suite cycles
 npm run test:arch:backend-core -- --suite boundaries --json
+cargo run -p routa-cli -- fitness arch-dsl --json
 ```
 
 ## Known Limits
 
 - 当前只覆盖 TypeScript backend core，不覆盖 Rust backend
 - 结果还未进入专用 UI 面板，第一阶段主要用于 entrix advisory evidence
-- Rust 侧当前只做同 DSL 的解析和验证 POC，还没有对 crate 图执行等价规则
+- Rust CLI 已经支持同 DSL 的 graph 执行，但当前 backend-core fitness metric 仍以 TypeScript `ArchUnitTS` 路径为主

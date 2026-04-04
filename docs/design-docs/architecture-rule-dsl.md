@@ -21,7 +21,7 @@ This document defines a small, engine-neutral Architecture Rule DSL for those go
 ## Non-Goals
 
 - This is not a full architecture language in the first iteration.
-- This does not yet execute Rust dependency rules against crate graphs.
+- This does not yet execute every rule family on every engine.
 - This does not replace `dependency-cruiser`, `entrix`, or the current architecture API response shape.
 - This does not move UI i18n into the executor. The DSL carries stable ids and optional display metadata only.
 
@@ -118,7 +118,7 @@ Shared rule fields:
 - `kind`: current values `dependency` or `cycle`
 - `suite`: current values `boundaries` or `cycles`
 - `severity`: current value `advisory`, future values may add `warning` or `error`
-- `engine_hints`: optional executor hints such as `archunitts`
+- `engine_hints`: optional executor hints such as `archunitts` or `graph`
 
 #### Dependency Rule
 
@@ -185,10 +185,10 @@ Recommended approach:
 Why this approach:
 
 - It reuses the existing `scripts/fitness/check-backend-architecture.ts` execution path.
-- It keeps the POC close to the current working behavior.
+- It keeps the first production rollout close to the current working behavior.
 - It makes rule execution a pure compilation step from DSL to ArchUnitTS builders.
 
-Current POC scope:
+Current rollout scope:
 
 - `files` selectors
 - `dependency` + `must_not_depend_on`
@@ -199,14 +199,14 @@ Current POC scope:
 
 Recommended approach:
 
-1. Add a new `routa-cli fitness arch-dsl-poc` command.
+1. Add a new `routa-cli fitness arch-dsl` command.
 2. Parse YAML into typed structs with `serde` + `serde_yaml`.
 3. Run semantic validation:
    - schema id is supported
    - selector ids are unique
    - rules reference existing selectors
    - `kind`, `relation`, and selector language combinations are supported
-4. Emit a normalized execution plan as text or JSON.
+4. Execute `graph`-backed rules directly and emit a normalized execution plan as text or JSON.
 
 Why this approach:
 
@@ -214,10 +214,12 @@ Why this approach:
 - It gives Routa a second parser and validator immediately.
 - It creates a clean handoff point for future Rust-backed architecture executors.
 
-POC boundary:
+Current execution boundary:
 
 - Rust validates and normalizes the DSL.
-- Rust does not yet execute dependency graph analysis.
+- Rust executes `graph`-backed dependency and cycle rules directly from the CLI.
+- ArchUnitTS-compatible rules remain owned by the TypeScript fitness path.
+- TypeScript `ArchUnitTS` rules still execute through `scripts/fitness/check-backend-architecture.ts`.
 
 ## Normalized Semantic Contract
 
@@ -277,19 +279,19 @@ Why this format:
 
 This makes the Markdown case an input contract for generation, not the source of truth for execution.
 
-## POC Layout
+## Current Layout
 
-The initial POC uses these files:
+The current rollout uses these files:
 
 - `architecture/rules/backend-core.archdsl.yaml`
 - `architecture/rules/cases/backend-core.archdsl.md`
 - `scripts/fitness/architecture-rule-dsl.ts`
 - `scripts/fitness/check-backend-architecture.ts`
-- `crates/routa-cli/src/commands/fitness/arch_dsl_poc.rs`
+- `crates/routa-cli/src/commands/fitness/arch_dsl.rs`
 
 ## Future Extensions
 
-Expected next rule families after the first POC:
+Expected next rule families after the first rollout:
 
 - layered rules
 - slice isolation rules

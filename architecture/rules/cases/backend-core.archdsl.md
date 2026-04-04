@@ -10,6 +10,11 @@ temperature_hint: low
 
 Generate a YAML architecture rule model for Routa's TypeScript backend core.
 
+The response is consumed by an automated validator. Treat this as a fresh synthesis task and ignore repository state.
+- Do not mention whether a file already exists.
+- Do not mention validation, context, or explanations.
+- The first line of the response must be exactly `schema: routa.archdsl/v1`.
+
 ## Context
 
 - `src/core/**` contains shared backend domain and orchestration logic.
@@ -135,6 +140,8 @@ rules:
 ## Output Contract
 
 - Output YAML only.
+- The first response line must be exactly `schema: routa.archdsl/v1`.
 - Do not wrap the YAML in markdown fences.
 - Do not add explanations before or after the YAML.
-- The generated file must validate in both the TypeScript and Rust POCs.
+- Do not say that the file already exists, already matches, or is unchanged.
+- The generated file must validate in both the TypeScript and Rust architecture DSL paths.
