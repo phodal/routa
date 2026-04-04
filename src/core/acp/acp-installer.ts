@@ -290,20 +290,27 @@ async function selectDistributionType(
   return null;
 }
 
-async function installNpxAgent(agent: RegistryAgent): Promise<InstallResult> {
-  const npxDist = agent.distribution.npx!;
-  console.log(`[AcpInstaller] Pre-downloading npx package: ${npxDist.package}`);
+interface PreloadCommandOptions {
+  agentId: string;
+  binaryName: "npx" | "uvx";
+  args: string[];
+  distributionType: "npx" | "uvx";
+  packageName: string;
+  successSignal: string;
+}
 
-  // Pre-download the package by running npx with --yes flag
-  // This ensures the package is cached for faster startup later
+async function runPreloadCommand(options: PreloadCommandOptions): Promise<InstallResult> {
+  const { agentId, binaryName, args, distributionType, packageName, successSignal } = options;
+  const resolvedCommand = await which(binaryName);
+  const command = resolvedCommand ?? binaryName;
+
+  console.log(`[AcpInstaller] Running: ${binaryName} ${args.join(" ")}`);
+
   return new Promise((resolve) => {
-    const args = ["-y", npxDist.package, "--help"];
-    console.log(`[AcpInstaller] Running: npx ${args.join(" ")}`);
-    void which("npx").then((resolvedNpx) => {
-      const command = resolvedNpx ?? "npx";
+    try {
       const proc = spawn(command, args, {
         stdio: ["ignore", "pipe", "pipe"],
-        timeout: 120000, // 2 minute timeout for download
+        timeout: 120000,
         shell: needsShell(command),
       });
 
@@ -313,36 +320,63 @@ async function installNpxAgent(agent: RegistryAgent): Promise<InstallResult> {
       });
 
       proc.on("close", (code) => {
-        // Even if --help fails, the package should be downloaded
-        // Some packages don't support --help, so we don't check exit code strictly
-        if (code === 0 || stderr.includes("npm warn exec")) {
-          console.log(`[AcpInstaller] Agent ${agent.id} pre-downloaded via npx: ${npxDist.package}`);
+        if (code === 0 || stderr.includes(successSignal)) {
+          console.log(
+            `[AcpInstaller] Agent ${agentId} pre-downloaded via ${distributionType}: ${packageName}`
+          );
           resolve({
             success: true,
-            agentId: agent.id,
-            distributionType: "npx",
+            agentId,
+            distributionType,
           });
-        } else {
-          console.warn(`[AcpInstaller] npx pre-download may have issues (code=${code}): ${stderr}`);
-          // Still mark as success - the actual run will show the real error
-          resolve({
-            success: true,
-            agentId: agent.id,
-            distributionType: "npx",
-          });
+          return;
         }
+
+        console.warn(
+          `[AcpInstaller] ${distributionType} pre-download may have issues (code=${code}): ${stderr}`
+        );
+        resolve({
+          success: true,
+          agentId,
+          distributionType,
+        });
       });
 
       proc.on("error", (err) => {
-        console.error(`[AcpInstaller] npx pre-download failed:`, err);
+        console.error(`[AcpInstaller] ${distributionType} pre-download failed:`, err);
         resolve({
           success: false,
-          agentId: agent.id,
-          distributionType: "npx",
+          agentId,
+          distributionType,
           error: `Failed to pre-download package: ${err.message}`,
         });
       });
-    });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(`[AcpInstaller] ${distributionType} pre-download setup failed:`, err);
+      resolve({
+        success: false,
+        agentId,
+        distributionType,
+        error: `Failed to pre-download package: ${message}`,
+      });
+    }
+  });
+}
+
+async function installNpxAgent(agent: RegistryAgent): Promise<InstallResult> {
+  const npxDist = agent.distribution.npx!;
+  console.log(`[AcpInstaller] Pre-downloading npx package: ${npxDist.package}`);
+
+  // Pre-download the package by running npx with --yes flag
+  // This ensures the package is cached for faster startup later
+  return runPreloadCommand({
+    agentId: agent.id,
+    binaryName: "npx",
+    args: ["-y", npxDist.package, "--help"],
+    distributionType: "npx",
+    packageName: npxDist.package,
+    successSignal: "npm warn exec",
   });
 }
 
@@ -351,50 +385,13 @@ async function installUvxAgent(agent: RegistryAgent): Promise<InstallResult> {
   console.log(`[AcpInstaller] Pre-downloading uvx package: ${uvxDist.package}`);
 
   // Pre-download the package by running uvx with --help flag
-  return new Promise((resolve) => {
-    const args = [uvxDist.package, "--help"];
-    console.log(`[AcpInstaller] Running: uvx ${args.join(" ")}`);
-    void which("uvx").then((resolvedUvx) => {
-      const command = resolvedUvx ?? "uvx";
-      const proc = spawn(command, args, {
-        stdio: ["ignore", "pipe", "pipe"],
-        timeout: 120000, // 2 minute timeout for download
-        shell: needsShell(command),
-      });
-
-      let stderr = "";
-      proc.stderr?.on("data", (data) => {
-        stderr += data.toString();
-      });
-
-      proc.on("close", (code) => {
-        if (code === 0 || stderr.includes("Resolved")) {
-          console.log(`[AcpInstaller] Agent ${agent.id} pre-downloaded via uvx: ${uvxDist.package}`);
-          resolve({
-            success: true,
-            agentId: agent.id,
-            distributionType: "uvx",
-          });
-        } else {
-          console.warn(`[AcpInstaller] uvx pre-download may have issues (code=${code}): ${stderr}`);
-          resolve({
-            success: true,
-            agentId: agent.id,
-            distributionType: "uvx",
-          });
-        }
-      });
-
-      proc.on("error", (err) => {
-        console.error(`[AcpInstaller] uvx pre-download failed:`, err);
-        resolve({
-          success: false,
-          agentId: agent.id,
-          distributionType: "uvx",
-          error: `Failed to pre-download package: ${err.message}`,
-        });
-      });
-    });
+  return runPreloadCommand({
+    agentId: agent.id,
+    binaryName: "uvx",
+    args: [uvxDist.package, "--help"],
+    distributionType: "uvx",
+    packageName: uvxDist.package,
+    successSignal: "Resolved",
   });
 }
 
