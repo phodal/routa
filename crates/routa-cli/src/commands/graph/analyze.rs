@@ -261,11 +261,7 @@ fn analyze_directory(root: &Path, requested_lang: AnalysisLang) -> DependencyGra
                 AnalysisLang::Auto => unreachable!(),
             };
 
-            let dep_id = if is_external {
-                dep.clone()
-            } else {
-                dep.clone()
-            };
+            let dep_id = dep.clone();
 
             nodes.entry(dep_id.clone()).or_insert_with(|| GraphNode {
                 id: dep_id.clone(),
