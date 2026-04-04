@@ -63,6 +63,43 @@ async fn resolve_session_cwd(
         .unwrap_or_else(|| ".".to_string())
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct CustomProviderLaunch {
+    command: String,
+    args: Vec<String>,
+}
+
+fn extract_custom_provider_launch(
+    params: &serde_json::Value,
+) -> Result<Option<CustomProviderLaunch>, String> {
+    let Some(raw_command) = params.get("customCommand") else {
+        return Ok(None);
+    };
+
+    let command = raw_command
+        .as_str()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| "customCommand must be a non-empty string".to_string())?
+        .to_string();
+
+    let args = match params.get("customArgs") {
+        None => Vec::new(),
+        Some(value) => value
+            .as_array()
+            .ok_or_else(|| "customArgs must be an array of strings".to_string())?
+            .iter()
+            .map(|item| {
+                item.as_str()
+                    .map(|value| value.to_string())
+                    .ok_or_else(|| "customArgs must be an array of strings".to_string())
+            })
+            .collect::<Result<Vec<_>, _>>()?,
+    };
+
+    Ok(Some(CustomProviderLaunch { command, args }))
+}
+
 /// Type alias for the SSE stream used in ACP responses.
 type AcpSseStream =
     std::pin::Pin<Box<dyn tokio_stream::Stream<Item = Result<Event, Infallible>> + Send>>;
@@ -334,6 +371,19 @@ async fn acp_rpc(
         }
 
         "session/new" => {
+            let custom_provider_launch = match extract_custom_provider_launch(&params) {
+                Ok(value) => value,
+                Err(message) => {
+                    return Ok(AcpResponse::Json(Json(serde_json::json!({
+                        "jsonrpc": "2.0",
+                        "id": id,
+                        "error": {
+                            "code": -32602,
+                            "message": message
+                        }
+                    }))));
+                }
+            };
             let requested_cwd = params
                 .get("cwd")
                 .and_then(|v| v.as_str())
@@ -450,22 +500,41 @@ async fn acp_rpc(
             };
 
             // Spawn agent process, initialize protocol, create agent session
-            match state
-                .acp_manager
-                .create_session_with_options(
-                    session_id.clone(),
-                    cwd.clone(),
-                    workspace_id.clone(),
-                    provider.clone(),
-                    role.clone(),
-                    model.clone(),
-                    parent_session_id.clone(),
-                    tool_mode.clone(),
-                    mcp_profile.clone(),
-                    launch_options,
-                )
-                .await
-            {
+            let create_result = if let Some(custom) = custom_provider_launch {
+                state
+                    .acp_manager
+                    .create_session_from_inline(
+                        session_id.clone(),
+                        cwd.clone(),
+                        workspace_id.clone(),
+                        provider.clone().unwrap_or_else(|| custom.command.clone()),
+                        role.clone(),
+                        model.clone(),
+                        parent_session_id.clone(),
+                        custom.command,
+                        custom.args,
+                        launch_options,
+                    )
+                    .await
+            } else {
+                state
+                    .acp_manager
+                    .create_session_with_options(
+                        session_id.clone(),
+                        cwd.clone(),
+                        workspace_id.clone(),
+                        provider.clone(),
+                        role.clone(),
+                        model.clone(),
+                        parent_session_id.clone(),
+                        tool_mode.clone(),
+                        mcp_profile.clone(),
+                        launch_options,
+                    )
+                    .await
+            };
+
+            match create_result {
                 Ok((_our_sid, _agent_sid)) => {
                     // Assign worktree session now that creation succeeded
                     if let Some(ref wt_id) = validated_worktree_id {
@@ -1389,7 +1458,10 @@ mod tests {
     use serde_json::json;
     use tokio::sync::broadcast;
 
-    use super::{acp_rpc, has_explicit_cwd, resolve_session_cwd, AcpResponse};
+    use super::{
+        acp_rpc, extract_custom_provider_launch, has_explicit_cwd, resolve_session_cwd,
+        AcpResponse, CustomProviderLaunch,
+    };
     use routa_core::acp::terminal_manager::TerminalManager;
 
     fn json_response_value(response: AcpResponse) -> serde_json::Value {
@@ -1406,6 +1478,35 @@ mod tests {
         assert!(!has_explicit_cwd(Some("")));
         assert!(!has_explicit_cwd(Some("   ")));
         assert!(!has_explicit_cwd(Some(".")));
+    }
+
+    #[test]
+    fn custom_provider_launch_extracts_command_and_args() {
+        let launch = extract_custom_provider_launch(&json!({
+            "customCommand": "codex-acp2",
+            "customArgs": ["--stdio", "--verbose"]
+        }))
+        .expect("custom provider should parse")
+        .expect("custom provider should exist");
+
+        assert_eq!(
+            launch,
+            CustomProviderLaunch {
+                command: "codex-acp2".to_string(),
+                args: vec!["--stdio".to_string(), "--verbose".to_string()],
+            }
+        );
+    }
+
+    #[test]
+    fn custom_provider_launch_rejects_non_string_args() {
+        let error = extract_custom_provider_launch(&json!({
+            "customCommand": "codex-acp2",
+            "customArgs": ["--stdio", 123]
+        }))
+        .expect_err("invalid custom args should fail");
+
+        assert_eq!(error, "customArgs must be an array of strings");
     }
 
     #[tokio::test]
