@@ -88,5 +88,28 @@
       "Bash(BOARD_ID=\"64c22267-d844-40f5-8e36-e82f9809d273\")",
       "Bash(__NEW_LINE_19efad9d6abf2164__ echo \"=== BDD Scenario 1: Board queue state ===\")"
     ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node scripts/check-tool-permission.js"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node scripts/check-prompt-policy.js"
+          }
+        ]
+      }
+    ]
   }
 }
