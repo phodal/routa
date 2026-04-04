@@ -52,6 +52,10 @@ pub struct SessionMetadata {
     #[serde(rename = "modeId")]
     pub mode_id: Option<String>,
     pub model: Option<String>,
+    #[serde(rename = "customCommand")]
+    pub custom_command: Option<String>,
+    #[serde(rename = "customArgs", default)]
+    pub custom_args: Vec<String>,
     #[serde(rename = "parentSessionId")]
     pub parent_session_id: Option<String>,
     #[serde(rename = "createdAt")]
@@ -81,6 +85,10 @@ pub struct SessionRecord {
     #[serde(rename = "modeId")]
     pub mode_id: Option<String>,
     pub model: Option<String>,
+    #[serde(rename = "customCommand")]
+    pub custom_command: Option<String>,
+    #[serde(rename = "customArgs", default)]
+    pub custom_args: Vec<String>,
     #[serde(rename = "parentSessionId")]
     pub parent_session_id: Option<String>,
     #[serde(rename = "createdAt")]
@@ -145,6 +153,8 @@ impl LocalSessionProvider {
                 "role": session.role,
                 "modeId": session.mode_id,
                 "model": session.model,
+                "customCommand": session.custom_command,
+                "customArgs": session.custom_args,
                 "parentSessionId": session.parent_session_id,
                 "createdAt": session.created_at,
             }),
@@ -250,6 +260,15 @@ impl LocalSessionProvider {
             role: data["role"].as_str().map(|s| s.to_string()),
             mode_id: data["modeId"].as_str().map(|s| s.to_string()),
             model: data["model"].as_str().map(|s| s.to_string()),
+            custom_command: data["customCommand"].as_str().map(|s| s.to_string()),
+            custom_args: data["customArgs"]
+                .as_array()
+                .map(|items| {
+                    items.iter()
+                        .filter_map(|item| item.as_str().map(|value| value.to_string()))
+                        .collect()
+                })
+                .unwrap_or_default(),
             parent_session_id: data["parentSessionId"].as_str().map(|s| s.to_string()),
             created_at,
             updated_at,
@@ -334,6 +353,8 @@ mod tests {
             role: Some("ROUTA".to_string()),
             mode_id: None,
             model: None,
+            custom_command: None,
+            custom_args: Vec::new(),
             parent_session_id: None,
             created_at: "2025-01-01T00:00:00.000Z".to_string(),
             updated_at: "2025-01-01T00:00:00.000Z".to_string(),
@@ -348,7 +369,9 @@ mod tests {
         let provider =
             LocalSessionProvider::new_with_storage_root(project_path.to_str().unwrap(), tmp.path());
 
-        let session = make_session("sess-1", project_path.to_str().unwrap());
+        let mut session = make_session("sess-1", project_path.to_str().unwrap());
+        session.custom_command = Some("uvx".to_string());
+        session.custom_args = vec!["codex-acp".to_string(), "--stdio".to_string()];
         provider.save(&session).await.unwrap();
 
         let loaded = provider.get("sess-1").await;
@@ -357,6 +380,11 @@ mod tests {
         assert_eq!(loaded.id, "sess-1");
         assert_eq!(loaded.name.as_deref(), Some("Test Session"));
         assert_eq!(loaded.workspace_id, "ws-1");
+        assert_eq!(loaded.custom_command.as_deref(), Some("uvx"));
+        assert_eq!(
+            loaded.custom_args,
+            vec!["codex-acp".to_string(), "--stdio".to_string()]
+        );
     }
 
     #[tokio::test]

@@ -136,6 +136,8 @@ impl Database {
                     provider        TEXT,
                     role            TEXT,
                     mode_id         TEXT,
+                    custom_command  TEXT,
+                    custom_args     TEXT NOT NULL DEFAULT '[]',
                     first_prompt_sent INTEGER DEFAULT 0,
                     message_history TEXT NOT NULL DEFAULT '[]',
                     created_at      INTEGER NOT NULL,
@@ -385,6 +387,8 @@ impl Database {
             Self::ignore_duplicate_column(conn.execute("ALTER TABLE acp_sessions ADD COLUMN branch TEXT", []))?;
             // Add parent_session_id to acp_sessions for CRAFTER child session tracking
             Self::ignore_duplicate_column(conn.execute("ALTER TABLE acp_sessions ADD COLUMN parent_session_id TEXT", []))?;
+            Self::ignore_duplicate_column(conn.execute("ALTER TABLE acp_sessions ADD COLUMN custom_command TEXT", []))?;
+            Self::ignore_duplicate_column(conn.execute("ALTER TABLE acp_sessions ADD COLUMN custom_args TEXT NOT NULL DEFAULT '[]'", []))?;
             Self::ignore_duplicate_column(conn.execute("ALTER TABLE codebases ADD COLUMN source_type TEXT", []))?;
             Self::ignore_duplicate_column(conn.execute("ALTER TABLE codebases ADD COLUMN source_url TEXT", []))?;
             conn.execute_batch(

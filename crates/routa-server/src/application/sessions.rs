@@ -566,6 +566,8 @@ mod tests {
             provider: Some("codex".to_string()),
             role: Some("CRAFTER".to_string()),
             mode_id: Some("default".to_string()),
+            custom_command: None,
+            custom_args: Vec::new(),
             first_prompt_sent,
             message_history: Vec::new(),
             created_at,
@@ -700,6 +702,8 @@ mod tests {
                 workspace_id: "default",
                 provider: Some("claude"),
                 role: Some("CRAFTER"),
+                custom_command: None,
+                custom_args: None,
                 parent_session_id: None,
             })
             .await

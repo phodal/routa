@@ -20,7 +20,7 @@ use routa_core::acp::SessionLaunchOptions;
 use routa_core::models::agent::{Agent, AgentRole};
 use routa_core::orchestration::{OrchestratorConfig, RoutaOrchestrator, SpecialistConfig};
 use routa_core::storage::{LocalSessionProvider, SessionRecord};
-use routa_core::store::acp_session_store::CreateAcpSessionParams;
+use routa_core::store::acp_session_store::{AcpSessionRow, CreateAcpSessionParams};
 
 pub fn router() -> Router<AppState> {
     Router::new().route("/", get(acp_sse).post(acp_rpc))
@@ -98,6 +98,20 @@ fn extract_custom_provider_launch(
     };
 
     Ok(Some(CustomProviderLaunch { command, args }))
+}
+
+fn custom_provider_launch_from_row(session: &AcpSessionRow) -> Option<CustomProviderLaunch> {
+    let command = session
+        .custom_command
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())?
+        .to_string();
+
+    Some(CustomProviderLaunch {
+        command,
+        args: session.custom_args.clone(),
+    })
 }
 
 /// Type alias for the SSE stream used in ACP responses.
@@ -498,6 +512,7 @@ async fn acp_rpc(
                 allowed_native_tools: derive_allowed_native_tools(specialist_id.as_deref()),
                 ..SessionLaunchOptions::default()
             };
+            let persisted_custom_provider_launch = custom_provider_launch.clone();
 
             // Spawn agent process, initialize protocol, create agent session
             let create_result = if let Some(custom) = custom_provider_launch {
@@ -557,6 +572,12 @@ async fn acp_rpc(
                             workspace_id: &workspace_id,
                             provider: provider.as_deref(),
                             role: role.as_deref(),
+                            custom_command: persisted_custom_provider_launch
+                                .as_ref()
+                                .map(|launch| launch.command.as_str()),
+                            custom_args: persisted_custom_provider_launch
+                                .as_ref()
+                                .map(|launch| launch.args.as_slice()),
                             parent_session_id: parent_session_id.as_deref(),
                         })
                         .await
@@ -602,6 +623,12 @@ async fn acp_rpc(
                         &workspace_id,
                         provider.as_deref(),
                         role.as_deref(),
+                        persisted_custom_provider_launch
+                            .as_ref()
+                            .map(|launch| launch.command.as_str()),
+                        persisted_custom_provider_launch
+                            .as_ref()
+                            .map(|launch| launch.args.as_slice()),
                         parent_session_id.as_deref(),
                     )
                     .await;
@@ -632,6 +659,19 @@ async fn acp_rpc(
         }
 
         "session/prompt" => {
+            let request_custom_provider_launch = match extract_custom_provider_launch(&params) {
+                Ok(value) => value,
+                Err(message) => {
+                    return Ok(AcpResponse::Json(Json(serde_json::json!({
+                        "jsonrpc": "2.0",
+                        "id": id,
+                        "error": {
+                            "code": -32602,
+                            "message": message
+                        }
+                    }))));
+                }
+            };
             let session_id = params.get("sessionId").and_then(|v| v.as_str());
 
             let session_id = match session_id {
@@ -738,6 +778,9 @@ async fn acp_rpc(
                     })
                     .or_else(|| specialist.as_ref().map(|s| s.role.as_str().to_string()))
                     .or(Some("CRAFTER".to_string()));
+                let custom_provider_launch = request_custom_provider_launch
+                    .clone()
+                    .or_else(|| persisted_session.as_ref().and_then(custom_provider_launch_from_row));
                 let launch_options = SessionLaunchOptions {
                     specialist_id: specialist_id.clone(),
                     specialist_system_prompt: params
@@ -752,22 +795,41 @@ async fn acp_rpc(
                 };
 
                 // Create the session
-                match state
-                    .acp_manager
-                    .create_session_with_options(
-                        session_id.clone(),
-                        cwd.clone(),
-                        workspace_id.clone(),
-                        provider.clone(),
-                        role.clone(),
-                        None, // model
-                        parent_session_id.clone(),
-                        tool_mode,
-                        mcp_profile,
-                        launch_options,
-                    )
-                    .await
-                {
+                let create_result = if let Some(custom) = custom_provider_launch.clone() {
+                    state
+                        .acp_manager
+                        .create_session_from_inline(
+                            session_id.clone(),
+                            cwd.clone(),
+                            workspace_id.clone(),
+                            provider.clone().unwrap_or_else(|| custom.command.clone()),
+                            role.clone(),
+                            None, // model
+                            parent_session_id.clone(),
+                            custom.command,
+                            custom.args,
+                            launch_options,
+                        )
+                        .await
+                } else {
+                    state
+                        .acp_manager
+                        .create_session_with_options(
+                            session_id.clone(),
+                            cwd.clone(),
+                            workspace_id.clone(),
+                            provider.clone(),
+                            role.clone(),
+                            None, // model
+                            parent_session_id.clone(),
+                            tool_mode,
+                            mcp_profile,
+                            launch_options,
+                        )
+                        .await
+                };
+
+                match create_result {
                     Ok((_our_sid, agent_sid)) => {
                         tracing::info!(
                             "[ACP Route] Auto-created session: {} (provider: {:?}, agent session: {})",
@@ -787,6 +849,12 @@ async fn acp_rpc(
                                 workspace_id: &workspace_id,
                                 provider: provider.as_deref(),
                                 role: role.as_deref(),
+                                custom_command: custom_provider_launch
+                                    .as_ref()
+                                    .map(|launch| launch.command.as_str()),
+                                custom_args: custom_provider_launch
+                                    .as_ref()
+                                    .map(|launch| launch.args.as_slice()),
                                 parent_session_id: parent_session_id.as_deref(),
                             })
                             .await
@@ -807,6 +875,12 @@ async fn acp_rpc(
                             &workspace_id,
                             provider.as_deref(),
                             role.as_deref(),
+                            custom_provider_launch
+                                .as_ref()
+                                .map(|launch| launch.command.as_str()),
+                            custom_provider_launch
+                                .as_ref()
+                                .map(|launch| launch.args.as_slice()),
                             parent_session_id.as_deref(),
                         )
                         .await;
@@ -1423,6 +1497,8 @@ async fn persist_session_to_jsonl(
     workspace_id: &str,
     provider: Option<&str>,
     role: Option<&str>,
+    custom_command: Option<&str>,
+    custom_args: Option<&[String]>,
     parent_session_id: Option<&str>,
 ) {
     let now = chrono::Utc::now().to_rfc3339();
@@ -1437,6 +1513,8 @@ async fn persist_session_to_jsonl(
         role: role.map(|s| s.to_string()),
         mode_id: None,
         model: None,
+        custom_command: custom_command.map(|value| value.to_string()),
+        custom_args: custom_args.unwrap_or(&[]).to_vec(),
         parent_session_id: parent_session_id.map(|s| s.to_string()),
         created_at: now.clone(),
         updated_at: now,
@@ -1453,14 +1531,14 @@ mod tests {
 
     use axum::{extract::State, Json};
     use routa_core::models::codebase::Codebase;
-    use routa_core::store::acp_session_store::CreateAcpSessionParams;
+    use routa_core::store::acp_session_store::{AcpSessionRow, CreateAcpSessionParams};
     use routa_core::{db::Database, state::AppStateInner};
     use serde_json::json;
     use tokio::sync::broadcast;
 
     use super::{
-        acp_rpc, extract_custom_provider_launch, has_explicit_cwd, resolve_session_cwd,
-        AcpResponse, CustomProviderLaunch,
+        acp_rpc, custom_provider_launch_from_row, extract_custom_provider_launch,
+        has_explicit_cwd, resolve_session_cwd, AcpResponse, CustomProviderLaunch,
     };
     use routa_core::acp::terminal_manager::TerminalManager;
 
@@ -1507,6 +1585,32 @@ mod tests {
         .expect_err("invalid custom args should fail");
 
         assert_eq!(error, "customArgs must be an array of strings");
+    }
+
+    #[test]
+    fn custom_provider_launch_from_row_uses_persisted_inline_command() {
+        let session = AcpSessionRow {
+            id: "session-custom-provider".to_string(),
+            name: None,
+            cwd: "/tmp".to_string(),
+            branch: Some("main".to_string()),
+            workspace_id: "default".to_string(),
+            routa_agent_id: None,
+            provider: Some("custom-inline".to_string()),
+            role: Some("CRAFTER".to_string()),
+            mode_id: None,
+            custom_command: Some("uvx".to_string()),
+            custom_args: vec!["codex-acp".to_string(), "--stdio".to_string()],
+            first_prompt_sent: false,
+            message_history: Vec::new(),
+            created_at: 1,
+            updated_at: 1,
+            parent_session_id: None,
+        };
+
+        let launch = custom_provider_launch_from_row(&session).expect("launch should exist");
+        assert_eq!(launch.command, "uvx");
+        assert_eq!(launch.args, vec!["codex-acp".to_string(), "--stdio".to_string()]);
     }
 
     #[tokio::test]
@@ -1573,6 +1677,8 @@ mod tests {
                 workspace_id: "default",
                 provider: Some("opencode"),
                 role: Some("DEVELOPER"),
+                custom_command: None,
+                custom_args: None,
                 parent_session_id: None,
             })
             .await
@@ -1620,6 +1726,8 @@ mod tests {
                 workspace_id: "default",
                 provider: Some("opencode"),
                 role: Some("DEVELOPER"),
+                custom_command: None,
+                custom_args: None,
                 parent_session_id: None,
             })
             .await

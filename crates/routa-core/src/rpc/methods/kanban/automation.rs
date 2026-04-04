@@ -571,6 +571,8 @@ async fn trigger_assigned_task_acp_agent(
             workspace_id: &task.workspace_id,
             provider: Some(provider.as_str()),
             role: Some(role.as_str()),
+            custom_command: None,
+            custom_args: None,
             parent_session_id: None,
         })
         .await
