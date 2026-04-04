@@ -12,6 +12,7 @@ Use these documents for:
 
 | Document | Purpose | Status |
 |---|---|---|
+| `architecture-rule-dsl.md` | Cross-language architecture rule model for TypeScript and Rust fitness executors | active |
 | `core-beliefs.md` | Agent-first operating principles for how the repository should store knowledge | active |
 | `golden-rules.md` | Repository-level rules for documentation, architecture, and maintainability | active |
 | `workspace-centric-redesign.md` | Canonical summary of the workspace-first architecture, shipped surface, and remaining transition debt | active |
@@ -43,6 +44,7 @@ The repository still contains historical design material under `.kiro/specs/`. T
 - [ARCHITECTURE.md](../ARCHITECTURE.md)
 - [Architecture Decision Records](../adr/README.md)
 - [FEATURE_TREE.md](../product-specs/FEATURE_TREE.md)
+- [architecture-rule-dsl.md](./architecture-rule-dsl.md)
 - [core-beliefs.md](./core-beliefs.md)
 - [golden-rules.md](./golden-rules.md)
 - [workspace-centric-redesign.md](./workspace-centric-redesign.md)
