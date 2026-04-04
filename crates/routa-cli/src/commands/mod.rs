@@ -9,6 +9,7 @@ pub mod agent;
 pub mod chat;
 pub mod delegate;
 pub mod fitness;
+pub mod graph;
 pub mod harness;
 pub mod kanban;
 pub mod prompt;
@@ -72,6 +73,10 @@ pub fn truncate_text(value: &str, max_len: usize) -> String {
 
     let truncated: String = value.chars().take(max_len.saturating_sub(1)).collect();
     format!("{}…", truncated)
+}
+
+pub fn set_full_path_env() {
+    std::env::set_var("PATH", routa_core::shell_env::full_path());
 }
 
 pub fn format_rfc3339_timestamp(value: Option<&str>) -> String {
