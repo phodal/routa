@@ -27,6 +27,7 @@ pub struct HarnessEngineeringOptions {
     pub bootstrap: bool,
     pub apply: bool,
     pub force: bool,
+    pub use_ai_specialist: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -238,6 +239,25 @@ pub fn evaluate_harness_engineering(
     warnings.dedup();
 
     recommended_actions.sort_by_key(|action| action.priority);
+
+    // AI Specialist integration (Phase 3)
+    if options.use_ai_specialist {
+        println!("\n🤖 AI Specialist Integration (Experimental)");
+        println!("─────────────────────────────────────────────");
+
+        // TODO: Integrate with harness-engineering-evolution specialist
+        // This would invoke:
+        // routa specialist run harness-engineering-evolution \
+        //   --json \
+        //   --workspace-id default \
+        //   --provider <provider> \
+        //   -p "<contextual prompt with repo signals, gaps, etc>"
+
+        println!("  ℹ️  AI specialist integration not yet implemented");
+        println!("  ℹ️  Using deterministic rule-based evaluation instead");
+        println!("  ℹ️  Future: will invoke resources/specialists/tools/harness-engineering-evolution.yaml");
+        println!();
+    }
 
     // Apply patches if requested
     if options.apply && !patch_candidates.is_empty() {
@@ -1162,6 +1182,7 @@ mod tests {
                 bootstrap: false,
                 apply: false,
                 force: false,
+                use_ai_specialist: false,
             },
         )
         .expect("report");
@@ -1225,6 +1246,7 @@ mod tests {
                 bootstrap: false,
                 apply: false,
                 force: false,
+                use_ai_specialist: false,
             },
         )
         .expect("report");
@@ -1270,6 +1292,7 @@ definitions:
                 bootstrap: false,
                 apply: false,
                 force: false,
+                use_ai_specialist: false,
             },
         )
         .expect("report");
@@ -1324,6 +1347,7 @@ definitions:
                 bootstrap: true,
                 apply: true,
                 force: false,
+                use_ai_specialist: false,
             },
         )
         .expect("report");
@@ -1609,11 +1633,22 @@ fn apply_patches(
         match apply_patch_batch(repo_root, &low_risk) {
             Ok(()) => {
                 println!("  ✓ Low-risk patches applied successfully");
+
+                // Record success
+                if let Err(e) = record_evolution_outcome(repo_root, &low_risk, &[]) {
+                    eprintln!("  ⚠️  Warning: Failed to record evolution history: {}", e);
+                }
             }
             Err(e) => {
                 eprintln!("  ✗ Failed to apply low-risk patches: {}", e);
                 eprintln!("  ↻ Rolling back changes...");
                 rollback_snapshot(repo_root, &snapshot)?;
+
+                // Record failure
+                if let Err(e) = record_evolution_outcome(repo_root, &[], &low_risk) {
+                    eprintln!("  ⚠️  Warning: Failed to record evolution history: {}", e);
+                }
+
                 return Err(format!("Low-risk patch application failed: {}", e));
             }
         }
@@ -1638,11 +1673,22 @@ fn apply_patches(
             match apply_patch_batch(repo_root, &risky_patches_refs) {
                 Ok(()) => {
                     println!("  ✓ Medium/high-risk patches applied");
+
+                    // Record success
+                    if let Err(e) = record_evolution_outcome(repo_root, &risky_patches_refs, &[]) {
+                        eprintln!("  ⚠️  Warning: Failed to record evolution history: {}", e);
+                    }
                 }
                 Err(e) => {
                     eprintln!("  ✗ Failed: {}", e);
                     eprintln!("  ↻ Rolling back...");
                     rollback_snapshot(repo_root, &snapshot)?;
+
+                    // Record failure
+                    if let Err(e) = record_evolution_outcome(repo_root, &[], &risky_patches_refs) {
+                        eprintln!("  ⚠️  Warning: Failed to record evolution history: {}", e);
+                    }
+
                     return Err(e);
                 }
             }
@@ -1796,5 +1842,56 @@ validation:
     fs::write(&test_yml, content).map_err(|e| format!("Failed to write test.yml: {}", e))?;
 
     println!("  ✓ Created docs/harness/test.yml");
+    Ok(())
+}
+
+// Phase 3: Feedback Learning Loop (Foundation)
+
+#[derive(Debug, Serialize)]
+struct EvolutionHistory {
+    timestamp: String,
+    repo_root: String,
+    mode: String,
+    patches_applied: Vec<String>,
+    patches_failed: Vec<String>,
+    success_rate: f64,
+}
+
+fn record_evolution_outcome(
+    repo_root: &Path,
+    applied: &[&HarnessEngineeringPatchCandidate],
+    failed: &[&HarnessEngineeringPatchCandidate],
+) -> Result<(), String> {
+    let history_dir = repo_root.join("docs/fitness/evolution");
+    fs::create_dir_all(&history_dir)
+        .map_err(|e| format!("Failed to create evolution history dir: {}", e))?;
+
+    let history_file = history_dir.join("history.jsonl");
+
+    let record = EvolutionHistory {
+        timestamp: Utc::now().to_rfc3339(),
+        repo_root: repo_root.display().to_string(),
+        mode: "auto-apply".to_string(),
+        patches_applied: applied.iter().map(|p| p.id.clone()).collect(),
+        patches_failed: failed.iter().map(|p| p.id.clone()).collect(),
+        success_rate: if applied.is_empty() && failed.is_empty() {
+            0.0
+        } else {
+            applied.len() as f64 / (applied.len() + failed.len()) as f64
+        },
+    };
+
+    let json_line =
+        serde_json::to_string(&record).map_err(|e| format!("Failed to serialize history: {}", e))?;
+
+    let mut file = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&history_file)
+        .map_err(|e| format!("Failed to open history file: {}", e))?;
+
+    use std::io::Write;
+    writeln!(file, "{}", json_line).map_err(|e| format!("Failed to write history: {}", e))?;
+
     Ok(())
 }

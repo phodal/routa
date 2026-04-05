@@ -108,6 +108,10 @@ pub struct HarnessEvolveArgs {
     #[arg(long, default_value_t = false)]
     pub force: bool,
 
+    /// Use AI specialist for contextual recommendations (experimental).
+    #[arg(long, default_value_t = false)]
+    pub ai: bool,
+
     /// Override the persisted report path.
     #[arg(long)]
     pub output: Option<String>,
@@ -412,6 +416,7 @@ fn run_evolve(args: &HarnessEvolveArgs) -> Result<(), String> {
             bootstrap: args.bootstrap,
             apply: args.apply,
             force: args.force,
+            use_ai_specialist: args.ai,
         },
     )?;
 
