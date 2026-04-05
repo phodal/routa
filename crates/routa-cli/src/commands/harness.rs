@@ -1,13 +1,22 @@
+mod engineering;
+
 use clap::{Args, Subcommand, ValueEnum};
 use routa_core::harness::detect_repo_signals;
 use routa_core::harness_template;
 use serde_json::json;
 use std::path::{Path, PathBuf};
 
+use self::engineering::{
+    evaluate_harness_engineering, format_harness_engineering_report,
+    persist_harness_engineering_report, HarnessEngineeringOptions, DEFAULT_REPORT_RELATIVE_PATH,
+};
+
 #[derive(Subcommand, Debug, Clone)]
 pub enum HarnessAction {
     /// Detect build/test harness surfaces from docs/harness/*.yml
     Detect(HarnessDetectArgs),
+    /// Evaluate harness engineering readiness and emit dry-run evolution guidance
+    Evolve(HarnessEvolveArgs),
     /// Manage harness templates
     Template {
         #[command(subcommand)]
@@ -77,6 +86,33 @@ pub struct HarnessDetectArgs {
     pub json: bool,
 }
 
+#[derive(Args, Debug, Clone)]
+pub struct HarnessEvolveArgs {
+    /// Repository root to inspect. Defaults to the current git toplevel.
+    #[arg(long)]
+    pub repo_root: Option<String>,
+
+    /// Explicit no-op flag kept for dry-run-first evolution workflows.
+    #[arg(long, default_value_t = false)]
+    pub dry_run: bool,
+
+    /// Override the persisted report path.
+    #[arg(long)]
+    pub output: Option<String>,
+
+    /// Do not persist the structured report snapshot.
+    #[arg(long, default_value_t = false)]
+    pub no_save: bool,
+
+    /// Output format.
+    #[arg(long, value_enum, default_value_t = HarnessOutputFormat::Json)]
+    pub format: HarnessOutputFormat,
+
+    /// Shortcut for `--format json`.
+    #[arg(long, default_value_t = false)]
+    pub json: bool,
+}
+
 #[derive(Copy, Clone, Debug, Eq, PartialEq, ValueEnum)]
 pub enum HarnessSurfaceSelector {
     All,
@@ -93,6 +129,7 @@ pub enum HarnessOutputFormat {
 pub fn run(action: HarnessAction) -> Result<(), String> {
     match action {
         HarnessAction::Detect(args) => run_detect(&args),
+        HarnessAction::Evolve(args) => run_evolve(&args),
         HarnessAction::Template { action } => run_template(action),
     }
 }
@@ -346,7 +383,51 @@ fn run_detect(args: &HarnessDetectArgs) -> Result<(), String> {
     Ok(())
 }
 
+fn run_evolve(args: &HarnessEvolveArgs) -> Result<(), String> {
+    let repo_root = resolve_any_repo_root(args.repo_root.as_deref())?;
+    let output_path = resolve_requested_path(
+        args.output
+            .as_deref()
+            .unwrap_or(DEFAULT_REPORT_RELATIVE_PATH),
+        &repo_root,
+    );
+
+    let report = evaluate_harness_engineering(
+        &repo_root,
+        &HarnessEngineeringOptions {
+            output_path: output_path.clone(),
+            dry_run: true,
+        },
+    )?;
+
+    if !args.no_save {
+        persist_harness_engineering_report(&report, &output_path)?;
+    }
+
+    match resolved_evolve_output_format(args) {
+        HarnessOutputFormat::Json => {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&report).map_err(|error| {
+                    format!("failed to serialize harness engineering report: {error}")
+                })?
+            );
+        }
+        HarnessOutputFormat::Text => println!("{}", format_harness_engineering_report(&report)),
+    }
+
+    Ok(())
+}
+
 fn resolved_output_format(args: &HarnessDetectArgs) -> HarnessOutputFormat {
+    if args.json {
+        HarnessOutputFormat::Json
+    } else {
+        args.format
+    }
+}
+
+fn resolved_evolve_output_format(args: &HarnessEvolveArgs) -> HarnessOutputFormat {
     if args.json {
         HarnessOutputFormat::Json
     } else {
@@ -411,6 +492,25 @@ fn resolve_repo_root(requested: Option<&str>) -> Result<PathBuf, String> {
     };
 
     validate_repo_root(repo_root)
+}
+
+fn resolve_any_repo_root(requested: Option<&str>) -> Result<PathBuf, String> {
+    let cwd =
+        std::env::current_dir().map_err(|error| format!("failed to determine cwd: {error}"))?;
+
+    let repo_root = match requested {
+        Some(path) => resolve_requested_path(path, &cwd),
+        None => discover_git_toplevel(&cwd).unwrap_or(cwd),
+    };
+
+    if !repo_root.exists() || !repo_root.is_dir() {
+        return Err(format!(
+            "repository root does not exist or is not a directory: {}",
+            repo_root.display()
+        ));
+    }
+
+    Ok(repo_root)
 }
 
 fn resolve_requested_path(requested: &str, cwd: &Path) -> PathBuf {
