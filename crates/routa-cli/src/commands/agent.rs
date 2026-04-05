@@ -52,6 +52,7 @@ pub struct RunArgs<'a> {
     pub workspace_id: &'a str,
     pub provider: Option<&'a str>,
     pub output_json: bool,
+    pub cwd_override: Option<&'a str>,
     pub specialist_dir: Option<&'a str>,
     pub provider_timeout_ms: Option<u64>,
     pub provider_retries: u8,
@@ -64,6 +65,8 @@ struct SelectedSpecialistRunArgs<'a> {
     workspace_id: &'a str,
     provider: Option<&'a str>,
     output_json: bool,
+    capture_json_output: bool,
+    cwd_override: Option<&'a str>,
     provider_timeout_ms: Option<u64>,
     provider_retries: u8,
     repeat_count: u8,
@@ -75,9 +78,98 @@ struct ExecuteSpecialistRunArgs<'a> {
     workspace_id: &'a str,
     effective_provider: &'a str,
     output_json: bool,
+    capture_json_output: bool,
+    cwd_override: Option<&'a str>,
     provider_timeout_ms: Option<u64>,
     provider_retries: u8,
     journey_context_override: Option<UiJourneyRunContext>,
+}
+
+async fn run_internal(
+    state: &AppState,
+    args: RunArgs<'_>,
+    capture_json_output: bool,
+) -> Result<Option<serde_json::Value>, String> {
+    let RunArgs {
+        specialist,
+        specialist_file,
+        prompt,
+        workspace_id,
+        provider,
+        output_json,
+        cwd_override,
+        specialist_dir,
+        provider_timeout_ms,
+        provider_retries,
+        repeat_count,
+    } = args;
+    let router = RpcRouter::new(state.clone());
+
+    let selected_specialist = if let Some(path) = specialist_file {
+        load_specialist_from_file(path)?
+    } else {
+        let specialists = load_specialists(specialist_dir);
+        if specialists.is_empty() {
+            return Err(
+                "No specialists available. Add files under specialists/ or resources/specialists/."
+                    .to_string(),
+            );
+        }
+
+        let (prompt_specialist, prompt_remainder) = parse_prompt_mention(prompt);
+        let selected = if let Some(id) = specialist.or(prompt_specialist.as_deref()) {
+            find_specialist(&specialists, id)
+                .ok_or_else(|| format!("Unknown specialist: {}", id))?
+        } else {
+            select_specialist(&specialists)?
+        };
+
+        let user_prompt = match prompt_remainder.or(prompt.map(|value| value.to_string())) {
+            Some(existing_prompt) if !existing_prompt.trim().is_empty() => existing_prompt,
+            _ => prompt_for_user_request(&selected)?,
+        };
+
+        return run_selected_specialist(
+            state,
+            &router,
+            SelectedSpecialistRunArgs {
+                selected_specialist: selected,
+                user_prompt,
+                workspace_id,
+                provider,
+                output_json,
+                capture_json_output,
+                cwd_override,
+                provider_timeout_ms,
+                provider_retries,
+                repeat_count,
+            },
+        )
+        .await;
+    };
+
+    let user_prompt = match prompt.map(|value| value.to_string()) {
+        Some(existing_prompt) if !existing_prompt.trim().is_empty() => existing_prompt,
+        _ => prompt_for_user_request(&selected_specialist)?,
+    };
+
+    run_selected_specialist(
+        state,
+        &router,
+        SelectedSpecialistRunArgs {
+            selected_specialist,
+            user_prompt,
+            workspace_id,
+            provider,
+            output_json,
+            capture_json_output,
+            cwd_override,
+            provider_timeout_ms,
+            provider_retries,
+            repeat_count,
+        },
+    )
+    .await
 }
 
 pub async fn list(state: &AppState, workspace_id: &str, limit: usize) -> Result<(), String> {
@@ -198,94 +290,32 @@ pub async fn summary(state: &AppState, agent_id: &str) -> Result<(), String> {
 }
 
 pub async fn run(state: &AppState, args: RunArgs<'_>) -> Result<(), String> {
-    let RunArgs {
-        specialist,
-        specialist_file,
-        prompt,
-        workspace_id,
-        provider,
-        output_json,
-        specialist_dir,
-        provider_timeout_ms,
-        provider_retries,
-        repeat_count,
-    } = args;
-    let router = RpcRouter::new(state.clone());
+    run_internal(state, args, false).await.map(|_| ())
+}
 
-    let selected_specialist = if let Some(path) = specialist_file {
-        load_specialist_from_file(path)?
-    } else {
-        let specialists = load_specialists(specialist_dir);
-        if specialists.is_empty() {
-            return Err(
-                "No specialists available. Add files under specialists/ or resources/specialists/."
-                    .to_string(),
-            );
-        }
-
-        let (prompt_specialist, prompt_remainder) = parse_prompt_mention(prompt);
-        let selected = if let Some(id) = specialist.or(prompt_specialist.as_deref()) {
-            find_specialist(&specialists, id)
-                .ok_or_else(|| format!("Unknown specialist: {}", id))?
-        } else {
-            select_specialist(&specialists)?
-        };
-
-        let user_prompt = match prompt_remainder.or(prompt.map(|value| value.to_string())) {
-            Some(existing_prompt) if !existing_prompt.trim().is_empty() => existing_prompt,
-            _ => prompt_for_user_request(&selected)?,
-        };
-
-        return run_selected_specialist(
-            state,
-            &router,
-            SelectedSpecialistRunArgs {
-                selected_specialist: selected,
-                user_prompt,
-                workspace_id,
-                provider,
-                output_json,
-                provider_timeout_ms,
-                provider_retries,
-                repeat_count,
-            },
-        )
-        .await;
-    };
-
-    let user_prompt = match prompt.map(|value| value.to_string()) {
-        Some(existing_prompt) if !existing_prompt.trim().is_empty() => existing_prompt,
-        _ => prompt_for_user_request(&selected_specialist)?,
-    };
-
-    run_selected_specialist(
-        state,
-        &router,
-        SelectedSpecialistRunArgs {
-            selected_specialist,
-            user_prompt,
-            workspace_id,
-            provider,
-            output_json,
-            provider_timeout_ms,
-            provider_retries,
-            repeat_count,
-        },
-    )
-    .await
+pub async fn run_for_json(
+    state: &AppState,
+    mut args: RunArgs<'_>,
+) -> Result<serde_json::Value, String> {
+    args.output_json = true;
+    run_internal(state, args, true)
+        .await?
+        .ok_or_else(|| "Specialist did not return JSON output".to_string())
 }
 
 async fn run_selected_specialist(
     state: &AppState,
     router: &RpcRouter,
     args: SelectedSpecialistRunArgs<'_>,
-) -> Result<(), String> {
+) -> Result<Option<serde_json::Value>, String> {
     let SelectedSpecialistRunArgs {
         selected_specialist,
         user_prompt,
         workspace_id,
         provider,
         output_json,
+        capture_json_output,
+        cwd_override,
         provider_timeout_ms,
         provider_retries,
         repeat_count,
@@ -312,6 +342,8 @@ async fn run_selected_specialist(
                 workspace_id,
                 effective_provider: &effective_provider,
                 output_json,
+                capture_json_output,
+                cwd_override,
                 provider_timeout_ms,
                 provider_retries,
                 journey_context_override: None,
@@ -342,6 +374,8 @@ async fn run_selected_specialist(
                 workspace_id,
                 effective_provider: &effective_provider,
                 output_json,
+                capture_json_output,
+                cwd_override,
                 provider_timeout_ms,
                 provider_retries,
                 journey_context_override: Some(context.clone()),
@@ -379,20 +413,22 @@ async fn run_selected_specialist(
         "📊 UI journey baseline summary written to {}",
         baseline_path.display()
     );
-    Ok(())
+    Ok(None)
 }
 
 async fn execute_specialist_run(
     state: &AppState,
     router: &RpcRouter,
     args: ExecuteSpecialistRunArgs<'_>,
-) -> Result<(), String> {
+) -> Result<Option<serde_json::Value>, String> {
     let ExecuteSpecialistRunArgs {
         selected_specialist,
         user_prompt,
         workspace_id,
         effective_provider,
         output_json,
+        capture_json_output,
+        cwd_override,
         provider_timeout_ms,
         provider_retries,
         journey_context_override,
@@ -432,7 +468,8 @@ async fn execute_specialist_run(
         }
     }
 
-    let verify_provider = verify_provider_readiness(effective_provider).await;
+    let verify_provider =
+        verify_provider_readiness(effective_provider, !capture_json_output && !output_json).await;
     if let Err(error) = verify_provider {
         if let Some(context) = journey_context.as_ref() {
             metrics.elapsed_ms = run_start.elapsed().as_millis();
@@ -476,9 +513,11 @@ async fn execute_specialist_run(
         })?
         .to_string();
 
-    let cwd = std::env::current_dir()
-        .map(|p| p.to_string_lossy().to_string())
-        .unwrap_or_else(|_| ".".to_string());
+    let cwd = cwd_override.map(ToString::to_string).unwrap_or_else(|| {
+        std::env::current_dir()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_else(|_| ".".to_string())
+    });
 
     if !output_json {
         println!("╔══════════════════════════════════════════════════════════╗");
@@ -939,6 +978,9 @@ async fn execute_specialist_run(
 
     if journey_context.is_none() && output_json {
         let parsed = parse_specialist_json_output(&specialist_output)?;
+        if capture_json_output {
+            return Ok(Some(parsed));
+        }
         println!(
             "{}",
             serde_json::to_string_pretty(&parsed)
@@ -946,7 +988,7 @@ async fn execute_specialist_run(
         );
     }
 
-    Ok(())
+    Ok(None)
 }
 
 fn parse_specialist_json_output(output: &str) -> Result<serde_json::Value, String> {

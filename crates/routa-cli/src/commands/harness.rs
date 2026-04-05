@@ -112,6 +112,22 @@ pub struct HarnessEvolveArgs {
     #[arg(long, default_value_t = false)]
     pub ai: bool,
 
+    /// Workspace ID used when invoking the AI specialist.
+    #[arg(long, default_value = "default")]
+    pub workspace_id: String,
+
+    /// ACP provider override for the AI specialist.
+    #[arg(long)]
+    pub provider: Option<String>,
+
+    /// Timeout in milliseconds for AI specialist provider initialization.
+    #[arg(long)]
+    pub provider_timeout_ms: Option<u64>,
+
+    /// Extra retries for AI specialist provider session initialization.
+    #[arg(long, default_value_t = 0)]
+    pub provider_retries: u8,
+
     /// Override the persisted report path.
     #[arg(long)]
     pub output: Option<String>,
@@ -142,10 +158,10 @@ pub enum HarnessOutputFormat {
     Json,
 }
 
-pub fn run(action: HarnessAction) -> Result<(), String> {
+pub async fn run(db_path: &str, action: HarnessAction) -> Result<(), String> {
     match action {
         HarnessAction::Detect(args) => run_detect(&args),
-        HarnessAction::Evolve(args) => run_evolve(&args),
+        HarnessAction::Evolve(args) => run_evolve(db_path, &args).await,
         HarnessAction::Template { action } => run_template(action),
     }
 }
@@ -399,7 +415,7 @@ fn run_detect(args: &HarnessDetectArgs) -> Result<(), String> {
     Ok(())
 }
 
-fn run_evolve(args: &HarnessEvolveArgs) -> Result<(), String> {
+async fn run_evolve(db_path: &str, args: &HarnessEvolveArgs) -> Result<(), String> {
     let repo_root = resolve_any_repo_root(args.repo_root.as_deref())?;
     let output_path = resolve_requested_path(
         args.output
@@ -407,6 +423,11 @@ fn run_evolve(args: &HarnessEvolveArgs) -> Result<(), String> {
             .unwrap_or(DEFAULT_REPORT_RELATIVE_PATH),
         &repo_root,
     );
+    let state = if args.ai {
+        Some(crate::commands::init_state(db_path).await)
+    } else {
+        None
+    };
 
     let report = evaluate_harness_engineering(
         &repo_root,
@@ -417,8 +438,14 @@ fn run_evolve(args: &HarnessEvolveArgs) -> Result<(), String> {
             apply: args.apply,
             force: args.force,
             use_ai_specialist: args.ai,
+            ai_workspace_id: args.workspace_id.clone(),
+            ai_provider: args.provider.clone(),
+            ai_provider_timeout_ms: args.provider_timeout_ms,
+            ai_provider_retries: args.provider_retries,
         },
-    )?;
+        state.as_ref(),
+    )
+    .await?;
 
     if !args.no_save {
         persist_harness_engineering_report(&report, &output_path)?;

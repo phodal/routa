@@ -2,11 +2,13 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use crate::commands::specialist;
 use chrono::Utc;
 use routa_core::harness::HarnessRepoSignalsReport;
 use routa_core::harness_automation::detect_repo_automations;
 use routa_core::harness_template::{DoctorReport, DriftLevel};
 use routa_core::spec_detector::{detect_spec_sources, SpecDetectionReport};
+use routa_core::state::AppState;
 use serde::Serialize;
 use serde_json::Value;
 
@@ -28,6 +30,10 @@ pub struct HarnessEngineeringOptions {
     pub apply: bool,
     pub force: bool,
     pub use_ai_specialist: bool,
+    pub ai_workspace_id: String,
+    pub ai_provider: Option<String>,
+    pub ai_provider_timeout_ms: Option<u64>,
+    pub ai_provider_retries: u8,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -43,7 +49,19 @@ pub struct HarnessEngineeringReport {
     pub recommended_actions: Vec<HarnessEngineeringAction>,
     pub patch_candidates: Vec<HarnessEngineeringPatchCandidate>,
     pub verification_plan: Vec<HarnessEngineeringVerificationStep>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ai_assessment: Option<HarnessEngineeringAiAssessment>,
     pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HarnessEngineeringAiAssessment {
+    pub specialist_id: String,
+    pub workspace_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider: Option<String>,
+    pub payload: Value,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -177,16 +195,17 @@ struct FluencyBlockingCriterion {
     evidence_hint: String,
 }
 
-pub fn evaluate_harness_engineering(
+pub async fn evaluate_harness_engineering(
     repo_root: &Path,
     options: &HarnessEngineeringOptions,
+    state: Option<&AppState>,
 ) -> Result<HarnessEngineeringReport, String> {
     let mut warnings = Vec::new();
 
     // Bootstrap mode: detect weak repo and synthesize initial harness
     if options.bootstrap {
         if should_bootstrap(repo_root) {
-            return bootstrap_weak_repository(repo_root, options);
+            return bootstrap_weak_repository(repo_root, options).await;
         } else {
             warnings.push("Bootstrap mode requested but repository already has harness surfaces. Proceeding with normal evaluation.".to_string());
         }
@@ -240,23 +259,55 @@ pub fn evaluate_harness_engineering(
 
     recommended_actions.sort_by_key(|action| action.priority);
 
-    // AI Specialist integration (Phase 3)
+    let mut ai_assessment = None;
     if options.use_ai_specialist {
-        println!("\n🤖 AI Specialist Integration (Experimental)");
-        println!("─────────────────────────────────────────────");
-
-        // TODO: Integrate with harness-engineering-evolution specialist
-        // This would invoke:
-        // routa specialist run harness-engineering-evolution \
-        //   --json \
-        //   --workspace-id default \
-        //   --provider <provider> \
-        //   -p "<contextual prompt with repo signals, gaps, etc>"
-
-        println!("  ℹ️  AI specialist integration not yet implemented");
-        println!("  ℹ️  Using deterministic rule-based evaluation instead");
-        println!("  ℹ️  Future: will invoke resources/specialists/tools/harness-engineering-evolution.yaml");
-        println!();
+        let repo_root_string = repo_root.display().to_string();
+        match state {
+            Some(state) => {
+                let prompt = build_ai_specialist_prompt(
+                    repo_root,
+                    &gaps,
+                    &recommended_actions,
+                    &patch_candidates,
+                    &summarize_templates(&template_doctor),
+                    &summarize_automations(&automations),
+                    &summarize_specs(&specs),
+                    &summarize_fitness(repo_root, &fluency_snapshots),
+                )?;
+                match specialist::run_for_json(
+                    state,
+                    specialist::RunArgs {
+                        specialist_target: HARNESS_ENGINEERING_SPECIALIST_RELATIVE_PATH,
+                        prompt: Some(prompt.as_str()),
+                        workspace_id: &options.ai_workspace_id,
+                        provider: options.ai_provider.as_deref(),
+                        output_json: true,
+                        cwd_override: Some(repo_root_string.as_str()),
+                        provider_timeout_ms: options.ai_provider_timeout_ms,
+                        provider_retries: options.ai_provider_retries,
+                        repeat_count: 1,
+                    },
+                )
+                .await
+                {
+                    Ok(payload) => {
+                        ai_assessment = Some(HarnessEngineeringAiAssessment {
+                            specialist_id: "harness-engineering-evolution".to_string(),
+                            workspace_id: options.ai_workspace_id.clone(),
+                            provider: options.ai_provider.clone(),
+                            payload,
+                        });
+                    }
+                    Err(error) => warnings.push(format!(
+                        "AI specialist execution failed; using deterministic evaluation only: {error}"
+                    )),
+                }
+            }
+            None => warnings.push(
+                "AI specialist requested but no AppState was provided; using deterministic evaluation only."
+                    .to_string(),
+            ),
+        }
     }
 
     // Apply patches if requested
@@ -285,6 +336,7 @@ pub fn evaluate_harness_engineering(
         recommended_actions,
         patch_candidates,
         verification_plan: build_verification_plan(repo_root),
+        ai_assessment,
         warnings,
     })
 }
@@ -381,6 +433,15 @@ pub fn format_harness_engineering_report(report: &HarnessEngineeringReport) -> S
         }
     }
 
+    if let Some(ai_assessment) = &report.ai_assessment {
+        lines.push(String::new());
+        lines.push("ai assessment:".to_string());
+        lines.push(format!(
+            "  specialist: {} ({})",
+            ai_assessment.specialist_id, ai_assessment.workspace_id
+        ));
+    }
+
     if !report.verification_plan.is_empty() {
         lines.push(String::new());
         lines.push("verification:".to_string());
@@ -390,6 +451,39 @@ pub fn format_harness_engineering_report(report: &HarnessEngineeringReport) -> S
     }
 
     lines.join("\n")
+}
+
+fn build_ai_specialist_prompt(
+    repo_root: &Path,
+    gaps: &[HarnessEngineeringGap],
+    recommended_actions: &[HarnessEngineeringAction],
+    patch_candidates: &[HarnessEngineeringPatchCandidate],
+    templates: &TemplateSummary,
+    automations: &AutomationSummary,
+    specs: &SpecSummary,
+    fitness: &FitnessSummary,
+) -> Result<String, String> {
+    let context = serde_json::json!({
+        "repoRoot": repo_root.display().to_string(),
+        "inputs": {
+            "templates": templates,
+            "automations": automations,
+            "specs": specs,
+            "fitness": fitness,
+        },
+        "deterministicReport": {
+            "gaps": gaps,
+            "recommendedActions": recommended_actions,
+            "patchCandidates": patch_candidates,
+        },
+        "instructions": {
+            "mode": "dry-run",
+            "task": "Review the deterministic harness-engineering assessment and produce a stricter JSON evaluation. Reclassify gaps if needed, keep non-harness engineering gaps separate, and only emit low-risk patch candidates for config/templates/automation/specialist/report scaffolding.",
+        }
+    });
+
+    serde_json::to_string_pretty(&context)
+        .map_err(|error| format!("failed to serialize AI specialist prompt context: {error}"))
 }
 
 fn summarize_repo_signals(report: &HarnessRepoSignalsReport) -> RepoSignalsSummary {
@@ -1165,8 +1259,8 @@ mod tests {
     use std::fs;
     use tempfile::tempdir;
 
-    #[test]
-    fn reports_missing_bootstrap_surfaces_for_weak_repo() {
+    #[tokio::test]
+    async fn reports_missing_bootstrap_surfaces_for_weak_repo() {
         let temp = tempdir().expect("tempdir");
         fs::write(
             temp.path().join("package.json"),
@@ -1183,8 +1277,14 @@ mod tests {
                 apply: false,
                 force: false,
                 use_ai_specialist: false,
+                ai_workspace_id: "default".to_string(),
+                ai_provider: None,
+                ai_provider_timeout_ms: None,
+                ai_provider_retries: 0,
             },
+            None,
         )
+        .await
         .expect("report");
 
         assert!(report
@@ -1201,8 +1301,8 @@ mod tests {
             .any(|patch| patch.id == "patch.create_test_surface"));
     }
 
-    #[test]
-    fn classifies_fluency_blockers_into_harness_and_non_harness() {
+    #[tokio::test]
+    async fn classifies_fluency_blockers_into_harness_and_non_harness() {
         let temp = tempdir().expect("tempdir");
         fs::create_dir_all(temp.path().join("docs/fitness/reports")).expect("reports");
         fs::write(
@@ -1247,8 +1347,14 @@ mod tests {
                 apply: false,
                 force: false,
                 use_ai_specialist: false,
+                ai_workspace_id: "default".to_string(),
+                ai_provider: None,
+                ai_provider_timeout_ms: None,
+                ai_provider_retries: 0,
             },
+            None,
         )
+        .await
         .expect("report");
 
         assert!(report.gaps.iter().any(|gap| {
@@ -1263,8 +1369,8 @@ mod tests {
         }));
     }
 
-    #[test]
-    fn detects_fluency_automation_target_mismatch() {
+    #[tokio::test]
+    async fn detects_fluency_automation_target_mismatch() {
         let temp = tempdir().expect("tempdir");
         fs::create_dir_all(temp.path().join("docs/harness")).expect("harness dir");
         fs::write(
@@ -1293,8 +1399,14 @@ definitions:
                 apply: false,
                 force: false,
                 use_ai_specialist: false,
+                ai_workspace_id: "default".to_string(),
+                ai_provider: None,
+                ai_provider_timeout_ms: None,
+                ai_provider_retries: 0,
             },
+            None,
         )
+        .await
         .expect("report");
 
         assert!(report
@@ -1324,14 +1436,13 @@ definitions:
     fn bootstrap_skips_repo_with_existing_harness() {
         let temp = tempdir().expect("tempdir");
         fs::create_dir_all(temp.path().join("docs/harness")).expect("harness dir");
-        fs::write(temp.path().join("docs/harness/build.yml"), "# stub")
-            .expect("build.yml");
+        fs::write(temp.path().join("docs/harness/build.yml"), "# stub").expect("build.yml");
 
         assert!(!should_bootstrap(temp.path()));
     }
 
-    #[test]
-    fn apply_mode_creates_harness_files() {
+    #[tokio::test]
+    async fn apply_mode_creates_harness_files() {
         let temp = tempdir().expect("tempdir");
         fs::write(
             temp.path().join("package.json"),
@@ -1348,8 +1459,14 @@ definitions:
                 apply: true,
                 force: false,
                 use_ai_specialist: false,
+                ai_workspace_id: "default".to_string(),
+                ai_provider: None,
+                ai_provider_timeout_ms: None,
+                ai_provider_retries: 0,
             },
+            None,
         )
+        .await
         .expect("report");
 
         // Verify harness files were created
@@ -1378,7 +1495,7 @@ fn should_bootstrap(repo_root: &Path) -> bool {
     !harness_dir.exists() || (!build_config.exists() && !test_config.exists())
 }
 
-fn bootstrap_weak_repository(
+async fn bootstrap_weak_repository(
     repo_root: &Path,
     options: &HarnessEngineeringOptions,
 ) -> Result<HarnessEngineeringReport, String> {
@@ -1545,6 +1662,7 @@ fn bootstrap_weak_repository(
             command: "test -d docs/harness".to_string(),
             proves: "Harness configuration directory exists".to_string(),
         }],
+        ai_assessment: None,
         warnings,
     })
 }
@@ -1626,7 +1744,10 @@ fn apply_patches(
 
     // Always apply low-risk patches
     if !low_risk.is_empty() {
-        println!("✓ Applying {} low-risk patches automatically...", low_risk.len());
+        println!(
+            "✓ Applying {} low-risk patches automatically...",
+            low_risk.len()
+        );
         let low_risk_owned: Vec<_> = low_risk.iter().map(|&p| p.clone()).collect();
         let snapshot = create_snapshot(repo_root, &low_risk_owned)?;
 
@@ -1668,8 +1789,11 @@ fn apply_patches(
                 .collect();
             let snapshot = create_snapshot(repo_root, &risky_patches_vec)?;
 
-            let risky_patches_refs: Vec<&HarnessEngineeringPatchCandidate> =
-                medium_risk.iter().chain(high_risk.iter()).copied().collect();
+            let risky_patches_refs: Vec<&HarnessEngineeringPatchCandidate> = medium_risk
+                .iter()
+                .chain(high_risk.iter())
+                .copied()
+                .collect();
             match apply_patch_batch(repo_root, &risky_patches_refs) {
                 Ok(()) => {
                     println!("  ✓ Medium/high-risk patches applied");
@@ -1881,8 +2005,8 @@ fn record_evolution_outcome(
         },
     };
 
-    let json_line =
-        serde_json::to_string(&record).map_err(|e| format!("Failed to serialize history: {}", e))?;
+    let json_line = serde_json::to_string(&record)
+        .map_err(|e| format!("Failed to serialize history: {}", e))?;
 
     let mut file = fs::OpenOptions::new()
         .create(true)

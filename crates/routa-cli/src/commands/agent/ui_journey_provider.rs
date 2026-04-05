@@ -28,7 +28,10 @@ enum CodexProcessOutputEvent {
     Ignore,
 }
 
-pub(crate) async fn verify_provider_readiness(provider: &str) -> Result<(), String> {
+pub(crate) async fn verify_provider_readiness(
+    provider: &str,
+    emit_warnings: bool,
+) -> Result<(), String> {
     let normalized_provider = provider.trim().to_lowercase();
     if normalized_provider.is_empty() {
         return Err("Provider is empty".to_string());
@@ -51,7 +54,8 @@ pub(crate) async fn verify_provider_readiness(provider: &str) -> Result<(), Stri
         verify_opencode_data_directory()?;
     }
 
-    if normalized_provider == "claude"
+    if emit_warnings
+        && normalized_provider == "claude"
         && std::env::var("ANTHROPIC_AUTH_TOKEN").is_err()
         && std::env::var("ANTHROPIC_API_KEY").is_err()
     {

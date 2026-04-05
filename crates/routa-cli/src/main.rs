@@ -863,6 +863,7 @@ async fn main() {
                                 workspace_id: &workspace_id,
                                 provider: provider.as_deref(),
                                 output_json: false,
+                                cwd_override: None,
                                 specialist_dir: specialist_dir.as_deref(),
                                 provider_timeout_ms: None,
                                 provider_retries: 0,
@@ -897,6 +898,7 @@ async fn main() {
                                 workspace_id: &workspace_id,
                                 provider: provider.as_deref(),
                                 output_json: json,
+                                cwd_override: None,
                                 provider_timeout_ms,
                                 provider_retries,
                                 repeat_count: repeat,
@@ -1276,7 +1278,7 @@ async fn main() {
             Commands::Graph { action } => commands::graph::run(action),
 
             Commands::Fitness { action } => commands::fitness::run(action),
-            Commands::Harness { action } => commands::harness::run(action),
+            Commands::Harness { action } => commands::harness::run(&cli.db, action).await,
 
             Commands::Workflow { action } => {
                 let state = commands::init_state(&cli.db).await;
