@@ -136,6 +136,17 @@ pub struct FitnessSummary {
     pub critical_blocking_criteria_count: usize,
 }
 
+struct HarnessEngineeringAiPromptContext<'a> {
+    repo_root: &'a Path,
+    gaps: &'a [HarnessEngineeringGap],
+    recommended_actions: &'a [HarnessEngineeringAction],
+    patch_candidates: &'a [HarnessEngineeringPatchCandidate],
+    templates: &'a TemplateSummary,
+    automations: &'a AutomationSummary,
+    specs: &'a SpecSummary,
+    fitness: &'a FitnessSummary,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HarnessEngineeringGap {
@@ -264,16 +275,20 @@ pub async fn evaluate_harness_engineering(
         let repo_root_string = repo_root.display().to_string();
         match state {
             Some(state) => {
-                let prompt = build_ai_specialist_prompt(
+                let templates_summary = summarize_templates(&template_doctor);
+                let automations_summary = summarize_automations(&automations);
+                let specs_summary = summarize_specs(&specs);
+                let fitness_summary = summarize_fitness(repo_root, &fluency_snapshots);
+                let prompt = build_ai_specialist_prompt(&HarnessEngineeringAiPromptContext {
                     repo_root,
-                    &gaps,
-                    &recommended_actions,
-                    &patch_candidates,
-                    &summarize_templates(&template_doctor),
-                    &summarize_automations(&automations),
-                    &summarize_specs(&specs),
-                    &summarize_fitness(repo_root, &fluency_snapshots),
-                )?;
+                    gaps: &gaps,
+                    recommended_actions: &recommended_actions,
+                    patch_candidates: &patch_candidates,
+                    templates: &templates_summary,
+                    automations: &automations_summary,
+                    specs: &specs_summary,
+                    fitness: &fitness_summary,
+                })?;
                 match specialist::run_for_json(
                     state,
                     specialist::RunArgs {
@@ -454,27 +469,20 @@ pub fn format_harness_engineering_report(report: &HarnessEngineeringReport) -> S
 }
 
 fn build_ai_specialist_prompt(
-    repo_root: &Path,
-    gaps: &[HarnessEngineeringGap],
-    recommended_actions: &[HarnessEngineeringAction],
-    patch_candidates: &[HarnessEngineeringPatchCandidate],
-    templates: &TemplateSummary,
-    automations: &AutomationSummary,
-    specs: &SpecSummary,
-    fitness: &FitnessSummary,
+    prompt_context: &HarnessEngineeringAiPromptContext<'_>,
 ) -> Result<String, String> {
     let context = serde_json::json!({
-        "repoRoot": repo_root.display().to_string(),
+        "repoRoot": prompt_context.repo_root.display().to_string(),
         "inputs": {
-            "templates": templates,
-            "automations": automations,
-            "specs": specs,
-            "fitness": fitness,
+            "templates": prompt_context.templates,
+            "automations": prompt_context.automations,
+            "specs": prompt_context.specs,
+            "fitness": prompt_context.fitness,
         },
         "deterministicReport": {
-            "gaps": gaps,
-            "recommendedActions": recommended_actions,
-            "patchCandidates": patch_candidates,
+            "gaps": prompt_context.gaps,
+            "recommendedActions": prompt_context.recommended_actions,
+            "patchCandidates": prompt_context.patch_candidates,
         },
         "instructions": {
             "mode": "dry-run",

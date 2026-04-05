@@ -85,13 +85,17 @@ struct ExecuteSpecialistRunArgs<'a> {
     journey_context_override: Option<UiJourneyRunContext>,
 }
 
+struct SpecialistOutputSnapshot<'a> {
+    collected_output: &'a str,
+    prompt_response: &'a serde_json::Value,
+    effective_provider: &'a str,
+    history: &'a [serde_json::Value],
+}
+
 fn should_finish_non_journey_run(
     journey_context_present: bool,
     output_json: bool,
-    collected_output: &str,
-    prompt_response: &serde_json::Value,
-    effective_provider: &str,
-    history: &[serde_json::Value],
+    snapshot: &SpecialistOutputSnapshot<'_>,
     prompt_finished: bool,
     idle_count: u32,
     prompt_finished_idle_threshold: u32,
@@ -104,40 +108,32 @@ fn should_finish_non_journey_run(
         return false;
     }
 
-    collect_specialist_output_candidates(
-        collected_output,
-        prompt_response,
-        effective_provider,
-        history,
-    )
-    .iter()
-    .any(|candidate| is_strict_json_specialist_candidate(candidate))
+    collect_specialist_output_candidates(snapshot)
+        .iter()
+        .any(|candidate| is_strict_json_specialist_candidate(candidate))
 }
 
-fn collect_specialist_output_candidates(
-    collected_output: &str,
-    prompt_response: &serde_json::Value,
-    effective_provider: &str,
-    history: &[serde_json::Value],
-) -> Vec<String> {
-    let mut candidates = vec![collected_output.to_string()];
+fn collect_specialist_output_candidates(snapshot: &SpecialistOutputSnapshot<'_>) -> Vec<String> {
+    let mut candidates = vec![snapshot.collected_output.to_string()];
 
-    if let Some(text) = extract_text_from_prompt_result(prompt_response) {
+    if let Some(text) = extract_text_from_prompt_result(snapshot.prompt_response) {
         candidates.push(text);
     }
 
-    let provider_output =
-        extract_ui_journey_provider_output_from_process_output(effective_provider, history);
+    let provider_output = extract_ui_journey_provider_output_from_process_output(
+        snapshot.effective_provider,
+        snapshot.history,
+    );
     if !provider_output.is_empty() {
         candidates.push(provider_output);
     }
 
-    let process_output = extract_agent_output_from_process_output(history);
+    let process_output = extract_agent_output_from_process_output(snapshot.history);
     if !process_output.is_empty() {
         candidates.push(process_output);
     }
 
-    let history_output = extract_agent_output_from_history(history);
+    let history_output = extract_agent_output_from_history(snapshot.history);
     if !history_output.is_empty() {
         candidates.push(history_output);
     }
@@ -145,19 +141,8 @@ fn collect_specialist_output_candidates(
     candidates
 }
 
-fn resolve_specialist_output(
-    output_json: bool,
-    collected_output: &str,
-    prompt_response: &serde_json::Value,
-    effective_provider: &str,
-    history: &[serde_json::Value],
-) -> String {
-    let candidates = collect_specialist_output_candidates(
-        collected_output,
-        prompt_response,
-        effective_provider,
-        history,
-    );
+fn resolve_specialist_output(output_json: bool, snapshot: &SpecialistOutputSnapshot<'_>) -> String {
+    let candidates = collect_specialist_output_candidates(snapshot);
 
     if output_json {
         if let Some(candidate) = candidates
@@ -933,13 +918,16 @@ async fn execute_specialist_run(
                         }
                         break;
                     }
+                    let snapshot = SpecialistOutputSnapshot {
+                        collected_output: &collected_output,
+                        prompt_response: &prompt_response,
+                        effective_provider,
+                        history: &history,
+                    };
                     if should_finish_non_journey_run(
                         journey_context.is_some(),
                         output_json,
-                        &collected_output,
-                        &prompt_response,
-                        effective_provider,
-                        &history,
+                        &snapshot,
                         prompt_finished,
                         idle_count,
                         prompt_finished_idle_threshold,
@@ -988,10 +976,12 @@ async fn execute_specialist_run(
     metrics.last_process_output = extract_last_process_output_line(&history);
     let specialist_output = resolve_specialist_output(
         output_json,
-        &collected_output,
-        &prompt_response,
-        effective_provider,
-        &history,
+        &SpecialistOutputSnapshot {
+            collected_output: &collected_output,
+            prompt_response: &prompt_response,
+            effective_provider,
+            history: &history,
+        },
     );
     metrics.output_chars = specialist_output.chars().count();
 
@@ -1488,7 +1478,7 @@ async fn ensure_workspace(router: &RpcRouter, workspace_id: &str) -> Result<Stri
 mod tests {
     use super::{
         parse_prompt_mention, parse_specialist_json_output, resolve_specialist_output,
-        should_finish_non_journey_run,
+        should_finish_non_journey_run, SpecialistOutputSnapshot,
     };
     use routa_core::orchestration::SpecialistConfig;
 
@@ -1588,46 +1578,47 @@ mod tests {
     fn finishes_non_journey_run_after_prompt_completion_idle_threshold() {
         let history = Vec::new();
         let prompt_response = serde_json::Value::Null;
+        let snapshot = SpecialistOutputSnapshot {
+            collected_output: "",
+            prompt_response: &prompt_response,
+            effective_provider: "claude",
+            history: &history,
+        };
         assert!(!should_finish_non_journey_run(
-            false,
-            true,
-            "",
-            &prompt_response,
-            "claude",
-            &history,
-            false,
-            3,
-            3
+            false, true, &snapshot, false, 3, 3
         ));
+        let ready_snapshot = SpecialistOutputSnapshot {
+            collected_output: "{\"ok\":true}",
+            prompt_response: &prompt_response,
+            effective_provider: "claude",
+            history: &history,
+        };
         assert!(!should_finish_non_journey_run(
             true,
             true,
-            "{\"ok\":true}",
-            &prompt_response,
-            "claude",
-            &history,
-            true,
-            3,
-            3
-        ));
-        assert!(!should_finish_non_journey_run(
-            false,
-            false,
-            "{\"ok\":true}",
-            &prompt_response,
-            "claude",
-            &history,
+            &ready_snapshot,
             true,
             3,
             3
         ));
         assert!(!should_finish_non_journey_run(
             false,
+            false,
+            &ready_snapshot,
             true,
-            "{\"ok\":",
-            &prompt_response,
-            "claude",
-            &history,
+            3,
+            3
+        ));
+        let incomplete_snapshot = SpecialistOutputSnapshot {
+            collected_output: "{\"ok\":",
+            prompt_response: &prompt_response,
+            effective_provider: "claude",
+            history: &history,
+        };
+        assert!(!should_finish_non_journey_run(
+            false,
+            true,
+            &incomplete_snapshot,
             true,
             3,
             3
@@ -1635,10 +1626,7 @@ mod tests {
         assert!(!should_finish_non_journey_run(
             false,
             true,
-            "{\"ok\":true}",
-            &prompt_response,
-            "claude",
-            &history,
+            &ready_snapshot,
             true,
             2,
             3
@@ -1646,21 +1634,21 @@ mod tests {
         assert!(should_finish_non_journey_run(
             false,
             true,
-            "{\"ok\":true}",
-            &prompt_response,
-            "claude",
-            &history,
+            &ready_snapshot,
             true,
             3,
             3
         ));
+        let repaired_only_snapshot = SpecialistOutputSnapshot {
+            collected_output: "{\"ok\":true",
+            prompt_response: &prompt_response,
+            effective_provider: "claude",
+            history: &history,
+        };
         assert!(!should_finish_non_journey_run(
             false,
             true,
-            "{\"ok\":true",
-            &prompt_response,
-            "claude",
-            &history,
+            &repaired_only_snapshot,
             true,
             3,
             3
@@ -1674,7 +1662,15 @@ mod tests {
                 "text": "{\"ok\":true,\"source\":\"prompt\"}"
             }
         });
-        let resolved = resolve_specialist_output(true, "{\"ok\":", &prompt_response, "codex", &[]);
+        let resolved = resolve_specialist_output(
+            true,
+            &SpecialistOutputSnapshot {
+                collected_output: "{\"ok\":",
+                prompt_response: &prompt_response,
+                effective_provider: "codex",
+                history: &[],
+            },
+        );
         assert_eq!(resolved, "{\"ok\":true,\"source\":\"prompt\"}");
     }
 }
