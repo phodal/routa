@@ -24,6 +24,7 @@ const HARNESS_ENGINEERING_SPECIALIST_RELATIVE_PATH: &str =
 pub struct HarnessEngineeringOptions {
     pub output_path: PathBuf,
     pub dry_run: bool,
+    pub bootstrap: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -178,6 +179,15 @@ pub fn evaluate_harness_engineering(
     options: &HarnessEngineeringOptions,
 ) -> Result<HarnessEngineeringReport, String> {
     let mut warnings = Vec::new();
+
+    // Bootstrap mode: detect weak repo and synthesize initial harness
+    if options.bootstrap {
+        if should_bootstrap(repo_root) {
+            return bootstrap_weak_repository(repo_root, options);
+        } else {
+            warnings.push("Bootstrap mode requested but repository already has harness surfaces. Proceeding with normal evaluation.".to_string());
+        }
+    }
 
     let repo_signals = match routa_core::harness::detect_repo_signals(repo_root) {
         Ok(report) => Some(report),
@@ -1122,7 +1132,8 @@ fn required_string(value: &Value, key: &str) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        evaluate_harness_engineering, HarnessEngineeringOptions, DEFAULT_REPORT_RELATIVE_PATH,
+        evaluate_harness_engineering, should_bootstrap, HarnessEngineeringOptions,
+        DEFAULT_REPORT_RELATIVE_PATH,
     };
     use std::fs;
     use tempfile::tempdir;
@@ -1141,6 +1152,7 @@ mod tests {
             &HarnessEngineeringOptions {
                 output_path: temp.path().join(DEFAULT_REPORT_RELATIVE_PATH),
                 dry_run: true,
+                bootstrap: false,
             },
         )
         .expect("report");
@@ -1201,6 +1213,7 @@ mod tests {
             &HarnessEngineeringOptions {
                 output_path: temp.path().join(DEFAULT_REPORT_RELATIVE_PATH),
                 dry_run: true,
+                bootstrap: false,
             },
         )
         .expect("report");
@@ -1243,6 +1256,7 @@ definitions:
             &HarnessEngineeringOptions {
                 output_path: temp.path().join(DEFAULT_REPORT_RELATIVE_PATH),
                 dry_run: true,
+                bootstrap: false,
             },
         )
         .expect("report");
@@ -1256,4 +1270,219 @@ definitions:
             .iter()
             .any(|patch| patch.id == "patch.normalize_automation_target"));
     }
+
+    #[test]
+    fn bootstrap_detects_weak_repo() {
+        let temp = tempdir().expect("tempdir");
+        fs::create_dir_all(temp.path().join("src")).expect("src dir");
+        fs::write(
+            temp.path().join("package.json"),
+            r#"{"name":"test","scripts":{"build":"tsc","test":"vitest"}}"#,
+        )
+        .expect("package.json");
+
+        assert!(should_bootstrap(temp.path()));
+    }
+
+    #[test]
+    fn bootstrap_skips_repo_with_existing_harness() {
+        let temp = tempdir().expect("tempdir");
+        fs::create_dir_all(temp.path().join("docs/harness")).expect("harness dir");
+        fs::write(temp.path().join("docs/harness/build.yml"), "# stub")
+            .expect("build.yml");
+
+        assert!(!should_bootstrap(temp.path()));
+    }
+}
+
+// Bootstrap Mode Implementation
+
+fn should_bootstrap(repo_root: &Path) -> bool {
+    let harness_dir = repo_root.join("docs/harness");
+    let build_config = harness_dir.join("build.yml");
+    let test_config = harness_dir.join("test.yml");
+
+    // Bootstrap if harness dir doesn't exist or both build.yml and test.yml are missing
+    !harness_dir.exists() || (!build_config.exists() && !test_config.exists())
+}
+
+fn bootstrap_weak_repository(
+    repo_root: &Path,
+    options: &HarnessEngineeringOptions,
+) -> Result<HarnessEngineeringReport, String> {
+    let mut warnings = Vec::new();
+    let mut gaps = Vec::new();
+    let mut recommended_actions = Vec::new();
+    let mut patch_candidates = Vec::new();
+
+    // Detect available scripts from package.json
+    let package_json_path = repo_root.join("package.json");
+    let scripts = if package_json_path.exists() {
+        match fs::read_to_string(&package_json_path) {
+            Ok(content) => match serde_json::from_str::<serde_json::Value>(&content) {
+                Ok(json) => extract_scripts_from_package_json(&json),
+                Err(e) => {
+                    warnings.push(format!("Failed to parse package.json: {e}"));
+                    Vec::new()
+                }
+            },
+            Err(e) => {
+                warnings.push(format!("Failed to read package.json: {e}"));
+                Vec::new()
+            }
+        }
+    } else {
+        warnings.push("No package.json found. Bootstrap requires package.json.".to_string());
+        Vec::new()
+    };
+
+    // Classify as bootstrap gaps
+    gaps.push(HarnessEngineeringGap {
+        id: "bootstrap.missing_harness_directory".to_string(),
+        category: "missing_execution_surface".to_string(),
+        severity: "high".to_string(),
+        harness_mutation_candidate: true,
+        title: "Missing docs/harness directory".to_string(),
+        detail: "Repository has no harness configuration. Bootstrap mode will synthesize initial surfaces.".to_string(),
+        evidence: Vec::new(),
+        suggested_fix: "Create docs/harness/ with build.yml and test.yml".to_string(),
+    });
+
+    if !scripts.is_empty() {
+        let build_scripts = scripts
+            .iter()
+            .filter(|(name, _)| {
+                name.contains("build") || name.contains("compile") || name.contains("bundle")
+            })
+            .collect::<Vec<_>>();
+        let test_scripts = scripts
+            .iter()
+            .filter(|(name, _)| name.contains("test") || name.contains("spec"))
+            .collect::<Vec<_>>();
+
+        if !build_scripts.is_empty() {
+            patch_candidates.push(HarnessEngineeringPatchCandidate {
+                id: "bootstrap.synthesize_build_yml".to_string(),
+                risk: "low".to_string(),
+                title: "Synthesize build.yml from detected scripts".to_string(),
+                targets: vec!["docs/harness/build.yml".to_string()],
+                change_kind: "create".to_string(),
+                rationale: format!(
+                    "Detected {} build-related scripts: {}",
+                    build_scripts.len(),
+                    build_scripts
+                        .iter()
+                        .map(|(name, _)| name.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ),
+            });
+        }
+
+        if !test_scripts.is_empty() {
+            patch_candidates.push(HarnessEngineeringPatchCandidate {
+                id: "bootstrap.synthesize_test_yml".to_string(),
+                risk: "low".to_string(),
+                title: "Synthesize test.yml from detected scripts".to_string(),
+                targets: vec!["docs/harness/test.yml".to_string()],
+                change_kind: "create".to_string(),
+                rationale: format!(
+                    "Detected {} test-related scripts: {}",
+                    test_scripts.len(),
+                    test_scripts
+                        .iter()
+                        .map(|(name, _)| name.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ),
+            });
+        }
+    }
+
+    recommended_actions.push(HarnessEngineeringAction {
+        gap_id: "bootstrap.missing_harness_directory".to_string(),
+        priority: 1,
+        action: "Create docs/harness/ directory and initialize build.yml and test.yml".to_string(),
+        rationale: "Required for harness surface definitions".to_string(),
+    });
+
+    recommended_actions.push(HarnessEngineeringAction {
+        gap_id: "bootstrap.missing_harness_directory".to_string(),
+        priority: 2,
+        action: "Run initial fluency evaluation to establish baseline snapshot".to_string(),
+        rationale: "Creates first reference point for harness maturity tracking".to_string(),
+    });
+
+    let summary = HarnessEngineeringSummary {
+        total_gaps: gaps.len(),
+        blocking_gaps: gaps.iter().filter(|gap| gap.severity == "high").count(),
+        harness_mutation_candidates: gaps
+            .iter()
+            .filter(|gap| gap.harness_mutation_candidate)
+            .count(),
+        non_harness_gaps: 0,
+        low_risk_patch_candidates: patch_candidates.len(),
+    };
+
+    Ok(HarnessEngineeringReport {
+        generated_at: Utc::now().to_rfc3339(),
+        repo_root: repo_root.display().to_string(),
+        mode: "bootstrap".to_string(),
+        report_path: options.output_path.display().to_string(),
+        summary,
+        inputs: HarnessEngineeringInputs {
+            repo_signals: None,
+            templates: TemplateSummary {
+                templates_checked: 0,
+                drift_error_count: 0,
+                drift_warning_count: 0,
+                missing_sensor_files: 0,
+                missing_automation_refs: 0,
+                warnings: 0,
+            },
+            automations: AutomationSummary {
+                definition_count: 0,
+                pending_signal_count: 0,
+                recent_run_count: 0,
+                definition_only_count: 0,
+                warnings: 0,
+            },
+            specs: SpecSummary {
+                source_count: 0,
+                feature_count: 0,
+                systems: Vec::new(),
+                warnings: 0,
+            },
+            fitness: FitnessSummary {
+                manifest_present: false,
+                fluency_snapshots_loaded: 0,
+                blocking_criteria_count: 0,
+                critical_blocking_criteria_count: 0,
+            },
+        },
+        gaps,
+        recommended_actions,
+        patch_candidates,
+        verification_plan: vec![HarnessEngineeringVerificationStep {
+            label: "Verify harness directory created".to_string(),
+            command: "test -d docs/harness".to_string(),
+            proves: "Harness configuration directory exists".to_string(),
+        }],
+        warnings,
+    })
+}
+
+fn extract_scripts_from_package_json(json: &serde_json::Value) -> Vec<(String, String)> {
+    json.get("scripts")
+        .and_then(|s| s.as_object())
+        .map(|obj| {
+            obj.iter()
+                .filter_map(|(key, value)| {
+                    value
+                        .as_str()
+                        .map(|command| (key.clone(), command.to_string()))
+                })
+                .collect()
+        })
+        .unwrap_or_default()
 }

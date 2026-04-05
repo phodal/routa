@@ -96,6 +96,10 @@ pub struct HarnessEvolveArgs {
     #[arg(long, default_value_t = false)]
     pub dry_run: bool,
 
+    /// Bootstrap mode: synthesize initial harness surfaces for weak repositories.
+    #[arg(long, default_value_t = false)]
+    pub bootstrap: bool,
+
     /// Override the persisted report path.
     #[arg(long)]
     pub output: Option<String>,
@@ -397,6 +401,7 @@ fn run_evolve(args: &HarnessEvolveArgs) -> Result<(), String> {
         &HarnessEngineeringOptions {
             output_path: output_path.clone(),
             dry_run: true,
+            bootstrap: args.bootstrap,
         },
     )?;
 
