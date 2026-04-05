@@ -2,3 +2,9 @@ last_reviewed_at: "2026-04-05"
 cadence_days: 7
 owner: "agent"
 notes: "Weekly issue hygiene heartbeat for status/implementation sync checks."
+last_cleanup_summary: |
+  2026-04-05 cleanup:
+  - Closed GitHub issues: #286 (Architecture DSL), #285 (Task deduplication), #284 (allowedDevOrigins)
+  - Updated local issues: #286, lucide-inline-svg-replacement, session-layout-and-sidebar-friction
+  - Remaining open local issues: 6 (down from 8)
+  - All remaining issues are valid improvement needs or in-progress features
