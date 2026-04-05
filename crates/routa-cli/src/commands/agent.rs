@@ -87,11 +87,104 @@ struct ExecuteSpecialistRunArgs<'a> {
 
 fn should_finish_non_journey_run(
     journey_context_present: bool,
+    output_json: bool,
+    collected_output: &str,
+    prompt_response: &serde_json::Value,
+    effective_provider: &str,
+    history: &[serde_json::Value],
     prompt_finished: bool,
     idle_count: u32,
     prompt_finished_idle_threshold: u32,
 ) -> bool {
-    !journey_context_present && prompt_finished && idle_count >= prompt_finished_idle_threshold
+    if journey_context_present || !prompt_finished || idle_count < prompt_finished_idle_threshold {
+        return false;
+    }
+
+    if !output_json {
+        return false;
+    }
+
+    collect_specialist_output_candidates(
+        collected_output,
+        prompt_response,
+        effective_provider,
+        history,
+    )
+    .iter()
+    .any(|candidate| is_strict_json_specialist_candidate(candidate))
+}
+
+fn collect_specialist_output_candidates(
+    collected_output: &str,
+    prompt_response: &serde_json::Value,
+    effective_provider: &str,
+    history: &[serde_json::Value],
+) -> Vec<String> {
+    let mut candidates = vec![collected_output.to_string()];
+
+    if let Some(text) = extract_text_from_prompt_result(prompt_response) {
+        candidates.push(text);
+    }
+
+    let provider_output =
+        extract_ui_journey_provider_output_from_process_output(effective_provider, history);
+    if !provider_output.is_empty() {
+        candidates.push(provider_output);
+    }
+
+    let process_output = extract_agent_output_from_process_output(history);
+    if !process_output.is_empty() {
+        candidates.push(process_output);
+    }
+
+    let history_output = extract_agent_output_from_history(history);
+    if !history_output.is_empty() {
+        candidates.push(history_output);
+    }
+
+    candidates
+}
+
+fn resolve_specialist_output(
+    output_json: bool,
+    collected_output: &str,
+    prompt_response: &serde_json::Value,
+    effective_provider: &str,
+    history: &[serde_json::Value],
+) -> String {
+    let candidates = collect_specialist_output_candidates(
+        collected_output,
+        prompt_response,
+        effective_provider,
+        history,
+    );
+
+    if output_json {
+        if let Some(candidate) = candidates
+            .iter()
+            .find(|candidate| is_strict_json_specialist_candidate(candidate))
+        {
+            return candidate.clone();
+        }
+        if let Some(candidate) = candidates.iter().find(|candidate| {
+            !candidate.trim().is_empty() && parse_specialist_json_output(candidate).is_ok()
+        }) {
+            return candidate.clone();
+        }
+    }
+
+    candidates
+        .into_iter()
+        .find(|candidate| !candidate.trim().is_empty())
+        .unwrap_or_default()
+}
+
+fn is_strict_json_specialist_candidate(candidate: &str) -> bool {
+    if candidate.trim().is_empty() {
+        return false;
+    }
+
+    parse_specialist_json_output_strict(candidate).is_ok()
 }
 
 async fn run_internal(
@@ -549,6 +642,15 @@ async fn execute_specialist_run(
     let launch_options = SessionLaunchOptions {
         initialize_timeout_ms: provider_timeout_ms,
         specialist_id: Some(selected_specialist.id.clone()),
+        provider_args: (effective_provider.eq_ignore_ascii_case("codex")
+            && output_json
+            && journey_context.is_none())
+        .then(|| {
+            vec![
+                "-c".to_string(),
+                "model_reasoning_effort=\"low\"".to_string(),
+            ]
+        }),
         ..SessionLaunchOptions::default()
     };
 
@@ -684,8 +786,12 @@ async fn execute_specialist_run(
 
     let mut renderer = (!output_json).then(TuiRenderer::new);
     let mut idle_count = 0u32;
-    let max_idle = 600;
-    let prompt_finished_idle_threshold = 3;
+    let max_idle = if output_json && journey_context.is_none() {
+        30
+    } else {
+        600
+    };
+    let prompt_finished_idle_threshold = 10;
     let mut failure_reason: Option<String> = None;
     let mut collected_output = String::new();
     let mut prompt_response = serde_json::Value::Null;
@@ -749,16 +855,16 @@ async fn execute_specialist_run(
             recv_result = rx.recv() => {
                 match recv_result {
                     Ok(update) => {
-                        idle_count = 0;
-                        let normalized_update = if journey_context.is_some() {
-                            normalize_ui_journey_update(effective_provider, &update)
-                        } else {
-                            Some(update.clone())
-                        };
+                        // Provider normalization is useful beyond UI-journey runs.
+                        // Codex emits raw process_output and thought events that can pollute
+                        // JSON-specialist output unless we canonicalize them first.
+                        let normalized_update =
+                            normalize_ui_journey_update(effective_provider, &update);
 
                         let Some(normalized_update) = normalized_update else {
                             continue;
                         };
+                        idle_count = 0;
 
                         let update_payload = normalized_update
                             .get("params")
@@ -768,6 +874,16 @@ async fn execute_specialist_run(
                             if let Some(text) = extract_update_text(update_payload) {
                                 collected_output.push_str(&text);
                             }
+                        }
+                        if journey_context.is_none()
+                            && output_json
+                            && prompt_finished
+                            && is_strict_json_specialist_candidate(&collected_output)
+                        {
+                            if let Some(renderer) = renderer.as_mut() {
+                                renderer.finish();
+                            }
+                            break;
                         }
                         if let Some(renderer) = renderer.as_mut() {
                             renderer.handle_update(&normalized_update);
@@ -817,21 +933,25 @@ async fn execute_specialist_run(
                         }
                         break;
                     }
-                }
-
-                if should_finish_non_journey_run(
-                    journey_context.is_some(),
-                    prompt_finished,
-                    idle_count,
-                    prompt_finished_idle_threshold,
-                ) {
-                    if let Some(renderer) = renderer.as_mut() {
-                        renderer.finish();
+                    if should_finish_non_journey_run(
+                        journey_context.is_some(),
+                        output_json,
+                        &collected_output,
+                        &prompt_response,
+                        effective_provider,
+                        &history,
+                        prompt_finished,
+                        idle_count,
+                        prompt_finished_idle_threshold,
+                    ) {
+                        if let Some(renderer) = renderer.as_mut() {
+                            renderer.finish();
+                        }
+                        if !output_json {
+                            println!("═══ Specialist response complete ═══");
+                        }
+                        break;
                     }
-                    if !output_json {
-                        println!("═══ Specialist response complete ═══");
-                    }
-                    break;
                 }
 
                 if idle_count >= max_idle {
@@ -866,26 +986,13 @@ async fn execute_specialist_run(
         .unwrap_or_default();
     metrics.history_entry_count = history.len();
     metrics.last_process_output = extract_last_process_output_line(&history);
-    let specialist_output = if collected_output.trim().is_empty() {
-        extract_agent_output_from_history(&history)
-    } else {
-        collected_output
-    };
-    let specialist_output = if specialist_output.trim().is_empty() {
-        extract_text_from_prompt_result(&prompt_response).unwrap_or_default()
-    } else {
-        specialist_output
-    };
-    let specialist_output = if specialist_output.trim().is_empty() {
-        extract_ui_journey_provider_output_from_process_output(effective_provider, &history)
-    } else {
-        specialist_output
-    };
-    let specialist_output = if specialist_output.trim().is_empty() {
-        extract_agent_output_from_process_output(&history)
-    } else {
-        specialist_output
-    };
+    let specialist_output = resolve_specialist_output(
+        output_json,
+        &collected_output,
+        &prompt_response,
+        effective_provider,
+        &history,
+    );
     metrics.output_chars = specialist_output.chars().count();
 
     if prompt_error.is_some() && specialist_output.trim().is_empty() && failure_reason.is_none() {
@@ -1029,6 +1136,40 @@ async fn execute_specialist_run(
 }
 
 fn parse_specialist_json_output(output: &str) -> Result<serde_json::Value, String> {
+    match parse_specialist_json_output_strict(output) {
+        Ok(parsed) => Ok(parsed),
+        Err(_) => {
+            let trimmed = output.trim();
+            if trimmed.is_empty() {
+                return Err("Specialist output is empty; expected JSON object".to_string());
+            }
+
+            let normalized_lines = trimmed
+                .lines()
+                .map(|line| {
+                    line.trim_start_matches(|char: char| char.is_whitespace() || char == '▶')
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+            let stripped_controls = normalized_lines
+                .chars()
+                .filter(|char| matches!(char, '\n' | '\r' | '\t') || !char.is_control())
+                .collect::<String>();
+            let candidate =
+                extract_json_object_slice(&stripped_controls).unwrap_or(stripped_controls.as_str());
+            let repaired = repair_truncated_json_candidate(candidate);
+            serde_json::from_str::<serde_json::Value>(&repaired).map_err(|err| {
+                format!(
+                    "Specialist output is not valid JSON (raw_len={}): {}",
+                    output.chars().count(),
+                    err
+                )
+            })
+        }
+    }
+}
+
+fn parse_specialist_json_output_strict(output: &str) -> Result<serde_json::Value, String> {
     let trimmed = output.trim();
     if trimmed.is_empty() {
         return Err("Specialist output is empty; expected JSON object".to_string());
@@ -1049,8 +1190,9 @@ fn parse_specialist_json_output(output: &str) -> Result<serde_json::Value, Strin
         .collect::<String>();
     let candidate =
         extract_json_object_slice(&stripped_controls).unwrap_or(stripped_controls.as_str());
+    let candidate = escape_unescaped_json_string_controls(candidate);
 
-    serde_json::from_str::<serde_json::Value>(candidate).map_err(|err| {
+    serde_json::from_str::<serde_json::Value>(&candidate).map_err(|err| {
         format!(
             "Specialist output is not valid JSON (raw_len={}): {}",
             output.chars().count(),
@@ -1063,6 +1205,96 @@ fn extract_json_object_slice(value: &str) -> Option<&str> {
     let first = value.find('{')?;
     let last = value.rfind('}')?;
     (first <= last).then_some(&value[first..=last])
+}
+
+fn repair_truncated_json_candidate(candidate: &str) -> String {
+    let mut repaired = String::with_capacity(candidate.len() + 8);
+    let mut stack = Vec::new();
+    let mut in_string = false;
+    let mut escaped = false;
+
+    for ch in candidate.chars() {
+        repaired.push(ch);
+        if in_string {
+            if escaped {
+                escaped = false;
+            } else if ch == '\\' {
+                escaped = true;
+            } else if ch == '"' {
+                in_string = false;
+            }
+            continue;
+        }
+
+        match ch {
+            '"' => in_string = true,
+            '{' | '[' => stack.push(ch),
+            '}' => {
+                if stack.last() == Some(&'{') {
+                    stack.pop();
+                }
+            }
+            ']' => {
+                if stack.last() == Some(&'[') {
+                    stack.pop();
+                }
+            }
+            _ => {}
+        }
+    }
+
+    if in_string {
+        repaired.push('"');
+    }
+
+    for opener in stack.iter().rev() {
+        repaired.push(match opener {
+            '{' => '}',
+            '[' => ']',
+            _ => continue,
+        });
+    }
+
+    repaired
+}
+
+fn escape_unescaped_json_string_controls(candidate: &str) -> String {
+    let mut normalized = String::with_capacity(candidate.len());
+    let mut in_string = false;
+    let mut escaped = false;
+
+    for ch in candidate.chars() {
+        if in_string {
+            if escaped {
+                normalized.push(ch);
+                escaped = false;
+                continue;
+            }
+
+            match ch {
+                '\\' => {
+                    normalized.push(ch);
+                    escaped = true;
+                }
+                '"' => {
+                    normalized.push(ch);
+                    in_string = false;
+                }
+                '\n' => normalized.push_str("\\n"),
+                '\r' => normalized.push_str("\\r"),
+                '\t' => normalized.push_str("\\t"),
+                _ => normalized.push(ch),
+            }
+            continue;
+        }
+
+        if ch == '"' {
+            in_string = true;
+        }
+        normalized.push(ch);
+    }
+
+    normalized
 }
 
 fn extract_last_process_output_line(history: &[serde_json::Value]) -> Option<String> {
@@ -1255,7 +1487,8 @@ async fn ensure_workspace(router: &RpcRouter, workspace_id: &str) -> Result<Stri
 #[cfg(test)]
 mod tests {
     use super::{
-        parse_prompt_mention, parse_specialist_json_output, should_finish_non_journey_run,
+        parse_prompt_mention, parse_specialist_json_output, resolve_specialist_output,
+        should_finish_non_journey_run,
     };
     use routa_core::orchestration::SpecialistConfig;
 
@@ -1325,10 +1558,123 @@ mod tests {
     }
 
     #[test]
+    fn parses_specialist_json_output_with_raw_newlines_inside_strings() {
+        let output = "{\"summary\":{\"overallAssessment\":\"line one\nline two\"}}";
+        let parsed = parse_specialist_json_output(output)
+            .expect("should escape raw newlines inside strings");
+        assert_eq!(
+            parsed
+                .get("summary")
+                .and_then(|v| v.get("overallAssessment"))
+                .and_then(|v| v.as_str()),
+            Some("line one\nline two")
+        );
+    }
+
+    #[test]
+    fn parses_repaired_truncated_json_output() {
+        let output = "{\"summary\":{\"mode\":\"dry-run\"},\"verificationPlan\":[{\"label\":\"x\"}";
+        let parsed = parse_specialist_json_output(output).expect("should repair truncated JSON");
+        assert_eq!(
+            parsed
+                .get("summary")
+                .and_then(|v| v.get("mode"))
+                .and_then(|v| v.as_str()),
+            Some("dry-run")
+        );
+    }
+
+    #[test]
     fn finishes_non_journey_run_after_prompt_completion_idle_threshold() {
-        assert!(!should_finish_non_journey_run(false, false, 3, 3));
-        assert!(!should_finish_non_journey_run(true, true, 3, 3));
-        assert!(!should_finish_non_journey_run(false, true, 2, 3));
-        assert!(should_finish_non_journey_run(false, true, 3, 3));
+        let history = Vec::new();
+        let prompt_response = serde_json::Value::Null;
+        assert!(!should_finish_non_journey_run(
+            false,
+            true,
+            "",
+            &prompt_response,
+            "claude",
+            &history,
+            false,
+            3,
+            3
+        ));
+        assert!(!should_finish_non_journey_run(
+            true,
+            true,
+            "{\"ok\":true}",
+            &prompt_response,
+            "claude",
+            &history,
+            true,
+            3,
+            3
+        ));
+        assert!(!should_finish_non_journey_run(
+            false,
+            false,
+            "{\"ok\":true}",
+            &prompt_response,
+            "claude",
+            &history,
+            true,
+            3,
+            3
+        ));
+        assert!(!should_finish_non_journey_run(
+            false,
+            true,
+            "{\"ok\":",
+            &prompt_response,
+            "claude",
+            &history,
+            true,
+            3,
+            3
+        ));
+        assert!(!should_finish_non_journey_run(
+            false,
+            true,
+            "{\"ok\":true}",
+            &prompt_response,
+            "claude",
+            &history,
+            true,
+            2,
+            3
+        ));
+        assert!(should_finish_non_journey_run(
+            false,
+            true,
+            "{\"ok\":true}",
+            &prompt_response,
+            "claude",
+            &history,
+            true,
+            3,
+            3
+        ));
+        assert!(!should_finish_non_journey_run(
+            false,
+            true,
+            "{\"ok\":true",
+            &prompt_response,
+            "claude",
+            &history,
+            true,
+            3,
+            3
+        ));
+    }
+
+    #[test]
+    fn resolve_specialist_output_prefers_parseable_json_candidate() {
+        let prompt_response = serde_json::json!({
+            "result": {
+                "text": "{\"ok\":true,\"source\":\"prompt\"}"
+            }
+        });
+        let resolved = resolve_specialist_output(true, "{\"ok\":", &prompt_response, "codex", &[]);
+        assert_eq!(resolved, "{\"ok\":true,\"source\":\"prompt\"}");
     }
 }

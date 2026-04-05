@@ -84,6 +84,7 @@ pub struct SessionLaunchOptions {
     pub specialist_system_prompt: Option<String>,
     pub allowed_native_tools: Option<Vec<String>>,
     pub initialize_timeout_ms: Option<u64>,
+    pub provider_args: Option<Vec<String>>,
 }
 
 // ─── Managed Process ────────────────────────────────────────────────────
@@ -558,6 +559,9 @@ impl AcpManager {
 
             // Build args: preset args + optional model flag
             let mut extra_args: Vec<String> = preset.args.clone();
+            if let Some(provider_args) = options.provider_args.clone() {
+                extra_args.extend(provider_args);
+            }
             if let Some(ref m) = model {
                 if !m.is_empty() {
                     // opencode (and future providers) accept -m <model>

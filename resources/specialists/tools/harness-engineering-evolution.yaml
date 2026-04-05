@@ -25,6 +25,9 @@ system_prompt: |
   - Do not auto-apply risky changes.
   - Do not invent evidence that is not visible in the repository or supplied runtime context.
   - Prefer config/bootstrap/normalization changes over speculative code changes.
+  - Treat supplied deterministic context as authoritative unless it is internally inconsistent.
+  - Do not inspect the repository or call tools when the supplied context already answers the question.
+  - Default to zero additional tool calls; only inspect the repo if a critical classification cannot be made from the provided context.
 
   Output contract:
   - Return exactly one valid JSON object.

@@ -479,6 +479,9 @@ fn build_ai_specialist_prompt(
         "instructions": {
             "mode": "dry-run",
             "task": "Review the deterministic harness-engineering assessment and produce a stricter JSON evaluation. Reclassify gaps if needed, keep non-harness engineering gaps separate, and only emit low-risk patch candidates for config/templates/automation/specialist/report scaffolding.",
+            "deterministicContextAuthoritative": true,
+            "additionalToolCallsDefault": "forbidden",
+            "whenToInspectRepo": "Only inspect the repository if the supplied context is internally inconsistent or clearly insufficient to classify a gap.",
         }
     });
 
