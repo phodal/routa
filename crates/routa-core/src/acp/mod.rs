@@ -330,11 +330,7 @@ impl AcpManager {
         .await
     }
 
-    fn spawn_history_mirror(
-        &self,
-        session_id: &str,
-        ntx: &broadcast::Sender<serde_json::Value>,
-    ) {
+    fn spawn_history_mirror(&self, session_id: &str, ntx: &broadcast::Sender<serde_json::Value>) {
         let history_manager = self.clone();
         let history_session_id = session_id.to_string();
         let mut history_rx = ntx.subscribe();
@@ -400,7 +396,10 @@ impl AcpManager {
             specialist_system_prompt: options.specialist_system_prompt.clone(),
         };
 
-        self.sessions.write().await.insert(session_id.clone(), record);
+        self.sessions
+            .write()
+            .await
+            .insert(session_id.clone(), record);
         self.processes.write().await.insert(
             session_id.clone(),
             ManagedProcess {

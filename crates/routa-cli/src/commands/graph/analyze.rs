@@ -62,10 +62,10 @@ pub struct GraphEdge {
 pub enum EdgeKind {
     Uses,
     Imports,
-    MadeOf,      // Package contains Class, Class contains Method
-    DependsOn,   // Package/Class depends on another through import
-    Extends,     // Class extends SuperClass
-    Implements,  // Class implements Interface
+    MadeOf,     // Package contains Class, Class contains Method
+    DependsOn,  // Package/Class depends on another through import
+    Extends,    // Class extends SuperClass
+    Implements, // Class implements Interface
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -158,8 +158,20 @@ pub fn analyze_directory(
 
     // Branch based on analysis depth
     match depth {
-        AnalysisDepth::Fast => analyze_fast(root, requested_lang, &rust_workspace, &mut nodes, &mut edges),
-        AnalysisDepth::Normal => analyze_normal(root, requested_lang, &rust_workspace, &mut nodes, &mut edges),
+        AnalysisDepth::Fast => analyze_fast(
+            root,
+            requested_lang,
+            &rust_workspace,
+            &mut nodes,
+            &mut edges,
+        ),
+        AnalysisDepth::Normal => analyze_normal(
+            root,
+            requested_lang,
+            &rust_workspace,
+            &mut nodes,
+            &mut edges,
+        ),
     }
 
     // Placeholder - actual implementation in analyze_fast/analyze_normal
@@ -890,11 +902,7 @@ fn collect_java_imports(node: Node<'_>, source: &[u8], out: &mut Vec<String>) {
     }
 }
 
-fn resolve_java_dependency(
-    root: &Path,
-    _importer: &Path,
-    specifier: &str,
-) -> ResolvedDependency {
+fn resolve_java_dependency(root: &Path, _importer: &Path, specifier: &str) -> ResolvedDependency {
     // Check if it's a standard Java library
     if specifier.starts_with("java.") || specifier.starts_with("javax.") {
         return ResolvedDependency::External(
@@ -1057,13 +1065,7 @@ fn analyze_java_normal(
     let package_name = extract_java_package(root_node, source_bytes);
 
     // Extract import dependencies (DEPENDS_ON relationships)
-    extract_java_import_dependencies(
-        root_node,
-        source_bytes,
-        &package_name,
-        nodes,
-        edges,
-    );
+    extract_java_import_dependencies(root_node, source_bytes, &package_name, nodes, edges);
 
     // Extract all AST nodes
     extract_java_ast_nodes(
@@ -1103,7 +1105,9 @@ fn extract_java_import_dependencies(
             // Extract import path
             for i in 0..child.child_count() {
                 if let Some(import_node) = child.child(i) {
-                    if import_node.kind() == "scoped_identifier" || import_node.kind() == "identifier" {
+                    if import_node.kind() == "scoped_identifier"
+                        || import_node.kind() == "identifier"
+                    {
                         let import_path = import_node.utf8_text(source).unwrap_or("").trim();
                         if !import_path.is_empty() {
                             // Extract the package from the import (e.g., java.util.List -> java.util)
@@ -1122,16 +1126,18 @@ fn extract_java_import_dependencies(
                                 let target_package_id = format!("package:{}", imported_package);
 
                                 // Add external package node
-                                nodes.entry(target_package_id.clone()).or_insert_with(|| GraphNode {
-                                    id: target_package_id.clone(),
-                                    path: imported_package.to_string(),
-                                    language: "java".to_string(),
-                                    kind: NodeKind::Package,
-                                    name: Some(imported_package.to_string()),
-                                    package_name: Some(imported_package.to_string()),
-                                    parent_id: None,
-                                    start_line: None,
-                                    end_line: None,
+                                nodes.entry(target_package_id.clone()).or_insert_with(|| {
+                                    GraphNode {
+                                        id: target_package_id.clone(),
+                                        path: imported_package.to_string(),
+                                        language: "java".to_string(),
+                                        kind: NodeKind::Package,
+                                        name: Some(imported_package.to_string()),
+                                        package_name: Some(imported_package.to_string()),
+                                        parent_id: None,
+                                        start_line: None,
+                                        end_line: None,
+                                    }
                                 });
 
                                 // Add DEPENDS_ON edge from current package to imported package
@@ -1254,10 +1260,26 @@ fn extract_java_class(
             for body_child in child.children(&mut child.walk()) {
                 match body_child.kind() {
                     "method_declaration" | "constructor_declaration" => {
-                        extract_java_method(body_child, source, file_id, &class_id, package_name, nodes, edges);
+                        extract_java_method(
+                            body_child,
+                            source,
+                            file_id,
+                            &class_id,
+                            package_name,
+                            nodes,
+                            edges,
+                        );
                     }
                     "field_declaration" => {
-                        extract_java_field(body_child, source, file_id, &class_id, package_name, nodes, edges);
+                        extract_java_field(
+                            body_child,
+                            source,
+                            file_id,
+                            &class_id,
+                            package_name,
+                            nodes,
+                            edges,
+                        );
                     }
                     _ => {}
                 }
@@ -1286,17 +1308,19 @@ fn extract_java_interface(
     };
 
     let interface_id = format!("interface:{}", full_name);
-    nodes.entry(interface_id.clone()).or_insert_with(|| GraphNode {
-        id: interface_id.clone(),
-        path: file_id.to_string(),
-        language: "java".to_string(),
-        kind: NodeKind::Interface,
-        name: Some(interface_name.clone()),
-        package_name: package_name.clone(),
-        parent_id: package_name.as_ref().map(|pkg| format!("package:{}", pkg)),
-        start_line: Some(node.start_position().row + 1),
-        end_line: Some(node.end_position().row + 1),
-    });
+    nodes
+        .entry(interface_id.clone())
+        .or_insert_with(|| GraphNode {
+            id: interface_id.clone(),
+            path: file_id.to_string(),
+            language: "java".to_string(),
+            kind: NodeKind::Interface,
+            name: Some(interface_name.clone()),
+            package_name: package_name.clone(),
+            parent_id: package_name.as_ref().map(|pkg| format!("package:{}", pkg)),
+            start_line: Some(node.start_position().row + 1),
+            end_line: Some(node.end_position().row + 1),
+        });
 
     // MADE_OF: Package → Interface
     if let Some(pkg) = package_name {
@@ -1314,7 +1338,15 @@ fn extract_java_interface(
         if child.kind() == "interface_body" {
             for body_child in child.children(&mut child.walk()) {
                 if body_child.kind() == "method_declaration" {
-                    extract_java_method(body_child, source, file_id, &interface_id, package_name, nodes, edges);
+                    extract_java_method(
+                        body_child,
+                        source,
+                        file_id,
+                        &interface_id,
+                        package_name,
+                        nodes,
+                        edges,
+                    );
                 }
             }
         }
@@ -1486,11 +1518,17 @@ fn extract_java_inheritance(
                 for interface_node in child.children(&mut child.walk()) {
                     // Can be type_identifier or type_list containing type_identifier
                     let interface_name = if interface_node.kind() == "type_identifier" {
-                        interface_node.utf8_text(source).unwrap_or("").trim().to_string()
+                        interface_node
+                            .utf8_text(source)
+                            .unwrap_or("")
+                            .trim()
+                            .to_string()
                     } else if interface_node.kind() == "type_list" {
                         // For multiple interfaces, iterate through type_list
                         for type_node in interface_node.children(&mut interface_node.walk()) {
-                            if type_node.kind() == "type_identifier" || type_node.kind() == "scoped_type_identifier" {
+                            if type_node.kind() == "type_identifier"
+                                || type_node.kind() == "scoped_type_identifier"
+                            {
                                 let name = type_node.utf8_text(source).unwrap_or("").trim();
                                 if !name.is_empty() {
                                     let target_id = if name.contains('.') {
@@ -1841,7 +1879,8 @@ fn analyze_typescript_normal(
         end_line: None,
     });
 
-    let module_path = relative_path.trim_end_matches(".ts")
+    let module_path = relative_path
+        .trim_end_matches(".ts")
         .trim_end_matches(".tsx")
         .replace('/', ".");
 
@@ -2282,8 +2321,10 @@ public class Person {
             && n.package_name.as_deref() == Some("com.example")));
 
         // Check constructor
-        assert!(graph.nodes.iter().any(|n| n.kind == NodeKind::Constructor
-            && n.name.as_deref() == Some("Person")));
+        assert!(graph
+            .nodes
+            .iter()
+            .any(|n| n.kind == NodeKind::Constructor && n.name.as_deref() == Some("Person")));
 
         // Check methods
         assert!(graph
@@ -2369,8 +2410,10 @@ public class Bird implements Flyable {
         let graph = analyze_directory(dir.path(), AnalysisLang::Java, AnalysisDepth::Normal);
 
         // Check interface node
-        assert!(graph.nodes.iter().any(|n| n.kind == NodeKind::Interface
-            && n.name.as_deref() == Some("Flyable")));
+        assert!(graph
+            .nodes
+            .iter()
+            .any(|n| n.kind == NodeKind::Interface && n.name.as_deref() == Some("Flyable")));
 
         // Check IMPLEMENTS edge
         assert!(graph.edges.iter().any(|e| e.kind == EdgeKind::Implements
@@ -2440,13 +2483,17 @@ public class Service {
         assert!(depends_on_edges.len() >= 2); // At least java.util dependencies
 
         // Check that external packages are created
-        assert!(graph.nodes.iter().any(|n| n.kind == NodeKind::Package
-            && n.name.as_deref() == Some("java.util")));
-        assert!(graph.nodes.iter().any(|n| n.kind == NodeKind::Package
-            && n.name.as_deref() == Some("javax.servlet.http")));
+        assert!(graph
+            .nodes
+            .iter()
+            .any(|n| n.kind == NodeKind::Package && n.name.as_deref() == Some("java.util")));
+        assert!(graph.nodes.iter().any(
+            |n| n.kind == NodeKind::Package && n.name.as_deref() == Some("javax.servlet.http")
+        ));
 
         // Check specific DEPENDS_ON edge
-        assert!(depends_on_edges.iter().any(|e|
-            e.from.contains("com.example") && e.to.contains("java.util")));
+        assert!(depends_on_edges
+            .iter()
+            .any(|e| e.from.contains("com.example") && e.to.contains("java.util")));
     }
 }

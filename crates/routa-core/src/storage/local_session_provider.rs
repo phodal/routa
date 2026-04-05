@@ -264,7 +264,8 @@ impl LocalSessionProvider {
             custom_args: data["customArgs"]
                 .as_array()
                 .map(|items| {
-                    items.iter()
+                    items
+                        .iter()
                         .filter_map(|item| item.as_str().map(|value| value.to_string()))
                         .collect()
                 })

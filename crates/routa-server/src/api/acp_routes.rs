@@ -513,9 +513,11 @@ async fn acp_rpc(
                 ..SessionLaunchOptions::default()
             };
             let persisted_custom_provider_launch = custom_provider_launch.clone();
-            let effective_provider = provider
-                .clone()
-                .or_else(|| custom_provider_launch.as_ref().map(|custom| custom.command.clone()));
+            let effective_provider = provider.clone().or_else(|| {
+                custom_provider_launch
+                    .as_ref()
+                    .map(|custom| custom.command.clone())
+            });
 
             // Spawn agent process, initialize protocol, create agent session
             let create_result = if let Some(custom) = custom_provider_launch {
@@ -783,9 +785,11 @@ async fn acp_rpc(
                     })
                     .or_else(|| specialist.as_ref().map(|s| s.role.as_str().to_string()))
                     .or(Some("CRAFTER".to_string()));
-                let custom_provider_launch = request_custom_provider_launch
-                    .clone()
-                    .or_else(|| persisted_session.as_ref().and_then(custom_provider_launch_from_row));
+                let custom_provider_launch = request_custom_provider_launch.clone().or_else(|| {
+                    persisted_session
+                        .as_ref()
+                        .and_then(custom_provider_launch_from_row)
+                });
                 let effective_provider = provider.clone().or_else(|| {
                     custom_provider_launch
                         .as_ref()
@@ -1550,8 +1554,8 @@ mod tests {
     use tokio::sync::broadcast;
 
     use super::{
-        acp_rpc, custom_provider_launch_from_row, extract_custom_provider_launch,
-        has_explicit_cwd, resolve_session_cwd, AcpResponse, CustomProviderLaunch,
+        acp_rpc, custom_provider_launch_from_row, extract_custom_provider_launch, has_explicit_cwd,
+        resolve_session_cwd, AcpResponse, CustomProviderLaunch,
     };
     use routa_core::acp::terminal_manager::TerminalManager;
 
@@ -1623,7 +1627,10 @@ mod tests {
 
         let launch = custom_provider_launch_from_row(&session).expect("launch should exist");
         assert_eq!(launch.command, "uvx");
-        assert_eq!(launch.args, vec!["codex-acp".to_string(), "--stdio".to_string()]);
+        assert_eq!(
+            launch.args,
+            vec!["codex-acp".to_string(), "--stdio".to_string()]
+        );
     }
 
     #[tokio::test]

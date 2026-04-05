@@ -934,13 +934,13 @@ fn execute_graph_rules(
                         document_rule.id
                     )
                 })?;
-                let graph = graph_cache
-                    .entry(language)
-                    .or_insert_with(|| analyze_directory(
+                let graph = graph_cache.entry(language).or_insert_with(|| {
+                    analyze_directory(
                         graph_root,
                         language.into_analysis_lang(),
                         crate::commands::graph::AnalysisDepth::Fast, // Use Fast mode for fitness checks
-                    ));
+                    )
+                });
                 rule_plan.execution = Some(execute_graph_rule(document_rule, document, graph)?);
             }
             Some(EngineHint::Archunitts) => {
@@ -970,8 +970,12 @@ fn resolve_graph_root(repo_root: &Path, defaults_root: Option<&str>) -> Result<P
     } else {
         repo_root.join(raw_root)
     };
-    let metadata = fs::metadata(&candidate)
-        .map_err(|error| format!("defaults.root path does not exist: {} ({error})", candidate.display()))?;
+    let metadata = fs::metadata(&candidate).map_err(|error| {
+        format!(
+            "defaults.root path does not exist: {} ({error})",
+            candidate.display()
+        )
+    })?;
 
     if !metadata.is_dir() {
         return Err(format!(
