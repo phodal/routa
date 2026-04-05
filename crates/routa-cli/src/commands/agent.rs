@@ -14,7 +14,7 @@ use super::print_json;
 use super::prompt::update_agent_status;
 use super::review::stream_parser::{
     extract_agent_output_from_history, extract_agent_output_from_process_output,
-    extract_text_from_prompt_result, extract_update_text,
+    extract_text_from_prompt_result, extract_update_text, update_contains_turn_complete,
 };
 use super::tui::TuiRenderer;
 use super::{format_rfc3339_timestamp, truncate_text};
@@ -83,6 +83,15 @@ struct ExecuteSpecialistRunArgs<'a> {
     provider_timeout_ms: Option<u64>,
     provider_retries: u8,
     journey_context_override: Option<UiJourneyRunContext>,
+}
+
+fn should_finish_non_journey_run(
+    journey_context_present: bool,
+    prompt_finished: bool,
+    idle_count: u32,
+    prompt_finished_idle_threshold: u32,
+) -> bool {
+    !journey_context_present && prompt_finished && idle_count >= prompt_finished_idle_threshold
 }
 
 async fn run_internal(
@@ -676,6 +685,7 @@ async fn execute_specialist_run(
     let mut renderer = (!output_json).then(TuiRenderer::new);
     let mut idle_count = 0u32;
     let max_idle = 600;
+    let prompt_finished_idle_threshold = 3;
     let mut failure_reason: Option<String> = None;
     let mut collected_output = String::new();
     let mut prompt_response = serde_json::Value::Null;
@@ -797,6 +807,33 @@ async fn execute_specialist_run(
             }
             _ = &mut tick => {
                 idle_count += 1;
+                if let Some(history) = state.acp_manager.get_session_history(&session_id).await {
+                    if update_contains_turn_complete(&history) {
+                        if let Some(renderer) = renderer.as_mut() {
+                            renderer.finish();
+                        }
+                        if !output_json {
+                            println!("═══ Specialist turn complete ═══");
+                        }
+                        break;
+                    }
+                }
+
+                if should_finish_non_journey_run(
+                    journey_context.is_some(),
+                    prompt_finished,
+                    idle_count,
+                    prompt_finished_idle_threshold,
+                ) {
+                    if let Some(renderer) = renderer.as_mut() {
+                        renderer.finish();
+                    }
+                    if !output_json {
+                        println!("═══ Specialist response complete ═══");
+                    }
+                    break;
+                }
+
                 if idle_count >= max_idle {
                     if let Some(renderer) = renderer.as_mut() {
                         renderer.finish();
@@ -1217,7 +1254,9 @@ async fn ensure_workspace(router: &RpcRouter, workspace_id: &str) -> Result<Stri
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_prompt_mention, parse_specialist_json_output};
+    use super::{
+        parse_prompt_mention, parse_specialist_json_output, should_finish_non_journey_run,
+    };
     use routa_core::orchestration::SpecialistConfig;
 
     #[test]
@@ -1283,5 +1322,13 @@ mod tests {
                 .and_then(|v| v.as_str()),
             Some("有条件通过")
         );
+    }
+
+    #[test]
+    fn finishes_non_journey_run_after_prompt_completion_idle_threshold() {
+        assert!(!should_finish_non_journey_run(false, false, 3, 3));
+        assert!(!should_finish_non_journey_run(true, true, 3, 3));
+        assert!(!should_finish_non_journey_run(false, true, 2, 3));
+        assert!(should_finish_non_journey_run(false, true, 3, 3));
     }
 }
