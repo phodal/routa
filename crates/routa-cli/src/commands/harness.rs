@@ -100,6 +100,14 @@ pub struct HarnessEvolveArgs {
     #[arg(long, default_value_t = false)]
     pub bootstrap: bool,
 
+    /// Apply low-risk patches automatically (requires confirmation for medium/high risk).
+    #[arg(long, default_value_t = false)]
+    pub apply: bool,
+
+    /// Skip confirmation prompts for medium/high-risk patches (dangerous, use with caution).
+    #[arg(long, default_value_t = false)]
+    pub force: bool,
+
     /// Override the persisted report path.
     #[arg(long)]
     pub output: Option<String>,
@@ -400,8 +408,10 @@ fn run_evolve(args: &HarnessEvolveArgs) -> Result<(), String> {
         &repo_root,
         &HarnessEngineeringOptions {
             output_path: output_path.clone(),
-            dry_run: true,
+            dry_run: !args.apply,
             bootstrap: args.bootstrap,
+            apply: args.apply,
+            force: args.force,
         },
     )?;
 

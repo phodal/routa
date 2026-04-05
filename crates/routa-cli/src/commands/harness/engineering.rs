@@ -25,6 +25,8 @@ pub struct HarnessEngineeringOptions {
     pub output_path: PathBuf,
     pub dry_run: bool,
     pub bootstrap: bool,
+    pub apply: bool,
+    pub force: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -236,6 +238,11 @@ pub fn evaluate_harness_engineering(
     warnings.dedup();
 
     recommended_actions.sort_by_key(|action| action.priority);
+
+    // Apply patches if requested
+    if options.apply && !patch_candidates.is_empty() {
+        apply_patches(repo_root, &patch_candidates, options)?;
+    }
 
     Ok(HarnessEngineeringReport {
         generated_at: Utc::now().to_rfc3339(),
@@ -1153,6 +1160,8 @@ mod tests {
                 output_path: temp.path().join(DEFAULT_REPORT_RELATIVE_PATH),
                 dry_run: true,
                 bootstrap: false,
+                apply: false,
+                force: false,
             },
         )
         .expect("report");
@@ -1214,6 +1223,8 @@ mod tests {
                 output_path: temp.path().join(DEFAULT_REPORT_RELATIVE_PATH),
                 dry_run: true,
                 bootstrap: false,
+                apply: false,
+                force: false,
             },
         )
         .expect("report");
@@ -1257,6 +1268,8 @@ definitions:
                 output_path: temp.path().join(DEFAULT_REPORT_RELATIVE_PATH),
                 dry_run: true,
                 bootstrap: false,
+                apply: false,
+                force: false,
             },
         )
         .expect("report");
@@ -1292,6 +1305,41 @@ definitions:
             .expect("build.yml");
 
         assert!(!should_bootstrap(temp.path()));
+    }
+
+    #[test]
+    fn apply_mode_creates_harness_files() {
+        let temp = tempdir().expect("tempdir");
+        fs::write(
+            temp.path().join("package.json"),
+            r#"{"name":"test","scripts":{"build":"tsc","test":"vitest"}}"#,
+        )
+        .expect("package.json");
+
+        let _report = evaluate_harness_engineering(
+            temp.path(),
+            &HarnessEngineeringOptions {
+                output_path: temp.path().join(DEFAULT_REPORT_RELATIVE_PATH),
+                dry_run: false,
+                bootstrap: true,
+                apply: true,
+                force: false,
+            },
+        )
+        .expect("report");
+
+        // Verify harness files were created
+        assert!(temp.path().join("docs/harness/build.yml").exists());
+        assert!(temp.path().join("docs/harness/test.yml").exists());
+
+        // Verify content
+        let build_content = fs::read_to_string(temp.path().join("docs/harness/build.yml"))
+            .expect("build.yml content");
+        assert!(build_content.contains("tsc"));
+
+        let test_content = fs::read_to_string(temp.path().join("docs/harness/test.yml"))
+            .expect("test.yml content");
+        assert!(test_content.contains("vitest"));
     }
 }
 
@@ -1424,6 +1472,11 @@ fn bootstrap_weak_repository(
         low_risk_patch_candidates: patch_candidates.len(),
     };
 
+    // Apply patches if requested
+    if options.apply && !patch_candidates.is_empty() {
+        apply_patches(repo_root, &patch_candidates, options)?;
+    }
+
     Ok(HarnessEngineeringReport {
         generated_at: Utc::now().to_rfc3339(),
         repo_root: repo_root.display().to_string(),
@@ -1485,4 +1538,263 @@ fn extract_scripts_from_package_json(json: &serde_json::Value) -> Vec<(String, S
                 .collect()
         })
         .unwrap_or_default()
+}
+
+// Phase 3: Controlled Auto-Evolution Implementation
+
+#[derive(Debug, Serialize)]
+struct Snapshot {
+    timestamp: String,
+    files: BTreeMap<String, String>,
+}
+
+fn create_snapshot(
+    repo_root: &Path,
+    patches: &[HarnessEngineeringPatchCandidate],
+) -> Result<Snapshot, String> {
+    let mut files = BTreeMap::new();
+
+    for patch in patches {
+        for target in &patch.targets {
+            let path = repo_root.join(target);
+            if path.exists() {
+                let content = fs::read_to_string(&path)
+                    .map_err(|e| format!("Failed to read {}: {}", target, e))?;
+                files.insert(target.clone(), content);
+            }
+        }
+    }
+
+    Ok(Snapshot {
+        timestamp: Utc::now().to_rfc3339(),
+        files,
+    })
+}
+
+fn rollback_snapshot(repo_root: &Path, snapshot: &Snapshot) -> Result<(), String> {
+    for (path_str, content) in &snapshot.files {
+        let path = repo_root.join(path_str);
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)
+                .map_err(|e| format!("Failed to create directory {}: {}", parent.display(), e))?;
+        }
+        fs::write(&path, content).map_err(|e| format!("Failed to rollback {}: {}", path_str, e))?;
+    }
+    Ok(())
+}
+
+fn apply_patches(
+    repo_root: &Path,
+    patches: &[HarnessEngineeringPatchCandidate],
+    options: &HarnessEngineeringOptions,
+) -> Result<(), String> {
+    // Separate patches by risk level
+    let low_risk: Vec<_> = patches.iter().filter(|p| p.risk == "low").collect();
+    let medium_risk: Vec<_> = patches.iter().filter(|p| p.risk == "medium").collect();
+    let high_risk: Vec<_> = patches.iter().filter(|p| p.risk == "high").collect();
+
+    println!("\n🔧 Harness Evolution - Apply Mode");
+    println!("─────────────────────────────────");
+    println!("  Low risk patches:    {}", low_risk.len());
+    println!("  Medium risk patches: {}", medium_risk.len());
+    println!("  High risk patches:   {}", high_risk.len());
+    println!();
+
+    // Always apply low-risk patches
+    if !low_risk.is_empty() {
+        println!("✓ Applying {} low-risk patches automatically...", low_risk.len());
+        let low_risk_owned: Vec<_> = low_risk.iter().map(|&p| p.clone()).collect();
+        let snapshot = create_snapshot(repo_root, &low_risk_owned)?;
+
+        match apply_patch_batch(repo_root, &low_risk) {
+            Ok(()) => {
+                println!("  ✓ Low-risk patches applied successfully");
+            }
+            Err(e) => {
+                eprintln!("  ✗ Failed to apply low-risk patches: {}", e);
+                eprintln!("  ↻ Rolling back changes...");
+                rollback_snapshot(repo_root, &snapshot)?;
+                return Err(format!("Low-risk patch application failed: {}", e));
+            }
+        }
+    }
+
+    // Medium/high risk require confirmation unless --force
+    if !medium_risk.is_empty() || !high_risk.is_empty() {
+        if options.force {
+            println!(
+                "⚠️  Applying {} medium/high-risk patches with --force...",
+                medium_risk.len() + high_risk.len()
+            );
+            let risky_patches_vec: Vec<_> = medium_risk
+                .iter()
+                .chain(high_risk.iter())
+                .map(|&p| p.clone())
+                .collect();
+            let snapshot = create_snapshot(repo_root, &risky_patches_vec)?;
+
+            let risky_patches_refs: Vec<&HarnessEngineeringPatchCandidate> =
+                medium_risk.iter().chain(high_risk.iter()).copied().collect();
+            match apply_patch_batch(repo_root, &risky_patches_refs) {
+                Ok(()) => {
+                    println!("  ✓ Medium/high-risk patches applied");
+                }
+                Err(e) => {
+                    eprintln!("  ✗ Failed: {}", e);
+                    eprintln!("  ↻ Rolling back...");
+                    rollback_snapshot(repo_root, &snapshot)?;
+                    return Err(e);
+                }
+            }
+        } else {
+            println!(
+                "⏸  {} medium/high-risk patches require review",
+                medium_risk.len() + high_risk.len()
+            );
+            println!("   Run with --force to apply them (use with caution)");
+            for patch in medium_risk.iter().chain(high_risk.iter()) {
+                println!("   - [{}] {}", patch.risk, patch.title);
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn apply_patch_batch(
+    repo_root: &Path,
+    patches: &[&HarnessEngineeringPatchCandidate],
+) -> Result<(), String> {
+    for patch in patches {
+        apply_single_patch(repo_root, patch)?;
+    }
+    Ok(())
+}
+
+fn apply_single_patch(
+    repo_root: &Path,
+    patch: &HarnessEngineeringPatchCandidate,
+) -> Result<(), String> {
+    match patch.id.as_str() {
+        "bootstrap.synthesize_build_yml" => {
+            synthesize_build_yml(repo_root)?;
+        }
+        "bootstrap.synthesize_test_yml" => {
+            synthesize_test_yml(repo_root)?;
+        }
+        _ => {
+            // For other patches, just log them (not implemented yet)
+            println!("  ⏭  Skipping unimplemented patch: {}", patch.id);
+        }
+    }
+    Ok(())
+}
+
+fn synthesize_build_yml(repo_root: &Path) -> Result<(), String> {
+    let harness_dir = repo_root.join("docs/harness");
+    fs::create_dir_all(&harness_dir)
+        .map_err(|e| format!("Failed to create docs/harness: {}", e))?;
+
+    let build_yml = harness_dir.join("build.yml");
+
+    // Read package.json to extract build scripts
+    let package_json_path = repo_root.join("package.json");
+    let scripts = if package_json_path.exists() {
+        let content = fs::read_to_string(&package_json_path)
+            .map_err(|e| format!("Failed to read package.json: {}", e))?;
+        let json: serde_json::Value = serde_json::from_str(&content)
+            .map_err(|e| format!("Failed to parse package.json: {}", e))?;
+        extract_scripts_from_package_json(&json)
+    } else {
+        Vec::new()
+    };
+
+    let build_script = scripts
+        .iter()
+        .find(|(name, _)| name == "build")
+        .map(|(_, cmd)| cmd.as_str())
+        .unwrap_or("npm run build");
+
+    let content = format!(
+        r#"# Harness Build Surface
+# Auto-generated by routa harness evolve --bootstrap
+
+schema: harness-v1
+dimension: build
+
+entrypoints:
+  - id: primary
+    label: "Primary build"
+    command: "{}"
+    environment: {{}}
+    expected_artifacts:
+      - pattern: "dist/**"
+        optional: false
+      - pattern: "build/**"
+        optional: true
+
+validation:
+  - check: artifacts_exist
+    pattern: "dist/**"
+"#,
+        build_script
+    );
+
+    fs::write(&build_yml, content).map_err(|e| format!("Failed to write build.yml: {}", e))?;
+
+    println!("  ✓ Created docs/harness/build.yml");
+    Ok(())
+}
+
+fn synthesize_test_yml(repo_root: &Path) -> Result<(), String> {
+    let harness_dir = repo_root.join("docs/harness");
+    fs::create_dir_all(&harness_dir)
+        .map_err(|e| format!("Failed to create docs/harness: {}", e))?;
+
+    let test_yml = harness_dir.join("test.yml");
+
+    let package_json_path = repo_root.join("package.json");
+    let scripts = if package_json_path.exists() {
+        let content = fs::read_to_string(&package_json_path)
+            .map_err(|e| format!("Failed to read package.json: {}", e))?;
+        let json: serde_json::Value = serde_json::from_str(&content)
+            .map_err(|e| format!("Failed to parse package.json: {}", e))?;
+        extract_scripts_from_package_json(&json)
+    } else {
+        Vec::new()
+    };
+
+    let test_script = scripts
+        .iter()
+        .find(|(name, _)| name == "test")
+        .map(|(_, cmd)| cmd.as_str())
+        .unwrap_or("npm test");
+
+    let content = format!(
+        r#"# Harness Test Surface
+# Auto-generated by routa harness evolve --bootstrap
+
+schema: harness-v1
+dimension: test
+
+entrypoints:
+  - id: unit
+    label: "Unit tests"
+    command: "{}"
+    environment: {{}}
+    coverage:
+      enabled: true
+      threshold: 0
+
+validation:
+  - check: exit_code
+    expected: 0
+"#,
+        test_script
+    );
+
+    fs::write(&test_yml, content).map_err(|e| format!("Failed to write test.yml: {}", e))?;
+
+    println!("  ✓ Created docs/harness/test.yml");
+    Ok(())
 }
