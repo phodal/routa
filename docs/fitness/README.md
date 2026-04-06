@@ -99,18 +99,19 @@ Harness Fluency 默认跑通用 `generic` 模型；如果要评估编排型 agen
 
 ### Harness Engineering Loop
 
-`routa harness evolve` 对应的是 #314 里的 `observe → evaluate → synthesize → verify` 主循环：
+`routa harness evolve` 对应的是 #314 里的 `observe → evaluate → synthesize → verify → ratchet` 主循环：
 
 - `observe`: 读取 repo signals、`docs/harness/*.yml`、automation、spec sources、fitness / fluency 快照
 - `evaluate`: 输出结构化 gap classification，并区分 harness gap 与 non-harness engineering gap
 - `synthesize`: 在 dry-run 模式下给出 low-risk patch candidates 和 verification plan
 - `verify`: `--apply` 只会自动落低风险 patch，随后立即执行 verification plan；任一步失败都会回滚本轮变更
+- `ratchet`: verification 通过后会重新运行 fluency baseline，对 `generic` / `agent_orchestrator` 快照做比较；若 level、dimension、baseline score 或已通过 criterion 出现回退，则整轮变更回滚；若没有历史快照，则会建立新的 baseline snapshot
 
 边界：
 
 - 这条命令不会把所有 fitness failure 都当成 harness mutation 目标
 - medium/high-risk patch 仍然需要人工 review，除非显式 `--force`
-- 当前 ratchet 仍以 fluency snapshot / fitness baseline 为外部约束，`harness evolve` 负责产出和验证演进步骤，不负责替代 `entrix` 或 `fitness fluency`
+- `harness evolve` 只负责 fluency baseline 的闭环比较与持久化，不替代 `entrix` 的规则执行，也不会把所有 repo-level failure 自动转成 harness mutation
 
 ### Tier 分层
 

@@ -35,6 +35,8 @@ pub struct HarnessEngineeringReport {
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub verification_results: Vec<HarnessEngineeringVerificationResult>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub ratchet: Option<HarnessEngineeringRatchetResult>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub ai_assessment: Option<HarnessEngineeringAiAssessment>,
     pub warnings: Vec<String>,
 }
@@ -188,6 +190,38 @@ pub struct HarnessEngineeringVerificationResult {
     pub exit_code: Option<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub output_excerpt: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HarnessEngineeringRatchetResult {
+    pub enforced: bool,
+    pub regressed: bool,
+    pub profiles: Vec<HarnessEngineeringRatchetProfileResult>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HarnessEngineeringRatchetProfileResult {
+    pub profile: String,
+    pub snapshot_path: String,
+    pub status: String,
+    pub current_overall_level: String,
+    pub current_baseline_score: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub previous_generated_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub previous_overall_level: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub previous_baseline_score: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub baseline_score_delta: Option<f64>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub regressed_criteria: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub improved_criteria: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub warnings: Vec<String>,
 }
 
 #[derive(Debug, Clone)]

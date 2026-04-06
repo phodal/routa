@@ -3,8 +3,12 @@
 //! Self-bootstrapping harness engineering agent with evaluation, patch generation,
 //! and controlled auto-evolution capabilities.
 
+mod ratchet;
+#[cfg(test)]
+mod tests;
 mod types;
 
+use self::ratchet::{run_ratchet_loop, ApplyOutcome};
 pub use types::*;
 
 use std::collections::BTreeMap;
@@ -154,10 +158,15 @@ pub async fn evaluate_harness_engineering(
         }
     }
 
-    let verification_results = if options.apply && !patch_candidates.is_empty() {
-        apply_patches(repo_root, &patch_candidates, &verification_plan, options)?
+    let apply_outcome = if options.apply && !patch_candidates.is_empty() {
+        Some(apply_patches(
+            repo_root,
+            &patch_candidates,
+            &verification_plan,
+            options,
+        )?)
     } else {
-        Vec::new()
+        None
     };
 
     Ok(HarnessEngineeringReport {
@@ -181,7 +190,11 @@ pub async fn evaluate_harness_engineering(
         recommended_actions,
         patch_candidates,
         verification_plan,
-        verification_results,
+        verification_results: apply_outcome
+            .as_ref()
+            .map(|outcome| outcome.verification_results.clone())
+            .unwrap_or_default(),
+        ratchet: apply_outcome.map(|outcome| outcome.ratchet),
         ai_assessment,
         warnings,
     })
@@ -304,6 +317,30 @@ pub fn format_harness_engineering_report(report: &HarnessEngineeringReport) -> S
             lines.push(format!("  [{}] {}", status, result.label));
             if let Some(excerpt) = &result.output_excerpt {
                 lines.push(format!("    {}", excerpt.replace('\n', " | ")));
+            }
+        }
+    }
+
+    if let Some(ratchet) = &report.ratchet {
+        lines.push(String::new());
+        lines.push("ratchet:".to_string());
+        lines.push(format!(
+            "  enforced: {}, regressed: {}",
+            ratchet.enforced, ratchet.regressed
+        ));
+        for profile in &ratchet.profiles {
+            lines.push(format!(
+                "  [{}] {} -> {}",
+                profile.status, profile.profile, profile.current_overall_level
+            ));
+            if let Some(delta) = profile.baseline_score_delta {
+                lines.push(format!("    baseline delta: {delta:+.3}"));
+            }
+            if !profile.regressed_criteria.is_empty() {
+                lines.push(format!(
+                    "    regressed criteria: {}",
+                    profile.regressed_criteria.join(", ")
+                ));
             }
         }
     }
@@ -1236,338 +1273,6 @@ fn required_string(value: &Value, key: &str) -> Result<String, String> {
         .ok_or_else(|| format!("missing string field {key}"))
 }
 
-#[cfg(test)]
-mod tests {
-    use super::{
-        create_snapshot, evaluate_harness_engineering, rollback_snapshot, run_verification_plan,
-        should_bootstrap, HarnessEngineeringOptions, HarnessEngineeringPatchCandidate,
-        HarnessEngineeringVerificationStep, DEFAULT_REPORT_RELATIVE_PATH,
-    };
-    use std::fs;
-    use tempfile::tempdir;
-
-    #[tokio::test]
-    async fn reports_missing_bootstrap_surfaces_for_weak_repo() {
-        let temp = tempdir().expect("tempdir");
-        fs::write(
-            temp.path().join("package.json"),
-            r#"{"name":"weak-repo","scripts":{"test":"vitest"}}"#,
-        )
-        .expect("package.json");
-
-        let report = evaluate_harness_engineering(
-            temp.path(),
-            &HarnessEngineeringOptions {
-                output_path: temp.path().join(DEFAULT_REPORT_RELATIVE_PATH),
-                dry_run: true,
-                bootstrap: false,
-                apply: false,
-                force: false,
-                json_output: false,
-                use_ai_specialist: false,
-                ai_workspace_id: "default".to_string(),
-                ai_provider: None,
-                ai_provider_timeout_ms: None,
-                ai_provider_retries: 0,
-            },
-            None,
-        )
-        .await
-        .expect("report");
-
-        assert!(report
-            .gaps
-            .iter()
-            .any(|gap| gap.id == "harness_surfaces.missing"));
-        assert!(report
-            .patch_candidates
-            .iter()
-            .any(|patch| patch.id == "patch.create_build_surface"));
-        assert!(report
-            .patch_candidates
-            .iter()
-            .any(|patch| patch.id == "patch.create_test_surface"));
-    }
-
-    #[tokio::test]
-    async fn classifies_fluency_blockers_into_harness_and_non_harness() {
-        let temp = tempdir().expect("tempdir");
-        fs::create_dir_all(temp.path().join("docs/fitness/reports")).expect("reports");
-        fs::write(
-            temp.path().join("docs/fitness/manifest.yaml"),
-            "schema: fitness-manifest-v1\n",
-        )
-        .expect("manifest");
-        fs::write(
-            temp.path().join("docs/fitness/reports/harness-fluency-latest.json"),
-            r#"{
-              "overallLevel": "agent_centric",
-              "blockingCriteria": [
-                {
-                  "id": "governance.agent_first.machine_readable_guardrails",
-                  "critical": true,
-                  "detail": "missing CODEOWNERS",
-                  "evidence": ["docs/fitness/review-triggers.yaml"],
-                  "whyItMatters": "guardrails",
-                  "recommendedAction": "Add CODEOWNERS",
-                  "evidenceHint": "docs/fitness/review-triggers.yaml plus CODEOWNERS / dependabot / renovate"
-                },
-                {
-                  "id": "context.agent_first.reference_and_runbook_depth",
-                  "critical": true,
-                  "detail": "missing layered references",
-                  "evidence": [],
-                  "whyItMatters": "runbooks",
-                  "recommendedAction": "Add more references",
-                  "evidenceHint": "docs/references/**/*.md + docs/issues/*.md"
-                }
-              ]
-            }"#,
-        )
-        .expect("snapshot");
-
-        let report = evaluate_harness_engineering(
-            temp.path(),
-            &HarnessEngineeringOptions {
-                output_path: temp.path().join(DEFAULT_REPORT_RELATIVE_PATH),
-                dry_run: true,
-                bootstrap: false,
-                apply: false,
-                force: false,
-                json_output: false,
-                use_ai_specialist: false,
-                ai_workspace_id: "default".to_string(),
-                ai_provider: None,
-                ai_provider_timeout_ms: None,
-                ai_provider_retries: 0,
-            },
-            None,
-        )
-        .await
-        .expect("report");
-
-        assert!(report.gaps.iter().any(|gap| {
-            gap.id == "fluency.generic.governance.agent_first.machine_readable_guardrails"
-                && gap.category == "missing_governance_gate"
-                && gap.harness_mutation_candidate
-        }));
-        assert!(report.gaps.iter().any(|gap| {
-            gap.id == "fluency.generic.context.agent_first.reference_and_runbook_depth"
-                && gap.category == "non_harness_engineering_gap"
-                && !gap.harness_mutation_candidate
-        }));
-    }
-
-    #[tokio::test]
-    async fn detects_fluency_automation_target_mismatch() {
-        let temp = tempdir().expect("tempdir");
-        fs::create_dir_all(temp.path().join("docs/harness")).expect("harness dir");
-        fs::write(
-            temp.path().join("docs/harness/automations.yml"),
-            r#"schema: harness-automation-v1
-definitions:
-  - id: weekly-harness-fluency
-    name: Weekly harness fluency
-    description: Re-run the harness fluency specialist.
-    source:
-      type: schedule
-      cron: "0 3 * * 1"
-    target:
-      type: specialist
-      ref: harness-test
-"#,
-        )
-        .expect("automations");
-
-        let report = evaluate_harness_engineering(
-            temp.path(),
-            &HarnessEngineeringOptions {
-                output_path: temp.path().join(DEFAULT_REPORT_RELATIVE_PATH),
-                dry_run: true,
-                bootstrap: false,
-                apply: false,
-                force: false,
-                json_output: false,
-                use_ai_specialist: false,
-                ai_workspace_id: "default".to_string(),
-                ai_provider: None,
-                ai_provider_timeout_ms: None,
-                ai_provider_retries: 0,
-            },
-            None,
-        )
-        .await
-        .expect("report");
-
-        assert!(report
-            .gaps
-            .iter()
-            .any(|gap| gap.id == "automation.weekly-harness-fluency.target_mismatch"));
-        assert!(report
-            .patch_candidates
-            .iter()
-            .any(|patch| patch.id == "patch.normalize_automation_target"));
-    }
-
-    #[test]
-    fn bootstrap_detects_weak_repo() {
-        let temp = tempdir().expect("tempdir");
-        fs::create_dir_all(temp.path().join("src")).expect("src dir");
-        fs::write(
-            temp.path().join("package.json"),
-            r#"{"name":"test","scripts":{"build":"tsc","test":"vitest"}}"#,
-        )
-        .expect("package.json");
-
-        assert!(should_bootstrap(temp.path()));
-    }
-
-    #[test]
-    fn bootstrap_skips_repo_with_existing_harness() {
-        let temp = tempdir().expect("tempdir");
-        fs::create_dir_all(temp.path().join("docs/harness")).expect("harness dir");
-        fs::write(temp.path().join("docs/harness/build.yml"), "# stub").expect("build.yml");
-
-        assert!(!should_bootstrap(temp.path()));
-    }
-
-    #[tokio::test]
-    async fn apply_mode_creates_harness_files() {
-        let temp = tempdir().expect("tempdir");
-        fs::write(
-            temp.path().join("package.json"),
-            r#"{"name":"test","scripts":{"compile":"tsc -b","spec":"vitest run"}}"#,
-        )
-        .expect("package.json");
-
-        let _report = evaluate_harness_engineering(
-            temp.path(),
-            &HarnessEngineeringOptions {
-                output_path: temp.path().join(DEFAULT_REPORT_RELATIVE_PATH),
-                dry_run: false,
-                bootstrap: true,
-                apply: true,
-                force: false,
-                json_output: false,
-                use_ai_specialist: false,
-                ai_workspace_id: "default".to_string(),
-                ai_provider: None,
-                ai_provider_timeout_ms: None,
-                ai_provider_retries: 0,
-            },
-            None,
-        )
-        .await
-        .expect("report");
-
-        // Verify harness files were created
-        assert!(temp.path().join("docs/harness/build.yml").exists());
-        assert!(temp.path().join("docs/harness/test.yml").exists());
-
-        // Verify content
-        let build_content = fs::read_to_string(temp.path().join("docs/harness/build.yml"))
-            .expect("build.yml content");
-        assert!(build_content.contains("schema: harness-surface-v1"));
-        assert!(build_content.contains("^compile$"));
-        assert!(build_content.contains("npm run compile"));
-
-        let test_content = fs::read_to_string(temp.path().join("docs/harness/test.yml"))
-            .expect("test.yml content");
-        assert!(test_content.contains("schema: harness-surface-v1"));
-        assert!(test_content.contains("^spec$"));
-        assert!(test_content.contains("npm run spec"));
-    }
-
-    #[test]
-    fn rollback_snapshot_removes_newly_created_files() {
-        let temp = tempdir().expect("tempdir");
-        let patch = HarnessEngineeringPatchCandidate {
-            id: "bootstrap.synthesize_build_yml".to_string(),
-            risk: "low".to_string(),
-            title: "create build".to_string(),
-            rationale: "test".to_string(),
-            targets: vec!["docs/harness/build.yml".to_string()],
-            change_kind: "create".to_string(),
-            script_name: Some("build".to_string()),
-            script_command: Some("tsc".to_string()),
-        };
-
-        let snapshot =
-            create_snapshot(temp.path(), std::slice::from_ref(&patch)).expect("create snapshot");
-        let created = temp.path().join("docs/harness/build.yml");
-        fs::create_dir_all(created.parent().expect("parent")).expect("create harness dir");
-        fs::write(&created, "generated").expect("write generated file");
-
-        rollback_snapshot(temp.path(), &snapshot).expect("rollback snapshot");
-
-        assert!(!created.exists());
-    }
-
-    #[test]
-    fn verification_plan_executes_successfully() {
-        let temp = tempdir().expect("tempdir");
-        fs::write(temp.path().join("marker.txt"), "ok").expect("marker");
-        let steps = vec![HarnessEngineeringVerificationStep {
-            label: "Marker exists".to_string(),
-            command: "test -f marker.txt".to_string(),
-            proves: "The marker file is present.".to_string(),
-        }];
-
-        let results = run_verification_plan(
-            temp.path(),
-            &steps,
-            &HarnessEngineeringOptions {
-                output_path: temp.path().join(DEFAULT_REPORT_RELATIVE_PATH),
-                dry_run: false,
-                bootstrap: false,
-                apply: true,
-                force: false,
-                json_output: false,
-                use_ai_specialist: false,
-                ai_workspace_id: "default".to_string(),
-                ai_provider: None,
-                ai_provider_timeout_ms: None,
-                ai_provider_retries: 0,
-            },
-        )
-        .expect("verification succeeds");
-
-        assert_eq!(results.len(), 1);
-        assert!(results[0].success);
-    }
-
-    #[test]
-    fn verification_plan_reports_failures() {
-        let temp = tempdir().expect("tempdir");
-        let steps = vec![HarnessEngineeringVerificationStep {
-            label: "Missing marker".to_string(),
-            command: "test -f marker.txt".to_string(),
-            proves: "The marker file is present.".to_string(),
-        }];
-
-        let error = run_verification_plan(
-            temp.path(),
-            &steps,
-            &HarnessEngineeringOptions {
-                output_path: temp.path().join(DEFAULT_REPORT_RELATIVE_PATH),
-                dry_run: false,
-                bootstrap: false,
-                apply: true,
-                force: false,
-                json_output: false,
-                use_ai_specialist: false,
-                ai_workspace_id: "default".to_string(),
-                ai_provider: None,
-                ai_provider_timeout_ms: None,
-                ai_provider_retries: 0,
-            },
-        )
-        .unwrap_err();
-
-        assert!(error.contains("Missing marker"));
-    }
-}
-
 // Bootstrap Mode Implementation
 
 fn should_bootstrap(repo_root: &Path) -> bool {
@@ -1703,10 +1408,15 @@ async fn bootstrap_weak_repository(
         proves: "Harness configuration directory exists".to_string(),
     }];
 
-    let verification_results = if options.apply && !patch_candidates.is_empty() {
-        apply_patches(repo_root, &patch_candidates, &verification_plan, options)?
+    let apply_outcome = if options.apply && !patch_candidates.is_empty() {
+        Some(apply_patches(
+            repo_root,
+            &patch_candidates,
+            &verification_plan,
+            options,
+        )?)
     } else {
-        Vec::new()
+        None
     };
 
     Ok(HarnessEngineeringReport {
@@ -1749,7 +1459,11 @@ async fn bootstrap_weak_repository(
         recommended_actions,
         patch_candidates,
         verification_plan,
-        verification_results,
+        verification_results: apply_outcome
+            .as_ref()
+            .map(|outcome| outcome.verification_results.clone())
+            .unwrap_or_default(),
+        ratchet: apply_outcome.map(|outcome| outcome.ratchet),
         ai_assessment: None,
         warnings,
     })
@@ -2017,7 +1731,7 @@ fn apply_patches(
     patches: &[HarnessEngineeringPatchCandidate],
     verification_plan: &[HarnessEngineeringVerificationStep],
     options: &HarnessEngineeringOptions,
-) -> Result<Vec<HarnessEngineeringVerificationResult>, String> {
+) -> Result<ApplyOutcome, String> {
     // Separate patches by risk level
     let low_risk: Vec<_> = patches.iter().filter(|p| p.risk == "low").collect();
     let medium_risk: Vec<_> = patches.iter().filter(|p| p.risk == "medium").collect();
@@ -2075,7 +1789,14 @@ fn apply_patches(
     }
 
     if selected_for_apply.is_empty() {
-        return Ok(Vec::new());
+        return Ok(ApplyOutcome {
+            verification_results: Vec::new(),
+            ratchet: HarnessEngineeringRatchetResult {
+                enforced: false,
+                regressed: false,
+                profiles: Vec::new(),
+            },
+        });
     }
 
     let selected_owned = selected_for_apply
@@ -2145,6 +1866,24 @@ fn apply_patches(
         }
     };
 
+    let ratchet = match run_ratchet_loop(repo_root, options) {
+        Ok(result) => result,
+        Err(error) => {
+            eprintln!("  ✗ Ratchet failed: {}", error);
+            eprintln!("  ↻ Rolling back verified changes...");
+            rollback_snapshot(repo_root, &snapshot)?;
+            if let Err(history_error) =
+                record_evolution_outcome(repo_root, &[], &selected_for_apply)
+            {
+                eprintln!(
+                    "  ⚠️  Warning: Failed to record evolution history: {}",
+                    history_error
+                );
+            }
+            return Err(error);
+        }
+    };
+
     if let Err(error) = record_evolution_outcome(repo_root, &selected_for_apply, &[]) {
         eprintln!(
             "  ⚠️  Warning: Failed to record evolution history: {}",
@@ -2152,7 +1891,10 @@ fn apply_patches(
         );
     }
 
-    Ok(verification_results)
+    Ok(ApplyOutcome {
+        verification_results,
+        ratchet,
+    })
 }
 
 fn apply_patch_batch(
