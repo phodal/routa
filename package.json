@@ -162,7 +162,7 @@
     "ai": "^6.0.104",
     "bufferutil": "^4.1.0",
     "dagre": "^0.8.5",
-    "drizzle-orm": "^0.45.1",
+    "drizzle-orm": "^0.45.2",
     "eventsource": "^4.1.0",
     "glob": "^13.0.6",
     "gray-matter": "^4.0.3",
