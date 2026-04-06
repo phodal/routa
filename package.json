@@ -199,7 +199,7 @@
     "@docusaurus/preset-classic": "^3.9.2",
     "@eslint/eslintrc": "^3.3.4",
     "@eslint/js": "^10.0.1",
-    "@playwright/test": "^1.58.2",
+    "@playwright/test": "^1.59.1",
     "@storybook/addon-a11y": "^10.3.1",
     "@storybook/addon-docs": "^10.3.3",
     "@storybook/addon-vitest": "^10.3.4",
