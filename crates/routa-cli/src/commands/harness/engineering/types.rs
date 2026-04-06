@@ -209,6 +209,7 @@ pub(super) struct FluencyBlockingCriterion {
 }
 
 #[derive(Debug, Serialize)]
+#[allow(dead_code)]
 pub(super) struct EvolutionHistory {
     pub timestamp: String,
     pub repo_root: String,
@@ -219,6 +220,7 @@ pub(super) struct EvolutionHistory {
 }
 
 #[derive(Debug, Serialize)]
+#[allow(dead_code)]
 pub(super) struct Snapshot {
     pub timestamp: String,
     pub files: std::collections::BTreeMap<String, String>,
