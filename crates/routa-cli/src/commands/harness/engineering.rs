@@ -1148,6 +1148,53 @@ fn build_patch_candidates(
         }
     }
 
+    // Check for missing operational documentation
+    let has_doc_gaps = gaps.iter().any(|gap| {
+        gap.category == "non_harness_engineering_gap"
+            && (gap.detail.contains("glob_count failed")
+                || gap.detail.contains("operational"))
+    });
+
+    if has_doc_gaps && !repo_root.join("docs/operational").exists() {
+        insert_patch_candidate(
+            &mut patches,
+            &mut seen,
+            HarnessEngineeringPatchCandidate {
+                id: "patch.create_operational_docs".to_string(),
+                risk: "low".to_string(),
+                title: "Create placeholder operational documentation".to_string(),
+                rationale: "Operational history improves agent fluency and context awareness.".to_string(),
+                targets: vec!["docs/operational".to_string()],
+                change_kind: "doc_bootstrap".to_string(),
+                script_name: None,
+                script_command: None,
+            },
+        );
+    }
+
+    // Check for test surface without coverage tracking
+    if repo_root.join("docs/harness/test.yml").exists() {
+        let test_yml = repo_root.join("docs/harness/test.yml");
+        if let Ok(content) = fs::read_to_string(&test_yml) {
+            if !content.contains("coverage") && !content.contains("threshold") {
+                insert_patch_candidate(
+                    &mut patches,
+                    &mut seen,
+                    HarnessEngineeringPatchCandidate {
+                        id: "patch.update_coverage_threshold".to_string(),
+                        risk: "low".to_string(),
+                        title: "Add coverage tracking to test.yml".to_string(),
+                        rationale: "Coverage thresholds enable ratcheting quality upward over time.".to_string(),
+                        targets: vec!["docs/harness/test.yml".to_string()],
+                        change_kind: "config_enhancement".to_string(),
+                        script_name: None,
+                        script_command: None,
+                    },
+                );
+            }
+        }
+    }
+
     patches
 }
 
@@ -2124,6 +2171,12 @@ fn apply_single_patch(
         "patch.create_dependabot" => {
             create_dependabot(repo_root, patch, options)?;
         }
+        "patch.update_coverage_threshold" => {
+            update_coverage_threshold(repo_root, patch, options)?;
+        }
+        "patch.create_operational_docs" => {
+            create_operational_docs(repo_root, patch, options)?;
+        }
         _ => return Err(format!("Patch {} is not implemented", patch.id)),
     }
     Ok(())
@@ -2476,6 +2529,122 @@ updates:
         options,
         &message
     );
+
+    Ok(())
+}
+
+fn update_coverage_threshold(
+    repo_root: &Path,
+    _patch: &HarnessEngineeringPatchCandidate,
+    options: &HarnessEngineeringOptions,
+) -> Result<(), String> {
+    let test_yml_path = repo_root.join("docs/harness/test.yml");
+
+    if !test_yml_path.exists() {
+        return Err("docs/harness/test.yml not found".to_string());
+    }
+
+    let content = fs::read_to_string(&test_yml_path)
+        .map_err(|e| format!("Failed to read test.yml: {}", e))?;
+
+    // Check if already has coverage configuration
+    if content.contains("coverage:") {
+        emit_apply_progress(options, "  ℹ️  Coverage tracking already configured");
+        return Ok(());
+    }
+
+    // Add coverage section at the end
+    let coverage_section = r#"
+# Coverage tracking - automatically added by harness evolution
+coverage:
+  enabled: true
+  threshold:
+    lines: 0      # Will ratchet up as coverage improves
+    branches: 0
+    functions: 0
+    statements: 0
+  report_dir: coverage
+"#;
+
+    let updated_content = format!("{}{}", content.trim_end(), coverage_section);
+
+    fs::write(&test_yml_path, updated_content)
+        .map_err(|e| format!("Failed to write test.yml: {}", e))?;
+
+    emit_apply_progress(
+        options,
+        "  ✓ Added coverage tracking to docs/harness/test.yml (threshold: 0%, ready for ratcheting)"
+    );
+
+    Ok(())
+}
+
+fn create_operational_docs(
+    repo_root: &Path,
+    _patch: &HarnessEngineeringPatchCandidate,
+    options: &HarnessEngineeringOptions,
+) -> Result<(), String> {
+    let operational_dir = repo_root.join("docs/operational");
+
+    // Create operational docs if missing
+    if !operational_dir.exists() {
+        fs::create_dir_all(&operational_dir)
+            .map_err(|e| format!("Failed to create operational dir: {}", e))?;
+
+        // Create placeholder operational history
+        let placeholder_content = r#"# Operational History
+
+This directory tracks operational decisions, incidents, and runbooks.
+
+## Purpose
+
+- **Decisions**: Key operational choices and their rationale
+- **Incidents**: Post-mortems and learnings
+- **Runbooks**: Standard operating procedures
+- **Changes**: Deployment and configuration history
+
+## Structure
+
+```
+operational/
+├── decisions/        # ADR-style operational decisions
+├── incidents/        # Incident reports and post-mortems
+├── runbooks/         # Step-by-step procedures
+└── changes/          # Deployment and config change log
+```
+
+## Getting Started
+
+Add operational documentation as the system evolves. Start with:
+
+1. Create `decisions/001-initial-setup.md` for first major operational choice
+2. Add runbooks for common tasks (deployment, rollback, troubleshooting)
+3. Document incidents to prevent recurrence
+
+---
+
+*Auto-generated by routa harness evolve --apply*
+"#;
+
+        fs::write(operational_dir.join("README.md"), placeholder_content)
+            .map_err(|e| format!("Failed to write operational README: {}", e))?;
+
+        // Create subdirectories
+        for subdir in &["decisions", "incidents", "runbooks", "changes"] {
+            let dir = operational_dir.join(subdir);
+            fs::create_dir_all(&dir)
+                .map_err(|e| format!("Failed to create {}: {}", subdir, e))?;
+            fs::write(
+                dir.join(".gitkeep"),
+                "# Placeholder for operational documentation\n"
+            )
+            .map_err(|e| format!("Failed to write .gitkeep: {}", e))?;
+        }
+
+        emit_apply_progress(options, "  ✓ Created docs/operational with placeholder structure");
+    } else {
+        emit_apply_progress(options, "  ℹ️  Operational documentation directory already exists");
+    }
 
     Ok(())
 }
