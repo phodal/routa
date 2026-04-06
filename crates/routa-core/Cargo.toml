@@ -54,7 +54,7 @@ sha2 = "0.10"
 tracing = "0.1"
 
 # HTTP client (for ACP registry fetching etc.)
-reqwest = { version = "0.12", features = ["json"] }
+reqwest = { version = "0.13", features = ["json"] }
 
 # Archive extraction (for ACP binary installation)
 zip = "2"

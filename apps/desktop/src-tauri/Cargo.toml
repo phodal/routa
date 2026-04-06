@@ -37,10 +37,10 @@ routa-server = { path = "../../../crates/routa-server" }
 
 # Async runtime (needed for Tauri integration)
 tokio = { version = "1", features = ["full"] }
-reqwest = { version = "0.12", features = ["json"] }
+reqwest = { version = "0.13", features = ["json"] }
 
 [dev-dependencies]
 axum = "0.8.8"
-reqwest = { version = "0.12", features = ["json"] }
+reqwest = { version = "0.13", features = ["json"] }
 tower = { version = "0.5", features = ["util"] }
 tower-http = { version = "0.6.8", features = ["cors"] }
