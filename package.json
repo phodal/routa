@@ -159,7 +159,7 @@
     "@xterm/xterm": "^6.0.0",
     "@xyflow/react": "^12.10.2",
     "adm-zip": "^0.5.16",
-    "ai": "^6.0.104",
+    "ai": "^6.0.146",
     "bufferutil": "^4.1.0",
     "dagre": "^0.8.5",
     "drizzle-orm": "^0.45.1",
