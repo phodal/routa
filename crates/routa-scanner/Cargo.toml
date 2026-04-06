@@ -11,4 +11,4 @@ homepage = "https://github.com/phodal/routa-js"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 chrono = { version = "0.4", features = ["serde"] }
-which = "6"
+which = "8"
