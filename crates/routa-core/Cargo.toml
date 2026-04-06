@@ -57,7 +57,7 @@ tracing = "0.1"
 reqwest = { version = "0.12", features = ["json"] }
 
 # Archive extraction (for ACP binary installation)
-zip = "2"
+zip = "8"
 flate2 = "1"
 tar = "0.4"
 bzip2 = "0.5"
