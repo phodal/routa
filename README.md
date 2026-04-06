@@ -131,7 +131,7 @@ Discover and install community-contributed agents from the ACP Registry — supp
 - **🧠 Memory** — Workspace-scoped memory entries that persist context across sessions.
 - **📊 Traces** — Browse agent execution traces, view stats, debug agent behavior.
 - **🎯 Skills System** — OpenCode-compatible skill discovery and dynamic loading from a community catalog.
-- **🔁 Trace Learning** — Harness Evolution automatically learns from execution history, detects patterns, and generates evidence-backed playbooks for faster future runs. [Learn more →](docs/features/harness-trace-learning.md)
+- **🔁 Trace Learning** — Harness Evolution automatically learns from execution history, detects patterns, and generates evidence-backed playbooks for faster future runs. [Feature overview →](docs/features/harness-trace-learning.md) | [User guide →](docs/guides/harness-trace-learning-guide.md) | [Technical reference →](docs/references/harness-trace-learning-technical.md)
 
 ## 🚀 Quick Start
 
