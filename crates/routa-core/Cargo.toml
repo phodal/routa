@@ -48,7 +48,7 @@ regex = "1"
 dirs = "5"
 
 # Hashing (template drift checksums)
-sha2 = "0.10"
+sha2 = "0.11"
 
 # Logging
 tracing = "0.1"
