@@ -57,7 +57,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # System information
-sysinfo = "0.32"
+sysinfo = "0.38"
 notify-rust = "4.12.0"
 lazy_static = "1.5.0"
 
