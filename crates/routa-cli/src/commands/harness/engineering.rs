@@ -29,6 +29,7 @@ pub struct HarnessEngineeringOptions {
     pub bootstrap: bool,
     pub apply: bool,
     pub force: bool,
+    pub json_output: bool,
     pub use_ai_specialist: bool,
     pub ai_workspace_id: String,
     pub ai_provider: Option<String>,
@@ -178,6 +179,10 @@ pub struct HarnessEngineeringPatchCandidate {
     pub rationale: String,
     pub targets: Vec<String>,
     pub change_kind: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub script_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub script_command: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -289,10 +294,12 @@ pub async fn evaluate_harness_engineering(
                     specs: &specs_summary,
                     fitness: &fitness_summary,
                 })?;
+                let specialist_path = resolve_harness_engineering_specialist_path(repo_root)?;
+                let specialist_path = specialist_path.display().to_string();
                 match specialist::run_for_json(
                     state,
                     specialist::RunArgs {
-                        specialist_target: HARNESS_ENGINEERING_SPECIALIST_RELATIVE_PATH,
+                        specialist_target: specialist_path.as_str(),
                         prompt: Some(prompt.as_str()),
                         workspace_id: &options.ai_workspace_id,
                         provider: options.ai_provider.as_deref(),
@@ -1001,6 +1008,8 @@ fn build_patch_candidates(
                 rationale: "The repository needs a stable build surface before automation can reason about execution targets.".to_string(),
                 targets: vec!["docs/harness/build.yml".to_string()],
                 change_kind: "config_bootstrap".to_string(),
+                script_name: None,
+                script_command: None,
             },
         );
     }
@@ -1016,6 +1025,8 @@ fn build_patch_candidates(
                 rationale: "The repository needs a stable verification surface before fitness-driven evolution can close the loop.".to_string(),
                 targets: vec!["docs/harness/test.yml".to_string()],
                 change_kind: "config_bootstrap".to_string(),
+                script_name: None,
+                script_command: None,
             },
         );
     }
@@ -1031,6 +1042,8 @@ fn build_patch_candidates(
                 rationale: "A template provides a low-risk bootstrap target when the repository is weak or incomplete.".to_string(),
                 targets: vec!["docs/harness/templates".to_string()],
                 change_kind: "template_bootstrap".to_string(),
+                script_name: None,
+                script_command: None,
             },
         );
     }
@@ -1046,6 +1059,8 @@ fn build_patch_candidates(
                 rationale: "Dry-run evolution needs at least one visible automation loop to stay in front of developers.".to_string(),
                 targets: vec!["docs/harness/automations.yml".to_string()],
                 change_kind: "config_bootstrap".to_string(),
+                script_name: None,
+                script_command: None,
             },
         );
     }
@@ -1064,6 +1079,8 @@ fn build_patch_candidates(
                 rationale: "A dedicated specialist makes the evaluation loop reusable from automation and review flows.".to_string(),
                 targets: vec![HARNESS_ENGINEERING_SPECIALIST_RELATIVE_PATH.to_string()],
                 change_kind: "specialist_bootstrap".to_string(),
+                script_name: None,
+                script_command: None,
             },
         );
     }
@@ -1079,6 +1096,8 @@ fn build_patch_candidates(
                 rationale: "Automation descriptions and runtime targets should describe the same loop; otherwise the harness surface drifts.".to_string(),
                 targets: vec!["docs/harness/automations.yml".to_string()],
                 change_kind: "config_normalization".to_string(),
+                script_name: None,
+                script_command: None,
             },
         );
     }
@@ -1134,6 +1153,29 @@ fn build_verification_plan(repo_root: &Path) -> Vec<HarnessEngineeringVerificati
     }
 
     steps
+}
+
+fn resolve_harness_engineering_specialist_path(repo_root: &Path) -> Result<PathBuf, String> {
+    let workspace_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(Path::parent)
+        .ok_or_else(|| "failed to resolve Routa workspace root".to_string())?;
+    let current_dir = std::env::current_dir()
+        .map_err(|error| format!("failed to determine cwd for specialist lookup: {error}"))?;
+
+    [
+        repo_root.join(HARNESS_ENGINEERING_SPECIALIST_RELATIVE_PATH),
+        workspace_root.join(HARNESS_ENGINEERING_SPECIALIST_RELATIVE_PATH),
+        current_dir.join(HARNESS_ENGINEERING_SPECIALIST_RELATIVE_PATH),
+    ]
+    .into_iter()
+    .find(|path| path.is_file())
+    .ok_or_else(|| {
+        format!(
+            "failed to locate harness engineering specialist definition: {}",
+            HARNESS_ENGINEERING_SPECIALIST_RELATIVE_PATH
+        )
+    })
 }
 
 fn push_gap(gaps: &mut Vec<HarnessEngineeringGap>, gap: HarnessEngineeringGap) {
@@ -1264,8 +1306,8 @@ fn required_string(value: &Value, key: &str) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        evaluate_harness_engineering, should_bootstrap, HarnessEngineeringOptions,
-        DEFAULT_REPORT_RELATIVE_PATH,
+        create_snapshot, evaluate_harness_engineering, rollback_snapshot, should_bootstrap,
+        HarnessEngineeringOptions, HarnessEngineeringPatchCandidate, DEFAULT_REPORT_RELATIVE_PATH,
     };
     use std::fs;
     use tempfile::tempdir;
@@ -1287,6 +1329,7 @@ mod tests {
                 bootstrap: false,
                 apply: false,
                 force: false,
+                json_output: false,
                 use_ai_specialist: false,
                 ai_workspace_id: "default".to_string(),
                 ai_provider: None,
@@ -1357,6 +1400,7 @@ mod tests {
                 bootstrap: false,
                 apply: false,
                 force: false,
+                json_output: false,
                 use_ai_specialist: false,
                 ai_workspace_id: "default".to_string(),
                 ai_provider: None,
@@ -1409,6 +1453,7 @@ definitions:
                 bootstrap: false,
                 apply: false,
                 force: false,
+                json_output: false,
                 use_ai_specialist: false,
                 ai_workspace_id: "default".to_string(),
                 ai_provider: None,
@@ -1457,7 +1502,7 @@ definitions:
         let temp = tempdir().expect("tempdir");
         fs::write(
             temp.path().join("package.json"),
-            r#"{"name":"test","scripts":{"build":"tsc","test":"vitest"}}"#,
+            r#"{"name":"test","scripts":{"compile":"tsc -b","spec":"vitest run"}}"#,
         )
         .expect("package.json");
 
@@ -1469,6 +1514,7 @@ definitions:
                 bootstrap: true,
                 apply: true,
                 force: false,
+                json_output: false,
                 use_ai_specialist: false,
                 ai_workspace_id: "default".to_string(),
                 ai_provider: None,
@@ -1487,11 +1533,40 @@ definitions:
         // Verify content
         let build_content = fs::read_to_string(temp.path().join("docs/harness/build.yml"))
             .expect("build.yml content");
-        assert!(build_content.contains("tsc"));
+        assert!(build_content.contains("schema: harness-surface-v1"));
+        assert!(build_content.contains("^compile$"));
+        assert!(build_content.contains("npm run compile"));
 
         let test_content = fs::read_to_string(temp.path().join("docs/harness/test.yml"))
             .expect("test.yml content");
-        assert!(test_content.contains("vitest"));
+        assert!(test_content.contains("schema: harness-surface-v1"));
+        assert!(test_content.contains("^spec$"));
+        assert!(test_content.contains("npm run spec"));
+    }
+
+    #[test]
+    fn rollback_snapshot_removes_newly_created_files() {
+        let temp = tempdir().expect("tempdir");
+        let patch = HarnessEngineeringPatchCandidate {
+            id: "bootstrap.synthesize_build_yml".to_string(),
+            risk: "low".to_string(),
+            title: "create build".to_string(),
+            rationale: "test".to_string(),
+            targets: vec!["docs/harness/build.yml".to_string()],
+            change_kind: "create".to_string(),
+            script_name: Some("build".to_string()),
+            script_command: Some("tsc".to_string()),
+        };
+
+        let snapshot =
+            create_snapshot(temp.path(), std::slice::from_ref(&patch)).expect("create snapshot");
+        let created = temp.path().join("docs/harness/build.yml");
+        fs::create_dir_all(created.parent().expect("parent")).expect("create harness dir");
+        fs::write(&created, "generated").expect("write generated file");
+
+        rollback_snapshot(temp.path(), &snapshot).expect("rollback snapshot");
+
+        assert!(!created.exists());
     }
 }
 
@@ -1549,18 +1624,13 @@ async fn bootstrap_weak_repository(
     });
 
     if !scripts.is_empty() {
-        let build_scripts = scripts
-            .iter()
-            .filter(|(name, _)| {
-                name.contains("build") || name.contains("compile") || name.contains("bundle")
-            })
-            .collect::<Vec<_>>();
-        let test_scripts = scripts
-            .iter()
-            .filter(|(name, _)| name.contains("test") || name.contains("spec"))
-            .collect::<Vec<_>>();
+        let build_scripts =
+            collect_bootstrap_script_matches(&scripts, &["build", "compile", "bundle"]);
+        let test_scripts = collect_bootstrap_script_matches(&scripts, &["test", "spec"]);
 
-        if !build_scripts.is_empty() {
+        if let Some((script_name, script_command)) =
+            select_preferred_bootstrap_script(&build_scripts, "build")
+        {
             patch_candidates.push(HarnessEngineeringPatchCandidate {
                 id: "bootstrap.synthesize_build_yml".to_string(),
                 risk: "low".to_string(),
@@ -1576,10 +1646,14 @@ async fn bootstrap_weak_repository(
                         .collect::<Vec<_>>()
                         .join(", ")
                 ),
+                script_name: Some(script_name.to_string()),
+                script_command: Some(script_command.to_string()),
             });
         }
 
-        if !test_scripts.is_empty() {
+        if let Some((script_name, script_command)) =
+            select_preferred_bootstrap_script(&test_scripts, "test")
+        {
             patch_candidates.push(HarnessEngineeringPatchCandidate {
                 id: "bootstrap.synthesize_test_yml".to_string(),
                 risk: "low".to_string(),
@@ -1595,6 +1669,8 @@ async fn bootstrap_weak_repository(
                         .collect::<Vec<_>>()
                         .join(", ")
                 ),
+                script_name: Some(script_name.to_string()),
+                script_command: Some(script_command.to_string()),
             });
         }
     }
@@ -1693,12 +1769,65 @@ fn extract_scripts_from_package_json(json: &serde_json::Value) -> Vec<(String, S
         .unwrap_or_default()
 }
 
+fn collect_bootstrap_script_matches<'a>(
+    scripts: &'a [(String, String)],
+    terms: &[&str],
+) -> Vec<&'a (String, String)> {
+    scripts
+        .iter()
+        .filter(|(name, _)| terms.iter().any(|term| name.contains(term)))
+        .collect()
+}
+
+fn select_preferred_bootstrap_script<'a>(
+    matches: &'a [&'a (String, String)],
+    preferred_name: &str,
+) -> Option<(&'a str, &'a str)> {
+    matches
+        .iter()
+        .find(|(name, _)| name == preferred_name)
+        .or_else(|| matches.first())
+        .map(|(name, command)| (name.as_str(), command.as_str()))
+}
+
+fn detect_package_manager(repo_root: &Path) -> &'static str {
+    if repo_root.join("pnpm-lock.yaml").exists() {
+        "pnpm"
+    } else if repo_root.join("yarn.lock").exists() {
+        "yarn"
+    } else if repo_root.join("bun.lockb").exists() || repo_root.join("bun.lock").exists() {
+        "bun"
+    } else {
+        "npm"
+    }
+}
+
+fn format_script_invocation(
+    repo_root: &Path,
+    script_name: &str,
+    script_command: Option<&str>,
+) -> String {
+    match detect_package_manager(repo_root) {
+        "pnpm" => format!("pnpm run {script_name}"),
+        "yarn" => format!("yarn {script_name}"),
+        "bun" => format!("bun run {script_name}"),
+        "npm" => format!("npm run {script_name}"),
+        _ => script_command.unwrap_or(script_name).to_string(),
+    }
+}
+
 // Phase 3: Controlled Auto-Evolution Implementation
 
 #[derive(Debug, Serialize)]
 struct Snapshot {
     timestamp: String,
-    files: BTreeMap<String, String>,
+    files: BTreeMap<String, SnapshotFileState>,
+}
+
+#[derive(Debug, Serialize)]
+struct SnapshotFileState {
+    existed: bool,
+    content: Option<String>,
 }
 
 fn create_snapshot(
@@ -1710,11 +1839,16 @@ fn create_snapshot(
     for patch in patches {
         for target in &patch.targets {
             let path = repo_root.join(target);
-            if path.exists() {
-                let content = fs::read_to_string(&path)
-                    .map_err(|e| format!("Failed to read {}: {}", target, e))?;
-                files.insert(target.clone(), content);
-            }
+            let existed = path.exists();
+            let content = if existed {
+                Some(
+                    fs::read_to_string(&path)
+                        .map_err(|e| format!("Failed to read {}: {}", target, e))?,
+                )
+            } else {
+                None
+            };
+            files.insert(target.clone(), SnapshotFileState { existed, content });
         }
     }
 
@@ -1725,15 +1859,64 @@ fn create_snapshot(
 }
 
 fn rollback_snapshot(repo_root: &Path, snapshot: &Snapshot) -> Result<(), String> {
-    for (path_str, content) in &snapshot.files {
+    for (path_str, state) in &snapshot.files {
         let path = repo_root.join(path_str);
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent)
-                .map_err(|e| format!("Failed to create directory {}: {}", parent.display(), e))?;
+        if state.existed {
+            let content = state.content.as_deref().ok_or_else(|| {
+                format!("Snapshot missing original contents for {}", path.display())
+            })?;
+            if let Some(parent) = path.parent() {
+                fs::create_dir_all(parent).map_err(|e| {
+                    format!("Failed to create directory {}: {}", parent.display(), e)
+                })?;
+            }
+            fs::write(&path, content)
+                .map_err(|e| format!("Failed to rollback {}: {}", path_str, e))?;
+        } else if path.exists() {
+            if path.is_dir() {
+                fs::remove_dir_all(&path)
+                    .map_err(|e| format!("Failed to remove {} during rollback: {}", path_str, e))?;
+            } else {
+                fs::remove_file(&path)
+                    .map_err(|e| format!("Failed to remove {} during rollback: {}", path_str, e))?;
+            }
+            remove_empty_parent_dirs(repo_root, path.parent())?;
         }
-        fs::write(&path, content).map_err(|e| format!("Failed to rollback {}: {}", path_str, e))?;
     }
     Ok(())
+}
+
+fn remove_empty_parent_dirs(repo_root: &Path, mut current: Option<&Path>) -> Result<(), String> {
+    while let Some(path) = current {
+        if path == repo_root {
+            break;
+        }
+
+        match fs::remove_dir(path) {
+            Ok(()) => current = path.parent(),
+            Err(error) if error.kind() == std::io::ErrorKind::DirectoryNotEmpty => break,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                current = path.parent();
+            }
+            Err(error) => {
+                return Err(format!(
+                    "Failed to clean up rollback directory {}: {}",
+                    path.display(),
+                    error
+                ));
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn emit_apply_progress(options: &HarnessEngineeringOptions, message: impl AsRef<str>) {
+    if options.json_output {
+        eprintln!("{}", message.as_ref());
+    } else {
+        println!("{}", message.as_ref());
+    }
 }
 
 fn apply_patches(
@@ -1746,25 +1929,37 @@ fn apply_patches(
     let medium_risk: Vec<_> = patches.iter().filter(|p| p.risk == "medium").collect();
     let high_risk: Vec<_> = patches.iter().filter(|p| p.risk == "high").collect();
 
-    println!("\n🔧 Harness Evolution - Apply Mode");
-    println!("─────────────────────────────────");
-    println!("  Low risk patches:    {}", low_risk.len());
-    println!("  Medium risk patches: {}", medium_risk.len());
-    println!("  High risk patches:   {}", high_risk.len());
-    println!();
+    emit_apply_progress(options, "\n🔧 Harness Evolution - Apply Mode");
+    emit_apply_progress(options, "─────────────────────────────────");
+    emit_apply_progress(
+        options,
+        format!("  Low risk patches:    {}", low_risk.len()),
+    );
+    emit_apply_progress(
+        options,
+        format!("  Medium risk patches: {}", medium_risk.len()),
+    );
+    emit_apply_progress(
+        options,
+        format!("  High risk patches:   {}", high_risk.len()),
+    );
+    emit_apply_progress(options, "");
 
     // Always apply low-risk patches
     if !low_risk.is_empty() {
-        println!(
-            "✓ Applying {} low-risk patches automatically...",
-            low_risk.len()
+        emit_apply_progress(
+            options,
+            format!(
+                "✓ Applying {} low-risk patches automatically...",
+                low_risk.len()
+            ),
         );
         let low_risk_owned: Vec<_> = low_risk.iter().map(|&p| p.clone()).collect();
         let snapshot = create_snapshot(repo_root, &low_risk_owned)?;
 
-        match apply_patch_batch(repo_root, &low_risk) {
+        match apply_patch_batch(repo_root, &low_risk, options) {
             Ok(()) => {
-                println!("  ✓ Low-risk patches applied successfully");
+                emit_apply_progress(options, "  ✓ Low-risk patches applied successfully");
 
                 // Record success
                 if let Err(e) = record_evolution_outcome(repo_root, &low_risk, &[]) {
@@ -1789,9 +1984,12 @@ fn apply_patches(
     // Medium/high risk require confirmation unless --force
     if !medium_risk.is_empty() || !high_risk.is_empty() {
         if options.force {
-            println!(
-                "⚠️  Applying {} medium/high-risk patches with --force...",
-                medium_risk.len() + high_risk.len()
+            emit_apply_progress(
+                options,
+                format!(
+                    "⚠️  Applying {} medium/high-risk patches with --force...",
+                    medium_risk.len() + high_risk.len()
+                ),
             );
             let risky_patches_vec: Vec<_> = medium_risk
                 .iter()
@@ -1805,9 +2003,9 @@ fn apply_patches(
                 .chain(high_risk.iter())
                 .copied()
                 .collect();
-            match apply_patch_batch(repo_root, &risky_patches_refs) {
+            match apply_patch_batch(repo_root, &risky_patches_refs, options) {
                 Ok(()) => {
-                    println!("  ✓ Medium/high-risk patches applied");
+                    emit_apply_progress(options, "  ✓ Medium/high-risk patches applied");
 
                     // Record success
                     if let Err(e) = record_evolution_outcome(repo_root, &risky_patches_refs, &[]) {
@@ -1828,13 +2026,19 @@ fn apply_patches(
                 }
             }
         } else {
-            println!(
-                "⏸  {} medium/high-risk patches require review",
-                medium_risk.len() + high_risk.len()
+            emit_apply_progress(
+                options,
+                format!(
+                    "⏸  {} medium/high-risk patches require review",
+                    medium_risk.len() + high_risk.len()
+                ),
             );
-            println!("   Run with --force to apply them (use with caution)");
+            emit_apply_progress(
+                options,
+                "   Run with --force to apply them (use with caution)",
+            );
             for patch in medium_risk.iter().chain(high_risk.iter()) {
-                println!("   - [{}] {}", patch.risk, patch.title);
+                emit_apply_progress(options, format!("   - [{}] {}", patch.risk, patch.title));
             }
         }
     }
@@ -1845,9 +2049,10 @@ fn apply_patches(
 fn apply_patch_batch(
     repo_root: &Path,
     patches: &[&HarnessEngineeringPatchCandidate],
+    options: &HarnessEngineeringOptions,
 ) -> Result<(), String> {
     for patch in patches {
-        apply_single_patch(repo_root, patch)?;
+        apply_single_patch(repo_root, patch, options)?;
     }
     Ok(())
 }
@@ -1855,128 +2060,133 @@ fn apply_patch_batch(
 fn apply_single_patch(
     repo_root: &Path,
     patch: &HarnessEngineeringPatchCandidate,
+    options: &HarnessEngineeringOptions,
 ) -> Result<(), String> {
     match patch.id.as_str() {
         "bootstrap.synthesize_build_yml" => {
-            synthesize_build_yml(repo_root)?;
+            synthesize_build_yml(repo_root, patch, options)?;
         }
         "bootstrap.synthesize_test_yml" => {
-            synthesize_test_yml(repo_root)?;
+            synthesize_test_yml(repo_root, patch, options)?;
         }
-        _ => {
-            // For other patches, just log them (not implemented yet)
-            println!("  ⏭  Skipping unimplemented patch: {}", patch.id);
-        }
+        _ => return Err(format!("Patch {} is not implemented", patch.id)),
     }
     Ok(())
 }
 
-fn synthesize_build_yml(repo_root: &Path) -> Result<(), String> {
+fn synthesize_build_yml(
+    repo_root: &Path,
+    patch: &HarnessEngineeringPatchCandidate,
+    options: &HarnessEngineeringOptions,
+) -> Result<(), String> {
     let harness_dir = repo_root.join("docs/harness");
     fs::create_dir_all(&harness_dir)
         .map_err(|e| format!("Failed to create docs/harness: {}", e))?;
 
     let build_yml = harness_dir.join("build.yml");
-
-    // Read package.json to extract build scripts
-    let package_json_path = repo_root.join("package.json");
-    let scripts = if package_json_path.exists() {
-        let content = fs::read_to_string(&package_json_path)
-            .map_err(|e| format!("Failed to read package.json: {}", e))?;
-        let json: serde_json::Value = serde_json::from_str(&content)
-            .map_err(|e| format!("Failed to parse package.json: {}", e))?;
-        extract_scripts_from_package_json(&json)
-    } else {
-        Vec::new()
-    };
-
-    let build_script = scripts
-        .iter()
-        .find(|(name, _)| name == "build")
-        .map(|(_, cmd)| cmd.as_str())
-        .unwrap_or("npm run build");
+    let build_script_name = patch.script_name.as_deref().unwrap_or("build");
+    let build_command = format_script_invocation(
+        repo_root,
+        build_script_name,
+        patch.script_command.as_deref(),
+    );
+    let build_pattern = regex::escape(build_script_name);
 
     let content = format!(
-        r#"# Harness Build Surface
-# Auto-generated by routa harness evolve --bootstrap
-
-schema: harness-v1
-dimension: build
-
-entrypoints:
-  - id: primary
-    label: "Primary build"
-    command: "{}"
-    environment: {{}}
-    expected_artifacts:
-      - pattern: "dist/**"
-        optional: false
-      - pattern: "build/**"
-        optional: true
-
-validation:
-  - check: artifacts_exist
-    pattern: "dist/**"
+        r#"schema: harness-surface-v1
+surface: build
+title: Build feedback
+summary: Auto-generated bootstrap surface anchored to the detected `{}` script.
+overview:
+  - id: repository-shape
+    label: Repository shape
+    source: files
+    paths:
+      - package.json
+      - pnpm-lock.yaml
+      - package-lock.json
+      - yarn.lock
+      - Cargo.toml
+    limit: 5
+  - id: outputs
+    label: Outputs
+    source: files
+    paths:
+      - dist
+      - build
+      - out
+      - target
+    limit: 4
+entrypointGroups:
+  - id: bootstrap-build
+    label: Build flow
+    category: build
+    scriptNamePatterns:
+      - "^{}$"
+# detectedCommand: {}
 "#,
-        build_script
+        build_script_name, build_pattern, build_command
     );
 
     fs::write(&build_yml, content).map_err(|e| format!("Failed to write build.yml: {}", e))?;
 
-    println!("  ✓ Created docs/harness/build.yml");
+    emit_apply_progress(options, "  ✓ Created docs/harness/build.yml");
     Ok(())
 }
 
-fn synthesize_test_yml(repo_root: &Path) -> Result<(), String> {
+fn synthesize_test_yml(
+    repo_root: &Path,
+    patch: &HarnessEngineeringPatchCandidate,
+    options: &HarnessEngineeringOptions,
+) -> Result<(), String> {
     let harness_dir = repo_root.join("docs/harness");
     fs::create_dir_all(&harness_dir)
         .map_err(|e| format!("Failed to create docs/harness: {}", e))?;
 
     let test_yml = harness_dir.join("test.yml");
-
-    let package_json_path = repo_root.join("package.json");
-    let scripts = if package_json_path.exists() {
-        let content = fs::read_to_string(&package_json_path)
-            .map_err(|e| format!("Failed to read package.json: {}", e))?;
-        let json: serde_json::Value = serde_json::from_str(&content)
-            .map_err(|e| format!("Failed to parse package.json: {}", e))?;
-        extract_scripts_from_package_json(&json)
-    } else {
-        Vec::new()
-    };
-
-    let test_script = scripts
-        .iter()
-        .find(|(name, _)| name == "test")
-        .map(|(_, cmd)| cmd.as_str())
-        .unwrap_or("npm test");
+    let test_script_name = patch.script_name.as_deref().unwrap_or("test");
+    let test_command =
+        format_script_invocation(repo_root, test_script_name, patch.script_command.as_deref());
+    let test_pattern = regex::escape(test_script_name);
 
     let content = format!(
-        r#"# Harness Test Surface
-# Auto-generated by routa harness evolve --bootstrap
-
-schema: harness-v1
-dimension: test
-
-entrypoints:
-  - id: unit
-    label: "Unit tests"
-    command: "{}"
-    environment: {{}}
-    coverage:
-      enabled: true
-      threshold: 0
-
-validation:
-  - check: exit_code
-    expected: 0
+        r#"schema: harness-surface-v1
+surface: test
+title: Test feedback
+summary: Auto-generated bootstrap surface anchored to the detected `{}` script.
+overview:
+  - id: repository-shape
+    label: Repository shape
+    source: files
+    paths:
+      - package.json
+      - pnpm-lock.yaml
+      - package-lock.json
+      - yarn.lock
+      - Cargo.toml
+    limit: 5
+  - id: artifacts
+    label: Artifacts
+    source: files
+    paths:
+      - coverage
+      - test-results
+      - docs/fitness/reports
+    limit: 4
+entrypointGroups:
+  - id: bootstrap-test
+    label: Test flow
+    category: unit
+    scriptNamePatterns:
+      - "^{}$"
+# detectedCommand: {}
 "#,
-        test_script
+        test_script_name, test_pattern, test_command
     );
 
     fs::write(&test_yml, content).map_err(|e| format!("Failed to write test.yml: {}", e))?;
 
-    println!("  ✓ Created docs/harness/test.yml");
+    emit_apply_progress(options, "  ✓ Created docs/harness/test.yml");
     Ok(())
 }
 

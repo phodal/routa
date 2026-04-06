@@ -417,6 +417,8 @@ fn run_detect(args: &HarnessDetectArgs) -> Result<(), String> {
 
 async fn run_evolve(db_path: &str, args: &HarnessEvolveArgs) -> Result<(), String> {
     let repo_root = resolve_any_repo_root(args.repo_root.as_deref())?;
+    let output_format = resolved_evolve_output_format(args);
+    let apply = args.apply && !args.dry_run;
     let output_path = resolve_requested_path(
         args.output
             .as_deref()
@@ -433,10 +435,11 @@ async fn run_evolve(db_path: &str, args: &HarnessEvolveArgs) -> Result<(), Strin
         &repo_root,
         &HarnessEngineeringOptions {
             output_path: output_path.clone(),
-            dry_run: !args.apply,
+            dry_run: args.dry_run || !apply,
             bootstrap: args.bootstrap,
-            apply: args.apply,
+            apply,
             force: args.force,
+            json_output: matches!(output_format, HarnessOutputFormat::Json),
             use_ai_specialist: args.ai,
             ai_workspace_id: args.workspace_id.clone(),
             ai_provider: args.provider.clone(),
@@ -451,7 +454,7 @@ async fn run_evolve(db_path: &str, args: &HarnessEvolveArgs) -> Result<(), Strin
         persist_harness_engineering_report(&report, &output_path)?;
     }
 
-    match resolved_evolve_output_format(args) {
+    match output_format {
         HarnessOutputFormat::Json => {
             println!(
                 "{}",

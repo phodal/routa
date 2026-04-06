@@ -145,16 +145,11 @@ fn resolve_specialist_output(output_json: bool, snapshot: &SpecialistOutputSnaps
     let candidates = collect_specialist_output_candidates(snapshot);
 
     if output_json {
-        if let Some(candidate) = candidates
-            .iter()
-            .find(|candidate| is_strict_json_specialist_candidate(candidate))
-        {
-            return candidate.clone();
+        if let Some(candidate) = select_best_specialist_json_candidate(&candidates, true) {
+            return candidate;
         }
-        if let Some(candidate) = candidates.iter().find(|candidate| {
-            !candidate.trim().is_empty() && parse_specialist_json_output(candidate).is_ok()
-        }) {
-            return candidate.clone();
+        if let Some(candidate) = select_best_specialist_json_candidate(&candidates, false) {
+            return candidate;
         }
     }
 
@@ -170,6 +165,52 @@ fn is_strict_json_specialist_candidate(candidate: &str) -> bool {
     }
 
     parse_specialist_json_output_strict(candidate).is_ok()
+}
+
+fn select_best_specialist_json_candidate(
+    candidates: &[String],
+    strict_only: bool,
+) -> Option<String> {
+    candidates
+        .iter()
+        .filter_map(|candidate| {
+            let trimmed = candidate.trim();
+            if trimmed.is_empty() {
+                return None;
+            }
+
+            let parsed = if strict_only {
+                parse_specialist_json_output_strict(candidate).ok()?
+            } else {
+                parse_specialist_json_output(candidate).ok()?
+            };
+
+            Some((score_specialist_json_candidate(&parsed, trimmed), candidate))
+        })
+        .max_by_key(|(score, _)| *score)
+        .map(|(_, candidate)| candidate.clone())
+}
+
+fn score_specialist_json_candidate(
+    parsed: &serde_json::Value,
+    candidate: &str,
+) -> (usize, usize, usize) {
+    let preferred_keys = [
+        "summary",
+        "recommendedActions",
+        "patchCandidates",
+        "verificationPlan",
+        "warnings",
+        "audit_conclusion",
+        "aiAssessment",
+    ];
+    let preferred_key_matches = preferred_keys
+        .iter()
+        .filter(|key| parsed.get(**key).is_some())
+        .count();
+    let top_level_key_count = parsed.as_object().map_or(0, |value| value.len());
+
+    (preferred_key_matches, top_level_key_count, candidate.len())
 }
 
 async fn run_internal(
@@ -1058,9 +1099,9 @@ async fn execute_specialist_run(
     orchestrator.cleanup(&session_id).await;
 
     if let Some(context) = journey_context.as_ref() {
-        if let Some(reason) = failure_reason {
+        if let Some(reason) = failure_reason.as_deref() {
             metrics.elapsed_ms = run_start.elapsed().as_millis();
-            let default_failure_summary = match reason.as_str() {
+            let default_failure_summary = match reason {
                 "session_idle_timeout" => "Session timed out with no activity",
                 "execution_timeout" => "UI journey exceeded the maximum runtime budget",
                 _ => "Provider process exited unexpectedly",
@@ -1075,7 +1116,7 @@ async fn execute_specialist_run(
                 Some(specialist_output.as_str()),
             )
             .and_then(|diagnostic| diagnostic.failure_stage_override)
-            .unwrap_or(reason.as_str());
+            .unwrap_or(reason);
             let failure_summary = augment_ui_journey_runtime_failure_message(
                 default_failure_summary,
                 &UiJourneyRuntimeFailureContext {
@@ -1111,6 +1152,9 @@ async fn execute_specialist_run(
     }
 
     if journey_context.is_none() && output_json {
+        if let Some(reason) = failure_reason.as_deref() {
+            return Err(format!("Failed to complete specialist JSON run: {reason}"));
+        }
         let parsed = parse_specialist_json_output(&specialist_output)?;
         if capture_json_output {
             return Ok(Some(parsed));
@@ -1672,5 +1716,27 @@ mod tests {
             },
         );
         assert_eq!(resolved, "{\"ok\":true,\"source\":\"prompt\"}");
+    }
+
+    #[test]
+    fn resolve_specialist_output_prefers_more_complete_json_candidate() {
+        let prompt_response = serde_json::json!({
+            "result": {
+                "text": "{\"summary\":{\"mode\":\"dry-run\"},\"verificationPlan\":[{\"label\":\"verify\"}],\"warnings\":[]}"
+            }
+        });
+        let resolved = resolve_specialist_output(
+            true,
+            &SpecialistOutputSnapshot {
+                collected_output: "{\"summary\":{\"mode\":\"dry-run\"}}",
+                prompt_response: &prompt_response,
+                effective_provider: "codex",
+                history: &[],
+            },
+        );
+        assert_eq!(
+            resolved,
+            "{\"summary\":{\"mode\":\"dry-run\"},\"verificationPlan\":[{\"label\":\"verify\"}],\"warnings\":[]}"
+        );
     }
 }
