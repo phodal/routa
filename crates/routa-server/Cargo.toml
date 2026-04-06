@@ -18,7 +18,7 @@ routa-core = { version = "0.12.1", path = "../routa-core", features = ["axum"] }
 
 # Web framework
 axum = { version = "0.8", features = ["macros"] }
-axum-extra = { version = "0.10", features = ["multipart"] }
+axum-extra = { version = "0.12", features = ["multipart"] }
 tower = "0.5"
 tower-http = { version = "0.6", features = ["cors", "trace", "fs"] }
 
