@@ -7,6 +7,40 @@ if [ -n "$SKIP_HOOKS" ]; then
   exit 0
 fi
 
+# ─── Mass File Deletion Protection ────────────────────────────────
+# Prevent accidental deletion of 200+ files in single commit
+
+# Skip if explicitly allowed
+if [ -z "$ALLOW_MASS_DELETE" ]; then
+  DELETED_COUNT=$(git diff --cached --diff-filter=D --name-only 2>/dev/null | wc -l | tr -d ' ')
+
+  if [ "$DELETED_COUNT" -ge 200 ]; then
+    echo "❌ COMMIT BLOCKED: Mass file deletion detected"
+    echo ""
+    echo "   📊 Deleted files: $DELETED_COUNT"
+    echo "   🚫 Threshold: 200 files"
+    echo ""
+    echo "   This protection prevents accidental mass deletions."
+    echo ""
+    echo "   If this deletion is intentional, you have these options:"
+    echo ""
+    echo "   1. Split into smaller commits (RECOMMENDED)"
+    echo "      This makes the change easier to review and revert if needed."
+    echo ""
+    echo "   2. Bypass with clear justification:"
+    echo "      ALLOW_MASS_DELETE=1 git commit -m \"feat: remove deprecated feature X"
+    echo ""
+    echo "      Reason: <explain why 200+ files are being deleted>"
+    echo "      Impact: <describe what's being removed>"
+    echo "      ALLOW_MASS_DELETE: Intentional mass deletion\""
+    echo ""
+    echo "   3. Emergency bypass (not recommended):"
+    echo "      SKIP_HOOKS=1 git commit -m \"...\""
+    echo ""
+    exit 1
+  fi
+fi
+
 # ─── Git Identity Validation ───────────────────────────────────────
 # Block test credentials before commit is created
 AUTHOR_NAME=$(git config user.name 2>/dev/null || echo "")

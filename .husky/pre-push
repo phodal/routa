@@ -15,14 +15,57 @@ if [ "$(uname -s 2>/dev/null | cut -c1-5)" = "MINGW" ] || [ "$(uname -s 2>/dev/n
   export TMP="$win_temp"
 fi
 
-# ─── Scan Commits for Test Credentials ────────────────────────────
+# ─── Scan Commits for Mass Deletions ──────────────────────────────
 # Read push details from stdin
 REMOTE="$1"
 URL="$2"
 
-echo "🔍 Scanning commits for test credentials..."
+echo "🔍 Scanning commits for safety violations..."
 
+HAS_MASS_DELETE=0
 HAS_SUSPICIOUS=0
+
+# Check for mass file deletions (unless explicitly allowed)
+if [ -z "$ALLOW_MASS_DELETE" ]; then
+  while read local_ref local_sha remote_ref remote_sha; do
+    # Skip if deleting a branch
+    if [ "$local_sha" = "0000000000000000000000000000000000000000" ]; then
+      continue
+    fi
+
+    # Determine range to check
+    if [ "$remote_sha" = "0000000000000000000000000000000000000000" ]; then
+      # New branch - check last 100 commits
+      RANGE="$local_sha~100..$local_sha"
+    else
+      # Existing branch - check commits since remote
+      RANGE="$remote_sha..$local_sha"
+    fi
+
+    # Check each commit for mass deletions
+    for commit in $(git rev-list $RANGE 2>/dev/null); do
+      DELETED=$(git show --diff-filter=D --name-only --format="" $commit 2>/dev/null | wc -l | tr -d ' ')
+
+      if [ "$DELETED" -ge 200 ]; then
+        HAS_MASS_DELETE=1
+        SHORT_HASH=$(echo $commit | cut -c1-8)
+        SUBJECT=$(git log -1 --format="%s" $commit)
+        echo ""
+        echo "❌ MASS DELETION DETECTED in $local_ref"
+        echo ""
+        echo "  Commit: $SHORT_HASH"
+        echo "  Subject: $SUBJECT"
+        echo "  Deleted files: $DELETED (threshold: 200)"
+        echo ""
+      fi
+    done
+  done < /dev/stdin
+fi
+
+# Re-read stdin for credential check (stdin was consumed above)
+exec 0</dev/tty
+
+# ─── Scan Commits for Test Credentials ────────────────────────────
 
 while read local_ref local_sha remote_ref remote_sha; do
   # Skip if deleting a branch
@@ -56,6 +99,29 @@ while read local_ref local_sha remote_ref remote_sha; do
   fi
 done
 
+if [ "$HAS_MASS_DELETE" = "1" ]; then
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  echo "  Fix options for mass deletions:"
+  echo ""
+  echo "  Option 1: Split into smaller commits (RECOMMENDED)"
+  echo "    git rebase -i origin/main"
+  echo "    # Split large deletion commits into logical groups"
+  echo ""
+  echo "  Option 2: If intentional, add justification to commit message:"
+  echo "    git commit --amend -m \"Your message"
+  echo ""
+  echo "    Reason: <why 200+ files are being deleted>"
+  echo "    ALLOW_MASS_DELETE: Intentional\""
+  echo ""
+  echo "  Option 3: Bypass for this push (if documented)"
+  echo "    ALLOW_MASS_DELETE=1 git push"
+  echo ""
+  echo "  Option 4: Emergency bypass (NOT recommended)"
+  echo "    SKIP_HOOKS=1 git push"
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  exit 1
+fi
+
 if [ "$HAS_SUSPICIOUS" = "1" ]; then
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
   echo "  Fix these commits before pushing:"
@@ -75,7 +141,7 @@ if [ "$HAS_SUSPICIOUS" = "1" ]; then
   exit 1
 fi
 
-echo "✅ No test credentials found in commits"
+echo "✅ No safety violations found in commits"
 echo ""
 
 # ─── Run Standard Checks ───────────────────────────────────────────

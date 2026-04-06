@@ -40,16 +40,78 @@ env:
 
 jobs:
   # ══════════════════════════════════════════════════════════════
-  # COMMIT METADATA VALIDATION: Block test credentials
+  # COMMIT SAFETY VALIDATION: Block test credentials & mass deletions
   # ══════════════════════════════════════════════════════════════
-  validate-commit-metadata:
-    name: 'Gate: Commit Metadata'
+  validate-commit-safety:
+    name: 'Gate: Commit Safety'
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request' || github.event_name == 'push'
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0  # Full history needed to scan commits
+
+      - name: Check for mass file deletions
+        run: |
+          # Determine range to check
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE_SHA="${{ github.event.pull_request.base.sha }}"
+            HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+            RANGE="$BASE_SHA..$HEAD_SHA"
+            echo "📋 Checking PR commits: $RANGE"
+          else
+            # For push events, check the pushed commits
+            RANGE="${{ github.event.before }}..${{ github.event.after }}"
+            echo "📋 Checking pushed commits: $RANGE"
+          fi
+
+          echo ""
+          echo "🔍 Scanning for mass file deletions..."
+
+          HAS_MASS_DELETE=0
+
+          for commit in $(git rev-list $RANGE 2>/dev/null); do
+            DELETED=$(git show --diff-filter=D --name-only --format="" $commit 2>/dev/null | wc -l | tr -d ' ')
+
+            if [ "$DELETED" -ge 200 ]; then
+              HAS_MASS_DELETE=1
+              SHORT_HASH=$(echo $commit | cut -c1-8)
+              SUBJECT=$(git log -1 --format="%s" $commit)
+
+              echo ""
+              echo "❌ MASS DELETION DETECTED"
+              echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+              echo "  Commit: $SHORT_HASH"
+              echo "  Subject: $SUBJECT"
+              echo "  Deleted files: $DELETED (threshold: 200)"
+              echo ""
+
+              # Show first 20 deleted files as sample
+              echo "  Sample of deleted files:"
+              git show --diff-filter=D --name-only --format="" $commit | head -20 | sed 's/^/    - /'
+              if [ "$DELETED" -gt 20 ]; then
+                echo "    ... and $((DELETED - 20)) more files"
+              fi
+              echo ""
+
+              echo "::error::Commit $SHORT_HASH deletes $DELETED files (threshold: 200)"
+            fi
+          done
+
+          if [ "$HAS_MASS_DELETE" = "1" ]; then
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo ""
+            echo "This protection prevents accidental mass deletions."
+            echo ""
+            echo "If this deletion is intentional:"
+            echo "  1. Add clear justification in commit message"
+            echo "  2. Split into smaller logical commits (recommended)"
+            echo "  3. Document impact and reason for mass deletion"
+            echo ""
+            exit 1
+          fi
+
+          echo "✅ No mass deletions detected"
 
       - name: Validate commit authors
         run: |
