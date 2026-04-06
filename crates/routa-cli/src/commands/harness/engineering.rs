@@ -2471,9 +2471,10 @@ updates:
     fs::write(&dependabot_path, content)
         .map_err(|e| format!("Failed to write dependabot.yml: {}", e))?;
 
+    let message = format!("  ✓ Created .github/dependabot.yml with {} ecosystem(s)", ecosystems.len());
     emit_apply_progress(
         options,
-        &format!("  ✓ Created .github/dependabot.yml with {} ecosystem(s)", ecosystems.len())
+        &message
     );
 
     Ok(())
