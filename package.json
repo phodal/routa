@@ -227,7 +227,7 @@
     "eslint": "^9.39.3",
     "eslint-config-next": "16.2.1",
     "husky": "^9.1.7",
-    "jsdom": "^28.1.0",
+    "jsdom": "^29.0.1",
     "patch-package": "^8.0.1",
     "path-data-parser": "^0.1.0",
     "postcss": "^8.4.49",
