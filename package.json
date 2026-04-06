@@ -171,7 +171,7 @@
     "js-yaml": "^4.1.0",
     "lowlight": "^3.3.0",
     "lucide-react": "^1.7.0",
-    "marked": "^17.0.2",
+    "marked": "^17.0.6",
     "mermaid": "^10.9.5",
     "minimatch": "^10.2.5",
     "next": "^16.2.1",
