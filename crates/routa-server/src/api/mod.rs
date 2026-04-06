@@ -15,6 +15,7 @@ pub mod debug;
 pub mod files;
 pub mod fitness;
 pub mod github;
+pub mod graph;
 pub mod harness;
 pub(crate) mod harness_github_actions;
 pub(crate) mod harness_hook_preview_events;
@@ -83,6 +84,7 @@ pub fn api_router() -> Router<AppState> {
         .nest("/api/mcp-server", mcp_server_mgmt::router())
         .nest("/api/mcp-servers", mcp_servers::router())
         .nest("/api/github", github::router())
+        .nest("/api/graph", graph::router())
         .nest("/api/harness", harness::router())
         .nest("/api/harness/templates", harness_templates::router())
         .nest("/api/webhooks", webhooks::router())

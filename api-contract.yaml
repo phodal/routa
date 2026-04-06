@@ -623,6 +623,71 @@ components:
           type: boolean
           const: true
 
+    GraphNode:
+      type: object
+      required: [id, path, language, kind]
+      properties:
+        id:
+          type: string
+        path:
+          type: string
+        language:
+          type: string
+        kind:
+          type: string
+          enum:
+            - file
+            - external_crate
+            - external_package
+            - unresolved_module
+            - package
+            - class
+            - interface
+            - enum
+            - method
+            - field
+            - constructor
+
+    GraphEdge:
+      type: object
+      required: [from, to, kind, specifier, resolved]
+      properties:
+        from:
+          type: string
+        to:
+          type: string
+        kind:
+          type: string
+          enum: [uses, imports, made_of, depends_on, extends, implements]
+        specifier:
+          type: string
+        resolved:
+          type: boolean
+
+    DependencyGraph:
+      type: object
+      required: [generated_at, root_dir, language, node_count, edge_count, nodes, edges]
+      properties:
+        generated_at:
+          type: string
+          format: date-time
+        root_dir:
+          type: string
+        language:
+          type: string
+        node_count:
+          type: integer
+        edge_count:
+          type: integer
+        nodes:
+          type: array
+          items:
+            $ref: "#/components/schemas/GraphNode"
+        edges:
+          type: array
+          items:
+            $ref: "#/components/schemas/GraphEdge"
+
     # ── Sandbox schemas ──
     SandboxInfo:
       type: object
@@ -4830,6 +4895,59 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "500":
           description: Failed to read fitness specs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/graph/analyze:
+    get:
+      operationId: analyzeDependencyGraph
+      summary: Analyze repository module dependencies and return a graph snapshot
+      parameters:
+        - name: workspaceId
+          in: query
+          schema:
+            type: string
+        - name: codebaseId
+          in: query
+          schema:
+            type: string
+        - name: repoPath
+          in: query
+          schema:
+            type: string
+        - name: repoRoot
+          in: query
+          schema:
+            type: string
+        - name: lang
+          in: query
+          schema:
+            type: string
+            enum: [auto, rust, typescript, java]
+            default: auto
+        - name: depth
+          in: query
+          schema:
+            type: string
+            enum: [fast, normal]
+            default: fast
+      responses:
+        "200":
+          description: Dependency graph payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DependencyGraph"
+        "400":
+          description: Invalid graph analysis context or query
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Failed to analyze dependency graph
           content:
             application/json:
               schema:
