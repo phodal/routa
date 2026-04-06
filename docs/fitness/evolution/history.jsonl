@@ -1,0 +1,2 @@
+{"timestamp":"2026-04-06T01:28:30.947461+00:00","repo_root":"/Users/phodal/ai/routa-js","mode":"auto-apply","patches_applied":[],"patches_failed":["patch.normalize_automation_target"],"success_rate":0.0}
+{"timestamp":"2026-04-06T01:29:43.312956+00:00","repo_root":"/Users/phodal/ai/routa-js","mode":"auto-apply","patches_applied":["patch.normalize_automation_target"],"patches_failed":[],"success_rate":1.0}

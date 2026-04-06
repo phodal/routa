@@ -2069,6 +2069,9 @@ fn apply_single_patch(
         "bootstrap.synthesize_test_yml" => {
             synthesize_test_yml(repo_root, patch, options)?;
         }
+        "patch.normalize_automation_target" => {
+            normalize_automation_target(repo_root, patch, options)?;
+        }
         _ => return Err(format!("Patch {} is not implemented", patch.id)),
     }
     Ok(())
@@ -2237,6 +2240,43 @@ fn record_evolution_outcome(
 
     use std::io::Write;
     writeln!(file, "{}", json_line).map_err(|e| format!("Failed to write history: {}", e))?;
+
+    Ok(())
+}
+
+fn normalize_automation_target(
+    repo_root: &Path,
+    _patch: &HarnessEngineeringPatchCandidate,
+    options: &HarnessEngineeringOptions,
+) -> Result<(), String> {
+    let automations_path = repo_root.join("docs/harness/automations.yml");
+
+    if !automations_path.exists() {
+        return Err("docs/harness/automations.yml not found".to_string());
+    }
+
+    let content = fs::read_to_string(&automations_path)
+        .map_err(|e| format!("Failed to read automations.yml: {}", e))?;
+
+    // Fix: weekly-harness-fluency should point to harness-fluency specialist, not harness-test
+    // Line 24: ref: harness-test -> ref: harness-fluency
+    let fixed_content = content.replace(
+        "    target:\n      type: specialist\n      ref: harness-test",
+        "    target:\n      type: specialist\n      ref: harness-fluency"
+    );
+
+    if fixed_content == content {
+        emit_apply_progress(options, "  ℹ️  No changes needed in automations.yml");
+        return Ok(());
+    }
+
+    fs::write(&automations_path, fixed_content)
+        .map_err(|e| format!("Failed to write automations.yml: {}", e))?;
+
+    emit_apply_progress(
+        options,
+        "  ✓ Normalized automation target: weekly-harness-fluency now points to harness-fluency"
+    );
 
     Ok(())
 }
