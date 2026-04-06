@@ -176,7 +176,7 @@ jobs:
           args: ${{ matrix.args }}
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: tauri-build-${{ inputs.version || github.event.inputs.version || 'snapshot' }}-${{ matrix.platform }}-${{ matrix.arch }}
           path: |

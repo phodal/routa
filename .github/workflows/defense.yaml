@@ -142,7 +142,7 @@ jobs:
 
       - name: Upload fitness artifact
         if: always() && hashFiles(format('.artifacts/fitness-report-{0}.json', matrix.dimension)) != ''
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: fitness-report-${{ matrix.dimension }}
           path: .artifacts/fitness-report-${{ matrix.dimension }}.json
@@ -229,7 +229,7 @@ jobs:
           sarif_file: semgrep-results.sarif
 
       - name: Upload Semgrep SARIF artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: semgrep-results-sarif
@@ -270,7 +270,7 @@ jobs:
           sarif_file: trivy-results.sarif
 
       - name: Upload Trivy SARIF artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: trivy-results-sarif

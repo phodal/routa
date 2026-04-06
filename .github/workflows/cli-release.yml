@@ -107,7 +107,7 @@ jobs:
           fi
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: routa-cli-${{ matrix.key }}
           path: dist/${{ matrix.key }}
@@ -233,13 +233,13 @@ jobs:
           fi
 
       - name: Upload release manifest
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: routa-release-manifest-cli
           path: dist/release/manifest.json
 
       - name: Upload npm artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: routa-cli-npm-${{ steps.version.outputs.value }}
           path: dist/npm
@@ -289,7 +289,7 @@ jobs:
             --out dist/release/cli-verification.json
 
       - name: Upload verification report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: routa-cli-release-verification
           path: dist/release/cli-verification.json
