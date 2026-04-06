@@ -31,7 +31,7 @@ jobs:
       RELEASE_VERSION: ${{ inputs.version || github.event.inputs.version }}
       DRY_RUN: ${{ inputs.dry_run || github.event.inputs.dry_run }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Sync release version
         shell: bash
