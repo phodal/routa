@@ -151,7 +151,7 @@
     "@tiptap/extension-task-item": "^3.19.0",
     "@tiptap/extension-task-list": "^3.19.0",
     "@tiptap/pm": "^3.19.0",
-    "@tiptap/react": "^3.19.0",
+    "@tiptap/react": "^3.22.2",
     "@tiptap/starter-kit": "^3.19.0",
     "@tiptap/suggestion": "^3.19.0",
     "@types/dagre": "^0.7.54",
