@@ -40,6 +40,16 @@ cargo run -p routa-cli -- fitness fluency --framing harnessability
 # Harness Fluency 评估（只读，不落快照）
 cargo run -p routa-cli -- fitness fluency --no-save
 
+# Harness Engineering 评估（默认 dry-run，结构化 gap classification）
+cargo run -p routa-cli -- harness evolve --dry-run --format json
+
+# 弱仓库 bootstrap（先评估，再显式 apply 低风险 patch）
+cargo run -p routa-cli -- harness evolve --repo-root /path/to/repo --bootstrap --dry-run --format json
+cargo run -p routa-cli -- harness evolve --repo-root /path/to/repo --bootstrap --apply --format json
+
+# Harness Engineering + AI specialist（deterministic report 仍是权威输入）
+cargo run -p routa-cli -- harness evolve --ai --provider claude --format json
+
 # 包管理器快捷入口（仍走 Rust CLI）
 npm run fitness:fluency
 
@@ -86,6 +96,21 @@ Harness Fluency 默认跑通用 `generic` 模型；如果要评估编排型 agen
 - top actions
 - autonomy recommendation
 - lifecycle / sensor placement 的可见性
+
+### Harness Engineering Loop
+
+`routa harness evolve` 对应的是 #314 里的 `observe → evaluate → synthesize → verify` 主循环：
+
+- `observe`: 读取 repo signals、`docs/harness/*.yml`、automation、spec sources、fitness / fluency 快照
+- `evaluate`: 输出结构化 gap classification，并区分 harness gap 与 non-harness engineering gap
+- `synthesize`: 在 dry-run 模式下给出 low-risk patch candidates 和 verification plan
+- `verify`: `--apply` 只会自动落低风险 patch，随后立即执行 verification plan；任一步失败都会回滚本轮变更
+
+边界：
+
+- 这条命令不会把所有 fitness failure 都当成 harness mutation 目标
+- medium/high-risk patch 仍然需要人工 review，除非显式 `--force`
+- 当前 ratchet 仍以 fluency snapshot / fitness baseline 为外部约束，`harness evolve` 负责产出和验证演进步骤，不负责替代 `entrix` 或 `fitness fluency`
 
 ### Tier 分层
 

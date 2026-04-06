@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 use crate::commands::specialist;
 use chrono::Utc;
@@ -50,6 +51,8 @@ pub struct HarnessEngineeringReport {
     pub recommended_actions: Vec<HarnessEngineeringAction>,
     pub patch_candidates: Vec<HarnessEngineeringPatchCandidate>,
     pub verification_plan: Vec<HarnessEngineeringVerificationStep>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub verification_results: Vec<HarnessEngineeringVerificationResult>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ai_assessment: Option<HarnessEngineeringAiAssessment>,
     pub warnings: Vec<String>,
@@ -193,6 +196,19 @@ pub struct HarnessEngineeringVerificationStep {
     pub proves: String,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HarnessEngineeringVerificationResult {
+    pub label: String,
+    pub command: String,
+    pub proves: String,
+    pub success: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exit_code: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub output_excerpt: Option<String>,
+}
+
 #[derive(Debug, Clone)]
 struct LoadedFluencySnapshot {
     profile: String,
@@ -249,6 +265,7 @@ pub async fn evaluate_harness_engineering(
     let mut recommended_actions = build_recommended_actions(&gaps);
     let mut patch_candidates = build_patch_candidates(repo_root, repo_signals.as_ref(), &gaps);
     patch_candidates.sort_by(|left, right| left.id.cmp(&right.id));
+    let verification_plan = build_verification_plan(repo_root);
 
     let summary = HarnessEngineeringSummary {
         total_gaps: gaps.len(),
@@ -332,10 +349,11 @@ pub async fn evaluate_harness_engineering(
         }
     }
 
-    // Apply patches if requested
-    if options.apply && !patch_candidates.is_empty() {
-        apply_patches(repo_root, &patch_candidates, options)?;
-    }
+    let verification_results = if options.apply && !patch_candidates.is_empty() {
+        apply_patches(repo_root, &patch_candidates, &verification_plan, options)?
+    } else {
+        Vec::new()
+    };
 
     Ok(HarnessEngineeringReport {
         generated_at: Utc::now().to_rfc3339(),
@@ -357,7 +375,8 @@ pub async fn evaluate_harness_engineering(
         gaps,
         recommended_actions,
         patch_candidates,
-        verification_plan: build_verification_plan(repo_root),
+        verification_plan,
+        verification_results,
         ai_assessment,
         warnings,
     })
@@ -469,6 +488,18 @@ pub fn format_harness_engineering_report(report: &HarnessEngineeringReport) -> S
         lines.push("verification:".to_string());
         for step in &report.verification_plan {
             lines.push(format!("  {} -> {}", step.label, step.command));
+        }
+    }
+
+    if !report.verification_results.is_empty() {
+        lines.push(String::new());
+        lines.push("verification results:".to_string());
+        for result in &report.verification_results {
+            let status = if result.success { "PASS" } else { "FAIL" };
+            lines.push(format!("  [{}] {}", status, result.label));
+            if let Some(excerpt) = &result.output_excerpt {
+                lines.push(format!("    {}", excerpt.replace('\n', " | ")));
+            }
         }
     }
 
@@ -1138,7 +1169,9 @@ fn build_patch_candidates(
                     id: "patch.create_dependabot".to_string(),
                     risk: "low".to_string(),
                     title: "Create .github/dependabot.yml for dependency updates".to_string(),
-                    rationale: "Dependabot automates security updates and reduces maintenance debt.".to_string(),
+                    rationale:
+                        "Dependabot automates security updates and reduces maintenance debt."
+                            .to_string(),
                     targets: vec![".github/dependabot.yml".to_string()],
                     change_kind: "governance_bootstrap".to_string(),
                     script_name: None,
@@ -1151,8 +1184,7 @@ fn build_patch_candidates(
     // Check for missing operational documentation
     let has_doc_gaps = gaps.iter().any(|gap| {
         gap.category == "non_harness_engineering_gap"
-            && (gap.detail.contains("glob_count failed")
-                || gap.detail.contains("operational"))
+            && (gap.detail.contains("glob_count failed") || gap.detail.contains("operational"))
     });
 
     if has_doc_gaps && !repo_root.join("docs/operational").exists() {
@@ -1163,7 +1195,8 @@ fn build_patch_candidates(
                 id: "patch.create_operational_docs".to_string(),
                 risk: "low".to_string(),
                 title: "Create placeholder operational documentation".to_string(),
-                rationale: "Operational history improves agent fluency and context awareness.".to_string(),
+                rationale: "Operational history improves agent fluency and context awareness."
+                    .to_string(),
                 targets: vec!["docs/operational".to_string()],
                 change_kind: "doc_bootstrap".to_string(),
                 script_name: None,
@@ -1184,7 +1217,9 @@ fn build_patch_candidates(
                         id: "patch.update_coverage_threshold".to_string(),
                         risk: "low".to_string(),
                         title: "Add coverage tracking to test.yml".to_string(),
-                        rationale: "Coverage thresholds enable ratcheting quality upward over time.".to_string(),
+                        rationale:
+                            "Coverage thresholds enable ratcheting quality upward over time."
+                                .to_string(),
                         targets: vec!["docs/harness/test.yml".to_string()],
                         change_kind: "config_enhancement".to_string(),
                         script_name: None,
@@ -1202,7 +1237,7 @@ fn build_verification_plan(repo_root: &Path) -> Vec<HarnessEngineeringVerificati
     let mut steps = vec![HarnessEngineeringVerificationStep {
         label: "Harness engineering dry-run".to_string(),
         command: format!(
-            "cargo run -p routa-cli -- harness evolve --repo-root {} --dry-run --format json",
+            "cargo run -p routa-cli -- harness evolve --repo-root {} --dry-run --format json --no-save",
             repo_root.display()
         ),
         proves: "The repository can be assessed and a structured evolution report can be emitted."
@@ -1399,8 +1434,9 @@ fn required_string(value: &Value, key: &str) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        create_snapshot, evaluate_harness_engineering, rollback_snapshot, should_bootstrap,
-        HarnessEngineeringOptions, HarnessEngineeringPatchCandidate, DEFAULT_REPORT_RELATIVE_PATH,
+        create_snapshot, evaluate_harness_engineering, rollback_snapshot, run_verification_plan,
+        should_bootstrap, HarnessEngineeringOptions, HarnessEngineeringPatchCandidate,
+        HarnessEngineeringVerificationStep, DEFAULT_REPORT_RELATIVE_PATH,
     };
     use std::fs;
     use tempfile::tempdir;
@@ -1661,6 +1697,70 @@ definitions:
 
         assert!(!created.exists());
     }
+
+    #[test]
+    fn verification_plan_executes_successfully() {
+        let temp = tempdir().expect("tempdir");
+        fs::write(temp.path().join("marker.txt"), "ok").expect("marker");
+        let steps = vec![HarnessEngineeringVerificationStep {
+            label: "Marker exists".to_string(),
+            command: "test -f marker.txt".to_string(),
+            proves: "The marker file is present.".to_string(),
+        }];
+
+        let results = run_verification_plan(
+            temp.path(),
+            &steps,
+            &HarnessEngineeringOptions {
+                output_path: temp.path().join(DEFAULT_REPORT_RELATIVE_PATH),
+                dry_run: false,
+                bootstrap: false,
+                apply: true,
+                force: false,
+                json_output: false,
+                use_ai_specialist: false,
+                ai_workspace_id: "default".to_string(),
+                ai_provider: None,
+                ai_provider_timeout_ms: None,
+                ai_provider_retries: 0,
+            },
+        )
+        .expect("verification succeeds");
+
+        assert_eq!(results.len(), 1);
+        assert!(results[0].success);
+    }
+
+    #[test]
+    fn verification_plan_reports_failures() {
+        let temp = tempdir().expect("tempdir");
+        let steps = vec![HarnessEngineeringVerificationStep {
+            label: "Missing marker".to_string(),
+            command: "test -f marker.txt".to_string(),
+            proves: "The marker file is present.".to_string(),
+        }];
+
+        let error = run_verification_plan(
+            temp.path(),
+            &steps,
+            &HarnessEngineeringOptions {
+                output_path: temp.path().join(DEFAULT_REPORT_RELATIVE_PATH),
+                dry_run: false,
+                bootstrap: false,
+                apply: true,
+                force: false,
+                json_output: false,
+                use_ai_specialist: false,
+                ai_workspace_id: "default".to_string(),
+                ai_provider: None,
+                ai_provider_timeout_ms: None,
+                ai_provider_retries: 0,
+            },
+        )
+        .unwrap_err();
+
+        assert!(error.contains("Missing marker"));
+    }
 }
 
 // Bootstrap Mode Implementation
@@ -1792,11 +1892,17 @@ async fn bootstrap_weak_repository(
         non_harness_gaps: 0,
         low_risk_patch_candidates: patch_candidates.len(),
     };
+    let verification_plan = vec![HarnessEngineeringVerificationStep {
+        label: "Verify harness directory created".to_string(),
+        command: "test -d docs/harness".to_string(),
+        proves: "Harness configuration directory exists".to_string(),
+    }];
 
-    // Apply patches if requested
-    if options.apply && !patch_candidates.is_empty() {
-        apply_patches(repo_root, &patch_candidates, options)?;
-    }
+    let verification_results = if options.apply && !patch_candidates.is_empty() {
+        apply_patches(repo_root, &patch_candidates, &verification_plan, options)?
+    } else {
+        Vec::new()
+    };
 
     Ok(HarnessEngineeringReport {
         generated_at: Utc::now().to_rfc3339(),
@@ -1837,11 +1943,8 @@ async fn bootstrap_weak_repository(
         gaps,
         recommended_actions,
         patch_candidates,
-        verification_plan: vec![HarnessEngineeringVerificationStep {
-            label: "Verify harness directory created".to_string(),
-            command: "test -d docs/harness".to_string(),
-            proves: "Harness configuration directory exists".to_string(),
-        }],
+        verification_plan,
+        verification_results,
         ai_assessment: None,
         warnings,
     })
@@ -2012,11 +2115,104 @@ fn emit_apply_progress(options: &HarnessEngineeringOptions, message: impl AsRef<
     }
 }
 
+fn build_verification_output_excerpt(stdout: &str, stderr: &str) -> Option<String> {
+    let stdout = stdout.trim();
+    let stderr = stderr.trim();
+    if stdout.is_empty() && stderr.is_empty() {
+        return None;
+    }
+
+    let mut combined = String::new();
+    if !stdout.is_empty() {
+        combined.push_str(stdout);
+    }
+    if !stderr.is_empty() {
+        if !combined.is_empty() {
+            combined.push('\n');
+        }
+        combined.push_str(stderr);
+    }
+
+    let excerpt = combined
+        .lines()
+        .take(8)
+        .collect::<Vec<_>>()
+        .join("\n")
+        .chars()
+        .take(600)
+        .collect::<String>();
+    Some(excerpt)
+}
+
+fn run_verification_plan(
+    repo_root: &Path,
+    steps: &[HarnessEngineeringVerificationStep],
+    options: &HarnessEngineeringOptions,
+) -> Result<Vec<HarnessEngineeringVerificationResult>, String> {
+    if steps.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    emit_apply_progress(
+        options,
+        format!("🧪 Running {} verification steps...", steps.len()),
+    );
+
+    let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string());
+    let mut results = Vec::with_capacity(steps.len());
+
+    for step in steps {
+        emit_apply_progress(options, format!("  → {}", step.label));
+        let output = Command::new(&shell)
+            .arg("-lc")
+            .arg(&step.command)
+            .current_dir(repo_root)
+            .env("PATH", routa_core::shell_env::full_path())
+            .output()
+            .map_err(|error| {
+                format!(
+                    "Failed to execute verification step '{}' with shell {}: {}",
+                    step.label, shell, error
+                )
+            })?;
+        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        let success = output.status.success();
+        let result = HarnessEngineeringVerificationResult {
+            label: step.label.clone(),
+            command: step.command.clone(),
+            proves: step.proves.clone(),
+            success,
+            exit_code: output.status.code(),
+            output_excerpt: build_verification_output_excerpt(&stdout, &stderr),
+        };
+
+        if success {
+            emit_apply_progress(options, format!("    ✓ {}", step.proves));
+            results.push(result);
+            continue;
+        }
+
+        let failure_detail = result
+            .output_excerpt
+            .clone()
+            .unwrap_or_else(|| "no output captured".to_string());
+        results.push(result);
+        return Err(format!(
+            "Verification failed at '{}': {}",
+            step.label, failure_detail
+        ));
+    }
+
+    Ok(results)
+}
+
 fn apply_patches(
     repo_root: &Path,
     patches: &[HarnessEngineeringPatchCandidate],
+    verification_plan: &[HarnessEngineeringVerificationStep],
     options: &HarnessEngineeringOptions,
-) -> Result<(), String> {
+) -> Result<Vec<HarnessEngineeringVerificationResult>, String> {
     // Separate patches by risk level
     let low_risk: Vec<_> = patches.iter().filter(|p| p.risk == "low").collect();
     let medium_risk: Vec<_> = patches.iter().filter(|p| p.risk == "medium").collect();
@@ -2038,7 +2234,51 @@ fn apply_patches(
     );
     emit_apply_progress(options, "");
 
-    // Always apply low-risk patches
+    let mut selected_for_apply: Vec<&HarnessEngineeringPatchCandidate> = low_risk.clone();
+    let risky_patches_refs: Vec<&HarnessEngineeringPatchCandidate> = medium_risk
+        .iter()
+        .chain(high_risk.iter())
+        .copied()
+        .collect();
+
+    if !risky_patches_refs.is_empty() {
+        if options.force {
+            emit_apply_progress(
+                options,
+                format!(
+                    "⚠️  Applying {} medium/high-risk patches with --force...",
+                    risky_patches_refs.len()
+                ),
+            );
+            selected_for_apply.extend(risky_patches_refs.iter().copied());
+        } else {
+            emit_apply_progress(
+                options,
+                format!(
+                    "⏸  {} medium/high-risk patches require review",
+                    risky_patches_refs.len()
+                ),
+            );
+            emit_apply_progress(
+                options,
+                "   Run with --force to apply them (use with caution)",
+            );
+            for patch in &risky_patches_refs {
+                emit_apply_progress(options, format!("   - [{}] {}", patch.risk, patch.title));
+            }
+        }
+    }
+
+    if selected_for_apply.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let selected_owned = selected_for_apply
+        .iter()
+        .map(|patch| (*patch).clone())
+        .collect::<Vec<_>>();
+    let snapshot = create_snapshot(repo_root, &selected_owned)?;
+
     if !low_risk.is_empty() {
         emit_apply_progress(
             options,
@@ -2047,96 +2287,67 @@ fn apply_patches(
                 low_risk.len()
             ),
         );
-        let low_risk_owned: Vec<_> = low_risk.iter().map(|&p| p.clone()).collect();
-        let snapshot = create_snapshot(repo_root, &low_risk_owned)?;
-
-        match apply_patch_batch(repo_root, &low_risk, options) {
-            Ok(()) => {
-                emit_apply_progress(options, "  ✓ Low-risk patches applied successfully");
-
-                // Record success
-                if let Err(e) = record_evolution_outcome(repo_root, &low_risk, &[]) {
-                    eprintln!("  ⚠️  Warning: Failed to record evolution history: {}", e);
-                }
+        if let Err(error) = apply_patch_batch(repo_root, &low_risk, options) {
+            eprintln!("  ✗ Failed to apply low-risk patches: {}", error);
+            eprintln!("  ↻ Rolling back changes...");
+            rollback_snapshot(repo_root, &snapshot)?;
+            if let Err(history_error) =
+                record_evolution_outcome(repo_root, &[], &selected_for_apply)
+            {
+                eprintln!(
+                    "  ⚠️  Warning: Failed to record evolution history: {}",
+                    history_error
+                );
             }
-            Err(e) => {
-                eprintln!("  ✗ Failed to apply low-risk patches: {}", e);
-                eprintln!("  ↻ Rolling back changes...");
-                rollback_snapshot(repo_root, &snapshot)?;
-
-                // Record failure
-                if let Err(e) = record_evolution_outcome(repo_root, &[], &low_risk) {
-                    eprintln!("  ⚠️  Warning: Failed to record evolution history: {}", e);
-                }
-
-                return Err(format!("Low-risk patch application failed: {}", e));
-            }
+            return Err(format!("Low-risk patch application failed: {}", error));
         }
+        emit_apply_progress(options, "  ✓ Low-risk patches applied successfully");
     }
 
-    // Medium/high risk require confirmation unless --force
-    if !medium_risk.is_empty() || !high_risk.is_empty() {
-        if options.force {
-            emit_apply_progress(
-                options,
-                format!(
-                    "⚠️  Applying {} medium/high-risk patches with --force...",
-                    medium_risk.len() + high_risk.len()
-                ),
-            );
-            let risky_patches_vec: Vec<_> = medium_risk
-                .iter()
-                .chain(high_risk.iter())
-                .map(|&p| p.clone())
-                .collect();
-            let snapshot = create_snapshot(repo_root, &risky_patches_vec)?;
-
-            let risky_patches_refs: Vec<&HarnessEngineeringPatchCandidate> = medium_risk
-                .iter()
-                .chain(high_risk.iter())
-                .copied()
-                .collect();
-            match apply_patch_batch(repo_root, &risky_patches_refs, options) {
-                Ok(()) => {
-                    emit_apply_progress(options, "  ✓ Medium/high-risk patches applied");
-
-                    // Record success
-                    if let Err(e) = record_evolution_outcome(repo_root, &risky_patches_refs, &[]) {
-                        eprintln!("  ⚠️  Warning: Failed to record evolution history: {}", e);
-                    }
-                }
-                Err(e) => {
-                    eprintln!("  ✗ Failed: {}", e);
-                    eprintln!("  ↻ Rolling back...");
-                    rollback_snapshot(repo_root, &snapshot)?;
-
-                    // Record failure
-                    if let Err(e) = record_evolution_outcome(repo_root, &[], &risky_patches_refs) {
-                        eprintln!("  ⚠️  Warning: Failed to record evolution history: {}", e);
-                    }
-
-                    return Err(e);
-                }
+    if options.force && !risky_patches_refs.is_empty() {
+        if let Err(error) = apply_patch_batch(repo_root, &risky_patches_refs, options) {
+            eprintln!("  ✗ Failed: {}", error);
+            eprintln!("  ↻ Rolling back...");
+            rollback_snapshot(repo_root, &snapshot)?;
+            if let Err(history_error) =
+                record_evolution_outcome(repo_root, &[], &selected_for_apply)
+            {
+                eprintln!(
+                    "  ⚠️  Warning: Failed to record evolution history: {}",
+                    history_error
+                );
             }
-        } else {
-            emit_apply_progress(
-                options,
-                format!(
-                    "⏸  {} medium/high-risk patches require review",
-                    medium_risk.len() + high_risk.len()
-                ),
-            );
-            emit_apply_progress(
-                options,
-                "   Run with --force to apply them (use with caution)",
-            );
-            for patch in medium_risk.iter().chain(high_risk.iter()) {
-                emit_apply_progress(options, format!("   - [{}] {}", patch.risk, patch.title));
-            }
+            return Err(error);
         }
+        emit_apply_progress(options, "  ✓ Medium/high-risk patches applied");
     }
 
-    Ok(())
+    let verification_results = match run_verification_plan(repo_root, verification_plan, options) {
+        Ok(results) => results,
+        Err(error) => {
+            eprintln!("  ✗ Verification failed: {}", error);
+            eprintln!("  ↻ Rolling back verified changes...");
+            rollback_snapshot(repo_root, &snapshot)?;
+            if let Err(history_error) =
+                record_evolution_outcome(repo_root, &[], &selected_for_apply)
+            {
+                eprintln!(
+                    "  ⚠️  Warning: Failed to record evolution history: {}",
+                    history_error
+                );
+            }
+            return Err(error);
+        }
+    };
+
+    if let Err(error) = record_evolution_outcome(repo_root, &selected_for_apply, &[]) {
+        eprintln!(
+            "  ⚠️  Warning: Failed to record evolution history: {}",
+            error
+        );
+    }
+
+    Ok(verification_results)
 }
 
 fn apply_patch_batch(
@@ -2367,7 +2578,7 @@ fn normalize_automation_target(
     // Line 24: ref: harness-test -> ref: harness-fluency
     let fixed_content = content.replace(
         "    target:\n      type: specialist\n      ref: harness-test",
-        "    target:\n      type: specialist\n      ref: harness-fluency"
+        "    target:\n      type: specialist\n      ref: harness-fluency",
     );
 
     if fixed_content == content {
@@ -2380,7 +2591,7 @@ fn normalize_automation_target(
 
     emit_apply_progress(
         options,
-        "  ✓ Normalized automation target: weekly-harness-fluency now points to harness-fluency"
+        "  ✓ Normalized automation target: weekly-harness-fluency now points to harness-fluency",
     );
 
     Ok(())
@@ -2410,7 +2621,7 @@ fn create_codeowners(
 
     emit_apply_progress(
         options,
-        "  ✓ Created .github/CODEOWNERS with automatic reviewer assignments"
+        "  ✓ Created .github/CODEOWNERS with automatic reviewer assignments",
     );
 
     Ok(())
@@ -2524,11 +2735,11 @@ updates:
     fs::write(&dependabot_path, content)
         .map_err(|e| format!("Failed to write dependabot.yml: {}", e))?;
 
-    let message = format!("  ✓ Created .github/dependabot.yml with {} ecosystem(s)", ecosystems.len());
-    emit_apply_progress(
-        options,
-        &message
+    let message = format!(
+        "  ✓ Created .github/dependabot.yml with {} ecosystem(s)",
+        ecosystems.len()
     );
+    emit_apply_progress(options, &message);
 
     Ok(())
 }
@@ -2632,18 +2843,23 @@ Add operational documentation as the system evolves. Start with:
         // Create subdirectories
         for subdir in &["decisions", "incidents", "runbooks", "changes"] {
             let dir = operational_dir.join(subdir);
-            fs::create_dir_all(&dir)
-                .map_err(|e| format!("Failed to create {}: {}", subdir, e))?;
+            fs::create_dir_all(&dir).map_err(|e| format!("Failed to create {}: {}", subdir, e))?;
             fs::write(
                 dir.join(".gitkeep"),
-                "# Placeholder for operational documentation\n"
+                "# Placeholder for operational documentation\n",
             )
             .map_err(|e| format!("Failed to write .gitkeep: {}", e))?;
         }
 
-        emit_apply_progress(options, "  ✓ Created docs/operational with placeholder structure");
+        emit_apply_progress(
+            options,
+            "  ✓ Created docs/operational with placeholder structure",
+        );
     } else {
-        emit_apply_progress(options, "  ℹ️  Operational documentation directory already exists");
+        emit_apply_progress(
+            options,
+            "  ℹ️  Operational documentation directory already exists",
+        );
     }
 
     Ok(())
