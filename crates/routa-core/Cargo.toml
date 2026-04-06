@@ -27,7 +27,7 @@ tokio-stream = "0.1"
 async-stream = "0.3"
 
 # Database
-rusqlite = { version = "0.32", features = ["bundled"] }
+rusqlite = { version = "0.39", features = ["bundled"] }
 
 # MCP & ACP protocols
 rmcp = { version = "0.15", features = ["server", "transport-streamable-http-server", "schemars"] }
