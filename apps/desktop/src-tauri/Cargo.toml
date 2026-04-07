@@ -30,7 +30,7 @@ serde_json = "1"
 dirs = "5"
 
 # PTY support for interactive terminals
-portable-pty = "0.8"
+portable-pty = "0.9"
 
 # Routa Server (extracted crate)
 routa-server = { path = "../../../crates/routa-server" }
