@@ -666,6 +666,8 @@ export const zhExtended: ExtendedTranslationDictionarySections = {
     executionHint: "泳道默认值和有效的运行目标。",
     changes: "变更",
     changesHint: "显示当前任务关联 worktree，或回退仓库中的本地变更。",
+    committedChanges: "已提交变更",
+    localChanges: "本地变更",
     loadingChanges: "正在加载变更...",
     noChanges: "当前任务 worktree 没有本地变更。",
     noRepoChanges: "当前任务没有关联仓库或 worktree。",

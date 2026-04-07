@@ -671,6 +671,8 @@ export interface ExtendedTranslationDictionarySections extends TailTranslationDi
     executionHint: string;
     changes: string;
     changesHint: string;
+    committedChanges: string;
+    localChanges: string;
     loadingChanges: string;
     noChanges: string;
     noRepoChanges: string;

@@ -881,7 +881,8 @@ function TaskChangesPanel({
   const [commitDiffErrors, setCommitDiffErrors] = useState<Record<string, string>>({});
   const [loadingFileKey, setLoadingFileKey] = useState<string | null>(null);
   const [loadingCommitSha, setLoadingCommitSha] = useState<string | null>(null);
-  const viewingCommits = changes?.mode === "commits" && (changes.commits?.length ?? 0) > 0;
+  const hasCommittedChanges = (changes?.commits?.length ?? 0) > 0;
+  const hasLocalFileChanges = (changes?.files.length ?? 0) > 0;
 
   const fileKey = (file: KanbanFileChangeItem) => `${file.status}:${file.previousPath ?? ""}:${file.path}`;
   const commitKey = (commit: KanbanCommitChangeItem) => commit.sha;
@@ -903,7 +904,7 @@ function TaskChangesPanel({
   const activeCommitDiffError = activeCommitKey ? commitDiffErrors[activeCommitKey] : undefined;
 
   useEffect(() => {
-    if (viewingCommits || !changes?.files.length) {
+    if (!changes?.files.length) {
       setPinnedFileKey(null);
       return;
     }
@@ -912,10 +913,10 @@ function TaskChangesPanel({
     if (pinnedFileKey && !availableKeys.has(pinnedFileKey)) {
       setPinnedFileKey(null);
     }
-  }, [changes?.files, pinnedFileKey, viewingCommits]);
+  }, [changes?.files, pinnedFileKey]);
 
   useEffect(() => {
-    if (!viewingCommits || !changes?.commits?.length) {
+    if (!changes?.commits?.length) {
       setPinnedCommitSha(null);
       return;
     }
@@ -924,10 +925,10 @@ function TaskChangesPanel({
     if (pinnedCommitSha && !availableShas.has(pinnedCommitSha)) {
       setPinnedCommitSha(null);
     }
-  }, [changes?.commits, pinnedCommitSha, viewingCommits]);
+  }, [changes?.commits, pinnedCommitSha]);
 
   useEffect(() => {
-    if (viewingCommits || !taskId || !changes || changes.error || !activeFile || !activeFileKey || diffCache[activeFileKey]) {
+    if (!taskId || !changes || changes.error || !activeFile || !activeFileKey || diffCache[activeFileKey]) {
       return;
     }
 
@@ -982,10 +983,10 @@ function TaskChangesPanel({
 
     void loadDiff();
     return () => controller.abort();
-  }, [activeFile, activeFileKey, changes, diffCache, t.kanbanDetail.failedToLoadFileDiff, taskId, viewingCommits]);
+  }, [activeFile, activeFileKey, changes, diffCache, t.kanbanDetail.failedToLoadFileDiff, taskId]);
 
   useEffect(() => {
-    if (!viewingCommits || !taskId || !changes || changes.error || !activeCommit || !activeCommitKey || commitDiffCache[activeCommitKey]) {
+    if (!taskId || !changes || changes.error || !activeCommit || !activeCommitKey || commitDiffCache[activeCommitKey]) {
       return;
     }
 
@@ -1032,7 +1033,7 @@ function TaskChangesPanel({
 
     void loadDiff();
     return () => controller.abort();
-  }, [activeCommit, activeCommitKey, changes, commitDiffCache, taskId, t.kanbanDetail.failedToLoadCommitDiff, viewingCommits]);
+  }, [activeCommit, activeCommitKey, changes, commitDiffCache, taskId, t.kanbanDetail.failedToLoadCommitDiff]);
 
   if (loading) {
     return (
@@ -1098,61 +1099,77 @@ function TaskChangesPanel({
         <div className="border-l-2 border-rose-400/80 px-3 py-2 text-sm text-rose-700 dark:border-rose-500/70 dark:text-rose-300">
           {changes.error}
         </div>
-      ) : viewingCommits ? (
+      ) : hasCommittedChanges || hasLocalFileChanges ? (
         <div className="space-y-3">
-          {changes.baseRef && (
-            <div className="px-1 text-xs text-slate-500 dark:text-slate-400">
-              {t.kanbanDetail.baseComparison.replace("{baseRef}", changes.baseRef)}
+          {hasCommittedChanges && (
+            <div className="space-y-3">
+              <div className="px-1">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400 dark:text-slate-500">
+                  {t.kanbanDetail.committedChanges}
+                </div>
+                {changes.baseRef && (
+                  <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                    {t.kanbanDetail.baseComparison.replace("{baseRef}", changes.baseRef)}
+                  </div>
+                )}
+              </div>
+              <div className="rounded-xl border border-slate-200/80 bg-slate-50/70 p-1 dark:border-[#202433] dark:bg-[#0d1018]">
+                <div className="space-y-0.5">
+                  {changes.commits?.map((commit) => (
+                    <CommitRow
+                      key={`${changes.codebaseId}-${commit.sha}`}
+                      commit={commit}
+                      selected={commit.sha === activeCommitKey}
+                      onClick={() => setPinnedCommitSha(commit.sha)}
+                    />
+                  ))}
+                </div>
+              </div>
+              <TaskCommitDiffPreview
+                commit={activeCommit}
+                diff={activeCommitDiff}
+                loading={loadingCommitSha === activeCommitKey && !activeCommitDiff}
+                error={activeCommitDiffError}
+                compact={compact}
+              />
             </div>
           )}
-          <div className="rounded-xl border border-slate-200/80 bg-slate-50/70 p-1 dark:border-[#202433] dark:bg-[#0d1018]">
-            <div className="space-y-0.5">
-              {changes.commits?.map((commit) => (
-                <CommitRow
-                  key={`${changes.codebaseId}-${commit.sha}`}
-                  commit={commit}
-                  selected={commit.sha === activeCommitKey}
-                  onClick={() => setPinnedCommitSha(commit.sha)}
-                />
-              ))}
+
+          {hasLocalFileChanges && (
+            <div className="space-y-3">
+              <div className="px-1">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400 dark:text-slate-500">
+                  {t.kanbanDetail.localChanges}
+                </div>
+              </div>
+              <div className="rounded-xl border border-slate-200/80 bg-slate-50/70 p-1 dark:border-[#202433] dark:bg-[#0d1018]">
+                <div className="space-y-0.5">
+                  {changes.files.map((file) => {
+                    const key = fileKey(file);
+                    return (
+                      <FileRow
+                        key={`${changes.codebaseId}-${key}`}
+                        file={file}
+                        selected={key === activeFileKey}
+                        onClick={() => setPinnedFileKey(key)}
+                      />
+                    );
+                  })}
+                </div>
+              </div>
+              <TaskFileDiffPreview
+                file={activeFile}
+                diff={activeDiff}
+                loading={loadingFileKey === activeFileKey && !activeDiff}
+                error={activeDiffError}
+                compact={compact}
+              />
             </div>
-          </div>
-          <TaskCommitDiffPreview
-            commit={activeCommit}
-            diff={activeCommitDiff}
-            loading={loadingCommitSha === activeCommitKey && !activeCommitDiff}
-            error={activeCommitDiffError}
-            compact={compact}
-          />
-        </div>
-      ) : changes.files.length === 0 ? (
-        <div className="border-b border-slate-200/70 px-1 pb-2 text-sm text-slate-500 dark:border-slate-700/70 dark:text-slate-400">
-          {changes.repoPath ? t.kanbanDetail.noChanges : t.kanbanDetail.noRepoChanges}
+          )}
         </div>
       ) : (
-        <div className="space-y-3">
-          <div className="rounded-xl border border-slate-200/80 bg-slate-50/70 p-1 dark:border-[#202433] dark:bg-[#0d1018]">
-            <div className="space-y-0.5">
-              {changes.files.map((file) => {
-                const key = fileKey(file);
-                return (
-                  <FileRow
-                    key={`${changes.codebaseId}-${key}`}
-                    file={file}
-                    selected={key === activeFileKey}
-                    onClick={() => setPinnedFileKey(key)}
-                  />
-                );
-              })}
-            </div>
-          </div>
-          <TaskFileDiffPreview
-            file={activeFile}
-            diff={activeDiff}
-            loading={loadingFileKey === activeFileKey && !activeDiff}
-            error={activeDiffError}
-            compact={compact}
-          />
+        <div className="border-b border-slate-200/70 px-1 pb-2 text-sm text-slate-500 dark:border-slate-700/70 dark:text-slate-400">
+          {changes.repoPath ? t.kanbanDetail.noChanges : t.kanbanDetail.noRepoChanges}
         </div>
       )}
     </div>

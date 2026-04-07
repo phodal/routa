@@ -60,8 +60,7 @@ export async function GET(
 
     const changes = getRepoChanges(repoPath);
     const deliveryReadiness = await buildTaskDeliveryReadiness(task, system);
-    const committedChanges = changes.status.clean
-      && deliveryReadiness.checked
+    const committedChanges = deliveryReadiness.checked
       && deliveryReadiness.hasCommitsSinceBase
       && deliveryReadiness.baseRef
       ? getRepoCommitChanges(repoPath, {

@@ -1231,6 +1231,111 @@ describe("KanbanCardDetail changes tab", () => {
     expect(await screen.findByText(/"version": "1\.1\.0"/)).toBeTruthy();
     expect(screen.getByText(/"version": "1\.0\.0"/)).toBeTruthy();
   });
+
+  it("still shows committed changes when the branch is ahead and the worktree is dirty", async () => {
+    desktopAwareFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        changes: {
+          codebaseId: "codebase-1",
+          repoPath: "/tmp/repos/main",
+          label: "feature-worktree",
+          branch: "task/story-one",
+          status: {
+            clean: false,
+            ahead: 5,
+            behind: 0,
+            modified: 4,
+            untracked: 2002,
+          },
+          files: [
+            { path: "src/editor.ts", status: "modified", additions: 4, deletions: 1 },
+          ],
+          mode: "commits",
+          baseRef: "origin/main",
+          commits: [
+            {
+              sha: "abc1234567890",
+              shortSha: "abc1234",
+              summary: "Upgrade tiptap core",
+              authorName: "Codex",
+              authoredAt: "2025-01-01T00:00:00.000Z",
+              additions: 12,
+              deletions: 4,
+            },
+          ],
+          source: "worktree",
+          worktreeId: "wt-1",
+          worktreePath: "/tmp/worktrees/story-one",
+        },
+      }),
+    } as Response);
+
+    render(
+      <KanbanCardDetail
+        task={createTask("task-1", "Story One", {
+          worktreeId: "wt-1",
+          codebaseIds: ["codebase-1"],
+          deliveryReadiness: {
+            checked: true,
+            repoPath: "/tmp/worktrees/story-one",
+            branch: "task/story-one",
+            baseBranch: "main",
+            baseRef: "origin/main",
+            modified: 4,
+            untracked: 2002,
+            ahead: 5,
+            behind: 0,
+            commitsSinceBase: 5,
+            hasCommitsSinceBase: true,
+            hasUncommittedChanges: true,
+            isGitHubRepo: true,
+            canCreatePullRequest: false,
+          },
+        })}
+        availableProviders={[]}
+        specialists={[]}
+        specialistLanguage="en"
+        codebases={[{
+          id: "codebase-1",
+          workspaceId: "workspace-1",
+          repoPath: "/tmp/repos/main",
+          branch: "main",
+          isDefault: true,
+          sourceType: "github",
+          sourceUrl: "https://example.com/repo.git",
+          createdAt: "2025-01-01T00:00:00.000Z",
+          updatedAt: "2025-01-01T00:00:00.000Z",
+        }]}
+        allCodebaseIds={["codebase-1"]}
+        worktreeCache={{
+          "wt-1": {
+            id: "wt-1",
+            codebaseId: "codebase-1",
+            workspaceId: "workspace-1",
+            worktreePath: "/tmp/worktrees/story-one",
+            branch: "task/story-one",
+            baseBranch: "main",
+            status: "active",
+            createdAt: "2025-01-01T00:00:00.000Z",
+            updatedAt: "2025-01-01T00:00:00.000Z",
+          },
+        }}
+        onPatchTask={vi.fn(async () => createTask("task-1", "Story One"))}
+        onRetryTrigger={vi.fn()}
+        onDelete={vi.fn()}
+        onRefresh={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Changes" }));
+
+    expect(await screen.findByText("Committed Changes")).toBeTruthy();
+    expect(screen.getByText("Local Changes")).toBeTruthy();
+    expect(await screen.findByText("Upgrade tiptap core")).toBeTruthy();
+    expect(screen.getByText("editor.ts")).toBeTruthy();
+    expect(screen.queryByText("No local changes in this task worktree.")).toBeNull();
+  });
 });
 
 // TODO: This test suite is flaky - skipping temporarily

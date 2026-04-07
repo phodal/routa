@@ -354,10 +354,16 @@ export function getRepoChanges(repoPath: string): RepoChanges {
 
   try {
     const output = gitExecSync("git status --porcelain -uall", repoPath);
-    const files = parseGitStatusPorcelain(output).map((file) => ({
-      ...file,
-      ...getRepoFileLineStats(repoPath, file),
-    }));
+    const files = parseGitStatusPorcelain(output).map((file) => {
+      try {
+        return {
+          ...file,
+          ...getRepoFileLineStats(repoPath, file),
+        };
+      } catch {
+        return file;
+      }
+    });
     return {
       branch,
       status,

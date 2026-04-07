@@ -666,6 +666,8 @@ export const enExtended: ExtendedTranslationDictionarySections = {
     executionHint: "Lane defaults and the effective run target.",
     changes: "Changes",
     changesHint: "Task-scoped local changes from the attached worktree or fallback repository.",
+    committedChanges: "Committed Changes",
+    localChanges: "Local Changes",
     loadingChanges: "Loading changes...",
     noChanges: "No local changes in this task worktree.",
     noRepoChanges: "No repository or worktree linked to this task.",
