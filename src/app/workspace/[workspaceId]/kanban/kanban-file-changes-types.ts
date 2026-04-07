@@ -45,4 +45,6 @@ export interface KanbanFileDiffPreview {
   previousPath?: string;
   status: KanbanFileChangeStatus;
   patch: string;
+  additions?: number;
+  deletions?: number;
 }
