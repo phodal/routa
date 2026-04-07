@@ -157,9 +157,27 @@ jobs:
             done < <(find "$root" -type d -path '*/release/bundle' -prune -print)
           done
 
-      - name: Prepare macOS signing keychain
+      - name: Check macOS signing availability
         if: runner.os == 'macOS'
-        continue-on-error: true
+        id: check-signing
+        shell: bash
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          if [[ -z "$APPLE_CERTIFICATE" || -z "$APPLE_CERTIFICATE_PASSWORD" || -z "$KEYCHAIN_PASSWORD" ]]; then
+            echo "⚠️  WARNING: Missing macOS signing certificates" >&2
+            echo "macOS app will be built without code signing/notarization" >&2
+            echo "SKIP_MACOS_SIGNING=true" >> "$GITHUB_ENV"
+            echo "available=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "SKIP_MACOS_SIGNING=false" >> "$GITHUB_ENV"
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Prepare macOS signing keychain
+        if: runner.os == 'macOS' && steps.check-signing.outputs.available == 'true'
         shell: bash
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
@@ -173,28 +191,7 @@ jobs:
           APPLE_API_KEY_CONTENT: ${{ secrets.APPLE_API_KEY_CONTENT }}
           KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
         run: |
-          required_vars=(
-            APPLE_CERTIFICATE
-            APPLE_CERTIFICATE_PASSWORD
-            KEYCHAIN_PASSWORD
-          )
-
-          missing_vars=()
-          for var_name in "${required_vars[@]}"; do
-            if [[ -z "${!var_name}" ]]; then
-              missing_vars+=("$var_name")
-            fi
-          done
-
-          if [[ ${#missing_vars[@]} -gt 0 ]]; then
-            echo "⚠️  WARNING: Missing macOS signing secrets: ${missing_vars[*]}" >&2
-            echo "macOS app will be built without code signing/notarization" >&2
-            echo "SKIP_MACOS_SIGNING=true" >> "$GITHUB_ENV"
-            exit 0
-          fi
-
           echo "Setting up macOS code signing..."
-          echo "SKIP_MACOS_SIGNING=false" >> "$GITHUB_ENV"
           echo "$APPLE_CERTIFICATE" | base64 --decode > certificate.p12
 
           security create-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
