@@ -26,6 +26,7 @@ const GITHUB_URL_PATTERNS = [
 ];
 
 const SIMPLE_OWNER_REPO = /^([a-zA-Z0-9\-_]+)\/([a-zA-Z0-9\-_.]+)$/;
+const MAX_UNTRACKED_FILES_WITH_SYNTHETIC_STATS = 25;
 
 export interface ParsedGitHubUrl {
   owner: string;
@@ -188,6 +189,21 @@ export function isGitRepository(dir: string): boolean {
 }
 
 /**
+ * Check if a git repository path is a bare repository without a worktree.
+ */
+export function isBareGitRepository(dir: string): boolean {
+  try {
+    return gitExecSync("git rev-parse --is-bare-repository", dir) === "true";
+  } catch {
+    return false;
+  }
+}
+
+function supportsGitWorktreeOperations(repoPath: string): boolean {
+  return isGitRepository(repoPath) && !isBareGitRepository(repoPath);
+}
+
+/**
  * Get the current branch name.
  */
 export function getCurrentBranch(repoPath: string): string | null {
@@ -228,6 +244,10 @@ export function getBranchInfo(repoPath: string): RepoBranchInfo {
  * Checkout a branch. Creates it if it doesn't exist locally.
  */
 export function checkoutBranch(repoPath: string, branch: string): boolean {
+  if (!supportsGitWorktreeOperations(repoPath)) {
+    return false;
+  }
+
   try {
     gitExecSync(`git checkout "${branch}"`, repoPath);
     return true;
@@ -286,14 +306,16 @@ export function getRepoStatus(repoPath: string): RepoStatus {
     untracked: 0,
   };
 
-  try {
-    const output = gitExecSync("git status --porcelain -uall", repoPath);
-    const lines = output.split("\n").filter(Boolean);
-    status.modified = lines.filter((l) => !l.startsWith("??")).length;
-    status.untracked = lines.filter((l) => l.startsWith("??")).length;
-    status.clean = lines.length === 0;
-  } catch {
-    // ignore
+  if (supportsGitWorktreeOperations(repoPath)) {
+    try {
+      const output = gitExecSync("git status --porcelain -uall", repoPath);
+      const lines = output.split("\n").filter(Boolean);
+      status.modified = lines.filter((l) => !l.startsWith("??")).length;
+      status.untracked = lines.filter((l) => l.startsWith("??")).length;
+      status.clean = lines.length === 0;
+    } catch {
+      // ignore
+    }
   }
 
   try {
@@ -352,9 +374,26 @@ export function getRepoChanges(repoPath: string): RepoChanges {
   const branch = getCurrentBranch(repoPath) ?? "unknown";
   const status = getRepoStatus(repoPath);
 
+  if (!supportsGitWorktreeOperations(repoPath)) {
+    return {
+      branch,
+      status,
+      files: [],
+    };
+  }
+
   try {
     const output = gitExecSync("git status --porcelain -uall", repoPath);
-    const files = parseGitStatusPorcelain(output).map((file) => {
+    const parsedFiles = parseGitStatusPorcelain(output);
+    let syntheticUntrackedStatsCount = 0;
+    const files = parsedFiles.map((file) => {
+      if (file.status === "untracked") {
+        syntheticUntrackedStatsCount += 1;
+        if (syntheticUntrackedStatsCount > MAX_UNTRACKED_FILES_WITH_SYNTHETIC_STATS) {
+          return file;
+        }
+      }
+
       try {
         return {
           ...file,
@@ -805,11 +844,13 @@ export function getBranchStatus(
     // no upstream or branch doesn't exist on remote
   }
 
-  try {
-    const status = gitExecSync("git status --porcelain -uall", repoPath);
-    result.hasUncommittedChanges = status.trim().length > 0;
-  } catch {
-    // ignore
+  if (supportsGitWorktreeOperations(repoPath)) {
+    try {
+      const status = gitExecSync("git status --porcelain -uall", repoPath);
+      result.hasUncommittedChanges = status.trim().length > 0;
+    } catch {
+      // ignore
+    }
   }
 
   return result;
@@ -834,6 +875,10 @@ export function pullBranch(repoPath: string): { success: boolean; error?: string
  * Reset tracked and untracked local changes to match HEAD.
  */
 export function resetLocalChanges(repoPath: string): { success: boolean; error?: string } {
+  if (!supportsGitWorktreeOperations(repoPath)) {
+    return { success: false, error: "Repository path points to a bare git repo. Reset requires a worktree." };
+  }
+
   try {
     gitExecSync("git reset --hard HEAD", repoPath);
     gitExecSync("git clean -fd", repoPath);

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getRoutaSystem } from "@/core/routa-system";
-import { getRepoChanges, isGitRepository } from "@/core/git/git-utils";
+import { getRepoChanges, isBareGitRepository, isGitRepository } from "@/core/git/git-utils";
 import { buildTaskDeliveryReadiness } from "@/core/kanban/task-delivery-readiness";
 import { getRepoCommitChanges } from "@/core/git";
 
@@ -56,6 +56,9 @@ export async function GET(
   try {
     if (!isGitRepository(repoPath)) {
       throw new Error("Repository is missing or not a git repository");
+    }
+    if (!worktree && isBareGitRepository(repoPath)) {
+      throw new Error("Repository path points to a bare git repo. Open a task worktree to inspect local changes.");
     }
 
     const changes = getRepoChanges(repoPath);

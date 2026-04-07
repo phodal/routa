@@ -17,6 +17,7 @@ const gitMocks = vi.hoisted(() => ({
   getBranchInfo: vi.fn(),
   getRepoStatus: vi.fn(),
   resetLocalChanges: vi.fn(),
+  isBareGitRepository: vi.fn(),
 }));
 
 vi.mock("fs", () => ({
@@ -25,12 +26,13 @@ vi.mock("fs", () => ({
 
 vi.mock("@/core/git", () => gitMocks);
 
-import { DELETE } from "../route";
+import { DELETE, PATCH } from "../route";
 
 describe("/api/clone/branches DELETE", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     existsSync.mockReturnValue(true);
+    gitMocks.isBareGitRepository.mockReturnValue(false);
     gitMocks.deleteBranch.mockReturnValue({ success: true });
     gitMocks.getBranchInfo.mockReturnValue({
       current: "main",
@@ -82,6 +84,68 @@ describe("/api/clone/branches DELETE", () => {
     expect(response.status).toBe(409);
     expect(data).toEqual({
       error: "Cannot delete the current branch 'main'",
+    });
+  });
+
+  it("rejects delete requests against bare repos", async () => {
+    gitMocks.isBareGitRepository.mockReturnValue(true);
+
+    const request = new NextRequest("http://localhost/api/clone/branches", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        repoPath: "/tmp/repos/demo",
+        branch: "issue/task-1",
+      }),
+    });
+
+    const response = await DELETE(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(gitMocks.deleteBranch).not.toHaveBeenCalled();
+    expect(data).toEqual({
+      error: "Repository path points to a bare git repo. Delete branches from a worktree instead.",
+    });
+  });
+});
+
+describe("/api/clone/branches PATCH", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    existsSync.mockReturnValue(true);
+    gitMocks.isBareGitRepository.mockReturnValue(false);
+    gitMocks.checkoutBranch.mockReturnValue(true);
+    gitMocks.getBranchInfo.mockReturnValue({
+      current: "main",
+      branches: ["main", "feature/polish"],
+    });
+    gitMocks.getBranchStatus.mockReturnValue({
+      ahead: 0,
+      behind: 0,
+      hasUncommittedChanges: false,
+    });
+  });
+
+  it("rejects checkout requests against bare repos", async () => {
+    gitMocks.isBareGitRepository.mockReturnValue(true);
+
+    const request = new NextRequest("http://localhost/api/clone/branches", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        repoPath: "/tmp/repos/demo",
+        branch: "main",
+      }),
+    });
+
+    const response = await PATCH(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(gitMocks.checkoutBranch).not.toHaveBeenCalled();
+    expect(data).toEqual({
+      error: "Repository path points to a bare git repo. Switch branches in a worktree instead.",
     });
   });
 });

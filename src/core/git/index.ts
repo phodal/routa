@@ -2,6 +2,7 @@ export {
   isGitHubUrl,
   parseGitHubUrl,
   isGitRepository,
+  isBareGitRepository,
   getCurrentBranch,
   listBranches,
   listRemoteBranches,

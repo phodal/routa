@@ -24,6 +24,7 @@ import {
   listClonedRepos,
   getBranchInfo,
   checkoutBranch,
+  isBareGitRepository,
 } from "@/core/git";
 import { importGitHubRepo } from "@/core/github";
 
@@ -206,6 +207,12 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json(
         { error: "Repository not found" },
         { status: 404 }
+      );
+    }
+    if (isBareGitRepository(repoPath)) {
+      return NextResponse.json(
+        { error: "Repository path points to a bare git repo. Switch branches in a worktree instead." },
+        { status: 400 }
       );
     }
 

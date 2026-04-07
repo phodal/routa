@@ -1,4 +1,9 @@
-import { getRepoDeliveryStatus, isGitRepository, type RepoDeliveryStatus } from "@/core/git";
+import {
+  getRepoDeliveryStatus,
+  isBareGitRepository,
+  isGitRepository,
+  type RepoDeliveryStatus,
+} from "@/core/git";
 import type { Codebase } from "@/core/models/codebase";
 import type { Task } from "@/core/models/task";
 import type { Worktree } from "@/core/models/worktree";
@@ -35,6 +40,7 @@ interface TaskRepoContext {
   repoPath: string;
   baseBranch?: string;
   codebase?: Codebase;
+  requiresWorktree?: boolean;
 }
 
 async function resolveTaskRepoContext(
@@ -65,6 +71,7 @@ async function resolveTaskRepoContext(
     repoPath: codebase.repoPath,
     baseBranch: codebase.branch,
     codebase,
+    requiresWorktree: true,
   };
 }
 
@@ -125,6 +132,23 @@ export async function buildTaskDeliveryReadiness(
       isGitHubRepo: false,
       canCreatePullRequest: false,
       reason: "Linked repository is missing or is not a git repository.",
+    };
+  }
+
+  if (context.requiresWorktree && isBareGitRepository(context.repoPath)) {
+    return {
+      checked: false,
+      repoPath: context.repoPath,
+      modified: 0,
+      untracked: 0,
+      ahead: 0,
+      behind: 0,
+      commitsSinceBase: 0,
+      hasCommitsSinceBase: false,
+      hasUncommittedChanges: false,
+      isGitHubRepo: false,
+      canCreatePullRequest: false,
+      reason: "Linked repository is a bare git repo. Attach a task worktree before checking delivery readiness.",
     };
   }
 

@@ -31,6 +31,7 @@ import {
   getBranchInfo,
   getRepoStatus,
   resetLocalChanges,
+  isBareGitRepository,
 } from "@/core/git";
 
 export async function GET(request: NextRequest) {
@@ -91,6 +92,12 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json(
       { error: "Repository not found" },
       { status: 404 }
+    );
+  }
+  if (isBareGitRepository(repoPath)) {
+    return NextResponse.json(
+      { error: "Repository path points to a bare git repo. Switch branches in a worktree instead." },
+      { status: 400 }
     );
   }
 
@@ -170,6 +177,12 @@ export async function DELETE(request: NextRequest) {
   if (!branch) {
     return NextResponse.json(
       { error: "Missing branch" },
+      { status: 400 }
+    );
+  }
+  if (isBareGitRepository(repoPath)) {
+    return NextResponse.json(
+      { error: "Repository path points to a bare git repo. Delete branches from a worktree instead." },
       { status: 400 }
     );
   }

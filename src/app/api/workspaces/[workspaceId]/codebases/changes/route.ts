@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getRoutaSystem } from "@/core/routa-system";
-import { getRepoChanges, isGitRepository } from "@/core/git";
+import { getRepoChanges, isBareGitRepository, isGitRepository } from "@/core/git";
 
 export const dynamic = "force-dynamic";
 
@@ -21,6 +21,9 @@ export async function GET(
       }
       if (!isGitRepository(codebase.repoPath)) {
         throw new Error("Repository is missing or not a git repository");
+      }
+      if (isBareGitRepository(codebase.repoPath)) {
+        throw new Error("Repository path points to a bare git repo. Inspect a worktree instead.");
       }
 
       const changes = getRepoChanges(codebase.repoPath);

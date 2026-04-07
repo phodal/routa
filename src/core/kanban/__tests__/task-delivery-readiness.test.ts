@@ -6,16 +6,19 @@ import {
 } from "../task-delivery-readiness";
 
 const isGitRepository = vi.fn();
+const isBareGitRepository = vi.fn();
 const getRepoDeliveryStatus = vi.fn();
 
 vi.mock("@/core/git", () => ({
   isGitRepository: (...args: unknown[]) => isGitRepository(...args),
+  isBareGitRepository: (...args: unknown[]) => isBareGitRepository(...args),
   getRepoDeliveryStatus: (...args: unknown[]) => getRepoDeliveryStatus(...args),
 }));
 
 describe("task delivery readiness", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    isBareGitRepository.mockReturnValue(false);
   });
 
   it("returns unchecked when no codebase or worktree is linked", async () => {
@@ -111,6 +114,40 @@ describe("task delivery readiness", () => {
       commitsSinceBase: 1,
       canCreatePullRequest: true,
     });
+  });
+
+  it("returns unchecked when the fallback codebase path is a bare repo", async () => {
+    const task = createTask({
+      id: "task-2",
+      title: "Bare repo fallback",
+      objective: "Needs a worktree first",
+      workspaceId: "workspace-1",
+      codebaseIds: ["codebase-1"],
+    });
+    const system = {
+      codebaseStore: {
+        get: vi.fn().mockResolvedValue({
+          id: "codebase-1",
+          repoPath: "/repo/bare",
+          branch: "main",
+          sourceType: "github",
+          sourceUrl: "https://github.com/acme/platform",
+        }),
+        getDefault: vi.fn(),
+      },
+      worktreeStore: {
+        get: vi.fn(),
+      },
+    };
+    isGitRepository.mockReturnValue(true);
+    isBareGitRepository.mockReturnValue(true);
+
+    const readiness = await buildTaskDeliveryReadiness(task, system);
+
+    expect(readiness.checked).toBe(false);
+    expect(readiness.repoPath).toBe("/repo/bare");
+    expect(readiness.reason).toContain("bare git repo");
+    expect(getRepoDeliveryStatus).not.toHaveBeenCalled();
   });
 
   it("formats blocking messages for review and done transitions", () => {
