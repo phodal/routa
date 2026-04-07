@@ -635,7 +635,10 @@ export function TracePanel({ sessionId }: TracePanelProps) {
 
   const fetchStats = useCallback(async () => {
     try {
-      const res = await desktopAwareFetch("/api/traces/stats", { cache: "no-store" });
+      const statsUrl = sessionId
+        ? `/api/traces/stats?${new URLSearchParams({ sessionId }).toString()}`
+        : "/api/traces/stats";
+      const res = await desktopAwareFetch(statsUrl, { cache: "no-store" });
       if (res.ok) {
         const data = await res.json();
         setStats(data.stats || null);
@@ -643,7 +646,7 @@ export function TracePanel({ sessionId }: TracePanelProps) {
     } catch (err) {
       console.error("[TracePanel] Failed to fetch stats:", err);
     }
-  }, []);
+  }, [sessionId]);
 
   useEffect(() => {
     fetchTraces();

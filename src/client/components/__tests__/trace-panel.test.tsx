@@ -19,7 +19,7 @@ describe("TracePanel", () => {
         } as Response;
       }
 
-      if (url === "/api/traces/stats") {
+      if (url === "/api/traces/stats?sessionId=session-review-1") {
         return {
           ok: true,
           json: async () => ({

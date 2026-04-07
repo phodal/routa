@@ -1,4 +1,4 @@
-import { getTraceReader } from "@/core/trace";
+import { queryTracesWithSessionFallback } from "@/core/trace";
 import { loadSessionHistory } from "@/core/session-history";
 import {
   buildPreferredTranscriptPayload,
@@ -16,7 +16,7 @@ export async function loadRepoSlideSessionResult(sessionId: string): Promise<{
 }> {
   const [history, traces] = await Promise.all([
     loadSessionHistory(sessionId, { consolidated: true }),
-    getTraceReader(process.cwd()).query({ sessionId }),
+    queryTracesWithSessionFallback({ sessionId }),
   ]);
 
   const transcript = buildPreferredTranscriptPayload({ sessionId, history, traces });

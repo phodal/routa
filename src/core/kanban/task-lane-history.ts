@@ -43,6 +43,7 @@ export function upsertTaskLaneSession(
   const created: TaskLaneSession = {
     sessionId: session.sessionId,
     routaAgentId: session.routaAgentId,
+    cwd: session.cwd,
     columnId: session.columnId,
     columnName: session.columnName,
     stepId: session.stepId,

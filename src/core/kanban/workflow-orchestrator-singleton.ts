@@ -246,6 +246,7 @@ async function startKanbanTaskSession(
     const currentColumn = board?.columns.find((column) => column.id === nextTask.columnId);
     upsertTaskLaneSession(nextTask, {
       sessionId: triggerResult.sessionId,
+      cwd: worktreeCwd,
       columnId: nextTask.columnId,
       columnName: currentColumn?.name,
       stepId: sessionStep?.id,

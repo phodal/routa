@@ -14,7 +14,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { getTraceReader, type TraceQuery } from "@/core/trace";
+import { getTraceReader, queryTracesWithSessionFallback, type TraceQuery } from "@/core/trace";
 
 export const dynamic = "force-dynamic";
 
@@ -64,11 +64,7 @@ export async function GET(request: NextRequest) {
     const params = parseQueryParams(request.url);
     const query = toTraceQuery(params);
 
-    // Use current working directory for trace base path
-    const cwd = process.cwd();
-    const reader = getTraceReader(cwd);
-
-    const traces = await reader.query(query);
+    const traces = await queryTracesWithSessionFallback(query);
 
     return NextResponse.json({
       traces,
@@ -93,7 +89,6 @@ export async function POST(request: NextRequest) {
   try {
     // For POST, parse query params from URL
     const params = parseQueryParams(request.url);
-    const query = toTraceQuery(params);
 
     // Allow body to override query params
     try {
@@ -110,10 +105,10 @@ export async function POST(request: NextRequest) {
       // No body or invalid JSON, use query params
     }
 
-    const cwd = process.cwd();
-    const reader = getTraceReader(cwd);
-
-    const traces = await reader.export(query);
+    const query = toTraceQuery(params);
+    const traces = query.sessionId
+      ? await queryTracesWithSessionFallback(query)
+      : await getTraceReader(process.cwd()).export(query);
 
     return NextResponse.json({
       export: traces,

@@ -120,6 +120,7 @@ export type TaskLaneHandoffStatus =
 export interface TaskLaneSession {
   sessionId: string;
   routaAgentId?: string;
+  cwd?: string;
   columnId?: string;
   columnName?: string;
   stepId?: string;

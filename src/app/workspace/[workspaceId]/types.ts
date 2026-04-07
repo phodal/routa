@@ -139,6 +139,7 @@ export interface TaskInfo {
   laneSessions?: Array<{
     sessionId: string;
     routaAgentId?: string;
+    cwd?: string;
     columnId?: string;
     columnName?: string;
     stepId?: string;
