@@ -286,6 +286,335 @@ pub fn reset_local_changes(repo_path: &str) -> Result<(), String> {
     Ok(())
 }
 
+// ============================================================================
+// Git Workflow Operations (for enhanced kanban file changes UI)
+// ============================================================================
+
+/// Stage files in the Git index
+pub fn stage_files(repo_path: &str, files: &[String]) -> Result<(), String> {
+    if files.is_empty() {
+        return Ok(());
+    }
+
+    let mut args = vec!["add"];
+    args.extend(files.iter().map(|s| s.as_str()));
+
+    let output = Command::new("git")
+        .args(&args)
+        .current_dir(repo_path)
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    if !output.status.success() {
+        return Err(String::from_utf8_lossy(&output.stderr)
+            .trim()
+            .to_string());
+    }
+
+    Ok(())
+}
+
+/// Unstage files from the Git index (keep working directory changes)
+pub fn unstage_files(repo_path: &str, files: &[String]) -> Result<(), String> {
+    if files.is_empty() {
+        return Ok(());
+    }
+
+    let mut args = vec!["restore", "--staged"];
+    args.extend(files.iter().map(|s| s.as_str()));
+
+    let output = Command::new("git")
+        .args(&args)
+        .current_dir(repo_path)
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    if !output.status.success() {
+        return Err(String::from_utf8_lossy(&output.stderr)
+            .trim()
+            .to_string());
+    }
+
+    Ok(())
+}
+
+/// Discard changes to files in working directory
+/// WARNING: This is destructive and cannot be undone
+pub fn discard_changes(repo_path: &str, files: &[String]) -> Result<(), String> {
+    if files.is_empty() {
+        return Ok(());
+    }
+
+    let mut args = vec!["restore"];
+    args.extend(files.iter().map(|s| s.as_str()));
+
+    let output = Command::new("git")
+        .args(&args)
+        .current_dir(repo_path)
+        .output();
+
+    // If restore fails (e.g., untracked files), try to clean them
+    if output.is_err() || !output.as_ref().unwrap().status.success() {
+        let mut clean_args = vec!["clean", "-f"];
+        clean_args.extend(files.iter().map(|s| s.as_str()));
+
+        let clean_output = Command::new("git")
+            .args(&clean_args)
+            .current_dir(repo_path)
+            .output()
+            .map_err(|e| e.to_string())?;
+
+        if !clean_output.status.success() {
+            return Err(String::from_utf8_lossy(&clean_output.stderr)
+                .trim()
+                .to_string());
+        }
+    }
+
+    Ok(())
+}
+
+/// Create a commit with the given message
+/// If files are provided, stages them first
+/// Returns the SHA of the created commit
+pub fn create_commit(
+    repo_path: &str,
+    message: &str,
+    files: Option<&[String]>,
+) -> Result<String, String> {
+    if message.trim().is_empty() {
+        return Err("Commit message cannot be empty".to_string());
+    }
+
+    // Stage specific files if provided
+    if let Some(file_list) = files {
+        stage_files(repo_path, file_list)?;
+    }
+
+    // Check if there are staged changes
+    let check_output = Command::new("git")
+        .args(["diff", "--cached", "--name-only"])
+        .current_dir(repo_path)
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    if check_output.stdout.is_empty() {
+        return Err("No staged changes to commit".to_string());
+    }
+
+    // Create the commit
+    let commit_output = Command::new("git")
+        .args(["commit", "-m", message])
+        .current_dir(repo_path)
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    if !commit_output.status.success() {
+        return Err(String::from_utf8_lossy(&commit_output.stderr)
+            .trim()
+            .to_string());
+    }
+
+    // Get the commit SHA
+    let sha_output = Command::new("git")
+        .args(["rev-parse", "HEAD"])
+        .current_dir(repo_path)
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    Ok(String::from_utf8_lossy(&sha_output.stdout)
+        .trim()
+        .to_string())
+}
+
+/// Pull commits from remote
+pub fn pull_commits(
+    repo_path: &str,
+    remote: Option<&str>,
+    branch: Option<&str>,
+) -> Result<(), String> {
+    let remote_name = remote.unwrap_or("origin");
+    let mut args = vec!["pull", remote_name];
+
+    if let Some(branch_name) = branch {
+        args.push(branch_name);
+    }
+
+    let output = Command::new("git")
+        .args(&args)
+        .current_dir(repo_path)
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    if !output.status.success() {
+        return Err(String::from_utf8_lossy(&output.stderr)
+            .trim()
+            .to_string());
+    }
+
+    Ok(())
+}
+
+/// Rebase current branch onto target branch
+pub fn rebase_branch(repo_path: &str, onto: &str) -> Result<(), String> {
+    let output = Command::new("git")
+        .args(["rebase", onto])
+        .current_dir(repo_path)
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    if !output.status.success() {
+        return Err(String::from_utf8_lossy(&output.stderr)
+            .trim()
+            .to_string());
+    }
+
+    Ok(())
+}
+
+/// Reset branch to a specific commit or branch
+/// mode: "soft" keeps changes staged, "hard" discards all changes
+pub fn reset_branch(repo_path: &str, to: &str, mode: &str) -> Result<(), String> {
+    let reset_mode = if mode == "hard" { "--hard" } else { "--soft" };
+
+    let output = Command::new("git")
+        .args(["reset", reset_mode, to])
+        .current_dir(repo_path)
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    if !output.status.success() {
+        return Err(String::from_utf8_lossy(&output.stderr)
+            .trim()
+            .to_string());
+    }
+
+    Ok(())
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CommitInfo {
+    pub sha: String,
+    pub short_sha: String,
+    pub message: String,
+    pub summary: String,
+    pub author_name: String,
+    pub author_email: String,
+    pub authored_at: String,
+    pub additions: i32,
+    pub deletions: i32,
+    pub parents: Vec<String>,
+}
+
+/// Get commit history from current branch
+pub fn get_commit_list(
+    repo_path: &str,
+    limit: Option<usize>,
+    since: Option<&str>,
+) -> Result<Vec<CommitInfo>, String> {
+    let limit_str = limit.unwrap_or(20).to_string();
+    let mut args = vec![
+        "log",
+        "--format=%H|%h|%an|%ae|%aI|%s|%b|%P",
+        "--numstat",
+        "-n",
+        &limit_str,
+    ];
+
+    let since_str;
+    if let Some(since_value) = since {
+        since_str = format!("--since={}", since_value);
+        args.push(&since_str);
+    }
+
+    let output = Command::new("git")
+        .args(&args)
+        .current_dir(repo_path)
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    if !output.status.success() {
+        return Err(String::from_utf8_lossy(&output.stderr)
+            .trim()
+            .to_string());
+    }
+
+    let output_str = String::from_utf8_lossy(&output.stdout);
+    let lines: Vec<&str> = output_str.lines().collect();
+    let mut commits = Vec::new();
+    let mut i = 0;
+
+    while i < lines.len() {
+        let line = lines[i].trim();
+        if line.is_empty() {
+            i += 1;
+            continue;
+        }
+
+        // Parse commit header
+        let parts: Vec<&str> = line.split('|').collect();
+        if parts.len() < 7 {
+            i += 1;
+            continue;
+        }
+
+        let sha = parts[0].to_string();
+        let short_sha = parts[1].to_string();
+        let author_name = parts[2].to_string();
+        let author_email = parts[3].to_string();
+        let authored_at = parts[4].to_string();
+        let subject = parts[5].to_string();
+        let body = parts[6].to_string();
+        let parents_str = parts.get(7).unwrap_or(&"");
+        let parents: Vec<String> = if parents_str.is_empty() {
+            Vec::new()
+        } else {
+            parents_str.split_whitespace().map(|s| s.to_string()).collect()
+        };
+
+        let message = if body.is_empty() {
+            subject.clone()
+        } else {
+            format!("{}\n\n{}", subject, body)
+        };
+
+        // Parse numstat (additions/deletions)
+        let mut additions = 0;
+        let mut deletions = 0;
+        i += 1;
+
+        while i < lines.len() && lines[i].contains('\t') {
+            let stat_line = lines[i].trim();
+            let stat_parts: Vec<&str> = stat_line.split('\t').collect();
+            if stat_parts.len() >= 2 {
+                if stat_parts[0] != "-" {
+                    additions += stat_parts[0].parse::<i32>().unwrap_or(0);
+                }
+                if stat_parts[1] != "-" {
+                    deletions += stat_parts[1].parse::<i32>().unwrap_or(0);
+                }
+            }
+            i += 1;
+        }
+
+        commits.push(CommitInfo {
+            sha,
+            short_sha,
+            message,
+            summary: subject,
+            author_name,
+            author_email,
+            authored_at,
+            additions,
+            deletions,
+            parents,
+        });
+    }
+
+    Ok(commits)
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RepoStatus {

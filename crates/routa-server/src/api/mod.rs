@@ -14,6 +14,7 @@ pub mod codebases;
 pub mod debug;
 pub mod files;
 pub mod fitness;
+pub mod git;
 pub mod github;
 pub mod graph;
 pub mod harness;

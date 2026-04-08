@@ -38,6 +38,10 @@ pub fn router() -> Router<AppState> {
             "/workspaces/{workspace_id}/codebases/{codebase_id}/wiki",
             get(get_wiki),
         )
+        .nest(
+            "/workspaces/{workspace_id}/codebases/{codebase_id}/git",
+            crate::api::git::router(),
+        )
         .route(
             "/codebases/{id}",
             patch(update_codebase).delete(delete_codebase),
