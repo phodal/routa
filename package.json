@@ -201,7 +201,7 @@
     "@eslint/eslintrc": "^3.3.4",
     "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.58.2",
-    "@storybook/addon-a11y": "^10.3.4",
+    "@storybook/addon-a11y": "^10.3.5",
     "@storybook/addon-docs": "^10.3.3",
     "@storybook/addon-vitest": "^10.3.4",
     "@storybook/nextjs-vite": "^10.3.4",
