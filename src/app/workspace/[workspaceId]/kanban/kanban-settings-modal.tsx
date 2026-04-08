@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AcpProviderInfo } from "@/client/acp-client";
 import { AcpProviderDropdown } from "@/client/components/acp-provider-dropdown";
 import { desktopAwareFetch } from "@/client/utils/diagnostics";
@@ -67,25 +67,8 @@ const DEFAULT_DEV_SESSION_SUPERVISION: KanbanDevSessionSupervisionInfo = {
 };
 
 const ROLE_OPTIONS = ["CRAFTER", "ROUTA", "GATE", "DEVELOPER"];
-const STAGE_TYPE_OPTIONS = [
-  { value: "backlog", label: "Backlog" },
-  { value: "todo", label: "Todo" },
-  { value: "dev", label: "Dev" },
-  { value: "review", label: "Review" },
-  { value: "done", label: "Done" },
-  { value: "blocked", label: "Blocked" },
-] as const;
 const KANBAN_EXPORT_WORKSPACE_KEY = "routa.kanbanExportWorkspaceId";
 const MANUAL_ONLY_STAGES = new Set(["blocked"]);
-const ARTIFACT_OPTIONS = [
-  { id: "screenshot", label: "Screenshot", hint: "Require UI evidence before continuing." },
-  { id: "test_results", label: "Test results", hint: "Ensure verification artifacts are attached." },
-  { id: "code_diff", label: "Code diff", hint: "Collect implementation diff for review flows." },
-] as const satisfies Array<{
-  id: NonNullable<ColumnAutomationConfig["requiredArtifacts"]>[number];
-  label: string;
-  hint: string;
-}>;
 const TASK_FIELD_OPTIONS = [
   "scope",
   "acceptance_criteria",
@@ -141,6 +124,33 @@ function createEmptyAutomationStep(index: number): KanbanAutomationStep {
   };
 }
 
+function getStageTypeOptions(t: TranslationDictionary) {
+  return [
+    { value: "backlog", label: t.kanban.stageBacklog },
+    { value: "todo", label: t.kanban.stageTodo },
+    { value: "dev", label: t.kanban.stageDev },
+    { value: "review", label: t.kanban.stageReview },
+    { value: "done", label: t.kanban.stageDone },
+    { value: "blocked", label: t.kanban.stageBlocked },
+  ] as const;
+}
+
+function getStageTypeLabel(stage: string, t: TranslationDictionary): string {
+  return getStageTypeOptions(t).find((option) => option.value === stage)?.label ?? stage;
+}
+
+function getArtifactOptions(t: TranslationDictionary) {
+  return [
+    { id: "screenshot", label: t.kanban.screenshot, hint: t.kanban.screenshotHint },
+    { id: "test_results", label: t.kanban.testResults, hint: t.kanban.testResultsHint },
+    { id: "code_diff", label: t.kanban.codeDiff, hint: t.kanban.codeDiffHint },
+  ] as const satisfies Array<{
+    id: NonNullable<ColumnAutomationConfig["requiredArtifacts"]>[number];
+    label: string;
+    hint: string;
+  }>;
+}
+
 function getStepTransport(step?: KanbanAutomationStep): KanbanTransport {
   if (step?.transport === "a2a") {
     return "acp";
@@ -161,12 +171,13 @@ function setAutomationStepTransport(step: KanbanAutomationStep, _transport: Kanb
 function getAutomationTransportLabel(
   column: KanbanBoardInfo["columns"][0],
   automation: ColumnAutomationConfig | undefined,
+  t: TranslationDictionary,
 ): string {
   if (getColumnWorkflowMode(column, automation) === "manual") {
-    return "Manual";
+    return t.kanban.manualLabel;
   }
 
-  return "ACP";
+  return t.kanban.acpLabel;
 }
 
 function formatAgentCardTarget(agentCardUrl?: string): string | undefined {
@@ -200,10 +211,11 @@ function getColumnWorkflowSummary(
   specialists: SpecialistOption[],
   autoProviderId: string | undefined,
   autoLabel: string,
+  t: TranslationDictionary,
 ): string {
   const mode = getColumnWorkflowMode(column, automation);
   if (mode === "manual") {
-    return isManualOnlyColumn(column) ? "Manual lane only" : "Manual lane";
+    return isManualOnlyColumn(column) ? t.kanban.manualLaneOnly : t.kanban.manualLane;
   }
   return getAutomationSummary(
     automation ?? { enabled: false },
@@ -211,6 +223,7 @@ function getColumnWorkflowSummary(
     specialists,
     autoProviderId,
     autoLabel,
+    t,
   );
 }
 
@@ -226,6 +239,60 @@ function loadKanbanExportWorkspaceId(defaultWorkspaceId: string): string {
 function saveKanbanExportWorkspaceId(workspaceId: string): void {
   if (typeof window === "undefined") return;
   localStorage.setItem(KANBAN_EXPORT_WORKSPACE_KEY, workspaceId);
+}
+
+function normalizeColumns(columns: KanbanBoardInfo["columns"]) {
+  return columns
+    .slice()
+    .sort((a, b) => a.position - b.position)
+    .map(({ id, name, stage, position, visible, width }) => ({
+      id,
+      name,
+      stage,
+      position,
+      visible: visible !== false,
+      width: width ?? "standard",
+    }));
+}
+
+function normalizeAutomationForDirtyCheck(
+  columnAutomation: Record<string, ColumnAutomationConfig>,
+  columns: KanbanBoardInfo["columns"],
+) {
+  return columns
+    .slice()
+    .sort((a, b) => a.position - b.position)
+    .map((column) => {
+      const automation = columnAutomation[column.id] ?? { enabled: false };
+      return {
+        columnId: column.id,
+        enabled: Boolean(automation.enabled),
+        transitionType: automation.transitionType ?? "entry",
+        autoAdvanceOnSuccess: Boolean(automation.autoAdvanceOnSuccess),
+        requiredArtifacts: [...(automation.requiredArtifacts ?? [])].sort(),
+        requiredTaskFields: [...(automation.requiredTaskFields ?? [])].sort(),
+        steps: getEditableAutomationSteps(automation).map((step, index) => ({
+          id: step.id?.trim() || `step-${index + 1}`,
+          transport: getStepTransport(step),
+          providerId: step.providerId ?? null,
+          role: step.role ?? "DEVELOPER",
+          specialistId: step.specialistId ?? null,
+          agentCardUrl: step.agentCardUrl ?? null,
+          skillId: step.skillId ?? null,
+          authConfigId: step.authConfigId ?? null,
+        })),
+      };
+    });
+}
+
+function normalizeDevSessionSupervision(
+  devSessionSupervision: KanbanDevSessionSupervisionInfo,
+): KanbanDevSessionSupervisionInfo {
+  return {
+    ...devSessionSupervision,
+    inactivityTimeoutMinutes: Math.max(1, Math.floor(devSessionSupervision.inactivityTimeoutMinutes)),
+    maxRecoveryAttempts: Math.max(0, Math.floor(devSessionSupervision.maxRecoveryAttempts)),
+  };
 }
 
 function getDefaultAutomationForStage(stage: string): ColumnAutomationConfig {
@@ -336,7 +403,7 @@ function SpecialistCategoryTabs({
   onChange: (category: SpecialistCategory) => void;
 }) {
   return (
-    <div className="flex flex-nowrap gap-2 overflow-x-auto pb-1">
+    <div className="flex flex-wrap gap-2">
       {SPECIALIST_CATEGORY_OPTIONS.map((option) => (
         <button
           key={option.id}
@@ -417,6 +484,7 @@ export function KanbanSettingsModal({
   onSave,
 }: KanbanSettingsModalProps) {
   const { t } = useTranslation();
+  const stageTypeOptions = useMemo(() => getStageTypeOptions(t), [t]);
   const initialEditableColumns = useMemo(
     () => board.columns
       .slice()
@@ -433,7 +501,6 @@ export function KanbanSettingsModal({
   const [selectedColumnId, setSelectedColumnId] = useState<string>(board.columns[0]?.id ?? "");
   const [saving, setSaving] = useState(false);
   const [clearingAll, setClearingAll] = useState(false);
-  const [showRuntimeSettings, setShowRuntimeSettings] = useState(true);
   const [specialistCategory, setSpecialistCategory] = useState<SpecialistCategory>("kanban");
   const [kanbanExportWorkspaceId, setKanbanExportWorkspaceId] = useState<string>(() =>
     loadKanbanExportWorkspaceId(board.workspaceId || "default"),
@@ -442,6 +509,7 @@ export function KanbanSettingsModal({
   const [isImportingKanbanYaml, setIsImportingKanbanYaml] = useState(false);
   const [kanbanYamlError, setKanbanYamlError] = useState("");
   const [kanbanYamlResult, setKanbanYamlResult] = useState("");
+  const [showUnsavedChangesPrompt, setShowUnsavedChangesPrompt] = useState(false);
   const kanbanImportInputRef = useRef<HTMLInputElement>(null);
 
   const sortedColumns = useMemo(
@@ -490,6 +558,19 @@ export function KanbanSettingsModal({
   const selectedColumn = sortedColumns.find((column) => column.id === selectedColumnId) ?? sortedColumns[0] ?? null;
   const automationEnabledCount = sortedColumns.filter((column) => columnAutomation[column.id]?.enabled).length;
   const visibleColumnCount = sortedColumns.filter((column) => column.visible !== false).length;
+  const initialSnapshot = useMemo(() => JSON.stringify({
+    columns: normalizeColumns(initialEditableColumns),
+    automation: normalizeAutomationForDirtyCheck(initialColumnAutomation, initialEditableColumns),
+    sessionConcurrencyLimit: Math.max(1, Math.floor(board.sessionConcurrencyLimit ?? 1)),
+    devSessionSupervision: normalizeDevSessionSupervision(board.devSessionSupervision ?? DEFAULT_DEV_SESSION_SUPERVISION),
+  }), [board.devSessionSupervision, board.sessionConcurrencyLimit, initialColumnAutomation, initialEditableColumns]);
+  const currentSnapshot = useMemo(() => JSON.stringify({
+    columns: normalizeColumns(editableColumns),
+    automation: normalizeAutomationForDirtyCheck(columnAutomation, editableColumns),
+    sessionConcurrencyLimit: Math.max(1, Math.floor(sessionConcurrencyLimit)),
+    devSessionSupervision: normalizeDevSessionSupervision(devSessionSupervision),
+  }), [columnAutomation, devSessionSupervision, editableColumns, sessionConcurrencyLimit]);
+  const isDirty = initialSnapshot !== currentSnapshot;
 
   useEffect(() => {
     const selectedSpecialistId = selectedColumn
@@ -593,31 +674,26 @@ export function KanbanSettingsModal({
   };
 
   const handleAddStage = () => {
-    let nextId = "";
-    setEditableColumns((current) => {
-      const nextIndex = current.length + 1;
-      let id = `stage-${nextIndex}`;
-      let suffix = nextIndex;
-      const existingIds = new Set(current.map((column) => column.id));
-      while (existingIds.has(id)) {
-        suffix += 1;
-        id = `stage-${suffix}`;
-      }
-      nextId = id;
-      return [
-        ...current,
-        {
-          id,
-          name: `Stage ${suffix}`,
-          stage: "todo",
-          position: current.length,
-          visible: true,
-        },
-      ];
-    });
-    if (nextId) {
-      setSelectedColumnId(nextId);
+    const nextIndex = editableColumns.length + 1;
+    let id = `stage-${nextIndex}`;
+    let suffix = nextIndex;
+    const existingIds = new Set(editableColumns.map((column) => column.id));
+    while (existingIds.has(id)) {
+      suffix += 1;
+      id = `stage-${suffix}`;
     }
+
+    setEditableColumns((current) => [
+      ...current,
+      {
+        id,
+        name: `Stage ${suffix}`,
+        stage: "todo",
+        position: current.length,
+        visible: true,
+      },
+    ]);
+    setSelectedColumnId(id);
   };
 
   const handleStageTypeChange = (columnId: string, stage: string) => {
@@ -630,7 +706,16 @@ export function KanbanSettingsModal({
     }
   };
 
-  const handleSave = async () => {
+  const requestClose = useCallback(() => {
+    if (saving || clearingAll) return;
+    if (isDirty) {
+      setShowUnsavedChangesPrompt(true);
+      return;
+    }
+    onClose();
+  }, [clearingAll, isDirty, onClose, saving]);
+
+  const handleSave = async ({ closeAfterSave = false }: { closeAfterSave?: boolean } = {}) => {
     setSaving(true);
     try {
       const sanitizedColumnAutomation = Object.fromEntries(
@@ -652,12 +737,12 @@ export function KanbanSettingsModal({
         sanitizedColumns,
         sanitizedColumnAutomation,
         Math.max(1, Math.floor(sessionConcurrencyLimit)),
-        {
-          ...devSessionSupervision,
-          inactivityTimeoutMinutes: Math.max(1, Math.floor(devSessionSupervision.inactivityTimeoutMinutes)),
-          maxRecoveryAttempts: Math.max(0, Math.floor(devSessionSupervision.maxRecoveryAttempts)),
-        },
+        normalizeDevSessionSupervision(devSessionSupervision),
       );
+      if (closeAfterSave) {
+        setShowUnsavedChangesPrompt(false);
+        onClose();
+      }
     } finally {
       setSaving(false);
     }
@@ -701,7 +786,9 @@ export function KanbanSettingsModal({
       anchor.click();
       anchor.remove();
       window.URL.revokeObjectURL(downloadUrl);
-      setKanbanYamlResult(`Exported Kanban YAML for workspace ${workspaceId}.`);
+      setKanbanYamlResult(
+        t.kanban.exportSuccess.replace("{workspaceId}", workspaceId),
+      );
     } catch (error) {
       setKanbanYamlError(error instanceof Error ? error.message : t.kanban.exportFailed);
     } finally {
@@ -725,7 +812,11 @@ export function KanbanSettingsModal({
       if (!response.ok) {
         throw new Error(payload?.error || t.kanban.importFailed);
       }
-      setKanbanYamlResult(`Imported ${payload?.importedBoards ?? 0} board(s) into workspace ${payload?.workspaceId ?? workspaceId}.`);
+      setKanbanYamlResult(
+        t.kanban.importSuccess
+          .replace("{count}", String(payload?.importedBoards ?? 0))
+          .replace("{workspaceId}", String(payload?.workspaceId ?? workspaceId)),
+      );
     } catch (error) {
       setKanbanYamlError(error instanceof Error ? error.message : t.kanban.importFailed);
     } finally {
@@ -736,133 +827,55 @@ export function KanbanSettingsModal({
     }
   };
 
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (showUnsavedChangesPrompt) {
+        setShowUnsavedChangesPrompt(false);
+        return;
+      }
+      requestClose();
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [requestClose, showUnsavedChangesPrompt]);
+
   return (
     <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm">
-      <div className="absolute inset-0" onClick={onClose} aria-hidden="true" />
+      <div className="absolute inset-0" onClick={requestClose} aria-hidden="true" />
       <div className="relative flex h-full w-full items-center justify-center p-2 sm:p-4">
-        <div className="relative flex h-[96vh] w-full max-w-[1500px] flex-col overflow-hidden rounded-[22px] border border-white/10 bg-white shadow-[0_30px_120px_rgba(15,23,42,0.32)] dark:bg-[#0d1118]">
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={t.kanban.saveBoardSettings}
+          className="relative flex h-[96vh] w-full max-w-[1500px] flex-col overflow-hidden rounded-[22px] border border-white/10 bg-white shadow-[0_30px_120px_rgba(15,23,42,0.32)] dark:bg-[#0d1118]"
+        >
           <div className="relative overflow-hidden border-b border-slate-200/80 bg-[radial-gradient(circle_at_top_left,_rgba(251,191,36,0.12),_transparent_28%),linear-gradient(135deg,_rgba(255,255,255,0.98),_rgba(248,250,252,0.96))] px-3.5 py-2.5 dark:border-slate-800 dark:bg-[radial-gradient(circle_at_top_left,_rgba(245,158,11,0.1),_transparent_24%),linear-gradient(135deg,_rgba(15,23,42,0.96),_rgba(13,17,24,0.98))] sm:px-4">
             <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
                   <div className="inline-flex items-center rounded-full border border-amber-300/70 bg-amber-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.24em] text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
-                    Kanban
+                    {t.kanban.boardSettingsLabel}
                   </div>
                   <h2 className="truncate text-base font-semibold tracking-tight text-slate-900 dark:text-white sm:text-lg">
                     {board.name}
                   </h2>
                 </div>
+                <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">
+                  {t.kanban.boardSettingsHint}
+                </p>
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
                 <StatPill label={t.kanban.visible} value={`${visibleColumnCount}/${sortedColumns.length}`} tone="amber" />
                 <StatPill label={t.kanban.automation} value={String(automationEnabledCount)} tone="emerald" />
                 <StatPill label={t.kanban.queue} value={`Max ${sessionConcurrencyLimit}`} tone="slate" />
-                <button
-                  type="button"
-                  onClick={() => setShowRuntimeSettings((current) => !current)}
-                  className="inline-flex items-center rounded-full border border-slate-200 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-slate-700 transition hover:bg-white dark:border-slate-700 dark:text-slate-200 dark:hover:bg-[#111722]"
-                >
-                  {showRuntimeSettings ? t.kanban.hideRuntime : t.kanban.runtime}
-                </button>
+                {isDirty ? <StatPill label={t.kanban.unsavedLabel} value={t.kanban.yesLabel} tone="slate" /> : null}
               </div>
             </div>
-            {showRuntimeSettings ? (
-              <div className="mt-2 rounded-lg border border-slate-200/80 bg-white/90 p-2 backdrop-blur dark:border-slate-800 dark:bg-slate-950/40">
-                <div className="grid gap-2.5 dark:border-slate-800 lg:grid-cols-[220px_minmax(0,1fr)]">
-                      <div>
-                        <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500 dark:text-slate-400">
-                          Session queue
-                        </div>
-                        <div className="mt-1 flex flex-wrap items-center gap-2">
-                          <label className="flex items-center gap-2">
-                            <span className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-300">{t.kanban.maxLabel}</span>
-                            <input
-                              type="number"
-                              min={1}
-                              max={20}
-                              value={sessionConcurrencyLimit}
-                              onChange={(event) => setSessionConcurrencyLimit(Math.max(1, Number.parseInt(event.target.value || "1", 10) || 1))}
-                              className="h-9 w-18 rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-900 outline-none transition focus:border-amber-400 dark:border-slate-700 dark:bg-[#0b1119] dark:text-slate-100"
-                            />
-                          </label>
-                        </div>
-                        <p className="mt-1.5 max-w-[240px] text-xs leading-5 text-slate-500 dark:text-slate-400">
-                          {t.kanban.extraCardsWait}
-                        </p>
-                      </div>
-                      <div>
-                        <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500 dark:text-slate-400">
-                          Dev supervision
-                        </div>
-                        <div className="mt-1.5 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-                          <label className="space-y-1 text-xs font-medium text-slate-600 dark:text-slate-300">
-                            <span>{t.kanban.mode}</span>
-                            <SelectControl
-                              aria-label="Dev supervision mode"
-                              value={devSessionSupervision.mode}
-                              onChange={(event) => setDevSessionSupervision((current) => ({
-                                ...current,
-                                mode: event.target.value as KanbanDevSessionSupervisionInfo["mode"],
-                              }))}
-                            >
-                              <option value="disabled">{t.kanban.off}</option>
-                              <option value="watchdog_retry">{t.kanban.watchdogRetry}</option>
-                              <option value="ralph_loop">{t.kanban.ralphLoop}</option>
-                            </SelectControl>
-                          </label>
-                          <label className="space-y-1 text-xs font-medium text-slate-600 dark:text-slate-300">
-                            <span>{t.kanban.idleMin}</span>
-                            <input
-                              aria-label="Dev supervision idle timeout"
-                              type="number"
-                              min={1}
-                              max={120}
-                              value={devSessionSupervision.inactivityTimeoutMinutes}
-                              onChange={(event) => setDevSessionSupervision((current) => ({
-                                ...current,
-                                inactivityTimeoutMinutes: Math.max(1, Number.parseInt(event.target.value || "10", 10) || 10),
-                              }))}
-                              className="h-9 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm text-slate-900 outline-none transition focus:border-amber-400 dark:border-slate-700 dark:bg-[#0b1119] dark:text-slate-100"
-                            />
-                          </label>
-                          <label className="space-y-1 text-xs font-medium text-slate-600 dark:text-slate-300">
-                            <span>{t.kanban.retries}</span>
-                            <input
-                              aria-label="Dev supervision max recovery attempts"
-                              type="number"
-                              min={0}
-                              max={10}
-                              value={devSessionSupervision.maxRecoveryAttempts}
-                              onChange={(event) => setDevSessionSupervision((current) => ({
-                                ...current,
-                                maxRecoveryAttempts: Math.max(0, Number.parseInt(event.target.value || "0", 10) || 0),
-                              }))}
-                              className="h-9 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm text-slate-900 outline-none transition focus:border-amber-400 dark:border-slate-700 dark:bg-[#0b1119] dark:text-slate-100"
-                            />
-                          </label>
-                          <label className="space-y-1 text-xs font-medium text-slate-600 dark:text-slate-300">
-                            <span>{t.kanban.completion}</span>
-                            <SelectControl
-                              aria-label="Dev supervision completion requirement"
-                              value={devSessionSupervision.completionRequirement}
-                              onChange={(event) => setDevSessionSupervision((current) => ({
-                                ...current,
-                                completionRequirement: event.target.value as KanbanDevSessionSupervisionInfo["completionRequirement"],
-                              }))}
-                              disabled={devSessionSupervision.mode !== "ralph_loop"}
-                              className="disabled:cursor-not-allowed"
-                            >
-                              <option value="turn_complete">{t.kanban.turnComplete}</option>
-                              <option value="completion_summary">{t.kanban.completionSummary}</option>
-                              <option value="verification_report">{t.kanban.verificationReport}</option>
-                            </SelectControl>
-                          </label>
-                        </div>
-                      </div>
-                    </div>
-              </div>
-            ) : null}
           </div>
 
           <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[304px_minmax(0,1fr)]">
@@ -886,124 +899,240 @@ export function KanbanSettingsModal({
                     {sortedColumns.map((column) => {
                       const automation = columnAutomation[column.id] ?? { enabled: false };
                       const active = selectedColumnId === column.id;
-                      const visible = column.visible !== false;
-                      const workflowMode = getColumnWorkflowMode(column, automation);
                       return (
-                        <div
+                        <button
                           key={column.id}
+                          type="button"
+                          onClick={() => setSelectedColumnId(column.id)}
                           className={`min-w-0 rounded-[10px] border px-2 py-1 transition ${
                             active
                               ? "border-slate-900 bg-slate-900 text-white shadow-lg shadow-slate-900/10 dark:border-amber-400/40 dark:bg-slate-900"
                               : "border-slate-200 bg-white hover:border-slate-300 dark:border-slate-800 dark:bg-[#111722] dark:hover:border-slate-700"
                           }`}
                         >
-                          <button
-                            type="button"
-                            onClick={() => setSelectedColumnId(column.id)}
-                            className="block w-full min-w-0 text-left"
-                          >
-                            <div className="flex min-w-0 items-start justify-between gap-2">
-                              <div className="min-w-0">
-                                <div className={`text-[12px] font-semibold ${active ? "text-white" : "text-slate-900 dark:text-slate-100"}`}>{column.name}</div>
-                                <div className={`mt-0.5 truncate text-[10px] leading-4 ${active ? "text-slate-300" : "text-slate-500 dark:text-slate-400"}`}>
-                                  {column.id} · {getColumnWorkflowSummary(
-                                    column,
-                                    automation,
-                                    availableProviders,
-                                    specialists,
-                                    board.autoProviderId,
-                                    t.common.auto,
-                                  )}
-                                </div>
-                              </div>
-                              <div
-                                className={`shrink-0 rounded-full px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.18em] ${
+                          <div className="flex min-w-0 items-start justify-between gap-2 text-left">
+                            <div className="min-w-0">
+                              <div className={`text-[12px] font-semibold ${active ? "text-white" : "text-slate-900 dark:text-slate-100"}`}>{column.name}</div>
+                              <div className={`mt-1 flex flex-wrap items-center gap-1.5 ${active ? "text-slate-200" : "text-slate-500 dark:text-slate-400"}`}>
+                                <span className={`rounded-full px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.16em] ${
                                   active
                                     ? "bg-white/10 text-slate-200"
                                     : "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400"
-                                }`}
-                              >
-                                {getAutomationTransportLabel(column, automation)}
+                                }`}>
+                                  {getStageTypeLabel(column.stage, t)}
+                                </span>
+                                <span className="text-[10px]">{getColumnWorkflowSummary(
+                                  column,
+                                  automation,
+                                  availableProviders,
+                                  specialists,
+                                  board.autoProviderId,
+                                  t.common.auto,
+                                  t,
+                                )}</span>
+                              </div>
+                              <div className={`mt-1 text-[10px] leading-4 ${active ? "text-slate-300" : "text-slate-500 dark:text-slate-400"}`}>
+                                {column.visible !== false ? t.kanban.visibleOnBoard : t.kanban.hiddenFromBoard}
                               </div>
                             </div>
-                          </button>
-                          <div
-                            className={`mt-1 flex items-center justify-between rounded-md border px-2 py-0.5 ${
-                              active
-                                ? "border-white/15 bg-white/5"
-                                : "border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-[#0b1119]"
-                            }`}
-                          >
-                            <div className="flex items-center gap-3">
-                              <label className="flex items-center gap-1.5">
-                                <span className={`text-[9px] font-semibold uppercase tracking-[0.16em] ${active ? "text-slate-300" : "text-slate-500 dark:text-slate-400"}`}>
-                                  {t.kanban.visible}
-                                </span>
-                                <input
-                                  type="checkbox"
-                                  aria-label={`Toggle visibility for ${column.name}`}
-                                  checked={visible}
-                                  onChange={(event) => updateColumnVisibility(column, event.target.checked)}
-                                  className="h-4 w-4 rounded border-slate-300 text-amber-500 focus:ring-amber-500"
-                                />
-                              </label>
-                              <label className="flex items-center gap-1.5">
-                                  <span className={`text-[9px] font-semibold uppercase tracking-[0.16em] ${active ? "text-slate-300" : "text-slate-500 dark:text-slate-400"}`}>{t.kanban.automation}</span>
-                                <input
-                                  type="checkbox"
-                                  aria-label={`Toggle automation for ${column.name}`}
-                                  checked={workflowMode === "automated"}
-                                  disabled={isManualOnlyColumn(column)}
-                                  onChange={(event) => toggleColumnAutomation(column, event.target.checked)}
-                                  className="h-4 w-4 rounded border-slate-300 text-amber-500 focus:ring-amber-500"
-                                />
-                              </label>
-                            </div>
-                            <div className="flex items-center gap-1">
-                              <button
-                                type="button"
-                                aria-label={`Move ${column.name} up`}
-                                disabled={sortedColumns[0]?.id === column.id}
-                                onClick={() => moveColumn(column.id, "up")}
-                                className="rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40 dark:text-slate-400"
-                              >
-                                Up
-                              </button>
-                              <button
-                                type="button"
-                                aria-label={`Move ${column.name} down`}
-                                disabled={sortedColumns[sortedColumns.length - 1]?.id === column.id}
-                                onClick={() => moveColumn(column.id, "down")}
-                                className="rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40 dark:text-slate-400"
-                              >
-                                Down
-                              </button>
-                              <button
-                                type="button"
-                                aria-label={`Delete ${column.name}`}
-                                disabled={sortedColumns.length <= 1}
-                                onClick={() => handleDeleteStage(column.id)}
-                                className="rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-rose-500 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-40 dark:text-rose-300 dark:hover:bg-rose-500/10"
-                              >
-                                {t.kanban.del}
-                              </button>
+                            <div
+                              className={`shrink-0 rounded-full px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.18em] ${
+                                active
+                                  ? "bg-white/10 text-slate-200"
+                                  : "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400"
+                              }`}
+                            >
+                              {getAutomationTransportLabel(column, automation, t)}
                             </div>
                           </div>
-
-                        </div>
+                        </button>
                       );
                     })}
                   </div>
+                </SectionCard>
+                <SectionCard
+                  eyebrow={t.kanban.runtime}
+                  title={t.kanban.runtimeSettings}
+                  description={t.kanban.runtimeSettingsHint}
+                >
+                  <div className="space-y-3">
+                    <div>
+                      <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500 dark:text-slate-400">
+                        {t.kanban.sessionQueue}
+                      </div>
+                      <div className="mt-1 flex flex-wrap items-center gap-2">
+                        <label className="flex items-center gap-2">
+                          <span className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-300">{t.kanban.maxLabel}</span>
+                          <input
+                            type="number"
+                            min={1}
+                            max={20}
+                            value={sessionConcurrencyLimit}
+                            onChange={(event) => setSessionConcurrencyLimit(Math.max(1, Number.parseInt(event.target.value || "1", 10) || 1))}
+                            className="h-9 w-18 rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-900 outline-none transition focus:border-amber-400 dark:border-slate-700 dark:bg-[#0b1119] dark:text-slate-100"
+                          />
+                        </label>
+                      </div>
+                      <p className="mt-1.5 text-xs leading-5 text-slate-500 dark:text-slate-400">
+                        {t.kanban.extraCardsWait}
+                      </p>
+                    </div>
+                    <div>
+                      <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500 dark:text-slate-400">
+                        {t.kanban.devSupervision}
+                      </div>
+                      <div className="mt-1.5 grid gap-2 sm:grid-cols-2">
+                        <label className="space-y-1 text-xs font-medium text-slate-600 dark:text-slate-300">
+                          <span>{t.kanban.mode}</span>
+                          <SelectControl
+                            aria-label="Dev supervision mode"
+                            value={devSessionSupervision.mode}
+                            onChange={(event) => setDevSessionSupervision((current) => ({
+                              ...current,
+                              mode: event.target.value as KanbanDevSessionSupervisionInfo["mode"],
+                            }))}
+                          >
+                            <option value="disabled">{t.kanban.off}</option>
+                            <option value="watchdog_retry">{t.kanban.watchdogRetry}</option>
+                            <option value="ralph_loop">{t.kanban.ralphLoop}</option>
+                          </SelectControl>
+                        </label>
+                        <label className="space-y-1 text-xs font-medium text-slate-600 dark:text-slate-300">
+                          <span>{t.kanban.idleMin}</span>
+                          <input
+                            aria-label="Dev supervision idle timeout"
+                            type="number"
+                            min={1}
+                            max={120}
+                            value={devSessionSupervision.inactivityTimeoutMinutes}
+                            onChange={(event) => setDevSessionSupervision((current) => ({
+                              ...current,
+                              inactivityTimeoutMinutes: Math.max(1, Number.parseInt(event.target.value || "10", 10) || 10),
+                            }))}
+                            className="h-9 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm text-slate-900 outline-none transition focus:border-amber-400 dark:border-slate-700 dark:bg-[#0b1119] dark:text-slate-100"
+                          />
+                        </label>
+                        <label className="space-y-1 text-xs font-medium text-slate-600 dark:text-slate-300">
+                          <span>{t.kanban.retries}</span>
+                          <input
+                            aria-label="Dev supervision max recovery attempts"
+                            type="number"
+                            min={0}
+                            max={10}
+                            value={devSessionSupervision.maxRecoveryAttempts}
+                            onChange={(event) => setDevSessionSupervision((current) => ({
+                              ...current,
+                              maxRecoveryAttempts: Math.max(0, Number.parseInt(event.target.value || "0", 10) || 0),
+                            }))}
+                            className="h-9 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm text-slate-900 outline-none transition focus:border-amber-400 dark:border-slate-700 dark:bg-[#0b1119] dark:text-slate-100"
+                          />
+                        </label>
+                        <label className="space-y-1 text-xs font-medium text-slate-600 dark:text-slate-300">
+                          <span>{t.kanban.completion}</span>
+                          <SelectControl
+                            aria-label="Dev supervision completion requirement"
+                            value={devSessionSupervision.completionRequirement}
+                            onChange={(event) => setDevSessionSupervision((current) => ({
+                              ...current,
+                              completionRequirement: event.target.value as KanbanDevSessionSupervisionInfo["completionRequirement"],
+                            }))}
+                            disabled={devSessionSupervision.mode !== "ralph_loop"}
+                            className="disabled:cursor-not-allowed"
+                          >
+                            <option value="turn_complete">{t.kanban.turnComplete}</option>
+                            <option value="completion_summary">{t.kanban.completionSummary}</option>
+                            <option value="verification_report">{t.kanban.verificationReport}</option>
+                          </SelectControl>
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+                </SectionCard>
+                <SectionCard
+                  eyebrow={t.common.import}
+                  title={t.kanban.boardTransfer}
+                  description={t.kanban.boardTransferHint}
+                >
+                  <div className="space-y-2">
+                    <label className="block space-y-1">
+                      <span className="block text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-300">
+                        {t.kanban.workspaceIdLabel}
+                      </span>
+                      <input
+                        type="text"
+                        value={kanbanExportWorkspaceId}
+                        onChange={(event) => handleKanbanExportWorkspaceChange(event.target.value)}
+                        placeholder={board.workspaceId || "default"}
+                        className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-amber-400 dark:border-slate-700 dark:bg-[#0b1119] dark:text-slate-100"
+                        aria-label="Kanban YAML workspace ID"
+                      />
+                    </label>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void handleExportKanbanYaml()}
+                        disabled={isExportingKanbanYaml}
+                        className="rounded-md border border-slate-300 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-700 transition hover:bg-white disabled:opacity-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-[#111722]"
+                      >
+                        {isExportingKanbanYaml ? t.kanban.exportingYaml : t.kanban.exportYaml}
+                      </button>
+                      <input
+                        ref={kanbanImportInputRef}
+                        type="file"
+                        accept=".yaml,.yml,text/yaml,application/yaml"
+                        className="hidden"
+                        onChange={(event) => {
+                          const file = event.target.files?.[0];
+                          if (file) {
+                            void handleImportKanbanYaml(file);
+                          }
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => kanbanImportInputRef.current?.click()}
+                        disabled={isImportingKanbanYaml}
+                        className="rounded-md border border-slate-300 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-700 transition hover:bg-white disabled:opacity-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-[#111722]"
+                      >
+                        {isImportingKanbanYaml ? t.kanban.importingYaml : t.kanban.importYaml}
+                      </button>
+                    </div>
+                    {kanbanYamlError ? (
+                      <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-900/40 dark:bg-red-950/40 dark:text-red-300">
+                        {kanbanYamlError}
+                      </div>
+                    ) : null}
+                    {kanbanYamlResult ? (
+                      <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-950/40 dark:text-emerald-300">
+                        {kanbanYamlResult}
+                      </div>
+                    ) : null}
+                  </div>
+                </SectionCard>
+                <SectionCard
+                  eyebrow={t.common.delete}
+                  title={t.kanban.dangerZone}
+                  description={t.kanban.dangerZoneHint}
+                >
+                  <button
+                    onClick={() => void handleClearAll()}
+                    disabled={saving || clearingAll}
+                    className="rounded-xl border border-rose-200 px-4 py-1.5 text-sm font-medium text-rose-600 transition hover:bg-rose-50 disabled:opacity-50 dark:border-rose-500/30 dark:text-rose-300 dark:hover:bg-rose-500/10"
+                  >
+                    {clearingAll ? t.kanban.clearingAll : t.kanban.clearAllCards}
+                  </button>
                 </SectionCard>
               </div>
             </aside>
             <main className="min-h-0 overflow-y-auto bg-white p-2 dark:bg-[#0d1118] sm:p-2.5 xl:p-3">
               {selectedColumn ? (
                 <div className="space-y-3">
-                  <div className="flex flex-wrap items-end gap-3 border-b border-slate-200 pb-3 dark:border-slate-800 xl:flex-nowrap">
-                    <div className="shrink-0 pb-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500 dark:text-slate-400 xl:w-24">
-                      Structure
-                    </div>
+                  <SectionCard
+                    eyebrow={t.kanban.structure}
+                    title={selectedColumn.name}
+                    description={t.kanban.selectedStageHint.replace("{stage}", getStageTypeLabel(selectedColumn.stage, t))}
+                  >
+                    <div className="flex flex-wrap items-end gap-3 xl:flex-nowrap">
                     <label className="w-[14rem] shrink-0 space-y-1 text-sm font-medium">
                       <span className="text-slate-700 dark:text-slate-300">{t.kanban.name}</span>
                       <input
@@ -1025,7 +1154,7 @@ export function KanbanSettingsModal({
                         onChange={(event) => handleStageTypeChange(selectedColumn.id, event.target.value)}
                         className="h-10"
                       >
-                        {STAGE_TYPE_OPTIONS.map((option) => (
+                        {stageTypeOptions.map((option) => (
                           <option key={option.value} value={option.value}>
                             {option.label}
                           </option>
@@ -1051,11 +1180,23 @@ export function KanbanSettingsModal({
                     <label className="flex h-10 items-center gap-2 whitespace-nowrap rounded-md border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 dark:border-slate-700 dark:bg-[#0b1119] dark:text-slate-300">
                       <input
                         type="checkbox"
+                        aria-label={`Toggle visibility for ${selectedColumn.name}`}
                         checked={selectedColumn.visible !== false}
                         onChange={(event) => updateColumnVisibility(selectedColumn, event.target.checked)}
                         className="h-4 w-4 rounded border-slate-300 text-amber-500 focus:ring-amber-500"
                       />
                       <span>{t.kanban.visibleOnBoard}</span>
+                    </label>
+                    <label className="flex h-10 items-center gap-2 whitespace-nowrap rounded-md border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 dark:border-slate-700 dark:bg-[#0b1119] dark:text-slate-300">
+                      <input
+                        type="checkbox"
+                        aria-label={`Toggle automation for ${selectedColumn.name}`}
+                        checked={getColumnWorkflowMode(selectedColumn, columnAutomation[selectedColumn.id] ?? { enabled: false }) === "automated"}
+                        disabled={isManualOnlyColumn(selectedColumn)}
+                        onChange={(event) => toggleColumnAutomation(selectedColumn, event.target.checked)}
+                        className="h-4 w-4 rounded border-slate-300 text-amber-500 focus:ring-amber-500"
+                      />
+                      <span>{t.kanban.automation}</span>
                     </label>
 
                     {selectedColumn.stage === "blocked" ? (
@@ -1063,7 +1204,38 @@ export function KanbanSettingsModal({
                         {t.kanban.manualLaneOnly}
                       </div>
                     ) : null}
-                  </div>
+                    </div>
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                      <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-300">{t.kanban.stageOrder}</span>
+                      <button
+                        type="button"
+                        aria-label={`Move ${selectedColumn.name} up`}
+                        disabled={sortedColumns[0]?.id === selectedColumn.id}
+                        onClick={() => moveColumn(selectedColumn.id, "up")}
+                        className="rounded-md border border-slate-200 px-2 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-[#0b1119]"
+                      >
+                        {t.kanban.up}
+                      </button>
+                      <button
+                        type="button"
+                        aria-label={`Move ${selectedColumn.name} down`}
+                        disabled={sortedColumns[sortedColumns.length - 1]?.id === selectedColumn.id}
+                        onClick={() => moveColumn(selectedColumn.id, "down")}
+                        className="rounded-md border border-slate-200 px-2 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-[#0b1119]"
+                      >
+                        {t.kanban.down}
+                      </button>
+                      <button
+                        type="button"
+                        aria-label={`Delete ${selectedColumn.name}`}
+                        disabled={sortedColumns.length <= 1}
+                        onClick={() => handleDeleteStage(selectedColumn.id)}
+                        className="rounded-md border border-rose-200 px-2 py-1 text-xs font-medium text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-rose-500/30 dark:text-rose-300 dark:hover:bg-rose-500/10"
+                      >
+                        {t.kanban.remove}
+                      </button>
+                    </div>
+                  </SectionCard>
 
                   <div className="space-y-3">
                     <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500 dark:text-slate-400">
@@ -1094,71 +1266,13 @@ export function KanbanSettingsModal({
           <div className="border-t border-slate-200/80 bg-slate-50/80 px-4 py-2.5 dark:border-slate-800 dark:bg-[#0a0f16] sm:px-5">
             <div className="flex flex-col gap-2 lg:flex-row lg:items-end lg:justify-between">
               <div className="min-w-0 flex-1 space-y-1">
-                <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:gap-3">
-                  <div className="flex flex-wrap items-center gap-2 lg:flex-nowrap lg:shrink-0">
-                    <input
-                      type="text"
-                      value={kanbanExportWorkspaceId}
-                      onChange={(event) => handleKanbanExportWorkspaceChange(event.target.value)}
-                      placeholder={board.workspaceId || "default"}
-                      className="h-8 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-amber-400 dark:border-slate-700 dark:bg-[#0b1119] dark:text-slate-100 sm:w-32"
-                      aria-label="Kanban YAML workspace ID"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => void handleExportKanbanYaml()}
-                      disabled={isExportingKanbanYaml}
-                      className="rounded-md border border-slate-300 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-700 transition hover:bg-white disabled:opacity-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-[#111722]"
-                    >
-                      {isExportingKanbanYaml ? t.kanban.exportingYaml : t.kanban.exportYaml}
-                    </button>
-                    <input
-                      ref={kanbanImportInputRef}
-                      type="file"
-                      accept=".yaml,.yml,text/yaml,application/yaml"
-                      className="hidden"
-                      onChange={(event) => {
-                        const file = event.target.files?.[0];
-                        if (file) {
-                          void handleImportKanbanYaml(file);
-                        }
-                      }}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => kanbanImportInputRef.current?.click()}
-                      disabled={isImportingKanbanYaml}
-                      className="rounded-md border border-slate-300 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-700 transition hover:bg-white disabled:opacity-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-[#111722]"
-                    >
-                      {isImportingKanbanYaml ? t.kanban.importingYaml : t.kanban.importYaml}
-                    </button>
-                  </div>
-                  <div className="hidden h-6 w-px shrink-0 bg-slate-200 dark:bg-slate-700 lg:block" aria-hidden="true" />
-                  <p className="min-w-0 text-xs leading-5 text-slate-500 dark:text-slate-400 lg:flex-1 lg:truncate">
-                    {t.kanban.changesApplyHint}
-                  </p>
-                </div>
-                {kanbanYamlError ? (
-                  <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-900/40 dark:bg-red-950/40 dark:text-red-300">
-                    {kanbanYamlError}
-                  </div>
-                ) : null}
-                {kanbanYamlResult ? (
-                  <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-950/40 dark:text-emerald-300">
-                    {kanbanYamlResult}
-                  </div>
-                ) : null}
+                <p className="min-w-0 text-xs leading-5 text-slate-500 dark:text-slate-400">
+                  {t.kanban.changesApplyHint}
+                </p>
               </div>
               <div className="flex items-center justify-end gap-2">
                 <button
-                  onClick={() => void handleClearAll()}
-                  disabled={saving || clearingAll}
-                  className="mr-auto rounded-xl border border-rose-200 px-4 py-1.5 text-sm font-medium text-rose-600 transition hover:bg-rose-50 disabled:opacity-50 dark:border-rose-500/30 dark:text-rose-300 dark:hover:bg-rose-500/10"
-                >
-                  {clearingAll ? t.kanban.clearingAll : t.kanban.clearAllCards}
-                </button>
-                <button
-                  onClick={onClose}
+                  onClick={requestClose}
                   disabled={saving || clearingAll}
                   className="rounded-xl border border-slate-200 px-4 py-1.5 text-sm font-medium text-slate-600 transition hover:bg-white disabled:opacity-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-[#111722]"
                 >
@@ -1174,6 +1288,42 @@ export function KanbanSettingsModal({
               </div>
             </div>
           </div>
+          {showUnsavedChangesPrompt ? (
+            <div className="absolute inset-0 z-10 flex items-center justify-center bg-slate-950/45 px-4">
+              <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl dark:border-slate-800 dark:bg-[#0d1118]">
+                <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">
+                  {t.kanban.closeWithUnsavedTitle}
+                </h3>
+                <p className="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-300">
+                  {t.kanban.closeWithUnsavedDescription}
+                </p>
+                <div className="mt-4 flex flex-wrap justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowUnsavedChangesPrompt(false)}
+                    className="rounded-xl border border-slate-200 px-4 py-1.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-[#111722]"
+                  >
+                    {t.kanban.keepEditing}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={onClose}
+                    className="rounded-xl border border-rose-200 px-4 py-1.5 text-sm font-medium text-rose-600 transition hover:bg-rose-50 dark:border-rose-500/30 dark:text-rose-300 dark:hover:bg-rose-500/10"
+                  >
+                    {t.kanban.discardChanges}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleSave({ closeAfterSave: true })}
+                    disabled={saving}
+                    className="rounded-xl bg-slate-900 px-4 py-1.5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:opacity-50 dark:bg-amber-500 dark:text-slate-950 dark:hover:bg-amber-400"
+                  >
+                    {saving ? t.workspace.saving : t.common.saveAndClose}
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : null}
         </div>
       </div>
     </div>
@@ -1201,6 +1351,7 @@ function ColumnAutomationWorkspace({
 }) {
   const { t } = useTranslation();
   const manualOnly = isManualOnlyColumn(column);
+  const artifactOptions = useMemo(() => getArtifactOptions(t), [t]);
   const automationSteps = useMemo(
     () => getEditableAutomationSteps(automation),
     [automation],
@@ -1341,10 +1492,10 @@ function ColumnAutomationWorkspace({
           </div>
           <section className="border-t border-slate-200/80 pt-3 dark:border-slate-800">
             <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-400 dark:text-slate-500">
-              Advanced
+              {t.kanban.advanced}
             </div>
             <div className="space-y-2">
-                    {automationSteps.map((step, index) => {
+                    {automationSteps.length > 1 ? automationSteps.map((step, index) => {
                       const stepSpecialist = findSpecialistById(specialists, step.specialistId) ?? null;
                       const stepTransport = getStepTransport(step);
                       return (
@@ -1352,7 +1503,7 @@ function ColumnAutomationWorkspace({
                           <div className="grid grid-cols-1 gap-2 md:grid-cols-[minmax(0,132px)_minmax(0,1fr)_auto] md:items-start">
                             <div className="min-w-0">
                               <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-400 dark:text-slate-500">
-                                Step {index + 1}
+                                {t.kanban.stepLabel.replace("{index}", String(index + 1))}
                               </div>
                               <div className="mt-0.5 truncate text-[13px] font-semibold text-slate-900 dark:text-slate-100">
                                 {stepTransport === "a2a"
@@ -1491,7 +1642,11 @@ function ColumnAutomationWorkspace({
                           </div>
                         </div>
                       );
-                    })}
+                    }) : (
+                      <div className="rounded-md border border-dashed border-slate-300 bg-slate-50 px-3 py-3 text-xs leading-5 text-slate-500 dark:border-slate-700 dark:bg-[#111722] dark:text-slate-400">
+                        {t.kanban.singleStepAdvancedHint}
+                      </div>
+                    )}
                     <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-slate-200 bg-slate-50 px-2.5 py-2 dark:border-slate-800 dark:bg-[#111722]">
                       <div className="text-[13px] font-semibold text-slate-900 dark:text-slate-100">{t.kanban.automationSteps}</div>
                       <button
@@ -1503,7 +1658,7 @@ function ColumnAutomationWorkspace({
                       </button>
                     </div>
                     <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
-                      {ARTIFACT_OPTIONS.map((artifact) => {
+                      {artifactOptions.map((artifact) => {
                         const checked = automation.requiredArtifacts?.includes(artifact.id) ?? false;
                         return (
                           <label
@@ -1609,7 +1764,7 @@ function ColumnAutomationWorkspace({
               onClick={applyDefaultAutomation}
               className="rounded-md border border-slate-200 px-2.5 py-1.5 text-xs font-semibold uppercase tracking-[0.14em] text-slate-700 transition hover:bg-white dark:border-slate-700 dark:text-slate-200 dark:hover:bg-[#111722]"
               >
-                Defaults
+                {t.kanban.defaults}
               </button>
             </div>
           <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-4 text-xs leading-5 text-slate-500 dark:border-slate-700 dark:bg-[#111722] dark:text-slate-400">
@@ -1658,10 +1813,10 @@ function ConfigField({ label, children }: { label: string; children: ReactNode }
   );
 }
 
-function formatTriggerLabel(trigger: ColumnAutomationConfig["transitionType"]): string {
-  if (trigger === "exit") return "On exit";
-  if (trigger === "both") return "Entry and exit";
-  return "On entry";
+function formatTriggerLabel(trigger: ColumnAutomationConfig["transitionType"], t: TranslationDictionary): string {
+  if (trigger === "exit") return t.kanban.onExit;
+  if (trigger === "both") return t.kanban.entryAndExit;
+  return t.kanban.onEntry;
 }
 
 function resolveProviderName(providerId: string | undefined, providers: AcpProviderInfo[]): string | undefined {
@@ -1685,6 +1840,7 @@ function formatAutomationStepSummary(
   specialists: SpecialistOption[],
   autoProviderId: string | undefined,
   autoLabel: string,
+  t: TranslationDictionary,
 ): string {
   const resolveSpecialist = (specialistId: string, locale?: string) => {
     void locale;
@@ -1698,14 +1854,14 @@ function formatAutomationStepSummary(
   };
   const resolvedStep = resolveKanbanAutomationStep(step, resolveSpecialist, { autoProviderId });
   if (!resolvedStep) {
-    return `Step ${index + 1}`;
+    return t.kanban.stepLabel.replace("{index}", String(index + 1));
   }
 
   if (step.transport === "a2a") {
     const specialist = getSpecialistDisplayName(findSpecialistById(specialists, resolvedStep.specialistId)) ?? resolvedStep.specialistName;
     return [
       "A2A",
-      specialist ?? resolvedStep.role ?? `Step ${index + 1}`,
+      specialist ?? resolvedStep.role ?? t.kanban.stepLabel.replace("{index}", String(index + 1)),
       formatAgentCardTarget(resolvedStep.agentCardUrl),
       resolvedStep.skillId ? `skill:${resolvedStep.skillId}` : undefined,
     ].filter(Boolean).join(" • ");
@@ -1717,7 +1873,7 @@ function formatAutomationStepSummary(
       ? formatAutoProviderLabel(resolvedStep.providerId, providers, autoLabel)
       : resolveProviderName(resolvedStep.providerId, providers) ?? autoLabel;
   const specialist = getSpecialistDisplayName(findSpecialistById(specialists, resolvedStep.specialistId)) ?? resolvedStep.specialistName;
-  return [provider, specialist ?? resolvedStep.role ?? `Step ${index + 1}`].filter(Boolean).join(" • ");
+  return [provider, specialist ?? resolvedStep.role ?? t.kanban.stepLabel.replace("{index}", String(index + 1))].filter(Boolean).join(" • ");
 }
 
 function getAutomationSummary(
@@ -1726,6 +1882,7 @@ function getAutomationSummary(
   specialists: SpecialistOption[],
   autoProviderId: string | undefined,
   autoLabel: string,
+  t: TranslationDictionary,
 ): string {
   const steps = getEditableAutomationSteps(automation);
   return [
@@ -1736,8 +1893,9 @@ function getAutomationSummary(
       specialists,
       autoProviderId,
       autoLabel,
+      t,
     )).join(" -> "),
-    formatTriggerLabel(automation.transitionType),
+    formatTriggerLabel(automation.transitionType, t),
   ].join(" • ");
 }
 

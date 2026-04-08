@@ -426,4 +426,78 @@ describe("KanbanSettingsModal", () => {
       );
     });
   });
+
+  it("warns before closing dirty edits with Escape", () => {
+    const onClose = vi.fn();
+
+    render(
+      <KanbanSettingsModal
+        board={board}
+        columnAutomation={{}}
+        availableProviders={[{ id: "claude", name: "Claude Code", description: "Claude Code provider", command: "claude" }]}
+        specialists={[]}
+        specialistLanguage="en"
+        onClose={onClose}
+        onClearAll={vi.fn(async () => {})}
+        onSave={vi.fn(async () => {})}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("Stage name"), { target: { value: "Queued" } });
+    fireEvent.keyDown(window, { key: "Escape" });
+
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByText("Unsaved board changes")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Keep editing" }));
+    expect(screen.queryByText("Unsaved board changes")).toBeNull();
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("supports discard and save-and-close from the unsaved changes prompt", async () => {
+    const onClose = vi.fn();
+    const onSave = vi.fn(async () => {});
+
+    const { unmount } = render(
+      <KanbanSettingsModal
+        board={board}
+        columnAutomation={{}}
+        availableProviders={[{ id: "claude", name: "Claude Code", description: "Claude Code provider", command: "claude" }]}
+        specialists={[]}
+        specialistLanguage="en"
+        onClose={onClose}
+        onClearAll={vi.fn(async () => {})}
+        onSave={onSave}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("Stage name"), { target: { value: "Queued" } });
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    fireEvent.click(screen.getByRole("button", { name: "Discard changes" }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+
+    unmount();
+
+    render(
+      <KanbanSettingsModal
+        board={board}
+        columnAutomation={{}}
+        availableProviders={[{ id: "claude", name: "Claude Code", description: "Claude Code provider", command: "claude" }]}
+        specialists={[]}
+        specialistLanguage="en"
+        onClose={onClose}
+        onClearAll={vi.fn(async () => {})}
+        onSave={onSave}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("Stage name"), { target: { value: "Queued" } });
+    fireEvent.keyDown(window, { key: "Escape" });
+    fireEvent.click(screen.getByRole("button", { name: "Save & Close" }));
+
+    await waitFor(() => {
+      expect(onSave).toHaveBeenCalled();
+      expect(onClose).toHaveBeenCalledTimes(2);
+    });
+  });
 });
