@@ -16,12 +16,8 @@ import { getKanbanAutomationSteps, type KanbanAutomationStep } from "@/core/mode
 import type { KanbanColumnInfo, SessionInfo, TaskInfo, WorktreeInfo } from "../types";
 import { KanbanCardActivityPanel } from "./kanban-card-activity";
 import { KanbanDescriptionEditor } from "./kanban-description-editor";
-import { FileRow, formatChangeSummary } from "./kanban-file-changes-panel";
+import { KanbanTaskGitWorkflowPanel } from "./components/kanban-task-git-workflow-panel";
 import type {
-  KanbanCommitChangeItem,
-  KanbanCommitDiffPreview,
-  KanbanFileChangeItem,
-  KanbanFileDiffPreview,
   KanbanTaskChanges,
 } from "./kanban-file-changes-types";
 import { MarkdownViewer } from "@/client/components/markdown/markdown-viewer";
@@ -33,7 +29,8 @@ import {
 } from "./kanban-card-session-utils";
 export { KanbanCardActivityBar } from "./kanban-card-activity";
 import { KanbanCardArtifacts } from "./kanban-card-artifacts";
-import { TaskFileDiffPreview, TaskCommitDiffPreview, CommitRow } from "./kanban-diff-preview";
+// Legacy imports - removed, functionality replaced by KanbanTaskGitWorkflowPanel
+// import { TaskFileDiffPreview, TaskCommitDiffPreview, CommitRow } from "./kanban-diff-preview";
 import { StoryReadinessPanel, EvidenceBundlePanel, ReviewFeedbackPanel } from "./kanban-detail-panels";
 import { getKanbanSessionCopy } from "./i18n/kanban-session-copy";
 import {
@@ -627,11 +624,13 @@ export function KanbanCardDetail({
               description={compactMode ? undefined : t.kanbanDetail.changesHint}
               compact={compactMode}
             >
-              <TaskChangesPanel
+              <KanbanTaskGitWorkflowPanel
+                workspaceId={task.workspaceId}
                 taskId={task.id}
                 changes={taskChanges}
                 loading={taskChangesLoading}
                 compact={compactMode}
+                onRefresh={onRefresh}
               />
             </DetailSection>
           )}
@@ -718,7 +717,10 @@ export function KanbanCardDetail({
   );
 }
 
-function TaskChangesPanel({
+// Legacy component - removed, replaced by KanbanTaskGitWorkflowPanel
+// This function is no longer used
+/*
+function _TaskChangesPanel({
   taskId,
   changes,
   loading = false,
@@ -1032,6 +1034,7 @@ function TaskChangesPanel({
     </div>
   );
 }
+*/
 
 function DetailSection({
   title,
