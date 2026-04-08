@@ -5,11 +5,12 @@ use axum::{
 };
 use chrono::Utc;
 use routa_core::events::{AgentEvent, AgentEventType};
+use routa_core::git::{FileChangeStatus, GitFileChange};
 use routa_core::kanban::set_task_column;
 use routa_core::models::artifact::{Artifact, ArtifactType};
 use routa_core::models::kanban::KanbanBoard;
 use routa_core::models::task::{
-    build_task_invest_validation, build_task_story_readiness, TaskLaneSessionStatus,
+    build_task_invest_validation, build_task_story_readiness, Task, TaskLaneSessionStatus,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
@@ -130,6 +131,9 @@ pub fn router() -> Router<AppState> {
             get(list_task_artifacts).post(create_task_artifact),
         )
         .route("/{id}/changes", get(get_task_changes))
+        .route("/{id}/changes/file", get(get_task_change_file))
+        .route("/{id}/changes/commit", get(get_task_change_commit))
+        .route("/{id}/changes/stats", get(get_task_change_stats))
         .route("/{id}/runs", get(list_task_runs))
         .route("/{id}/status", axum::routing::post(update_task_status))
         .route("/ready", get(find_ready_tasks))
@@ -301,6 +305,218 @@ async fn get_task_changes(
             "worktreeId": worktree.as_ref().map(|item| item.id.clone()),
             "worktreePath": worktree.as_ref().map(|item| item.worktree_path.clone()),
         }
+    })))
+}
+
+#[derive(Debug, Deserialize)]
+struct TaskChangeFileQuery {
+    path: Option<String>,
+    status: Option<String>,
+    #[serde(rename = "previousPath")]
+    previous_path: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct TaskChangeCommitQuery {
+    sha: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct TaskChangeStatsQuery {
+    paths: Option<String>,
+    statuses: Option<String>,
+}
+
+fn parse_file_change_status(status: &str) -> FileChangeStatus {
+    match status.trim().to_ascii_lowercase().as_str() {
+        "added" => FileChangeStatus::Added,
+        "deleted" => FileChangeStatus::Deleted,
+        "renamed" => FileChangeStatus::Renamed,
+        "copied" => FileChangeStatus::Copied,
+        "untracked" => FileChangeStatus::Untracked,
+        "typechange" => FileChangeStatus::Typechange,
+        "conflicted" => FileChangeStatus::Conflicted,
+        _ => FileChangeStatus::Modified,
+    }
+}
+
+async fn resolve_task_repo_path(state: &AppState, task: &Task) -> Result<String, ServerError> {
+    let worktree = match task.worktree_id.as_ref() {
+        Some(worktree_id) => state.worktree_store.get(worktree_id).await?,
+        None => None,
+    };
+    let codebase_id = worktree
+        .as_ref()
+        .map(|item| item.codebase_id.clone())
+        .or_else(|| task.codebase_ids.first().cloned())
+        .unwrap_or_default();
+    let codebase = if codebase_id.is_empty() {
+        None
+    } else {
+        state.codebase_store.get(&codebase_id).await?
+    };
+
+    Ok(worktree
+        .as_ref()
+        .map(|item| item.worktree_path.clone())
+        .or_else(|| codebase.as_ref().map(|item| item.repo_path.clone()))
+        .unwrap_or_default())
+}
+
+async fn load_task_and_repo_path(
+    state: &AppState,
+    task_id: &str,
+) -> Result<(Task, String), ServerError> {
+    let task = state
+        .task_store
+        .get(task_id)
+        .await?
+        .ok_or_else(|| ServerError::NotFound(format!("Task {} not found", task_id)))?;
+    let repo_path = resolve_task_repo_path(state, &task).await?;
+    Ok((task, repo_path))
+}
+
+async fn get_task_change_file(
+    State(state): State<AppState>,
+    axum::extract::Path(id): axum::extract::Path<String>,
+    Query(query): Query<TaskChangeFileQuery>,
+) -> Result<Json<serde_json::Value>, ServerError> {
+    let (_task, repo_path) = load_task_and_repo_path(&state, &id).await?;
+    let path = query
+        .path
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| ServerError::BadRequest("Missing file path or status".to_string()))?;
+    let status = query
+        .status
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| ServerError::BadRequest("Missing file path or status".to_string()))?;
+
+    if repo_path.is_empty() || !crate::git::is_git_repository(&repo_path) {
+        return Err(ServerError::BadRequest(
+            "Repository is missing or not a git repository".to_string(),
+        ));
+    }
+
+    let diff = crate::git::get_repo_file_diff(
+        &repo_path,
+        &GitFileChange {
+            path: path.to_string(),
+            status: parse_file_change_status(status),
+            previous_path: query.previous_path.and_then(|value| {
+                let trimmed = value.trim().to_string();
+                if trimmed.is_empty() {
+                    None
+                } else {
+                    Some(trimmed)
+                }
+            }),
+        },
+    );
+
+    Ok(Json(serde_json::json!({ "diff": diff })))
+}
+
+async fn get_task_change_commit(
+    State(state): State<AppState>,
+    axum::extract::Path(id): axum::extract::Path<String>,
+    Query(query): Query<TaskChangeCommitQuery>,
+) -> Result<Json<serde_json::Value>, ServerError> {
+    let (_task, repo_path) = load_task_and_repo_path(&state, &id).await?;
+    let sha = query
+        .sha
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| ServerError::BadRequest("Missing commit sha".to_string()))?;
+
+    if repo_path.is_empty() || !crate::git::is_git_repository(&repo_path) {
+        return Err(ServerError::BadRequest(
+            "Repository is missing or not a git repository".to_string(),
+        ));
+    }
+
+    let diff = crate::git::get_repo_commit_diff(&repo_path, sha);
+    Ok(Json(serde_json::json!({ "diff": diff })))
+}
+
+async fn get_task_change_stats(
+    State(state): State<AppState>,
+    axum::extract::Path(id): axum::extract::Path<String>,
+    Query(query): Query<TaskChangeStatsQuery>,
+) -> Result<Json<serde_json::Value>, ServerError> {
+    let (_task, repo_path) = load_task_and_repo_path(&state, &id).await?;
+    let paths_param = query
+        .paths
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| ServerError::BadRequest("Missing 'paths' query parameter".to_string()))?;
+
+    let requested_paths: Vec<String> = paths_param
+        .split(',')
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .collect();
+    if requested_paths.is_empty() {
+        return Err(ServerError::BadRequest("No valid paths provided".to_string()));
+    }
+    if requested_paths.len() > 100 {
+        return Err(ServerError::BadRequest(
+            "Too many paths requested. Maximum 100 per request.".to_string(),
+        ));
+    }
+
+    if repo_path.is_empty() || !crate::git::is_git_repository(&repo_path) {
+        return Err(ServerError::BadRequest(
+            "Repository is missing or not a git repository".to_string(),
+        ));
+    }
+
+    let statuses: Vec<String> = query
+        .statuses
+        .unwrap_or_default()
+        .split(',')
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .collect();
+
+    let stats: Vec<serde_json::Value> = requested_paths
+        .iter()
+        .enumerate()
+        .map(|(index, path)| {
+            let diff = crate::git::get_repo_file_diff(
+                &repo_path,
+                &GitFileChange {
+                    path: path.clone(),
+                    status: parse_file_change_status(
+                        statuses.get(index).map(String::as_str).unwrap_or("modified"),
+                    ),
+                    previous_path: None,
+                },
+            );
+            serde_json::json!({
+                "path": path,
+                "additions": diff.additions,
+                "deletions": diff.deletions,
+            })
+        })
+        .collect();
+
+    let successful = stats
+        .iter()
+        .filter(|entry| entry.get("error").is_none())
+        .count();
+
+    Ok(Json(serde_json::json!({
+        "stats": stats,
+        "requested": requested_paths.len(),
+        "successful": successful,
     })))
 }
 

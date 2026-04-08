@@ -328,6 +328,31 @@ pub struct RepoChanges {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct RepoFileDiff {
+    pub path: String,
+    pub status: FileChangeStatus,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub previous_path: Option<String>,
+    pub patch: String,
+    pub additions: i32,
+    pub deletions: i32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RepoCommitDiff {
+    pub sha: String,
+    pub short_sha: String,
+    pub summary: String,
+    pub author_name: String,
+    pub authored_at: String,
+    pub patch: String,
+    pub additions: i32,
+    pub deletions: i32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct HistoricalRelatedFile {
     pub path: String,
     pub score: f64,
@@ -475,6 +500,149 @@ pub fn get_repo_changes(repo_path: &str) -> RepoChanges {
         branch,
         status,
         files,
+    }
+}
+
+fn git_output_in_repo(repo_path: &str, args: &[&str]) -> Option<String> {
+    Command::new("git")
+        .args(args)
+        .current_dir(repo_path)
+        .output()
+        .ok()
+        .filter(|output| output.status.success())
+        .map(|output| String::from_utf8_lossy(&output.stdout).to_string())
+}
+
+fn count_diff_patch_lines(patch: &str) -> (i32, i32) {
+    let mut additions = 0;
+    let mut deletions = 0;
+
+    for line in patch.lines() {
+        if line.starts_with("+++ ") || line.starts_with("--- ") {
+            continue;
+        }
+        if line.starts_with('+') {
+            additions += 1;
+        } else if line.starts_with('-') {
+            deletions += 1;
+        }
+    }
+
+    (additions, deletions)
+}
+
+fn build_synthetic_added_diff(repo_path: &str, file: &GitFileChange) -> String {
+    let file_path = Path::new(repo_path).join(&file.path);
+    let content = std::fs::read_to_string(&file_path).unwrap_or_default();
+    let additions = content
+        .lines()
+        .map(|line| format!("+{}", line))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    format!(
+        "diff --git a/{path} b/{path}\nnew file mode 100644\n--- /dev/null\n+++ b/{path}\n@@ -0,0 +1,{count} @@\n{body}",
+        path = file.path,
+        count = content.lines().count(),
+        body = additions
+    )
+}
+
+fn build_synthetic_rename_diff(file: &GitFileChange) -> String {
+    let previous_path = file.previous_path.clone().unwrap_or_default();
+    format!(
+        "diff --git a/{previous_path} b/{path}\nsimilarity index 100%\nrename from {previous_path}\nrename to {path}\n",
+        previous_path = previous_path,
+        path = file.path
+    )
+}
+
+pub fn get_repo_file_diff(repo_path: &str, file: &GitFileChange) -> RepoFileDiff {
+    let patch = [
+        vec![
+            "--no-pager",
+            "diff",
+            "--no-ext-diff",
+            "--find-renames",
+            "--find-copies",
+            "--",
+            file.path.as_str(),
+        ],
+        vec![
+            "--no-pager",
+            "diff",
+            "--no-ext-diff",
+            "--find-renames",
+            "--find-copies",
+            "--cached",
+            "--",
+            file.path.as_str(),
+        ],
+        vec![
+            "--no-pager",
+            "diff",
+            "--no-ext-diff",
+            "--find-renames",
+            "--find-copies",
+            "HEAD",
+            "--",
+            file.path.as_str(),
+        ],
+    ]
+    .iter()
+    .filter_map(|args| git_output_in_repo(repo_path, args))
+    .find(|candidate| !candidate.trim().is_empty())
+    .unwrap_or_else(|| {
+        if matches!(file.status, FileChangeStatus::Untracked | FileChangeStatus::Added) {
+            build_synthetic_added_diff(repo_path, file)
+        } else if matches!(file.status, FileChangeStatus::Renamed) && file.previous_path.is_some() {
+            build_synthetic_rename_diff(file)
+        } else {
+            String::new()
+        }
+    });
+
+    let (additions, deletions) = count_diff_patch_lines(&patch);
+    RepoFileDiff {
+        path: file.path.clone(),
+        status: file.status.clone(),
+        previous_path: file.previous_path.clone(),
+        patch,
+        additions,
+        deletions,
+    }
+}
+
+pub fn get_repo_commit_diff(repo_path: &str, sha: &str) -> RepoCommitDiff {
+    let summary = git_output_in_repo(repo_path, &["show", "-s", "--format=%s", sha]).unwrap_or_default();
+    let short_sha = git_output_in_repo(repo_path, &["rev-parse", "--short", sha]).unwrap_or_default();
+    let author_name = git_output_in_repo(repo_path, &["show", "-s", "--format=%an", sha]).unwrap_or_default();
+    let authored_at = git_output_in_repo(repo_path, &["show", "-s", "--format=%aI", sha]).unwrap_or_default();
+    let patch = git_output_in_repo(
+        repo_path,
+        &[
+            "--no-pager",
+            "show",
+            "--no-ext-diff",
+            "--find-renames",
+            "--find-copies",
+            "--format=medium",
+            "--unified=3",
+            sha,
+        ],
+    )
+    .unwrap_or_default();
+    let (additions, deletions) = count_diff_patch_lines(&patch);
+
+    RepoCommitDiff {
+        sha: sha.to_string(),
+        short_sha: short_sha.trim().to_string(),
+        summary: summary.trim().to_string(),
+        author_name: author_name.trim().to_string(),
+        authored_at: authored_at.trim().to_string(),
+        patch,
+        additions,
+        deletions,
     }
 }
 

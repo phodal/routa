@@ -2,46 +2,34 @@
 
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AcpProviderInfo } from "@/client/acp-client";
-import { AcpProviderDropdown } from "@/client/components/acp-provider-dropdown";
 import { desktopAwareFetch } from "@/client/utils/diagnostics";
-import { resolveKanbanAutomationStep } from "@/core/kanban/effective-task-automation";
-import {
-  DEFAULT_DEV_REQUIRED_TASK_FIELDS,
-  getKanbanAutomationSteps,
-  type KanbanAutomationStep,
-  type KanbanColumnAutomation,
-  type KanbanRequiredTaskField,
-  type KanbanTransport,
-} from "@/core/models/kanban";
-import {
-  SPECIALIST_CATEGORY_OPTIONS,
-  filterSpecialistsByCategory,
-  getSpecialistCategory,
-  type SpecialistCategory,
-} from "@/client/utils/specialist-categories";
-import {
-  findSpecialistById,
-  getSpecialistDisplayName,
-  getLanguageSpecificSpecialistId,
-  KANBAN_SPECIALIST_LANGUAGE_LABELS,
-  resolveSpecialistSelection,
-  type KanbanSpecialistLanguage,
-} from "./kanban-specialist-language";
+import { getSpecialistCategory, type SpecialistCategory } from "@/client/utils/specialist-categories";
+import { resolveSpecialistSelection, type KanbanSpecialistLanguage } from "./kanban-specialist-language";
 import type { KanbanBoardInfo, KanbanDevSessionSupervisionInfo } from "../types";
-import { Select } from "@/client/components/select";
-import { ChevronDown } from "lucide-react";
-import { useTranslation, type TranslationDictionary } from "@/i18n";
+import { useTranslation } from "@/i18n";
+import {
+  ColumnAutomationWorkspace,
+  DEFAULT_DEV_SESSION_SUPERVISION,
+  getAutomationTransportLabel,
+  getColumnWorkflowMode,
+  getColumnWorkflowSummary,
+  getDefaultAutomationForStage,
+  getEditableAutomationSteps,
+  getStageTypeLabel,
+  getStageTypeOptions,
+  isManualOnlyColumn,
+  loadKanbanExportWorkspaceId,
+  normalizeAutomationForDirtyCheck,
+  normalizeColumns,
+  normalizeDevSessionSupervision,
+  saveKanbanExportWorkspaceId,
+  SectionCard,
+  StatPill,
+  type ColumnAutomationConfig,
+  type SpecialistOption,
+} from "./kanban-settings-modal-parts";
 
-
-interface SpecialistOption {
-  id: string;
-  name: string;
-  role: string;
-  displayName?: string;
-  defaultProvider?: string;
-}
-
-export type ColumnAutomationConfig = KanbanColumnAutomation;
+export type { ColumnAutomationConfig } from "./kanban-settings-modal-parts";
 
 export interface KanbanSettingsModalProps {
   board: KanbanBoardInfo;
@@ -57,420 +45,6 @@ export interface KanbanSettingsModalProps {
     sessionConcurrencyLimit: number,
     devSessionSupervision: KanbanDevSessionSupervisionInfo,
   ) => Promise<void>;
-}
-
-const DEFAULT_DEV_SESSION_SUPERVISION: KanbanDevSessionSupervisionInfo = {
-  mode: "watchdog_retry",
-  inactivityTimeoutMinutes: 10,
-  maxRecoveryAttempts: 1,
-  completionRequirement: "turn_complete",
-};
-
-const ROLE_OPTIONS = ["CRAFTER", "ROUTA", "GATE", "DEVELOPER"];
-const KANBAN_EXPORT_WORKSPACE_KEY = "routa.kanbanExportWorkspaceId";
-const MANUAL_ONLY_STAGES = new Set(["blocked"]);
-const TASK_FIELD_OPTIONS = [
-  "scope",
-  "acceptance_criteria",
-  "verification_plan",
-  "verification_commands",
-  "test_cases",
-  "dependencies_declared",
-] as const satisfies KanbanRequiredTaskField[];
-
-function getTaskFieldLabel(field: KanbanRequiredTaskField, t: TranslationDictionary): string {
-  switch (field) {
-    case "scope":
-      return t.kanbanDetail.scope;
-    case "acceptance_criteria":
-      return t.kanbanDetail.acceptanceCriteria;
-    case "verification_plan":
-      return t.kanbanDetail.verificationPlan;
-    case "verification_commands":
-      return t.kanbanDetail.verificationCommands;
-    case "test_cases":
-      return t.kanbanDetail.testCases;
-    case "dependencies_declared":
-      return t.kanbanDetail.dependenciesDeclared;
-    default:
-      return field;
-  }
-}
-
-function getTaskFieldHint(field: KanbanRequiredTaskField, t: TranslationDictionary): string {
-  switch (field) {
-    case "scope":
-      return t.kanban.storyReadinessScopeHint;
-    case "acceptance_criteria":
-      return t.kanban.storyReadinessAcceptanceCriteriaHint;
-    case "verification_plan":
-      return t.kanban.storyReadinessVerificationPlanHint;
-    case "verification_commands":
-      return t.kanban.storyReadinessVerificationCommandsHint;
-    case "test_cases":
-      return t.kanban.storyReadinessTestCasesHint;
-    case "dependencies_declared":
-      return t.kanban.storyReadinessDependenciesDeclaredHint;
-    default:
-      return field;
-  }
-}
-
-function createEmptyAutomationStep(index: number): KanbanAutomationStep {
-  return {
-    id: `step-${index + 1}`,
-    transport: "acp",
-    role: "DEVELOPER",
-  };
-}
-
-function getStageTypeOptions(t: TranslationDictionary) {
-  return [
-    { value: "backlog", label: t.kanban.stageBacklog },
-    { value: "todo", label: t.kanban.stageTodo },
-    { value: "dev", label: t.kanban.stageDev },
-    { value: "review", label: t.kanban.stageReview },
-    { value: "done", label: t.kanban.stageDone },
-    { value: "blocked", label: t.kanban.stageBlocked },
-  ] as const;
-}
-
-function getStageTypeLabel(stage: string, t: TranslationDictionary): string {
-  return getStageTypeOptions(t).find((option) => option.value === stage)?.label ?? stage;
-}
-
-function getArtifactOptions(t: TranslationDictionary) {
-  return [
-    { id: "screenshot", label: t.kanban.screenshot, hint: t.kanban.screenshotHint },
-    { id: "test_results", label: t.kanban.testResults, hint: t.kanban.testResultsHint },
-    { id: "code_diff", label: t.kanban.codeDiff, hint: t.kanban.codeDiffHint },
-  ] as const satisfies Array<{
-    id: NonNullable<ColumnAutomationConfig["requiredArtifacts"]>[number];
-    label: string;
-    hint: string;
-  }>;
-}
-
-function getStepTransport(step?: KanbanAutomationStep): KanbanTransport {
-  if (step?.transport === "a2a") {
-    return "acp";
-  }
-  return step?.transport ?? "acp";
-}
-
-function setAutomationStepTransport(step: KanbanAutomationStep, _transport: KanbanTransport): KanbanAutomationStep {
-  return {
-    ...step,
-    transport: "acp",
-    agentCardUrl: undefined,
-    skillId: undefined,
-    authConfigId: undefined,
-  };
-}
-
-function getAutomationTransportLabel(
-  column: KanbanBoardInfo["columns"][0],
-  automation: ColumnAutomationConfig | undefined,
-  t: TranslationDictionary,
-): string {
-  if (getColumnWorkflowMode(column, automation) === "manual") {
-    return t.kanban.manualLabel;
-  }
-
-  return t.kanban.acpLabel;
-}
-
-function formatAgentCardTarget(agentCardUrl?: string): string | undefined {
-  const trimmed = agentCardUrl?.trim();
-  if (!trimmed) return undefined;
-
-  try {
-    const parsed = new URL(trimmed);
-    return `${parsed.hostname}${parsed.pathname !== "/" ? parsed.pathname : ""}`;
-  } catch {
-    return trimmed.replace(/^https?:\/\//, "");
-  }
-}
-
-function isManualOnlyColumn(column: KanbanBoardInfo["columns"][0]): boolean {
-  return MANUAL_ONLY_STAGES.has(column.stage);
-}
-
-function getColumnWorkflowMode(
-  column: KanbanBoardInfo["columns"][0],
-  automation: ColumnAutomationConfig | undefined,
-): "manual" | "automated" {
-  if (isManualOnlyColumn(column)) return "manual";
-  return automation?.enabled ? "automated" : "manual";
-}
-
-function getColumnWorkflowSummary(
-  column: KanbanBoardInfo["columns"][0],
-  automation: ColumnAutomationConfig | undefined,
-  providers: AcpProviderInfo[],
-  specialists: SpecialistOption[],
-  autoProviderId: string | undefined,
-  autoLabel: string,
-  t: TranslationDictionary,
-): string {
-  const mode = getColumnWorkflowMode(column, automation);
-  if (mode === "manual") {
-    return isManualOnlyColumn(column) ? t.kanban.manualLaneOnly : t.kanban.manualLane;
-  }
-  return getAutomationSummary(
-    automation ?? { enabled: false },
-    providers,
-    specialists,
-    autoProviderId,
-    autoLabel,
-    t,
-  );
-}
-
-function loadKanbanExportWorkspaceId(defaultWorkspaceId: string): string {
-  if (typeof window === "undefined") return defaultWorkspaceId;
-  try {
-    return localStorage.getItem(KANBAN_EXPORT_WORKSPACE_KEY)?.trim() || defaultWorkspaceId;
-  } catch {
-    return defaultWorkspaceId;
-  }
-}
-
-function saveKanbanExportWorkspaceId(workspaceId: string): void {
-  if (typeof window === "undefined") return;
-  localStorage.setItem(KANBAN_EXPORT_WORKSPACE_KEY, workspaceId);
-}
-
-function normalizeColumns(columns: KanbanBoardInfo["columns"]) {
-  return columns
-    .slice()
-    .sort((a, b) => a.position - b.position)
-    .map(({ id, name, stage, position, visible, width }) => ({
-      id,
-      name,
-      stage,
-      position,
-      visible: visible !== false,
-      width: width ?? "standard",
-    }));
-}
-
-function normalizeAutomationForDirtyCheck(
-  columnAutomation: Record<string, ColumnAutomationConfig>,
-  columns: KanbanBoardInfo["columns"],
-) {
-  return columns
-    .slice()
-    .sort((a, b) => a.position - b.position)
-    .map((column) => {
-      const automation = columnAutomation[column.id] ?? { enabled: false };
-      return {
-        columnId: column.id,
-        enabled: Boolean(automation.enabled),
-        transitionType: automation.transitionType ?? "entry",
-        autoAdvanceOnSuccess: Boolean(automation.autoAdvanceOnSuccess),
-        requiredArtifacts: [...(automation.requiredArtifacts ?? [])].sort(),
-        requiredTaskFields: [...(automation.requiredTaskFields ?? [])].sort(),
-        steps: getEditableAutomationSteps(automation).map((step, index) => ({
-          id: step.id?.trim() || `step-${index + 1}`,
-          transport: getStepTransport(step),
-          providerId: step.providerId ?? null,
-          role: step.role ?? "DEVELOPER",
-          specialistId: step.specialistId ?? null,
-          agentCardUrl: step.agentCardUrl ?? null,
-          skillId: step.skillId ?? null,
-          authConfigId: step.authConfigId ?? null,
-        })),
-      };
-    });
-}
-
-function normalizeDevSessionSupervision(
-  devSessionSupervision: KanbanDevSessionSupervisionInfo,
-): KanbanDevSessionSupervisionInfo {
-  return {
-    ...devSessionSupervision,
-    inactivityTimeoutMinutes: Math.max(1, Math.floor(devSessionSupervision.inactivityTimeoutMinutes)),
-    maxRecoveryAttempts: Math.max(0, Math.floor(devSessionSupervision.maxRecoveryAttempts)),
-  };
-}
-
-function getDefaultAutomationForStage(stage: string): ColumnAutomationConfig {
-  switch (stage) {
-    case "backlog":
-      return syncAutomationPrimaryStep({
-        enabled: true,
-        transitionType: "entry",
-        autoAdvanceOnSuccess: true,
-        steps: [{ id: "step-1", role: "CRAFTER" }],
-      });
-    case "review":
-      return syncAutomationPrimaryStep({
-        enabled: true,
-        transitionType: "exit",
-        requiredArtifacts: ["screenshot", "test_results"],
-        steps: [{ id: "step-1", role: "GATE" }],
-      });
-    case "blocked":
-      return { enabled: false };
-    case "done":
-      return syncAutomationPrimaryStep({
-        enabled: true,
-        transitionType: "entry",
-        requiredArtifacts: ["code_diff"],
-        steps: [{ id: "step-1", role: "ROUTA" }],
-      });
-    case "dev":
-      return syncAutomationPrimaryStep({
-        enabled: true,
-        transitionType: "entry",
-        requiredTaskFields: [...DEFAULT_DEV_REQUIRED_TASK_FIELDS],
-        steps: [{ id: "step-1", role: "DEVELOPER" }],
-      });
-    case "todo":
-      return syncAutomationPrimaryStep({
-        enabled: true,
-        transitionType: "entry",
-        steps: [{ id: "step-1", role: "CRAFTER" }],
-      });
-    default:
-      return syncAutomationPrimaryStep({
-        enabled: true,
-        transitionType: "entry",
-        steps: [{ id: "step-1", role: "DEVELOPER" }],
-      });
-  }
-}
-
-function ProviderField({
-  providers,
-  value,
-  ariaLabel,
-  dataTestId,
-  onChange,
-}: {
-  providers: AcpProviderInfo[];
-  value: string | undefined;
-  ariaLabel: string;
-  dataTestId: string;
-  onChange: (providerId: string | undefined) => void;
-}) {
-  const { t } = useTranslation();
-  return (
-    <div className="space-y-2">
-      <AcpProviderDropdown
-        providers={providers}
-        selectedProvider={value ?? ""}
-        onProviderChange={(providerId) => onChange(providerId || undefined)}
-        allowAuto={true}
-        autoLabel={t.common.auto}
-        showStatusDot={false}
-        ariaLabel={ariaLabel}
-        dataTestId={dataTestId}
-        buttonClassName="flex w-full items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-[#0b1119] dark:text-slate-200 dark:hover:bg-[#111722]"
-        labelClassName="truncate text-left"
-      />
-      <p className="text-[11px] text-slate-500 dark:text-slate-400">
-        {t.kanban.autoFollowsGlobal}
-      </p>
-    </div>
-  );
-}
-
-function SelectControl({
-  className = "",
-  children,
-  ...props
-}: React.SelectHTMLAttributes<HTMLSelectElement> & { children: ReactNode }) {
-  return (
-    <div className={`relative ${props.disabled ? "opacity-70" : ""}`}>
-      <Select
-        {...props}
-        className={`${SELECT_CLASS} ${className}`.trim()}
-      >
-        {children}
-      </Select>
-      <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden="true"/>
-    </div>
-  );
-}
-
-function SpecialistCategoryTabs({
-  category,
-  onChange,
-}: {
-  category: SpecialistCategory;
-  onChange: (category: SpecialistCategory) => void;
-}) {
-  return (
-    <div className="flex flex-wrap gap-2">
-      {SPECIALIST_CATEGORY_OPTIONS.map((option) => (
-        <button
-          key={option.id}
-          type="button"
-          onClick={() => onChange(option.id)}
-          className={`shrink-0 whitespace-nowrap rounded-full border px-2.5 py-1 text-[11px] font-medium transition ${
-            category === option.id
-              ? "border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200"
-              : "border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:text-slate-700 dark:border-slate-700 dark:bg-[#0b1119] dark:text-slate-400 dark:hover:border-slate-600 dark:hover:text-slate-200"
-          }`}
-        >
-          {option.label}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-function getEditableAutomationSteps(automation: ColumnAutomationConfig): KanbanAutomationStep[] {
-  if (automation.steps?.length) {
-    return automation.steps.map((step, index) => ({
-      ...step,
-      id: step.id?.trim() || `step-${index + 1}`,
-      role: step.role ?? "DEVELOPER",
-    }));
-  }
-
-  const fallbackSteps = getKanbanAutomationSteps({ ...automation, enabled: true });
-  if (fallbackSteps.length > 0) {
-    return fallbackSteps.map((step) => ({
-      ...step,
-      role: step.role ?? "DEVELOPER",
-    }));
-  }
-
-  return [createEmptyAutomationStep(0)];
-}
-
-function syncAutomationPrimaryStep(automation: ColumnAutomationConfig): ColumnAutomationConfig {
-  const steps = (automation.steps ?? []).map((step, index) => ({
-    ...step,
-    id: step.id?.trim() || `step-${index + 1}`,
-    transport: getStepTransport(step),
-    role: step.role ?? "DEVELOPER",
-  }));
-  const primaryStep = steps[0];
-  const primaryTransport = getStepTransport(primaryStep);
-
-  return {
-    ...automation,
-    steps,
-    providerId: primaryTransport === "acp" ? primaryStep?.providerId ?? automation.providerId : undefined,
-    role: primaryStep?.role ?? automation.role,
-    specialistId: primaryStep?.specialistId ?? automation.specialistId,
-    specialistName: primaryStep?.specialistName ?? automation.specialistName,
-    specialistLocale: primaryStep?.specialistLocale ?? automation.specialistLocale,
-  };
-}
-
-function updateAutomationSteps(
-  automation: ColumnAutomationConfig,
-  updater: (steps: KanbanAutomationStep[]) => KanbanAutomationStep[],
-): ColumnAutomationConfig {
-  return syncAutomationPrimaryStep({
-    ...automation,
-    steps: updater(getEditableAutomationSteps(automation)),
-  });
 }
 
 export function KanbanSettingsModal({
@@ -517,6 +91,26 @@ export function KanbanSettingsModal({
     [editableColumns],
   );
 
+  const selectedColumn = sortedColumns.find((column) => column.id === selectedColumnId) ?? sortedColumns[0] ?? null;
+  const automationEnabledCount = sortedColumns.filter((column) => columnAutomation[column.id]?.enabled).length;
+  const visibleColumnCount = sortedColumns.filter((column) => column.visible !== false).length;
+
+  const initialSnapshot = useMemo(() => JSON.stringify({
+    columns: normalizeColumns(initialEditableColumns),
+    automation: normalizeAutomationForDirtyCheck(initialColumnAutomation, initialEditableColumns),
+    sessionConcurrencyLimit: Math.max(1, Math.floor(board.sessionConcurrencyLimit ?? 1)),
+    devSessionSupervision: normalizeDevSessionSupervision(board.devSessionSupervision ?? DEFAULT_DEV_SESSION_SUPERVISION),
+  }), [board.devSessionSupervision, board.sessionConcurrencyLimit, initialColumnAutomation, initialEditableColumns]);
+
+  const currentSnapshot = useMemo(() => JSON.stringify({
+    columns: normalizeColumns(editableColumns),
+    automation: normalizeAutomationForDirtyCheck(columnAutomation, editableColumns),
+    sessionConcurrencyLimit: Math.max(1, Math.floor(sessionConcurrencyLimit)),
+    devSessionSupervision: normalizeDevSessionSupervision(devSessionSupervision),
+  }), [columnAutomation, devSessionSupervision, editableColumns, sessionConcurrencyLimit]);
+
+  const isDirty = initialSnapshot !== currentSnapshot;
+
   useEffect(() => {
     if (sortedColumns.length === 0) return;
     if (!sortedColumns.some((column) => column.id === selectedColumnId)) {
@@ -536,41 +130,27 @@ export function KanbanSettingsModal({
     setColumnAutomation((current) => Object.fromEntries(
       Object.entries(current).map(([columnId, automation]) => [
         columnId,
-        updateAutomationSteps(automation, (steps) => steps.map((step) => {
-          const resolved = resolveSpecialistSelection(
-            step.specialistId,
-            step.specialistName,
-            specialists,
-            specialistLanguage,
-          );
+        {
+          ...automation,
+          steps: getEditableAutomationSteps(automation).map((step) => {
+            const resolved = resolveSpecialistSelection(
+              step.specialistId,
+              step.specialistName,
+              specialists,
+              specialistLanguage,
+            );
 
-          return {
-            ...step,
-            specialistId: resolved.specialistId,
-            specialistName: resolved.specialistName,
-            specialistLocale: resolved.specialistId ? specialistLanguage : undefined,
-          };
-        })),
+            return {
+              ...step,
+              specialistId: resolved.specialistId,
+              specialistName: resolved.specialistName,
+              specialistLocale: resolved.specialistId ? specialistLanguage : undefined,
+            };
+          }),
+        },
       ]),
     ));
   }, [specialistLanguage, specialists]);
-
-  const selectedColumn = sortedColumns.find((column) => column.id === selectedColumnId) ?? sortedColumns[0] ?? null;
-  const automationEnabledCount = sortedColumns.filter((column) => columnAutomation[column.id]?.enabled).length;
-  const visibleColumnCount = sortedColumns.filter((column) => column.visible !== false).length;
-  const initialSnapshot = useMemo(() => JSON.stringify({
-    columns: normalizeColumns(initialEditableColumns),
-    automation: normalizeAutomationForDirtyCheck(initialColumnAutomation, initialEditableColumns),
-    sessionConcurrencyLimit: Math.max(1, Math.floor(board.sessionConcurrencyLimit ?? 1)),
-    devSessionSupervision: normalizeDevSessionSupervision(board.devSessionSupervision ?? DEFAULT_DEV_SESSION_SUPERVISION),
-  }), [board.devSessionSupervision, board.sessionConcurrencyLimit, initialColumnAutomation, initialEditableColumns]);
-  const currentSnapshot = useMemo(() => JSON.stringify({
-    columns: normalizeColumns(editableColumns),
-    automation: normalizeAutomationForDirtyCheck(columnAutomation, editableColumns),
-    sessionConcurrencyLimit: Math.max(1, Math.floor(sessionConcurrencyLimit)),
-    devSessionSupervision: normalizeDevSessionSupervision(devSessionSupervision),
-  }), [columnAutomation, devSessionSupervision, editableColumns, sessionConcurrencyLimit]);
-  const isDirty = initialSnapshot !== currentSnapshot;
 
   useEffect(() => {
     const selectedSpecialistId = selectedColumn
@@ -596,7 +176,7 @@ export function KanbanSettingsModal({
       const existing = current[column.id];
       return {
         ...current,
-        [column.id]: syncAutomationPrimaryStep({
+        [column.id]: {
           ...defaultAutomation,
           ...existing,
           enabled: true,
@@ -605,7 +185,7 @@ export function KanbanSettingsModal({
           requiredTaskFields: existing?.requiredTaskFields ?? defaultAutomation.requiredTaskFields,
           autoAdvanceOnSuccess: existing?.autoAdvanceOnSuccess ?? defaultAutomation.autoAdvanceOnSuccess,
           transitionType: existing?.transitionType ?? defaultAutomation.transitionType,
-        }),
+        },
       };
     });
   };
@@ -660,9 +240,8 @@ export function KanbanSettingsModal({
         .filter((column) => column.id !== columnId)
         .sort((a, b) => a.position - b.position)
         .map((column, position) => ({ ...column, position }));
-      const nextSelected = remaining[0]?.id ?? "";
       if (selectedColumnId === columnId) {
-        setSelectedColumnId(nextSelected);
+        setSelectedColumnId(remaining[0]?.id ?? "");
       }
       return remaining;
     });
@@ -747,6 +326,7 @@ export function KanbanSettingsModal({
       setSaving(false);
     }
   };
+
   const handleClearAll = async () => {
     if (!window.confirm(t.kanban.clearAllConfirm)) return;
     setClearingAll(true);
@@ -786,9 +366,7 @@ export function KanbanSettingsModal({
       anchor.click();
       anchor.remove();
       window.URL.revokeObjectURL(downloadUrl);
-      setKanbanYamlResult(
-        t.kanban.exportSuccess.replace("{workspaceId}", workspaceId),
-      );
+      setKanbanYamlResult(t.kanban.exportSuccess.replace("{workspaceId}", workspaceId));
     } catch (error) {
       setKanbanYamlError(error instanceof Error ? error.message : t.kanban.exportFailed);
     } finally {
@@ -868,7 +446,6 @@ export function KanbanSettingsModal({
                   {t.kanban.boardSettingsHint}
                 </p>
               </div>
-
               <div className="flex flex-wrap items-center gap-2">
                 <StatPill label={t.kanban.visible} value={`${visibleColumnCount}/${sortedColumns.length}`} tone="amber" />
                 <StatPill label={t.kanban.automation} value={String(automationEnabledCount)} tone="emerald" />
@@ -881,11 +458,7 @@ export function KanbanSettingsModal({
           <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[304px_minmax(0,1fr)]">
             <aside className="min-h-0 overflow-y-auto overflow-x-hidden border-b border-slate-200/80 bg-slate-50/40 p-2 dark:border-slate-800 dark:bg-[#0a0f16] lg:border-b-0 lg:border-r lg:p-2.5">
               <div className="space-y-2.5">
-                <SectionCard
-                  eyebrow={t.kanban.stageMap}
-                  title={t.kanban.stages}
-                  description=""
-                >
+                <SectionCard eyebrow={t.kanban.stageMap} title={t.kanban.stages}>
                   <div className="mb-2 flex items-center justify-end">
                     <button
                       type="button"
@@ -904,20 +477,18 @@ export function KanbanSettingsModal({
                           key={column.id}
                           type="button"
                           onClick={() => setSelectedColumnId(column.id)}
-                          className={`min-w-0 rounded-[10px] border px-2 py-1 transition ${
+                          className={`min-w-0 rounded-[10px] border px-2 py-1 text-left transition ${
                             active
                               ? "border-slate-900 bg-slate-900 text-white shadow-lg shadow-slate-900/10 dark:border-amber-400/40 dark:bg-slate-900"
                               : "border-slate-200 bg-white hover:border-slate-300 dark:border-slate-800 dark:bg-[#111722] dark:hover:border-slate-700"
                           }`}
                         >
-                          <div className="flex min-w-0 items-start justify-between gap-2 text-left">
+                          <div className="flex min-w-0 items-start justify-between gap-2">
                             <div className="min-w-0">
                               <div className={`text-[12px] font-semibold ${active ? "text-white" : "text-slate-900 dark:text-slate-100"}`}>{column.name}</div>
                               <div className={`mt-1 flex flex-wrap items-center gap-1.5 ${active ? "text-slate-200" : "text-slate-500 dark:text-slate-400"}`}>
                                 <span className={`rounded-full px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.16em] ${
-                                  active
-                                    ? "bg-white/10 text-slate-200"
-                                    : "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400"
+                                  active ? "bg-white/10 text-slate-200" : "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400"
                                 }`}>
                                   {getStageTypeLabel(column.stage, t)}
                                 </span>
@@ -935,13 +506,9 @@ export function KanbanSettingsModal({
                                 {column.visible !== false ? t.kanban.visibleOnBoard : t.kanban.hiddenFromBoard}
                               </div>
                             </div>
-                            <div
-                              className={`shrink-0 rounded-full px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.18em] ${
-                                active
-                                  ? "bg-white/10 text-slate-200"
-                                  : "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400"
-                              }`}
-                            >
+                            <div className={`shrink-0 rounded-full px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.18em] ${
+                              active ? "bg-white/10 text-slate-200" : "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400"
+                            }`}>
                               {getAutomationTransportLabel(column, automation, t)}
                             </div>
                           </div>
@@ -950,11 +517,8 @@ export function KanbanSettingsModal({
                     })}
                   </div>
                 </SectionCard>
-                <SectionCard
-                  eyebrow={t.kanban.runtime}
-                  title={t.kanban.runtimeSettings}
-                  description={t.kanban.runtimeSettingsHint}
-                >
+
+                <SectionCard eyebrow={t.kanban.runtime} title={t.kanban.runtimeSettings} description={t.kanban.runtimeSettingsHint}>
                   <div className="space-y-3">
                     <div>
                       <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500 dark:text-slate-400">
@@ -973,86 +537,70 @@ export function KanbanSettingsModal({
                           />
                         </label>
                       </div>
-                      <p className="mt-1.5 text-xs leading-5 text-slate-500 dark:text-slate-400">
-                        {t.kanban.extraCardsWait}
-                      </p>
+                      <p className="mt-1.5 text-xs leading-5 text-slate-500 dark:text-slate-400">{t.kanban.extraCardsWait}</p>
                     </div>
                     <div>
                       <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500 dark:text-slate-400">
                         {t.kanban.devSupervision}
                       </div>
                       <div className="mt-1.5 grid gap-2 sm:grid-cols-2">
-                        <label className="space-y-1 text-xs font-medium text-slate-600 dark:text-slate-300">
-                          <span>{t.kanban.mode}</span>
-                          <SelectControl
-                            aria-label="Dev supervision mode"
-                            value={devSessionSupervision.mode}
-                            onChange={(event) => setDevSessionSupervision((current) => ({
-                              ...current,
-                              mode: event.target.value as KanbanDevSessionSupervisionInfo["mode"],
-                            }))}
-                          >
-                            <option value="disabled">{t.kanban.off}</option>
-                            <option value="watchdog_retry">{t.kanban.watchdogRetry}</option>
-                            <option value="ralph_loop">{t.kanban.ralphLoop}</option>
-                          </SelectControl>
-                        </label>
-                        <label className="space-y-1 text-xs font-medium text-slate-600 dark:text-slate-300">
-                          <span>{t.kanban.idleMin}</span>
-                          <input
-                            aria-label="Dev supervision idle timeout"
-                            type="number"
-                            min={1}
-                            max={120}
-                            value={devSessionSupervision.inactivityTimeoutMinutes}
-                            onChange={(event) => setDevSessionSupervision((current) => ({
-                              ...current,
-                              inactivityTimeoutMinutes: Math.max(1, Number.parseInt(event.target.value || "10", 10) || 10),
-                            }))}
-                            className="h-9 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm text-slate-900 outline-none transition focus:border-amber-400 dark:border-slate-700 dark:bg-[#0b1119] dark:text-slate-100"
-                          />
-                        </label>
-                        <label className="space-y-1 text-xs font-medium text-slate-600 dark:text-slate-300">
-                          <span>{t.kanban.retries}</span>
-                          <input
-                            aria-label="Dev supervision max recovery attempts"
-                            type="number"
-                            min={0}
-                            max={10}
-                            value={devSessionSupervision.maxRecoveryAttempts}
-                            onChange={(event) => setDevSessionSupervision((current) => ({
-                              ...current,
-                              maxRecoveryAttempts: Math.max(0, Number.parseInt(event.target.value || "0", 10) || 0),
-                            }))}
-                            className="h-9 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm text-slate-900 outline-none transition focus:border-amber-400 dark:border-slate-700 dark:bg-[#0b1119] dark:text-slate-100"
-                          />
-                        </label>
-                        <label className="space-y-1 text-xs font-medium text-slate-600 dark:text-slate-300">
-                          <span>{t.kanban.completion}</span>
-                          <SelectControl
-                            aria-label="Dev supervision completion requirement"
-                            value={devSessionSupervision.completionRequirement}
-                            onChange={(event) => setDevSessionSupervision((current) => ({
-                              ...current,
-                              completionRequirement: event.target.value as KanbanDevSessionSupervisionInfo["completionRequirement"],
-                            }))}
-                            disabled={devSessionSupervision.mode !== "ralph_loop"}
-                            className="disabled:cursor-not-allowed"
-                          >
-                            <option value="turn_complete">{t.kanban.turnComplete}</option>
-                            <option value="completion_summary">{t.kanban.completionSummary}</option>
-                            <option value="verification_report">{t.kanban.verificationReport}</option>
-                          </SelectControl>
-                        </label>
+                        <LabeledSelect
+                          label={t.kanban.mode}
+                          ariaLabel="Dev supervision mode"
+                          value={devSessionSupervision.mode}
+                          options={[
+                            { value: "disabled", label: t.kanban.off },
+                            { value: "watchdog_retry", label: t.kanban.watchdogRetry },
+                            { value: "ralph_loop", label: t.kanban.ralphLoop },
+                          ]}
+                          onChange={(value) => setDevSessionSupervision((current) => ({
+                            ...current,
+                            mode: value as KanbanDevSessionSupervisionInfo["mode"],
+                          }))}
+                        />
+                        <LabeledNumberInput
+                          label={t.kanban.idleMin}
+                          ariaLabel="Dev supervision idle timeout"
+                          min={1}
+                          max={120}
+                          value={devSessionSupervision.inactivityTimeoutMinutes}
+                          onChange={(value) => setDevSessionSupervision((current) => ({
+                            ...current,
+                            inactivityTimeoutMinutes: Math.max(1, value || 10),
+                          }))}
+                        />
+                        <LabeledNumberInput
+                          label={t.kanban.retries}
+                          ariaLabel="Dev supervision max recovery attempts"
+                          min={0}
+                          max={10}
+                          value={devSessionSupervision.maxRecoveryAttempts}
+                          onChange={(value) => setDevSessionSupervision((current) => ({
+                            ...current,
+                            maxRecoveryAttempts: Math.max(0, value || 0),
+                          }))}
+                        />
+                        <LabeledSelect
+                          label={t.kanban.completion}
+                          ariaLabel="Dev supervision completion requirement"
+                          value={devSessionSupervision.completionRequirement}
+                          disabled={devSessionSupervision.mode !== "ralph_loop"}
+                          options={[
+                            { value: "turn_complete", label: t.kanban.turnComplete },
+                            { value: "completion_summary", label: t.kanban.completionSummary },
+                            { value: "verification_report", label: t.kanban.verificationReport },
+                          ]}
+                          onChange={(value) => setDevSessionSupervision((current) => ({
+                            ...current,
+                            completionRequirement: value as KanbanDevSessionSupervisionInfo["completionRequirement"],
+                          }))}
+                        />
                       </div>
                     </div>
                   </div>
                 </SectionCard>
-                <SectionCard
-                  eyebrow={t.common.import}
-                  title={t.kanban.boardTransfer}
-                  description={t.kanban.boardTransferHint}
-                >
+
+                <SectionCard eyebrow={t.common.import} title={t.kanban.boardTransfer} description={t.kanban.boardTransferHint}>
                   <div className="space-y-2">
                     <label className="block space-y-1">
                       <span className="block text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-300">
@@ -1068,14 +616,9 @@ export function KanbanSettingsModal({
                       />
                     </label>
                     <div className="flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        onClick={() => void handleExportKanbanYaml()}
-                        disabled={isExportingKanbanYaml}
-                        className="rounded-md border border-slate-300 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-700 transition hover:bg-white disabled:opacity-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-[#111722]"
-                      >
+                      <ActionButton onClick={() => void handleExportKanbanYaml()} disabled={isExportingKanbanYaml}>
                         {isExportingKanbanYaml ? t.kanban.exportingYaml : t.kanban.exportYaml}
-                      </button>
+                      </ActionButton>
                       <input
                         ref={kanbanImportInputRef}
                         type="file"
@@ -1083,37 +626,19 @@ export function KanbanSettingsModal({
                         className="hidden"
                         onChange={(event) => {
                           const file = event.target.files?.[0];
-                          if (file) {
-                            void handleImportKanbanYaml(file);
-                          }
+                          if (file) void handleImportKanbanYaml(file);
                         }}
                       />
-                      <button
-                        type="button"
-                        onClick={() => kanbanImportInputRef.current?.click()}
-                        disabled={isImportingKanbanYaml}
-                        className="rounded-md border border-slate-300 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-700 transition hover:bg-white disabled:opacity-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-[#111722]"
-                      >
+                      <ActionButton onClick={() => kanbanImportInputRef.current?.click()} disabled={isImportingKanbanYaml}>
                         {isImportingKanbanYaml ? t.kanban.importingYaml : t.kanban.importYaml}
-                      </button>
+                      </ActionButton>
                     </div>
-                    {kanbanYamlError ? (
-                      <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-900/40 dark:bg-red-950/40 dark:text-red-300">
-                        {kanbanYamlError}
-                      </div>
-                    ) : null}
-                    {kanbanYamlResult ? (
-                      <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-950/40 dark:text-emerald-300">
-                        {kanbanYamlResult}
-                      </div>
-                    ) : null}
+                    {kanbanYamlError ? <StatusMessage tone="error">{kanbanYamlError}</StatusMessage> : null}
+                    {kanbanYamlResult ? <StatusMessage tone="success">{kanbanYamlResult}</StatusMessage> : null}
                   </div>
                 </SectionCard>
-                <SectionCard
-                  eyebrow={t.common.delete}
-                  title={t.kanban.dangerZone}
-                  description={t.kanban.dangerZoneHint}
-                >
+
+                <SectionCard eyebrow={t.common.delete} title={t.kanban.dangerZone} description={t.kanban.dangerZoneHint}>
                   <button
                     onClick={() => void handleClearAll()}
                     disabled={saving || clearingAll}
@@ -1124,6 +649,7 @@ export function KanbanSettingsModal({
                 </SectionCard>
               </div>
             </aside>
+
             <main className="min-h-0 overflow-y-auto bg-white p-2 dark:bg-[#0d1118] sm:p-2.5 xl:p-3">
               {selectedColumn ? (
                 <div className="space-y-3">
@@ -1133,98 +659,66 @@ export function KanbanSettingsModal({
                     description={t.kanban.selectedStageHint.replace("{stage}", getStageTypeLabel(selectedColumn.stage, t))}
                   >
                     <div className="flex flex-wrap items-end gap-3 xl:flex-nowrap">
-                    <label className="w-[14rem] shrink-0 space-y-1 text-sm font-medium">
-                      <span className="text-slate-700 dark:text-slate-300">{t.kanban.name}</span>
-                      <input
-                        aria-label="Stage name"
-                        type="text"
+                      <LabeledTextInput
+                        label={t.kanban.name}
+                        ariaLabel="Stage name"
                         value={selectedColumn.name}
-                        onChange={(event) => updateColumn(selectedColumn.id, (current) => ({
-                          ...current,
-                          name: event.target.value,
-                        }))}
-                        className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-amber-400 dark:border-slate-700 dark:bg-[#0b1119] dark:text-slate-100"
+                        onChange={(value) => updateColumn(selectedColumn.id, (current) => ({ ...current, name: value }))}
                       />
-                    </label>
-                    <label className="w-40 shrink-0 space-y-1 text-sm font-medium">
-                      <span className="text-slate-700 dark:text-slate-300">{t.kanban.stageType}</span>
-                      <SelectControl
-                        aria-label="Stage type"
+                      <LabeledSelect
+                        label={t.kanban.stageType}
+                        ariaLabel="Stage type"
                         value={selectedColumn.stage}
-                        onChange={(event) => handleStageTypeChange(selectedColumn.id, event.target.value)}
+                        options={stageTypeOptions.map((option) => ({ value: option.value, label: option.label }))}
+                        onChange={(value) => handleStageTypeChange(selectedColumn.id, value)}
                         className="h-10"
-                      >
-                        {stageTypeOptions.map((option) => (
-                          <option key={option.value} value={option.value}>
-                            {option.label}
-                          </option>
-                        ))}
-                      </SelectControl>
-                    </label>
-                    <label className="w-40 shrink-0 space-y-1 text-sm font-medium">
-                      <span className="text-slate-700 dark:text-slate-300">{t.kanban.columnWidth}</span>
-                      <SelectControl
-                        aria-label="Column width"
+                        containerClassName="w-40 shrink-0"
+                      />
+                      <LabeledSelect
+                        label={t.kanban.columnWidth}
+                        ariaLabel="Column width"
                         value={selectedColumn.width || "standard"}
-                        onChange={(event) => updateColumn(selectedColumn.id, (current) => ({
+                        options={[
+                          { value: "compact", label: t.kanban.compact },
+                          { value: "standard", label: t.kanban.standard },
+                          { value: "wide", label: t.kanban.wide },
+                        ]}
+                        onChange={(value) => updateColumn(selectedColumn.id, (current) => ({
                           ...current,
-                          width: event.target.value as "compact" | "standard" | "wide",
+                          width: value as "compact" | "standard" | "wide",
                         }))}
                         className="h-10"
-                      >
-                        <option value="compact">{t.kanban.compact}</option>
-                        <option value="standard">{t.kanban.standard}</option>
-                        <option value="wide">{t.kanban.wide}</option>
-                      </SelectControl>
-                    </label>
-                    <label className="flex h-10 items-center gap-2 whitespace-nowrap rounded-md border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 dark:border-slate-700 dark:bg-[#0b1119] dark:text-slate-300">
-                      <input
-                        type="checkbox"
-                        aria-label={`Toggle visibility for ${selectedColumn.name}`}
-                        checked={selectedColumn.visible !== false}
-                        onChange={(event) => updateColumnVisibility(selectedColumn, event.target.checked)}
-                        className="h-4 w-4 rounded border-slate-300 text-amber-500 focus:ring-amber-500"
+                        containerClassName="w-40 shrink-0"
                       />
-                      <span>{t.kanban.visibleOnBoard}</span>
-                    </label>
-                    <label className="flex h-10 items-center gap-2 whitespace-nowrap rounded-md border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 dark:border-slate-700 dark:bg-[#0b1119] dark:text-slate-300">
-                      <input
-                        type="checkbox"
-                        aria-label={`Toggle automation for ${selectedColumn.name}`}
+                      <ToggleChip
+                        ariaLabel={`Toggle visibility for ${selectedColumn.name}`}
+                        checked={selectedColumn.visible !== false}
+                        onChange={(checked) => updateColumnVisibility(selectedColumn, checked)}
+                      >
+                        {t.kanban.visibleOnBoard}
+                      </ToggleChip>
+                      <ToggleChip
+                        ariaLabel={`Toggle automation for ${selectedColumn.name}`}
                         checked={getColumnWorkflowMode(selectedColumn, columnAutomation[selectedColumn.id] ?? { enabled: false }) === "automated"}
                         disabled={isManualOnlyColumn(selectedColumn)}
-                        onChange={(event) => toggleColumnAutomation(selectedColumn, event.target.checked)}
-                        className="h-4 w-4 rounded border-slate-300 text-amber-500 focus:ring-amber-500"
-                      />
-                      <span>{t.kanban.automation}</span>
-                    </label>
-
-                    {selectedColumn.stage === "blocked" ? (
-                      <div className="flex h-10 items-center rounded-md border border-amber-200 bg-amber-50 px-3 text-sm text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-400 xl:ml-auto">
-                        {t.kanban.manualLaneOnly}
-                      </div>
-                    ) : null}
+                        onChange={(checked) => toggleColumnAutomation(selectedColumn, checked)}
+                      >
+                        {t.kanban.automation}
+                      </ToggleChip>
+                      {selectedColumn.stage === "blocked" ? (
+                        <div className="flex h-10 items-center rounded-md border border-amber-200 bg-amber-50 px-3 text-sm text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-400 xl:ml-auto">
+                          {t.kanban.manualLaneOnly}
+                        </div>
+                      ) : null}
                     </div>
                     <div className="mt-3 flex flex-wrap items-center gap-2">
                       <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-300">{t.kanban.stageOrder}</span>
-                      <button
-                        type="button"
-                        aria-label={`Move ${selectedColumn.name} up`}
-                        disabled={sortedColumns[0]?.id === selectedColumn.id}
-                        onClick={() => moveColumn(selectedColumn.id, "up")}
-                        className="rounded-md border border-slate-200 px-2 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-[#0b1119]"
-                      >
+                      <ActionButton ariaLabel={`Move ${selectedColumn.name} up`} onClick={() => moveColumn(selectedColumn.id, "up")} disabled={sortedColumns[0]?.id === selectedColumn.id}>
                         {t.kanban.up}
-                      </button>
-                      <button
-                        type="button"
-                        aria-label={`Move ${selectedColumn.name} down`}
-                        disabled={sortedColumns[sortedColumns.length - 1]?.id === selectedColumn.id}
-                        onClick={() => moveColumn(selectedColumn.id, "down")}
-                        className="rounded-md border border-slate-200 px-2 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-[#0b1119]"
-                      >
+                      </ActionButton>
+                      <ActionButton ariaLabel={`Move ${selectedColumn.name} down`} onClick={() => moveColumn(selectedColumn.id, "down")} disabled={sortedColumns[sortedColumns.length - 1]?.id === selectedColumn.id}>
                         {t.kanban.down}
-                      </button>
+                      </ActionButton>
                       <button
                         type="button"
                         aria-label={`Delete ${selectedColumn.name}`}
@@ -1249,9 +743,7 @@ export function KanbanSettingsModal({
                       specialistCategory={specialistCategory}
                       specialistLanguage={specialistLanguage}
                       onSpecialistCategoryChange={setSpecialistCategory}
-                      onUpdate={(updated) => {
-                        updateColumnAutomation(selectedColumn.id, updated);
-                      }}
+                      onUpdate={(updated) => updateColumnAutomation(selectedColumn.id, updated)}
                     />
                   </div>
                 </div>
@@ -1265,11 +757,9 @@ export function KanbanSettingsModal({
 
           <div className="border-t border-slate-200/80 bg-slate-50/80 px-4 py-2.5 dark:border-slate-800 dark:bg-[#0a0f16] sm:px-5">
             <div className="flex flex-col gap-2 lg:flex-row lg:items-end lg:justify-between">
-              <div className="min-w-0 flex-1 space-y-1">
-                <p className="min-w-0 text-xs leading-5 text-slate-500 dark:text-slate-400">
-                  {t.kanban.changesApplyHint}
-                </p>
-              </div>
+              <p className="min-w-0 flex-1 text-xs leading-5 text-slate-500 dark:text-slate-400">
+                {t.kanban.changesApplyHint}
+              </p>
               <div className="flex items-center justify-end gap-2">
                 <button
                   onClick={requestClose}
@@ -1288,6 +778,7 @@ export function KanbanSettingsModal({
               </div>
             </div>
           </div>
+
           {showUnsavedChangesPrompt ? (
             <div className="absolute inset-0 z-10 flex items-center justify-center bg-slate-950/45 px-4">
               <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl dark:border-slate-800 dark:bg-[#0d1118]">
@@ -1330,574 +821,156 @@ export function KanbanSettingsModal({
   );
 }
 
-function ColumnAutomationWorkspace({
-  column,
-  automation,
-  availableProviders,
-  specialists,
-  specialistCategory,
-  specialistLanguage,
-  onSpecialistCategoryChange,
-  onUpdate,
+function ActionButton({
+  children,
+  onClick,
+  disabled,
+  ariaLabel,
 }: {
-  column: KanbanBoardInfo["columns"][0];
-  automation: ColumnAutomationConfig;
-  availableProviders: AcpProviderInfo[];
-  specialists: SpecialistOption[];
-  specialistCategory: SpecialistCategory;
-  specialistLanguage: KanbanSpecialistLanguage;
-  onSpecialistCategoryChange: (category: SpecialistCategory) => void;
-  onUpdate: (automation: ColumnAutomationConfig) => void;
+  children: ReactNode;
+  onClick: () => void;
+  disabled?: boolean;
+  ariaLabel?: string;
 }) {
-  const { t } = useTranslation();
-  const manualOnly = isManualOnlyColumn(column);
-  const artifactOptions = useMemo(() => getArtifactOptions(t), [t]);
-  const automationSteps = useMemo(
-    () => getEditableAutomationSteps(automation),
-    [automation],
-  );
-  const filteredSpecialists = useMemo(() => {
-    const categorySpecialists = filterSpecialistsByCategory(specialists, specialistCategory);
-    const baseSpecialists = categorySpecialists.length > 0 ? categorySpecialists : specialists;
-    const fallbackSpecialists = automationSteps
-      .map((step) => findSpecialistById(specialists, step.specialistId))
-      .filter((specialist): specialist is SpecialistOption => Boolean(specialist))
-      .filter((specialist) => !baseSpecialists.some((item) => item.id === specialist.id));
-    return [...baseSpecialists, ...fallbackSpecialists];
-  }, [automationSteps, specialistCategory, specialists]);
-  const firstStep = automationSteps[0];
-  const firstStepTransport = getStepTransport(firstStep);
-  const applyDefaultAutomation = () => {
-    onUpdate(getDefaultAutomationForStage(column.stage));
-  };
-
-  if (manualOnly) {
-    return (
-      <div className="rounded-lg border border-slate-200 bg-[linear-gradient(135deg,_rgba(148,163,184,0.08),_rgba(255,255,255,0.98)_38%,_rgba(255,255,255,1)_100%)] p-3 dark:border-slate-800 dark:bg-[linear-gradient(135deg,_rgba(148,163,184,0.08),_rgba(15,23,42,0.92)_38%,_rgba(13,17,24,0.98)_100%)]">
-        <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-          {t.kanban.blockedManualOnly}
-        </p>
-        <p className="mt-1 text-sm leading-6 text-slate-600 dark:text-slate-300">
-          {t.kanban.blockedManualOnlyDesc}
-        </p>
-        <p className="mt-2 text-xs leading-5 text-slate-500 dark:text-slate-400">
-          {t.kanban.automationUnavailable}
-        </p>
-      </div>
-    );
-  }
   return (
-    <div className="space-y-2">
-      {automation.enabled ? (
-        <div className="space-y-2">
-          <div className="space-y-2">
-            <div className="flex justify-end">
-              <button
-                type="button"
-                onClick={applyDefaultAutomation}
-                className="rounded-md border border-slate-200 px-2.5 py-1.5 text-xs font-semibold uppercase tracking-[0.14em] text-slate-700 transition hover:bg-white dark:border-slate-700 dark:text-slate-200 dark:hover:bg-[#111722]"
-              >
-                {t.kanban.defaults}
-              </button>
-            </div>
-            <div className="grid grid-cols-1 gap-2.5 xl:grid-cols-6">
-              <ConfigField label={t.kanban.transport}>
-                <SelectControl
-                  aria-label={t.kanban.transport}
-                  value={firstStepTransport}
-                  onChange={(event) => onUpdate(updateAutomationSteps(automation, (steps) => steps.map((currentStep, stepIndex) => (
-                    stepIndex === 0
-                      ? setAutomationStepTransport(currentStep, event.target.value as KanbanTransport)
-                      : currentStep
-                  ))))}
-                >
-                  <option value="acp">ACP</option>
-                </SelectControl>
-              </ConfigField>
-              <ConfigField label={t.kanban.providerLabel}>
-                <ProviderField
-                  providers={availableProviders}
-                  value={firstStep?.providerId}
-                  ariaLabel="Provider"
-                  dataTestId="kanban-settings-provider"
-                  onChange={(providerId) => onUpdate(updateAutomationSteps(automation, (steps) => steps.map((currentStep, stepIndex) => (
-                    stepIndex === 0
-                      ? { ...currentStep, providerId }
-                      : currentStep
-                  ))))}
-                />
-              </ConfigField>
-              <ConfigField label={t.kanban.role}>
-                <SelectControl
-                  aria-label={t.kanban.role}
-                  value={firstStep?.role ?? "DEVELOPER"}
-                  onChange={(event) => onUpdate(updateAutomationSteps(automation, (steps) => steps.map((currentStep, stepIndex) => (
-                    stepIndex === 0
-                      ? { ...currentStep, role: event.target.value }
-                      : currentStep
-                  ))))}
-                >
-                  {ROLE_OPTIONS.map((role) => (
-                    <option key={role} value={role}>
-                      {role}
-                    </option>
-                  ))}
-                </SelectControl>
-              </ConfigField>
-              <ConfigField label={t.kanban.specialist}>
-                <div className="space-y-1.5">
-                  <SelectControl
-                    aria-label={t.kanban.specialist}
-                    value={getLanguageSpecificSpecialistId(firstStep?.specialistId, specialistLanguage) ?? ""}
-                    onChange={(event) => {
-                      const specialist = findSpecialistById(specialists, event.target.value);
-                      onUpdate(updateAutomationSteps(automation, (steps) => steps.map((currentStep, stepIndex) => (
-                        stepIndex === 0
-                          ? {
-                            ...currentStep,
-                            specialistId: event.target.value || undefined,
-                            specialistName: specialist?.name,
-                            specialistLocale: event.target.value ? specialistLanguage : undefined,
-                            role: specialist?.role ?? currentStep.role,
-                          }
-                          : currentStep
-                      ))));
-                    }}
-                  >
-                    <option value="">{KANBAN_SPECIALIST_LANGUAGE_LABELS[specialistLanguage].noSpecialist}</option>
-                    {filteredSpecialists.map((specialist) => (
-                      <option key={specialist.id} value={specialist.id}>
-                        {getSpecialistDisplayName(specialist)}
-                      </option>
-                    ))}
-                  </SelectControl>
-                  <SpecialistCategoryTabs
-                    category={specialistCategory}
-                    onChange={onSpecialistCategoryChange}
-                  />
-                </div>
-              </ConfigField>
-              <ConfigField label={t.kanban.trigger}>
-                <SelectControl
-                  aria-label="Trigger moment"
-                  value={automation.transitionType ?? "entry"}
-                  onChange={(event) => onUpdate({ ...automation, transitionType: event.target.value as "entry" | "exit" | "both" })}
-                >
-                  <option value="entry">{t.kanban.onEntry}</option>
-                  <option value="exit">{t.kanban.onExit}</option>
-                  <option value="both">{t.kanban.bothDirections}</option>
-                </SelectControl>
-              </ConfigField>
-            </div>
-          </div>
-          <section className="border-t border-slate-200/80 pt-3 dark:border-slate-800">
-            <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-400 dark:text-slate-500">
-              {t.kanban.advanced}
-            </div>
-            <div className="space-y-2">
-                    {automationSteps.length > 1 ? automationSteps.map((step, index) => {
-                      const stepSpecialist = findSpecialistById(specialists, step.specialistId) ?? null;
-                      const stepTransport = getStepTransport(step);
-                      return (
-                        <div key={step.id} className="rounded-md border border-slate-200 bg-slate-50/60 px-2 py-2 dark:border-slate-800 dark:bg-[#111722]">
-                          <div className="grid grid-cols-1 gap-2 md:grid-cols-[minmax(0,132px)_minmax(0,1fr)_auto] md:items-start">
-                            <div className="min-w-0">
-                              <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-400 dark:text-slate-500">
-                                {t.kanban.stepLabel.replace("{index}", String(index + 1))}
-                              </div>
-                              <div className="mt-0.5 truncate text-[13px] font-semibold text-slate-900 dark:text-slate-100">
-                                {stepTransport === "a2a"
-                                  ? formatAgentCardTarget(step.agentCardUrl) ?? getSpecialistDisplayName(stepSpecialist) ?? step.specialistName ?? step.role ?? "A2A"
-                                  : getSpecialistDisplayName(stepSpecialist) ?? step.specialistName ?? step.role ?? "DEVELOPER"}
-                              </div>
-                            </div>
-                            <div className="grid grid-cols-1 gap-2 xl:grid-cols-6">
-                              <ConfigField label={`Transport ${index + 1}`}>
-                                <SelectControl
-                                  aria-label={`Transport ${index + 1}`}
-                                  value={stepTransport}
-                                  onChange={(event) => onUpdate(updateAutomationSteps(automation, (steps) => steps.map((currentStep, stepIndex) => (
-                                    stepIndex === index
-                                      ? setAutomationStepTransport(currentStep, event.target.value as KanbanTransport)
-                                      : currentStep
-                                  ))))}
-                                >
-                                  <option value="acp">ACP</option>
-                                </SelectControl>
-                              </ConfigField>
-                              <ConfigField label={`Provider ${index + 1}`}>
-                                <ProviderField
-                                  providers={availableProviders}
-                                  value={step.providerId}
-                                  ariaLabel={`Provider ${index + 1}`}
-                                  dataTestId={`kanban-settings-provider-${index + 1}`}
-                                  onChange={(providerId) => onUpdate(updateAutomationSteps(automation, (steps) => steps.map((currentStep, stepIndex) => (
-                                    stepIndex === index
-                                      ? { ...currentStep, providerId }
-                                      : currentStep
-                                  ))))}
-                                />
-                              </ConfigField>
-                              {stepTransport === "a2a" && (
-                                <ConfigField label={`Auth Config ID ${index + 1}`}>
-                                  <input
-                                    aria-label={`Auth Config ID ${index + 1}`}
-                                    value={step.authConfigId ?? ""}
-                                    onChange={(event) => onUpdate(updateAutomationSteps(automation, (steps) => steps.map((currentStep, stepIndex) => (
-                                      stepIndex === index
-                                        ? { ...currentStep, authConfigId: event.target.value || undefined }
-                                        : currentStep
-                                    ))))}
-                                    placeholder="agent-auth"
-                                    className={INPUT_CLASS}
-                                  />
-                                </ConfigField>
-                              )}
-                              <ConfigField label={`Role ${index + 1}`}>
-                                <SelectControl
-                                  aria-label={`Role ${index + 1}`}
-                                  value={step.role ?? "DEVELOPER"}
-                                  onChange={(event) => onUpdate(updateAutomationSteps(automation, (steps) => steps.map((currentStep, stepIndex) => (
-                                    stepIndex === index
-                                      ? { ...currentStep, role: event.target.value }
-                                      : currentStep
-                                  ))))}
-                                >
-                                  {ROLE_OPTIONS.map((role) => (
-                                    <option key={role} value={role}>
-                                      {role}
-                                    </option>
-                                  ))}
-                                </SelectControl>
-                              </ConfigField>
-
-                              <ConfigField label={`Specialist ${index + 1}`}>
-                                <SelectControl
-                                  aria-label={`Specialist ${index + 1}`}
-                                  value={getLanguageSpecificSpecialistId(step.specialistId, specialistLanguage) ?? ""}
-                                  onChange={(event) => {
-                                    const specialist = findSpecialistById(specialists, event.target.value);
-                                    onUpdate(updateAutomationSteps(automation, (steps) => steps.map((currentStep, stepIndex) => (
-                                      stepIndex === index
-                                        ? {
-                                          ...currentStep,
-                                          specialistId: event.target.value || undefined,
-                                          specialistName: specialist?.name,
-                                          specialistLocale: event.target.value ? specialistLanguage : undefined,
-                                          role: specialist?.role ?? currentStep.role,
-                                        }
-                                        : currentStep
-                                    ))));
-                                  }}
-                                >
-                                  <option value="">{KANBAN_SPECIALIST_LANGUAGE_LABELS[specialistLanguage].noSpecialist}</option>
-                                  {filteredSpecialists.map((specialist) => (
-                                    <option key={specialist.id} value={specialist.id}>
-                                      {getSpecialistDisplayName(specialist)}
-                                    </option>
-                                  ))}
-                                </SelectControl>
-                              </ConfigField>
-                            </div>
-                            <div className="flex flex-wrap items-center gap-1.5 md:justify-end">
-                              <button
-                                type="button"
-                                aria-label={`Move step ${index + 1} up`}
-                                disabled={index === 0}
-                                onClick={() => onUpdate(updateAutomationSteps(automation, (steps) => {
-                                  const nextSteps = [...steps];
-                                  [nextSteps[index - 1], nextSteps[index]] = [nextSteps[index], nextSteps[index - 1]];
-                                  return nextSteps;
-                                }))}
-                                className="rounded-md border border-slate-200 px-2 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-[#0b1119]"
-                              >
-                                Up
-                              </button>
-                              <button
-                                type="button"
-                                aria-label={`Move step ${index + 1} down`}
-                                disabled={index === automationSteps.length - 1}
-                                onClick={() => onUpdate(updateAutomationSteps(automation, (steps) => {
-                                  const nextSteps = [...steps];
-                                  [nextSteps[index], nextSteps[index + 1]] = [nextSteps[index + 1], nextSteps[index]];
-                                  return nextSteps;
-                                }))}
-                                className="rounded-md border border-slate-200 px-2 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-[#0b1119]"
-                              >
-                                Down
-                              </button>
-                              <button
-                                type="button"
-                                aria-label={`Remove step ${index + 1}`}
-                                disabled={automationSteps.length === 1}
-                                onClick={() => onUpdate(updateAutomationSteps(automation, (steps) => {
-                                  const nextSteps = steps.filter((_, stepIndex) => stepIndex !== index);
-                                  return nextSteps.length > 0 ? nextSteps : [createEmptyAutomationStep(0)];
-                                }))}
-                                className="rounded-md border border-rose-200 px-2 py-1 text-xs font-medium text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-rose-500/30 dark:text-rose-300 dark:hover:bg-rose-500/10"
-                              >
-                                Remove
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    }) : (
-                      <div className="rounded-md border border-dashed border-slate-300 bg-slate-50 px-3 py-3 text-xs leading-5 text-slate-500 dark:border-slate-700 dark:bg-[#111722] dark:text-slate-400">
-                        {t.kanban.singleStepAdvancedHint}
-                      </div>
-                    )}
-                    <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-slate-200 bg-slate-50 px-2.5 py-2 dark:border-slate-800 dark:bg-[#111722]">
-                      <div className="text-[13px] font-semibold text-slate-900 dark:text-slate-100">{t.kanban.automationSteps}</div>
-                      <button
-                        type="button"
-                        onClick={() => onUpdate(updateAutomationSteps(automation, (steps) => [...steps, createEmptyAutomationStep(steps.length)]))}
-                        className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.14em] text-slate-700 transition hover:border-slate-400 hover:bg-white dark:border-slate-700 dark:text-slate-200 dark:hover:bg-[#0b1119]"
-                      >
-                        {t.kanban.addStep}
-                      </button>
-                    </div>
-                    <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
-                      {artifactOptions.map((artifact) => {
-                        const checked = automation.requiredArtifacts?.includes(artifact.id) ?? false;
-                        return (
-                          <label
-                            key={artifact.id}
-                            className={`flex cursor-pointer flex-col gap-1.5 rounded-lg border px-3 py-2.5 transition ${
-                              checked
-                                ? "border-amber-300 bg-amber-50 dark:border-amber-500/30 dark:bg-amber-500/10"
-                                : "border-slate-200 bg-white hover:border-slate-300 dark:border-slate-800 dark:bg-[#111722] dark:hover:border-slate-700"
-                            }`}
-                          >
-                            <div className="flex items-center justify-between gap-3">
-                              <span className="text-[13px] font-semibold text-slate-900 dark:text-slate-100">{artifact.label}</span>
-                              <input
-                                type="checkbox"
-                                checked={checked}
-                                onChange={(event) => {
-                                  const current = new Set(automation.requiredArtifacts ?? []);
-                                  if (event.target.checked) {
-                                    current.add(artifact.id);
-                                  } else {
-                                    current.delete(artifact.id);
-                                  }
-                                  onUpdate({
-                                    ...automation,
-                                    requiredArtifacts: current.size > 0 ? Array.from(current) : undefined,
-                                  });
-                                }}
-                                className="h-4 w-4 rounded border-slate-300 text-amber-500 focus:ring-amber-500"
-                              />
-                            </div>
-                            <p className="text-xs leading-5 text-slate-500 dark:text-slate-400">{artifact.hint}</p>
-                          </label>
-                        );
-                      })}
-                    </div>
-                    <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 dark:border-slate-800 dark:bg-[#111722]">
-                      <div className="mb-2">
-                        <div className="text-[13px] font-semibold text-slate-900 dark:text-slate-100">{t.kanban.storyReadinessGate}</div>
-                        <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">
-                          {t.kanban.storyReadinessGateHint}
-                        </p>
-                      </div>
-                      <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-                        {TASK_FIELD_OPTIONS.map((field) => {
-                          const checked = automation.requiredTaskFields?.includes(field) ?? false;
-                          return (
-                            <label
-                              key={field}
-                              className={`flex cursor-pointer flex-col gap-1.5 rounded-lg border px-3 py-2.5 transition ${
-                                checked
-                                  ? "border-sky-300 bg-sky-50 dark:border-sky-500/30 dark:bg-sky-500/10"
-                                  : "border-slate-200 bg-white hover:border-slate-300 dark:border-slate-800 dark:bg-[#0b1119] dark:hover:border-slate-700"
-                              }`}
-                            >
-                              <div className="flex items-center justify-between gap-3">
-                                <span className="text-[13px] font-semibold text-slate-900 dark:text-slate-100">{getTaskFieldLabel(field, t)}</span>
-                                <input
-                                  type="checkbox"
-                                  checked={checked}
-                                  onChange={(event) => {
-                                    const current = new Set(automation.requiredTaskFields ?? []);
-                                    if (event.target.checked) {
-                                      current.add(field);
-                                    } else {
-                                      current.delete(field);
-                                    }
-                                    onUpdate({
-                                      ...automation,
-                                      requiredTaskFields: current.size > 0 ? Array.from(current) : undefined,
-                                    });
-                                  }}
-                                  className="h-4 w-4 rounded border-slate-300 text-sky-500 focus:ring-sky-500"
-                                />
-                              </div>
-                              <p className="text-xs leading-5 text-slate-500 dark:text-slate-400">{getTaskFieldHint(field, t)}</p>
-                            </label>
-                          );
-                        })}
-                      </div>
-                    </div>
-                    <label className="flex items-start gap-3 rounded-lg border border-slate-200 bg-white px-3 py-3 dark:border-slate-800 dark:bg-[#111722]">
-                      <input
-                        type="checkbox"
-                        checked={automation.autoAdvanceOnSuccess ?? false}
-                        onChange={(event) => onUpdate({ ...automation, autoAdvanceOnSuccess: event.target.checked })}
-                        className="mt-1 h-4 w-4 rounded border-slate-300 text-amber-500 focus:ring-amber-500"
-                      />
-                      <span>
-                        <span className="block text-[13px] font-semibold text-slate-900 dark:text-slate-100">{t.kanban.autoAdvanceOnSuccess}</span>
-                        <span className="mt-1 block text-xs leading-5 text-slate-500 dark:text-slate-400">
-                          {t.kanban.autoAdvanceOnSuccessDesc}
-                        </span>
-                      </span>
-                    </label>
-            </div>
-          </section>
-        </div>
-      ) : (
-        <div className="space-y-2">
-          <div className="flex justify-end">
-            <button
-              type="button"
-              onClick={applyDefaultAutomation}
-              className="rounded-md border border-slate-200 px-2.5 py-1.5 text-xs font-semibold uppercase tracking-[0.14em] text-slate-700 transition hover:bg-white dark:border-slate-700 dark:text-slate-200 dark:hover:bg-[#111722]"
-              >
-                {t.kanban.defaults}
-              </button>
-            </div>
-          <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-4 text-xs leading-5 text-slate-500 dark:border-slate-700 dark:bg-[#111722] dark:text-slate-400">
-            {t.kanban.turnOnAutomationHint}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function StatPill({ label, value, tone }: { label: string; value: string; tone: "amber" | "slate" | "emerald" }) {
-  const toneClass = {
-    amber: "border-amber-300/80 bg-amber-50/80 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200",
-    slate: "border-slate-200 bg-slate-50/90 text-slate-700 dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-200",
-    emerald: "border-emerald-300/80 bg-emerald-50/80 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200",
-  }[tone];
-
-  return (
-    <div className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 ${toneClass}`}>
-      <span className="text-[11px] font-semibold uppercase tracking-[0.2em] opacity-80">{label}</span>
-      <span className="text-[13px] font-semibold tracking-tight">{value}</span>
-    </div>
-  );
-}
-
-function SectionCard({ eyebrow, title, description, children }: { eyebrow: string; title: string; description?: string; children: ReactNode }) {
-  return (
-    <section className="border-b border-slate-200/80 pb-2.5 last:border-b-0 dark:border-slate-800">
-      <div className="mb-1.5 space-y-0.5">
-        <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-400 dark:text-slate-500">{eyebrow}</div>
-        <h4 className="text-sm font-semibold text-slate-900 dark:text-slate-100">{title}</h4>
-        {description ? <p className="text-xs leading-5 text-slate-500 dark:text-slate-400">{description}</p> : null}
-      </div>
+    <button
+      type="button"
+      aria-label={ariaLabel}
+      onClick={onClick}
+      disabled={disabled}
+      className="rounded-md border border-slate-300 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-700 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-[#111722]"
+    >
       {children}
-    </section>
+    </button>
   );
 }
 
-function ConfigField({ label, children }: { label: string; children: ReactNode }) {
+function LabeledSelect({
+  label,
+  ariaLabel,
+  value,
+  options,
+  onChange,
+  disabled,
+  className = "",
+  containerClassName = "",
+}: {
+  label: string;
+  ariaLabel: string;
+  value: string;
+  options: Array<{ value: string; label: string }>;
+  onChange: (value: string) => void;
+  disabled?: boolean;
+  className?: string;
+  containerClassName?: string;
+}) {
   return (
-    <label className="block min-w-0 space-y-1">
-      <span className="block text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-300">{label}</span>
-      {children}
+    <label className={`space-y-1 text-xs font-medium text-slate-600 dark:text-slate-300 ${containerClassName}`.trim()}>
+      <span>{label}</span>
+      <select
+        aria-label={ariaLabel}
+        value={value}
+        disabled={disabled}
+        onChange={(event) => onChange(event.target.value)}
+        className={`h-9 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm text-slate-900 outline-none transition focus:border-amber-400 disabled:cursor-not-allowed dark:border-slate-700 dark:bg-[#0b1119] dark:text-slate-100 ${className}`.trim()}
+      >
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
     </label>
   );
 }
 
-function formatTriggerLabel(trigger: ColumnAutomationConfig["transitionType"], t: TranslationDictionary): string {
-  if (trigger === "exit") return t.kanban.onExit;
-  if (trigger === "both") return t.kanban.entryAndExit;
-  return t.kanban.onEntry;
+function LabeledNumberInput({
+  label,
+  ariaLabel,
+  min,
+  max,
+  value,
+  onChange,
+}: {
+  label: string;
+  ariaLabel: string;
+  min: number;
+  max: number;
+  value: number;
+  onChange: (value: number) => void;
+}) {
+  return (
+    <label className="space-y-1 text-xs font-medium text-slate-600 dark:text-slate-300">
+      <span>{label}</span>
+      <input
+        aria-label={ariaLabel}
+        type="number"
+        min={min}
+        max={max}
+        value={value}
+        onChange={(event) => onChange(Number.parseInt(event.target.value || String(min), 10) || min)}
+        className="h-9 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm text-slate-900 outline-none transition focus:border-amber-400 dark:border-slate-700 dark:bg-[#0b1119] dark:text-slate-100"
+      />
+    </label>
+  );
 }
 
-function resolveProviderName(providerId: string | undefined, providers: AcpProviderInfo[]): string | undefined {
-  if (!providerId) return undefined;
-  return providers.find((provider) => provider.id === providerId)?.name ?? providerId;
+function LabeledTextInput({
+  label,
+  ariaLabel,
+  value,
+  onChange,
+}: {
+  label: string;
+  ariaLabel: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className="w-[14rem] shrink-0 space-y-1 text-sm font-medium">
+      <span className="text-slate-700 dark:text-slate-300">{label}</span>
+      <input
+        aria-label={ariaLabel}
+        type="text"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-amber-400 dark:border-slate-700 dark:bg-[#0b1119] dark:text-slate-100"
+      />
+    </label>
+  );
 }
 
-function formatAutoProviderLabel(
-  providerId: string | undefined,
-  providers: AcpProviderInfo[],
-  autoLabel: string,
-): string {
-  const providerName = resolveProviderName(providerId, providers);
-  return providerName ? `${autoLabel} (${providerName})` : autoLabel;
+function ToggleChip({
+  children,
+  checked,
+  onChange,
+  ariaLabel,
+  disabled,
+}: {
+  children: ReactNode;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  ariaLabel: string;
+  disabled?: boolean;
+}) {
+  return (
+    <label className="flex h-10 items-center gap-2 whitespace-nowrap rounded-md border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 dark:border-slate-700 dark:bg-[#0b1119] dark:text-slate-300">
+      <input
+        type="checkbox"
+        aria-label={ariaLabel}
+        checked={checked}
+        disabled={disabled}
+        onChange={(event) => onChange(event.target.checked)}
+        className="h-4 w-4 rounded border-slate-300 text-amber-500 focus:ring-amber-500"
+      />
+      <span>{children}</span>
+    </label>
+  );
 }
 
-function formatAutomationStepSummary(
-  step: KanbanAutomationStep,
-  index: number,
-  providers: AcpProviderInfo[],
-  specialists: SpecialistOption[],
-  autoProviderId: string | undefined,
-  autoLabel: string,
-  t: TranslationDictionary,
-): string {
-  const resolveSpecialist = (specialistId: string, locale?: string) => {
-    void locale;
-    const specialist = findSpecialistById(specialists, specialistId);
-    if (!specialist) return undefined;
-    return {
-      name: specialist.name,
-      role: specialist.role,
-      defaultProvider: specialist.defaultProvider,
-    };
-  };
-  const resolvedStep = resolveKanbanAutomationStep(step, resolveSpecialist, { autoProviderId });
-  if (!resolvedStep) {
-    return t.kanban.stepLabel.replace("{index}", String(index + 1));
-  }
-
-  if (step.transport === "a2a") {
-    const specialist = getSpecialistDisplayName(findSpecialistById(specialists, resolvedStep.specialistId)) ?? resolvedStep.specialistName;
-    return [
-      "A2A",
-      specialist ?? resolvedStep.role ?? t.kanban.stepLabel.replace("{index}", String(index + 1)),
-      formatAgentCardTarget(resolvedStep.agentCardUrl),
-      resolvedStep.skillId ? `skill:${resolvedStep.skillId}` : undefined,
-    ].filter(Boolean).join(" • ");
-  }
-
-  const provider = step.providerId
-    ? resolveProviderName(resolvedStep.providerId, providers) ?? autoLabel
-    : resolvedStep.providerSource === "auto"
-      ? formatAutoProviderLabel(resolvedStep.providerId, providers, autoLabel)
-      : resolveProviderName(resolvedStep.providerId, providers) ?? autoLabel;
-  const specialist = getSpecialistDisplayName(findSpecialistById(specialists, resolvedStep.specialistId)) ?? resolvedStep.specialistName;
-  return [provider, specialist ?? resolvedStep.role ?? t.kanban.stepLabel.replace("{index}", String(index + 1))].filter(Boolean).join(" • ");
+function StatusMessage({ children, tone }: { children: ReactNode; tone: "error" | "success" }) {
+  const className = tone === "error"
+    ? "rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-900/40 dark:bg-red-950/40 dark:text-red-300"
+    : "rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-950/40 dark:text-emerald-300";
+  return <div className={className}>{children}</div>;
 }
-
-function getAutomationSummary(
-  automation: ColumnAutomationConfig,
-  providers: AcpProviderInfo[],
-  specialists: SpecialistOption[],
-  autoProviderId: string | undefined,
-  autoLabel: string,
-  t: TranslationDictionary,
-): string {
-  const steps = getEditableAutomationSteps(automation);
-  return [
-    steps.map((step, index) => formatAutomationStepSummary(
-      step,
-      index,
-      providers,
-      specialists,
-      autoProviderId,
-      autoLabel,
-      t,
-    )).join(" -> "),
-    formatTriggerLabel(automation.transitionType, t),
-  ].join(" • ");
-}
-
-const SELECT_CLASS = "h-10 w-full min-w-0 appearance-none rounded-xl border border-slate-200 bg-white px-3 pr-10 text-sm text-slate-900 outline-none transition hover:bg-slate-50 focus:border-amber-400 dark:border-slate-700 dark:bg-[#0b1119] dark:text-slate-100 dark:hover:bg-[#111722]";
-const INPUT_CLASS = "h-10 w-full min-w-0 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition hover:bg-slate-50 focus:border-amber-400 dark:border-slate-700 dark:bg-[#0b1119] dark:text-slate-100 dark:hover:bg-[#111722]";

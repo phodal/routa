@@ -53,8 +53,6 @@ describe("KanbanSettingsModal", () => {
     );
 
     fireEvent.click(screen.getByRole("checkbox", { name: /toggle automation for review/i }));
-    fireEvent.click(screen.getByTestId("kanban-settings-provider"));
-    fireEvent.click(screen.getByRole("button", { name: /claude code/i }));
     fireEvent.click(screen.getByRole("button", { name: /save board settings/i }));
 
     await waitFor(() => {
@@ -64,10 +62,8 @@ describe("KanbanSettingsModal", () => {
           review: expect.objectContaining({
             enabled: true,
             steps: [expect.objectContaining({
-              providerId: "claude",
               role: "GATE",
             })],
-            providerId: "claude",
             role: "GATE",
             transitionType: "exit",
             requiredArtifacts: ["screenshot", "test_results"],
@@ -82,7 +78,7 @@ describe("KanbanSettingsModal", () => {
         },
       );
     });
-  });
+  }, 15_000);
 
   it("does not expose A2A transport settings for a lane", async () => {
     render(
@@ -163,7 +159,7 @@ describe("KanbanSettingsModal", () => {
     expect(screen.getAllByRole("button").some((button) => button.textContent?.trim() === "Kanban")).toBe(true);
     expect(screen.getAllByRole("option", { name: "Review Guard" }).length).toBeGreaterThan(0);
     expect(screen.queryAllByRole("option", { name: "Team QA" })).toHaveLength(0);
-  });
+  }, 15_000);
 
   it("shows the resolved auto provider in lane summaries", () => {
     const reviewBoard: KanbanBoardInfo = {

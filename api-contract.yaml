@@ -3272,6 +3272,124 @@ paths:
         "200":
           description: Task repository change summary
 
+  /api/tasks/{taskId}/changes/file:
+    get:
+      operationId: getTaskChangeFile
+      summary: Get diff for a single changed file associated with a task
+      parameters:
+        - name: taskId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: path
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: status
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: previousPath
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: File diff payload
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  diff:
+                    type: object
+        "400":
+          description: Missing path or repository unavailable
+        "404":
+          description: Task not found
+
+  /api/tasks/{taskId}/changes/commit:
+    get:
+      operationId: getTaskChangeCommit
+      summary: Get diff for a single commit associated with a task repository
+      parameters:
+        - name: taskId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: sha
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Commit diff payload
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  diff:
+                    type: string
+        "400":
+          description: Missing sha or repository unavailable
+        "404":
+          description: Task not found
+
+  /api/tasks/{taskId}/changes/stats:
+    get:
+      operationId: getTaskChangeStats
+      summary: Get additions and deletions for a subset of changed files associated with a task
+      parameters:
+        - name: taskId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: paths
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: statuses
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Batched file change stats
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  stats:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        path:
+                          type: string
+                        additions:
+                          type: integer
+                        deletions:
+                          type: integer
+                        error:
+                          type: string
+                  requested:
+                    type: integer
+                  successful:
+                    type: integer
+        "400":
+          description: Missing paths or invalid request
+        "404":
+          description: Task not found
+
   # ── A2A ──
   /api/a2a/sessions:
     get:
