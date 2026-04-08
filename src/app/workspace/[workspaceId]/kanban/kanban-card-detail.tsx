@@ -205,6 +205,7 @@ export function KanbanCardDetail({
   const displayedObjective = isDescriptionEditing ? editObjective : (task.objective ?? "");
   const displayedTestCases = isTestCasesEditing ? editTestCases : (task.testCases ?? []).join("\n");
   const displayedPriority = task.priority ?? editPriority;
+  const resolvedWorkspaceId = codebases[0]?.workspaceId ?? "";
 
   const getTaskRepositoryPath = (): string | null => {
     const worktreePath = task.worktreeId ? worktreeCache[task.worktreeId]?.worktreePath : null;
@@ -568,7 +569,7 @@ export function KanbanCardDetail({
             >
               <KanbanTaskChangesTab
                 taskId={task.id}
-                workspaceId={task.workspaceId}
+                workspaceId={resolvedWorkspaceId}
                 refreshSignal={refreshSignal}
                 onRefresh={onRefresh}
               />
