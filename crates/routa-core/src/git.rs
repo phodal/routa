@@ -296,7 +296,7 @@ pub fn stage_files(repo_path: &str, files: &[String]) -> Result<(), String> {
         return Ok(());
     }
 
-    let mut args = vec!["add"];
+    let mut args = vec!["add", "--"];
     args.extend(files.iter().map(|s| s.as_str()));
 
     let output = Command::new("git")
@@ -320,7 +320,7 @@ pub fn unstage_files(repo_path: &str, files: &[String]) -> Result<(), String> {
         return Ok(());
     }
 
-    let mut args = vec!["restore", "--staged"];
+    let mut args = vec!["restore", "--staged", "--"];
     args.extend(files.iter().map(|s| s.as_str()));
 
     let output = Command::new("git")
@@ -345,18 +345,43 @@ pub fn discard_changes(repo_path: &str, files: &[String]) -> Result<(), String> 
         return Ok(());
     }
 
-    let mut args = vec!["restore"];
-    args.extend(files.iter().map(|s| s.as_str()));
+    let mut tracked_files: Vec<&str> = Vec::new();
+    let mut untracked_files: Vec<&str> = Vec::new();
 
-    let output = Command::new("git")
-        .args(&args)
-        .current_dir(repo_path)
-        .output();
+    for file in files {
+        let output = Command::new("git")
+            .args(["ls-files", "--error-unmatch", "--", file.as_str()])
+            .current_dir(repo_path)
+            .output()
+            .map_err(|e| e.to_string())?;
 
-    // If restore fails (e.g., untracked files), try to clean them
-    if output.is_err() || !output.as_ref().unwrap().status.success() {
-        let mut clean_args = vec!["clean", "-f"];
-        clean_args.extend(files.iter().map(|s| s.as_str()));
+        if output.status.success() {
+            tracked_files.push(file.as_str());
+        } else {
+            untracked_files.push(file.as_str());
+        }
+    }
+
+    if !tracked_files.is_empty() {
+        let mut restore_args = vec!["restore", "--"];
+        restore_args.extend(tracked_files);
+
+        let restore_output = Command::new("git")
+            .args(&restore_args)
+            .current_dir(repo_path)
+            .output()
+            .map_err(|e| e.to_string())?;
+
+        if !restore_output.status.success() {
+            return Err(String::from_utf8_lossy(&restore_output.stderr)
+                .trim()
+                .to_string());
+        }
+    }
+
+    if !untracked_files.is_empty() {
+        let mut clean_args = vec!["clean", "-f", "--"];
+        clean_args.extend(untracked_files);
 
         let clean_output = Command::new("git")
             .args(&clean_args)
@@ -475,7 +500,16 @@ pub fn rebase_branch(repo_path: &str, onto: &str) -> Result<(), String> {
 /// Reset branch to a specific commit or branch
 /// mode: "soft" keeps changes staged, "hard" discards all changes
 pub fn reset_branch(repo_path: &str, to: &str, mode: &str) -> Result<(), String> {
-    let reset_mode = if mode == "hard" { "--hard" } else { "--soft" };
+    let reset_mode = match mode {
+        "hard" => "--hard",
+        "soft" => "--soft",
+        other => {
+            return Err(format!(
+                "Invalid reset mode '{}'. Expected 'soft' or 'hard'",
+                other
+            ))
+        }
+    };
 
     let output = Command::new("git")
         .args(["reset", reset_mode, to])
