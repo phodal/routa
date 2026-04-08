@@ -198,7 +198,7 @@ describe("/api/tasks/[taskId]", () => {
     });
   });
 
-  it("splits legacy appended comments into multiple structured notes", async () => {
+  it("keeps legacy appended comments as a single migrated note", async () => {
     taskStore.get.mockResolvedValueOnce(createTask({
       id: "task-legacy-comments",
       title: "Legacy notes",
@@ -217,10 +217,11 @@ describe("/api/tasks/[taskId]", () => {
     const data = await response.json();
 
     expect(response.status).toBe(200);
-    expect(data.task.comments.map((entry: { body: string }) => entry.body)).toEqual([
-      "Initial note",
-      "Second note",
-      "Third note",
+    expect(data.task.comments).toEqual([
+      expect.objectContaining({
+        body: "Initial note\n\nSecond note\n\nThird note",
+        source: "legacy_import",
+      }),
     ]);
   });
 

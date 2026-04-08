@@ -568,8 +568,7 @@ describe("KanbanTools", () => {
     expect(result.success).toBe(true);
     const saved = await taskStore.get(task.id);
     expect(saved?.comments.map((entry) => entry.body)).toEqual([
-      "Initial note",
-      "Second note",
+      "Initial note\n\nSecond note",
       "Third note",
     ]);
   });

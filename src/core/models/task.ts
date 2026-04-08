@@ -346,14 +346,10 @@ export function splitLegacyTaskComment(comment: string | undefined): TaskComment
     return [];
   }
 
-  return trimmed
-    .split(/\n{2,}/)
-    .map((chunk) => chunk.trim())
-    .filter(Boolean)
-    .map((body, index) => ({
-      id: `legacy-comment-${index + 1}`,
-      body,
-      createdAt: "",
-      source: "legacy_import" as const,
-    }));
+  return [{
+    id: "legacy-comment-1",
+    body: trimmed,
+    createdAt: "",
+    source: "legacy_import",
+  }];
 }
