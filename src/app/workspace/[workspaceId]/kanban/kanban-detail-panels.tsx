@@ -269,7 +269,7 @@ export function EvidenceBundlePanel({
           </span>
         </div>
       </div>
-      <div className={`grid gap-2 ${compact ? "grid-cols-2" : "grid-cols-4"}`}>
+      <div className={`grid gap-2 ${compact ? "grid-cols-2" : "grid-cols-3"}`}>
         <SummaryGridItem
           label={t.kanbanDetail.requiredArtifacts}
           value={`${evidence.artifact.total}`}
@@ -285,12 +285,6 @@ export function EvidenceBundlePanel({
         <SummaryGridItem
           label={t.kanbanDetail.completion}
           value={evidence.completion.hasSummary ? t.kanbanDetail.summaryPresent : t.kanbanDetail.summaryMissing}
-          compact={compact}
-        />
-        <SummaryGridItem
-          label={t.kanbanDetail.latestRun}
-          value={evidence.runs.latestStatus}
-          detail={`${t.kanbanDetail.runs}: ${evidence.runs.total}`}
           compact={compact}
         />
       </div>

@@ -370,7 +370,7 @@ describe("KanbanCardDetail repository health", () => {
     });
   });
 
-  it("shows story readiness and evidence summaries near the top of card detail", () => {
+  it("keeps evidence summary focused on delivery readiness instead of run history", () => {
     render(
       <KanbanCardDetail
         task={{
@@ -445,6 +445,7 @@ describe("KanbanCardDetail repository health", () => {
     expect(screen.getByRole("button", { name: "Evidence Bundle" })).toBeTruthy();
     expect(screen.getAllByText("Evidence incomplete").length).toBeGreaterThan(0);
     expect(screen.getByText(/test_results/i)).toBeTruthy();
+    expect(screen.queryByText("Latest Run")).toBeNull();
   });
 
   it("shows the full run session id in activity history", async () => {
