@@ -16,7 +16,7 @@ import { getKanbanAutomationSteps, type KanbanAutomationStep } from "@/core/mode
 import type { KanbanColumnInfo, SessionInfo, TaskInfo, WorktreeInfo } from "../types";
 import { KanbanCardActivityPanel } from "./kanban-card-activity";
 import { KanbanDescriptionEditor } from "./kanban-description-editor";
-import { KanbanTaskGitWorkflowPanel } from "./components/kanban-task-git-workflow-panel";
+import { KanbanEnhancedFileChangesPanel } from "./components/kanban-enhanced-file-changes-panel";
 import type {
   KanbanTaskChanges,
 } from "./kanban-file-changes-types";
@@ -624,13 +624,12 @@ export function KanbanCardDetail({
               description={compactMode ? undefined : t.kanbanDetail.changesHint}
               compact={compactMode}
             >
-              <KanbanTaskGitWorkflowPanel
+              <KanbanEnhancedFileChangesPanel
                 workspaceId={task.workspaceId}
-                taskId={task.id}
                 changes={taskChanges}
                 loading={taskChangesLoading}
-                compact={compactMode}
                 onRefresh={onRefresh}
+                embedded={true}
               />
             </DetailSection>
           )}

@@ -14,20 +14,24 @@ import type { KanbanCommitInfo } from "../kanban-file-changes-types";
 
 interface KanbanEnhancedFileChangesPanelProps {
   workspaceId: string;
-  repos: KanbanRepoChanges[];
+  repos?: KanbanRepoChanges[];
+  changes?: KanbanTaskChanges | null;
   loading?: boolean;
-  open: boolean;
-  onClose: () => void;
+  open?: boolean;
+  onClose?: () => void;
   onRefresh?: () => void;
+  embedded?: boolean; // true when used in card detail, false when used as sidebar
 }
 
 export function KanbanEnhancedFileChangesPanel({
   workspaceId,
-  repos,
+  repos = [],
+  changes,
   loading = false,
-  open,
+  open = true,
   onClose,
   onRefresh,
+  embedded = false,
 }: KanbanEnhancedFileChangesPanelProps) {
   const { t } = useTranslation();
   const [autoCommit, setAutoCommit] = useState(false);
@@ -42,9 +46,9 @@ export function KanbanEnhancedFileChangesPanel({
   const [diffLoading, setDiffLoading] = useState(false);
   const [diffError, setDiffError] = useState<string | null>(null);
 
-  // For now, we'll work with the first repo (can be extended to multi-repo)
-  const activeRepo = repos[0];
-  const codebaseId = activeRepo?.codebaseId || "";
+  // Support both sidebar mode (repos) and embedded mode (changes)
+  const activeRepo = repos && repos.length > 0 ? repos[0] : null;
+  const codebaseId = changes?.codebaseId || activeRepo?.codebaseId || "";
 
   const { stageFiles, unstageFiles, createCommit, discardChanges, getCommits, getFileDiff, getCommitDiff, loading: gitLoading } = useGitOperations({
     workspaceId,
@@ -81,6 +85,15 @@ export function KanbanEnhancedFileChangesPanel({
 
   // Separate files into unstaged and staged
   const { unstagedFiles, stagedFiles } = useMemo(() => {
+    // Embedded mode (card detail): use changes
+    if (embedded && changes) {
+      return {
+        unstagedFiles: changes.files || [],
+        stagedFiles: [],
+      };
+    }
+
+    // Sidebar mode: use repos
     if (!activeRepo) {
       return { unstagedFiles: [], stagedFiles: [] };
     }
@@ -98,7 +111,7 @@ export function KanbanEnhancedFileChangesPanel({
       unstagedFiles: activeRepo.files || [],
       stagedFiles: [],
     };
-  }, [activeRepo]);
+  }, [embedded, changes, activeRepo]);
 
   // State for file selection
   const [fileSelections, setFileSelections] = useState<Record<string, boolean>>({});
@@ -244,12 +257,106 @@ export function KanbanEnhancedFileChangesPanel({
   });
 
   const summary = {
-    changedRepos: repos.filter((r) => !r.error && !r.status.clean).length,
-    changedFiles: repos.reduce((count, repo) => count + (repo.files?.length || 0), 0),
+    changedRepos: repos ? repos.filter((r) => !r.error && !r.status.clean).length : 0,
+    changedFiles: repos ? repos.reduce((count, repo) => count + (repo.files?.length || 0), 0) : (changes?.files?.length || 0),
   };
 
-  if (!open) return null;
+  // Embedded mode: always show
+  if (!embedded && !open) return null;
 
+  // Embedded mode (card detail): render without backdrop/panel wrapper
+  if (embedded) {
+    return (
+      <>
+        <div className="space-y-3">
+          {loading ? (
+            <div className="border-b border-slate-200/70 px-1 pb-2 text-sm text-slate-500 dark:border-slate-700/70 dark:text-slate-400">
+              {t.kanbanDetail.loadingChanges}
+            </div>
+          ) : !changes && !activeRepo ? (
+            <div className="border-b border-slate-200/70 px-1 pb-2 text-sm text-slate-500 dark:border-slate-700/70 dark:text-slate-400">
+              {t.kanbanDetail.noRepoChanges}
+            </div>
+          ) : (
+            <>
+              {/* Unstaged Section */}
+              <KanbanUnstagedSection
+                files={unstagedWithSelection}
+                autoCommit={autoCommit}
+                onAutoCommitToggle={setAutoCommit}
+                onFileClick={(file) => handleFileClick(file, false)}
+                onFileSelect={handleFileSelect}
+                onSelectAll={(selected) => handleSelectAll(unstagedWithSelection, selected)}
+                onStageSelected={handleStageSelected}
+                onDiscardSelected={handleDiscardSelected}
+                loading={gitLoading}
+              />
+
+              {/* Inline Diff Viewer for Unstaged */}
+              {activeDiffFile && !activeDiffFile.commitSha && (
+                <KanbanInlineDiffViewer
+                  file={activeDiffFile.file}
+                  diff={diffContent || undefined}
+                  loading={diffLoading}
+                  error={diffError || undefined}
+                  onClose={handleCloseDiff}
+                />
+              )}
+
+              {/* Staged Section */}
+              <KanbanStagedSection
+                files={stagedWithSelection}
+                onFileClick={(file) => handleFileClick(file, true)}
+                onFileSelect={handleFileSelect}
+                onSelectAll={(selected) => handleSelectAll(stagedWithSelection, selected)}
+                onUnstageSelected={handleUnstageSelected}
+                onCommit={() => setCommitModalOpen(true)}
+                onExport={() => {
+                  console.log("Export changes");
+                }}
+                loading={gitLoading}
+              />
+
+              {/* Commits Section */}
+              <KanbanCommitsSection
+                commits={commits}
+                onFileClick={handleCommitFileClick}
+                onOpenCommit={(commit) => {
+                  console.log("Open commit", commit.sha);
+                }}
+                onRevertCommit={(commit) => {
+                  console.log("Revert commit", commit.sha);
+                }}
+                loading={commitsLoading}
+              />
+
+              {/* Inline Diff Viewer for Commits */}
+              {activeDiffFile && activeDiffFile.commitSha && (
+                <KanbanInlineDiffViewer
+                  file={activeDiffFile.file}
+                  diff={diffContent || undefined}
+                  loading={diffLoading}
+                  error={diffError || undefined}
+                  onClose={handleCloseDiff}
+                  commitSha={activeDiffFile.commitSha}
+                />
+              )}
+            </>
+          )}
+        </div>
+
+        {/* Commit Modal */}
+        <KanbanCommitModal
+          open={commitModalOpen}
+          onClose={() => setCommitModalOpen(false)}
+          onCommit={handleCommit}
+          fileCount={stagedFiles.length}
+        />
+      </>
+    );
+  }
+
+  // Sidebar mode: render with backdrop and panel wrapper
   return (
     <>
       {/* Backdrop */}
