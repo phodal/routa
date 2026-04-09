@@ -1757,7 +1757,6 @@ pub fn copy_dir_recursive(src: &Path, dest: &Path) -> std::io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::HashSet;
     use std::fs;
     use std::path::Path;
     use std::process::Command;

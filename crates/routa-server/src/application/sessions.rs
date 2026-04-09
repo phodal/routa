@@ -286,7 +286,7 @@ impl SessionEntry {
             "firstPromptSent": self.first_prompt_sent,
             "parentSessionId": self.parent_session_id,
             "continuityStatus": self.continuity_status(),
-            "resumeCapabilities": resume_cap.map(|c| serde_json::to_value(c).ok()).flatten(),
+            "resumeCapabilities": resume_cap.and_then(|c| serde_json::to_value(c).ok()),
         })
     }
 
@@ -309,7 +309,7 @@ impl SessionEntry {
             "parentSessionId": self.parent_session_id,
             "firstPromptSent": self.first_prompt_sent,
             "continuityStatus": self.continuity_status(),
-            "resumeCapabilities": resume_cap.map(|c| serde_json::to_value(c).ok()).flatten(),
+            "resumeCapabilities": resume_cap.and_then(|c| serde_json::to_value(c).ok()),
         })
     }
 

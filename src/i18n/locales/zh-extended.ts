@@ -1205,6 +1205,13 @@ export const zhExtended: ExtendedTranslationDictionarySections = {
     resume: "恢复",
     resuming: "恢复中...",
     resumeHint: "恢复这个持久化会话；如果原生恢复不可用，Routa 会在新会话中重建并带上已恢复的上下文。",
+    fork: "分叉",
+    forking: "分叉中...",
+    forkHint: "从此会话创建一个新的分支会话，并保持原会话不变。",
+    statusActive: "活跃",
+    statusInterrupted: "已中断",
+    statusRestorable: "可恢复",
+    statusStale: "已过期",
   },
 
   mcp: {

@@ -750,6 +750,7 @@ mod tests {
             args: vec![],
             description: "Preset".to_string(),
             env_bin_override: None,
+            resume: None,
         };
         let registry = serde_json::json!({
             "id": "codex",

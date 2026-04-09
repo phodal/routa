@@ -1221,6 +1221,13 @@ export interface ExtendedTranslationDictionarySections extends TailTranslationDi
     resume: string;
     resuming: string;
     resumeHint: string;
+    fork: string;
+    forking: string;
+    forkHint: string;
+    statusActive: string;
+    statusInterrupted: string;
+    statusRestorable: string;
+    statusStale: string;
   };
 
   // MCP Servers

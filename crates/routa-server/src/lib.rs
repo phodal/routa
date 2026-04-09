@@ -400,6 +400,15 @@ pub async fn start_server_with_state(
     Ok(local_addr)
 }
 
+async fn health_check() -> axum::Json<serde_json::Value> {
+    axum::Json(serde_json::json!({
+        "status": "ok",
+        "timestamp": chrono::Utc::now().to_rfc3339(),
+        "server": "routa-server",
+        "version": env!("CARGO_PKG_VERSION"),
+    }))
+}
+
 #[cfg(test)]
 mod tests {
     use super::resolve_static_target;
@@ -483,13 +492,4 @@ mod tests {
         );
         assert_eq!(content_type, "text/html; charset=utf-8");
     }
-}
-
-async fn health_check() -> axum::Json<serde_json::Value> {
-    axum::Json(serde_json::json!({
-        "status": "ok",
-        "timestamp": chrono::Utc::now().to_rfc3339(),
-        "server": "routa-server",
-        "version": env!("CARGO_PKG_VERSION"),
-    }))
 }

@@ -412,7 +412,15 @@ describe("SessionPageClient", () => {
       if (url === "/api/sessions/session-1") {
         return {
           ok: true,
-          json: async () => ({ session: { sessionId: "session-1", provider: "codex", cwd: "/tmp/codex", role: "DEVELOPER" } }),
+          json: async () => ({
+            session: {
+              sessionId: "session-1",
+              provider: "codex",
+              cwd: "/tmp/codex",
+              role: "DEVELOPER",
+              resumeCapabilities: { supported: true, mode: "native" },
+            },
+          }),
         } as Response;
       }
       if (url === "/api/sessions?parentSessionId=session-1") {
@@ -465,6 +473,7 @@ describe("SessionPageClient", () => {
               cwd: "/tmp/codex",
               branch: "main",
               role: "DEVELOPER",
+              resumeCapabilities: { supported: true, mode: "native" },
             },
           }),
         } as Response;
@@ -549,6 +558,7 @@ describe("SessionPageClient", () => {
               provider: "codex",
               cwd: "/tmp/codex",
               role: "CRAFTER",
+              resumeCapabilities: { supported: true, mode: "native" },
             },
           }),
         } as Response;
