@@ -424,6 +424,8 @@ export const zhExtended: ExtendedTranslationDictionarySections = {
     missing: "缺失",
     sessionMismatch: "会话不匹配",
     backendAgents: "后端代理",
+    planBacklog: "Plan backlog",
+    planBacklogDescription: "显式启动 backlog 规划，把需求写入当前看板对应的 planning session。",
     importGithubIssues: "导入 Issues",
     boardSettings: "设置",
     queued: "排队中",

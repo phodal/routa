@@ -424,6 +424,8 @@ export const enExtended: ExtendedTranslationDictionarySections = {
     missing: "missing",
     sessionMismatch: "session mismatch",
     backendAgents: "Backend Agents",
+    planBacklog: "Plan backlog",
+    planBacklogDescription: "Start an explicit backlog-planning run and write the result into the current board's planning session.",
     importGithubIssues: "Import Issues",
     boardSettings: "Settings",
     queued: "Queued",

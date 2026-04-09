@@ -61,6 +61,7 @@ import {
   KanbanTaskDetailOverlay,
 } from "./kanban-tab-panels";
 import { ArrowRight } from "lucide-react";
+import { KanbanPlanBacklogModal } from "./kanban-plan-backlog-modal";
 
 interface SpecialistOption {
   id: string;
@@ -85,9 +86,7 @@ interface KanbanTabProps {
   repoSync?: RepoSyncState;
   repoChanges?: KanbanRepoChanges[];
   repoChangesLoading?: boolean;
-  /** ACP state and actions for agent input and session management */
   acp?: UseAcpState & UseAcpActions;
-  /** Handler for agent prompt - creates session and sends prompt */
   onAgentPrompt?: KanbanAgentPromptHandler;
 }
 
@@ -150,8 +149,8 @@ export function KanbanTab({
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null); // For card detail view;
   const [visibleColumns, setVisibleColumns] = useState<string[]>([]);
   const [showSettings, setShowSettings] = useState(false);
+  const [showPlanBacklogModal, setShowPlanBacklogModal] = useState(false);
 
-  // Agent input state
   const [agentInput, setAgentInput] = useState("");
   const [agentLoading, setAgentLoading] = useState(false);
   const [agentSessionId, setAgentSessionId] = useState<string | null>(null);
@@ -320,7 +319,6 @@ export function KanbanTab({
     }
   }, [acp, board?.autoProviderId, persistBoardAutoProvider]);
 
-  // Handle agent input submission
   const handleAgentSubmit = useCallback(async () => {
     if (!agentInput.trim() || !onAgentPrompt || agentLoading) return;
 
@@ -1479,10 +1477,17 @@ export function KanbanTab({
   }
 
   const kanbanHeaderActions = board ? (
-    <div className="flex min-w-[280px] flex-1 items-center border border-slate-200 bg-white transition-colors focus-within:border-amber-400/80 focus-within:ring-2 focus-within:ring-amber-400/15 dark:border-slate-700 dark:bg-[#12141c]">
+    <div className="flex min-w-[560px] flex-1 items-center border border-slate-200 bg-white transition-colors focus-within:border-amber-400/80 focus-within:ring-2 focus-within:ring-amber-400/15 dark:border-slate-700 dark:bg-[#12141c]">
+      <button
+        onClick={() => setShowPlanBacklogModal(true)}
+        className="ml-1 inline-flex h-6 shrink-0 items-center gap-1 rounded-md bg-slate-900 px-2 text-[11px] font-semibold text-white transition-colors hover:bg-slate-800 dark:bg-amber-500 dark:text-slate-950 dark:hover:bg-amber-400"
+        title={t.kanban.planBacklog}
+      >
+        {t.kanban.planBacklog}
+      </button>
       {onAgentPrompt && (
         <>
-          <div className="shrink-0 border-r border-slate-200 dark:border-slate-700">
+          <div className="ml-1 shrink-0 border-l border-r border-slate-200 dark:border-slate-700">
             <AcpProviderDropdown
               providers={availableProviders}
               selectedProvider={resolveKanbanBoardAutoProviderId(board, acp?.selectedProvider) ?? ""}
@@ -1506,7 +1511,7 @@ export function KanbanTab({
             }}
             placeholder={acp?.connected ? kanbanTaskAgentCopy.placeholder : kanbanTaskAgentCopy.connectingPlaceholder}
             disabled={agentLoading || !acp?.connected}
-            className="h-7 min-w-36 flex-1 bg-transparent px-2 text-[12px] text-slate-800 placeholder-slate-400 outline-none disabled:opacity-50 dark:text-slate-200 dark:placeholder-slate-500"
+            className="h-7 min-w-64 flex-1 bg-transparent px-2 text-[12px] text-slate-800 placeholder-slate-400 outline-none disabled:opacity-50 dark:text-slate-200 dark:placeholder-slate-500"
           />
           <button
             onClick={() => void handleAgentSubmit()}
@@ -1524,7 +1529,7 @@ export function KanbanTab({
       )}
       <button
         onClick={() => setShowCreateModal(true)}
-        className="mr-1 inline-flex h-6 shrink-0 items-center rounded-md bg-amber-500 px-2 text-[11px] font-semibold text-white shadow-sm transition-colors hover:bg-amber-600"
+        className="mr-1 inline-flex h-6 shrink-0 items-center rounded-md border border-amber-200 bg-amber-50 px-2 text-[11px] font-semibold text-amber-700 transition-colors hover:bg-amber-100 dark:border-amber-900/40 dark:bg-amber-900/20 dark:text-amber-300 dark:hover:bg-amber-900/30"
       >
         {kanbanTaskAgentCopy.manual}
       </button>
@@ -1625,6 +1630,19 @@ export function KanbanTab({
         setFileChangesOpen={setFileChangesOpen}
         gitLogOpen={gitLogOpen}
         setGitLogOpen={setGitLogOpen}
+      />
+      <KanbanPlanBacklogModal
+        show={showPlanBacklogModal}
+        workspaceId={workspaceId}
+        boardId={selectedBoardId ?? defaultBoardId ?? null}
+        repoPath={defaultCodebase?.repoPath}
+        specialistLanguage={specialistLanguage}
+        onClose={() => setShowPlanBacklogModal(false)}
+        onPlanned={(sessionId: string) => {
+          setShowPlanBacklogModal(false);
+          openAgentPanel(sessionId);
+          scheduleKanbanRefreshBurst(onRefresh);
+        }}
       />
 
       <KanbanCreateTaskModal

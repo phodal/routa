@@ -426,6 +426,8 @@ export interface ExtendedTranslationDictionarySections extends TailTranslationDi
     missing: string;
     sessionMismatch: string;
     backendAgents: string;
+    planBacklog: string;
+    planBacklogDescription: string;
     importGithubIssues: string;
     boardSettings: string;
     // Card status

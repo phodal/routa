@@ -52,20 +52,20 @@ export function KanbanTabHeader({
               {t.kanban.limit} {board.sessionConcurrencyLimit ?? 1}
             </span>
           )}
-        </div>
-
-        <div className="flex min-w-0 shrink-0 flex-wrap items-center justify-end gap-1.5">
           {boards.length > 1 && (
             <Select
               value={selectedBoardId ?? ""}
               onChange={(event) => onSelectBoard(event.target.value)}
-              className="h-6 min-h-6 rounded-md border border-slate-200 bg-white px-2 text-[12px] text-slate-700 dark:border-slate-700 dark:bg-[#12141c] dark:text-slate-200"
+              className="h-6 min-h-6 max-w-[220px] rounded-md border border-slate-200 bg-white px-2 text-[12px] text-slate-700 dark:border-slate-700 dark:bg-[#12141c] dark:text-slate-200"
             >
               {boards.map((item) => (
                 <option key={item.id} value={item.id}>{item.name}</option>
               ))}
             </Select>
           )}
+        </div>
+
+        <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-1.5">
           {actionSlot}
           <button
             onClick={onOpenGitHubImport}
