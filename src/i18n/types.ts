@@ -121,6 +121,17 @@ export interface TranslationDictionary extends ExtendedTranslationDictionarySect
     customSpecialist: string;
     specialistMode: string;
     repoPath: string;
+    openKanbanDescription: string;
+    workspaceOverviewDescription: string;
+    checkEnvironment: string;
+    checkEnvironmentDescription: string;
+    recentWorkTitle: string;
+    recentWorkDescription: string;
+    resumeLatestSession: string;
+    noRecentSessions: string;
+    showAdvancedMode: string;
+    hideAdvancedMode: string;
+    advancedModeDescription: string;
   };
 
   // Navigation & Header
@@ -143,6 +154,7 @@ export interface TranslationDictionary extends ExtendedTranslationDictionarySect
     workflows: string;
     specialists: string;
     debug: string;
+    advanced: string;
   };
 
   // Settings panel

@@ -90,14 +90,14 @@ const en: TranslationDictionary = {
   },
 
   home: {
-    subtitle: "Kanban-First Control Surface",
+    subtitle: "Start Surface",
     minimalHome: "Minimal Home",
     workspaceCount: "workspaces",
     runtimeReady: "Runtime ready",
     runtimeOffline: "Runtime offline",
-    heroTitle: "Start with a requirement.",
+    heroTitle: "Enter the current work surface first.",
     heroDescription:
-      "Pick a workspace, describe the task, and route it. Everything else can happen after you enter the flow.",
+      "Start in Kanban by default. If you need context recovery, go to Overview or a recent session. Advanced tools stay hidden until you ask for them.",
     composer: "Composer",
     currentWorkspace: "Current workspace",
     switchWorkspace: "Switch workspace",
@@ -116,6 +116,17 @@ const en: TranslationDictionary = {
     customSpecialist: "Custom Specialist",
     specialistMode: "Specialist mode",
     repoPath: "Repo path",
+    openKanbanDescription: "Review card flow, automation state, and the current execution queue.",
+    workspaceOverviewDescription: "Review recent runs, recovery entry points, and workspace-level context.",
+    checkEnvironment: "Check environment",
+    checkEnvironmentDescription: "Confirm providers, roles, and runtime readiness before you start.",
+    recentWorkTitle: "Recover recent work",
+    recentWorkDescription: "If work already started, resume the latest session from here.",
+    resumeLatestSession: "Resume latest session",
+    noRecentSessions: "No recent sessions yet. Open Kanban and create the first card.",
+    showAdvancedMode: "Show advanced mode",
+    hideAdvancedMode: "Hide advanced mode",
+    advancedModeDescription: "Open these entry points only when you need team coordination, governance tools, or the expert launcher.",
   },
 
   nav: {
@@ -137,6 +148,7 @@ const en: TranslationDictionary = {
     workflows: "Workflows",
     specialists: "Specialists",
     debug: "Debug",
+    advanced: "Advanced",
   },
 
   settings: {

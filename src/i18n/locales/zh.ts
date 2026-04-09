@@ -90,14 +90,14 @@ const zh: TranslationDictionary = {
   },
 
   home: {
-    subtitle: "看板优先控制台",
+    subtitle: "起步入口",
     minimalHome: "极简主页",
     workspaceCount: "个工作区",
     runtimeReady: "运行时就绪",
     runtimeOffline: "运行时离线",
-    heroTitle: "从需求开始。",
+    heroTitle: "先进入当前工作面。",
     heroDescription:
-      "选择工作区，描述任务，然后路由。其他一切都可以在你进入流程之后发生。",
+      "默认先打开看板推进任务；如果需要恢复上下文，再去概览或最近会话。高级能力只在你主动展开时出现。",
     composer: "编排器",
     currentWorkspace: "当前工作区",
     switchWorkspace: "切换工作区",
@@ -115,6 +115,17 @@ const zh: TranslationDictionary = {
     customSpecialist: "自定义专家",
     specialistMode: "专家模式",
     repoPath: "仓库路径",
+    openKanbanDescription: "查看卡片流转、自动化状态和当前执行队列。",
+    workspaceOverviewDescription: "查看最近运行、恢复入口和工作区级摘要。",
+    checkEnvironment: "检查运行环境",
+    checkEnvironmentDescription: "在开始之前确认 Provider、角色和运行时是否可用。",
+    recentWorkTitle: "恢复最近工作",
+    recentWorkDescription: "如果你已经开始过执行，从这里恢复最近的会话。",
+    resumeLatestSession: "继续最近会话",
+    noRecentSessions: "还没有最近会话。先打开看板创建第一张卡片。",
+    showAdvancedMode: "显示高级模式",
+    hideAdvancedMode: "收起高级模式",
+    advancedModeDescription: "只有在需要团队协作、治理工具或专家级启动器时，再打开这些入口。",
   },
 
   nav: {
@@ -136,6 +147,7 @@ const zh: TranslationDictionary = {
     workflows: "工作流",
     specialists: "专家",
     debug: "调试",
+    advanced: "高级",
   },
 
   settings: {

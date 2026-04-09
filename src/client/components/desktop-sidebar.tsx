@@ -14,9 +14,9 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useTranslation } from "@/i18n";
-import { HarnessMark } from "./harness-mark";
+import { AdvancedNavMenu } from "./advanced-nav-menu";
 import { SettingsPopupMenu } from "./settings-popup-menu";
-import { ChevronLeft, CircleUser, Columns2, LayoutGrid, Server, Calendar, Workflow, House, Share2, MonitorUp, Monitor } from "lucide-react";
+import { ChevronLeft, Columns2, House, LayoutGrid } from "lucide-react";
 
 
 interface NavItem {
@@ -54,12 +54,6 @@ export function DesktopSidebar({
   const normalizedWorkspaceId = workspaceId?.trim() || null;
   const fallbackWorkspaceId = normalizedWorkspaceId || "default";
   const workspaceBaseHref = `/workspace/${fallbackWorkspaceId}`;
-  const settingsHarnessHref = normalizedWorkspaceId
-    ? `/settings/harness?workspaceId=${encodeURIComponent(normalizedWorkspaceId)}`
-    : "/settings/harness";
-  const settingsFluencyHref = normalizedWorkspaceId
-    ? `/settings/fluency?workspaceId=${encodeURIComponent(normalizedWorkspaceId)}`
-    : "/settings/fluency";
 
   const primaryItems: NavItem[] = [
     {
@@ -86,75 +80,6 @@ export function DesktopSidebar({
       requiresWorkspace: true,
       icon: (
         <LayoutGrid className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}/>
-      ),
-    },
-    {
-      id: "team",
-      label: t.nav.team,
-      href: workspaceBaseHref ? `${workspaceBaseHref}/team` : "/",
-      requiresWorkspace: true,
-      icon: (
-        <Share2 className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}/>
-      ),
-    },
-  ];
-
-  const toolItems: NavItem[] = [
-    {
-      id: "mcp",
-      label: t.nav.mcpServers,
-      href: "/settings/mcp",
-      icon: (
-        <Server className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}/>
-      ),
-    },
-    {
-      id: "schedules",
-      label: t.nav.schedules,
-      href: "/settings/schedules",
-      icon: (
-        <Calendar className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}/>
-      ),
-    },
-    {
-      id: "harness",
-      label: t.nav.harness,
-      href: settingsHarnessHref,
-      icon: <HarnessMark className="h-5 w-5" title="" />,
-    },
-    {
-      id: "fluency",
-      label: t.nav.fluency,
-      href: settingsFluencyHref,
-      icon: (
-        <MonitorUp className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}/>
-      ),
-    },
-    {
-      id: "workflows",
-      label: t.nav.workflows,
-      href: "/settings/workflows",
-      icon: (
-        <Workflow className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}/>
-      ),
-    },
-    {
-      id: "specialists",
-      label: t.nav.specialists,
-      href: "/settings/specialists",
-      icon: (
-        <CircleUser className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}/>
-      ),
-    },
-  ];
-
-  const secondaryItems: NavItem[] = [
-    {
-      id: "debug",
-      label: t.nav.debug,
-      href: "/traces",
-      icon: (
-        <Monitor className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}/>
       ),
     },
   ];
@@ -242,13 +167,17 @@ export function DesktopSidebar({
           </>
         ) : null}
         {primaryItems.map(renderNavItem)}
-        {!collapsed && <div className="mx-1 my-2 border-t border-desktop-border" />}
-        {toolItems.map(renderNavItem)}
       </nav>
 
       <div className={`${collapsed ? "mx-3" : "mx-2"} border-t border-desktop-border`} />
 
       <div className={`py-3 ${collapsed ? "flex flex-col items-center gap-1" : "px-2 space-y-1"}`}>
+        <AdvancedNavMenu
+          workspaceId={workspaceId}
+          collapsed={collapsed}
+          className="w-full"
+          buttonClassName={collapsed ? "h-10 w-10 px-0 py-0 justify-center" : "h-11 w-full gap-3 px-3 py-0 text-sm font-medium justify-start"}
+        />
         <SettingsPopupMenu
           position="sidebar"
           showLabel={!collapsed}
@@ -256,7 +185,6 @@ export function DesktopSidebar({
           className="w-full"
           buttonClassName={collapsed ? "h-10 w-10 px-0 py-0 justify-center" : "h-11 w-full gap-3 px-3 py-0 text-sm font-medium"}
         />
-        {secondaryItems.map(renderNavItem)}
       </div>
     </aside>
   );

@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 const pathnameState = vi.hoisted(() => ({
@@ -12,19 +12,22 @@ vi.mock("next/navigation", () => ({
 import { DesktopSidebar } from "../desktop-sidebar";
 
 describe("DesktopSidebar", () => {
-  it("prioritizes Kanban and exposes Overview as a secondary workspace entry", () => {
+  it("keeps only Home, Kanban, and Overview in the primary navigation", () => {
     render(<DesktopSidebar workspaceId="default" />);
 
-    const links = screen.getAllByRole("link").slice(0, 4);
-    expect(links.map((link) => link.textContent)).toEqual(["Home", "Kanban", "Overview", "Team"]);
+    const links = screen.getAllByRole("link").slice(0, 3);
+    expect(links.map((link) => link.textContent)).toEqual(["Home", "Kanban", "Overview"]);
 
     expect(screen.getByRole("link", { name: "Kanban" }).getAttribute("href")).toBe("/workspace/default/kanban");
     expect(screen.getByRole("link", { name: "Overview" }).getAttribute("href")).toBe("/workspace/default/overview");
   });
 
-  it("keeps the Harness entry available with the workspace-aware settings link", () => {
+  it("moves advanced workspace tools into the Advanced menu", () => {
     render(<DesktopSidebar workspaceId="default" />);
 
+    fireEvent.click(screen.getByRole("button", { name: "Advanced" }));
+
+    expect(screen.getByRole("link", { name: "Team" }).getAttribute("href")).toBe("/workspace/default/team");
     expect(screen.getByRole("link", { name: "Harness" }).getAttribute("href")).toBe(
       "/settings/harness?workspaceId=default",
     );
