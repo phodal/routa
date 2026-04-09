@@ -10,6 +10,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getRoutaSystem } from "@/core/routa-system";
 import { createTask, hydrateTaskComments, Task, TaskStatus, TaskPriority } from "@/core/models/task";
+import type { ArtifactStore } from "@/core/store/artifact-store";
+import type { CodebaseStore } from "@/core/db/pg-codebase-store";
+import type { KanbanBoardStore } from "@/core/store/kanban-board-store";
+import type { WorktreeStore } from "@/core/db/pg-worktree-store";
 import { v4 as uuidv4 } from "uuid";
 import { ensureDefaultBoard } from "@/core/kanban/boards";
 import {
@@ -33,6 +37,97 @@ import {
 import { buildTaskDeliveryReadiness } from "@/core/kanban/task-delivery-readiness";
 
 export const dynamic = "force-dynamic";
+
+type RoutaSystem = ReturnType<typeof getRoutaSystem>;
+
+type TaskSerializationSystem = {
+  artifactStore: Pick<ArtifactStore, "listByTask">;
+  kanbanBoardStore: Pick<KanbanBoardStore, "get">;
+  codebaseStore: Pick<CodebaseStore, "get" | "getDefault">;
+  worktreeStore: Pick<WorktreeStore, "get">;
+};
+
+type SerializeTaskOptions = {
+  includeDeliveryReadiness?: boolean;
+};
+
+function cachePromise<K, V>(cache: Map<K, Promise<V>>, key: K, load: () => Promise<V>): Promise<V> {
+  const cached = cache.get(key);
+  if (cached) {
+    return cached;
+  }
+
+  const promise = load();
+  cache.set(key, promise);
+  return promise;
+}
+
+async function createTaskSerializationSystem(
+  system: RoutaSystem,
+  workspaceId: string,
+  tasks: Task[],
+): Promise<TaskSerializationSystem> {
+  const [codebases, worktrees, artifacts] = await Promise.all([
+    system.codebaseStore.listByWorkspace(workspaceId),
+    system.worktreeStore.listByWorkspace(workspaceId),
+    typeof system.artifactStore.listByWorkspace === "function"
+      ? system.artifactStore.listByWorkspace(workspaceId)
+      : Promise.resolve([]),
+  ]);
+  const hasPreloadedArtifacts = typeof system.artifactStore.listByWorkspace === "function";
+
+  const codebaseById = new Map(codebases.map((codebase) => [codebase.id, codebase]));
+  const defaultCodebase = codebases.find((codebase) => codebase.isDefault);
+  const worktreeById = new Map(worktrees.map((worktree) => [worktree.id, worktree]));
+  const preloadedTaskIds = new Set(tasks.filter((task) => task.workspaceId === workspaceId).map((task) => task.id));
+  const artifactsByTaskId = new Map<string, typeof artifacts>();
+  for (const artifact of artifacts) {
+    const taskArtifacts = artifactsByTaskId.get(artifact.taskId) ?? [];
+    taskArtifacts.push(artifact);
+    artifactsByTaskId.set(artifact.taskId, taskArtifacts);
+  }
+  const artifactCache = new Map<string, ReturnType<ArtifactStore["listByTask"]>>();
+  const boardCache = new Map<string, ReturnType<KanbanBoardStore["get"]>>();
+  const codebaseCache = new Map<string, ReturnType<CodebaseStore["get"]>>();
+  const worktreeCache = new Map<string, ReturnType<WorktreeStore["get"]>>();
+
+  return {
+    artifactStore: {
+      listByTask: (taskId) =>
+        hasPreloadedArtifacts && preloadedTaskIds.has(taskId)
+          ? Promise.resolve(artifactsByTaskId.get(taskId) ?? [])
+          : cachePromise(artifactCache, taskId, () => system.artifactStore.listByTask(taskId)),
+    },
+    kanbanBoardStore: {
+      get: (boardId) =>
+        cachePromise(boardCache, boardId, () => system.kanbanBoardStore.get(boardId)),
+    },
+    codebaseStore: {
+      get: (codebaseId) => {
+        const preloaded = codebaseById.get(codebaseId);
+        if (preloaded) {
+          return Promise.resolve(preloaded);
+        }
+        return cachePromise(codebaseCache, codebaseId, () => system.codebaseStore.get(codebaseId));
+      },
+      getDefault: (requestedWorkspaceId) => {
+        if (requestedWorkspaceId === workspaceId && defaultCodebase) {
+          return Promise.resolve(defaultCodebase);
+        }
+        return system.codebaseStore.getDefault(requestedWorkspaceId);
+      },
+    },
+    worktreeStore: {
+      get: (worktreeId) => {
+        const preloaded = worktreeById.get(worktreeId);
+        if (preloaded) {
+          return Promise.resolve(preloaded);
+        }
+        return cachePromise(worktreeCache, worktreeId, () => system.worktreeStore.get(worktreeId));
+      },
+    },
+  };
+}
 
 function requireWorkspaceId(value: unknown): string | null {
   if (typeof value !== "string") return null;
@@ -68,6 +163,8 @@ export async function GET(request: NextRequest) {
   const sessionId = searchParams.get("sessionId");
   const status = searchParams.get("status");
   const assignedTo = searchParams.get("assignedTo");
+  const expand = new Set(searchParams.getAll("expand").flatMap((value) => value.split(",").map((item) => item.trim())));
+  const includeDeliveryReadiness = expand.has("deliveryReadiness");
 
   if (!workspaceId) {
     return NextResponse.json({ error: "workspaceId is required" }, { status: 400 });
@@ -94,8 +191,12 @@ export async function GET(request: NextRequest) {
     tasks = tasks.filter((t) => t.sessionId === sessionId);
   }
 
+  const serializationSystem = await createTaskSerializationSystem(system, workspaceId, tasks);
+
   return NextResponse.json({
-    tasks: await Promise.all(tasks.map((task) => serializeTask(task, system))),
+    tasks: await Promise.all(tasks.map((task) =>
+      serializeTask(task, serializationSystem, { includeDeliveryReadiness })
+    )),
   });
 }
 
@@ -366,11 +467,17 @@ export async function DELETE(request: NextRequest) {
   return NextResponse.json({ deleted: true });
 }
 
-async function serializeTask(task: Task, system: ReturnType<typeof getRoutaSystem>) {
+async function serializeTask(
+  task: Task,
+  system: TaskSerializationSystem,
+  options: SerializeTaskOptions = { includeDeliveryReadiness: true },
+) {
   const evidenceSummary = await buildTaskEvidenceSummary(task, system);
   const storyReadiness = await buildTaskStoryReadiness(task, system);
   const investValidation = buildTaskInvestValidation(task);
-  const deliveryReadiness = await buildTaskDeliveryReadiness(task, system);
+  const deliveryReadiness = options.includeDeliveryReadiness === false
+    ? undefined
+    : await buildTaskDeliveryReadiness(task, system);
   const comments = hydrateTaskComments(task.comments, task.comment);
 
   return {
@@ -420,7 +527,7 @@ async function serializeTask(task: Task, system: ReturnType<typeof getRoutaSyste
     evidenceSummary,
     storyReadiness,
     investValidation,
-    deliveryReadiness,
+    ...(deliveryReadiness != null && { deliveryReadiness }),
     createdAt: task.createdAt instanceof Date ? task.createdAt.toISOString() : task.createdAt,
     updatedAt: task.updatedAt instanceof Date ? task.updatedAt.toISOString() : task.updatedAt,
   };

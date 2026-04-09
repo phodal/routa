@@ -36,6 +36,7 @@ const system = {
   artifactStore,
   kanbanBoardStore: { get: vi.fn() },
   codebaseStore: { listByWorkspace: vi.fn(), get: vi.fn(), getDefault: vi.fn(), findByRepoPath: vi.fn() },
+  worktreeStore: { listByWorkspace: vi.fn(), get: vi.fn() },
 };
 
 vi.mock("@/core/routa-system", () => ({
@@ -106,6 +107,8 @@ describe("/api/tasks GET", () => {
     system.codebaseStore.get.mockResolvedValue(undefined);
     system.codebaseStore.getDefault.mockResolvedValue(undefined);
     system.codebaseStore.findByRepoPath.mockResolvedValue(undefined);
+    system.worktreeStore.listByWorkspace.mockResolvedValue([]);
+    system.worktreeStore.get.mockResolvedValue(undefined);
     processKanbanColumnTransition.mockResolvedValue(undefined);
     await artifactStore.deleteByTask("task-1");
   });

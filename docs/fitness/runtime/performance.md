@@ -84,3 +84,11 @@ metrics:
 - 这里的 smoke 用于发现明显性能回退，不声明自己是 production latency 的事实来源。
 - `performance` 与 `observability` 分离：有 tracing 或错误信号，不等于性能达标。
 - `startup_performance_probe` 当前仍有 protocol gap：Claude 还没有与 ACP-native provider 完全对齐的 ready 定义，因此它的 startup 数字只能作为趋势参考，不能直接和 `opencode`、`qoder`、`codex-acp` 横向比较。
+
+## Tracked Gaps
+
+- `task_api_latency_probe` is intentionally not implemented yet. The need is tracked in
+  `docs/issues/2026-04-09-next-task-api-head-of-line-blocking.md`: Next.js task list serialization can
+  monopolize the local dev server and make neighboring task-detail or task-changes requests look slow.
+  Add an API-level latency/payload probe after the task list API is split into lean-list and detail
+  hydration paths.
