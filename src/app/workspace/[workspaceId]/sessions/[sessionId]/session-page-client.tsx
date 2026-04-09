@@ -41,10 +41,98 @@ interface SessionRecord {
   sessionId: string;
   name?: string;
   cwd?: string;
+  branch?: string;
   provider?: string;
   role?: string;
+  modeId?: string;
+  model?: string;
+  specialistId?: string;
   acpStatus?: "connecting" | "ready" | "error";
   parentSessionId?: string;
+}
+
+interface TranscriptMessage {
+  role: "user" | "assistant" | "thought" | "tool" | "plan" | "info" | "terminal";
+  content: string;
+  toolName?: string;
+  toolStatus?: string;
+}
+
+const RESTORE_CONTEXT_MESSAGE_LIMIT = 12;
+const RESTORE_CONTEXT_CHAR_LIMIT = 12000;
+
+function isExpiredEmbeddedSessionFailure(message: string | null | undefined): boolean {
+  return Boolean(
+    message && message.includes("embedded ACP processes cannot be resumed on a different instance"),
+  );
+}
+
+function isUnsupportedSessionLoadFailure(message: string | null | undefined): boolean {
+  return Boolean(
+    message && message.includes("session/load not supported"),
+  );
+}
+
+function shouldRecreateSessionAfterResumeError(error: unknown): error is { message: string; code?: number } {
+  if (!error || typeof error !== "object") return false;
+  const candidate = error as { message?: unknown; code?: unknown; name?: unknown };
+  return (
+    typeof candidate.message === "string"
+    && (isExpiredEmbeddedSessionFailure(candidate.message) || isUnsupportedSessionLoadFailure(candidate.message))
+    && (candidate.name === "AcpClientError" || typeof candidate.code === "number")
+  );
+}
+
+function formatTranscriptLine(message: TranscriptMessage): string | null {
+  const content = message.content.trim();
+  if (!content) return null;
+
+  switch (message.role) {
+    case "user":
+      return `User:\n${content}`;
+    case "assistant":
+      return `Assistant:\n${content}`;
+    case "tool":
+      return `Tool${message.toolName ? ` (${message.toolName}${message.toolStatus ? `, ${message.toolStatus}` : ""})` : ""}:\n${content}`;
+    case "plan":
+      return `Plan:\n${content}`;
+    case "info":
+      return `Info:\n${content}`;
+    case "terminal":
+      return `Terminal:\n${content}`;
+    default:
+      return null;
+  }
+}
+
+function buildCrossInstanceRestorePrompt(session: SessionRecord, messages: TranscriptMessage[]): string {
+  const recent = messages
+    .filter((message) => message.role !== "thought")
+    .map(formatTranscriptLine)
+    .filter((value): value is string => Boolean(value))
+    .slice(-RESTORE_CONTEXT_MESSAGE_LIMIT);
+
+  let transcript = recent.join("\n\n");
+  if (transcript.length > RESTORE_CONTEXT_CHAR_LIMIT) {
+    transcript = transcript.slice(transcript.length - RESTORE_CONTEXT_CHAR_LIMIT).trimStart();
+  }
+
+  return [
+    "You are continuing a previous Routa Codex session because the original embedded ACP runtime belongs to another expired instance.",
+    "Treat the transcript below as prior conversation state. Continue from it instead of starting over.",
+    `Previous session ID: ${session.sessionId}`,
+    session.name ? `Previous session name: ${session.name}` : null,
+    session.cwd ? `Working directory: ${session.cwd}` : null,
+    session.branch ? `Branch: ${session.branch}` : null,
+    "",
+    "Transcript excerpt:",
+    transcript || "(No transcript content was available. Ask the user what to continue.)",
+    "",
+    "First turn requirements:",
+    "1. Briefly acknowledge that the prior context was restored.",
+    "2. Identify the latest unfinished task or decision from the transcript.",
+    "3. Continue the work directly without re-summarizing everything.",
+  ].filter(Boolean).join("\n");
 }
 
 /** Built-in roles always available in the selector */
@@ -81,7 +169,6 @@ export function SessionPageClient() {
   useEffect(() => {
     if (codebases.length === 0) return;
     const def = codebases.find((c) => c.isDefault) ?? codebases[0];
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- sync default codebase selection from loaded list
     setRepoSelection({ path: def.repoPath, branch: def.branch ?? "", name: def.label ?? def.repoPath.split("/").pop() ?? "" });
   }, [codebases]);
 
@@ -297,7 +384,6 @@ export function SessionPageClient() {
     });
 
     if (hasRename) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- refresh UI for rename updates
       bumpRefresh();
     }
   }, [acp.updates, bumpRefresh]);
@@ -406,6 +492,15 @@ export function SessionPageClient() {
     if (!response.ok) return null;
     const data = await response.json();
     return (data?.session ?? null) as SessionRecord | null;
+  }, []);
+
+  const fetchSessionTranscript = useCallback(async (targetSessionId: string): Promise<TranscriptMessage[]> => {
+    const response = await fetch(`/api/sessions/${targetSessionId}/transcript`, { cache: "no-store" });
+    if (!response.ok) {
+      throw new Error(`Failed to load transcript for session ${targetSessionId}`);
+    }
+    const data = await response.json();
+    return Array.isArray(data?.messages) ? data.messages as TranscriptMessage[] : [];
   }, []);
 
   useEffect(() => {
@@ -531,14 +626,56 @@ export function SessionPageClient() {
     await ensureConnected();
     setIsResumingSession(true);
     try {
-      const resumed = await acpResumeSession(displaySessionId, activeSessionRecord.cwd);
+      const resumed = await acpResumeSession(
+        displaySessionId,
+        activeSessionRecord.cwd,
+        { throwOnError: true },
+      );
       if (resumed?.sessionId) {
         bumpRefresh();
       }
+    } catch (error) {
+      if (!shouldRecreateSessionAfterResumeError(error)) {
+        throw error;
+      }
+
+      const transcript = await fetchSessionTranscript(displaySessionId);
+      const recreated = await acp.createSession(
+        activeSessionRecord.cwd,
+        "codex",
+        activeSessionRecord.modeId,
+        activeSessionRecord.role,
+        workspaceId,
+        activeSessionRecord.model,
+        undefined,
+        activeSessionRecord.specialistId,
+        undefined,
+        undefined,
+        undefined,
+        activeSessionRecord.branch,
+      );
+
+      if (!recreated?.sessionId) {
+        return;
+      }
+
+      const restorePrompt = buildCrossInstanceRestorePrompt(activeSessionRecord, transcript);
+      storePendingPrompt(recreated.sessionId, restorePrompt);
+      router.push(`/workspace/${workspaceId}/sessions/${recreated.sessionId}`);
     } finally {
       setIsResumingSession(false);
     }
-  }, [activeSessionRecord?.cwd, acpResumeSession, bumpRefresh, displaySessionId, ensureConnected]);
+  }, [
+    activeSessionRecord,
+    acp,
+    acpResumeSession,
+    bumpRefresh,
+    displaySessionId,
+    ensureConnected,
+    fetchSessionTranscript,
+    router,
+    workspaceId,
+  ]);
 
   const ensureSessionForChat = useCallback(async (cwd?: string, provider?: string, modeId?: string, model?: string): Promise<string | null> => {
     await ensureConnected();

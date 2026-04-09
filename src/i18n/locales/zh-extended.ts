@@ -1204,7 +1204,7 @@ export const zhExtended: ExtendedTranslationDictionarySections = {
     openInNewTab: "在新标签页中打开",
     resume: "恢复",
     resuming: "恢复中...",
-    resumeHint: "恢复这个持久化会话，并重新绑定到当前 ACP 运行时。",
+    resumeHint: "恢复这个持久化会话；如果原生恢复不可用，Routa 会在新会话中重建并带上已恢复的上下文。",
   },
 
   mcp: {

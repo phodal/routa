@@ -1204,7 +1204,7 @@ export const enExtended: ExtendedTranslationDictionarySections = {
     openInNewTab: "Open in new tab",
     resume: "Resume",
     resuming: "Resuming...",
-    resumeHint: "Resume this persisted session and rebind it to the current ACP runtime.",
+    resumeHint: "Resume this persisted session. If native resume is unavailable, Routa recreates it in a new session with restored context.",
   },
 
   mcp: {

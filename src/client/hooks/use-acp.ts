@@ -209,6 +209,7 @@ export interface UseAcpActions {
   resumeSession: (
     sessionId: string,
     cwd?: string,
+    options?: { throwOnError?: boolean },
   ) => Promise<AcpLoadSessionResult | null>;
   selectSession: (sessionId: string) => void;
   setProvider: (provider: string) => void;
@@ -580,6 +581,7 @@ export function useAcp(baseUrl: string = ""): UseAcpState & UseAcpActions {
   const resumeSession = useCallback(async (
     targetSessionId: string,
     cwd?: string,
+    options?: { throwOnError?: boolean },
   ): Promise<AcpLoadSessionResult | null> => {
     const client = clientRef.current;
     if (!client || !targetSessionId) return null;
@@ -605,6 +607,9 @@ export function useAcp(baseUrl: string = ""): UseAcpState & UseAcpActions {
         loading: false,
         error: toErrorMessage(err) || "Session resume failed",
       }));
+      if (options?.throwOnError) {
+        throw err;
+      }
       return null;
     }
   }, []);
