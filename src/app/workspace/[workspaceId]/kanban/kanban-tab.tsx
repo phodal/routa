@@ -78,6 +78,10 @@ const MIN_DETAIL_SPLIT_RATIO = 0.32;
 const MAX_DETAIL_SPLIT_RATIO = 0.72;
 const LIVE_SESSION_TAIL_POLL_MS = 10_000;
 
+function isPlanBacklogBoard(board: KanbanBoardInfo): boolean {
+  return board.name.trim().replace(/\s+/g, " ").toLowerCase() === "plan backlog";
+}
+
 export function KanbanTab({
   workspaceId,
   refreshSignal,
@@ -99,13 +103,20 @@ export function KanbanTab({
   const { t } = useTranslation();
   const kanbanTaskAgentCopy = getKanbanTaskAgentCopy(specialistLanguage);
   const [localBoards, setLocalBoards] = useState<KanbanBoardInfo[]>(boards);
+  const visibleBoards = useMemo(
+    () => localBoards.filter((board) => !isPlanBacklogBoard(board)),
+    [localBoards],
+  );
   const resolveSpecialist = useMemo(
     () => createKanbanSpecialistResolver(specialists),
     [specialists],
   );
   const defaultBoardId = useMemo(
-    () => localBoards.find((board) => board.isDefault)?.id ?? localBoards[0]?.id ?? null,
-    [localBoards],
+    () => localBoards.find((board) => !isPlanBacklogBoard(board) && board.isDefault)?.id
+      ?? visibleBoards[0]?.id
+      ?? localBoards[0]?.id
+      ?? null,
+    [localBoards, visibleBoards],
   );
   const allCodebaseIds = useMemo(
     () => codebases.map((codebase) => codebase.id),
@@ -1462,7 +1473,7 @@ export function KanbanTab({
     tasksCount: tasks.length,
     board,
     boardQueue,
-    boards: localBoards,
+    boards: visibleBoards,
     selectedBoardId,
     onSelectBoard: setSelectedBoardId,
     githubImportEnabled,
