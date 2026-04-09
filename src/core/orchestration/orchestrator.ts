@@ -41,6 +41,12 @@ import { AgentEventBridge, makeStartedEvent } from "../acp/agent-event-bridge";
 import type { WorkspaceAgentEvent } from "../acp/agent-event-bridge";
 import { LifecycleNotifier } from "../acp/lifecycle-notifier";
 import { createWorkspaceSessionSandbox } from "../sandbox/permissions";
+import {
+  buildTraceRunDigest,
+  formatTraceContextForSpecialist,
+  queryTracesWithSessionFallback,
+} from "../trace";
+import type { TraceRecord } from "../trace";
 
 export interface DelegateWithSpawnParams {
   /** Task ID to delegate */
@@ -121,6 +127,26 @@ const TEAM_RUNTIME_LABELS: Record<string, string[]> = {
   "team-operations": ["Emily", "Ben", "Olivia", "Grace", "Ivan"],
   "team-general-engineer": ["Nick", "Cindy", "Hunk", "Sarah", "Chloe"],
 };
+
+function mergeAdditionalContext(
+  additionalInstructions?: string,
+  traceContext?: string,
+): string | undefined {
+  return [additionalInstructions?.trim(), traceContext?.trim()]
+    .filter((context): context is string => Boolean(context))
+    .join("\n\n");
+}
+
+function dedupeTraceRecordsForPrompt(records: TraceRecord[]): TraceRecord[] {
+  const deduped = new Map<string, TraceRecord>();
+  for (const record of records) {
+    const key = record.id || `${record.sessionId}:${record.timestamp}:${record.eventType}`;
+    if (!deduped.has(key)) {
+      deduped.set(key, record);
+    }
+  }
+  return Array.from(deduped.values());
+}
 
 function inferRosterRoleId(task: Task, specialistId: string, additionalInstructions?: string): string | undefined {
   if (specialistId.startsWith("team-")) {
@@ -313,6 +339,55 @@ export class RoutaOrchestrator {
     return () => subscribers!.delete(handler);
   }
 
+  private async buildRoleSpecificTraceContext(
+    role: AgentRole,
+    sessionIds: string[],
+    cwd: string,
+  ): Promise<string | undefined> {
+    if (role !== AgentRole.CRAFTER && role !== AgentRole.GATE) {
+      return undefined;
+    }
+
+    try {
+      const traceGroups = await Promise.all(
+        sessionIds.map((sessionId) => queryTracesWithSessionFallback({ sessionId }, cwd)),
+      );
+      const traces = dedupeTraceRecordsForPrompt(traceGroups.flat());
+      const digest = buildTraceRunDigest(traces);
+      return formatTraceContextForSpecialist(role, digest);
+    } catch (err) {
+      console.warn("[Orchestrator] Failed to build trace-state prompt context:", err);
+      const digest = buildTraceRunDigest([]);
+      return formatTraceContextForSpecialist(role, digest);
+    }
+  }
+
+  private getTraceSessionIdsForDelegation(
+    taskId: string,
+    callerSessionId: string,
+    callerAgentId: string,
+  ): string[] {
+    const sessionIds = new Set<string>([callerSessionId]);
+    const relatedChildRecords = Array.from(this.childAgents.values())
+      .filter((record) =>
+        record.taskId === taskId &&
+        (
+          record.parentAgentId === callerAgentId ||
+          record.parentSessionId === callerSessionId
+        )
+      )
+      .sort((left, right) =>
+        left.parentSessionId.localeCompare(right.parentSessionId) ||
+        left.sessionId.localeCompare(right.sessionId),
+      );
+
+    for (const record of relatedChildRecords) {
+      sessionIds.add(record.sessionId);
+    }
+
+    return Array.from(sessionIds).sort();
+  }
+
   /**
    * Set the session registration handler for adding child sessions to the UI sidebar.
    */
@@ -425,6 +500,16 @@ export class RoutaOrchestrator {
 
     const agentId = (agentResult.data as { agentId: string }).agentId;
 
+    const traceContext = await this.buildRoleSpecificTraceContext(
+      specialistConfig.role,
+      this.getTraceSessionIdsForDelegation(taskId, callerSessionId, callerAgentId),
+      cwd,
+    );
+    const specialistAdditionalContext = mergeAdditionalContext(
+      additionalInstructions,
+      traceContext,
+    );
+
     // 5. Build the delegation prompt
     const delegationPrompt = buildDelegationPrompt({
       specialist: specialistConfig,
@@ -444,7 +529,7 @@ export class RoutaOrchestrator {
           ? `\n## Verification\n${task.verificationCommands.map((c) => `- \`${c}\``).join("\n")}\n`
           : ""),
       parentAgentId: callerAgentId,
-      additionalContext: additionalInstructions,
+      additionalContext: specialistAdditionalContext,
     });
 
     // 6. Assign task to agent
