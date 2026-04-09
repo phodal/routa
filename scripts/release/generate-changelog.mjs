@@ -82,6 +82,8 @@ function tryGit(args) {
 
 function normalizeTag(value) {
   if (!value) return value;
+  // Don't normalize special git refs like HEAD, main, etc.
+  if (value === "HEAD" || !value.match(/^\d/)) return value;
   return value.startsWith("v") ? value : `v${value}`;
 }
 
