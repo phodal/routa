@@ -36,8 +36,9 @@ interface SessionRestoreTranscriptMessage {
   toolStatus?: string;
 }
 
-const KANBAN_RESTORE_CONTEXT_MESSAGE_LIMIT = 12;
-const KANBAN_RESTORE_CONTEXT_CHAR_LIMIT = 12000;
+const KANBAN_RESTORE_CONTEXT_MESSAGE_LIMIT = 4;
+const KANBAN_RESTORE_CONTEXT_CHAR_LIMIT = 1800;
+const KANBAN_RESTORE_MESSAGE_CHAR_LIMIT = 700;
 
 function isRecoverableAcpSessionError(error: unknown): boolean {
   if (!error || typeof error !== "object") return false;
@@ -47,29 +48,51 @@ function isRecoverableAcpSessionError(error: unknown): boolean {
     || message.includes("session/load not supported");
 }
 
+function normalizeRestoreContent(content: string): string {
+  return content
+    .replace(/\r\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function isNoisyRestoreContent(content: string): boolean {
+  const lines = content.split("\n");
+  if (lines.length > 18) return true;
+  if (content.length > 1200) return true;
+  return /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z\s+(INFO|WARN|ERROR)\s/.test(content)
+    || /\b(test result:|Running tests\/|Doc-tests|SQLite database opened at:)\b/.test(content);
+}
+
+function truncateRestoreContent(content: string): string {
+  if (content.length <= KANBAN_RESTORE_MESSAGE_CHAR_LIMIT) return content;
+  return `${content.slice(0, KANBAN_RESTORE_MESSAGE_CHAR_LIMIT).trimEnd()}\n[truncated]`;
+}
+
 function formatRestoreTranscriptLine(message: SessionRestoreTranscriptMessage): string | null {
-  const content = message.content?.trim();
+  if (!["user", "assistant", "plan", "info"].includes(message.role ?? "")) return null;
+
+  const content = normalizeRestoreContent(message.content ?? "");
   if (!content) return null;
+  if (isNoisyRestoreContent(content)) return null;
+
+  const excerpt = truncateRestoreContent(content);
 
   switch (message.role) {
     case "user":
-      return `User:\n${content}`;
+      return `User: ${excerpt}`;
     case "assistant":
-      return `Assistant:\n${content}`;
-    case "tool":
-      return `Tool${message.toolName ? ` (${message.toolName}${message.toolStatus ? `, ${message.toolStatus}` : ""})` : ""}:\n${content}`;
+      return `Assistant: ${excerpt}`;
     case "plan":
-      return `Plan:\n${content}`;
+      return `Plan: ${excerpt}`;
     case "info":
-      return `Info:\n${content}`;
-    case "terminal":
-      return `Terminal:\n${content}`;
+      return `Info: ${excerpt}`;
     default:
       return null;
   }
 }
 
-function buildKanbanSessionRestorePrompt(
+export function buildKanbanSessionRestorePrompt(
+  task: TaskInfo | null,
   session: SessionInfo,
   messages: SessionRestoreTranscriptMessage[],
 ): string {
@@ -84,21 +107,30 @@ function buildKanbanSessionRestorePrompt(
     transcript = transcript.slice(transcript.length - KANBAN_RESTORE_CONTEXT_CHAR_LIMIT).trimStart();
   }
 
+  const taskContext = task
+    ? [
+        `- Card: ${task.title}`,
+        task.objective ? `- Objective: ${task.objective}` : null,
+        task.columnId ? `- Column: ${task.columnId}` : null,
+        task.status ? `- Status: ${task.status}` : null,
+      ].filter(Boolean).join("\n")
+    : "- Card: unknown";
+
   return [
-    "You are continuing a previous Routa Kanban card session because its embedded ACP runtime could not be reattached.",
-    "Treat the transcript below as prior conversation state. Continue from it instead of starting over.",
-    `Previous session ID: ${session.sessionId}`,
-    session.name ? `Previous session name: ${session.name}` : null,
-    session.cwd ? `Working directory: ${session.cwd}` : null,
-    session.branch ? `Branch: ${session.branch}` : null,
+    "Continue the previous Routa Kanban card session. Do not summarize the transcript; continue the card work directly.",
     "",
-    "Transcript excerpt:",
-    transcript || "(No transcript content was available. Ask the user what to continue.)",
+    "Card context:",
+    taskContext,
     "",
-    "First turn requirements:",
-    "1. Briefly acknowledge that the card session context was restored.",
-    "2. Identify the latest unfinished card task or decision from the transcript.",
-    "3. Continue the work directly without re-summarizing everything.",
+    "Session context:",
+    `- Previous session: ${session.sessionId}`,
+    session.cwd ? `- Working directory: ${session.cwd}` : null,
+    session.branch ? `- Branch: ${session.branch}` : null,
+    transcript ? "" : null,
+    transcript ? "Recent clean conversation:" : null,
+    transcript || null,
+    "",
+    "Next: inspect the repo if needed, then proceed with the smallest next action for this card.",
   ].filter(Boolean).join("\n");
 }
 
@@ -795,7 +827,8 @@ export function KanbanTaskDetailOverlay({
     }
 
     setActiveSessionId(replacement.sessionId);
-    setSessionRecoveryInputPrefill(buildKanbanSessionRestorePrompt(targetSessionInfo, transcript));
+    acp.selectSession(replacement.sessionId);
+    setSessionRecoveryInputPrefill(buildKanbanSessionRestorePrompt(activeTask, targetSessionInfo, transcript));
     setHiddenSessionPaneTaskId(null);
     onRefresh();
   };

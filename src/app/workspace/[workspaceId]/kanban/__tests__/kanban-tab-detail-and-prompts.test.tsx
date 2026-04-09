@@ -3,6 +3,7 @@ import { describe, expect, it, vi, afterEach } from "vitest";
 import { KanbanTab } from "../kanban-tab";
 import { KanbanCardDetail } from "../kanban-card-detail";
 import { KanbanCardActivityPanel } from "../kanban-card-activity";
+import { buildKanbanSessionRestorePrompt } from "../kanban-tab-panels";
 import type { KanbanBoardInfo, TaskInfo } from "../../types";
 import type { UseAcpActions, UseAcpState } from "@/client/hooks/use-acp";
 
@@ -59,6 +60,52 @@ function createTask(id: string, title: string, overrides: Partial<TaskInfo> = {}
 
 afterEach(() => {
   desktopAwareFetch.mockReset();
+});
+
+describe("kanban session restore prompt", () => {
+  it("uses card context and filters noisy tool or terminal transcript", () => {
+    const prompt = buildKanbanSessionRestorePrompt(
+      createTask("task-restore", "Upgrade dirs", {
+        objective: "Update dirs requirement from 5 to 6",
+        status: "IN_PROGRESS",
+      }),
+      {
+        sessionId: "session-old",
+        name: "Upgrade dirs · Dev Crafter",
+        workspaceId: "workspace-1",
+        cwd: "/tmp/worktree",
+        branch: "issue/dirs",
+        provider: "codex",
+        createdAt: "2025-01-01T00:00:00.000Z",
+      },
+      [
+        {
+          role: "terminal",
+          content: "cargo test --all\nrunning 100 tests\n...",
+        },
+        {
+          role: "assistant",
+          content: "2026-04-09T04:03:47.306949Z INFO routa_server: Starting Routa backend server on 127.0.0.1:0\n".repeat(20),
+        },
+        {
+          role: "tool",
+          toolName: "shell",
+          content: "test result: ok. 8 passed; 0 failed",
+        },
+        {
+          role: "assistant",
+          content: "cargo test --all passed; cargo clippy is the remaining verification.",
+        },
+      ],
+    );
+
+    expect(prompt).toContain("Card context:");
+    expect(prompt).toContain("- Card: Upgrade dirs");
+    expect(prompt).toContain("Assistant: cargo test --all passed");
+    expect(prompt).not.toContain("Starting Routa backend server");
+    expect(prompt).not.toContain("test result: ok");
+    expect(prompt).not.toContain("running 100 tests");
+  });
 });
 
 describe("KanbanCardDetail repository health", () => {
