@@ -84,8 +84,8 @@ export function SettingsPopupMenu({
         aria-label={buttonAriaLabel}
         className={`inline-flex items-center rounded-md border border-desktop-border text-xs font-medium transition-colors ${buttonClassName ?? "h-8 px-2 py-1"} ${
           isActive
-            ? "bg-desktop-bg-active text-desktop-accent"
-            : "text-desktop-text-secondary hover:border-desktop-accent/40 hover:text-desktop-text-primary hover:bg-desktop-bg-active/60"
+            ? "bg-desktop-bg-active text-desktop-text-primary"
+            : "text-desktop-text-secondary hover:border-desktop-border hover:text-desktop-text-secondary hover:bg-desktop-bg-active/60"
         }`}
       >
         <Settings className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.7}/>
@@ -103,7 +103,7 @@ export function SettingsPopupMenu({
           <>
             <Link
               href="/settings"
-              className="block rounded-md border border-transparent px-2 py-1.5 font-semibold text-desktop-text-secondary transition-colors hover:bg-desktop-bg-active hover:text-desktop-text-primary hover:border-desktop-border"
+              className="block rounded-md border border-transparent px-2 py-1.5 font-semibold text-desktop-text-secondary transition-colors hover:bg-desktop-bg-active hover:text-desktop-text-secondary hover:border-desktop-border"
             >
               {t.settings.title}
             </Link>
