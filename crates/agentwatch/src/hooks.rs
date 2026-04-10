@@ -357,8 +357,7 @@ fn normalize_event_name(_client: &str, event: &str) -> String {
     let normalized = event
         .trim()
         .to_ascii_lowercase()
-        .replace('_', "-")
-        .replace(' ', "-");
+        .replace(['_', ' '], "-");
 
     match normalized.as_str() {
         "session-start" | "sessionstart" => "SessionStart".to_string(),

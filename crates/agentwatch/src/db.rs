@@ -3,10 +3,24 @@ use anyhow::{Context, Result};
 use rusqlite::{params, Connection, OptionalExtension};
 use serde_json::json;
 
+type SessionListRow = (
+    String,
+    String,
+    String,
+    i64,
+    i64,
+    String,
+    String,
+    Option<i64>,
+);
+
+type FileStateMeta = (Option<i64>, Option<i64>, bool);
+
 pub struct Db {
     conn: Connection,
 }
 
+#[allow(dead_code)]
 impl Db {
     pub fn open(path: &std::path::Path) -> Result<Self> {
         let parent = path.parent().unwrap_or(std::path::Path::new("."));
@@ -163,6 +177,7 @@ impl Db {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn record_turn(
         &self,
         session_id: &str,
@@ -243,6 +258,7 @@ impl Db {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn update_file_state(
         &self,
         repo_root: &str,
@@ -386,18 +402,7 @@ impl Db {
     pub fn list_active_sessions(
         &self,
         repo_root: &str,
-    ) -> Result<
-        Vec<(
-            String,
-            String,
-            String,
-            i64,
-            i64,
-            String,
-            String,
-            Option<i64>,
-        )>,
-    > {
+    ) -> Result<Vec<SessionListRow>> {
         let mut stmt = self
             .conn
             .prepare(
@@ -507,7 +512,7 @@ impl Db {
         &self,
         repo_root: &str,
         rel_path: &str,
-    ) -> Result<Option<(Option<i64>, Option<i64>, bool)>> {
+    ) -> Result<Option<FileStateMeta>> {
         let mut stmt = self
             .conn
             .prepare(
@@ -675,7 +680,7 @@ impl Db {
         let updated = stmt
             .execute(params![session_id, repo_root, at_ms - window_ms])
             .context("mark inferred updates")?;
-        Ok(updated as usize)
+        Ok(updated)
     }
 
     pub fn clear_inconsistent_state(&self, repo_root: &str) -> Result<()> {

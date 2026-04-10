@@ -134,12 +134,10 @@ impl RuntimeState {
         let mut watch_events = Vec::new();
 
         for file in self.files.values_mut() {
-            if !seen.contains(&file.rel_path) {
-                if file.dirty {
-                    watch_events.push(format!("watch clean {}", file.rel_path));
-                    file.dirty = false;
-                    file.state_code = "clean".to_string();
-                }
+            if !seen.contains(&file.rel_path) && file.dirty {
+                watch_events.push(format!("watch clean {}", file.rel_path));
+                file.dirty = false;
+                file.state_code = "clean".to_string();
             }
         }
 
@@ -293,6 +291,7 @@ impl RuntimeState {
         items.get(self.selected_file).copied()
     }
 
+    #[allow(dead_code)]
     pub fn selected_file_position(&self) -> Option<(usize, usize)> {
         let len = self.file_items().len();
         if len == 0 {

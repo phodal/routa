@@ -83,9 +83,6 @@ impl RuntimeFeed {
         Ok(messages)
     }
 
-    pub fn event_path(&self) -> &Path {
-        &self.event_path
-    }
 }
 
 pub struct RuntimeSocket {

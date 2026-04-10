@@ -77,6 +77,7 @@ pub struct SessionRecord {
     pub metadata_json: String,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct FileEventRecord {
     pub id: Option<i64>,
@@ -91,6 +92,7 @@ pub struct FileEventRecord {
     pub metadata_json: String,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct FileStateRow {
     pub rel_path: String,
@@ -144,6 +146,7 @@ pub struct GitEvent {
     pub branch: Option<String>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct SessionView {
     pub session_id: String,

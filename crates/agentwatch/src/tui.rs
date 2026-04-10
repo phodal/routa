@@ -142,10 +142,10 @@ fn run_loop(terminal: &mut DefaultTerminal, ctx: RepoContext, poll_interval_ms: 
 
         terminal.draw(|frame| render(frame, &state, &feed))?;
 
-        if event::poll(Duration::from_millis(100)).context("poll terminal events")? {
-            if handle_event(&mut state, &ctx)? {
-                break;
-            }
+        if event::poll(Duration::from_millis(100)).context("poll terminal events")?
+            && handle_event(&mut state, &ctx)?
+        {
+            break;
         }
     }
     Ok(())
@@ -862,35 +862,6 @@ fn status_badge(status: &str) -> Span<'static> {
     )
 }
 
-fn confidence_badge(label: &str) -> Span<'static> {
-    let (text, color) = match label {
-        "exact" => (" EXACT ", ACTIVE),
-        "inferred" => (" INFERRED ", INFERRED),
-        _ => (" UNKNOWN ", IDLE),
-    };
-    Span::styled(
-        text,
-        Style::default()
-            .fg(Color::Rgb(18, 22, 28))
-            .bg(color)
-            .add_modifier(Modifier::BOLD),
-    )
-}
-
-fn dirty_badge(dirty: bool) -> Span<'static> {
-    if dirty {
-        Span::styled(
-            " DIRTY ",
-            Style::default()
-                .fg(Color::Rgb(18, 22, 28))
-                .bg(ACTIVE)
-                .add_modifier(Modifier::BOLD),
-        )
-    } else {
-        Span::styled(" CLEAN ", Style::default().fg(Color::Rgb(18, 22, 28)).bg(IDLE))
-    }
-}
-
 fn source_color(source: crate::models::EventSource) -> Color {
     match source {
         crate::models::EventSource::Hook => Color::Rgb(126, 156, 181),
@@ -985,10 +956,10 @@ fn highlight_diff_text(
                 raw.to_string(),
                 Style::default().fg(Color::Cyan),
             ))
-        } else if raw.starts_with('+') {
-            build_diff_code_line('+', &raw[1..], Color::Green, &mut highlighter, theme_mode)
-        } else if raw.starts_with('-') {
-            build_diff_code_line('-', &raw[1..], Color::Red, &mut highlighter, theme_mode)
+        } else if let Some(rest) = raw.strip_prefix('+') {
+            build_diff_code_line('+', rest, Color::Green, &mut highlighter, theme_mode)
+        } else if let Some(rest) = raw.strip_prefix('-') {
+            build_diff_code_line('-', rest, Color::Red, &mut highlighter, theme_mode)
         } else if let Some(rest) = raw.strip_prefix(' ') {
             build_diff_code_line(' ', rest, Color::DarkGray, &mut highlighter, theme_mode)
         } else if raw.starts_with("diff --git") || raw.starts_with("index ") {

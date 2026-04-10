@@ -5,6 +5,7 @@ use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+#[allow(dead_code)]
 pub struct RepoContext {
     pub repo_root: PathBuf,
     pub git_dir: PathBuf,
