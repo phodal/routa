@@ -1,4 +1,4 @@
-use crate::ipc::RuntimeFeed;
+use crate::ipc::{RuntimeFeed, RuntimeSocket};
 use crate::models::{DEFAULT_INFERENCE_WINDOW_MS, DEFAULT_TUI_POLL_MS};
 use crate::observe;
 use crate::repo::RepoContext;
@@ -101,6 +101,15 @@ pub fn run(ctx: RepoContext, poll_interval_ms: u64) -> Result<()> {
 
 fn run_loop(terminal: &mut DefaultTerminal, ctx: RepoContext, poll_interval_ms: u64) -> Result<()> {
     let mut feed = RuntimeFeed::open(&ctx.runtime_event_path)?;
+    let runtime_socket = match RuntimeSocket::bind(&ctx.runtime_socket_path) {
+        Ok(socket) => Some(socket),
+        Err(err) => {
+            eprintln!(
+                "agentwatch warning: runtime socket disabled, falling back to feed-only mode: {err}"
+            );
+            None
+        }
+    };
     let repo_root = ctx.repo_root.to_string_lossy().to_string();
     let repo_name = ctx
         .repo_root
@@ -124,6 +133,11 @@ fn run_loop(terminal: &mut DefaultTerminal, ctx: RepoContext, poll_interval_ms: 
 
         for message in feed.read_new()? {
             state.apply_message(message);
+        }
+        if let Some(socket) = &runtime_socket {
+            for message in socket.read_pending()? {
+                state.apply_message(message);
+            }
         }
 
         terminal.draw(|frame| render(frame, &state, &feed))?;
