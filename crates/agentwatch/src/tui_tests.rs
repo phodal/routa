@@ -1,5 +1,7 @@
 use super::*;
-use crate::models::{AttributionConfidence, EventLogEntry, EventSource, FileView, SessionView};
+use crate::models::{
+    AttributionConfidence, EventLogEntry, EventSource, FileView, RuntimeMessage, SessionView,
+};
 use crate::state::{FileListMode, FocusPane, UNKNOWN_SESSION_ID};
 use pretty_assertions::assert_eq;
 use ratatui::backend::TestBackend;
@@ -262,7 +264,10 @@ fn assign_selected_file_to_selected_session_updates_owner() {
     state.selected_session = 0;
     state.selected_file = 1;
 
-    assert!(state.assign_selected_file_to_selected_session());
+    let message = state
+        .selected_file_assignment_message()
+        .expect("assignment message");
+    state.apply_message(message);
 
     let file = state
         .files
@@ -270,12 +275,31 @@ fn assign_selected_file_to_selected_session_updates_owner() {
         .expect("file");
     assert_eq!(file.last_session_id.as_deref(), Some("live-hook-check"));
     assert!(matches!(file.confidence, AttributionConfidence::Inferred));
-    assert!(
-        state
-            .visible_event_log_items()
-            .iter()
-            .any(|entry| entry.message.contains("assign live-hook-"))
-    );
+    assert!(state
+        .visible_event_log_items()
+        .iter()
+        .any(|entry| entry.message.contains("assign live-hook-")));
+}
+
+#[test]
+fn selected_file_assignment_message_is_attribution_event() {
+    let mut state = sample_state();
+    state.file_list_mode = FileListMode::Global;
+    state.selected_session = 0;
+    state.selected_file = 1;
+
+    let message = state
+        .selected_file_assignment_message()
+        .expect("assignment message");
+
+    match message {
+        RuntimeMessage::Attribution(event) => {
+            assert_eq!(event.rel_path, "src/app/api/a2a/card/route.ts");
+            assert_eq!(event.session_id, "live-hook-check");
+            assert_eq!(event.reason, "manual-assign");
+        }
+        other => panic!("unexpected runtime message: {other:?}"),
+    }
 }
 
 #[test]

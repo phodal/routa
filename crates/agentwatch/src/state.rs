@@ -1,6 +1,6 @@
 use crate::models::{
-    AttributionConfidence, EventLogEntry, EventSource, FileView, GitEvent, HookEvent,
-    RuntimeMessage, SessionView, DEFAULT_INFERENCE_WINDOW_MS, EVENT_LOG_LIMIT,
+    AttributionConfidence, AttributionEvent, EventLogEntry, EventSource, FileView, GitEvent,
+    HookEvent, RuntimeMessage, SessionView, DEFAULT_INFERENCE_WINDOW_MS, EVENT_LOG_LIMIT,
 };
 use chrono::Utc;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
@@ -125,6 +125,7 @@ impl RuntimeState {
         match message {
             RuntimeMessage::Hook(event) => self.apply_hook_event(event),
             RuntimeMessage::Git(event) => self.apply_git_event(event),
+            RuntimeMessage::Attribution(event) => self.apply_attribution_event(event),
         }
         self.clamp_selection();
     }
@@ -467,39 +468,20 @@ impl RuntimeState {
         self.restore_detail_scroll_for_selection();
     }
 
-    pub fn assign_selected_file_to_selected_session(&mut self) -> bool {
-        let Some(session_id) = self.selected_session_id() else {
-            return false;
-        };
+    pub fn selected_file_assignment_message(&self) -> Option<RuntimeMessage> {
+        let session_id = self.selected_session_id()?;
         if session_id == UNKNOWN_SESSION_ID {
-            return false;
+            return None;
         }
-        let Some(rel_path) = self.selected_file().map(|file| file.rel_path.clone()) else {
-            return false;
-        };
-        let now_ms = Utc::now().timestamp_millis();
-        let Some(file) = self.files.get_mut(&rel_path) else {
-            return false;
-        };
-
-        file.last_session_id = Some(session_id.clone());
-        file.confidence = AttributionConfidence::Inferred;
-        file.conflicted = false;
-        file.touched_by.insert(session_id.clone());
-        file.recent_events
-            .insert(0, format!("manual assign {}", short_session(&session_id)));
-        file.recent_events.truncate(8);
-
-        if let Some(session) = self.sessions.get_mut(&session_id) {
-            session.touched_files.insert(rel_path.clone());
-            session.last_seen_at_ms = now_ms;
-        }
-        self.push_attribution_event(
-            now_ms,
-            format!("assign {} {}", short_session(&session_id), rel_path),
-        );
-        self.clamp_selection();
-        true
+        let file = self.selected_file()?;
+        Some(RuntimeMessage::Attribution(AttributionEvent {
+            repo_root: self.repo_root.clone(),
+            observed_at_ms: Utc::now().timestamp_millis(),
+            rel_path: file.rel_path.clone(),
+            session_id,
+            confidence: AttributionConfidence::Inferred.as_str().to_string(),
+            reason: "manual-assign".to_string(),
+        }))
     }
 
     pub fn visible_event_log_items(&self) -> Vec<&EventLogEntry> {
@@ -632,6 +614,43 @@ impl RuntimeState {
                 file.state_code = "clean".to_string();
             }
         }
+    }
+
+    fn apply_attribution_event(&mut self, event: AttributionEvent) {
+        let file = self
+            .files
+            .entry(event.rel_path.clone())
+            .or_insert_with(|| FileView {
+                rel_path: event.rel_path.clone(),
+                dirty: true,
+                state_code: "modify".to_string(),
+                last_modified_at_ms: event.observed_at_ms,
+                last_session_id: Some(event.session_id.clone()),
+                confidence: AttributionConfidence::from_str(&event.confidence),
+                conflicted: false,
+                touched_by: BTreeSet::new(),
+                recent_events: Vec::new(),
+            });
+        file.last_session_id = Some(event.session_id.clone());
+        file.last_modified_at_ms = event.observed_at_ms;
+        file.confidence = AttributionConfidence::from_str(&event.confidence);
+        file.conflicted = false;
+        file.touched_by.insert(event.session_id.clone());
+        file.recent_events.insert(
+            0,
+            format!("{} {}", event.reason, short_session(&event.session_id)),
+        );
+        file.recent_events.truncate(8);
+
+        if let Some(session) = self.sessions.get_mut(&event.session_id) {
+            session.touched_files.insert(event.rel_path.clone());
+            session.last_seen_at_ms = event.observed_at_ms;
+        }
+
+        self.push_attribution_event(
+            event.observed_at_ms,
+            format!("assign {} {}", short_session(&event.session_id), event.rel_path),
+        );
     }
 
     pub fn push_watch_event(&mut self, observed_at_ms: i64, message: String) {

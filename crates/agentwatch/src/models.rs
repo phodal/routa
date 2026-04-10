@@ -56,6 +56,7 @@ impl RuntimeMessage {
         match self {
             RuntimeMessage::Hook(event) => event.observed_at_ms,
             RuntimeMessage::Git(event) => event.observed_at_ms,
+            RuntimeMessage::Attribution(event) => event.observed_at_ms,
         }
     }
 }
@@ -117,6 +118,7 @@ pub const EVENT_LOG_LIMIT: usize = 200;
 pub enum RuntimeMessage {
     Hook(HookEvent),
     Git(GitEvent),
+    Attribution(AttributionEvent),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -148,6 +150,16 @@ pub struct GitEvent {
     pub args: Vec<String>,
     pub head_commit: Option<String>,
     pub branch: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AttributionEvent {
+    pub repo_root: String,
+    pub observed_at_ms: i64,
+    pub rel_path: String,
+    pub session_id: String,
+    pub confidence: String,
+    pub reason: String,
 }
 
 #[allow(dead_code)]

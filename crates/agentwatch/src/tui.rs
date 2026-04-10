@@ -1,5 +1,5 @@
 use crate::ipc::RuntimeFeed;
-use crate::models::{DEFAULT_INFERENCE_WINDOW_MS, DEFAULT_TUI_POLL_MS};
+use crate::models::{RuntimeMessage, DEFAULT_INFERENCE_WINDOW_MS, DEFAULT_TUI_POLL_MS};
 use crate::observe;
 use crate::repo::RepoContext;
 use crate::state::{DetailMode, EventLogFilter, RuntimeState, ThemeMode};
@@ -151,9 +151,7 @@ fn handle_event(state: &mut RuntimeState, ctx: &RepoContext) -> Result<bool> {
                 }
                 KeyCode::Char('d') | KeyCode::Char('D') => state.toggle_detail_mode(),
                 KeyCode::Char('t') | KeyCode::Char('T') => state.toggle_theme_mode(),
-                KeyCode::Char('a') => {
-                    let _ = state.assign_selected_file_to_selected_session();
-                }
+                KeyCode::Char('a') => assign_selected_file(state, ctx)?,
                 KeyCode::Char('o') => open_selected_file_in_editor(state, ctx)?,
                 KeyCode::Char('g') => open_selected_file_git_diff(state, ctx)?,
                 KeyCode::Char('1') => state.set_event_log_filter(EventLogFilter::All),
@@ -194,6 +192,15 @@ fn open_selected_file_in_editor(state: &RuntimeState, ctx: &RepoContext) -> Resu
     suspend_tui_command(Command::new(editor).arg(file_path))
 }
 
+fn assign_selected_file(state: &mut RuntimeState, ctx: &RepoContext) -> Result<()> {
+    let Some(message) = state.selected_file_assignment_message() else {
+        return Ok(());
+    };
+    send_runtime_message(ctx, &message)?;
+    state.apply_message(message);
+    Ok(())
+}
+
 fn open_selected_file_git_diff(state: &RuntimeState, ctx: &RepoContext) -> Result<()> {
     let Some(file) = state.selected_file() else {
         return Ok(());
@@ -221,6 +228,12 @@ fn suspend_tui_command(command: &mut Command) -> Result<()> {
 
 fn shell_escape_path(path: &str) -> String {
     format!("'{}'", path.replace('\'', "'\\''"))
+}
+
+fn send_runtime_message(ctx: &RepoContext, message: &RuntimeMessage) -> Result<()> {
+    crate::ipc::send_socket_message(&ctx.runtime_socket_path, message)
+        .or_else(|_| crate::ipc::send_tcp_message(&ctx.runtime_tcp_addr, message))
+        .or_else(|_| crate::ipc::send_message(&ctx.runtime_event_path, message))
 }
 
 fn jump_diff_hunk(state: &mut RuntimeState, ctx: &RepoContext, forward: bool) -> Result<()> {

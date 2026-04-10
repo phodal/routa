@@ -157,11 +157,19 @@ impl AcpProcess {
             let name_clone = name.clone();
             let ntx_stderr = notification_tx.clone();
             let our_sid_stderr = our_session_id.to_string();
+            let resolved_command_stderr = resolved_command.clone();
             tokio::spawn(async move {
                 let reader = BufReader::new(stderr);
                 let mut lines = reader.lines();
                 while let Ok(Some(line)) = lines.next_line().await {
                     if !line.trim().is_empty() {
+                        if should_ignore_process_stderr(
+                            &resolved_command_stderr,
+                            &name_clone,
+                            &line,
+                        ) {
+                            continue;
+                        }
                         tracing::debug!("[AcpProcess:{} stderr] {}", name_clone, line);
                         // Forward stderr to frontend as process_output notification
                         let notification = serde_json::json!({
@@ -979,4 +987,72 @@ fn truncate_content(s: &str, max_bytes: usize) -> String {
     }
 
     s[..end].to_string()
+}
+
+fn should_ignore_process_stderr(command: &str, display_name: &str, line: &str) -> bool {
+    is_codex_process(command, display_name) && is_codex_otel_stderr(line)
+}
+
+fn is_codex_process(command: &str, display_name: &str) -> bool {
+    let trimmed_command = command.trim();
+    display_name.trim().eq_ignore_ascii_case("codex")
+        || trimmed_command.eq_ignore_ascii_case("codex-acp")
+        || trimmed_command.ends_with("/codex-acp")
+}
+
+fn is_codex_otel_stderr(line: &str) -> bool {
+    let trimmed = line.trim();
+    trimmed.contains("codex_otel.log_only:") || trimmed.contains("codex_otel.trace_safe:")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{is_codex_otel_stderr, resolve_permission_option_id, should_ignore_process_stderr};
+    use serde_json::json;
+
+    #[test]
+    fn ignores_codex_otel_stderr_noise() {
+        let line = "INFO ... codex_otel.log_only: event.kind=response.output_text.delta";
+        assert!(should_ignore_process_stderr(
+            "/opt/homebrew/bin/codex-acp",
+            "Codex",
+            line
+        ));
+        assert!(is_codex_otel_stderr(line));
+    }
+
+    #[test]
+    fn preserves_non_otel_codex_stderr() {
+        let line = "ERROR codex_api::endpoint::responses_websocket: failed to connect";
+        assert!(!should_ignore_process_stderr(
+            "/opt/homebrew/bin/codex-acp",
+            "Codex",
+            line
+        ));
+    }
+
+    #[test]
+    fn preserves_other_provider_stderr() {
+        let line = "INFO ... codex_otel.log_only: event.kind=response.output_text.delta";
+        assert!(!should_ignore_process_stderr(
+            "/usr/bin/opencode",
+            "OpenCode",
+            line
+        ));
+    }
+
+    #[test]
+    fn resolve_permission_option_id_prefers_turn_approval() {
+        let params = json!({
+            "options": [
+                { "optionId": "denied", "kind": "deny_once" },
+                { "optionId": "approved", "kind": "allow_once" }
+            ]
+        });
+
+        assert_eq!(
+            resolve_permission_option_id(&params, "turn").as_deref(),
+            Some("approved")
+        );
+    }
 }
