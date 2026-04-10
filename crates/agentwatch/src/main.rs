@@ -137,15 +137,32 @@ fn run_watch(
 
 fn print_sessions(db: &Db, repo_root: &str) -> Result<()> {
     let sessions = db.list_active_sessions(repo_root)?;
+    let now_ms = chrono::Utc::now().timestamp_millis();
+    let active_since_ms = now_ms - models::DEFAULT_INFERENCE_WINDOW_MS;
+    let mut has_active = false;
+
     println!("session_id | cwd | model | client | status");
-    for (session_id, cwd, model, started_at_ms, last_seen_ms, client) in sessions {
-        let status = if last_seen_ms > started_at_ms {
+    for (session_id, cwd, model, _started_at_ms, last_seen_ms, client, db_status, ended_at_ms) in
+        sessions
+    {
+        let status = if ended_at_ms.is_some() || db_status == "ended" {
+            "ended"
+        } else if last_seen_ms >= active_since_ms {
             "active"
         } else {
             "stale"
         };
-        println!("{session_id} | {cwd} | {model} | {client} | {status}");
+
+        if status == "active" {
+            println!("{session_id} | {cwd} | {model} | {client} | {status}");
+            has_active = true;
+        }
     }
+
+    if !has_active {
+        println!("no active sessions");
+    }
+
     Ok(())
 }
 

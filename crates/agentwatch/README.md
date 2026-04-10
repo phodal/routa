@@ -14,7 +14,7 @@
 ## Commands
 
 - `agentwatch sessions`
-  - Show sessions recorded in repo db, ordered by recent activity.
+  - Show active sessions in this repo (active means touched within the last inference window, default 15 minutes), ordered by recent activity.
 - `agentwatch files --by-session`
   - Show current dirty files. Optional grouping by session.
 - `agentwatch who <path>`
@@ -29,9 +29,18 @@
 
 ## Database
 
-File database is placed under the git directory:
+By default, the DB is placed under the git directory:
 
 - `<repo>/.git/agentwatch/agentwatch.db`
+
+If that path is not writable (for example in read-only working trees), AgentWatch automatically falls back to:
+
+- `AGENTWATCH_DB_DIR/agentwatch/repos/<repo-hash>/agentwatch.db`
+- otherwise `/tmp/agentwatch/repos/<repo-hash>/agentwatch.db`
+
+You can force a specific location with:
+
+- `AGENTWATCH_DB_PATH`
 
 ### Tables
 

@@ -386,11 +386,22 @@ impl Db {
     pub fn list_active_sessions(
         &self,
         repo_root: &str,
-    ) -> Result<Vec<(String, String, String, i64, i64, String)>> {
+    ) -> Result<
+        Vec<(
+            String,
+            String,
+            String,
+            i64,
+            i64,
+            String,
+            String,
+            Option<i64>,
+        )>,
+    > {
         let mut stmt = self
             .conn
             .prepare(
-                "SELECT session_id, cwd, COALESCE(model, ''), started_at_ms, last_seen_at_ms, client
+                "SELECT session_id, cwd, COALESCE(model, ''), started_at_ms, last_seen_at_ms, client, status, ended_at_ms
                  FROM sessions
                  WHERE repo_root = ?1
                  ORDER BY last_seen_at_ms DESC",
@@ -406,6 +417,8 @@ impl Db {
                     row.get(3)?,
                     row.get(4)?,
                     row.get(5)?,
+                    row.get(6)?,
+                    row.get(7)?,
                 ))
             })
             .context("query sessions")?;

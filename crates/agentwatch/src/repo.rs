@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
+use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -76,16 +77,19 @@ pub fn resolve(path_opt: Option<&str>, db_path_opt: Option<&str>) -> Result<Repo
         PathBuf::from(db_path)
     } else {
         let git_db_dir = git_dir.join("agentwatch");
-        match std::fs::create_dir_all(&git_db_dir) {
+        match ensure_writable_db_path(&git_db_dir.join("agentwatch.db")) {
             Ok(_) => git_db_dir.join("agentwatch.db"),
             Err(err) => {
                 let fallback = fallback_db_path(&repo_root).context("resolve fallback db path")?;
-                std::fs::create_dir_all(fallback.parent().unwrap()).with_context(|| {
-                    format!("create fallback db directory {:?}", fallback.parent())
+                let fallback_parent = fallback.parent().context("fallback db has no parent")?;
+                std::fs::create_dir_all(fallback_parent).with_context(|| {
+                    format!("create fallback db directory {:?}", fallback_parent)
                 })?;
                 eprintln!(
-                    "agentwatch warning: cannot write .git/agentwatch ({:?}), fallback to {:?}: {}",
-                    git_db_dir, fallback, err
+                    "agentwatch warning: cannot write {:?}, fallback to {:?}: {}",
+                    git_db_dir.join("agentwatch.db"),
+                    fallback,
+                    err
                 );
                 fallback
             }
@@ -100,19 +104,65 @@ pub fn resolve(path_opt: Option<&str>, db_path_opt: Option<&str>) -> Result<Repo
 }
 
 fn fallback_db_path(repo_root: &Path) -> Result<PathBuf> {
-    let base = std::env::var("AGENTWATCH_DB_DIR")
-        .ok()
-        .filter(|path| !path.is_empty())
-        .map(PathBuf::from)
-        .or_else(|| dirs::cache_dir())
-        .or_else(|| std::env::var_os("HOME").map(PathBuf::from))
-        .context("resolve fallback cache path")?;
     let mut hasher = DefaultHasher::new();
     repo_root.to_string_lossy().hash(&mut hasher);
     let marker = format!("{:x}", hasher.finish());
-    Ok(base
-        .join("agentwatch")
-        .join("repos")
-        .join(marker)
-        .join("agentwatch.db"))
+
+    let mut candidate_bases = Vec::new();
+    if let Ok(custom_base) = std::env::var("AGENTWATCH_DB_DIR") {
+        if !custom_base.trim().is_empty() {
+            candidate_bases.push(PathBuf::from(custom_base));
+        }
+    }
+    if let Some(cache_dir) = dirs::cache_dir() {
+        candidate_bases.push(cache_dir);
+    }
+    if let Some(home_dir) = std::env::var_os("HOME").map(PathBuf::from) {
+        candidate_bases.push(home_dir.join(".cache"));
+    }
+    candidate_bases.push(PathBuf::from("/tmp"));
+
+    for base in &candidate_bases {
+        let candidate = base
+            .join("agentwatch")
+            .join("repos")
+            .join(&marker)
+            .join("agentwatch.db");
+        let parent = candidate
+            .parent()
+            .context("fallback db path has no parent")?;
+        if std::fs::create_dir_all(parent).is_ok() {
+            return Ok(candidate);
+        }
+    }
+
+    anyhow::bail!(
+        "could not create a writable fallback database directory from {:?}",
+        candidate_bases
+    );
+}
+
+fn ensure_writable_db_path(path: &Path) -> Result<()> {
+    if path.as_os_str().is_empty() {
+        anyhow::bail!("invalid sqlite db path");
+    }
+
+    let parent = path.parent().context("db path has no parent")?;
+    std::fs::create_dir_all(parent).with_context(|| format!("create db directory {:?}", parent))?;
+
+    match std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(path)
+    {
+        Ok(_) => Ok(()),
+        Err(err) => match err.kind() {
+            ErrorKind::PermissionDenied | ErrorKind::ReadOnlyFilesystem => {
+                Err(anyhow::anyhow!("permission denied writing sqlite db"))
+            }
+            _ => Err(err.into()),
+        },
+    }
 }
