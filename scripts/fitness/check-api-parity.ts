@@ -111,36 +111,16 @@ function parseRustRoutes(): RouteEndpoint[] {
   const apiModContent = fs.readFileSync(apiModPath, "utf-8");
   const endpoints: RouteEndpoint[] = [];
 
-  // Extract nest paths: .nest("/api/agents", agents::router())
-  const nestRegex = /\.nest\("([^"]+)",\s*(\w+)::router\(\)\)/g;
-  const nests: { basePath: string; module: string }[] = [];
-  let nestMatch;
-  while ((nestMatch = nestRegex.exec(apiModContent)) !== null) {
-    nests.push({ basePath: nestMatch[1], module: nestMatch[2] });
-  }
-
   // For each module, parse the router() function to extract routes
   const apiDir = fromRoot("crates", "routa-server", "src", "api");
-
-  for (const nest of nests) {
-    const content = readRustApiModuleContent(apiDir, nest.module);
-    if (!content) continue;
-
-    // Extract all .route("path", ...) calls using a state-machine approach
-    // to handle nested parentheses in handler chains
-    const routeCalls = extractRouteCalls(content);
-
-    for (const { subPath, handlerChain } of routeCalls) {
-      const fullPath = subPath === "/"
-        ? nest.basePath
-        : `${nest.basePath}${subPath}`;
-
-      // Extract methods from handler chain
-      extractMethods(handlerChain).forEach((m) => {
-        endpoints.push({ method: m, path: fullPath });
-      });
-    }
-  }
+  const visitedRouters = new Set<string>();
+  collectNestedRustRoutes({
+    apiDir,
+    content: apiModContent,
+    basePath: "",
+    endpoints,
+    visitedRouters,
+  });
 
   // Also check for direct routes in mod.rs and lib.rs (like health_check)
   const directFiles = [apiModContent];
@@ -161,6 +141,43 @@ function parseRustRoutes(): RouteEndpoint[] {
   return endpoints;
 }
 
+function collectNestedRustRoutes(params: {
+  apiDir: string;
+  content: string;
+  basePath: string;
+  endpoints: RouteEndpoint[];
+  visitedRouters: Set<string>;
+}) {
+  const { apiDir, content, basePath, endpoints, visitedRouters } = params;
+
+  for (const { subPath, handlerChain } of extractRouteCalls(content)) {
+    const fullPath = joinRustRoutePaths(basePath, subPath);
+    extractMethods(handlerChain).forEach((method) => {
+      endpoints.push({ method, path: fullPath });
+    });
+  }
+
+  for (const nest of extractNestCalls(content)) {
+    const moduleName = nest.modulePath.split("::").filter(Boolean).at(-1);
+    if (!moduleName) continue;
+
+    const visitKey = `${basePath}::${nest.basePath}::${nest.modulePath}::${nest.functionName}`;
+    if (visitedRouters.has(visitKey)) continue;
+    visitedRouters.add(visitKey);
+
+    const nestedContent = readRustApiModuleContent(apiDir, moduleName);
+    if (!nestedContent) continue;
+
+    collectNestedRustRoutes({
+      apiDir,
+      content: nestedContent,
+      basePath: joinRustRoutePaths(basePath, nest.basePath),
+      endpoints,
+      visitedRouters,
+    });
+  }
+}
+
 function readRustApiModuleContent(apiDir: string, moduleName: string): string {
   const moduleFile = path.join(apiDir, `${moduleName}.rs`);
   const moduleDir = path.join(apiDir, moduleName);
@@ -172,6 +189,28 @@ function readRustApiModuleContent(apiDir: string, moduleName: string): string {
   files.push(...listRustSourceFiles(moduleDir));
 
   return files.map((file) => fs.readFileSync(file, "utf-8")).join("\n");
+}
+
+function extractNestCalls(
+  content: string
+): { basePath: string; modulePath: string; functionName: string }[] {
+  const nestRegex = /\.nest\("([^"]+)",\s*([\w:]+)::(\w+)\(\)\)/g;
+  const results: { basePath: string; modulePath: string; functionName: string }[] = [];
+  let match;
+  while ((match = nestRegex.exec(content)) !== null) {
+    results.push({
+      basePath: match[1],
+      modulePath: match[2],
+      functionName: match[3],
+    });
+  }
+  return results;
+}
+
+function joinRustRoutePaths(basePath: string, subPath: string): string {
+  const normalizedBase = basePath.replace(/\/+$/, "");
+  const normalizedSubPath = subPath === "/" ? "" : subPath;
+  return `${normalizedBase}${normalizedSubPath || ""}` || "/";
 }
 
 function listRustSourceFiles(dir: string): string[] {
