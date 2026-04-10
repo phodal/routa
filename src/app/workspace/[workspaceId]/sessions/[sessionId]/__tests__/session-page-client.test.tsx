@@ -63,6 +63,7 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: mockPush }),
   useParams: () => navState.params,
   useSearchParams: () => navState.searchParams,
+  usePathname: () => `/workspace/${navState.params.workspaceId}/sessions/${navState.params.sessionId}`,
 }));
 
 vi.mock("@/client/hooks/use-workspaces", () => ({
@@ -367,7 +368,7 @@ describe("SessionPageClient", () => {
     );
   });
 
-  it("patches the global tool mode when the header toggle changes", async () => {
+  it("loads the global tool mode on mount", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url === "/api/mcp/tools" && !init?.method) {
@@ -391,15 +392,8 @@ describe("SessionPageClient", () => {
 
     render(<SessionPageClient />);
 
-    const checkbox = await screen.findByRole("checkbox");
-    fireEvent.click(checkbox);
-
     await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledWith("/api/mcp/tools", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode: "essential" }),
-      });
+      expect(fetchMock).toHaveBeenCalledWith("/api/mcp/tools");
     });
   });
 

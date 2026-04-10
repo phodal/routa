@@ -475,7 +475,7 @@ export function KanbanTab({
   }, [repoChanges]);
 
   const selectedProviderInfo = useMemo(() => {
-    return acp?.providers.find((p) => p.id === acp.selectedProvider) ?? null;
+    return acp?.providers?.find((p) => p.id === acp.selectedProvider) ?? null;
   }, [acp]);
 
   // Sync task's assignedProvider to ACP state when activeTaskId changes

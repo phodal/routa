@@ -853,7 +853,7 @@ describe("KanbanTab agent prompt flow", () => {
       connected: true,
       sessionId: null,
       updates: [],
-      providers: [{ id: "claude", name: "Claude Code", description: "Claude Code provider", command: "claude" }],
+      providers: [{ id: "claude", name: "Claude Code", description: "Claude Code provider", command: "claude", status: "available" }],
       selectedProvider: "claude",
       loading: false,
       error: null,
@@ -895,7 +895,7 @@ describe("KanbanTab agent prompt flow", () => {
             createdAt: "2025-01-01T00:00:00.000Z",
           },
         ]}
-        providers={[{ id: "claude", name: "Claude Code", description: "Claude Code provider", command: "claude" }]}
+        providers={[{ id: "claude", name: "Claude Code", description: "Claude Code provider", command: "claude", status: "available" }]}
         specialists={[]}
         specialistLanguage="en"
         onSpecialistLanguageChange={vi.fn()}
@@ -945,7 +945,7 @@ describe("KanbanTab agent prompt flow", () => {
         boards={[board]}
         tasks={[createTask("task-1", "Story One")]}
         sessions={[]}
-        providers={[{ id: "claude", name: "Claude Code", description: "Claude Code provider", command: "claude" }]}
+        providers={[{ id: "claude", name: "Claude Code", description: "Claude Code provider", command: "claude", status: "available" }]}
         specialists={[]}
         specialistLanguage="zh-CN"
         onSpecialistLanguageChange={vi.fn()}

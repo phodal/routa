@@ -96,6 +96,7 @@ export function KanbanStatusBar({
         {defaultCodebase && (
           <button
             onClick={onFileChangesClick}
+            data-testid="kanban-file-changes-open"
             className={`flex items-center gap-1.5 px-2.5 h-6 transition-colors ${
               fileChangesOpen
                 ? "bg-desktop-bg-active text-desktop-accent"
@@ -148,7 +149,10 @@ export function KanbanStatusBar({
 
         {/* 同步状态 */}
         {repoSync && repoSync.status !== "idle" && (
-          <div className="flex items-center gap-1.5 px-2.5 h-6 text-desktop-text-secondary text-[11px]">
+          <div
+            className="flex items-center gap-1.5 px-2.5 h-6 text-desktop-text-secondary text-[11px]"
+            data-testid="kanban-repo-sync-progress"
+          >
             <span
               className={`w-1.5 h-1.5 shrink-0 rounded-full ${
                 repoSync.status === "error"
