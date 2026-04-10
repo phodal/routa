@@ -31,8 +31,8 @@ pub fn scan_agents(repo_root: &str) -> Result<Vec<DetectedAgent>> {
             .cmp(&agent_rank(a, repo_root))
             .then_with(|| {
                 b.cpu_percent
-            .partial_cmp(&a.cpu_percent)
-            .unwrap_or(std::cmp::Ordering::Equal)
+                    .partial_cmp(&a.cpu_percent)
+                    .unwrap_or(std::cmp::Ordering::Equal)
             })
             .then_with(|| a.pid.cmp(&b.pid))
     });
@@ -119,7 +119,10 @@ fn agent_rank(agent: &DetectedAgent, repo_root: &str) -> (u8, u8) {
     (u8::from(local), u8::from(same_project))
 }
 
-fn classify_vendor(comm: &str, command: &str) -> Option<(&'static str, &'static str, &'static str)> {
+fn classify_vendor(
+    comm: &str,
+    command: &str,
+) -> Option<(&'static str, &'static str, &'static str)> {
     let lower = format!("{comm} {command}").to_ascii_lowercase();
     if lower.contains("codex") {
         Some(("Codex", "OpenAI", "◈"))
