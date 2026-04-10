@@ -126,7 +126,9 @@ fn upsert_codex_mcp_section(existing: &str, rendered_section: &str) -> String {
     let section_header = "[mcp_servers.routa-coordination]";
     if let Some(start) = existing.find(section_header) {
         let after_header = &existing[start + section_header.len()..];
-        let next_section_offset = after_header.find("\n[").map(|offset| start + section_header.len() + offset + 1);
+        let next_section_offset = after_header
+            .find("\n[")
+            .map(|offset| start + section_header.len() + offset + 1);
         let end = next_section_offset.unwrap_or(existing.len());
         let mut updated = String::with_capacity(existing.len() + rendered_section.len());
         updated.push_str(existing[..start].trim_end());
@@ -188,6 +190,26 @@ pub fn codex_project_trust_override(cwd: &str) -> String {
     format!("projects.\"{}\".trust_level=\"trusted\"", escaped)
 }
 
+pub fn codex_cli_overrides(
+    cwd: &str,
+    workspace_id: &str,
+    session_id: &str,
+    tool_mode: Option<&str>,
+    mcp_profile: Option<&str>,
+) -> Vec<String> {
+    let endpoint = build_mcp_endpoint(workspace_id, session_id, tool_mode, mcp_profile);
+    let escaped_endpoint = endpoint.replace('\\', "\\\\").replace('"', "\\\"");
+
+    vec![
+        codex_project_trust_override(cwd),
+        format!(
+            "mcp_servers.routa-coordination.url=\"{}\"",
+            escaped_endpoint
+        ),
+        "mcp_servers.routa-coordination.enabled=true".to_string(),
+    ]
+}
+
 fn display_path(path: &Path) -> String {
     path.to_string_lossy().to_string()
 }
@@ -206,15 +228,11 @@ pub async fn ensure_mcp_for_provider(
         "opencode" => ensure_mcp_for_opencode(workspace_id, session_id, tool_mode, mcp_profile)
             .await
             .map(Some),
-        "codex" | "codex-acp" => ensure_mcp_for_codex(
-            cwd,
-            workspace_id,
-            session_id,
-            tool_mode,
-            mcp_profile,
-        )
-        .await
-        .map(Some),
+        "codex" | "codex-acp" => {
+            ensure_mcp_for_codex(cwd, workspace_id, session_id, tool_mode, mcp_profile)
+                .await
+                .map(Some)
+        }
         _ => Ok(None),
     }
 }
@@ -223,8 +241,8 @@ pub async fn ensure_mcp_for_provider(
 mod tests {
     use super::{
         build_claude_mcp_config, build_codex_mcp_config_contents, build_mcp_endpoint,
-        codex_project_config_path, codex_project_trust_override, ensure_mcp_for_provider,
-        upsert_codex_mcp_section,
+        codex_cli_overrides, codex_project_config_path, codex_project_trust_override,
+        ensure_mcp_for_provider, upsert_codex_mcp_section,
     };
 
     #[test]
@@ -261,6 +279,30 @@ mod tests {
             override_arg,
             "projects.\"/tmp/example/project\".trust_level=\"trusted\""
         );
+    }
+
+    #[test]
+    fn codex_cli_overrides_include_trust_and_mcp_server() {
+        let overrides = codex_cli_overrides(
+            "/tmp/example/project",
+            "default",
+            "session-123",
+            Some("full"),
+            Some("kanban-planning"),
+        );
+
+        assert_eq!(overrides.len(), 3);
+        assert_eq!(
+            overrides[0],
+            "projects.\"/tmp/example/project\".trust_level=\"trusted\""
+        );
+        assert!(overrides[1]
+            .contains("mcp_servers.routa-coordination.url=\"http://127.0.0.1:3210/api/mcp?"));
+        assert!(overrides[1].contains("wsId=default"));
+        assert!(overrides[1].contains("sid=session-123"));
+        assert!(overrides[1].contains("toolMode=full"));
+        assert!(overrides[1].contains("mcpProfile=kanban-planning"));
+        assert_eq!(overrides[2], "mcp_servers.routa-coordination.enabled=true");
     }
 
     #[test]

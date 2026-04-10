@@ -393,8 +393,16 @@ impl AcpManager {
 
         let mut extra_args: Vec<String> = preset.args.clone();
         if matches!(provider_name, "codex" | "codex-acp") {
-            extra_args.push("-c".to_string());
-            extra_args.push(mcp_setup::codex_project_trust_override(&cwd));
+            for override_arg in mcp_setup::codex_cli_overrides(
+                &cwd,
+                &workspace_id,
+                &session_id,
+                tool_mode.as_deref(),
+                mcp_profile.as_deref(),
+            ) {
+                extra_args.push("-c".to_string());
+                extra_args.push(override_arg);
+            }
         }
         if let Some(provider_args) = options.provider_args.clone() {
             extra_args.extend(provider_args);
@@ -777,8 +785,16 @@ impl AcpManager {
             // Build args: preset args + optional model flag
             let mut extra_args: Vec<String> = preset.args.clone();
             if matches!(provider_name, "codex" | "codex-acp") {
-                extra_args.push("-c".to_string());
-                extra_args.push(mcp_setup::codex_project_trust_override(&cwd));
+                for override_arg in mcp_setup::codex_cli_overrides(
+                    &cwd,
+                    &workspace_id,
+                    &session_id,
+                    tool_mode.as_deref(),
+                    mcp_profile.as_deref(),
+                ) {
+                    extra_args.push("-c".to_string());
+                    extra_args.push(override_arg);
+                }
             }
             if let Some(provider_args) = options.provider_args.clone() {
                 extra_args.extend(provider_args);
