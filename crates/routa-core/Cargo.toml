@@ -1,6 +1,6 @@
 [package]
 name = "routa-core"
-version = "0.13.0"
+version = "0.14.0"
 description = "Routa.js core domain — models, stores, protocols, and JSON-RPC (transport-agnostic)"
 authors = ["phodal"]
 edition = "2021"
