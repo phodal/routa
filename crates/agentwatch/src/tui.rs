@@ -1,5 +1,5 @@
 use crate::ipc::RuntimeFeed;
-use crate::models::{RuntimeMessage, DEFAULT_INFERENCE_WINDOW_MS, DEFAULT_TUI_POLL_MS};
+use crate::models::{RuntimeMessage, DEFAULT_TUI_POLL_MS};
 use crate::observe;
 use crate::repo::RepoContext;
 use crate::state::{DetailMode, EventLogFilter, RuntimeState, ThemeMode};
@@ -44,6 +44,8 @@ const ACTIVE: Color = Color::Rgb(102, 187, 106);
 const INFERRED: Color = Color::Rgb(212, 181, 93);
 const STOPPED: Color = Color::Rgb(201, 96, 87);
 const IDLE: Color = Color::Rgb(122, 132, 143);
+const SESSION_BOOTSTRAP_WINDOW_MS: i64 = 24 * 60 * 60 * 1000;
+const TRANSPORT_REFRESH_MS: u64 = 1200;
 
 pub fn run(ctx: RepoContext, poll_interval_ms: u64) -> Result<()> {
     enable_raw_mode().context("enable raw mode")?;
@@ -69,11 +71,12 @@ fn run_loop(terminal: &mut DefaultTerminal, ctx: RepoContext, poll_interval_ms: 
     let mut state = RuntimeState::new(repo_root, repo_name, branch);
     state.set_runtime_transport(read_runtime_transport(&ctx));
     let mut cache = AppCache::new();
-    let bootstrap_cutoff = chrono::Utc::now().timestamp_millis() - DEFAULT_INFERENCE_WINDOW_MS;
+    let bootstrap_cutoff = bootstrap_history_cutoff(chrono::Utc::now().timestamp_millis());
     for message in feed.read_recent_since(bootstrap_cutoff)? {
         state.apply_message(message);
     }
     let mut last_poll = Instant::now() - Duration::from_millis(poll_interval_ms);
+    let mut last_transport_refresh = Instant::now() - Duration::from_millis(TRANSPORT_REFRESH_MS);
 
     loop {
         let mut force_scan = false;
@@ -95,7 +98,10 @@ fn run_loop(terminal: &mut DefaultTerminal, ctx: RepoContext, poll_interval_ms: 
             last_poll = Instant::now();
         }
 
-        state.set_runtime_transport(read_runtime_transport(&ctx));
+        if last_transport_refresh.elapsed() >= Duration::from_millis(TRANSPORT_REFRESH_MS) {
+            state.set_runtime_transport(read_runtime_transport(&ctx));
+            last_transport_refresh = Instant::now();
+        }
         cache.sync_results();
         cache.warm_visible_files(&state);
         cache.warm_selected_detail(&state);
@@ -333,14 +339,33 @@ fn runtime_service_is_fresh(ctx: &RepoContext) -> bool {
 }
 
 fn read_runtime_transport(ctx: &RepoContext) -> String {
-    crate::ipc::read_service_info(&ctx.runtime_info_path)
+    let Some(info) = crate::ipc::read_service_info(&ctx.runtime_info_path)
         .ok()
         .flatten()
-        .and_then(|info| {
-            let age = chrono::Utc::now().timestamp_millis() - info.last_seen_at_ms;
-            (age < 2500).then_some(info.transport)
-        })
-        .unwrap_or_else(|| "feed".to_string())
+        .filter(|info| chrono::Utc::now().timestamp_millis() - info.last_seen_at_ms < 2500)
+    else {
+        return fallback_runtime_transport(ctx);
+    };
+
+    match info.transport.as_str() {
+        "socket" if crate::ipc::socket_reachable(&ctx.runtime_socket_path) => "socket".to_string(),
+        "tcp" if crate::ipc::tcp_reachable(&ctx.runtime_tcp_addr) => "tcp".to_string(),
+        "socket" | "tcp" => fallback_runtime_transport(ctx),
+        "feed" => "feed".to_string(),
+        other => other.to_string(),
+    }
+}
+
+fn fallback_runtime_transport(ctx: &RepoContext) -> String {
+    if ctx.runtime_event_path.exists() {
+        "feed".to_string()
+    } else {
+        "down".to_string()
+    }
+}
+
+fn bootstrap_history_cutoff(now_ms: i64) -> i64 {
+    now_ms - SESSION_BOOTSTRAP_WINDOW_MS
 }
 
 #[allow(dead_code)]

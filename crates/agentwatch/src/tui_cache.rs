@@ -408,7 +408,10 @@ fn background_worker(rx: Receiver<BackgroundCommand>, tx: Sender<BackgroundResul
 fn load_file_facts(repo_root: &str, rel_path: &str, version: i64) -> FileFactsEntry {
     let path = Path::new(repo_root).join(rel_path);
     let content = std::fs::read_to_string(&path).ok();
-    let line_count = content.as_ref().map(|text| text.lines().count()).unwrap_or(0);
+    let line_count = content
+        .as_ref()
+        .map(|text| text.lines().count())
+        .unwrap_or(0);
     let byte_size = std::fs::metadata(&path).map(|meta| meta.len()).unwrap_or(0);
     let (created_at, git_change_count) =
         git_file_history(repo_root, rel_path).unwrap_or_else(|| ("untracked".to_string(), 0));
@@ -437,7 +440,10 @@ fn git_file_history(repo_root: &str, rel_path: &str) -> Option<(String, usize)> 
         return None;
     }
     let stdout = String::from_utf8(output.stdout).ok()?;
-    let lines: Vec<&str> = stdout.lines().filter(|line| !line.trim().is_empty()).collect();
+    let lines: Vec<&str> = stdout
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .collect();
     let created_at = lines.last().copied().unwrap_or("untracked").to_string();
     Some((created_at, lines.len()))
 }

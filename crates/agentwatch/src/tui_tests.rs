@@ -1,6 +1,7 @@
 use super::*;
 use crate::models::{
-    AttributionConfidence, EventLogEntry, EventSource, FileView, RuntimeMessage, SessionView,
+    AttributionConfidence, EventLogEntry, EventSource, FileView, RuntimeMessage,
+    RuntimeServiceInfo, SessionView,
 };
 use crate::state::{FileListMode, FocusPane, UNKNOWN_SESSION_ID};
 use pretty_assertions::assert_eq;
@@ -366,5 +367,50 @@ fn tui_snapshot_file_preview_mode() {
     insta::assert_snapshot!(
         "agentwatch_tui_file_preview",
         render_snapshot(&state, &cache, 120, 24)
+    );
+}
+
+#[test]
+fn transport_degrades_to_feed_when_socket_is_unreachable() {
+    let dir = tempdir().expect("tempdir");
+    let repo_root = dir.path().join("repo");
+    let git_dir = repo_root.join(".git");
+    std::fs::create_dir_all(&git_dir).expect("git dir");
+    let event_path = dir.path().join("runtime").join("events.jsonl");
+    let info_path = dir.path().join("runtime").join("service.json");
+    let socket_path = dir.path().join("runtime").join("events.sock");
+
+    std::fs::create_dir_all(info_path.parent().expect("info parent")).expect("runtime dir");
+    std::fs::write(&event_path, b"{}\n").expect("feed");
+    crate::ipc::write_service_info(
+        &info_path,
+        &RuntimeServiceInfo {
+            pid: 1,
+            transport: "socket".to_string(),
+            started_at_ms: chrono::Utc::now().timestamp_millis(),
+            last_seen_at_ms: chrono::Utc::now().timestamp_millis(),
+        },
+    )
+    .expect("service info");
+
+    let ctx = RepoContext {
+        repo_root,
+        git_dir,
+        db_path: dir.path().join("agentwatch.db"),
+        runtime_event_path: event_path,
+        runtime_socket_path: socket_path,
+        runtime_info_path: info_path,
+        runtime_tcp_addr: "127.0.0.1:49123".to_string(),
+    };
+
+    assert_eq!(read_runtime_transport(&ctx), "feed");
+}
+
+#[test]
+fn bootstrap_history_cutoff_uses_day_scale_window() {
+    let now_ms = 1_700_000_000_000i64;
+    assert_eq!(
+        bootstrap_history_cutoff(now_ms),
+        now_ms - 24 * 60 * 60 * 1000
     );
 }

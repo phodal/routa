@@ -328,7 +328,10 @@ impl RuntimeState {
                 .cmp(&a.last_modified_at_ms)
                 .then_with(|| a.rel_path.cmp(&b.rel_path))
         });
-        items.into_iter().map(|file| file.rel_path.clone()).collect()
+        items
+            .into_iter()
+            .map(|file| file.rel_path.clone())
+            .collect()
     }
 
     pub fn file_items(&self) -> Vec<&FileView> {
@@ -673,7 +676,11 @@ impl RuntimeState {
 
         self.push_attribution_event(
             event.observed_at_ms,
-            format!("assign {} {}", short_session(&event.session_id), event.rel_path),
+            format!(
+                "assign {} {}",
+                short_session(&event.session_id),
+                event.rel_path
+            ),
         );
     }
 

@@ -5,6 +5,7 @@ use std::io::{BufRead, BufReader, Seek, SeekFrom, Write};
 use std::net::{TcpListener, TcpStream};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 pub struct RuntimeFeed {
     event_path: PathBuf,
@@ -191,6 +192,19 @@ pub fn send_tcp_message(addr: &str, message: &RuntimeMessage) -> Result<()> {
         .context("write runtime tcp newline")?;
     stream.flush().context("flush runtime tcp")?;
     Ok(())
+}
+
+pub fn socket_reachable(socket_path: &Path) -> bool {
+    socket_path.exists() && UnixStream::connect(socket_path).is_ok()
+}
+
+pub fn tcp_reachable(addr: &str) -> bool {
+    addr.parse()
+        .ok()
+        .and_then(|socket_addr| {
+            TcpStream::connect_timeout(&socket_addr, Duration::from_millis(120)).ok()
+        })
+        .is_some()
 }
 
 pub fn write_service_info(info_path: &Path, info: &RuntimeServiceInfo) -> Result<()> {
