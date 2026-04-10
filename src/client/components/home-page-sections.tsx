@@ -638,6 +638,7 @@ export function OnboardingCard({
   workspaceTitle,
   hasProviderConfig,
   hasCodebase,
+  availableProviderNames,
   preferredMode,
   onCreateWorkspace,
   onOpenProviders,
@@ -649,6 +650,7 @@ export function OnboardingCard({
   workspaceTitle?: string | null;
   hasProviderConfig: boolean;
   hasCodebase: boolean;
+  availableProviderNames: string[];
   preferredMode: OnboardingMode | null;
   onCreateWorkspace: (title: string) => Promise<boolean>;
   onOpenProviders: () => void;
@@ -791,13 +793,41 @@ export function OnboardingCard({
               {hasProviderConfig ? t.onboarding.completed : t.onboarding.pending}
             </span>
           </div>
-          <button
-            type="button"
-            onClick={onOpenProviders}
-            className="mt-4 rounded-full border border-sky-200/80 px-4 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-[#356fb0] transition-colors hover:border-sky-300 hover:text-[#0f62d6] dark:border-[#223049] dark:text-slate-300 dark:hover:border-[#314665] dark:hover:text-white"
-          >
-            {hasProviderConfig ? t.onboarding.providerReady : t.onboarding.providerAction}
-          </button>
+          {hasProviderConfig ? (
+            <div className="mt-4">
+              {availableProviderNames.length > 0 ? (
+                <div className="flex flex-wrap gap-2">
+                  {availableProviderNames.map((providerName) => (
+                    <span
+                      key={providerName}
+                      className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/8 dark:text-emerald-300"
+                    >
+                      {providerName}
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <div className="rounded-2xl border border-emerald-100 bg-emerald-50/70 px-3 py-3 text-sm text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/8 dark:text-emerald-300">
+                  {t.onboarding.providerReady}
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={onOpenProviders}
+                className="mt-3 text-xs font-medium text-[#356fb0] transition-colors hover:text-[#0f62d6] dark:text-slate-300 dark:hover:text-white"
+              >
+                {t.onboarding.openProviders}
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={onOpenProviders}
+              className="mt-4 rounded-full border border-sky-200/80 px-4 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-[#356fb0] transition-colors hover:border-sky-300 hover:text-[#0f62d6] dark:border-[#223049] dark:text-slate-300 dark:hover:border-[#314665] dark:hover:text-white"
+            >
+              {t.onboarding.providerAction}
+            </button>
+          )}
         </div>
 
         <div className="rounded-[24px] border border-sky-100/90 bg-white/82 p-4 dark:border-white/8 dark:bg-white/[0.03]">

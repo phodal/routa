@@ -20,6 +20,7 @@ import type { RepoSelection } from "./repo-picker";
 import { storePendingPrompt } from "../utils/pending-prompt";
 import { loadProviderConnectionConfig, getModelDefinitionByAlias, DockerConfigModal } from "./settings-panel";
 import { desktopAwareFetch } from "../utils/diagnostics";
+import { collectAccessibleRepoPaths } from "@/client/utils/repo-validation";
 import { useTranslation } from "@/i18n";
 import { Check, ChevronDown, Folder, CircleUser, Sun, Zap } from "lucide-react";
 
@@ -171,6 +172,7 @@ export function HomeInput({
 
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(propWorkspaceId ?? null);
   const { codebases } = useCodebases(selectedWorkspaceId ?? "");
+  const [accessibleCodebasePaths, setAccessibleCodebasePaths] = useState<Set<string>>(new Set());
 
   const [selectedRole, setSelectedRole] = useState<AgentRole>(defaultAgentRole);
   const [repoSelection, setRepoSelection] = useState<RepoSelection | null>(null);
@@ -301,10 +303,33 @@ export function HomeInput({
     repoSelectionRef.current = repoSelection;
   }, [repoSelection]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    void (async () => {
+      const nextPaths = await collectAccessibleRepoPaths(codebases.map((codebase) => codebase.repoPath));
+      if (!cancelled) {
+        setAccessibleCodebasePaths(nextPaths);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [codebases]);
+
   // Auto-select default codebase
   useEffect(() => {
-    if (codebases.length === 0) return;
-    const def = codebases.find((c) => c.isDefault) ?? codebases[0];
+    const validCodebases = codebases.filter((codebase) => accessibleCodebasePaths.has(codebase.repoPath));
+    if (validCodebases.length === 0) {
+      if (repoSelectionRef.current && codebases.some((codebase) => codebase.repoPath === repoSelectionRef.current?.path)) {
+        repoSelectionRef.current = null;
+        setRepoSelection(null);
+      }
+      return;
+    }
+
+    const def = validCodebases.find((c) => c.isDefault) ?? validCodebases[0];
     const nextSelection = {
       path: def.repoPath,
       branch: def.branch ?? "",
@@ -312,7 +337,7 @@ export function HomeInput({
     };
     repoSelectionRef.current = nextSelection;
     setRepoSelection(nextSelection);
-  }, [codebases]);
+  }, [accessibleCodebasePaths, codebases]);
 
   const handleRepoSelectionChange = useCallback((selection: RepoSelection | null) => {
     repoSelectionRef.current = selection;
@@ -487,7 +512,9 @@ export function HomeInput({
             onProviderChange={acp.setProvider}
             repoSelection={repoSelection}
             onRepoChange={handleRepoSelectionChange}
-            additionalRepos={codebases.map((codebase) => ({
+            additionalRepos={codebases
+              .filter((codebase) => accessibleCodebasePaths.has(codebase.repoPath))
+              .map((codebase) => ({
               name: codebase.label ?? codebase.repoPath.split("/").pop() ?? codebase.repoPath,
               path: codebase.repoPath,
               branch: codebase.branch,

@@ -19,6 +19,7 @@ import { useAcp } from "@/client/hooks/use-acp";
 import { useCodebases, useWorkspaces } from "@/client/hooks/use-workspaces";
 import { desktopAwareFetch } from "@/client/utils/diagnostics";
 import { loadCustomAcpProviders } from "@/client/utils/custom-acp-providers";
+import { collectAccessibleRepoPaths } from "@/client/utils/repo-validation";
 import {
   clearOnboardingState,
   ONBOARDING_COMPLETED_KEY,
@@ -90,6 +91,7 @@ function HomePageContent() {
 
   const { codebases, fetchCodebases } = useCodebases(activeWorkspaceId ?? "");
   const [showRepoPickerForHome, setShowRepoPickerForHome] = useState(false);
+  const [accessibleCodebasePaths, setAccessibleCodebasePaths] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     setHydrated(true);
@@ -168,6 +170,21 @@ function HomePageContent() {
     };
   }, [activeWorkspaceId, workspaceHomeData]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    void (async () => {
+      const nextPaths = await collectAccessibleRepoPaths(codebases.map((codebase) => codebase.repoPath));
+      if (!cancelled) {
+        setAccessibleCodebasePaths(nextPaths);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [codebases]);
+
   const handleWorkspaceCreate = useCallback(async (title: string) => {
     const workspace = await workspacesHook.createWorkspace(title);
     if (workspace) {
@@ -240,7 +257,7 @@ function HomePageContent() {
       .slice(0, 3)
   ), [activeData.sessions]);
   const latestSession = recentSessions[0] ?? null;
-  const hasCodebase = codebases.length > 0;
+  const hasCodebase = codebases.some((codebase) => accessibleCodebasePaths.has(codebase.repoPath));
 
   const hasWorkspace = workspacesHook.workspaces.length > 0;
   const hasProviderConfig =
@@ -251,6 +268,13 @@ function HomePageContent() {
         runtimeProviderCount: acp.providers.filter((provider) => provider.status === "available").length,
       })
       : false;
+  const availableProviderNames = useMemo(
+    () => acp.providers
+      .filter((provider) => provider.status === "available")
+      .map((provider) => provider.name)
+      .slice(0, 3),
+    [acp.providers],
+  );
   const needsInlineOnboarding =
     hasWorkspace &&
     !onboardingCompleted &&
@@ -302,6 +326,7 @@ function HomePageContent() {
                   workspaceTitle={null}
                   hasProviderConfig={hasProviderConfig}
                   hasCodebase={false}
+                  availableProviderNames={availableProviderNames}
                   preferredMode={preferredMode}
                   onCreateWorkspace={handleWorkspaceCreate}
                   onOpenProviders={handleOpenProviders}
@@ -338,6 +363,7 @@ function HomePageContent() {
                           workspaceTitle={activeWorkspace?.title ?? null}
                           hasProviderConfig={hasProviderConfig}
                           hasCodebase={hasCodebase}
+                          availableProviderNames={availableProviderNames}
                           preferredMode={preferredMode}
                           onCreateWorkspace={handleWorkspaceCreate}
                           onOpenProviders={handleOpenProviders}
