@@ -217,4 +217,69 @@ describe("ChatPanel session targeting", () => {
       expect(acp.promptSession).toHaveBeenCalledWith("session-123", "continue", undefined);
     });
   });
+
+  it("hides non-interactive process output cards from the chat stream", () => {
+    window.HTMLElement.prototype.scrollIntoView = vi.fn();
+    mockVisibleMessages.splice(0, mockVisibleMessages.length, {
+      id: "process-1",
+      role: "terminal",
+      content: "stderr line",
+      timestamp: new Date(),
+      terminalId: "process-session-123",
+      terminalCommand: "Codex",
+      terminalArgs: ["stderr"],
+      terminalInteractive: false,
+      terminalExited: false,
+      terminalExitCode: null,
+    }, {
+      id: "assistant-1",
+      role: "assistant",
+      content: "Done",
+      timestamp: new Date(),
+    });
+
+    const acp = {
+      connected: true,
+      sessionId: "session-123",
+      updates: [],
+      providers: [],
+      selectedProvider: "codex",
+      loading: false,
+      error: null,
+      authError: null,
+      dockerConfigError: null,
+      connect: vi.fn(),
+      createSession: vi.fn(),
+      resumeSession: vi.fn(),
+      forkSession: vi.fn(),
+      selectSession: vi.fn(),
+      setProvider: vi.fn(),
+      setMode: vi.fn(),
+      prompt: vi.fn(),
+      promptSession: vi.fn(async () => {}),
+      respondToUserInput: vi.fn(),
+      respondToUserInputForSession: vi.fn(),
+      writeTerminal: vi.fn(),
+      resizeTerminal: vi.fn(),
+      cancel: vi.fn(),
+      disconnect: vi.fn(),
+      clearAuthError: vi.fn(),
+      clearDockerConfigError: vi.fn(),
+      listProviderModels: vi.fn(),
+    } satisfies Partial<UseAcpState & UseAcpActions> as UseAcpState & UseAcpActions;
+
+    render(
+      <ChatPanel
+        acp={acp}
+        activeSessionId="session-123"
+        onEnsureSession={vi.fn(async () => "session-123")}
+        onSelectSession={vi.fn(async () => {})}
+        repoSelection={null}
+        onRepoChange={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByText("stderr line")).toBeNull();
+    expect(screen.getByText("Done")).toBeTruthy();
+  });
 });

@@ -125,4 +125,65 @@ describe("useChatMessages", () => {
     await waitFor(() => expect(result.current.visibleMessages[0]?.content).toBe("merged final answer"));
     expect(result.current.visibleMessages).toHaveLength(1);
   });
+
+  it("keeps assistant chunks merged when process output updates are interleaved", async () => {
+    const fetchMock = vi.mocked(desktopAwareFetch);
+    fetchMock.mockResolvedValue(okJson({
+      history: [],
+      messages: [],
+      latestEventKind: "turn_complete",
+    }));
+
+    const updates = [
+      {
+        sessionId: "session-1",
+        update: {
+          sessionUpdate: "agent_message_chunk",
+          content: { type: "text", text: "我" },
+        },
+      },
+      {
+        sessionId: "session-1",
+        update: {
+          sessionUpdate: "process_output",
+          source: "stderr",
+          data: "provider stderr line\n",
+          displayName: "Codex",
+        },
+      },
+      {
+        sessionId: "session-1",
+        update: {
+          sessionUpdate: "agent_message_chunk",
+          content: { type: "text", text: "会" },
+        },
+      },
+    ];
+
+    const { result, rerender } = renderHook(
+      ({ incomingUpdates }) => useChatMessages({
+        activeSessionId: "session-1",
+        updates: incomingUpdates,
+      }),
+      {
+        initialProps: {
+          incomingUpdates: [] as typeof updates,
+        },
+      },
+    );
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+
+    rerender({ incomingUpdates: updates });
+
+    await waitFor(() => expect(result.current.visibleMessages).toHaveLength(2));
+    expect(result.current.visibleMessages[0]).toMatchObject({
+      role: "assistant",
+      content: "我会",
+    });
+    expect(result.current.visibleMessages[1]).toMatchObject({
+      role: "terminal",
+      content: "provider stderr line\n",
+    });
+  });
 });

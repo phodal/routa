@@ -28,15 +28,11 @@ function appendStreamingChunk(
   messages: ChatMessage[],
   streamingIds: StreamingIds,
   sessionId: string,
-  lastKind: string | null,
-  expectedKind: string,
+  _lastKind: string | null,
+  _expectedKind: string,
   role: StreamingRole,
   text: string,
 ): string {
-  if (lastKind !== expectedKind) {
-    streamingIds[sessionId] = null;
-  }
-
   let messageId = streamingIds[sessionId];
   const nextText = !messageId ? text.replace(/^[\r\n]+/, "") : text;
   if (!messageId) {

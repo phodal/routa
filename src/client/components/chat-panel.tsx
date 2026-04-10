@@ -601,6 +601,10 @@ export function ChatPanel({
                   if (msg.role === "tool" && msg.toolKind === "task") {
                     return false;
                   }
+                  // Hide non-interactive provider stderr/process output from the main chat stream.
+                  if (msg.role === "terminal" && msg.terminalInteractive === false) {
+                    return false;
+                  }
                   // Hide pending AskUserQuestion from chat stream — shown sticky above input
                   if (
                     msg.role === "tool"
