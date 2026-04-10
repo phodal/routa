@@ -80,7 +80,67 @@ describe("coauthor hook runtime", () => {
 
     expect(result).toEqual({
       status: "failed",
-      reason: "Missing required co-author trailer: Co-authored-by: Codex (GPT-5) <codex@example.test>",
+      reason:
+        "Commit message must include exactly one Co-authored-by trailer. Expected: Co-authored-by: Codex (GPT-5) <codex@example.test>",
+    });
+  });
+
+  it("does not append another trailer during prepare mode when one already exists", () => {
+    const file = writeMessage(
+      "feat(test): add hook coverage\n\nCo-authored-by: Someone Else (GPT-X) <else@example.test>\n",
+    );
+    const result = runCoauthorMode("prepare", file, {
+      ROUTA_AGENT_NAME: "Codex",
+      ROUTA_AGENT_MODEL: "GPT-5",
+      ROUTA_COAUTHOR_EMAIL: "codex@example.test",
+    });
+
+    expect(result).toEqual({
+      status: "ok",
+      trailer: "Co-authored-by: Codex (GPT-5) <codex@example.test>",
+    });
+    expect(fs.readFileSync(file, "utf8")).toBe(
+      "feat(test): add hook coverage\n\nCo-authored-by: Someone Else (GPT-X) <else@example.test>\n",
+    );
+  });
+
+  it("fails validation when multiple co-author trailers are present", () => {
+    const file = writeMessage(
+      [
+        "feat(test): add hook coverage",
+        "",
+        "Co-authored-by: Codex (GPT-5) <codex@example.test>",
+        "Co-authored-by: Someone Else (GPT-X) <else@example.test>",
+        "",
+      ].join("\n"),
+    );
+    const result = runCoauthorMode("validate", file, {
+      ROUTA_AGENT_NAME: "Codex",
+      ROUTA_AGENT_MODEL: "GPT-5",
+      ROUTA_COAUTHOR_EMAIL: "codex@example.test",
+    });
+
+    expect(result).toEqual({
+      status: "failed",
+      reason:
+        "Commit message must contain exactly one Co-authored-by trailer, but found 2. Keep a single aggregated trailer and remove extras.",
+    });
+  });
+
+  it("fails validation when the only trailer does not match the active agent identity", () => {
+    const file = writeMessage(
+      "feat(test): add hook coverage\n\nCo-authored-by: Someone Else (GPT-X) <else@example.test>\n",
+    );
+    const result = runCoauthorMode("validate", file, {
+      ROUTA_AGENT_NAME: "Codex",
+      ROUTA_AGENT_MODEL: "GPT-5",
+      ROUTA_COAUTHOR_EMAIL: "codex@example.test",
+    });
+
+    expect(result).toEqual({
+      status: "failed",
+      reason:
+        "Commit message has a Co-authored-by trailer, but it does not match the active agent identity. Expected: Co-authored-by: Codex (GPT-5) <codex@example.test>. Found: Co-authored-by: Someone Else (GPT-X) <else@example.test>",
     });
   });
 

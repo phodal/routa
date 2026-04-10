@@ -20,6 +20,7 @@ type CoauthorResult =
   | { status: "failed"; reason: string };
 
 const TRUTHY = new Set(["1", "true", "yes", "on"]);
+const COAUTHOR_PREFIX_RE = /^Co-authored-by:/i;
 
 export function isAgentCoauthorEnforced(env: CoauthorEnv): boolean {
   const explicit = env.ROUTA_COAUTHOR_ENFORCE?.trim().toLowerCase();
@@ -65,6 +66,13 @@ export function messageHasTrailer(message: string, trailer: string): boolean {
     .some((line) => line.trim().toLowerCase() === trailer.trim().toLowerCase());
 }
 
+function listCoauthorTrailers(message: string): string[] {
+  return message
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => COAUTHOR_PREFIX_RE.test(line));
+}
+
 function appendTrailer(message: string, trailer: string): string {
   const trimmedEnd = message.replace(/\s*$/u, "");
   const separator = trimmedEnd.length === 0 ? "" : "\n\n";
@@ -93,25 +101,55 @@ export function runCoauthorMode(
   }
 
   const commitMessage = fs.readFileSync(messageFile, "utf8");
-  if (messageHasTrailer(commitMessage, identity.trailer)) {
+  const coauthorTrailers = listCoauthorTrailers(commitMessage);
+  const hasExpectedTrailer = coauthorTrailers.some((line) => (
+    line.toLowerCase() === identity.trailer.toLowerCase()
+  ));
+
+  if (mode === "prepare") {
+    if (coauthorTrailers.length === 0) {
+      fs.writeFileSync(messageFile, appendTrailer(commitMessage, identity.trailer), "utf8");
+      return { status: "updated", trailer: identity.trailer };
+    }
+
     return { status: "ok", trailer: identity.trailer };
   }
 
-  if (mode === "prepare") {
-    fs.writeFileSync(messageFile, appendTrailer(commitMessage, identity.trailer), "utf8");
-    return { status: "updated", trailer: identity.trailer };
+  if (coauthorTrailers.length === 0) {
+    return {
+      status: "failed",
+      reason:
+        `Commit message must include exactly one Co-authored-by trailer. Expected: ${identity.trailer}`,
+    };
   }
 
-  return {
-    status: "failed",
-    reason: `Missing required co-author trailer: ${identity.trailer}`,
-  };
+  if (coauthorTrailers.length > 1) {
+    return {
+      status: "failed",
+      reason:
+        `Commit message must contain exactly one Co-authored-by trailer, but found ${coauthorTrailers.length}. Keep a single aggregated trailer and remove extras.`,
+    };
+  }
+
+  if (!hasExpectedTrailer) {
+    return {
+      status: "failed",
+      reason:
+        `Commit message has a Co-authored-by trailer, but it does not match the active agent identity. Expected: ${identity.trailer}. Found: ${coauthorTrailers[0]}`,
+    };
+  }
+
+  return { status: "ok", trailer: identity.trailer };
 }
 
 function printFailureAndExit(reason: string): never {
-  console.error("❌ COMMIT BLOCKED: Agent co-author trailer is missing or incomplete");
+  console.error("❌ COMMIT BLOCKED: Co-author trailer policy violated");
   console.error("");
   console.error(`   ${reason}`);
+  console.error("");
+  console.error("   Commit messages for agent-authored changes must contain exactly one");
+  console.error("   Co-authored-by trailer for the active agent.");
+  console.error("   If multiple agents contributed, aggregate them into one entry per AGENTS.md.");
   console.error("");
   console.error("   Required environment for agent commits:");
   console.error("   - ROUTA_COAUTHOR_EMAIL");
