@@ -25,6 +25,7 @@ export function McpSettingsPageClient() {
 
   return (
     <SettingsRouteShell
+      activeSettingsItem="mcp"
       title="MCP Servers"
       description="Manage Model Context Protocol servers, transports, and local integration points for your workspace."
       badgeLabel="Integration"

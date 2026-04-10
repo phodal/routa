@@ -14,8 +14,8 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useTranslation } from "@/i18n";
-import { SettingsPopupMenu } from "./settings-popup-menu";
-import { ChevronLeft, Columns2, House, ScrollText, Share2 } from "lucide-react";
+import { ChevronLeft, Columns2, House, MonitorUp, ScrollText, Settings, Share2 } from "lucide-react";
+import { HarnessMark } from "./harness-mark";
 
 
 interface NavItem {
@@ -23,7 +23,6 @@ interface NavItem {
   label: string;
   icon: React.ReactNode;
   href: string;
-  requiresWorkspace?: boolean;
 }
 
 interface SidebarTopAction {
@@ -53,6 +52,12 @@ export function DesktopSidebar({
   const normalizedWorkspaceId = workspaceId?.trim() || null;
   const fallbackWorkspaceId = normalizedWorkspaceId || "default";
   const workspaceBaseHref = `/workspace/${fallbackWorkspaceId}`;
+  const settingsHarnessHref = normalizedWorkspaceId
+    ? `/settings/harness?workspaceId=${encodeURIComponent(normalizedWorkspaceId)}`
+    : "/settings/harness";
+  const settingsFluencyHref = normalizedWorkspaceId
+    ? `/settings/fluency?workspaceId=${encodeURIComponent(normalizedWorkspaceId)}`
+    : "/settings/fluency";
 
   const primaryItems: NavItem[] = [
     {
@@ -67,7 +72,6 @@ export function DesktopSidebar({
       id: "sessions",
       label: t.nav.sessions,
       href: workspaceBaseHref ? `${workspaceBaseHref}/sessions` : "/",
-      requiresWorkspace: true,
       icon: (
         <ScrollText className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}/>
       ),
@@ -76,7 +80,6 @@ export function DesktopSidebar({
       id: "kanban",
       label: t.nav.kanban,
       href: workspaceBaseHref ? `${workspaceBaseHref}/kanban` : "/",
-      requiresWorkspace: true,
       icon: (
         <Columns2 className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}/>
       ),
@@ -85,13 +88,31 @@ export function DesktopSidebar({
       id: "team",
       label: t.nav.team,
       href: workspaceBaseHref ? `${workspaceBaseHref}/team` : "/",
-      requiresWorkspace: true,
       icon: (
         <Share2 className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}/>
       ),
     },
   ];
-  const settingsActive = pathname === "/settings" || pathname.startsWith("/settings/");
+  const secondaryItems: NavItem[] = [
+    {
+      id: "harness",
+      label: t.nav.harness,
+      href: settingsHarnessHref,
+      icon: <HarnessMark className="h-4 w-4" title="" />,
+    },
+    {
+      id: "fluency",
+      label: t.nav.fluency,
+      href: settingsFluencyHref,
+      icon: <MonitorUp className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}/>,
+    },
+    {
+      id: "settings",
+      label: t.settings.title,
+      href: "/settings",
+      icon: <Settings className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.7}/>,
+    },
+  ];
   const isActive = (href: string) => {
     const hrefPath = href.split("?")[0]?.split("#")[0] ?? href;
     if (hrefPath === "/") return pathname === "/";
@@ -179,15 +200,7 @@ export function DesktopSidebar({
       <div className={`${collapsed ? "mx-3" : "mx-2"} border-t border-desktop-border`} />
 
       <div className={`py-3 ${collapsed ? "flex flex-col items-center gap-1" : "px-2 space-y-1"}`}>
-        <SettingsPopupMenu
-          position="sidebar"
-          showLabel={!collapsed}
-          isActive={settingsActive}
-          showLanguageMenu={false}
-          showThemeMenu={false}
-          className="w-full"
-          buttonClassName={collapsed ? "h-10 w-10 px-0 py-0 justify-center" : "h-11 w-full gap-3 px-3 py-0 text-sm font-medium"}
-        />
+        {secondaryItems.map(renderNavItem)}
       </div>
     </aside>
   );

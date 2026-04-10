@@ -15,6 +15,7 @@ export default function SpecialistsSettingsPage() {
 
   return (
     <SettingsRouteShell
+      activeSettingsItem="specialists"
       title={t.nav.specialists}
       description={t.settingsExtended.specialistsDesc}
       badgeLabel={t.settingsExtended.specialistsBadge}

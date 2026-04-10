@@ -11,6 +11,7 @@ export default function WorkflowSettingsPage() {
   const { t } = useTranslation();
   return (
     <SettingsRouteShell
+      activeSettingsItem="workflows"
       title={t.settingsExtended.workflowsTitle}
       description={t.settingsExtended.workflowsDesc}
       badgeLabel={t.settingsExtended.workflowsBadge}

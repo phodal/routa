@@ -18,6 +18,7 @@ export default function SchedulesSettingsPage() {
 
   return (
     <SettingsRouteShell
+      activeSettingsItem="schedules"
       title={t.settingsExtended.schedulesTitle}
       description={t.settingsExtended.schedulesDesc}
       badgeLabel={t.settingsExtended.schedulesBadge}
