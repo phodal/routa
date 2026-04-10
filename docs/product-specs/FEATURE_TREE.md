@@ -163,6 +163,14 @@ Multi-agent coordination platform. This document is auto-generated from:
 | GET | `/api/fitness/report` | Read persisted harness fluency snapshots and their additive harnessability baseline payloads |
 | GET | `/api/fitness/specs` | Inspect docs/fitness source files and parsed metric metadata |
 
+### Git (3)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/git/refs` | List git refs for a local repository |
+| GET | `/api/git/log` | List git commit history for a local repository |
+| GET | `/api/git/commit` | Get git commit metadata and changed files |
+
 ### GitHub (8)
 
 | Method | Endpoint | Description |

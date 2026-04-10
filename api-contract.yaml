@@ -201,6 +201,134 @@ components:
           items:
             $ref: "#/components/schemas/VirtualFileEntry"
 
+    GitRefKind:
+      type: string
+      enum: [head, local, remote, tag]
+
+    GitLogRef:
+      type: object
+      required: [name, kind, commitSha]
+      properties:
+        name:
+          type: string
+        remote:
+          type: string
+        kind:
+          $ref: "#/components/schemas/GitRefKind"
+        commitSha:
+          type: string
+        isCurrent:
+          type: boolean
+
+    GitGraphEdge:
+      type: object
+      required: [fromLane, toLane]
+      properties:
+        fromLane:
+          type: integer
+        toLane:
+          type: integer
+        isMerge:
+          type: boolean
+
+    GitLogCommit:
+      type: object
+      required: [sha, shortSha, message, summary, authorName, authorEmail, authoredAt, parents, refs]
+      properties:
+        sha:
+          type: string
+        shortSha:
+          type: string
+        message:
+          type: string
+        summary:
+          type: string
+        authorName:
+          type: string
+        authorEmail:
+          type: string
+        authoredAt:
+          type: string
+          format: date-time
+        parents:
+          type: array
+          items:
+            type: string
+        refs:
+          type: array
+          items:
+            $ref: "#/components/schemas/GitLogRef"
+        lane:
+          type: integer
+        graphEdges:
+          type: array
+          items:
+            $ref: "#/components/schemas/GitGraphEdge"
+
+    GitLogPage:
+      type: object
+      required: [commits, total, hasMore]
+      properties:
+        commits:
+          type: array
+          items:
+            $ref: "#/components/schemas/GitLogCommit"
+        total:
+          type: integer
+        hasMore:
+          type: boolean
+
+    GitRefsResult:
+      type: object
+      required: [local, remote, tags]
+      properties:
+        head:
+          $ref: "#/components/schemas/GitLogRef"
+        local:
+          type: array
+          items:
+            $ref: "#/components/schemas/GitLogRef"
+        remote:
+          type: array
+          items:
+            $ref: "#/components/schemas/GitLogRef"
+        tags:
+          type: array
+          items:
+            $ref: "#/components/schemas/GitLogRef"
+
+    GitCommitFileChangeKind:
+      type: string
+      enum: [added, modified, deleted, renamed, copied]
+
+    GitCommitFileChange:
+      type: object
+      required: [path, status, additions, deletions]
+      properties:
+        path:
+          type: string
+        previousPath:
+          type: string
+        status:
+          $ref: "#/components/schemas/GitCommitFileChangeKind"
+        additions:
+          type: integer
+        deletions:
+          type: integer
+
+    GitCommitDetail:
+      type: object
+      required: [commit, files]
+      properties:
+        commit:
+          $ref: "#/components/schemas/GitLogCommit"
+        files:
+          type: array
+          items:
+            $ref: "#/components/schemas/GitCommitFileChange"
+        patch:
+          type: string
+
     # ── Models ──
     Agent:
       type: object
@@ -3433,6 +3561,124 @@ paths:
           description: SSE stream
           content:
             text/event-stream: {}
+
+  # ── Git ──
+  /api/git/refs:
+    get:
+      operationId: getGitRefs
+      summary: List git refs for a local repository
+      parameters:
+        - name: repoPath
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Git refs grouped by head, local, remote, and tags
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GitRefsResult"
+        "400":
+          description: Missing repo path or invalid git repository
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Failed to enumerate refs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/git/log:
+    get:
+      operationId: getGitLogPage
+      summary: List git commit history for a local repository
+      parameters:
+        - name: repoPath
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: branches
+          in: query
+          description: Comma-separated branch or ref filters
+          schema:
+            type: string
+        - name: search
+          in: query
+          description: Case-insensitive match against sha, summary, and author identity
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 40
+            maximum: 200
+        - name: skip
+          in: query
+          schema:
+            type: integer
+            default: 0
+            minimum: 0
+      responses:
+        "200":
+          description: Paged git log results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GitLogPage"
+        "400":
+          description: Missing repo path or invalid git repository
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Failed to compute git log page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/git/commit:
+    get:
+      operationId: getGitCommitDetail
+      summary: Get git commit metadata and changed files
+      parameters:
+        - name: repoPath
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: sha
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Commit metadata and file change summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GitCommitDetail"
+        "400":
+          description: Missing or invalid request parameters
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Failed to read commit details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   # ── GitHub Virtual Workspace ──
   /api/github:
