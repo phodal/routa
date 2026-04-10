@@ -300,18 +300,38 @@ fn render_detail(
     state: &RuntimeState,
     _feed: &RuntimeFeed,
 ) {
-    let sections = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Length(7),
-            Constraint::Length(9),
-            Constraint::Min(8),
-        ])
-        .split(area);
-
-    render_detail_summary(frame, sections[0], state);
-    render_recent_events(frame, sections[1], state);
-    render_detail_body(frame, sections[2], state);
+    match state.detail_mode {
+        DetailMode::File => {
+            let sections = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([Constraint::Length(6), Constraint::Min(12)])
+                .split(area);
+            render_detail_summary(frame, sections[0], state);
+            render_detail_body(frame, sections[1], state);
+        }
+        DetailMode::Diff => {
+            let sections = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([Constraint::Length(6), Constraint::Length(6), Constraint::Min(10)])
+                .split(area);
+            render_detail_summary(frame, sections[0], state);
+            render_recent_events(frame, sections[1], state);
+            render_detail_body(frame, sections[2], state);
+        }
+        DetailMode::Summary => {
+            let sections = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([
+                    Constraint::Length(7),
+                    Constraint::Length(9),
+                    Constraint::Min(8),
+                ])
+                .split(area);
+            render_detail_summary(frame, sections[0], state);
+            render_recent_events(frame, sections[1], state);
+            render_detail_body(frame, sections[2], state);
+        }
+    }
 }
 
 fn render_detail_summary(frame: &mut Frame, area: Rect, state: &RuntimeState) {
@@ -534,7 +554,7 @@ fn render_title_bar(frame: &mut Frame, area: Rect, state: &RuntimeState) {
                 .add_modifier(Modifier::BOLD),
         ),
         Span::styled(
-            format!("  refreshed {}  ", format_ts(state.last_refresh_at_ms)),
+            format!("  refreshed {} ago  ", time_ago(state.last_refresh_at_ms)),
             Style::default().fg(MUTED).bg(SURFACE),
         ),
     ]);

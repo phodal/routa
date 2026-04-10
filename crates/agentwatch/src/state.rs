@@ -106,6 +106,7 @@ impl RuntimeState {
     }
 
     pub fn apply_message(&mut self, message: RuntimeMessage) {
+        self.last_refresh_at_ms = message.observed_at_ms();
         match message {
             RuntimeMessage::Hook(event) => self.apply_hook_event(event),
             RuntimeMessage::Git(event) => self.apply_git_event(event),
