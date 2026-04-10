@@ -186,4 +186,57 @@ describe("useChatMessages", () => {
       content: "provider stderr line\n",
     });
   });
+
+  it("starts a fresh assistant message after a completed turn", async () => {
+    const fetchMock = vi.mocked(desktopAwareFetch);
+    fetchMock.mockResolvedValue(okJson({
+      history: [],
+      messages: [
+        {
+          id: "msg-old",
+          role: "assistant",
+          content: "old answer",
+          timestamp: "2026-04-03T14:08:44.000Z",
+        },
+      ],
+      latestEventKind: "turn_complete",
+    }));
+
+    const updates = [
+      {
+        sessionId: "session-1",
+        update: {
+          sessionUpdate: "agent_message_chunk",
+          content: { type: "text", text: "new answer" },
+        },
+      },
+    ];
+
+    const { result, rerender } = renderHook(
+      ({ incomingUpdates }) => useChatMessages({
+        activeSessionId: "session-1",
+        updates: incomingUpdates,
+      }),
+      {
+        initialProps: {
+          incomingUpdates: [] as typeof updates,
+        },
+      },
+    );
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(result.current.visibleMessages[0]?.content).toBe("old answer"));
+
+    rerender({ incomingUpdates: updates });
+
+    await waitFor(() => expect(result.current.visibleMessages).toHaveLength(2));
+    expect(result.current.visibleMessages[0]).toMatchObject({
+      role: "assistant",
+      content: "old answer",
+    });
+    expect(result.current.visibleMessages[1]).toMatchObject({
+      role: "assistant",
+      content: "new answer",
+    });
+  });
 });

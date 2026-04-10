@@ -24,15 +24,63 @@ type StreamingRole = "assistant" | "thought";
 type StreamingIds = Record<string, string | null>;
 type ToolContentBlock = Array<{ type: string; text?: string }> | null | undefined;
 
+function canContinueStreamingChunk(
+  lastKind: string | null,
+  expectedKind: string,
+): boolean {
+  if (!lastKind) return false;
+  if (lastKind === expectedKind) return true;
+
+  if (expectedKind === "agent_message_chunk") {
+    return [
+      "agent_thought_chunk",
+      "process_output",
+      "tool_call",
+      "tool_call_update",
+      "tool_call_start",
+      "tool_call_params_delta",
+      "terminal_created",
+      "terminal_output",
+      "terminal_exited",
+      "thinking_start",
+      "thinking_stop",
+      "thinking_signature",
+      "usage_update",
+    ].includes(lastKind);
+  }
+
+  if (expectedKind === "agent_thought_chunk") {
+    return [
+      "process_output",
+      "tool_call",
+      "tool_call_update",
+      "tool_call_start",
+      "tool_call_params_delta",
+      "terminal_created",
+      "terminal_output",
+      "terminal_exited",
+      "thinking_start",
+      "thinking_signature",
+      "usage_update",
+    ].includes(lastKind);
+  }
+
+  return false;
+}
+
 function appendStreamingChunk(
   messages: ChatMessage[],
   streamingIds: StreamingIds,
   sessionId: string,
-  _lastKind: string | null,
-  _expectedKind: string,
+  lastKind: string | null,
+  expectedKind: string,
   role: StreamingRole,
   text: string,
 ): string {
+  if (!canContinueStreamingChunk(lastKind, expectedKind)) {
+    streamingIds[sessionId] = null;
+  }
+
   let messageId = streamingIds[sessionId];
   const nextText = !messageId ? text.replace(/^[\r\n]+/, "") : text;
   if (!messageId) {
