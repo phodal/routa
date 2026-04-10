@@ -8,6 +8,7 @@ members = [
     "crates/routa-scanner",
     "crates/routa-entrix",
     "apps/desktop/src-tauri",
+    "crates/agentwatch",
 ]
 
 [workspace.package]
@@ -21,4 +22,3 @@ opt-level = 3
 lto = true
 codegen-units = 1
 strip = true
-
