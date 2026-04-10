@@ -1,0 +1,29 @@
+---
+source: crates/agentwatch/src/tui.rs
+assertion_line: 1799
+expression: "render_snapshot(&state, &cache, 120, 24)"
+---
+ AgentWatch   repo:routa-js  branch:main  rpc:socket  WATCH  files:GLOBAL    refreshed 2m ago    search:/route.ts_
+┌Sessions──────────────────────┐┌Files────────────────────────────────────────┐┌Details────────────────────────────────┐
+│Unknown  UNKNOWN  watch       ││ BY SESSION    GLOBAL    UNKNOWN-CONFLICT    ││src/app/api/a2a/card/route.ts          │
+│pane ?  2m ago  1 files       ││─────────────────────────────────────────────││last by unknown                        │
+│                              ││src/app/api/a2a/card/route.ts                ││modified <ts> (5m)  confidence     │
+│                              ││D  -12        5m  unknown                    ││unknown                                │
+│                              ││                                             ││lines 0  size 0 B                      │
+│                              ││                                             ││created untracked  git changes 0       │
+│                              ││                                             │└───────────────────────────────────────┘
+│                              ││                                             │┌Diff Summary───────────────────────────┐
+│                              ││                                             ││@@ -1,2 +1,3 @@                        │
+│                              ││                                             ││-use old                               │
+│                              ││                                             ││+use new                               │
+│                              ││                                             ││+use cache                             │
+│                              ││                                             ││                                       │
+│                              ││                                             ││                                       │
+│                              ││                                             ││                                       │
+└──────────────────────────────┘└─────────────────────────────────────────────┘└───────────────────────────────────────┘
+┌Event Stream (all)────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│<ts> [watch] watch modify crates/agentwatch/src/tui.rs                                                            │
+│<ts> [hook] live-hook-check Edit Write                                                                            │
+│<ts> [git] git post-commit main                                                                                   │
+└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+Tab switch focus  ↑↓ select  Enter expand  / search:on  T theme  Esc clear  r follow:on  q quit

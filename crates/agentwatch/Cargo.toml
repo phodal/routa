@@ -21,3 +21,8 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 dirs = "6"
 syntect = "5"
+
+[dev-dependencies]
+insta = "1"
+pretty_assertions = "1"
+tempfile = "3"
