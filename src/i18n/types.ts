@@ -677,10 +677,12 @@ export interface TranslationDictionary extends ExtendedTranslationDictionarySect
     modeTitle: string;
     modeDescription: string;
     modeReady: string;
-    modeRoutaTitle: string;
-    modeRoutaDescription: string;
-    modeCrafterTitle: string;
-    modeCrafterDescription: string;
+    modeSessionTitle: string;
+    modeSessionDescription: string;
+    modeKanbanTitle: string;
+    modeKanbanDescription: string;
+    modeTeamTitle: string;
+    modeTeamDescription: string;
     continueLater: string;
     completed: string;
     pending: string;

@@ -325,10 +325,17 @@ export function KanbanBoardSurface({
                   return (
                     <div
                       key={column.id}
-                      onDragOver={(event) => event.preventDefault()}
-                      onDrop={async () => {
-                        if (!dragTaskId) return;
-                        await moveTask(dragTaskId, column.id);
+                      onDragOver={(event) => {
+                        event.preventDefault();
+                        if (event.dataTransfer) {
+                          event.dataTransfer.dropEffect = "move";
+                        }
+                      }}
+                      onDrop={async (event) => {
+                        event.preventDefault();
+                        const droppedTaskId = dragTaskId || event.dataTransfer?.getData("text/plain");
+                        if (!droppedTaskId) return;
+                        await moveTask(droppedTaskId, column.id);
                         setDragTaskId(null);
                       }}
                       className={`flex h-full min-h-26.25 shrink-0 flex-col border border-slate-200/70 bg-white p-3 dark:border-[#1c1f2e] dark:bg-[#12141c] ${widthClass}`}
@@ -377,6 +384,7 @@ export function KanbanBoardSurface({
                             autoProviderId={resolveKanbanBoardAutoProviderId(board, boardAutoProviderId)}
                             queuePosition={queuedPositions[task.id]}
                             onDragStart={() => setDragTaskId(task.id)}
+                            onDragEnd={() => setDragTaskId(null)}
                             onOpenDetail={() => openTaskDetail(task)}
                             onDelete={() => confirmDeleteTask(task)}
                             onPatchTask={patchTask}

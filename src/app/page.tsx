@@ -248,6 +248,7 @@ function HomePageContent() {
       ? hasSavedProviderConfiguration(loadDefaultProviders(), loadProviderConnections(), {
         dockerOpencodeAuthJson: loadDockerOpencodeAuthJson(),
         customProviderCount: loadCustomAcpProviders().length,
+        runtimeProviderCount: acp.providers.filter((provider) => provider.status === "available").length,
       })
       : false;
   const needsInlineOnboarding =

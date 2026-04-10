@@ -35,6 +35,7 @@ export interface KanbanCardProps {
   autoProviderId?: string;
   queuePosition?: number;
   onDragStart: () => void;
+  onDragEnd: () => void;
   onOpenDetail: () => void;
   onDelete: () => void;
   onPatchTask: (taskId: string, payload: Record<string, unknown>) => Promise<TaskInfo>;
@@ -211,6 +212,7 @@ export function KanbanCard({
   autoProviderId,
   queuePosition,
   onDragStart,
+  onDragEnd,
   onOpenDetail,
   onDelete,
   onPatchTask,
@@ -302,6 +304,7 @@ export function KanbanCard({
     <div
       draggable
       onDragStart={handleDragStart}
+      onDragEnd={onDragEnd}
       onClick={onOpenDetail}
       onKeyDown={(event) => {
         if (event.key === "Enter" || event.key === " ") {

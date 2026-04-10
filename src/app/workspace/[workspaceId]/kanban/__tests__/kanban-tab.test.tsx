@@ -150,6 +150,67 @@ describe("KanbanTab lane automation labels", () => {
   });
 });
 
+describe("KanbanTab drag and drop", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("falls back to dataTransfer payloads when drop fires without synced drag state", async () => {
+    const dragBoard: KanbanBoardInfo = {
+      ...board,
+      columns: [
+        { id: "backlog", name: "Backlog", position: 0, stage: "backlog" },
+        { id: "todo", name: "Todo", position: 1, stage: "todo" },
+      ],
+    };
+
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (init?.method === "PATCH" && url === "/api/tasks/task-1") {
+        return {
+          ok: true,
+          json: async () => ({
+            task: createTask("task-1", "Story One", {
+              boardId: dragBoard.id,
+              columnId: "todo",
+              position: 0,
+            }),
+          }),
+        } as Response;
+      }
+      throw new Error(`Unexpected fetch: ${init?.method ?? "GET"} ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <KanbanTab
+        workspaceId="workspace-1"
+        boards={[dragBoard]}
+        tasks={[createTask("task-1", "Story One")]}
+        sessions={[]}
+        providers={[]}
+        specialists={[]}
+        codebases={[]}
+        onRefresh={vi.fn()}
+      />,
+    );
+
+    fireEvent.drop(screen.getAllByTestId("kanban-column")[1]!, {
+      dataTransfer: {
+        getData: vi.fn(() => "task-1"),
+      },
+    });
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith("/api/tasks/task-1", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ columnId: "todo", position: 0 }),
+      });
+    });
+  });
+});
+
 describe("KanbanTab stale worktree recovery", () => {
   afterEach(() => {
     vi.unstubAllGlobals();

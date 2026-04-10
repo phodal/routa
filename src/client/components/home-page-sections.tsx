@@ -666,7 +666,13 @@ export function OnboardingCard({
 
   const completeCount = Number(hasProviderConfig) + Number(hasCodebase) + Number(preferredMode !== null);
   const selectedModeLabel =
-    preferredMode === "ROUTA" ? t.onboarding.modeRoutaTitle : preferredMode === "CRAFTER" ? t.onboarding.modeCrafterTitle : null;
+    preferredMode === "SESSION"
+      ? t.onboarding.modeSessionTitle
+      : preferredMode === "KANBAN"
+        ? t.onboarding.modeKanbanTitle
+        : preferredMode === "TEAM"
+          ? t.onboarding.modeTeamTitle
+          : null;
 
   const handleWorkspaceCreate = async () => {
     const title = workspaceName.trim();
@@ -841,19 +847,27 @@ export function OnboardingCard({
           <div className="mt-4 grid gap-2">
             <button
               type="button"
-              onClick={() => onSelectMode("ROUTA")}
-              className={`rounded-2xl border px-4 py-3 text-left transition-colors ${preferredMode === "ROUTA" ? "border-blue-400 bg-blue-50 dark:border-blue-500/50 dark:bg-blue-500/10" : "border-sky-100 hover:border-sky-300 dark:border-white/8 dark:hover:border-[#314665]"}`}
+              onClick={() => onSelectMode("SESSION")}
+              className={`rounded-2xl border px-4 py-3 text-left transition-colors ${preferredMode === "SESSION" ? "border-blue-400 bg-blue-50 dark:border-blue-500/50 dark:bg-blue-500/10" : "border-sky-100 hover:border-sky-300 dark:border-white/8 dark:hover:border-[#314665]"}`}
             >
-              <div className="text-sm font-semibold text-slate-900 dark:text-white">{t.onboarding.modeRoutaTitle}</div>
-              <p className="mt-1 text-sm leading-6 text-[#577090] dark:text-slate-400">{t.onboarding.modeRoutaDescription}</p>
+              <div className="text-sm font-semibold text-slate-900 dark:text-white">{t.onboarding.modeSessionTitle}</div>
+              <p className="mt-1 text-sm leading-6 text-[#577090] dark:text-slate-400">{t.onboarding.modeSessionDescription}</p>
             </button>
             <button
               type="button"
-              onClick={() => onSelectMode("CRAFTER")}
-              className={`rounded-2xl border px-4 py-3 text-left transition-colors ${preferredMode === "CRAFTER" ? "border-amber-400 bg-amber-50 dark:border-amber-500/50 dark:bg-amber-500/10" : "border-sky-100 hover:border-sky-300 dark:border-white/8 dark:hover:border-[#314665]"}`}
+              onClick={() => onSelectMode("KANBAN")}
+              className={`rounded-2xl border px-4 py-3 text-left transition-colors ${preferredMode === "KANBAN" ? "border-amber-400 bg-amber-50 dark:border-amber-500/50 dark:bg-amber-500/10" : "border-sky-100 hover:border-sky-300 dark:border-white/8 dark:hover:border-[#314665]"}`}
             >
-              <div className="text-sm font-semibold text-slate-900 dark:text-white">{t.onboarding.modeCrafterTitle}</div>
-              <p className="mt-1 text-sm leading-6 text-[#577090] dark:text-slate-400">{t.onboarding.modeCrafterDescription}</p>
+              <div className="text-sm font-semibold text-slate-900 dark:text-white">{t.onboarding.modeKanbanTitle}</div>
+              <p className="mt-1 text-sm leading-6 text-[#577090] dark:text-slate-400">{t.onboarding.modeKanbanDescription}</p>
+            </button>
+            <button
+              type="button"
+              onClick={() => onSelectMode("TEAM")}
+              className={`rounded-2xl border px-4 py-3 text-left transition-colors ${preferredMode === "TEAM" ? "border-emerald-400 bg-emerald-50 dark:border-emerald-500/50 dark:bg-emerald-500/10" : "border-sky-100 hover:border-sky-300 dark:border-white/8 dark:hover:border-[#314665]"}`}
+            >
+              <div className="text-sm font-semibold text-slate-900 dark:text-white">{t.onboarding.modeTeamTitle}</div>
+              <p className="mt-1 text-sm leading-6 text-[#577090] dark:text-slate-400">{t.onboarding.modeTeamDescription}</p>
             </button>
           </div>
           {selectedModeLabel && (
