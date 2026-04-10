@@ -66,14 +66,19 @@ pub fn calculate_stats(agents: &[DetectedAgent]) -> AgentStats {
 }
 
 fn parse_agent_line(line: &str, _repo_root: &str) -> Option<DetectedAgent> {
-    let mut parts = line.trim().splitn(7, char::is_whitespace);
-    let pid = parts.next()?.trim().parse::<u32>().ok()?;
+    let mut parts = line.split_whitespace();
+    let pid = parts.next()?.parse::<u32>().ok()?;
     let _ppid = parts.next()?;
-    let cpu_percent = parts.next()?.trim().parse::<f32>().ok()?;
-    let rss_kb = parts.next()?.trim().parse::<f32>().ok()?;
-    let etime = parts.next()?.trim();
-    let comm = parts.next()?.trim();
-    let args = parts.next().unwrap_or(comm).trim();
+    let cpu_percent = parts.next()?.parse::<f32>().ok()?;
+    let rss_kb = parts.next()?.parse::<f32>().ok()?;
+    let etime = parts.next()?;
+    let comm = parts.next()?;
+    let args_joined = parts.collect::<Vec<_>>().join(" ");
+    let args = if args_joined.is_empty() {
+        comm
+    } else {
+        args_joined.as_str()
+    };
     let command = args.to_string();
     let (name, vendor, icon) = classify_vendor(comm, args)?;
 

@@ -53,6 +53,8 @@ enum Command {
     },
     /// Show current active sessions in this repo.
     Sessions,
+    /// Show detected coding agent processes and aggregate stats.
+    Agents,
     /// List changed files (default output grouped by file), use --by-session to group by session.
     Files {
         #[arg(long, default_value_t = false)]
@@ -114,6 +116,10 @@ fn main() -> Result<()> {
             let ctx = resolve(cli.repo.as_deref(), cli.db.as_deref())?;
             let db = Db::open(&ctx.db_path)?;
             print_sessions(&db, &ctx.repo_root.to_string_lossy())?;
+        }
+        Command::Agents => {
+            let ctx = resolve_runtime(cli.repo.as_deref())?;
+            print_agents(&ctx.repo_root.to_string_lossy())?;
         }
         Command::Files { by_session } => {
             let ctx = resolve(cli.repo.as_deref(), cli.db.as_deref())?;
@@ -238,6 +244,34 @@ fn print_sessions(db: &Db, repo_root: &str) -> Result<()> {
         println!("no active sessions");
     }
 
+    Ok(())
+}
+
+fn print_agents(repo_root: &str) -> Result<()> {
+    let agents = crate::detect::scan_agents(repo_root)?;
+    let stats = crate::detect::calculate_stats(&agents);
+    println!(
+        "total={} active={} idle={} cpu={:.1}% mem={:.0}MB",
+        stats.total, stats.active, stats.idle, stats.total_cpu, stats.total_mem_mb
+    );
+    if agents.is_empty() {
+        println!("no detected agents");
+        return Ok(());
+    }
+    println!("pid | agent | cpu | mem | uptime | status | project | cwd");
+    for agent in agents {
+        println!(
+            "{} | {} | {:.1}% | {:.0}MB | {} | {} | {} | {}",
+            agent.pid,
+            agent.name,
+            agent.cpu_percent,
+            agent.mem_mb,
+            crate::detect::format_uptime(agent.uptime_seconds),
+            agent.status,
+            agent.project,
+            agent.cwd.unwrap_or_else(|| "-".to_string())
+        );
+    }
     Ok(())
 }
 
