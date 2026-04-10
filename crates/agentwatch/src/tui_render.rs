@@ -150,7 +150,16 @@ fn render_sessions(frame: &mut Frame, area: ratatui::layout::Rect, state: &Runti
                     }),
                 ),
             ]);
-            let lines = vec![primary, secondary, tertiary];
+            let mut lines = vec![primary, secondary, tertiary];
+            if let Some(agent_summary) = session.agent_summary.as_deref() {
+                lines.push(Line::from(vec![
+                    Span::styled("  ", Style::default()),
+                    Span::styled(
+                        agent_summary.to_string(),
+                        Style::default().fg(colors.accent),
+                    ),
+                ]));
+            }
             let mut item = ListItem::new(lines);
             if selected {
                 item = item.style(row_style(
@@ -533,15 +542,21 @@ fn render_footer(frame: &mut Frame, area: ratatui::layout::Rect, state: &Runtime
 }
 
 fn render_agent_lines(state: &RuntimeState, colors: UiPalette) -> Vec<Line<'static>> {
-    if state.detected_agents.is_empty() {
+    let unmatched = state.unmatched_agents();
+    if unmatched.is_empty() {
+        if state.detected_agents.is_empty() {
+            return vec![Line::from(Span::styled(
+                "no repo-local agents detected",
+                Style::default().fg(colors.muted),
+            ))];
+        }
         return vec![Line::from(Span::styled(
-            "no repo-local agents detected",
+            "all repo-local agents matched to sessions",
             Style::default().fg(colors.muted),
         ))];
     }
 
-    state
-        .detected_agents
+    unmatched
         .iter()
         .take(3)
         .map(|agent| {
@@ -561,7 +576,7 @@ fn render_agent_lines(state: &RuntimeState, colors: UiPalette) -> Vec<Line<'stat
                 Span::styled(cwd, Style::default().fg(colors.muted)),
                 Span::raw(" "),
                 Span::styled(
-                    shorten_path(agent.command.trim(), 14),
+                    shorten_path(agent.command.trim(), 16),
                     Style::default().fg(colors.muted),
                 ),
             ])

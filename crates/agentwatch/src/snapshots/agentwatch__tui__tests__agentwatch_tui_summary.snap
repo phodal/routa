@@ -1,6 +1,6 @@
 ---
 source: crates/agentwatch/src/tui_tests.rs
-assertion_line: 393
+assertion_line: 409
 expression: "render_snapshot(&state, &cache, 120, 28)"
 ---
  AgentWatch   repo:routa-js  branch:main    SESSION VIEW · FOLLOW ON  rpc:socket  dirty:1  unknown:0  synced 2m ago
@@ -8,22 +8,22 @@ expression: "render_snapshot(&state, &cache, 120, 28)"
 │> impl-buddy  ACTIVE            ││ BY SESSION    GLOBAL    REVIEW UNKNOW││ 1 fn render(frame: &mut Frame) {           │
 │gpt-5.4  pane %12  3m ago       ││1 files  M:1 D:0  E:1 I:0 U:0         ││ 2     // preview                           │
 │1 files  E:1 I:0 U:0            ││──────────────────────────────────────││ 3 }                                        │
-│  test-master  IDLE             ││> tui.rs                              ││                                            │
-│gpt-5.4-mini  pane %18  1h ago  ││  crates/agentwatch/src               ││                                            │
-│1 files  E:0 I:0 U:0            ││M  +38 -5     4m  EXACT               ││                                            │
+│  candidates codex              ││> tui.rs                              ││                                            │
+│  test-master  IDLE             ││  crates/agentwatch/src               ││                                            │
+│gpt-5.4-mini  pane %18  1h ago  ││M  +38 -5     4m  EXACT               ││                                            │
+│1 files  E:0 I:0 U:0            ││                                      ││                                            │
+│  candidates codex              ││                                      ││                                            │
 │  Unknown / review  UNKNOWN     ││                                      ││                                            │
 │watch-only owner  pane ?  2m ago││                                      ││                                            │
 │1 files  E:0 I:0 U:1            ││                                      ││                                            │
-│                                ││                                      ││                                            │
-│                                ││                                      ││                                            │
 │                                │└──────────────────────────────────────┘│                                            │
 │                                │┌Details───────────────────────────────┐│                                            │
 │────────────────────────────────││tui.rs                                ││                                            │
 │Agents                          ││crates/agentwatch/src                 ││                                            │
-│no repo-local agents detected   ││Last by: impl-buddy                   ││                                            │
-│                                ││Modified: <ts> (4m)               ││                                            │
-│                                ││State: dirty  Confidence: high        ││                                            │
-│                                ││Lines: 0  Size: 0 B                   ││                                            │
+│CODEX #4211 project ...         ││Last by: impl-buddy                   ││                                            │
+│<repo>                    ││Modified: <ts> (4m)               ││                                            │
+│CLAUDE #9001 elsewhere          ││State: dirty  Confidence: high        ││                                            │
+│...tmp/elsewhere                ││Lines: 0  Size: 0 B                   ││                                            │
 └────────────────────────────────┘└──────────────────────────────────────┘└────────────────────────────────────────────┘
 ┌Event Stream (all)────────────────────────────────────────────────────────────────────────────────────────────────────┐
 │<ts>  WATCH  modify   crates/agentwatch/src/tui.rs                                                                │

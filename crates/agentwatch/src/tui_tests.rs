@@ -1,6 +1,6 @@
 use super::*;
 use crate::models::{
-    AttributionConfidence, EventLogEntry, EventSource, FileView, RuntimeMessage,
+    AttributionConfidence, DetectedAgent, EventLogEntry, EventSource, FileView, RuntimeMessage,
     RuntimeServiceInfo, SessionView,
 };
 use crate::state::{DetailMode, FileListMode, FocusPane, ThemeMode, UNKNOWN_SESSION_ID};
@@ -117,6 +117,22 @@ fn sample_state() -> RuntimeState {
     state.selected_file = 0;
     state.last_refresh_at_ms = now - 120_000;
     state.runtime_transport = "socket".to_string();
+    state.detected_agents = vec![
+        DetectedAgent {
+            key: "codex:4211".to_string(),
+            vendor: "codex".to_string(),
+            pid: 4211,
+            cwd: Some("/tmp/project".to_string()),
+            command: "codex --cwd /tmp/project".to_string(),
+        },
+        DetectedAgent {
+            key: "claude:9001".to_string(),
+            vendor: "claude".to_string(),
+            pid: 9001,
+            cwd: Some("/tmp/elsewhere".to_string()),
+            command: "claude --cwd /tmp/elsewhere".to_string(),
+        },
+    ];
     state.refresh_views();
     state
 }
@@ -466,4 +482,60 @@ fn bootstrap_history_cutoff_uses_day_scale_window() {
         bootstrap_history_cutoff(now_ms),
         now_ms - 24 * 60 * 60 * 1000
     );
+}
+
+#[test]
+fn detected_agents_attach_to_session_when_match_is_unique() {
+    let mut state = sample_state();
+    if let Some(session) = state.sessions.get_mut("idle-review") {
+        session.client = "claude".to_string();
+        session.cwd = "/tmp/other-project".to_string();
+    }
+    state.refresh_views();
+    let session = state
+        .session_items()
+        .iter()
+        .find(|item| item.session_id == "live-hook-check")
+        .expect("session item");
+
+    assert_eq!(session.agent_summary.as_deref(), Some("agent codex#4211"));
+    assert_eq!(state.unmatched_agents().len(), 1);
+    assert_eq!(state.unmatched_agents()[0].vendor, "claude");
+}
+
+#[test]
+fn ambiguous_agents_become_candidates_instead_of_false_matches() {
+    let mut state = sample_state();
+    state.detected_agents = vec![
+        DetectedAgent {
+            key: "codex:4211".to_string(),
+            vendor: "codex".to_string(),
+            pid: 4211,
+            cwd: Some("/tmp/project".to_string()),
+            command: "codex --cwd /tmp/project".to_string(),
+        },
+        DetectedAgent {
+            key: "codex:4212".to_string(),
+            vendor: "codex".to_string(),
+            pid: 4212,
+            cwd: Some("/tmp/project".to_string()),
+            command: "codex --cwd /tmp/project".to_string(),
+        },
+    ];
+    state.refresh_views();
+
+    let live = state
+        .session_items()
+        .iter()
+        .find(|item| item.session_id == "live-hook-check")
+        .expect("live session");
+    let idle = state
+        .session_items()
+        .iter()
+        .find(|item| item.session_id == "idle-review")
+        .expect("idle session");
+
+    assert_eq!(live.agent_summary.as_deref(), Some("candidates codex x2"));
+    assert_eq!(idle.agent_summary.as_deref(), Some("candidates codex x2"));
+    assert_eq!(state.unmatched_agents().len(), 2);
 }

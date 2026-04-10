@@ -4,6 +4,7 @@ use crate::models::{
 };
 use chrono::Utc;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::path::Path;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FocusPane {
@@ -68,6 +69,7 @@ pub struct SessionListItem {
     pub exact_count: usize,
     pub inferred_count: usize,
     pub unknown_count: usize,
+    pub agent_summary: Option<String>,
     pub is_unknown_bucket: bool,
 }
 
@@ -96,6 +98,7 @@ pub struct RuntimeState {
     pub detected_agents: Vec<DetectedAgent>,
     cached_session_items: Vec<SessionListItem>,
     cached_file_item_keys: Vec<String>,
+    cached_unmatched_agent_keys: Vec<String>,
 }
 
 impl RuntimeState {
@@ -124,6 +127,7 @@ impl RuntimeState {
             detected_agents: Vec::new(),
             cached_session_items: Vec::new(),
             cached_file_item_keys: Vec::new(),
+            cached_unmatched_agent_keys: Vec::new(),
         };
         state.rebuild_views();
         state
@@ -230,6 +234,7 @@ impl RuntimeState {
     }
 
     fn compute_session_items(&self) -> Vec<SessionListItem> {
+        let agent_matches = self.compute_agent_match_state();
         let mut items: Vec<_> = self
             .sessions
             .values()
@@ -251,6 +256,7 @@ impl RuntimeState {
                     exact_count,
                     inferred_count,
                     unknown_count,
+                    agent_summary: agent_matches.session_summary(&session.session_id),
                     is_unknown_bucket: false,
                 }
             })
@@ -283,6 +289,7 @@ impl RuntimeState {
                 exact_count: 0,
                 inferred_count: 0,
                 unknown_count,
+                agent_summary: None,
                 is_unknown_bucket: true,
             });
         }
@@ -293,6 +300,13 @@ impl RuntimeState {
         self.cached_session_items
             .get(self.selected_session)
             .map(|session| session.session_id.clone())
+    }
+
+    pub fn unmatched_agents(&self) -> Vec<&DetectedAgent> {
+        self.cached_unmatched_agent_keys
+            .iter()
+            .filter_map(|key| self.detected_agents.iter().find(|agent| &agent.key == key))
+            .collect()
     }
 
     fn compute_file_item_keys(&self) -> Vec<String> {
@@ -449,6 +463,7 @@ impl RuntimeState {
 
     pub fn set_detected_agents(&mut self, agents: Vec<DetectedAgent>) {
         self.detected_agents = agents;
+        self.clamp_selection();
     }
 
     pub fn toggle_theme_mode(&mut self) {
@@ -797,6 +812,7 @@ impl RuntimeState {
         } else {
             self.selected_session = self.selected_session.min(session_len - 1);
         }
+        self.cached_unmatched_agent_keys = self.compute_unmatched_agent_keys();
         self.cached_file_item_keys = self.compute_file_item_keys();
     }
 
@@ -888,6 +904,128 @@ impl RuntimeState {
 
         (exact_count, inferred_count, unknown_count)
     }
+
+    fn compute_unmatched_agent_keys(&self) -> Vec<String> {
+        let matches = self.compute_agent_match_state();
+        self.detected_agents
+            .iter()
+            .filter(|agent| !matches.matched_agent_keys.contains(&agent.key))
+            .map(|agent| agent.key.clone())
+            .collect()
+    }
+
+    fn compute_agent_match_state(&self) -> AgentMatchState {
+        let mut session_matches: BTreeMap<String, SessionAgentMatch> = BTreeMap::new();
+        let visible_sessions: Vec<_> = self
+            .sessions
+            .values()
+            .filter(|session| self.matches_session_search(session))
+            .collect();
+
+        for agent in &self.detected_agents {
+            let mut scored: Vec<_> = visible_sessions
+                .iter()
+                .filter_map(|session| {
+                    let score = session_agent_match_score(session, agent);
+                    (score > 0).then_some((score, session.session_id.as_str()))
+                })
+                .collect();
+            if scored.is_empty() {
+                continue;
+            }
+            scored.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(b.1)));
+            let best = scored[0].0;
+            let runner_up = scored.get(1).map(|item| item.0).unwrap_or(0);
+            let best_session_id = scored[0].1.to_string();
+
+            if best >= 5 && best > runner_up {
+                session_matches
+                    .entry(best_session_id)
+                    .or_default()
+                    .matched_agents
+                    .push(agent_label(agent));
+                session_matches
+                    .entry(scored[0].1.to_string())
+                    .or_default()
+                    .matched_agent_keys
+                    .insert(agent.key.clone());
+            } else {
+                for (_, session_id) in scored.into_iter().filter(|(score, _)| *score == best) {
+                    *session_matches
+                        .entry(session_id.to_string())
+                        .or_default()
+                        .candidate_vendors
+                        .entry(agent.vendor.clone())
+                        .or_insert(0) += 1;
+                }
+            }
+        }
+
+        let matched_agent_keys = session_matches
+            .values()
+            .flat_map(|entry| entry.matched_agent_keys.iter().cloned())
+            .collect();
+
+        AgentMatchState {
+            session_matches,
+            matched_agent_keys,
+        }
+    }
+}
+
+#[derive(Debug, Default)]
+struct SessionAgentMatch {
+    matched_agents: Vec<String>,
+    matched_agent_keys: BTreeSet<String>,
+    candidate_vendors: BTreeMap<String, usize>,
+}
+
+#[derive(Debug, Default)]
+struct AgentMatchState {
+    session_matches: BTreeMap<String, SessionAgentMatch>,
+    matched_agent_keys: BTreeSet<String>,
+}
+
+impl AgentMatchState {
+    fn session_summary(&self, session_id: &str) -> Option<String> {
+        let entry = self.session_matches.get(session_id)?;
+        if !entry.matched_agents.is_empty() {
+            let preview = entry
+                .matched_agents
+                .iter()
+                .take(2)
+                .cloned()
+                .collect::<Vec<_>>()
+                .join(", ");
+            if entry.matched_agents.len() > 2 {
+                Some(format!(
+                    "agents {} +{}",
+                    preview,
+                    entry.matched_agents.len() - 2
+                ))
+            } else if entry.matched_agents.len() == 1 {
+                Some(format!("agent {preview}"))
+            } else {
+                Some(format!("agents {preview}"))
+            }
+        } else if !entry.candidate_vendors.is_empty() {
+            let vendors = entry
+                .candidate_vendors
+                .iter()
+                .map(|(vendor, count)| {
+                    if *count > 1 {
+                        format!("{vendor} x{count}")
+                    } else {
+                        vendor.clone()
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(" ");
+            Some(format!("candidates {vendors}"))
+        } else {
+            None
+        }
+    }
 }
 
 fn session_display_name(session: &SessionView) -> String {
@@ -911,4 +1049,61 @@ fn is_stop_event(event_name: &str) -> bool {
         event_name,
         "Stop" | "stop" | "SessionStop" | "session-stop" | "exit" | "quit"
     )
+}
+
+fn session_agent_match_score(session: &SessionView, agent: &DetectedAgent) -> usize {
+    let mut score = 0;
+
+    if session.client.eq_ignore_ascii_case(&agent.vendor) {
+        score += 3;
+    }
+
+    if let Some(agent_cwd) = agent.cwd.as_deref() {
+        let session_cwd = normalize_match_path(&session.cwd);
+        let agent_cwd = normalize_match_path(agent_cwd);
+        if session_cwd == agent_cwd {
+            score += 3;
+        } else if path_contains(&session_cwd, &agent_cwd) || path_contains(&agent_cwd, &session_cwd)
+        {
+            score += 2;
+        }
+    }
+
+    let command = agent.command.to_ascii_lowercase();
+    if command.contains(&session.session_id.to_ascii_lowercase()) {
+        score += 3;
+    }
+    if let Some(display_name) = session.display_name.as_deref() {
+        let lowered = display_name.to_ascii_lowercase();
+        if !lowered.is_empty() && command.contains(&lowered) {
+            score += 2;
+        }
+    }
+    if let Some(stem) = session
+        .transcript_path
+        .as_deref()
+        .and_then(|path| Path::new(path).file_stem())
+        .and_then(|stem| stem.to_str())
+    {
+        let lowered = stem.to_ascii_lowercase();
+        if !lowered.is_empty() && command.contains(&lowered) {
+            score += 2;
+        }
+    }
+
+    score
+}
+
+fn normalize_match_path(path: &str) -> String {
+    path.trim_end_matches('/').to_string()
+}
+
+fn path_contains(base: &str, candidate: &str) -> bool {
+    candidate
+        .strip_prefix(base)
+        .is_some_and(|rest| rest.is_empty() || rest.starts_with('/'))
+}
+
+fn agent_label(agent: &DetectedAgent) -> String {
+    format!("{}#{}", agent.vendor, agent.pid)
 }

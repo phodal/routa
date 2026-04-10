@@ -1,6 +1,6 @@
 ---
 source: crates/agentwatch/src/tui_tests.rs
-assertion_line: 408
+assertion_line: 424
 expression: "render_snapshot(&state, &cache, 120, 24)"
 ---
  AgentWatch   repo:routa-js  branch:main    GLOBAL VIEW · FOLLOW ON  rpc:socket  dirty:1  unknown:1  synced 2m ago    se
@@ -16,10 +16,10 @@ expression: "render_snapshot(&state, &cache, 120, 24)"
 │                                ││                                      ││                                            │
 │────────────────────────────────│└──────────────────────────────────────┘│                                            │
 │Agents                          │┌Details───────────────────────────────┐│                                            │
-│no repo-local agents detected   ││route.ts                              ││                                            │
-│                                ││src/app/api/a2a/card                  ││                                            │
-│                                ││Last by: unknown                      ││                                            │
-│                                ││Modified: <ts> (5m)               ││                                            │
+│CODEX #4211 project ...         ││route.ts                              ││                                            │
+│<repo>                    ││src/app/api/a2a/card                  ││                                            │
+│CLAUDE #9001 elsewhere          ││Last by: unknown                      ││                                            │
+│...tmp/elsewhere                ││Modified: <ts> (5m)               ││                                            │
 └────────────────────────────────┘└──────────────────────────────────────┘└────────────────────────────────────────────┘
 ┌Event Stream (all)────────────────────────────────────────────────────────────────────────────────────────────────────┐
 │<ts>  WATCH  modify   crates/agentwatch/src/tui.rs                                                                │
