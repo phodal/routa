@@ -12,6 +12,12 @@ pub enum FocusPane {
     Detail,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DetailMode {
+    Summary,
+    Diff,
+}
+
 #[derive(Debug)]
 pub struct RuntimeState {
     pub repo_root: String,
@@ -21,6 +27,8 @@ pub struct RuntimeState {
     pub follow_mode: bool,
     pub group_by_session: bool,
     pub focus: FocusPane,
+    pub detail_mode: DetailMode,
+    pub detail_scroll: u16,
     pub selected_session: usize,
     pub selected_file: usize,
     pub last_refresh_at_ms: i64,
@@ -36,6 +44,8 @@ impl RuntimeState {
             follow_mode: true,
             group_by_session: true,
             focus: FocusPane::Sessions,
+            detail_mode: DetailMode::Summary,
+            detail_scroll: 0,
             selected_session: 0,
             selected_file: 0,
             last_refresh_at_ms: Utc::now().timestamp_millis(),
@@ -141,7 +151,9 @@ impl RuntimeState {
             FocusPane::Files => {
                 self.selected_file = self.selected_file.saturating_sub(1);
             }
-            FocusPane::Detail => {}
+            FocusPane::Detail => {
+                self.detail_scroll = self.detail_scroll.saturating_sub(1);
+            }
         }
     }
 
@@ -159,7 +171,9 @@ impl RuntimeState {
                     self.selected_file = (self.selected_file + 1).min(len - 1);
                 }
             }
-            FocusPane::Detail => {}
+            FocusPane::Detail => {
+                self.detail_scroll = self.detail_scroll.saturating_add(1);
+            }
         }
     }
 
@@ -170,6 +184,15 @@ impl RuntimeState {
     pub fn toggle_group_mode(&mut self) {
         self.group_by_session = !self.group_by_session;
         self.selected_file = 0;
+        self.detail_scroll = 0;
+    }
+
+    pub fn toggle_detail_mode(&mut self) {
+        self.detail_mode = match self.detail_mode {
+            DetailMode::Summary => DetailMode::Diff,
+            DetailMode::Diff => DetailMode::Summary,
+        };
+        self.detail_scroll = 0;
     }
 
     fn apply_hook_event(&mut self, event: HookEvent) {

@@ -42,6 +42,7 @@ Current implemented keybindings:
 - `Tab`: cycle focus
 - `j/k` or arrow keys: move selection
 - `s`: toggle session-grouped files vs global files
+- `d`: toggle summary vs diff view for the detail pane
 - `r`: toggle follow mode
 - `q`: quit
 
@@ -52,6 +53,8 @@ The live process reads runtime events from:
 - `/tmp/agentwatch/runtime/<repo-hash>.jsonl`
 
 `hook` and `git-hook` append JSON lines to that feed. `agentwatch tui` tails the file and keeps the active state in memory.
+
+By default, the TUI starts reading from the current end of the feed so stale demo or historical events do not repopulate the live view on startup.
 
 ## Local Store
 

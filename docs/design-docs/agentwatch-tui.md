@@ -39,6 +39,7 @@ This feed is intentionally simple:
 - no daemon networking requirement
 
 The TUI tails the feed and folds events into an in-memory state tree.
+On startup it begins at the current end of the feed, so the default live view represents "from now on" rather than replaying stale demo data.
 
 ## Information Architecture
 
@@ -135,6 +136,7 @@ Current V0 bindings:
 | `j` / `Down` | Move selection down |
 | `k` / `Up` | Move selection up |
 | `s` | Toggle grouped-by-session vs global file view |
+| `d` | Toggle summary vs diff view in the detail pane |
 | `r` | Toggle follow mode |
 | `q` | Quit |
 

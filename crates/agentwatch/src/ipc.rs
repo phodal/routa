@@ -21,9 +21,11 @@ impl RuntimeFeed {
             .open(event_path)
             .with_context(|| format!("create runtime feed {:?}", event_path))?;
 
+        let offset = std::fs::metadata(event_path).map(|m| m.len()).unwrap_or(0);
+
         Ok(Self {
             event_path: event_path.to_path_buf(),
-            offset: 0,
+            offset,
         })
     }
 
