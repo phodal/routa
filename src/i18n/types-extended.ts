@@ -475,6 +475,13 @@ export interface ExtendedTranslationDictionarySections extends TailTranslationDi
     runtime: string;
     hideRuntime: string;
     sessionQueue: string;
+    streamCompare: string;
+    streamA: string;
+    streamB: string;
+    selectStream: string;
+    availableStreams: string;
+    differences: string;
+    identical: string;
     maxLabel: string;
     extraCardsWait: string;
     devSupervision: string;
