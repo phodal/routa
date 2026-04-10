@@ -41,13 +41,19 @@ This diverged from the stronger precedence model documented by Codex:
 
 ## Resolution
 
-The Rust desktop backend now injects the Routa MCP server directly through Codex CLI config overrides on launch:
+The Rust desktop backend now keeps Codex MCP overlay data in a Routa-private file:
+
+- `~/.routa/codex/config.toml`
+
+Routa does not modify the user's global `~/.codex/config.toml`.
+
+At launch time, Routa reads its private overlay file and expands it into Codex CLI config overrides:
 
 - `projects."<cwd>".trust_level="trusted"`
 - `mcp_servers.routa-coordination.url="..."`
 - `mcp_servers.routa-coordination.enabled=true`
 
-Project-scoped `.codex/config.toml` writing remains as a fallback, but desktop Codex startup no longer depends on that file being discovered.
+This preserves Codex's highest-precedence `-c/--config` behavior without mutating the user's shared Codex configuration.
 
 ## Relevant Files
 
@@ -57,4 +63,4 @@ Project-scoped `.codex/config.toml` writing remains as a fallback, but desktop C
 ## Verification
 
 - `cargo test -p routa-core codex_cli_overrides_include_trust_and_mcp_server`
-
+- `cargo test -p routa-core codex_provider_writes_private_overlay_config`

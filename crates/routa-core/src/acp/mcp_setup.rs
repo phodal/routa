@@ -105,8 +105,10 @@ async fn ensure_mcp_for_opencode(
     ))
 }
 
-fn codex_project_config_path(cwd: &str) -> PathBuf {
-    Path::new(cwd).join(".codex").join("config.toml")
+fn codex_private_config_path() -> Result<PathBuf, String> {
+    let home_dir =
+        dirs::home_dir().ok_or_else(|| "Failed to resolve home directory".to_string())?;
+    Ok(home_dir.join(".routa").join("codex").join("config.toml"))
 }
 
 fn build_codex_mcp_config_contents(
@@ -154,13 +156,12 @@ fn upsert_codex_mcp_section(existing: &str, rendered_section: &str) -> String {
 }
 
 async fn ensure_mcp_for_codex(
-    cwd: &str,
     workspace_id: &str,
     session_id: &str,
     tool_mode: Option<&str>,
     mcp_profile: Option<&str>,
 ) -> Result<String, String> {
-    let config_file = codex_project_config_path(cwd);
+    let config_file = codex_private_config_path()?;
     let config_dir = config_file
         .parent()
         .ok_or_else(|| format!("Invalid Codex config path: {}", config_file.display()))?;
@@ -180,7 +181,7 @@ async fn ensure_mcp_for_codex(
         .map_err(|err| format!("write {}: {}", config_file.display(), err))?;
 
     Ok(format!(
-        "codex-acp: wrote MCP config to {}",
+        "codex-acp: wrote private MCP config to {}",
         display_path(&config_file)
     ))
 }
@@ -190,24 +191,47 @@ pub fn codex_project_trust_override(cwd: &str) -> String {
     format!("projects.\"{}\".trust_level=\"trusted\"", escaped)
 }
 
-pub fn codex_cli_overrides(
-    cwd: &str,
-    workspace_id: &str,
-    session_id: &str,
-    tool_mode: Option<&str>,
-    mcp_profile: Option<&str>,
-) -> Vec<String> {
-    let endpoint = build_mcp_endpoint(workspace_id, session_id, tool_mode, mcp_profile);
+fn codex_extract_routa_section_value(contents: &str, key: &str) -> Option<String> {
+    let section_header = "[mcp_servers.routa-coordination]";
+    let start = contents.find(section_header)?;
+    let after_header = &contents[start + section_header.len()..];
+    let next_section_offset = after_header
+        .find("\n[")
+        .map(|offset| start + section_header.len() + offset + 1);
+    let end = next_section_offset.unwrap_or(contents.len());
+    let section = &contents[start + section_header.len()..end];
+
+    section.lines().find_map(|line| {
+        let trimmed = line.trim();
+        let expected_prefix = format!("{key} = ");
+        let raw_value = trimmed.strip_prefix(&expected_prefix)?.trim();
+        Some(raw_value.trim_matches('"').to_string())
+    })
+}
+
+pub fn codex_cli_overrides(cwd: &str) -> Result<Vec<String>, String> {
+    let config_file = codex_private_config_path()?;
+    let contents = std::fs::read_to_string(&config_file)
+        .map_err(|err| format!("read {}: {}", config_file.display(), err))?;
+    let endpoint = codex_extract_routa_section_value(&contents, "url").ok_or_else(|| {
+        format!(
+            "Missing mcp_servers.routa-coordination.url in {}",
+            config_file.display()
+        )
+    })?;
+    let enabled = codex_extract_routa_section_value(&contents, "enabled")
+        .map(|value| value == "true")
+        .unwrap_or(true);
     let escaped_endpoint = endpoint.replace('\\', "\\\\").replace('"', "\\\"");
 
-    vec![
+    Ok(vec![
         codex_project_trust_override(cwd),
         format!(
             "mcp_servers.routa-coordination.url=\"{}\"",
             escaped_endpoint
         ),
-        "mcp_servers.routa-coordination.enabled=true".to_string(),
-    ]
+        format!("mcp_servers.routa-coordination.enabled={enabled}"),
+    ])
 }
 
 fn display_path(path: &Path) -> String {
@@ -229,7 +253,8 @@ pub async fn ensure_mcp_for_provider(
             .await
             .map(Some),
         "codex" | "codex-acp" => {
-            ensure_mcp_for_codex(cwd, workspace_id, session_id, tool_mode, mcp_profile)
+            let _ = cwd;
+            ensure_mcp_for_codex(workspace_id, session_id, tool_mode, mcp_profile)
                 .await
                 .map(Some)
         }
@@ -241,9 +266,54 @@ pub async fn ensure_mcp_for_provider(
 mod tests {
     use super::{
         build_claude_mcp_config, build_codex_mcp_config_contents, build_mcp_endpoint,
-        codex_cli_overrides, codex_project_config_path, codex_project_trust_override,
+        codex_cli_overrides, codex_private_config_path, codex_project_trust_override,
         ensure_mcp_for_provider, upsert_codex_mcp_section,
     };
+    use std::ffi::OsString;
+    use std::path::Path;
+    use std::sync::{Mutex, MutexGuard, OnceLock};
+
+    fn codex_home_dir_lock() -> &'static Mutex<()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+    }
+
+    struct EnvVarGuard {
+        key: &'static str,
+        previous: Option<OsString>,
+    }
+
+    impl EnvVarGuard {
+        fn set_var_and_restore(key: &'static str, value: &Path) -> Self {
+            let previous = std::env::var_os(key);
+            std::env::set_var(key, value);
+            Self { key, previous }
+        }
+    }
+
+    impl Drop for EnvVarGuard {
+        fn drop(&mut self) {
+            if let Some(prev) = self.previous.clone() {
+                std::env::set_var(self.key, prev);
+            } else {
+                std::env::remove_var(self.key);
+            }
+        }
+    }
+
+    struct CodexHomeDirScope {
+        _lock: MutexGuard<'static, ()>,
+        _restore: EnvVarGuard,
+    }
+
+    fn with_home_dir(path: &Path) -> CodexHomeDirScope {
+        let lock = codex_home_dir_lock().lock().expect("home dir lock");
+        let restore = EnvVarGuard::set_var_and_restore("HOME", path);
+        CodexHomeDirScope {
+            _lock: lock,
+            _restore: restore,
+        }
+    }
 
     #[test]
     fn team_coordination_profile_is_forwarded_in_mcp_endpoint() {
@@ -281,15 +351,22 @@ mod tests {
         );
     }
 
-    #[test]
-    fn codex_cli_overrides_include_trust_and_mcp_server() {
-        let overrides = codex_cli_overrides(
+    #[tokio::test]
+    async fn codex_cli_overrides_include_trust_and_mcp_server() {
+        let tempdir = tempfile::tempdir().expect("tempdir");
+        let _home = with_home_dir(tempdir.path());
+        ensure_mcp_for_provider(
+            "codex-acp",
             "/tmp/example/project",
             "default",
             "session-123",
             Some("full"),
             Some("kanban-planning"),
-        );
+        )
+        .await
+        .expect("ensure codex mcp")
+        .expect("summary");
+        let overrides = codex_cli_overrides("/tmp/example/project").expect("cli overrides");
 
         assert_eq!(overrides.len(), 3);
         assert_eq!(
@@ -321,13 +398,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn codex_provider_writes_project_scoped_config() {
+    async fn codex_provider_writes_private_overlay_config() {
         let tempdir = tempfile::tempdir().expect("tempdir");
-        let cwd = tempdir.path().to_string_lossy().to_string();
+        let _home = with_home_dir(tempdir.path());
 
         let summary = ensure_mcp_for_provider(
             "codex-acp",
-            &cwd,
+            "/tmp/example/project",
             "default",
             "session-123",
             Some("full"),
@@ -337,9 +414,9 @@ mod tests {
         .expect("ensure codex mcp")
         .expect("summary");
 
-        let config_path = codex_project_config_path(&cwd);
+        let config_path = codex_private_config_path().expect("private config path");
         let written = std::fs::read_to_string(&config_path).expect("read codex config");
-        assert!(summary.contains(".codex/config.toml"));
+        assert!(summary.contains(".routa/codex/config.toml"));
         assert!(written.contains("[mcp_servers.routa-coordination]"));
         assert!(written.contains("wsId=default"));
         assert!(written.contains("sid=session-123"));

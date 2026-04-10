@@ -393,13 +393,7 @@ impl AcpManager {
 
         let mut extra_args: Vec<String> = preset.args.clone();
         if matches!(provider_name, "codex" | "codex-acp") {
-            for override_arg in mcp_setup::codex_cli_overrides(
-                &cwd,
-                &workspace_id,
-                &session_id,
-                tool_mode.as_deref(),
-                mcp_profile.as_deref(),
-            ) {
+            for override_arg in mcp_setup::codex_cli_overrides(&cwd)? {
                 extra_args.push("-c".to_string());
                 extra_args.push(override_arg);
             }
@@ -785,13 +779,7 @@ impl AcpManager {
             // Build args: preset args + optional model flag
             let mut extra_args: Vec<String> = preset.args.clone();
             if matches!(provider_name, "codex" | "codex-acp") {
-                for override_arg in mcp_setup::codex_cli_overrides(
-                    &cwd,
-                    &workspace_id,
-                    &session_id,
-                    tool_mode.as_deref(),
-                    mcp_profile.as_deref(),
-                ) {
+                for override_arg in mcp_setup::codex_cli_overrides(&cwd)? {
                     extra_args.push("-c".to_string());
                     extra_args.push(override_arg);
                 }
