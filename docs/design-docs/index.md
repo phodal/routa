@@ -12,6 +12,7 @@ Use these documents for:
 
 | Document | Purpose | Status |
 |---|---|---|
+| `agentwatch-tui.md` | TUI-first runtime model, information architecture, and keybindings for AgentWatch | active |
 | `architecture-rule-dsl.md` | Cross-language architecture rule model for TypeScript and Rust fitness executors | active |
 | `core-beliefs.md` | Agent-first operating principles for how the repository should store knowledge | active |
 | `execution-modes.md` | Code-backed product meaning for Sessions, Kanban, and Team execution modes | active |
@@ -46,6 +47,7 @@ The repository still contains historical design material under `.kiro/specs/`. T
 - [Architecture Decision Records](../adr/README.md)
 - [FEATURE_TREE.md](../product-specs/FEATURE_TREE.md)
 - [architecture-rule-dsl.md](./architecture-rule-dsl.md)
+- [agentwatch-tui.md](./agentwatch-tui.md)
 - [core-beliefs.md](./core-beliefs.md)
 - [execution-modes.md](./execution-modes.md)
 - [golden-rules.md](./golden-rules.md)

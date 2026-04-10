@@ -1,33 +1,59 @@
 # AgentWatch
 
-`agentwatch` is a local Rust CLI for attributing file changes across concurrent coding agents in one git repo.
+`agentwatch` is a local Rust TUI for attributing file changes across concurrent coding agents in one git repo.
 
 ## Scope (MVP)
 
-- Session register via hook payload (Codex/Claude-first).
-- Real-time and on-demand file change observation from `git status`.
-- Group current dirty files by session.
-- Query who changed a file last and with what confidence.
-- Emit a continuous watch stream (`agentwatch watch`).
+- Realtime `agentwatch tui` process with in-memory session/file state.
+- Hook and git-hook ingestion through an append-only local runtime event feed.
+- Realtime file change observation from `git status`.
+- Session-first file grouping and recent event log.
 - Git boundary reset events from `post-commit`, `post-checkout`, `post-merge`.
 
 ## Commands
 
+- `agentwatch tui`
+  - Launch the main realtime terminal UI.
 - `agentwatch sessions`
-  - Show active sessions in this repo (active means touched within the last inference window, default 15 minutes), ordered by recent activity.
+  - Legacy debug view backed by the local store.
 - `agentwatch files --by-session`
-  - Show current dirty files. Optional grouping by session.
+  - Legacy debug view backed by the local store.
 - `agentwatch who <path>`
-  - Show latest attribution result for a file.
+  - Legacy debug view backed by the local store.
 - `agentwatch watch`
-  - Poll and print file/state updates continuously.
+  - Legacy text watch mode.
 - `agentwatch hook <client> <event>`
   - Read hook payload from stdin.
-  - Stores session, turns, and explicit file hints from the event payload.
+  - Appends a runtime event for the live TUI process, with store fallback when the TUI is not running.
 - `agentwatch git-hook <event>`
-  - Internal command for Git hook integration. Not intended as user-facing.
+  - Appends git boundary events for the live TUI process, with store fallback when the TUI is not running.
 
-## Database
+## TUI Layout
+
+`agentwatch tui` renders four regions:
+
+- `Sessions`: active/idle/stopped sessions with touched-file counts
+- `Files`: dirty or recently touched files, optionally grouped by selected session
+- `Detail`: selected session/file metadata and recent events
+- `Event Log`: realtime hook and git event stream
+
+Current implemented keybindings:
+
+- `Tab`: cycle focus
+- `j/k` or arrow keys: move selection
+- `s`: toggle session-grouped files vs global files
+- `r`: toggle follow mode
+- `q`: quit
+
+## Runtime Feed
+
+The live process reads runtime events from:
+
+- `/tmp/agentwatch/runtime/<repo-hash>.jsonl`
+
+`hook` and `git-hook` append JSON lines to that feed. `agentwatch tui` tails the file and keeps the active state in memory.
+
+## Local Store
 
 By default, the DB is placed under the git directory:
 
@@ -237,6 +263,9 @@ You can validate hook ingestion and git integration in one repo with:
 
 ```bash
 cd /Users/phodal/ai/routa-js
+./target/debug/agentwatch tui --repo .
+
+# In another pane:
 DB=/tmp/agentwatch-local-test.db
 
 cargo run -p agentwatch -- --repo . --db "$DB" hook codex SessionStart <<'JSON'
@@ -249,13 +278,6 @@ JSON
 
 cargo run -p agentwatch -- --repo . --db "$DB" who README.md
 cargo run -p agentwatch -- --repo . --db "$DB" files --by-session
-
-# Simulate a dirty file in repo then refresh file state from git status.
-touch .agentwatch_smoke_tmp
-cargo run -p agentwatch -- --repo . --db "$DB" git-hook post-commit --
-cargo run -p agentwatch -- --repo . --db "$DB" who .agentwatch_smoke_tmp
-rm -f .agentwatch_smoke_tmp
-cargo run -p agentwatch -- --repo . --db "$DB" git-hook post-commit --
 ```
 
 Expected:

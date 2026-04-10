@@ -1,12 +1,15 @@
 mod db;
 mod hooks;
+mod ipc;
 mod models;
 mod observe;
 mod repo;
+mod state;
+mod tui;
 
 use crate::db::Db;
 use crate::observe::Snapshot;
-use crate::repo::resolve;
+use crate::repo::{resolve, resolve_runtime};
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use std::collections::BTreeMap;
@@ -39,6 +42,12 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Launch the realtime AgentWatch terminal UI.
+    Tui {
+        /// Poll interval in milliseconds for git status refresh.
+        #[arg(long, default_value_t = models::DEFAULT_TUI_POLL_MS)]
+        interval_ms: u64,
+    },
     /// Show current active sessions in this repo.
     Sessions,
     /// List changed files (default output grouped by file), use --by-session to group by session.
@@ -76,6 +85,10 @@ enum Command {
 fn main() -> Result<()> {
     let cli = Cli::parse();
     match cli.command {
+        Command::Tui { interval_ms } => {
+            let ctx = resolve_runtime(cli.repo.as_deref())?;
+            tui::run(ctx, interval_ms)?;
+        }
         Command::Hook { client, event } => {
             let payload = hooks::parse_stdin_payload()?;
             hooks::handle_hook(

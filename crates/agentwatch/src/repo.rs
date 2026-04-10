@@ -9,6 +9,7 @@ pub struct RepoContext {
     pub repo_root: PathBuf,
     pub git_dir: PathBuf,
     pub db_path: PathBuf,
+    pub runtime_event_path: PathBuf,
 }
 
 pub fn detect_repo_root(start_dir: &Path) -> Result<PathBuf> {
@@ -97,10 +98,36 @@ pub fn resolve(path_opt: Option<&str>, db_path_opt: Option<&str>) -> Result<Repo
     };
 
     Ok(RepoContext {
+        runtime_event_path: runtime_event_path(&repo_root),
         repo_root,
         git_dir,
         db_path,
     })
+}
+
+pub fn resolve_runtime(path_opt: Option<&str>) -> Result<RepoContext> {
+    let start_dir = path_opt
+        .map(PathBuf::from)
+        .or_else(|| std::env::current_dir().ok())
+        .context("determine working directory")?;
+    let repo_root = detect_repo_root(&start_dir)?;
+    let git_dir = detect_git_dir(&start_dir)?;
+    Ok(RepoContext {
+        runtime_event_path: runtime_event_path(&repo_root),
+        repo_root,
+        git_dir,
+        db_path: PathBuf::new(),
+    })
+}
+
+pub fn runtime_event_path(repo_root: &Path) -> PathBuf {
+    let mut hasher = DefaultHasher::new();
+    repo_root.to_string_lossy().hash(&mut hasher);
+    let marker = format!("{:x}", hasher.finish());
+    PathBuf::from("/tmp")
+        .join("agentwatch")
+        .join("runtime")
+        .join(format!("{marker}.jsonl"))
 }
 
 fn fallback_db_path(repo_root: &Path) -> Result<PathBuf> {

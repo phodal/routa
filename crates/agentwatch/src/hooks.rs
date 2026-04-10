@@ -1,6 +1,10 @@
 use crate::db::Db;
-use crate::models::{AttributionConfidence, FileEventRecord, HookClient, SessionRecord};
-use crate::repo::{resolve, RepoContext};
+use crate::ipc;
+use crate::models::{
+    AttributionConfidence, FileEventRecord, GitEvent, HookClient, HookEvent, RuntimeMessage,
+    SessionRecord,
+};
+use crate::repo::{resolve, resolve_runtime, RepoContext};
 use anyhow::{Context, Result};
 use chrono::Utc;
 use serde_json::{json, Value};
@@ -20,6 +24,10 @@ pub fn handle_hook(
     db_hint: Option<&str>,
     payload_raw: &str,
 ) -> Result<()> {
+    if try_forward_hook_to_runtime(client_name, event_name, repo_hint, db_hint, payload_raw)? {
+        return Ok(());
+    }
+
     let payload: Value = if payload_raw.trim().is_empty() {
         json!({})
     } else {
@@ -29,7 +37,7 @@ pub fn handle_hook(
     let cwd = extract_field(&payload, &["cwd", "workingDir", "working_directory"])
         .or_else(|| repo_hint.map(|r| r.to_string()))
         .unwrap_or_else(|| ".".to_string());
-    let ctx = resolve(Some(&cwd), db_hint)?;
+    let ctx = resolve_runtime(Some(&cwd))?;
     let db = Db::open(&ctx.db_path)?;
     let repo_root = ctx.repo_root.to_string_lossy().to_string();
     let now_ms = Utc::now().timestamp_millis();
@@ -130,7 +138,109 @@ pub fn handle_hook(
     Ok(())
 }
 
+pub fn try_forward_hook_to_runtime(
+    client_name: &str,
+    event_name: &str,
+    repo_hint: Option<&str>,
+    db_hint: Option<&str>,
+    payload_raw: &str,
+) -> Result<bool> {
+    let (ctx, message) =
+        build_hook_runtime_message(client_name, event_name, repo_hint, db_hint, payload_raw)?;
+    match ipc::send_message(&ctx.runtime_event_path, &message) {
+        Ok(_) => Ok(true),
+        Err(err) => {
+            eprintln!(
+                "agentwatch warning: runtime socket unavailable, fallback to local store: {err}"
+            );
+            Ok(false)
+        }
+    }
+}
+
+pub fn build_hook_runtime_message(
+    client_name: &str,
+    event_name: &str,
+    repo_hint: Option<&str>,
+    db_hint: Option<&str>,
+    payload_raw: &str,
+) -> Result<(RepoContext, RuntimeMessage)> {
+    let payload: Value = if payload_raw.trim().is_empty() {
+        json!({})
+    } else {
+        serde_json::from_str(payload_raw).context("parse hook payload")?
+    };
+
+    let cwd = extract_field(&payload, &["cwd", "workingDir", "working_directory"])
+        .or_else(|| repo_hint.map(|r| r.to_string()))
+        .unwrap_or_else(|| ".".to_string());
+    let ctx = resolve(Some(&cwd), db_hint)?;
+    let now_ms = Utc::now().timestamp_millis();
+    let client = HookClient::from_str(client_name);
+    let session_id = extract_field(&payload, &["session_id", "sessionId", "thread_id"])
+        .unwrap_or_else(|| "unknown".to_string());
+    let turn_id = extract_field(&payload, &["turn_id", "turnId"]);
+    let model = extract_field(&payload, &["model"]).filter(|value| !value.is_empty());
+    let hook_event_name = extract_field(
+        &payload,
+        &[
+            "hook_event_name",
+            "event_name",
+            "hookEventName",
+            "eventName",
+        ],
+    )
+    .unwrap_or_else(|| normalize_event_name(client_name, event_name));
+    let tool_name = extract_field(&payload, &["tool_name", "toolName"])
+        .or_else(|| extract_field_from_cmd_path(&payload));
+    let tool_command = extract_tool_command(&payload);
+    let tmux_session = extract_field(&payload, &["tmux_session", "tmuxSession"])
+        .or_else(|| std::env::var("TMUX_SESSION").ok());
+    let tmux_window = extract_field(&payload, &["tmux_window", "tmuxWindow"])
+        .or_else(|| std::env::var("TMUX_WINDOW").ok());
+    let tmux_pane = extract_field(&payload, &["tmux_pane", "tmuxPane"]).or_else(|| {
+        std::env::var("TMUX_PANE")
+            .ok()
+            .map(|value| format!("${value}"))
+    });
+    let tool_input = payload
+        .get("tool_input")
+        .cloned()
+        .unwrap_or_else(|| payload.clone());
+    let file_paths = if event_is_file_mutating(&hook_event_name, &client, tool_name.as_deref()) {
+        extract_file_paths(&tool_input, &ctx)
+    } else {
+        Vec::new()
+    };
+
+    let repo_root = ctx.repo_root.to_string_lossy().to_string();
+
+    Ok((
+        ctx,
+        RuntimeMessage::Hook(HookEvent {
+            repo_root,
+            observed_at_ms: now_ms,
+            client: client.as_str().to_string(),
+            session_id,
+            turn_id,
+            cwd,
+            model,
+            event_name: hook_event_name,
+            tool_name,
+            tool_command,
+            file_paths,
+            tmux_session,
+            tmux_window,
+            tmux_pane,
+        }),
+    ))
+}
+
 pub fn handle_git_event(ctx: &RepoContext, event_name: &str, args: &[String]) -> Result<()> {
+    if try_forward_git_event(ctx, event_name, args)? {
+        return Ok(());
+    }
+
     let db = Db::open(&ctx.db_path)?;
     let now_ms = Utc::now().timestamp_millis();
     let head = current_head(&ctx.repo_root)?;
@@ -154,6 +264,26 @@ pub fn handle_git_event(ctx: &RepoContext, event_name: &str, args: &[String]) ->
     )?;
     db.clear_inconsistent_state(&ctx.repo_root.to_string_lossy())?;
     Ok(())
+}
+
+pub fn try_forward_git_event(ctx: &RepoContext, event_name: &str, args: &[String]) -> Result<bool> {
+    let message = RuntimeMessage::Git(GitEvent {
+        repo_root: ctx.repo_root.to_string_lossy().to_string(),
+        observed_at_ms: Utc::now().timestamp_millis(),
+        event_name: event_name.to_string(),
+        args: args.to_vec(),
+        head_commit: Some(current_head(&ctx.repo_root)?),
+        branch: Some(current_branch(&ctx.repo_root)?),
+    });
+    match ipc::send_message(&ctx.runtime_event_path, &message) {
+        Ok(_) => Ok(true),
+        Err(err) => {
+            eprintln!(
+                "agentwatch warning: runtime socket unavailable, fallback to local store: {err}"
+            );
+            Ok(false)
+        }
+    }
 }
 
 fn extract_tool_command(payload: &Value) -> Option<String> {

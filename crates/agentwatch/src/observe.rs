@@ -13,6 +13,46 @@ pub struct Snapshot {
     pub changed_paths: Vec<String>,
 }
 
+pub fn scan_repo(ctx: &RepoContext) -> Result<Vec<(String, String, Option<i64>)>> {
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(&ctx.repo_root)
+        .arg("status")
+        .arg("--porcelain")
+        .arg("--untracked-files=all")
+        .output()
+        .context("run git status")?;
+    if !output.status.success() {
+        return Err(anyhow!("git status failed"));
+    }
+
+    let mut out = Vec::new();
+    let lines = String::from_utf8(output.stdout).context("decode git status output")?;
+    for line in lines.lines() {
+        if line.len() < 4 {
+            continue;
+        }
+        let index_code = &line[0..1];
+        let worktree_code = &line[1..2];
+        let path_part = line.get(3..).unwrap_or("");
+        let (state_code, path_raws) = classify_status(index_code, worktree_code, path_part);
+        for rel in path_raws {
+            if rel.is_empty() {
+                continue;
+            }
+            let rel_path = normalize_rel_path(&ctx.repo_root, &ctx.repo_root.join(&rel), &rel)?;
+            let abs_path = ctx.repo_root.join(&rel_path);
+            let mtime_ms = std::fs::metadata(abs_path)
+                .ok()
+                .and_then(|m| m.modified().ok())
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|dur| dur.as_millis() as i64);
+            out.push((rel_path, state_code.to_string(), mtime_ms));
+        }
+    }
+    Ok(out)
+}
+
 pub fn poll_repo(
     ctx: &RepoContext,
     db: &Db,
