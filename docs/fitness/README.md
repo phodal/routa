@@ -183,6 +183,29 @@ Fitness = Σ (Weight_i × Score_i) / 100
 | lint_pass | `npm run lint` | 0 errors |
 | no_critical_vulnerabilities | `snyk test` | 0 critical |
 
+### TypeScript Gate Split
+
+近期对 TypeScript fitness 做了分层，目的是把 `fast` tier 拉回“本地可频繁执行”的预算，同时保留 `pre-push` / `normal` 的全量把关：
+
+- `ts_test_pass`
+  - 运行 `npm run test:run:fast`
+  - 基于 git base ref 只跑受影响的 Vitest 范围；如果当前改动与 Vitest 无关，会输出 `Tests 0 passed`
+  - 适用于 `entrix run --tier fast`、本地快速验证、`routa-watch` 的 fast fitness 体验
+- `ts_test_pass_full`
+  - 运行 `npm run test:run`
+  - 保留全量 Vitest hard gate，适用于 `entrix run --tier normal` 以及 `pre-push` / `local-validate`
+- `ts_typecheck_pass`
+  - 仍属于 `code_quality` fast hard gate
+  - 现在会在检测到 `.next/dev/types/routes.d.ts`、`validator.ts` 等 Next 生成类型损坏时先执行 `next typegen` 再重试 `tsc --noEmit`
+
+当前默认心智：
+
+- `fast` = 增量 lint / typecheck / TS test / clippy / contract
+- `normal` = 在 `fast` 之上补全量 TS 测试、Rust 测试、API 测试和更重的质量门禁
+- hook runtime 的 `pre-push` 与 `local-validate` 会同时包含 `ts_test_pass` 和 `ts_test_pass_full`
+  - 前者负责尽快暴露本次改动的直接测试影响
+  - 后者负责在 push 前保留整仓回归把关
+
 ## CI Fan-out
 
 `Defense` workflow 现在按维度拆分 `entrix run --dimension ...`，每个 job 对应一个 fitness 维度：
