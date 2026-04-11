@@ -386,6 +386,17 @@ fn page_down_scrolls_fitness_panel_when_fitness_has_focus() {
 }
 
 #[test]
+fn toggling_fitness_mode_updates_cache_key_prefix() {
+    let mut state = sample_state();
+
+    assert!(state.fitness_cache_key().starts_with("mode=fast;"));
+
+    state.toggle_fitness_view_mode();
+
+    assert!(state.fitness_cache_key().starts_with("mode=full;"));
+}
+
+#[test]
 fn selected_file_assignment_message_is_attribution_event() {
     let mut state = sample_state();
     state.file_list_mode = FileListMode::Global;

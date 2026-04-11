@@ -20,10 +20,10 @@ expression: "render_snapshot(&state, &mut cache, 120, 24)"
 │                                                                                    ││src/app/api/a2a/card            │
 └────────────────────────────────────────────────────────────────────────────────────┘│Lines: ...  Size: ...  Git      │
 ┌Fitness (Entrix Fast)───────────────────────────────────────────────────────────────┐│changes: ...                    │
-│Health Run: idle (press g refresh)                                                  ││                                │
+│Health Run: idle (press g refresh, m switch mode)                                   ││                                │
 │                                                                                    ││                                │
 │                                                                                    ││                                │
 │                                                                                    ││                                │
 │                                                                                    ││                                │
 └────────────────────────────────────────────────────────────────────────────────────┘└────────────────────────────────┘
-Tab focus  ↑↓ select  u unknown  d preview/diff  Pg scroll  f follow:on  T theme  Esc clear  g refresh fitness  q quit
+Tab focus  ↑↓ select  u unknown  d preview/diff  Pg scroll  f follow:on  T theme  Esc clear  g refresh fitness  m fast/f

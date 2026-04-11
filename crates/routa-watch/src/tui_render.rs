@@ -174,7 +174,7 @@ fn render_main_area(
 fn render_fitness_panel(frame: &mut Frame, area: Rect, state: &RuntimeState, cache: &AppCache) {
     let colors = palette(state.theme_mode);
     let block = panel_block(
-        "Fitness (Entrix Fast)",
+        format!("Fitness ({})", state.fitness_view_mode.label()),
         state.focus == FocusPane::Fitness,
         colors,
     );
@@ -263,6 +263,14 @@ fn render_fitness_panel(frame: &mut Frame, area: Rect, state: &RuntimeState, cac
                 ),
             ]));
         }
+        lines.push(Line::from(vec![
+            Span::styled("mode: ", Style::default().fg(colors.muted)),
+            Span::styled(snapshot.mode.label(), Style::default().fg(colors.accent)),
+            Span::raw("  "),
+            Span::styled("press ", Style::default().fg(colors.muted)),
+            Span::styled("m", Style::default().fg(colors.accent)),
+            Span::styled(" to switch", Style::default().fg(colors.muted)),
+        ]));
         let trend = cache.fitness_trend();
         if trend.len() >= 2 && !compact_height {
             let latest = trend.last().copied().unwrap_or(0.0);
@@ -297,7 +305,9 @@ fn render_fitness_panel(frame: &mut Frame, area: Rect, state: &RuntimeState, cac
                 .fg(colors.text)
                 .add_modifier(Modifier::BOLD),
         )]));
-        let dimension_limit = if compact_height {
+        let dimension_limit = if snapshot.mode == fitness::FitnessRunMode::Full {
+            snapshot.dimensions.len()
+        } else if compact_height {
             2
         } else if medium_height {
             3
@@ -432,7 +442,9 @@ fn render_fitness_panel(frame: &mut Frame, area: Rect, state: &RuntimeState, cac
             Span::styled("idle", Style::default().fg(colors.accent)),
             Span::raw(" (press "),
             Span::styled("g", Style::default().fg(colors.accent)),
-            Span::raw(" refresh)"),
+            Span::raw(" refresh, "),
+            Span::styled("m", Style::default().fg(colors.accent)),
+            Span::raw(" switch mode)"),
         ]));
     }
     frame.render_widget(
@@ -825,6 +837,8 @@ fn render_footer(frame: &mut Frame, area: ratatui::layout::Rect, state: &Runtime
             Span::styled(" scroll  ", Style::default().fg(colors.muted)),
             Span::styled("g", Style::default().fg(colors.accent)),
             Span::styled(" refresh fitness  ", Style::default().fg(colors.muted)),
+            Span::styled("m", Style::default().fg(colors.accent)),
+            Span::styled(" fast/full  ", Style::default().fg(colors.muted)),
             Span::styled("q", Style::default().fg(colors.accent)),
             Span::styled(" quit", Style::default().fg(colors.muted)),
         ])
@@ -855,6 +869,8 @@ fn render_footer(frame: &mut Frame, area: ratatui::layout::Rect, state: &Runtime
             Span::styled(" clear  ", Style::default().fg(colors.muted)),
             Span::styled("g", Style::default().fg(colors.accent)),
             Span::styled(" refresh fitness  ", Style::default().fg(colors.muted)),
+            Span::styled("m", Style::default().fg(colors.accent)),
+            Span::styled(" fast/full  ", Style::default().fg(colors.muted)),
             Span::styled("q", Style::default().fg(colors.accent)),
             Span::styled(" quit", Style::default().fg(colors.muted)),
         ])
@@ -1321,54 +1337,5 @@ fn shorten_path(path: &str, max_len: usize) -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::{render_diff_stat_spans, split_display_path};
-    use crate::models::{AttributionConfidence, EntryKind, FileView};
-    use crate::tui::{display_status_code, DiffStatSummary};
-    use std::collections::BTreeSet;
-
-    #[test]
-    fn split_display_path_marks_directories() {
-        let file = FileView {
-            rel_path: ".kiro/skills/developer-onboarding".to_string(),
-            dirty: true,
-            state_code: "untracked".to_string(),
-            entry_kind: EntryKind::Directory,
-            last_modified_at_ms: 0,
-            last_session_id: None,
-            confidence: AttributionConfidence::Unknown,
-            conflicted: false,
-            touched_by: BTreeSet::new(),
-            recent_events: Vec::new(),
-        };
-
-        let (name, parent) = split_display_path(&file);
-
-        assert_eq!(name, "developer-onboarding/");
-        assert_eq!(parent, ".kiro/skills");
-    }
-
-    #[test]
-    fn directory_diff_stat_uses_dir_label() {
-        let file = FileView {
-            rel_path: ".kiro/skills/developer-onboarding".to_string(),
-            dirty: true,
-            state_code: "untracked".to_string(),
-            entry_kind: EntryKind::Directory,
-            last_modified_at_ms: 0,
-            last_session_id: None,
-            confidence: AttributionConfidence::Unknown,
-            conflicted: false,
-            touched_by: BTreeSet::new(),
-            recent_events: Vec::new(),
-        };
-
-        let spans = render_diff_stat_spans(&DiffStatSummary {
-            status: display_status_code(&file),
-            additions: None,
-            deletions: None,
-        });
-
-        assert_eq!(spans[0].content.as_ref(), "DIR");
-    }
-}
+#[path = "tui_render_tests.rs"]
+mod tests;

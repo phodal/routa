@@ -81,6 +81,7 @@ fn run_loop(terminal: &mut DefaultTerminal, ctx: RepoContext, poll_interval_ms: 
     state.set_runtime_transport(read_runtime_transport(&ctx));
     state.set_ahead_count(current_ahead_count(&ctx).ok());
     let mut cache = AppCache::new(&repo_root);
+    cache.set_fitness_mode(state.fitness_view_mode);
     let bootstrap_cutoff = bootstrap_history_cutoff(chrono::Utc::now().timestamp_millis());
     for message in feed.read_recent_since(bootstrap_cutoff)? {
         state.apply_message(message);
@@ -92,7 +93,12 @@ fn run_loop(terminal: &mut DefaultTerminal, ctx: RepoContext, poll_interval_ms: 
     let mut last_agent_refresh = Instant::now() - Duration::from_millis(AGENT_SCAN_REFRESH_MS);
     let mut last_fitness_refresh = Instant::now();
     if !cache.has_fitness_data() {
-        cache.request_fitness_refresh(state.repo_root.clone(), state.fitness_cache_key(), false);
+        cache.request_fitness_refresh(
+            state.repo_root.clone(),
+            state.fitness_cache_key(),
+            false,
+            fitness_run_mode_for(&state),
+        );
     }
 
     loop {
@@ -147,6 +153,7 @@ fn run_loop(terminal: &mut DefaultTerminal, ctx: RepoContext, poll_interval_ms: 
                 state.repo_root.clone(),
                 state.fitness_cache_key(),
                 false,
+                fitness_run_mode_for(&state),
             );
             last_fitness_refresh = Instant::now();
         }
@@ -197,6 +204,17 @@ fn handle_event(state: &mut RuntimeState, cache: &mut AppCache) -> Result<bool> 
                         state.repo_root.clone(),
                         state.fitness_cache_key(),
                         true,
+                        fitness_run_mode_for(state),
+                    );
+                }
+                KeyCode::Char('m') | KeyCode::Char('M') => {
+                    state.toggle_fitness_view_mode();
+                    cache.set_fitness_mode(state.fitness_view_mode);
+                    cache.request_fitness_refresh(
+                        state.repo_root.clone(),
+                        state.fitness_cache_key(),
+                        false,
+                        fitness_run_mode_for(state),
                     );
                 }
                 KeyCode::Char('s') => state.cycle_file_list_mode(),
@@ -227,6 +245,13 @@ fn handle_event(state: &mut RuntimeState, cache: &mut AppCache) -> Result<bool> 
         _ => {}
     }
     Ok(false)
+}
+
+fn fitness_run_mode_for(state: &RuntimeState) -> fitness::FitnessRunMode {
+    match state.fitness_view_mode {
+        crate::state::FitnessViewMode::Fast => fitness::FitnessRunMode::Fast,
+        crate::state::FitnessViewMode::Full => fitness::FitnessRunMode::Full,
+    }
 }
 
 fn current_branch(ctx: &RepoContext) -> Result<String> {

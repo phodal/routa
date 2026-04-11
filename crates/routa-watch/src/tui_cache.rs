@@ -1,11 +1,10 @@
 use super::fitness;
 use super::*;
-use crate::repo;
+use crate::state::FitnessViewMode;
 use ratatui::text::Text;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
-use std::path::PathBuf;
 use std::process::Command;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread;
@@ -58,6 +57,7 @@ enum BackgroundCommand {
     RefreshFitness {
         repo_root: String,
         cache_key: String,
+        mode: fitness::FitnessRunMode,
     },
 }
 
@@ -83,7 +83,7 @@ struct PendingCommands {
     stats: Option<PendingStats>,
     detail: Option<PendingDetail>,
     facts: Option<PendingFacts>,
-    fitness: Option<(String, String)>,
+    fitness: Option<(String, String, fitness::FitnessRunMode)>,
 }
 
 type PendingStats = (String, Vec<(String, String, i64)>);
@@ -101,11 +101,9 @@ pub(super) struct AppCache {
     pending_diff_key: Option<String>,
     pending_facts_key: Option<String>,
     pending_fitness: bool,
-    queued_fitness_refresh: Option<(String, String, bool)>,
-    fitness_trend: Vec<f64>,
-    fitness_snapshot: Option<fitness::FitnessSnapshot>,
-    fitness_error: Option<String>,
-    fitness_last_run_ms: Option<i64>,
+    queued_fitness_refresh: Option<(String, String, bool, fitness::FitnessRunMode)>,
+    fitness_mode: fitness::FitnessRunMode,
+    fitness_history_by_mode: BTreeMap<String, FitnessHistoryEntry>,
     fitness_is_running: bool,
     fitness_cache_key: Option<String>,
     fitness_repo_root: String,
@@ -113,10 +111,26 @@ pub(super) struct AppCache {
     worker_rx: Receiver<BackgroundResult>,
 }
 
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+struct FitnessHistoryEntry {
+    #[serde(default)]
+    snapshot: Option<fitness::FitnessSnapshot>,
+    #[serde(default)]
+    trend: Vec<f64>,
+    #[serde(default)]
+    last_run_ms: Option<i64>,
+    #[serde(default)]
+    last_error: Option<String>,
+    #[serde(default)]
+    cache_key: Option<String>,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 struct FitnessHistoryRecord {
     #[serde(default)]
     schema_version: u32,
+    #[serde(default)]
+    histories: BTreeMap<String, FitnessHistoryEntry>,
     #[serde(default)]
     snapshot: Option<fitness::FitnessSnapshot>,
     #[serde(default)]
@@ -146,10 +160,8 @@ impl AppCache {
             pending_facts_key: None,
             pending_fitness: false,
             queued_fitness_refresh: None,
-            fitness_trend: Vec::new(),
-            fitness_snapshot: None,
-            fitness_error: None,
-            fitness_last_run_ms: None,
+            fitness_mode: fitness::FitnessRunMode::Fast,
+            fitness_history_by_mode: BTreeMap::new(),
             fitness_is_running: false,
             fitness_cache_key: None,
             fitness_repo_root: repo_root.to_string(),
@@ -161,7 +173,8 @@ impl AppCache {
     }
 
     pub(super) fn has_fitness_data(&self) -> bool {
-        self.fitness_snapshot.is_some() || !self.fitness_trend.is_empty()
+        self.active_fitness_history()
+            .is_some_and(|entry| entry.snapshot.is_some() || !entry.trend.is_empty())
     }
 
     fn persist_fitness_history(&self) {
@@ -171,11 +184,12 @@ impl AppCache {
         };
         let payload = serde_json::to_vec_pretty(&FitnessHistoryRecord {
             schema_version: FITNESS_HISTORY_SCHEMA_VERSION,
-            snapshot: self.fitness_snapshot.clone(),
-            trend: self.fitness_trend.clone(),
-            last_run_ms: self.fitness_last_run_ms,
-            last_error: self.fitness_error.clone(),
-            cache_key: self.fitness_cache_key.clone(),
+            histories: self.fitness_history_by_mode.clone(),
+            snapshot: None,
+            trend: Vec::new(),
+            last_run_ms: None,
+            last_error: None,
+            cache_key: None,
         });
         let Ok(payload) = payload else {
             return;
@@ -193,15 +207,32 @@ impl AppCache {
         if record.schema_version > FITNESS_HISTORY_SCHEMA_VERSION {
             return;
         }
-        self.fitness_snapshot = record.snapshot;
-        self.fitness_trend = record.trend;
-        if self.fitness_trend.len() > FITNESS_TREND_CAPACITY {
-            let overflow = self.fitness_trend.len() - FITNESS_TREND_CAPACITY;
-            self.fitness_trend.drain(0..overflow);
+        self.fitness_history_by_mode = record.histories;
+        if self.fitness_history_by_mode.is_empty()
+            && (record.snapshot.is_some()
+                || !record.trend.is_empty()
+                || record.last_run_ms.is_some()
+                || record.last_error.is_some()
+                || record.cache_key.is_some())
+        {
+            self.fitness_history_by_mode.insert(
+                fitness::FitnessRunMode::Fast.as_str().to_string(),
+                FitnessHistoryEntry {
+                    snapshot: record.snapshot,
+                    trend: record.trend,
+                    last_run_ms: record.last_run_ms,
+                    last_error: record.last_error,
+                    cache_key: record.cache_key,
+                },
+            );
         }
-        self.fitness_last_run_ms = record.last_run_ms;
-        self.fitness_error = record.last_error;
-        self.fitness_cache_key = record.cache_key;
+        for entry in self.fitness_history_by_mode.values_mut() {
+            if entry.trend.len() > FITNESS_TREND_CAPACITY {
+                let overflow = entry.trend.len() - FITNESS_TREND_CAPACITY;
+                entry.trend.drain(0..overflow);
+            }
+        }
+        self.sync_cache_key_from_active_mode();
     }
 
     pub(super) fn sync_results(&mut self) {
@@ -231,27 +262,30 @@ impl AppCache {
                 }
                 BackgroundResult::Fitness { result } => {
                     self.fitness_is_running = false;
-                    self.fitness_last_run_ms = Some(chrono::Utc::now().timestamp_millis());
+                    let entry = self.active_fitness_history_mut();
+                    entry.last_run_ms = Some(chrono::Utc::now().timestamp_millis());
                     match result {
                         Ok(snapshot) => {
-                            self.fitness_error = None;
-                            self.fitness_snapshot = Some(snapshot);
-                            self.fitness_trend
-                                .push(self.fitness_snapshot.as_ref().unwrap().final_score);
-                            if self.fitness_trend.len() > FITNESS_TREND_CAPACITY {
-                                let overflow = self.fitness_trend.len() - FITNESS_TREND_CAPACITY;
-                                self.fitness_trend.drain(0..overflow);
+                            entry.last_error = None;
+                            entry.snapshot = Some(snapshot);
+                            if let Some(snapshot) = entry.snapshot.as_ref() {
+                                entry.trend.push(snapshot.final_score);
+                            }
+                            if entry.trend.len() > FITNESS_TREND_CAPACITY {
+                                let overflow = entry.trend.len() - FITNESS_TREND_CAPACITY;
+                                entry.trend.drain(0..overflow);
                             }
                         }
                         Err(message) => {
-                            self.fitness_error = Some(message);
+                            entry.last_error = Some(message);
                         }
                     }
                     self.persist_fitness_history();
                     self.pending_fitness = false;
-                    if let Some((repo_root, cache_key, force)) = self.queued_fitness_refresh.take()
+                    if let Some((repo_root, cache_key, force, mode)) =
+                        self.queued_fitness_refresh.take()
                     {
-                        self.request_fitness_refresh(repo_root, cache_key, force);
+                        self.request_fitness_refresh(repo_root, cache_key, force, mode);
                     }
                 }
             }
@@ -379,25 +413,30 @@ impl AppCache {
         repo_root: String,
         cache_key: String,
         force: bool,
+        mode: fitness::FitnessRunMode,
     ) {
+        self.fitness_mode = mode;
+        self.sync_cache_key_from_active_mode();
         if !force
             && !self.fitness_is_running
-            && self.fitness_snapshot.is_some()
+            && self.fitness_snapshot().is_some()
             && self.fitness_cache_key.as_deref() == Some(cache_key.as_str())
         {
             return;
         }
         if self.fitness_is_running || self.pending_fitness {
-            self.queued_fitness_refresh = Some((repo_root, cache_key, force));
+            self.queued_fitness_refresh = Some((repo_root, cache_key, force, mode));
             return;
         }
         self.fitness_cache_key = Some(cache_key.clone());
+        self.active_fitness_history_mut().cache_key = Some(cache_key.clone());
         let _ = self.worker_tx.send(BackgroundCommand::RefreshFitness {
             repo_root,
             cache_key,
+            mode,
         });
         self.fitness_is_running = true;
-        self.fitness_error = None;
+        self.active_fitness_history_mut().last_error = None;
         self.pending_fitness = true;
     }
 
@@ -406,19 +445,47 @@ impl AppCache {
     }
 
     pub(super) fn fitness_snapshot(&self) -> Option<&fitness::FitnessSnapshot> {
-        self.fitness_snapshot.as_ref()
+        self.active_fitness_history()
+            .and_then(|entry| entry.snapshot.as_ref())
     }
 
     pub(super) fn fitness_error(&self) -> Option<&str> {
-        self.fitness_error.as_deref()
+        self.active_fitness_history()
+            .and_then(|entry| entry.last_error.as_deref())
     }
 
     pub(super) fn fitness_last_run_ms(&self) -> Option<i64> {
-        self.fitness_last_run_ms
+        self.active_fitness_history().and_then(|entry| entry.last_run_ms)
     }
 
     pub(super) fn fitness_trend(&self) -> &[f64] {
-        &self.fitness_trend
+        self.active_fitness_history()
+            .map(|entry| entry.trend.as_slice())
+            .unwrap_or(&[])
+    }
+
+    pub(super) fn set_fitness_mode(&mut self, mode: FitnessViewMode) {
+        self.fitness_mode = match mode {
+            FitnessViewMode::Fast => fitness::FitnessRunMode::Fast,
+            FitnessViewMode::Full => fitness::FitnessRunMode::Full,
+        };
+        self.sync_cache_key_from_active_mode();
+    }
+
+    fn active_fitness_history(&self) -> Option<&FitnessHistoryEntry> {
+        self.fitness_history_by_mode.get(self.fitness_mode.as_str())
+    }
+
+    fn active_fitness_history_mut(&mut self) -> &mut FitnessHistoryEntry {
+        self.fitness_history_by_mode
+            .entry(self.fitness_mode.as_str().to_string())
+            .or_default()
+    }
+
+    fn sync_cache_key_from_active_mode(&mut self) {
+        self.fitness_cache_key = self
+            .active_fitness_history()
+            .and_then(|entry| entry.cache_key.clone());
     }
 
     pub(super) fn highlighted_detail_text(
@@ -446,17 +513,6 @@ impl AppCache {
         }
         self.highlighted_detail_cache.get(&render_key)
     }
-}
-
-fn read_fitness_history_record(repo_root: &str) -> Option<FitnessHistoryRecord> {
-    let path = fitness_history_path(repo_root)?;
-    let payload = std::fs::read_to_string(&path).ok()?;
-    serde_json::from_str(&payload).ok()
-}
-
-fn fitness_history_path(repo_root: &str) -> Option<PathBuf> {
-    let event_path = repo::runtime_event_path(Path::new(repo_root));
-    Some(event_path.parent()?.join(FITNESS_HISTORY_FILE))
 }
 
 fn parse_numstat(stdout: &str) -> BTreeMap<String, (Option<usize>, Option<usize>)> {
@@ -705,76 +761,6 @@ fn compute_diff_stats_batch(
     results
 }
 
-#[cfg(test)]
-mod tests {
-    use super::{
-        display_status_code, fitness, AppCache, FitnessHistoryRecord, FITNESS_HISTORY_FILE,
-        FITNESS_HISTORY_SCHEMA_VERSION,
-    };
-    use crate::models::{AttributionConfidence, EntryKind, FileView};
-    use crate::repo;
-    use std::collections::BTreeSet;
-    use tempfile::tempdir;
-
-    #[test]
-    fn directory_entries_use_dir_status_label() {
-        let file = FileView {
-            rel_path: ".kiro/skills/developer-onboarding".to_string(),
-            dirty: true,
-            state_code: "untracked".to_string(),
-            entry_kind: EntryKind::Directory,
-            last_modified_at_ms: 0,
-            last_session_id: None,
-            confidence: AttributionConfidence::Unknown,
-            conflicted: false,
-            touched_by: BTreeSet::new(),
-            recent_events: Vec::new(),
-        };
-
-        assert_eq!(display_status_code(&file), "DIR");
-    }
-
-    #[test]
-    fn app_cache_restores_fitness_history_on_startup() {
-        let dir = tempdir().expect("tempdir");
-        let repo_root = dir.path().to_string_lossy().to_string();
-        let history_path = repo::runtime_event_path(std::path::Path::new(&repo_root))
-            .parent()
-            .expect("runtime directory")
-            .join(FITNESS_HISTORY_FILE);
-        std::fs::create_dir_all(history_path.parent().expect("runtime history parent"))
-            .expect("create runtime history parent");
-        let record = FitnessHistoryRecord {
-            schema_version: FITNESS_HISTORY_SCHEMA_VERSION,
-            snapshot: Some(fitness::FitnessSnapshot {
-                final_score: 88.5,
-                hard_gate_blocked: false,
-                score_blocked: false,
-                duration_ms: 1234.0,
-                metric_count: 10,
-                coverage_metric_available: false,
-                dimensions: vec![],
-                slowest_metrics: vec![],
-            }),
-            trend: vec![88.5, 89.0],
-            last_run_ms: Some(12_345),
-            last_error: Some("cached error".to_string()),
-            cache_key: Some("branch=main;ahead=0;files=foo.rs:modify:1".to_string()),
-        };
-        let payload = serde_json::to_vec_pretty(&record).expect("serialize history");
-        std::fs::write(&history_path, payload).expect("write history");
-
-        let cache = AppCache::new(&repo_root);
-        assert!(cache.has_fitness_data());
-        assert_eq!(cache.fitness_last_run_ms(), Some(12_345));
-        assert_eq!(
-            cache.fitness_snapshot().expect("snapshot").final_score,
-            88.5
-        );
-        assert_eq!(cache.fitness_trend(), &[88.5, 89.0]);
-    }
-}
-
 fn background_worker(rx: Receiver<BackgroundCommand>, tx: Sender<BackgroundResult>) {
     while let Ok(command) = rx.recv() {
         let mut pending = PendingCommands::default();
@@ -823,8 +809,8 @@ fn background_worker(rx: Receiver<BackgroundCommand>, tx: Sender<BackgroundResul
                 entry: load_file_facts(&repo_root, &rel_path, version),
             });
         }
-        if let Some((repo_root, cache_key)) = pending.fitness.take() {
-            let result = fitness::run_fast_fitness(&repo_root).map_err(|error| error.to_string());
+        if let Some((repo_root, cache_key, mode)) = pending.fitness.take() {
+            let result = fitness::run_fitness(&repo_root, mode).map_err(|error| error.to_string());
             let _ = cache_key;
             let _ = tx.send(BackgroundResult::Fitness { result });
         }
@@ -855,8 +841,9 @@ fn queue_command(pending: &mut PendingCommands, command: BackgroundCommand) {
         BackgroundCommand::RefreshFitness {
             repo_root,
             cache_key,
+            mode,
         } => {
-            pending.fitness = Some((repo_root, cache_key));
+            pending.fitness = Some((repo_root, cache_key, mode));
         }
     }
 }
@@ -918,6 +905,14 @@ fn git_file_change_count(repo_root: &str, rel_path: &str) -> Option<usize> {
             .count(),
     )
 }
+
+#[cfg(test)]
+#[path = "tui_cache_tests.rs"]
+mod tests;
+
+#[path = "tui_cache_history.rs"]
+mod history;
+use history::{fitness_history_path, read_fitness_history_record};
 
 pub(super) fn load_diff_text(
     repo_root: &str,

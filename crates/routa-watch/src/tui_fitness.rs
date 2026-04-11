@@ -11,6 +11,29 @@ use std::path::Path;
 use std::thread;
 use std::time::Instant;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FitnessRunMode {
+    Fast,
+    Full,
+}
+
+impl FitnessRunMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            FitnessRunMode::Fast => "fast",
+            FitnessRunMode::Full => "full",
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            FitnessRunMode::Fast => "Entrix Fast",
+            FitnessRunMode::Full => "Entrix Full",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FitnessMetricSummary {
     pub name: String,
@@ -33,6 +56,7 @@ pub struct FitnessDimensionSummary {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FitnessSnapshot {
+    pub mode: FitnessRunMode,
     pub final_score: f64,
     pub hard_gate_blocked: bool,
     pub score_blocked: bool,
@@ -49,7 +73,7 @@ impl FitnessSnapshot {
     }
 }
 
-pub fn run_fast_fitness(repo_root: &str) -> Result<FitnessSnapshot> {
+pub fn run_fitness(repo_root: &str, mode: FitnessRunMode) -> Result<FitnessSnapshot> {
     let start = Instant::now();
     let root = Path::new(repo_root);
     let dimensions = load_dimensions(&root.join("docs/fitness"));
@@ -60,7 +84,10 @@ pub fn run_fast_fitness(repo_root: &str) -> Result<FitnessSnapshot> {
     }
 
     let policy = GovernancePolicy {
-        tier_filter: Some(Tier::Fast),
+        tier_filter: Some(match mode {
+            FitnessRunMode::Fast => Tier::Fast,
+            FitnessRunMode::Full => Tier::Deep,
+        }),
         execution_scope: Some(ExecutionScope::Local),
         parallel: true,
         dry_run: false,
@@ -70,8 +97,12 @@ pub fn run_fast_fitness(repo_root: &str) -> Result<FitnessSnapshot> {
         dimension_filters: Vec::new(),
         metric_filters: Vec::new(),
     };
-    let dimensions =
-        rewrite_fast_metrics_for_watch(repo_root, filter_dimensions(&dimensions, &policy));
+    let dimensions = match mode {
+        FitnessRunMode::Fast => {
+            rewrite_fast_metrics_for_watch(repo_root, filter_dimensions(&dimensions, &policy))
+        }
+        FitnessRunMode::Full => filter_dimensions(&dimensions, &policy),
+    };
     let runner = ShellRunner::new(root);
     let mut dim_summaries = Vec::new();
     let mut all_results = Vec::new();
@@ -149,6 +180,7 @@ pub fn run_fast_fitness(repo_root: &str) -> Result<FitnessSnapshot> {
     let report = score_report(&all_results, policy.min_score);
 
     Ok(FitnessSnapshot {
+        mode,
         final_score: report.final_score,
         hard_gate_blocked: report.hard_gate_blocked,
         score_blocked: report.score_blocked,

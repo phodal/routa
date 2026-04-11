@@ -27,6 +27,12 @@ pub enum ThemeMode {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FitnessViewMode {
+    Fast,
+    Full,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EventLogFilter {
     All,
     Hook,
@@ -88,6 +94,7 @@ pub struct RuntimeState {
     pub focus: FocusPane,
     pub detail_mode: DetailMode,
     pub theme_mode: ThemeMode,
+    pub fitness_view_mode: FitnessViewMode,
     pub event_log_filter: EventLogFilter,
     pub detail_scroll: u16,
     pub detail_scroll_cache: BTreeMap<String, u16>,
@@ -121,6 +128,7 @@ impl RuntimeState {
             focus: FocusPane::Files,
             detail_mode: DetailMode::Diff,
             theme_mode: ThemeMode::Dark,
+            fitness_view_mode: FitnessViewMode::Fast,
             event_log_filter: EventLogFilter::All,
             detail_scroll: 0,
             detail_scroll_cache: BTreeMap::new(),
@@ -470,27 +478,6 @@ impl RuntimeState {
         self.agent_stats = crate::detect::calculate_stats(&agents);
         self.detected_agents = agents;
         self.clamp_selection();
-    }
-
-    pub fn fitness_cache_key(&self) -> String {
-        let mut file_markers = self
-            .files
-            .values()
-            .filter(|file| file.dirty || file.conflicted)
-            .map(|file| {
-                format!(
-                    "{}:{}:{}",
-                    file.rel_path, file.state_code, file.last_modified_at_ms
-                )
-            })
-            .collect::<Vec<_>>();
-        file_markers.sort();
-        format!(
-            "branch={};ahead={};files={}",
-            self.branch,
-            self.ahead_count.unwrap_or(0),
-            file_markers.join("|")
-        )
     }
 
     pub fn toggle_theme_mode(&mut self) {
@@ -1137,3 +1124,6 @@ fn path_contains(base: &str, candidate: &str) -> bool {
 fn agent_label(agent: &DetectedAgent) -> String {
     format!("{}#{}", agent.name.to_ascii_lowercase(), agent.pid)
 }
+
+#[path = "state_fitness.rs"]
+mod fitness;
