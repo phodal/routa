@@ -78,6 +78,7 @@ fn run_loop(terminal: &mut DefaultTerminal, ctx: RepoContext, poll_interval_ms: 
         .unwrap_or_else(|| repo_root.clone());
     let branch = current_branch(&ctx).unwrap_or_else(|_| "-".to_string());
     let mut state = RuntimeState::new(repo_root.clone(), repo_name, branch);
+    state.sync_focus_for_width(terminal.size()?.width);
     state.set_runtime_transport(read_runtime_transport(&ctx));
     state.set_ahead_count(current_ahead_count(&ctx).ok());
     state.set_worktree_count(current_worktree_count(&ctx).ok());
@@ -167,6 +168,7 @@ fn run_loop(terminal: &mut DefaultTerminal, ctx: RepoContext, poll_interval_ms: 
         cache.warm_visible_files(&state);
         cache.warm_selected_detail(&state);
 
+        state.sync_focus_for_width(terminal.size()?.width);
         terminal.draw(|frame| render(frame, &state, &feed, &mut cache))?;
 
         if event::poll(Duration::from_millis(100)).context("poll terminal events")?
@@ -181,6 +183,10 @@ fn run_loop(terminal: &mut DefaultTerminal, ctx: RepoContext, poll_interval_ms: 
 fn handle_event(state: &mut RuntimeState, cache: &mut AppCache) -> Result<bool> {
     match event::read().context("read terminal event")? {
         Event::Key(key) => {
+            let viewport_width = crossterm::terminal::size()
+                .map(|(width, _)| width)
+                .unwrap_or(165);
+            state.sync_focus_for_width(viewport_width);
             if state.search_active {
                 match key.code {
                     KeyCode::Esc => state.cancel_search(),
@@ -198,7 +204,7 @@ fn handle_event(state: &mut RuntimeState, cache: &mut AppCache) -> Result<bool> 
             }
             match key.code {
                 KeyCode::Char('q') => return Ok(true),
-                KeyCode::Tab => state.cycle_focus(),
+                KeyCode::Tab => state.cycle_focus_for_width(viewport_width),
                 KeyCode::Char('j') | KeyCode::Down => state.move_selection_down(),
                 KeyCode::Char('k') | KeyCode::Up => state.move_selection_up(),
                 KeyCode::Char('h') | KeyCode::Left => state.select_prev_file(),
@@ -249,7 +255,7 @@ fn handle_event(state: &mut RuntimeState, cache: &mut AppCache) -> Result<bool> 
                 _ => {}
             }
         }
-        Event::Resize(_, _) => {}
+        Event::Resize(width, _) => state.sync_focus_for_width(width),
         _ => {}
     }
     Ok(false)

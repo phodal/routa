@@ -3,7 +3,7 @@ use anyhow::{Context, Result};
 use rusqlite::{params, Connection, OptionalExtension};
 use serde_json::json;
 
-type SessionListRow = (
+pub(crate) type SessionListRow = (
     String,
     String,
     String,
@@ -798,7 +798,6 @@ mod tests {
     use super::*;
     use crate::domain::eval::{EvalMode, EvalSnapshot};
     use crate::domain::ids::RunId;
-    use std::path::PathBuf;
     use tempfile::TempDir;
 
     fn temp_db() -> (TempDir, Db) {

@@ -11,8 +11,9 @@ mod state;
 mod tui;
 
 use crate::db::Db;
+use crate::detect::scan_agents;
 use crate::ipc::{RuntimeSocket, RuntimeTcp};
-use crate::models::RuntimeServiceInfo;
+use crate::models::{DetectedAgent, RuntimeServiceInfo};
 use crate::observe::Snapshot;
 use crate::repo::{resolve, resolve_runtime};
 use anyhow::{bail, Context, Result};
@@ -544,9 +545,15 @@ struct CliRunSummary {
     status: String,
     ended_at_ms: Option<i64>,
     role: &'static str,
+    workspace_id: String,
+    workspace_path: String,
+    workspace_state: String,
     origin: &'static str,
     operator_state: String,
     block_reason: String,
+    integrity_warning: Option<String>,
+    next_action: String,
+    handoff_summary: Option<String>,
     exact_files: usize,
     inferred_files: usize,
     unknown_files: usize,
@@ -562,11 +569,51 @@ struct GitWorktreeRecord {
     detached: bool,
 }
 
-fn load_cli_run_summaries(db: &Db, repo_root: &str) -> Result<Vec<CliRunSummary>> {
+#[derive(Debug, Clone)]
+struct CliWorkspaceSummary {
+    id: String,
+    path: String,
+    branch: Option<String>,
+    head: Option<String>,
+    detached: bool,
+    state: String,
+    dirty_files: usize,
+    attached_runs: Vec<String>,
+    attached_agents: Vec<String>,
+    integrity_warnings: Vec<String>,
+    recovery_hint: Option<String>,
+}
+
+fn load_cli_run_summaries(
+    db: &Db,
+    repo_root: &str,
+    detected_agents: &[DetectedAgent],
+    worktrees: &[GitWorktreeRecord],
+) -> Result<Vec<CliRunSummary>> {
     let sessions = db.list_active_sessions(repo_root)?;
     let dirty_files = db.file_state_all_dirty(repo_root)?;
+    let latest_eval_by_run = load_latest_eval_by_run(db, &sessions)?;
+    Ok(build_cli_run_summaries(
+        repo_root,
+        sessions,
+        dirty_files,
+        detected_agents,
+        worktrees,
+        &latest_eval_by_run,
+    ))
+}
+
+fn build_cli_run_summaries(
+    repo_root: &str,
+    sessions: Vec<db::SessionListRow>,
+    dirty_files: Vec<models::FileStateRow>,
+    detected_agents: &[DetectedAgent],
+    worktrees: &[GitWorktreeRecord],
+    latest_eval_by_run: &BTreeMap<String, crate::domain::EvalSnapshot>,
+) -> Vec<CliRunSummary> {
     let mut dirty_by_session: BTreeMap<String, Vec<models::FileStateRow>> = BTreeMap::new();
     let mut unknown_rows = Vec::new();
+    let matched_agent_keys = matched_agent_keys_for_sessions(&sessions, detected_agents);
 
     for row in dirty_files {
         if let Some(session_id) = row.session_id.clone() {
@@ -578,9 +625,9 @@ fn load_cli_run_summaries(db: &Db, repo_root: &str) -> Result<Vec<CliRunSummary>
 
     let mut runs = Vec::new();
     for (session_id, cwd, model, started_at_ms, last_seen_at_ms, client, status, ended_at_ms) in
-        sessions
+        &sessions
     {
-        let rows = dirty_by_session.remove(&session_id).unwrap_or_default();
+        let rows = dirty_by_session.remove(session_id).unwrap_or_default();
         let exact_files = rows
             .iter()
             .filter(|row| row.confidence.as_deref() == Some("exact"))
@@ -598,28 +645,53 @@ fn load_cli_run_summaries(db: &Db, repo_root: &str) -> Result<Vec<CliRunSummary>
             .iter()
             .map(|row| row.rel_path.clone())
             .collect::<Vec<_>>();
-        let latest_eval = db
-            .list_eval_snapshots_for_run(&session_id, 1)?
-            .into_iter()
-            .next();
-        let role = infer_cli_run_role(&session_id, &client, &status);
-        let block_reason = infer_cli_run_block_reason(latest_eval.as_ref(), unknown_files);
+        let latest_eval = latest_eval_by_run.get(session_id).cloned();
+        let role = infer_cli_run_role(session_id, client, status);
+        let (workspace_id, workspace_path, workspace_detached) =
+            workspace_identity_for(Some(cwd), repo_root, worktrees);
+        let workspace_state = infer_cli_workspace_state(
+            dirty_by_workspace_count(&workspace_id, repo_root, &workspace_path, &rows),
+            latest_eval.as_ref(),
+            workspace_detached,
+            false,
+        );
+        let integrity_warning =
+            infer_cli_integrity_warning(workspace_detached, false, unknown_files, false);
+        let block_reason = infer_cli_run_block_reason(
+            latest_eval.as_ref(),
+            unknown_files,
+            integrity_warning.as_deref(),
+        );
         let operator_state =
             infer_cli_run_state(&status, latest_eval.as_ref(), block_reason.as_str());
+        let next_action = infer_cli_next_action(
+            false,
+            false,
+            block_reason.as_str(),
+            integrity_warning.as_deref(),
+        );
+        let handoff_summary =
+            infer_cli_handoff_summary(role, operator_state.as_str(), Some(&block_reason));
 
         runs.push(CliRunSummary {
-            run_id: session_id,
-            client,
-            cwd,
-            model,
-            started_at_ms,
-            last_seen_at_ms,
-            status,
-            ended_at_ms,
+            run_id: session_id.clone(),
+            client: client.clone(),
+            cwd: cwd.clone(),
+            model: model.clone(),
+            started_at_ms: *started_at_ms,
+            last_seen_at_ms: *last_seen_at_ms,
+            status: status.clone(),
+            ended_at_ms: *ended_at_ms,
             role,
+            workspace_id,
+            workspace_path,
+            workspace_state: workspace_state.to_string(),
             origin: "hook-backed",
             operator_state,
             block_reason,
+            integrity_warning,
+            next_action,
+            handoff_summary,
             exact_files,
             inferred_files,
             unknown_files,
@@ -628,7 +700,64 @@ fn load_cli_run_summaries(db: &Db, repo_root: &str) -> Result<Vec<CliRunSummary>
         });
     }
 
+    for agent in detected_agents
+        .iter()
+        .filter(|agent| is_repo_local_agent_cli(agent, repo_root))
+        .filter(|agent| !matched_agent_keys.contains(&agent.key))
+    {
+        let (workspace_id, workspace_path, workspace_detached) =
+            workspace_identity_for(agent.cwd.as_deref(), repo_root, worktrees);
+        let workspace_state =
+            infer_cli_workspace_state(0, None, workspace_detached, false).to_string();
+        let integrity_warning = infer_cli_integrity_warning(workspace_detached, false, 0, true);
+        let operator_state = if agent.status.eq_ignore_ascii_case("ACTIVE") {
+            "executing".to_string()
+        } else {
+            "observing".to_string()
+        };
+        let block_reason = infer_cli_run_block_reason(None, 0, integrity_warning.as_deref());
+        let role = infer_cli_run_role(&agent.key, &agent.name, &agent.status);
+        let next_action = infer_cli_next_action(
+            true,
+            false,
+            block_reason.as_str(),
+            integrity_warning.as_deref(),
+        );
+        let handoff_summary =
+            infer_cli_handoff_summary(role, operator_state.as_str(), Some(&block_reason));
+
+        runs.push(CliRunSummary {
+            run_id: format!("agent:{}:{}", agent.name.to_ascii_lowercase(), agent.pid),
+            client: agent.name.to_ascii_lowercase(),
+            cwd: agent.cwd.clone().unwrap_or_else(|| repo_root.to_string()),
+            model: String::new(),
+            started_at_ms: 0,
+            last_seen_at_ms: chrono::Utc::now().timestamp_millis(),
+            status: agent.status.to_ascii_lowercase(),
+            ended_at_ms: None,
+            role,
+            workspace_id,
+            workspace_path,
+            workspace_state,
+            origin: "process-scan",
+            operator_state,
+            block_reason,
+            integrity_warning,
+            next_action,
+            handoff_summary,
+            exact_files: 0,
+            inferred_files: 0,
+            unknown_files: 0,
+            changed_files: Vec::new(),
+            latest_eval: None,
+        });
+    }
+
     if !unknown_rows.is_empty() {
+        let (workspace_id, workspace_path, workspace_detached) =
+            workspace_identity_for(Some(repo_root), repo_root, worktrees);
+        let integrity_warning =
+            infer_cli_integrity_warning(workspace_detached, false, unknown_rows.len(), false);
         runs.push(CliRunSummary {
             run_id: "unknown".to_string(),
             client: "unknown".to_string(),
@@ -643,9 +772,21 @@ fn load_cli_run_summaries(db: &Db, repo_root: &str) -> Result<Vec<CliRunSummary>
             status: "unknown".to_string(),
             ended_at_ms: None,
             role: "reviewer",
+            workspace_id,
+            workspace_path,
+            workspace_state: infer_cli_workspace_state(
+                unknown_rows.len(),
+                None,
+                workspace_detached,
+                false,
+            )
+            .to_string(),
             origin: "attribution-review",
             operator_state: "attention".to_string(),
             block_reason: "ownership ambiguity".to_string(),
+            integrity_warning,
+            next_action: "resolve file ownership before continuing".to_string(),
+            handoff_summary: Some("handoff reviewer -> fixer".to_string()),
             exact_files: 0,
             inferred_files: 0,
             unknown_files: unknown_rows.len(),
@@ -662,7 +803,7 @@ fn load_cli_run_summaries(db: &Db, repo_root: &str) -> Result<Vec<CliRunSummary>
             .cmp(&a.last_seen_at_ms)
             .then_with(|| a.run_id.cmp(&b.run_id))
     });
-    Ok(runs)
+    runs
 }
 
 fn infer_cli_run_role(session_id: &str, client: &str, status: &str) -> &'static str {
@@ -687,9 +828,14 @@ fn infer_cli_run_role(session_id: &str, client: &str, status: &str) -> &'static 
 fn infer_cli_run_block_reason(
     latest_eval: Option<&crate::domain::EvalSnapshot>,
     unknown_files: usize,
+    integrity_warning: Option<&str>,
 ) -> String {
     if unknown_files > 0 {
         "ownership ambiguity".to_string()
+    } else if integrity_warning.is_some_and(|warning| {
+        warning.contains("path missing") || warning.contains("detached HEAD")
+    }) {
+        "workspace attention".to_string()
     } else if let Some(eval) = latest_eval {
         if eval.hard_gate_blocked {
             "hard gate failure".to_string()
@@ -719,6 +865,194 @@ fn infer_cli_run_state(
     } else {
         "observing".to_string()
     }
+}
+
+fn infer_cli_workspace_state(
+    dirty_files: usize,
+    latest_eval: Option<&crate::domain::EvalSnapshot>,
+    detached: bool,
+    missing_path: bool,
+) -> &'static str {
+    if missing_path {
+        "corrupted"
+    } else if dirty_files > 0 {
+        "dirty"
+    } else if latest_eval.is_some_and(|eval| !eval.hard_gate_blocked && !eval.score_blocked) {
+        "validated"
+    } else if detached {
+        "ready"
+    } else {
+        "ready"
+    }
+}
+
+fn infer_cli_integrity_warning(
+    detached: bool,
+    missing_path: bool,
+    unknown_files: usize,
+    synthetic: bool,
+) -> Option<String> {
+    if missing_path {
+        Some("workspace path missing".to_string())
+    } else if unknown_files > 0 {
+        Some(format!("{unknown_files} file(s) need ownership review"))
+    } else if detached {
+        Some("workspace is on detached HEAD".to_string())
+    } else if synthetic {
+        Some("process detected without hook-backed session".to_string())
+    } else {
+        None
+    }
+}
+
+fn infer_cli_next_action(
+    synthetic: bool,
+    unknown_bucket: bool,
+    block_reason: &str,
+    integrity_warning: Option<&str>,
+) -> String {
+    if block_reason.contains("hard gate") {
+        "fix failing hard gates and rerun fast eval".to_string()
+    } else if block_reason.contains("score") {
+        "improve fitness score before continuing".to_string()
+    } else if unknown_bucket {
+        "resolve file ownership before continuing".to_string()
+    } else if integrity_warning.is_some_and(|warning| warning.contains("detached HEAD")) {
+        "inspect worktree branch/head before continuing".to_string()
+    } else if integrity_warning.is_some_and(|warning| warning.contains("path missing")) {
+        "repair or recreate the workspace path".to_string()
+    } else if synthetic {
+        "attach hooks or keep observing unmanaged run".to_string()
+    } else {
+        "handoff to reviewer or continue execution".to_string()
+    }
+}
+
+fn infer_cli_handoff_summary(
+    role: &'static str,
+    operator_state: &str,
+    block_reason: Option<&str>,
+) -> Option<String> {
+    let next_role = if block_reason.is_some_and(|reason| {
+        reason.contains("hard gate")
+            || reason.contains("score")
+            || reason.contains("ownership")
+            || reason.contains("attention")
+    }) {
+        Some("fixer")
+    } else if matches!(operator_state, "evaluating" | "ready") {
+        Some("reviewer")
+    } else if role == "planner" && operator_state == "executing" {
+        Some("builder")
+    } else {
+        None
+    }?;
+
+    (next_role != role).then(|| format!("handoff {role} -> {next_role}"))
+}
+
+fn load_latest_eval_by_run(
+    db: &Db,
+    sessions: &[db::SessionListRow],
+) -> Result<BTreeMap<String, crate::domain::EvalSnapshot>> {
+    let mut latest_eval_by_run = BTreeMap::new();
+    for (session_id, _, _, _, _, _, _, _) in sessions {
+        if let Some(eval) = db
+            .list_eval_snapshots_for_run(session_id, 1)?
+            .into_iter()
+            .next()
+        {
+            latest_eval_by_run.insert(session_id.clone(), eval);
+        }
+    }
+    Ok(latest_eval_by_run)
+}
+
+fn load_cli_workspace_summaries(
+    repo_root: &str,
+    worktrees: &[GitWorktreeRecord],
+    detected_agents: &[DetectedAgent],
+    runs: &[CliRunSummary],
+) -> Vec<CliWorkspaceSummary> {
+    let worktrees = if worktrees.is_empty() {
+        vec![GitWorktreeRecord {
+            path: repo_root.to_string(),
+            head: None,
+            branch: Some("main".to_string()),
+            detached: false,
+        }]
+    } else {
+        worktrees.to_vec()
+    };
+
+    worktrees
+        .into_iter()
+        .map(|record| {
+            let workspace_id = workspace_id_for(&record.path, repo_root);
+            let attached_runs = runs
+                .iter()
+                .filter(|run| run.workspace_id == workspace_id)
+                .map(|run| run.run_id.clone())
+                .collect::<Vec<_>>();
+            let attached_agents = detected_agents
+                .iter()
+                .filter(|agent| is_repo_local_agent_cli(agent, repo_root))
+                .filter(|agent| {
+                    workspace_identity_for(
+                        agent.cwd.as_deref(),
+                        repo_root,
+                        std::slice::from_ref(&record),
+                    )
+                    .0 == workspace_id
+                })
+                .map(|agent| format!("{}#{}", agent.name.to_ascii_lowercase(), agent.pid))
+                .collect::<Vec<_>>();
+            let dirty_files = runs
+                .iter()
+                .filter(|run| run.workspace_id == workspace_id)
+                .map(|run| run.changed_files.len())
+                .sum::<usize>();
+            let latest_eval = runs
+                .iter()
+                .filter(|run| run.workspace_id == workspace_id)
+                .filter_map(|run| run.latest_eval.as_ref())
+                .max_by_key(|eval| eval.evaluated_at_ms);
+            let missing_path = !Path::new(&record.path).exists();
+            let mut integrity_warnings = Vec::new();
+            if record.detached {
+                integrity_warnings.push("workspace is on detached HEAD".to_string());
+            }
+            if missing_path {
+                integrity_warnings.push("workspace path missing".to_string());
+            }
+
+            CliWorkspaceSummary {
+                id: workspace_id,
+                path: record.path,
+                branch: record.branch,
+                head: record.head,
+                detached: record.detached,
+                state: infer_cli_workspace_state(
+                    dirty_files,
+                    latest_eval,
+                    record.detached,
+                    missing_path,
+                )
+                .to_string(),
+                dirty_files,
+                attached_runs,
+                attached_agents,
+                integrity_warnings: integrity_warnings.clone(),
+                recovery_hint: integrity_warnings.first().map(|warning| {
+                    if warning.contains("detached HEAD") {
+                        "reattach to a branch or validate before continuing".to_string()
+                    } else {
+                        "repair or recreate the worktree path".to_string()
+                    }
+                }),
+            }
+        })
+        .collect()
 }
 
 fn summarize_eval(eval: &crate::domain::EvalSnapshot) -> String {
@@ -797,6 +1131,118 @@ fn workspace_id_for(path: &str, repo_root: &str) -> String {
     }
 }
 
+fn workspace_identity_for(
+    cwd: Option<&str>,
+    repo_root: &str,
+    worktrees: &[GitWorktreeRecord],
+) -> (String, String, bool) {
+    let normalized_repo_root = normalize_match_path(repo_root);
+    let Some(cwd) = cwd else {
+        return ("main".to_string(), repo_root.to_string(), false);
+    };
+    let normalized_cwd = normalize_match_path(cwd);
+    let matching = worktrees.iter().find(|record| {
+        let normalized_path = normalize_match_path(&record.path);
+        normalized_path == normalized_cwd || path_contains(&normalized_path, &normalized_cwd)
+    });
+    if let Some(record) = matching {
+        return (
+            workspace_id_for(&record.path, repo_root),
+            record.path.clone(),
+            record.detached,
+        );
+    }
+    if normalized_cwd == normalized_repo_root
+        || path_contains(&normalized_repo_root, &normalized_cwd)
+    {
+        ("main".to_string(), repo_root.to_string(), false)
+    } else {
+        (
+            Path::new(cwd)
+                .file_name()
+                .map(|name| name.to_string_lossy().to_string())
+                .unwrap_or_else(|| "external".to_string()),
+            cwd.to_string(),
+            false,
+        )
+    }
+}
+
+fn dirty_by_workspace_count(
+    workspace_id: &str,
+    repo_root: &str,
+    workspace_path: &str,
+    rows: &[models::FileStateRow],
+) -> usize {
+    if workspace_id == "main" || workspace_path == repo_root {
+        rows.len()
+    } else {
+        0
+    }
+}
+
+fn matched_agent_keys_for_sessions(
+    sessions: &[db::SessionListRow],
+    detected_agents: &[DetectedAgent],
+) -> std::collections::BTreeSet<String> {
+    let mut matched = std::collections::BTreeSet::new();
+    for (session_id, cwd, _model, _started, _last, client, _status, _ended) in sessions {
+        let best = detected_agents
+            .iter()
+            .filter(|agent| {
+                agent.cwd.as_deref().is_some_and(|agent_cwd| {
+                    normalize_match_path(agent_cwd) == normalize_match_path(cwd)
+                })
+            })
+            .find(|agent| {
+                let client = client.to_ascii_lowercase();
+                let vendor = agent.vendor.to_ascii_lowercase();
+                let name = agent.name.to_ascii_lowercase();
+                let session_id = session_id.to_ascii_lowercase();
+                client == name
+                    || client == vendor
+                    || session_id.contains(&name)
+                    || agent.command.to_ascii_lowercase().contains(&session_id)
+            });
+        if let Some(agent) = best {
+            matched.insert(agent.key.clone());
+        }
+    }
+    matched
+}
+
+fn normalize_match_path(path: &str) -> String {
+    path.trim_end_matches('/').to_string()
+}
+
+fn path_contains(base: &str, candidate: &str) -> bool {
+    candidate
+        .strip_prefix(base)
+        .is_some_and(|rest| rest.is_empty() || rest.starts_with('/'))
+}
+
+fn canonical_repo_identity(path: &str) -> String {
+    let normalized = normalize_match_path(path);
+    let basename = normalized.rsplit('/').next().unwrap_or(normalized.as_str());
+
+    basename
+        .split_once("-broken-")
+        .map(|(prefix, _)| prefix)
+        .or_else(|| basename.split_once("-remote-").map(|(prefix, _)| prefix))
+        .unwrap_or(basename)
+        .to_string()
+}
+
+fn is_repo_local_agent_cli(agent: &DetectedAgent, repo_root: &str) -> bool {
+    agent.cwd.as_deref().is_some_and(|cwd| {
+        let repo_root = normalize_match_path(repo_root);
+        let cwd = normalize_match_path(cwd);
+        cwd == repo_root
+            || path_contains(&repo_root, &cwd)
+            || canonical_repo_identity(&cwd) == canonical_repo_identity(&repo_root)
+    })
+}
+
 // ── Domain command handlers (Phase 0 stubs) ──────────────────────────────────
 
 fn handle_task_command(action: TaskCommand, db: &Db, repo_root: &str) -> Result<()> {
@@ -854,31 +1300,41 @@ fn handle_task_command(action: TaskCommand, db: &Db, repo_root: &str) -> Result<
 }
 
 fn handle_run_command(action: RunCommand, db: &Db, repo_root: &str) -> Result<()> {
+    let detected_agents = scan_agents(repo_root).unwrap_or_default();
+    let worktrees = load_git_worktree_records(repo_root).unwrap_or_else(|_| {
+        vec![GitWorktreeRecord {
+            path: repo_root.to_string(),
+            head: None,
+            branch: Some("main".to_string()),
+            detached: false,
+        }]
+    });
     match action {
         RunCommand::List => {
-            let runs = load_cli_run_summaries(db, repo_root)?;
+            let runs = load_cli_run_summaries(db, repo_root, &detected_agents, &worktrees)?;
             if runs.is_empty() {
                 println!("No active runs.");
                 return Ok(());
             }
             println!(
-                "{:<24}  {:<10}  {:<11}  {:<18}  {:>5}",
-                "RUN / SESSION", "ROLE", "STATE", "BLOCK", "FILES"
+                "{:<24}  {:<10}  {:<11}  {:<10}  {:<14}  {:>5}",
+                "RUN / SESSION", "ROLE", "STATE", "WORKSPACE", "ORIGIN", "FILES"
             );
-            println!("{}", "-".repeat(80));
+            println!("{}", "-".repeat(92));
             for run in &runs {
                 println!(
-                    "{:<24}  {:<10}  {:<11}  {:<18}  {:>5}",
+                    "{:<24}  {:<10}  {:<11}  {:<10}  {:<14}  {:>5}",
                     run.run_id,
                     run.role,
                     run.operator_state,
-                    run.block_reason,
+                    run.workspace_id,
+                    run.origin,
                     run.changed_files.len()
                 );
             }
         }
         RunCommand::Show { id } => {
-            let runs = load_cli_run_summaries(db, repo_root)?;
+            let runs = load_cli_run_summaries(db, repo_root, &detected_agents, &worktrees)?;
             let found = runs.iter().find(|run| run.run_id == id);
             match found {
                 Some(run) => {
@@ -891,6 +1347,11 @@ fn handle_run_command(action: RunCommand, db: &Db, repo_root: &str) -> Result<()
                     println!("client:      {}", run.client);
                     println!("status:      {}", run.status);
                     println!("cwd:         {}", run.cwd);
+                    println!(
+                        "workspace:   {} ({})",
+                        run.workspace_id, run.workspace_state
+                    );
+                    println!("worktree:    {}", run.workspace_path);
                     println!(
                         "files:       {} exact / {} inferred / {} unknown",
                         run.exact_files, run.inferred_files, run.unknown_files
@@ -923,6 +1384,13 @@ fn handle_run_command(action: RunCommand, db: &Db, repo_root: &str) -> Result<()
                     } else {
                         println!("eval:        pending");
                     }
+                    if let Some(warning) = &run.integrity_warning {
+                        println!("integrity:   {}", warning);
+                    }
+                    println!("next:        {}", run.next_action);
+                    if let Some(handoff) = &run.handoff_summary {
+                        println!("handoff:     {}", handoff);
+                    }
                     if run.changed_files.is_empty() {
                         println!("changed:     -");
                     } else {
@@ -948,87 +1416,96 @@ fn handle_run_command(action: RunCommand, db: &Db, repo_root: &str) -> Result<()
 }
 
 fn handle_workspace_command(action: WorkspaceCommand, repo_root: &str) -> Result<()> {
+    let worktrees = load_git_worktree_records(repo_root).unwrap_or_else(|_| {
+        vec![GitWorktreeRecord {
+            path: repo_root.to_string(),
+            head: None,
+            branch: Some("main".to_string()),
+            detached: false,
+        }]
+    });
+    let detected_agents = scan_agents(repo_root).unwrap_or_default();
+    let runs = if let Ok(ctx) = resolve(None, None) {
+        Db::open(&ctx.db_path)
+            .ok()
+            .and_then(|db| {
+                load_cli_run_summaries(&db, repo_root, &detected_agents, &worktrees).ok()
+            })
+            .unwrap_or_default()
+    } else {
+        Vec::new()
+    };
+    let workspaces = load_cli_workspace_summaries(repo_root, &worktrees, &detected_agents, &runs);
     match action {
-        WorkspaceCommand::List => match load_git_worktree_records(repo_root) {
-            Ok(records) if !records.is_empty() => {
+        WorkspaceCommand::List => {
+            if !workspaces.is_empty() {
                 println!(
-                    "{:<16}  {:<8}  {:<20}  PATH",
-                    "WORKSPACE", "STATE", "BRANCH"
+                    "{:<16}  {:<10}  {:>4}  {:>6}  {:<20}  PATH",
+                    "WORKSPACE", "STATE", "RUNS", "AGENTS", "BRANCH"
                 );
-                println!("{}", "-".repeat(88));
-                for record in records {
-                    let state = if record.path == repo_root {
-                        "attached"
-                    } else {
-                        "ready"
-                    };
+                println!("{}", "-".repeat(108));
+                for workspace in &workspaces {
                     println!(
-                        "{:<16}  {:<8}  {:<20}  {}",
-                        workspace_id_for(&record.path, repo_root),
-                        state,
-                        record
+                        "{:<16}  {:<10}  {:>4}  {:>6}  {:<20}  {}",
+                        workspace.id,
+                        workspace.state,
+                        workspace.attached_runs.len(),
+                        workspace.attached_agents.len(),
+                        workspace
                             .branch
                             .clone()
                             .unwrap_or_else(|| "<detached>".to_string()),
-                        record.path
+                        workspace.path
                     );
                 }
+            } else {
+                println!("worktree: {repo_root} (main)");
             }
-            _ => println!("worktree: {repo_root} (main)"),
-        },
+        }
         WorkspaceCommand::Show { id } => {
-            let records = load_git_worktree_records(repo_root).unwrap_or_else(|_| {
-                vec![GitWorktreeRecord {
-                    path: repo_root.to_string(),
-                    head: None,
-                    branch: Some("main".to_string()),
-                    detached: false,
-                }]
-            });
-            let dirty_count = std::process::Command::new("git")
-                .arg("-C")
-                .arg(repo_root)
-                .args(["status", "--porcelain"])
-                .output()
-                .ok()
-                .map(|output| String::from_utf8_lossy(&output.stdout).lines().count())
-                .unwrap_or(0);
-            let found = records.iter().find(|record| {
-                record.path == id
-                    || workspace_id_for(&record.path, repo_root) == id
-                    || (id == "main" && record.path == repo_root)
+            let found = workspaces.iter().find(|workspace| {
+                workspace.path == id
+                    || workspace.id == id
+                    || (id == "main" && workspace.path == repo_root)
             });
 
             match found {
-                Some(record) => {
-                    let workspace_id = workspace_id_for(&record.path, repo_root);
-                    let state = if record.path == repo_root && dirty_count > 0 {
-                        "dirty"
-                    } else {
-                        "ready"
-                    };
-                    println!("workspace:   {}", workspace_id);
-                    println!("path:        {}", record.path);
+                Some(workspace) => {
+                    println!("workspace:   {}", workspace.id);
+                    println!("path:        {}", workspace.path);
                     println!(
                         "branch:      {}",
-                        record
+                        workspace
                             .branch
                             .clone()
                             .unwrap_or_else(|| "<detached>".to_string())
                     );
-                    if let Some(head) = &record.head {
+                    if let Some(head) = &workspace.head {
                         println!("head:        {}", head);
                     }
-                    println!("state:       {}", state);
-                    println!(
-                        "dirty_files: {}",
-                        if record.path == repo_root {
-                            dirty_count
-                        } else {
-                            0
-                        }
-                    );
-                    println!("detached:    {}", record.detached);
+                    println!("state:       {}", workspace.state);
+                    println!("dirty_files: {}", workspace.dirty_files);
+                    println!("runs:        {}", workspace.attached_runs.len());
+                    if workspace.attached_runs.is_empty() {
+                        println!("run_ids:      -");
+                    } else {
+                        println!("run_ids:     {}", workspace.attached_runs.join(", "));
+                    }
+                    println!("agents:      {}", workspace.attached_agents.len());
+                    if workspace.attached_agents.is_empty() {
+                        println!("agent_ids:    -");
+                    } else {
+                        println!("agent_ids:   {}", workspace.attached_agents.join(", "));
+                    }
+                    if workspace.integrity_warnings.is_empty() {
+                        println!("integrity:   ok");
+                    } else {
+                        println!("integrity:   {}", workspace.integrity_warnings.join("; "));
+                    }
+                    if let Some(hint) = &workspace.recovery_hint {
+                        println!("recovery:    {}", hint);
+                    }
+                    println!("detached:    {}", workspace.detached);
                 }
                 None => println!("Workspace '{id}' not found."),
             }
@@ -1116,6 +1593,8 @@ fn handle_policy_command(action: PolicyCommand) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::{EvalMode, EvalSnapshot};
+    use crate::models::DetectedAgent;
 
     #[test]
     fn parse_git_worktree_records_reads_multiple_entries() {
@@ -1155,5 +1634,142 @@ mod tests {
             infer_cli_run_state("active", Some(&eval), "hard gate failure"),
             "failed"
         );
+    }
+
+    #[test]
+    fn cli_run_summaries_include_repo_local_process_scan_runs() {
+        let runs = build_cli_run_summaries(
+            "/repo",
+            Vec::new(),
+            Vec::new(),
+            &[DetectedAgent {
+                key: "OpenAI:42".to_string(),
+                name: "Codex".to_string(),
+                vendor: "OpenAI".to_string(),
+                icon: "◈".to_string(),
+                pid: 42,
+                cwd: Some("/repo".to_string()),
+                cpu_percent: 0.0,
+                mem_mb: 32.0,
+                uptime_seconds: 90,
+                status: "IDLE".to_string(),
+                confidence: 80,
+                project: "repo".to_string(),
+                command: "codex --cwd /repo".to_string(),
+            }],
+            &[GitWorktreeRecord {
+                path: "/repo".to_string(),
+                head: Some("abc123".to_string()),
+                branch: Some("main".to_string()),
+                detached: false,
+            }],
+            &BTreeMap::new(),
+        );
+
+        assert_eq!(runs.len(), 1);
+        assert_eq!(runs[0].run_id, "agent:codex:42");
+        assert_eq!(runs[0].origin, "process-scan");
+        assert_eq!(runs[0].workspace_id, "main");
+        assert_eq!(runs[0].workspace_state, "ready");
+        assert_eq!(runs[0].operator_state, "observing");
+    }
+
+    #[test]
+    fn workspace_summaries_count_attached_runs_and_agents() {
+        let temp = tempfile::tempdir().unwrap();
+        let repo_root = temp.path().to_string_lossy().to_string();
+        let mut evals = BTreeMap::new();
+        evals.insert(
+            "run-1".to_string(),
+            EvalSnapshot {
+                run_id: Some(crate::domain::RunId::new("run-1")),
+                mode: EvalMode::Fast,
+                overall_score: 96.0,
+                hard_gate_blocked: false,
+                score_blocked: false,
+                dimensions: Vec::new(),
+                evidence: Vec::new(),
+                recommendations: Vec::new(),
+                evaluated_at_ms: 100,
+                duration_ms: 10.0,
+            },
+        );
+        let runs = build_cli_run_summaries(
+            &repo_root,
+            vec![(
+                "run-1".to_string(),
+                repo_root.clone(),
+                "gpt-5.4".to_string(),
+                10,
+                100,
+                "codex".to_string(),
+                "idle".to_string(),
+                None,
+            )],
+            Vec::new(),
+            &[DetectedAgent {
+                key: "OpenAI:42".to_string(),
+                name: "Codex".to_string(),
+                vendor: "OpenAI".to_string(),
+                icon: "◈".to_string(),
+                pid: 42,
+                cwd: Some(repo_root.clone()),
+                cpu_percent: 0.0,
+                mem_mb: 32.0,
+                uptime_seconds: 90,
+                status: "IDLE".to_string(),
+                confidence: 80,
+                project: temp
+                    .path()
+                    .file_name()
+                    .unwrap()
+                    .to_string_lossy()
+                    .to_string(),
+                command: format!("codex --cwd {repo_root}"),
+            }],
+            &[GitWorktreeRecord {
+                path: repo_root.clone(),
+                head: Some("abc123".to_string()),
+                branch: Some("main".to_string()),
+                detached: false,
+            }],
+            &evals,
+        );
+        let workspaces = load_cli_workspace_summaries(
+            &repo_root,
+            &[GitWorktreeRecord {
+                path: repo_root.clone(),
+                head: Some("abc123".to_string()),
+                branch: Some("main".to_string()),
+                detached: false,
+            }],
+            &[DetectedAgent {
+                key: "OpenAI:42".to_string(),
+                name: "Codex".to_string(),
+                vendor: "OpenAI".to_string(),
+                icon: "◈".to_string(),
+                pid: 42,
+                cwd: Some(repo_root.clone()),
+                cpu_percent: 0.0,
+                mem_mb: 32.0,
+                uptime_seconds: 90,
+                status: "IDLE".to_string(),
+                confidence: 80,
+                project: temp
+                    .path()
+                    .file_name()
+                    .unwrap()
+                    .to_string_lossy()
+                    .to_string(),
+                command: format!("codex --cwd {repo_root}"),
+            }],
+            &runs,
+        );
+
+        assert_eq!(workspaces.len(), 1);
+        assert_eq!(workspaces[0].id, "main");
+        assert_eq!(workspaces[0].state, "validated");
+        assert_eq!(workspaces[0].attached_runs, vec!["run-1".to_string()]);
+        assert_eq!(workspaces[0].attached_agents, vec!["codex#42".to_string()]);
     }
 }

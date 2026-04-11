@@ -16,6 +16,14 @@ pub enum FocusPane {
     Fitness,
 }
 
+const RESPONSIVE_FOCUS_COMPACT: [FocusPane; 2] = [FocusPane::Files, FocusPane::Detail];
+const RESPONSIVE_FOCUS_FULL: [FocusPane; 4] = [
+    FocusPane::Runs,
+    FocusPane::Files,
+    FocusPane::Detail,
+    FocusPane::Fitness,
+];
+
 impl FocusPane {
     #[allow(dead_code)]
     pub fn label(self) -> &'static str {
@@ -524,13 +532,20 @@ impl RuntimeState {
         }
     }
 
-    pub fn cycle_focus(&mut self) {
-        self.focus = match self.focus {
-            FocusPane::Runs => FocusPane::Files,
-            FocusPane::Files => FocusPane::Detail,
-            FocusPane::Detail => FocusPane::Fitness,
-            FocusPane::Fitness => FocusPane::Runs,
-        };
+    pub fn cycle_focus_for_width(&mut self, width: u16) {
+        let panes = focus_panes_for_width(width);
+        let index = panes
+            .iter()
+            .position(|pane| *pane == self.focus)
+            .unwrap_or(0);
+        self.focus = panes[(index + 1) % panes.len()];
+    }
+
+    pub fn sync_focus_for_width(&mut self, width: u16) {
+        let panes = focus_panes_for_width(width);
+        if !panes.contains(&self.focus) {
+            self.focus = panes[0];
+        }
     }
 
     pub fn move_selection_up(&mut self) {
@@ -1274,6 +1289,14 @@ impl RuntimeState {
             session_matches,
             matched_agent_keys,
         }
+    }
+}
+
+fn focus_panes_for_width(width: u16) -> &'static [FocusPane] {
+    if width < 165 {
+        &RESPONSIVE_FOCUS_COMPACT
+    } else {
+        &RESPONSIVE_FOCUS_FULL
     }
 }
 

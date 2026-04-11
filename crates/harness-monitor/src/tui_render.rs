@@ -141,20 +141,15 @@ fn render_main_area(
     if layout_mode == LayoutMode::Compact {
         let split = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([Constraint::Percentage(56), Constraint::Percentage(44)])
+            .constraints([Constraint::Percentage(46), Constraint::Percentage(54)])
             .split(area);
         let lower = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([
-                Constraint::Percentage(34),
-                Constraint::Percentage(33),
-                Constraint::Percentage(33),
-            ])
+            .constraints([Constraint::Percentage(58), Constraint::Percentage(42)])
             .split(split[1]);
         render_files(frame, split[0], state, cache, FileRowDensity::TwoLine);
-        render_fitness_panel(frame, lower[0], state, cache);
-        render_preview_panel(frame, lower[1], state, cache);
-        render_details_panel(frame, lower[2], state, cache);
+        render_preview_panel(frame, lower[0], state, cache);
+        render_details_panel(frame, lower[1], state, cache);
         return;
     }
 
@@ -163,16 +158,11 @@ fn render_main_area(
             .direction(Direction::Horizontal)
             .constraints([Constraint::Percentage(72), Constraint::Percentage(28)])
             .split(area);
-        let left = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Percentage(68), Constraint::Percentage(32)])
-            .split(columns[0]);
         let right = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+            .constraints([Constraint::Percentage(62), Constraint::Percentage(38)])
             .split(columns[1]);
-        render_files(frame, left[0], state, cache, FileRowDensity::SingleLine);
-        render_fitness_panel(frame, left[1], state, cache);
+        render_files(frame, columns[0], state, cache, FileRowDensity::SingleLine);
         render_preview_panel(frame, right[0], state, cache);
         render_details_panel(frame, right[1], state, cache);
         return;
@@ -998,7 +988,7 @@ fn render_details_panel(frame: &mut Frame, area: Rect, state: &RuntimeState, cac
         )));
     }
 
-    let block = panel_block("Details", false, colors);
+    let block = panel_block("File Detail", false, colors);
     frame.render_widget(
         Paragraph::new(lines)
             .block(block)
@@ -1602,10 +1592,7 @@ fn build_run_operator_model(
     }
 }
 
-fn run_list_state_label(
-    state: &RuntimeState,
-    run: &crate::state::SessionListItem,
-) -> &'static str {
+fn run_list_state_label(state: &RuntimeState, run: &crate::state::SessionListItem) -> &'static str {
     if run.is_unknown_bucket {
         "attention"
     } else if is_auggie_mcp_service_run(state, run) {
