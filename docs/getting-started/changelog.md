@@ -1,5 +1,6 @@
 ---
 title: Changelog
+hide_table_of_contents: true
 ---
 
 # Changelog

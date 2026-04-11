@@ -323,4 +323,4 @@ It does **not** sync:
 - [CLI Release workflow](https://github.com/phodal/routa/blob/main/.github/workflows/cli-release.yml)
 - [Cargo Release workflow](https://github.com/phodal/routa/blob/main/.github/workflows/cargo-release.yml)
 - [Desktop Release workflow](https://github.com/phodal/routa/blob/main/.github/workflows/tauri-release.yml)
-- [Release Checklist](./RELEASE_CHECKLIST.md)
+- [Release Checklist](https://github.com/phodal/routa/blob/main/docs/RELEASE_CHECKLIST.md)

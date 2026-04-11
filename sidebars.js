@@ -4,7 +4,7 @@ module.exports = {
     {
       type: "category",
       label: "Getting Started",
-      collapsible: true,
+      collapsible: false,
       collapsed: false,
       items: [
         {
@@ -19,6 +19,11 @@ module.exports = {
         },
         {
           type: "doc",
+          id: "platforms/index",
+          label: "Platforms",
+        },
+        {
+          type: "doc",
           id: "getting-started/changelog",
           label: "Changelog",
         },
@@ -27,8 +32,8 @@ module.exports = {
     {
       type: "category",
       label: "Use Routa",
-      collapsible: true,
-      collapsed: true,
+      collapsible: false,
+      collapsed: false,
       items: [
         {
           type: "doc",
@@ -65,18 +70,13 @@ module.exports = {
     {
       type: "category",
       label: "Developer Guide",
-      collapsible: true,
-      collapsed: true,
+      collapsible: false,
+      collapsed: false,
       items: [
         {
           type: "doc",
           id: "developer-guide/index",
           label: "Overview",
-        },
-        {
-          type: "doc",
-          id: "platforms/index",
-          label: "Platforms",
         },
         {
           type: "doc",
@@ -100,11 +100,6 @@ module.exports = {
         },
         {
           type: "doc",
-          id: "coding-style",
-          label: "Code Style",
-        },
-        {
-          type: "doc",
           id: "developer-guide/testing",
           label: "Testing",
         },
@@ -113,38 +108,18 @@ module.exports = {
           id: "deployment/index",
           label: "Deployment",
         },
-        {
-          type: "doc",
-          id: "developer-guide/git-workflow",
-          label: "Git Workflow",
-        },
-        {
-          type: "doc",
-          id: "developer-guide/contributing",
-          label: "Contributing",
-        },
       ],
     },
     {
       type: "category",
       label: "Design Docs",
-      collapsible: true,
-      collapsed: true,
+      collapsible: false,
+      collapsed: false,
       items: [
         {
           type: "doc",
           id: "design-docs/index",
           label: "Overview",
-        },
-        {
-          type: "doc",
-          id: "core-concepts/index",
-          label: "Core Concepts",
-        },
-        {
-          type: "doc",
-          id: "core-concepts/how-routa-works",
-          label: "How Routa Works",
         },
         {
           type: "doc",
@@ -158,26 +133,16 @@ module.exports = {
         },
         {
           type: "doc",
-          id: "design-docs/golden-rules",
-          label: "Golden Rules",
-        },
-        {
-          type: "doc",
           id: "design-docs/workspace-centric-redesign",
           label: "Workspace-Centric Redesign",
-        },
-        {
-          type: "doc",
-          id: "design-docs/architecture-rule-dsl",
-          label: "Architecture Rule DSL",
         },
       ],
     },
     {
       type: "category",
       label: "Reference",
-      collapsible: true,
-      collapsed: true,
+      collapsible: false,
+      collapsed: false,
       items: [
         {
           type: "doc",
@@ -209,18 +174,13 @@ module.exports = {
     {
       type: "category",
       label: "What's New",
-      collapsible: true,
-      collapsed: true,
+      collapsible: false,
+      collapsed: false,
       items: [
         {
           type: "doc",
           id: "whats-new/index",
           label: "Overview",
-        },
-        {
-          type: "doc",
-          id: "getting-started/changelog",
-          label: "Changelog",
         },
         {
           type: "doc",

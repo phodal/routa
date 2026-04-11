@@ -1,5 +1,6 @@
 ---
 title: What's New
+hide_table_of_contents: true
 ---
 
 # What's New

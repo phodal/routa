@@ -20,7 +20,7 @@ hide_title: true
     <a className="routa-pill" href="/routa/quick-start">Quick Start</a>
     <a className="routa-pill" href="/routa/platforms/desktop">Desktop</a>
     <a className="routa-pill" href="/routa/platforms/cli">CLI</a>
-    <a className="routa-pill" href="/routa/ARCHITECTURE">Architecture</a>
+    <a className="routa-pill" href="/routa/use-routa/common-workflows">Common Workflows</a>
   </div>
 </div>
 

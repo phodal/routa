@@ -40,7 +40,14 @@ module.exports = {
           path: "docs",
           routeBasePath: "/",
           sidebarPath: "./sidebars.js",
-          exclude: ["**/issues/**", "**/blog/**", "**/fitness/**", "**/bdd/**"],
+          exclude: [
+            "**/issues/**",
+            "**/blog/**",
+            "**/fitness/**",
+            "**/bdd/**",
+            "**/RELEASE_CHECKLIST.md",
+            "**/RELEASE_SETUP.md",
+          ],
         },
         blog: {
           path: "./docs/blog",

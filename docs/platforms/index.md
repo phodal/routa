@@ -1,5 +1,6 @@
 ---
 title: Platforms Overview
+hide_table_of_contents: true
 ---
 
 # Platforms
