@@ -162,7 +162,7 @@ jobs:
           done
 
       - name: Download Harness Monitor artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: dist/harness-monitor-artifacts
 
@@ -260,13 +260,13 @@ jobs:
           submodules: true
 
       - name: Download npm artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: harness-monitor-npm-${{ needs.stage.outputs.version }}
           path: dist/npm
 
       - name: Download release manifest
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: routa-release-manifest-harness-monitor
           path: dist/release
@@ -315,7 +315,7 @@ jobs:
         with:
           submodules: true
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: harness-monitor-npm-${{ needs.stage.outputs.version }}
           path: dist/npm
@@ -327,7 +327,7 @@ jobs:
           registry-url: https://registry.npmjs.org/
 
       - name: Download release manifest
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: routa-release-manifest-harness-monitor
           path: dist/release

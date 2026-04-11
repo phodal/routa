@@ -163,7 +163,7 @@ jobs:
           done
 
       - name: Download CLI artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: dist/cli-artifacts
 
@@ -262,13 +262,13 @@ jobs:
           submodules: true
 
       - name: Download npm artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: routa-cli-npm-${{ needs.stage.outputs.version }}
           path: dist/npm
 
       - name: Download release manifest
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: routa-release-manifest-cli
           path: dist/release
@@ -317,7 +317,7 @@ jobs:
         with:
           submodules: true
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: routa-cli-npm-${{ needs.stage.outputs.version }}
           path: dist/npm
@@ -329,7 +329,7 @@ jobs:
           registry-url: https://registry.npmjs.org/
 
       - name: Download release manifest
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: routa-release-manifest-cli
           path: dist/release

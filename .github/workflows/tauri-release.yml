@@ -341,7 +341,7 @@ jobs:
           submodules: true
 
       - name: Download release manifests
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: routa-release-manifest-tauri-*
           path: dist/release/manifests
@@ -377,7 +377,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Download bundled assets
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: tauri-release-assets-*
           path: dist/tauri-release
