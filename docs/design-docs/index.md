@@ -1,27 +1,47 @@
-# Design Docs Index
+# Design Docs
 
-This directory is the canonical home for durable design intent in Routa.js.
+Design docs are the canonical home for durable implementation intent in Routa. Use them when
+you need to understand why the system is shaped the way it is, which invariants matter, and
+which product concepts must survive refactors.
 
-Use these documents for:
-- architectural intent that should outlive a single PR
-- invariants that implementation work must preserve
-- migration status from earlier design material in `.kiro/specs/`
-- links to current plans when a design is actively being executed
+## Start Here
 
-## Current Canonical Docs
+If you only want the highest-signal reading path:
 
-| Document | Purpose | Status |
-|---|---|---|
-| `agentwatch-tui.md` | TUI-first runtime model, information architecture, and keybindings for AgentWatch | active |
-| `architecture-rule-dsl.md` | Cross-language architecture rule model for TypeScript and Rust fitness executors | active |
-| `core-beliefs.md` | Agent-first operating principles for how the repository should store knowledge | active |
-| `execution-modes.md` | Code-backed product meaning for Sessions, Kanban, and Team execution modes | active |
-| `golden-rules.md` | Repository-level rules for documentation, architecture, and maintainability | active |
-| `workspace-centric-redesign.md` | Canonical summary of the workspace-first architecture, shipped surface, and remaining transition debt | active |
+1. Read [Architecture](/ARCHITECTURE) for system boundaries.
+2. Read [ADR Index](/adr) for durable decisions and their context.
+3. Read [Execution Modes](./execution-modes.md) for `Session`, `Kanban`, and `Team`.
+4. Read [Workspace-Centric Redesign](./workspace-centric-redesign.md) for the current product shape and transition debt.
 
-## Imported Or Indexed Legacy Specs
+## Canonical Docs
 
-The repository still contains historical design material under `.kiro/specs/`. Those files are useful, but they are not yet normalized into the `docs/` information architecture.
+### Product Meaning
+
+| Document | Why read it |
+|---|---|
+| [execution-modes.md](./execution-modes.md) | Defines the product meaning of Sessions, Kanban, and Team |
+| [workspace-centric-redesign.md](./workspace-centric-redesign.md) | Summarizes the workspace-first redesign, shipped surface, and remaining transition debt |
+| [core-beliefs.md](./core-beliefs.md) | Captures the agent-first principles behind repository and product decisions |
+
+### Repository And Governance
+
+| Document | Why read it |
+|---|---|
+| [golden-rules.md](./golden-rules.md) | Repository-level rules for architecture, documentation, and maintainability |
+| [architecture-rule-dsl.md](./architecture-rule-dsl.md) | Defines the cross-language architecture rule model for validation and fitness tooling |
+
+### Focused Design Work
+
+| Document | Why read it |
+|---|---|
+| [agentwatch-tui.md](./agentwatch-tui.md) | TUI-first runtime model, information architecture, and keybindings for Routa Watch |
+| [harness-trace-learning-phase2.md](./harness-trace-learning-phase2.md) | Next-step design for trace learning and playbook-driven guidance |
+
+## Legacy Specs And Migration Status
+
+The repository still contains historical design material under `.kiro/specs/`. Those files are
+useful context, but they are not automatically canonical. This section exists so the public
+design-docs area stays curated instead of turning into a raw archive.
 
 | Legacy Spec | Scope | Current Handling |
 |---|---|---|
@@ -34,7 +54,7 @@ The repository still contains historical design material under `.kiro/specs/`. T
 | `.kiro/specs/workspace-centric-redesign/requirements.md` | Workspace-first redesign requirements | indexed only |
 | `.kiro/specs/workspace-centric-redesign/tasks.md` | Workspace-first redesign task breakdown | indexed only |
 
-## Migration Rules
+## Curation Rules
 
 - Migrate only reviewed, still-relevant knowledge from `.kiro/specs/`.
 - Do not copy large historical specs verbatim into `docs/` unless they are being actively normalized.
@@ -43,12 +63,7 @@ The repository still contains historical design material under `.kiro/specs/`. T
 
 ## Related Docs
 
-- [ARCHITECTURE.md](../ARCHITECTURE.md)
-- [Architecture Decision Records](../adr/README.md)
-- [FEATURE_TREE.md](../product-specs/FEATURE_TREE.md)
-- [architecture-rule-dsl.md](./architecture-rule-dsl.md)
-- [agentwatch-tui.md](./agentwatch-tui.md)
-- [core-beliefs.md](./core-beliefs.md)
-- [execution-modes.md](./execution-modes.md)
-- [golden-rules.md](./golden-rules.md)
-- [workspace-centric-redesign.md](./workspace-centric-redesign.md)
+- [Architecture](/ARCHITECTURE)
+- [Architecture Decision Records](/adr)
+- [Product Specs](/product-specs/FEATURE_TREE)
+- [Developer Guide](/developer-guide)
