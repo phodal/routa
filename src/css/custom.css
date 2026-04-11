@@ -298,10 +298,77 @@ a.routa-pill:hover,
 }
 
 @media (max-width: 996px) {
+  .navbar__inner {
+    gap: 0.5rem;
+    min-width: 0;
+  }
+
+  .theme-layout-navbar-left.navbar__items {
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+
+  .theme-layout-navbar-right.navbar__items--right {
+    gap: 0.35rem;
+    min-width: auto;
+    flex: 0 0 auto;
+  }
+
+  .navbar__brand {
+    min-width: 0;
+    margin-right: auto;
+  }
+
+  .navbar__title {
+    font-size: 1.05rem;
+  }
+
+  .navbar__toggle {
+    margin-right: 0;
+  }
+
+  [class*='navbarSearchContainer'] {
+    flex: 0 0 auto;
+    width: auto;
+    margin-left: 0;
+  }
+
+  [class*='searchBarContainer'] {
+    min-width: 0;
+  }
+
+  .navbar__search-input {
+    width: 2.9rem;
+    min-width: 2.9rem;
+    padding-right: 0.75rem;
+    color: transparent;
+    cursor: pointer;
+    transition:
+      width 140ms ease,
+      color 140ms ease,
+      background-color 140ms ease;
+  }
+
+  .navbar__search-input::placeholder {
+    color: transparent;
+  }
+
+  .navbar__search-input:focus,
+  .navbar__search-input:not(:placeholder-shown) {
+    width: min(58vw, 14rem);
+    color: var(--ifm-font-color-base);
+    cursor: text;
+  }
+
+  .navbar__search-input:focus::placeholder {
+    color: var(--ifm-color-emphasis-500);
+  }
+
   /* Announcement bar: control height on mobile so it doesn't eat the first screen */
   .theme-announcement-bar {
     font-size: 0.72rem;
     line-height: 1.3;
+    padding-right: 2.5rem;
   }
 
   /* Constrain the inner text width so it wraps at most two lines */
@@ -310,6 +377,10 @@ a.routa-pill:hover,
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
+  }
+
+  [class*='announcementBarClose'] {
+    right: 0.35rem;
   }
 
   .theme-doc-markdown .routa-hero {
