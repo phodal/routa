@@ -1,5 +1,5 @@
 use crate::db::Db;
-use crate::models::{AttributionConfidence, EntryKind, FileEventRecord};
+use crate::models::{AttributionConfidence, DirtyRepoEntry, EntryKind, FileEventRecord};
 use crate::repo::RepoContext;
 use anyhow::{anyhow, Context, Result};
 use chrono::Utc;
@@ -13,7 +13,7 @@ pub struct Snapshot {
     pub changed_paths: Vec<String>,
 }
 
-pub fn scan_repo(ctx: &RepoContext) -> Result<Vec<(String, String, Option<i64>, EntryKind)>> {
+pub fn scan_repo(ctx: &RepoContext) -> Result<Vec<DirtyRepoEntry>> {
     let output = Command::new("git")
         .arg("-C")
         .arg(&ctx.repo_root)

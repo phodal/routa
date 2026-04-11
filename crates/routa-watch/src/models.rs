@@ -32,6 +32,8 @@ pub enum EntryKind {
     Directory,
 }
 
+pub type DirtyRepoEntry = (String, String, Option<i64>, EntryKind);
+
 impl EntryKind {
     pub fn is_directory(self) -> bool {
         matches!(self, EntryKind::Directory)

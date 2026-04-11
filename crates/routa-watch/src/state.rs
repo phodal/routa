@@ -1,6 +1,7 @@
 use crate::models::{
-    AgentStats, AttributionConfidence, AttributionEvent, DetectedAgent, EntryKind, EventLogEntry,
-    EventSource, FileView, GitEvent, HookEvent, RuntimeMessage, SessionView,
+    AgentStats, AttributionConfidence, AttributionEvent, DetectedAgent, DirtyRepoEntry,
+    EntryKind, EventLogEntry, EventSource, FileView, GitEvent, HookEvent, RuntimeMessage,
+    SessionView,
     DEFAULT_INFERENCE_WINDOW_MS, EVENT_LOG_LIMIT,
 };
 use chrono::Utc;
@@ -149,7 +150,7 @@ impl RuntimeState {
         self.clamp_selection();
     }
 
-    pub fn sync_dirty_files(&mut self, dirty: Vec<(String, String, Option<i64>, EntryKind)>) {
+    pub fn sync_dirty_files(&mut self, dirty: Vec<DirtyRepoEntry>) {
         let now_ms = Utc::now().timestamp_millis();
         let inferred_session_id = self.single_active_session_id(now_ms);
         let seen: BTreeSet<String> = dirty.iter().map(|(p, _, _, _)| p.clone()).collect();
