@@ -157,6 +157,7 @@ Use these defaults:
 
 After Quick Start:
 
+- read [Use Routa](./use-routa)
 - read [Architecture](./ARCHITECTURE)
 - browse [Specialists](./specialists)
 - inspect [Product Specs](./product-specs/FEATURE_TREE)

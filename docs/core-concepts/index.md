@@ -20,6 +20,8 @@ The stable concepts to understand first are:
 
 ## Best Next Reads
 
+- [How Routa Works](/core-concepts/how-routa-works)
+- [Use Routa](/use-routa)
 - [Architecture](/ARCHITECTURE)
 - [Execution Modes](/design-docs/execution-modes)
 - [Architecture Decisions](/adr)

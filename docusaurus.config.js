@@ -66,8 +66,8 @@ module.exports = {
         },
         {
           type: "doc",
-          docId: "core-concepts/index",
-          label: "Core Concepts",
+          docId: "use-routa/index",
+          label: "Use Routa",
           position: "left",
         },
         {
@@ -92,17 +92,6 @@ module.exports = {
           type: "doc",
           docId: "reference/index",
           label: "Reference",
-          position: "left",
-        },
-        {
-          type: "doc",
-          docId: "design-docs/index",
-          label: "Design Docs",
-          position: "left",
-        },
-        {
-          label: "Blog",
-          to: "/blog",
           position: "left",
         },
         {
@@ -168,8 +157,8 @@ module.exports = {
           title: "Learn",
           items: [
             {
-              label: "Core Concepts",
-              to: "/core-concepts",
+              label: "Use Routa",
+              to: "/use-routa",
             },
             {
               label: "Platforms",
@@ -186,6 +175,14 @@ module.exports = {
             {
               label: "Reference",
               to: "/reference",
+            },
+            {
+              label: "Design Docs",
+              to: "/design-docs",
+            },
+            {
+              label: "Blog",
+              to: "/blog",
             },
           ],
         },

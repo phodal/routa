@@ -78,6 +78,10 @@ If you want the shortest install path, read [Quick Start](./quick-start).
     <strong>Core Concepts</strong>
     Workspace, sessions, Kanban, Team, providers, and the product model.
   </a>
+  <a href="./use-routa">
+    <strong>Use Routa</strong>
+    Sessions, Kanban, Team, and the practical mode choices after setup.
+  </a>
   <a href="./platforms">
     <strong>Platforms</strong>
     Desktop, CLI, and Web as separate runtime surfaces and onboarding paths.

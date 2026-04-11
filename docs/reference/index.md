@@ -13,6 +13,7 @@ working with.
 - [Specialists](/specialists)
 - [Release Guide](/release-guide)
 - [Code Style](/coding-style)
+- [Resources](/reference/resources)
 - [CONTRIBUTING.md](https://github.com/phodal/routa/blob/main/CONTRIBUTING.md)
 - [Repository Map](https://github.com/phodal/routa/blob/main/README.md#repository-map)
 - [Git Discipline](https://github.com/phodal/routa/blob/main/AGENTS.md#git-discipline)
