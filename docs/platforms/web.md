@@ -4,14 +4,14 @@ title: Web
 
 # Web
 
-Web is a first-class Routa runtime surface, but it is not the default distribution path for
-most end users.
+Web is a first-class Routa runtime surface when you want browser-based access instead of the
+packaged desktop app.
 
 ## When To Use Web
 
-- local contribution and development
 - self-hosting
-- browser-first access to the same workspace model used by Desktop
+- browser-based access for your own team
+- internal deployment that preserves the same workspace model used by Desktop
 
 ## Run Locally
 
@@ -32,9 +32,9 @@ ROUTA_RUST_BACKEND_URL="http://127.0.0.1:3210" npm run dev
 
 Use Web when you want:
 
-- the browser surface during local development
-- self-hosted deployment instead of the packaged desktop app
-- a contribution workflow against the Next.js runtime
+- the browser surface instead of a packaged desktop app
+- self-hosted deployment for your own team
+- a hosted internal entry point to the same product model
 
 ## Why Web Is Different
 
@@ -45,5 +45,5 @@ your goal is to start using Routa quickly, choose [Desktop](/platforms/desktop) 
 ## Related Docs
 
 - [Quick Start](/quick-start)
-- [Architecture](/ARCHITECTURE)
-- [Release Guide](/release-guide)
+- [Administration](/administration)
+- [Configuration](/configuration)

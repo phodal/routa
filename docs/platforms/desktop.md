@@ -27,7 +27,7 @@ Use this order:
 1. Create a workspace.
 2. Open provider settings and make one provider available.
 3. Attach a repository.
-4. Start with a `Session`.
+4. Start with a `Session` and ask Routa to inspect or plan work in that repository.
 5. Move to `Kanban` when you want decomposition and lane automation.
 
 ## Best Fit
@@ -42,4 +42,4 @@ Choose Desktop when you want:
 
 - [Quick Start](/quick-start)
 - [Configuration](/configuration)
-- [Core Concepts](/core-concepts)
+- [Use Routa](/use-routa)

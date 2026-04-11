@@ -4,7 +4,9 @@ title: Contributing
 
 # Contributing
 
-Use this page as the shortest path for preparing a contribution to Routa.
+This page is only needed if you plan to contribute directly to Routa itself. If you are trying
+to use, configure, or self-host Routa, start with [Quick Start](/quick-start),
+[Configuration](/configuration), or [Administration](/administration) instead.
 
 ## Before You Start
 

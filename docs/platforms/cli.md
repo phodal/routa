@@ -33,7 +33,8 @@ npx -p routa-cli routa --help
 ```bash
 routa --help
 routa --version
-routa -p "Implement a calculator CLI"
+routa -p "Explain the architecture of this repository"
+routa -p "Plan the next refactor for this codebase"
 routa acp runtime-status
 ```
 
@@ -51,11 +52,11 @@ Use CLI when you want:
 Your first CLI setup is working once you can:
 
 - run `routa --help`
-- execute one prompt with `routa -p "..."`
+- execute one prompt against a real repository with `routa -p "..."`
 - inspect runtime state with `routa acp runtime-status`
 
 ## Related Docs
 
 - [Quick Start](/quick-start)
 - [Configuration](/configuration)
-- [Reference](/reference)
+- [Use Routa](/use-routa)

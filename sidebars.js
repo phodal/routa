@@ -75,6 +75,21 @@ module.exports = {
         },
         {
           type: "doc",
+          id: "platforms/index",
+          label: "Platforms",
+        },
+        {
+          type: "doc",
+          id: "configuration/index",
+          label: "Configuration",
+        },
+        {
+          type: "doc",
+          id: "administration/index",
+          label: "Administration",
+        },
+        {
+          type: "doc",
           id: "developer-guide/project-structure",
           label: "Project Structure",
         },
@@ -85,28 +100,8 @@ module.exports = {
         },
         {
           type: "doc",
-          id: "platforms/index",
-          label: "Platforms",
-        },
-        {
-          type: "doc",
-          id: "administration/index",
-          label: "Administration",
-        },
-        {
-          type: "doc",
-          id: "configuration/index",
-          label: "Configuration",
-        },
-        {
-          type: "doc",
           id: "coding-style",
           label: "Code Style",
-        },
-        {
-          type: "doc",
-          id: "developer-guide/git-workflow",
-          label: "Git Workflow",
         },
         {
           type: "doc",
@@ -117,6 +112,11 @@ module.exports = {
           type: "doc",
           id: "deployment/index",
           label: "Deployment",
+        },
+        {
+          type: "doc",
+          id: "developer-guide/git-workflow",
+          label: "Git Workflow",
         },
         {
           type: "doc",

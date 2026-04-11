@@ -16,6 +16,22 @@ module.exports = {
       onBrokenMarkdownLinks: "warn",
     },
   },
+  plugins: [
+    [
+      require.resolve("@easyops-cn/docusaurus-search-local"),
+      {
+        hashed: true,
+        language: ["en"],
+        docsRouteBasePath: "/",
+        docsDir: "docs",
+        blogDir: "docs/blog",
+        blogRouteBasePath: "/blog",
+        indexBlog: true,
+        searchBarShortcutHint: false,
+        searchResultLimits: 8,
+      },
+    ],
+  ],
   presets: [
     [
       "@docusaurus/preset-classic",
@@ -47,7 +63,7 @@ module.exports = {
     announcementBar: {
       id: "routa-docs",
       content:
-        'Routa turns a Kanban board into an execution surface for AI specialists across ACP, MCP, A2A, and AG-UI.',
+        'Routa — workspace-first AI agent coordination across ACP, MCP, A2A &amp; AG-UI.',
       isCloseable: true,
     },
     navbar: {
@@ -76,6 +92,21 @@ module.exports = {
             },
             {
               type: "doc",
+              docId: "platforms/index",
+              label: "Platforms",
+            },
+            {
+              type: "doc",
+              docId: "configuration/index",
+              label: "Configuration",
+            },
+            {
+              type: "doc",
+              docId: "administration/index",
+              label: "Administration",
+            },
+            {
+              type: "doc",
               docId: "developer-guide/project-structure",
               label: "Project Structure",
             },
@@ -91,11 +122,6 @@ module.exports = {
             },
             {
               type: "doc",
-              docId: "developer-guide/git-workflow",
-              label: "Git Workflow",
-            },
-            {
-              type: "doc",
               docId: "developer-guide/testing",
               label: "Testing",
             },
@@ -103,6 +129,11 @@ module.exports = {
               type: "doc",
               docId: "deployment/index",
               label: "Deployment",
+            },
+            {
+              type: "doc",
+              docId: "developer-guide/git-workflow",
+              label: "Git Workflow",
             },
             {
               type: "doc",
@@ -153,20 +184,33 @@ module.exports = {
               href: "https://www.npmjs.com/package/routa-cli",
             },
             {
-              label: "Project Structure",
-              to: "/developer-guide/project-structure",
+              label: "Platforms",
+              to: "/platforms",
             },
             {
-              label: "Architecture",
-              to: "/ARCHITECTURE",
+              label: "Configuration",
+              to: "/configuration",
             },
             {
-              label: "Code Style",
-              to: "/coding-style",
+              label: "Administration",
+              to: "/administration",
             },
             {
-              label: "Git Workflow",
-              to: "/developer-guide/git-workflow",
+              label: "Use Routa",
+              to: "/use-routa",
+            },
+            {
+              label: "What's New",
+              to: "/whats-new",
+            },
+          ],
+        },
+        {
+          title: "Developer Guide",
+          items: [
+            {
+              label: "Overview",
+              to: "/developer-guide",
             },
             {
               label: "Testing",
@@ -186,28 +230,12 @@ module.exports = {
           title: "Learn",
           items: [
             {
-              label: "Developer Guide",
-              to: "/developer-guide",
-            },
-            {
-              label: "Use Routa",
-              to: "/use-routa",
-            },
-            {
-              label: "Platforms",
-              to: "/platforms",
-            },
-            {
               label: "Design Docs",
               to: "/design-docs",
             },
             {
               label: "Reference",
               to: "/reference",
-            },
-            {
-              label: "What's New",
-              to: "/whats-new",
             },
             {
               label: "Blog",

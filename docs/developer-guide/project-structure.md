@@ -4,6 +4,10 @@ title: Project Structure
 
 # Project Structure
 
+This page is for advanced users, self-hosters, and contributors who need to understand how the
+different Routa runtime pieces fit together. If you are just trying to start using Routa, go
+back to [Quick Start](/quick-start) or [Platforms](/platforms).
+
 Routa is a workspace-first multi-agent coordination platform with two main runtime surfaces:
 
 - `Web`: Next.js app and API in `src/`

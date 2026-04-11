@@ -204,6 +204,7 @@
   "devDependencies": {
     "@docusaurus/core": "^3.9.2",
     "@docusaurus/preset-classic": "^3.9.2",
+    "@easyops-cn/docusaurus-search-local": "^0.55.1",
     "@eslint/eslintrc": "^3.3.4",
     "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.58.2",

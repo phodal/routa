@@ -1,40 +1,28 @@
 ---
 slug: /
-title: Routa Docs
+title: Routa
 displayed_sidebar: docsSidebar
 hide_table_of_contents: true
+hide_title: true
 ---
 
-## Routa Overview
+<div className="routa-home">
 
-Routa is a workspace-first multi-agent coordination platform for software delivery. It keeps
-work attached to explicit product objects such as workspaces, sessions, boards, specialists, and
-codebases instead of hiding everything inside one long-running chat.
-
-Routa combines a workspace-first UI, Kanban automation, and protocol bridges across ACP, MCP,
-A2A, and AG-UI so teams can route real implementation work through visible execution surfaces.
-
-## Get Started
-
-Choose the path that matches how you want to start using Routa:
-
-<div className="routa-doc-map">
-  <a href="./platforms/desktop">
-    <strong>Desktop</strong>
-    Recommended for most users. Download the app from GitHub Releases and use the full product
-    surface.
-  </a>
-  <a href="./platforms/cli">
-    <strong>CLI</strong>
-    Best for terminal-first workflows. Install <code>routa-cli</code> and start directly inside a repository.
-  </a>
-  <a href="./platforms/web">
-    <strong>Web</strong>
-    Best for contributors and self-hosters. Run the web/runtime surface from source.
-  </a>
+<div className="routa-hero">
+  <span className="routa-hero__eyebrow">Multi-Agent Coordination Platform</span>
+  <h1 className="routa-hero__title">Routa</h1>
+  <p className="routa-hero__lead">
+    Workspace-first multi-agent coordination for real software delivery.
+    Keep work attached to explicit product objects such as sessions, boards,
+    specialists, and codebases instead of hiding everything inside one long-running chat.
+  </p>
+  <div className="routa-pills">
+    <a className="routa-pill" href="/routa/quick-start">Quick Start</a>
+    <a className="routa-pill" href="/routa/platforms/desktop">Desktop</a>
+    <a className="routa-pill" href="/routa/platforms/cli">CLI</a>
+    <a className="routa-pill" href="/routa/use-routa/common-workflows">Common Workflows</a>
+  </div>
 </div>
-
-If you want the shortest installation path, read [Quick Start](./quick-start).
 
 ## What You Can Do
 
@@ -62,50 +50,33 @@ If you want the shortest installation path, read [Quick Start](./quick-start).
   </div>
 </div>
 
-## Use Routa Everywhere
-
-Routa preserves the same core product model across multiple runtime surfaces:
-
-- `Desktop` for the packaged local-first product
-- `CLI` for prompts, scripting, and runtime inspection
-- `Web` for local contribution and self-hosting
-
-The important concepts stay the same across these surfaces: workspace scope, provider-backed
-execution, and the three main working modes `Session`, `Kanban`, and `Team`.
-
-## Documentation Map
+## Documentation
 
 <div className="routa-doc-map">
-  <a href="./getting-started">
+  <a href="/routa/getting-started">
     <strong>Getting Started</strong>
     The start path: overview, quick start, and changelog entry points.
   </a>
-  <a href="./use-routa">
+  <a href="/routa/use-routa">
     <strong>Use Routa</strong>
     Sessions, Kanban, Team, and the practical mode choices after setup.
   </a>
-  <a href="./developer-guide">
+  <a href="/routa/developer-guide">
     <strong>Developer Guide</strong>
-    Project structure, architecture, code style, testing, deployment, and contributing rules.
+    Platforms, configuration, administration, and the deeper technical context behind Routa.
   </a>
-  <a href="./design-docs">
+  <a href="/routa/design-docs">
     <strong>Design Docs</strong>
     Reviewed design intent, execution modes, and durable implementation reasoning.
   </a>
-  <a href="./reference">
+  <a href="/routa/reference">
     <strong>Reference</strong>
     Product specs, specialists, release process, and lookup-oriented material.
   </a>
-  <a href="./whats-new">
+  <a href="/routa/whats-new">
     <strong>What's New</strong>
     Recent release notes, changelog entry points, and current product updates.
   </a>
 </div>
 
-## Next Steps
-
-- Read [Getting Started](./getting-started) for the first 10 minutes path
-- Read [Use Routa](./use-routa) for Sessions, Kanban, Team, and common workflows
-- Read [Developer Guide](./developer-guide) if you are contributing or operating Routa
-- Read [Design Docs](./design-docs) if you need design intent and deeper product reasoning
-- Read [What's New](./whats-new) for recent release notes and updates
+</div>
