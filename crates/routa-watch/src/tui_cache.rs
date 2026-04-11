@@ -1,3 +1,4 @@
+use super::fitness;
 use super::*;
 use ratatui::text::Text;
 use std::collections::{BTreeMap, BTreeSet};
@@ -47,6 +48,9 @@ enum BackgroundCommand {
         rel_path: String,
         version: i64,
     },
+    RefreshFitness {
+        repo_root: String,
+    },
 }
 
 #[derive(Debug)]
@@ -61,6 +65,9 @@ enum BackgroundResult {
     Facts {
         entry: FileFactsEntry,
     },
+    Fitness {
+        result: Result<fitness::FitnessSnapshot, String>,
+    },
 }
 
 #[derive(Debug, Default)]
@@ -68,6 +75,7 @@ struct PendingCommands {
     stats: Option<PendingStats>,
     detail: Option<PendingDetail>,
     facts: Option<PendingFacts>,
+    fitness: Option<String>,
 }
 
 type PendingStats = (String, Vec<(String, String, i64)>);
@@ -84,6 +92,11 @@ pub(super) struct AppCache {
     pending_preview_key: Option<String>,
     pending_diff_key: Option<String>,
     pending_facts_key: Option<String>,
+    pending_fitness: bool,
+    fitness_snapshot: Option<fitness::FitnessSnapshot>,
+    fitness_error: Option<String>,
+    fitness_last_run_ms: Option<i64>,
+    fitness_is_running: bool,
     worker_tx: Sender<BackgroundCommand>,
     worker_rx: Receiver<BackgroundResult>,
 }
@@ -103,6 +116,11 @@ impl AppCache {
             pending_preview_key: None,
             pending_diff_key: None,
             pending_facts_key: None,
+            pending_fitness: false,
+            fitness_snapshot: None,
+            fitness_error: None,
+            fitness_last_run_ms: None,
+            fitness_is_running: false,
             worker_tx,
             worker_rx,
         }
@@ -132,6 +150,20 @@ impl AppCache {
                 BackgroundResult::Facts { entry } => {
                     self.facts_cache.insert(entry.key.clone(), entry);
                     self.pending_facts_key = None;
+                }
+                BackgroundResult::Fitness { result } => {
+                    self.fitness_is_running = false;
+                    self.fitness_last_run_ms = Some(chrono::Utc::now().timestamp_millis());
+                    match result {
+                        Ok(snapshot) => {
+                            self.fitness_error = None;
+                            self.fitness_snapshot = Some(snapshot);
+                        }
+                        Err(message) => {
+                            self.fitness_error = Some(message);
+                        }
+                    }
+                    self.pending_fitness = false;
                 }
             }
         }
@@ -251,6 +283,38 @@ impl AppCache {
     pub(super) fn file_facts(&self, file: &crate::models::FileView) -> Option<&FileFactsEntry> {
         self.facts_cache
             .get(&facts_cache_key(&file.rel_path, file.last_modified_at_ms))
+    }
+
+    pub(super) fn request_fitness_refresh(&mut self, repo_root: String) {
+        if self.fitness_is_running || self.pending_fitness {
+            self.pending_fitness = true;
+            let _ = self
+                .worker_tx
+                .send(BackgroundCommand::RefreshFitness { repo_root });
+            return;
+        }
+        let _ = self
+            .worker_tx
+            .send(BackgroundCommand::RefreshFitness { repo_root });
+        self.fitness_is_running = true;
+        self.fitness_error = None;
+        self.pending_fitness = true;
+    }
+
+    pub(super) fn is_fitness_running(&self) -> bool {
+        self.fitness_is_running
+    }
+
+    pub(super) fn fitness_snapshot(&self) -> Option<&fitness::FitnessSnapshot> {
+        self.fitness_snapshot.as_ref()
+    }
+
+    pub(super) fn fitness_error(&self) -> Option<&str> {
+        self.fitness_error.as_deref()
+    }
+
+    pub(super) fn fitness_last_run_ms(&self) -> Option<i64> {
+        self.fitness_last_run_ms
     }
 
     pub(super) fn highlighted_detail_text(
@@ -480,6 +544,10 @@ fn background_worker(rx: Receiver<BackgroundCommand>, tx: Sender<BackgroundResul
                 entry: load_file_facts(&repo_root, &rel_path, version),
             });
         }
+        if let Some(repo_root) = pending.fitness.take() {
+            let result = fitness::run_fast_fitness(&repo_root).map_err(|error| error.to_string());
+            let _ = tx.send(BackgroundResult::Fitness { result });
+        }
     }
 }
 
@@ -503,6 +571,9 @@ fn queue_command(pending: &mut PendingCommands, command: BackgroundCommand) {
             version,
         } => {
             pending.facts = Some((repo_root, rel_path, version));
+        }
+        BackgroundCommand::RefreshFitness { repo_root } => {
+            pending.fitness = Some(repo_root);
         }
     }
 }

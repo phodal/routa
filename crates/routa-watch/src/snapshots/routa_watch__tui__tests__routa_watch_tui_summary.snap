@@ -1,5 +1,6 @@
 ---
 source: crates/routa-watch/src/tui_tests.rs
+assertion_line: 403
 expression: "render_snapshot(&state, &mut cache, 120, 28)"
 ---
  RoutaWatch   repo:routa-js  branch:main  agents:2 active:1  dirty:2  unknown:1  synced 2m ago
@@ -14,10 +15,6 @@ expression: "render_snapshot(&state, &mut cache, 120, 28)"
 │                                                                                    ││                                │
 │                                                                                    ││                                │
 │                                                                                    ││                                │
-│                                                                                    ││                                │
-│                                                                                    ││                                │
-│                                                                                    ││                                │
-│                                                                                    ││                                │
 │                                                                                    │└────────────────────────────────┘
 │                                                                                    │┌Details─────────────────────────┐
 │                                                                                    ││tui.rs                          │
@@ -26,7 +23,11 @@ expression: "render_snapshot(&state, &mut cache, 120, 28)"
 │                                                                                    ││changes: ...                    │
 │                                                                                    ││                                │
 │                                                                                    ││                                │
+│                                                                                    │└────────────────────────────────┘
+│                                                                                    │┌Fitness (Entrix Fast)───────────┐
+│                                                                                    ││Health Run: idle (press g       │
+│                                                                                    ││refresh)                        │
 │                                                                                    ││                                │
 │                                                                                    ││                                │
 └────────────────────────────────────────────────────────────────────────────────────┘└────────────────────────────────┘
-Tab focus  ↑↓ select  u unknown  d preview/diff  Pg scroll  f follow:on  T theme  Esc clear  q quit
+Tab focus  ↑↓ select  u unknown  d preview/diff  Pg scroll  f follow:on  T theme  Esc clear  g refresh fitness  q quit

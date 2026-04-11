@@ -1,7 +1,8 @@
+use super::fitness;
 use super::*;
 use crate::state::{FileListMode, FocusPane};
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
-use ratatui::style::{Modifier, Style};
+use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Wrap};
 use std::path::Path;
@@ -114,11 +115,16 @@ fn render_main_area(
             .split(area);
         let lower = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([Constraint::Percentage(56), Constraint::Percentage(44)])
+            .constraints([
+                Constraint::Percentage(34),
+                Constraint::Percentage(33),
+                Constraint::Percentage(33),
+            ])
             .split(split[1]);
         render_files(frame, split[0], state, cache, FileRowDensity::TwoLine);
         render_preview_panel(frame, lower[0], state, cache);
         render_details_panel(frame, lower[1], state, cache);
+        render_fitness_panel(frame, lower[2], state, cache);
         return;
     }
 
@@ -129,11 +135,16 @@ fn render_main_area(
             .split(area);
         let right = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([Constraint::Percentage(60), Constraint::Percentage(40)])
+            .constraints([
+                Constraint::Percentage(45),
+                Constraint::Percentage(30),
+                Constraint::Percentage(25),
+            ])
             .split(columns[1]);
         render_files(frame, columns[0], state, cache, FileRowDensity::SingleLine);
         render_preview_panel(frame, right[0], state, cache);
         render_details_panel(frame, right[1], state, cache);
+        render_fitness_panel(frame, right[2], state, cache);
         return;
     }
 
@@ -149,10 +160,260 @@ fn render_main_area(
         .direction(Direction::Vertical)
         .constraints([Constraint::Percentage(70), Constraint::Percentage(30)])
         .split(columns[1]);
+    let right = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Percentage(60), Constraint::Percentage(40)])
+        .split(columns[2]);
     render_agents_panel(frame, columns[0], state);
     render_files(frame, center[0], state, cache, FileRowDensity::TwoLine);
     render_details_panel(frame, center[1], state, cache);
-    render_preview_panel(frame, columns[2], state, cache);
+    render_preview_panel(frame, right[0], state, cache);
+    render_fitness_panel(frame, right[1], state, cache);
+}
+
+fn render_fitness_panel(frame: &mut Frame, area: Rect, state: &RuntimeState, cache: &AppCache) {
+    let colors = palette(state.theme_mode);
+    let block = panel_block("Fitness (Entrix Fast)", false, colors);
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    let mut lines = Vec::new();
+    if let Some(error) = cache.fitness_error() {
+        lines.push(Line::from(vec![
+            Span::styled("Health Run: ", Style::default().fg(colors.muted)),
+            Span::styled("failed", Style::default().fg(STOPPED)),
+        ]));
+        lines.push(Line::from(vec![Span::styled(
+            error.to_string(),
+            Style::default().fg(colors.text),
+        )]));
+        lines.push(Line::from(""));
+    }
+
+    if let Some(snapshot) = cache.fitness_snapshot() {
+        let score = snapshot.final_score;
+        let score_color = if snapshot.hard_gate_blocked || snapshot.score_blocked {
+            STOPPED
+        } else if score >= 90.0 {
+            ACTIVE
+        } else if score >= 70.0 {
+            INFERRED
+        } else {
+            STOPPED
+        };
+        let status = if snapshot.hard_gate_blocked {
+            "BLOCKED(hard gate)"
+        } else if snapshot.score_blocked {
+            "BLOCKED(score)"
+        } else {
+            "PASS"
+        };
+        let bar_width = inner.width.saturating_sub(36).max(8).min(28) as usize;
+
+        lines.push(Line::from(vec![
+            Span::styled("Score: ", Style::default().fg(colors.muted)),
+            Span::styled(
+                format!("{status} "),
+                Style::default()
+                    .fg(score_color)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(format!("{score:.1}% "), Style::default().fg(score_color)),
+            Span::raw(format!(
+                "({}/{})",
+                fitness::passed_metric_count(snapshot),
+                snapshot.metric_count
+            )),
+            Span::styled(" ", Style::default()),
+            Span::styled(
+                format!("{}ms", snapshot.duration_ms.round() as u64),
+                Style::default().fg(colors.muted),
+            ),
+        ]));
+        lines.push(Line::from(vec![
+            fitness_bar_label(score),
+            Span::raw(" "),
+            render_score_bar(score, bar_width),
+        ]));
+
+        if let Some(last_run_ms) = cache.fitness_last_run_ms() {
+            lines.push(Line::from(vec![
+                Span::styled(
+                    format!("last run: {}", format_ts(last_run_ms)),
+                    Style::default().fg(colors.muted),
+                ),
+                Span::raw("  "),
+                Span::styled(
+                    if snapshot.has_coverage_metric() {
+                        "coverage metric sampled"
+                    } else {
+                        "coverage not sampled in fast set"
+                    },
+                    Style::default().fg(if snapshot.has_coverage_metric() {
+                        INFERRED
+                    } else {
+                        colors.muted
+                    }),
+                ),
+            ]));
+        }
+
+        lines.push(Line::from(""));
+        lines.push(Line::from(vec![Span::styled(
+            "Dimension scores:",
+            Style::default()
+                .fg(colors.text)
+                .add_modifier(Modifier::BOLD),
+        )]));
+        for dim in snapshot.dimensions.iter().take(3) {
+            let dim_bar_width = inner.width.saturating_sub(28).max(8).min(24) as usize;
+            let warning = if dim.hard_gate_failures.is_empty() {
+                String::new()
+            } else {
+                format!("  !{}", dim.hard_gate_failures.join(","))
+            };
+            let mut row = vec![Span::styled(
+                format!("{:>3}%", dim.score.round() as u8),
+                Style::default().fg(score_color_for_value(dim.score)),
+            )];
+            row.push(Span::raw(" "));
+            row.push(Span::styled(
+                format!("{:<10}", truncate_short(&dim.name, 10)),
+                Style::default().fg(colors.text),
+            ));
+            row.push(Span::raw(" "));
+            row.push(Span::styled(
+                format!("w{:>2}", dim.weight),
+                Style::default().fg(colors.muted),
+            ));
+            row.push(Span::raw(" "));
+            row.push(render_score_bar(dim.score, dim_bar_width));
+            if !warning.is_empty() {
+                row.push(Span::styled(warning, Style::default().fg(STOPPED)));
+            }
+            lines.push(Line::from(row));
+            lines.push(Line::from(vec![Span::styled(
+                format!("     {}/{} metrics passed", dim.passed, dim.total),
+                Style::default().fg(colors.muted),
+            )]));
+        }
+
+        lines.push(Line::from(""));
+        lines.push(Line::from(vec![
+            Span::styled("Slowest:", Style::default().fg(colors.text)),
+            Span::raw(" "),
+            Span::styled(
+                fitness::critical_metric_hint(snapshot),
+                Style::default().fg(colors.muted),
+            ),
+        ]));
+        for metric in snapshot.slowest_metrics.iter().take(3) {
+            let mut metric_name = metric.name.clone();
+            if metric_name.is_empty() {
+                metric_name = "<unnamed>".to_string();
+            }
+            lines.push(Line::from(vec![
+                Span::styled(
+                    format!("{:>6.2}", metric.duration_ms),
+                    Style::default().fg(score_color_for_value(snapshot.final_score)),
+                ),
+                Span::raw("ms "),
+                Span::styled(
+                    format!("{:<18}", truncate_short(&metric_name, 18)),
+                    Style::default().fg(colors.text),
+                ),
+                Span::raw(" "),
+                Span::styled(
+                    format!("[{}]", metric.state),
+                    Style::default().fg(metric_color(metric)),
+                ),
+            ]));
+        }
+        if cache.is_fitness_running() {
+            lines.push(Line::from(vec![
+                Span::raw(" "),
+                Span::styled("refresh queued", Style::default().fg(INFERRED)),
+            ]));
+        }
+        frame.render_widget(
+            Paragraph::new(lines)
+                .block(Block::default())
+                .style(Style::default().bg(colors.surface).fg(colors.text))
+                .wrap(Wrap { trim: true }),
+            inner,
+        );
+        return;
+    }
+
+    if cache.is_fitness_running() {
+        lines.push(Line::from(vec![
+            Span::styled("Health Run: ", Style::default().fg(colors.muted)),
+            Span::styled("running...", Style::default().fg(colors.accent)),
+        ]));
+    } else {
+        lines.push(Line::from(vec![
+            Span::styled("Health Run: ", Style::default().fg(colors.muted)),
+            Span::styled("idle", Style::default().fg(colors.accent)),
+            Span::raw(" (press "),
+            Span::styled("g", Style::default().fg(colors.accent)),
+            Span::raw(" refresh)"),
+        ]));
+    }
+    frame.render_widget(
+        Paragraph::new(lines)
+            .block(Block::default())
+            .style(Style::default().bg(colors.surface).fg(colors.text))
+            .wrap(Wrap { trim: true }),
+        inner,
+    );
+}
+
+fn render_score_bar(score: f64, width: usize) -> Span<'static> {
+    let width = width.clamp(6, 30);
+    let filled = ((score / 100.0) * width as f64).round() as usize;
+    let filled = filled.min(width);
+    let empty = width.saturating_sub(filled);
+    let bar = format!("{}{}", "█".repeat(filled), "░".repeat(empty));
+    Span::styled(
+        format!("{bar:>width$}"),
+        Style::default().fg(score_color_for_value(score)),
+    )
+}
+
+fn fitness_bar_label(score: f64) -> Span<'static> {
+    Span::styled(
+        format!("[{score:>5.1}%]"),
+        Style::default().fg(score_color_for_value(score)),
+    )
+}
+
+fn score_color_for_value(score: f64) -> Color {
+    if score >= 90.0 {
+        ACTIVE
+    } else if score >= 70.0 {
+        INFERRED
+    } else {
+        STOPPED
+    }
+}
+
+fn metric_color(metric: &fitness::FitnessMetricSummary) -> Color {
+    if metric.passed {
+        ACTIVE
+    } else if metric.hard_gate {
+        STOPPED
+    } else {
+        INFERRED
+    }
+}
+
+fn truncate_short(value: &str, max_len: usize) -> String {
+    if value.len() <= max_len {
+        value.to_string()
+    } else {
+        let keep = max_len.saturating_sub(3);
+        format!("{}...", &value[..keep])
+    }
 }
 
 fn render_agents_panel(frame: &mut Frame, area: ratatui::layout::Rect, state: &RuntimeState) {
@@ -448,6 +709,8 @@ fn render_footer(frame: &mut Frame, area: ratatui::layout::Rect, state: &Runtime
             Span::styled(" preview  ", Style::default().fg(colors.muted)),
             Span::styled("Pg", Style::default().fg(colors.accent)),
             Span::styled(" scroll  ", Style::default().fg(colors.muted)),
+            Span::styled("g", Style::default().fg(colors.accent)),
+            Span::styled(" refresh fitness  ", Style::default().fg(colors.muted)),
             Span::styled("q", Style::default().fg(colors.accent)),
             Span::styled(" quit", Style::default().fg(colors.muted)),
         ])
@@ -476,6 +739,8 @@ fn render_footer(frame: &mut Frame, area: ratatui::layout::Rect, state: &Runtime
             Span::styled(" theme  ", Style::default().fg(colors.muted)),
             Span::styled("Esc", Style::default().fg(colors.accent)),
             Span::styled(" clear  ", Style::default().fg(colors.muted)),
+            Span::styled("g", Style::default().fg(colors.accent)),
+            Span::styled(" refresh fitness  ", Style::default().fg(colors.muted)),
             Span::styled("q", Style::default().fg(colors.accent)),
             Span::styled(" quit", Style::default().fg(colors.muted)),
         ])

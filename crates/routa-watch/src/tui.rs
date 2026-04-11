@@ -48,6 +48,7 @@ const SESSION_BOOTSTRAP_WINDOW_MS: i64 = 24 * 60 * 60 * 1000;
 const TRANSPORT_REFRESH_MS: u64 = 1200;
 const REPO_STATUS_REFRESH_MS: u64 = 5000;
 const AGENT_SCAN_REFRESH_MS: u64 = 15_000;
+const FITNESS_AUTO_REFRESH_MS: u64 = 10 * 60 * 1000;
 const FALLBACK_SCAN_REFRESH_MS: u64 = 15_000;
 const FALLBACK_SCAN_IDLE_WINDOW_MS: i64 = 15_000;
 
@@ -89,10 +90,12 @@ fn run_loop(terminal: &mut DefaultTerminal, ctx: RepoContext, poll_interval_ms: 
     let mut last_repo_status_refresh =
         Instant::now() - Duration::from_millis(REPO_STATUS_REFRESH_MS);
     let mut last_agent_refresh = Instant::now() - Duration::from_millis(AGENT_SCAN_REFRESH_MS);
+    let mut last_fitness_refresh = Instant::now() - Duration::from_millis(FITNESS_AUTO_REFRESH_MS);
+    cache.request_fitness_refresh(state.repo_root.clone());
 
     loop {
         while event::poll(Duration::from_millis(0)).context("poll terminal events")? {
-            if handle_event(&mut state)? {
+            if handle_event(&mut state, &mut cache)? {
                 return Ok(());
             }
         }
@@ -137,6 +140,10 @@ fn run_loop(terminal: &mut DefaultTerminal, ctx: RepoContext, poll_interval_ms: 
             }
             last_agent_refresh = Instant::now();
         }
+        if last_fitness_refresh.elapsed() >= Duration::from_millis(FITNESS_AUTO_REFRESH_MS) {
+            cache.request_fitness_refresh(state.repo_root.clone());
+            last_fitness_refresh = Instant::now();
+        }
         cache.sync_results();
         cache.warm_visible_files(&state);
         cache.warm_selected_detail(&state);
@@ -144,7 +151,7 @@ fn run_loop(terminal: &mut DefaultTerminal, ctx: RepoContext, poll_interval_ms: 
         terminal.draw(|frame| render(frame, &state, &feed, &mut cache))?;
 
         if event::poll(Duration::from_millis(100)).context("poll terminal events")?
-            && handle_event(&mut state)?
+            && handle_event(&mut state, &mut cache)?
         {
             break;
         }
@@ -152,7 +159,7 @@ fn run_loop(terminal: &mut DefaultTerminal, ctx: RepoContext, poll_interval_ms: 
     Ok(())
 }
 
-fn handle_event(state: &mut RuntimeState) -> Result<bool> {
+fn handle_event(state: &mut RuntimeState, cache: &mut AppCache) -> Result<bool> {
     match event::read().context("read terminal event")? {
         Event::Key(key) => {
             if state.search_active {
@@ -179,6 +186,9 @@ fn handle_event(state: &mut RuntimeState) -> Result<bool> {
                 KeyCode::Char('l') | KeyCode::Right => state.select_next_file(),
                 KeyCode::Esc => state.clear_search(),
                 KeyCode::Char('r') | KeyCode::Char('f') => state.toggle_follow_mode(),
+                KeyCode::Char('g') | KeyCode::Char('G') => {
+                    cache.request_fitness_refresh(state.repo_root.clone());
+                }
                 KeyCode::Char('s') => state.cycle_file_list_mode(),
                 KeyCode::Char('u') => {
                     while !matches!(
@@ -362,6 +372,9 @@ use cache::*;
 
 #[path = "tui_highlight.rs"]
 mod highlight;
+
+#[path = "tui_fitness.rs"]
+mod fitness;
 
 #[path = "tui_render.rs"]
 mod render;
