@@ -1,6 +1,7 @@
 ---
 title: "Issue #314 fix batch completed for harness engineering follow-up"
 date: "2026-04-06"
+kind: progress_note
 status: resolved
 severity: medium
 area: "fitness"

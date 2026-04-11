@@ -1,6 +1,7 @@
 ---
 title: "Issue #286 Docusaurus Documentation Checklist"
 date: "2026-04-04"
+kind: verification_report
 status: resolved
 severity: info
 area: "documentation"

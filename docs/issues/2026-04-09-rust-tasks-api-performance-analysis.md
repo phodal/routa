@@ -1,6 +1,7 @@
 ---
 title: "Rust tasks API performance analysis confirmed similar hot-path issues"
 date: "2026-04-09"
+kind: analysis
 status: resolved
 severity: medium
 area: "backend"
@@ -9,6 +10,9 @@ reported_by: "agent"
 related_issues:
   - "https://github.com/phodal/routa/issues/406"
   - "2026-04-09-next-task-api-head-of-line-blocking.md"
+github_issue: 406
+github_state: "open"
+github_url: "https://github.com/phodal/routa/issues/406"
 resolved_at: "2026-04-11"
 resolution: "Merged into the broader task API performance tracker so Next.js and Rust evidence live under one active issue family."
 ---

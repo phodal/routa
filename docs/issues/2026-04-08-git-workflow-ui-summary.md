@@ -1,6 +1,7 @@
 ---
 title: "Git workflow UI enhancement summary for Kanban file changes"
 date: "2026-04-08"
+kind: progress_note
 status: resolved
 severity: low
 area: "ui"

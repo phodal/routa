@@ -1,6 +1,7 @@
 ---
 title: "Playbook loading and runtime application verification passed"
 date: "2026-04-06"
+kind: verification_report
 status: resolved
 severity: low
 area: "fitness"
