@@ -1260,6 +1260,10 @@ fn render_run_details(
         .map(|handoff| format!("{}  {}", model.next_action, handoff))
         .unwrap_or_else(|| model.next_action.clone());
 
+    if run.is_synthetic_agent_run {
+        return render_process_scan_run_details(state, run, &model, width, colors);
+    }
+
     let mut lines = vec![
         Line::from(Span::styled(
             shorten_path(&run.display_name, width.saturating_sub(4) as usize),
@@ -1435,6 +1439,101 @@ fn render_run_details(
             ),
         ]));
     }
+
+    lines
+}
+
+fn render_process_scan_run_details(
+    state: &RuntimeState,
+    run: &crate::state::SessionListItem,
+    model: &RunOperatorModel,
+    width: u16,
+    colors: UiPalette,
+) -> Vec<Line<'static>> {
+    let workspace_path = shorten_path(&model.workspace_path, width.saturating_sub(18) as usize);
+    let process_cwd = model
+        .process_cwd
+        .as_deref()
+        .map(|path| shorten_path(path, width.saturating_sub(20) as usize))
+        .unwrap_or_else(|| "-".to_string());
+    let run_type = if model.origin_label == "mcp-service" {
+        "MCP service"
+    } else {
+        "process-scan agent"
+    };
+    let guard_text = model
+        .integrity_warning
+        .clone()
+        .unwrap_or_else(|| "no hook-backed session".to_string());
+
+    let mut lines = vec![
+        Line::from(Span::styled(
+            shorten_path(&run.display_name, width.saturating_sub(4) as usize),
+            Style::default()
+                .fg(colors.text)
+                .add_modifier(Modifier::BOLD),
+        )),
+        Line::from(vec![
+            Span::styled(run_type, Style::default().fg(colors.accent)),
+            Span::raw("  "),
+            Span::styled(model.role.as_str(), Style::default().fg(colors.text)),
+            Span::raw("  "),
+            Span::styled(model.origin_label, Style::default().fg(colors.muted)),
+        ]),
+        Line::from(vec![
+            Span::styled("Workspace: ", Style::default().fg(colors.muted)),
+            Span::styled(workspace_path, Style::default().fg(colors.text)),
+        ]),
+        Line::from(vec![
+            Span::styled("Process CWD: ", Style::default().fg(colors.muted)),
+            Span::styled(process_cwd, Style::default().fg(colors.text)),
+        ]),
+        Line::from(vec![
+            Span::styled("Status: ", Style::default().fg(colors.muted)),
+            Span::styled(
+                run.status.to_ascii_lowercase(),
+                Style::default().fg(run_status_color(&run.status)),
+            ),
+        ]),
+    ];
+
+    if let Some(agent) = run
+        .attached_agent_key
+        .as_ref()
+        .and_then(|key| state.detected_agents.iter().find(|agent| &agent.key == key))
+    {
+        lines.push(Line::from(vec![
+            Span::styled("PID: ", Style::default().fg(colors.muted)),
+            Span::styled(agent.pid.to_string(), Style::default().fg(colors.text)),
+            Span::raw("  "),
+            Span::styled("CPU: ", Style::default().fg(colors.muted)),
+            Span::styled(
+                format!("{:.1}%", agent.cpu_percent),
+                Style::default().fg(colors.text),
+            ),
+            Span::raw("  "),
+            Span::styled("Mem: ", Style::default().fg(colors.muted)),
+            Span::styled(
+                format!("{:.0}MB", agent.mem_mb),
+                Style::default().fg(colors.text),
+            ),
+        ]));
+        lines.push(Line::from(vec![
+            Span::styled("Cmd: ", Style::default().fg(colors.muted)),
+            Span::styled(
+                shorten_path(&agent.command, width.saturating_sub(10) as usize),
+                Style::default().fg(colors.text),
+            ),
+        ]));
+    }
+
+    lines.push(Line::from(vec![
+        Span::styled("Guard: ", Style::default().fg(colors.muted)),
+        Span::styled(
+            shorten_path(&guard_text, width.saturating_sub(12) as usize),
+            Style::default().fg(INFERRED),
+        ),
+    ]));
 
     lines
 }
