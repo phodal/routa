@@ -224,6 +224,8 @@ fn handle_event(state: &mut RuntimeState, cache: &mut AppCache) -> Result<bool> 
                     );
                 }
                 KeyCode::Char('s') => state.cycle_file_list_mode(),
+                KeyCode::Char('S') => state.cycle_run_sort_mode(),
+                KeyCode::Char('v') | KeyCode::Char('V') => state.cycle_run_filter_mode(),
                 KeyCode::Char('u') => {
                     while !matches!(
                         state.file_list_mode,
@@ -458,7 +460,7 @@ use cache::*;
 mod highlight;
 
 #[path = "tui_fitness.rs"]
-mod fitness;
+pub(crate) mod fitness;
 
 #[path = "tui_render.rs"]
 mod render;

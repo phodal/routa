@@ -1,5 +1,7 @@
 mod db;
 mod detect;
+#[allow(dead_code)]
+mod domain;
 mod hooks;
 mod ipc;
 mod models;
@@ -87,6 +89,96 @@ enum Command {
         /// Raw args from git hook.
         args: Vec<String>,
     },
+
+    // ── Domain commands (Phase 0 stubs) ────────────────────────────────────
+
+    /// Task management commands.
+    Task {
+        #[command(subcommand)]
+        action: TaskCommand,
+    },
+    /// Run management commands.
+    Run {
+        #[command(subcommand)]
+        action: RunCommand,
+    },
+    /// Workspace management commands.
+    Workspace {
+        #[command(subcommand)]
+        action: WorkspaceCommand,
+    },
+    /// Evaluation commands.
+    Eval {
+        #[command(subcommand)]
+        action: EvalCommand,
+    },
+    /// Policy introspection commands.
+    Policy {
+        #[command(subcommand)]
+        action: PolicyCommand,
+    },
+}
+
+#[derive(Subcommand)]
+enum TaskCommand {
+    /// List all tasks tracked in this repo.
+    List,
+    /// Show details of a task by ID.
+    Show {
+        /// Task ID to inspect.
+        id: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum RunCommand {
+    /// List recent runs.
+    List,
+    /// Show details of a run by ID.
+    Show {
+        /// Run ID to inspect.
+        id: String,
+    },
+    /// Attach to an already-running unmanaged agent session.
+    Attach {
+        /// Session or process identifier to attach to.
+        session: String,
+    },
+    /// Stop / interrupt a managed run.
+    Stop {
+        /// Run ID to stop.
+        id: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum WorkspaceCommand {
+    /// List all workspaces (worktrees) in this repo.
+    List,
+    /// Show details of a workspace by ID.
+    Show {
+        /// Workspace ID to inspect.
+        id: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum EvalCommand {
+    /// Trigger an evaluation run against current dirty files.
+    Run {
+        /// Evaluation mode: fast or full.
+        #[arg(long, default_value = "fast")]
+        mode: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum PolicyCommand {
+    /// Explain the policy that would apply to a given effect class.
+    Explain {
+        /// Effect class to evaluate (e.g. merge, deploy, network_write).
+        effect: String,
+    },
 }
 
 fn main() -> Result<()> {
@@ -143,6 +235,30 @@ fn main() -> Result<()> {
         Command::Serve => {
             let ctx = resolve_runtime(cli.repo.as_deref())?;
             run_serve(&ctx)?;
+        }
+
+        // ── Domain commands ───────────────────────────────────────────────
+        Command::Task { action } => {
+            let ctx = resolve(cli.repo.as_deref(), db_hint.as_deref())?;
+            let db = Db::open(&ctx.db_path)?;
+            handle_task_command(action, &db, &ctx.repo_root.to_string_lossy())?;
+        }
+        Command::Run { action } => {
+            let ctx = resolve(cli.repo.as_deref(), db_hint.as_deref())?;
+            let db = Db::open(&ctx.db_path)?;
+            handle_run_command(action, &db, &ctx.repo_root.to_string_lossy())?;
+        }
+        Command::Workspace { action } => {
+            let ctx = resolve_runtime(cli.repo.as_deref())?;
+            handle_workspace_command(action, &ctx.repo_root.to_string_lossy())?;
+        }
+        Command::Eval { action } => {
+            let ctx = resolve(cli.repo.as_deref(), db_hint.as_deref())?;
+            let db = Db::open(&ctx.db_path)?;
+            handle_eval_command(action, &db, &ctx.repo_root.to_string_lossy())?;
+        }
+        Command::Policy { action } => {
+            handle_policy_command(action)?;
         }
     }
     Ok(())
@@ -416,4 +532,183 @@ fn resolve_path(root: &Path, raw: &str) -> PathBuf {
     } else {
         root.join(candidate)
     }
+}
+
+// ── Domain command handlers (Phase 0 stubs) ──────────────────────────────────
+
+fn handle_task_command(action: TaskCommand, db: &Db, repo_root: &str) -> Result<()> {
+    match action {
+        TaskCommand::List => {
+            let sessions = db.list_active_sessions(repo_root)?;
+            if sessions.is_empty() {
+                println!("No active tasks.");
+                return Ok(());
+            }
+            println!("{:<36}  {:<12}  {:<12}  CWD", "SESSION / TASK", "CLIENT", "STATUS");
+            println!("{}", "-".repeat(90));
+            for (session_id, cwd, _model, _started, _last, client, status, _ended) in &sessions {
+                println!("{:<36}  {:<12}  {:<12}  {}", session_id, client, status, cwd);
+            }
+        }
+        TaskCommand::Show { id } => {
+            let sessions = db.list_active_sessions(repo_root)?;
+            let found = sessions
+                .iter()
+                .find(|(session_id, ..)| session_id == &id);
+            match found {
+                Some((session_id, cwd, model, started_at_ms, _last, client, status, ended)) => {
+                    println!("id:      {session_id}");
+                    println!("client:  {client}");
+                    println!("status:  {status}");
+                    println!("cwd:     {cwd}");
+                    if !model.is_empty() {
+                        println!("model:   {model}");
+                    }
+                    println!(
+                        "started: {}",
+                        chrono::DateTime::from_timestamp_millis(*started_at_ms)
+                            .map(|dt| dt.to_rfc3339())
+                            .unwrap_or_else(|| started_at_ms.to_string())
+                    );
+                    if let Some(ended_ms) = ended {
+                        println!(
+                            "ended:   {}",
+                            chrono::DateTime::from_timestamp_millis(*ended_ms)
+                                .map(|dt| dt.to_rfc3339())
+                                .unwrap_or_else(|| ended_ms.to_string())
+                        );
+                    }
+                }
+                None => println!("Task / session '{id}' not found."),
+            }
+        }
+    }
+    Ok(())
+}
+
+fn handle_run_command(action: RunCommand, db: &Db, repo_root: &str) -> Result<()> {
+    match action {
+        RunCommand::List => {
+            let sessions = db.list_active_sessions(repo_root)?;
+            if sessions.is_empty() {
+                println!("No active runs.");
+                return Ok(());
+            }
+            println!("{:<36}  {:<10}  {:<12}  STATUS", "RUN / SESSION", "MODE", "CLIENT");
+            println!("{}", "-".repeat(80));
+            for (session_id, _cwd, _model, _started, _last, client, status, _ended) in &sessions {
+                println!("{:<36}  {:<10}  {:<12}  {}", session_id, "unmanaged", client, status);
+            }
+        }
+        RunCommand::Show { id } => {
+            let sessions = db.list_active_sessions(repo_root)?;
+            let found = sessions
+                .iter()
+                .find(|(session_id, ..)| session_id == &id);
+            match found {
+                Some((session_id, cwd, model, _started, _last, client, status, _ended)) => {
+                    println!("run_id:  {session_id}");
+                    println!("mode:    unmanaged");
+                    println!("client:  {client}");
+                    println!("status:  {status}");
+                    println!("cwd:     {cwd}");
+                    if !model.is_empty() {
+                        println!("model:   {model}");
+                    }
+                }
+                None => println!("Run '{id}' not found."),
+            }
+        }
+        RunCommand::Attach { session } => {
+            println!("Attaching observer to session: {session}");
+            println!("(Managed attachment is a Phase 3 capability.)");
+        }
+        RunCommand::Stop { id } => {
+            println!("Stop requested for run: {id}");
+            println!("(Managed stop/interrupt is a Phase 3 capability.)");
+        }
+    }
+    Ok(())
+}
+
+fn handle_workspace_command(action: WorkspaceCommand, repo_root: &str) -> Result<()> {
+    match action {
+        WorkspaceCommand::List => {
+            let output = std::process::Command::new("git")
+                .arg("-C")
+                .arg(repo_root)
+                .args(["worktree", "list", "--porcelain"])
+                .output();
+            match output {
+                Ok(out) if out.status.success() => {
+                    print!("{}", String::from_utf8_lossy(&out.stdout));
+                }
+                _ => {
+                    println!("worktree: {repo_root} (main)");
+                }
+            }
+        }
+        WorkspaceCommand::Show { id } => {
+            println!("Workspace: {id}");
+            println!("(Detailed workspace tracking is a Phase 0/1 capability.)");
+        }
+    }
+    Ok(())
+}
+
+fn handle_eval_command(action: EvalCommand, _db: &Db, repo_root: &str) -> Result<()> {
+    match action {
+        EvalCommand::Run { mode } => {
+            println!("Triggering eval in mode: {mode}");
+            println!("repo: {repo_root}");
+            println!("(Structured eval output via EvalSnapshot is a Phase 1 capability.)");
+            println!("Tip: run `entrix run --tier {}` directly for now.", mode);
+        }
+    }
+    Ok(())
+}
+
+fn handle_policy_command(action: PolicyCommand) -> Result<()> {
+    match action {
+        PolicyCommand::Explain { effect } => {
+            use crate::domain::policy::{EffectClass, PolicyDecisionKind};
+            let effect_class = match effect.as_str() {
+                "read_only" => EffectClass::ReadOnly,
+                "local_write" => EffectClass::LocalWrite,
+                "repo_write" => EffectClass::RepoWrite,
+                "git_write" => EffectClass::GitWrite,
+                "network_read" => EffectClass::NetworkRead,
+                "network_write" => EffectClass::NetworkWrite,
+                "secret_access" => EffectClass::SecretAccess,
+                "pr_create" => EffectClass::PrCreate,
+                "merge" => EffectClass::Merge,
+                "deploy" => EffectClass::Deploy,
+                "prod_write" => EffectClass::ProdWrite,
+                other => {
+                    println!("Unknown effect class: '{other}'");
+                    println!("Known classes: read_only, local_write, repo_write, git_write,");
+                    println!("  network_read, network_write, secret_access, pr_create,");
+                    println!("  merge, deploy, prod_write");
+                    return Ok(());
+                }
+            };
+            let decision = if effect_class.requires_explicit_allow() {
+                PolicyDecisionKind::RequireApproval
+            } else {
+                PolicyDecisionKind::Allow
+            };
+            println!("effect:   {}", effect_class.as_str());
+            println!("decision: {}", decision.as_str());
+            println!("blocking: {}", decision.is_blocking());
+            println!(
+                "note:     {}",
+                if effect_class.requires_explicit_allow() {
+                    "High-impact effect — requires explicit allow or user approval."
+                } else {
+                    "Low-impact effect — allowed by default."
+                }
+            );
+        }
+    }
+    Ok(())
 }

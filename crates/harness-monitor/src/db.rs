@@ -108,6 +108,22 @@ impl Db {
         CREATE INDEX IF NOT EXISTS idx_file_events_repo ON file_events (repo_root, rel_path, observed_at_ms DESC);
         CREATE INDEX IF NOT EXISTS idx_file_state_dirty ON file_state (repo_root, is_dirty);
         CREATE INDEX IF NOT EXISTS idx_git_events_repo ON git_events (repo_root, observed_at_ms DESC);
+
+        CREATE TABLE IF NOT EXISTS eval_snapshots (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            repo_root TEXT NOT NULL,
+            run_id TEXT,
+            mode TEXT NOT NULL,
+            overall_score REAL NOT NULL,
+            hard_gate_blocked INTEGER NOT NULL DEFAULT 0,
+            score_blocked INTEGER NOT NULL DEFAULT 0,
+            evaluated_at_ms INTEGER NOT NULL,
+            duration_ms REAL NOT NULL DEFAULT 0,
+            payload_json TEXT NOT NULL DEFAULT '{}'
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_eval_snapshots_repo ON eval_snapshots (repo_root, evaluated_at_ms DESC);
+        CREATE INDEX IF NOT EXISTS idx_eval_snapshots_run ON eval_snapshots (run_id, evaluated_at_ms DESC);
         "#;
         self.conn
             .execute_batch(schema)
@@ -703,5 +719,139 @@ impl Db {
             .optional()
             .context("query latest head")?;
         Ok(json!({ "latest_head": head }))
+    }
+
+    /// Persist an EvalSnapshot for later querying and trend display.
+    pub fn insert_eval_snapshot(
+        &self,
+        repo_root: &str,
+        snapshot: &crate::domain::eval::EvalSnapshot,
+    ) -> Result<()> {
+        let payload = serde_json::to_string(snapshot).unwrap_or_default();
+        self.conn.execute(
+            "INSERT INTO eval_snapshots (repo_root, run_id, mode, overall_score, hard_gate_blocked, score_blocked, evaluated_at_ms, duration_ms, payload_json)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            params![
+                repo_root,
+                snapshot.run_id.as_ref().map(|id| id.0.as_str()),
+                snapshot.mode.as_str(),
+                snapshot.overall_score as f64,
+                snapshot.hard_gate_blocked as i32,
+                snapshot.score_blocked as i32,
+                snapshot.evaluated_at_ms,
+                snapshot.duration_ms,
+                payload,
+            ],
+        ).context("insert eval snapshot")?;
+        Ok(())
+    }
+
+    /// Load the most recent eval snapshots for a repo.
+    pub fn list_eval_snapshots(
+        &self,
+        repo_root: &str,
+        limit: usize,
+    ) -> Result<Vec<crate::domain::eval::EvalSnapshot>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT payload_json FROM eval_snapshots WHERE repo_root = ?1 ORDER BY evaluated_at_ms DESC LIMIT ?2",
+        ).context("prepare eval query")?;
+        let rows = stmt
+            .query_map(params![repo_root, limit as i64], |row| {
+                row.get::<_, String>(0)
+            })
+            .context("query eval snapshots")?;
+        let mut out = Vec::new();
+        for row in rows {
+            let json_str = row.context("read eval row")?;
+            if let Ok(snap) = serde_json::from_str(&json_str) {
+                out.push(snap);
+            }
+        }
+        Ok(out)
+    }
+
+    /// Load eval snapshots for a specific run.
+    pub fn list_eval_snapshots_for_run(
+        &self,
+        run_id: &str,
+        limit: usize,
+    ) -> Result<Vec<crate::domain::eval::EvalSnapshot>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT payload_json FROM eval_snapshots WHERE run_id = ?1 ORDER BY evaluated_at_ms DESC LIMIT ?2",
+        ).context("prepare eval run query")?;
+        let rows = stmt
+            .query_map(params![run_id, limit as i64], |row| {
+                row.get::<_, String>(0)
+            })
+            .context("query eval snapshots for run")?;
+        let mut out = Vec::new();
+        for row in rows {
+            let json_str = row.context("read eval row")?;
+            if let Ok(snap) = serde_json::from_str(&json_str) {
+                out.push(snap);
+            }
+        }
+        Ok(out)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::eval::{EvalMode, EvalSnapshot};
+    use crate::domain::ids::RunId;
+    use std::path::PathBuf;
+    use tempfile::TempDir;
+
+    fn temp_db() -> (TempDir, Db) {
+        let dir = TempDir::new().unwrap();
+        let db = Db::open(&dir.path().join("test.db")).unwrap();
+        (dir, db)
+    }
+
+    #[test]
+    fn eval_snapshot_roundtrip() {
+        let (_dir, db) = temp_db();
+        let snap = EvalSnapshot {
+            run_id: Some(RunId("run-1".into())),
+            mode: EvalMode::Fast,
+            overall_score: 87.5,
+            hard_gate_blocked: false,
+            score_blocked: false,
+            dimensions: vec![],
+            evidence: vec![],
+            recommendations: vec![],
+            evaluated_at_ms: 1000,
+            duration_ms: 42.0,
+        };
+        db.insert_eval_snapshot("/repo", &snap).unwrap();
+        let loaded = db.list_eval_snapshots("/repo", 10).unwrap();
+        assert_eq!(loaded.len(), 1);
+        assert_eq!(loaded[0].overall_score, 87.5);
+        assert_eq!(loaded[0].run_id.as_ref().unwrap().0, "run-1");
+    }
+
+    #[test]
+    fn eval_snapshots_by_run() {
+        let (_dir, db) = temp_db();
+        for i in 0..3 {
+            let snap = EvalSnapshot {
+                run_id: Some(RunId("run-x".into())),
+                mode: EvalMode::Fast,
+                overall_score: 80.0 + i as f32,
+                hard_gate_blocked: false,
+                score_blocked: false,
+                dimensions: vec![],
+                evidence: vec![],
+                recommendations: vec![],
+                evaluated_at_ms: 1000 + i,
+                duration_ms: 10.0,
+            };
+            db.insert_eval_snapshot("/repo", &snap).unwrap();
+        }
+        let loaded = db.list_eval_snapshots_for_run("run-x", 10).unwrap();
+        assert_eq!(loaded.len(), 3);
+        // Most recent first
+        assert!(loaded[0].overall_score > loaded[2].overall_score);
     }
 }

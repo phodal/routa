@@ -415,6 +415,13 @@ fn event_is_file_mutating(event: &str, client: &HookClient, tool_name: Option<&s
     ) {
         return match client {
             HookClient::Claude | HookClient::Codex => is_edit_like_tool(tool_name),
+            HookClient::Cursor
+            | HookClient::Aider
+            | HookClient::Gemini
+            | HookClient::Copilot
+            | HookClient::Qoder
+            | HookClient::Auggie
+            | HookClient::Kiro => is_edit_like_tool(tool_name),
             HookClient::Unknown => false,
         };
     }

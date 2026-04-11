@@ -32,6 +32,8 @@ fn sample_state() -> RuntimeState {
                 .into_iter()
                 .collect(),
             last_turn_id: Some("turn-1".to_string()),
+            last_event_name: Some("PostToolUse".to_string()),
+            last_tool_name: Some("Write".to_string()),
         },
     );
     sessions.insert(
@@ -52,6 +54,8 @@ fn sample_state() -> RuntimeState {
                 .into_iter()
                 .collect(),
             last_turn_id: Some("turn-2".to_string()),
+            last_event_name: Some("UserPromptSubmit".to_string()),
+            last_tool_name: None,
         },
     );
 
@@ -454,6 +458,17 @@ fn tui_snapshot_summary_mode() {
 }
 
 #[test]
+fn tui_snapshot_full_runs_mode() {
+    let mut state = sample_state();
+    state.focus = FocusPane::Runs;
+    let mut cache = sample_cache(&state);
+    insta::assert_snapshot!(
+        "routa_watch_tui_full_runs",
+        render_snapshot(&state, &mut cache, 180, 28)
+    );
+}
+
+#[test]
 fn tui_snapshot_search_mode() {
     let mut state = sample_state();
     state.search_query = "route.ts".to_string();
@@ -552,6 +567,86 @@ fn detected_agents_attach_to_session_when_match_is_unique() {
     assert_eq!(session.agent_summary.as_deref(), Some("agent codex#4211"));
     assert_eq!(state.unmatched_agents().len(), 1);
     assert_eq!(state.unmatched_agents()[0].name, "Claude");
+}
+
+#[test]
+fn run_filter_attention_keeps_unknown_review_bucket() {
+    let mut state = sample_state();
+    state.run_filter_mode = crate::state::RunFilterMode::Attention;
+    state.refresh_views();
+
+    let runs = state.runs();
+    assert!(runs.iter().any(|run| run.session_id == UNKNOWN_SESSION_ID));
+    assert!(runs.iter().all(|run| {
+        run.is_unknown_bucket
+            || run.unknown_count > 0
+            || matches!(run.status.as_str(), "idle" | "unknown" | "stopped" | "ended")
+    }));
+}
+
+#[test]
+fn run_sort_by_name_orders_named_runs_alphabetically() {
+    let mut state = sample_state();
+    state.run_sort_mode = crate::state::RunSortMode::Name;
+    state.refresh_views();
+
+    let runs = state.runs();
+    assert_eq!(runs.first().map(|run| run.display_name.as_str()), Some("impl-buddy"));
+    assert_eq!(runs.get(1).map(|run| run.display_name.as_str()), Some("test-master"));
+}
+
+#[test]
+fn unmatched_repo_local_agents_become_synthetic_runs() {
+    let now = chrono::Utc::now().timestamp_millis();
+    let mut state = RuntimeState::new(
+        "/tmp/project".to_string(),
+        "routa-js".to_string(),
+        "main".to_string(),
+    );
+    state.last_refresh_at_ms = now;
+    state.sync_dirty_files(vec![(
+        "crates/harness-monitor/src/detect.rs".to_string(),
+        "modify".to_string(),
+        Some(now),
+        EntryKind::File,
+    )]);
+    state.set_detected_agents(vec![
+        DetectedAgent {
+            key: "codex:5297".to_string(),
+            name: "Codex".to_string(),
+            vendor: "OpenAI".to_string(),
+            icon: "◈".to_string(),
+            pid: 5297,
+            cwd: Some("/tmp/project".to_string()),
+            cpu_percent: 0.0,
+            mem_mb: 143.0,
+            uptime_seconds: 1_000,
+            status: "IDLE".to_string(),
+            confidence: 75,
+            project: "project".to_string(),
+            command: "codex".to_string(),
+        },
+        DetectedAgent {
+            key: "claude:19765".to_string(),
+            name: "Claude".to_string(),
+            vendor: "Anthropic".to_string(),
+            icon: "◆".to_string(),
+            pid: 19_765,
+            cwd: Some("/tmp/project".to_string()),
+            cpu_percent: 0.0,
+            mem_mb: 274.0,
+            uptime_seconds: 2_000,
+            status: "IDLE".to_string(),
+            confidence: 75,
+            project: "project".to_string(),
+            command: "claude".to_string(),
+        },
+    ]);
+
+    let runs = state.runs();
+    assert!(runs.iter().any(|run| run.is_synthetic_agent_run && run.display_name == "Codex#5297"));
+    assert!(runs.iter().any(|run| run.is_synthetic_agent_run && run.display_name == "Claude#19765"));
+    assert!(runs.iter().any(|run| run.session_id == UNKNOWN_SESSION_ID));
 }
 
 #[test]

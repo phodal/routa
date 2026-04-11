@@ -164,7 +164,14 @@ fn render_main_area(
         .direction(Direction::Vertical)
         .constraints([Constraint::Percentage(60), Constraint::Percentage(40)])
         .split(columns[2]);
-    render_agents_panel(frame, columns[0], state);
+    // Left column: Runs pane (Phase 0: list sessions as unmanaged runs).
+    // Agents widget is embedded as the bottom sub-panel inside Runs for space efficiency.
+    let left_split = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Percentage(60), Constraint::Percentage(40)])
+        .split(columns[0]);
+    render_runs_panel(frame, left_split[0], state);
+    render_agents_panel(frame, left_split[1], state);
     render_files(frame, center[0], state, cache, FileRowDensity::TwoLine);
     render_details_panel(frame, center[1], state, cache);
     render_preview_panel(frame, right[0], state, cache);
@@ -579,6 +586,199 @@ fn render_agents_panel(frame: &mut Frame, area: ratatui::layout::Rect, state: &R
     );
 }
 
+/// Renders the Runs pane — presents active sessions through the Run/Task vocabulary.
+///
+/// In Phase 0 every session is an **unmanaged run**. The pane shows role,
+/// mode, client, file attribution summary, and eval-readiness. When managed
+/// mode is implemented (Phase 3) this will also show managed runs.
+fn render_runs_panel(frame: &mut Frame, area: ratatui::layout::Rect, state: &RuntimeState) {
+    let colors = palette(state.theme_mode);
+    let focused = state.focus == FocusPane::Runs;
+    let title = if focused { "Runs [Tab]" } else { "Runs" };
+    let outer_block = panel_block(title, focused, colors);
+    let inner = outer_block.inner(area);
+    frame.render_widget(outer_block, area);
+
+    let sessions = state.runs();
+    let worktrees = state.worktree_count.unwrap_or(1);
+
+    // Header summary line
+    let split = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Length(2), Constraint::Min(1)])
+        .split(inner);
+
+    let active_runs = sessions.iter().filter(|s| s.status == "active").count();
+    let summary_line = Line::from(vec![
+        Span::styled(
+            format!(" {} active", active_runs),
+            Style::default().fg(if active_runs > 0 { ACTIVE } else { colors.muted }),
+        ),
+        Span::styled(
+            format!("  {} total", sessions.len()),
+            Style::default().fg(colors.text),
+        ),
+        Span::styled(
+            format!("  {} worktree(s)", worktrees),
+            Style::default().fg(colors.muted),
+        ),
+        Span::styled("  mode:", Style::default().fg(colors.muted)),
+        Span::styled("unmanaged", Style::default().fg(colors.accent)),
+    ]);
+    let visible_height = split[1].height as usize;
+    let start = run_window_start(sessions.len(), state.selected_run, visible_height.max(1));
+    let end = (start + visible_height).min(sessions.len());
+    let progress_text = if sessions.is_empty() {
+        "0/0".to_string()
+    } else {
+        format!("{}-{}/{}", start + 1, end, sessions.len())
+    };
+    let controls_line = Line::from(vec![
+        Span::styled(" filter:", Style::default().fg(colors.muted)),
+        Span::styled(
+            state.run_filter_mode.label(),
+            Style::default().fg(colors.accent),
+        ),
+        Span::styled("  sort:", Style::default().fg(colors.muted)),
+        Span::styled(
+            state.run_sort_mode.label(),
+            Style::default().fg(colors.accent),
+        ),
+        Span::styled("  view:", Style::default().fg(colors.muted)),
+        Span::styled(progress_text, Style::default().fg(colors.text)),
+    ]);
+    frame.render_widget(
+        Paragraph::new(vec![summary_line, controls_line])
+            .style(Style::default().bg(colors.surface)),
+        split[0],
+    );
+
+    // Run rows
+    let items: Vec<ListItem> = sessions[start..end]
+        .iter()
+        .enumerate()
+        .map(|(idx, session)| {
+            let absolute_idx = start + idx;
+            let selected = absolute_idx == state.selected_run && focused;
+            let bg = if selected {
+                colors.selection_focus
+            } else {
+                colors.surface
+            };
+
+            let status_color = run_status_color(&session.status);
+            let icon = crate::models::HookClient::from_str(&session.client).icon();
+            let run_name = if session.is_unknown_bucket {
+                "unattributed".to_string()
+            } else {
+                session.display_name.clone()
+            };
+            let run_label_width = split[1].width.saturating_sub(18) as usize;
+            let event_label = match (&session.last_event_name, &session.last_tool_name) {
+                (Some(event), Some(tool)) if !tool.is_empty() => format!("{event}/{tool}"),
+                (Some(event), _) => event.clone(),
+                _ => "-".to_string(),
+            };
+
+            let primary = Line::from(vec![
+                Span::styled(
+                    if selected { "▶ " } else { "  " },
+                    Style::default().fg(colors.accent).bg(bg),
+                ),
+                Span::styled(
+                    format!(
+                        "{} {}",
+                        icon,
+                        pad_right(&shorten_path(&run_name, run_label_width.max(12)), run_label_width)
+                    ),
+                    Style::default()
+                        .fg(if session.is_unknown_bucket {
+                            colors.muted
+                        } else {
+                            colors.text
+                        })
+                        .bg(bg)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(
+                    format!(" {}", session.status),
+                    Style::default().fg(status_color).bg(bg),
+                ),
+                Span::styled(
+                    format!("  {}", pad_left(&time_ago(session.last_seen_at_ms), 4)),
+                    Style::default().fg(colors.muted).bg(bg),
+                ),
+            ]);
+            let secondary = Line::from(vec![
+                Span::styled(
+                    format!(
+                        "  {}  files:{}  e/i/?:{}/{}/{}",
+                        session.client,
+                        session.touched_files_count,
+                        session.exact_count,
+                        session.inferred_count,
+                        session.unknown_count
+                    ),
+                    Style::default().fg(colors.muted).bg(bg),
+                ),
+                if !event_label.is_empty() && event_label != "-" {
+                    Span::styled(
+                        format!("  {}", shorten_path(&event_label, 18)),
+                        Style::default().fg(colors.accent).bg(bg),
+                    )
+                } else {
+                    Span::styled("", Style::default().bg(bg))
+                },
+                if let Some(agent_summary) = &session.agent_summary {
+                    Span::styled(
+                        format!("  {}", shorten_path(agent_summary, 18)),
+                        Style::default()
+                            .fg(if session.unknown_count > 0 {
+                                INFERRED
+                            } else {
+                                colors.muted
+                            })
+                            .bg(bg),
+                    )
+                } else {
+                    Span::styled("", Style::default().bg(bg))
+                },
+            ]);
+            ListItem::new(vec![primary, secondary])
+        })
+        .collect();
+
+    if items.is_empty() {
+        frame.render_widget(
+            Paragraph::new(Line::from(vec![Span::styled(
+                " No active runs. Start an agent or use `harness-monitor hook` to register one.",
+                Style::default().fg(colors.muted),
+            )]))
+            .wrap(Wrap { trim: true })
+            .style(Style::default().bg(colors.surface)),
+            split[1],
+        );
+    } else {
+        frame.render_widget(
+            List::new(items).style(Style::default().bg(colors.surface)),
+            split[1],
+        );
+    }
+}
+
+fn run_window_start(total: usize, selected: usize, visible: usize) -> usize {
+    if total <= visible {
+        return 0;
+    }
+    // Rows per item = 2 (primary + secondary line)
+    let items_visible = (visible / 2).max(1);
+    if selected < items_visible {
+        0
+    } else {
+        (selected - items_visible + 1).min(total.saturating_sub(items_visible))
+    }
+}
+
 fn render_files(
     frame: &mut Frame,
     area: ratatui::layout::Rect,
@@ -666,6 +866,19 @@ fn render_files(
 
 fn render_details_panel(frame: &mut Frame, area: Rect, state: &RuntimeState, cache: &AppCache) {
     let colors = palette(state.theme_mode);
+    if state.focus == FocusPane::Runs {
+        let block = panel_block("Run Details", false, colors);
+        let lines = render_run_details(state, area.width, colors);
+        frame.render_widget(
+            Paragraph::new(lines)
+                .block(block)
+                .style(Style::default().bg(colors.surface).fg(colors.text))
+                .wrap(Wrap { trim: true }),
+            area,
+        );
+        return;
+    }
+
     let mut lines = Vec::new();
     if let Some(file) = state.selected_file() {
         let (file_name, parent_dir) = split_display_path(file);
@@ -864,6 +1077,10 @@ fn render_footer(frame: &mut Frame, area: ratatui::layout::Rect, state: &Runtime
         Line::from(vec![
             Span::styled("↑↓", Style::default().fg(colors.accent)),
             Span::styled(" select  ", Style::default().fg(colors.muted)),
+            Span::styled("S", Style::default().fg(colors.accent)),
+            Span::styled(" run sort  ", Style::default().fg(colors.muted)),
+            Span::styled("v", Style::default().fg(colors.accent)),
+            Span::styled(" run filter  ", Style::default().fg(colors.muted)),
             Span::styled("u", Style::default().fg(colors.accent)),
             Span::styled(" unknown  ", Style::default().fg(colors.muted)),
             Span::styled("d", Style::default().fg(colors.accent)),
@@ -880,9 +1097,13 @@ fn render_footer(frame: &mut Frame, area: ratatui::layout::Rect, state: &Runtime
     } else {
         Line::from(vec![
             Span::styled("Tab", Style::default().fg(colors.accent)),
-            Span::styled(" focus  ", Style::default().fg(colors.muted)),
+            Span::styled(" Runs/Files/Detail/Fitness  ", Style::default().fg(colors.muted)),
             Span::styled("↑↓", Style::default().fg(colors.accent)),
             Span::styled(" select  ", Style::default().fg(colors.muted)),
+            Span::styled("S", Style::default().fg(colors.accent)),
+            Span::styled(" run sort  ", Style::default().fg(colors.muted)),
+            Span::styled("v", Style::default().fg(colors.accent)),
+            Span::styled(" run filter  ", Style::default().fg(colors.muted)),
             Span::styled("u", Style::default().fg(colors.accent)),
             Span::styled(" unknown  ", Style::default().fg(colors.muted)),
             Span::styled("d", Style::default().fg(colors.accent)),
@@ -954,6 +1175,220 @@ fn render_agent_stats_line(state: &RuntimeState, colors: UiPalette) -> Line<'sta
         Span::raw("  "),
         Span::styled(vendors, Style::default().fg(colors.muted)),
     ])
+}
+
+fn render_run_details(state: &RuntimeState, width: u16, colors: UiPalette) -> Vec<Line<'static>> {
+    let Some(run) = state.selected_run_item() else {
+        return vec![Line::from(Span::styled(
+            "No run selected",
+            Style::default().fg(colors.muted),
+        ))];
+    };
+
+    if run.is_synthetic_agent_run {
+        return render_synthetic_run_details(state, run, width, colors);
+    }
+
+    let mut lines = vec![
+        Line::from(Span::styled(
+            shorten_path(&run.display_name, width.saturating_sub(4) as usize),
+            Style::default()
+                .fg(colors.text)
+                .add_modifier(Modifier::BOLD),
+        )),
+        Line::from(Span::styled(
+            run.session_id.clone(),
+            Style::default().fg(colors.muted),
+        )),
+        Line::from(vec![
+            Span::styled("Client: ", Style::default().fg(colors.muted)),
+            Span::styled(run.client.clone(), Style::default().fg(colors.text)),
+            Span::raw("  "),
+            Span::styled("Mode: ", Style::default().fg(colors.muted)),
+            Span::styled("unmanaged", Style::default().fg(colors.accent)),
+        ]),
+        Line::from(vec![
+            Span::styled("Status: ", Style::default().fg(colors.muted)),
+            Span::styled(run.status.clone(), Style::default().fg(run_status_color(&run.status))),
+            Span::raw("  "),
+            Span::styled("Seen: ", Style::default().fg(colors.muted)),
+            Span::styled(time_ago(run.last_seen_at_ms), Style::default().fg(colors.text)),
+        ]),
+        Line::from(vec![
+            Span::styled("Started: ", Style::default().fg(colors.muted)),
+            Span::styled(format_ts(run.started_at_ms), Style::default().fg(colors.text)),
+            Span::raw("  "),
+            Span::styled("Files: ", Style::default().fg(colors.muted)),
+            Span::styled(
+                run.touched_files_count.to_string(),
+                Style::default().fg(colors.accent),
+            ),
+        ]),
+        Line::from(vec![
+            Span::styled("Attribution: ", Style::default().fg(colors.muted)),
+            Span::styled(
+                format!("{}/{}/{}", run.exact_count, run.inferred_count, run.unknown_count),
+                Style::default().fg(colors.text),
+            ),
+            Span::raw("  "),
+            Span::styled("Sort: ", Style::default().fg(colors.muted)),
+            Span::styled(state.run_sort_mode.label(), Style::default().fg(colors.accent)),
+        ]),
+    ];
+
+    if let Some(model) = &run.model {
+        lines.push(Line::from(vec![
+            Span::styled("Model: ", Style::default().fg(colors.muted)),
+            Span::styled(
+                shorten_path(model, width.saturating_sub(12) as usize),
+                Style::default().fg(colors.text),
+            ),
+        ]));
+    }
+
+    if let Some(summary) = &run.agent_summary {
+        lines.push(Line::from(vec![
+            Span::styled("Agents: ", Style::default().fg(colors.muted)),
+            Span::styled(
+                shorten_path(summary, width.saturating_sub(12) as usize),
+                Style::default().fg(colors.text),
+            ),
+        ]));
+    }
+
+    if let Some(event) = &run.last_event_name {
+        let tool = run
+            .last_tool_name
+            .clone()
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| "-".to_string());
+        lines.push(Line::from(vec![
+            Span::styled("Last hook: ", Style::default().fg(colors.muted)),
+            Span::styled(event.clone(), Style::default().fg(colors.accent)),
+            Span::raw("  "),
+            Span::styled("Tool: ", Style::default().fg(colors.muted)),
+            Span::styled(tool, Style::default().fg(colors.text)),
+        ]));
+    }
+
+    if let Some(session) = state.sessions.get(&run.session_id) {
+        lines.push(Line::from(vec![
+            Span::styled("CWD: ", Style::default().fg(colors.muted)),
+            Span::styled(
+                shorten_path(&session.cwd, width.saturating_sub(10) as usize),
+                Style::default().fg(colors.text),
+            ),
+        ]));
+        if let Some(tmux) = &run.tmux_pane {
+            lines.push(Line::from(vec![
+                Span::styled("Tmux: ", Style::default().fg(colors.muted)),
+                Span::styled(tmux.clone(), Style::default().fg(colors.text)),
+            ]));
+        }
+    }
+
+    if run.is_unknown_bucket {
+        lines.push(Line::from(vec![
+            Span::styled("Review: ", Style::default().fg(colors.muted)),
+            Span::styled(
+                "unknown or conflicted file ownership",
+                Style::default().fg(INFERRED),
+            ),
+        ]));
+    }
+
+    lines
+}
+
+fn render_synthetic_run_details(
+    state: &RuntimeState,
+    run: &crate::state::SessionListItem,
+    width: u16,
+    colors: UiPalette,
+) -> Vec<Line<'static>> {
+    let mut lines = vec![
+        Line::from(Span::styled(
+            shorten_path(&run.display_name, width.saturating_sub(4) as usize),
+            Style::default()
+                .fg(colors.text)
+                .add_modifier(Modifier::BOLD),
+        )),
+        Line::from(Span::styled(
+            run.session_id.clone(),
+            Style::default().fg(colors.muted),
+        )),
+        Line::from(vec![
+            Span::styled("Client: ", Style::default().fg(colors.muted)),
+            Span::styled(run.client.clone(), Style::default().fg(colors.text)),
+            Span::raw("  "),
+            Span::styled("Mode: ", Style::default().fg(colors.muted)),
+            Span::styled("unmanaged", Style::default().fg(colors.accent)),
+        ]),
+        Line::from(vec![
+            Span::styled("Attach: ", Style::default().fg(colors.muted)),
+            Span::styled(
+                "synthetic fallback from process scan",
+                Style::default().fg(INFERRED),
+            ),
+        ]),
+    ];
+
+    if let Some(agent) = run
+        .attached_agent_key
+        .as_ref()
+        .and_then(|key| state.detected_agents.iter().find(|agent| &agent.key == key))
+    {
+        lines.push(Line::from(vec![
+            Span::styled("PID: ", Style::default().fg(colors.muted)),
+            Span::styled(agent.pid.to_string(), Style::default().fg(colors.text)),
+            Span::raw("  "),
+            Span::styled("Status: ", Style::default().fg(colors.muted)),
+            Span::styled(
+                agent.status.to_ascii_lowercase(),
+                Style::default().fg(run_status_color(&run.status)),
+            ),
+        ]));
+        lines.push(Line::from(vec![
+            Span::styled("CPU: ", Style::default().fg(colors.muted)),
+            Span::styled(format!("{:.1}%", agent.cpu_percent), Style::default().fg(colors.text)),
+            Span::raw("  "),
+            Span::styled("Mem: ", Style::default().fg(colors.muted)),
+            Span::styled(format!("{:.0}MB", agent.mem_mb), Style::default().fg(colors.text)),
+            Span::raw("  "),
+            Span::styled("Up: ", Style::default().fg(colors.muted)),
+            Span::styled(
+                crate::detect::format_uptime(agent.uptime_seconds),
+                Style::default().fg(colors.text),
+            ),
+        ]));
+        if let Some(cwd) = &agent.cwd {
+            lines.push(Line::from(vec![
+                Span::styled("CWD: ", Style::default().fg(colors.muted)),
+                Span::styled(
+                    shorten_path(cwd, width.saturating_sub(10) as usize),
+                    Style::default().fg(colors.text),
+                ),
+            ]));
+        }
+        lines.push(Line::from(vec![
+            Span::styled("Cmd: ", Style::default().fg(colors.muted)),
+            Span::styled(
+                shorten_path(&agent.command, width.saturating_sub(10) as usize),
+                Style::default().fg(colors.text),
+            ),
+        ]));
+    }
+
+    lines
+}
+
+fn run_status_color(status: &str) -> Color {
+    match status {
+        "active" => ACTIVE,
+        "stopped" | "ended" => STOPPED,
+        "unknown" => INFERRED,
+        _ => IDLE,
+    }
 }
 
 fn render_agent_rows(state: &RuntimeState, colors: UiPalette) -> Vec<Line<'static>> {

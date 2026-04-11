@@ -2,11 +2,20 @@ use crate::models::{AgentStats, DetectedAgent};
 use anyhow::{Context, Result};
 use std::collections::{BTreeMap, HashMap};
 use std::process::Command;
+use sysinfo::System;
 
 const MAX_AGENTS: usize = 8;
 const ACTIVE_CPU_THRESHOLD: f32 = 1.0;
 
 pub fn scan_agents(repo_root: &str) -> Result<Vec<DetectedAgent>> {
+    match scan_agents_via_ps(repo_root) {
+        Ok(agents) => Ok(agents),
+        Err(ps_error) => scan_agents_via_sysinfo(repo_root)
+            .with_context(|| format!("agent scan failed after ps fallback: {ps_error}")),
+    }
+}
+
+fn scan_agents_via_ps(repo_root: &str) -> Result<Vec<DetectedAgent>> {
     let output = Command::new("ps")
         .args(["-axo", "pid=,ppid=,%cpu=,rss=,etime=,comm=,args="])
         .output()
@@ -21,6 +30,64 @@ pub fn scan_agents(repo_root: &str) -> Result<Vec<DetectedAgent>> {
     for line in stdout.lines() {
         let Some(agent) = parse_agent_line(line, repo_root) else {
             continue;
+        };
+        by_key.entry(agent.key.clone()).or_insert(agent);
+    }
+
+    let mut agents: Vec<_> = by_key.into_values().collect();
+    agents.sort_by(|a, b| {
+        agent_rank(b, repo_root)
+            .cmp(&agent_rank(a, repo_root))
+            .then_with(|| {
+                b.cpu_percent
+                    .partial_cmp(&a.cpu_percent)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
+            .then_with(|| a.pid.cmp(&b.pid))
+    });
+    agents.truncate(MAX_AGENTS);
+    Ok(agents)
+}
+
+fn scan_agents_via_sysinfo(repo_root: &str) -> Result<Vec<DetectedAgent>> {
+    let mut system = System::new_all();
+    system.refresh_all();
+
+    let mut by_key = BTreeMap::new();
+    for (pid, process) in system.processes() {
+        let command = join_process_command(process);
+        let exe_name = process.name().to_string_lossy().into_owned();
+        let Some((name, vendor, icon)) = classify_vendor(&exe_name, &command) else {
+            continue;
+        };
+
+        let cwd = process
+            .cwd()
+            .map(|path| path.to_string_lossy().into_owned())
+            .or_else(|| detect_cwd_from_command(&command));
+        let project = cwd
+            .as_deref()
+            .map(extract_project)
+            .unwrap_or_else(|| "-".to_string());
+        let cpu_percent = process.cpu_usage();
+        let agent = DetectedAgent {
+            key: format!("{vendor}:{}", pid.as_u32()),
+            name: name.to_string(),
+            vendor: vendor.to_string(),
+            icon: icon.to_string(),
+            pid: pid.as_u32(),
+            cwd,
+            cpu_percent,
+            mem_mb: process.memory() as f32 / 1024.0 / 1024.0,
+            uptime_seconds: process.run_time(),
+            status: if cpu_percent >= ACTIVE_CPU_THRESHOLD {
+                "ACTIVE".to_string()
+            } else {
+                "IDLE".to_string()
+            },
+            confidence: 75,
+            project,
+            command,
         };
         by_key.entry(agent.key.clone()).or_insert(agent);
     }
@@ -128,6 +195,10 @@ fn classify_vendor(
         Some(("Codex", "OpenAI", "◈"))
     } else if lower.contains("claude") {
         Some(("Claude", "Anthropic", "◆"))
+    } else if lower.contains("qodercli") || lower.contains("qoder") {
+        Some(("Qoder", "Qoder", "◌"))
+    } else if lower.contains("auggie") {
+        Some(("Auggie", "Auggie", "▣"))
     } else if lower.contains("cursor") {
         Some(("Cursor", "Cursor", "⌘"))
     } else if lower.contains("copilot") {
@@ -186,6 +257,20 @@ fn detect_cwd_from_command(command: &str) -> Option<String> {
         }
     }
     None
+}
+
+fn join_process_command(process: &sysinfo::Process) -> String {
+    let command = process
+        .cmd()
+        .iter()
+        .map(|part| part.to_string_lossy().into_owned())
+        .collect::<Vec<_>>()
+        .join(" ");
+    if command.is_empty() {
+        process.name().to_string_lossy().into_owned()
+    } else {
+        command
+    }
 }
 
 fn parse_etime_seconds(value: &str) -> Option<u64> {
@@ -254,9 +339,46 @@ mod tests {
     }
 
     #[test]
+    fn classify_qodercli_processes() {
+        assert_eq!(
+            parse_agent_line("444 1 0.4 2048 00:03 qodercli qodercli", "/tmp/project")
+                .map(|agent| (agent.name, agent.vendor)),
+            Some(("Qoder".to_string(), "Qoder".to_string()))
+        );
+    }
+
+    #[test]
+    fn classify_node_wrapped_auggie_processes() {
+        assert_eq!(
+            parse_agent_line(
+                "555 1 0.1 2048 00:03 node node /opt/homebrew/bin/auggie --cwd /tmp/project",
+                "/tmp/project"
+            )
+            .map(|agent| (agent.name, agent.vendor, agent.project)),
+            Some((
+                "Auggie".to_string(),
+                "Auggie".to_string(),
+                "project".to_string()
+            ))
+        );
+    }
+
+    #[test]
     fn ignore_non_agent_processes() {
         assert!(
             parse_agent_line("222 1 0.0 100 00:03 /usr/bin/vim foo.rs", "/tmp/project").is_none()
+        );
+    }
+
+    #[test]
+    fn detect_cwd_from_command_supports_flag_variants() {
+        assert_eq!(
+            detect_cwd_from_command("codex --cwd /tmp/demo"),
+            Some("/tmp/demo".to_string())
+        );
+        assert_eq!(
+            detect_cwd_from_command("git -C /tmp/repo status"),
+            Some("/tmp/repo".to_string())
         );
     }
 

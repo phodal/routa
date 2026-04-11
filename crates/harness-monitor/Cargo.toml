@@ -4,7 +4,7 @@ version = "0.14.1"
 edition = "2021"
 license.workspace = true
 authors.workspace = true
-description = "Harness Monitor - local agent file attribution and fitness monitor for multi-agent coding sessions"
+description = "Routa Harness Monitor - multi-agent control plane with task/run/workspace/evidence domain model, policy evaluation, and real-time TUI"
 repository = "https://github.com/phodal/routa-js"
 homepage = "https://github.com/phodal/routa-js"
 
@@ -25,6 +25,7 @@ serde_json = "1"
 dirs = "6"
 sha2 = "0.11"
 syntect = "5"
+sysinfo = "0.32"
 
 [dev-dependencies]
 insta = "1"

@@ -9,9 +9,23 @@ use std::path::Path;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FocusPane {
+    /// Unmanaged-run / session list (new harness vocabulary layered on top of sessions)
+    Runs,
     Files,
     Detail,
     Fitness,
+}
+
+impl FocusPane {
+    #[allow(dead_code)]
+    pub fn label(self) -> &'static str {
+        match self {
+            FocusPane::Runs => "Runs",
+            FocusPane::Files => "Files",
+            FocusPane::Detail => "Detail",
+            FocusPane::Fitness => "Fitness",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -59,6 +73,42 @@ pub enum FileListMode {
     UnknownConflict,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RunSortMode {
+    Recent,
+    Started,
+    Files,
+    Name,
+}
+
+impl RunSortMode {
+    pub fn label(self) -> &'static str {
+        match self {
+            RunSortMode::Recent => "recent",
+            RunSortMode::Started => "started",
+            RunSortMode::Files => "files",
+            RunSortMode::Name => "name",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RunFilterMode {
+    All,
+    Active,
+    Attention,
+}
+
+impl RunFilterMode {
+    pub fn label(self) -> &'static str {
+        match self {
+            RunFilterMode::All => "all",
+            RunFilterMode::Active => "active",
+            RunFilterMode::Attention => "attention",
+        }
+    }
+}
+
 pub const UNKNOWN_SESSION_ID: &str = "__unknown__";
 const PAGE_STEP: usize = 10;
 const DETAIL_PAGE_STEP: u16 = 12;
@@ -68,15 +118,22 @@ const DETAIL_PAGE_STEP: u16 = 12;
 pub struct SessionListItem {
     pub session_id: String,
     pub display_name: String,
+    pub client: String,
+    pub source: Option<String>,
     pub model: Option<String>,
     pub status: String,
     pub tmux_pane: Option<String>,
+    pub started_at_ms: i64,
     pub last_seen_at_ms: i64,
     pub touched_files_count: usize,
     pub exact_count: usize,
     pub inferred_count: usize,
     pub unknown_count: usize,
     pub agent_summary: Option<String>,
+    pub last_event_name: Option<String>,
+    pub last_tool_name: Option<String>,
+    pub attached_agent_key: Option<String>,
+    pub is_synthetic_agent_run: bool,
     pub is_unknown_bucket: bool,
 }
 
@@ -92,6 +149,8 @@ pub struct RuntimeState {
     pub event_log: VecDeque<EventLogEntry>,
     pub follow_mode: bool,
     pub file_list_mode: FileListMode,
+    pub run_sort_mode: RunSortMode,
+    pub run_filter_mode: RunFilterMode,
     pub focus: FocusPane,
     pub detail_mode: DetailMode,
     pub theme_mode: ThemeMode,
@@ -100,6 +159,7 @@ pub struct RuntimeState {
     pub detail_scroll: u16,
     pub detail_scroll_cache: BTreeMap<String, u16>,
     pub fitness_scroll: u16,
+    pub selected_run: usize,
     pub selected_session: usize,
     pub selected_file: usize,
     pub last_refresh_at_ms: i64,
@@ -127,7 +187,9 @@ impl RuntimeState {
             event_log: VecDeque::new(),
             follow_mode: true,
             file_list_mode: FileListMode::Global,
-            focus: FocusPane::Files,
+            run_sort_mode: RunSortMode::Recent,
+            run_filter_mode: RunFilterMode::All,
+            focus: FocusPane::Runs,
             detail_mode: DetailMode::Diff,
             theme_mode: ThemeMode::Dark,
             fitness_view_mode: FitnessViewMode::Fast,
@@ -135,6 +197,7 @@ impl RuntimeState {
             detail_scroll: 0,
             detail_scroll_cache: BTreeMap::new(),
             fitness_scroll: 0,
+            selected_run: 0,
             selected_session: 0,
             selected_file: 0,
             last_refresh_at_ms: Utc::now().timestamp_millis(),
@@ -256,6 +319,10 @@ impl RuntimeState {
         &self.cached_session_items
     }
 
+    pub fn runs(&self) -> &[SessionListItem] {
+        &self.cached_session_items
+    }
+
     fn compute_session_items(&self) -> Vec<SessionListItem> {
         let agent_matches = self.compute_agent_match_state();
         let mut items: Vec<_> = self
@@ -268,9 +335,12 @@ impl RuntimeState {
                 SessionListItem {
                     session_id: session.session_id.clone(),
                     display_name: session_display_name(session),
+                    client: session.client.clone(),
+                    source: session.source.clone(),
                     model: session.model.clone(),
                     status: session.status.clone(),
                     tmux_pane: session.tmux_pane.clone(),
+                    started_at_ms: session.started_at_ms,
                     last_seen_at_ms: session.last_seen_at_ms,
                     touched_files_count: session
                         .touched_files
@@ -280,15 +350,45 @@ impl RuntimeState {
                     inferred_count,
                     unknown_count,
                     agent_summary: agent_matches.session_summary(&session.session_id),
+                    last_event_name: session.last_event_name.clone(),
+                    last_tool_name: session.last_tool_name.clone(),
+                    attached_agent_key: None,
+                    is_synthetic_agent_run: false,
                     is_unknown_bucket: false,
                 }
             })
             .collect();
-        items.sort_by(|a, b| {
-            b.last_seen_at_ms
-                .cmp(&a.last_seen_at_ms)
-                .then_with(|| a.session_id.cmp(&b.session_id))
-        });
+        let now_ms = Utc::now().timestamp_millis();
+        items.extend(
+            self.unmatched_agents_for_runs(&agent_matches)
+                .into_iter()
+                .filter(|agent| self.matches_detected_agent_search(agent))
+                .map(|agent| SessionListItem {
+                    session_id: format!("agent:{}:{}", agent.name.to_ascii_lowercase(), agent.pid),
+                    display_name: format!("{}#{}", agent.name, agent.pid),
+                    client: agent.name.to_ascii_lowercase(),
+                    source: Some("process-scan".to_string()),
+                    model: None,
+                    status: agent.status.to_ascii_lowercase(),
+                    tmux_pane: None,
+                    started_at_ms: now_ms.saturating_sub((agent.uptime_seconds as i64) * 1000),
+                    last_seen_at_ms: now_ms,
+                    touched_files_count: 0,
+                    exact_count: 0,
+                    inferred_count: 0,
+                    unknown_count: 0,
+                    agent_summary: Some(format!(
+                        "agent {}#{}",
+                        agent.name.to_ascii_lowercase(),
+                        agent.pid
+                    )),
+                    last_event_name: Some("process-scan".to_string()),
+                    last_tool_name: None,
+                    attached_agent_key: Some(agent.key.clone()),
+                    is_synthetic_agent_run: true,
+                    is_unknown_bucket: false,
+                }),
+        );
         let unknown_count = self
             .files
             .values()
@@ -304,18 +404,27 @@ impl RuntimeState {
             items.push(SessionListItem {
                 session_id: UNKNOWN_SESSION_ID.to_string(),
                 display_name: "Unknown / review".to_string(),
+                client: "unknown".to_string(),
+                source: None,
                 model: None,
                 status: "unknown".to_string(),
                 tmux_pane: None,
+                started_at_ms: self.last_refresh_at_ms,
                 last_seen_at_ms: self.last_refresh_at_ms,
                 touched_files_count: unknown_count,
                 exact_count: 0,
                 inferred_count: 0,
                 unknown_count,
                 agent_summary: None,
+                last_event_name: Some("review".to_string()),
+                last_tool_name: None,
+                attached_agent_key: None,
+                is_synthetic_agent_run: false,
                 is_unknown_bucket: true,
             });
         }
+        items.retain(|item| self.matches_run_filter(item));
+        items.sort_by(|a, b| compare_run_items(a, b, self.run_sort_mode));
         items
     }
 
@@ -324,6 +433,12 @@ impl RuntimeState {
         self.cached_session_items
             .get(self.selected_session)
             .map(|session| session.session_id.clone())
+    }
+
+    /// Selected item in the Runs pane (maps to a session in unmanaged mode).
+    #[allow(dead_code)]
+    pub fn selected_run_item(&self) -> Option<&SessionListItem> {
+        self.cached_session_items.get(self.selected_run)
     }
 
     #[cfg(test)]
@@ -388,14 +503,18 @@ impl RuntimeState {
 
     pub fn cycle_focus(&mut self) {
         self.focus = match self.focus {
+            FocusPane::Runs => FocusPane::Files,
             FocusPane::Files => FocusPane::Detail,
             FocusPane::Detail => FocusPane::Fitness,
-            FocusPane::Fitness => FocusPane::Files,
+            FocusPane::Fitness => FocusPane::Runs,
         };
     }
 
     pub fn move_selection_up(&mut self) {
         match self.focus {
+            FocusPane::Runs => {
+                self.set_selected_run(self.selected_run.saturating_sub(1));
+            }
             FocusPane::Files => {
                 self.selected_file = self.selected_file.saturating_sub(1);
             }
@@ -410,6 +529,12 @@ impl RuntimeState {
 
     pub fn move_selection_down(&mut self) {
         match self.focus {
+            FocusPane::Runs => {
+                let len = self.cached_session_items.len();
+                if len > 0 {
+                    self.set_selected_run((self.selected_run + 1).min(len - 1));
+                }
+            }
             FocusPane::Files => {
                 let len = self.cached_file_item_keys.len();
                 if len > 0 {
@@ -427,6 +552,9 @@ impl RuntimeState {
 
     pub fn page_up(&mut self) {
         match self.focus {
+            FocusPane::Runs => {
+                self.set_selected_run(self.selected_run.saturating_sub(PAGE_STEP));
+            }
             FocusPane::Files => {
                 self.selected_file = self.selected_file.saturating_sub(PAGE_STEP);
                 self.restore_detail_scroll_for_selection();
@@ -442,6 +570,12 @@ impl RuntimeState {
 
     pub fn page_down(&mut self) {
         match self.focus {
+            FocusPane::Runs => {
+                let len = self.cached_session_items.len();
+                if len > 0 {
+                    self.set_selected_run((self.selected_run + PAGE_STEP).min(len - 1));
+                }
+            }
             FocusPane::Files => {
                 let len = self.cached_file_item_keys.len();
                 if len > 0 {
@@ -529,6 +663,27 @@ impl RuntimeState {
         self.restore_detail_scroll_for_selection();
     }
 
+    pub fn cycle_run_sort_mode(&mut self) {
+        self.run_sort_mode = match self.run_sort_mode {
+            RunSortMode::Recent => RunSortMode::Started,
+            RunSortMode::Started => RunSortMode::Files,
+            RunSortMode::Files => RunSortMode::Name,
+            RunSortMode::Name => RunSortMode::Recent,
+        };
+        self.rebuild_views();
+        self.set_selected_run(0);
+    }
+
+    pub fn cycle_run_filter_mode(&mut self) {
+        self.run_filter_mode = match self.run_filter_mode {
+            RunFilterMode::All => RunFilterMode::Active,
+            RunFilterMode::Active => RunFilterMode::Attention,
+            RunFilterMode::Attention => RunFilterMode::All,
+        };
+        self.rebuild_views();
+        self.set_selected_run(0);
+    }
+
     pub fn toggle_detail_mode(&mut self) {
         self.detail_mode = match self.detail_mode {
             DetailMode::Diff => DetailMode::File,
@@ -559,6 +714,12 @@ impl RuntimeState {
     pub fn selected_file_assignment_message(&self) -> Option<RuntimeMessage> {
         let session_id = self.selected_session_id()?;
         if session_id == UNKNOWN_SESSION_ID {
+            return None;
+        }
+        if self
+            .selected_run_item()
+            .is_some_and(|item| item.is_synthetic_agent_run)
+        {
             return None;
         }
         let file = self.selected_file()?;
@@ -612,6 +773,8 @@ impl RuntimeState {
                     tmux_pane: event.tmux_pane.clone(),
                     touched_files: BTreeSet::new(),
                     last_turn_id: event.turn_id.clone(),
+                    last_event_name: Some(event.event_name.clone()),
+                    last_tool_name: event.tool_name.clone(),
                 });
 
             session.cwd = event.cwd.clone();
@@ -628,6 +791,8 @@ impl RuntimeState {
             }
             session.last_seen_at_ms = event.observed_at_ms;
             session.last_turn_id = event.turn_id.clone();
+            session.last_event_name = Some(event.event_name.clone());
+            session.last_tool_name = event.tool_name.clone();
             session.tmux_pane = event
                 .tmux_pane
                 .clone()
@@ -818,8 +983,10 @@ impl RuntimeState {
         self.rebuild_views();
         let session_len = self.cached_session_items.len();
         if session_len == 0 {
+            self.selected_run = 0;
             self.selected_session = 0;
         } else {
+            self.selected_run = self.selected_run.min(session_len - 1);
             self.selected_session = self.selected_session.min(session_len - 1);
         }
 
@@ -837,12 +1004,43 @@ impl RuntimeState {
         self.cached_session_items = self.compute_session_items();
         let session_len = self.cached_session_items.len();
         if session_len == 0 {
+            self.selected_run = 0;
             self.selected_session = 0;
         } else {
+            self.selected_run = self.selected_run.min(session_len - 1);
             self.selected_session = self.selected_session.min(session_len - 1);
         }
         self.cached_unmatched_agent_keys = self.compute_unmatched_agent_keys();
         self.cached_file_item_keys = self.compute_file_item_keys();
+    }
+
+    fn matches_run_filter(&self, item: &SessionListItem) -> bool {
+        match self.run_filter_mode {
+            RunFilterMode::All => true,
+            RunFilterMode::Active => item.status == "active",
+            RunFilterMode::Attention => {
+                item.is_unknown_bucket
+                    || item.is_synthetic_agent_run
+                    || item.unknown_count > 0
+                    || matches!(item.status.as_str(), "idle" | "unknown" | "stopped" | "ended")
+            }
+        }
+    }
+
+    fn set_selected_run(&mut self, index: usize) {
+        self.selected_run = index;
+        self.selected_session = index;
+    }
+
+    fn unmatched_agents_for_runs<'a>(
+        &'a self,
+        matches: &AgentMatchState,
+    ) -> Vec<&'a DetectedAgent> {
+        self.detected_agents
+            .iter()
+            .filter(|agent| !matches.matched_agent_keys.contains(&agent.key))
+            .filter(|agent| is_repo_local_agent(agent, &self.repo_root))
+            .collect()
     }
 
     fn matches_session_search(&self, session: &SessionView) -> bool {
@@ -865,6 +1063,23 @@ impl RuntimeState {
                 .contains(&needle)
             || session
                 .tmux_pane
+                .as_deref()
+                .unwrap_or_default()
+                .to_ascii_lowercase()
+                .contains(&needle)
+    }
+
+    fn matches_detected_agent_search(&self, agent: &DetectedAgent) -> bool {
+        if self.search_query.is_empty() {
+            return true;
+        }
+        let needle = self.search_query.to_ascii_lowercase();
+        agent.name.to_ascii_lowercase().contains(&needle)
+            || agent.vendor.to_ascii_lowercase().contains(&needle)
+            || agent.pid.to_string().contains(&needle)
+            || agent.command.to_ascii_lowercase().contains(&needle)
+            || agent
+                .cwd
                 .as_deref()
                 .unwrap_or_default()
                 .to_ascii_lowercase()
@@ -1057,6 +1272,36 @@ impl AgentMatchState {
     }
 }
 
+fn compare_run_items(a: &SessionListItem, b: &SessionListItem, sort_mode: RunSortMode) -> std::cmp::Ordering {
+    let primary = match sort_mode {
+        RunSortMode::Recent => b.last_seen_at_ms.cmp(&a.last_seen_at_ms),
+        RunSortMode::Started => b.started_at_ms.cmp(&a.started_at_ms),
+        RunSortMode::Files => b
+            .touched_files_count
+            .cmp(&a.touched_files_count)
+            .then_with(|| b.unknown_count.cmp(&a.unknown_count)),
+        RunSortMode::Name => a
+            .display_name
+            .to_ascii_lowercase()
+            .cmp(&b.display_name.to_ascii_lowercase()),
+    };
+
+    a.is_unknown_bucket
+        .cmp(&b.is_unknown_bucket)
+        .then_with(|| a.is_synthetic_agent_run.cmp(&b.is_synthetic_agent_run))
+        .then(primary)
+        .then_with(|| b.last_seen_at_ms.cmp(&a.last_seen_at_ms))
+        .then_with(|| a.session_id.cmp(&b.session_id))
+}
+
+fn is_repo_local_agent(agent: &DetectedAgent, repo_root: &str) -> bool {
+    agent.cwd.as_deref().is_some_and(|cwd| {
+        let repo_root = normalize_match_path(repo_root);
+        let cwd = normalize_match_path(cwd);
+        cwd == repo_root || path_contains(&repo_root, &cwd) || path_contains(&cwd, &repo_root)
+    })
+}
+
 fn session_display_name(session: &SessionView) -> String {
     session
         .display_name
@@ -1090,6 +1335,8 @@ fn session_agent_match_score(session: &SessionView, agent: &DetectedAgent) -> us
         || session_client == agent_name
         || (session_client == "codex" && (agent_vendor == "openai" || agent_name == "codex"))
         || (session_client == "claude" && (agent_vendor == "anthropic" || agent_name == "claude"))
+        || (session_client == "qoder" && (agent_vendor == "qoder" || agent_name == "qoder"))
+        || (session_client == "auggie" && (agent_vendor == "auggie" || agent_name == "auggie"))
     {
         score += 3;
     }

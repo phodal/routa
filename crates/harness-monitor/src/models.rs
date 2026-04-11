@@ -44,6 +44,13 @@ impl EntryKind {
 pub enum HookClient {
     Codex,
     Claude,
+    Cursor,
+    Aider,
+    Gemini,
+    Copilot,
+    Qoder,
+    Auggie,
+    Kiro,
     Unknown,
 }
 
@@ -52,6 +59,13 @@ impl HookClient {
         match value.to_ascii_lowercase().as_str() {
             "codex" => HookClient::Codex,
             "claude" => HookClient::Claude,
+            "cursor" => HookClient::Cursor,
+            "aider" => HookClient::Aider,
+            "gemini" => HookClient::Gemini,
+            "copilot" => HookClient::Copilot,
+            "qoder" | "qodercli" => HookClient::Qoder,
+            "auggie" => HookClient::Auggie,
+            "kiro" => HookClient::Kiro,
             _ => HookClient::Unknown,
         }
     }
@@ -60,7 +74,30 @@ impl HookClient {
         match self {
             HookClient::Codex => "codex",
             HookClient::Claude => "claude",
+            HookClient::Cursor => "cursor",
+            HookClient::Aider => "aider",
+            HookClient::Gemini => "gemini",
+            HookClient::Copilot => "copilot",
+            HookClient::Qoder => "qoder",
+            HookClient::Auggie => "auggie",
+            HookClient::Kiro => "kiro",
             HookClient::Unknown => "unknown",
+        }
+    }
+
+    /// Display icon for TUI usage.
+    pub fn icon(self) -> &'static str {
+        match self {
+            HookClient::Codex => "◈",
+            HookClient::Claude => "◆",
+            HookClient::Cursor => "⌘",
+            HookClient::Aider => "⚡",
+            HookClient::Gemini => "✦",
+            HookClient::Copilot => "⬡",
+            HookClient::Qoder => "◌",
+            HookClient::Auggie => "▣",
+            HookClient::Kiro => "◉",
+            HookClient::Unknown => "?",
         }
     }
 }
@@ -208,6 +245,40 @@ pub struct SessionView {
     pub tmux_pane: Option<String>,
     pub touched_files: BTreeSet<String>,
     pub last_turn_id: Option<String>,
+    pub last_event_name: Option<String>,
+    pub last_tool_name: Option<String>,
+}
+
+impl SessionView {
+    /// Map this session to an unmanaged domain Run (Architecture §9.1).
+    #[allow(dead_code)]
+    pub fn as_unmanaged_run(&self) -> crate::domain::run::Run {
+        use crate::domain::ids::RunId;
+        use crate::domain::run::{Role, Run, RunMode, RunState};
+
+        let state = match self.status.as_str() {
+            "active" => RunState::Executing,
+            "stopped" | "ended" => RunState::Succeeded,
+            _ => RunState::Created,
+        };
+        Run {
+            id: RunId(self.session_id.clone()),
+            task_id: None,
+            role: Role::Builder,
+            mode: RunMode::Unmanaged,
+            state,
+            workspace_id: None,
+            model: self.model.clone(),
+            tool_scope: Vec::new(),
+            effect_budget: crate::domain::run::EffectBudget::default(),
+            started_at_ms: self.started_at_ms,
+            ended_at_ms: if self.status == "active" {
+                None
+            } else {
+                Some(self.last_seen_at_ms)
+            },
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
