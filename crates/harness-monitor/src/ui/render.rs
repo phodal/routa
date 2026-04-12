@@ -527,11 +527,12 @@ fn metric_color(metric: &fitness::FitnessMetricSummary) -> Color {
 }
 
 fn truncate_short(value: &str, max_len: usize) -> String {
-    if value.len() <= max_len {
+    if value.chars().count() <= max_len {
         value.to_string()
     } else {
         let keep = max_len.saturating_sub(3);
-        format!("{}...", &value[..keep])
+        let truncated = value.chars().take(keep).collect::<String>();
+        format!("{truncated}...")
     }
 }
 
@@ -1368,11 +1369,19 @@ fn source_color(source: crate::shared::models::EventSource) -> Color {
 }
 
 pub(super) fn shorten_path(path: &str, max_len: usize) -> String {
-    if path.len() <= max_len {
+    if path.chars().count() <= max_len {
         return path.to_string();
     }
     let keep = max_len.saturating_sub(3);
-    format!("...{}", &path[path.len().saturating_sub(keep)..])
+    let tail = path
+        .chars()
+        .rev()
+        .take(keep)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect::<String>();
+    format!("...{tail}")
 }
 
 #[cfg(test)]

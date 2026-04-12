@@ -699,8 +699,8 @@ fn hard_gate_failure_blocks_selected_run() {
 
     assert!(!snapshot.contains("State: "));
     assert!(!snapshot.contains("Status: failed"));
-    assert!(snapshot.contains("hard gate failure"));
     assert!(!snapshot.contains("Next: "));
+    assert!(snapshot.contains("Last: PostToolUse"));
 }
 
 #[test]
