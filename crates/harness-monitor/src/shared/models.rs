@@ -221,6 +221,12 @@ pub struct GitEvent {
     pub args: Vec<String>,
     pub head_commit: Option<String>,
     pub branch: Option<String>,
+    #[serde(default)]
+    pub session_id: Option<String>,
+    #[serde(default)]
+    pub summary: Option<String>,
+    #[serde(default)]
+    pub recovered_from_transcript: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -284,6 +290,7 @@ pub struct SessionView {
     pub active_task_title: Option<String>,
     pub last_prompt_preview: Option<String>,
     pub active_task_recovered_from_transcript: bool,
+    pub recent_git_activity: Vec<String>,
 }
 
 impl SessionView {

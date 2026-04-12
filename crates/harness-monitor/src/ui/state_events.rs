@@ -38,6 +38,7 @@ impl RuntimeState {
                     active_task_title: event.task_title.clone(),
                     last_prompt_preview: event.prompt_preview.clone(),
                     active_task_recovered_from_transcript: event.recovered_from_transcript,
+                    recent_git_activity: Vec::new(),
                 });
 
             session.cwd = event.cwd.clone();
@@ -170,6 +171,23 @@ impl RuntimeState {
     }
 
     pub(super) fn apply_git_event(&mut self, event: GitEvent) {
+        if let Some(session_id) = &event.session_id {
+            if let Some(session) = self.sessions.get_mut(session_id) {
+                session.last_seen_at_ms = event.observed_at_ms;
+                let label = event.summary.clone().unwrap_or_else(|| {
+                    let head = event
+                        .head_commit
+                        .as_deref()
+                        .map(|commit| commit.chars().take(7).collect::<String>());
+                    match head {
+                        Some(commit) => format!("{} {}", event.event_name, commit),
+                        None => event.event_name.clone(),
+                    }
+                });
+                session.recent_git_activity.insert(0, label);
+                session.recent_git_activity.truncate(3);
+            }
+        }
         self.push_event(
             event.observed_at_ms,
             EventSource::Git,

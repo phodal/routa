@@ -741,6 +741,21 @@ fn render_run_details(
         ]));
     }
 
+    if let Some(session) = state.sessions.get(&run.session_id) {
+        if !session.recent_git_activity.is_empty() {
+            lines.push(Line::from(vec![
+                Span::styled("Commits: ", Style::default().fg(colors.muted)),
+                Span::styled(
+                    shorten_path(
+                        &session.recent_git_activity.join("  |  "),
+                        width.saturating_sub(14) as usize,
+                    ),
+                    Style::default().fg(colors.text),
+                ),
+            ]));
+        }
+    }
+
     lines
 }
 

@@ -241,14 +241,16 @@ pub fn try_forward_hook_to_runtime(
 
     if let RuntimeMessage::Hook(event) = &message {
         if let Some(git_event_name) = infer_git_refresh_event(event) {
-            let git_message = RuntimeMessage::Git(GitEvent {
-                repo_root: ctx.repo_root.to_string_lossy().to_string(),
-                observed_at_ms: event.observed_at_ms,
-                event_name: git_event_name.to_string(),
-                args: Vec::new(),
-                head_commit: Some(current_head(&ctx.repo_root)?),
-                branch: Some(current_branch(&ctx.repo_root)?),
-            });
+            let git_message = RuntimeMessage::Git(build_git_runtime_event(
+                &ctx.repo_root,
+                event.observed_at_ms,
+                git_event_name,
+                Some(event.session_id.as_str()),
+                event.tool_command.as_deref(),
+                Some(current_head(&ctx.repo_root)?),
+                Some(current_branch(&ctx.repo_root)?),
+                event.recovered_from_transcript,
+            ));
             let _ = send_runtime_message(&ctx, &git_message);
         }
     }
@@ -412,6 +414,9 @@ pub fn try_forward_git_event(ctx: &RepoContext, event_name: &str, args: &[String
         args: args.to_vec(),
         head_commit: Some(current_head(&ctx.repo_root)?),
         branch: Some(current_branch(&ctx.repo_root)?),
+        session_id: None,
+        summary: None,
+        recovered_from_transcript: false,
     });
     match send_runtime_message(ctx, &message) {
         Ok(_) => Ok(true),
@@ -580,6 +585,59 @@ pub(crate) fn infer_git_refresh_event(event: &HookEvent) -> Option<&'static str>
     } else {
         None
     }
+}
+
+pub(crate) fn build_git_runtime_event(
+    repo_root: &std::path::Path,
+    observed_at_ms: i64,
+    event_name: &str,
+    session_id: Option<&str>,
+    tool_command: Option<&str>,
+    head_commit: Option<String>,
+    branch: Option<String>,
+    recovered_from_transcript: bool,
+) -> GitEvent {
+    GitEvent {
+        repo_root: repo_root.to_string_lossy().to_string(),
+        observed_at_ms,
+        event_name: event_name.to_string(),
+        args: Vec::new(),
+        head_commit,
+        branch,
+        session_id: session_id.map(str::to_string),
+        summary: git_summary_from_command(event_name, tool_command),
+        recovered_from_transcript,
+    }
+}
+
+fn git_summary_from_command(event_name: &str, tool_command: Option<&str>) -> Option<String> {
+    let command = tool_command?.trim();
+    if event_name == "git-commit" {
+        extract_commit_message(command)
+            .map(|message| format!("commit: {message}"))
+            .or_else(|| Some("commit".to_string()))
+    } else if event_name == "git-add" {
+        Some("staged changes".to_string())
+    } else if event_name == "git-reset" {
+        Some("reset changes".to_string())
+    } else if event_name == "git-restore" || event_name == "git-checkout" {
+        Some("restored changes".to_string())
+    } else if event_name == "git-rm" {
+        Some("removed files".to_string())
+    } else if event_name == "git-stash" {
+        Some("stashed changes".to_string())
+    } else {
+        None
+    }
+}
+
+fn extract_commit_message(command: &str) -> Option<String> {
+    let tokens = shell_like_split(command);
+    tokens
+        .windows(2)
+        .find(|window| window[0] == "-m")
+        .map(|window| window[1].trim().to_string())
+        .filter(|message| !message.is_empty())
 }
 
 fn extract_file_paths(tool_input: &Value, ctx: &RepoContext) -> Vec<String> {

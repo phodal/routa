@@ -1,4 +1,6 @@
-use crate::observe::hooks::{extract_file_paths_for_repo, infer_git_refresh_event};
+use crate::observe::hooks::{
+    build_git_runtime_event, extract_file_paths_for_repo, infer_git_refresh_event,
+};
 use crate::observe::repo::detect_repo_root;
 use crate::shared::models::{GitEvent, HookEvent, RuntimeMessage};
 use anyhow::Result;
@@ -504,14 +506,16 @@ fn recover_runtime_messages_from_transcript_tool_call(
             let mut messages = vec![hook];
             if let RuntimeMessage::Hook(hook_event) = messages[0].clone() {
                 if let Some(git_event_name) = infer_git_refresh_event(&hook_event) {
-                    messages.push(RuntimeMessage::Git(GitEvent {
-                        repo_root: repo_root.to_string_lossy().to_string(),
+                    messages.push(RuntimeMessage::Git(build_git_runtime_event(
+                        repo_root,
                         observed_at_ms,
-                        event_name: git_event_name.to_string(),
-                        args: Vec::new(),
-                        head_commit: None,
-                        branch: None,
-                    }));
+                        git_event_name,
+                        Some(session_id.as_str()),
+                        Some(command.as_str()),
+                        None,
+                        None,
+                        true,
+                    )));
                 }
             }
             Some(messages)

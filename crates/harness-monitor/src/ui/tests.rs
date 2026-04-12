@@ -41,6 +41,7 @@ fn sample_state() -> RuntimeState {
             active_task_title: Some("Fix harness monitor task journey".to_string()),
             last_prompt_preview: Some("Fix harness monitor task journey".to_string()),
             active_task_recovered_from_transcript: false,
+            recent_git_activity: vec!["commit: stabilize monitor journey".to_string()],
         },
     );
     sessions.insert(
@@ -67,6 +68,7 @@ fn sample_state() -> RuntimeState {
             active_task_title: Some("Review harness monitor UI".to_string()),
             last_prompt_preview: Some("Review harness monitor UI".to_string()),
             active_task_recovered_from_transcript: false,
+            recent_git_activity: Vec::new(),
         },
     );
 
@@ -644,6 +646,7 @@ fn run_details_surface_run_centric_operator_context() {
     assert!(snapshot.contains("Model: gpt-5.4"));
     assert!(snapshot.contains("Last: PostToolUse"));
     assert!(snapshot.contains("Files: "));
+    assert!(snapshot.contains("Commits: "));
 }
 
 #[test]
