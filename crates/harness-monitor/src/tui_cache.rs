@@ -16,11 +16,14 @@ const FITNESS_TREND_CAPACITY: usize = 12;
 
 #[derive(Clone, Debug, Default)]
 pub(super) struct SccSummary {
+    pub(super) lines: usize,
     pub(super) code: usize,
 }
 
 #[derive(Debug, Deserialize)]
 struct SccLanguageSummary {
+    #[serde(rename = "Lines")]
+    lines: usize,
     #[serde(rename = "Code")]
     code: usize,
 }
@@ -1006,6 +1009,7 @@ fn run_scc_summary(repo_root: &str) -> Result<SccSummary, String> {
     let summaries: Vec<SccLanguageSummary> =
         serde_json::from_slice(&output.stdout).map_err(|error| error.to_string())?;
     Ok(SccSummary {
+        lines: summaries.iter().map(|summary| summary.lines).sum(),
         code: summaries.into_iter().map(|summary| summary.code).sum(),
     })
 }

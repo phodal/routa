@@ -1,9 +1,9 @@
 ---
 source: crates/harness-monitor/src/tui_tests.rs
-assertion_line: 669
+assertion_line: 727
 expression: "render_snapshot(&state, &mut cache, 96, 24)"
 ---
-routa.js  2 dirty  1 unattributed  loc: --  transport: socket
+routa.js  2 dirty  1 unattributed  lines: --  loc: --  transport: socket
 ┌Git Status───────────────────────────────────────────────────────┐┌Diff Preview───────────────┐
 │ 2 files, 0 untracked, 5 commits, 1 agent, branch: main, 2 worktr││@@ -1,2 +1,3 @@            │
 │─────────────────────────────────────────────────────────────────││-use old                   │

@@ -1053,9 +1053,13 @@ pub(super) fn render_title_bar(
     });
     let dirty_label = format!("{dirty} dirty");
     let unattributed_label = format!("{} unattributed", unattributed.count());
+    let lines_label = format!(
+        "lines: {}",
+        format_compact_count(cache.scc_summary().map(|summary| summary.lines))
+    );
     let loc_label = format!(
         "loc: {}",
-        format_compact_loc(cache.scc_summary().map(|summary| summary.code))
+        format_compact_count(cache.scc_summary().map(|summary| summary.code))
     );
     let transport = format!("transport: {}", state.runtime_transport);
     let line = if area.width < 110 {
@@ -1065,6 +1069,8 @@ pub(super) fn render_title_bar(
             Span::styled(dirty_label, Style::default().fg(colors.text)),
             Span::raw("  "),
             Span::styled(unattributed_label, Style::default().fg(INFERRED)),
+            Span::raw("  "),
+            Span::styled(lines_label, Style::default().fg(colors.text)),
             Span::raw("  "),
             Span::styled(loc_label, Style::default().fg(colors.text)),
             Span::raw("  "),
@@ -1082,6 +1088,8 @@ pub(super) fn render_title_bar(
             Span::raw("  "),
             Span::styled(unattributed_label, Style::default().fg(INFERRED)),
             Span::raw("  "),
+            Span::styled(lines_label, Style::default().fg(colors.text)),
+            Span::raw("  "),
             Span::styled(loc_label, Style::default().fg(colors.text)),
             Span::raw("  "),
             Span::styled(
@@ -1098,16 +1106,16 @@ pub(super) fn render_title_bar(
     );
 }
 
-fn format_compact_loc(code: Option<usize>) -> String {
-    let Some(code) = code else {
+fn format_compact_count(value: Option<usize>) -> String {
+    let Some(value) = value else {
         return "--".to_string();
     };
-    if code >= 1_000_000 {
-        format!("{:.1}m", code as f64 / 1_000_000.0)
-    } else if code >= 1_000 {
-        format!("{:.0}k", code as f64 / 1_000.0)
+    if value >= 1_000_000 {
+        format!("{:.1}m", value as f64 / 1_000_000.0)
+    } else if value >= 1_000 {
+        format!("{:.0}k", value as f64 / 1_000.0)
     } else {
-        code.to_string()
+        value.to_string()
     }
 }
 
