@@ -630,11 +630,10 @@ fn run_details_surface_run_centric_operator_context() {
     let snapshot = render_snapshot(&state, &mut cache, 180, 40);
 
     assert!(snapshot.contains("Fix harness monitor task journey"));
-    assert!(snapshot.contains("live-hook-check"));
     assert!(snapshot.contains("fixer  hook-backed"));
-    assert!(snapshot.contains("Policy: allow_with_evidence"));
-    assert!(snapshot.contains("Workspace: dirty"));
-    assert!(snapshot.contains("missing coverage_report"));
+    assert!(snapshot.contains("Model: gpt-5.4"));
+    assert!(snapshot.contains("Last: PostToolUse"));
+    assert!(snapshot.contains("Files: "));
 }
 
 #[test]
@@ -680,8 +679,9 @@ fn hard_gate_failure_blocks_selected_run() {
 
     let snapshot = render_snapshot(&state, &mut cache, 180, 40);
 
-    assert!(snapshot.contains("failed"));
-    assert!(snapshot.contains("Block: hard gate failure"));
+    assert!(snapshot.contains("Status: failed"));
+    assert!(snapshot.contains("hard gate failure"));
+    assert!(snapshot.contains("Recovery: "));
 }
 
 #[test]

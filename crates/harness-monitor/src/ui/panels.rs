@@ -15,6 +15,7 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Clear, List, ListItem, Paragraph, Wrap};
 
+#[allow(dead_code)]
 pub(super) struct RunOperatorModel {
     pub(super) role: Role,
     pub(super) mode: RunMode,
@@ -549,17 +550,6 @@ fn render_run_details(
         .block_reason
         .clone()
         .unwrap_or_else(|| "ready".to_string());
-    let workspace_path = shorten_path(&model.workspace_path, width.saturating_sub(18) as usize);
-    let process_cwd = model
-        .process_cwd
-        .as_deref()
-        .map(|path| shorten_path(path, width.saturating_sub(20) as usize))
-        .unwrap_or_else(|| "-".to_string());
-    let next_text = model
-        .handoff_summary
-        .as_ref()
-        .map(|handoff| format!("{}  {}", model.next_action, handoff))
-        .unwrap_or_else(|| model.next_action.clone());
 
     if run.is_synthetic_agent_run {
         return render_process_scan_run_details(state, run, &model, width, colors);
@@ -576,102 +566,11 @@ fn render_run_details(
                 .add_modifier(Modifier::BOLD),
         )),
         Line::from(vec![
-            Span::styled(
-                shorten_path(&run.session_id, 18),
-                Style::default().fg(colors.muted),
-            ),
-            Span::raw("  "),
-            if let Some(task_id) = &run.task_id {
-                Span::styled(
-                    shorten_path(task_id, 22),
-                    Style::default().fg(colors.accent),
-                )
-            } else {
-                Span::styled("-", Style::default().fg(colors.muted))
-            },
+            Span::styled(run.client.clone(), Style::default().fg(colors.accent)),
             Span::raw("  "),
             Span::styled(model.role.as_str(), Style::default().fg(colors.text)),
             Span::raw("  "),
             Span::styled(model.origin.as_str(), Style::default().fg(colors.accent)),
-        ]),
-        Line::from(vec![
-            Span::styled("State: ", Style::default().fg(colors.muted)),
-            Span::styled(
-                model.operator_state.clone(),
-                Style::default().fg(state_color),
-            ),
-            Span::raw("  "),
-            Span::styled("Block: ", Style::default().fg(colors.muted)),
-            Span::styled(block_text, Style::default().fg(colors.text)),
-            Span::raw("  "),
-            Span::styled("Mode: ", Style::default().fg(colors.muted)),
-            Span::styled(model.mode.as_str(), Style::default().fg(colors.text)),
-        ]),
-        Line::from(vec![
-            Span::styled("Workspace: ", Style::default().fg(colors.muted)),
-            Span::styled(
-                model.workspace_state.as_str(),
-                Style::default().fg(colors.accent),
-            ),
-            Span::raw("  "),
-            Span::styled("Path: ", Style::default().fg(colors.muted)),
-            Span::styled(workspace_path, Style::default().fg(colors.text)),
-        ]),
-        Line::from(vec![
-            Span::styled("Process CWD: ", Style::default().fg(colors.muted)),
-            Span::styled(process_cwd, Style::default().fg(colors.text)),
-        ]),
-        Line::from(vec![
-            Span::styled("Eval: ", Style::default().fg(colors.muted)),
-            Span::styled(
-                model
-                    .eval_summary
-                    .clone()
-                    .unwrap_or_else(|| "pending".to_string()),
-                Style::default().fg(colors.text),
-            ),
-            Span::raw("  "),
-            Span::styled("Evidence: ", Style::default().fg(colors.muted)),
-            Span::styled(
-                evidence_inline_summary(&model.evidence),
-                Style::default().fg(colors.text),
-            ),
-        ]),
-        Line::from(vec![
-            Span::styled("Policy: ", Style::default().fg(colors.muted)),
-            Span::styled(
-                model.policy_decision.as_str(),
-                Style::default().fg(colors.accent),
-            ),
-            Span::raw("  "),
-            Span::styled("Approval: ", Style::default().fg(colors.muted)),
-            Span::styled(
-                model.approval_label.clone(),
-                Style::default().fg(colors.text),
-            ),
-        ]),
-        Line::from(vec![
-            Span::styled("Planes: ", Style::default().fg(colors.muted)),
-            Span::styled(
-                shorten_path(
-                    &summarize_planes(&model.planes),
-                    width.saturating_sub(12) as usize,
-                ),
-                Style::default().fg(colors.text),
-            ),
-        ]),
-        Line::from(vec![
-            Span::styled("Effects: ", Style::default().fg(colors.muted)),
-            Span::styled(
-                effect_classes_summary(&model.effect_classes),
-                Style::default().fg(colors.text),
-            ),
-            Span::raw("  "),
-            Span::styled("Next: ", Style::default().fg(colors.muted)),
-            Span::styled(
-                shorten_path(&next_text, width.saturating_sub(20) as usize),
-                Style::default().fg(colors.text),
-            ),
         ]),
     ];
 
@@ -685,12 +584,17 @@ fn render_run_details(
         ]));
     }
 
-    if let Some(summary) = &run.agent_summary {
+    if model.operator_state != "active" && model.operator_state != "executing" {
+        let status_text = if block_text == "ready" {
+            model.operator_state.clone()
+        } else {
+            format!("{}  {}", model.operator_state, block_text)
+        };
         lines.push(Line::from(vec![
-            Span::styled("Agents: ", Style::default().fg(colors.muted)),
+            Span::styled("Status: ", Style::default().fg(colors.muted)),
             Span::styled(
-                shorten_path(summary, width.saturating_sub(12) as usize),
-                Style::default().fg(colors.text),
+                shorten_path(&status_text, width.saturating_sub(12) as usize),
+                Style::default().fg(state_color),
             ),
         ]));
     }
@@ -699,20 +603,7 @@ fn render_run_details(
         lines.push(Line::from(vec![
             Span::styled("Guard: ", Style::default().fg(colors.muted)),
             Span::styled(
-                shorten_path(warning, width.saturating_sub(12) as usize),
-                Style::default().fg(INFERRED),
-            ),
-        ]));
-    }
-
-    if !model.recovery_hints.is_empty() {
-        lines.push(Line::from(vec![
-            Span::styled("Recovery: ", Style::default().fg(colors.muted)),
-            Span::styled(
-                shorten_path(
-                    &model.recovery_hints.join("; "),
-                    width.saturating_sub(14) as usize,
-                ),
+                shorten_path(warning, width.saturating_sub(14) as usize),
                 Style::default().fg(INFERRED),
             ),
         ]));
@@ -730,6 +621,19 @@ fn render_run_details(
             Span::raw("  "),
             Span::styled("Tool: ", Style::default().fg(colors.muted)),
             Span::styled(tool, Style::default().fg(colors.text)),
+        ]));
+    }
+
+    if !model.recovery_hints.is_empty() && model.operator_state != "executing" {
+        lines.push(Line::from(vec![
+            Span::styled("Recovery: ", Style::default().fg(colors.muted)),
+            Span::styled(
+                shorten_path(
+                    &model.recovery_hints.join("; "),
+                    width.saturating_sub(14) as usize,
+                ),
+                Style::default().fg(INFERRED),
+            ),
         ]));
     }
 
