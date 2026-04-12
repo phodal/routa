@@ -258,6 +258,31 @@ fn sample_cache(state: &RuntimeState) -> AppCache {
             slowest_metrics: Vec::new(),
         },
     );
+    cache.set_test_mapping_snapshot_for_tests(
+        vec![
+            TestMappingEntry {
+                source_file: "crates/harness-monitor/src/tui.rs".to_string(),
+                language: "rust".to_string(),
+                status: "changed".to_string(),
+                related_test_files: vec!["crates/harness-monitor/src/tui_tests.rs".to_string()],
+                graph_test_files: Vec::new(),
+                resolver_kind: "hybrid_heuristic".to_string(),
+                confidence: "medium".to_string(),
+                has_inline_tests: false,
+            },
+            TestMappingEntry {
+                source_file: "src/app/api/a2a/card/route.ts".to_string(),
+                language: "typescript".to_string(),
+                status: "missing".to_string(),
+                related_test_files: Vec::new(),
+                graph_test_files: Vec::new(),
+                resolver_kind: "path_heuristic".to_string(),
+                confidence: "high".to_string(),
+                has_inline_tests: false,
+            },
+        ],
+        Vec::new(),
+    );
     cache
 }
 
@@ -600,6 +625,18 @@ fn run_details_surface_run_centric_operator_context() {
     assert!(snapshot.contains("Policy: allow_with_evidence"));
     assert!(snapshot.contains("Workspace: dirty"));
     assert!(snapshot.contains("missing coverage_report"));
+}
+
+#[test]
+fn file_detail_surfaces_test_mapping_context() {
+    let state = sample_state();
+    let mut cache = sample_cache(&state);
+
+    let snapshot = render_snapshot(&state, &mut cache, 180, 32);
+
+    assert!(snapshot.contains("Test mapping:"));
+    assert!(snapshot.contains("Resolver:"));
+    assert!(snapshot.contains("TM "));
 }
 
 #[test]

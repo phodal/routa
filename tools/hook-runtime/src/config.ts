@@ -11,6 +11,7 @@ export const DEFAULT_PRE_PUSH_METRICS = [
   "ts_test_pass_full",
   "clippy_pass",
   "rust_test_pass",
+  "graph_test_mapping_probe",
 ] as const;
 
 export const DEFAULT_PRE_COMMIT_METRICS = ["eslint_pass"] as const;

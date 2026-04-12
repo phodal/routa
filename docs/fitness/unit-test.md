@@ -45,6 +45,21 @@ metrics:
       - apps/**
       - crates/**
     description: "通过代码图估算 changed targets 的测试半径；图后端缺失时跳过不计分"
+
+  - name: graph_test_mapping_probe
+    command: PYTHONPATH=tools/entrix python3 -m entrix graph test-mapping --base "${ROUTA_FITNESS_CHANGED_BASE:-HEAD}" --no-graph --fail-on-missing --json
+    tier: normal
+    execution_scope: local
+    gate: advisory
+    kind: holistic
+    analysis: static
+    evidence_type: probe
+    scope: [web, rust, java]
+    run_when_changed:
+      - src/**
+      - apps/**
+      - crates/**
+    description: "检查 changed source file 是否存在对应测试映射；TS/JS/Java 走路径规则，Rust 允许 inline test 或弱断言 unknown"
 ---
 
 # 单元测试与集成测试证据

@@ -1,8 +1,8 @@
+use super::fitness;
+use super::*;
 use crate::application::run_assessment::{
     assess_run, summarize_planes, PlaneAssessment, RunAssessmentInput, RunOrigin, WorkspaceType,
 };
-use super::fitness;
-use super::*;
 use crate::domain::run::{Role, RunMode};
 use crate::domain::workspace::WorkspaceState;
 use crate::models::{AttributionConfidence, FileView};
@@ -135,7 +135,10 @@ pub(super) fn render_details_panel(
             }
             let repo_context = cache.repo_review_context_for_file(file, &visible_files);
             if !repo_context.is_empty() {
-                let mut row = vec![Span::styled("Review context: ", Style::default().fg(colors.muted))];
+                let mut row = vec![Span::styled(
+                    "Review context: ",
+                    Style::default().fg(colors.muted),
+                )];
                 for (index, hint) in repo_context.into_iter().take(2).enumerate() {
                     if index > 0 {
                         row.push(Span::raw("  "));
@@ -146,7 +149,10 @@ pub(super) fn render_details_panel(
                     };
                     row.push(Span::styled(hint.label, Style::default().fg(color)));
                     row.push(Span::raw(" "));
-                    row.push(Span::styled(hint.rule_name, Style::default().fg(colors.text)));
+                    row.push(Span::styled(
+                        hint.rule_name,
+                        Style::default().fg(colors.text),
+                    ));
                 }
                 lines.push(Line::from(row));
             }
@@ -155,6 +161,41 @@ pub(super) fn render_details_panel(
                 "Lines: ...  Size: ...  Git changes: ...",
                 Style::default().fg(colors.muted),
             )));
+        }
+        if cache.is_changed_test_file(file) {
+            lines.push(Line::from(vec![
+                Span::styled("Test mapping: ", Style::default().fg(colors.muted)),
+                Span::styled("changed test file", Style::default().fg(ACTIVE)),
+            ]));
+        } else if let Some(mapping) = cache.test_mapping(file) {
+            let status_color = match mapping.status.as_str() {
+                "missing" => STOPPED,
+                "unknown" => INFERRED,
+                _ => ACTIVE,
+            };
+            lines.push(Line::from(vec![
+                Span::styled("Test mapping: ", Style::default().fg(colors.muted)),
+                Span::styled(mapping.status.clone(), Style::default().fg(status_color)),
+                Span::raw("  "),
+                Span::styled(mapping.language.clone(), Style::default().fg(colors.text)),
+            ]));
+            lines.push(Line::from(vec![
+                Span::styled("Resolver: ", Style::default().fg(colors.muted)),
+                Span::styled(
+                    mapping.resolver_kind.clone(),
+                    Style::default().fg(colors.text),
+                ),
+                Span::raw("  "),
+                Span::styled("Confidence: ", Style::default().fg(colors.muted)),
+                Span::styled(mapping.confidence.clone(), Style::default().fg(colors.text)),
+            ]));
+            if !mapping.related_test_files.is_empty() {
+                let preview = summarize_test_paths(&mapping.related_test_files, 2);
+                lines.push(Line::from(vec![
+                    Span::styled("Tests: ", Style::default().fg(colors.muted)),
+                    Span::styled(preview, Style::default().fg(colors.text)),
+                ]));
+            }
         }
     } else {
         lines.push(Line::from(Span::styled(
@@ -290,6 +331,35 @@ pub(super) fn render_file_header_line(
             format!("[{}:{}]", hint.label, hint.rule_name),
             Style::default().fg(color).bg(colors.surface),
         ));
+    }
+    if let Some(test_counts) = cache.test_mapping_status_counts() {
+        let missing = test_counts.get("missing").copied().unwrap_or(0);
+        let changed = test_counts.get("changed").copied().unwrap_or(0);
+        let inline = test_counts.get("inline").copied().unwrap_or(0);
+        let color = if missing > 0 {
+            STOPPED
+        } else if changed > 0 || inline > 0 {
+            ACTIVE
+        } else {
+            colors.muted
+        };
+        let mut parts = Vec::new();
+        if missing > 0 {
+            parts.push(format!("{missing} miss"));
+        }
+        if changed > 0 {
+            parts.push(format!("{changed} changed"));
+        }
+        if inline > 0 {
+            parts.push(format!("{inline} inline"));
+        }
+        if !parts.is_empty() {
+            spans.push(Span::raw(" "));
+            spans.push(Span::styled(
+                format!("[tests:{}]", parts.join(" ")),
+                Style::default().fg(color).bg(colors.surface),
+            ));
+        }
     }
     Line::from(spans)
 }
@@ -1007,6 +1077,20 @@ fn format_compact_count(value: Option<usize>) -> String {
         format!("{:.0}k", value as f64 / 1_000.0)
     } else {
         value.to_string()
+    }
+}
+
+fn summarize_test_paths(paths: &[String], limit: usize) -> String {
+    let preview = paths
+        .iter()
+        .take(limit)
+        .cloned()
+        .collect::<Vec<_>>()
+        .join(", ");
+    if paths.len() > limit {
+        format!("{preview} +{}", paths.len() - limit)
+    } else {
+        preview
     }
 }
 

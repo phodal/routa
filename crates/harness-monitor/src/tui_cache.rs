@@ -51,6 +51,45 @@ pub(super) struct FileFactsEntry {
     pub(super) git_change_count: usize,
 }
 
+#[derive(Clone, Debug, Default)]
+pub(super) struct TestMappingSnapshot {
+    pub(super) cache_key: String,
+    pub(super) by_file: BTreeMap<String, TestMappingEntry>,
+    pub(super) skipped_test_files: BTreeSet<String>,
+    pub(super) status_counts: BTreeMap<String, usize>,
+}
+
+#[allow(dead_code)]
+#[derive(Clone, Debug, Default, Deserialize)]
+pub(super) struct TestMappingEntry {
+    #[serde(default)]
+    pub(super) source_file: String,
+    #[serde(default)]
+    pub(super) language: String,
+    #[serde(default)]
+    pub(super) status: String,
+    #[serde(default)]
+    pub(super) related_test_files: Vec<String>,
+    #[serde(default)]
+    pub(super) graph_test_files: Vec<String>,
+    #[serde(default)]
+    pub(super) resolver_kind: String,
+    #[serde(default)]
+    pub(super) confidence: String,
+    #[serde(default)]
+    pub(super) has_inline_tests: bool,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct TestMappingCliPayload {
+    #[serde(default)]
+    mappings: Vec<TestMappingEntry>,
+    #[serde(default)]
+    skipped_test_files: Vec<String>,
+    #[serde(default)]
+    status_counts: BTreeMap<String, usize>,
+}
+
 #[derive(Debug)]
 enum BackgroundCommand {
     RefreshStats {
@@ -75,6 +114,11 @@ enum BackgroundCommand {
         cache_key: String,
         mode: fitness::FitnessRunMode,
     },
+    RefreshTestMapping {
+        repo_root: String,
+        files: Vec<String>,
+        cache_key: String,
+    },
     RefreshScc {
         repo_root: String,
     },
@@ -95,6 +139,9 @@ enum BackgroundResult {
     Fitness {
         result: Box<Result<fitness::FitnessSnapshot, String>>,
     },
+    TestMapping {
+        result: Result<TestMappingSnapshot, String>,
+    },
     Scc {
         result: Result<SccSummary, String>,
     },
@@ -106,6 +153,7 @@ struct PendingCommands {
     detail: Option<PendingDetail>,
     facts: Option<PendingFacts>,
     fitness: Option<(String, String, fitness::FitnessRunMode)>,
+    test_mapping: Option<(String, Vec<String>, String)>,
     scc: Option<String>,
 }
 
@@ -124,6 +172,7 @@ pub(super) struct AppCache {
     pending_diff_key: Option<String>,
     pending_facts_key: Option<String>,
     pending_fitness: bool,
+    pending_test_mapping_key: Option<String>,
     pending_scc: bool,
     queued_fitness_refresh: Option<(String, String, bool, fitness::FitnessRunMode)>,
     fitness_mode: fitness::FitnessRunMode,
@@ -131,6 +180,7 @@ pub(super) struct AppCache {
     fitness_is_running: bool,
     fitness_cache_key: Option<String>,
     fitness_repo_root: String,
+    test_mapping_snapshot: Option<TestMappingSnapshot>,
     scc_summary: Option<SccSummary>,
     review_triggers: ReviewTriggerCache,
     worker_tx: Sender<BackgroundCommand>,
@@ -185,6 +235,7 @@ impl AppCache {
             pending_diff_key: None,
             pending_facts_key: None,
             pending_fitness: false,
+            pending_test_mapping_key: None,
             pending_scc: false,
             queued_fitness_refresh: None,
             fitness_mode: fitness::FitnessRunMode::Fast,
@@ -192,6 +243,7 @@ impl AppCache {
             fitness_is_running: false,
             fitness_cache_key: None,
             fitness_repo_root: repo_root.to_string(),
+            test_mapping_snapshot: None,
             scc_summary: None,
             review_triggers: ReviewTriggerCache::load(repo_root),
             worker_tx,
@@ -318,6 +370,16 @@ impl AppCache {
                         self.request_fitness_refresh(repo_root, cache_key, force, mode);
                     }
                 }
+                BackgroundResult::TestMapping { result } => match result {
+                    Ok(snapshot) => {
+                        self.pending_test_mapping_key = None;
+                        self.test_mapping_snapshot = Some(snapshot);
+                    }
+                    Err(_) => {
+                        self.pending_test_mapping_key = None;
+                        self.test_mapping_snapshot = None;
+                    }
+                },
                 BackgroundResult::Scc { result } => {
                     self.pending_scc = false;
                     if let Ok(summary) = result {
@@ -413,6 +475,36 @@ impl AppCache {
             });
             self.pending_facts_key = Some(facts_key);
         }
+    }
+
+    pub(super) fn warm_test_mappings(&mut self, state: &RuntimeState) {
+        let files = state
+            .file_items()
+            .iter()
+            .filter(|file| file.dirty || file.conflicted)
+            .map(|file| file.rel_path.clone())
+            .collect::<Vec<_>>();
+        if files.is_empty() {
+            self.pending_test_mapping_key = None;
+            self.test_mapping_snapshot = None;
+            return;
+        }
+
+        let cache_key = test_mapping_cache_key(state);
+        let already_loaded = self
+            .test_mapping_snapshot
+            .as_ref()
+            .is_some_and(|snapshot| snapshot.cache_key == cache_key);
+        if already_loaded || self.pending_test_mapping_key.as_deref() == Some(cache_key.as_str()) {
+            return;
+        }
+
+        let _ = self.worker_tx.send(BackgroundCommand::RefreshTestMapping {
+            repo_root: state.repo_root.clone(),
+            files,
+            cache_key: cache_key.clone(),
+        });
+        self.pending_test_mapping_key = Some(cache_key);
     }
 
     pub(super) fn diff_stat<'a>(
@@ -555,6 +647,27 @@ impl AppCache {
         self.sync_cache_key_from_active_mode();
     }
 
+    #[cfg(test)]
+    pub(super) fn set_test_mapping_snapshot_for_tests(
+        &mut self,
+        entries: Vec<TestMappingEntry>,
+        skipped_test_files: Vec<String>,
+    ) {
+        let mut status_counts = BTreeMap::new();
+        for entry in &entries {
+            *status_counts.entry(entry.status.clone()).or_insert(0) += 1;
+        }
+        self.test_mapping_snapshot = Some(TestMappingSnapshot {
+            cache_key: "test".to_string(),
+            by_file: entries
+                .into_iter()
+                .map(|entry| (entry.source_file.clone(), entry))
+                .collect(),
+            skipped_test_files: skipped_test_files.into_iter().collect(),
+            status_counts,
+        });
+    }
+
     fn active_fitness_history(&self) -> Option<&FitnessHistoryEntry> {
         self.fitness_history_by_mode.get(self.fitness_mode.as_str())
     }
@@ -601,7 +714,28 @@ impl AppCache {
         self.review_triggers.review_hint(file)
     }
 
-    pub(super) fn repo_review_hints(&self, files: &[&crate::models::FileView]) -> Vec<RepoReviewHint> {
+    pub(super) fn test_mapping(&self, file: &crate::models::FileView) -> Option<&TestMappingEntry> {
+        self.test_mapping_snapshot
+            .as_ref()
+            .and_then(|snapshot| snapshot.by_file.get(&file.rel_path))
+    }
+
+    pub(super) fn is_changed_test_file(&self, file: &crate::models::FileView) -> bool {
+        self.test_mapping_snapshot
+            .as_ref()
+            .is_some_and(|snapshot| snapshot.skipped_test_files.contains(&file.rel_path))
+    }
+
+    pub(super) fn test_mapping_status_counts(&self) -> Option<&BTreeMap<String, usize>> {
+        self.test_mapping_snapshot
+            .as_ref()
+            .map(|snapshot| &snapshot.status_counts)
+    }
+
+    pub(super) fn repo_review_hints(
+        &self,
+        files: &[&crate::models::FileView],
+    ) -> Vec<RepoReviewHint> {
         self.review_triggers
             .repo_review_hints(files, |file| self.diff_stat(file))
     }
@@ -938,6 +1072,10 @@ fn background_worker(rx: Receiver<BackgroundCommand>, tx: Sender<BackgroundResul
                 result: Box::new(result),
             });
         }
+        if let Some((repo_root, files, cache_key)) = pending.test_mapping.take() {
+            let result = load_test_mapping_snapshot(&repo_root, &files, cache_key);
+            let _ = tx.send(BackgroundResult::TestMapping { result });
+        }
         if let Some(repo_root) = pending.scc.take() {
             let _ = tx.send(BackgroundResult::Scc {
                 result: run_scc_summary(&repo_root),
@@ -975,10 +1113,82 @@ fn queue_command(pending: &mut PendingCommands, command: BackgroundCommand) {
         } => {
             pending.fitness = Some((repo_root, cache_key, mode));
         }
+        BackgroundCommand::RefreshTestMapping {
+            repo_root,
+            files,
+            cache_key,
+        } => {
+            pending.test_mapping = Some((repo_root, files, cache_key));
+        }
         BackgroundCommand::RefreshScc { repo_root } => {
             pending.scc = Some(repo_root);
         }
     }
+}
+
+fn test_mapping_cache_key(state: &RuntimeState) -> String {
+    let mut markers = state
+        .file_items()
+        .iter()
+        .filter(|file| file.dirty || file.conflicted)
+        .map(|file| {
+            format!(
+                "{}:{}:{}",
+                file.rel_path, file.state_code, file.last_modified_at_ms
+            )
+        })
+        .collect::<Vec<_>>();
+    markers.sort();
+    markers.join("|")
+}
+
+fn load_test_mapping_snapshot(
+    repo_root: &str,
+    files: &[String],
+    cache_key: String,
+) -> Result<TestMappingSnapshot, String> {
+    let mut command = Command::new("python3");
+    command
+        .current_dir(repo_root)
+        .env("PYTHONPATH", "tools/entrix")
+        .arg("-m")
+        .arg("entrix")
+        .arg("graph")
+        .arg("test-mapping")
+        .arg("--json")
+        .arg("--no-graph");
+    if !files.is_empty() {
+        command.args(files);
+    }
+
+    let output = command.output().map_err(|error| error.to_string())?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        let message = if !stderr.is_empty() {
+            stderr
+        } else if !stdout.is_empty() {
+            stdout
+        } else {
+            "entrix graph test-mapping failed".to_string()
+        };
+        return Err(message);
+    }
+
+    let payload: TestMappingCliPayload =
+        serde_json::from_slice(&output.stdout).map_err(|error| error.to_string())?;
+    let by_file = payload
+        .mappings
+        .into_iter()
+        .map(|entry| (entry.source_file.clone(), entry))
+        .collect::<BTreeMap<_, _>>();
+
+    Ok(TestMappingSnapshot {
+        cache_key,
+        by_file,
+        skipped_test_files: payload.skipped_test_files.into_iter().collect(),
+        status_counts: payload.status_counts,
+    })
 }
 
 fn run_scc_summary(repo_root: &str) -> Result<SccSummary, String> {
@@ -1160,7 +1370,12 @@ pub(super) fn load_diff_text(
         if nested_rel_path.is_empty() {
             return load_submodule_diff_text(repo_root, &submodule_path);
         }
-        return load_submodule_nested_diff_text(repo_root, &submodule_path, &nested_rel_path, state_code);
+        return load_submodule_nested_diff_text(
+            repo_root,
+            &submodule_path,
+            &nested_rel_path,
+            state_code,
+        );
     }
 
     let path = Path::new(repo_root).join(rel_path);
@@ -1288,7 +1503,8 @@ fn load_submodule_nested_diff_text(
         if !nested_path.exists() {
             return Ok(None);
         }
-        let content = std::fs::read_to_string(&nested_path).context("read untracked submodule file")?;
+        let content =
+            std::fs::read_to_string(&nested_path).context("read untracked submodule file")?;
         let mut out = Vec::new();
         out.push(format!("+++ {nested_rel_path}"));
         for line in content.lines().take(200) {

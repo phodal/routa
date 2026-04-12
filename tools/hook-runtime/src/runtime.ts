@@ -441,6 +441,7 @@ async function runFitnessPhase(
   }
 
   const metrics = await metricProvider.loadMetrics(options.metricNames);
+  const fitnessChangedBase = await resolveFitnessChangedBase();
   const reporter =
     options.outputMode === "human"
       ? createHumanMetricReporter(metrics, {
@@ -459,6 +460,9 @@ async function runFitnessPhase(
       metrics,
       async (metric) =>
         runMetric(metric, {
+          env: {
+            ROUTA_FITNESS_CHANGED_BASE: fitnessChangedBase,
+          },
           onOutput: (event) => reporter?.onMetricOutput(metric.name, event),
         }),
       {
@@ -554,6 +558,34 @@ async function runFitnessPhase(
       reporter?.close();
     }
   }
+}
+
+async function resolveFitnessChangedBase(): Promise<string> {
+  const explicitBase = process.env.ROUTA_FITNESS_CHANGED_BASE?.trim();
+  if (explicitBase) {
+    return explicitBase;
+  }
+
+  const upstream = await runCommand("git rev-parse --abbrev-ref --symbolic-full-name '@{upstream}'", {
+    stream: false,
+  });
+  if (upstream.exitCode === 0) {
+    const base = upstream.output.trim();
+    if (base) {
+      return base;
+    }
+  }
+
+  for (const candidate of ["origin/main", "main", "origin/master", "master", "HEAD~1"]) {
+    const probe = await runCommand(`git rev-parse --verify '${candidate}'`, {
+      stream: false,
+    });
+    if (probe.exitCode === 0) {
+      return candidate;
+    }
+  }
+
+  return "HEAD";
 }
 
 async function runReviewPhase(

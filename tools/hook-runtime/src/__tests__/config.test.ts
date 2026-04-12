@@ -28,6 +28,7 @@ describe("hook runtime profile config", () => {
       "ts_test_pass_full",
       "clippy_pass",
       "rust_test_pass",
+      "graph_test_mapping_probe",
     ]);
   });
 

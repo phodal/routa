@@ -181,6 +181,7 @@ fn run_loop(terminal: &mut DefaultTerminal, ctx: RepoContext, poll_interval_ms: 
         cache.sync_results();
         cache.warm_visible_files(&state);
         cache.warm_selected_detail(&state);
+        cache.warm_test_mappings(&state);
 
         state.sync_focus_for_width(terminal.size()?.width);
         terminal.draw(|frame| render(frame, &state, &feed, &mut cache))?;

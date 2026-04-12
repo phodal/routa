@@ -819,6 +819,8 @@ fn render_files(
                     deletions: None,
                 });
             let review_hint = cache.review_hint(file);
+            let test_mapping = cache.test_mapping(file);
+            let changed_test_file = cache.is_changed_test_file(file);
             let (file_name, parent_dir) = split_display_path(file);
             let display_name = display_file_name(state, file, &file_name);
             let rows = match density {
@@ -828,6 +830,8 @@ fn render_files(
                     file,
                     &diff_stat,
                     review_hint.as_ref(),
+                    test_mapping,
+                    changed_test_file,
                     colors,
                     state.focus == FocusPane::Files,
                     split[1].width as usize,
@@ -840,28 +844,35 @@ fn render_files(
                             file,
                             &diff_stat,
                             review_hint.as_ref(),
+                            test_mapping,
+                            changed_test_file,
                             colors,
                             state.focus == FocusPane::Files,
                             split[1].width as usize,
                         )]
                     } else {
-                    let primary = Line::from(vec![Span::styled(
-                        format!(
-                            "{} {}",
-                            if selected { ">" } else { " " },
-                            shorten_path(&display_name, split[1].width.saturating_sub(6) as usize)
-                        ),
-                        row_style(selected, state.focus == FocusPane::Files, colors)
-                            .add_modifier(Modifier::BOLD),
-                    )]);
-                    let secondary = render_file_meta_line(
-                        file,
-                        &parent_dir,
-                        &diff_stat,
-                        review_hint.as_ref(),
-                        colors,
-                    );
-                    vec![primary, secondary]
+                        let primary = Line::from(vec![Span::styled(
+                            format!(
+                                "{} {}",
+                                if selected { ">" } else { " " },
+                                shorten_path(
+                                    &display_name,
+                                    split[1].width.saturating_sub(6) as usize
+                                )
+                            ),
+                            row_style(selected, state.focus == FocusPane::Files, colors)
+                                .add_modifier(Modifier::BOLD),
+                        )]);
+                        let secondary = render_file_meta_line(
+                            file,
+                            &parent_dir,
+                            &diff_stat,
+                            review_hint.as_ref(),
+                            test_mapping,
+                            changed_test_file,
+                            colors,
+                        );
+                        vec![primary, secondary]
                     }
                 }
             };
@@ -1017,6 +1028,8 @@ fn render_file_secondary_line(
     file: &crate::models::FileView,
     diff_stat: &DiffStatSummary,
     review_hint: Option<&crate::tui::review::ReviewHint>,
+    test_mapping: Option<&TestMappingEntry>,
+    changed_test_file: bool,
     colors: UiPalette,
 ) -> Line<'static> {
     let age = pad_left(&time_ago(file.last_modified_at_ms), 5);
@@ -1027,6 +1040,11 @@ fn render_file_secondary_line(
             hint.label,
             Style::default().fg(review_hint_color(hint, colors)),
         ));
+    }
+    if let Some((label, color)) = render_test_mapping_badge(test_mapping, changed_test_file, colors)
+    {
+        spans.push(Span::raw("  "));
+        spans.push(Span::styled(label, Style::default().fg(color)));
     }
     spans.push(Span::raw(" "));
     spans.push(Span::styled(age, Style::default().fg(colors.muted)));
@@ -1042,6 +1060,8 @@ fn render_file_meta_line(
     parent_dir: &str,
     diff_stat: &DiffStatSummary,
     review_hint: Option<&crate::tui::review::ReviewHint>,
+    test_mapping: Option<&TestMappingEntry>,
+    changed_test_file: bool,
     colors: UiPalette,
 ) -> Line<'static> {
     let mut spans = Vec::new();
@@ -1050,7 +1070,17 @@ fn render_file_meta_line(
         Style::default().fg(colors.muted),
     ));
     spans.push(Span::styled("  ", Style::default().fg(colors.muted)));
-    spans.extend(render_file_secondary_line(file, diff_stat, review_hint, colors).spans);
+    spans.extend(
+        render_file_secondary_line(
+            file,
+            diff_stat,
+            review_hint,
+            test_mapping,
+            changed_test_file,
+            colors,
+        )
+        .spans,
+    );
     Line::from(spans)
 }
 
@@ -1061,6 +1091,8 @@ fn render_file_single_line(
     file: &crate::models::FileView,
     diff_stat: &DiffStatSummary,
     review_hint: Option<&crate::tui::review::ReviewHint>,
+    test_mapping: Option<&TestMappingEntry>,
+    changed_test_file: bool,
     colors: UiPalette,
     focused: bool,
     area_width: usize,
@@ -1091,7 +1123,17 @@ fn render_file_single_line(
         ));
         spans.push(Span::raw(" "));
     }
-    spans.extend(render_file_secondary_line(file, diff_stat, review_hint, colors).spans);
+    spans.extend(
+        render_file_secondary_line(
+            file,
+            diff_stat,
+            review_hint,
+            test_mapping,
+            changed_test_file,
+            colors,
+        )
+        .spans,
+    );
     Line::from(spans)
 }
 
@@ -1100,6 +1142,27 @@ fn review_hint_color(hint: &crate::tui::review::ReviewHint, _colors: UiPalette) 
         crate::tui::review::ReviewRiskLevel::High => STOPPED,
         crate::tui::review::ReviewRiskLevel::Medium => INFERRED,
     }
+}
+
+fn render_test_mapping_badge(
+    test_mapping: Option<&TestMappingEntry>,
+    changed_test_file: bool,
+    colors: UiPalette,
+) -> Option<(String, Color)> {
+    if changed_test_file {
+        return Some(("TEST".to_string(), ACTIVE));
+    }
+
+    let mapping = test_mapping?;
+    let (label, color) = match mapping.status.as_str() {
+        "changed" => ("TM changed", ACTIVE),
+        "exists" => ("TM ok", ACTIVE),
+        "inline" => ("TM inline", ACTIVE),
+        "missing" => ("TM miss", STOPPED),
+        "unknown" => ("TM ?", INFERRED),
+        _ => ("TM ...", colors.muted),
+    };
+    Some((label.to_string(), color))
 }
 
 pub(super) fn render_event_line(
