@@ -549,6 +549,17 @@ impl Db {
         Ok(out)
     }
 
+    pub fn session_last_seen_at_ms(&self, session_id: &str) -> Result<Option<i64>> {
+        self.conn
+            .query_row(
+                "SELECT last_seen_at_ms FROM sessions WHERE session_id = ?1",
+                params![session_id],
+                |row| row.get::<_, i64>(0),
+            )
+            .optional()
+            .context("query session last_seen_at_ms")
+    }
+
     pub fn file_state_all_dirty(&self, repo_root: &str) -> Result<Vec<FileStateRow>> {
         let mut stmt = self
             .conn
@@ -922,8 +933,8 @@ impl Db {
             )
             .context("prepare task query")?;
         stmt.query_row(params![repo_root, task_id], Self::task_view_from_row)
-        .optional()
-        .context("read task")
+            .optional()
+            .context("read task")
     }
 
     pub fn active_task_for_session(
@@ -948,8 +959,8 @@ impl Db {
             )
             .context("prepare active task query")?;
         stmt.query_row(params![repo_root, session_id], Self::task_view_from_row)
-        .optional()
-        .context("load active task for session")
+            .optional()
+            .context("load active task for session")
     }
 
     pub fn task_for_turn(
@@ -973,7 +984,10 @@ impl Db {
                  LIMIT 1",
             )
             .context("prepare turn task query")?;
-        stmt.query_row(params![repo_root, session_id, turn_id], Self::task_view_from_row)
+        stmt.query_row(
+            params![repo_root, session_id, turn_id],
+            Self::task_view_from_row,
+        )
         .optional()
         .context("load task for turn")
     }

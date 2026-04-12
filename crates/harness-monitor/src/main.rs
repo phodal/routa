@@ -206,7 +206,7 @@ fn main() -> Result<()> {
         }
         Command::Sessions => {
             let ctx = resolve(cli.repo.as_deref(), db_hint.as_deref())?;
-            let db = Db::open(&ctx.db_path)?;
+            let db = open_db_with_codex_backfill(&ctx)?;
             print_sessions(&db, &ctx.repo_root.to_string_lossy())?;
         }
         Command::Agents => {
@@ -215,12 +215,12 @@ fn main() -> Result<()> {
         }
         Command::Files { by_session } => {
             let ctx = resolve(cli.repo.as_deref(), db_hint.as_deref())?;
-            let db = Db::open(&ctx.db_path)?;
+            let db = open_db_with_codex_backfill(&ctx)?;
             print_files(&db, &ctx.repo_root.to_string_lossy(), by_session)?;
         }
         Command::Who { path } => {
             let ctx = resolve(cli.repo.as_deref(), db_hint.as_deref())?;
-            let db = Db::open(&ctx.db_path)?;
+            let db = open_db_with_codex_backfill(&ctx)?;
             print_file_owner(&db, &ctx.repo_root.to_string_lossy(), &ctx.repo_root, &path)?;
         }
         Command::Watch { interval_ms } => {
@@ -239,17 +239,17 @@ fn main() -> Result<()> {
         // ── Domain commands ───────────────────────────────────────────────
         Command::Task { action } => {
             let ctx = resolve(cli.repo.as_deref(), db_hint.as_deref())?;
-            let db = Db::open(&ctx.db_path)?;
+            let db = open_db_with_codex_backfill(&ctx)?;
             handle_task_command(action, &db, &ctx.repo_root.to_string_lossy())?;
         }
         Command::Run { action } => {
             let ctx = resolve(cli.repo.as_deref(), db_hint.as_deref())?;
-            let db = Db::open(&ctx.db_path)?;
+            let db = open_db_with_codex_backfill(&ctx)?;
             run::orchestrator::handle_run_command(action, &db, &ctx.repo_root.to_string_lossy())?;
         }
         Command::Workspace { action } => {
             let ctx = resolve(cli.repo.as_deref(), db_hint.as_deref())?;
-            let db = Db::open(&ctx.db_path).ok();
+            let db = open_db_with_codex_backfill(&ctx).ok();
             run::orchestrator::handle_workspace_command(
                 action,
                 &ctx.repo_root.to_string_lossy(),
@@ -258,7 +258,7 @@ fn main() -> Result<()> {
         }
         Command::Eval { action } => {
             let ctx = resolve(cli.repo.as_deref(), db_hint.as_deref())?;
-            let db = Db::open(&ctx.db_path)?;
+            let db = open_db_with_codex_backfill(&ctx)?;
             handle_eval_command(action, &db, &ctx.repo_root.to_string_lossy())?;
         }
         Command::Policy { action } => {
@@ -283,7 +283,7 @@ fn run_watch(
     interval_ms: u64,
 ) -> Result<()> {
     let ctx = resolve(repo_hint, db_hint)?;
-    let db = Db::open(&ctx.db_path)?;
+    let db = open_db_with_codex_backfill(&ctx)?;
     let repo_root = ctx.repo_root.to_string_lossy().to_string();
     let mut last_poll = 0i64;
     loop {
@@ -292,6 +292,12 @@ fn run_watch(
         last_poll = chrono::Utc::now().timestamp_millis();
         sleep(Duration::from_millis(interval_ms.max(200)));
     }
+}
+
+fn open_db_with_codex_backfill(ctx: &crate::observe::repo::RepoContext) -> Result<Db> {
+    let db = Db::open(&ctx.db_path)?;
+    crate::observe::codex_transcript::backfill_codex_transcripts_to_db(&ctx.repo_root, &db)?;
+    Ok(db)
 }
 
 fn run_serve(ctx: &crate::observe::repo::RepoContext) -> Result<()> {
