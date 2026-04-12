@@ -1,11 +1,13 @@
+use crate::application::run_assessment::{
+    assess_run, summarize_planes, PlaneAssessment, RunAssessmentInput, RunOrigin,
+};
 use super::fitness;
 use super::*;
-use crate::domain::run::Role;
+use crate::domain::run::{Role, RunMode};
 use crate::domain::workspace::WorkspaceState;
 use crate::models::{AttributionConfidence, FileView};
 use crate::operator_guardrails::{
-    assess_run_guardrails, effect_classes_summary, evidence_inline_summary,
-    EvidenceRequirementStatus, RunGuardrailsInput,
+    effect_classes_summary, evidence_inline_summary, EvidenceRequirementStatus,
 };
 use crate::state::{FitnessViewMode, FocusPane};
 use ratatui::layout::Rect;
@@ -13,23 +15,25 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Clear, List, ListItem, Paragraph, Wrap};
 
-struct RunOperatorModel {
-    role: Role,
-    origin_label: &'static str,
-    operator_state: String,
-    workspace_path: String,
-    process_cwd: Option<String>,
-    workspace_state: WorkspaceState,
-    effect_classes: Vec<crate::domain::policy::EffectClass>,
-    policy_decision: crate::domain::policy::PolicyDecisionKind,
-    approval_label: String,
-    block_reason: Option<String>,
-    eval_summary: Option<String>,
-    evidence: Vec<EvidenceRequirementStatus>,
-    integrity_warning: Option<String>,
-    next_action: String,
-    handoff_summary: Option<String>,
-    changed_files: Vec<String>,
+pub(super) struct RunOperatorModel {
+    pub(super) role: Role,
+    pub(super) mode: RunMode,
+    pub(super) origin: RunOrigin,
+    pub(super) operator_state: String,
+    pub(super) workspace_path: String,
+    pub(super) process_cwd: Option<String>,
+    pub(super) workspace_state: WorkspaceState,
+    pub(super) effect_classes: Vec<crate::domain::policy::EffectClass>,
+    pub(super) policy_decision: crate::domain::policy::PolicyDecisionKind,
+    pub(super) approval_label: String,
+    pub(super) block_reason: Option<String>,
+    pub(super) eval_summary: Option<String>,
+    pub(super) evidence: Vec<EvidenceRequirementStatus>,
+    pub(super) integrity_warning: Option<String>,
+    pub(super) next_action: String,
+    pub(super) handoff_summary: Option<String>,
+    pub(super) changed_files: Vec<String>,
+    pub(super) planes: Vec<PlaneAssessment>,
 }
 
 pub(super) fn render_details_panel(
@@ -467,7 +471,7 @@ fn render_run_details(
             Span::raw("  "),
             Span::styled(model.role.as_str(), Style::default().fg(colors.text)),
             Span::raw("  "),
-            Span::styled(model.origin_label, Style::default().fg(colors.accent)),
+            Span::styled(model.origin.as_str(), Style::default().fg(colors.accent)),
         ]),
         Line::from(vec![
             Span::styled("State: ", Style::default().fg(colors.muted)),
@@ -480,7 +484,7 @@ fn render_run_details(
             Span::styled(block_text, Style::default().fg(colors.text)),
             Span::raw("  "),
             Span::styled("Mode: ", Style::default().fg(colors.muted)),
-            Span::styled("unmanaged", Style::default().fg(colors.text)),
+            Span::styled(model.mode.as_str(), Style::default().fg(colors.text)),
         ]),
         Line::from(vec![
             Span::styled("Workspace: ", Style::default().fg(colors.muted)),
@@ -522,6 +526,16 @@ fn render_run_details(
             Span::styled("Approval: ", Style::default().fg(colors.muted)),
             Span::styled(
                 model.approval_label.clone(),
+                Style::default().fg(colors.text),
+            ),
+        ]),
+        Line::from(vec![
+            Span::styled("Planes: ", Style::default().fg(colors.muted)),
+            Span::styled(
+                shorten_path(
+                    &summarize_planes(&model.planes),
+                    width.saturating_sub(12) as usize,
+                ),
                 Style::default().fg(colors.text),
             ),
         ]),
@@ -644,7 +658,7 @@ fn render_process_scan_run_details(
         .as_deref()
         .map(|path| shorten_path(path, width.saturating_sub(20) as usize))
         .unwrap_or_else(|| "-".to_string());
-    let run_type = if model.origin_label == "mcp-service" {
+    let run_type = if model.origin == RunOrigin::McpService {
         "MCP service"
     } else {
         "process-scan agent"
@@ -666,7 +680,7 @@ fn render_process_scan_run_details(
             Span::raw("  "),
             Span::styled(model.role.as_str(), Style::default().fg(colors.text)),
             Span::raw("  "),
-            Span::styled(model.origin_label, Style::default().fg(colors.muted)),
+            Span::styled(model.origin.as_str(), Style::default().fg(colors.muted)),
         ]),
         Line::from(vec![
             Span::styled("Workspace: ", Style::default().fg(colors.muted)),
@@ -735,34 +749,33 @@ pub(super) fn run_status_color(status: &str) -> Color {
     }
 }
 
-fn build_run_operator_model(
+pub(super) fn build_run_operator_model(
     state: &RuntimeState,
     cache: &AppCache,
     run: &crate::state::SessionListItem,
 ) -> RunOperatorModel {
     let changed_files = changed_files_for_run(state, run);
-    let role = infer_run_role(run);
-    let origin_label = run_origin_label(state, run);
     let workspace_path = workspace_path_for_run(state, run);
     let process_cwd = process_cwd_for_run(state, run);
-    let integrity_warning = integrity_warning_for_run(state, run, &changed_files);
-    let workspace_state = infer_workspace_state(
-        cache,
-        state,
-        run,
-        &changed_files,
-        integrity_warning.as_ref(),
-    );
-    let assessment = assess_run_guardrails(&RunGuardrailsInput {
-        changed_files: &changed_files,
-        touched_files_count: run.touched_files_count,
-        unknown_files_count: run.unknown_count,
-        last_tool_name: run.last_tool_name.as_deref(),
+    let assessment = assess_run(&RunAssessmentInput {
+        run_id: &run.session_id,
+        display_name: &run.display_name,
+        client: &run.client,
         status: &run.status,
         last_event_name: run.last_event_name.as_deref(),
+        last_tool_name: run.last_tool_name.as_deref(),
+        changed_files: &changed_files,
+        touched_files_count: run.touched_files_count,
+        exact_files_count: run.exact_count,
+        inferred_files_count: run.inferred_count,
+        unknown_files_count: run.unknown_count,
         is_unknown_bucket: run.is_unknown_bucket,
         is_synthetic_run: run.is_synthetic_agent_run,
         is_service_run: is_auggie_mcp_service_run(state, run),
+        workspace_path: &workspace_path,
+        workspace_detached: false,
+        workspace_missing: std::path::Path::new(&state.repo_root).exists()
+            && !std::path::Path::new(&workspace_path).exists(),
         has_eval: cache.fitness_snapshot().is_some(),
         hard_gate_blocked: cache
             .fitness_snapshot()
@@ -776,21 +789,16 @@ fn build_run_operator_model(
         api_contract_passed: cache
             .fitness_snapshot()
             .is_some_and(api_contract_dimension_passed),
-        integrity_warning: integrity_warning.as_deref(),
     });
-    let handoff_summary = handoff_summary_for(
-        role.clone(),
-        assessment.operator_state.as_str(),
-        assessment.block_reason.as_deref(),
-    );
 
     RunOperatorModel {
-        role,
-        origin_label,
+        role: assessment.role,
+        mode: assessment.mode,
+        origin: assessment.origin,
         operator_state: assessment.operator_state,
         workspace_path,
         process_cwd,
-        workspace_state,
+        workspace_state: assessment.workspace_state,
         effect_classes: assessment.effect_classes,
         policy_decision: assessment.policy_decision,
         approval_label: assessment.approval_label,
@@ -801,34 +809,11 @@ fn build_run_operator_model(
             cache.fitness_snapshot().map(summarize_eval_snapshot)
         },
         evidence: assessment.evidence,
-        integrity_warning,
+        integrity_warning: assessment.integrity_warning,
         next_action: assessment.next_action,
-        handoff_summary,
+        handoff_summary: assessment.handoff_summary,
         changed_files,
-    }
-}
-
-pub(super) fn run_list_state_label(
-    state: &RuntimeState,
-    run: &crate::state::SessionListItem,
-) -> &'static str {
-    if run.is_unknown_bucket {
-        "attention"
-    } else if is_auggie_mcp_service_run(state, run) {
-        "service"
-    } else if run.is_synthetic_agent_run {
-        if run.status == "active" {
-            "executing"
-        } else {
-            "observing"
-        }
-    } else {
-        match run.status.as_str() {
-            "active" => "executing",
-            "idle" | "stopped" | "ended" => "evaluating",
-            "unknown" => "attention",
-            _ => "idle",
-        }
+        planes: assessment.planes,
     }
 }
 
@@ -863,45 +848,6 @@ fn file_matches_run(file: &FileView, run: &crate::state::SessionListItem) -> boo
     }
     file.last_session_id.as_deref() == Some(run.session_id.as_str())
         || file.touched_by.contains(&run.session_id)
-}
-
-pub(super) fn infer_run_role(run: &crate::state::SessionListItem) -> Role {
-    let mut haystack = run.display_name.to_ascii_lowercase();
-    haystack.push(' ');
-    haystack.push_str(&run.session_id.to_ascii_lowercase());
-    if let Some(event) = &run.last_event_name {
-        haystack.push(' ');
-        haystack.push_str(&event.to_ascii_lowercase());
-    }
-
-    if haystack.contains("planner") || haystack.contains("plan") {
-        Role::Planner
-    } else if haystack.contains("review") || haystack.contains("test") {
-        Role::Reviewer
-    } else if haystack.contains("fix") {
-        Role::Fixer
-    } else if haystack.contains("release") {
-        Role::Release
-    } else if haystack.contains("care") || haystack.contains("cleanup") {
-        Role::Caretaker
-    } else {
-        Role::Builder
-    }
-}
-
-pub(super) fn run_origin_label(
-    state: &RuntimeState,
-    run: &crate::state::SessionListItem,
-) -> &'static str {
-    if run.is_unknown_bucket {
-        "attribution-review"
-    } else if is_auggie_mcp_service_run(state, run) {
-        "mcp-service"
-    } else if run.is_synthetic_agent_run {
-        "process-scan"
-    } else {
-        "hook-backed"
-    }
 }
 
 fn workspace_path_for_run(state: &RuntimeState, run: &crate::state::SessionListItem) -> String {
@@ -946,52 +892,6 @@ fn api_contract_dimension_passed(snapshot: &fitness::FitnessSnapshot) -> bool {
         .is_some_and(|dim| dim.hard_gate_failures.is_empty())
 }
 
-fn integrity_warning_for_run(
-    state: &RuntimeState,
-    run: &crate::state::SessionListItem,
-    changed_files: &[String],
-) -> Option<String> {
-    if run.is_unknown_bucket {
-        Some(format!(
-            "{} dirty file(s) need ownership review",
-            run.unknown_count.max(changed_files.len())
-        ))
-    } else if is_auggie_mcp_service_run(state, run) {
-        Some("workspace MCP service".to_string())
-    } else if run.is_synthetic_agent_run {
-        Some("process detected without hook-backed session".to_string())
-    } else if run.unknown_count > 0 {
-        Some(format!(
-            "{} file(s) lack confident attribution",
-            run.unknown_count
-        ))
-    } else {
-        None
-    }
-}
-
-fn infer_workspace_state(
-    cache: &AppCache,
-    state: &RuntimeState,
-    run: &crate::state::SessionListItem,
-    changed_files: &[String],
-    integrity_warning: Option<&String>,
-) -> WorkspaceState {
-    if integrity_warning.is_some() {
-        return WorkspaceState::Dirty;
-    }
-    if !changed_files.is_empty() || run.touched_files_count > 0 || run.is_unknown_bucket {
-        return WorkspaceState::Dirty;
-    }
-    if cache.fitness_snapshot().is_some_and(|snapshot| {
-        !snapshot.hard_gate_blocked && !snapshot.score_blocked && state.file_items().is_empty()
-    }) {
-        WorkspaceState::Validated
-    } else {
-        WorkspaceState::Ready
-    }
-}
-
 fn summarize_eval_snapshot(snapshot: &fitness::FitnessSnapshot) -> String {
     let status = if snapshot.hard_gate_blocked {
         "blocked(hard)"
@@ -1006,32 +906,6 @@ fn summarize_eval_snapshot(snapshot: &fitness::FitnessSnapshot) -> String {
         status,
         snapshot.final_score
     )
-}
-
-fn handoff_summary_for(
-    role: Role,
-    operator_state: &str,
-    block_reason: Option<&str>,
-) -> Option<String> {
-    let next_role = if block_reason.is_some() || operator_state == "failed" {
-        Some(Role::Fixer)
-    } else if matches!(operator_state, "evaluating" | "ready") {
-        Some(Role::Reviewer)
-    } else if role == Role::Planner && operator_state == "executing" {
-        Some(Role::Builder)
-    } else {
-        None
-    }?;
-
-    if next_role.as_str() == role.as_str() {
-        None
-    } else {
-        Some(format!(
-            "handoff {} -> {}",
-            role.as_str(),
-            next_role.as_str()
-        ))
-    }
 }
 
 pub(super) fn render_title_bar(

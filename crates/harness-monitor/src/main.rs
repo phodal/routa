@@ -1,3 +1,4 @@
+mod application;
 mod cli_operator;
 mod db;
 mod detect;

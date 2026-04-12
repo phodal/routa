@@ -139,6 +139,7 @@ Important invariant:
 ### Harness And Worker
 
 - Harness detects repository signals, script entrypoints, and spec sources to power governance and quality analysis (`src/core/harness/`).
+- `crates/harness-monitor` now uses a run-centric application semantic layer so CLI and TUI consume one shared operator assessment path instead of duplicating run heuristics. See [docs/harness/harness-monitor-run-centric-operator-model.md](./harness/harness-monitor-run-centric-operator-model.md).
 - Workers abstract local and Docker-based execution environments (`src/core/worker/`).
 - Sandbox policy resolution in Rust enforces workspace-aware Docker constraints (`crates/routa-core/src/sandbox/`).
 
@@ -292,6 +293,6 @@ Current ADRs:
 - Product/API index: [docs/product-specs/FEATURE_TREE.md](./product-specs/FEATURE_TREE.md)
 - Architecture decisions: [docs/adr/](./adr/)
 - Design intent: [docs/design-docs/](./design-docs/)
-- Fitness and verification: [docs/fitness/README.md](https://github.com/phodal/routa/blob/main/docs/fitness/README.md)
-- Repository operating contract: [AGENTS.md](https://github.com/phodal/routa/blob/main/AGENTS.md)
+- Fitness and verification: [docs/fitness/README.md](./fitness/README.md)
+- Repository operating contract: [AGENTS.md](../AGENTS.md)
 - [MCP Spec](https://modelcontextprotocol.io/) · [ACP Spec](https://github.com/agentclientprotocol/typescript-sdk) · [A2A Spec](https://a2aprotocol.ai/)

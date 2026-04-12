@@ -170,7 +170,7 @@ fn render_main_area(
         .direction(Direction::Vertical)
         .constraints([Constraint::Percentage(60), Constraint::Percentage(40)])
         .split(columns[0]);
-    render_runs_panel(frame, left_split[0], state);
+    render_runs_panel(frame, left_split[0], state, cache);
     render_agents_panel(frame, left_split[1], state);
     render_files(frame, center[0], state, cache, FileRowDensity::TwoLine);
     render_details_panel(frame, center[1], state, cache);
@@ -572,7 +572,12 @@ fn render_agents_panel(frame: &mut Frame, area: ratatui::layout::Rect, state: &R
 /// In Phase 0 every session is an **unmanaged run**. The pane shows role,
 /// mode, client, file attribution summary, and eval-readiness. When managed
 /// mode is implemented (Phase 3) this will also show managed runs.
-fn render_runs_panel(frame: &mut Frame, area: ratatui::layout::Rect, state: &RuntimeState) {
+fn render_runs_panel(
+    frame: &mut Frame,
+    area: ratatui::layout::Rect,
+    state: &RuntimeState,
+    cache: &AppCache,
+) {
     let colors = palette(state.theme_mode);
     let focused = state.focus == FocusPane::Runs;
     let title = if focused { "Runs [Tab]" } else { "Runs" };
@@ -651,16 +656,14 @@ fn render_runs_panel(frame: &mut Frame, area: ratatui::layout::Rect, state: &Run
                 colors.surface
             };
 
-            let list_state = run_list_state_label(state, session);
-            let status_color = run_status_color(list_state);
+            let model = build_run_operator_model(state, cache, session);
+            let status_color = run_status_color(&model.operator_state);
             let icon = crate::models::HookClient::from_str(&session.client).icon();
             let run_name = if session.is_unknown_bucket {
                 "unattributed".to_string()
             } else {
                 session.display_name.clone()
             };
-            let role = infer_run_role(session);
-            let origin = run_origin_label(state, session);
             let run_label_width = split[1].width.saturating_sub(18) as usize;
             let event_label = match (&session.last_event_name, &session.last_tool_name) {
                 (Some(event), Some(tool)) if !tool.is_empty() => format!("{event}/{tool}"),
@@ -692,7 +695,7 @@ fn render_runs_panel(frame: &mut Frame, area: ratatui::layout::Rect, state: &Run
                         .add_modifier(Modifier::BOLD),
                 ),
                 Span::styled(
-                    format!(" {}", list_state),
+                    format!(" {}", model.operator_state),
                     Style::default().fg(status_color).bg(bg),
                 ),
                 Span::styled(
@@ -704,8 +707,8 @@ fn render_runs_panel(frame: &mut Frame, area: ratatui::layout::Rect, state: &Run
                 Span::styled(
                     format!(
                         "  {}  {}  {}  files:{}  e/i/?:{}/{}/{}",
-                        role.as_str(),
-                        origin,
+                        model.role.as_str(),
+                        model.origin.as_str(),
                         session.client,
                         session.touched_files_count,
                         session.exact_count,
@@ -1051,6 +1054,7 @@ fn render_file_meta_line(
     Line::from(spans)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn render_file_single_line(
     selected: bool,
     file_name: &str,

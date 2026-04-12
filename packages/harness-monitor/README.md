@@ -63,3 +63,5 @@ harness-monitor (NPM package)
   ├── optionalDependencies
   └── harness-monitor binary
 ```
+
+The run-centric operator semantics used by the binary are documented in [../../docs/harness/harness-monitor-run-centric-operator-model.md](../../docs/harness/harness-monitor-run-centric-operator-model.md).

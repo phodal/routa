@@ -1,9 +1,13 @@
+use crate::application::run_assessment::{
+    assess_run, summarize_planes, PlaneAssessment, RunAssessmentInput, RunOrigin,
+};
 use crate::db::{Db, SessionListRow};
 use crate::detect::scan_agents;
+use crate::domain::run::{Role, RunMode};
+use crate::domain::workspace::WorkspaceState;
 use crate::models::{self, DetectedAgent};
 use crate::operator_guardrails::{
-    assess_run_guardrails, effect_classes_summary, evidence_inline_summary,
-    EvidenceRequirementStatus, RunGuardrailsInput,
+    effect_classes_summary, evidence_inline_summary, EvidenceRequirementStatus,
 };
 use crate::{RunCommand, WorkspaceCommand};
 use anyhow::{bail, Context, Result};
@@ -20,11 +24,12 @@ struct CliRunSummary {
     last_seen_at_ms: i64,
     status: String,
     ended_at_ms: Option<i64>,
-    role: &'static str,
+    role: Role,
+    mode: RunMode,
     workspace_id: String,
     workspace_path: String,
-    workspace_state: String,
-    origin: &'static str,
+    workspace_state: WorkspaceState,
+    origin: RunOrigin,
     operator_state: String,
     effect_classes: Vec<crate::domain::policy::EffectClass>,
     policy_decision: crate::domain::policy::PolicyDecisionKind,
@@ -39,6 +44,7 @@ struct CliRunSummary {
     unknown_files: usize,
     changed_files: Vec<String>,
     latest_eval: Option<crate::domain::EvalSnapshot>,
+    planes: Vec<PlaneAssessment>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -91,10 +97,10 @@ pub(crate) fn handle_run_command(action: RunCommand, db: &Db, repo_root: &str) -
                 println!(
                     "{:<24}  {:<10}  {:<11}  {:<10}  {:<14}  {:>5}",
                     run.run_id,
-                    run.role,
+                    run.role.as_str(),
                     run.operator_state,
                     run.workspace_id,
-                    run.origin,
+                    run.origin.as_str(),
                     run.changed_files.len()
                 );
             }
@@ -105,9 +111,9 @@ pub(crate) fn handle_run_command(action: RunCommand, db: &Db, repo_root: &str) -
             match found {
                 Some(run) => {
                     println!("run_id:      {}", run.run_id);
-                    println!("mode:        unmanaged");
-                    println!("origin:      {}", run.origin);
-                    println!("role:        {}", run.role);
+                    println!("mode:        {}", run.mode.as_str());
+                    println!("origin:      {}", run.origin.as_str());
+                    println!("role:        {}", run.role.as_str());
                     println!("state:       {}", run.operator_state);
                     println!(
                         "block:       {}",
@@ -118,7 +124,8 @@ pub(crate) fn handle_run_command(action: RunCommand, db: &Db, repo_root: &str) -
                     println!("cwd:         {}", run.cwd);
                     println!(
                         "workspace:   {} ({})",
-                        run.workspace_id, run.workspace_state
+                        run.workspace_id,
+                        run.workspace_state.as_str()
                     );
                     println!("worktree:    {}", run.workspace_path);
                     println!(
@@ -145,6 +152,7 @@ pub(crate) fn handle_run_command(action: RunCommand, db: &Db, repo_root: &str) -
                         effect_classes_summary(&run.effect_classes)
                     );
                     println!("evidence:    {}", evidence_inline_summary(&run.evidence));
+                    println!("planes:      {}", summarize_planes(&run.planes));
                     if let Some(warning) = &run.integrity_warning {
                         println!("integrity:   {}", warning);
                     }
@@ -365,27 +373,27 @@ fn build_cli_run_summaries(
             .map(|row| row.rel_path.clone())
             .collect::<Vec<_>>();
         let latest_eval = latest_eval_by_run.get(session_id).cloned();
-        let role = infer_cli_run_role(session_id, client, status);
         let (workspace_id, workspace_path, workspace_detached) =
             workspace_identity_for(Some(cwd), repo_root, worktrees);
-        let workspace_state = infer_cli_workspace_state(
-            dirty_by_workspace_count(&workspace_id, repo_root, &workspace_path, &rows),
-            latest_eval.as_ref(),
-            workspace_detached,
-            false,
-        );
-        let integrity_warning =
-            infer_cli_integrity_warning(workspace_detached, false, unknown_files, false);
-        let assessment = assess_run_guardrails(&RunGuardrailsInput {
-            changed_files: &changed_files,
-            touched_files_count: exact_files + inferred_files + unknown_files,
-            unknown_files_count: unknown_files,
-            last_tool_name: None,
+        let missing_path = Path::new(repo_root).exists() && !Path::new(&workspace_path).exists();
+        let assessment = assess_run(&RunAssessmentInput {
+            run_id: session_id,
+            display_name: session_id,
+            client,
             status,
             last_event_name: None,
+            last_tool_name: None,
+            changed_files: &changed_files,
+            touched_files_count: exact_files + inferred_files + unknown_files,
+            exact_files_count: exact_files,
+            inferred_files_count: inferred_files,
+            unknown_files_count: unknown_files,
             is_unknown_bucket: false,
             is_synthetic_run: false,
             is_service_run: false,
+            workspace_path: &workspace_path,
+            workspace_detached,
+            workspace_missing: missing_path,
             has_eval: latest_eval.is_some(),
             hard_gate_blocked: latest_eval
                 .as_ref()
@@ -393,13 +401,7 @@ fn build_cli_run_summaries(
             score_blocked: latest_eval.as_ref().is_some_and(|eval| eval.score_blocked),
             has_coverage: latest_eval.as_ref().is_some_and(eval_has_coverage_evidence),
             api_contract_passed: latest_eval.as_ref().is_some_and(eval_api_contract_passed),
-            integrity_warning: integrity_warning.as_deref(),
         });
-        let handoff_summary = infer_cli_handoff_summary(
-            role,
-            assessment.operator_state.as_str(),
-            assessment.block_reason.as_deref(),
-        );
 
         runs.push(CliRunSummary {
             run_id: session_id.clone(),
@@ -410,25 +412,27 @@ fn build_cli_run_summaries(
             last_seen_at_ms: *last_seen_at_ms,
             status: status.clone(),
             ended_at_ms: *ended_at_ms,
-            role,
+            role: assessment.role,
+            mode: assessment.mode,
             workspace_id,
             workspace_path,
-            workspace_state: workspace_state.to_string(),
-            origin: "hook-backed",
+            workspace_state: assessment.workspace_state,
+            origin: assessment.origin,
             operator_state: assessment.operator_state,
             effect_classes: assessment.effect_classes,
             policy_decision: assessment.policy_decision,
             approval_label: assessment.approval_label,
             block_reason: assessment.block_reason,
-            integrity_warning,
+            integrity_warning: assessment.integrity_warning,
             next_action: assessment.next_action,
-            handoff_summary,
+            handoff_summary: assessment.handoff_summary,
             evidence: assessment.evidence,
             exact_files,
             inferred_files,
             unknown_files,
             changed_files,
             latest_eval,
+            planes: assessment.planes,
         });
     }
 
@@ -439,33 +443,31 @@ fn build_cli_run_summaries(
     {
         let (workspace_id, workspace_path, workspace_detached) =
             workspace_identity_for(agent.cwd.as_deref(), repo_root, worktrees);
-        let workspace_state =
-            infer_cli_workspace_state(0, None, workspace_detached, false).to_string();
-        let integrity_warning = infer_cli_integrity_warning(workspace_detached, false, 0, true);
-        let role = infer_cli_run_role(&agent.key, &agent.name, &agent.status);
         let synthetic_status = agent.status.to_ascii_lowercase();
-        let assessment = assess_run_guardrails(&RunGuardrailsInput {
-            changed_files: &[],
-            touched_files_count: 0,
-            unknown_files_count: 0,
-            last_tool_name: None,
+        let assessment = assess_run(&RunAssessmentInput {
+            run_id: &format!("agent:{}:{}", agent.name.to_ascii_lowercase(), agent.pid),
+            display_name: &format!("{}#{}", agent.name, agent.pid),
+            client: &agent.name.to_ascii_lowercase(),
             status: &synthetic_status,
             last_event_name: Some("process-scan"),
+            last_tool_name: None,
+            changed_files: &[],
+            touched_files_count: 0,
+            exact_files_count: 0,
+            inferred_files_count: 0,
+            unknown_files_count: 0,
             is_unknown_bucket: false,
             is_synthetic_run: true,
-            is_service_run: false,
+            is_service_run: is_mcp_service_agent(agent),
+            workspace_path: &workspace_path,
+            workspace_detached,
+            workspace_missing: Path::new(repo_root).exists() && !Path::new(&workspace_path).exists(),
             has_eval: false,
             hard_gate_blocked: false,
             score_blocked: false,
             has_coverage: false,
             api_contract_passed: false,
-            integrity_warning: integrity_warning.as_deref(),
         });
-        let handoff_summary = infer_cli_handoff_summary(
-            role,
-            assessment.operator_state.as_str(),
-            assessment.block_reason.as_deref(),
-        );
 
         runs.push(CliRunSummary {
             run_id: format!("agent:{}:{}", agent.name.to_ascii_lowercase(), agent.pid),
@@ -476,63 +478,61 @@ fn build_cli_run_summaries(
             last_seen_at_ms: chrono::Utc::now().timestamp_millis(),
             status: synthetic_status,
             ended_at_ms: None,
-            role,
+            role: assessment.role,
+            mode: assessment.mode,
             workspace_id,
             workspace_path,
-            workspace_state,
-            origin: "process-scan",
+            workspace_state: assessment.workspace_state,
+            origin: assessment.origin,
             operator_state: assessment.operator_state,
             effect_classes: assessment.effect_classes,
             policy_decision: assessment.policy_decision,
             approval_label: assessment.approval_label,
             block_reason: assessment.block_reason,
-            integrity_warning,
+            integrity_warning: assessment.integrity_warning,
             next_action: assessment.next_action,
-            handoff_summary,
+            handoff_summary: assessment.handoff_summary,
             evidence: assessment.evidence,
             exact_files: 0,
             inferred_files: 0,
             unknown_files: 0,
             changed_files: Vec::new(),
             latest_eval: None,
+            planes: assessment.planes,
         });
     }
 
     if !unknown_rows.is_empty() {
         let (workspace_id, workspace_path, workspace_detached) =
             workspace_identity_for(Some(repo_root), repo_root, worktrees);
-        let integrity_warning =
-            infer_cli_integrity_warning(workspace_detached, false, unknown_rows.len(), false);
         let changed_files = unknown_rows
             .iter()
             .map(|row| row.rel_path.clone())
             .collect::<Vec<_>>();
-        let assessment = assess_run_guardrails(&RunGuardrailsInput {
-            changed_files: &changed_files,
-            touched_files_count: unknown_rows.len(),
-            unknown_files_count: unknown_rows.len(),
-            last_tool_name: None,
+        let assessment = assess_run(&RunAssessmentInput {
+            run_id: "unknown",
+            display_name: "Unknown / review",
+            client: "unknown",
             status: "unknown",
             last_event_name: Some("review"),
+            last_tool_name: None,
+            changed_files: &changed_files,
+            touched_files_count: unknown_rows.len(),
+            exact_files_count: 0,
+            inferred_files_count: 0,
+            unknown_files_count: unknown_rows.len(),
             is_unknown_bucket: true,
             is_synthetic_run: false,
             is_service_run: false,
+            workspace_path: repo_root,
+            workspace_detached,
+            workspace_missing: false,
             has_eval: false,
             hard_gate_blocked: false,
             score_blocked: false,
             has_coverage: false,
             api_contract_passed: false,
-            integrity_warning: integrity_warning.as_deref(),
         });
-        let operator_state = assessment.operator_state;
-        let policy_decision = assessment.policy_decision;
-        let approval_label = assessment.approval_label;
-        let block_reason = assessment.block_reason;
-        let next_action = assessment.next_action;
-        let effect_classes = assessment.effect_classes;
-        let evidence = assessment.evidence;
-        let handoff_summary =
-            infer_cli_handoff_summary("reviewer", operator_state.as_str(), block_reason.as_deref());
 
         runs.push(CliRunSummary {
             run_id: "unknown".to_string(),
@@ -547,31 +547,27 @@ fn build_cli_run_summaries(
                 .unwrap_or(0),
             status: "unknown".to_string(),
             ended_at_ms: None,
-            role: "reviewer",
+            role: assessment.role,
+            mode: assessment.mode,
             workspace_id,
             workspace_path,
-            workspace_state: infer_cli_workspace_state(
-                unknown_rows.len(),
-                None,
-                workspace_detached,
-                false,
-            )
-            .to_string(),
-            origin: "attribution-review",
-            operator_state,
-            effect_classes,
-            policy_decision,
-            approval_label,
-            block_reason,
-            integrity_warning,
-            next_action,
-            handoff_summary,
-            evidence,
+            workspace_state: assessment.workspace_state,
+            origin: assessment.origin,
+            operator_state: assessment.operator_state,
+            effect_classes: assessment.effect_classes,
+            policy_decision: assessment.policy_decision,
+            approval_label: assessment.approval_label,
+            block_reason: assessment.block_reason,
+            integrity_warning: assessment.integrity_warning,
+            next_action: assessment.next_action,
+            handoff_summary: assessment.handoff_summary,
+            evidence: assessment.evidence,
             exact_files: 0,
             inferred_files: 0,
             unknown_files: unknown_rows.len(),
             changed_files,
             latest_eval: None,
+            planes: assessment.planes,
         });
     }
 
@@ -581,25 +577,6 @@ fn build_cli_run_summaries(
             .then_with(|| a.run_id.cmp(&b.run_id))
     });
     runs
-}
-
-fn infer_cli_run_role(session_id: &str, client: &str, status: &str) -> &'static str {
-    let mut haystack = session_id.to_ascii_lowercase();
-    haystack.push(' ');
-    haystack.push_str(&client.to_ascii_lowercase());
-    haystack.push(' ');
-    haystack.push_str(&status.to_ascii_lowercase());
-    if haystack.contains("plan") {
-        "planner"
-    } else if haystack.contains("review") || haystack.contains("test") {
-        "reviewer"
-    } else if haystack.contains("fix") {
-        "fixer"
-    } else if haystack.contains("release") {
-        "release"
-    } else {
-        "builder"
-    }
 }
 
 fn infer_cli_workspace_state(
@@ -617,48 +594,6 @@ fn infer_cli_workspace_state(
     } else {
         "ready"
     }
-}
-
-fn infer_cli_integrity_warning(
-    detached: bool,
-    missing_path: bool,
-    unknown_files: usize,
-    synthetic: bool,
-) -> Option<String> {
-    if missing_path {
-        Some("workspace path missing".to_string())
-    } else if unknown_files > 0 {
-        Some(format!("{unknown_files} file(s) need ownership review"))
-    } else if detached {
-        Some("workspace is on detached HEAD".to_string())
-    } else if synthetic {
-        Some("process detected without hook-backed session".to_string())
-    } else {
-        None
-    }
-}
-
-fn infer_cli_handoff_summary(
-    role: &'static str,
-    operator_state: &str,
-    block_reason: Option<&str>,
-) -> Option<String> {
-    let next_role = if block_reason.is_some_and(|reason| {
-        reason.contains("hard gate")
-            || reason.contains("score")
-            || reason.contains("ownership")
-            || reason.contains("attention")
-    }) {
-        Some("fixer")
-    } else if matches!(operator_state, "evaluating" | "ready") {
-        Some("reviewer")
-    } else if role == "planner" && operator_state == "executing" {
-        Some("builder")
-    } else {
-        None
-    }?;
-
-    (next_role != role).then(|| format!("handoff {role} -> {next_role}"))
 }
 
 fn eval_has_coverage_evidence(eval: &crate::domain::EvalSnapshot) -> bool {
@@ -904,19 +839,6 @@ fn workspace_identity_for(
     }
 }
 
-fn dirty_by_workspace_count(
-    workspace_id: &str,
-    repo_root: &str,
-    workspace_path: &str,
-    rows: &[models::FileStateRow],
-) -> usize {
-    if workspace_id == "main" || workspace_path == repo_root {
-        rows.len()
-    } else {
-        0
-    }
-}
-
 fn matched_agent_keys_for_sessions(
     sessions: &[SessionListRow],
     detected_agents: &[DetectedAgent],
@@ -979,6 +901,11 @@ fn is_repo_local_agent_cli(agent: &DetectedAgent, repo_root: &str) -> bool {
     })
 }
 
+fn is_mcp_service_agent(agent: &DetectedAgent) -> bool {
+    agent.name.eq_ignore_ascii_case("auggie")
+        && agent.command.to_ascii_lowercase().contains("--mcp")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1006,22 +933,29 @@ mod tests {
     #[test]
     fn cli_run_state_prefers_failed_over_active() {
         let changed_files = vec!["src/main.rs".to_string()];
-        let assessment = assess_run_guardrails(&RunGuardrailsInput {
-            changed_files: &changed_files,
-            touched_files_count: 1,
-            unknown_files_count: 0,
-            last_tool_name: Some("write"),
+        let assessment = assess_run(&RunAssessmentInput {
+            run_id: "run-1",
+            display_name: "run-1",
+            client: "codex",
             status: "active",
             last_event_name: None,
+            last_tool_name: Some("write"),
+            changed_files: &changed_files,
+            touched_files_count: 1,
+            exact_files_count: 1,
+            inferred_files_count: 0,
+            unknown_files_count: 0,
             is_unknown_bucket: false,
             is_synthetic_run: false,
             is_service_run: false,
+            workspace_path: "/repo",
+            workspace_detached: false,
+            workspace_missing: false,
             has_eval: true,
             hard_gate_blocked: true,
             score_blocked: false,
             has_coverage: true,
             api_contract_passed: true,
-            integrity_warning: None,
         });
 
         assert_eq!(assessment.operator_state, "failed");
@@ -1059,9 +993,9 @@ mod tests {
 
         assert_eq!(runs.len(), 1);
         assert_eq!(runs[0].run_id, "agent:codex:42");
-        assert_eq!(runs[0].origin, "process-scan");
+        assert_eq!(runs[0].origin.as_str(), "process-scan");
         assert_eq!(runs[0].workspace_id, "main");
-        assert_eq!(runs[0].workspace_state, "ready");
+        assert_eq!(runs[0].workspace_state.as_str(), "ready");
         assert_eq!(runs[0].operator_state, "observing");
     }
 
