@@ -291,7 +291,7 @@ impl RuntimeState {
         }
     }
 
-    pub(super) fn prune_stale_sessions(&mut self) {
+    pub(crate) fn prune_stale_sessions(&mut self) {
         let cutoff = Utc::now().timestamp_millis() - DEFAULT_INFERENCE_WINDOW_MS;
         for session in self.sessions.values_mut() {
             if session.status != "stopped" {

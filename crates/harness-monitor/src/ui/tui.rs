@@ -110,6 +110,7 @@ fn run_loop(terminal: &mut DefaultTerminal, ctx: RepoContext, poll_interval_ms: 
     for message in feed.read_recent_since(bootstrap_cutoff)? {
         state.apply_message(message);
     }
+    state.prune_stale_sessions();
     let mut last_poll = Instant::now() - Duration::from_millis(poll_interval_ms);
     let mut last_transport_refresh = Instant::now() - Duration::from_millis(TRANSPORT_REFRESH_MS);
     let mut last_repo_status_refresh =
@@ -176,6 +177,7 @@ fn run_loop(terminal: &mut DefaultTerminal, ctx: RepoContext, poll_interval_ms: 
                 chrono::Utc::now().timestamp_millis(),
                 format!("transcript backfill complete ({recovered_session_count} sessions)"),
             );
+            state.prune_stale_sessions();
         }
         if force_scan {
             let dirty = observe::scan_repo(&ctx)?;
@@ -183,6 +185,7 @@ fn run_loop(terminal: &mut DefaultTerminal, ctx: RepoContext, poll_interval_ms: 
             apply_repo_status(&mut state, read_repo_status(&ctx).ok());
             last_poll = Instant::now();
         }
+        state.prune_stale_sessions();
 
         if last_transport_refresh.elapsed() >= Duration::from_millis(TRANSPORT_REFRESH_MS) {
             state.set_runtime_transport(read_runtime_transport(&ctx));

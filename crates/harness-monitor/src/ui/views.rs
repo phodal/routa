@@ -28,11 +28,16 @@ impl RuntimeState {
     }
 
     fn compute_session_items(&self) -> Vec<SessionListItem> {
+        let now_ms = Utc::now().timestamp_millis();
         let agent_matches = self.compute_agent_match_state();
         let mut items: Vec<_> = self
             .sessions
             .values()
             .filter(|session| self.matches_session_search(session))
+            .filter(|session| {
+                self.run_filter_mode == crate::ui::state::RunFilterMode::Attention
+                    || self.session_is_current_run_context(session, now_ms)
+            })
             .map(|session| {
                 let (exact_count, inferred_count, unknown_count) =
                     self.session_confidence_counts(&session.session_id);
@@ -66,10 +71,14 @@ impl RuntimeState {
                 }
             })
             .collect();
-        let now_ms = Utc::now().timestamp_millis();
+        let hook_backed_session_count = items.len();
         items.extend(
             self.unmatched_agents_for_runs(&agent_matches)
                 .into_iter()
+                .filter(|_| {
+                    self.run_filter_mode == crate::ui::state::RunFilterMode::Attention
+                        || hook_backed_session_count == 0
+                })
                 .filter(|agent| self.matches_detected_agent_search(agent))
                 .map(|agent| SessionListItem {
                     session_id: format!("agent:{}:{}", agent.name.to_ascii_lowercase(), agent.pid),
@@ -394,17 +403,19 @@ impl RuntimeState {
 
     fn compute_agent_match_state(&self) -> AgentMatchState {
         let mut session_matches: BTreeMap<String, SessionAgentMatch> = BTreeMap::new();
+        let now_ms = Utc::now().timestamp_millis();
         let visible_sessions: Vec<_> = self
             .sessions
             .values()
             .filter(|session| self.matches_session_search(session))
+            .filter(|session| self.session_is_current_run_context(session, now_ms))
             .collect();
 
         for agent in &self.detected_agents {
             let mut scored: Vec<_> = visible_sessions
                 .iter()
                 .filter_map(|session| {
-                    let score = session_agent_match_score(session, agent);
+                    let score = session_agent_match_score(session, agent, now_ms);
                     (score > 0).then_some((score, session.session_id.as_str()))
                 })
                 .collect();
@@ -448,6 +459,16 @@ impl RuntimeState {
             session_matches,
             matched_agent_keys,
         }
+    }
+
+    fn session_is_current_run_context(&self, session: &SessionView, now_ms: i64) -> bool {
+        let cutoff = now_ms - DEFAULT_INFERENCE_WINDOW_MS;
+        session.last_seen_at_ms >= cutoff || self.session_has_dirty_signal(&session.session_id)
+    }
+
+    fn session_has_dirty_signal(&self, session_id: &str) -> bool {
+        let (exact_count, inferred_count, unknown_count) = self.session_confidence_counts(session_id);
+        exact_count + inferred_count + unknown_count > 0
     }
 }
 
@@ -588,7 +609,7 @@ fn session_display_name(session: &SessionView) -> String {
         .unwrap_or_else(|| short_session(&session.session_id))
 }
 
-fn session_agent_match_score(session: &SessionView, agent: &DetectedAgent) -> usize {
+fn session_agent_match_score(session: &SessionView, agent: &DetectedAgent, now_ms: i64) -> usize {
     let mut score = 0;
 
     let session_client = session.client.to_ascii_lowercase();
@@ -635,6 +656,20 @@ fn session_agent_match_score(session: &SessionView, agent: &DetectedAgent) -> us
         if !lowered.is_empty() && command.contains(&lowered) {
             score += 2;
         }
+    }
+
+    let agent_started_at_ms =
+        now_ms.saturating_sub((agent.uptime_seconds as i64).saturating_mul(1000));
+    let started_delta_ms = session
+        .started_at_ms
+        .saturating_sub(agent_started_at_ms)
+        .unsigned_abs() as i64;
+    if started_delta_ms <= 2 * 60 * 1000 {
+        score += 5;
+    } else if started_delta_ms <= 10 * 60 * 1000 {
+        score += 3;
+    } else if started_delta_ms <= 30 * 60 * 1000 {
+        score += 1;
     }
 
     score

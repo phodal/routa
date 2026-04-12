@@ -342,9 +342,10 @@ fn build_cli_run_summaries(
     worktrees: &[GitWorktreeRecord],
     latest_eval_by_run: &BTreeMap<String, crate::evaluate::eval::EvalSnapshot>,
 ) -> Vec<CliRunSummary> {
+    let now_ms = chrono::Utc::now().timestamp_millis();
+    let active_cutoff_ms = now_ms - models::DEFAULT_INFERENCE_WINDOW_MS;
     let mut dirty_by_session: BTreeMap<String, Vec<models::FileStateRow>> = BTreeMap::new();
     let mut unknown_rows = Vec::new();
-    let matched_agent_keys = matched_agent_keys_for_sessions(&sessions, detected_agents);
 
     for row in dirty_files {
         if let Some(session_id) = row.session_id.clone() {
@@ -355,8 +356,16 @@ fn build_cli_run_summaries(
     }
 
     let mut runs = Vec::new();
+    let session_rows = sessions
+        .into_iter()
+        .filter(|(session_id, _cwd, _model, _started, last_seen, _client, _status, _ended)| {
+            *last_seen >= active_cutoff_ms || dirty_by_session.contains_key(session_id)
+        })
+        .collect::<Vec<_>>();
+    let has_session_runs = !session_rows.is_empty();
+
     for (session_id, cwd, model, started_at_ms, last_seen_at_ms, client, status, ended_at_ms) in
-        &sessions
+        &session_rows
     {
         let rows = dirty_by_session.remove(session_id).unwrap_or_default();
         let exact_files = rows
@@ -443,74 +452,75 @@ fn build_cli_run_summaries(
         });
     }
 
-    for agent in detected_agents
-        .iter()
-        .filter(|agent| is_repo_local_agent_cli(agent, repo_root))
-        .filter(|agent| !matched_agent_keys.contains(&agent.key))
-    {
-        let (workspace_id, workspace_path, workspace_detached, workspace_branch, workspace_type) =
-            workspace_identity_for(agent.cwd.as_deref(), repo_root, worktrees);
-        let synthetic_status = agent.status.to_ascii_lowercase();
-        let assessment = assess_run(&RunAssessmentInput {
-            run_id: &format!("agent:{}:{}", agent.name.to_ascii_lowercase(), agent.pid),
-            display_name: &format!("{}#{}", agent.name, agent.pid),
-            client: &agent.name.to_ascii_lowercase(),
-            status: &synthetic_status,
-            last_event_name: Some("process-scan"),
-            last_tool_name: None,
-            changed_files: &[],
-            touched_files_count: 0,
-            exact_files_count: 0,
-            inferred_files_count: 0,
-            unknown_files_count: 0,
-            is_unknown_bucket: false,
-            is_synthetic_run: true,
-            is_service_run: is_mcp_service_agent(agent),
-            workspace_path: &workspace_path,
-            workspace_branch: workspace_branch.as_deref(),
-            workspace_type,
-            workspace_detached,
-            workspace_missing: Path::new(repo_root).exists()
-                && !Path::new(&workspace_path).exists(),
-            has_eval: false,
-            hard_gate_blocked: false,
-            score_blocked: false,
-            has_coverage: false,
-            api_contract_passed: false,
-        });
+    if !has_session_runs {
+        for agent in detected_agents
+            .iter()
+            .filter(|agent| is_repo_local_agent_cli(agent, repo_root))
+        {
+            let (workspace_id, workspace_path, workspace_detached, workspace_branch, workspace_type) =
+                workspace_identity_for(agent.cwd.as_deref(), repo_root, worktrees);
+            let synthetic_status = agent.status.to_ascii_lowercase();
+            let assessment = assess_run(&RunAssessmentInput {
+                run_id: &format!("agent:{}:{}", agent.name.to_ascii_lowercase(), agent.pid),
+                display_name: &format!("{}#{}", agent.name, agent.pid),
+                client: &agent.name.to_ascii_lowercase(),
+                status: &synthetic_status,
+                last_event_name: Some("process-scan"),
+                last_tool_name: None,
+                changed_files: &[],
+                touched_files_count: 0,
+                exact_files_count: 0,
+                inferred_files_count: 0,
+                unknown_files_count: 0,
+                is_unknown_bucket: false,
+                is_synthetic_run: true,
+                is_service_run: is_mcp_service_agent(agent),
+                workspace_path: &workspace_path,
+                workspace_branch: workspace_branch.as_deref(),
+                workspace_type,
+                workspace_detached,
+                workspace_missing: Path::new(repo_root).exists()
+                    && !Path::new(&workspace_path).exists(),
+                has_eval: false,
+                hard_gate_blocked: false,
+                score_blocked: false,
+                has_coverage: false,
+                api_contract_passed: false,
+            });
 
-        runs.push(CliRunSummary {
-            run_id: format!("agent:{}:{}", agent.name.to_ascii_lowercase(), agent.pid),
-            client: agent.name.to_ascii_lowercase(),
-            cwd: agent.cwd.clone().unwrap_or_else(|| repo_root.to_string()),
-            model: String::new(),
-            started_at_ms: 0,
-            last_seen_at_ms: chrono::Utc::now().timestamp_millis(),
-            status: synthetic_status,
-            ended_at_ms: None,
-            role: assessment.role,
-            mode: assessment.mode,
-            workspace_id,
-            workspace_path,
-            workspace_state: assessment.workspace_state,
-            origin: assessment.origin,
-            operator_state: assessment.operator_state,
-            effect_classes: assessment.effect_classes,
-            policy_decision: assessment.policy_decision,
-            approval_label: assessment.approval_label,
-            block_reason: assessment.block_reason,
-            integrity_warning: assessment.integrity_warning,
-            next_action: assessment.next_action,
-            handoff_summary: assessment.handoff_summary,
-            recovery_hints: assessment.recovery_hints,
-            evidence: assessment.evidence,
-            exact_files: 0,
-            inferred_files: 0,
-            unknown_files: 0,
-            changed_files: Vec::new(),
-            latest_eval: None,
-            planes: assessment.planes,
-        });
+            runs.push(CliRunSummary {
+                run_id: format!("agent:{}:{}", agent.name.to_ascii_lowercase(), agent.pid),
+                client: agent.name.to_ascii_lowercase(),
+                cwd: agent.cwd.clone().unwrap_or_else(|| repo_root.to_string()),
+                model: String::new(),
+                started_at_ms: 0,
+                last_seen_at_ms: now_ms,
+                status: synthetic_status,
+                ended_at_ms: None,
+                role: assessment.role,
+                mode: assessment.mode,
+                workspace_id,
+                workspace_path,
+                workspace_state: assessment.workspace_state,
+                origin: assessment.origin,
+                operator_state: assessment.operator_state,
+                effect_classes: assessment.effect_classes,
+                policy_decision: assessment.policy_decision,
+                approval_label: assessment.approval_label,
+                block_reason: assessment.block_reason,
+                integrity_warning: assessment.integrity_warning,
+                next_action: assessment.next_action,
+                handoff_summary: assessment.handoff_summary,
+                recovery_hints: assessment.recovery_hints,
+                evidence: assessment.evidence,
+                exact_files: 0,
+                inferred_files: 0,
+                unknown_files: 0,
+                changed_files: Vec::new(),
+                latest_eval: None,
+                planes: assessment.planes,
+            });
+        }
     }
 
     if !unknown_rows.is_empty() {
@@ -876,36 +886,6 @@ fn workspace_identity_for(
     }
 }
 
-fn matched_agent_keys_for_sessions(
-    sessions: &[SessionListRow],
-    detected_agents: &[DetectedAgent],
-) -> std::collections::BTreeSet<String> {
-    let mut matched = std::collections::BTreeSet::new();
-    for (session_id, cwd, _model, _started, _last, client, _status, _ended) in sessions {
-        let best = detected_agents
-            .iter()
-            .filter(|agent| {
-                agent.cwd.as_deref().is_some_and(|agent_cwd| {
-                    normalize_match_path(agent_cwd) == normalize_match_path(cwd)
-                })
-            })
-            .find(|agent| {
-                let client = client.to_ascii_lowercase();
-                let vendor = agent.vendor.to_ascii_lowercase();
-                let name = agent.name.to_ascii_lowercase();
-                let session_id = session_id.to_ascii_lowercase();
-                client == name
-                    || client == vendor
-                    || session_id.contains(&name)
-                    || agent.command.to_ascii_lowercase().contains(&session_id)
-            });
-        if let Some(agent) = best {
-            matched.insert(agent.key.clone());
-        }
-    }
-    matched
-}
-
 fn normalize_match_path(path: &str) -> String {
     path.trim_end_matches('/').to_string()
 }
@@ -1039,9 +1019,84 @@ mod tests {
     }
 
     #[test]
+    fn cli_run_summaries_prefer_session_rows_over_process_scan_runs() {
+        let now = chrono::Utc::now().timestamp_millis();
+        let runs = build_cli_run_summaries(
+            "/repo",
+            vec![(
+                "sess-1".to_string(),
+                "/repo".to_string(),
+                "gpt-5.4".to_string(),
+                now - 10 * 60 * 1000,
+                now - 30_000,
+                "codex".to_string(),
+                "active".to_string(),
+                None,
+            )],
+            Vec::new(),
+            &[DetectedAgent {
+                key: "OpenAI:42".to_string(),
+                name: "Codex".to_string(),
+                vendor: "OpenAI".to_string(),
+                icon: "◈".to_string(),
+                pid: 42,
+                cwd: Some("/repo".to_string()),
+                cpu_percent: 0.0,
+                mem_mb: 32.0,
+                uptime_seconds: 90,
+                status: "IDLE".to_string(),
+                confidence: 80,
+                project: "repo".to_string(),
+                command: "codex --cwd /repo".to_string(),
+            }],
+            &[GitWorktreeRecord {
+                path: "/repo".to_string(),
+                head: Some("abc123".to_string()),
+                branch: Some("main".to_string()),
+                detached: false,
+            }],
+            &BTreeMap::new(),
+        );
+
+        assert_eq!(runs.len(), 1);
+        assert_eq!(runs[0].run_id, "sess-1");
+        assert_eq!(runs[0].origin.as_str(), "hook-backed");
+    }
+
+    #[test]
+    fn cli_run_summaries_hide_stale_sessions_without_dirty_signal() {
+        let now = chrono::Utc::now().timestamp_millis();
+        let runs = build_cli_run_summaries(
+            "/repo",
+            vec![(
+                "sess-stale".to_string(),
+                "/repo".to_string(),
+                "gpt-5.4".to_string(),
+                now - 60 * 60 * 1000,
+                now - models::DEFAULT_INFERENCE_WINDOW_MS - 60_000,
+                "codex".to_string(),
+                "idle".to_string(),
+                None,
+            )],
+            Vec::new(),
+            &[],
+            &[GitWorktreeRecord {
+                path: "/repo".to_string(),
+                head: Some("abc123".to_string()),
+                branch: Some("main".to_string()),
+                detached: false,
+            }],
+            &BTreeMap::new(),
+        );
+
+        assert!(runs.is_empty());
+    }
+
+    #[test]
     fn workspace_summaries_count_attached_runs_and_agents() {
         let temp = tempfile::tempdir().unwrap();
         let repo_root = temp.path().to_string_lossy().to_string();
+        let now = chrono::Utc::now().timestamp_millis();
         let mut evals = BTreeMap::new();
         evals.insert(
             "run-1".to_string(),
@@ -1064,8 +1119,8 @@ mod tests {
                 "run-1".to_string(),
                 repo_root.clone(),
                 "gpt-5.4".to_string(),
-                10,
-                100,
+                now - 10 * 60 * 1000,
+                now - 1_000,
                 "codex".to_string(),
                 "idle".to_string(),
                 None,
