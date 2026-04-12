@@ -1,6 +1,6 @@
 [package]
 name = "routa-rpc"
-version = "0.14.1"
+version = "0.14.2"
 description = "Transport-agnostic JSON-RPC 2.0 layer for Routa.js — enables JS bindgen"
 authors = ["phodal"]
 edition = "2021"
@@ -14,4 +14,4 @@ path = "src/lib.rs"
 
 [dependencies]
 # Core domain only — no HTTP framework needed
-routa-core = { version = "0.14.1", path = "../routa-core" }
+routa-core = { version = "0.14.2", path = "../routa-core" }

@@ -1,6 +1,6 @@
 [package]
 name = "routa-cli"
-version = "0.14.1"
+version = "0.14.2"
 description = "Routa.js CLI — command-line interface for multi-agent coordination"
 authors = ["phodal"]
 edition = "2021"
@@ -18,13 +18,13 @@ path = "src/lib.rs"
 
 [dependencies]
 # Core domain (transport-agnostic, no HTTP deps)
-routa-core = { version = "0.14.1", path = "../routa-core" }
+routa-core = { version = "0.14.2", path = "../routa-core" }
 
 # HTTP server (for the `server` subcommand)
-routa-server = { version = "0.14.1", path = "../routa-server" }
+routa-server = { version = "0.14.2", path = "../routa-server" }
 
 # Reusable scanner module
-routa-scanner = { version = "0.14.1", path = "../routa-scanner" }
+routa-scanner = { version = "0.14.2", path = "../routa-scanner" }
 
 # CLI argument parsing
 clap = { version = "4", features = ["derive", "env"] }
