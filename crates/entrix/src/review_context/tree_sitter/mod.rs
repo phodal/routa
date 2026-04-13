@@ -1021,12 +1021,9 @@ pub(super) fn resolve_java_import(
     }
 
     let target_suffix = format!("{package_path}.java");
-    for repo_file in collect_repo_files(repo_root) {
-        if repo_file.ends_with(&target_suffix) {
-            return Some(repo_file);
-        }
-    }
-    None
+    collect_repo_files(repo_root)
+        .into_iter()
+        .find(|repo_file| repo_file.ends_with(&target_suffix))
 }
 
 fn resolve_import_file_reference(
@@ -1046,10 +1043,8 @@ fn resolve_import_file_reference(
         }
         return None;
     }
-    if candidate.extension().and_then(|ext| ext.to_str()) == Some(extension) {
-        if candidate.is_file() {
-            return resolve_repo_relative_path(repo_root, &candidate.to_string_lossy());
-        }
+    if candidate.extension().and_then(|ext| ext.to_str()) == Some(extension) && candidate.is_file() {
+        return resolve_repo_relative_path(repo_root, &candidate.to_string_lossy());
     }
     None
 }

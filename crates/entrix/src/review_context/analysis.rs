@@ -66,16 +66,15 @@ pub fn build_graph(repo_root: &Path, build_mode: ReviewBuildMode) -> GraphBuildR
     }
 
     let graph = parse_repo_graph(repo_root);
+    let build_type = match build_mode {
+        ReviewBuildMode::Full | ReviewBuildMode::Auto => "full",
+        _ => "auto",
+    };
+
     GraphBuildReport {
         status: "ok".to_string(),
         backend: Some("builtin-tree-sitter".to_string()),
-        build_type: Some(if build_mode == ReviewBuildMode::Full {
-            "full".to_string()
-        } else if build_mode == ReviewBuildMode::Auto {
-            "full".to_string()
-        } else {
-            "auto".to_string()
-        }),
+        build_type: Some(build_type.to_string()),
         summary: format!(
             "Full build: parsed {} file(s), {} nodes, {} edges.",
             graph.files_updated,
