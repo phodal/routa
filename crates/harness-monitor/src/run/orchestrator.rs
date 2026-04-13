@@ -358,9 +358,11 @@ fn build_cli_run_summaries(
     let mut runs = Vec::new();
     let session_rows = sessions
         .into_iter()
-        .filter(|(session_id, _cwd, _model, _started, last_seen, _client, _status, _ended)| {
-            *last_seen >= active_cutoff_ms || dirty_by_session.contains_key(session_id)
-        })
+        .filter(
+            |(session_id, _cwd, _model, _started, last_seen, _client, _status, _ended)| {
+                *last_seen >= active_cutoff_ms || dirty_by_session.contains_key(session_id)
+            },
+        )
         .collect::<Vec<_>>();
     let has_session_runs = !session_rows.is_empty();
 
@@ -457,8 +459,13 @@ fn build_cli_run_summaries(
             .iter()
             .filter(|agent| is_repo_local_agent_cli(agent, repo_root))
         {
-            let (workspace_id, workspace_path, workspace_detached, workspace_branch, workspace_type) =
-                workspace_identity_for(agent.cwd.as_deref(), repo_root, worktrees);
+            let (
+                workspace_id,
+                workspace_path,
+                workspace_detached,
+                workspace_branch,
+                workspace_type,
+            ) = workspace_identity_for(agent.cwd.as_deref(), repo_root, worktrees);
             let synthetic_status = agent.status.to_ascii_lowercase();
             let assessment = assess_run(&RunAssessmentInput {
                 run_id: &format!("agent:{}:{}", agent.name.to_ascii_lowercase(), agent.pid),
