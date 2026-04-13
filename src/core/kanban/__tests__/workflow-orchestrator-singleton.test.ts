@@ -1,16 +1,39 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { dispatchSessionPromptMock } = vi.hoisted(() => ({
+const {
+  dispatchSessionPromptMock,
+  triggerAssignedTaskAgentMock,
+  getInternalApiOriginMock,
+  createGitWorktreeMock,
+} = vi.hoisted(() => ({
   dispatchSessionPromptMock: vi.fn(),
+  triggerAssignedTaskAgentMock: vi.fn(),
+  getInternalApiOriginMock: vi.fn(() => "http://localhost"),
+  createGitWorktreeMock: vi.fn(),
 }));
 
 vi.mock("@/core/acp/session-prompt", () => ({
   dispatchSessionPrompt: dispatchSessionPromptMock,
 }));
 
+vi.mock("../agent-trigger", () => ({
+  triggerAssignedTaskAgent: triggerAssignedTaskAgentMock,
+  getInternalApiOrigin: getInternalApiOriginMock,
+}));
+
+vi.mock("../../git/git-worktree-service", () => ({
+  GitWorktreeService: vi.fn(class {
+    createWorktree = createGitWorktreeMock;
+  }),
+}));
+
 import { createInMemorySystem } from "../../routa-system";
 import { getHttpSessionStore } from "../../acp/http-session-store";
+import { createCodebase } from "../../models/codebase";
+import { createKanbanBoard } from "../../models/kanban";
+import { createTask, TaskStatus } from "../../models/task";
 import {
+  enqueueKanbanTaskSession,
   getWorkflowOrchestrator,
   resetWorkflowOrchestrator,
   startWorkflowOrchestrator,
@@ -19,6 +42,10 @@ import {
 describe("workflow orchestrator singleton prompt path", () => {
   beforeEach(() => {
     resetWorkflowOrchestrator();
+    triggerAssignedTaskAgentMock.mockReset();
+    getInternalApiOriginMock.mockReset();
+    getInternalApiOriginMock.mockReturnValue("http://localhost");
+    createGitWorktreeMock.mockReset();
   });
 
   afterEach(() => {
@@ -141,5 +168,73 @@ describe("workflow orchestrator singleton prompt path", () => {
       workspaceId: "default",
       prompt: [expect.objectContaining({ type: "text" })],
     }));
+  });
+
+  it("recreates a missing dev worktree before starting a new task session", async () => {
+    const system = createInMemorySystem();
+    const board = createKanbanBoard({
+      id: "board-1",
+      workspaceId: "default",
+      name: "Board",
+      isDefault: true,
+      columns: [
+        { id: "backlog", name: "Backlog", position: 0, stage: "backlog" },
+        { id: "dev", name: "Dev", position: 1, stage: "dev" },
+      ],
+    });
+    await system.kanbanBoardStore.save(board);
+    await system.codebaseStore.add(createCodebase({
+      id: "repo-1",
+      workspaceId: "default",
+      repoPath: "/tmp/repos/main",
+      branch: "main",
+      isDefault: true,
+    }));
+
+    const task = createTask({
+      id: "task-1",
+      title: "Retry stale worktree",
+      objective: "Recreate missing worktree before dev rerun",
+      workspaceId: "default",
+      boardId: board.id,
+      columnId: "dev",
+      status: TaskStatus.IN_PROGRESS,
+      worktreeId: "wt-stale",
+    });
+    await system.taskStore.save(task);
+
+    createGitWorktreeMock.mockResolvedValue({
+      id: "wt-fresh",
+      codebaseId: "repo-1",
+      workspaceId: "default",
+      worktreePath: "/tmp/worktrees/task-1",
+      branch: "issue/task-1",
+      baseBranch: "main",
+      status: "active",
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    triggerAssignedTaskAgentMock.mockResolvedValue({
+      sessionId: "session-dev-1",
+      transport: "acp",
+    });
+
+    const result = await enqueueKanbanTaskSession(system, {
+      task,
+      expectedColumnId: "dev",
+      ignoreExistingTrigger: true,
+      bypassQueue: true,
+    });
+
+    expect(result).toEqual({ sessionId: "session-dev-1", queued: false, error: undefined });
+    expect(createGitWorktreeMock).toHaveBeenCalledWith("repo-1", expect.objectContaining({
+      branch: "issue/task-1",
+      baseBranch: "main",
+    }));
+    const updatedTask = await system.taskStore.get("task-1");
+    expect(updatedTask).toMatchObject({
+      worktreeId: "wt-fresh",
+      triggerSessionId: "session-dev-1",
+    });
   });
 });

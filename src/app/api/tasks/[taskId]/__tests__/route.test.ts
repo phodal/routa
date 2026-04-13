@@ -612,6 +612,48 @@ describe("/api/tasks/[taskId]", () => {
     expect(data.task.worktreeId).toBe("wt-1");
   });
 
+  it("keeps retrying a dev trigger even when the stored worktree id is stale", async () => {
+    const existingTask = createTask({
+      id: "task-1",
+      title: "Retry dev after stale worktree",
+      objective: "Replace missing worktree records before rerun",
+      workspaceId: "workspace-1",
+      boardId: "board-1",
+      columnId: "dev",
+      status: TaskStatus.IN_PROGRESS,
+      triggerSessionId: "session-dev-old",
+      worktreeId: "wt-stale",
+    });
+    taskStore.get.mockResolvedValue(existingTask);
+    system.worktreeStore.get = vi.fn().mockResolvedValue(undefined);
+    system.codebaseStore.getDefault = vi.fn().mockResolvedValue({
+      id: "repo-1",
+      workspaceId: "workspace-1",
+      repoPath: "/tmp/repos/main",
+      branch: "main",
+    });
+    const request = new NextRequest("http://localhost/api/tasks/task-1", {
+      method: "PATCH",
+      body: JSON.stringify({ retryTrigger: true }),
+      headers: { "Content-Type": "application/json" },
+    });
+
+    const response = await PATCH(request, {
+      params: Promise.resolve({ taskId: "task-1" }),
+    });
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(createWorktree).not.toHaveBeenCalled();
+    expect(capturedEnqueueTask).toMatchObject({
+      id: "task-1",
+      columnId: "dev",
+      worktreeId: "wt-stale",
+      triggerSessionId: undefined,
+    });
+    expect(data.task.worktreeId).toBe("wt-stale");
+  });
+
   it("passes a retry provider override without persisting a card provider override", async () => {
     const existingTask = createTask({
       id: "task-1",

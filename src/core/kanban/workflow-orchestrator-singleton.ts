@@ -163,6 +163,9 @@ async function startKanbanTaskSession(
   const autoProviderId = getKanbanAutoProvider(workspace?.metadata, nextTask.boardId!);
 
   const initialWorktreeTruth = await resolveTaskWorktreeTruth(nextTask, system);
+  if (nextTask.worktreeId && initialWorktreeTruth?.source !== "task.worktreeId") {
+    nextTask.worktreeId = undefined;
+  }
   const preferredCodebase = initialWorktreeTruth?.codebase;
   let worktreeCwd = initialWorktreeTruth?.cwd ?? process.cwd();
   let worktreeBranch = initialWorktreeTruth?.branch;

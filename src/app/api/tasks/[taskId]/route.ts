@@ -273,9 +273,10 @@ export async function PATCH(
 
   // Check required artifacts before allowing column transition
   if (body.columnId !== undefined && body.columnId !== existing.columnId) {
+    const incomingVerificationVerdict = body.verificationVerdict ?? nextTask.verificationVerdict;
     const allowReviewFallbackToDev = existing.columnId === "review"
       && body.columnId === "dev"
-      && nextTask.verificationVerdict === VerificationVerdict.NOT_APPROVED;
+      && incomingVerificationVerdict === VerificationVerdict.NOT_APPROVED;
     if (boardId && board) {
         if (existing.triggerSessionId && !allowReviewFallbackToDev) {
           const laneAutomationState = resolveCurrentLaneAutomationState(existing, board.columns, {
