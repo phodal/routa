@@ -892,7 +892,9 @@ export class AgentTools {
     if (updates.verificationCommands !== undefined) task.verificationCommands = updates.verificationCommands;
     if (updates.testCases !== undefined) task.testCases = updates.testCases;
 
-    if (updates.status === undefined) {
+    // Always check review lane convergence when verification verdict is updated
+    // This ensures cards move out of review lane even when status is explicitly set
+    if (updates.verificationVerdict !== undefined || updates.status === undefined) {
       const board = task.boardId && this.kanbanBoardStore
         ? await this.kanbanBoardStore.get(task.boardId)
         : undefined;

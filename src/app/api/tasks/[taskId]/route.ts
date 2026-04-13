@@ -452,7 +452,9 @@ export async function PATCH(
     nextTask.columnId = taskStatusToColumnId(body.status);
   }
 
-  if (body.columnId === undefined && body.status === undefined) {
+  // Always check review lane convergence when verification verdict is updated
+  // This ensures cards move out of review lane even when columnId/status is explicitly set
+  if (body.verificationVerdict !== undefined || (body.columnId === undefined && body.status === undefined)) {
     const boardId = nextTask.boardId ?? existing.boardId;
     const board = boardId
       ? await system.kanbanBoardStore.get(boardId)
