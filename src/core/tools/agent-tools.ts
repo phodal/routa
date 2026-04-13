@@ -107,7 +107,7 @@ function resolveSyntheticCompletionLaneSession(
 
   for (const candidate of sessionCandidates) {
     const session = getTaskLaneSession(task, candidate);
-    if (session?.columnId === task.columnId && session.status === "running") {
+    if (session && session.columnId === task.columnId && session.status === "running") {
       return session;
     }
   }
