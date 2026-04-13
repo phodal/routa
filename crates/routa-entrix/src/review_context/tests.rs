@@ -591,6 +591,50 @@ fn query_current_graph_returns_imports_for_file() {
 }
 
 #[test]
+fn query_current_graph_returns_imports_for_unique_symbol_target() {
+    let temp = tempdir().unwrap();
+    let root = temp.path();
+    fs::create_dir_all(root.join("src")).unwrap();
+    fs::write(root.join("src/lib.ts"), "export const value = 1;\n").unwrap();
+    fs::write(
+        root.join("src/service.ts"),
+        "import { value } from './lib';\nexport function run() { return value; }\n",
+    )
+    .unwrap();
+
+    let result = query_current_graph(root, "run", "imports_of", ReviewBuildMode::Auto);
+
+    assert_eq!(result.status, "ok");
+    assert_eq!(result.results.len(), 1);
+    assert!(matches!(
+        &result.results[0],
+        GraphNodePayload::File(file) if file.qualified_name == "src/lib.ts"
+    ));
+}
+
+#[test]
+fn query_current_graph_rejects_ambiguous_symbol_target_for_imports() {
+    let temp = tempdir().unwrap();
+    let root = temp.path();
+    fs::create_dir_all(root.join("src")).unwrap();
+    fs::write(root.join("src/lib.ts"), "export const value = 1;\n").unwrap();
+    fs::write(
+        root.join("src/service_a.ts"),
+        "import { value } from './lib';\nexport function run() { return value; }\n",
+    )
+    .unwrap();
+    fs::write(
+        root.join("src/service_b.ts"),
+        "import { value } from './lib';\nexport function run() { return value; }\n",
+    )
+    .unwrap();
+
+    let result = query_current_graph(root, "run", "imports_of", ReviewBuildMode::Auto);
+
+    assert_eq!(result.status, "not_found");
+}
+
+#[test]
 fn query_current_graph_returns_importers_for_file() {
     let temp = tempdir().unwrap();
     let root = temp.path();

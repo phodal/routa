@@ -628,7 +628,9 @@ fn symbol_to_payload(node: &ChangedNode) -> SymbolGraphNode {
 }
 
 pub fn query_file_imports(repo_root: &Path, target: &str, reverse: bool) -> QueryResult {
-    let Some(target_file) = resolve_query_target_file(repo_root, target) else {
+    let Some(target_file) = resolve_query_target_file(repo_root, target).or_else(|| {
+        resolve_query_target_file_by_symbol(repo_root, target)
+    }) else {
         return QueryResult::Err {
             status: "not_found".to_string(),
             summary: format!("No file found matching '{target}'."),
@@ -761,6 +763,35 @@ fn resolve_query_target_file(repo_root: &Path, target: &str) -> Option<String> {
         target
     };
     resolve_repo_relative_path(repo_root, candidate)
+}
+
+fn resolve_query_target_file_by_symbol(repo_root: &Path, target: &str) -> Option<String> {
+    let graph = parse_repo_graph(repo_root);
+    if let Some(target_file) = graph
+        .changed_nodes
+        .iter()
+        .chain(graph.related_test_nodes.iter())
+        .find(|node| node.qualified_name == target)
+        .map(|node| node.file_path.clone())
+    {
+        return Some(target_file);
+    }
+
+    let mut matches = BTreeSet::new();
+    for node in graph.changed_nodes.iter().chain(graph.related_test_nodes.iter()) {
+        if node.kind == "File" {
+            continue;
+        }
+        if node.name == target || node.qualified_name == target {
+            matches.insert(node.file_path.clone());
+        }
+    }
+
+    if matches.len() == 1 {
+        matches.into_iter().next()
+    } else {
+        None
+    }
 }
 
 fn file_node_payload(_repo_root: &Path, relative_path: &str) -> Option<GraphNodePayload> {
