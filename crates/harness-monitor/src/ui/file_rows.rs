@@ -390,35 +390,42 @@ pub(super) fn compact_rel_path(path: &str, max_len: usize) -> String {
 
     let file_name = segments.last().copied().unwrap_or(path);
     if file_name.chars().count() + 4 >= max_len {
+        if let Some(parent) = segments.get(segments.len().saturating_sub(2)).copied() {
+            let prefix = format!(".../{parent}/");
+            let remaining = max_len.saturating_sub(prefix.chars().count());
+            if remaining >= 8 {
+                return format!("{prefix}{}", shorten_path(file_name, remaining));
+            }
+        }
         return shorten_path(file_name, max_len);
     }
 
-    let mut tail_segments = vec![file_name];
-    for segment in segments[..segments.len() - 1].iter().rev() {
-        let candidate = format!(".../{}", tail_segments.join("/"));
-        let with_segment = format!(".../{segment}/{}", tail_segments.join("/"));
-        if with_segment.chars().count() > max_len {
-            break;
-        }
-        tail_segments.insert(0, segment);
-        if candidate.chars().count() >= max_len {
+    let mut best = format!(".../{file_name}");
+
+    let tail_limit = segments.len().saturating_sub(1);
+    for keep_tail_count in 2..=tail_limit {
+        let tail = segments[segments.len() - keep_tail_count..].join("/");
+        let candidate = format!(".../{tail}");
+        if candidate.chars().count() <= max_len {
+            best = candidate;
+        } else {
             break;
         }
     }
 
-    let omitted_middle = tail_segments.len() < segments.len();
-    let mut result = format!(".../{}", tail_segments.join("/"));
-    if let Some(first) = segments.first().copied() {
-        let candidate = if omitted_middle {
-            format!("{first}/.../{}", tail_segments.join("/"))
-        } else {
-            format!("{first}/{}", tail_segments.join("/"))
-        };
+    let mut prefix = Vec::new();
+    let head_limit = segments.len().saturating_sub(2);
+    for segment in segments.iter().take(head_limit) {
+        prefix.push(*segment);
+        let candidate = format!("{}/{}", prefix.join("/"), best);
         if candidate.chars().count() <= max_len {
-            result = candidate;
+            best = candidate;
+        } else {
+            break;
         }
     }
-    result
+
+    best
 }
 
 fn pad_right(value: &str, width: usize) -> String {

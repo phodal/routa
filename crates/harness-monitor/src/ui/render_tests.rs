@@ -96,6 +96,28 @@ fn compact_rel_path_preserves_filename_and_tail_segments() {
 }
 
 #[test]
+fn compact_rel_path_prefers_tail_context_for_snapshot_files() {
+    let value =
+        "crates/harness-monitor/src/ui/snapshots/harness_monitor__ui__tui__tests__routa_watch_tui_summary.snap";
+
+    let shortened = compact_rel_path(value, 56);
+    assert!(shortened.starts_with(".../snapshots/"));
+    assert!(shortened.ends_with("routa_watch_tui_summary.snap"));
+}
+
+#[test]
+fn compact_rel_path_restores_some_prefix_when_space_allows() {
+    let value =
+        "crates/harness-monitor/src/ui/snapshots/harness_monitor__ui__tui__tests__routa_watch_tui_summary.snap";
+
+    let shortened = compact_rel_path(value, 90);
+    assert!(shortened.starts_with("crates/"));
+    assert!(shortened.contains("/.../"));
+    assert!(shortened.contains("/snapshots/"));
+    assert!(shortened.ends_with("routa_watch_tui_summary.snap"));
+}
+
+#[test]
 fn truncate_short_handles_multibyte_text_without_panicking() {
     let value = "中文标题也应该安全截断";
 
