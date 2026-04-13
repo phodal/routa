@@ -8,6 +8,10 @@ use entrix::test_mapping;
 use std::collections::BTreeMap;
 use std::path::Path;
 
+const CODE_EXTENSIONS: &[&str] = &[
+    "ts", "tsx", "js", "jsx", "rs", "py", "go", "java", "kt", "swift", "php", "c", "cpp",
+];
+
 pub fn run_metric_batch(
     repo_root: &Path,
     metrics: &[Metric],
@@ -99,7 +103,13 @@ fn run_probe_metric(
         "graph:test-radius" | "graph:test-coverage" => {
             probe_test_coverage(repo_root, changed_files, base)
         }
-        "graph:test-mapping" => probe_test_mapping(repo_root, changed_files, base),
+        command
+            if command == "graph:test-mapping"
+                || command.contains("test-mapping-smart.ts")
+                || metric.name.contains("test_mapping") =>
+        {
+            probe_test_mapping(repo_root, changed_files, base)
+        }
         _ => MetricResult::new(
             metric.name.clone(),
             false,
@@ -196,7 +206,12 @@ fn probe_test_coverage(repo_root: &Path, changed_files: &[String], base: &str) -
 }
 
 fn probe_test_mapping(repo_root: &Path, changed_files: &[String], _base: &str) -> MetricResult {
-    let report = test_mapping::analyze_changed_files(repo_root, changed_files);
+    let code_files = changed_files
+        .iter()
+        .filter(|file| is_code_file(repo_root, file))
+        .cloned()
+        .collect::<Vec<_>>();
+    let report = test_mapping::analyze_changed_files(repo_root, &code_files);
     let source_file_count = report.mappings.len();
     if source_file_count == 0 {
         return MetricResult::new(
@@ -252,6 +267,15 @@ fn probe_test_mapping(repo_root: &Path, changed_files: &[String], _base: &str) -
         ),
         entrix::model::Tier::Normal,
     )
+}
+
+fn is_code_file(repo_root: &Path, rel_path: &str) -> bool {
+    let extension = Path::new(rel_path)
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    CODE_EXTENSIONS.contains(&extension.as_str()) && repo_root.join(rel_path).exists()
 }
 
 fn mapping_source_preview(report: &test_mapping::TestMappingReport, status: &str) -> String {
