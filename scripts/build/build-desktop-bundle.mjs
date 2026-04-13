@@ -15,11 +15,13 @@
  */
 import { spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, rmSync } from "fs";
+import { createRequire } from "module";
 import path from "path";
 import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, "..", "..");
+const requireFromRoot = createRequire(path.join(root, "package.json"));
 
 const standaloneDir = path.join(root, ".next-desktop", "standalone");
 const staticDir = path.join(root, ".next-desktop", "static");
@@ -33,10 +35,23 @@ const bundleRoot = path.join(
   "desktop-server"
 );
 
+function resolveLocalCli(moduleId) {
+  try {
+    return requireFromRoot.resolve(moduleId);
+  } catch (error) {
+    const packageName = moduleId.split("/")[0];
+    throw new Error(
+      `Local ${packageName} CLI was not found. Install root dependencies with \`npm ci\` before bundling the desktop server.`,
+      { cause: error }
+    );
+  }
+}
+
 function runNextBuild() {
+  const nextCliPath = resolveLocalCli("next/dist/bin/next");
   // nosemgrep: javascript.lang.security.detect-child-process.detect-child-process
   // Commands are hardcoded and invoked without shell interpolation.
-  const result = spawnSync("npx", ["next", "build"], {
+  const result = spawnSync(process.execPath, [nextCliPath, "build"], {
     cwd: root,
     stdio: "inherit",
     env: {
@@ -51,15 +66,16 @@ function runNextBuild() {
   }
   if (result.status !== 0) {
     const code = typeof result.status === "number" ? result.status : 1;
-    throw new Error(`Command failed with status ${code}: npx next build`);
+    throw new Error(`Command failed with status ${code}: next build`);
   }
 }
 
 function runEsbuild(entry, outfile) {
+  const esbuildCliPath = resolveLocalCli("esbuild/bin/esbuild");
   // nosemgrep: javascript.lang.security.detect-child-process.detect-child-process
   // Esbuild args are derived from internal constants for packaging.
-  const result = spawnSync("npx", [
-    "esbuild",
+  const result = spawnSync(process.execPath, [
+    esbuildCliPath,
     entry,
     "--bundle",
     "--platform=node",
@@ -77,7 +93,7 @@ function runEsbuild(entry, outfile) {
   }
   if (result.status !== 0) {
     const code = typeof result.status === "number" ? result.status : 1;
-    throw new Error(`Command failed with status ${code}: npx esbuild ${entry}`);
+    throw new Error(`Command failed with status ${code}: esbuild ${entry}`);
   }
 }
 
