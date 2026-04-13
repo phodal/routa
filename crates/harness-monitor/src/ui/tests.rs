@@ -756,8 +756,60 @@ fn synthetic_run_details_surface_process_scan_origin() {
     let snapshot = render_snapshot(&state, &mut cache, 180, 40);
 
     assert!(snapshot.contains("process-scan"));
-    assert!(snapshot.contains("State: idle"));
+    assert!(snapshot.contains("State: observing"));
     assert!(!snapshot.contains("failed"));
+}
+
+#[test]
+fn semantic_run_status_prefers_recovered_and_attention_labels() {
+    let now = chrono::Utc::now().timestamp_millis();
+    let mut state = sample_state();
+    state.sessions.insert(
+        "recovered-run".to_string(),
+        SessionView {
+            session_id: "recovered-run".to_string(),
+            display_name: Some("transcript-recovered".to_string()),
+            cwd: "/tmp/project".to_string(),
+            model: Some("gpt-5.4".to_string()),
+            client: "codex".to_string(),
+            transcript_path: Some("/tmp/transcripts/recovered-run.jsonl".to_string()),
+            source: Some("transcript".to_string()),
+            started_at_ms: now - 300_000,
+            last_seen_at_ms: now - 30_000,
+            status: "active".to_string(),
+            tmux_pane: None,
+            touched_files: BTreeSet::new(),
+            last_turn_id: Some("turn-r".to_string()),
+            last_event_name: Some("PostToolUse".to_string()),
+            last_tool_name: Some("Write".to_string()),
+            active_task_id: Some("task:recovered-run:turn-r".to_string()),
+            active_task_title: Some("Recovered task".to_string()),
+            last_prompt_preview: Some("Recovered task".to_string()),
+            active_task_recovered_from_transcript: true,
+            recent_git_activity: Vec::new(),
+        },
+    );
+    state.refresh_views();
+    let cache = sample_cache(&state);
+
+    let recovered = state
+        .runs()
+        .iter()
+        .find(|run| run.session_id == "recovered-run")
+        .expect("recovered run");
+    let recovered_model = build_run_operator_model(&state, &cache, recovered);
+    assert_eq!(
+        semantic_run_status(recovered, &recovered_model),
+        "recovered"
+    );
+
+    let review = state
+        .runs()
+        .iter()
+        .find(|run| run.session_id == UNKNOWN_SESSION_ID)
+        .expect("review bucket");
+    let review_model = build_run_operator_model(&state, &cache, review);
+    assert_eq!(semantic_run_status(review, &review_model), "attention");
 }
 
 #[test]

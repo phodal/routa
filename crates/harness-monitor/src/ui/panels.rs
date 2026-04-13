@@ -726,6 +726,7 @@ fn render_process_scan_run_details(
     width: u16,
     colors: UiPalette,
 ) -> Vec<Line<'static>> {
+    let semantic_status = semantic_run_status(run, model);
     let workspace_path = shorten_path(&model.workspace_path, width.saturating_sub(18) as usize);
     let process_cwd = model
         .process_cwd
@@ -770,8 +771,8 @@ fn render_process_scan_run_details(
         Line::from(vec![
             Span::styled("State: ", Style::default().fg(colors.muted)),
             Span::styled(
-                display_run_status_label(&run.status.to_ascii_lowercase()),
-                Style::default().fg(run_status_color(&run.status)),
+                display_run_status_label(semantic_status),
+                Style::default().fg(run_status_color(semantic_status)),
             ),
         ]),
     ];
@@ -817,23 +818,60 @@ fn render_process_scan_run_details(
     lines
 }
 
+pub(super) fn semantic_run_status(
+    run: &crate::ui::state::SessionListItem,
+    model: &RunOperatorModel,
+) -> &'static str {
+    if run.is_all_runs_bucket {
+        return "all";
+    }
+    if run.is_unknown_bucket {
+        return "attention";
+    }
+    if run.recovered_from_transcript {
+        return "recovered";
+    }
+
+    match model.operator_state.as_str() {
+        "executing" => "active",
+        "evaluating" | "ready" => "idle",
+        "observing" => "observing",
+        "attention" => "attention",
+        "awaiting_approval" => "pending",
+        "failed" => "blocked",
+        "service" => "service",
+        "replayed" => "recovered",
+        _ => match run.status.to_ascii_lowercase().as_str() {
+            "active" => "active",
+            "idle" | "stopped" | "ended" => "idle",
+            "unknown" => "attention",
+            _ => "idle",
+        },
+    }
+}
+
 pub(super) fn run_status_color(status: &str) -> Color {
     match status {
         "active" | "executing" | "succeeded" => ACTIVE,
-        "stopped" | "ended" | "failed" => STOPPED,
-        "unknown" | "attention" | "evaluating" | "awaiting_approval" => INFERRED,
+        "blocked" | "failed" => STOPPED,
+        "recovered" | "attention" | "pending" | "unknown" | "unassigned" => INFERRED,
+        "observing" | "idle" | "service" | "stopped" | "ended" => IDLE,
         _ => IDLE,
     }
 }
 
 pub(super) fn display_run_status_label(status: &str) -> String {
     match status {
-        "active" => "running".to_string(),
-        "executing" => "running".to_string(),
-        "failed" => "review".to_string(),
-        "attention" => "review".to_string(),
+        "active" | "executing" => "active".to_string(),
+        "idle" | "evaluating" | "ready" => "idle".to_string(),
+        "failed" | "blocked" => "blocked".to_string(),
+        "attention" => "attention".to_string(),
+        "observing" => "observing".to_string(),
+        "recovered" => "recovered".to_string(),
         "unknown" => "unassigned".to_string(),
-        "awaiting_approval" => "pending".to_string(),
+        "unassigned" => "unassigned".to_string(),
+        "awaiting_approval" | "pending" => "pending".to_string(),
+        "service" => "service".to_string(),
         _ => status.to_string(),
     }
 }
@@ -1212,5 +1250,7 @@ mod tests {
     fn run_status_color_marks_attention_as_inferred() {
         assert_eq!(run_status_color("attention"), INFERRED);
         assert_eq!(run_status_color("executing"), ACTIVE);
+        assert_eq!(run_status_color("observing"), IDLE);
+        assert_eq!(run_status_color("blocked"), STOPPED);
     }
 }

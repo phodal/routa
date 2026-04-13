@@ -1,5 +1,7 @@
 use super::fitness;
-use super::panels::{display_run_origin_label, display_run_status_label};
+use super::panels::{
+    display_run_origin_label, display_run_status_label, run_status_color, semantic_run_status,
+};
 use super::*;
 use crate::ui::state::FocusPane;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
@@ -649,6 +651,8 @@ fn render_runs_panel(
             };
 
             let model = build_run_operator_model(state, cache, session);
+            let semantic_status = semantic_run_status(session, &model);
+            let status_label = display_run_status_label(semantic_status);
             let origin_label = display_run_origin_label(model.origin);
             let client_label = if session.is_unknown_bucket {
                 "unassigned"
@@ -666,7 +670,10 @@ fn render_runs_panel(
             } else {
                 String::new()
             };
-            let run_label_width = split[1].width.saturating_sub(10) as usize;
+            let status_width = status_label.chars().count().max(8);
+            let reserved_width = 10usize + status_width + 3;
+            let run_label_width =
+                split[1].width.saturating_sub(reserved_width as u16).max(12) as usize;
             let event_label = match (&session.last_event_name, &session.last_tool_name) {
                 (Some(event), Some(tool)) if !tool.is_empty() => format!("{event}/{tool}"),
                 (Some(event), _) => event.clone(),
@@ -697,6 +704,13 @@ fn render_runs_panel(
                         .add_modifier(Modifier::BOLD),
                 ),
                 Span::styled(
+                    format!("  {}", pad_left(&status_label, status_width)),
+                    Style::default()
+                        .fg(run_status_color(semantic_status))
+                        .bg(bg)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(
                     format!("  {}", pad_left(&time_ago(session.last_seen_at_ms), 4)),
                     Style::default().fg(colors.muted).bg(bg),
                 ),
@@ -712,7 +726,7 @@ fn render_runs_panel(
                         session.exact_count,
                         session.inferred_count,
                         session.unknown_count,
-                        if session.recovered_from_transcript {
+                        if session.recovered_from_transcript && semantic_status != "recovered" {
                             "  recovered"
                         } else {
                             ""
