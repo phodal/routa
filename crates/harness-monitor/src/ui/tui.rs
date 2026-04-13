@@ -55,6 +55,7 @@ const FITNESS_CACHE_CHECK_MS: u64 = 1500;
 const SCC_REFRESH_MS: u64 = 60 * 1000;
 const RECONCILE_SCAN_REFRESH_MS: u64 = 5_000;
 const IDLE_REDRAW_MS: u64 = 1_000;
+const RUNTIME_FEED_SIGNAL_MS: u64 = 120;
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 struct RepoStatusSummary {
@@ -67,6 +68,14 @@ enum UiLoopAction {
     Continue,
     Quit,
     RefreshAll,
+}
+
+#[derive(Debug)]
+enum UiSignal {
+    Terminal(Event),
+    Feed(Vec<RuntimeMessage>),
+    TranscriptBootstrap(Vec<RuntimeMessage>),
+    InitialRepo(InitialRepoSnapshot),
 }
 
 #[derive(Debug, Default)]
@@ -92,7 +101,7 @@ pub fn run(ctx: RepoContext, poll_interval_ms: u64) -> Result<()> {
 }
 
 fn run_loop(terminal: &mut DefaultTerminal, ctx: RepoContext, poll_interval_ms: u64) -> Result<()> {
-    let mut feed = RuntimeFeed::open(&ctx.runtime_event_path)?;
+    let render_feed = RuntimeFeed::open(&ctx.runtime_event_path)?;
     ensure_runtime_service(&ctx)?;
     let repo_root = ctx.repo_root.to_string_lossy().to_string();
     let mut state = RuntimeState::new(repo_root.clone(), "-".to_string());
@@ -103,8 +112,10 @@ fn run_loop(terminal: &mut DefaultTerminal, ctx: RepoContext, poll_interval_ms: 
     cache.set_fitness_mode(state.fitness_view_mode);
     cache.request_scc_refresh(state.repo_root.clone(), false);
     let bootstrap_cutoff = bootstrap_history_cutoff(chrono::Utc::now().timestamp_millis());
-    let (transcript_tx, transcript_rx) = mpsc::channel();
+    let (signal_tx, signal_rx) = mpsc::channel();
+    spawn_terminal_signal_thread(signal_tx.clone());
     let transcript_ctx = ctx.clone();
+    let transcript_signal_tx = signal_tx.clone();
     thread::spawn(move || {
         let mut result = crate::observe::codex_transcript::bootstrap_codex_transcript_messages(
             &transcript_ctx.repo_root,
@@ -117,16 +128,20 @@ fn run_loop(terminal: &mut DefaultTerminal, ctx: RepoContext, poll_interval_ms: 
             .unwrap_or_default(),
         );
         result.sort_by_key(RuntimeMessage::observed_at_ms);
-        let _ = transcript_tx.send(result);
+        let _ = transcript_signal_tx.send(UiSignal::TranscriptBootstrap(result));
     });
-    let (initial_repo_tx, initial_repo_rx) = mpsc::channel();
     let initial_repo_ctx = ctx.clone();
+    let initial_repo_signal_tx = signal_tx.clone();
     thread::spawn(move || {
-        let _ = initial_repo_tx.send(load_initial_repo_snapshot(&initial_repo_ctx));
+        let _ = initial_repo_signal_tx.send(UiSignal::InitialRepo(load_initial_repo_snapshot(
+            &initial_repo_ctx,
+        )));
     });
-    for message in feed.read_recent_since(bootstrap_cutoff)? {
+    for message in render_feed.read_recent_since(bootstrap_cutoff)? {
         state.apply_message(message);
     }
+    let background_feed = RuntimeFeed::open(&ctx.runtime_event_path)?;
+    spawn_runtime_feed_thread(background_feed, signal_tx);
     state.prune_stale_sessions();
     let mut last_poll = Instant::now();
     let mut last_transport_refresh = Instant::now() - Duration::from_millis(TRANSPORT_REFRESH_MS);
@@ -149,85 +164,67 @@ fn run_loop(terminal: &mut DefaultTerminal, ctx: RepoContext, poll_interval_ms: 
     cache.warm_selected_detail(&state);
     cache.warm_test_mappings(&state);
     state.sync_focus_for_width(terminal.size()?.width);
-    terminal.draw(|frame| render(frame, &state, &feed, &mut cache))?;
+    terminal.draw(|frame| render(frame, &state, &render_feed, &mut cache))?;
     let mut last_draw = Instant::now();
 
     loop {
         let mut needs_redraw = false;
-        if let Ok(snapshot) = initial_repo_rx.try_recv() {
-            apply_initial_repo_snapshot(&mut state, snapshot);
-            let now = Instant::now();
-            last_poll = now;
-            last_repo_status_refresh = now;
-            needs_redraw = true;
-        }
-
-        while event::poll(Duration::from_millis(0)).context("poll terminal events")? {
-            match handle_event(&mut state, &mut cache)? {
-                UiLoopAction::Quit => return Ok(()),
-                UiLoopAction::RefreshAll => {
-                    refresh_repo_snapshot(&ctx, &mut state)?;
-                    if let Ok(agents) = crate::observe::detect::scan_agents(&state.repo_root) {
-                        state.set_detected_agents(agents);
-                    }
-                    let now = Instant::now();
-                    last_poll = now;
-                    last_repo_status_refresh = now;
-                    last_agent_refresh = now;
-                    needs_redraw = true;
-                }
-                UiLoopAction::Continue => needs_redraw = true,
-            }
-        }
-
         let mut force_scan = false;
+        let wait = next_ui_signal_timeout(
+            poll_interval_ms,
+            last_poll,
+            last_transport_refresh,
+            last_repo_status_refresh,
+            last_agent_refresh,
+            last_fitness_refresh,
+            last_fitness_cache_check,
+            last_scc_refresh,
+            last_draw,
+        );
+        match signal_rx.recv_timeout(wait) {
+            Ok(signal) => {
+                if apply_ui_signal(
+                    signal,
+                    &ctx,
+                    &mut state,
+                    &mut cache,
+                    &mut last_poll,
+                    &mut last_repo_status_refresh,
+                    &mut last_agent_refresh,
+                    &mut last_fitness_refresh,
+                    &mut force_scan,
+                    &mut needs_redraw,
+                )? == UiLoopAction::Quit
+                {
+                    return Ok(());
+                }
+                while let Ok(signal) = signal_rx.try_recv() {
+                    if apply_ui_signal(
+                        signal,
+                        &ctx,
+                        &mut state,
+                        &mut cache,
+                        &mut last_poll,
+                        &mut last_repo_status_refresh,
+                        &mut last_agent_refresh,
+                        &mut last_fitness_refresh,
+                        &mut force_scan,
+                        &mut needs_redraw,
+                    )? == UiLoopAction::Quit
+                    {
+                        return Ok(());
+                    }
+                }
+            }
+            Err(mpsc::RecvTimeoutError::Timeout) => {}
+            Err(mpsc::RecvTimeoutError::Disconnected) => {}
+        }
+
         if last_poll.elapsed() >= Duration::from_millis(poll_interval_ms) {
             refresh_repo_snapshot(&ctx, &mut state)?;
             let now = Instant::now();
             last_poll = now;
             last_repo_status_refresh = now;
-            needs_redraw = true;
-        }
-
-        let new_feed_messages = feed.read_new()?;
-        if !new_feed_messages.is_empty() {
-            needs_redraw = true;
-        }
-        for message in new_feed_messages {
-            if matches!(message, RuntimeMessage::Git(_)) {
-                force_scan = true;
-            }
-            if let RuntimeMessage::Fitness(event) = &message {
-                refresh_fitness_from_event(&mut state, &mut cache, event);
-                last_fitness_refresh = Instant::now();
-            }
-            state.apply_message(message);
-        }
-        if let Ok(messages) = transcript_rx.try_recv() {
-            if !messages.is_empty() {
-                force_scan = true;
-            }
-            let recovered_session_count = messages
-                .iter()
-                .filter_map(|message| match message {
-                    RuntimeMessage::Hook(event) if event.event_name == "TranscriptRecover" => {
-                        Some(event.session_id.clone())
-                    }
-                    _ => None,
-                })
-                .collect::<std::collections::BTreeSet<_>>()
-                .len();
-            for message in messages {
-                if matches!(message, RuntimeMessage::Git(_)) {
-                    force_scan = true;
-                }
-                state.apply_message(message);
-            }
-            state.push_hook_status_event(
-                chrono::Utc::now().timestamp_millis(),
-                format!("transcript backfill complete ({recovered_session_count} sessions)"),
-            );
-            state.prune_stale_sessions();
             needs_redraw = true;
         }
         if force_scan {
@@ -295,37 +292,18 @@ fn run_loop(terminal: &mut DefaultTerminal, ctx: RepoContext, poll_interval_ms: 
             needs_redraw = true;
         }
         if needs_redraw {
-            terminal.draw(|frame| render(frame, &state, &feed, &mut cache))?;
+            terminal.draw(|frame| render(frame, &state, &render_feed, &mut cache))?;
             last_draw = Instant::now();
         }
-
-        if event::poll(Duration::from_millis(100)).context("poll terminal events")? {
-            match handle_event(&mut state, &mut cache)? {
-                UiLoopAction::Quit => break,
-                UiLoopAction::RefreshAll => {
-                    refresh_repo_snapshot(&ctx, &mut state)?;
-                    if let Ok(agents) = crate::observe::detect::scan_agents(&state.repo_root) {
-                        state.set_detected_agents(agents);
-                    }
-                    let now = Instant::now();
-                    last_poll = now;
-                    last_repo_status_refresh = now;
-                    last_agent_refresh = now;
-                    terminal.draw(|frame| render(frame, &state, &feed, &mut cache))?;
-                    last_draw = Instant::now();
-                }
-                UiLoopAction::Continue => {
-                    terminal.draw(|frame| render(frame, &state, &feed, &mut cache))?;
-                    last_draw = Instant::now();
-                }
-            }
-        }
     }
-    Ok(())
 }
 
-fn handle_event(state: &mut RuntimeState, cache: &mut AppCache) -> Result<UiLoopAction> {
-    match event::read().context("read terminal event")? {
+fn handle_event(
+    state: &mut RuntimeState,
+    cache: &mut AppCache,
+    event: Event,
+) -> Result<UiLoopAction> {
+    match event {
         Event::Key(key) => {
             let viewport_width = crossterm::terminal::size()
                 .map(|(width, _)| width)
@@ -376,17 +354,6 @@ fn handle_event(state: &mut RuntimeState, cache: &mut AppCache) -> Result<UiLoop
                         fitness_run_mode_for(state),
                     );
                 }
-                KeyCode::Char('s') => state.cycle_file_list_mode(),
-                KeyCode::Char('S') => state.cycle_run_sort_mode(),
-                KeyCode::Char('v') | KeyCode::Char('V') => state.cycle_run_filter_mode(),
-                KeyCode::Char('u') => {
-                    while !matches!(
-                        state.file_list_mode,
-                        crate::ui::state::FileListMode::UnknownConflict
-                    ) {
-                        state.cycle_file_list_mode();
-                    }
-                }
                 KeyCode::Char('d') | KeyCode::Char('D') => state.toggle_detail_mode(),
                 KeyCode::Char('t') | KeyCode::Char('T') => state.toggle_theme_mode(),
                 KeyCode::Char('1') => state.set_event_log_filter(EventLogFilter::All),
@@ -406,6 +373,139 @@ fn handle_event(state: &mut RuntimeState, cache: &mut AppCache) -> Result<UiLoop
         _ => {}
     }
     Ok(UiLoopAction::Continue)
+}
+
+fn apply_ui_signal(
+    signal: UiSignal,
+    ctx: &RepoContext,
+    state: &mut RuntimeState,
+    cache: &mut AppCache,
+    last_poll: &mut Instant,
+    last_repo_status_refresh: &mut Instant,
+    last_agent_refresh: &mut Instant,
+    last_fitness_refresh: &mut Instant,
+    force_scan: &mut bool,
+    needs_redraw: &mut bool,
+) -> Result<UiLoopAction> {
+    match signal {
+        UiSignal::Terminal(event) => match handle_event(state, cache, event)? {
+            UiLoopAction::Quit => return Ok(UiLoopAction::Quit),
+            UiLoopAction::RefreshAll => {
+                refresh_repo_snapshot(ctx, state)?;
+                if let Ok(agents) = crate::observe::detect::scan_agents(&state.repo_root) {
+                    state.set_detected_agents(agents);
+                }
+                let now = Instant::now();
+                *last_poll = now;
+                *last_repo_status_refresh = now;
+                *last_agent_refresh = now;
+                *needs_redraw = true;
+            }
+            UiLoopAction::Continue => *needs_redraw = true,
+        },
+        UiSignal::Feed(messages) => {
+            if !messages.is_empty() {
+                *needs_redraw = true;
+            }
+            for message in messages {
+                if matches!(message, RuntimeMessage::Git(_)) {
+                    *force_scan = true;
+                }
+                if let RuntimeMessage::Fitness(event) = &message {
+                    refresh_fitness_from_event(state, cache, event);
+                    *last_fitness_refresh = Instant::now();
+                }
+                state.apply_message(message);
+            }
+        }
+        UiSignal::TranscriptBootstrap(messages) => {
+            if !messages.is_empty() {
+                *force_scan = true;
+            }
+            let recovered_session_count = messages
+                .iter()
+                .filter_map(|message| match message {
+                    RuntimeMessage::Hook(event) if event.event_name == "TranscriptRecover" => {
+                        Some(event.session_id.clone())
+                    }
+                    _ => None,
+                })
+                .collect::<std::collections::BTreeSet<_>>()
+                .len();
+            for message in messages {
+                if matches!(message, RuntimeMessage::Git(_)) {
+                    *force_scan = true;
+                }
+                state.apply_message(message);
+            }
+            state.push_hook_status_event(
+                chrono::Utc::now().timestamp_millis(),
+                format!("transcript backfill complete ({recovered_session_count} sessions)"),
+            );
+            state.prune_stale_sessions();
+            *needs_redraw = true;
+        }
+        UiSignal::InitialRepo(snapshot) => {
+            apply_initial_repo_snapshot(state, snapshot);
+            let now = Instant::now();
+            *last_poll = now;
+            *last_repo_status_refresh = now;
+            *needs_redraw = true;
+        }
+    }
+    Ok(UiLoopAction::Continue)
+}
+
+fn next_ui_signal_timeout(
+    poll_interval_ms: u64,
+    last_poll: Instant,
+    last_transport_refresh: Instant,
+    last_repo_status_refresh: Instant,
+    last_agent_refresh: Instant,
+    last_fitness_refresh: Instant,
+    last_fitness_cache_check: Instant,
+    last_scc_refresh: Instant,
+    last_draw: Instant,
+) -> Duration {
+    let now = Instant::now();
+    [
+        last_poll + Duration::from_millis(poll_interval_ms),
+        last_transport_refresh + Duration::from_millis(TRANSPORT_REFRESH_MS),
+        last_repo_status_refresh + Duration::from_millis(REPO_STATUS_REFRESH_MS),
+        last_agent_refresh + Duration::from_millis(AGENT_SCAN_REFRESH_MS),
+        last_fitness_refresh + Duration::from_millis(FITNESS_AUTO_REFRESH_MS),
+        last_fitness_cache_check + Duration::from_millis(FITNESS_CACHE_CHECK_MS),
+        last_scc_refresh + Duration::from_millis(SCC_REFRESH_MS),
+        last_draw + Duration::from_millis(IDLE_REDRAW_MS),
+    ]
+    .into_iter()
+    .map(|deadline| deadline.saturating_duration_since(now))
+    .min()
+    .unwrap_or_else(|| Duration::from_millis(IDLE_REDRAW_MS))
+}
+
+fn spawn_runtime_feed_thread(mut feed: RuntimeFeed, signal_tx: mpsc::Sender<UiSignal>) {
+    thread::spawn(move || loop {
+        match feed.read_new() {
+            Ok(messages) => {
+                if !messages.is_empty() && signal_tx.send(UiSignal::Feed(messages)).is_err() {
+                    break;
+                }
+            }
+            Err(_) => break,
+        }
+        thread::sleep(Duration::from_millis(RUNTIME_FEED_SIGNAL_MS));
+    });
+}
+
+fn spawn_terminal_signal_thread(signal_tx: mpsc::Sender<UiSignal>) {
+    thread::spawn(move || {
+        while let Ok(event) = event::read() {
+            if signal_tx.send(UiSignal::Terminal(event)).is_err() {
+                break;
+            }
+        }
+    });
 }
 
 fn fitness_run_mode_for(state: &RuntimeState) -> fitness::FitnessRunMode {
