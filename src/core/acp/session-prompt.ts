@@ -137,6 +137,46 @@ export function isSessionPromptTimeoutError(error: unknown): boolean {
   return error.message.includes("Timeout waiting for session/prompt");
 }
 
+function logRecoverablePromptTimeout(sessionId: string, error: unknown): void {
+  console.warn(
+    `[ACP Route] session/prompt timed out while waiting for ${sessionId}; keeping ACP session alive for continued lifecycle updates.`,
+    error,
+  );
+}
+
+function cleanupRecoverablePromptTimeout(
+  store: ReturnType<typeof getHttpSessionStore>,
+  sessionId: string,
+  error: unknown,
+): void {
+  logRecoverablePromptTimeout(sessionId, error);
+  store.flushAgentBuffer(sessionId);
+}
+
+async function finalizeRecoverableStreamingPromptTimeout(
+  store: ReturnType<typeof getHttpSessionStore>,
+  sessionId: string,
+  controller: ReadableStreamDefaultController<Uint8Array>,
+  error: unknown,
+): Promise<void> {
+  cleanupRecoverablePromptTimeout(store, sessionId, error);
+  store.exitStreamingMode(sessionId);
+  await persistSessionHistorySnapshot(sessionId, store);
+  controller.close();
+}
+
+function respondRecoverablePromptTimeout(
+  store: ReturnType<typeof getHttpSessionStore>,
+  sessionId: string,
+  error: unknown,
+  id: string | number | null,
+  jsonrpcResponse: JsonRpcResponseFactory,
+): Response {
+  cleanupRecoverablePromptTimeout(store, sessionId, error);
+  void persistSessionHistorySnapshot(sessionId, store);
+  return jsonrpcResponse(id, { sessionId, pending: true });
+}
+
 function getPromptErrorData(error: unknown): Record<string, unknown> | undefined {
   if (isAcpErrorLike(error)) {
     return {
@@ -675,14 +715,7 @@ export async function handleSessionPrompt({
           controller.close();
         } catch (err) {
           if (isSessionPromptTimeoutError(err)) {
-            console.warn(
-              `[ACP Route] session/prompt timed out while waiting for ${sessionId}; keeping ACP session alive for continued lifecycle updates.`,
-              err,
-            );
-            store.flushAgentBuffer(sessionId);
-            store.exitStreamingMode(sessionId);
-            await persistSessionHistorySnapshot(sessionId, store);
-            controller.close();
+            await finalizeRecoverableStreamingPromptTimeout(store, sessionId, controller, err);
             return;
           }
           const message = markSessionPromptError(store, sessionId, err, "OpenCode SDK prompt failed");
@@ -739,14 +772,7 @@ export async function handleSessionPrompt({
           controller.close();
         } catch (err) {
           if (isSessionPromptTimeoutError(err)) {
-            console.warn(
-              `[ACP Route] session/prompt timed out while waiting for ${sessionId}; keeping ACP session alive for continued lifecycle updates.`,
-              err,
-            );
-            store.flushAgentBuffer(sessionId);
-            store.exitStreamingMode(sessionId);
-            await persistSessionHistorySnapshot(sessionId, store);
-            controller.close();
+            await finalizeRecoverableStreamingPromptTimeout(store, sessionId, controller, err);
             return;
           }
           const message = markSessionPromptError(store, sessionId, err, "Docker OpenCode prompt failed");
@@ -802,14 +828,7 @@ export async function handleSessionPrompt({
           controller.close();
         } catch (err) {
           if (isSessionPromptTimeoutError(err)) {
-            console.warn(
-              `[ACP Route] session/prompt timed out while waiting for ${sessionId}; keeping ACP session alive for continued lifecycle updates.`,
-              err,
-            );
-            store.flushAgentBuffer(sessionId);
-            store.exitStreamingMode(sessionId);
-            await persistSessionHistorySnapshot(sessionId, store);
-            controller.close();
+            await finalizeRecoverableStreamingPromptTimeout(store, sessionId, controller, err);
             return;
           }
           const message = markSessionPromptError(store, sessionId, err, "Claude Code SDK prompt failed");
@@ -900,13 +919,7 @@ export async function handleSessionPrompt({
         return jsonrpcResponse(id ?? null, result);
       } catch (err) {
         if (isSessionPromptTimeoutError(err)) {
-          console.warn(
-            `[ACP Route] session/prompt timed out while waiting for ${sessionId}; keeping ACP session alive for continued lifecycle updates.`,
-            err,
-          );
-          store.flushAgentBuffer(sessionId);
-          void persistSessionHistorySnapshot(sessionId, store);
-          return jsonrpcResponse(id ?? null, { sessionId, pending: true });
+          return respondRecoverablePromptTimeout(store, sessionId, err, id ?? null, jsonrpcResponse);
         }
         const message = markSessionPromptError(store, sessionId, err, "Claude Code prompt failed after restart");
         store.flushAgentBuffer(sessionId);
@@ -926,13 +939,7 @@ export async function handleSessionPrompt({
       return jsonrpcResponse(id ?? null, result);
     } catch (err) {
       if (isSessionPromptTimeoutError(err)) {
-        console.warn(
-          `[ACP Route] session/prompt timed out while waiting for ${sessionId}; keeping ACP session alive for continued lifecycle updates.`,
-          err,
-        );
-        store.flushAgentBuffer(sessionId);
-        void persistSessionHistorySnapshot(sessionId, store);
-        return jsonrpcResponse(id ?? null, { sessionId, pending: true });
+        return respondRecoverablePromptTimeout(store, sessionId, err, id ?? null, jsonrpcResponse);
       }
       const message = markSessionPromptError(store, sessionId, err, "Claude Code prompt failed");
       store.flushAgentBuffer(sessionId);
@@ -970,13 +977,7 @@ export async function handleSessionPrompt({
     return jsonrpcResponse(id ?? null, result);
   } catch (err) {
     if (isSessionPromptTimeoutError(err)) {
-      console.warn(
-        `[ACP Route] session/prompt timed out while waiting for ${sessionId}; keeping ACP session alive for continued lifecycle updates.`,
-        err,
-      );
-      store.flushAgentBuffer(sessionId);
-      void persistSessionHistorySnapshot(sessionId, store);
-      return jsonrpcResponse(id ?? null, { sessionId, pending: true });
+      return respondRecoverablePromptTimeout(store, sessionId, err, id ?? null, jsonrpcResponse);
     }
     const message = markSessionPromptError(store, sessionId, err, "Prompt failed");
     store.flushAgentBuffer(sessionId);

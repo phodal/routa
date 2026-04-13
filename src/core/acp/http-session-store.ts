@@ -92,6 +92,8 @@ function isRecoverablePromptTimeoutStatus(
 
 function isExplicitErrorNotification(notification: SessionUpdateNotification): boolean {
   const update = notification.update as Record<string, unknown> | undefined;
+  // `acp_status` is emitted by explicit lifecycle/error transitions and should
+  // not immediately clear a timeout-marked session back to ready.
   return update?.sessionUpdate === "error"
     || update?.sessionUpdate === "acp_status"
     || (notification as Record<string, unknown>).type === "error";

@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { AcpPromptResult } from "@/client/acp-client";
 import type { UseAcpActions, UseAcpState } from "@/client/hooks/use-acp";
 import { ChatPanel } from "../chat-panel";
 
@@ -12,6 +13,8 @@ const {
   mockSetMessagesBySession: vi.fn(),
   mockFetchSessions: vi.fn(),
 }));
+
+const resolvedPrompt = (): Promise<AcpPromptResult | null> => Promise.resolve(null);
 
 vi.mock("@/i18n", () => ({
   useTranslation: () => ({
@@ -122,7 +125,7 @@ describe("ChatPanel session targeting", () => {
       setProvider: vi.fn(),
       setMode: vi.fn(),
       prompt: vi.fn(),
-      promptSession: vi.fn(async () => {}),
+      promptSession: vi.fn(resolvedPrompt),
       respondToUserInput: vi.fn(async () => {
         throw new Error("No pending interactive request found for this session");
       }),
@@ -187,7 +190,7 @@ describe("ChatPanel session targeting", () => {
       setProvider: vi.fn(),
       setMode: vi.fn(),
       prompt: vi.fn(),
-      promptSession: vi.fn(async () => {}),
+      promptSession: vi.fn(resolvedPrompt),
       respondToUserInput: vi.fn(),
       respondToUserInputForSession: vi.fn(),
       writeTerminal: vi.fn(),
@@ -256,7 +259,7 @@ describe("ChatPanel session targeting", () => {
       setProvider: vi.fn(),
       setMode: vi.fn(),
       prompt: vi.fn(),
-      promptSession: vi.fn(async () => {}),
+      promptSession: vi.fn(resolvedPrompt),
       respondToUserInput: vi.fn(),
       respondToUserInputForSession: vi.fn(),
       writeTerminal: vi.fn(),

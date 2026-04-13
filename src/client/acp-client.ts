@@ -63,6 +63,8 @@ export interface AcpForkSessionResult {
 
 export interface AcpPromptResult {
   stopReason: string;
+  /** True when the backend timed out waiting for prompt completion but kept the ACP session alive. */
+  pending?: boolean;
   /** Full response content (for serverless environments where SSE may not work) */
   content?: string;
   /** Token usage info */

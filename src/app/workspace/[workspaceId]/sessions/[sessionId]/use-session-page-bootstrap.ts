@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { AcpPromptResult } from "@/client/acp-client";
 
 import {
   consumePendingPromptPayload,
@@ -42,7 +43,7 @@ interface UseSessionPageBootstrapParams {
   acpPrompt: (
     text: string,
     skillContext?: { skillName: string; skillContent: string },
-  ) => Promise<void>;
+  ) => Promise<AcpPromptResult | null>;
   setSelectedAgent: (role: AgentRole) => void;
   setDockerErrorMessage: (message: string | null) => void;
   setDockerRetryText: (text: string | null) => void;

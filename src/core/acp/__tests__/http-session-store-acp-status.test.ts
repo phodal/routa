@@ -252,6 +252,57 @@ describe("HttpSessionStore — ACP status", () => {
     expect(session?.acpError).toBeUndefined();
   });
 
+  it("does not recover a timeout-marked ACP session on explicit error notifications", () => {
+    const store = getHttpSessionStore();
+    store.upsertSession({
+      sessionId: "test-timeout-explicit-error",
+      cwd: "/tmp",
+      workspaceId: "ws-1",
+      provider: "codex",
+      acpStatus: "error",
+      acpError: "Timeout waiting for session/prompt (id=7)",
+      createdAt: new Date().toISOString(),
+    });
+
+    store.pushNotification({
+      sessionId: "test-timeout-explicit-error",
+      update: {
+        sessionUpdate: "acp_status",
+        status: "error",
+        error: "still unavailable",
+      },
+    });
+
+    const session = store.getSession("test-timeout-explicit-error");
+    expect(session?.acpStatus).toBe("error");
+    expect(session?.acpError).toContain("Timeout waiting for session/prompt");
+  });
+
+  it("does not recover non-timeout ACP errors from ordinary follow-up activity", () => {
+    const store = getHttpSessionStore();
+    store.upsertSession({
+      sessionId: "test-non-timeout-error",
+      cwd: "/tmp",
+      workspaceId: "ws-1",
+      provider: "codex",
+      acpStatus: "error",
+      acpError: "Permission denied",
+      createdAt: new Date().toISOString(),
+    });
+
+    store.pushNotification({
+      sessionId: "test-non-timeout-error",
+      update: {
+        sessionUpdate: "agent_message",
+        content: { type: "text", text: "still working" },
+      },
+    });
+
+    const session = store.getSession("test-non-timeout-error");
+    expect(session?.acpStatus).toBe("error");
+    expect(session?.acpError).toBe("Permission denied");
+  });
+
   it("appends pushed notifications to the local event log", async () => {
     const store = getHttpSessionStore();
     const projectPath = path.join(process.env.HOME!, "project");

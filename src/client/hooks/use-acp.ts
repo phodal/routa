@@ -16,6 +16,7 @@ import {
   AcpForkSessionResult,
   AcpLoadSessionResult,
   AcpNewSessionResult,
+  AcpPromptResult,
   AcpProviderInfo,
   AcpClientError,
   AcpAuthMethod,
@@ -219,12 +220,15 @@ export interface UseAcpActions {
   selectSession: (sessionId: string) => void;
   setProvider: (provider: string) => void;
   setMode: (modeId: string) => Promise<void>;
-  prompt: (text: string, skillContext?: { skillName: string; skillContent: string }) => Promise<void>;
+  prompt: (
+    text: string,
+    skillContext?: { skillName: string; skillContent: string },
+  ) => Promise<AcpPromptResult | null>;
   promptSession: (
     sessionId: string,
     text: string,
     skillContext?: { skillName: string; skillContent: string },
-  ) => Promise<void>;
+  ) => Promise<AcpPromptResult | null>;
   respondToUserInput: (toolCallId: string, response: Record<string, unknown>) => Promise<void>;
   respondToUserInputForSession: (
     sessionId: string,
@@ -688,20 +692,21 @@ export function useAcp(baseUrl: string = ""): UseAcpState & UseAcpActions {
   const prompt = useCallback(async (
     text: string,
     skillContext?: { skillName: string; skillContent: string },
-  ): Promise<void> => {
+  ): Promise<AcpPromptResult | null> => {
     const client = clientRef.current;
     const sessionId = sessionIdRef.current;
-    if (!client || !sessionId) return;
+    if (!client || !sessionId) return null;
 
     try {
       setState((s) => ({ ...s, loading: true, error: null }));
-      await client.prompt(sessionId, text, skillContext);
+      const result = await client.prompt(sessionId, text, skillContext);
       setState((s) => ({ ...s, loading: false }));
+      return result;
     } catch (err) {
       if (shouldSuppressPromptError(err)) {
         logRuntime("info", "useAcp.prompt", "Ignoring prompt fetch interruption during page teardown", err);
         setState((s) => ({ ...s, loading: false }));
-        return;
+        return null;
       }
       logRuntime("error", "useAcp.prompt", "Failed to send prompt", formatAcpErrorForLog(err));
       setState((s) => ({
@@ -709,6 +714,7 @@ export function useAcp(baseUrl: string = ""): UseAcpState & UseAcpActions {
         loading: false,
         error: toErrorMessage(err) || "Prompt failed",
       }));
+      return null;
     }
   }, [shouldSuppressPromptError]);
 
@@ -716,20 +722,21 @@ export function useAcp(baseUrl: string = ""): UseAcpState & UseAcpActions {
     sessionId: string,
     text: string,
     skillContext?: { skillName: string; skillContent: string },
-  ): Promise<void> => {
+  ): Promise<AcpPromptResult | null> => {
     const client = clientRef.current;
-    if (!client || !sessionId) return;
+    if (!client || !sessionId) return null;
 
     try {
       setState((s) => ({ ...s, loading: true, error: null }));
       sessionIdRef.current = sessionId;
-      await client.prompt(sessionId, text, skillContext);
+      const result = await client.prompt(sessionId, text, skillContext);
       setState((s) => ({ ...s, sessionId, loading: false }));
+      return result;
     } catch (err) {
       if (shouldSuppressPromptError(err)) {
         logRuntime("info", "useAcp.promptSession", "Ignoring prompt fetch interruption during page teardown", err);
         setState((s) => ({ ...s, loading: false }));
-        return;
+        return null;
       }
       logRuntime("error", "useAcp.promptSession", "Failed to send prompt", formatAcpErrorForLog(err));
       setState((s) => ({
@@ -737,6 +744,7 @@ export function useAcp(baseUrl: string = ""): UseAcpState & UseAcpActions {
         loading: false,
         error: toErrorMessage(err) || "Prompt failed",
       }));
+      return null;
     }
   }, [shouldSuppressPromptError]);
 
