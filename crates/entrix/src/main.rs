@@ -21,6 +21,7 @@ use entrix::sarif::SarifRunner;
 use entrix::scoring::{score_dimension, score_report};
 use entrix::test_mapping;
 use serde_json::json;
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 #[derive(Parser, Debug)]
@@ -379,12 +380,10 @@ fn cmd_run(args: RunArgs) -> i32 {
         args.stream.as_str(),
         args.format.as_str(),
         args.progress_refresh,
-        args.changed_only,
-        args.files.as_slice(),
-        args.base.as_str(),
     );
     let fitness_dir = repo_root.join("docs/fitness");
     let all_dimensions = load_dimensions(&fitness_dir);
+    let changed_files = collect_run_files(&repo_root, &args);
 
     let policy = GovernancePolicy {
         tier_filter: args
@@ -402,14 +401,20 @@ fn cmd_run(args: RunArgs) -> i32 {
         metric_filters: args.metrics,
     };
 
-    let dimensions = filter_dimensions(&all_dimensions, &policy);
+    let mut dimensions = filter_dimensions(&all_dimensions, &policy);
+    if !changed_files.is_empty() {
+        let changed_domains = domains_from_files(&changed_files);
+        dimensions =
+            filter_dimensions_for_incremental(&dimensions, &changed_files, &changed_domains);
+    }
     if dimensions.is_empty() {
         eprintln!("No matching fitness dimensions or metrics found.");
         return 1;
     }
 
-    let shell_runner = ShellRunner::new(&repo_root);
-    let sarif_runner = SarifRunner::new(&repo_root);
+    let runner_env = build_runner_env(&changed_files, &args.base);
+    let shell_runner = ShellRunner::new(&repo_root).with_env_overrides(runner_env.clone());
+    let sarif_runner = SarifRunner::new(&repo_root).with_env_overrides(runner_env);
     let mut dimension_scores = Vec::new();
 
     for dimension in &dimensions {
@@ -443,6 +448,212 @@ fn cmd_run(args: RunArgs) -> i32 {
     }
 
     enforce(&report, &policy)
+}
+
+fn collect_run_files(repo_root: &Path, args: &RunArgs) -> Vec<String> {
+    if !args.files.is_empty() {
+        return args.files.clone();
+    }
+    if !args.changed_only {
+        return Vec::new();
+    }
+
+    let commands = [
+        vec!["diff", "--name-only", "--diff-filter=ACMR", &args.base],
+        vec!["diff", "--name-only", "--diff-filter=ACMR", "--cached"],
+    ];
+    let mut seen = BTreeSet::new();
+    let mut files = Vec::new();
+
+    for command_args in commands {
+        let output = std::process::Command::new("git")
+            .args(command_args)
+            .current_dir(repo_root)
+            .output();
+        let Ok(output) = output else {
+            continue;
+        };
+        for line in String::from_utf8_lossy(&output.stdout).lines() {
+            let path = line.trim();
+            if path.is_empty() || should_ignore_changed_file(path) || !seen.insert(path.to_string())
+            {
+                continue;
+            }
+            files.push(path.to_string());
+        }
+    }
+
+    files
+}
+
+fn should_ignore_changed_file(file_path: &str) -> bool {
+    file_path.starts_with("tmp/")
+        || file_path.starts_with("docs/")
+        || file_path.starts_with(".entrix/")
+        || file_path.starts_with(".code-review-graph/")
+        || file_path.starts_with("node_modules/")
+}
+
+fn domains_from_files(files: &[String]) -> BTreeSet<String> {
+    let config_files = BTreeSet::from([
+        "package.json",
+        "package-lock.json",
+        "Cargo.toml",
+        "Cargo.lock",
+        "api-contract.yaml",
+        "eslint.config.mjs",
+        "tsconfig.json",
+        "pyproject.toml",
+        "docs/fitness/file_budgets.json",
+    ]);
+
+    let mut domains = BTreeSet::new();
+    for file_path in files {
+        let lowered = file_path.to_lowercase();
+        let path = Path::new(file_path);
+        let suffix = path
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .unwrap_or_default();
+        let name = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or_default();
+
+        if suffix == "rs" || lowered.starts_with("crates/") {
+            domains.insert("rust".to_string());
+        }
+        if matches!(suffix, "ts" | "tsx" | "js" | "jsx" | "css" | "scss")
+            || lowered.starts_with("src/")
+            || lowered.starts_with("apps/")
+        {
+            domains.insert("web".to_string());
+        }
+        if suffix == "py" {
+            domains.insert("python".to_string());
+        }
+        if config_files.contains(file_path.as_str()) || config_files.contains(name) {
+            domains.insert("config".to_string());
+        }
+    }
+    domains
+}
+
+fn metric_domains(metric: &entrix::model::Metric) -> BTreeSet<String> {
+    if !metric.scope.is_empty() {
+        return metric.scope.iter().cloned().collect();
+    }
+
+    let command = metric.command.to_lowercase();
+    let mut domains = BTreeSet::new();
+
+    if command.contains("cargo ") || command.contains("clippy") || command.contains("rust") {
+        domains.insert("rust".to_string());
+    }
+    if [
+        "npm ",
+        "npx ",
+        "eslint",
+        "vitest",
+        "playwright",
+        "jscpd",
+        "dependency-cruiser",
+        "ast-grep",
+        " semgrep",
+        "semgrep ",
+    ]
+    .iter()
+    .any(|token| command.contains(token))
+    {
+        domains.insert("web".to_string());
+    }
+    if command.contains("python") || command.contains("pytest") || command.contains("entrix") {
+        domains.insert("python".to_string());
+    }
+    if command.contains("audit") {
+        domains.insert("config".to_string());
+    }
+
+    if domains.is_empty() {
+        domains.insert("global".to_string());
+    }
+    domains
+}
+
+fn matches_changed_files(
+    metric: &entrix::model::Metric,
+    changed_files: &[String],
+    domains: &BTreeSet<String>,
+) -> bool {
+    if !metric.run_when_changed.is_empty() {
+        return changed_files.iter().any(|changed_file| {
+            metric.run_when_changed.iter().any(|pattern| {
+                glob::Pattern::new(pattern)
+                    .map(|p| p.matches(changed_file))
+                    .unwrap_or(false)
+            })
+        });
+    }
+    if domains.is_empty() {
+        return false;
+    }
+    if domains.contains("config") {
+        return true;
+    }
+    let metric_domains = metric_domains(metric);
+    metric_domains.contains("global") || !metric_domains.is_disjoint(domains)
+}
+
+fn filter_dimensions_for_incremental(
+    dimensions: &[entrix::model::Dimension],
+    changed_files: &[String],
+    domains: &BTreeSet<String>,
+) -> Vec<entrix::model::Dimension> {
+    if changed_files.is_empty() {
+        return Vec::new();
+    }
+    if domains.contains("config") {
+        return dimensions.to_vec();
+    }
+
+    dimensions
+        .iter()
+        .filter_map(|dimension| {
+            let metrics = dimension
+                .metrics
+                .iter()
+                .filter(|metric| matches_changed_files(metric, changed_files, domains))
+                .cloned()
+                .collect::<Vec<_>>();
+            if metrics.is_empty() {
+                return None;
+            }
+            Some(entrix::model::Dimension {
+                name: dimension.name.clone(),
+                weight: dimension.weight,
+                threshold_pass: dimension.threshold_pass,
+                threshold_warn: dimension.threshold_warn,
+                metrics,
+                source_file: dimension.source_file.clone(),
+            })
+        })
+        .collect()
+}
+
+fn build_runner_env(
+    changed_files: &[String],
+    base: &str,
+) -> std::collections::HashMap<String, String> {
+    let mut env = std::collections::HashMap::new();
+    if !changed_files.is_empty() {
+        env.insert("ROUTA_FITNESS_CHANGED_ONLY".to_string(), "1".to_string());
+        env.insert("ROUTA_FITNESS_CHANGED_BASE".to_string(), base.to_string());
+        env.insert(
+            "ROUTA_FITNESS_CHANGED_FILES".to_string(),
+            changed_files.join("\n"),
+        );
+    }
+    env
 }
 
 fn cmd_validate(args: ValidateArgs) -> i32 {
