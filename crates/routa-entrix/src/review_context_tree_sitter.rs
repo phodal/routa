@@ -106,7 +106,8 @@ pub fn parse_changed_files(repo_root: &Path, changed_files: &[String]) -> Parsed
             SupportedLanguage::TypeScript => {
                 parse_typescript_nodes(relative_path, &source, tree.root_node())
             }
-            SupportedLanguage::Java => Vec::new(),
+            SupportedLanguage::Java => parse_java_nodes(relative_path, &source, tree.root_node()),
+            SupportedLanguage::Go => parse_go_nodes(relative_path, &source, tree.root_node()),
         };
         total_edges += file_nodes.len();
         changed_nodes.append(&mut file_nodes);
@@ -415,6 +416,406 @@ fn extract_typescript_extends(node: Node<'_>, source: &[u8]) -> String {
     String::new()
 }
 
+fn parse_java_nodes(relative_path: &str, source: &str, root: Node<'_>) -> Vec<ChangedNode> {
+    let mut nodes = Vec::new();
+    let package_name = extract_java_package(root, source.as_bytes());
+    collect_java_nodes(
+        relative_path,
+        source.as_bytes(),
+        root,
+        package_name.as_deref(),
+        None,
+        &mut nodes,
+    );
+    nodes
+}
+
+fn extract_java_package(node: Node<'_>, source: &[u8]) -> Option<String> {
+    for child in node.children(&mut node.walk()) {
+        if child.kind() == "package_declaration" {
+            for inner in child.children(&mut child.walk()) {
+                if matches!(inner.kind(), "scoped_identifier" | "identifier") {
+                    let value = inner.utf8_text(source).ok()?.trim().to_string();
+                    if !value.is_empty() {
+                        return Some(value);
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+fn collect_java_nodes(
+    relative_path: &str,
+    source: &[u8],
+    node: Node<'_>,
+    package_name: Option<&str>,
+    parent_name: Option<&str>,
+    out: &mut Vec<ChangedNode>,
+) {
+    match node.kind() {
+        "class_declaration" => {
+            let extends = extract_java_extends(node, source);
+            if let Some(class_name) = find_java_identifier(node, source) {
+                out.push(ChangedNode {
+                    qualified_name: qualify_java_name(relative_path, package_name, &class_name),
+                    name: class_name.clone(),
+                    kind: "Class".to_string(),
+                    file_path: relative_path.to_string(),
+                    language: "java".to_string(),
+                    is_test: false,
+                    line_start: Some(node.start_position().row + 1),
+                    line_end: Some(node.end_position().row + 1),
+                    parent_name: parent_name.map(ToString::to_string),
+                    references: Vec::new(),
+                    extends,
+                    mentions: collect_identifier_mentions(node, source),
+                });
+                for child in node.children(&mut node.walk()) {
+                    collect_java_nodes(
+                        relative_path,
+                        source,
+                        child,
+                        package_name,
+                        Some(&class_name),
+                        out,
+                    );
+                }
+                return;
+            }
+        }
+        "interface_declaration" => {
+            if let Some(parsed) = parse_java_type_node(
+                relative_path,
+                source,
+                node,
+                package_name,
+                parent_name,
+                "Interface",
+            ) {
+                out.push(parsed);
+            }
+        }
+        "enum_declaration" => {
+            if let Some(parsed) = parse_java_type_node(
+                relative_path,
+                source,
+                node,
+                package_name,
+                parent_name,
+                "Enum",
+            ) {
+                out.push(parsed);
+            }
+        }
+        "method_declaration" => {
+            if let Some(parsed) =
+                parse_java_callable_node(relative_path, source, node, package_name, parent_name)
+            {
+                out.push(parsed);
+            }
+        }
+        "constructor_declaration" => {
+            if let Some(parsed) =
+                parse_java_callable_node(relative_path, source, node, package_name, parent_name)
+            {
+                out.push(parsed);
+            }
+        }
+        _ => {}
+    }
+
+    for child in node.children(&mut node.walk()) {
+        collect_java_nodes(relative_path, source, child, package_name, parent_name, out);
+    }
+}
+
+fn parse_java_type_node(
+    relative_path: &str,
+    source: &[u8],
+    node: Node<'_>,
+    package_name: Option<&str>,
+    parent_name: Option<&str>,
+    kind: &str,
+) -> Option<ChangedNode> {
+    let name = find_java_identifier(node, source)?;
+    Some(ChangedNode {
+        qualified_name: qualify_java_name(relative_path, package_name, &name),
+        name,
+        kind: kind.to_string(),
+        file_path: relative_path.to_string(),
+        language: "java".to_string(),
+        is_test: false,
+        line_start: Some(node.start_position().row + 1),
+        line_end: Some(node.end_position().row + 1),
+        parent_name: parent_name.map(ToString::to_string),
+        references: Vec::new(),
+        extends: String::new(),
+        mentions: collect_identifier_mentions(node, source),
+    })
+}
+
+fn parse_java_callable_node(
+    relative_path: &str,
+    source: &[u8],
+    node: Node<'_>,
+    package_name: Option<&str>,
+    parent_name: Option<&str>,
+) -> Option<ChangedNode> {
+    let name = find_java_identifier(node, source)?;
+    let is_test = java_callable_is_test(node, source, &name);
+    Some(ChangedNode {
+        qualified_name: qualify_callable_name(relative_path, package_name, parent_name, &name),
+        name,
+        kind: if is_test {
+            "Test".to_string()
+        } else {
+            "Method".to_string()
+        },
+        file_path: relative_path.to_string(),
+        language: "java".to_string(),
+        is_test,
+        line_start: Some(node.start_position().row + 1),
+        line_end: Some(node.end_position().row + 1),
+        parent_name: parent_name.map(ToString::to_string),
+        references: collect_identifier_mentions(node, source)
+            .into_iter()
+            .filter(|item| item != "Override" && item != "Test")
+            .collect(),
+        extends: String::new(),
+        mentions: collect_identifier_mentions(node, source),
+    })
+}
+
+fn extract_java_extends(node: Node<'_>, source: &[u8]) -> String {
+    for child in node.children(&mut node.walk()) {
+        if child.kind() == "superclass" || child.kind() == "super_interfaces" {
+            let text = child.utf8_text(source).unwrap_or("").trim().to_string();
+            if !text.is_empty() {
+                return text;
+            }
+        }
+    }
+    String::new()
+}
+
+fn find_java_identifier(node: Node<'_>, source: &[u8]) -> Option<String> {
+    for child in node.children(&mut node.walk()) {
+        if child.kind() == "identifier" {
+            let value = child.utf8_text(source).ok()?.trim().to_string();
+            if !value.is_empty() {
+                return Some(value);
+            }
+        }
+    }
+    None
+}
+
+fn qualify_java_name(relative_path: &str, package_name: Option<&str>, name: &str) -> String {
+    if let Some(package_name) = package_name {
+        format!("{relative_path}:{package_name}.{name}")
+    } else {
+        format!("{relative_path}:{name}")
+    }
+}
+
+fn qualify_callable_name(
+    relative_path: &str,
+    package_name: Option<&str>,
+    parent_name: Option<&str>,
+    name: &str,
+) -> String {
+    match (package_name, parent_name) {
+        (Some(package_name), Some(parent_name)) => {
+            format!("{relative_path}:{package_name}.{parent_name}.{name}")
+        }
+        (_, Some(parent_name)) => format!("{relative_path}:{parent_name}.{name}"),
+        (Some(package_name), None) => format!("{relative_path}:{package_name}.{name}"),
+        (None, None) => format!("{relative_path}:{name}"),
+    }
+}
+
+fn java_callable_is_test(node: Node<'_>, source: &[u8], name: &str) -> bool {
+    if name.starts_with("test") {
+        return true;
+    }
+    let text = node.utf8_text(source).unwrap_or("");
+    text.contains("@Test")
+}
+
+fn parse_go_nodes(relative_path: &str, source: &str, root: Node<'_>) -> Vec<ChangedNode> {
+    let mut nodes = Vec::new();
+    collect_go_nodes(relative_path, source.as_bytes(), root, None, &mut nodes);
+    nodes
+}
+
+fn collect_go_nodes(
+    relative_path: &str,
+    source: &[u8],
+    node: Node<'_>,
+    parent_name: Option<&str>,
+    out: &mut Vec<ChangedNode>,
+) {
+    match node.kind() {
+        "function_declaration" => {
+            if let Some(parsed) = parse_go_function(relative_path, source, node, parent_name) {
+                out.push(parsed);
+            }
+        }
+        "method_declaration" => {
+            if let Some(parsed) = parse_go_method(relative_path, source, node) {
+                let receiver_name = parsed.parent_name.clone();
+                out.push(parsed);
+                for child in node.children(&mut node.walk()) {
+                    collect_go_nodes(relative_path, source, child, receiver_name.as_deref(), out);
+                }
+                return;
+            }
+        }
+        "type_declaration" => {
+            for child in node.children(&mut node.walk()) {
+                if child.kind() == "type_spec" {
+                    if let Some(parsed) = parse_go_type_spec(relative_path, source, child) {
+                        out.push(parsed);
+                    }
+                }
+            }
+        }
+        _ => {}
+    }
+
+    for child in node.children(&mut node.walk()) {
+        collect_go_nodes(relative_path, source, child, parent_name, out);
+    }
+}
+
+fn parse_go_function(
+    relative_path: &str,
+    source: &[u8],
+    node: Node<'_>,
+    parent_name: Option<&str>,
+) -> Option<ChangedNode> {
+    let name = node
+        .child_by_field_name("name")
+        .and_then(|child| child.utf8_text(source).ok())
+        .map(str::trim)
+        .filter(|name| !name.is_empty())?
+        .to_string();
+    let is_test = name.starts_with("Test");
+    let qualified_name = if let Some(parent_name) = parent_name {
+        format!("{relative_path}:{parent_name}.{name}")
+    } else {
+        format!("{relative_path}:{name}")
+    };
+    Some(ChangedNode {
+        qualified_name,
+        name,
+        kind: if is_test {
+            "Test".to_string()
+        } else {
+            "Function".to_string()
+        },
+        file_path: relative_path.to_string(),
+        language: "go".to_string(),
+        is_test,
+        line_start: Some(node.start_position().row + 1),
+        line_end: Some(node.end_position().row + 1),
+        parent_name: parent_name.map(ToString::to_string),
+        references: Vec::new(),
+        extends: String::new(),
+        mentions: collect_identifier_mentions(node, source),
+    })
+}
+
+fn parse_go_method(relative_path: &str, source: &[u8], node: Node<'_>) -> Option<ChangedNode> {
+    let name = node
+        .child_by_field_name("name")
+        .and_then(|child| child.utf8_text(source).ok())
+        .map(str::trim)
+        .filter(|name| !name.is_empty())?
+        .to_string();
+    let receiver_name = node
+        .child_by_field_name("receiver")
+        .and_then(|receiver| receiver.utf8_text(source).ok())
+        .map(|text| simplify_go_receiver(text))
+        .filter(|name| !name.is_empty());
+    let is_test = name.starts_with("Test");
+    let qualified_name = if let Some(receiver_name) = receiver_name.as_deref() {
+        format!("{relative_path}:{receiver_name}.{name}")
+    } else {
+        format!("{relative_path}:{name}")
+    };
+    Some(ChangedNode {
+        qualified_name,
+        name,
+        kind: if is_test {
+            "Test".to_string()
+        } else {
+            "Method".to_string()
+        },
+        file_path: relative_path.to_string(),
+        language: "go".to_string(),
+        is_test,
+        line_start: Some(node.start_position().row + 1),
+        line_end: Some(node.end_position().row + 1),
+        parent_name: receiver_name,
+        references: Vec::new(),
+        extends: String::new(),
+        mentions: collect_identifier_mentions(node, source),
+    })
+}
+
+fn parse_go_type_spec(relative_path: &str, source: &[u8], node: Node<'_>) -> Option<ChangedNode> {
+    let name = node
+        .child_by_field_name("name")
+        .and_then(|child| child.utf8_text(source).ok())
+        .map(str::trim)
+        .filter(|name| !name.is_empty())?
+        .to_string();
+    let kind = if node
+        .child_by_field_name("type")
+        .is_some_and(|child| child.kind() == "interface_type")
+    {
+        "Interface"
+    } else if node
+        .child_by_field_name("type")
+        .is_some_and(|child| child.kind() == "struct_type")
+    {
+        "Class"
+    } else {
+        "Type"
+    };
+    Some(ChangedNode {
+        qualified_name: format!("{relative_path}:{name}"),
+        name,
+        kind: kind.to_string(),
+        file_path: relative_path.to_string(),
+        language: "go".to_string(),
+        is_test: false,
+        line_start: Some(node.start_position().row + 1),
+        line_end: Some(node.end_position().row + 1),
+        parent_name: None,
+        references: Vec::new(),
+        extends: String::new(),
+        mentions: collect_identifier_mentions(node, source),
+    })
+}
+
+fn simplify_go_receiver(text: &str) -> String {
+    let trimmed = text
+        .trim()
+        .trim_start_matches('(')
+        .trim_end_matches(')')
+        .trim();
+    trimmed
+        .split_whitespace()
+        .last()
+        .unwrap_or(trimmed)
+        .trim_start_matches('*')
+        .to_string()
+}
+
 fn parse_named_node(
     relative_path: &str,
     source: &[u8],
@@ -479,6 +880,7 @@ fn language_for_path(path: &str) -> Option<SupportedLanguage> {
         "rs" => Some(SupportedLanguage::Rust),
         "ts" | "tsx" | "mts" | "cts" | "js" | "jsx" => Some(SupportedLanguage::TypeScript),
         "java" => Some(SupportedLanguage::Java),
+        "go" => Some(SupportedLanguage::Go),
         _ => None,
     }
 }
@@ -496,6 +898,7 @@ enum SupportedLanguage {
     Rust,
     TypeScript,
     Java,
+    Go,
 }
 
 impl SupportedLanguage {
@@ -504,6 +907,7 @@ impl SupportedLanguage {
             Self::Rust => "rust",
             Self::TypeScript => "typescript",
             Self::Java => "java",
+            Self::Go => "go",
         }
     }
 
@@ -512,6 +916,85 @@ impl SupportedLanguage {
             Self::Rust => tree_sitter_rust::LANGUAGE.into(),
             Self::TypeScript => tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(),
             Self::Java => tree_sitter_java::LANGUAGE.into(),
+            Self::Go => tree_sitter_go::LANGUAGE.into(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_changed_files;
+    use std::fs;
+    use tempfile::tempdir;
+
+    #[test]
+    fn parses_java_class_and_test_method_nodes() {
+        let temp = tempdir().unwrap();
+        let root = temp.path();
+        fs::create_dir_all(root.join("src/main/java/com/example")).unwrap();
+        fs::write(
+            root.join("src/main/java/com/example/Service.java"),
+            "package com.example;\nclass Service extends BaseService {\n  String run() { return helper(); }\n  @Test\n  void testRun() { run(); }\n}\n",
+        )
+        .unwrap();
+
+        let graph = parse_changed_files(
+            root,
+            &["src/main/java/com/example/Service.java".to_string()],
+        );
+
+        let qualified = graph
+            .changed_nodes
+            .iter()
+            .map(|node| node.qualified_name.as_str())
+            .collect::<Vec<_>>();
+        assert!(qualified.contains(&"src/main/java/com/example/Service.java"));
+        assert!(qualified.contains(&"src/main/java/com/example/Service.java:com.example.Service"));
+        assert!(
+            qualified.contains(&"src/main/java/com/example/Service.java:com.example.Service.run")
+        );
+        assert!(qualified
+            .contains(&"src/main/java/com/example/Service.java:com.example.Service.testRun"));
+
+        let test_node = graph
+            .changed_nodes
+            .iter()
+            .find(|node| node.qualified_name.ends_with(".testRun"))
+            .unwrap();
+        assert!(test_node.is_test);
+        assert_eq!(test_node.kind, "Test");
+    }
+
+    #[test]
+    fn parses_go_types_functions_and_methods() {
+        let temp = tempdir().unwrap();
+        let root = temp.path();
+        fs::create_dir_all(root.join("pkg/demo")).unwrap();
+        fs::write(
+            root.join("pkg/demo/service.go"),
+            "package demo\n\ntype Service struct{}\n\ntype Runner interface { Run() }\n\nfunc Build() int { return 1 }\n\nfunc (s *Service) Run() int { return Build() }\n",
+        )
+        .unwrap();
+
+        let graph = parse_changed_files(root, &["pkg/demo/service.go".to_string()]);
+
+        let qualified = graph
+            .changed_nodes
+            .iter()
+            .map(|node| node.qualified_name.as_str())
+            .collect::<Vec<_>>();
+        assert!(qualified.contains(&"pkg/demo/service.go"));
+        assert!(qualified.contains(&"pkg/demo/service.go:Service"));
+        assert!(qualified.contains(&"pkg/demo/service.go:Runner"));
+        assert!(qualified.contains(&"pkg/demo/service.go:Build"));
+        assert!(qualified.contains(&"pkg/demo/service.go:Service.Run"));
+
+        let method_node = graph
+            .changed_nodes
+            .iter()
+            .find(|node| node.qualified_name == "pkg/demo/service.go:Service.Run")
+            .unwrap();
+        assert_eq!(method_node.kind, "Method");
+        assert_eq!(method_node.parent_name.as_deref(), Some("Service"));
     }
 }

@@ -126,13 +126,8 @@ pub fn build_review_context(
     let targets = build_targets(&graph, options.max_targets);
     let untested_targets = build_untested_targets(&targets);
     let test_files = collect_test_files(&targets);
-    let review_guidance = generate_review_guidance(
-        &untested_targets,
-        false,
-        0,
-        0,
-        !targets.is_empty(),
-    );
+    let review_guidance =
+        generate_review_guidance(&untested_targets, false, 0, 0, !targets.is_empty());
     let source_snippets = options.include_source.then(|| {
         collect_source_snippets(
             repo_root,
