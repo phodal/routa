@@ -462,6 +462,7 @@ async function runFitnessPhase(
         runMetric(metric, {
           env: {
             NODE_ENV: process.env.NODE_ENV ?? "test",
+            ROUTA_HOOK_RUNTIME_PROFILE: options.profile,
             ROUTA_FITNESS_CHANGED_BASE: fitnessChangedBase,
           },
           onOutput: (event) => reporter?.onMetricOutput(metric.name, event),

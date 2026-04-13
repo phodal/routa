@@ -47,7 +47,7 @@ metrics:
     description: "通过代码图估算 changed targets 的测试半径；图后端缺失时跳过不计分"
 
   - name: graph_test_mapping_probe
-    command: PYTHONPATH=tools/entrix python3 -m entrix graph test-mapping --base "${ROUTA_FITNESS_CHANGED_BASE:-HEAD}" --no-graph --fail-on-missing --json
+    command: node --import tsx tools/hook-runtime/src/test-mapping-smart.ts 2>&1
     tier: normal
     execution_scope: local
     gate: advisory
