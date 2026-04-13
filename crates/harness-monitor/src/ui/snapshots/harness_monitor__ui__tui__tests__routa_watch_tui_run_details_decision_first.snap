@@ -1,6 +1,6 @@
 ---
 source: crates/harness-monitor/src/ui/tests.rs
-expression: "render_snapshot(&state, &mut cache, 180, 34)"
+expression: "render_snapshot(&state, &mut cache, 180, 44)"
 ---
 routa.js  2 dirty  1 unassigned  lines: --  loc: --  fitness: fast  transport: socket
 ┌Runs [Tab]───────────────────────────────┐┌Git Status───────────────────────────────────────────────────────────────────────────┐┌Diff Preview────────────────────────────────────┐
@@ -18,17 +18,27 @@ routa.js  2 dirty  1 unassigned  lines: --  loc: --  fitness: fast  transport: s
 │                                         ││                                                                                     ││                                                │
 │                                         ││                                                                                     ││                                                │
 │                                         ││                                                                                     ││                                                │
+│                                         ││                                                                                     ││                                                │
+│                                         ││                                                                                     ││                                                │
+│                                         ││                                                                                     ││                                                │
+│                                         ││                                                                                     ││                                                │
+│                                         ││                                                                                     ││                                                │
+│                                         ││                                                                                     ││                                                │
 └─────────────────────────────────────────┘│                                                                                     │└────────────────────────────────────────────────┘
 ┌Agents───────────────────────────────────┐│                                                                                     │┌Fitness (Entrix Fast) - PASS 91.0% (0/12) 4200ms┐
 │2 total  1 active  1 idle  2.6% cpu  224M││                                                                                     ││Dimension scores:                               │
-│                                         │└─────────────────────────────────────────────────────────────────────────────────────┘│92% code_quality   w18  4/4  █████████████████░ │
-│4211 ◈ Codex  ACTIVE                     │┌Run Details──────────────────────────────────────────────────────────────────────────┐│95% api_contract   w10  2/2  █████████████████░ │
-│cpu  2.5%  mem 128MB  up 01:35           ││Fix harness monitor task journey                                                     ││Slowest: all sampled metrics are pass or waived │
-│proj project  conf 80%                   ││State: active  Eval: fast pass 91.0%  Approval: waiting_on_evidence                  ││no slow metrics in this run                     │
-│                                         ││Block: missing coverage_report                                                       ││                                                │
-│9001 ◆ Claude  IDLE                      ││Next: generate coverage evidence                                                     ││                                                │
-│cpu  0.1%  mem 96MB  up <ts>         ││Evidence: ok:diff_summary, ok:test_report, missing:coverage_report                   ││                                                │
-│proj elsewhere  conf 80%                 ││Policy: allow_with_evidence  Effects: repo_write                                     ││                                                │
+│                                         ││                                                                                     ││92% code_quality   w18  4/4  █████████████████░ │
+│4211 ◈ Codex  ACTIVE                     │└─────────────────────────────────────────────────────────────────────────────────────┘│95% api_contract   w10  2/2  █████████████████░ │
+│cpu  2.5%  mem 128MB  up 01:35           │┌Run Details──────────────────────────────────────────────────────────────────────────┐│Slowest: all sampled metrics are pass or waived │
+│proj project  conf 80%                   ││Fix harness monitor task journey                                                     ││no slow metrics in this run                     │
+│                                         ││State: active  Eval: fast pass 91.0%  Approval: waiting_on_evidence                  ││                                                │
+│9001 ◆ Claude  IDLE                      ││Block: missing coverage_report                                                       ││                                                │
+│cpu  0.1%  mem 96MB  up <ts>         ││Next: generate coverage evidence                                                     ││                                                │
+│proj elsewhere  conf 80%                 ││Evidence: ok:diff_summary, ok:test_report, missing:coverage_report                   ││                                                │
+│                                         ││Policy: allow_with_evidence  Effects: repo_write                                     ││                                                │
+│                                         ││Trace: ...crates/harness-monitor/src/tui.rs  ->  commit: stabilize monitor journey   ││                                                │
+│                                         ││Context: codex  fixer  hook  gpt-5.4                                                 ││                                                │
+│                                         ││Workspace: dirty  <repo>                                                       ││                                                │
 └─────────────────────────────────────────┘└─────────────────────────────────────────────────────────────────────────────────────┘└────────────────────────────────────────────────┘
 ┌Event Stream (all)────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
 │<ts>  WATCH  modify   crates/harness-monitor/src/tui.rs                                                                                                                       │

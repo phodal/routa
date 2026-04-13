@@ -1,5 +1,5 @@
 use super::fitness;
-use super::panels::{
+use super::run_details::{
     display_run_origin_label, display_run_status_label, run_status_color, semantic_run_status,
 };
 use super::*;

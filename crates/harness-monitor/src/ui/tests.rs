@@ -353,6 +353,15 @@ fn scrub_clock_tokens(text: String) -> String {
     out
 }
 
+fn select_live_run(state: &mut RuntimeState) {
+    state.focus = FocusPane::Runs;
+    state.selected_run = state
+        .runs()
+        .iter()
+        .position(|run| run.session_id == "live-hook-check")
+        .expect("live run");
+}
+
 #[test]
 fn diff_stat_spans_use_green_for_add_and_red_for_delete() {
     let spans = render_diff_stat_spans(&DiffStatSummary {
@@ -631,15 +640,10 @@ fn tui_snapshot_full_runs_mode() {
 #[test]
 fn run_details_surface_run_centric_operator_context() {
     let mut state = sample_state();
-    state.focus = FocusPane::Runs;
-    state.selected_run = state
-        .runs()
-        .iter()
-        .position(|run| run.session_id == "live-hook-check")
-        .expect("live run");
+    select_live_run(&mut state);
     let mut cache = sample_cache(&state);
 
-    let snapshot = render_snapshot(&state, &mut cache, 180, 40);
+    let snapshot = render_snapshot(&state, &mut cache, 180, 52);
 
     assert!(snapshot.contains("Fix harness monitor task journey"));
     assert!(snapshot.contains("State: active"));
@@ -647,22 +651,19 @@ fn run_details_surface_run_centric_operator_context() {
     assert!(snapshot.contains("Block: missing coverage_report"));
     assert!(snapshot.contains("Next: generate coverage evidence"));
     assert!(snapshot.contains("Evidence:"));
+    assert!(snapshot.contains("Trace:"));
+    assert!(snapshot.contains("commit: stabilize monitor journey"));
 }
 
 #[test]
 fn tui_snapshot_run_details_decision_first() {
     let mut state = sample_state();
-    state.focus = FocusPane::Runs;
-    state.selected_run = state
-        .runs()
-        .iter()
-        .position(|run| run.session_id == "live-hook-check")
-        .expect("live run");
+    select_live_run(&mut state);
     let mut cache = sample_cache(&state);
 
     insta::assert_snapshot!(
         "routa_watch_tui_run_details_decision_first",
-        render_snapshot(&state, &mut cache, 180, 34)
+        render_snapshot(&state, &mut cache, 180, 44)
     );
 }
 
@@ -681,12 +682,7 @@ fn file_detail_surfaces_test_mapping_context() {
 #[test]
 fn hard_gate_failure_blocks_selected_run() {
     let mut state = sample_state();
-    state.focus = FocusPane::Runs;
-    state.selected_run = state
-        .runs()
-        .iter()
-        .position(|run| run.session_id == "live-hook-check")
-        .expect("live run");
+    select_live_run(&mut state);
     let mut cache = sample_cache(&state);
     cache.set_fitness_snapshot_for_tests(
         fitness::FitnessRunMode::Fast,
@@ -712,7 +708,7 @@ fn hard_gate_failure_blocks_selected_run() {
         },
     );
 
-    let snapshot = render_snapshot(&state, &mut cache, 180, 40);
+    let snapshot = render_snapshot(&state, &mut cache, 180, 52);
 
     assert!(snapshot.contains("State: blocked"));
     assert!(snapshot.contains("Block: hard gate failure"));
@@ -857,18 +853,15 @@ fn run_details_surface_recent_transcript_prompts_and_compact_meta() {
     session.active_task_title = Some("third prompt".to_string());
     session.last_prompt_preview = Some("third prompt".to_string());
     session.active_task_recovered_from_transcript = true;
-    state.focus = FocusPane::Runs;
-    state.selected_run = state
-        .runs()
-        .iter()
-        .position(|run| run.session_id == "live-hook-check")
-        .unwrap_or(1);
+    select_live_run(&mut state);
     state.refresh_views();
 
     let mut cache = sample_cache(&state);
-    let snapshot = render_snapshot(&state, &mut cache, 180, 40);
+    let snapshot = render_snapshot(&state, &mut cache, 180, 52);
 
-    assert!(snapshot.contains("codex  builder  hook  gpt-5.4  transcript"));
+    assert!(snapshot.contains("Context: codex"));
+    assert!(snapshot.contains("transcript"));
+    assert!(snapshot.contains("Journey: first prompt  ->  second prompt  ->  third prompt"));
     assert!(snapshot.contains("Recent: second prompt  |  first prompt"));
 }
 
@@ -901,18 +894,17 @@ fn run_details_surface_auggie_session_prompts_and_session_label() {
     session.active_task_title = Some("third session prompt".to_string());
     session.last_prompt_preview = Some("third session prompt".to_string());
     session.active_task_recovered_from_transcript = true;
-    state.focus = FocusPane::Runs;
-    state.selected_run = state
-        .runs()
-        .iter()
-        .position(|run| run.session_id == "live-hook-check")
-        .unwrap_or(1);
+    select_live_run(&mut state);
     state.refresh_views();
 
     let mut cache = sample_cache(&state);
-    let snapshot = render_snapshot(&state, &mut cache, 180, 40);
+    let snapshot = render_snapshot(&state, &mut cache, 180, 52);
 
-    assert!(snapshot.contains("auggie  builder  hook  claude-sonnet-4  session"));
+    assert!(snapshot.contains("Context: auggie"));
+    assert!(snapshot.contains("session"));
+    assert!(snapshot.contains(
+        "Journey: first session prompt  ->  second session prompt  ->  third session prompt"
+    ));
     assert!(snapshot.contains("Recent: second session prompt  |  first session prompt"));
 }
 

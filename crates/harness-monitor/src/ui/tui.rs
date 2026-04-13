@@ -570,6 +570,10 @@ mod review {
 mod panels;
 use panels::*;
 
+#[path = "run_details.rs"]
+mod run_details;
+use run_details::*;
+
 #[path = "file_rows.rs"]
 mod file_rows;
 use file_rows::*;
