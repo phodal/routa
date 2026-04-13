@@ -25,7 +25,7 @@ tree-sitter-rust = "0.24"
 tree-sitter-typescript = "0.23"
 tree-sitter-java = "0.23"
 tree-sitter-go = "0.23"
-tree-sitter-python = "0.23"
+tree-sitter-python = "0.25"
 
 [dev-dependencies]
 tempfile = "3"
