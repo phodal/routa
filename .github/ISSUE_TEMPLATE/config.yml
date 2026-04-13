@@ -1,8 +1,0 @@
-blank_issues_enabled: true
-contact_links:
-  - name: Security report
-    url: https://github.com/phodal/routa/blob/main/SECURITY.md
-    about: Report vulnerabilities privately instead of opening a public issue.
-  - name: Documentation
-    url: https://phodal.github.io/routa/
-    about: Check the docs site before opening a usage question.

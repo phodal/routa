@@ -1,6 +1,0 @@
-Do not add new regression wrapper scripts here.
-
-Policy:
-- Prefer adding or extending Playwright tests under `e2e/`.
-- If a regression check is still needed temporarily, land it under `scripts/deprecated/` with a removal plan.
-- Before adding any new script-level regression runner, first prove why an existing `npm run test:e2e:*` or `playwright test` entry cannot cover it.

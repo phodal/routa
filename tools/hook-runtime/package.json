@@ -1,7 +1,0 @@
-{
-  "name": "@routa/hook-runtime",
-  "private": true,
-  "version": "0.1.0",
-  "type": "module",
-  "description": "Friendly git-hook runtime for Routa"
-}
