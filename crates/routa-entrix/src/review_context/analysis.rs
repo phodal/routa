@@ -71,6 +71,8 @@ pub fn build_graph(repo_root: &Path, build_mode: ReviewBuildMode) -> GraphBuildR
         backend: Some("builtin-tree-sitter".to_string()),
         build_type: Some(if build_mode == ReviewBuildMode::Full {
             "full".to_string()
+        } else if build_mode == ReviewBuildMode::Auto {
+            "full".to_string()
         } else {
             "auto".to_string()
         }),

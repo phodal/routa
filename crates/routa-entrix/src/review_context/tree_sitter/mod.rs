@@ -31,6 +31,7 @@ pub fn parse_changed_files(repo_root: &Path, changed_files: &[String]) -> Parsed
         let Some(language) = language_config_for_path(relative_path) else {
             continue;
         };
+        let is_test_file = (language.is_test_file)(relative_path);
         files_updated += 1;
         languages.insert(language.name.to_string());
 
@@ -40,7 +41,7 @@ pub fn parse_changed_files(repo_root: &Path, changed_files: &[String]) -> Parsed
             kind: "File".to_string(),
             file_path: relative_path.clone(),
             language: language.name.to_string(),
-            is_test: false,
+            is_test: is_test_file,
             line_start: None,
             line_end: None,
             parent_name: None,
@@ -60,6 +61,7 @@ pub fn parse_changed_files(repo_root: &Path, changed_files: &[String]) -> Parsed
         file_imports.insert(relative_path.clone(), imports);
 
         let mut file_nodes = (language.parse_nodes)(relative_path, &source, tree.root_node());
+        mark_test_symbols(&mut file_nodes, is_test_file);
         changed_nodes.append(&mut file_nodes);
 
         if !(language.is_test_file)(relative_path) {
@@ -70,10 +72,25 @@ pub fn parse_changed_files(repo_root: &Path, changed_files: &[String]) -> Parsed
                 if !related_test_files.insert(candidate.clone()) {
                     continue;
                 }
-                let Ok(test_source) = fs::read_to_string(repo_root.join(&candidate)) else {
+                let Some(test_language) = language_config_for_path(&candidate) else {
                     continue;
                 };
-                let Some(test_language) = language_config_for_path(&candidate) else {
+                languages.insert(test_language.name.to_string());
+                impacted_nodes.push(ChangedNode {
+                    qualified_name: candidate.clone(),
+                    name: file_name(&candidate),
+                    kind: "File".to_string(),
+                    file_path: candidate.clone(),
+                    language: test_language.name.to_string(),
+                    is_test: true,
+                    line_start: None,
+                    line_end: None,
+                    parent_name: None,
+                    references: Vec::new(),
+                    extends: String::new(),
+                    mentions: Vec::new(),
+                });
+                let Ok(test_source) = fs::read_to_string(repo_root.join(&candidate)) else {
                     continue;
                 };
                 let mut parser = Parser::new();
@@ -92,6 +109,7 @@ pub fn parse_changed_files(repo_root: &Path, changed_files: &[String]) -> Parsed
                 file_imports.insert(candidate.clone(), imports);
                 let mut test_nodes =
                     (test_language.parse_nodes)(&candidate, &test_source, test_tree.root_node());
+                mark_test_symbols(&mut test_nodes, (test_language.is_test_file)(&candidate));
                 impacted_nodes.extend(test_nodes.iter().cloned());
                 related_test_nodes.append(&mut test_nodes);
             }
@@ -115,6 +133,19 @@ pub fn parse_changed_files(repo_root: &Path, changed_files: &[String]) -> Parsed
         files_updated,
         total_edges,
         languages: languages.into_iter().collect(),
+    }
+}
+
+fn mark_test_symbols(nodes: &mut [ChangedNode], is_test_file: bool) {
+    if !is_test_file {
+        return;
+    }
+
+    for node in nodes.iter_mut() {
+        node.is_test = true;
+        if node.kind == "Function" {
+            node.kind = "Test".to_string();
+        }
     }
 }
 
@@ -1423,8 +1454,7 @@ fn typescript_companion_test_candidates(relative_path: &str) -> Vec<String> {
 
 fn is_generic_test_file(relative_path: &str) -> bool {
     let lowered = relative_path.to_ascii_lowercase();
-    lowered.contains("/src/test/java/")
-        || lowered.contains("/tests/")
+    lowered.contains("/tests/")
         || lowered.contains("/__tests__/")
         || lowered.ends_with("_test.go")
         || lowered.ends_with("_test.rs")

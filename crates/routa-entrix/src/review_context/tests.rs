@@ -1,6 +1,7 @@
 use super::{
-    analyze_file, analyze_impact, analyze_test_radius, build_review_context, query_current_graph,
-    GraphNodePayload, ImpactOptions, ReviewBuildMode, ReviewContextOptions, TestRadiusOptions,
+    analyze_file, analyze_impact, analyze_test_radius, build_graph, build_review_context,
+    graph_stats, query_current_graph, GraphNodePayload, ImpactOptions, ReviewBuildMode,
+    ReviewContextOptions, TestRadiusOptions,
 };
 use serde_json::Value;
 use std::fs;
@@ -388,7 +389,7 @@ fn review_context_emits_impacted_graph_edges_for_companion_tests() {
         result.context.impacted_files,
         vec!["src/service.test.ts".to_string()]
     );
-    assert!(result.summary.contains("1 impacted nodes in 1 files"));
+    assert!(result.summary.contains("2 impacted nodes in 1 files"));
     assert!(result.context.graph.edges.iter().any(|edge| {
         edge["source_qualified"] == "src/service.test.ts:test:3"
             && edge["target_qualified"] == "src/service.ts:run"
@@ -1029,6 +1030,124 @@ fn parity_with_python_entrix_for_test_radius_core_fields() {
 }
 
 #[test]
+fn parity_with_python_entrix_for_analyze_impact_core_fields() {
+    let temp = tempdir().unwrap();
+    let root = temp.path();
+    fs::create_dir_all(root.join("src")).unwrap();
+    fs::write(
+        root.join("src/service.ts"),
+        "export function run() { return helper(); }\nfunction helper() { return 1; }\n",
+    )
+    .unwrap();
+    fs::write(
+        root.join("src/service.test.ts"),
+        "import { run } from './service';\n\ntest('run', () => { expect(run()).toBe(1); });\n",
+    )
+    .unwrap();
+
+    let Some(python) = python_entrix_runner_json(root, "analyze_impact", &["src/service.ts"]) else {
+        return;
+    };
+    let rust = serde_json::to_value(analyze_impact(
+        root,
+        &["src/service.ts".to_string()],
+        ImpactOptions {
+            base: "HEAD",
+            build_mode: ReviewBuildMode::Auto,
+            max_depth: 2,
+            max_impacted_files: 200,
+        },
+    ))
+    .unwrap();
+
+    assert_eq!(rust["status"], python["status"]);
+    assert_eq!(rust["base"], python["base"]);
+    assert_eq!(
+        sorted_strings(rust["changed_files"].as_array().map_or(&[], |v| v)),
+        sorted_strings(python["changed_files"].as_array().map_or(&[], |v| v))
+    );
+    assert_eq!(
+        sorted_strings(rust["skipped_files"].as_array().map_or(&[], |v| v)),
+        sorted_strings(python["skipped_files"].as_array().map_or(&[], |v| v))
+    );
+    assert_eq!(
+        qualified_names(rust["changed_nodes"].as_array().map_or(&[], |v| v)),
+        qualified_names(python["changed_nodes"].as_array().map_or(&[], |v| v))
+    );
+    assert_eq!(
+        qualified_names(rust["impacted_nodes"].as_array().map_or(&[], |v| v)),
+        qualified_names(python["impacted_nodes"].as_array().map_or(&[], |v| v))
+    );
+    assert_eq!(
+        sorted_strings(rust["impacted_files"].as_array().map_or(&[], |v| v)),
+        sorted_strings(python["impacted_files"].as_array().map_or(&[], |v| v))
+    );
+    assert_eq!(
+        sorted_strings(rust["impacted_test_files"].as_array().map_or(&[], |v| v)),
+        sorted_strings(python["impacted_test_files"].as_array().map_or(&[], |v| v))
+    );
+    assert_eq!(rust["wide_blast_radius"], python["wide_blast_radius"]);
+    assert_eq!(
+        rust["build"]["status"], python["build"]["status"],
+    );
+    assert_eq!(
+        rust["build"]["backend"], python["build"]["backend"],
+    );
+    assert_eq!(
+        rust["build"]["build_type"], python["build"]["build_type"],
+    );
+}
+
+#[test]
+fn parity_with_python_entrix_for_build_graph_core_fields() {
+    let temp = tempdir().unwrap();
+    let root = temp.path();
+    fs::create_dir_all(root.join("src")).unwrap();
+    fs::write(root.join("src/service.ts"), "export function run() {}\n").unwrap();
+    fs::write(root.join("README.md"), "note\n").unwrap();
+
+    let Some(python) = python_entrix_runner_json(root, "build_graph", &[]) else {
+        return;
+    };
+    let rust = serde_json::to_value(build_graph(root, ReviewBuildMode::Auto)).unwrap();
+
+    assert_eq!(rust["status"], python["status"]);
+    assert_eq!(rust["backend"], python["backend"]);
+    assert_eq!(rust["build_type"], python["build_type"]);
+    assert_eq!(rust["summary"], python["summary"]);
+    assert_eq!(rust["total_nodes"], python["total_nodes"]);
+    assert_eq!(rust["total_edges"], python["total_edges"]);
+    assert_eq!(
+        sorted_strings(rust["languages"].as_array().map_or(&[], |v| v)),
+        sorted_strings(python["languages"].as_array().map_or(&[], |v| v))
+    );
+}
+
+#[test]
+fn parity_with_python_entrix_for_graph_stats_core_fields() {
+    let temp = tempdir().unwrap();
+    let root = temp.path();
+    fs::create_dir_all(root.join("src")).unwrap();
+    fs::write(root.join("src/service.ts"), "export function run() {}\n").unwrap();
+    fs::write(root.join("src/service.test.ts"), "export function test_run() {}\n").unwrap();
+    fs::write(root.join("README.md"), "note\n").unwrap();
+
+    let _ = python_entrix_runner_json(root, "build_graph", &[]);
+    let Some(python) = python_entrix_runner_json(root, "stats", &[]) else {
+        return;
+    };
+    let rust = serde_json::to_value(graph_stats(root)).unwrap();
+    assert_eq!(rust["status"], python["status"]);
+    assert_eq!(rust["nodes"], python["nodes"]);
+    assert_eq!(rust["edges"], python["edges"]);
+    assert_eq!(
+        sorted_strings(rust["languages"].as_array().map_or(&[], |v| v)),
+        sorted_strings(python["languages"].as_array().map_or(&[], |v| v))
+    );
+    assert_eq!(rust["backend"], python["backend"]);
+}
+
+#[test]
 fn parity_with_python_entrix_for_python_queries() {
     let temp = tempdir().unwrap();
     let root = temp.path();
@@ -1425,6 +1544,8 @@ try:
         elif action == 'query':
             adapter.build_or_update(full=True)
             payload = adapter.query(sys.argv[4], sys.argv[5])
+        elif action == 'build_graph':
+            payload = adapter.build_or_update(full=True)
         else:
             raise SystemExit(2)
     else:
@@ -1436,6 +1557,14 @@ try:
             payload = runner.review_context([sys.argv[4]], include_source=False, build_mode='auto')
         elif action == 'test_radius':
             payload = runner.analyze_test_radius([sys.argv[4]], build_mode='auto')
+        elif action == 'analyze_impact':
+            payload = runner.analyze_impact(
+                [arg for arg in sys.argv[4:]]
+            )
+        elif action == 'build_graph':
+            payload = runner.build_graph(build_mode='auto')
+        elif action == 'stats':
+            payload = runner.stats()
         else:
             raise SystemExit(2)
 except Exception:
@@ -1477,6 +1606,16 @@ fn edge_keys(items: &[Value]) -> Vec<(String, String, String)> {
                 item.get("target_qualified")?.as_str()?.to_string(),
             ))
         })
+        .collect::<Vec<_>>();
+    values.sort();
+    values
+}
+
+fn sorted_strings(items: &[Value]) -> Vec<String> {
+    let mut values = items
+        .iter()
+        .filter_map(Value::as_str)
+        .map(ToString::to_string)
         .collect::<Vec<_>>();
     values.sort();
     values
