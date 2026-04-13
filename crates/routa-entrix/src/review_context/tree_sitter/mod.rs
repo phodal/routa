@@ -949,7 +949,7 @@ pub(super) fn resolve_java_import(
     candidates.push(repo_root.join("src/main/java").join(format!("{package_path}.java")));
     candidates.push(repo_root.join("src/main/java").join(&package_path));
     candidates.push(repo_root.join("src/test/java").join(format!("{package_path}.java")));
-    candidates.push(repo_root.join("src/test/java").join(package_path));
+    candidates.push(repo_root.join("src/test/java").join(&package_path));
 
     for candidate in candidates {
         if let Some(found) = resolve_import_file_reference(repo_root, &candidate, "java", Some("_test.java"))
@@ -973,7 +973,7 @@ fn resolve_import_file_reference(
     extension: &str,
     skip_test_suffix: Option<&str>,
 ) -> Option<String> {
-    let candidate = if candidate.extension().is_none() {
+    if candidate.extension().is_none() {
         if candidate.is_dir() {
             let file = first_source_file_in_directory(candidate, extension, skip_test_suffix)?;
             return resolve_repo_relative_path(repo_root, &file);
@@ -983,7 +983,8 @@ fn resolve_import_file_reference(
             return resolve_repo_relative_path(repo_root, &as_file.to_string_lossy());
         }
         return None;
-    } else if candidate.extension().and_then(|ext| ext.to_str()) == Some(extension) {
+    }
+    if candidate.extension().and_then(|ext| ext.to_str()) == Some(extension) {
         if candidate.is_file() {
             return resolve_repo_relative_path(repo_root, &candidate.to_string_lossy());
         }
