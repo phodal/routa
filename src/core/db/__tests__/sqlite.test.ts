@@ -3,7 +3,7 @@ import os from "os";
 import path from "path";
 import BetterSqlite3 from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { ensureSqliteDefaultWorkspace, getSqliteDatabase } from "../sqlite";
+import { closeSqliteDatabase, ensureSqliteDefaultWorkspace, getSqliteDatabase } from "../sqlite";
 
 describe("ensureSqliteDefaultWorkspace", () => {
   let sqlite: BetterSqlite3.Database;
@@ -63,9 +63,7 @@ describe("ensureSqliteDefaultWorkspace", () => {
 
   it("initializes the worktrees table for local sqlite databases", () => {
     const dbPath = path.join(os.tmpdir(), `routa-sqlite-init-${Date.now()}.db`);
-    const g = globalThis as Record<string, unknown>;
-    delete g.__routa_sqlite_db__;
-    delete g.__routa_sqlite_raw__;
+    closeSqliteDatabase();
 
     try {
       getSqliteDatabase(dbPath);
@@ -79,8 +77,7 @@ describe("ensureSqliteDefaultWorkspace", () => {
 
       expect(row).toEqual({ name: "worktrees" });
     } finally {
-      delete g.__routa_sqlite_db__;
-      delete g.__routa_sqlite_raw__;
+      closeSqliteDatabase();
       if (fs.existsSync(dbPath)) fs.unlinkSync(dbPath);
     }
   });
