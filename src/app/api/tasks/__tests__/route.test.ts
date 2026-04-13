@@ -181,6 +181,22 @@ describe("/api/tasks GET", () => {
     });
   });
 
+  it("degrades gracefully when the sqlite worktrees table is missing", async () => {
+    system.worktreeStore.listByWorkspace.mockRejectedValueOnce(
+      new Error("SqliteError: no such table: worktrees"),
+    );
+
+    const response = await GET(new NextRequest("http://localhost/api/tasks?workspaceId=workspace-1"));
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.tasks).toHaveLength(1);
+    expect(data.tasks[0]).toMatchObject({
+      id: "task-1",
+      title: "Artifact summary",
+    });
+  });
+
   it("rejects task listing without workspaceId", async () => {
     const response = await GET(new NextRequest("http://localhost/api/tasks"));
     const data = await response.json();

@@ -63,6 +63,24 @@ function cachePromise<K, V>(cache: Map<K, Promise<V>>, key: K, load: () => Promi
   return promise;
 }
 
+function isMissingSqliteWorktreesTable(error: unknown): boolean {
+  return error instanceof Error && error.message.includes("no such table: worktrees");
+}
+
+async function listWorktreesSafely(
+  system: RoutaSystem,
+  workspaceId: string,
+): Promise<Awaited<ReturnType<WorktreeStore["listByWorkspace"]>>> {
+  try {
+    return await system.worktreeStore.listByWorkspace(workspaceId);
+  } catch (error) {
+    if (isMissingSqliteWorktreesTable(error)) {
+      return [];
+    }
+    throw error;
+  }
+}
+
 async function createTaskSerializationSystem(
   system: RoutaSystem,
   workspaceId: string,
@@ -70,7 +88,7 @@ async function createTaskSerializationSystem(
 ): Promise<TaskSerializationSystem> {
   const [codebases, worktrees, artifacts] = await Promise.all([
     system.codebaseStore.listByWorkspace(workspaceId),
-    system.worktreeStore.listByWorkspace(workspaceId),
+    listWorktreesSafely(system, workspaceId),
     typeof system.artifactStore.listByWorkspace === "function"
       ? system.artifactStore.listByWorkspace(workspaceId)
       : Promise.resolve([]),

@@ -1,6 +1,9 @@
+import fs from "fs";
+import os from "os";
+import path from "path";
 import BetterSqlite3 from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { ensureSqliteDefaultWorkspace } from "../sqlite";
+import { ensureSqliteDefaultWorkspace, getSqliteDatabase } from "../sqlite";
 
 describe("ensureSqliteDefaultWorkspace", () => {
   let sqlite: BetterSqlite3.Database;
@@ -56,5 +59,29 @@ describe("ensureSqliteDefaultWorkspace", () => {
 
     expect(row.title).toBe("Existing Default");
     expect(JSON.parse(row.metadata)).toEqual({ keep: true });
+  });
+
+  it("initializes the worktrees table for local sqlite databases", () => {
+    const dbPath = path.join(os.tmpdir(), `routa-sqlite-init-${Date.now()}.db`);
+    const g = globalThis as Record<string, unknown>;
+    delete g.__routa_sqlite_db__;
+    delete g.__routa_sqlite_raw__;
+
+    try {
+      getSqliteDatabase(dbPath);
+      const raw = new BetterSqlite3(dbPath, { readonly: true });
+      const row = raw.prepare(`
+        SELECT name
+        FROM sqlite_master
+        WHERE type = 'table' AND name = 'worktrees'
+      `).get() as { name: string } | undefined;
+      raw.close();
+
+      expect(row).toEqual({ name: "worktrees" });
+    } finally {
+      delete g.__routa_sqlite_db__;
+      delete g.__routa_sqlite_raw__;
+      if (fs.existsSync(dbPath)) fs.unlinkSync(dbPath);
+    }
   });
 });

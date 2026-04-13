@@ -350,6 +350,31 @@ function initializeSqliteTables(db: SqliteDatabase): void {
   try { db.run(sql`ALTER TABLE codebases ADD COLUMN source_url TEXT`); } catch { /* column already exists */ }
 
   db.run(sql`
+    CREATE TABLE IF NOT EXISTS worktrees (
+      id TEXT PRIMARY KEY,
+      codebase_id TEXT NOT NULL REFERENCES codebases(id) ON DELETE CASCADE,
+      workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+      worktree_path TEXT NOT NULL,
+      branch TEXT NOT NULL,
+      base_branch TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'creating',
+      session_id TEXT,
+      label TEXT,
+      error_message TEXT,
+      created_at INTEGER NOT NULL DEFAULT (unixepoch('now') * 1000),
+      updated_at INTEGER NOT NULL DEFAULT (unixepoch('now') * 1000)
+    )
+  `);
+  db.run(sql`
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_worktrees_codebase_branch
+    ON worktrees (codebase_id, branch)
+  `);
+  db.run(sql`
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_worktrees_path
+    ON worktrees (worktree_path)
+  `);
+
+  db.run(sql`
     CREATE TABLE IF NOT EXISTS kanban_boards (
       id TEXT PRIMARY KEY,
       workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
