@@ -1,7 +1,7 @@
 use super::model::{
-    GraphContext, ParsedReviewGraph, ReviewBuildInfo, ReviewBuildMode, ReviewContextOptions,
-    ReviewContextPayload, ReviewContextReport, ReviewTarget, ReviewTests, SourceSnippet,
-    SymbolGraphNode, UntestedTarget,
+    GraphContext, GraphEdge, ParsedReviewGraph, ReviewBuildInfo, ReviewBuildMode,
+    ReviewContextOptions, ReviewContextPayload, ReviewContextReport, ReviewTarget, ReviewTests,
+    SourceSnippet, SymbolGraphNode, UntestedTarget,
 };
 use super::tree_sitter::{node_to_payload, parse_changed_files};
 use std::collections::BTreeSet;
@@ -23,17 +23,28 @@ pub fn build_review_context(
         .iter()
         .map(node_to_payload)
         .collect::<Vec<_>>();
+    let impacted_nodes = graph
+        .impacted_nodes
+        .iter()
+        .map(node_to_payload)
+        .collect::<Vec<_>>();
+    let impacted_files = collect_impacted_files(&graph);
     let targets = build_targets(&graph, options.max_targets);
     let untested_targets = build_untested_targets(&targets);
     let test_files = collect_test_files(&targets);
-    let review_guidance =
-        generate_review_guidance(&untested_targets, false, 0, 0, !targets.is_empty());
+    let review_guidance = generate_review_guidance(
+        &untested_targets,
+        impacted_files.len() > 3,
+        impacted_files.len(),
+        impacted_files.len(),
+        !targets.is_empty(),
+    );
     let source_snippets = options.include_source.then(|| {
         collect_source_snippets(
             repo_root,
             changed_files,
             &test_files,
-            &[],
+            &impacted_files,
             options.max_files,
             options.max_lines_per_file,
         )
@@ -43,19 +54,21 @@ pub fn build_review_context(
         status: "ok".to_string(),
         analysis_mode: "current_graph".to_string(),
         summary: format!(
-            "Review context for {} changed file(s):\n  - {} directly changed nodes\n  - 0 impacted nodes in 0 files\n\nReview guidance:\n{}",
+            "Review context for {} changed file(s):\n  - {} directly changed nodes\n  - {} impacted nodes in {} files\n\nReview guidance:\n{}",
             changed_files.len(),
             graph.changed_nodes.len(),
+            graph.impacted_nodes.len(),
+            impacted_files.len(),
             review_guidance
         ),
         base: options.base.to_string(),
         context: ReviewContextPayload {
             changed_files: changed_files.to_vec(),
-            impacted_files: Vec::new(),
+            impacted_files: impacted_files.clone(),
             graph: GraphContext {
                 changed_nodes,
-                impacted_nodes: Vec::new(),
-                edges: Vec::new(),
+                impacted_nodes,
+                edges: graph.graph_edges.iter().map(edge_to_payload).collect(),
             },
             targets,
             tests: ReviewTests {
@@ -73,13 +86,13 @@ pub fn build_review_context(
             summary: format!(
                 "Full build: parsed {} file(s), {} nodes, {} edges.",
                 graph.files_updated,
-                graph.changed_nodes.len(),
+                graph.changed_nodes.len() + graph.impacted_nodes.len(),
                 graph.total_edges
             ),
             files_updated: Some(graph.files_updated),
             changed_files: Some(changed_files.to_vec()),
             stale_files: Some(Vec::new()),
-            total_nodes: Some(graph.changed_nodes.len()),
+            total_nodes: Some(graph.changed_nodes.len() + graph.impacted_nodes.len()),
             total_edges: Some(graph.total_edges),
             languages: Some(graph.languages.clone()),
         },
@@ -215,6 +228,23 @@ fn collect_test_files(targets: &[ReviewTarget]) -> Vec<String> {
     test_files.into_iter().collect()
 }
 
+fn collect_impacted_files(graph: &ParsedReviewGraph) -> Vec<String> {
+    let changed_files = graph
+        .changed_nodes
+        .iter()
+        .filter(|node| node.kind == "File")
+        .map(|node| node.file_path.as_str())
+        .collect::<BTreeSet<_>>();
+    graph
+        .impacted_nodes
+        .iter()
+        .map(|node| node.file_path.clone())
+        .filter(|path| !changed_files.contains(path.as_str()))
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect()
+}
+
 fn generate_review_guidance(
     untested_targets: &[UntestedTarget],
     wide_blast_radius: bool,
@@ -314,5 +344,13 @@ fn read_source_snippet(
             .take(max_lines)
             .collect::<Vec<_>>()
             .join("\n"),
+    })
+}
+
+fn edge_to_payload(edge: &GraphEdge) -> serde_json::Value {
+    serde_json::json!({
+        "source": edge.source,
+        "target": edge.target,
+        "relation": edge.relation,
     })
 }

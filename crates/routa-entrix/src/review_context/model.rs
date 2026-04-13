@@ -4,7 +4,9 @@ use serde::Serialize;
 pub struct ParsedReviewGraph {
     pub changed_nodes: Vec<ChangedNode>,
     pub related_test_nodes: Vec<ChangedNode>,
+    pub impacted_nodes: Vec<ChangedNode>,
     pub target_tests: Vec<(String, String)>,
+    pub graph_edges: Vec<GraphEdge>,
     pub files_updated: usize,
     pub total_edges: usize,
     pub languages: Vec<String>,
@@ -24,6 +26,13 @@ pub struct ChangedNode {
     pub references: Vec<String>,
     pub extends: String,
     pub mentions: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct GraphEdge {
+    pub source: String,
+    pub target: String,
+    pub relation: &'static str,
 }
 
 #[derive(Debug, Clone, Serialize)]

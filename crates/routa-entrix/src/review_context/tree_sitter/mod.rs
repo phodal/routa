@@ -1,10 +1,12 @@
 mod go;
 mod java;
 mod rust;
+#[cfg(test)]
+mod tests;
 mod typescript;
 
 use super::model::{
-    ChangedNode, FileGraphNode, GraphNodePayload, ParsedReviewGraph, SymbolGraphNode,
+    ChangedNode, FileGraphNode, GraphEdge, GraphNodePayload, ParsedReviewGraph, SymbolGraphNode,
 };
 use std::collections::BTreeSet;
 use std::fs;
@@ -14,9 +16,9 @@ use tree_sitter::{Language, Parser};
 pub fn parse_changed_files(repo_root: &Path, changed_files: &[String]) -> ParsedReviewGraph {
     let mut changed_nodes = Vec::new();
     let mut related_test_nodes = Vec::new();
+    let mut impacted_nodes = Vec::new();
     let mut files_updated = 0usize;
     let mut languages = BTreeSet::new();
-    let mut total_edges = 0usize;
     let mut related_test_files = BTreeSet::new();
 
     for relative_path in changed_files {
@@ -24,18 +26,18 @@ pub fn parse_changed_files(repo_root: &Path, changed_files: &[String]) -> Parsed
         let Ok(source) = fs::read_to_string(&full_path) else {
             continue;
         };
-        let Some(language) = language_for_path(relative_path) else {
+        let Some(language) = language_config_for_path(relative_path) else {
             continue;
         };
         files_updated += 1;
-        languages.insert(language.name().to_string());
+        languages.insert(language.name.to_string());
 
         changed_nodes.push(ChangedNode {
             qualified_name: relative_path.clone(),
             name: file_name(relative_path),
             kind: "File".to_string(),
             file_path: relative_path.clone(),
-            language: language.name().to_string(),
+            language: language.name.to_string(),
             is_test: false,
             line_start: None,
             line_end: None,
@@ -53,19 +55,11 @@ pub fn parse_changed_files(repo_root: &Path, changed_files: &[String]) -> Parsed
             continue;
         };
 
-        let mut file_nodes = match language {
-            SupportedLanguage::Rust => rust::parse_nodes(relative_path, &source, tree.root_node()),
-            SupportedLanguage::TypeScript => {
-                typescript::parse_nodes(relative_path, &source, tree.root_node())
-            }
-            SupportedLanguage::Java => java::parse_nodes(relative_path, &source, tree.root_node()),
-            SupportedLanguage::Go => go::parse_nodes(relative_path, &source, tree.root_node()),
-        };
-        total_edges += file_nodes.len();
+        let mut file_nodes = (language.parse_nodes)(relative_path, &source, tree.root_node());
         changed_nodes.append(&mut file_nodes);
 
-        if !is_test_file(relative_path) {
-            for candidate in companion_test_candidates(relative_path) {
+        if !(language.is_test_file)(relative_path) {
+            for candidate in (language.companion_test_candidates)(relative_path) {
                 if changed_files.contains(&candidate) || !repo_root.join(&candidate).is_file() {
                     continue;
                 }
@@ -75,7 +69,7 @@ pub fn parse_changed_files(repo_root: &Path, changed_files: &[String]) -> Parsed
                 let Ok(test_source) = fs::read_to_string(repo_root.join(&candidate)) else {
                     continue;
                 };
-                let Some(test_language) = language_for_path(&candidate) else {
+                let Some(test_language) = language_config_for_path(&candidate) else {
                     continue;
                 };
                 let mut parser = Parser::new();
@@ -85,33 +79,24 @@ pub fn parse_changed_files(repo_root: &Path, changed_files: &[String]) -> Parsed
                 let Some(test_tree) = parser.parse(&test_source, None) else {
                     continue;
                 };
-                let mut test_nodes = match test_language {
-                    SupportedLanguage::Rust => {
-                        rust::parse_nodes(&candidate, &test_source, test_tree.root_node())
-                    }
-                    SupportedLanguage::TypeScript => {
-                        typescript::parse_nodes(&candidate, &test_source, test_tree.root_node())
-                    }
-                    SupportedLanguage::Java => {
-                        java::parse_nodes(&candidate, &test_source, test_tree.root_node())
-                    }
-                    SupportedLanguage::Go => {
-                        go::parse_nodes(&candidate, &test_source, test_tree.root_node())
-                    }
-                };
-                total_edges += test_nodes.len();
+                let mut test_nodes =
+                    (test_language.parse_nodes)(&candidate, &test_source, test_tree.root_node());
+                impacted_nodes.extend(test_nodes.iter().cloned());
                 related_test_nodes.append(&mut test_nodes);
             }
         }
     }
 
     let target_tests = derive_target_tests(&changed_nodes, &related_test_nodes);
-    total_edges += target_tests.len();
+    let graph_edges = derive_graph_edges(&changed_nodes, &related_test_nodes, &target_tests);
+    let total_edges = graph_edges.len();
 
     ParsedReviewGraph {
         changed_nodes,
         related_test_nodes,
+        impacted_nodes,
         target_tests,
+        graph_edges,
         files_updated,
         total_edges,
         languages: languages.into_iter().collect(),
@@ -167,6 +152,72 @@ fn derive_target_tests(
         }
     }
     edges
+}
+
+fn derive_graph_edges(
+    changed_nodes: &[ChangedNode],
+    related_test_nodes: &[ChangedNode],
+    target_tests: &[(String, String)],
+) -> Vec<GraphEdge> {
+    let mut edges = Vec::new();
+    let mut seen = BTreeSet::new();
+    let symbol_nodes = changed_nodes
+        .iter()
+        .chain(related_test_nodes.iter())
+        .filter(|node| node.kind != "File")
+        .collect::<Vec<_>>();
+
+    for (target, test) in target_tests {
+        push_edge(
+            &mut edges,
+            &mut seen,
+            GraphEdge {
+                source: target.clone(),
+                target: test.clone(),
+                relation: "TESTED_BY",
+            },
+        );
+    }
+
+    for source in &symbol_nodes {
+        for target in &symbol_nodes {
+            if source.qualified_name == target.qualified_name {
+                continue;
+            }
+            if source
+                .mentions
+                .iter()
+                .any(|mention| mention == &target.name)
+                || source
+                    .references
+                    .iter()
+                    .any(|reference| reference == &target.name)
+            {
+                push_edge(
+                    &mut edges,
+                    &mut seen,
+                    GraphEdge {
+                        source: source.qualified_name.clone(),
+                        target: target.qualified_name.clone(),
+                        relation: "REFERENCES",
+                    },
+                );
+            }
+        }
+    }
+
+    edges
+}
+
+fn push_edge(
+    out: &mut Vec<GraphEdge>,
+    seen: &mut BTreeSet<(String, String, &'static str)>,
+    edge: GraphEdge,
+) {
+    let key = (edge.source.clone(), edge.target.clone(), edge.relation);
+    if seen.insert(key) {
+        out.push(edge);
+    }
 }
 
 fn test_targets_node(test: &ChangedNode, target: &ChangedNode) -> bool {
@@ -264,23 +315,6 @@ pub(crate) fn sanitize_test_name(value: &str) -> String {
     out.trim_matches('_').to_string()
 }
 
-fn companion_test_candidates(relative_path: &str) -> Vec<String> {
-    match Path::new(relative_path)
-        .extension()
-        .and_then(|ext| ext.to_str())
-        .unwrap_or_default()
-        .to_ascii_lowercase()
-        .as_str()
-    {
-        "java" => java_companion_test_candidates(relative_path),
-        "go" => go_companion_test_candidates(relative_path),
-        "ts" | "tsx" | "mts" | "cts" | "js" | "jsx" => {
-            typescript_companion_test_candidates(relative_path)
-        }
-        _ => Vec::new(),
-    }
-}
-
 fn java_companion_test_candidates(relative_path: &str) -> Vec<String> {
     if let Some(rest) = relative_path.strip_prefix("src/main/java/") {
         let stem = Path::new(rest)
@@ -359,7 +393,7 @@ fn typescript_companion_test_candidates(relative_path: &str) -> Vec<String> {
     candidates
 }
 
-fn is_test_file(relative_path: &str) -> bool {
+fn is_generic_test_file(relative_path: &str) -> bool {
     let lowered = relative_path.to_ascii_lowercase();
     lowered.contains("/src/test/java/")
         || lowered.ends_with("_test.go")
@@ -367,7 +401,7 @@ fn is_test_file(relative_path: &str) -> bool {
         || lowered.contains(".spec.")
 }
 
-fn language_for_path(path: &str) -> Option<SupportedLanguage> {
+fn language_config_for_path(path: &str) -> Option<&'static LanguageConfig> {
     match Path::new(path)
         .extension()
         .and_then(|ext| ext.to_str())
@@ -375,10 +409,10 @@ fn language_for_path(path: &str) -> Option<SupportedLanguage> {
         .to_ascii_lowercase()
         .as_str()
     {
-        "rs" => Some(SupportedLanguage::Rust),
-        "ts" | "tsx" | "mts" | "cts" | "js" | "jsx" => Some(SupportedLanguage::TypeScript),
-        "java" => Some(SupportedLanguage::Java),
-        "go" => Some(SupportedLanguage::Go),
+        "rs" => Some(&RUST_LANGUAGE),
+        "ts" | "tsx" | "mts" | "cts" | "js" | "jsx" => Some(&TYPESCRIPT_LANGUAGE),
+        "java" => Some(&JAVA_LANGUAGE),
+        "go" => Some(&GO_LANGUAGE),
         _ => None,
     }
 }
@@ -391,30 +425,64 @@ fn file_name(path: &str) -> String {
         .to_string()
 }
 
-#[derive(Debug, Clone, Copy)]
-enum SupportedLanguage {
-    Rust,
-    TypeScript,
-    Java,
-    Go,
+struct LanguageConfig {
+    name: &'static str,
+    parse_nodes: fn(&str, &str, tree_sitter::Node<'_>) -> Vec<ChangedNode>,
+    companion_test_candidates: fn(&str) -> Vec<String>,
+    is_test_file: fn(&str) -> bool,
+    ts_language: fn() -> Language,
 }
 
-impl SupportedLanguage {
-    fn name(self) -> &'static str {
-        match self {
-            Self::Rust => "rust",
-            Self::TypeScript => "typescript",
-            Self::Java => "java",
-            Self::Go => "go",
-        }
+impl LanguageConfig {
+    fn ts_language(&self) -> Language {
+        (self.ts_language)()
     }
+}
 
-    fn ts_language(self) -> Language {
-        match self {
-            Self::Rust => tree_sitter_rust::LANGUAGE.into(),
-            Self::TypeScript => tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(),
-            Self::Java => tree_sitter_java::LANGUAGE.into(),
-            Self::Go => tree_sitter_go::LANGUAGE.into(),
-        }
-    }
+const RUST_LANGUAGE: LanguageConfig = LanguageConfig {
+    name: "rust",
+    parse_nodes: rust::parse_nodes,
+    companion_test_candidates: |_| Vec::new(),
+    is_test_file: is_generic_test_file,
+    ts_language: rust_language,
+};
+
+const TYPESCRIPT_LANGUAGE: LanguageConfig = LanguageConfig {
+    name: "typescript",
+    parse_nodes: typescript::parse_nodes,
+    companion_test_candidates: typescript_companion_test_candidates,
+    is_test_file: is_generic_test_file,
+    ts_language: typescript_language,
+};
+
+const JAVA_LANGUAGE: LanguageConfig = LanguageConfig {
+    name: "java",
+    parse_nodes: java::parse_nodes,
+    companion_test_candidates: java_companion_test_candidates,
+    is_test_file: is_generic_test_file,
+    ts_language: java_language,
+};
+
+const GO_LANGUAGE: LanguageConfig = LanguageConfig {
+    name: "go",
+    parse_nodes: go::parse_nodes,
+    companion_test_candidates: go_companion_test_candidates,
+    is_test_file: is_generic_test_file,
+    ts_language: go_language,
+};
+
+fn rust_language() -> Language {
+    tree_sitter_rust::LANGUAGE.into()
+}
+
+fn typescript_language() -> Language {
+    tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into()
+}
+
+fn java_language() -> Language {
+    tree_sitter_java::LANGUAGE.into()
+}
+
+fn go_language() -> Language {
+    tree_sitter_go::LANGUAGE.into()
 }

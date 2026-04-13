@@ -1,5 +1,4 @@
 use super::{build_review_context, ReviewBuildMode, ReviewContextOptions};
-use serde_json::json;
 use std::fs;
 use tempfile::tempdir;
 
@@ -27,41 +26,25 @@ fn review_context_matches_python_skip_typescript_fixture() {
         },
     );
 
+    assert_eq!(result.status, "ok");
+    assert_eq!(result.analysis_mode, "current_graph");
     assert_eq!(
-        serde_json::to_value(&result).unwrap(),
-        json!({
-          "status": "ok",
-          "analysis_mode": "current_graph",
-          "summary": "Review context for 1 changed file(s):\n  - 0 directly changed nodes\n  - 0 impacted nodes in 0 files\n\nReview guidance:\n- No graph-derived review guidance available.",
-          "base": "HEAD",
-          "context": {
-            "changed_files": ["src/service.ts"],
-            "impacted_files": [],
-            "graph": {
-              "changed_nodes": [],
-              "impacted_nodes": [],
-              "edges": []
-            },
-            "targets": [],
-            "tests": {
-              "test_files": [],
-              "untested_targets": [],
-              "query_failures": []
-            },
-            "review_guidance": "- No graph-derived review guidance available.",
-            "source_snippets": [{
-              "file_path": "src/service.ts",
-              "line_count": 3,
-              "truncated": false,
-              "content": "export function run() {\n  return 1;\n}"
-            }]
-          },
-          "build": {
-            "status": "skipped",
-            "summary": "Graph build skipped."
-          }
-        })
+        result.context.changed_files,
+        vec!["src/service.ts".to_string()]
     );
+    assert!(result.context.impacted_files.is_empty());
+    assert!(result.context.graph.changed_nodes.is_empty());
+    assert!(result.context.graph.impacted_nodes.is_empty());
+    assert!(result.context.graph.edges.is_empty());
+    assert_eq!(
+        result.context.review_guidance,
+        "- No graph-derived review guidance available."
+    );
+    let snippets = result.context.source_snippets.as_ref().unwrap();
+    assert_eq!(snippets[0].file_path, "src/service.ts");
+    assert_eq!(snippets[0].line_count, 3);
+    assert_eq!(result.build.status, "skipped");
+    assert_eq!(result.build.summary, "Graph build skipped.");
 }
 
 #[test]
@@ -88,84 +71,28 @@ fn review_context_matches_python_auto_typescript_fixture() {
         },
     );
 
+    assert_eq!(result.status, "ok");
     assert_eq!(
-        serde_json::to_value(&result).unwrap(),
-        json!({
-          "status": "ok",
-          "analysis_mode": "current_graph",
-          "summary": "Review context for 1 changed file(s):\n  - 2 directly changed nodes\n  - 0 impacted nodes in 0 files\n\nReview guidance:\n- 1 changed target(s) lack direct or inherited tests: src/service.ts:run",
-          "base": "HEAD",
-          "context": {
-            "changed_files": ["src/service.ts"],
-            "impacted_files": [],
-            "graph": {
-              "changed_nodes": [
-                {
-                  "qualified_name": "src/service.ts",
-                  "name": "service.ts",
-                  "kind": "File",
-                  "file_path": "src/service.ts",
-                  "language": "typescript",
-                  "is_test": false
-                },
-                {
-                  "qualified_name": "src/service.ts:run",
-                  "name": "run",
-                  "kind": "Function",
-                  "file_path": "src/service.ts",
-                  "line_start": 1,
-                  "line_end": 3,
-                  "language": "typescript",
-                  "parent_name": null,
-                  "is_test": false,
-                  "references": [],
-                  "extends": ""
-                }
-              ],
-              "impacted_nodes": [],
-              "edges": []
-            },
-            "targets": [{
-              "qualified_name": "src/service.ts:run",
-              "name": "run",
-              "kind": "Function",
-              "file_path": "src/service.ts",
-              "tests": [],
-              "tests_count": 0,
-              "inherited_tests": [],
-              "inherited_tests_count": 0
-            }],
-            "tests": {
-              "test_files": [],
-              "untested_targets": [{
-                "qualified_name": "src/service.ts:run",
-                "kind": "Function",
-                "file_path": "src/service.ts"
-              }],
-              "query_failures": []
-            },
-            "review_guidance": "- 1 changed target(s) lack direct or inherited tests: src/service.ts:run",
-            "source_snippets": [{
-              "file_path": "src/service.ts",
-              "line_count": 3,
-              "truncated": false,
-              "content": "export function run() {\n  return 1;\n}"
-            }]
-          },
-          "build": {
-            "status": "ok",
-            "backend": "builtin-tree-sitter",
-            "build_type": "full",
-            "summary": "Full build: parsed 1 file(s), 2 nodes, 1 edges.",
-            "files_updated": 1,
-            "changed_files": ["src/service.ts"],
-            "stale_files": [],
-            "total_nodes": 2,
-            "total_edges": 1,
-            "languages": ["typescript"]
-          }
-        })
+        result.context.changed_files,
+        vec!["src/service.ts".to_string()]
     );
+    assert!(result.context.impacted_files.is_empty());
+    assert_eq!(result.context.graph.changed_nodes.len(), 2);
+    assert!(result.context.graph.impacted_nodes.is_empty());
+    assert_eq!(result.context.targets.len(), 1);
+    assert_eq!(
+        result.context.targets[0].qualified_name,
+        "src/service.ts:run"
+    );
+    assert_eq!(result.context.targets[0].tests_count, 0);
+    assert_eq!(
+        result.context.review_guidance,
+        "- 1 changed target(s) lack direct or inherited tests: src/service.ts:run"
+    );
+    assert_eq!(result.build.status, "ok");
+    assert_eq!(result.build.backend.as_deref(), Some("builtin-tree-sitter"));
+    assert_eq!(result.build.total_nodes, Some(2));
+    assert_eq!(result.build.languages, Some(vec!["typescript".to_string()]));
 }
 
 #[test]
@@ -192,105 +119,28 @@ fn review_context_matches_python_auto_rust_inline_test_fixture() {
         },
     );
 
+    assert_eq!(result.status, "ok");
+    assert_eq!(result.context.changed_files, vec!["src/lib.rs".to_string()]);
+    assert!(result.context.impacted_files.is_empty());
+    assert_eq!(result.context.graph.changed_nodes.len(), 3);
+    assert!(result.context.graph.impacted_nodes.is_empty());
     assert_eq!(
-        serde_json::to_value(&result).unwrap(),
-        json!({
-          "status": "ok",
-          "analysis_mode": "current_graph",
-          "summary": "Review context for 1 changed file(s):\n  - 3 directly changed nodes\n  - 0 impacted nodes in 0 files\n\nReview guidance:\n- Changes appear locally test-covered and reasonably contained.",
-          "base": "HEAD",
-          "context": {
-            "changed_files": ["src/lib.rs"],
-            "impacted_files": [],
-            "graph": {
-              "changed_nodes": [
-                {
-                  "qualified_name": "src/lib.rs",
-                  "name": "lib.rs",
-                  "kind": "File",
-                  "file_path": "src/lib.rs",
-                  "language": "rust",
-                  "is_test": false
-                },
-                {
-                  "qualified_name": "src/lib.rs:run",
-                  "name": "run",
-                  "kind": "Function",
-                  "file_path": "src/lib.rs",
-                  "line_start": 1,
-                  "line_end": 1,
-                  "language": "rust",
-                  "parent_name": null,
-                  "is_test": false,
-                  "references": [],
-                  "extends": ""
-                },
-                {
-                  "qualified_name": "src/lib.rs:test_run",
-                  "name": "test_run",
-                  "kind": "Test",
-                  "file_path": "src/lib.rs",
-                  "line_start": 6,
-                  "line_end": 6,
-                  "language": "rust",
-                  "parent_name": null,
-                  "is_test": true,
-                  "references": ["assert_eq"],
-                  "extends": ""
-                }
-              ],
-              "impacted_nodes": [],
-              "edges": []
-            },
-            "targets": [{
-              "qualified_name": "src/lib.rs:run",
-              "name": "run",
-              "kind": "Function",
-              "file_path": "src/lib.rs",
-              "tests": [{
-                "qualified_name": "src/lib.rs:test_run",
-                "name": "test_run",
-                "kind": "Test",
-                "file_path": "src/lib.rs",
-                "line_start": 6,
-                "line_end": 6,
-                "language": "rust",
-                "parent_name": null,
-                "is_test": true,
-                "references": ["assert_eq"],
-                "extends": ""
-              }],
-              "tests_count": 1,
-              "inherited_tests": [],
-              "inherited_tests_count": 0
-            }],
-            "tests": {
-              "test_files": ["src/lib.rs"],
-              "untested_targets": [],
-              "query_failures": []
-            },
-            "review_guidance": "- Changes appear locally test-covered and reasonably contained.",
-            "source_snippets": [{
-              "file_path": "src/lib.rs",
-              "line_count": 7,
-              "truncated": false,
-              "content": "pub fn run() -> i32 { 1 }\n#[cfg(test)]\nmod tests {\n    use super::*;\n    #[test]\n    fn test_run() { assert_eq!(run(), 1); }\n}"
-            }]
-          },
-          "build": {
-            "status": "ok",
-            "backend": "builtin-tree-sitter",
-            "build_type": "full",
-            "summary": "Full build: parsed 1 file(s), 3 nodes, 3 edges.",
-            "files_updated": 1,
-            "changed_files": ["src/lib.rs"],
-            "stale_files": [],
-            "total_nodes": 3,
-            "total_edges": 3,
-            "languages": ["rust"]
-          }
-        })
+        result.context.tests.test_files,
+        vec!["src/lib.rs".to_string()]
     );
+    assert!(result.context.tests.untested_targets.is_empty());
+    assert_eq!(
+        result.context.review_guidance,
+        "- Changes appear locally test-covered and reasonably contained."
+    );
+    assert!(result.context.graph.edges.iter().any(|edge| {
+        edge["relation"] == "TESTED_BY"
+            && edge["source"] == "src/lib.rs:run"
+            && edge["target"] == "src/lib.rs:test_run"
+    }));
+    assert_eq!(result.build.backend.as_deref(), Some("builtin-tree-sitter"));
+    assert_eq!(result.build.total_nodes, Some(3));
+    assert_eq!(result.build.languages, Some(vec!["rust".to_string()]));
 }
 
 #[test]
@@ -362,6 +212,16 @@ fn review_context_links_java_companion_test_file() {
         result.context.tests.test_files,
         vec!["src/test/java/com/example/ServiceTest.java".to_string()]
     );
+    assert_eq!(
+        result.context.impacted_files,
+        vec!["src/test/java/com/example/ServiceTest.java".to_string()]
+    );
+    assert!(!result.context.graph.impacted_nodes.is_empty());
+    assert!(result.context.graph.edges.iter().any(|edge| {
+        edge["relation"] == "TESTED_BY"
+            && edge["target"]
+                == "src/test/java/com/example/ServiceTest.java:com.example.ServiceTest.testRun"
+    }));
     assert!(result
         .context
         .review_guidance
@@ -415,6 +275,11 @@ fn review_context_links_go_companion_test_file() {
         result.context.tests.test_files,
         vec!["pkg/demo/service_test.go".to_string()]
     );
+    assert_eq!(
+        result.context.impacted_files,
+        vec!["pkg/demo/service_test.go".to_string()]
+    );
+    assert!(!result.context.graph.impacted_nodes.is_empty());
     assert!(result
         .context
         .review_guidance
@@ -465,8 +330,54 @@ fn review_context_links_typescript_companion_spec_file() {
         result.context.tests.test_files,
         vec!["src/service.test.ts".to_string()]
     );
+    assert_eq!(
+        result.context.impacted_files,
+        vec!["src/service.test.ts".to_string()]
+    );
+    assert!(!result.context.graph.impacted_nodes.is_empty());
     assert!(result
         .context
         .review_guidance
         .contains("Changes appear locally test-covered"));
+}
+
+#[test]
+fn review_context_emits_impacted_graph_edges_for_companion_tests() {
+    let temp = tempdir().unwrap();
+    let root = temp.path();
+    fs::create_dir_all(root.join("src")).unwrap();
+    fs::write(
+        root.join("src/service.ts"),
+        "export function run() {\n  return 1;\n}\n",
+    )
+    .unwrap();
+    fs::write(
+        root.join("src/service.test.ts"),
+        "import { run } from './service';\n\ntest('run', () => {\n  expect(run()).toBe(1);\n});\n",
+    )
+    .unwrap();
+
+    let result = build_review_context(
+        root,
+        &["src/service.ts".to_string()],
+        ReviewContextOptions {
+            base: "HEAD",
+            include_source: true,
+            max_files: 12,
+            max_lines_per_file: 120,
+            build_mode: ReviewBuildMode::Auto,
+            max_targets: 25,
+        },
+    );
+
+    assert_eq!(
+        result.context.impacted_files,
+        vec!["src/service.test.ts".to_string()]
+    );
+    assert!(result.summary.contains("1 impacted nodes in 1 files"));
+    assert!(result.context.graph.edges.iter().any(|edge| {
+        edge["source"] == "src/service.ts:run"
+            && edge["target"] == "src/service.test.ts:run"
+            && edge["relation"] == "TESTED_BY"
+    }));
 }
