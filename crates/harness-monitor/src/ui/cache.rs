@@ -545,14 +545,8 @@ impl AppCache {
     ) {
         self.fitness_mode = mode;
         self.sync_cache_key_from_active_mode();
-        if !force && self.try_load_latest_mailbox_snapshot(&repo_root, &cache_key, mode) {
-            return;
-        }
-        if !force
-            && !self.fitness_is_running
-            && self.fitness_snapshot().is_some()
-            && self.fitness_cache_key.as_deref() == Some(cache_key.as_str())
-        {
+        if !force {
+            let _ = self.try_load_latest_mailbox_snapshot(&repo_root, &cache_key, mode);
             return;
         }
         if self.fitness_is_running || self.pending_fitness {
@@ -569,6 +563,17 @@ impl AppCache {
         self.fitness_is_running = true;
         self.active_fitness_history_mut().last_error = None;
         self.pending_fitness = true;
+    }
+
+    pub(super) fn sync_fitness_from_runtime(
+        &mut self,
+        repo_root: String,
+        cache_key: String,
+        mode: fitness::FitnessRunMode,
+    ) {
+        self.fitness_mode = mode;
+        self.sync_cache_key_from_active_mode();
+        let _ = self.try_load_latest_mailbox_snapshot(&repo_root, &cache_key, mode);
     }
 
     pub(super) fn ingest_fitness_event(

@@ -265,6 +265,38 @@ fn render_fitness_panel(frame: &mut Frame, area: Rect, state: &RuntimeState, cac
 
             lines.push(Line::from(line_spans));
         }
+        lines.push(Line::from(vec![
+            Span::styled("Source: ", Style::default().fg(colors.muted)),
+            Span::styled(
+                fitness_source_label(snapshot),
+                Style::default().fg(colors.text),
+            ),
+            Span::raw("  "),
+            Span::styled("producer: ", Style::default().fg(colors.muted)),
+            Span::styled(
+                snapshot
+                    .producer
+                    .clone()
+                    .unwrap_or_else(|| "unknown".to_string()),
+                Style::default().fg(colors.text),
+            ),
+        ]));
+        lines.push(Line::from(vec![
+            Span::styled("Scope: ", Style::default().fg(colors.muted)),
+            Span::styled(
+                fitness_scope_label(snapshot),
+                Style::default().fg(colors.text),
+            ),
+        ]));
+        if !snapshot.changed_files_preview.is_empty() && !compact_height {
+            lines.push(Line::from(vec![
+                Span::styled("Files: ", Style::default().fg(colors.muted)),
+                Span::styled(
+                    snapshot.changed_files_preview.join(", "),
+                    Style::default().fg(colors.text),
+                ),
+            ]));
+        }
         let trend = cache.fitness_trend();
         if trend.len() >= 2 && !compact_height {
             let latest = trend.last().copied().unwrap_or(0.0);
@@ -350,6 +382,41 @@ fn render_fitness_panel(frame: &mut Frame, area: Rect, state: &RuntimeState, cac
         }
 
         if !compact_height {
+            if !snapshot.failing_metrics.is_empty() {
+                lines.push(Line::from(vec![Span::styled(
+                    "Blocking diagnostics:",
+                    Style::default()
+                        .fg(colors.text)
+                        .add_modifier(Modifier::BOLD),
+                )]));
+                let failing_limit = if medium_height { 2 } else { 3 };
+                for metric in snapshot.failing_metrics.iter().take(failing_limit) {
+                    let mut row = vec![
+                        Span::styled(
+                            format!("[{}]", metric.state),
+                            Style::default().fg(metric_color(metric)),
+                        ),
+                        Span::raw(" "),
+                        Span::styled(metric.name.clone(), Style::default().fg(colors.text)),
+                    ];
+                    if metric.hard_gate {
+                        row.push(Span::raw(" "));
+                        row.push(Span::styled("hard-gate", Style::default().fg(STOPPED)));
+                    }
+                    row.push(Span::raw(" "));
+                    row.push(Span::styled(
+                        format!("{:.1}ms", metric.duration_ms),
+                        Style::default().fg(colors.muted),
+                    ));
+                    lines.push(Line::from(row));
+                    if let Some(excerpt) = &metric.output_excerpt {
+                        lines.push(Line::from(vec![
+                            Span::styled("  > ", Style::default().fg(colors.muted)),
+                            Span::styled(excerpt.clone(), Style::default().fg(colors.muted)),
+                        ]));
+                    }
+                }
+            }
             lines.push(Line::from(vec![
                 Span::styled("Slowest:", Style::default().fg(colors.text)),
                 Span::raw(" "),
@@ -515,6 +582,24 @@ fn score_color_for_value(score: f64) -> Color {
         INFERRED
     } else {
         STOPPED
+    }
+}
+
+fn fitness_source_label(snapshot: &fitness::FitnessSnapshot) -> String {
+    if snapshot.artifact_path.is_some() {
+        "runtime artifact".to_string()
+    } else {
+        "manual local run".to_string()
+    }
+}
+
+fn fitness_scope_label(snapshot: &fitness::FitnessSnapshot) -> String {
+    if let Some(base_ref) = snapshot.base_ref.as_deref() {
+        format!("{} file(s) vs {}", snapshot.changed_file_count, base_ref)
+    } else if snapshot.changed_file_count > 0 {
+        format!("{} file(s) in scoped run", snapshot.changed_file_count)
+    } else {
+        "repo-wide evaluation".to_string()
     }
 }
 

@@ -272,6 +272,15 @@ fn sample_cache(state: &RuntimeState) -> AppCache {
             ],
             slowest_metrics: Vec::new(),
             artifact_path: None,
+            producer: Some("harness-monitor".to_string()),
+            generated_at_ms: Some(state.last_refresh_at_ms),
+            base_ref: Some("origin/main".to_string()),
+            changed_file_count: 2,
+            changed_files_preview: vec![
+                "crates/harness-monitor/src/tui.rs".to_string(),
+                "src/app/api/a2a/card/route.ts".to_string(),
+            ],
+            failing_metrics: Vec::new(),
         },
     );
     cache.set_test_mapping_snapshot_for_tests(
@@ -709,6 +718,19 @@ fn hard_gate_failure_blocks_selected_run() {
             }],
             slowest_metrics: Vec::new(),
             artifact_path: None,
+            producer: Some("harness-monitor".to_string()),
+            generated_at_ms: Some(chrono::Utc::now().timestamp_millis()),
+            base_ref: Some("origin/main".to_string()),
+            changed_file_count: 1,
+            changed_files_preview: vec!["crates/harness-monitor/src/tui.rs".to_string()],
+            failing_metrics: vec![fitness::FitnessMetricSummary {
+                name: "lint_pass".to_string(),
+                passed: false,
+                state: "fail".to_string(),
+                hard_gate: true,
+                duration_ms: 450.0,
+                output_excerpt: Some("src/ui/tui.rs: unexpected warning".to_string()),
+            }],
         },
     );
 
@@ -718,6 +740,10 @@ fn hard_gate_failure_blocks_selected_run() {
     assert!(snapshot.contains("Block: hard gate failure"));
     assert!(snapshot.contains("Next: fix failing hard gates and rerun fast eval"));
     assert!(snapshot.contains("Eval: fast blocked(hard) 62.0%"));
+    assert!(snapshot.contains("runtime artifact") || snapshot.contains("manual local run"));
+    assert!(snapshot.contains("origin/main"));
+    assert!(snapshot.contains("lint_pass"));
+    assert!(snapshot.contains("src/ui/tui.rs: unexpected warning"));
 }
 
 #[test]
@@ -769,6 +795,12 @@ fn synthetic_run_details_surface_process_scan_origin() {
             dimensions: Vec::new(),
             slowest_metrics: Vec::new(),
             artifact_path: None,
+            producer: Some("harness-monitor".to_string()),
+            generated_at_ms: Some(now),
+            base_ref: None,
+            changed_file_count: 0,
+            changed_files_preview: Vec::new(),
+            failing_metrics: Vec::new(),
         },
     );
     let snapshot = render_snapshot(&state, &mut cache, 180, 40);

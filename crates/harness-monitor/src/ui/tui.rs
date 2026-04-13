@@ -385,10 +385,9 @@ fn refresh_fitness_from_event(
     if cache.ingest_fitness_event(cache_key.clone(), event) {
         return;
     }
-    cache.request_fitness_refresh(
+    cache.sync_fitness_from_runtime(
         state.repo_root.clone(),
         cache_key,
-        true,
         fitness_run_mode_for(state),
     );
 }

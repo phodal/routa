@@ -35,6 +35,8 @@ pub struct FitnessMetricSummary {
     pub state: String,
     pub hard_gate: bool,
     pub duration_ms: f64,
+    #[serde(default)]
+    pub output_excerpt: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -63,6 +65,18 @@ pub struct FitnessSnapshot {
     pub slowest_metrics: Vec<FitnessMetricSummary>,
     #[serde(default)]
     pub artifact_path: Option<String>,
+    #[serde(default)]
+    pub producer: Option<String>,
+    #[serde(default)]
+    pub generated_at_ms: Option<i64>,
+    #[serde(default)]
+    pub base_ref: Option<String>,
+    #[serde(default)]
+    pub changed_file_count: usize,
+    #[serde(default)]
+    pub changed_files_preview: Vec<String>,
+    #[serde(default)]
+    pub failing_metrics: Vec<FitnessMetricSummary>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -110,6 +124,8 @@ impl CoverageSourceSummary {
 pub fn run_fitness(repo_root: &str, mode: FitnessRunMode) -> Result<FitnessSnapshot> {
     let start = Instant::now();
     let root = Path::new(repo_root);
+    let base_ref = upstream_or_main_ref(repo_root).ok();
+    let changed_files = local_changed_files(repo_root).unwrap_or_default();
     let dimensions = load_dimensions(&root.join("docs/fitness"));
     if dimensions.is_empty() {
         return Err(anyhow!(
@@ -166,6 +182,7 @@ pub fn run_fitness(repo_root: &str, mode: FitnessRunMode) -> Result<FitnessSnaps
                         state: result.state.as_str().to_string(),
                         hard_gate: result.hard_gate,
                         duration_ms: result.duration_ms,
+                        output_excerpt: summarize_metric_output(&result.output),
                     })
                     .collect();
                 (
@@ -211,6 +228,21 @@ pub fn run_fitness(repo_root: &str, mode: FitnessRunMode) -> Result<FitnessSnaps
             .partial_cmp(&a.duration_ms)
             .unwrap_or(Ordering::Equal)
     });
+    let mut failing_metrics: Vec<FitnessMetricSummary> = dim_summaries
+        .iter()
+        .flat_map(|dim| dim.metrics.iter().cloned())
+        .filter(|metric| metric.state != "pass" && metric.state != "waived")
+        .collect();
+    failing_metrics.sort_by(|a, b| {
+        b.hard_gate
+            .cmp(&a.hard_gate)
+            .then_with(|| {
+                b.duration_ms
+                    .partial_cmp(&a.duration_ms)
+                    .unwrap_or(Ordering::Equal)
+            })
+            .then_with(|| a.name.cmp(&b.name))
+    });
     let report = score_report(&all_results, policy.min_score);
     let coverage_summary = load_coverage_summary(root);
 
@@ -226,6 +258,12 @@ pub fn run_fitness(repo_root: &str, mode: FitnessRunMode) -> Result<FitnessSnaps
         dimensions: dim_summaries,
         slowest_metrics: slowest_metrics.into_iter().take(5).collect(),
         artifact_path: None,
+        producer: Some("harness-monitor".to_string()),
+        generated_at_ms: Some(chrono::Utc::now().timestamp_millis()),
+        base_ref,
+        changed_file_count: changed_files.len(),
+        changed_files_preview: changed_files.into_iter().take(8).collect(),
+        failing_metrics: failing_metrics.into_iter().take(5).collect(),
     })
 }
 
@@ -456,6 +494,24 @@ fn package_name_from_manifest(manifest: &Path) -> Result<String> {
 
 fn shell_quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\"'\"'"))
+}
+
+fn summarize_metric_output(output: &str) -> Option<String> {
+    let lines = output
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .take(3)
+        .collect::<Vec<_>>();
+    if lines.is_empty() {
+        return None;
+    }
+    let mut excerpt = lines.join(" | ");
+    if excerpt.len() > 180 {
+        excerpt.truncate(177);
+        excerpt.push_str("...");
+    }
+    Some(excerpt)
 }
 
 pub fn critical_metric_hint(snapshot: &FitnessSnapshot) -> String {

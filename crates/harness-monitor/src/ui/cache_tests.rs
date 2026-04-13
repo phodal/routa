@@ -383,6 +383,12 @@ fn app_cache_restores_fitness_history_on_startup() {
                     dimensions: vec![],
                     slowest_metrics: vec![],
                     artifact_path: None,
+                    producer: Some("harness-monitor".to_string()),
+                    generated_at_ms: Some(12_345),
+                    base_ref: Some("origin/main".to_string()),
+                    changed_file_count: 1,
+                    changed_files_preview: vec!["foo.rs".to_string()],
+                    failing_metrics: vec![],
                 }),
                 trend: vec![88.5, 89.0],
                 last_run_ms: Some(12_345),
@@ -433,6 +439,12 @@ fn app_cache_prefers_mailbox_artifact_before_local_rerun() {
             dimensions: vec![],
             slowest_metrics: vec![],
             artifact_path: Some(artifact_path.to_string_lossy().to_string()),
+            producer: Some("entrix".to_string()),
+            generated_at_ms: Some(123),
+            base_ref: Some("origin/main".to_string()),
+            changed_file_count: 2,
+            changed_files_preview: vec!["src/lib.rs".to_string()],
+            failing_metrics: vec![],
         })
         .expect("serialize artifact"),
     )
@@ -472,6 +484,22 @@ fn app_cache_prefers_mailbox_artifact_before_local_rerun() {
     );
     assert_eq!(cache.fitness_trend(), &[93.0]);
     assert!(!cache.is_fitness_running());
+}
+
+#[test]
+fn app_cache_does_not_start_local_run_without_force() {
+    let state = sample_runtime_state_with_dirty_file();
+    let mut cache = AppCache::new(&state.repo_root);
+
+    cache.request_fitness_refresh(
+        state.repo_root.clone(),
+        "mode=fast;branch=main;ahead=0;files=src/lib.rs:modify:1".to_string(),
+        false,
+        fitness::FitnessRunMode::Fast,
+    );
+
+    assert!(!cache.is_fitness_running());
+    assert!(cache.fitness_snapshot().is_none());
 }
 
 #[test]
