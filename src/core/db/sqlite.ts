@@ -373,6 +373,10 @@ function initializeSqliteTables(db: SqliteDatabase): void {
     CREATE UNIQUE INDEX IF NOT EXISTS uq_worktrees_path
     ON worktrees (worktree_path)
   `);
+  db.run(sql`
+    CREATE INDEX IF NOT EXISTS idx_worktrees_workspace_id
+    ON worktrees (workspace_id)
+  `);
 
   db.run(sql`
     CREATE TABLE IF NOT EXISTS kanban_boards (
