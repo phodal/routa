@@ -30,7 +30,7 @@ async-stream = "0.3"
 rusqlite = { version = "0.32", features = ["bundled"] }
 
 # MCP & ACP protocols
-rmcp = { version = "0.15", features = ["server", "transport-streamable-http-server", "schemars"] }
+rmcp = { version = "1.4", features = ["server", "transport-streamable-http-server", "schemars"] }
 schemars = "1"
 agent-client-protocol = "0.9"
 

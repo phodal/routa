@@ -17,7 +17,7 @@ regex = "1"
 chrono = { version = "0.4", features = ["serde"] }
 glob = "0.3"
 hex = "0.4"
-rmcp = { version = "0.15", features = ["server", "transport-io", "schemars"] }
+rmcp = { version = "1.4", features = ["server", "transport-io", "schemars"] }
 sha2 = "0.10"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-std", "process"] }
 tree-sitter = "0.25"
