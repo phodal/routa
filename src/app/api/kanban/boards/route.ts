@@ -9,6 +9,93 @@ import { getKanbanDevSessionSupervision } from "@/core/kanban/board-session-supe
 import { getKanbanEventBroadcaster } from "@/core/kanban/kanban-event-broadcaster";
 import { getKanbanSessionQueue } from "@/core/kanban/workflow-orchestrator-singleton";
 import { processKanbanColumnTransition } from "@/core/kanban/workflow-orchestrator-singleton";
+import { getHttpSessionStore } from "@/core/acp/http-session-store";
+import { getAcpProcessManager } from "@/core/acp/processer";
+import {
+  getTaskLaneSession,
+  markTaskLaneSessionStatus,
+} from "@/core/kanban/task-lane-history";
+import type { Task, TaskLaneSessionStatus } from "@/core/models/task";
+
+function isSessionActivelyRunning(
+  taskSessionId: string | undefined,
+  options: {
+    sessionStore: ReturnType<typeof getHttpSessionStore>;
+    processManager: ReturnType<typeof getAcpProcessManager>;
+  },
+): boolean {
+  if (!taskSessionId) return false;
+
+  if (options.processManager.hasActiveSession(taskSessionId)) {
+    return true;
+  }
+
+  const session = options.sessionStore.getSession(taskSessionId);
+  return session?.acpStatus === "ready" || session?.acpStatus === "connecting";
+}
+
+function resolveStaleLaneSessionTerminalStatus(task: Pick<Task, "verificationVerdict" | "verificationReport" | "completionSummary">): TaskLaneSessionStatus {
+  return task.verificationVerdict || task.verificationReport || task.completionSummary
+    ? "transitioned"
+    : "timed_out";
+}
+
+async function sanitizeStaleCurrentLaneAutomation(
+  system: ReturnType<typeof getRoutaSystem>,
+  task: Task,
+  options: {
+    sessionStore: ReturnType<typeof getHttpSessionStore>;
+    processManager: ReturnType<typeof getAcpProcessManager>;
+  },
+): Promise<Task> {
+  let mutated = false;
+  const nextTask: Task = {
+    ...task,
+    laneSessions: [...(task.laneSessions ?? [])],
+    laneHandoffs: [...(task.laneHandoffs ?? [])],
+    sessionIds: [...(task.sessionIds ?? [])],
+    comments: [...(task.comments ?? [])],
+    labels: [...(task.labels ?? [])],
+    dependencies: [...(task.dependencies ?? [])],
+    codebaseIds: [...(task.codebaseIds ?? [])],
+  };
+
+  if (nextTask.triggerSessionId && !isSessionActivelyRunning(nextTask.triggerSessionId, options)) {
+    const triggerLaneSession = getTaskLaneSession(nextTask, nextTask.triggerSessionId);
+    if (triggerLaneSession && triggerLaneSession.columnId === nextTask.columnId && triggerLaneSession.status === "running") {
+      markTaskLaneSessionStatus(
+        nextTask,
+        triggerLaneSession.sessionId,
+        resolveStaleLaneSessionTerminalStatus(nextTask),
+      );
+    }
+    nextTask.triggerSessionId = undefined;
+    mutated = true;
+  }
+
+  for (const entry of nextTask.laneSessions ?? []) {
+    if (
+      entry.columnId === nextTask.columnId
+      && entry.status === "running"
+      && !isSessionActivelyRunning(entry.sessionId, options)
+    ) {
+      markTaskLaneSessionStatus(
+        nextTask,
+        entry.sessionId,
+        resolveStaleLaneSessionTerminalStatus(nextTask),
+      );
+      mutated = true;
+    }
+  }
+
+  if (mutated) {
+    nextTask.updatedAt = new Date();
+    await system.taskStore.save(nextTask);
+    return nextTask;
+  }
+
+  return task;
+}
 
 async function reviveMissingEntryAutomations(
   system: ReturnType<typeof getRoutaSystem>,
@@ -18,16 +105,33 @@ async function reviveMissingEntryAutomations(
   const board = await system.kanbanBoardStore.get(boardId);
   if (!board) return;
 
+  const sessionStore = getHttpSessionStore();
+  const processManager = getAcpProcessManager();
+  await sessionStore.hydrateFromDb();
+
   const tasks = await system.taskStore.listByWorkspace(workspaceId);
-  for (const task of tasks) {
-    if (task.boardId !== boardId || task.triggerSessionId || !task.columnId) {
+  for (const originalTask of tasks) {
+    if (originalTask.boardId !== boardId || !originalTask.columnId) {
       continue;
     }
 
-    const column = board.columns.find((entry) => entry.id === task.columnId);
+    const task = await sanitizeStaleCurrentLaneAutomation(system, originalTask, {
+      sessionStore,
+      processManager,
+    });
+    if (task.triggerSessionId) continue;
+
+    const currentColumnId = task.columnId;
+    if (!currentColumnId) continue;
+    const column = board.columns.find((entry) => entry.id === currentColumnId);
+    if (!column) continue;
     const automation = column?.automation;
     const transitionType = automation?.transitionType ?? "entry";
-    const hasLaneSessionForCurrentColumn = (task.laneSessions ?? []).some((entry) => entry.columnId === task.columnId);
+    const hasLaneSessionForCurrentColumn = (task.laneSessions ?? []).some((entry) => (
+      entry.columnId === currentColumnId
+      && entry.status === "running"
+      && isSessionActivelyRunning(entry.sessionId, { sessionStore, processManager })
+    ));
     if (
       !automation?.enabled
       || (transitionType !== "entry" && transitionType !== "both")
@@ -43,9 +147,9 @@ async function reviveMissingEntryAutomations(
       boardId,
       workspaceId,
       fromColumnId: "__revive__",
-      toColumnId: task.columnId,
+      toColumnId: currentColumnId,
       fromColumnName: "Revive",
-      toColumnName: column?.name,
+      toColumnName: column.name,
     });
   }
 }
