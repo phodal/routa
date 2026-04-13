@@ -16,7 +16,7 @@ path = "src/main.rs"
 anyhow = "1"
 chrono = { version = "0.4", features = ["serde"] }
 clap = { version = "4", features = ["derive", "env"] }
-crossterm = "0.28"
+crossterm = "0.29"
 rusqlite = { version = "0.32", features = ["bundled"] }
 ratatui = "0.29"
 entrix = { version = "0.14.3", path = "../entrix" }
