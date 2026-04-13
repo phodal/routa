@@ -246,7 +246,7 @@
     "patch-package": "^8.0.1",
     "path-data-parser": "^0.1.0",
     "postcss": "^8.4.49",
-    "postgres": "^3.4.8",
+    "postgres": "^3.4.9",
     "storybook": "^10.3.4",
     "tailwindcss": "^4.2.1",
     "tsx": "^4.21.0",
