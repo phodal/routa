@@ -819,7 +819,32 @@ fn hard_gate_failure_blocks_selected_run() {
                 passed: 1,
                 total: 3,
                 hard_gate_failures: vec!["lint_pass".to_string()],
-                metrics: Vec::new(),
+                metrics: vec![
+                    fitness::FitnessMetricSummary {
+                        name: "lint_pass".to_string(),
+                        passed: false,
+                        state: "fail".to_string(),
+                        hard_gate: true,
+                        duration_ms: 450.0,
+                        output_excerpt: Some("src/ui/tui.rs: unexpected warning".to_string()),
+                    },
+                    fitness::FitnessMetricSummary {
+                        name: "file_line_limit".to_string(),
+                        passed: false,
+                        state: "fail".to_string(),
+                        hard_gate: false,
+                        duration_ms: 380.0,
+                        output_excerpt: Some("src/ui/render.rs exceeds file size budget".to_string()),
+                    },
+                    fitness::FitnessMetricSummary {
+                        name: "ts_typecheck_pass".to_string(),
+                        passed: true,
+                        state: "pass".to_string(),
+                        hard_gate: false,
+                        duration_ms: 240.0,
+                        output_excerpt: None,
+                    },
+                ],
             }],
             slowest_metrics: Vec::new(),
             artifact_path: None,
@@ -845,8 +870,7 @@ fn hard_gate_failure_blocks_selected_run() {
     assert!(snapshot.contains("Block: hard gate failure"));
     assert!(snapshot.contains("Next: fix failing hard gates and rerun fast eval"));
     assert!(snapshot.contains("Eval: fast blocked(hard) 62.0%"));
-    assert!(snapshot.contains("runtime artifact") || snapshot.contains("manual local run"));
-    assert!(snapshot.contains("origin/main"));
+    assert!(snapshot.contains("2 failures"));
     assert!(snapshot.contains("lint_pass"));
     assert!(snapshot.contains("src/ui/tui.rs: unexpected warning"));
 }

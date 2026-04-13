@@ -1,5 +1,6 @@
 ---
 source: crates/harness-monitor/src/ui/tests.rs
+assertion_line: 707
 expression: "render_snapshot(&state, &mut cache, 120, 28)"
 ---
 routa.js  2 dirty  1 unassigned  lines: --  loc: --  fitness: fast  transport: socket
@@ -20,11 +21,11 @@ routa.js  2 dirty  1 unassigned  lines: --  loc: --  fitness: fast  transport: s
 │                                                                                    ││                                │
 └────────────────────────────────────────────────────────────────────────────────────┘└────────────────────────────────┘
 ┌Fitness (Entrix Fast) - PASS 91.0% (0/12) 4200ms────────────────────────────────────┐┌File Detail─────────────────────┐
-│Source: manual local run  producer: harness-monitor                                 ││tui.rs                          │
-│Scope: 2 file(s) vs origin/main                                                     ││crates/harness-monitor/src      │
-│Dimension scores:                                                                   ││Task: ...onitor task journey    │
-│92% code_quality           w18  4/4  ██████████████████████████░░                   ││Lines: ...  Size: ...  Git      │
-│95% api_contract           w10  2/2  ███████████████████████████░                   ││changes: ...                    │
+│Dimension scores:                                                                   ││tui.rs                          │
+│92% code_quality           w18  4/4  ██████████████████████████░░                   ││crates/harness-monitor/src      │
+│95% api_contract           w10  2/2  ███████████████████████████░                   ││Task: ...onitor task journey    │
+│                                                                                    ││Lines: ...  Size: ...  Git      │
+│                                                                                    ││changes: ...                    │
 │                                                                                    ││Test mapping: changed  rust     │
 │                                                                                    ││Resolver: hybrid_heuristic      │
 │                                                                                    ││Confidence: medium              │

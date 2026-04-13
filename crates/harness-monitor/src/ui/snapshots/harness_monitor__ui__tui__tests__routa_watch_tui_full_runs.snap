@@ -1,5 +1,6 @@
 ---
 source: crates/harness-monitor/src/ui/tests.rs
+assertion_line: 718
 expression: "render_snapshot(&state, &mut cache, 180, 28)"
 ---
 routa.js  2 dirty  1 unassigned  lines: --  loc: --  fitness: fast  transport: socket
@@ -17,12 +18,12 @@ routa.js  2 dirty  1 unassigned  lines: --  loc: --  fitness: fast  transport: s
 │                                         ││                                                                                     ││                                                │
 └─────────────────────────────────────────┘│                                                                                     │└────────────────────────────────────────────────┘
 ┌Sessions─────────────────────────────────┐│                                                                                     │┌Fitness (Entrix Fast) - PASS 91.0% (0/12) 4200ms┐
-│─────────────────────────────────────────│└─────────────────────────────────────────────────────────────────────────────────────┘│Source: manual local run  producer:             │
-│▶ All prompts                        3m  │┌Run Details──────────────────────────────────────────────────────────────────────────┐│harness-monitor                                 │
-│  all  active  files:2                   ││All                                                                                  ││Scope: 2 file(s) vs origin/main                 │
-│  ...harness monitor task journey    3m  ││aggregate  2 dirty files                                                             ││Dimension scores:                               │
-│...1  commit: stabilize monitor journey  ││Confidence: 1 exact / 0 inferred / 1 unknown                                         ││92% code_quality   w18  4/4  █████████████████░ │
-│                                         ││Workspace: <repo>                                                              ││95% api_contract   w10  2/2  █████████████████░ │
+│─────────────────────────────────────────│└─────────────────────────────────────────────────────────────────────────────────────┘│Dimension scores:                               │
+│▶ All prompts                        3m  │┌Run Details──────────────────────────────────────────────────────────────────────────┐│92% code_quality   w18  4/4  █████████████████░ │
+│  all  active  files:2                   ││All                                                                                  ││95% api_contract   w10  2/2  █████████████████░ │
+│  ...harness monitor task journey    3m  ││aggregate  2 dirty files                                                             ││                                                │
+│...1  commit: stabilize monitor journey  ││Confidence: 1 exact / 0 inferred / 1 unknown                                         ││                                                │
+│                                         ││Workspace: <repo>                                                              ││                                                │
 └─────────────────────────────────────────┘└─────────────────────────────────────────────────────────────────────────────────────┘└────────────────────────────────────────────────┘
 ┌Event Stream (all)────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
 │<ts>  WATCH  modify   crates/harness-monitor/src/tui.rs                                                                                                                       │

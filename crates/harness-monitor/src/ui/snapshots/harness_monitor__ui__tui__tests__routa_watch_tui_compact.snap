@@ -1,5 +1,6 @@
 ---
 source: crates/harness-monitor/src/ui/tests.rs
+assertion_line: 1151
 expression: "render_snapshot(&state, &mut cache, 96, 24)"
 ---
 routa.js  2 dirty  1 unassigned  lines: --  loc: --  transport: socket
@@ -17,11 +18,11 @@ routa.js  2 dirty  1 unassigned  lines: --  loc: --  transport: socket
 │                                                                 ││                           │
 └─────────────────────────────────────────────────────────────────┘└───────────────────────────┘
 ┌Fitness (Entrix Fast) - PASS 91.0% (0/12) 4200ms─────────────────┐┌File Detail────────────────┐
-│Source: manual local run  producer: harness-monitor              ││tui.rs                     │
-│Scope: 2 file(s) vs origin/main                                  ││...es/harness-monitor/src  │
-│Dimension scores:                                                ││Task: ...r task journey    │
-│92% code_quality           w18  4/4  █████████████████████████░░ ││Lines: ...  Size: ...  Git │
-│95% api_contract           w10  2/2  ██████████████████████████░ ││changes: ...               │
+│Dimension scores:                                                ││tui.rs                     │
+│92% code_quality           w18  4/4  █████████████████████████░░ ││...es/harness-monitor/src  │
+│95% api_contract           w10  2/2  ██████████████████████████░ ││Task: ...r task journey    │
+│                                                                 ││Lines: ...  Size: ...  Git │
+│                                                                 ││changes: ...               │
 │                                                                 ││Test mapping: changed  rust│
 │                                                                 ││Resolver: hybrid_heuristic │
 └─────────────────────────────────────────────────────────────────┘└───────────────────────────┘

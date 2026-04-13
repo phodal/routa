@@ -264,29 +264,6 @@ fn render_fitness_panel(frame: &mut Frame, area: Rect, state: &RuntimeState, cac
 
             lines.push(Line::from(line_spans));
         }
-        lines.push(Line::from(vec![
-            Span::styled("Source: ", Style::default().fg(colors.muted)),
-            Span::styled(
-                fitness_source_label(snapshot),
-                Style::default().fg(colors.text),
-            ),
-            Span::raw("  "),
-            Span::styled("producer: ", Style::default().fg(colors.muted)),
-            Span::styled(
-                snapshot
-                    .producer
-                    .clone()
-                    .unwrap_or_else(|| "unknown".to_string()),
-                Style::default().fg(colors.text),
-            ),
-        ]));
-        lines.push(Line::from(vec![
-            Span::styled("Scope: ", Style::default().fg(colors.muted)),
-            Span::styled(
-                fitness_scope_label(snapshot),
-                Style::default().fg(colors.text),
-            ),
-        ]));
         if !snapshot.changed_files_preview.is_empty() && !compact_height {
             lines.push(Line::from(vec![
                 Span::styled("Files: ", Style::default().fg(colors.muted)),
@@ -345,10 +322,23 @@ fn render_fitness_panel(frame: &mut Frame, area: Rect, state: &RuntimeState, cac
                 .width
                 .saturating_sub(dim_name_width as u16 + 16)
                 .clamp(8, 28) as usize;
-            let warning = if dim.hard_gate_failures.is_empty() {
+            let failure_count = dimension_failure_count(dim);
+            let warning = if failure_count == 0 {
                 String::new()
-            } else {
+            } else if dim.name.eq_ignore_ascii_case("code_quality") {
+                format!(
+                    "  !{} failure{}",
+                    failure_count,
+                    if failure_count == 1 { "" } else { "s" }
+                )
+            } else if !dim.hard_gate_failures.is_empty() {
                 format!("  !{}", dim.hard_gate_failures.join(","))
+            } else {
+                format!(
+                    "  !{} metric{} failed",
+                    failure_count,
+                    if failure_count == 1 { "" } else { "s" }
+                )
             };
             let mut row = vec![Span::styled(
                 format!("{:>3}%", dim.score.round() as u8),
@@ -584,24 +574,6 @@ fn score_color_for_value(score: f64) -> Color {
     }
 }
 
-fn fitness_source_label(snapshot: &fitness::FitnessSnapshot) -> String {
-    if snapshot.artifact_path.is_some() {
-        "runtime artifact".to_string()
-    } else {
-        "manual local run".to_string()
-    }
-}
-
-fn fitness_scope_label(snapshot: &fitness::FitnessSnapshot) -> String {
-    if let Some(base_ref) = snapshot.base_ref.as_deref() {
-        format!("{} file(s) vs {}", snapshot.changed_file_count, base_ref)
-    } else if snapshot.changed_file_count > 0 {
-        format!("{} file(s) in scoped run", snapshot.changed_file_count)
-    } else {
-        "repo-wide evaluation".to_string()
-    }
-}
-
 fn metric_color(metric: &fitness::FitnessMetricSummary) -> Color {
     if metric.passed {
         ACTIVE
@@ -610,6 +582,10 @@ fn metric_color(metric: &fitness::FitnessMetricSummary) -> Color {
     } else {
         INFERRED
     }
+}
+
+fn dimension_failure_count(dimension: &fitness::FitnessDimensionSummary) -> usize {
+    dimension.metrics.iter().filter(|metric| !metric.passed).count()
 }
 
 fn truncate_short(value: &str, max_len: usize) -> String {
