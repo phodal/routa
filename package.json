@@ -231,7 +231,7 @@
     "@types/uuid": "^10.0.0",
     "@types/ws": "^8.18.1",
     "@vitejs/plugin-react": "^5.1.4",
-    "@vitest/coverage-v8": "^4.1.2",
+    "@vitest/coverage-v8": "^4.1.4",
     "@vitest/ui": "^4.0.18",
     "ajv": "^8.18.0",
     "ajv-formats": "^3.0.1",
