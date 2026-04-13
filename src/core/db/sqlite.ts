@@ -42,6 +42,49 @@ export function getSqliteDatabase(dbPath?: string): SqliteDatabase {
     // Run migrations / create tables on first use
     initializeSqliteTables(db);
 
+    // Ensure worktrees table exists (fix for #414)
+    // This is a defensive check to handle cases where the table wasn't created
+    // due to database initialization issues or version mismatches
+    try {
+      const tableCheck = sqlite.prepare(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='worktrees'"
+      ).get();
+      if (!tableCheck) {
+        console.warn("[SQLite] worktrees table missing, creating it now");
+        sqlite.run(`
+          CREATE TABLE worktrees (
+            id TEXT PRIMARY KEY,
+            codebase_id TEXT NOT NULL REFERENCES codebases(id) ON DELETE CASCADE,
+            workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+            worktree_path TEXT NOT NULL,
+            branch TEXT NOT NULL,
+            base_branch TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'creating',
+            session_id TEXT,
+            label TEXT,
+            error_message TEXT,
+            created_at INTEGER NOT NULL DEFAULT (unixepoch('now') * 1000),
+            updated_at INTEGER NOT NULL DEFAULT (unixepoch('now') * 1000)
+          )
+        `);
+        sqlite.run(`
+          CREATE UNIQUE INDEX uq_worktrees_codebase_branch
+          ON worktrees (codebase_id, branch)
+        `);
+        sqlite.run(`
+          CREATE UNIQUE INDEX uq_worktrees_path
+          ON worktrees (worktree_path)
+        `);
+        sqlite.run(`
+          CREATE INDEX idx_worktrees_workspace_id
+          ON worktrees (workspace_id)
+        `);
+        console.log("[SQLite] worktrees table created successfully");
+      }
+    } catch (error) {
+      console.error("[SQLite] Failed to ensure worktrees table exists:", error);
+    }
+
     // Store both the drizzle wrapper and the raw connection
     g[GLOBAL_KEY] = db;
     g[GLOBAL_RAW_KEY] = sqlite;
