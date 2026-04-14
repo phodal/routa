@@ -326,6 +326,77 @@ describe("/api/kanban/boards GET", () => {
     expect(processKanbanColumnTransition).not.toHaveBeenCalled();
   });
 
+  it("converges approved review cards to done when restart left no active review session", async () => {
+    const reviewBoard = {
+      id: "board-1",
+      workspaceId: "workspace-1",
+      name: "Default Board",
+      isDefault: true,
+      columns: [
+        {
+          id: "review",
+          name: "Review",
+          position: 0,
+          stage: "review",
+          automation: {
+            enabled: true,
+            transitionType: "entry",
+            steps: [
+              { id: "qa-frontend", role: "GATE", specialistId: "kanban-qa-frontend", specialistName: "QA Frontend" },
+              { id: "review-guard", role: "GATE", specialistId: "kanban-review-guard", specialistName: "Review Guard" },
+            ],
+          },
+        },
+        {
+          id: "done",
+          name: "Done",
+          position: 1,
+          stage: "done",
+        },
+      ],
+      createdAt: new Date("2025-01-01T00:00:00.000Z"),
+      updatedAt: new Date("2025-01-01T00:00:00.000Z"),
+    };
+    boardStore.listByWorkspace.mockResolvedValue([reviewBoard]);
+    boardStore.get.mockResolvedValue(reviewBoard);
+    taskStore.listByWorkspace.mockResolvedValue([
+      {
+        ...createTask({
+          id: "task-1",
+          title: "Approved review story",
+          objective: "Review story",
+          workspaceId: "workspace-1",
+          boardId: "board-1",
+          columnId: "review",
+          status: TaskStatus.REVIEW_REQUIRED,
+        }),
+        verificationVerdict: VerificationVerdict.APPROVED,
+        triggerSessionId: undefined,
+        laneSessions: [{
+          sessionId: "session-review-guard",
+          columnId: "review",
+          status: "completed",
+          stepId: "review-guard",
+          stepIndex: 1,
+          stepName: "Review Guard",
+          startedAt: "2025-01-01T00:00:00.000Z",
+          completedAt: "2025-01-01T00:05:00.000Z",
+        }],
+      },
+    ]);
+
+    const response = await GET(new NextRequest("http://localhost/api/kanban/boards?workspaceId=workspace-1"));
+
+    expect(response.status).toBe(200);
+    expect(taskStore.save).toHaveBeenCalledWith(expect.objectContaining({
+      id: "task-1",
+      columnId: "done",
+      status: TaskStatus.COMPLETED,
+    }));
+    expect(enqueueKanbanTaskSession).not.toHaveBeenCalled();
+    expect(processKanbanColumnTransition).not.toHaveBeenCalled();
+  });
+
   it("does not revive tasks when the trigger session is still active", async () => {
     processManager.hasActiveSession.mockImplementation((sessionId) => sessionId === "session-1");
     taskStore.listByWorkspace.mockResolvedValue([

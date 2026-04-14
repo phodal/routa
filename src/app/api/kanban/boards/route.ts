@@ -17,8 +17,10 @@ import {
   getTaskLaneSession,
   markTaskLaneSessionStatus,
 } from "@/core/kanban/task-lane-history";
-import type { Task, TaskLaneSessionStatus } from "@/core/models/task";
+import { TaskStatus, type Task, type TaskLaneSessionStatus } from "@/core/models/task";
 import { resolveCurrentLaneAutomationState } from "@/core/kanban/lane-automation-state";
+import { resolveReviewLaneConvergenceTarget } from "@/core/kanban/review-lane-convergence";
+import { columnIdToTaskStatus } from "@/core/models/kanban";
 
 function isSessionActivelyRunning(
   taskSessionId: string | undefined,
@@ -151,6 +153,26 @@ async function reviveMissingEntryAutomations(
     if (!currentColumnId) continue;
     const column = board.columns.find((entry) => entry.id === currentColumnId);
     if (!column) continue;
+
+    const convergenceColumnId = resolveReviewLaneConvergenceTarget(task, board.columns);
+    if (convergenceColumnId && convergenceColumnId !== currentColumnId) {
+      const nextTask: Task = {
+        ...task,
+        columnId: convergenceColumnId,
+        status: columnIdToTaskStatus(convergenceColumnId) ?? TaskStatus.COMPLETED,
+        updatedAt: new Date(),
+      };
+      await system.taskStore.save(nextTask);
+      getKanbanEventBroadcaster().notify({
+        workspaceId,
+        entity: "task",
+        action: "moved",
+        resourceId: nextTask.id,
+        source: "system",
+      });
+      continue;
+    }
+
     const automation = column?.automation;
     const transitionType = automation?.transitionType ?? "entry";
     const hasLaneSessionForCurrentColumn = (task.laneSessions ?? []).some((entry) => (
