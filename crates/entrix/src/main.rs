@@ -432,7 +432,6 @@ fn print_subcommand_help(name: &str) {
 
 fn cmd_run(args: RunArgs) -> i32 {
     let repo_root = find_project_root();
-    let _ = args.progress_refresh;
     let fitness_dir = repo_root.join("docs/fitness");
     let all_dimensions = load_dimensions(&fitness_dir);
     let changed_files = collect_run_files(&repo_root, &args.files, args.changed_only, &args.base);

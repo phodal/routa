@@ -165,6 +165,36 @@ fn validate_parses() {
 }
 
 #[test]
+fn install_and_init_flags_parse() {
+    let install = Cli::parse_from(["entrix", "install", "--repo", "/tmp/demo", "--dry-run"]);
+    match install.command {
+        Some(Command::Install(args)) => {
+            assert_eq!(args.repo.as_deref(), Some("/tmp/demo"));
+            assert!(args.dry_run);
+        }
+        _ => panic!("expected install command"),
+    }
+
+    let init = Cli::parse_from(["entrix", "init", "--repo", "/tmp/demo"]);
+    match init.command {
+        Some(Command::Init(args)) => {
+            assert_eq!(args.repo.as_deref(), Some("/tmp/demo"));
+            assert!(!args.dry_run);
+        }
+        _ => panic!("expected init command"),
+    }
+}
+
+#[test]
+fn serve_parses() {
+    let cli = Cli::parse_from(["entrix", "serve"]);
+    match cli.command {
+        Some(Command::Serve) => {}
+        _ => panic!("expected serve command"),
+    }
+}
+
+#[test]
 fn review_trigger_defaults() {
     let cli = Cli::parse_from(["entrix", "review-trigger"]);
     match cli.command {

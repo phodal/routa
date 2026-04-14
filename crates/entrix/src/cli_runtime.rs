@@ -494,3 +494,85 @@ pub(crate) fn emit_runtime_fitness_event(
     )?;
     write_runtime_fitness_mailbox_message(project_root, &payload)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use entrix::model::{MetricResult, Tier};
+    use entrix::scoring::{score_dimension, score_report};
+    use tempfile::tempdir;
+
+    #[test]
+    fn runtime_mode_defaults_normal_to_full() {
+        assert_eq!(runtime_mode(None), "full");
+        assert_eq!(runtime_mode(Some("")), "full");
+        assert_eq!(runtime_mode(Some("normal")), "full");
+        assert_eq!(runtime_mode(Some("fast")), "fast");
+    }
+
+    #[test]
+    fn runtime_event_writes_jsonl_and_mailbox_message() {
+        let temp = tempdir().expect("tempdir");
+        let repo_root = temp.path();
+        let results = vec![MetricResult::new("eslint_pass", true, "ok", Tier::Fast)];
+        let dimension = score_dimension(&results, "testability", 18);
+        let report = score_report(&[dimension], 80.0);
+
+        let snapshot = build_runtime_fitness_snapshot(
+            repo_root,
+            &report,
+            RuntimeFitnessSnapshotOptions {
+                tier: Some("fast"),
+                duration_ms: 12.5,
+                artifact_path: None,
+                observed_at_ms: 1_717_171_717_000,
+                producer: "entrix",
+                base_ref: None,
+                changed_files: &[],
+            },
+        )
+        .expect("snapshot");
+        let artifact_path = write_runtime_fitness_artifacts(
+            repo_root,
+            Some("fast"),
+            &snapshot,
+            1_717_171_717_000,
+        )
+        .expect("artifact");
+
+        emit_runtime_fitness_event(
+            repo_root,
+            "passed",
+            Some("fast"),
+            Some(&report),
+            1,
+            12.5,
+            Some(&artifact_path),
+        )
+        .expect("runtime event");
+
+        let events_path = runtime_event_path(repo_root);
+        assert!(events_path.is_file());
+        let events = fs::read_to_string(&events_path).expect("events jsonl");
+        let payload = events
+            .lines()
+            .last()
+            .map(|line| serde_json::from_str::<serde_json::Value>(line).expect("json event"))
+            .expect("event payload");
+        assert_eq!(payload.get("type").and_then(|v| v.as_str()), Some("fitness"));
+        assert_eq!(payload.get("mode").and_then(|v| v.as_str()), Some("fast"));
+        assert_eq!(payload.get("status").and_then(|v| v.as_str()), Some("passed"));
+        assert_eq!(payload.get("final_score").and_then(|v| v.as_f64()), Some(100.0));
+        assert_eq!(
+            payload.get("artifact_path").and_then(|v| v.as_str()),
+            Some(artifact_path.as_str())
+        );
+
+        let mailbox_dir = runtime_fitness_mailbox_dir(repo_root);
+        let mailbox_messages = fs::read_dir(mailbox_dir)
+            .expect("mailbox dir")
+            .collect::<Result<Vec<_>, _>>()
+            .expect("mailbox entries");
+        assert_eq!(mailbox_messages.len(), 1);
+    }
+}
