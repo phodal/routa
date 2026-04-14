@@ -1,0 +1,134 @@
+<svg width="1440" height="980" viewBox="0 0 1440 980" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="pageBg" x1="0" y1="0" x2="1440" y2="980" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F8FAFC"/>
+      <stop offset="1" stop-color="#F1F5F9"/>
+    </linearGradient>
+    <linearGradient id="heroLine" x1="84" y1="0" x2="1356" y2="0" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#3B82F6"/>
+      <stop offset="0.54" stop-color="#F59E0B"/>
+      <stop offset="1" stop-color="#10B981"/>
+    </linearGradient>
+    <filter id="panelShadow" x="-20%" y="-20%" width="140%" height="160%">
+      <feDropShadow dx="0" dy="10" stdDeviation="16" flood-color="#0F172A" flood-opacity="0.06"/>
+    </filter>
+    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="160%">
+      <feDropShadow dx="0" dy="6" stdDeviation="10" flood-color="#0F172A" flood-opacity="0.05"/>
+    </filter>
+    <marker id="arrow" markerWidth="7" markerHeight="7" refX="5.8" refY="3.5" orient="auto">
+      <path d="M0.9 0.9L5.8 3.5L0.9 6.1" stroke="#94A3B8" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <style>
+      .title { font: 700 30px ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #0F172A; }
+      .subtitle { font: 500 15px ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #475569; }
+      .section { font: 700 22px ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #0F172A; }
+      .panelTitle { font: 700 18px ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #0F172A; }
+      .body { font: 500 14px ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #334155; }
+      .small { font: 500 12px ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #64748B; }
+      .tag { font: 700 11px ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; letter-spacing: 0.08em; }
+    </style>
+  </defs>
+
+  <rect width="1440" height="980" rx="20" fill="url(#pageBg)"/>
+  <rect x="28" y="28" width="1384" height="924" rx="18" fill="none" stroke="rgba(148,163,184,0.18)"/>
+
+  <circle cx="1272" cy="130" r="114" fill="#DBEAFE" opacity="0.4"/>
+  <circle cx="176" cy="854" r="128" fill="#ECFDF5" opacity="0.52"/>
+  <circle cx="1180" cy="826" r="96" fill="#FEF3C7" opacity="0.4"/>
+
+  <text x="84" y="88" class="title">Routa Review Gate</text>
+  <text x="84" y="118" class="subtitle">How a card moves from Dev evidence to a Kanban decision through Harness Monitor, Entrix Fitness, and the Gate Specialist</text>
+  <rect x="84" y="138" width="1272" height="4" rx="2" fill="url(#heroLine)"/>
+
+  <rect x="84" y="164" width="1272" height="132" rx="16" fill="#FFFFFF" stroke="#E2E8F0" filter="url(#panelShadow)"/>
+  <rect x="84" y="164" width="8" height="132" rx="4" fill="#3B82F6"/>
+  <rect x="112" y="182" width="100" height="24" rx="10" fill="#EFF6FF"/>
+  <text x="128" y="198" class="tag" fill="#1D4ED8">REVIEW ENTRY</text>
+  <text x="112" y="232" class="section">Card arrives from Dev</text>
+  <text x="112" y="258" class="body">Canonical story YAML, execution brief, Dev Evidence, committed diff, clean worktree</text>
+  <text x="112" y="280" class="small">Review starts only after the implementation is committed and the branch state is inspectable.</text>
+
+  <rect x="84" y="338" width="360" height="338" rx="16" fill="#FFFFFF" stroke="#E2E8F0" filter="url(#panelShadow)"/>
+  <rect x="84" y="338" width="8" height="338" rx="4" fill="#3B82F6"/>
+  <rect x="112" y="356" width="134" height="24" rx="10" fill="#EFF6FF"/>
+  <text x="128" y="372" class="tag" fill="#1D4ED8">HARNESS MONITOR</text>
+  <text x="112" y="406" class="section">Observe what happened</text>
+  <text x="112" y="432" class="body">Harness Monitor answers the factual question first: what actually happened in this run?</text>
+
+  <rect x="112" y="464" width="304" height="62" rx="12" fill="#F8FBFF" stroke="#BFDBFE" filter="url(#softShadow)"/>
+  <text x="132" y="486" class="panelTitle">Evidence bundle</text>
+  <text x="132" y="504" class="small">changed files, commits, test commands, tool calls</text>
+  <text x="132" y="519" class="small">git status, task notes, trace snapshots</text>
+
+  <rect x="112" y="544" width="304" height="62" rx="12" fill="#F8FBFF" stroke="#BFDBFE" filter="url(#softShadow)"/>
+  <text x="132" y="566" class="panelTitle">Attribution</text>
+  <text x="132" y="584" class="small">which session, worktree, and card produced the change</text>
+  <text x="132" y="599" class="small">what Review is allowed to inspect as ground truth</text>
+
+  <rect x="112" y="624" width="304" height="34" rx="10" fill="#EFF6FF"/>
+  <text x="132" y="646" class="body">Question answered: What happened?</text>
+
+  <rect x="540" y="338" width="360" height="338" rx="16" fill="#FFFFFF" stroke="#E2E8F0" filter="url(#panelShadow)"/>
+  <rect x="540" y="338" width="8" height="338" rx="4" fill="#F59E0B"/>
+  <rect x="568" y="356" width="118" height="24" rx="10" fill="#FFFBEB"/>
+  <text x="584" y="372" class="tag" fill="#B45309">ENTRIX FITNESS</text>
+  <text x="568" y="406" class="section">Evaluate what should be true</text>
+  <text x="568" y="432" class="body">Entrix turns policy into explicit checks before the human-style verdict is even allowed.</text>
+
+  <rect x="568" y="464" width="304" height="62" rx="12" fill="#FFF9F0" stroke="#FCD34D" filter="url(#softShadow)"/>
+  <text x="588" y="486" class="panelTitle">Hard gates</text>
+  <text x="588" y="504" class="small">lint, type checks, tests, clean git state</text>
+  <text x="588" y="519" class="small">missing evidence or broken checks are automatic rejection</text>
+
+  <rect x="568" y="544" width="304" height="62" rx="12" fill="#FFF9F0" stroke="#FCD34D" filter="url(#softShadow)"/>
+  <text x="588" y="566" class="panelTitle">Policy checks</text>
+  <text x="588" y="584" class="small">scope discipline, file budgets, review readiness</text>
+  <text x="588" y="599" class="small">evidence must match the acceptance criteria contract</text>
+
+  <rect x="568" y="624" width="304" height="34" rx="10" fill="#FFFBEB"/>
+  <text x="588" y="646" class="body">Question answered: What should be true?</text>
+
+  <rect x="996" y="338" width="360" height="338" rx="16" fill="#FFFFFF" stroke="#E2E8F0" filter="url(#panelShadow)"/>
+  <rect x="996" y="338" width="8" height="338" rx="4" fill="#10B981"/>
+  <rect x="1024" y="356" width="124" height="24" rx="10" fill="#ECFDF5"/>
+  <text x="1040" y="372" class="tag" fill="#047857">GATE SPECIALIST</text>
+  <text x="1024" y="406" class="section">Decide whether the card moves</text>
+  <text x="1024" y="432" class="body">Review Guard is the final skeptic. It does not trust Dev and it does not waive missing evidence.</text>
+
+  <rect x="1024" y="464" width="304" height="62" rx="12" fill="#F4FCF8" stroke="#A7F3D0" filter="url(#softShadow)"/>
+  <text x="1044" y="486" class="panelTitle">Acceptance criteria match</text>
+  <text x="1044" y="504" class="small">verify each AC with explicit evidence or fail it</text>
+  <text x="1044" y="519" class="small">no partial approval, no vibes-based review</text>
+
+  <rect x="1024" y="544" width="304" height="62" rx="12" fill="#F4FCF8" stroke="#A7F3D0" filter="url(#softShadow)"/>
+  <text x="1044" y="566" class="panelTitle">Route the next state</text>
+  <text x="1044" y="584" class="small">approve to Done, reject to Dev, or escalate</text>
+  <text x="1044" y="599" class="small">the card moves only with an explicit verdict</text>
+
+  <rect x="1024" y="624" width="304" height="34" rx="10" fill="#ECFDF5"/>
+  <text x="1044" y="646" class="body">Question answered: Can this move forward?</text>
+
+  <rect x="84" y="728" width="1272" height="164" rx="16" fill="#FFFFFF" stroke="#E2E8F0" filter="url(#panelShadow)"/>
+  <rect x="84" y="728" width="8" height="164" rx="4" fill="#0F172A"/>
+  <rect x="112" y="746" width="92" height="24" rx="10" fill="#F8FAFC"/>
+  <text x="128" y="762" class="tag" fill="#334155">OUTCOMES</text>
+
+  <rect x="112" y="786" width="374" height="78" rx="14" fill="#ECFDF5" stroke="#A7F3D0" filter="url(#softShadow)"/>
+  <text x="136" y="814" class="panelTitle">APPROVED -> Done</text>
+  <text x="136" y="836" class="small">Review Findings written, verdict is APPROVED, Done Reporter can now summarize what shipped.</text>
+
+  <rect x="534" y="786" width="374" height="78" rx="14" fill="#FFF7ED" stroke="#FDBA74" filter="url(#softShadow)"/>
+  <text x="558" y="814" class="panelTitle">REJECTED -> Dev</text>
+  <text x="558" y="836" class="small">Review feedback is appended to the card, the scope stays frozen, and fixes must come back with new evidence.</text>
+
+  <rect x="956" y="786" width="372" height="78" rx="14" fill="#F8FAFC" stroke="#CBD5E1" filter="url(#softShadow)"/>
+  <text x="980" y="814" class="panelTitle">ESCALATED -> Human or Blocked</text>
+  <text x="980" y="836" class="small">If policy is ambiguous or an external blocker remains, the card does not silently pass through the gate.</text>
+
+  <path d="M720 296V338" stroke="#94A3B8" stroke-width="3" stroke-linecap="round" marker-end="url(#arrow)"/>
+  <path d="M444 506H540" stroke="#94A3B8" stroke-width="3" stroke-linecap="round" marker-end="url(#arrow)"/>
+  <path d="M900 506H996" stroke="#94A3B8" stroke-width="3" stroke-linecap="round" marker-end="url(#arrow)"/>
+  <path d="M1176 676V728" stroke="#94A3B8" stroke-width="3" stroke-linecap="round" marker-end="url(#arrow)"/>
+  <path d="M276 676V728" stroke="#94A3B8" stroke-width="3" stroke-linecap="round" marker-end="url(#arrow)"/>
+  <path d="M720 676V728" stroke="#94A3B8" stroke-width="3" stroke-linecap="round" marker-end="url(#arrow)"/>
+</svg>
