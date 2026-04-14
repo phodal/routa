@@ -299,6 +299,32 @@ export function columnIdToTaskStatus(columnId?: string): TaskStatus {
   }
 }
 
+export function columnStageToTaskStatus(stage?: KanbanColumnStage): TaskStatus {
+  switch (stage ?? "backlog") {
+    case "dev":
+      return TaskStatus.IN_PROGRESS;
+    case "review":
+      return TaskStatus.REVIEW_REQUIRED;
+    case "blocked":
+      return TaskStatus.BLOCKED;
+    case "done":
+      return TaskStatus.COMPLETED;
+    default:
+      return TaskStatus.PENDING;
+  }
+}
+
+export function resolveTaskStatusForBoardColumn(
+  columns: Pick<KanbanColumn, "id" | "stage">[] = [],
+  columnId?: string,
+): TaskStatus {
+  const column = columns.find((entry) => entry.id === columnId);
+  if (column) {
+    return columnStageToTaskStatus(column.stage);
+  }
+  return columnIdToTaskStatus(columnId);
+}
+
 export function taskStatusToColumnId(status: TaskStatus | string | undefined): string {
   switch ((status ?? TaskStatus.PENDING).toString().toUpperCase()) {
     case TaskStatus.IN_PROGRESS:

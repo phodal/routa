@@ -46,7 +46,7 @@ import { getKanbanEventBroadcaster } from "../kanban/kanban-event-broadcaster";
 import type { TaskCreationSource } from "../kanban/task-creation-policy";
 import { ToolResult, successResult, errorResult } from './tool-result';
 import { applySandboxPermissionConstraints, SandboxPermissionConstraints } from "../sandbox";
-import { columnIdToTaskStatus } from "../models/kanban";
+import { resolveTaskStatusForBoardColumn } from "../models/kanban";
 import { resolveReviewLaneConvergenceTarget } from "../kanban/review-lane-convergence";
 import {
   PermissionStore,
@@ -899,7 +899,7 @@ export class AgentTools {
       const convergenceColumnId = resolveReviewLaneConvergenceTarget(task, board?.columns ?? []);
       if (convergenceColumnId && convergenceColumnId !== task.columnId) {
         task.columnId = convergenceColumnId;
-        task.status = columnIdToTaskStatus(convergenceColumnId);
+        task.status = resolveTaskStatusForBoardColumn(board?.columns ?? [], convergenceColumnId);
       }
     }
 

@@ -394,7 +394,11 @@ describe("/api/kanban/boards GET", () => {
       status: TaskStatus.COMPLETED,
     }));
     expect(enqueueKanbanTaskSession).not.toHaveBeenCalled();
-    expect(processKanbanColumnTransition).not.toHaveBeenCalled();
+    expect(processKanbanColumnTransition).toHaveBeenCalledWith(system, expect.objectContaining({
+      cardId: "task-1",
+      fromColumnId: "review",
+      toColumnId: "done",
+    }));
   });
 
   it("does not revive tasks when the trigger session is still active", async () => {

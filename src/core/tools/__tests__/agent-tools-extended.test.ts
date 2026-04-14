@@ -262,4 +262,67 @@ describe("AgentTools extended coverage", () => {
     expect(updated?.columnId).toBe("done");
     expect(updated?.status).toBe(TaskStatus.COMPLETED);
   });
+
+  it("maps converged review verdicts from board stage when done uses a custom id", async () => {
+    await kanbanBoardStore.save(createKanbanBoard({
+      id: "board-1",
+      workspaceId: "ws-1",
+      name: "Main",
+      columns: [
+        { id: "backlog", name: "Backlog", stage: "backlog", position: 0 },
+        { id: "todo", name: "Todo", stage: "todo", position: 1 },
+        { id: "dev", name: "Dev", stage: "dev", position: 2 },
+        {
+          id: "review",
+          name: "Review",
+          stage: "review",
+          position: 3,
+          automation: {
+            enabled: true,
+            steps: [
+              {
+                id: "qa-frontend",
+                role: "GATE",
+                specialistId: "kanban-qa-frontend",
+                specialistName: "QA Frontend",
+              },
+              {
+                id: "review-guard",
+                role: "GATE",
+                specialistId: "kanban-review-guard",
+                specialistName: "Review Guard",
+              },
+            ],
+          },
+        },
+        { id: "released-stage", name: "Released", stage: "done", position: 4 },
+      ],
+    }));
+
+    const task = createTask({
+      id: "task-review-2",
+      title: "Converge review custom done",
+      objective: "Move approved review work to a custom done lane",
+      workspaceId: "ws-1",
+      boardId: "board-1",
+      columnId: "review",
+    });
+    task.assignedSpecialistId = "kanban-review-guard";
+    task.assignedSpecialistName = "Review Guard";
+    await taskStore.save(task);
+
+    const result = await tools.updateTask({
+      taskId: "task-review-2",
+      updates: {
+        verificationVerdict: "APPROVED",
+        verificationReport: "Checks passed",
+      },
+      agentId: "agent-1",
+    });
+
+    expect(result.success).toBe(true);
+    const updated = await taskStore.get("task-review-2");
+    expect(updated?.columnId).toBe("released-stage");
+    expect(updated?.status).toBe(TaskStatus.COMPLETED);
+  });
 });

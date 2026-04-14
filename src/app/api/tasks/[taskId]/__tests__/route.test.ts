@@ -1162,4 +1162,66 @@ describe("/api/tasks/[taskId]", () => {
       worktreeId: "wt-1",
     });
   });
+
+  it("maps approved review convergence from the target column stage when done uses a custom id", async () => {
+    const existingTask = createTask({
+      id: "task-1",
+      title: "Release reviewed task",
+      objective: "Move approved review work into a custom done lane",
+      workspaceId: "workspace-1",
+      boardId: "board-1",
+      columnId: "review",
+      status: TaskStatus.REVIEW_REQUIRED,
+    });
+    existingTask.assignedSpecialistId = "kanban-review-guard";
+    existingTask.assignedSpecialistName = "Review Guard";
+    taskStore.get.mockResolvedValue(existingTask);
+    system.kanbanBoardStore.get = vi.fn().mockResolvedValue({
+      id: "board-1",
+      columns: [
+        {
+          id: "review",
+          name: "Review",
+          position: 1,
+          stage: "review",
+          automation: {
+            enabled: true,
+            steps: [
+              {
+                id: "qa-frontend",
+                role: "GATE",
+                specialistId: "kanban-qa-frontend",
+                specialistName: "QA Frontend",
+              },
+              {
+                id: "review-guard",
+                role: "GATE",
+                specialistId: "kanban-review-guard",
+                specialistName: "Review Guard",
+              },
+            ],
+          },
+        },
+        { id: "released-stage", name: "Released", position: 2, stage: "done" },
+      ],
+    });
+
+    const response = await PATCH(new NextRequest("http://localhost/api/tasks/task-1", {
+      method: "PATCH",
+      body: JSON.stringify({
+        verificationVerdict: VerificationVerdict.APPROVED,
+        verificationReport: "Release checks passed",
+      }),
+    }), {
+      params: Promise.resolve({ taskId: "task-1" }),
+    });
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.task).toMatchObject({
+      columnId: "released-stage",
+      status: TaskStatus.COMPLETED,
+      verificationVerdict: VerificationVerdict.APPROVED,
+    });
+  });
 });

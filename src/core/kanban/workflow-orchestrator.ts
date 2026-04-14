@@ -16,7 +16,7 @@ import type {
   KanbanDevSessionSupervision,
   KanbanDevSessionSupervisionMode,
 } from "../models/kanban";
-import { columnIdToTaskStatus, getKanbanAutomationSteps } from "../models/kanban";
+import { getKanbanAutomationSteps, resolveTaskStatusForBoardColumn } from "../models/kanban";
 import type { Task, TaskLaneSessionRecoveryReason } from "../models/task";
 import type { KanbanBoardStore } from "../store/kanban-board-store";
 import type { TaskStore } from "../store/task-store";
@@ -861,7 +861,7 @@ export class KanbanWorkflowOrchestrator {
       if (!nextColumn) return;
 
       task.columnId = nextColumn.id;
-      task.status = columnIdToTaskStatus(nextColumn.id);
+      task.status = resolveTaskStatusForBoardColumn(board.columns, nextColumn.id);
       if (task.triggerSessionId) {
         if (!task.sessionIds) task.sessionIds = [];
         if (!task.sessionIds.includes(task.triggerSessionId)) {

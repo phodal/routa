@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { monitorApiRoute } from "@/core/http/api-route-observability";
 import { getRoutaSystem } from "@/core/routa-system";
 import { hydrateTaskComments, TaskPriority, TaskStatus, VerificationVerdict, type Task } from "@/core/models/task";
-import { columnIdToTaskStatus, taskStatusToColumnId } from "@/core/models/kanban";
+import { columnIdToTaskStatus, resolveTaskStatusForBoardColumn, taskStatusToColumnId } from "@/core/models/kanban";
 import { getKanbanEventBroadcaster } from "@/core/kanban/kanban-event-broadcaster";
 import { ensureTaskBoardContext } from "@/core/kanban/task-board-context";
 import { buildTaskGitHubIssueBody, updateGitHubIssue } from "@/core/kanban/github-issues";
@@ -460,7 +460,7 @@ export async function PATCH(
     const convergenceColumnId = resolveReviewLaneConvergenceTarget(nextTask, board?.columns ?? []);
     if (convergenceColumnId && convergenceColumnId !== nextTask.columnId) {
       nextTask.columnId = convergenceColumnId;
-      nextTask.status = columnIdToTaskStatus(convergenceColumnId);
+      nextTask.status = resolveTaskStatusForBoardColumn(board?.columns ?? [], convergenceColumnId);
     }
   }
 
