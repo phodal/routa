@@ -240,7 +240,9 @@ jobs:
       - name: Smoke test platform packages
         shell: bash
         run: |
-          npm_packages=(dist/npm/entrix-*.tgz)
+          # Match only platform-specific packages, not the main entrix-<version>.tgz
+          shopt -s nullglob
+          npm_packages=(dist/npm/entrix-{darwin,linux,windows}-*.tgz)
           if [[ ${#npm_packages[@]} -ne 4 ]]; then
             echo "Expected 4 platform packages, found ${#npm_packages[@]}" >&2
             exit 1
@@ -318,12 +320,28 @@ jobs:
             exit 1
           fi
 
+          failed=0
           for tarball in dist/npm/*.tgz; do
-            echo "Publishing $(basename "${tarball}")"
-            npm publish "${tarball}" --access public || {
-              echo "Warning: $(basename "${tarball}") may already be published"
-            }
+            package_name=$(basename "${tarball}")
+            echo "Publishing ${package_name}"
+            if npm publish "${tarball}" --access public; then
+              echo "✓ Published ${package_name}"
+            else
+              exit_code=$?
+              # 409 = already published, treat as warning
+              if [[ ${exit_code} -eq 1 ]]; then
+                echo "⚠ Warning: ${package_name} may already be published"
+              else
+                echo "✗ Failed to publish ${package_name} (exit code: ${exit_code})" >&2
+                failed=1
+              fi
+            fi
           done
+
+          if [[ ${failed} -eq 1 ]]; then
+            echo "❌ Some packages failed to publish" >&2
+            exit 1
+          fi
 
           echo "✅ Entrix npm packages published successfully"
           echo ""
