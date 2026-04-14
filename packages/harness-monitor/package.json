@@ -1,6 +1,6 @@
 {
   "name": "harness-monitor",
-  "version": "0.15.0",
+  "version": "0.15.1",
   "description": "Harness Monitor terminal UI distributed through npm.",
   "type": "module",
   "license": "MIT",
@@ -29,10 +29,10 @@
     "README.md"
   ],
   "optionalDependencies": {
-    "harness-monitor-darwin-arm64": "0.15.0",
-    "harness-monitor-darwin-x64": "0.15.0",
-    "harness-monitor-linux-x64": "0.15.0",
-    "harness-monitor-windows-x64": "0.15.0"
+    "harness-monitor-darwin-arm64": "0.15.1",
+    "harness-monitor-darwin-x64": "0.15.1",
+    "harness-monitor-linux-x64": "0.15.1",
+    "harness-monitor-windows-x64": "0.15.1"
   },
   "publishConfig": {
     "access": "public"
