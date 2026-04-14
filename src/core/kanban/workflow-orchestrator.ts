@@ -104,7 +104,18 @@ export function getNonDevAutomationRunCount(
     return 0;
   }
 
-  return (task.laneSessions ?? []).filter((entry) => entry.columnId === columnId).length;
+  const laneSessions = task.laneSessions ?? [];
+  let runCount = 0;
+
+  for (let index = laneSessions.length - 1; index >= 0; index -= 1) {
+    const entry = laneSessions[index];
+    if (entry.columnId !== columnId) {
+      break;
+    }
+    runCount += 1;
+  }
+
+  return runCount;
 }
 
 export function hasExceededNonDevAutomationRepeatLimit(

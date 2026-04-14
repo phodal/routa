@@ -7,7 +7,7 @@ import {
 } from "../workflow-orchestrator";
 
 describe("workflow orchestrator loop guard", () => {
-  it("counts prior runs for non-dev lanes", () => {
+  it("counts consecutive prior runs for non-dev lanes", () => {
     const task = createTask({
       id: "task-loop-count",
       title: "Loop count",
@@ -44,7 +44,48 @@ describe("workflow orchestrator loop guard", () => {
       },
     ];
 
-    expect(getNonDevAutomationRunCount(task, "todo", "todo")).toBe(3);
+    expect(getNonDevAutomationRunCount(task, "todo", "todo")).toBe(2);
+  });
+
+  it("resets the non-dev repeat count after the card leaves and re-enters the lane", () => {
+    const task = createTask({
+      id: "task-review-reentry",
+      title: "Review reentry",
+      objective: "Allow a fresh review run after returning from dev",
+      workspaceId: "default",
+      boardId: "board-1",
+      columnId: "review",
+    });
+
+    task.laneSessions = [
+      {
+        sessionId: "review-1",
+        columnId: "review",
+        status: "completed",
+        startedAt: new Date().toISOString(),
+      },
+      {
+        sessionId: "review-2",
+        columnId: "review",
+        status: "failed",
+        startedAt: new Date().toISOString(),
+      },
+      {
+        sessionId: "dev-1",
+        columnId: "dev",
+        status: "transitioned",
+        startedAt: new Date().toISOString(),
+      },
+      {
+        sessionId: "review-3",
+        columnId: "review",
+        status: "timed_out",
+        startedAt: new Date().toISOString(),
+      },
+    ];
+
+    expect(getNonDevAutomationRunCount(task, "review", "review")).toBe(1);
+    expect(hasExceededNonDevAutomationRepeatLimit(task, "review", "review")).toBe(false);
   });
 
   it("blocks the fourth run for the same non-dev lane", () => {
