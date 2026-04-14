@@ -9,6 +9,7 @@ import { getKanbanDevSessionSupervision } from "@/core/kanban/board-session-supe
 import { getKanbanEventBroadcaster } from "@/core/kanban/kanban-event-broadcaster";
 import { getKanbanSessionQueue } from "@/core/kanban/workflow-orchestrator-singleton";
 import { processKanbanColumnTransition } from "@/core/kanban/workflow-orchestrator-singleton";
+import { enqueueKanbanTaskSession } from "@/core/kanban/workflow-orchestrator-singleton";
 import { getHttpSessionStore } from "@/core/acp/http-session-store";
 import { getAcpProcessManager } from "@/core/acp/processer";
 import { getAcpInstanceId, isExecutionLeaseActive } from "@/core/acp/execution-backend";
@@ -17,6 +18,7 @@ import {
   markTaskLaneSessionStatus,
 } from "@/core/kanban/task-lane-history";
 import type { Task, TaskLaneSessionStatus } from "@/core/models/task";
+import { resolveCurrentLaneAutomationState } from "@/core/kanban/lane-automation-state";
 
 function isSessionActivelyRunning(
   taskSessionId: string | undefined,
@@ -162,6 +164,24 @@ async function reviveMissingEntryAutomations(
       || getKanbanAutomationSteps(automation).length === 0
       || hasLaneSessionForCurrentColumn
     ) {
+      continue;
+    }
+
+    const laneState = resolveCurrentLaneAutomationState(task, board.columns);
+    if (
+      laneState.currentSession
+      && laneState.currentSession.columnId === currentColumnId
+      && (laneState.currentSession.status === "transitioned" || laneState.currentSession.status === "completed")
+      && laneState.nextStep
+      && typeof laneState.currentStepIndex === "number"
+    ) {
+      await enqueueKanbanTaskSession(system, {
+        task,
+        expectedColumnId: currentColumnId,
+        ignoreExistingTrigger: true,
+        step: laneState.nextStep,
+        stepIndex: laneState.currentStepIndex + 1,
+      });
       continue;
     }
 
