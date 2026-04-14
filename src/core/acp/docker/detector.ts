@@ -47,7 +47,7 @@ function execDockerInfo(bridge: ReturnType<typeof getServerBridge>, dockerPath: 
     if (dockerPath) {
       // Use resolved absolute path — no shell needed for .exe files
       const args = ["info", "--format", "{{json .}}"];
-      const handle = bridge.process.spawn(dockerPath, args, { timeout: DEFAULT_TIMEOUT_MS });
+      const handle = bridge.process.spawn(dockerPath, args);
       let stdout = "";
       let stderr = "";
 
@@ -72,7 +72,6 @@ function execDockerInfo(bridge: ReturnType<typeof getServerBridge>, dockerPath: 
       // On Windows with no resolved path, use shell so cmd.exe searches PATH
       const handle = bridge.process.spawn("docker", ["info", "--format", "{{json .}}"], {
         shell: true,
-        timeout: DEFAULT_TIMEOUT_MS,
       });
       let stdout = "";
       let stderr = "";
