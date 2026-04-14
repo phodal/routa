@@ -48,6 +48,7 @@ fn run_defaults() {
             assert!(!args.verbose);
             assert_eq!(args.stream, "failures");
             assert_eq!(args.format, "text");
+            assert_eq!(args.progress_refresh, 4);
             assert_eq!(args.min_score, 80.0);
             assert!(args.scope.is_none());
             assert!(!args.changed_only);
@@ -76,22 +77,28 @@ fn run_all_flags() {
         "all",
         "--format",
         "rich",
+        "--progress-refresh",
+        "8",
         "--min-score",
-        "90.0",
+        "65.0",
         "--scope",
-        "ci",
-        "--changed-only",
-        "--files",
-        "a.rs",
-        "--base",
-        "main",
-        "--dimension",
-        "security",
-        "--metric",
-        "lint",
-        "--json",
+        "staging",
         "--output",
         "report.json",
+        "--changed-only",
+        "--files",
+        "src/app/page.tsx",
+        "crates/routa-server/src/lib.rs",
+        "--base",
+        "HEAD~2",
+        "--dimension",
+        "code_quality",
+        "--dimension",
+        "testability",
+        "--metric",
+        "eslint_pass",
+        "--metric",
+        "ts_typecheck_pass",
     ]);
     match cli.command {
         Some(Command::Run(args)) => {
@@ -101,14 +108,21 @@ fn run_all_flags() {
             assert!(args.verbose);
             assert_eq!(args.stream, "all");
             assert_eq!(args.format, "rich");
-            assert_eq!(args.min_score, 90.0);
-            assert_eq!(args.scope.as_deref(), Some("ci"));
+            assert_eq!(args.progress_refresh, 8);
+            assert_eq!(args.min_score, 65.0);
+            assert_eq!(args.scope.as_deref(), Some("staging"));
             assert!(args.changed_only);
-            assert_eq!(args.files, vec!["a.rs"]);
-            assert_eq!(args.base, "main");
-            assert_eq!(args.dimensions, vec!["security"]);
-            assert_eq!(args.metrics, vec!["lint"]);
-            assert!(args.json);
+            assert_eq!(
+                args.files,
+                vec![
+                    "src/app/page.tsx",
+                    "crates/routa-server/src/lib.rs"
+                ]
+            );
+            assert_eq!(args.base, "HEAD~2");
+            assert_eq!(args.dimensions, vec!["code_quality", "testability"]);
+            assert_eq!(args.metrics, vec!["eslint_pass", "ts_typecheck_pass"]);
+            assert!(!args.json);
             assert_eq!(args.output.as_deref(), Some("report.json"));
         }
         _ => panic!("expected run command"),

@@ -93,7 +93,7 @@ struct RunArgs {
     scope: Option<String>,
     #[arg(long)]
     changed_only: bool,
-    #[arg(long)]
+    #[arg(long, num_args = 1..)]
     files: Vec<String>,
     #[arg(long, default_value = "HEAD")]
     base: String,

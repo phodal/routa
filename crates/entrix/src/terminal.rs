@@ -708,4 +708,36 @@ mod tests {
             .get("lint")
             .is_none());
     }
+
+    #[test]
+    fn shell_output_controller_all_mode_does_not_buffer_lines() {
+        let controller =
+            ShellOutputController::new(Arc::new(TerminalReporter::new(false, StreamMode::All)));
+        let metric = Metric::new("lint", "echo lint");
+        controller.handle_output(&metric, "stdout", "line one");
+        assert!(controller
+            .buffered_lines
+            .lock()
+            .unwrap()
+            .get("lint")
+            .is_none());
+    }
+
+    #[test]
+    fn shell_output_controller_flushes_and_clears_failure_buffer() {
+        let controller = ShellOutputController::new(Arc::new(TerminalReporter::new(
+            false,
+            StreamMode::Failures,
+        )));
+        let metric = Metric::new("lint", "echo lint");
+        controller.handle_output(&metric, "stdout", "line one");
+        let result = MetricResult::new("lint", false, "failed", Tier::Fast);
+        controller.handle_progress("end", &metric, Some(&result));
+        assert!(controller
+            .buffered_lines
+            .lock()
+            .unwrap()
+            .get("lint")
+            .is_none());
+    }
 }
