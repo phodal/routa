@@ -6,8 +6,8 @@ This guide covers the process for releasing new Routa artifacts to multiple dist
 
 The release process publishes to three channels simultaneously:
 
-1. **crates.io** - Rust users can `cargo install routa-cli` and `cargo install harness-monitor`
-2. **npm** - Node.js users can `npm install -g routa-cli`
+1. **crates.io** - Rust users can `cargo install routa-cli`, `cargo install harness-monitor`, and `cargo install entrix`
+2. **npm** - Node.js users can `npm install -g routa-cli`, `npm install -g harness-monitor`, and `npm install -g entrix`
 3. **GitHub Releases** - Desktop binaries and release notes
 
 ## Prerequisites

@@ -254,6 +254,7 @@ pub struct MetricResult {
     pub hard_gate: bool,
     pub duration_ms: f64,
     pub state: ResultState,
+    pub returncode: Option<i32>,
 }
 
 impl MetricResult {
@@ -276,6 +277,7 @@ impl MetricResult {
             hard_gate: false,
             duration_ms: 0.0,
             state,
+            returncode: None,
         }
     }
 
@@ -293,6 +295,15 @@ impl MetricResult {
     pub fn with_duration_ms(mut self, duration_ms: f64) -> Self {
         self.duration_ms = duration_ms;
         self
+    }
+
+    pub fn with_returncode(mut self, returncode: i32) -> Self {
+        self.returncode = Some(returncode);
+        self
+    }
+
+    pub fn is_infra_error(&self) -> bool {
+        self.state == ResultState::Unknown && !self.passed
     }
 }
 
@@ -424,6 +435,7 @@ mod tests {
         assert!(!r.hard_gate);
         assert_eq!(r.duration_ms, 0.0);
         assert_eq!(r.state, ResultState::Pass);
+        assert_eq!(r.returncode, None);
     }
 
     #[test]
@@ -437,6 +449,13 @@ mod tests {
         let r = MetricResult::new("lint", false, "skipped", Tier::Fast)
             .with_state(ResultState::Skipped);
         assert_eq!(r.state, ResultState::Skipped);
+    }
+
+    #[test]
+    fn test_metric_result_infra_error_detection() {
+        let result = MetricResult::new("lint", false, "missing tool", Tier::Fast)
+            .with_state(ResultState::Unknown);
+        assert!(result.is_infra_error());
     }
 
     #[test]

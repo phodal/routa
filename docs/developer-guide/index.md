@@ -32,6 +32,11 @@ first-run path, or running it in their own environment.
     <strong>Testing</strong>
     Understand the validation flow and fitness tiers when changing or running Routa yourself.
   </a>
+  <a href="/routa/developer-guide/local-overlay-sync">
+    <strong>Local Overlay Sync</strong>
+    Keep a self-hosted Routa checkout upgradeable when you also carry local-only patches and
+    upstream PR branches.
+  </a>
   <a href="/routa/deployment">
     <strong>Deployment</strong>
     Use this when you are taking the web surface or supporting services into a real environment.
@@ -53,6 +58,7 @@ Use this section when you need more than the normal end-user path:
 2. Read [Administration](/administration) if you are operating Routa for a team or internal environment.
 3. Read [Project Structure](/developer-guide/project-structure) and [Architecture](/ARCHITECTURE) for deeper technical context.
 4. Read [Testing](/developer-guide/testing) and [Deployment](/deployment) when you need validation or rollout guidance.
+5. Read [Local Overlay And Upstream Sync](/developer-guide/local-overlay-sync) if you run Routa locally with long-lived local patches and still need clean upstream updates.
 
 ## Maintainer-Only Material
 

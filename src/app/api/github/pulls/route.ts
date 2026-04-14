@@ -7,6 +7,7 @@ export const dynamic = "force-dynamic";
 export async function GET(request: NextRequest) {
   const workspaceId = request.nextUrl.searchParams.get("workspaceId")?.trim();
   const codebaseId = request.nextUrl.searchParams.get("codebaseId")?.trim();
+  const boardId = request.nextUrl.searchParams.get("boardId")?.trim();
   const requestedState = request.nextUrl.searchParams.get("state")?.trim() ?? "open";
   const state = requestedState === "open" || requestedState === "closed" || requestedState === "all"
     ? requestedState
@@ -22,6 +23,7 @@ export async function GET(request: NextRequest) {
 
   const system = getRoutaSystem();
   const workspaceCodebases = await system.codebaseStore.listByWorkspace(workspaceId);
+  const board = boardId ? await system.kanbanBoardStore.get(boardId) : undefined;
 
   if (workspaceCodebases.length === 0) {
     return NextResponse.json({ error: "No codebases linked to this workspace" }, { status: 404 });
@@ -44,7 +46,10 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const pulls = await listGitHubPulls(repo, { state });
+    const pulls = await listGitHubPulls(repo, {
+      state,
+      token: board?.githubToken,
+    });
     return NextResponse.json({
       repo,
       codebase: {

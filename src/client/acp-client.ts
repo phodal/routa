@@ -118,6 +118,7 @@ export class AcpClientError extends Error {
   authMethods?: AcpAuthMethod[];
   agentInfo?: { name: string; version: string };
   data?: unknown;
+  sessionMayContinue?: boolean;
 
   constructor(
     message: string,
@@ -125,6 +126,7 @@ export class AcpClientError extends Error {
     authMethods?: AcpAuthMethod[],
     agentInfo?: { name: string; version: string },
     data?: unknown,
+    sessionMayContinue?: boolean,
   ) {
     super(message);
     this.name = "AcpClientError";
@@ -132,6 +134,7 @@ export class AcpClientError extends Error {
     this.authMethods = authMethods;
     this.agentInfo = agentInfo;
     this.data = data;
+    this.sessionMayContinue = sessionMayContinue;
   }
 
   toJSON(): Record<string, unknown> {
@@ -142,6 +145,7 @@ export class AcpClientError extends Error {
       authMethods: this.authMethods,
       agentInfo: this.agentInfo,
       data: this.data,
+      sessionMayContinue: this.sessionMayContinue,
       stack: this.stack,
     };
   }
@@ -427,6 +431,7 @@ export class BrowserAcpClient {
         data.error.authMethods,
         data.error.agentInfo,
         data.error.data,
+        data.error.sessionMayContinue,
       );
     }
 
@@ -807,6 +812,7 @@ export class BrowserAcpClient {
         data.error.authMethods,
         data.error.agentInfo,
         data.error.data,
+        data.error.sessionMayContinue,
       );
     }
 

@@ -1015,6 +1015,8 @@ interface JsonRpcError {
   data?: Record<string, unknown>;
   authMethods?: Array<{ id: string; name: string; description: string }>;
   agentInfo?: { name: string; version: string };
+  /** Optional flag indicating the session may continue processing despite this error */
+  sessionMayContinue?: boolean;
 }
 
 function createSessionUpdateForwarder(

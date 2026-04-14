@@ -7,9 +7,12 @@ const resolveGitHubRepo = vi.fn();
 const codebaseStore = {
   listByWorkspace: vi.fn(),
 };
+const kanbanBoardStore = {
+  get: vi.fn(),
+};
 
 vi.mock("@/core/routa-system", () => ({
-  getRoutaSystem: () => ({ codebaseStore }),
+  getRoutaSystem: () => ({ codebaseStore, kanbanBoardStore }),
 }));
 
 vi.mock("@/core/kanban/github-issues", () => ({
@@ -32,6 +35,7 @@ describe("GET /api/github/issues", () => {
         sourceUrl: "https://github.com/acme/platform",
       },
     ]);
+    kanbanBoardStore.get.mockResolvedValue(undefined);
     resolveGitHubRepo.mockReturnValue("acme/platform");
     listGitHubIssues.mockResolvedValue([
       {
@@ -86,5 +90,23 @@ describe("GET /api/github/issues", () => {
     expect(response.status).toBe(400);
     expect(data.error).toContain("not linked to a GitHub repository");
     expect(listGitHubIssues).not.toHaveBeenCalled();
+  });
+
+  it("prefers the board token when boardId is provided", async () => {
+    kanbanBoardStore.get.mockResolvedValue({
+      id: "board-1",
+      githubToken: "board-token",
+    });
+
+    const response = await GET(
+      new NextRequest("http://localhost/api/github/issues?workspaceId=workspace-1&boardId=board-1"),
+    );
+
+    expect(response.status).toBe(200);
+    expect(kanbanBoardStore.get).toHaveBeenCalledWith("board-1");
+    expect(listGitHubIssues).toHaveBeenCalledWith("acme/platform", {
+      state: "open",
+      token: "board-token",
+    });
   });
 });

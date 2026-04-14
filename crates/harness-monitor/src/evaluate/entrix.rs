@@ -134,10 +134,10 @@ pub fn run_fitness(repo_root: &str, mode: FitnessRunMode) -> Result<FitnessSnaps
     }
 
     let policy = GovernancePolicy {
-        tier_filter: Some(match mode {
-            FitnessRunMode::Fast => Tier::Fast,
-            FitnessRunMode::Full => Tier::Deep,
-        }),
+        tier_filter: match mode {
+            FitnessRunMode::Fast => Some(Tier::Fast),
+            FitnessRunMode::Full => None,
+        },
         execution_scope: Some(ExecutionScope::Local),
         parallel: true,
         dry_run: false,
@@ -258,7 +258,7 @@ pub fn run_fitness(repo_root: &str, mode: FitnessRunMode) -> Result<FitnessSnaps
         dimensions: dim_summaries,
         slowest_metrics: slowest_metrics.into_iter().take(5).collect(),
         artifact_path: None,
-        producer: Some("harness-monitor".to_string()),
+        producer: Some("entrix".to_string()),
         generated_at_ms: Some(chrono::Utc::now().timestamp_millis()),
         base_ref,
         changed_file_count: changed_files.len(),

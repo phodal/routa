@@ -81,4 +81,33 @@ describe("ensureSqliteDefaultWorkspace", () => {
       if (fs.existsSync(dbPath)) fs.unlinkSync(dbPath);
     }
   });
+
+  it("recreates the worktrees table when it is missing on reopen", () => {
+    const dbPath = path.join(os.tmpdir(), `routa-sqlite-repair-${Date.now()}.db`);
+    closeSqliteDatabase();
+
+    try {
+      getSqliteDatabase(dbPath);
+      closeSqliteDatabase();
+
+      const writable = new BetterSqlite3(dbPath);
+      writable.exec("DROP TABLE worktrees");
+      writable.close();
+
+      getSqliteDatabase(dbPath);
+
+      const readonly = new BetterSqlite3(dbPath, { readonly: true });
+      const row = readonly.prepare(`
+        SELECT name
+        FROM sqlite_master
+        WHERE type = 'table' AND name = 'worktrees'
+      `).get() as { name: string } | undefined;
+      readonly.close();
+
+      expect(row).toEqual({ name: "worktrees" });
+    } finally {
+      closeSqliteDatabase();
+      if (fs.existsSync(dbPath)) fs.unlinkSync(dbPath);
+    }
+  });
 });

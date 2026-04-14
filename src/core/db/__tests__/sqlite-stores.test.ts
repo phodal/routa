@@ -83,6 +83,7 @@ describe("sqlite stores", () => {
         workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
         name TEXT NOT NULL,
         is_default INTEGER NOT NULL DEFAULT 0,
+        github_token TEXT,
         columns TEXT NOT NULL,
         created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL

@@ -850,3 +850,6 @@ use render::*;
 #[cfg(test)]
 #[path = "tests.rs"]
 mod tests;
+#[cfg(test)]
+#[path = "tests_runtime_matching.rs"]
+mod tests_runtime_matching;

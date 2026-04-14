@@ -33,6 +33,11 @@ on:
         required: false
         default: true
         type: boolean
+      publish_entrix:
+        description: "Publish Entrix npm packages"
+        required: false
+        default: true
+        type: boolean
       publish_desktop:
         description: "Publish desktop release assets"
         required: false
@@ -124,6 +129,21 @@ jobs:
     with:
       version: ${{ needs.resolve-version.outputs.version }}
       publish: ${{ github.event_name == 'push' || ((github.event.inputs.dry_run != 'true' && github.event.inputs.dry_run != true) && (github.event.inputs.publish_harness_monitor == 'true' || github.event.inputs.publish_harness_monitor == true)) }}
+    secrets: inherit
+
+  release-entrix:
+    name: Release Entrix
+    needs: resolve-version
+    if: |
+      github.event_name == 'push' ||
+      github.event.inputs.dry_run == 'true' ||
+      github.event.inputs.dry_run == true ||
+      github.event.inputs.publish_entrix == 'true' ||
+      github.event.inputs.publish_entrix == true
+    uses: ./.github/workflows/entrix-release.yml
+    with:
+      version: ${{ needs.resolve-version.outputs.version }}
+      publish: ${{ github.event_name == 'push' || ((github.event.inputs.dry_run != 'true' && github.event.inputs.dry_run != true) && (github.event.inputs.publish_entrix == 'true' || github.event.inputs.publish_entrix == true)) }}
     secrets: inherit
 
   release-crates:

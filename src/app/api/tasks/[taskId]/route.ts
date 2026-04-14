@@ -271,134 +271,6 @@ export async function PATCH(
     }
   }
 
-  // Check required artifacts before allowing column transition
-  if (body.columnId !== undefined && body.columnId !== existing.columnId) {
-    const incomingVerificationVerdict = body.verificationVerdict ?? nextTask.verificationVerdict;
-    const allowReviewFallbackToDev = existing.columnId === "review"
-      && body.columnId === "dev"
-      && incomingVerificationVerdict === VerificationVerdict.NOT_APPROVED;
-    if (boardId && board) {
-        if (existing.triggerSessionId && !allowReviewFallbackToDev) {
-          const laneAutomationState = resolveCurrentLaneAutomationState(existing, board.columns, {
-            currentSessionId: existing.triggerSessionId,
-          });
-          const moveBlockedMessage = buildRemainingLaneStepsMessage(existing.title, laneAutomationState);
-          if (moveBlockedMessage) {
-            return NextResponse.json({ error: moveBlockedMessage }, { status: 400 });
-          }
-        }
-
-        const targetColumn = board.columns.find((c) => c.id === body.columnId);
-        const requiredArtifacts = targetColumn?.automation?.requiredArtifacts;
-        if (requiredArtifacts && requiredArtifacts.length > 0 && system.artifactStore) {
-          const missingArtifacts: string[] = [];
-          for (const artifactType of requiredArtifacts) {
-            const artifacts = await system.artifactStore.listByTaskAndType(
-              taskId,
-              artifactType as ArtifactType
-            );
-            if (artifacts.length === 0) {
-              missingArtifacts.push(artifactType);
-            }
-          }
-          if (missingArtifacts.length > 0) {
-            return NextResponse.json(
-              {
-                error: `Cannot move task to "${targetColumn?.name ?? body.columnId}": missing required artifacts: ${missingArtifacts.join(", ")}. Please provide these artifacts before moving the task.`,
-                missingArtifacts,
-              },
-              { status: 400 }
-            );
-          }
-        }
-
-        const requiredTaskFields = resolveTargetRequiredTaskFields(board.columns, targetColumn?.id);
-        if (requiredTaskFields.length > 0) {
-          const readiness = validateTaskReadiness(nextTask, requiredTaskFields);
-          if (!readiness.ready) {
-            const missingTaskFields = readiness.missing.map(formatRequiredTaskFieldLabel);
-            return NextResponse.json(
-              {
-                error: `Cannot move task to "${targetColumn?.name ?? body.columnId}": missing required task fields: ${missingTaskFields.join(", ")}. Please complete this story definition before moving the task.`,
-                missingTaskFields,
-                storyReadiness: readiness,
-              },
-              { status: 400 },
-            );
-          }
-        }
-
-        const contractReadiness = buildTaskContractReadiness(nextTask, targetColumn?.automation?.contractRules);
-        const contractError = buildTaskContractTransitionErrorFromRules(
-          contractReadiness,
-          targetColumn?.name ?? body.columnId,
-          targetColumn?.automation?.contractRules,
-        );
-        if (contractError) {
-          await recordTaskContractGateFailure(existing, system, {
-            message: contractError,
-            targetColumnName: targetColumn?.name ?? body.columnId,
-            threshold: contractReadiness.loopBreakerThreshold,
-            sessionId: existing.triggerSessionId,
-          });
-          return NextResponse.json(
-            {
-              error: contractError,
-              contractReadiness,
-            },
-            { status: 400 },
-          );
-        }
-
-        if (targetColumn?.automation?.deliveryRules) {
-          const deliveryReadiness = await buildTaskDeliveryReadiness(nextTask, system);
-          transitionDeliveryReadiness = deliveryReadiness;
-          const deliveryError = buildTaskDeliveryTransitionErrorFromRules(
-            deliveryReadiness,
-            targetColumn.name ?? body.columnId,
-            targetColumn.automation.deliveryRules,
-          );
-          if (deliveryError) {
-            return NextResponse.json(
-              {
-                error: deliveryError,
-                deliveryReadiness,
-              },
-              { status: 400 },
-            );
-          }
-        }
-    }
-  }
-
-  if (
-    body.columnId !== undefined
-    && body.columnId !== existing.columnId
-    && shouldCaptureTaskDeliverySnapshotForColumn(body.columnId)
-  ) {
-    transitionDeliveryReadiness ??= await buildTaskDeliveryReadiness(nextTask, system);
-    nextTask.deliverySnapshot = captureTaskDeliverySnapshot(nextTask, transitionDeliveryReadiness, {
-      source: body.columnId === "done" ? "done_transition" : "review_transition",
-    });
-  }
-
-  if (body.columnId !== undefined) nextTask.columnId = body.columnId;
-  if (body.position !== undefined) nextTask.position = body.position;
-  if (body.assignee !== undefined) nextTask.assignee = body.assignee;
-  if (body.assignedProvider !== undefined) nextTask.assignedProvider = body.assignedProvider;
-  if (body.assignedRole !== undefined) nextTask.assignedRole = body.assignedRole;
-  if (body.assignedSpecialistId !== undefined) nextTask.assignedSpecialistId = body.assignedSpecialistId;
-  if (body.assignedSpecialistName !== undefined) nextTask.assignedSpecialistName = body.assignedSpecialistName;
-  if (body.triggerSessionId !== undefined) nextTask.triggerSessionId = body.triggerSessionId;
-  if (body.githubId !== undefined) nextTask.githubId = body.githubId;
-  if (body.githubNumber !== undefined) nextTask.githubNumber = body.githubNumber;
-  if (body.githubUrl !== undefined) nextTask.githubUrl = body.githubUrl;
-  if (body.githubRepo !== undefined) nextTask.githubRepo = body.githubRepo;
-  if (body.githubState !== undefined) nextTask.githubState = body.githubState;
-  if (body.lastSyncError !== undefined) nextTask.lastSyncError = body.lastSyncError;
-  if (body.isPullRequest !== undefined) nextTask.isPullRequest = body.isPullRequest === true ? true : undefined;
-  if (body.dependencies !== undefined) nextTask.dependencies = body.dependencies;
-  if (body.parallelGroup !== undefined) nextTask.parallelGroup = body.parallelGroup;
   if (body.completionSummary !== undefined) nextTask.completionSummary = body.completionSummary;
   if (body.verificationVerdict !== undefined) nextTask.verificationVerdict = body.verificationVerdict;
   if (body.verificationReport !== undefined) nextTask.verificationReport = body.verificationReport;
@@ -422,14 +294,15 @@ export async function PATCH(
   if (body.status !== undefined && normalizedStatus === undefined) {
     return NextResponse.json({ error: `Invalid status: ${String(body.status)}` }, { status: 400 });
   }
-  if (body.status !== undefined) {
-    nextTask.status = normalizedStatus as TaskStatus;
+  const requestedStatus = body.status !== undefined ? normalizedStatus as TaskStatus : undefined;
+  if (requestedStatus !== undefined) {
+    nextTask.status = requestedStatus;
   }
 
-  if (body.columnId !== undefined && body.status !== undefined) {
+  if (body.columnId !== undefined && requestedStatus !== undefined) {
     const expectedStatus = columnIdToTaskStatus(body.columnId);
-    const expectedColumnId = taskStatusToColumnId(normalizedStatus);
-    if (expectedStatus !== normalizedStatus || expectedColumnId !== body.columnId) {
+    const expectedColumnId = taskStatusToColumnId(requestedStatus);
+    if (expectedStatus !== requestedStatus || expectedColumnId !== body.columnId) {
       return NextResponse.json(
         { error: "columnId and status must describe the same workflow state" },
         { status: 400 },
@@ -445,24 +318,154 @@ export async function PATCH(
     getKanbanSessionQueue(system).removeCardJob(taskId);
   }
 
-  if (body.columnId && !body.status) {
-    nextTask.status = columnIdToTaskStatus(body.columnId);
-  }
-  if (body.status && !body.columnId) {
-    nextTask.columnId = taskStatusToColumnId(body.status);
+  if (body.columnId !== undefined) {
+    nextTask.columnId = body.columnId;
+    if (requestedStatus === undefined) {
+      nextTask.status = columnIdToTaskStatus(body.columnId);
+    }
+  } else if (requestedStatus !== undefined) {
+    nextTask.columnId = taskStatusToColumnId(requestedStatus);
   }
 
-  if (body.columnId === undefined && body.status === undefined) {
-    const boardId = nextTask.boardId ?? existing.boardId;
-    const board = boardId
-      ? await system.kanbanBoardStore.get(boardId)
-      : null;
+  // Always check review lane convergence when verification verdict is updated.
+  // This must happen before transition gates so the final target lane is validated.
+  if (body.verificationVerdict !== undefined || (body.columnId === undefined && body.status === undefined)) {
     const convergenceColumnId = resolveReviewLaneConvergenceTarget(nextTask, board?.columns ?? []);
     if (convergenceColumnId && convergenceColumnId !== nextTask.columnId) {
       nextTask.columnId = convergenceColumnId;
       nextTask.status = resolveTaskStatusForBoardColumn(board?.columns ?? [], convergenceColumnId);
     }
   }
+
+  const targetColumnId = nextTask.columnId;
+  const isColumnTransition = targetColumnId !== existing.columnId;
+
+  // Check required artifacts before allowing column transition
+  if (isColumnTransition && targetColumnId !== undefined) {
+    const incomingVerificationVerdict = nextTask.verificationVerdict;
+    const allowReviewFallbackToDev = existing.columnId === "review"
+      && targetColumnId === "dev"
+      && incomingVerificationVerdict === VerificationVerdict.NOT_APPROVED;
+    if (boardId && board) {
+        if (existing.triggerSessionId && !allowReviewFallbackToDev) {
+          const laneAutomationState = resolveCurrentLaneAutomationState(existing, board.columns, {
+            currentSessionId: existing.triggerSessionId,
+          });
+          const moveBlockedMessage = buildRemainingLaneStepsMessage(existing.title, laneAutomationState);
+          if (moveBlockedMessage) {
+            return NextResponse.json({ error: moveBlockedMessage }, { status: 400 });
+          }
+        }
+
+        const targetColumn = board.columns.find((c) => c.id === targetColumnId);
+        const requiredArtifacts = targetColumn?.automation?.requiredArtifacts;
+        if (requiredArtifacts && requiredArtifacts.length > 0 && system.artifactStore) {
+          const missingArtifacts: string[] = [];
+          for (const artifactType of requiredArtifacts) {
+            const artifacts = await system.artifactStore.listByTaskAndType(
+              taskId,
+              artifactType as ArtifactType
+            );
+            if (artifacts.length === 0) {
+              missingArtifacts.push(artifactType);
+            }
+          }
+          if (missingArtifacts.length > 0) {
+            return NextResponse.json(
+              {
+                error: `Cannot move task to "${targetColumn?.name ?? targetColumnId}": missing required artifacts: ${missingArtifacts.join(", ")}. Please provide these artifacts before moving the task.`,
+                missingArtifacts,
+              },
+              { status: 400 }
+            );
+          }
+        }
+
+        const requiredTaskFields = resolveTargetRequiredTaskFields(board.columns, targetColumn?.id);
+        if (requiredTaskFields.length > 0) {
+          const readiness = validateTaskReadiness(nextTask, requiredTaskFields);
+          if (!readiness.ready) {
+            const missingTaskFields = readiness.missing.map(formatRequiredTaskFieldLabel);
+            return NextResponse.json(
+              {
+                error: `Cannot move task to "${targetColumn?.name ?? targetColumnId}": missing required task fields: ${missingTaskFields.join(", ")}. Please complete this story definition before moving the task.`,
+                missingTaskFields,
+                storyReadiness: readiness,
+              },
+              { status: 400 },
+            );
+          }
+        }
+
+        const contractReadiness = buildTaskContractReadiness(nextTask, targetColumn?.automation?.contractRules);
+        const contractError = buildTaskContractTransitionErrorFromRules(
+          contractReadiness,
+          targetColumn?.name ?? targetColumnId,
+          targetColumn?.automation?.contractRules,
+        );
+        if (contractError) {
+          await recordTaskContractGateFailure(existing, system, {
+            message: contractError,
+            targetColumnName: targetColumn?.name ?? targetColumnId,
+            threshold: contractReadiness.loopBreakerThreshold,
+            sessionId: existing.triggerSessionId,
+          });
+          return NextResponse.json(
+            {
+              error: contractError,
+              contractReadiness,
+            },
+            { status: 400 },
+          );
+        }
+
+        if (targetColumn?.automation?.deliveryRules) {
+          const deliveryReadiness = await buildTaskDeliveryReadiness(nextTask, system);
+          transitionDeliveryReadiness = deliveryReadiness;
+          const deliveryError = buildTaskDeliveryTransitionErrorFromRules(
+            deliveryReadiness,
+            targetColumn.name ?? targetColumnId,
+            targetColumn.automation.deliveryRules,
+          );
+          if (deliveryError) {
+            return NextResponse.json(
+              {
+                error: deliveryError,
+                deliveryReadiness,
+              },
+              { status: 400 },
+            );
+          }
+        }
+    }
+  }
+
+  if (
+    isColumnTransition
+    && shouldCaptureTaskDeliverySnapshotForColumn(nextTask.columnId)
+  ) {
+    transitionDeliveryReadiness ??= await buildTaskDeliveryReadiness(nextTask, system);
+    nextTask.deliverySnapshot = captureTaskDeliverySnapshot(nextTask, transitionDeliveryReadiness, {
+      source: nextTask.columnId === "done" ? "done_transition" : "review_transition",
+    });
+  }
+
+  if (body.position !== undefined) nextTask.position = body.position;
+  if (body.assignee !== undefined) nextTask.assignee = body.assignee;
+  if (body.assignedProvider !== undefined) nextTask.assignedProvider = body.assignedProvider;
+  if (body.assignedRole !== undefined) nextTask.assignedRole = body.assignedRole;
+  if (body.assignedSpecialistId !== undefined) nextTask.assignedSpecialistId = body.assignedSpecialistId;
+  if (body.assignedSpecialistName !== undefined) nextTask.assignedSpecialistName = body.assignedSpecialistName;
+  if (body.triggerSessionId !== undefined) nextTask.triggerSessionId = body.triggerSessionId;
+  if (body.githubId !== undefined) nextTask.githubId = body.githubId;
+  if (body.githubNumber !== undefined) nextTask.githubNumber = body.githubNumber;
+  if (body.githubUrl !== undefined) nextTask.githubUrl = body.githubUrl;
+  if (body.githubRepo !== undefined) nextTask.githubRepo = body.githubRepo;
+  if (body.githubState !== undefined) nextTask.githubState = body.githubState;
+  if (body.lastSyncError !== undefined) nextTask.lastSyncError = body.lastSyncError;
+  if (body.isPullRequest !== undefined) nextTask.isPullRequest = body.isPullRequest === true ? true : undefined;
+  if (body.dependencies !== undefined) nextTask.dependencies = body.dependencies;
+  if (body.parallelGroup !== undefined) nextTask.parallelGroup = body.parallelGroup;
 
   Object.assign(nextTask, await ensureTaskBoardContext(system, nextTask));
 

@@ -66,7 +66,7 @@ pub fn score_report(dimension_scores: &[DimensionScore], min_score: f64) -> Fitn
 
     for ds in dimension_scores {
         all_hard_gate_failures.extend(ds.hard_gate_failures.iter().cloned());
-        if ds.weight > 0 {
+        if ds.weight > 0 && ds.total > 0 {
             weighted_sum += ds.score * ds.weight as f64;
             total_weight += ds.weight;
         }
@@ -223,7 +223,7 @@ mod tests {
         );
 
         let report = score_report(&[scored, skipped_only], 80.0);
-        assert_eq!(report.final_score, 80.0);
+        assert_eq!(report.final_score, 100.0);
         assert!(!report.score_blocked);
     }
 }

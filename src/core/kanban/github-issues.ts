@@ -45,27 +45,35 @@ export interface GitHubPRListItem {
   baseRef: string;
 }
 
-function getGitHubToken(): string | undefined {
-  const envToken = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
-  if (envToken) {
-    return envToken;
-  }
+export type GitHubAccessSource = "board" | "env" | "gh" | "none";
 
-  try {
-    const token = getServerBridge()
-      .process
-      .execSync("gh auth token")
-      .trim();
-    return token || undefined;
-  } catch {
-    return undefined;
-  }
+interface GitHubAccessOptions {
+  boardToken?: string;
 }
 
-export function getGitHubAccessStatus(): { available: boolean; source: "env" | "gh" | "none" } {
+interface ResolvedGitHubAccess {
+  available: boolean;
+  source: GitHubAccessSource;
+  token?: string;
+}
+
+function resolveGitHubAccess(options?: GitHubAccessOptions): ResolvedGitHubAccess {
+  const boardToken = options?.boardToken?.trim();
+  if (boardToken) {
+    return {
+      available: true,
+      source: "board",
+      token: boardToken,
+    };
+  }
+
   const envToken = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
   if (envToken) {
-    return { available: true, source: "env" };
+    return {
+      available: true,
+      source: "env",
+      token: envToken,
+    };
   }
 
   try {
@@ -74,13 +82,35 @@ export function getGitHubAccessStatus(): { available: boolean; source: "env" | "
       .execSync("gh auth token")
       .trim();
     if (token) {
-      return { available: true, source: "gh" };
+      return {
+        available: true,
+        source: "gh",
+        token,
+      };
     }
   } catch {
     // Ignore gh CLI lookup failures; callers only need the availability status.
   }
 
-  return { available: false, source: "none" };
+  return {
+    available: false,
+    source: "none",
+  };
+}
+
+function getGitHubToken(options?: GitHubAccessOptions): string | undefined {
+  return resolveGitHubAccess(options).token;
+}
+
+export function getGitHubAccessStatus(options?: GitHubAccessOptions): {
+  available: boolean;
+  source: GitHubAccessSource;
+} {
+  const access = resolveGitHubAccess(options);
+  return {
+    available: access.available,
+    source: access.source,
+  };
 }
 
 function getHeaders(token?: string) {
@@ -157,9 +187,9 @@ export function buildTaskGitHubIssueBody(objective: string, testCases?: string[]
 
 export async function listGitHubIssues(
   repo: string,
-  options?: { state?: "open" | "closed" | "all"; perPage?: number },
+  options?: { state?: "open" | "closed" | "all"; perPage?: number; token?: string },
 ): Promise<GitHubIssueListItem[]> {
-  const token = getGitHubToken();
+  const token = options?.token?.trim() || getGitHubToken();
   const state = options?.state ?? "open";
   const perPage = Math.max(1, Math.min(options?.perPage ?? 50, 100));
 
@@ -244,9 +274,9 @@ export async function createGitHubIssue(repo: string, payload: GitHubIssuePayloa
 
 export async function listGitHubPulls(
   repo: string,
-  options?: { state?: "open" | "closed" | "all"; perPage?: number },
+  options?: { state?: "open" | "closed" | "all"; perPage?: number; token?: string },
 ): Promise<GitHubPRListItem[]> {
-  const token = getGitHubToken();
+  const token = options?.token?.trim() || getGitHubToken();
   const state = options?.state ?? "open";
   const perPage = Math.max(1, Math.min(options?.perPage ?? 50, 100));
 

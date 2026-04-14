@@ -1,7 +1,7 @@
 "use client";
 
+import type { CSSProperties } from "react";
 import { useDraggable } from "@dnd-kit/core";
-import { CSS } from "@dnd-kit/utilities";
 import { useTranslation } from "@/i18n";
 import type { AcpProviderInfo } from "@/client/acp-client";
 import type { CodebaseData } from "@/client/hooks/use-workspaces";
@@ -40,6 +40,14 @@ export interface KanbanCardProps {
   onPatchTask: (taskId: string, payload: Record<string, unknown>) => Promise<TaskInfo>;
   onRetryTrigger: (taskId: string) => Promise<void>;
   onRefresh: () => void;
+}
+
+interface KanbanCardSurfaceProps extends KanbanCardProps {
+  dragHandleProps?: Record<string, any>;
+  dragOverlay?: boolean;
+  isDragging?: boolean;
+  style?: CSSProperties;
+  wrapperRef?: (node: HTMLDivElement | null) => void;
 }
 
 function summarizeReviewFeedback(report: string | undefined, maxLength = 180): string | null {
@@ -197,7 +205,7 @@ function buildCardSummary(task: TaskInfo, fallback: string): string {
   return normalizeCardPreviewText(fallback);
 }
 
-export function KanbanCard({
+function KanbanCardSurface({
   task,
   boardColumns,
   linkedSession,
@@ -215,7 +223,12 @@ export function KanbanCard({
   onPatchTask,
   onRetryTrigger,
   onRefresh,
-}: KanbanCardProps) {
+  dragHandleProps = {},
+  dragOverlay = false,
+  isDragging = false,
+  style,
+  wrapperRef,
+}: KanbanCardSurfaceProps) {
   const { t } = useTranslation();
   const sessionStatus = linkedSession?.acpStatus;
   const isTerminalCard = task.columnId === "done" || task.columnId === "blocked";
@@ -281,23 +294,11 @@ export function KanbanCard({
     : task.verificationVerdict === "APPROVED"
       ? "border-emerald-200/80 bg-emerald-50/80 text-emerald-800 dark:border-emerald-900/40 dark:bg-emerald-900/15 dark:text-emerald-200"
       : "border-amber-200/80 bg-amber-50/80 text-amber-800 dark:border-amber-900/40 dark:bg-amber-900/15 dark:text-amber-200";
-  const {
-    attributes,
-    isDragging,
-    listeners,
-    setNodeRef,
-    transform,
-  } = useDraggable({
-    id: task.id,
-    data: {
-      taskId: task.id,
-      columnId: task.columnId,
-    },
-  });
-  const style = {
-    opacity: isDragging ? 0.4 : undefined,
-    transform: transform ? CSS.Translate.toString(transform) : undefined,
-  };
+  const cardClassName = `group relative flex flex-col gap-2 border border-slate-200/80 bg-white/90 p-2.5 transition-[background-color,border-color,box-shadow,opacity] duration-150 hover:border-slate-300 hover:bg-white focus:outline-none focus:ring-2 focus:ring-amber-400/50 dark:border-[#262938] dark:bg-[#0d1018] dark:hover:border-[#34384a] ${dragOverlay
+    ? "pointer-events-none border-amber-300/80 bg-white shadow-[0_24px_70px_rgba(15,23,42,0.28)] ring-2 ring-amber-300/55 will-change-transform dark:border-amber-700/60 dark:bg-[#11141d] dark:ring-amber-700/45"
+    : isDragging
+      ? "opacity-15 ring-1 ring-slate-300/70 dark:ring-white/10"
+      : ""}`.trim();
 
   void availableProviders;
   void specialistLanguage;
@@ -310,25 +311,24 @@ export function KanbanCard({
 
   return (
     <div
-      ref={setNodeRef}
+      ref={wrapperRef}
       style={style}
-      onClick={onOpenDetail}
-      onKeyDown={(event) => {
+      onClick={dragOverlay ? undefined : onOpenDetail}
+      onKeyDown={dragOverlay ? undefined : (event) => {
         if (event.key === "Enter" || event.key === " ") {
           event.preventDefault();
           onOpenDetail();
         }
       }}
-      role="button"
-      tabIndex={0}
-      aria-label={`${t.kanban.openCard} ${task.title}`}
-      className={`group relative flex flex-col gap-2 border border-slate-200/80 bg-white/90 p-2.5 transition duration-150 hover:border-slate-300 hover:bg-white focus:outline-none focus:ring-2 focus:ring-amber-400/50 dark:border-[#262938] dark:bg-[#0d1018] dark:hover:border-[#34384a] ${isDragging ? "z-20 shadow-2xl ring-2 ring-amber-300/60" : ""}`}
-      data-testid="kanban-card"
+      role={dragOverlay ? undefined : "button"}
+      tabIndex={dragOverlay ? -1 : 0}
+      aria-label={dragOverlay ? undefined : `${t.kanban.openCard} ${task.title}`}
+      className={cardClassName}
+      data-testid={dragOverlay ? "kanban-card-overlay" : "kanban-card"}
     >
       <button
         type="button"
-        {...attributes}
-        {...listeners}
+        {...dragHandleProps}
         onClickCapture={stopCardInteraction}
         className="absolute left-2.5 top-2.5 rounded-lg p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 focus:outline-none focus:ring-2 focus:ring-amber-400/50 dark:text-slate-500 dark:hover:bg-[#191c28] dark:hover:text-slate-300"
         aria-label={`${t.kanban.dragCard} ${task.title}`}
@@ -503,6 +503,37 @@ export function KanbanCard({
       )}
     </div>
   );
+}
+
+export function KanbanCard({
+  ...props
+}: KanbanCardProps) {
+  const {
+    attributes,
+    isDragging,
+    listeners,
+    setNodeRef,
+  } = useDraggable({
+    id: props.task.id,
+    data: {
+      taskId: props.task.id,
+      columnId: props.task.columnId,
+    },
+  });
+
+  return (
+    <KanbanCardSurface
+      {...props}
+      wrapperRef={setNodeRef}
+      dragHandleProps={{ ...attributes, ...listeners }}
+      isDragging={isDragging}
+      style={isDragging ? { opacity: 0.16 } : undefined}
+    />
+  );
+}
+
+export function KanbanCardOverlay(props: KanbanCardProps) {
+  return <KanbanCardSurface {...props} dragOverlay />;
 }
 
 interface WorktreeBadgeProps {

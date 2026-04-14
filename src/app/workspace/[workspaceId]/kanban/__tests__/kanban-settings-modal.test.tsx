@@ -76,6 +76,7 @@ describe("KanbanSettingsModal", () => {
           maxRecoveryAttempts: 1,
           completionRequirement: "turn_complete",
         },
+        undefined,
       );
     });
   }, 15_000);
@@ -138,13 +139,13 @@ describe("KanbanSettingsModal", () => {
   it("shows GitHub import availability in board settings", () => {
     render(
       <KanbanSettingsModal
-        board={board}
+        board={{ ...board, githubTokenConfigured: true }}
         columnAutomation={{}}
         availableProviders={[{ id: "claude", name: "Claude Code", description: "Claude Code provider", command: "claude" }]}
         specialists={[{ id: "verify", name: "Verifier", role: "GATE" }]}
         specialistLanguage="en"
         githubImportAvailable
-        githubAccessSource="gh"
+        githubAccessSource="board"
         onClose={vi.fn()}
         onClearAll={vi.fn(async () => {})}
         onSave={vi.fn(async () => {})}
@@ -153,8 +154,47 @@ describe("KanbanSettingsModal", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Board" }));
     expect(screen.getByText("GitHub import")).not.toBeNull();
-    expect(screen.getByText("GitHub CLI")).not.toBeNull();
+    expect(screen.getByText("Board config")).not.toBeNull();
+    expect(screen.getByText("Configured")).not.toBeNull();
     expect(screen.getAllByText("Enabled").length).toBeGreaterThan(0);
+  });
+
+  it("passes a board token update when saving GitHub settings", async () => {
+    const onSave = vi.fn(async () => {});
+
+    render(
+      <KanbanSettingsModal
+        board={board}
+        columnAutomation={{}}
+        availableProviders={[{ id: "claude", name: "Claude Code", description: "Claude Code provider", command: "claude" }]}
+        specialists={[{ id: "verify", name: "Verifier", role: "GATE" }]}
+        specialistLanguage="en"
+        onClose={vi.fn()}
+        onClearAll={vi.fn(async () => {})}
+        onSave={onSave}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Board" }));
+    fireEvent.change(screen.getByLabelText("GitHub personal access token"), {
+      target: { value: "github_pat_test" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /save board settings/i }));
+
+    await waitFor(() => {
+      expect(onSave).toHaveBeenCalledWith(
+        expect.any(Array),
+        expect.any(Object),
+        2,
+        {
+          mode: "watchdog_retry",
+          inactivityTimeoutMinutes: 10,
+          maxRecoveryAttempts: 1,
+          completionRequirement: "turn_complete",
+        },
+        { token: "github_pat_test" },
+      );
+    });
   });
 
   it("defaults specialist filtering to kanban in board settings", () => {
@@ -278,6 +318,7 @@ describe("KanbanSettingsModal", () => {
           maxRecoveryAttempts: 1,
           completionRequirement: "turn_complete",
         },
+        undefined,
       );
     });
   });
@@ -346,6 +387,7 @@ describe("KanbanSettingsModal", () => {
           maxRecoveryAttempts: 1,
           completionRequirement: "turn_complete",
         },
+        undefined,
       );
     });
   });
@@ -385,6 +427,7 @@ describe("KanbanSettingsModal", () => {
           maxRecoveryAttempts: 1,
           completionRequirement: "turn_complete",
         },
+        undefined,
       );
     });
   });
@@ -445,6 +488,7 @@ describe("KanbanSettingsModal", () => {
           maxRecoveryAttempts: 1,
           completionRequirement: "turn_complete",
         },
+        undefined,
       );
     });
   });

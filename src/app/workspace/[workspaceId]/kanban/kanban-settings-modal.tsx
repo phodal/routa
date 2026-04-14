@@ -38,7 +38,7 @@ export interface KanbanSettingsModalProps {
   specialists: SpecialistOption[];
   specialistLanguage: KanbanSpecialistLanguage;
   githubImportAvailable?: boolean;
-  githubAccessSource?: "env" | "gh" | "none";
+  githubAccessSource?: "board" | "env" | "gh" | "none";
   onClose: () => void;
   onClearAll: () => Promise<void>;
   onSave: (
@@ -46,6 +46,7 @@ export interface KanbanSettingsModalProps {
     columnAutomation: Record<string, ColumnAutomationConfig>,
     sessionConcurrencyLimit: number,
     devSessionSupervision: KanbanDevSessionSupervisionInfo,
+    githubTokenUpdate?: { token?: string; clear?: boolean },
   ) => Promise<void>;
 }
 
@@ -88,6 +89,8 @@ export function KanbanSettingsModal({
   const [kanbanYamlError, setKanbanYamlError] = useState("");
   const [kanbanYamlResult, setKanbanYamlResult] = useState("");
   const [showUnsavedChangesPrompt, setShowUnsavedChangesPrompt] = useState(false);
+  const [githubTokenInput, setGitHubTokenInput] = useState("");
+  const [removeConfiguredGitHubToken, setRemoveConfiguredGitHubToken] = useState(false);
   const kanbanImportInputRef = useRef<HTMLInputElement>(null);
 
   const sortedColumns = useMemo(
@@ -106,14 +109,24 @@ export function KanbanSettingsModal({
     automation: normalizeAutomationForDirtyCheck(initialColumnAutomation, initialEditableColumns),
     sessionConcurrencyLimit: Math.max(1, Math.floor(board.sessionConcurrencyLimit ?? 1)),
     devSessionSupervision: normalizeDevSessionSupervision(board.devSessionSupervision ?? DEFAULT_DEV_SESSION_SUPERVISION),
-  }), [board.devSessionSupervision, board.sessionConcurrencyLimit, initialColumnAutomation, initialEditableColumns]);
+    githubTokenConfigured: Boolean(board.githubTokenConfigured),
+  }), [board.devSessionSupervision, board.githubTokenConfigured, board.sessionConcurrencyLimit, initialColumnAutomation, initialEditableColumns]);
 
   const currentSnapshot = useMemo(() => JSON.stringify({
     columns: normalizeColumns(editableColumns),
     automation: normalizeAutomationForDirtyCheck(columnAutomation, editableColumns),
     sessionConcurrencyLimit: Math.max(1, Math.floor(sessionConcurrencyLimit)),
     devSessionSupervision: normalizeDevSessionSupervision(devSessionSupervision),
-  }), [columnAutomation, devSessionSupervision, editableColumns, sessionConcurrencyLimit]);
+    githubTokenConfigured: removeConfiguredGitHubToken ? false : Boolean(board.githubTokenConfigured || githubTokenInput.trim()),
+  }), [
+    board.githubTokenConfigured,
+    columnAutomation,
+    devSessionSupervision,
+    editableColumns,
+    githubTokenInput,
+    removeConfiguredGitHubToken,
+    sessionConcurrencyLimit,
+  ]);
 
   const isDirty = initialSnapshot !== currentSnapshot;
 
@@ -130,6 +143,11 @@ export function KanbanSettingsModal({
   useEffect(() => {
     setEditableColumns(initialEditableColumns);
   }, [initialEditableColumns]);
+
+  useEffect(() => {
+    setGitHubTokenInput("");
+    setRemoveConfiguredGitHubToken(false);
+  }, [board.githubTokenConfigured, board.id]);
 
   useEffect(() => {
     setKanbanExportWorkspaceId((current) => current || board.workspaceId || "default");
@@ -326,6 +344,11 @@ export function KanbanSettingsModal({
         sanitizedColumnAutomation,
         Math.max(1, Math.floor(sessionConcurrencyLimit)),
         normalizeDevSessionSupervision(devSessionSupervision),
+        removeConfiguredGitHubToken
+          ? { clear: true }
+          : githubTokenInput.trim()
+            ? { token: githubTokenInput.trim() }
+            : undefined,
       );
       if (closeAfterSave) {
         setShowUnsavedChangesPrompt(false);
@@ -625,10 +648,69 @@ export function KanbanSettingsModal({
                       <StatPill
                         label={t.kanban.githubAccessSource}
                         value={githubImportAvailable
-                          ? (githubAccessSource === "gh" ? t.kanban.githubAccessGh : t.kanban.githubAccessEnv)
+                          ? (
+                            githubAccessSource === "board"
+                              ? t.kanban.githubAccessBoard
+                              : githubAccessSource === "gh"
+                                ? t.kanban.githubAccessGh
+                                : t.kanban.githubAccessEnv
+                          )
                           : t.common.unavailable}
                         tone="slate"
                       />
+                      <StatPill
+                        label={t.kanban.githubCredential}
+                        value={board.githubTokenConfigured && !removeConfiguredGitHubToken
+                          ? t.kanban.githubTokenConfigured
+                          : githubTokenInput.trim()
+                            ? t.kanban.githubTokenReadyToSave
+                            : t.kanban.githubTokenNotConfigured}
+                        tone={board.githubTokenConfigured || githubTokenInput.trim() ? "emerald" : "slate"}
+                      />
+                    </div>
+                    <div className="mt-3 space-y-2">
+                      <label className="block space-y-1">
+                        <span className="block text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-300">
+                          {t.kanban.githubPersonalAccessToken}
+                        </span>
+                        <input
+                          type="password"
+                          value={githubTokenInput}
+                          onChange={(event) => {
+                            const nextValue = event.target.value;
+                            setGitHubTokenInput(nextValue);
+                            if (nextValue.trim()) {
+                              setRemoveConfiguredGitHubToken(false);
+                            }
+                          }}
+                          placeholder={t.webhook.tokenPlaceholder}
+                          autoComplete="off"
+                          spellCheck={false}
+                          className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-amber-400 dark:border-slate-700 dark:bg-[#0b1119] dark:text-slate-100"
+                          aria-label="GitHub personal access token"
+                        />
+                      </label>
+                      <p className="text-xs leading-5 text-slate-500 dark:text-slate-400">
+                        {board.githubTokenConfigured
+                          ? t.kanban.githubTokenReplaceHint
+                          : t.kanban.githubTokenConfigHint}
+                      </p>
+                      {board.githubTokenConfigured ? (
+                        <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
+                          <input
+                            type="checkbox"
+                            checked={removeConfiguredGitHubToken}
+                            onChange={(event) => {
+                              const nextChecked = event.target.checked;
+                              setRemoveConfiguredGitHubToken(nextChecked);
+                              if (nextChecked) {
+                                setGitHubTokenInput("");
+                              }
+                            }}
+                          />
+                          <span>{t.kanban.githubTokenRemove}</span>
+                        </label>
+                      ) : null}
                     </div>
                     <p className="mt-3 text-sm text-slate-600 dark:text-slate-300">
                       {githubImportAvailable ? t.kanban.githubImportEnabledHint : t.kanban.githubImportDisabledHint}

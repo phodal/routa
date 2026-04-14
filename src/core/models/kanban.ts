@@ -119,6 +119,7 @@ export interface KanbanBoard {
   workspaceId: string;
   name: string;
   isDefault: boolean;
+  githubToken?: string;
   columns: KanbanColumn[];
   createdAt: Date;
   updatedAt: Date;
@@ -270,6 +271,7 @@ export function createKanbanBoard(params: {
   workspaceId: string;
   name: string;
   isDefault?: boolean;
+  githubToken?: string;
   columns?: KanbanColumn[];
 }): KanbanBoard {
   const now = new Date();
@@ -278,6 +280,7 @@ export function createKanbanBoard(params: {
     workspaceId: params.workspaceId,
     name: params.name,
     isDefault: params.isDefault ?? false,
+    githubToken: params.githubToken?.trim() || undefined,
     columns: cloneKanbanColumns(params.columns ?? DEFAULT_KANBAN_COLUMNS),
     createdAt: now,
     updatedAt: now,

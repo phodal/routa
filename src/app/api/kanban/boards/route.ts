@@ -11,8 +11,29 @@ import { reviveMissingEntryAutomations } from "@/core/kanban/restart-recovery";
 import { getKanbanSessionQueue } from "@/core/kanban/workflow-orchestrator-singleton";
 import { getHttpSessionStore } from "@/core/acp/http-session-store";
 import { getAcpProcessManager } from "@/core/acp/processer";
+import type { KanbanBoard, KanbanDevSessionSupervision } from "@/core/models/kanban";
 
 export const dynamic = "force-dynamic";
+
+function sanitizeBoard(
+  board: KanbanBoard,
+  extras?: {
+    autoProviderId?: string | null;
+    sessionConcurrencyLimit?: number;
+    devSessionSupervision?: KanbanDevSessionSupervision;
+    queue?: unknown;
+  },
+) {
+  return {
+    ...board,
+    githubToken: undefined,
+    githubTokenConfigured: Boolean(board.githubToken?.trim()),
+    autoProviderId: extras?.autoProviderId,
+    sessionConcurrencyLimit: extras?.sessionConcurrencyLimit,
+    devSessionSupervision: extras?.devSessionSupervision,
+    queue: extras?.queue,
+  };
+}
 
 function requireWorkspaceId(value: unknown): string | null {
   if (typeof value !== "string") return null;
@@ -38,8 +59,7 @@ export async function GET(request: NextRequest) {
     processManager,
   })));
   return NextResponse.json({
-    boards: await Promise.all(boards.map(async (board) => ({
-      ...board,
+    boards: await Promise.all(boards.map(async (board) => sanitizeBoard(board, {
       autoProviderId: getKanbanAutoProvider(workspace?.metadata, board.id),
       sessionConcurrencyLimit: getKanbanSessionConcurrencyLimit(workspace?.metadata, board.id),
       devSessionSupervision: getKanbanDevSessionSupervision(workspace?.metadata, board.id),
@@ -83,5 +103,5 @@ export async function POST(request: NextRequest) {
     resourceId: board.id,
     source: "user",
   });
-  return NextResponse.json({ board }, { status: 201 });
+  return NextResponse.json({ board: sanitizeBoard(board) }, { status: 201 });
 }

@@ -124,6 +124,7 @@ export const kanbanBoards = sqliteTable("kanban_boards", {
   workspaceId: text("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
   isDefault: integer("is_default", { mode: "boolean" }).notNull().default(false),
+  githubToken: text("github_token"),
   columns: text("columns", { mode: "json" }).$type<KanbanColumn[]>().notNull().default([]),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),

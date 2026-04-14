@@ -68,7 +68,7 @@ describe("KanbanTab GitHub import merge mode", () => {
   it("merges selected GitHub issues into a single backlog card", async () => {
     desktopAwareFetch.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
-      if (url === "/api/github/access") {
+      if (url === "/api/github/access?boardId=board-1") {
         return {
           ok: true,
           json: async () => ({
@@ -77,7 +77,7 @@ describe("KanbanTab GitHub import merge mode", () => {
           }),
         } as Response;
       }
-      if (url === "/api/github/issues?workspaceId=workspace-1&codebaseId=codebase-1") {
+      if (url === "/api/github/issues?workspaceId=workspace-1&codebaseId=codebase-1&boardId=board-1") {
         return {
           ok: true,
           json: async () => ({
@@ -238,7 +238,7 @@ describe("KanbanTab GitHub import merge mode", () => {
   it("hides the import button when GitHub access is unavailable", async () => {
     desktopAwareFetch.mockImplementation(async (input: RequestInfo | URL) => {
       const url = String(input);
-      if (url === "/api/github/access") {
+      if (url === "/api/github/access?boardId=board-1") {
         return {
           ok: true,
           json: async () => ({

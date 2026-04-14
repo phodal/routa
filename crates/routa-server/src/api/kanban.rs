@@ -313,29 +313,44 @@ fn persisted_session_is_explicitly_terminal(history: &[serde_json::Value]) -> bo
     history
         .iter()
         .rev()
-        .any(session_history_entry_marks_runtime_error)
+        .find_map(session_history_entry_runtime_state)
+        == Some(PersistedSessionRuntimeState::Error)
 }
 
-fn session_history_entry_marks_runtime_error(entry: &serde_json::Value) -> bool {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PersistedSessionRuntimeState {
+    Active,
+    Error,
+}
+
+fn session_history_entry_runtime_state(
+    entry: &serde_json::Value,
+) -> Option<PersistedSessionRuntimeState> {
     let update = entry.get("update").and_then(serde_json::Value::as_object);
     let session_update = update
         .and_then(|update| update.get("sessionUpdate"))
         .and_then(serde_json::Value::as_str);
 
     if session_update == Some("error") {
-        return true;
+        return Some(PersistedSessionRuntimeState::Error);
     }
 
-    if session_update == Some("acp_status")
-        && update
+    if session_update == Some("acp_status") {
+        let status = update
             .and_then(|update| update.get("status"))
-            .and_then(serde_json::Value::as_str)
-            == Some("error")
-    {
-        return true;
+            .and_then(serde_json::Value::as_str);
+        return match status {
+            Some("error") => Some(PersistedSessionRuntimeState::Error),
+            Some("ready" | "connecting") => Some(PersistedSessionRuntimeState::Active),
+            _ => None,
+        };
     }
 
-    entry.get("type").and_then(serde_json::Value::as_str) == Some("error")
+    if entry.get("type").and_then(serde_json::Value::as_str) == Some("error") {
+        return Some(PersistedSessionRuntimeState::Error);
+    }
+
+    None
 }
 
 fn resolve_stale_lane_session_terminal_status(task: &Task) -> TaskLaneSessionStatus {
@@ -1506,6 +1521,24 @@ mod tests {
                 "error": "session crashed"
             }
         })]));
+
+        assert!(!persisted_session_is_explicitly_terminal(&[
+            json!({
+                "sessionId": "session-4",
+                "update": {
+                    "sessionUpdate": "acp_status",
+                    "status": "error",
+                    "error": "session crashed"
+                }
+            }),
+            json!({
+                "sessionId": "session-4",
+                "update": {
+                    "sessionUpdate": "acp_status",
+                    "status": "ready",
+                }
+            }),
+        ]));
     }
 
     #[tokio::test]

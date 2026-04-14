@@ -29,6 +29,7 @@ interface GitHubPullsResponse {
 interface KanbanGitHubImportModalProps {
   show: boolean;
   workspaceId: string;
+  boardId?: string | null;
   codebases: CodebaseData[];
   tasks: TaskInfo[];
   onClose: () => void;
@@ -46,6 +47,7 @@ function formatIssueTimestamp(value?: string): string | null {
 export function KanbanGitHubImportModal({
   show,
   workspaceId,
+  boardId,
   codebases,
   tasks,
   onClose,
@@ -98,7 +100,7 @@ export function KanbanGitHubImportModal({
       try {
         if (activeTab === "issues") {
           const response = await desktopAwareFetch(
-            `/api/github/issues?workspaceId=${encodeURIComponent(workspaceId)}&codebaseId=${encodeURIComponent(selectedCodebaseId)}`,
+            `/api/github/issues?workspaceId=${encodeURIComponent(workspaceId)}&codebaseId=${encodeURIComponent(selectedCodebaseId)}${boardId ? `&boardId=${encodeURIComponent(boardId)}` : ""}`,
             { cache: "no-store", signal: controller.signal },
           );
           const data = await response.json().catch(() => ({}));
@@ -113,7 +115,7 @@ export function KanbanGitHubImportModal({
           });
         } else {
           const response = await desktopAwareFetch(
-            `/api/github/pulls?workspaceId=${encodeURIComponent(workspaceId)}&codebaseId=${encodeURIComponent(selectedCodebaseId)}`,
+            `/api/github/pulls?workspaceId=${encodeURIComponent(workspaceId)}&codebaseId=${encodeURIComponent(selectedCodebaseId)}${boardId ? `&boardId=${encodeURIComponent(boardId)}` : ""}`,
             { cache: "no-store", signal: controller.signal },
           );
           const data = await response.json().catch(() => ({}));
@@ -140,7 +142,7 @@ export function KanbanGitHubImportModal({
     })();
 
     return () => controller.abort();
-  }, [activeTab, reloadNonce, selectedCodebaseId, show, t.kanbanImport.loadFailed, t.kanbanImport.loadPullsFailed, workspaceId]);
+  }, [activeTab, boardId, reloadNonce, selectedCodebaseId, show, t.kanbanImport.loadFailed, t.kanbanImport.loadPullsFailed, workspaceId]);
 
   // Reset selection when tab changes
   useEffect(() => {

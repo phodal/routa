@@ -1,21 +1,20 @@
 //! Shell runner — execute metric commands via subprocess.
 
-use std::collections::HashMap;
-use std::io;
-use std::io::{BufRead, BufReader};
-use std::path::{Path, PathBuf};
-use std::process::{Command, Output, Stdio};
-use std::sync::Arc;
-use std::sync::mpsc;
-use std::thread;
-use std::time::{Duration, Instant};
+mod support;
 
-#[cfg(unix)]
-use std::os::unix::process::CommandExt;
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::thread;
+use std::time::Instant;
 
 use regex::Regex;
 
 use crate::model::{Gate, Metric, MetricResult, ResultState};
+use support::{
+    augment_runner_path, is_infra_failure, run_command_with_timeout, smart_truncate,
+    CommandRunOutput,
+};
 
 /// Callback type for progress events.
 pub type ProgressCallback = Box<dyn Fn(&str, &Metric, Option<&MetricResult>) + Send + Sync>;
@@ -70,6 +69,7 @@ impl ShellRunner {
                     hard_gate: metric.gate == Gate::Hard,
                     duration_ms: 0.0,
                     state: ResultState::Waived,
+                    returncode: None,
                 };
             }
         }
@@ -83,6 +83,7 @@ impl ShellRunner {
                 hard_gate: metric.gate == Gate::Hard,
                 duration_ms: 0.0,
                 state: ResultState::Pass,
+                returncode: None,
             };
         }
 
@@ -92,6 +93,7 @@ impl ShellRunner {
         // Build the environment
         let mut env: HashMap<String, String> = std::env::vars().collect();
         env.extend(self.env_overrides.clone());
+        augment_runner_path(&mut env);
 
         // Use a thread to implement timeout
         let command_str = metric.command.clone();
@@ -106,50 +108,66 @@ impl ShellRunner {
             self.output_callback.as_ref(),
             metric,
         ) {
-                Ok(command_result) => {
-                    let CommandRunOutput { output, timed_out } = command_result;
-                    let stdout = String::from_utf8_lossy(&output.stdout);
-                    let stderr = String::from_utf8_lossy(&output.stderr);
-                    let combined = format!("{}{}", stdout, stderr);
-                    let output_truncated = smart_truncate(&combined, 4000, 4000);
-                    let elapsed = start.elapsed().as_secs_f64() * 1000.0;
+            Ok(command_result) => {
+                let CommandRunOutput { output, timed_out } = command_result;
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                let combined = format!("{}{}", stdout, stderr);
+                let output_truncated = smart_truncate(&combined, 4000, 4000);
+                let elapsed = start.elapsed().as_secs_f64() * 1000.0;
 
-                    if timed_out {
-                        let timed_out_output = if output_truncated.trim().is_empty() {
-                            format!("TIMEOUT ({}s)", timeout)
-                        } else {
-                            format!("TIMEOUT ({}s)\n{}", timeout, output_truncated)
-                        };
-
-                        MetricResult::new(metric.name.clone(), false, timed_out_output, metric.tier)
-                            .with_hard_gate(metric.gate == Gate::Hard)
-                            .with_duration_ms(elapsed)
+                if timed_out {
+                    let timed_out_output = if output_truncated.trim().is_empty() {
+                        format!("TIMEOUT ({}s)", timeout)
                     } else {
-                        let passed = if !metric.pattern.is_empty() {
-                            Regex::new(&metric.pattern)
-                                .map(|re| re.is_match(&combined))
-                                .unwrap_or(false)
-                        } else {
-                            output.status.success()
-                        };
+                        format!("TIMEOUT ({}s)\n{}", timeout, output_truncated)
+                    };
 
-                        MetricResult::new(
-                            metric.name.clone(),
-                            passed,
-                            output_truncated,
-                            metric.tier,
-                        )
+                    MetricResult::new(metric.name.clone(), false, timed_out_output, metric.tier)
                         .with_hard_gate(metric.gate == Gate::Hard)
                         .with_duration_ms(elapsed)
-                    }
-                }
-                Err(e) => {
-                    let elapsed = start.elapsed().as_secs_f64() * 1000.0;
-                    MetricResult::new(metric.name.clone(), false, e.to_string(), metric.tier)
+                } else {
+                    let returncode = output.status.code().unwrap_or(-1);
+                    let pattern_matched = if !metric.pattern.is_empty() {
+                        Regex::new(&metric.pattern)
+                            .map(|re| re.is_match(&combined))
+                            .unwrap_or(false)
+                    } else {
+                        false
+                    };
+                    let passed = if !metric.pattern.is_empty() {
+                        output.status.success() && pattern_matched
+                    } else {
+                        output.status.success()
+                    };
+                    let state = if passed {
+                        ResultState::Pass
+                    } else if is_infra_failure(
+                        metric,
+                        &combined,
+                        returncode,
+                        !output.status.success() && !metric.pattern.is_empty() && !pattern_matched,
+                    ) {
+                        ResultState::Unknown
+                    } else {
+                        ResultState::Fail
+                    };
+
+                    MetricResult::new(metric.name.clone(), passed, output_truncated, metric.tier)
+                        .with_state(state)
                         .with_hard_gate(metric.gate == Gate::Hard)
                         .with_duration_ms(elapsed)
+                        .with_returncode(returncode)
                 }
-            };
+            }
+            Err(e) => {
+                let elapsed = start.elapsed().as_secs_f64() * 1000.0;
+                MetricResult::new(metric.name.clone(), false, e.to_string(), metric.tier)
+                    .with_state(ResultState::Unknown)
+                    .with_hard_gate(metric.gate == Gate::Hard)
+                    .with_duration_ms(elapsed)
+            }
+        };
 
         result
     }
@@ -216,568 +234,5 @@ impl ShellRunner {
     }
 }
 
-/// Safely truncate a string to a maximum number of bytes at a valid UTF-8 boundary.
-fn smart_truncate(s: &str, head_bytes: usize, tail_bytes: usize) -> String {
-    let max_bytes = head_bytes + tail_bytes + 200;
-    if s.len() <= max_bytes {
-        return s.to_owned();
-    }
-
-    let mut head_end = head_bytes.min(s.len());
-    while head_end > 0 && !s.is_char_boundary(head_end) {
-        head_end -= 1;
-    }
-
-    let mut tail_start = s.len().saturating_sub(tail_bytes);
-    while tail_start < s.len() && !s.is_char_boundary(tail_start) {
-        tail_start += 1;
-    }
-
-    let omitted = s.len().saturating_sub(head_end + (s.len() - tail_start));
-    format!(
-        "{}\n\n... [{} characters omitted] ...\n\n{}",
-        &s[..head_end],
-        omitted,
-        &s[tail_start..]
-    )
-}
-
-struct CommandRunOutput {
-    output: Output,
-    timed_out: bool,
-}
-
-fn run_command_with_timeout(
-    command_str: &str,
-    project_root: &Path,
-    env: &HashMap<String, String>,
-    timeout: u64,
-    output_callback: Option<&OutputCallback>,
-    metric: &Metric,
-) -> io::Result<CommandRunOutput> {
-    let mut cmd;
-    #[cfg(unix)]
-    {
-        cmd = Command::new("/bin/bash");
-        cmd.arg("-lc").arg(command_str);
-    }
-    #[cfg(windows)]
-    {
-        cmd = Command::new("cmd");
-        cmd.arg("/C").arg(command_str);
-    }
-    cmd.current_dir(project_root)
-        .envs(env)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-
-    #[cfg(unix)]
-    cmd.process_group(0);
-
-    let mut child = cmd.spawn()?;
-    let stdout_collector = child.stdout.take();
-    let stderr_collector = child.stderr.take();
-    let output = if let Some(callback) = output_callback {
-        collect_output_with_streaming(
-            stdout_collector,
-            stderr_collector,
-            callback.clone(),
-            metric.clone(),
-        )
-    } else {
-        collect_output(stdout_collector, stderr_collector)
-    };
-
-    let timeout_duration = Duration::from_secs(timeout);
-    let timed_out = wait_for_child_with_timeout(&mut child, timeout_duration)?;
-
-    if timed_out {
-        terminate_child(&mut child)?;
-    }
-
-    let status = child.wait()?;
-    let output = output.join().map_err(|_| io::Error::other("output collector panicked"))?;
-    let output = Output {
-        status,
-        stdout: output.0,
-        stderr: output.1,
-    };
-    Ok(CommandRunOutput { output, timed_out })
-}
-
-fn collect_output(
-    stdout: Option<std::process::ChildStdout>,
-    stderr: Option<std::process::ChildStderr>,
-) -> thread::JoinHandle<(Vec<u8>, Vec<u8>)> {
-    thread::spawn(move || {
-        let stdout_bytes = stdout
-            .map(|mut pipe| {
-                let mut buffer = Vec::new();
-                let _ = io::Read::read_to_end(&mut pipe, &mut buffer);
-                buffer
-            })
-            .unwrap_or_default();
-        let stderr_bytes = stderr
-            .map(|mut pipe| {
-                let mut buffer = Vec::new();
-                let _ = io::Read::read_to_end(&mut pipe, &mut buffer);
-                buffer
-            })
-            .unwrap_or_default();
-        (stdout_bytes, stderr_bytes)
-    })
-}
-
-fn collect_output_with_streaming(
-    stdout: Option<std::process::ChildStdout>,
-    stderr: Option<std::process::ChildStderr>,
-    callback: OutputCallback,
-    metric: Metric,
-) -> thread::JoinHandle<(Vec<u8>, Vec<u8>)> {
-    thread::spawn(move || {
-        let (tx, rx) = mpsc::channel::<(String, Vec<u8>, bool)>();
-
-        let stdout_handle = stdout.map(|pipe| {
-            let tx = tx.clone();
-            let metric = metric.clone();
-            let callback = callback.clone();
-            thread::spawn(move || {
-                let mut reader = BufReader::new(pipe);
-                let mut raw = Vec::new();
-                let mut line = String::new();
-                loop {
-                    line.clear();
-                    match reader.read_line(&mut line) {
-                        Ok(0) => break,
-                        Ok(_) => {
-                            raw.extend_from_slice(line.as_bytes());
-                            let text = line.trim_end_matches('\n').trim_end_matches('\r');
-                            if !text.is_empty() {
-                                callback(&metric, "stdout", text);
-                            }
-                        }
-                        Err(_) => break,
-                    }
-                }
-                let _ = tx.send(("stdout".to_string(), raw, true));
-            })
-        });
-
-        let stderr_handle = stderr.map(|pipe| {
-            let tx = tx.clone();
-            let metric = metric.clone();
-            let callback = callback.clone();
-            thread::spawn(move || {
-                let mut reader = BufReader::new(pipe);
-                let mut raw = Vec::new();
-                let mut line = String::new();
-                loop {
-                    line.clear();
-                    match reader.read_line(&mut line) {
-                        Ok(0) => break,
-                        Ok(_) => {
-                            raw.extend_from_slice(line.as_bytes());
-                            let text = line.trim_end_matches('\n').trim_end_matches('\r');
-                            if !text.is_empty() {
-                                callback(&metric, "stderr", text);
-                            }
-                        }
-                        Err(_) => break,
-                    }
-                }
-                let _ = tx.send(("stderr".to_string(), raw, true));
-            })
-        });
-
-        drop(tx);
-
-        let mut stdout_bytes = Vec::new();
-        let mut stderr_bytes = Vec::new();
-        while let Ok((source, raw, _done)) = rx.recv() {
-            if source == "stdout" {
-                stdout_bytes = raw;
-            } else {
-                stderr_bytes = raw;
-            }
-        }
-
-        if let Some(handle) = stdout_handle {
-            let _ = handle.join();
-        }
-        if let Some(handle) = stderr_handle {
-            let _ = handle.join();
-        }
-
-        (stdout_bytes, stderr_bytes)
-    })
-}
-
-fn wait_for_child_with_timeout(
-    child: &mut std::process::Child,
-    timeout: Duration,
-) -> io::Result<bool> {
-    let start = Instant::now();
-    loop {
-        if child.try_wait()?.is_some() {
-            return Ok(false);
-        }
-        if start.elapsed() >= timeout {
-            return Ok(true);
-        }
-        thread::sleep(Duration::from_millis(50));
-    }
-}
-
-fn terminate_child(child: &mut std::process::Child) -> io::Result<()> {
-    #[cfg(unix)]
-    {
-        terminate_process_group(child)?;
-        Ok(())
-    }
-
-    #[cfg(not(unix))]
-    {
-        child.kill()?;
-        Ok(())
-    }
-}
-
-#[cfg(unix)]
-fn terminate_process_group(child: &mut std::process::Child) -> io::Result<()> {
-    const GRACE_PERIOD: Duration = Duration::from_millis(200);
-    const SIGTERM: i32 = 15;
-    const SIGKILL: i32 = 9;
-    let pid = child.id() as i32;
-
-    send_signal_to_group(pid, SIGTERM)?;
-
-    let start = Instant::now();
-    loop {
-        if child.try_wait()?.is_some() {
-            return Ok(());
-        }
-        if start.elapsed() >= GRACE_PERIOD {
-            break;
-        }
-        thread::sleep(Duration::from_millis(20));
-    }
-
-    send_signal_to_group(pid, SIGKILL)?;
-    Ok(())
-}
-
-#[cfg(unix)]
-fn send_signal_to_group(pid: i32, signal: i32) -> io::Result<()> {
-    let signal_name = match signal {
-        15 => "TERM",
-        9 => "KILL",
-        _ => {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "unsupported signal",
-            ))
-        }
-    };
-
-    let status = Command::new("kill")
-        .arg(format!("-{}", signal_name))
-        .arg(format!("-{}", pid))
-        .status()?;
-
-    if status.success() {
-        Ok(())
-    } else {
-        let err = io::Error::other(format!(
-            "failed to send {} to process group {}",
-            signal_name, pid
-        ));
-        if child_process_group_missing(pid) {
-            Ok(())
-        } else {
-            Err(err)
-        }
-    }
-}
-
-#[cfg(unix)]
-fn child_process_group_missing(pid: i32) -> bool {
-    Command::new("kill")
-        .arg("-0")
-        .arg(format!("-{}", pid))
-        .status()
-        .map(|status| !status.success())
-        .unwrap_or(false)
-}
-
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::model::{Metric, ResultState, Waiver};
-    use std::path::Path;
-    use std::sync::{Arc, Mutex};
-
-    type ProgressEvent = (String, String, Option<String>);
-
-    #[test]
-    fn test_dry_run() {
-        let runner = ShellRunner::new(&tmp_dir());
-        let m = Metric::new("test", "echo hello");
-        let result = runner.run(&m, true);
-        assert!(result.passed);
-        assert!(result.output.contains("[DRY-RUN]"));
-        assert_eq!(result.metric_name, "test");
-    }
-
-    #[test]
-    fn test_run_success_exit_code() {
-        let runner = ShellRunner::new(&tmp_dir());
-        let m = Metric::new("echo_test", "echo ok");
-        let result = runner.run(&m, false);
-        assert!(result.passed);
-        assert!(result.output.contains("ok"));
-    }
-
-    fn tmp_dir() -> PathBuf {
-        #[cfg(unix)]
-        {
-            PathBuf::from("/tmp")
-        }
-        #[cfg(windows)]
-        {
-            std::env::temp_dir()
-        }
-    }
-
-    #[test]
-    fn test_run_failure_exit_code() {
-        let runner = ShellRunner::new(&tmp_dir());
-        #[cfg(unix)]
-        let cmd = "exit 1";
-        #[cfg(windows)]
-        let cmd = "cmd /c exit 1";
-        let m = Metric::new("fail_test", cmd);
-        let result = runner.run(&m, false);
-        assert!(!result.passed);
-    }
-
-    #[test]
-    fn test_run_pattern_match() {
-        let runner = ShellRunner::new(&tmp_dir());
-        let cmd = if cfg!(windows) {
-            "echo Tests 42 passed"
-        } else {
-            "echo 'Tests 42 passed'"
-        };
-        let mut m = Metric::new("pattern_test", cmd);
-        m.pattern = r"Tests\s+\d+\s+passed".to_string();
-        let result = runner.run(&m, false);
-        assert!(result.passed);
-    }
-
-    #[test]
-    fn test_run_pattern_no_match() {
-        let runner = ShellRunner::new(&tmp_dir());
-        let cmd = if cfg!(windows) {
-            "echo Tests 0 failed"
-        } else {
-            "echo 'Tests 0 failed'"
-        };
-        let mut m = Metric::new("pattern_fail", cmd);
-        m.pattern = r"Tests\s+\d+\s+passed".to_string();
-        let result = runner.run(&m, false);
-        assert!(!result.passed);
-    }
-
-    #[test]
-    #[cfg(unix)]
-    fn test_run_timeout() {
-        let runner = ShellRunner::new(Path::new("/tmp")).with_timeout(1);
-        let m = Metric::new("slow", "sleep 10");
-        let result = runner.run(&m, false);
-        assert!(!result.passed);
-        assert!(result.output.contains("TIMEOUT"));
-    }
-
-    #[test]
-    #[cfg(unix)]
-    fn test_run_metric_specific_timeout() {
-        let runner = ShellRunner::new(Path::new("/tmp")).with_timeout(5);
-        let mut m = Metric::new("slow", "sleep 2");
-        m.timeout_seconds = Some(1);
-        let result = runner.run(&m, false);
-        assert!(!result.passed);
-        assert!(result.output.contains("TIMEOUT (1s)"));
-    }
-
-    #[test]
-    #[cfg(unix)]
-    fn test_run_timeout_kills_background_processes() {
-        let leak_path = format!("/tmp/entrix-timeout-{}.txt", std::process::id());
-        let _ = std::fs::remove_file(&leak_path);
-
-        let runner = ShellRunner::new(Path::new("/tmp")).with_timeout(1);
-        let command = format!("sh -c 'sleep 2; echo leaked > {}' & wait", leak_path);
-        let result = runner.run(&Metric::new("slow", command), false);
-
-        assert!(!result.passed);
-        assert!(result.output.contains("TIMEOUT"));
-
-        thread::sleep(Duration::from_secs(3));
-        assert!(!Path::new(&leak_path).exists());
-    }
-
-    #[test]
-    fn test_run_hard_gate_preserved() {
-        let runner = ShellRunner::new(&tmp_dir());
-        let m = Metric::new("gate", "echo ok").with_hard_gate(true);
-        let result = runner.run(&m, false);
-        assert!(result.hard_gate);
-    }
-
-    #[test]
-    fn test_run_batch_serial() {
-        let runner = ShellRunner::new(&tmp_dir());
-        let metrics = vec![Metric::new("a", "echo a"), Metric::new("b", "echo b")];
-        let results = runner.run_batch(&metrics, false, false, None);
-        assert_eq!(results.len(), 2);
-        assert_eq!(results[0].metric_name, "a");
-        assert_eq!(results[1].metric_name, "b");
-    }
-
-    #[test]
-    fn test_run_batch_parallel() {
-        let runner = ShellRunner::new(&tmp_dir());
-        let metrics = vec![Metric::new("a", "echo a"), Metric::new("b", "echo b")];
-        let results = runner.run_batch(&metrics, true, false, None);
-        assert_eq!(results.len(), 2);
-        // Order preserved
-        assert_eq!(results[0].metric_name, "a");
-        assert_eq!(results[1].metric_name, "b");
-    }
-
-    #[test]
-    #[cfg(unix)]
-    fn test_run_batch_parallel_executes_concurrently() {
-        let runner = ShellRunner::new(Path::new("/tmp"));
-        let metrics = vec![Metric::new("a", "sleep 2"), Metric::new("b", "sleep 2")];
-        let events: Arc<Mutex<Vec<(String, String)>>> = Arc::new(Mutex::new(Vec::new()));
-        let events_clone = events.clone();
-        let cb: ProgressCallback = Box::new(move |event, metric, _result| {
-            events_clone
-                .lock()
-                .unwrap()
-                .push((event.to_string(), metric.name.clone()));
-        });
-
-        let results = runner.run_batch(&metrics, true, false, Some(&cb));
-        let recorded_events = events.lock().unwrap();
-        let first_end_index = recorded_events
-            .iter()
-            .position(|(event, _metric_name)| event == "end")
-            .expect("parallel run should emit end events");
-        let start_events_before_end = recorded_events[..first_end_index]
-            .iter()
-            .filter(|(event, _metric_name)| event == "start")
-            .count();
-
-        assert_eq!(results.len(), 2);
-        assert!(
-            start_events_before_end >= 2,
-            "both metrics should start before the first metric ends, got events: {:?}",
-            *recorded_events
-        );
-    }
-
-    #[test]
-    fn test_run_batch_dry_run() {
-        let runner = ShellRunner::new(&tmp_dir());
-        let metrics = vec![Metric::new("x", "rm -rf /")];
-        let results = runner.run_batch(&metrics, false, true, None);
-        assert!(results[0].passed);
-        assert!(results[0].output.contains("[DRY-RUN]"));
-    }
-
-    #[test]
-    fn test_run_batch_emits_progress_events() {
-        let runner = ShellRunner::new(&tmp_dir());
-        let metrics = vec![Metric::new("a", "echo a"), Metric::new("b", "echo b")];
-        let events: Arc<Mutex<Vec<ProgressEvent>>> = Arc::new(Mutex::new(Vec::new()));
-
-        let events_clone = events.clone();
-        let cb: ProgressCallback = Box::new(move |event, metric, result| {
-            events_clone.lock().unwrap().push((
-                event.to_string(),
-                metric.name.clone(),
-                result.map(|r| r.state.as_str().to_string()),
-            ));
-        });
-
-        runner.run_batch(&metrics, false, false, Some(&cb));
-
-        let captured = events.lock().unwrap();
-        assert_eq!(captured.len(), 4);
-        assert_eq!(captured[0], ("start".to_string(), "a".to_string(), None));
-        assert_eq!(
-            captured[1],
-            ("end".to_string(), "a".to_string(), Some("pass".to_string()))
-        );
-        assert_eq!(captured[2], ("start".to_string(), "b".to_string(), None));
-        assert_eq!(
-            captured[3],
-            ("end".to_string(), "b".to_string(), Some("pass".to_string()))
-        );
-    }
-
-    #[test]
-    fn test_run_waived_metric() {
-        let runner = ShellRunner::new(Path::new("/tmp"));
-        let today = chrono::Utc::now().date_naive();
-        let mut metric = Metric::new("waived", "exit 1");
-        metric.waiver = Some(Waiver {
-            reason: "temporary waiver".to_string(),
-            owner: String::new(),
-            tracking_issue: None,
-            expires_at: Some(today + chrono::Duration::days(1)),
-        });
-        let result = runner.run(&metric, false);
-        assert!(result.passed);
-        assert_eq!(result.state, ResultState::Waived);
-        assert!(result.output.contains("temporary waiver"));
-    }
-
-    #[test]
-    #[cfg(unix)]
-    fn test_run_streaming_emits_output_callback() {
-        let lines: Arc<Mutex<Vec<(String, String, String)>>> = Arc::new(Mutex::new(Vec::new()));
-        let captured = Arc::clone(&lines);
-        let callback: OutputCallback = Arc::new(move |metric, source, line| {
-            captured.lock().unwrap().push((
-                metric.name.clone(),
-                source.to_string(),
-                line.to_string(),
-            ));
-        });
-
-        let runner = ShellRunner::new(Path::new("/tmp")).with_output_callback(callback);
-        let metric = Metric::new("streamed", "printf 'hello\\n' && printf 'oops\\n' >&2");
-        let result = runner.run(&metric, false);
-
-        assert!(result.passed);
-        let captured = lines.lock().unwrap();
-        assert!(captured.iter().any(|entry| entry.0 == "streamed"
-            && entry.1 == "stdout"
-            && entry.2 == "hello"));
-        assert!(captured.iter().any(|entry| entry.0 == "streamed"
-            && entry.1 == "stderr"
-            && entry.2 == "oops"));
-    }
-
-    #[test]
-    fn test_smart_truncate_keeps_head_and_tail() {
-        let source = format!("{}\n{}", "a".repeat(4500), "z".repeat(4500));
-        let truncated = smart_truncate(&source, 4000, 4000);
-        assert!(truncated.contains("... ["));
-        assert!(truncated.starts_with(&"a".repeat(4000)));
-        assert!(truncated.ends_with(&"z".repeat(4000)));
-    }
-}
+mod tests;

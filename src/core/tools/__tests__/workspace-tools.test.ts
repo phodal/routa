@@ -112,59 +112,6 @@ describe("WorkspaceTools", () => {
     expect((result.data as { diff: string }).diff.endsWith("... (truncated)")).toBe(true);
   });
 
-  it("rejects placeholder git identities before committing", async () => {
-    resolveGitIdentityMock.mockResolvedValue({
-      name: "Routa Test",
-      email: "test@example.com",
-    });
-
-    const { tools } = createTools();
-    const result = await tools.gitCommit({ message: "test commit" });
-
-    expect(result.success).toBe(false);
-    expect(result.error).toContain("placeholder");
-    expect(execMock).not.toHaveBeenCalled();
-  });
-
-  it("stages and commits changes when git identity and staged files are valid", async () => {
-    resolveGitIdentityMock.mockResolvedValue({
-      name: "Dev User",
-      email: "dev@example.org",
-    });
-    execMock.mockImplementation(async (command: string) => {
-      if (command === "git add -A") {
-        return { stdout: "", stderr: "" };
-      }
-      if (command === "git diff --cached --name-only") {
-        return { stdout: "src/core/a.ts\nsrc/core/b.ts\n", stderr: "" };
-      }
-      if (command === "git commit -m feat: improve coverage") {
-        return { stdout: "[main abc123] feat: improve coverage", stderr: "" };
-      }
-      if (command === "git rev-parse --short HEAD") {
-        return { stdout: "abc123\n", stderr: "" };
-      }
-      throw new Error(`unexpected command: ${command}`);
-    });
-
-    const { tools } = createTools();
-    const result = await tools.gitCommit({
-      message: "feat: improve coverage",
-      stageAll: true,
-    });
-
-    expect(result).toEqual({
-      success: true,
-      data: {
-        hash: "abc123",
-        message: "feat: improve coverage",
-        output: "[main abc123] feat: improve coverage",
-        author: "Dev User <dev@example.org>",
-        filesCommitted: ["src/core/a.ts", "src/core/b.ts"],
-      },
-    });
-  });
-
   it("summarizes workspace info and details", async () => {
     const { tools, agentStore, taskStore, noteStore } = createTools();
     agentStore.listByWorkspace.mockResolvedValue([

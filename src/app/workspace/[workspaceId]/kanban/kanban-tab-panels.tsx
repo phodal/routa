@@ -1,5 +1,6 @@
 import {
   DndContext,
+  DragOverlay,
   MouseSensor,
   TouchSensor,
   closestCorners,
@@ -10,6 +11,7 @@ import {
   type DragStartEvent,
 } from "@dnd-kit/core";
 import { useMemo, useState, type Dispatch, type SetStateAction, type ReactNode, type RefObject } from "react";
+import { createPortal } from "react-dom";
 import { useTranslation } from "@/i18n";
 import type { AcpProviderInfo } from "@/client/acp-client";
 import type { CodebaseData } from "@/client/hooks/use-workspaces";
@@ -17,7 +19,7 @@ import type { UseAcpActions, UseAcpState } from "@/client/hooks/use-acp";
 import { ChatPanel } from "@/client/components/chat-panel";
 import type { RepoSelection } from "@/client/components/repo-picker";
 import { resolveEffectiveTaskAutomation } from "@/core/kanban/effective-task-automation";
-import { KanbanCard } from "./kanban-card";
+import { KanbanCard, KanbanCardOverlay } from "./kanban-card";
 import { KanbanCardActivityBar, KanbanCardDetail } from "./kanban-card-detail";
 import { getKanbanFileChangesSummary as _getKanbanFileChangesSummary } from "./kanban-file-changes-panel";
 import { KanbanEnhancedFileChangesPanel } from "./components/kanban-enhanced-file-changes-panel";
@@ -294,9 +296,10 @@ export function KanbanBoardSurface({
   const [localGitLogOpen, setLocalGitLogOpen] = useState(false);
   const [gitLogRepoPath, setGitLogRepoPath] = useState<string | null>(null);
   const [activeDragTaskId, setActiveDragTaskId] = useState<string | null>(null);
+  const [activeDragCardWidth, setActiveDragCardWidth] = useState<number | null>(null);
   const sensors = useSensors(
     useSensor(MouseSensor, {
-      activationConstraint: { distance: 4 },
+      activationConstraint: { distance: 3 },
     }),
     useSensor(TouchSensor, {
       activationConstraint: { delay: 120, tolerance: 8 },
@@ -321,13 +324,19 @@ export function KanbanBoardSurface({
     }
     return defaultCodebase?.repoPath ?? codebases[0]?.repoPath ?? null;
   }, [codebases, defaultCodebase?.repoPath, gitLogRepoPath]);
+  const activeDragTask = useMemo(
+    () => activeDragTaskId ? boardTasks.find((task) => task.id === activeDragTaskId) ?? null : null,
+    [activeDragTaskId, boardTasks],
+  );
 
   const handleDragStart = ({ active }: DragStartEvent) => {
     setActiveDragTaskId(String(active.id));
+    setActiveDragCardWidth(active.rect.current.initial?.width ?? null);
   };
 
   const handleDragEnd = async ({ active, over }: DragEndEvent) => {
     setActiveDragTaskId(null);
+    setActiveDragCardWidth(null);
     if (!over) return;
 
     const targetId = String(over.id);
@@ -343,6 +352,7 @@ export function KanbanBoardSurface({
 
   const handleDragCancel = () => {
     setActiveDragTaskId(null);
+    setActiveDragCardWidth(null);
   };
 
   return (
@@ -463,6 +473,32 @@ export function KanbanBoardSurface({
                     );
                   })}
               </div>
+              {activeDragTask && typeof document !== "undefined" && createPortal(
+                <DragOverlay adjustScale={false} dropAnimation={null} zIndex={80}>
+                  <div style={activeDragCardWidth ? { width: activeDragCardWidth } : undefined}>
+                    <KanbanCardOverlay
+                      task={activeDragTask}
+                      boardColumns={board.columns}
+                      linkedSession={activeDragTask.triggerSessionId ? sessionMap.get(activeDragTask.triggerSessionId) : undefined}
+                      liveMessageTail={activeDragTask.triggerSessionId ? liveSessionTails[activeDragTask.triggerSessionId] : undefined}
+                      availableProviders={availableProviders}
+                      specialists={specialists}
+                      specialistLanguage={specialistLanguage}
+                      codebases={codebases}
+                      allCodebaseIds={allCodebaseIds}
+                      worktreeCache={worktreeCache}
+                      autoProviderId={resolveKanbanBoardAutoProviderId(board, boardAutoProviderId)}
+                      queuePosition={queuedPositions[activeDragTask.id]}
+                      onOpenDetail={() => {}}
+                      onDelete={() => {}}
+                      onPatchTask={patchTask}
+                      onRetryTrigger={retryTaskTrigger}
+                      onRefresh={onRefresh}
+                    />
+                  </div>
+                </DragOverlay>,
+                document.body,
+              )}
             </DndContext>
           </div>
         </div>

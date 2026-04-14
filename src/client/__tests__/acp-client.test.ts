@@ -153,4 +153,50 @@ describe("BrowserAcpClient", () => {
       expect(MockEventSource.instances[0]?.url).toContain("sessionId=session-resume-1");
     });
   });
+
+  it("preserves sessionMayContinue on RPC errors", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+      jsonrpc: "2.0",
+      id: 1,
+      error: {
+        code: -32000,
+        message: "Session timed out but may continue",
+        sessionMayContinue: true,
+      },
+    }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    })));
+
+    const client = new BrowserAcpClient("");
+
+    await expect(client.initialize()).rejects.toMatchObject({
+      code: -32000,
+      message: "Session timed out but may continue",
+      sessionMayContinue: true,
+    });
+  });
+
+  it("preserves sessionMayContinue on prompt errors", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+      jsonrpc: "2.0",
+      id: 1,
+      error: {
+        code: -32010,
+        message: "Prompt timed out",
+        sessionMayContinue: true,
+      },
+    }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    })));
+
+    const client = new BrowserAcpClient("");
+
+    await expect(client.prompt("session-1", "continue")).rejects.toMatchObject({
+      code: -32010,
+      message: "Prompt timed out",
+      sessionMayContinue: true,
+    });
+  });
 });

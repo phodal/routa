@@ -57,10 +57,11 @@ metrics:
 
   - name: markdown_external_links
     command: node --import tsx tools/hook-runtime/src/check-markdown-links.ts 2>&1
-    hard_gate: true
+    hard_gate: false
     tier: normal
     execution_scope: ci
-    description: "Markdown 中的外链必须可达；429 与需要鉴权的 4xx 记为告警不阻断"
+    gate: advisory
+    description: "Markdown 中的外链必须可达；429 与需要鉴权的 4xx 记为告警不阻断；外链检查受网络影响大，降级为 advisory"
 
   - name: todo_fixme_count
     command: |
@@ -84,7 +85,7 @@ metrics:
 |--------|------|-----------|------|
 | scripts 根目录文件数 | 超标目录按基线冻结；当前目标上限 20，已超标时不得继续长大 | ❌ | `git ls-tree` + `find` |
 | blast radius 探针 | 变更范围可解释、可视 | ❌ | `graph:impact` |
-| Markdown 外链 | 外链可达 | ✅ | markdown link checker |
+| Markdown 外链 | 外链可达（advisory，受网络影响大） | ❌ | markdown link checker |
 | TODO/FIXME | <100 | ❌ | grep |
 
 ## 为什么单独成维度

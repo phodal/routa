@@ -31,6 +31,7 @@ export interface JsonRpcError {
   code: number;
   message: string;
   data?: unknown;
+  sessionMayContinue?: boolean;
 }
 
 export interface JsonRpcResponse {
@@ -47,12 +48,14 @@ export interface JsonRpcResponse {
 export class RpcError extends Error {
   code: number;
   data?: unknown;
+  sessionMayContinue?: boolean;
 
-  constructor(code: number, message: string, data?: unknown) {
+  constructor(code: number, message: string, data?: unknown, sessionMayContinue?: boolean) {
     super(message);
     this.name = "RpcError";
     this.code = code;
     this.data = data;
+    this.sessionMayContinue = sessionMayContinue;
   }
 }
 
@@ -144,6 +147,7 @@ export class RoutaRpcClient {
         response.error.code,
         response.error.message,
         response.error.data,
+        response.error.sessionMayContinue,
       );
     }
 

@@ -141,7 +141,10 @@ function runMarkdownLinksCheckWithContext(baseDir = process.cwd()): CheckSummary
   const statuses: MarkdownLinkStatus[] = [];
   for (const [link, file] of linksToCheck) {
     checked += 1;
-    process.stdout.write(`  [${String(checked).padStart(3, " ")}] Checking: ${link}\r`);
+    // Only show progress every 10 links to reduce output
+    if (checked % 10 === 0 || checked === linksToCheck.size) {
+      process.stdout.write(`  Checking... ${checked}/${linksToCheck.size}\r`);
+    }
     statuses.push(checkExternalLink(file, link));
   }
 
@@ -150,19 +153,34 @@ function runMarkdownLinksCheckWithContext(baseDir = process.cwd()): CheckSummary
   const warnings = statuses.filter((status) => status.kind === "warn");
   const passed = checked - failed.length - warnings.length;
 
+  // Show failures FIRST (before summary) so they appear in truncated output
+  if (failed.length > 0) {
+    console.log("");
+    console.log("❌ BROKEN LINKS FOUND:");
+    for (const failure of failed) {
+      console.log(`  ${failure.file}`);
+      console.log(`    ${failure.link}`);
+    }
+    console.log("");
+  }
+
+  if (warnings.length > 0 && warnings.length <= 5) {
+    console.log("");
+    console.log("⚠️  WARNINGS (rate-limited or auth-required):");
+    for (const warning of warnings.slice(0, 5)) {
+      console.log(`  ${warning.file}: ${warning.link}`);
+    }
+    if (warnings.length > 5) {
+      console.log(`  ... and ${warnings.length - 5} more warnings`);
+    }
+    console.log("");
+  }
+
   console.log("Link check summary:");
   console.log(`  Total checked: ${checked}`);
   console.log(`  Passed: ${passed}`);
   console.log(`  Warnings: ${warnings.length}`);
   console.log(`  Failed: ${failed.length}`);
-
-  if (failed.length > 0) {
-    console.log("");
-    console.log("Broken links found:");
-    for (const failure of failed) {
-      console.log(`  ${failure.file}: ${failure.link}`);
-    }
-  }
 
   if (failed.length > 0) {
     console.log("[markdown_external_links] failed");

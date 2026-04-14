@@ -139,6 +139,9 @@ await updateJsonVersion("packages/routa-cli/package.json", version, {
 await updateJsonVersion("packages/harness-monitor/package.json", version, {
   updateOptionalDeps: true,
 });
+await updateJsonVersion("packages/entrix/package.json", version, {
+  updateOptionalDeps: true,
+});
 
 // Update Rust crates versions (and their workspace dependencies)
 await updateTomlVersion("crates/routa-core/Cargo.toml", version);

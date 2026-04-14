@@ -3,6 +3,8 @@ mod build;
 mod model;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_python;
 mod tree_sitter;
 
 pub use analysis::{

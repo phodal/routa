@@ -375,10 +375,52 @@ describe("KanbanTab GitHub import", () => {
     vi.unstubAllGlobals();
   });
 
+  it("shows import issues when the default codebase is labeled as owner/repo", async () => {
+    desktopAwareFetch.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/github/access?boardId=board-1") {
+        return {
+          ok: true,
+          json: async () => ({
+            available: true,
+            source: "board",
+          }),
+        } as Response;
+      }
+      throw new Error(`Unexpected desktopAwareFetch: ${url}`);
+    });
+
+    vi.stubGlobal("fetch", vi.fn());
+
+    render(
+      <KanbanTab
+        workspaceId="workspace-1"
+        boards={[board]}
+        tasks={[]}
+        sessions={[]}
+        providers={[]}
+        specialists={[]}
+        codebases={[{
+          id: "codebase-1",
+          workspaceId: "workspace-1",
+          repoPath: "/Users/phodal/.routa/repos/phodal--routa",
+          isDefault: true,
+          label: "phodal/routa",
+          branch: "main",
+          createdAt: "2025-01-01T00:00:00.000Z",
+          updatedAt: "2025-01-01T00:00:00.000Z",
+        }]}
+        onRefresh={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByRole("button", { name: /import issues/i })).toBeTruthy();
+  });
+
   it("imports backlog issues without creating a task-level provider override", async () => {
     desktopAwareFetch.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
-      if (url === "/api/github/access") {
+      if (url === "/api/github/access?boardId=board-1") {
         return {
           ok: true,
           json: async () => ({
@@ -387,7 +429,7 @@ describe("KanbanTab GitHub import", () => {
           }),
         } as Response;
       }
-      if (url === "/api/github/issues?workspaceId=workspace-1&codebaseId=codebase-1") {
+      if (url === "/api/github/issues?workspaceId=workspace-1&codebaseId=codebase-1&boardId=board-1") {
         return {
           ok: true,
           json: async () => ({

@@ -1,3 +1,13 @@
+use crate::cli_output::{
+    print_graph_history, print_graph_impact, print_graph_query, print_graph_review_context,
+    print_graph_test_radius, print_hook_long_file_summary, print_json, print_long_file_report,
+    print_release_trigger_report, print_report_text, print_review_trigger_report,
+};
+use crate::cli_runtime::{
+    build_runner_env, build_runtime_fitness_snapshot, collect_run_files, domains_from_files,
+    emit_runtime_fitness_event, filter_dimensions_for_incremental, now_millis, runtime_mode,
+    write_runtime_fitness_artifacts, RuntimeFitnessSnapshotOptions,
+};
 use clap::{Args, CommandFactory, Parser, Subcommand};
 use entrix::evidence::{load_dimensions, validate_weights};
 use entrix::file_budgets::{evaluate_paths, is_tracked_source_file, load_config, resolve_paths};
@@ -10,8 +20,8 @@ use entrix::release_trigger::{
 use entrix::reporting::{report_to_dict, write_report_output};
 use entrix::review_context::{
     analyze_file, analyze_history, analyze_impact, analyze_test_radius, build_graph,
-    build_review_context, graph_stats, query_current_graph, ImpactOptions, ReviewBuildMode,
-    ReviewContextOptions, TestRadiusOptions,
+    build_review_context, graph_stats, query_current_graph, GraphNodePayload, ImpactOptions,
+    ReviewBuildMode, ReviewContextOptions, TestRadiusOptions,
 };
 use entrix::review_trigger::{
     collect_changed_files, collect_diff_stats, evaluate_review_triggers, load_review_triggers,
@@ -21,23 +31,27 @@ use entrix::runner::{OutputCallback, ProgressCallback, ShellRunner};
 use entrix::sarif::SarifRunner;
 use entrix::scoring::{score_dimension, score_report};
 use entrix::server;
+use entrix::terminal::{
+    AsciiReporter, RichLiveProgressReporter, RichReporter, ShellOutputController, StreamMode,
+    TerminalReporter,
+};
 use entrix::test_mapping;
-use entrix::terminal::{AsciiReporter, ShellOutputController, StreamMode, TerminalReporter};
 use serde_json::json;
-use sha2::{Digest, Sha256};
-use std::collections::BTreeSet;
-use std::fs;
-use std::io::{self, Write};
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
+
+mod cli_output;
+#[cfg(test)]
+mod cli_parity_tests;
+mod cli_runtime;
 
 #[derive(Parser, Debug)]
 #[command(name = "entrix")]
-#[command(about = "Rust Entrix CLI")]
+#[command(about = "Evolutionary architecture fitness engine for change-aware verification")]
 struct Cli {
     #[command(subcommand)]
-    command: Command,
+    command: Option<Command>,
 }
 
 #[derive(Subcommand, Debug)]
@@ -68,9 +82,9 @@ struct RunArgs {
     dry_run: bool,
     #[arg(long)]
     verbose: bool,
-    #[arg(long, default_value = "failures")]
+    #[arg(long, default_value = "failures", num_args = 0..=1, default_missing_value = "all")]
     stream: String,
-    #[arg(long, default_value = "text")]
+    #[arg(long, default_value = "text", value_parser = ["text", "ascii", "rich"])]
     format: String,
     #[arg(long, default_value_t = 4)]
     progress_refresh: usize,
@@ -80,7 +94,7 @@ struct RunArgs {
     scope: Option<String>,
     #[arg(long)]
     changed_only: bool,
-    #[arg(long)]
+    #[arg(long, num_args = 1..)]
     files: Vec<String>,
     #[arg(long, default_value = "HEAD")]
     base: String,
@@ -361,27 +375,33 @@ struct GraphReviewContextArgs {
 fn main() {
     let cli = Cli::parse();
     let exit_code = match cli.command {
-        Command::Run(args) => cmd_run(args),
-        Command::Validate(args) => cmd_validate(args),
-        Command::Install(args) | Command::Init(args) => cmd_install(args),
-        Command::Serve => cmd_serve(),
-        Command::Analyze(args) => match args.command {
+        None => {
+            let mut cmd = Cli::command();
+            let _ = cmd.print_help();
+            println!();
+            0
+        }
+        Some(Command::Run(args)) => cmd_run(args),
+        Some(Command::Validate(args)) => cmd_validate(args),
+        Some(Command::Install(args)) | Some(Command::Init(args)) => cmd_install(args),
+        Some(Command::Serve) => cmd_serve(),
+        Some(Command::Analyze(args)) => match args.command {
             Some(AnalyzeCommand::LongFile(args)) => cmd_analyze_long_file(args),
             None => {
                 print_subcommand_help("analyze");
                 0
             }
         },
-        Command::ReleaseTrigger(args) => cmd_release_trigger(args),
-        Command::ReviewTrigger(args) => cmd_review_trigger(args),
-        Command::Hook(args) => match args.command {
+        Some(Command::ReleaseTrigger(args)) => cmd_release_trigger(args),
+        Some(Command::ReviewTrigger(args)) => cmd_review_trigger(args),
+        Some(Command::Hook(args)) => match args.command {
             Some(HookCommand::FileLength(args)) => cmd_hook_file_length(args),
             None => {
                 print_subcommand_help("hook");
                 0
             }
         },
-        Command::Graph(args) => match args.command {
+        Some(Command::Graph(args)) => match args.command {
             Some(GraphCommand::Build(args)) => cmd_graph_build(args),
             Some(GraphCommand::AnalyzeFile(args)) => cmd_graph_analyze_file(args),
             Some(GraphCommand::Stats(args)) => cmd_graph_stats(args),
@@ -413,10 +433,9 @@ fn print_subcommand_help(name: &str) {
 
 fn cmd_run(args: RunArgs) -> i32 {
     let repo_root = find_project_root();
-    let _ = args.progress_refresh;
     let fitness_dir = repo_root.join("docs/fitness");
     let all_dimensions = load_dimensions(&fitness_dir);
-    let changed_files = collect_run_files(&repo_root, &args);
+    let changed_files = collect_run_files(&repo_root, &args.files, args.changed_only, &args.base);
     let stream_mode = StreamMode::parse(&args.stream);
     let show_tier = args.tier.is_none() && args.tier_positional.is_none();
 
@@ -431,7 +450,11 @@ fn cmd_run(args: RunArgs) -> i32 {
         verbose: args.verbose,
         min_score: args.min_score,
         fail_on_hard_gate: true,
-        execution_scope: args.scope.as_deref().and_then(parse_scope_filter),
+        execution_scope: args
+            .scope
+            .as_deref()
+            .and_then(parse_scope_filter)
+            .or(Some(ExecutionScope::Local)),
         dimension_filters: args.dimensions,
         metric_filters: args.metrics,
     };
@@ -490,6 +513,8 @@ fn cmd_run(args: RunArgs) -> i32 {
     let runner_env = build_runner_env(&changed_files, &args.base);
     let reporter = (!args.json && args.format == "text")
         .then(|| Arc::new(TerminalReporter::new(args.verbose, stream_mode)));
+    let live_reporter = (!args.json && args.format == "rich")
+        .then(|| Arc::new(RichLiveProgressReporter::new(18, args.progress_refresh)));
     if let Some(reporter) = &reporter {
         reporter.print_header(
             policy.dry_run,
@@ -497,23 +522,41 @@ fn cmd_run(args: RunArgs) -> i32 {
             policy.parallel,
         );
     }
+    if let Some(live_reporter) = &live_reporter {
+        let metrics = dimensions
+            .iter()
+            .flat_map(|dimension| dimension.metrics.iter().cloned())
+            .collect::<Vec<_>>();
+        live_reporter.setup(&metrics);
+    }
 
     let output_controller = reporter
         .as_ref()
         .map(|reporter| Arc::new(ShellOutputController::new(Arc::clone(reporter))));
 
-    let progress_callback: Option<ProgressCallback> = output_controller.as_ref().map(|controller| {
-        let controller = Arc::clone(controller);
-        Box::new(
+    let progress_callback: Option<ProgressCallback> = if let Some(live_reporter) = &live_reporter {
+        let live_reporter = Arc::clone(live_reporter);
+        Some(Box::new(
             move |event: &str,
                   metric: &entrix::model::Metric,
                   result: Option<&entrix::model::MetricResult>| {
-            controller.handle_progress(event, metric, result);
-        },
-        ) as ProgressCallback
-    });
-    let output_callback: Option<OutputCallback> = output_controller.as_ref().and_then(
-        |controller| {
+                live_reporter.handle_progress(event, metric, result);
+            },
+        ) as ProgressCallback)
+    } else {
+        output_controller.as_ref().map(|controller| {
+            let controller = Arc::clone(controller);
+            Box::new(
+                move |event: &str,
+                      metric: &entrix::model::Metric,
+                      result: Option<&entrix::model::MetricResult>| {
+                    controller.handle_progress(event, metric, result);
+                },
+            ) as ProgressCallback
+        })
+    };
+    let output_callback: Option<OutputCallback> =
+        output_controller.as_ref().and_then(|controller| {
             if !controller.should_capture_output() {
                 return None;
             }
@@ -523,8 +566,7 @@ fn cmd_run(args: RunArgs) -> i32 {
                     controller.handle_output(metric, source, line);
                 }
             }) as OutputCallback)
-        },
-    );
+        });
 
     let mut shell_runner = ShellRunner::new(&repo_root).with_env_overrides(runner_env.clone());
     if let Some(callback) = output_callback {
@@ -562,9 +604,15 @@ fn cmd_run(args: RunArgs) -> i32 {
     } else {
         match args.format.as_str() {
             "ascii" => AsciiReporter::new(18).report(&report),
+            "rich" => {
+                if let Some(live_reporter) = &live_reporter {
+                    live_reporter.force_render();
+                }
+                RichReporter::new(18).report(&report)
+            }
             _ => {
                 if let Some(reporter) = &reporter {
-                    reporter.report(&report, show_tier);
+                    reporter.report_with_dimensions(&report, &dimensions, show_tier);
                 } else {
                     print_report_text(&report, policy.verbose);
                 }
@@ -669,499 +717,6 @@ fn cmd_run(args: RunArgs) -> i32 {
     exit_code
 }
 
-fn collect_run_files(repo_root: &Path, args: &RunArgs) -> Vec<String> {
-    if !args.files.is_empty() {
-        return args.files.clone();
-    }
-    if !args.changed_only {
-        return Vec::new();
-    }
-
-    let commands = [
-        vec!["diff", "--name-only", "--diff-filter=ACMR", &args.base],
-        vec!["diff", "--name-only", "--diff-filter=ACMR", "--cached"],
-    ];
-    let mut seen = BTreeSet::new();
-    let mut files = Vec::new();
-
-    for command_args in commands {
-        let output = std::process::Command::new("git")
-            .args(command_args)
-            .current_dir(repo_root)
-            .output();
-        let Ok(output) = output else {
-            continue;
-        };
-        for line in String::from_utf8_lossy(&output.stdout).lines() {
-            let path = line.trim();
-            if path.is_empty() || should_ignore_changed_file(path) || !seen.insert(path.to_string())
-            {
-                continue;
-            }
-            files.push(path.to_string());
-        }
-    }
-
-    files
-}
-
-fn should_ignore_changed_file(file_path: &str) -> bool {
-    file_path.starts_with("tmp/")
-        || file_path.starts_with("docs/")
-        || file_path.starts_with(".entrix/")
-        || file_path.starts_with(".code-review-graph/")
-        || file_path.starts_with("node_modules/")
-}
-
-fn domains_from_files(files: &[String]) -> BTreeSet<String> {
-    let config_files = BTreeSet::from([
-        "package.json",
-        "package-lock.json",
-        "Cargo.toml",
-        "Cargo.lock",
-        "api-contract.yaml",
-        "eslint.config.mjs",
-        "tsconfig.json",
-        "pyproject.toml",
-        "docs/fitness/file_budgets.json",
-    ]);
-
-    let mut domains = BTreeSet::new();
-    for file_path in files {
-        let lowered = file_path.to_lowercase();
-        let path = Path::new(file_path);
-        let suffix = path
-            .extension()
-            .and_then(|ext| ext.to_str())
-            .unwrap_or_default();
-        let name = path
-            .file_name()
-            .and_then(|name| name.to_str())
-            .unwrap_or_default();
-
-        if suffix == "rs" || lowered.starts_with("crates/") {
-            domains.insert("rust".to_string());
-        }
-        if matches!(suffix, "ts" | "tsx" | "js" | "jsx" | "css" | "scss")
-            || lowered.starts_with("src/")
-            || lowered.starts_with("apps/")
-        {
-            domains.insert("web".to_string());
-        }
-        if suffix == "py" {
-            domains.insert("python".to_string());
-        }
-        if config_files.contains(file_path.as_str()) || config_files.contains(name) {
-            domains.insert("config".to_string());
-        }
-    }
-    domains
-}
-
-fn metric_domains(metric: &entrix::model::Metric) -> BTreeSet<String> {
-    if !metric.scope.is_empty() {
-        return metric.scope.iter().cloned().collect();
-    }
-
-    let command = metric.command.to_lowercase();
-    let mut domains = BTreeSet::new();
-
-    if command.contains("cargo ") || command.contains("clippy") || command.contains("rust") {
-        domains.insert("rust".to_string());
-    }
-    if [
-        "npm ",
-        "npx ",
-        "eslint",
-        "vitest",
-        "playwright",
-        "jscpd",
-        "dependency-cruiser",
-        "ast-grep",
-        " semgrep",
-        "semgrep ",
-    ]
-    .iter()
-    .any(|token| command.contains(token))
-    {
-        domains.insert("web".to_string());
-    }
-    if command.contains("python") || command.contains("pytest") || command.contains("entrix") {
-        domains.insert("python".to_string());
-    }
-    if command.contains("audit") {
-        domains.insert("config".to_string());
-    }
-
-    if domains.is_empty() {
-        domains.insert("global".to_string());
-    }
-    domains
-}
-
-fn matches_changed_files(
-    metric: &entrix::model::Metric,
-    changed_files: &[String],
-    domains: &BTreeSet<String>,
-) -> bool {
-    if !metric.run_when_changed.is_empty() {
-        return changed_files.iter().any(|changed_file| {
-            metric.run_when_changed.iter().any(|pattern| {
-                glob::Pattern::new(pattern)
-                    .map(|p| p.matches(changed_file))
-                    .unwrap_or(false)
-            })
-        });
-    }
-    if domains.is_empty() {
-        return false;
-    }
-    if domains.contains("config") {
-        return true;
-    }
-    let metric_domains = metric_domains(metric);
-    metric_domains.contains("global") || !metric_domains.is_disjoint(domains)
-}
-
-fn filter_dimensions_for_incremental(
-    dimensions: &[entrix::model::Dimension],
-    changed_files: &[String],
-    domains: &BTreeSet<String>,
-) -> Vec<entrix::model::Dimension> {
-    if changed_files.is_empty() {
-        return Vec::new();
-    }
-    if domains.contains("config") {
-        return dimensions.to_vec();
-    }
-
-    dimensions
-        .iter()
-        .filter_map(|dimension| {
-            let metrics = dimension
-                .metrics
-                .iter()
-                .filter(|metric| matches_changed_files(metric, changed_files, domains))
-                .cloned()
-                .collect::<Vec<_>>();
-            if metrics.is_empty() {
-                return None;
-            }
-            Some(entrix::model::Dimension {
-                name: dimension.name.clone(),
-                weight: dimension.weight,
-                threshold_pass: dimension.threshold_pass,
-                threshold_warn: dimension.threshold_warn,
-                metrics,
-                source_file: dimension.source_file.clone(),
-            })
-        })
-        .collect()
-}
-
-fn build_runner_env(
-    changed_files: &[String],
-    base: &str,
-) -> std::collections::HashMap<String, String> {
-    let mut env = std::collections::HashMap::new();
-    if !changed_files.is_empty() {
-        env.insert("ROUTA_FITNESS_CHANGED_ONLY".to_string(), "1".to_string());
-        env.insert("ROUTA_FITNESS_CHANGED_BASE".to_string(), base.to_string());
-        env.insert(
-            "ROUTA_FITNESS_CHANGED_FILES".to_string(),
-            changed_files.join("\n"),
-        );
-    }
-    env
-}
-
-fn runtime_marker(project_root: &Path) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(project_root.to_string_lossy().as_bytes());
-    hex::encode(hasher.finalize())
-}
-
-fn runtime_root(project_root: &Path) -> PathBuf {
-    Path::new("/tmp")
-        .join("harness-monitor")
-        .join("runtime")
-        .join(runtime_marker(project_root))
-}
-
-fn runtime_event_path(project_root: &Path) -> PathBuf {
-    runtime_root(project_root).join("events.jsonl")
-}
-
-fn runtime_fitness_artifact_dir(project_root: &Path) -> PathBuf {
-    runtime_root(project_root).join("artifacts").join("fitness")
-}
-
-fn runtime_fitness_mailbox_dir(project_root: &Path) -> PathBuf {
-    runtime_root(project_root)
-        .join("mailbox")
-        .join("fitness")
-        .join("new")
-}
-
-fn runtime_mode(tier: Option<&str>) -> String {
-    match tier {
-        None | Some("") | Some("normal") => "full".to_string(),
-        Some(value) => value.to_string(),
-    }
-}
-
-fn now_millis() -> i64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_millis() as i64)
-        .unwrap_or_default()
-}
-
-fn load_runtime_coverage_summary(project_root: &Path) -> serde_json::Value {
-    let summary_path = project_root
-        .join("target")
-        .join("coverage")
-        .join("fitness-summary.json");
-    let default = json!({
-        "generated_at_ms": serde_json::Value::Null,
-        "typescript": {},
-        "rust": {},
-    });
-    let Ok(contents) = fs::read_to_string(summary_path) else {
-        return default;
-    };
-    let Ok(payload) = serde_json::from_str::<serde_json::Value>(&contents) else {
-        return default;
-    };
-    let sources = payload
-        .get("sources")
-        .and_then(|value| value.as_object())
-        .cloned()
-        .unwrap_or_default();
-    json!({
-        "generated_at_ms": payload.get("generated_at_ms").cloned().unwrap_or(serde_json::Value::Null),
-        "typescript": sources.get("typescript").cloned().unwrap_or_else(|| json!({})),
-        "rust": sources.get("rust").cloned().unwrap_or_else(|| json!({})),
-    })
-}
-
-fn summarize_metric_output(output: &str) -> Option<String> {
-    let lines = output
-        .lines()
-        .map(str::trim)
-        .filter(|line| !line.is_empty())
-        .take(3)
-        .collect::<Vec<_>>();
-    if lines.is_empty() {
-        return None;
-    }
-    let mut excerpt = lines.join(" | ");
-    if excerpt.chars().count() > 180 {
-        excerpt = excerpt.chars().take(177).collect::<String>() + "...";
-    }
-    Some(excerpt)
-}
-
-struct RuntimeFitnessSnapshotOptions<'a> {
-    tier: Option<&'a str>,
-    duration_ms: f64,
-    artifact_path: Option<&'a str>,
-    observed_at_ms: i64,
-    producer: &'a str,
-    base_ref: Option<&'a str>,
-    changed_files: &'a [String],
-}
-
-fn build_runtime_fitness_snapshot(
-    project_root: &Path,
-    report: &FitnessReport,
-    options: RuntimeFitnessSnapshotOptions<'_>,
-) -> Option<serde_json::Value> {
-    let mut dimensions = Vec::new();
-    let mut slowest_metrics = Vec::new();
-    let mut failing_metrics = Vec::new();
-    let mut coverage_metric_available = false;
-
-    for dimension_score in &report.dimensions {
-        let mut metrics = Vec::new();
-        for result in &dimension_score.results {
-            let metric_summary = json!({
-                "name": result.metric_name,
-                "passed": result.passed,
-                "state": result.state.as_str(),
-                "hard_gate": result.hard_gate,
-                "duration_ms": result.duration_ms,
-                "output_excerpt": summarize_metric_output(&result.output),
-            });
-            metrics.push(metric_summary.clone());
-            slowest_metrics.push(metric_summary.clone());
-            if result.state.as_str() != "pass" && result.state.as_str() != "waived" {
-                failing_metrics.push(metric_summary);
-            }
-            coverage_metric_available = coverage_metric_available
-                || result.metric_name.to_lowercase().contains("coverage")
-                || result.metric_name.to_lowercase().contains("cover");
-        }
-        dimensions.push(json!({
-            "name": dimension_score.dimension,
-            "weight": dimension_score.weight,
-            "score": dimension_score.score,
-            "passed": dimension_score.passed,
-            "total": dimension_score.total,
-            "hard_gate_failures": dimension_score.hard_gate_failures,
-            "metrics": metrics,
-        }));
-    }
-
-    slowest_metrics.sort_by(|left, right| {
-        let left = left
-            .get("duration_ms")
-            .and_then(|value| value.as_f64())
-            .unwrap_or_default();
-        let right = right
-            .get("duration_ms")
-            .and_then(|value| value.as_f64())
-            .unwrap_or_default();
-        right
-            .partial_cmp(&left)
-            .unwrap_or(std::cmp::Ordering::Equal)
-    });
-    failing_metrics.sort_by(|left, right| {
-        let left_hard = left
-            .get("hard_gate")
-            .and_then(|value| value.as_bool())
-            .unwrap_or(false);
-        let right_hard = right
-            .get("hard_gate")
-            .and_then(|value| value.as_bool())
-            .unwrap_or(false);
-        let left_duration = left
-            .get("duration_ms")
-            .and_then(|value| value.as_f64())
-            .unwrap_or_default();
-        let right_duration = right
-            .get("duration_ms")
-            .and_then(|value| value.as_f64())
-            .unwrap_or_default();
-        let left_name = left
-            .get("name")
-            .and_then(|value| value.as_str())
-            .unwrap_or_default();
-        let right_name = right
-            .get("name")
-            .and_then(|value| value.as_str())
-            .unwrap_or_default();
-
-        (!left_hard, -left_duration as i64, left_name).cmp(&(
-            !right_hard,
-            -right_duration as i64,
-            right_name,
-        ))
-    });
-
-    Some(json!({
-        "mode": runtime_mode(options.tier),
-        "final_score": report.final_score,
-        "hard_gate_blocked": report.hard_gate_blocked,
-        "score_blocked": report.score_blocked,
-        "duration_ms": options.duration_ms,
-        "metric_count": report.dimensions.iter().map(|dimension| dimension.results.len()).sum::<usize>(),
-        "coverage_metric_available": coverage_metric_available,
-        "coverage_summary": load_runtime_coverage_summary(project_root),
-        "dimensions": dimensions,
-        "slowest_metrics": slowest_metrics.into_iter().take(5).collect::<Vec<_>>(),
-        "artifact_path": options.artifact_path,
-        "producer": options.producer,
-        "generated_at_ms": options.observed_at_ms,
-        "base_ref": options.base_ref,
-        "changed_file_count": options.changed_files.len(),
-        "changed_files_preview": options.changed_files.iter().take(8).cloned().collect::<Vec<_>>(),
-        "failing_metrics": failing_metrics.into_iter().take(5).collect::<Vec<_>>(),
-    }))
-}
-
-fn write_runtime_fitness_artifacts(
-    project_root: &Path,
-    tier: Option<&str>,
-    snapshot: &serde_json::Value,
-    observed_at_ms: i64,
-) -> io::Result<String> {
-    let artifact_dir = runtime_fitness_artifact_dir(project_root);
-    fs::create_dir_all(&artifact_dir)?;
-    let mode = runtime_mode(tier);
-    let artifact_path = artifact_dir.join(format!("{observed_at_ms}-{mode}.json"));
-    let latest_path = artifact_dir.join(format!("latest-{mode}.json"));
-    let serialized = format!(
-        "{}\n",
-        serde_json::to_string_pretty(snapshot).map_err(io::Error::other)?
-    );
-    fs::write(&artifact_path, &serialized)?;
-    fs::write(&latest_path, &serialized)?;
-    Ok(artifact_path.display().to_string())
-}
-
-fn write_runtime_fitness_mailbox_message(
-    project_root: &Path,
-    payload: &serde_json::Value,
-) -> io::Result<()> {
-    let mailbox_dir = runtime_fitness_mailbox_dir(project_root);
-    fs::create_dir_all(&mailbox_dir)?;
-    let observed_at_ms = payload
-        .get("observed_at_ms")
-        .and_then(|value| value.as_i64())
-        .unwrap_or_default();
-    let mode = payload
-        .get("mode")
-        .and_then(|value| value.as_str())
-        .unwrap_or("full");
-    let mailbox_path = mailbox_dir.join(format!("{observed_at_ms}-{mode}.json"));
-    let serialized = format!(
-        "{}\n",
-        serde_json::to_string_pretty(payload).map_err(io::Error::other)?
-    );
-    fs::write(mailbox_path, serialized)
-}
-
-fn emit_runtime_fitness_event(
-    project_root: &Path,
-    status: &str,
-    tier: Option<&str>,
-    report: Option<&FitnessReport>,
-    metric_count: usize,
-    duration_ms: f64,
-    artifact_path: Option<&str>,
-) -> io::Result<()> {
-    let event_path = runtime_event_path(project_root);
-    if let Some(parent) = event_path.parent() {
-        fs::create_dir_all(parent)?;
-    }
-    let payload = json!({
-        "type": "fitness",
-        "repo_root": project_root.display().to_string(),
-        "observed_at_ms": now_millis(),
-        "mode": runtime_mode(tier),
-        "status": status,
-        "final_score": report.map(|report| report.final_score),
-        "hard_gate_blocked": report.map(|report| report.hard_gate_blocked),
-        "score_blocked": report.map(|report| report.score_blocked),
-        "duration_ms": duration_ms,
-        "dimension_count": report.map(|report| report.dimensions.len()),
-        "metric_count": metric_count,
-        "artifact_path": artifact_path,
-    });
-
-    let mut handle = fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(event_path)?;
-    writeln!(
-        handle,
-        "{}",
-        serde_json::to_string(&payload).map_err(io::Error::other)?
-    )?;
-    write_runtime_fitness_mailbox_message(project_root, &payload)
-}
-
 fn cmd_validate(args: ValidateArgs) -> i32 {
     let repo_root = find_project_root();
     let fitness_dir = repo_root.join("docs/fitness");
@@ -1262,12 +817,16 @@ fn cmd_serve() -> i32 {
 
 fn cmd_analyze_long_file(args: AnalyzeLongFileArgs) -> i32 {
     let repo_root = find_project_root();
-    let explicit_files = args
+    // Deduplicate files + paths while preserving insertion order (files first),
+    // matching Python: dict.fromkeys((args.files or []) + (args.paths or []))
+    let mut seen = std::collections::HashSet::new();
+    let explicit_files: Vec<String> = args
         .files
         .iter()
         .chain(args.paths.iter())
+        .filter(|f| seen.insert((*f).clone()))
         .cloned()
-        .collect::<Vec<_>>();
+        .collect();
     let config_path = args.config.as_deref().map(Path::new);
     let report = analyze_long_files(
         &repo_root,
@@ -1371,120 +930,14 @@ fn cmd_release_trigger(args: ReleaseTriggerArgs) -> i32 {
     0
 }
 
-fn print_report_text(report: &entrix::model::FitnessReport, verbose: bool) {
-    let status = if report.hard_gate_blocked || report.score_blocked {
-        "FAIL"
-    } else {
-        "PASS"
-    };
-
-    println!("Entrix fitness: {status}");
-    println!("Final score: {:.1}%", report.final_score);
-    println!("Hard gate blocked: {}", report.hard_gate_blocked);
-    println!("Score blocked: {}", report.score_blocked);
-
-    for dimension in &report.dimensions {
-        println!(
-            "- {}: {:.1}% ({}/{})",
-            dimension.dimension, dimension.score, dimension.passed, dimension.total
-        );
-
-        if verbose {
-            for result in &dimension.results {
-                println!(
-                    "  {} [{}] {} ({:.0}ms)",
-                    if result.passed { "PASS" } else { "FAIL" },
-                    result.tier.as_str(),
-                    result.metric_name,
-                    result.duration_ms
-                );
-            }
-        }
-    }
-}
-
-fn print_long_file_report(report: &entrix::long_file::LongFileAnalysisReport, min_lines: usize) {
-    if report.files.is_empty() {
-        println!("No oversized or explicit files matched for long-file analysis.");
-        return;
-    }
-
-    for file in &report.files {
-        if file.line_count < min_lines {
-            continue;
-        }
-        println!(
-            "{} [{}] {} lines (budget {}, commits {})",
-            file.file_path, file.language, file.line_count, file.budget_limit, file.commit_count
-        );
-        if !file.budget_reason.is_empty() {
-            println!("  budget reason: {}", file.budget_reason);
-        }
-        for class in &file.classes {
-            println!(
-                "  class {} [{}-{}] methods={}",
-                class.qualified_name, class.start_line, class.end_line, class.method_count
-            );
-        }
-        for function in &file.functions {
-            println!(
-                "  {} {} [{}-{}] comments={} commits={}",
-                function.kind,
-                function.qualified_name,
-                function.start_line,
-                function.end_line,
-                function.comment_count,
-                function.commit_count
-            );
-        }
-        for warning in &file.warnings {
-            println!("  warning {}: {}", warning.code, warning.summary);
-        }
-    }
-}
-
-fn print_release_trigger_report(report: &entrix::release_trigger::ReleaseTriggerReport) {
-    println!("Release trigger report");
-    println!("- blocked: {}", if report.blocked { "yes" } else { "no" });
-    println!(
-        "- human review required: {}",
-        if report.human_review_required {
-            "yes"
-        } else {
-            "no"
-        }
-    );
-    println!("- manifest: {}", report.manifest_path);
-    if let Some(path) = &report.baseline_manifest_path {
-        println!("- baseline manifest: {path}");
-    }
-    println!("- artifacts: {}", report.artifacts.len());
-    println!("- changed files: {}", report.changed_files.len());
-    if report.triggers.is_empty() {
-        println!("- triggers: none");
-        return;
-    }
-    println!("- triggers:");
-    for trigger in &report.triggers {
-        println!(
-            "  - {} [{}] -> {}",
-            trigger.name, trigger.severity, trigger.action
-        );
-        for reason in &trigger.reasons {
-            println!("    - {reason}");
-        }
-    }
-}
-
 fn parse_tier(value: &str) -> Option<Tier> {
     Tier::from_str_opt(value.trim())
 }
 
 fn parse_scope_filter(value: &str) -> Option<ExecutionScope> {
     match value.trim() {
-        // Python Entrix examples and current workflows use `--scope ci` as a
-        // compatibility flag without expecting local-default metrics to drop out.
-        // Keep strict filtering only for non-default runtime scopes.
+        "local" => Some(ExecutionScope::Local),
+        "ci" => Some(ExecutionScope::Ci),
         "staging" => Some(ExecutionScope::Staging),
         "prod_observation" => Some(ExecutionScope::ProdObservation),
         _ => None,
@@ -1537,37 +990,86 @@ fn cmd_graph_test_mapping(args: GraphTestMappingArgs) -> i32 {
     } else {
         args.files
     };
-    let report = test_mapping::analyze_changed_files(&repo_root, &changed_files);
+    let registry = test_mapping::ResolverRegistry::default();
+    let graph_build =
+        (!args.no_graph).then(|| build_graph(&repo_root, parse_build_mode(&args.build_mode)));
+    let graph_test_files_by_source = if args.no_graph {
+        BTreeMap::new()
+    } else {
+        let Some(build) = graph_build.as_ref() else {
+            return 1;
+        };
+        if build.status == "unavailable" {
+            BTreeMap::new()
+        } else {
+            let mut by_source = BTreeMap::new();
+            for source_file in changed_files
+                .iter()
+                .filter(|path| !registry.is_test_file(path))
+            {
+                let query = query_current_graph(
+                    &repo_root,
+                    source_file,
+                    "tests_for",
+                    ReviewBuildMode::Skip,
+                );
+                if query.status != "ok" {
+                    continue;
+                }
+                let graph_files = query
+                    .results
+                    .iter()
+                    .map(|node| match node {
+                        GraphNodePayload::File(node) => node.file_path.clone(),
+                        GraphNodePayload::Symbol(node) => node.file_path.clone(),
+                    })
+                    .collect::<BTreeSet<_>>()
+                    .into_iter()
+                    .collect::<Vec<_>>();
+                if !graph_files.is_empty() {
+                    by_source.insert(source_file.clone(), graph_files);
+                }
+            }
+            by_source
+        }
+    };
+    let report = registry.analyze_changed_files_with_graph(
+        &repo_root,
+        &changed_files,
+        &graph_test_files_by_source,
+    );
     let graph_payload = if args.no_graph {
         json!({
             "available": false,
             "status": "disabled",
-            "reason": "graph enrichment disabled by --no-graph"
+            "reason": "graph disabled"
         })
     } else {
-        let radius = analyze_test_radius(
-            &repo_root,
-            &changed_files,
-            TestRadiusOptions {
-                base: &args.base,
-                build_mode: parse_build_mode(&args.build_mode),
-                max_depth: 2,
-                max_targets: 25,
-                max_impacted_files: 200,
-            },
-        );
-        json!({
-            "available": true,
-            "status": radius.status,
-            "test_files": radius.test_files,
-            "untested_targets": radius.untested_targets,
-            "query_failures": radius.query_failures,
-            "wide_blast_radius": radius.wide_blast_radius,
-        })
+        let build = graph_build.expect("graph build");
+        if build.status == "unavailable" {
+            json!({
+                "available": false,
+                "status": "unavailable",
+                "reason": "graph backend unavailable"
+            })
+        } else {
+            json!({
+                "available": true,
+                "status": build.status.clone(),
+                "build": build,
+            })
+        }
     };
 
     if args.json {
         let payload = json!({
+            "status": "ok",
+            "summary": format!(
+                "Analyzed test mappings for {} changed source file(s); skipped {} changed test file(s).",
+                report.mappings.len(),
+                report.skipped_test_files.len()
+            ),
+            "base": args.base,
             "changed_files": report.changed_files,
             "skipped_test_files": report.skipped_test_files,
             "mappings": report.mappings,
@@ -1611,7 +1113,11 @@ fn cmd_graph_impact(args: GraphImpactArgs) -> i32 {
     if args.json {
         print_json(&result);
     } else {
-        println!("{}", result.summary);
+        if result.status == "unavailable" {
+            println!("{}", result.summary);
+            return 1;
+        }
+        print_graph_impact(&result);
     }
     status_exit_code(&result.status)
 }
@@ -1661,38 +1167,6 @@ fn cmd_graph_stats(args: GraphStatsArgs) -> i32 {
     status_exit_code(&result.status)
 }
 
-#[cfg(test)]
-mod cli_parse_tests {
-    use super::*;
-    use clap::Parser;
-
-    #[test]
-    fn graph_stats_accepts_json_flag() {
-        let cli = Cli::parse_from(["entrix", "graph", "stats", "--json"]);
-        match cli.command {
-            Command::Graph(GraphArgs {
-                command: Some(GraphCommand::Stats(GraphStatsArgs { json })),
-            }) => assert!(json),
-            _ => panic!("expected graph stats command"),
-        }
-    }
-
-    #[test]
-    fn unavailable_status_maps_to_exit_code_one() {
-        assert_eq!(status_exit_code("unavailable"), 1);
-        assert_eq!(status_exit_code("ok"), 0);
-    }
-
-    #[test]
-    fn graph_parent_command_parses_without_subcommand() {
-        let cli = Cli::parse_from(["entrix", "graph"]);
-        match cli.command {
-            Command::Graph(GraphArgs { command: None }) => {}
-            _ => panic!("expected graph command without subcommand"),
-        }
-    }
-}
-
 fn cmd_graph_test_radius(args: GraphTestRadiusArgs) -> i32 {
     let repo_root = find_project_root();
     let files = if args.files.is_empty() {
@@ -1715,7 +1189,11 @@ fn cmd_graph_test_radius(args: GraphTestRadiusArgs) -> i32 {
     if args.json {
         print_json(&result);
     } else {
-        println!("{}", result.summary);
+        if result.status == "unavailable" {
+            println!("{}", result.summary);
+            return 1;
+        }
+        print_graph_test_radius(&result);
     }
     status_exit_code(&result.status)
 }
@@ -1732,7 +1210,11 @@ fn cmd_graph_query(args: GraphQueryArgs) -> i32 {
     if args.json {
         print_json(&result);
     } else {
-        println!("{}", result.summary);
+        if result.status == "unavailable" {
+            println!("{}", result.summary);
+            return 1;
+        }
+        print_graph_query(&result);
     }
     status_exit_code(&result.status)
 }
@@ -1750,7 +1232,11 @@ fn cmd_graph_history(args: GraphHistoryArgs) -> i32 {
     if args.json {
         print_json(&result);
     } else {
-        println!("{}", result.summary);
+        if result.status == "unavailable" {
+            println!("{}", result.summary);
+            return 1;
+        }
+        print_graph_history(&result);
     }
     status_exit_code(&result.status)
 }
@@ -1792,7 +1278,11 @@ fn cmd_graph_review_context(args: GraphReviewContextArgs) -> i32 {
         }
         print_json(&payload);
     } else {
-        println!("{}", payload.summary);
+        if payload.status == "unavailable" {
+            println!("{}", payload.summary);
+            return 1;
+        }
+        print_graph_review_context(&payload);
     }
 
     status_exit_code(&payload.status)
@@ -1807,7 +1297,11 @@ fn parse_build_mode(value: &str) -> ReviewBuildMode {
 }
 
 fn status_exit_code(status: &str) -> i32 {
-    if status == "unavailable" { 1 } else { 0 }
+    if status == "unavailable" {
+        1
+    } else {
+        0
+    }
 }
 
 fn cmd_hook_file_length(args: HookFileLengthArgs) -> i32 {
@@ -1856,6 +1350,37 @@ fn cmd_hook_file_length(args: HookFileLengthArgs) -> i32 {
         );
     }
 
+    if !violations.is_empty() {
+        println!("Refactor the oversized file before commit.");
+        // Deduplicate violation paths while preserving order
+        let mut seen = BTreeSet::new();
+        let violation_files: Vec<String> = violations
+            .iter()
+            .filter(|v| seen.insert(v.path.clone()))
+            .map(|v| v.path.clone())
+            .collect();
+        let config_path_ref = Path::new(&args.config);
+        let structure_result = analyze_long_files(
+            &repo_root,
+            Some(violation_files),
+            Some(config_path_ref),
+            &args.base,
+            !args.strict_limit,
+            default_comment_review_commit_threshold(),
+        );
+        if structure_result.status == "unavailable" {
+            println!(
+                "Structure summary unavailable: {}",
+                structure_result
+                    .summary
+                    .as_deref()
+                    .unwrap_or("long-file analysis unavailable")
+            );
+        } else {
+            print_hook_long_file_summary(&structure_result);
+        }
+    }
+
     if violations.is_empty() {
         0
     } else {
@@ -1887,36 +1412,4 @@ fn collect_git_diff_files(repo_root: &Path, base: &str) -> Vec<String> {
         .filter(|line| !line.is_empty())
         .map(ToString::to_string)
         .collect()
-}
-
-fn print_json<T: serde::Serialize>(value: &T) {
-    match serde_json::to_string_pretty(value) {
-        Ok(output) => println!("{output}"),
-        Err(error) => {
-            eprintln!("failed to serialize json output: {error}");
-        }
-    }
-}
-
-fn print_review_trigger_report(report: &entrix::review_trigger::ReviewTriggerReport) {
-    println!(
-        "human review required: {}",
-        if report.human_review_required {
-            "yes"
-        } else {
-            "no"
-        }
-    );
-    println!("base: {}", report.base);
-    println!("changed files: {}", report.changed_files.len());
-    println!("triggers: {}", report.triggers.len());
-    for trigger in &report.triggers {
-        println!(
-            "- {} [{}] -> {}",
-            trigger.name, trigger.severity, trigger.action
-        );
-        for reason in &trigger.reasons {
-            println!("  - {reason}");
-        }
-    }
 }

@@ -13,26 +13,46 @@ export class InMemoryKanbanBoardStore implements KanbanBoardStore {
   private boards = new Map<string, KanbanBoard>();
 
   async save(board: KanbanBoard): Promise<void> {
-    this.boards.set(board.id, { ...board, columns: cloneKanbanColumns(board.columns) });
+    this.boards.set(board.id, {
+      ...board,
+      githubToken: board.githubToken,
+      columns: cloneKanbanColumns(board.columns),
+    });
   }
 
   async get(boardId: string): Promise<KanbanBoard | undefined> {
     const board = this.boards.get(boardId);
-    return board ? { ...board, columns: cloneKanbanColumns(board.columns) } : undefined;
+    return board
+      ? {
+          ...board,
+          githubToken: board.githubToken,
+          columns: cloneKanbanColumns(board.columns),
+        }
+      : undefined;
   }
 
   async listByWorkspace(workspaceId: string): Promise<KanbanBoard[]> {
     return Array.from(this.boards.values())
       .filter((board) => board.workspaceId === workspaceId)
       .sort((left, right) => left.createdAt.getTime() - right.createdAt.getTime())
-      .map((board) => ({ ...board, columns: cloneKanbanColumns(board.columns) }));
+      .map((board) => ({
+        ...board,
+        githubToken: board.githubToken,
+        columns: cloneKanbanColumns(board.columns),
+      }));
   }
 
   async getDefault(workspaceId: string): Promise<KanbanBoard | undefined> {
     const board = Array.from(this.boards.values()).find(
       (item) => item.workspaceId === workspaceId && item.isDefault,
     );
-    return board ? { ...board, columns: cloneKanbanColumns(board.columns) } : undefined;
+    return board
+      ? {
+          ...board,
+          githubToken: board.githubToken,
+          columns: cloneKanbanColumns(board.columns),
+        }
+      : undefined;
   }
 
   async setDefault(workspaceId: string, boardId: string): Promise<void> {
@@ -42,6 +62,7 @@ export class InMemoryKanbanBoardStore implements KanbanBoardStore {
         ...board,
         isDefault: id === boardId,
         updatedAt: new Date(),
+        githubToken: board.githubToken,
         columns: cloneKanbanColumns(board.columns),
       });
     }

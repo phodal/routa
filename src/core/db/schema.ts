@@ -123,6 +123,7 @@ export const kanbanBoards = pgTable("kanban_boards", {
   workspaceId: text("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
   isDefault: boolean("is_default").notNull().default(false),
+  githubToken: text("github_token"),
   columns: jsonb("columns").$type<KanbanColumn[]>().notNull().default([]),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

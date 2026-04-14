@@ -322,6 +322,7 @@ export interface KanbanBoardInfo {
   workspaceId: string;
   name: string;
   isDefault: boolean;
+  githubTokenConfigured?: boolean;
   autoProviderId?: string;
   sessionConcurrencyLimit?: number;
   devSessionSupervision?: KanbanDevSessionSupervisionInfo;

@@ -246,6 +246,7 @@ export class SqliteKanbanBoardStore implements KanbanBoardStore {
         workspaceId: board.workspaceId,
         name: board.name,
         isDefault: board.isDefault,
+        githubToken: board.githubToken ?? null,
         columns: board.columns,
         createdAt: board.createdAt,
         updatedAt: board.updatedAt,
@@ -255,6 +256,7 @@ export class SqliteKanbanBoardStore implements KanbanBoardStore {
         set: {
           name: board.name,
           isDefault: board.isDefault,
+          githubToken: board.githubToken ?? null,
           columns: board.columns,
           updatedAt: new Date(),
         },
@@ -302,6 +304,7 @@ export class SqliteKanbanBoardStore implements KanbanBoardStore {
       workspaceId: row.workspaceId,
       name: row.name,
       isDefault: row.isDefault,
+      githubToken: row.githubToken ?? undefined,
       columns: row.columns,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,

@@ -1,7 +1,7 @@
 use super::{
-    analyze_file, analyze_history, analyze_impact, analyze_test_radius, build_graph,
-    build_review_context, graph_stats, query_current_graph, GraphNodePayload, ImpactOptions,
-    ReviewBuildMode, ReviewContextOptions, TestRadiusOptions,
+    analyze_file, analyze_impact, analyze_test_radius, build_graph, build_review_context,
+    graph_stats, query_current_graph, GraphNodePayload, ImpactOptions, ReviewBuildMode,
+    ReviewContextOptions, TestRadiusOptions,
 };
 use serde_json::Value;
 use std::fs;
@@ -1155,134 +1155,6 @@ fn parity_with_python_entrix_for_graph_stats_core_fields() {
 }
 
 #[test]
-fn parity_with_python_entrix_for_history_core_fields() {
-    let temp = tempdir().unwrap();
-    let root = temp.path();
-
-    Command::new("git")
-        .args(["init", "--no-bare"])
-        .current_dir(root)
-        .status()
-        .unwrap();
-    Command::new("git")
-        .args(["config", "user.name", "routa"])
-        .current_dir(root)
-        .status()
-        .unwrap();
-    Command::new("git")
-        .args(["config", "user.email", "routa@example.com"])
-        .current_dir(root)
-        .status()
-        .unwrap();
-
-    fs::create_dir_all(root.join("src")).unwrap();
-    fs::write(root.join("src/service.py"), "def run():\n    return 1\n").unwrap();
-    fs::write(root.join("README.md"), "initial\n").unwrap();
-    Command::new("git")
-        .args(["add", "."])
-        .current_dir(root)
-        .status()
-        .unwrap();
-    Command::new("git")
-        .args(["commit", "-m", "initial"])
-        .current_dir(root)
-        .status()
-        .unwrap();
-
-    fs::write(root.join("src/service.py"), "def run():\n    return 2\n").unwrap();
-    fs::create_dir_all(root.join("docs")).unwrap();
-    fs::write(root.join("docs/design.md"), "# note\n").unwrap();
-    Command::new("git")
-        .args(["add", "src/service.py", "docs/design.md"])
-        .current_dir(root)
-        .status()
-        .unwrap();
-    Command::new("git")
-        .args(["commit", "-m", "update"])
-        .current_dir(root)
-        .status()
-        .unwrap();
-
-    let Some(python) = python_entrix_runner_json(root, "history", &[]) else {
-        return;
-    };
-    let rust = serde_json::to_value(analyze_history(
-        root,
-        10,
-        "HEAD",
-        ReviewBuildMode::Auto,
-        2,
-        25,
-    ))
-    .unwrap();
-
-    assert_eq!(rust["status"], python["status"]);
-    assert_eq!(rust["analysis_mode"], python["analysis_mode"]);
-    assert_eq!(rust["summary"], python["summary"]);
-    assert_eq!(rust["ref"], python["ref"]);
-    assert_eq!(rust["build"]["backend"], python["build"]["backend"],);
-    assert_eq!(
-        rust["commits"].as_array().map_or(0, |v| v.len()),
-        python["commits"].as_array().map_or(0, |v| v.len()),
-    );
-
-    let rust_commits: &[Value] = rust["commits"].as_array().map_or(&[], AsRef::as_ref);
-    let python_commits: &[Value] = python["commits"].as_array().map_or(&[], AsRef::as_ref);
-    assert_eq!(rust_commits.len(), python_commits.len());
-    for (rust_commit, python_commit) in rust_commits.iter().zip(python_commits.iter()) {
-        assert_eq!(rust_commit["commit"], python_commit["commit"]);
-        assert_eq!(rust_commit["short_commit"], python_commit["short_commit"]);
-        assert_eq!(rust_commit["subject"], python_commit["subject"]);
-        assert_eq!(
-            sorted_strings(
-                rust_commit["raw_changed_files"]
-                    .as_array()
-                    .map_or(&[], |v| v)
-            ),
-            sorted_strings(
-                python_commit["raw_changed_files"]
-                    .as_array()
-                    .map_or(&[], |v| v)
-            ),
-        );
-        assert_eq!(
-            sorted_strings(rust_commit["changed_files"].as_array().map_or(&[], |v| v)),
-            sorted_strings(python_commit["changed_files"].as_array().map_or(&[], |v| v)),
-        );
-        assert_eq!(
-            rust_commit["changed_file_count"],
-            python_commit["changed_file_count"]
-        );
-        assert_eq!(rust_commit["target_count"], python_commit["target_count"]);
-        assert_eq!(
-            rust_commit["test_file_count"],
-            python_commit["test_file_count"]
-        );
-        assert_eq!(
-            rust_commit["untested_target_count"],
-            python_commit["untested_target_count"]
-        );
-        assert_eq!(
-            rust_commit["wide_blast_radius"],
-            python_commit["wide_blast_radius"]
-        );
-        assert_eq!(rust_commit["summary"], python_commit["summary"]);
-        assert_eq!(
-            sorted_strings(rust_commit["test_files"].as_array().map_or(&[], |v| v)),
-            sorted_strings(python_commit["test_files"].as_array().map_or(&[], |v| v))
-        );
-        assert_eq!(
-            rust_commit["untested_targets"]
-                .as_array()
-                .map_or(&[] as &[Value], |v| v.as_slice()),
-            python_commit["untested_targets"]
-                .as_array()
-                .map_or(&[] as &[Value], |v| v.as_slice()),
-        );
-    }
-}
-
-#[test]
 fn parity_with_python_entrix_for_python_queries() {
     let temp = tempdir().unwrap();
     let root = temp.path();
@@ -1558,57 +1430,6 @@ fn query_current_graph_limits_tests_to_matching_symbols() {
     ));
     assert_eq!(helper_tests.status, "ok");
     assert!(helper_tests.results.is_empty());
-}
-
-#[test]
-fn query_current_graph_parses_python_and_tracks_import_impact() {
-    let temp = tempdir().unwrap();
-    let root = temp.path();
-    fs::create_dir_all(root.join("src")).unwrap();
-    fs::write(
-        root.join("src/service.py"),
-        "def run():\n    return helper()\n\n\ndef helper():\n    return 1\n",
-    )
-    .unwrap();
-    fs::write(
-        root.join("src/consumer.py"),
-        "from .service import run\n\n\ndef consume():\n    return run()\n",
-    )
-    .unwrap();
-    fs::write(
-        root.join("src/test_service.py"),
-        "from .service import run\n\n\ndef test_run():\n    assert run() == 1\n",
-    )
-    .unwrap();
-
-    let impact = analyze_impact(
-        root,
-        &["src/service.py".to_string()],
-        ImpactOptions {
-            base: "HEAD",
-            build_mode: ReviewBuildMode::Auto,
-            max_depth: 1,
-            max_impacted_files: 200,
-        },
-    );
-    let tests = query_current_graph(
-        root,
-        "src/service.py:run",
-        "tests_for",
-        ReviewBuildMode::Auto,
-    );
-
-    assert_eq!(impact.status, "ok");
-    assert_eq!(
-        impact.impacted_files,
-        vec!["src/test_service.py".to_string()]
-    );
-    assert_eq!(tests.status, "ok");
-    assert_eq!(tests.results.len(), 1);
-    assert!(matches!(
-        &tests.results[0],
-        GraphNodePayload::Symbol(node) if node.qualified_name == "src/test_service.py:test_run"
-    ));
 }
 
 #[test]

@@ -1,7 +1,8 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
-use crate::model::Metric;
+use crate::model::{Dimension, Metric};
 use crate::model::{DimensionScore, FitnessReport, MetricResult, ResultState};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -46,7 +47,9 @@ impl ShellOutputController {
     pub fn handle_output(&self, metric: &Metric, source: &str, line: &str) {
         match self.reporter.stream_mode {
             StreamMode::Off => {}
-            StreamMode::All => self.reporter.print_metric_output(&metric.name, source, line),
+            StreamMode::All => self
+                .reporter
+                .print_metric_output(&metric.name, source, line),
             StreamMode::Failures => {
                 self.buffered_lines
                     .lock()
@@ -85,7 +88,8 @@ impl ShellOutputController {
         }
 
         for (source, line) in buffered {
-            self.reporter.print_metric_output(&metric.name, &source, &line);
+            self.reporter
+                .print_metric_output(&metric.name, &source, &line);
         }
     }
 }
@@ -154,17 +158,38 @@ impl TerminalReporter {
 
     pub fn report(&self, report: &FitnessReport, show_tier: bool) {
         for dimension in &report.dimensions {
-            self.print_dimension(dimension, show_tier);
+            self.print_dimension(dimension, None, show_tier);
         }
         self.print_footer(report);
     }
 
-    fn print_dimension(&self, dimension: &DimensionScore, show_tier: bool) {
+    pub fn report_with_dimensions(
+        &self,
+        report: &FitnessReport,
+        dimensions: &[Dimension],
+        show_tier: bool,
+    ) {
+        for (index, dimension) in report.dimensions.iter().enumerate() {
+            let source_file = dimensions.get(index).map(|item| item.source_file.as_str());
+            self.print_dimension(dimension, source_file, show_tier);
+        }
+        self.print_footer(report);
+    }
+
+    fn print_dimension(
+        &self,
+        dimension: &DimensionScore,
+        source_file: Option<&str>,
+        show_tier: bool,
+    ) {
         println!(
             "\n## {} (weight: {}%)",
             dimension.dimension.to_uppercase(),
             dimension.weight
         );
+        if let Some(source_file) = source_file.filter(|value| !value.is_empty()) {
+            println!("   Source: {source_file}");
+        }
         for result in &dimension.results {
             self.print_result(result, show_tier);
         }
@@ -190,7 +215,10 @@ impl TerminalReporter {
         println!("   - {}: {}{}{}", result.metric_name, status, hard, tier);
 
         let should_print_output = matches!(result.state, ResultState::Fail | ResultState::Unknown)
-            && (self.verbose || result.hard_gate || self.stream_mode == StreamMode::Off);
+            && (self.verbose
+                || result.hard_gate
+                || result.is_infra_error()
+                || self.stream_mode == StreamMode::Off);
         if !should_print_output {
             return;
         }
@@ -232,6 +260,18 @@ impl TerminalReporter {
             .iter()
             .filter(|dimension| dimension.weight > 0 && dimension.total > 0)
             .count();
+        let infra_errors = report
+            .dimensions
+            .iter()
+            .flat_map(|dimension| dimension.results.iter())
+            .filter(|result| result.is_infra_error())
+            .map(|result| result.metric_name.clone())
+            .collect::<Vec<_>>();
+
+        if !infra_errors.is_empty() {
+            println!("INFRA ERRORS: {}", infra_errors.join(", "));
+            println!("These failures are likely checker/tooling problems, not code defects.");
+        }
 
         if report.hard_gate_blocked {
             let failures = report
@@ -266,6 +306,30 @@ pub struct AsciiReporter {
     width: usize,
 }
 
+pub struct RichReporter {
+    width: usize,
+}
+
+pub struct RichLiveProgressReporter {
+    width: usize,
+    refresh_interval: Duration,
+    state: Mutex<RichLiveProgressState>,
+}
+
+struct RichLiveProgressState {
+    order: Vec<String>,
+    entries: HashMap<String, RichLiveMetricState>,
+    tail: Vec<String>,
+    last_render: Option<Instant>,
+}
+
+struct RichLiveMetricState {
+    tier: String,
+    hard_gate: bool,
+    status: &'static str,
+    duration_ms: Option<f64>,
+}
+
 impl AsciiReporter {
     pub fn new(width: usize) -> Self {
         Self { width }
@@ -283,7 +347,12 @@ impl AsciiReporter {
             };
             println!(
                 "{:<16} {} {} {:<5} weight={:>2}% metrics={}",
-                dimension.dimension.to_uppercase().chars().take(16).collect::<String>(),
+                dimension
+                    .dimension
+                    .to_uppercase()
+                    .chars()
+                    .take(16)
+                    .collect::<String>(),
                 bar(dimension.score, self.width),
                 score_text,
                 status_for_score(dimension.score, scorable),
@@ -304,6 +373,301 @@ impl AsciiReporter {
             println!("Score is below the configured minimum threshold.");
         }
     }
+}
+
+impl RichReporter {
+    pub fn new(width: usize) -> Self {
+        Self { width }
+    }
+
+    pub fn report(&self, report: &FitnessReport) {
+        println!("\n{:^74}", "Fitness Scorecard");
+        println!("┏{0:━<19}┳{0:━<27}┳{0:━<8}┳{0:━<9}┳{0:━<8}┓", "");
+        println!(
+            "┃ {:<17} ┃ {:<25} ┃ {:>6} ┃ {:>7} ┃ {:<6} ┃",
+            "Dimension", "Score", "Weight", "Metrics", "Status"
+        );
+        println!("┡{0:━<19}╇{0:━<27}╇{0:━<8}╇{0:━<9}╇{0:━<8}┩", "");
+
+        for dimension in &report.dimensions {
+            let scorable = dimension.weight > 0 && dimension.total > 0;
+            let score_text = if scorable {
+                format!("{:>5.1}%", dimension.score)
+            } else {
+                "  n/a".to_string()
+            };
+            println!(
+                "│ {:<17} │ {} {} │ {:>6}% │ {:>7} │ {:<6} │",
+                dimension
+                    .dimension
+                    .to_uppercase()
+                    .chars()
+                    .take(17)
+                    .collect::<String>(),
+                bar(dimension.score, self.width),
+                score_text,
+                dimension.weight,
+                metric_summary(dimension),
+                status_for_score(dimension.score, scorable),
+            );
+        }
+
+        println!("└{0:─<19}┴{0:─<27}┴{0:─<8}┴{0:─<9}┴{0:─<8}┘", "");
+        println!(
+            "\nFINAL SCORE {} {:>5.1}% {}",
+            bar(report.final_score, self.width),
+            report.final_score,
+            status_for_score(report.final_score, !report.dimensions.is_empty())
+        );
+        if report.hard_gate_blocked {
+            println!("Hard gates are blocking this run.");
+        } else if report.score_blocked {
+            println!("Score is below the configured minimum threshold.");
+        }
+
+        let failures = report
+            .dimensions
+            .iter()
+            .flat_map(|dimension| {
+                dimension
+                    .results
+                    .iter()
+                    .filter(|result| matches!(result.state, ResultState::Fail))
+                    .map(|result| result.metric_name.clone())
+            })
+            .collect::<Vec<_>>();
+        if !failures.is_empty() {
+            println!("Failing metrics: {}", failures.join(", "));
+        }
+    }
+}
+
+impl RichLiveProgressReporter {
+    pub fn new(width: usize, refresh_per_second: usize) -> Self {
+        let refresh_per_second = refresh_per_second.max(1) as u64;
+        Self {
+            width,
+            refresh_interval: Duration::from_millis(1000 / refresh_per_second),
+            state: Mutex::new(RichLiveProgressState {
+                order: Vec::new(),
+                entries: HashMap::new(),
+                tail: Vec::new(),
+                last_render: None,
+            }),
+        }
+    }
+
+    pub fn setup(&self, metrics: &[Metric]) {
+        let mut state = self.state.lock().unwrap();
+        state.order.clear();
+        state.entries.clear();
+        state.tail.clear();
+        state.last_render = None;
+        for metric in metrics {
+            state.order.push(metric.name.clone());
+            state.entries.insert(
+                metric.name.clone(),
+                RichLiveMetricState {
+                    tier: metric.tier.as_str().to_string(),
+                    hard_gate: metric.gate == crate::model::Gate::Hard,
+                    status: "queued",
+                    duration_ms: None,
+                },
+            );
+        }
+        drop(state);
+        self.force_render();
+    }
+
+    pub fn handle_progress(&self, event: &str, metric: &Metric, result: Option<&MetricResult>) {
+        let mut state = self.state.lock().unwrap();
+        let Some(entry) = state.entries.get_mut(&metric.name) else {
+            return;
+        };
+
+        if event == "start" {
+            entry.status = "running";
+            entry.duration_ms = None;
+        } else if let Some(result) = result {
+            let status = match result.state {
+                ResultState::Pass => "passed",
+                ResultState::Fail => "failed",
+                ResultState::Unknown => "unknown",
+                ResultState::Skipped => "skipped",
+                ResultState::Waived => "waived",
+            };
+            entry.status = status;
+            entry.duration_ms = (result.duration_ms > 0.0).then_some(result.duration_ms);
+            let hard_gate = entry.hard_gate;
+
+            if matches!(
+                result.state,
+                ResultState::Fail | ResultState::Skipped | ResultState::Unknown
+            ) {
+                let status_label = status.to_uppercase();
+                for line in result
+                    .output
+                    .lines()
+                    .map(str::trim)
+                    .filter(|line| !line.is_empty())
+                    .take(3)
+                {
+                    let marker = if hard_gate { "HARD" } else { "SOFT" };
+                    state.tail.push(format!(
+                        "[{}|{}|{}] {}",
+                        metric.name,
+                        marker,
+                        status_label,
+                        truncate_tail_line(line),
+                    ));
+                }
+                if state.tail.len() > 6 {
+                    let drain = state.tail.len() - 6;
+                    state.tail.drain(0..drain);
+                }
+            }
+        }
+
+        let now = Instant::now();
+        let should_render = state
+            .last_render
+            .map(|last| now.duration_since(last) >= self.refresh_interval)
+            .unwrap_or(true);
+        if should_render {
+            state.last_render = Some(now);
+            let snapshot = render_live_snapshot(self.width, &state);
+            drop(state);
+            print!("{snapshot}");
+        }
+    }
+
+    pub fn force_render(&self) {
+        let mut state = self.state.lock().unwrap();
+        state.last_render = Some(Instant::now());
+        let snapshot = render_live_snapshot(self.width, &state);
+        drop(state);
+        print!("{snapshot}");
+    }
+}
+
+fn truncate_tail_line(line: &str) -> String {
+    let mut clean = line.replace('\n', " ");
+    if clean.chars().count() > 200 {
+        clean = clean.chars().take(197).collect::<String>() + "...";
+    }
+    clean
+}
+
+fn render_live_snapshot(width: usize, state: &RichLiveProgressState) -> String {
+    let mut queued = 0;
+    let mut running = 0;
+    let mut passed = 0;
+    let mut failed = 0;
+    let mut hard_failures = 0;
+    for name in &state.order {
+        if let Some(entry) = state.entries.get(name) {
+            match entry.status {
+                "queued" => queued += 1,
+                "running" => running += 1,
+                "passed" => passed += 1,
+                "failed" => {
+                    failed += 1;
+                    if entry.hard_gate {
+                        hard_failures += 1;
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    let mut out = String::new();
+    out.push('\n');
+    out.push_str(&format!(
+        "{}\n",
+        "Fitness Live Progress".chars().take(74).collect::<String>()
+    ));
+    out.push_str(&format!(
+        "passed={} failed={} hard_failures={} running={} queued={}\n",
+        passed, failed, hard_failures, running, queued
+    ));
+    out.push_str(&format!(
+        "┏{0:━<4}┳{0:━<28}┳{0:━<10}┳{0:━<8}┳{0:━<6}┳{0:━<8}┓\n",
+        ""
+    ));
+    out.push_str(&format!(
+        "┃ {:>2} ┃ {:<26} ┃ {:<8} ┃ {:<6} ┃ {:<4} ┃ {:>6} ┃\n",
+        "#", "Metric", "State", "Tier", "Gate", "Time"
+    ));
+    out.push_str(&format!(
+        "┡{0:━<4}╇{0:━<28}╇{0:━<10}╇{0:━<8}╇{0:━<6}╇{0:━<8}┩\n",
+        ""
+    ));
+    for (idx, name) in state.order.iter().enumerate() {
+        if let Some(entry) = state.entries.get(name) {
+            let display_name = name.chars().take(26).collect::<String>();
+            let gate = if entry.hard_gate { "HARD" } else { "SOFT" };
+            let time = entry
+                .duration_ms
+                .map(|ms| format!("{:.1}s", ms / 1000.0))
+                .unwrap_or_default();
+            out.push_str(&format!(
+                "│ {:>2} │ {:<26} │ {:<8} │ {:<6} │ {:<4} │ {:>6} ┃\n",
+                idx + 1,
+                display_name,
+                live_status_label(entry.status),
+                entry.tier,
+                gate,
+                time
+            ));
+        }
+    }
+    out.push_str(&format!(
+        "└{0:─<4}┴{0:─<28}┴{0:─<10}┴{0:─<8}┴{0:─<6}┴{0:─<8}┘\n",
+        ""
+    ));
+    if !state.tail.is_empty() {
+        out.push_str("tail:\n");
+        for line in &state.tail {
+            out.push_str("- ");
+            out.push_str(line);
+            out.push('\n');
+        }
+    }
+    out.push_str(&format!("bar: {}\n", bar(progress_score(state), width)));
+    out
+}
+
+fn live_status_label(status: &str) -> &'static str {
+    match status {
+        "queued" => "WAIT",
+        "running" => "RUN",
+        "passed" => "PASS",
+        "failed" => "FAIL",
+        "skipped" => "SKIP",
+        "waived" => "WAIVE",
+        _ => "UNK",
+    }
+}
+
+fn progress_score(state: &RichLiveProgressState) -> f64 {
+    let total = state.order.len();
+    if total == 0 {
+        return 0.0;
+    }
+    let done = state
+        .order
+        .iter()
+        .filter(|name| {
+            state.entries.get(*name).is_some_and(|entry| {
+                matches!(
+                    entry.status,
+                    "passed" | "failed" | "skipped" | "waived" | "unknown"
+                )
+            })
+        })
+        .count();
+    (done as f64 / total as f64) * 100.0
 }
 
 fn status_for_score(score: f64, scorable: bool) -> &'static str {
@@ -354,10 +718,8 @@ mod tests {
         )));
         assert!(controller.should_capture_output());
 
-        let disabled = ShellOutputController::new(Arc::new(TerminalReporter::new(
-            false,
-            StreamMode::Off,
-        )));
+        let disabled =
+            ShellOutputController::new(Arc::new(TerminalReporter::new(false, StreamMode::Off)));
         assert!(!disabled.should_capture_output());
     }
 
@@ -381,6 +743,38 @@ mod tests {
         );
 
         let result = MetricResult::new("lint", true, "ok", Tier::Fast);
+        controller.handle_progress("end", &metric, Some(&result));
+        assert!(controller
+            .buffered_lines
+            .lock()
+            .unwrap()
+            .get("lint")
+            .is_none());
+    }
+
+    #[test]
+    fn shell_output_controller_all_mode_does_not_buffer_lines() {
+        let controller =
+            ShellOutputController::new(Arc::new(TerminalReporter::new(false, StreamMode::All)));
+        let metric = Metric::new("lint", "echo lint");
+        controller.handle_output(&metric, "stdout", "line one");
+        assert!(controller
+            .buffered_lines
+            .lock()
+            .unwrap()
+            .get("lint")
+            .is_none());
+    }
+
+    #[test]
+    fn shell_output_controller_flushes_and_clears_failure_buffer() {
+        let controller = ShellOutputController::new(Arc::new(TerminalReporter::new(
+            false,
+            StreamMode::Failures,
+        )));
+        let metric = Metric::new("lint", "echo lint");
+        controller.handle_output(&metric, "stdout", "line one");
+        let result = MetricResult::new("lint", false, "failed", Tier::Fast);
         controller.handle_progress("end", &metric, Some(&result));
         assert!(controller
             .buffered_lines

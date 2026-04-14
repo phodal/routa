@@ -1,0 +1,41 @@
+{
+  "name": "entrix",
+  "version": "0.15.2",
+  "description": "Entrix fitness function engine — Rust implementation CLI.",
+  "type": "module",
+  "license": "MIT",
+  "author": "Phodal Huang",
+  "homepage": "https://github.com/phodal/routa#readme",
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "entrix",
+    "fitness-functions",
+    "quality-gates",
+    "architecture",
+    "code-review",
+    "ci"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/phodal/routa.git",
+    "directory": "packages/entrix"
+  },
+  "bin": {
+    "entrix": "bin/entrix.js"
+  },
+  "files": [
+    "bin",
+    "README.md"
+  ],
+  "optionalDependencies": {
+    "entrix-darwin-arm64": "0.15.2",
+    "entrix-darwin-x64": "0.15.2",
+    "entrix-linux-x64": "0.15.2",
+    "entrix-windows-x64": "0.15.2"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

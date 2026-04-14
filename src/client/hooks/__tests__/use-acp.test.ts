@@ -16,12 +16,14 @@ describe("formatAcpErrorForLog", () => {
           optionId: "approved",
         },
       },
+      true,
     );
 
     expect(formatAcpErrorForLog(err)).toMatchObject({
       name: "AcpClientError",
       message: "Internal error",
       code: -32000,
+      sessionMayContinue: true,
       errorData: {
         details: "Permission denied",
         optionId: "approved",

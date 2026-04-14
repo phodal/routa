@@ -78,6 +78,7 @@ export function formatAcpErrorForLog(err: unknown): unknown {
       code: err.code,
       authMethods: err.authMethods,
       agentInfo: err.agentInfo,
+      sessionMayContinue: err.sessionMayContinue,
       data,
       errorData: nestedErrorData,
     };

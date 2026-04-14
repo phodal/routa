@@ -54,19 +54,34 @@ git push origin main --tags
   - [ ] [routa-cli](https://crates.io/crates/routa-cli)
   - [ ] [entrix](https://crates.io/crates/entrix)
   - [ ] [harness-monitor](https://crates.io/crates/harness-monitor)
-- [ ] Verify npm publish (all 5 packages):
+- [ ] Verify npm publish (all 15 packages):
   - [ ] [routa-cli](https://www.npmjs.com/package/routa-cli) (main package)
   - [ ] [routa-cli-linux-x64](https://www.npmjs.com/package/routa-cli-linux-x64)
   - [ ] [routa-cli-darwin-arm64](https://www.npmjs.com/package/routa-cli-darwin-arm64)
   - [ ] [routa-cli-darwin-x64](https://www.npmjs.com/package/routa-cli-darwin-x64)
   - [ ] [routa-cli-windows-x64](https://www.npmjs.com/package/routa-cli-windows-x64)
+  - [ ] [harness-monitor](https://www.npmjs.com/package/harness-monitor) (main package)
+  - [ ] [harness-monitor-linux-x64](https://www.npmjs.com/package/harness-monitor-linux-x64)
+  - [ ] [harness-monitor-darwin-arm64](https://www.npmjs.com/package/harness-monitor-darwin-arm64)
+  - [ ] [harness-monitor-darwin-x64](https://www.npmjs.com/package/harness-monitor-darwin-x64)
+  - [ ] [harness-monitor-windows-x64](https://www.npmjs.com/package/harness-monitor-windows-x64)
+  - [ ] [entrix](https://www.npmjs.com/package/entrix) (main package)
+  - [ ] [entrix-linux-x64](https://www.npmjs.com/package/entrix-linux-x64)
+  - [ ] [entrix-darwin-arm64](https://www.npmjs.com/package/entrix-darwin-arm64)
+  - [ ] [entrix-darwin-x64](https://www.npmjs.com/package/entrix-darwin-x64)
+  - [ ] [entrix-windows-x64](https://www.npmjs.com/package/entrix-windows-x64)
 - [ ] Verify [GitHub Release](https://github.com/phodal/routa/releases) (Desktop installers)
 - [ ] Test installation:
   ```bash
   cargo install routa-cli@0.2.9
   cargo install harness-monitor@0.2.9
+  cargo install entrix@0.2.9
   npm install -g routa-cli@0.2.9
+  npm install -g harness-monitor@0.2.9
+  npm install -g entrix@0.2.9
   routa --version  # Should show the new version
+  harness-monitor --version
+  entrix --version
   ```
 
 ## Rollback

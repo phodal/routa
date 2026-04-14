@@ -263,9 +263,10 @@ impl TaskApplicationService {
             task.completion_summary = command.completion_summary;
         }
         if let Some(value) = command.verification_verdict {
-            task.verification_verdict = Some(VerificationVerdict::from_str(&value).ok_or_else(
-                || ServerError::BadRequest(format!("Invalid verification verdict: {}", value)),
-            )?);
+            task.verification_verdict =
+                Some(VerificationVerdict::from_str(&value).ok_or_else(|| {
+                    ServerError::BadRequest(format!("Invalid verification verdict: {}", value))
+                })?);
         }
         if command.verification_report.is_some() {
             task.verification_report = command.verification_report;

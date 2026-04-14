@@ -21,6 +21,7 @@ traceable.
 - Prefer issue-first work for non-trivial bugs or failures.
 - Do not open a PR with unverified source changes.
 - If public behavior, commands, or workflows change, update the docs in the same change set.
+- If you also run a local self-hosted Routa with long-lived local patches, keep those patches in a dedicated overlay branch rather than in your default PR branch. See [Local Overlay And Upstream Sync](/developer-guide/local-overlay-sync).
 
 ## Pull Request Expectations
 
