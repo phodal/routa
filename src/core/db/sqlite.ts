@@ -18,7 +18,7 @@ export type SqliteDatabase = BetterSQLite3Database<typeof schema>;
 const GLOBAL_KEY = "__routa_sqlite_db__";
 const GLOBAL_RAW_KEY = "__routa_sqlite_raw__";
 const WORKTREES_TABLE_NAME = "worktrees";
-const WORKTREES_INDEX_NAMES = [
+export const WORKTREES_INDEX_NAMES = [
   "uq_worktrees_codebase_branch",
   "uq_worktrees_path",
   "idx_worktrees_workspace_id",

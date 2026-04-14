@@ -3,13 +3,12 @@ import os from "os";
 import path from "path";
 import BetterSqlite3 from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { closeSqliteDatabase, ensureSqliteDefaultWorkspace, getSqliteDatabase } from "../sqlite";
-
-const WORKTREES_INDEX_NAMES = [
-  "uq_worktrees_codebase_branch",
-  "uq_worktrees_path",
-  "idx_worktrees_workspace_id",
-] as const;
+import {
+  closeSqliteDatabase,
+  ensureSqliteDefaultWorkspace,
+  getSqliteDatabase,
+  WORKTREES_INDEX_NAMES,
+} from "../sqlite";
 
 function expectWorktreesSchema(raw: BetterSqlite3.Database): void {
   const tableRow = raw.prepare(`
