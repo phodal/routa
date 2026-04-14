@@ -797,9 +797,7 @@ fn read_runtime_snapshot_for_event(
     event: Option<&Value>,
     latest_snapshots_by_mode: &BTreeMap<String, Value>,
 ) -> Option<Value> {
-    let Some(event) = event else {
-        return None;
-    };
+    let event = event?;
 
     if let Some(artifact_path) = event.get("artifact_path").and_then(Value::as_str) {
         if !artifact_path.trim().is_empty() {
