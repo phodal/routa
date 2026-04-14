@@ -668,9 +668,27 @@ describe("KanbanTab live session tail", () => {
     vi.unstubAllGlobals();
   });
 
+  function countHistoryFetches(fetchMock: ReturnType<typeof vi.fn>) {
+    return fetchMock.mock.calls.filter(([input]) => {
+      const url = String(input);
+      return url.includes("/api/sessions/session-123/history");
+    }).length;
+  }
+
   it("polls active trigger session history and shows the latest tail on the card", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
+      if (url.startsWith("/api/fitness/runtime")) {
+        return {
+          ok: true,
+          json: async () => ({
+            generatedAt: "2026-04-14T00:00:00.000Z",
+            repoRoot: "/tmp/project",
+            activeRun: null,
+            latestRun: null,
+          }),
+        } as Response;
+      }
       if (url === "/api/sessions/session-123/history?consolidated=true") {
         return {
           ok: true,
@@ -720,7 +738,21 @@ describe("KanbanTab live session tail", () => {
   });
 
   it("does not poll history for completed trigger sessions", async () => {
-    const fetchMock = vi.fn();
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.startsWith("/api/fitness/runtime")) {
+        return {
+          ok: true,
+          json: async () => ({
+            generatedAt: "2026-04-14T00:00:00.000Z",
+            repoRoot: "/tmp/project",
+            activeRun: null,
+            latestRun: null,
+          }),
+        } as Response;
+      }
+      throw new Error(`Unexpected fetch: GET ${url}`);
+    });
     vi.stubGlobal("fetch", fetchMock);
 
     render(
@@ -753,7 +785,7 @@ describe("KanbanTab live session tail", () => {
     );
 
     await waitFor(() => {
-      expect(fetchMock).not.toHaveBeenCalled();
+      expect(countHistoryFetches(fetchMock)).toBe(0);
     });
     expect(screen.queryByTestId("kanban-card-live-tail")).toBeNull();
   });
@@ -761,14 +793,28 @@ describe("KanbanTab live session tail", () => {
   it("uses a slower polling cadence for live session tails", async () => {
     vi.useFakeTimers();
 
-    const fetchMock = vi.fn(async () => ({
-      ok: true,
-      json: async () => ({
-        history: [
-          { update: { sessionUpdate: "agent_message", content: { type: "text", text: "Still working." } } },
-        ],
-      }),
-    }) as Response);
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.startsWith("/api/fitness/runtime")) {
+        return {
+          ok: true,
+          json: async () => ({
+            generatedAt: "2026-04-14T00:00:00.000Z",
+            repoRoot: "/tmp/project",
+            activeRun: null,
+            latestRun: null,
+          }),
+        } as Response;
+      }
+      return {
+        ok: true,
+        json: async () => ({
+          history: [
+            { update: { sessionUpdate: "agent_message", content: { type: "text", text: "Still working." } } },
+          ],
+        }),
+      } as Response;
+    });
     vi.stubGlobal("fetch", fetchMock);
 
     render(
@@ -800,26 +846,40 @@ describe("KanbanTab live session tail", () => {
     );
 
     await vi.advanceTimersByTimeAsync(0);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(countHistoryFetches(fetchMock)).toBe(1);
 
     await vi.advanceTimersByTimeAsync(9_999);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(countHistoryFetches(fetchMock)).toBe(1);
 
     await vi.advanceTimersByTimeAsync(1);
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(countHistoryFetches(fetchMock)).toBe(2);
   });
 
   it("does not poll live session tails while the page is hidden", async () => {
     vi.useFakeTimers();
 
-    const fetchMock = vi.fn(async () => ({
-      ok: true,
-      json: async () => ({
-        history: [
-          { update: { sessionUpdate: "agent_message", content: { type: "text", text: "Still working." } } },
-        ],
-      }),
-    }) as Response);
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.startsWith("/api/fitness/runtime")) {
+        return {
+          ok: true,
+          json: async () => ({
+            generatedAt: "2026-04-14T00:00:00.000Z",
+            repoRoot: "/tmp/project",
+            activeRun: null,
+            latestRun: null,
+          }),
+        } as Response;
+      }
+      return {
+        ok: true,
+        json: async () => ({
+          history: [
+            { update: { sessionUpdate: "agent_message", content: { type: "text", text: "Still working." } } },
+          ],
+        }),
+      } as Response;
+    });
     vi.stubGlobal("fetch", fetchMock);
 
     const visibilityState = { value: "visible" };
@@ -857,7 +917,7 @@ describe("KanbanTab live session tail", () => {
     );
 
     await vi.advanceTimersByTimeAsync(0);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(countHistoryFetches(fetchMock)).toBe(1);
 
     await act(async () => {
       visibilityState.value = "hidden";
@@ -865,7 +925,7 @@ describe("KanbanTab live session tail", () => {
     });
 
     await vi.advanceTimersByTimeAsync(20_000);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(countHistoryFetches(fetchMock)).toBe(1);
 
     await act(async () => {
       visibilityState.value = "visible";
@@ -873,7 +933,7 @@ describe("KanbanTab live session tail", () => {
     });
 
     await vi.advanceTimersByTimeAsync(0);
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(countHistoryFetches(fetchMock)).toBe(2);
   });
 });
 
