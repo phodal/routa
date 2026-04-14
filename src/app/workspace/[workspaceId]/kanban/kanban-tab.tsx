@@ -34,6 +34,7 @@ import { normalizeKanbanAutomation } from "@/core/models/kanban";
 import type { RepoSelection } from "@/client/components/repo-picker";
 import type { RepoSyncState } from "./kanban-repo-sync-status";
 import type { KanbanRepoChanges } from "./kanban-file-changes-types";
+import type { FitnessRuntimeStatus } from "@/core/fitness/runtime-status";
 import {
   canSelectTaskSessionInAcp,
   extractSessionLiveTail,
@@ -239,6 +240,7 @@ export function KanbanTab({
   const [isPageVisible, setIsPageVisible] = useState(() => (
     typeof document === "undefined" || document.visibilityState === "visible"
   ));
+  const [fitnessStatus, setFitnessStatus] = useState<FitnessRuntimeStatus | null>(null);
 
   const sessionMap = useMemo(() => {
     const map = new Map<string, SessionInfo>();
@@ -560,6 +562,44 @@ export function KanbanTab({
   const selectedProviderInfo = useMemo(() => {
     return acp?.providers?.find((p) => p.id === acp.selectedProvider) ?? null;
   }, [acp]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    if (!workspaceId || workspaceId === "__placeholder__") {
+      setFitnessStatus(null);
+      return () => controller.abort();
+    }
+
+    const searchParams = new URLSearchParams({
+      workspaceId,
+    });
+    if (defaultCodebase?.id) {
+      searchParams.set("codebaseId", defaultCodebase.id);
+    }
+
+    void (async () => {
+      try {
+        const response = await desktopAwareFetch(`/api/fitness/runtime?${searchParams.toString()}`, {
+          cache: "no-store",
+          signal: controller.signal,
+        });
+        const payload = await response.json().catch(() => null);
+        if (controller.signal.aborted) return;
+        if (!response.ok || !payload || typeof payload !== "object") {
+          setFitnessStatus(null);
+          return;
+        }
+        setFitnessStatus(payload as FitnessRuntimeStatus);
+      } catch {
+        if (!controller.signal.aborted) {
+          setFitnessStatus(null);
+        }
+      }
+    })();
+
+    return () => controller.abort();
+  }, [defaultCodebase?.id, refreshSignal, workspaceId]);
 
   // Sync task's assignedProvider to ACP state when activeTaskId changes
   useEffect(() => {
@@ -1848,6 +1888,7 @@ export function KanbanTab({
     board,
     boardQueue,
     repoHealth,
+    fitnessStatus,
     selectedProvider: selectedProviderInfo,
     onRepoClick: () => {
       if (defaultCodebase) {

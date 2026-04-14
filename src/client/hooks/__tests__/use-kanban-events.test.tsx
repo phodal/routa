@@ -28,8 +28,16 @@ class MockEventSource {
   }
 }
 
-function HookHarness({ workspaceId, onInvalidate }: { workspaceId: string; onInvalidate: () => void }) {
-  useKanbanEvents({ workspaceId, onInvalidate });
+function HookHarness({
+  workspaceId,
+  codebaseId,
+  onInvalidate,
+}: {
+  workspaceId: string;
+  codebaseId?: string;
+  onInvalidate: () => void;
+}) {
+  useKanbanEvents({ workspaceId, codebaseId, onInvalidate });
   return null;
 }
 
@@ -44,10 +52,11 @@ describe("useKanbanEvents", () => {
     const onInvalidate = vi.fn();
     vi.stubGlobal("EventSource", MockEventSource as unknown as typeof EventSource);
 
-    render(<HookHarness workspaceId="workspace-1" onInvalidate={onInvalidate} />);
+    render(<HookHarness workspaceId="workspace-1" codebaseId="codebase-1" onInvalidate={onInvalidate} />);
 
     const source = MockEventSource.instances[0];
     expect(source?.url).toContain("/api/kanban/events?workspaceId=workspace-1");
+    expect(source?.url).toContain("codebaseId=codebase-1");
 
     source.emit({ type: "connected" });
     expect(onInvalidate).not.toHaveBeenCalled();
@@ -73,6 +82,19 @@ describe("useKanbanEvents", () => {
     expect(secondSource).toBeTruthy();
 
     secondSource.emit({ type: "connected" });
+    expect(onInvalidate).toHaveBeenCalledTimes(1);
+  });
+
+  it("invalidates when fitness runtime status changes arrive over SSE", () => {
+    const onInvalidate = vi.fn();
+    vi.stubGlobal("EventSource", MockEventSource as unknown as typeof EventSource);
+
+    render(<HookHarness workspaceId="workspace-1" onInvalidate={onInvalidate} />);
+
+    const source = MockEventSource.instances[0];
+    source.emit({ type: "connected" });
+    source.emit({ type: "fitness:changed" });
+
     expect(onInvalidate).toHaveBeenCalledTimes(1);
   });
 });

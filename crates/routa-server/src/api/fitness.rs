@@ -9,8 +9,9 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
 use tokio::process::Command;
 
 use crate::api::repo_context::{
@@ -29,6 +30,7 @@ pub fn router() -> Router<AppState> {
         .route("/architecture", get(get_fitness_architecture))
         .route("/plan", get(get_fitness_plan))
         .route("/report", get(get_fitness_report))
+        .route("/runtime", get(get_fitness_runtime))
         .route("/specs", get(get_fitness_specs))
 }
 
@@ -53,6 +55,33 @@ struct FitnessPlanQuery {
     repo_path: Option<String>,
     tier: Option<String>,
     scope: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct FitnessRuntimeRunSummary {
+    pub(crate) mode: String,
+    pub(crate) status: String,
+    pub(crate) observed_at: String,
+    pub(crate) observed_at_ms: i64,
+    pub(crate) final_score: Option<f64>,
+    pub(crate) hard_gate_blocked: bool,
+    pub(crate) score_blocked: bool,
+    pub(crate) blocker_count: usize,
+    pub(crate) hard_gate_failure_count: usize,
+    pub(crate) failing_metric_count: usize,
+    pub(crate) duration_ms: Option<f64>,
+    pub(crate) metric_count: Option<usize>,
+    pub(crate) artifact_path: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct FitnessRuntimeStatusResponse {
+    pub(crate) generated_at: String,
+    pub(crate) repo_root: String,
+    pub(crate) active_run: Option<FitnessRuntimeRunSummary>,
+    pub(crate) latest_run: Option<FitnessRuntimeRunSummary>,
 }
 
 async fn analyze_fitness(
@@ -151,6 +180,29 @@ async fn get_fitness_report(
         "requestedProfiles": FITNESS_PROFILES,
         "profiles": profiles,
     })))
+}
+
+async fn get_fitness_runtime(
+    State(state): State<AppState>,
+    Query(query): Query<RepoContextQuery>,
+) -> Result<Json<FitnessRuntimeStatusResponse>, (StatusCode, Json<Value>)> {
+    let repo_root = resolve_repo_root(
+        &state,
+        query.workspace_id.as_deref(),
+        query.codebase_id.as_deref(),
+        query.repo_path.as_deref(),
+        "缺少 fitness 上下文，请提供 workspaceId / codebaseId / repoPath 之一",
+        ResolveRepoRootOptions {
+            prefer_current_repo_for_default_workspace: true,
+        },
+    )
+    .await
+    .map_err(map_context_error(
+        "Fitness runtime 上下文无效",
+        "获取 Fitness runtime 状态失败",
+    ))?;
+
+    Ok(Json(read_fitness_runtime_status_for_repo_root(&repo_root)))
 }
 
 async fn get_fitness_architecture(
@@ -528,6 +580,367 @@ async fn get_fitness_specs(
         "fitnessDir": fitness_dir,
         "files": ordered,
     })))
+}
+
+fn runtime_root(repo_root: &Path) -> PathBuf {
+    let digest = Sha256::digest(repo_root.to_string_lossy().as_bytes());
+    let marker = digest
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
+    PathBuf::from("/tmp")
+        .join("harness-monitor")
+        .join("runtime")
+        .join(marker)
+}
+
+fn runtime_fitness_mailbox_dir(repo_root: &Path) -> PathBuf {
+    runtime_root(repo_root)
+        .join("mailbox")
+        .join("fitness")
+        .join("new")
+}
+
+fn runtime_fitness_artifact_dir(repo_root: &Path) -> PathBuf {
+    runtime_root(repo_root).join("artifacts").join("fitness")
+}
+
+fn normalize_runtime_mode(mode: Option<&str>) -> String {
+    mode.map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("full")
+        .to_string()
+}
+
+fn normalize_runtime_observed_at(value: Option<i64>) -> i64 {
+    value.filter(|value| *value > 0).unwrap_or_default()
+}
+
+fn runtime_snapshot_hard_gate_failures(snapshot: Option<&Value>) -> usize {
+    snapshot
+        .and_then(|payload| payload.get("dimensions"))
+        .and_then(Value::as_array)
+        .map(|dimensions| {
+            dimensions
+                .iter()
+                .map(|dimension| dimension["hard_gate_failures"].as_u64().unwrap_or(0) as usize)
+                .sum()
+        })
+        .unwrap_or(0)
+}
+
+fn runtime_snapshot_failing_metric_count(snapshot: Option<&Value>) -> usize {
+    snapshot
+        .and_then(|payload| payload.get("failing_metrics"))
+        .and_then(Value::as_array)
+        .map(Vec::len)
+        .unwrap_or(0)
+}
+
+fn summarize_runtime_run(
+    event: Option<&Value>,
+    snapshot: Option<&Value>,
+) -> Option<FitnessRuntimeRunSummary> {
+    if event.is_none() && snapshot.is_none() {
+        return None;
+    }
+
+    let observed_at_ms = normalize_runtime_observed_at(
+        event
+            .and_then(|payload| payload.get("observed_at_ms"))
+            .and_then(Value::as_i64)
+            .or_else(|| {
+                snapshot
+                    .and_then(|payload| payload.get("generated_at_ms"))
+                    .and_then(Value::as_i64)
+            }),
+    );
+    let score_blocked = event
+        .and_then(|payload| payload.get("score_blocked"))
+        .and_then(Value::as_bool)
+        .or_else(|| {
+            snapshot
+                .and_then(|payload| payload.get("score_blocked"))
+                .and_then(Value::as_bool)
+        })
+        .unwrap_or(false);
+    let hard_gate_blocked = event
+        .and_then(|payload| payload.get("hard_gate_blocked"))
+        .and_then(Value::as_bool)
+        .or_else(|| {
+            snapshot
+                .and_then(|payload| payload.get("hard_gate_blocked"))
+                .and_then(Value::as_bool)
+        })
+        .unwrap_or(false);
+    let hard_gate_failure_count = runtime_snapshot_hard_gate_failures(snapshot);
+    let blocker_count = hard_gate_failure_count + usize::from(score_blocked);
+
+    Some(FitnessRuntimeRunSummary {
+        mode: normalize_runtime_mode(
+            event
+                .and_then(|payload| payload.get("mode"))
+                .and_then(Value::as_str)
+                .or_else(|| {
+                    snapshot
+                        .and_then(|payload| payload.get("mode"))
+                        .and_then(Value::as_str)
+                }),
+        ),
+        status: event
+            .and_then(|payload| payload.get("status"))
+            .and_then(Value::as_str)
+            .unwrap_or("unknown")
+            .to_string(),
+        observed_at: chrono::DateTime::<chrono::Utc>::from_timestamp_millis(
+            if observed_at_ms > 0 {
+                observed_at_ms
+            } else {
+                chrono::Utc::now().timestamp_millis()
+            },
+        )
+        .unwrap_or_else(chrono::Utc::now)
+        .to_rfc3339(),
+        observed_at_ms,
+        final_score: event
+            .and_then(|payload| payload.get("final_score"))
+            .and_then(Value::as_f64)
+            .or_else(|| {
+                snapshot
+                    .and_then(|payload| payload.get("final_score"))
+                    .and_then(Value::as_f64)
+            }),
+        hard_gate_blocked,
+        score_blocked,
+        blocker_count,
+        hard_gate_failure_count,
+        failing_metric_count: runtime_snapshot_failing_metric_count(snapshot),
+        duration_ms: event
+            .and_then(|payload| payload.get("duration_ms"))
+            .and_then(Value::as_f64)
+            .or_else(|| {
+                snapshot
+                    .and_then(|payload| payload.get("duration_ms"))
+                    .and_then(Value::as_f64)
+            }),
+        metric_count: event
+            .and_then(|payload| payload.get("metric_count"))
+            .and_then(Value::as_u64)
+            .map(|value| value as usize)
+            .or_else(|| {
+                snapshot
+                    .and_then(|payload| payload.get("metric_count"))
+                    .and_then(Value::as_u64)
+                    .map(|value| value as usize)
+            }),
+        artifact_path: event
+            .and_then(|payload| payload.get("artifact_path"))
+            .and_then(Value::as_str)
+            .map(ToString::to_string)
+            .or_else(|| {
+                snapshot
+                    .and_then(|payload| payload.get("artifact_path"))
+                    .and_then(Value::as_str)
+                    .map(ToString::to_string)
+            }),
+    })
+}
+
+fn read_runtime_json(path: &Path) -> Option<Value> {
+    let raw = std::fs::read_to_string(path).ok()?;
+    serde_json::from_str::<Value>(&raw).ok()
+}
+
+fn read_runtime_mailbox_events(repo_root: &Path) -> Vec<Value> {
+    let mut entries = std::fs::read_dir(runtime_fitness_mailbox_dir(repo_root))
+        .ok()
+        .into_iter()
+        .flatten()
+        .filter_map(|entry| entry.ok().map(|entry| entry.path()))
+        .filter(|path| path.extension().and_then(|ext| ext.to_str()) == Some("json"))
+        .collect::<Vec<_>>();
+    entries.sort();
+    entries
+        .into_iter()
+        .filter_map(|path| read_runtime_json(&path))
+        .filter(|payload| payload.get("type").and_then(Value::as_str) == Some("fitness"))
+        .collect()
+}
+
+fn read_latest_runtime_snapshots_by_mode(repo_root: &Path) -> BTreeMap<String, Value> {
+    let mut snapshots = BTreeMap::new();
+    let Ok(entries) = std::fs::read_dir(runtime_fitness_artifact_dir(repo_root)) else {
+        return snapshots;
+    };
+
+    for path in entries
+        .filter_map(|entry| entry.ok().map(|entry| entry.path()))
+        .filter(|path| path.extension().and_then(|ext| ext.to_str()) == Some("json"))
+        .filter(|path| {
+            path.file_name()
+                .and_then(|value| value.to_str())
+                .is_some_and(|name| name.starts_with("latest-"))
+        })
+    {
+        if let Some(snapshot) = read_runtime_json(&path) {
+            snapshots.insert(
+                normalize_runtime_mode(snapshot.get("mode").and_then(Value::as_str)),
+                snapshot,
+            );
+        }
+    }
+
+    snapshots
+}
+
+fn read_runtime_snapshot_for_event(
+    event: Option<&Value>,
+    latest_snapshots_by_mode: &BTreeMap<String, Value>,
+) -> Option<Value> {
+    let Some(event) = event else {
+        return None;
+    };
+
+    if let Some(artifact_path) = event.get("artifact_path").and_then(Value::as_str) {
+        if !artifact_path.trim().is_empty() {
+            if let Some(snapshot) = read_runtime_json(Path::new(artifact_path)) {
+                return Some(snapshot);
+            }
+        }
+    }
+
+    if event.get("status").and_then(Value::as_str) == Some("skipped") {
+        return None;
+    }
+
+    latest_snapshots_by_mode
+        .get(&normalize_runtime_mode(
+            event.get("mode").and_then(Value::as_str),
+        ))
+        .cloned()
+}
+
+pub(crate) fn read_fitness_runtime_status_for_repo_root(
+    repo_root: &Path,
+) -> FitnessRuntimeStatusResponse {
+    let events = read_runtime_mailbox_events(repo_root);
+    let latest_snapshots_by_mode = read_latest_runtime_snapshots_by_mode(repo_root);
+    let mut latest_event_by_mode = BTreeMap::<String, Value>::new();
+    for event in &events {
+        latest_event_by_mode.insert(
+            normalize_runtime_mode(event.get("mode").and_then(Value::as_str)),
+            event.clone(),
+        );
+    }
+
+    let active_run_event = latest_event_by_mode
+        .values()
+        .filter(|event| event.get("status").and_then(Value::as_str) == Some("running"))
+        .max_by_key(|event| {
+            normalize_runtime_observed_at(event.get("observed_at_ms").and_then(Value::as_i64))
+        });
+    let latest_terminal_event = events
+        .iter()
+        .filter(|event| event.get("status").and_then(Value::as_str) != Some("running"))
+        .max_by_key(|event| {
+            normalize_runtime_observed_at(event.get("observed_at_ms").and_then(Value::as_i64))
+        });
+
+    let active_run_snapshot =
+        read_runtime_snapshot_for_event(active_run_event, &latest_snapshots_by_mode);
+    let latest_run_snapshot =
+        read_runtime_snapshot_for_event(latest_terminal_event, &latest_snapshots_by_mode);
+    let latest_run = summarize_runtime_run(latest_terminal_event, latest_run_snapshot.as_ref())
+        .or_else(|| {
+            latest_snapshots_by_mode
+                .values()
+                .max_by_key(|snapshot| {
+                    normalize_runtime_observed_at(
+                        snapshot.get("generated_at_ms").and_then(Value::as_i64),
+                    )
+                })
+                .and_then(|snapshot| summarize_runtime_run(None, Some(snapshot)))
+        });
+
+    FitnessRuntimeStatusResponse {
+        generated_at: chrono::Utc::now().to_rfc3339(),
+        repo_root: repo_root.to_string_lossy().to_string(),
+        active_run: summarize_runtime_run(active_run_event, active_run_snapshot.as_ref()),
+        latest_run,
+    }
+}
+
+pub(crate) async fn read_fitness_runtime_status_for_context(
+    state: &AppState,
+    query: &RepoContextQuery,
+) -> Option<FitnessRuntimeStatusResponse> {
+    let repo_root = resolve_repo_root(
+        state,
+        query.workspace_id.as_deref(),
+        query.codebase_id.as_deref(),
+        query.repo_path.as_deref(),
+        "缺少 fitness 上下文，请提供 workspaceId / codebaseId / repoPath 之一",
+        ResolveRepoRootOptions {
+            prefer_current_repo_for_default_workspace: true,
+        },
+    )
+    .await
+    .ok()?;
+
+    Some(read_fitness_runtime_status_for_repo_root(&repo_root))
+}
+
+pub(crate) fn build_fitness_runtime_change_key(
+    status: Option<&FitnessRuntimeStatusResponse>,
+) -> String {
+    let Some(status) = status else {
+        return "__none__".to_string();
+    };
+
+    format!(
+        "{}:{}:{}:{}:{}:{}:{}:{}:{}",
+        status.repo_root,
+        status
+            .active_run
+            .as_ref()
+            .map(|run| run.mode.as_str())
+            .unwrap_or_default(),
+        status
+            .active_run
+            .as_ref()
+            .map(|run| run.status.as_str())
+            .unwrap_or_default(),
+        status
+            .active_run
+            .as_ref()
+            .map(|run| run.observed_at_ms)
+            .unwrap_or_default(),
+        status
+            .latest_run
+            .as_ref()
+            .map(|run| run.mode.as_str())
+            .unwrap_or_default(),
+        status
+            .latest_run
+            .as_ref()
+            .map(|run| run.status.as_str())
+            .unwrap_or_default(),
+        status
+            .latest_run
+            .as_ref()
+            .map(|run| run.observed_at_ms)
+            .unwrap_or_default(),
+        status
+            .latest_run
+            .as_ref()
+            .and_then(|run| run.final_score)
+            .unwrap_or_default(),
+        status
+            .latest_run
+            .as_ref()
+            .map(|run| run.blocker_count)
+            .unwrap_or_default()
+    )
 }
 
 fn normalize_profiles(body: &AnalyzeRequest) -> Vec<String> {
@@ -1120,6 +1533,156 @@ fn tier_rank(tier: &str) -> u8 {
         "normal" => 1,
         "deep" => 2,
         _ => 1,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        build_fitness_runtime_change_key, read_fitness_runtime_status_for_repo_root,
+        runtime_fitness_artifact_dir, runtime_fitness_mailbox_dir,
+    };
+    use serde_json::json;
+    use std::fs;
+
+    fn write_json(path: &std::path::Path, payload: serde_json::Value) {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).expect("parent dir");
+        }
+        fs::write(
+            path,
+            format!(
+                "{}\n",
+                serde_json::to_string_pretty(&payload).expect("serialize payload")
+            ),
+        )
+        .expect("write json");
+    }
+
+    #[test]
+    fn runtime_status_reports_running_and_latest_completed_runs() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let repo_root = temp.path();
+        let artifact_dir = runtime_fitness_artifact_dir(repo_root);
+        let mailbox_dir = runtime_fitness_mailbox_dir(repo_root);
+        let artifact_path = artifact_dir.join("1717000000000-full.json");
+
+        write_json(
+            &artifact_path,
+            json!({
+                "mode": "full",
+                "final_score": 92.4,
+                "hard_gate_blocked": true,
+                "score_blocked": false,
+                "duration_ms": 1400,
+                "metric_count": 10,
+                "generated_at_ms": 1717000000000_i64,
+                "artifact_path": artifact_path.to_string_lossy().to_string(),
+                "dimensions": [{ "hard_gate_failures": 2 }],
+                "failing_metrics": [{ "name": "lint" }],
+            }),
+        );
+        write_json(
+            &artifact_dir.join("latest-full.json"),
+            json!({
+                "mode": "full",
+                "final_score": 92.4,
+                "hard_gate_blocked": true,
+                "score_blocked": false,
+                "duration_ms": 1400,
+                "metric_count": 10,
+                "generated_at_ms": 1717000000000_i64,
+                "artifact_path": artifact_path.to_string_lossy().to_string(),
+                "dimensions": [{ "hard_gate_failures": 2 }],
+                "failing_metrics": [{ "name": "lint" }],
+            }),
+        );
+        write_json(
+            &mailbox_dir.join("1717000000001-full.json"),
+            json!({
+                "type": "fitness",
+                "repo_root": repo_root.to_string_lossy().to_string(),
+                "observed_at_ms": 1717000000001_i64,
+                "mode": "full",
+                "status": "failed",
+                "final_score": 92.4,
+                "hard_gate_blocked": true,
+                "score_blocked": false,
+                "duration_ms": 1400.0,
+                "metric_count": 10,
+                "artifact_path": artifact_path.to_string_lossy().to_string(),
+            }),
+        );
+        write_json(
+            &mailbox_dir.join("1717000000400-fast.json"),
+            json!({
+                "type": "fitness",
+                "repo_root": repo_root.to_string_lossy().to_string(),
+                "observed_at_ms": 1717000000400_i64,
+                "mode": "fast",
+                "status": "running",
+                "final_score": serde_json::Value::Null,
+                "hard_gate_blocked": serde_json::Value::Null,
+                "score_blocked": serde_json::Value::Null,
+                "duration_ms": 0.0,
+                "metric_count": 4,
+                "artifact_path": serde_json::Value::Null,
+            }),
+        );
+
+        let status = read_fitness_runtime_status_for_repo_root(repo_root);
+        assert_eq!(
+            status.active_run.as_ref().map(|run| run.mode.as_str()),
+            Some("fast")
+        );
+        assert_eq!(
+            status.active_run.as_ref().map(|run| run.status.as_str()),
+            Some("running")
+        );
+        assert_eq!(
+            status.latest_run.as_ref().map(|run| run.mode.as_str()),
+            Some("full")
+        );
+        assert_eq!(
+            status.latest_run.as_ref().map(|run| run.blocker_count),
+            Some(2)
+        );
+        assert_eq!(
+            status
+                .latest_run
+                .as_ref()
+                .map(|run| run.hard_gate_failure_count),
+            Some(2)
+        );
+    }
+
+    #[test]
+    fn runtime_change_key_changes_with_latest_runtime_summary() {
+        let status = super::FitnessRuntimeStatusResponse {
+            generated_at: "2026-04-14T10:00:00Z".to_string(),
+            repo_root: "/repo".to_string(),
+            active_run: None,
+            latest_run: Some(super::FitnessRuntimeRunSummary {
+                mode: "full".to_string(),
+                status: "failed".to_string(),
+                observed_at: "2026-04-14T09:59:00Z".to_string(),
+                observed_at_ms: 123,
+                final_score: Some(84.0),
+                hard_gate_blocked: true,
+                score_blocked: false,
+                blocker_count: 2,
+                hard_gate_failure_count: 2,
+                failing_metric_count: 1,
+                duration_ms: Some(1200.0),
+                metric_count: Some(10),
+                artifact_path: Some("/tmp/full.json".to_string()),
+            }),
+        };
+
+        let change_key = build_fitness_runtime_change_key(Some(&status));
+        assert!(change_key.contains("/repo"));
+        assert!(change_key.contains("failed"));
+        assert!(change_key.contains("84"));
     }
 }
 

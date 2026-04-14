@@ -5227,6 +5227,43 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /api/fitness/runtime:
+    get:
+      operationId: getFitnessRuntime
+      summary: Read the latest Entrix runtime fitness state for a repo context
+      parameters:
+        - name: workspaceId
+          in: query
+          schema:
+            type: string
+        - name: codebaseId
+          in: query
+          schema:
+            type: string
+        - name: repoPath
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Runtime fitness status payload
+          content:
+            application/json:
+              schema:
+                type: object
+        "400":
+          description: Invalid fitness runtime context
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Failed to read fitness runtime status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /api/fitness/specs:
     get:
       operationId: getFitnessSpecs

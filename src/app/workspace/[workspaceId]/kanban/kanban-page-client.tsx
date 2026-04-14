@@ -48,6 +48,10 @@ export function KanbanPageClient() {
   const { locale, t } = useTranslation();
   const workspacesHook = useWorkspaces();
   const { codebases, fetchCodebases } = useCodebases(workspaceId);
+  const defaultCodebaseId = useMemo(
+    () => codebases.find((codebase) => codebase.isDefault)?.id ?? codebases[0]?.id ?? null,
+    [codebases],
+  );
 
   const [boards, setBoards] = useState<KanbanBoardInfo[]>([]);
   const [tasks, setTasks] = useState<TaskInfo[]>([]);
@@ -370,6 +374,7 @@ export function KanbanPageClient() {
 
   useKanbanEvents({
     workspaceId,
+    codebaseId: defaultCodebaseId,
     onInvalidate: handleKanbanInvalidate,
   });
 

@@ -42,6 +42,7 @@ rmcp = { version = "0.15", features = ["server", "transport-streamable-http-serv
 # HTTP client (used directly in some API handlers)
 reqwest = { version = "0.12", features = ["json", "stream"] }
 regex = "1"
+sha2 = "0.11"
 
 # Archive extraction (for skill catalog install)
 zip = "2"

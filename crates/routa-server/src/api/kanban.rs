@@ -15,6 +15,10 @@ use std::collections::{HashMap, HashSet};
 use std::convert::Infallible;
 use tokio::sync::mpsc;
 
+use crate::api::fitness::{
+    build_fitness_runtime_change_key, read_fitness_runtime_status_for_context,
+};
+use crate::api::repo_context::RepoContextQuery;
 use crate::error::ServerError;
 use crate::rpc::RpcRouter;
 use crate::state::AppState;
@@ -85,6 +89,14 @@ pub fn router() -> Router<AppState> {
 #[serde(rename_all = "camelCase")]
 struct BoardsQuery {
     workspace_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct KanbanEventsQuery {
+    workspace_id: Option<String>,
+    codebase_id: Option<String>,
+    repo_path: Option<String>,
 }
 
 struct EventBusSubscriptionGuard {
@@ -603,15 +615,21 @@ async fn list_boards(
 
 async fn kanban_events(
     State(state): State<AppState>,
-    Query(query): Query<BoardsQuery>,
+    Query(query): Query<KanbanEventsQuery>,
 ) -> Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>> {
     let workspace_id = query.workspace_id.unwrap_or_else(|| "*".to_string());
+    let codebase_id = query.codebase_id.clone();
     let connected = serde_json::json!({
         "type": "connected",
-        "workspaceId": workspace_id,
+        "workspaceId": workspace_id.clone(),
     });
     let (tx, mut rx) = mpsc::unbounded_channel::<serde_json::Value>();
     let workspace_filter = workspace_id.clone();
+    let fitness_context = RepoContextQuery {
+        workspace_id: Some(workspace_id.clone()),
+        codebase_id: codebase_id.clone(),
+        repo_path: query.repo_path.clone(),
+    };
     let handler_key = format!("kanban-events-{}", uuid::Uuid::new_v4());
 
     state
@@ -627,16 +645,38 @@ async fn kanban_events(
         .await;
 
     let event_bus = state.event_bus.clone();
+    let state_for_fitness = state.clone();
     let stream = async_stream::stream! {
         let _guard = EventBusSubscriptionGuard::new(event_bus, handler_key);
         yield Ok(Event::default().data(connected.to_string()));
         let mut heartbeat = tokio::time::interval(std::time::Duration::from_secs(15));
+        let mut fitness_poll = tokio::time::interval(std::time::Duration::from_secs(3));
+        let mut fitness_change_key = build_fitness_runtime_change_key(
+            read_fitness_runtime_status_for_context(&state_for_fitness, &fitness_context)
+                .await
+                .as_ref(),
+        );
         loop {
             tokio::select! {
                 message = rx.recv() => {
                     match message {
                         Some(payload) => yield Ok(Event::default().data(payload.to_string())),
                         None => break,
+                    }
+                }
+                _ = fitness_poll.tick() => {
+                    let status = read_fitness_runtime_status_for_context(&state_for_fitness, &fitness_context).await;
+                    let next_change_key = build_fitness_runtime_change_key(status.as_ref());
+                    if next_change_key != fitness_change_key {
+                        fitness_change_key = next_change_key;
+                        let payload = serde_json::json!({
+                            "type": "fitness:changed",
+                            "workspaceId": workspace_id.clone(),
+                            "codebaseId": codebase_id.clone(),
+                            "repoRoot": status.as_ref().map(|value| value.repo_root.clone()),
+                            "timestamp": chrono::Utc::now().to_rfc3339(),
+                        });
+                        yield Ok(Event::default().data(payload.to_string()));
                     }
                 }
                 _ = heartbeat.tick() => yield Ok(Event::default().comment("heartbeat")),

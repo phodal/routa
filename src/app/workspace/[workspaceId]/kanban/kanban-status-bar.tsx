@@ -4,6 +4,7 @@ import { GitBranch, FileCode, Activity, Zap } from "lucide-react";
 import { useTranslation } from "@/i18n";
 import type { CodebaseData } from "@/client/hooks/use-workspaces";
 import type { AcpProviderInfo } from "@/client/acp-client";
+import type { FitnessRuntimeStatus } from "@/core/fitness/runtime-status";
 import type { KanbanBoardInfo } from "../types";
 import type { RepoSyncState } from "./kanban-repo-sync-status";
 
@@ -24,6 +25,8 @@ interface KanbanStatusBarProps {
   boardQueue?: KanbanBoardInfo["queue"];
   /** 看板与 session/repo 绑定健康状态 */
   repoHealth?: { missingRepoTasks: number; cwdMismatchTasks: number };
+  /** Entrix fitness runtime 状态 */
+  fitnessStatus?: FitnessRuntimeStatus | null;
   /** 当前选中的 Provider */
   selectedProvider?: AcpProviderInfo | null;
   /** 点击仓库时的回调 */
@@ -49,6 +52,7 @@ export function KanbanStatusBar({
   board,
   boardQueue,
   repoHealth,
+  fitnessStatus,
   selectedProvider,
   onRepoClick,
   onFileChangesClick,
@@ -59,6 +63,66 @@ export function KanbanStatusBar({
   repoSync,
 }: KanbanStatusBarProps) {
   const { t } = useTranslation();
+  const runtimeRun = fitnessStatus?.activeRun ?? fitnessStatus?.latestRun ?? null;
+  const fitnessToneClass = !runtimeRun
+    ? "text-desktop-text-secondary"
+    : fitnessStatus?.activeRun
+    ? "text-sky-600 dark:text-sky-300"
+    : runtimeRun?.status === "failed" || (runtimeRun?.blockerCount ?? 0) > 0
+      ? "text-rose-600 dark:text-rose-300"
+      : runtimeRun?.status === "skipped"
+        ? "text-amber-600 dark:text-amber-300"
+        : "text-emerald-600 dark:text-emerald-300";
+  const fitnessDotClass = !runtimeRun
+    ? "bg-slate-400"
+    : fitnessStatus?.activeRun
+    ? "animate-pulse bg-sky-500"
+    : runtimeRun?.status === "failed" || (runtimeRun?.blockerCount ?? 0) > 0
+      ? "bg-rose-500"
+      : runtimeRun?.status === "skipped"
+        ? "bg-amber-500"
+        : "bg-emerald-500";
+
+  const fitnessModeLabel = runtimeRun?.mode ? runtimeRun.mode.toUpperCase() : null;
+  const latestCompletedRun = fitnessStatus?.activeRun ? fitnessStatus.latestRun : null;
+  const latestCompletedLabel = latestCompletedRun
+    ? [
+      t.kanban.fitnessLastLabel,
+      latestCompletedRun.mode.toUpperCase(),
+      typeof latestCompletedRun.finalScore === "number" ? `${Math.round(latestCompletedRun.finalScore)}` : latestCompletedRun.status,
+    ].join(" ")
+    : null;
+  const fitnessPrimaryLabel = fitnessStatus?.activeRun
+    ? t.kanban.fitnessRunning
+    : runtimeRun?.status === "failed" || (runtimeRun?.blockerCount ?? 0) > 0
+      ? t.kanban.fitnessBlocked
+      : runtimeRun?.status === "skipped"
+        ? t.kanban.fitnessSkipped
+        : runtimeRun
+          ? t.kanban.fitnessPassed
+          : t.kanban.fitnessIdle;
+  const fitnessScoreLabel = typeof runtimeRun?.finalScore === "number"
+    ? `${Math.round(runtimeRun.finalScore)}`
+    : null;
+  const fitnessObservedLabel = runtimeRun
+    ? new Intl.DateTimeFormat(undefined, {
+      hour: "2-digit",
+      minute: "2-digit",
+      month: "numeric",
+      day: "numeric",
+    }).format(new Date(runtimeRun.observedAt))
+    : null;
+  const fitnessTooltip = runtimeRun
+    ? [
+      `${t.kanban.fitnessLabel}: ${fitnessPrimaryLabel}`,
+      fitnessModeLabel ? `${t.kanban.fitnessModeLabel}: ${fitnessModeLabel}` : null,
+      fitnessScoreLabel ? `${t.kanban.fitnessScoreLabel}: ${fitnessScoreLabel}` : null,
+      `${t.kanban.fitnessUpdatedLabel}: ${new Date(runtimeRun.observedAt).toLocaleString()}`,
+      (runtimeRun.hardGateFailureCount > 0 || runtimeRun.scoreBlocked)
+        ? `${t.kanban.fitnessBlockersLabel}: ${runtimeRun.blockerCount}`
+        : null,
+    ].filter(Boolean).join(" • ")
+    : t.kanban.fitnessIdle;
 
   return (
     <div
@@ -173,6 +237,29 @@ export function KanbanStatusBar({
             </span>
           </div>
         )}
+
+        <div
+          className={`flex items-center gap-1.5 px-2.5 h-6 text-[11px] ${fitnessToneClass}`}
+          title={fitnessTooltip}
+          data-testid="kanban-fitness-status"
+        >
+          <span className={`w-1.5 h-1.5 shrink-0 rounded-full ${fitnessDotClass}`}/>
+          <span className="font-medium">{t.kanban.fitnessLabel}</span>
+          {fitnessModeLabel && <span>{fitnessModeLabel}</span>}
+          <span>{fitnessPrimaryLabel}</span>
+          {fitnessScoreLabel && <span>{fitnessScoreLabel}</span>}
+          {runtimeRun?.blockerCount ? (
+            <span>
+              {runtimeRun.blockerCount} {t.kanban.fitnessBlockersShort}
+            </span>
+          ) : null}
+          {latestCompletedLabel && (
+            <span className="text-desktop-text-secondary">{latestCompletedLabel}</span>
+          )}
+          {fitnessObservedLabel && (
+            <span className="text-desktop-text-secondary">{fitnessObservedLabel}</span>
+          )}
+        </div>
 
         {/* 运行状态 */}
         {board && (

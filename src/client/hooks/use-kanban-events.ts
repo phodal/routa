@@ -6,10 +6,11 @@ import { resolveApiPath } from "../config/backend";
 
 interface UseKanbanEventsOptions {
   workspaceId: string;
+  codebaseId?: string | null;
   onInvalidate: () => void;
 }
 
-export function useKanbanEvents({ workspaceId, onInvalidate }: UseKanbanEventsOptions): void {
+export function useKanbanEvents({ workspaceId, codebaseId, onInvalidate }: UseKanbanEventsOptions): void {
   const eventSourceRef = useRef<EventSource | null>(null);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const tearingDownRef = useRef(false);
@@ -27,8 +28,14 @@ export function useKanbanEvents({ workspaceId, onInvalidate }: UseKanbanEventsOp
     }
 
     const base = getDesktopApiBaseUrl();
+    const searchParams = new URLSearchParams({
+      workspaceId,
+    });
+    if (codebaseId) {
+      searchParams.set("codebaseId", codebaseId);
+    }
     const es = new EventSource(
-      resolveApiPath(`api/kanban/events?workspaceId=${encodeURIComponent(workspaceId)}`, base),
+      resolveApiPath(`api/kanban/events?${searchParams.toString()}`, base),
     );
     eventSourceRef.current = es;
 
@@ -43,7 +50,7 @@ export function useKanbanEvents({ workspaceId, onInvalidate }: UseKanbanEventsOp
           }
           return;
         }
-        if (data.type === "kanban:changed") {
+        if (data.type === "kanban:changed" || data.type === "fitness:changed") {
           onInvalidateRef.current();
         }
       } catch {
@@ -62,7 +69,7 @@ export function useKanbanEvents({ workspaceId, onInvalidate }: UseKanbanEventsOp
       if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
       reconnectTimerRef.current = setTimeout(() => connectSseRef.current(), 3000);
     };
-  }, [workspaceId]);
+  }, [codebaseId, workspaceId]);
 
   useEffect(() => {
     connectSseRef.current = connectSSE;
@@ -87,5 +94,5 @@ export function useKanbanEvents({ workspaceId, onInvalidate }: UseKanbanEventsOp
         reconnectTimerRef.current = null;
       }
     };
-  }, [connectSSE, workspaceId]);
+  }, [codebaseId, connectSSE, workspaceId]);
 }

@@ -28,6 +28,21 @@
       "path": "crates/routa-server/src/api/tasks.rs",
       "max_lines": 1485,
       "reason": "legacy hotspot frozen at current baseline; task route workflow split planned in follow-up refactor"
+    },
+    {
+      "path": "crates/routa-server/src/api/fitness.rs",
+      "max_lines": 1725,
+      "reason": "legacy hotspot frozen at current baseline; runtime/status route split planned in follow-up refactor"
+    },
+    {
+      "path": "crates/routa-server/src/api/kanban.rs",
+      "max_lines": 1698,
+      "reason": "legacy hotspot frozen at current baseline; SSE/runtime branch split planned in follow-up refactor"
+    },
+    {
+      "path": "src/app/workspace/[workspaceId]/kanban/kanban-tab.tsx",
+      "max_lines": 1927,
+      "reason": "legacy hotspot frozen at current baseline; Kanban fitness/status extraction planned in follow-up refactor"
     }
   ]
 }

@@ -1,4 +1,3 @@
-use clap::{Args, CommandFactory, Parser, Subcommand};
 use crate::cli_output::{
     print_graph_history, print_graph_impact, print_graph_query, print_graph_review_context,
     print_graph_test_radius, print_hook_long_file_summary, print_json, print_long_file_report,
@@ -9,6 +8,7 @@ use crate::cli_runtime::{
     emit_runtime_fitness_event, filter_dimensions_for_incremental, now_millis, runtime_mode,
     write_runtime_fitness_artifacts, RuntimeFitnessSnapshotOptions,
 };
+use clap::{Args, CommandFactory, Parser, Subcommand};
 use entrix::evidence::{load_dimensions, validate_weights};
 use entrix::file_budgets::{evaluate_paths, is_tracked_source_file, load_config, resolve_paths};
 use entrix::governance::{enforce, filter_dimensions, GovernancePolicy};
@@ -41,9 +41,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+mod cli_output;
 #[cfg(test)]
 mod cli_parity_tests;
-mod cli_output;
 mod cli_runtime;
 
 #[derive(Parser, Debug)]
@@ -534,28 +534,27 @@ fn cmd_run(args: RunArgs) -> i32 {
         .as_ref()
         .map(|reporter| Arc::new(ShellOutputController::new(Arc::clone(reporter))));
 
-    let progress_callback: Option<ProgressCallback> =
-        if let Some(live_reporter) = &live_reporter {
-            let live_reporter = Arc::clone(live_reporter);
-            Some(Box::new(
+    let progress_callback: Option<ProgressCallback> = if let Some(live_reporter) = &live_reporter {
+        let live_reporter = Arc::clone(live_reporter);
+        Some(Box::new(
+            move |event: &str,
+                  metric: &entrix::model::Metric,
+                  result: Option<&entrix::model::MetricResult>| {
+                live_reporter.handle_progress(event, metric, result);
+            },
+        ) as ProgressCallback)
+    } else {
+        output_controller.as_ref().map(|controller| {
+            let controller = Arc::clone(controller);
+            Box::new(
                 move |event: &str,
                       metric: &entrix::model::Metric,
                       result: Option<&entrix::model::MetricResult>| {
-                    live_reporter.handle_progress(event, metric, result);
+                    controller.handle_progress(event, metric, result);
                 },
-            ) as ProgressCallback)
-        } else {
-            output_controller.as_ref().map(|controller| {
-                let controller = Arc::clone(controller);
-                Box::new(
-                    move |event: &str,
-                          metric: &entrix::model::Metric,
-                          result: Option<&entrix::model::MetricResult>| {
-                        controller.handle_progress(event, metric, result);
-                    },
-                ) as ProgressCallback
-            })
-        };
+            ) as ProgressCallback
+        })
+    };
     let output_callback: Option<OutputCallback> =
         output_controller.as_ref().and_then(|controller| {
             if !controller.should_capture_output() {
@@ -575,6 +574,23 @@ fn cmd_run(args: RunArgs) -> i32 {
     }
     let sarif_runner = SarifRunner::new(&repo_root).with_env_overrides(runner_env);
     let mut dimension_scores = Vec::new();
+    let mode_tier = args.tier.as_deref().or(args.tier_positional.as_deref());
+    let estimated_metric_count = dimensions
+        .iter()
+        .map(|dimension| dimension.metrics.len())
+        .sum::<usize>();
+
+    if let Err(error) = emit_runtime_fitness_event(
+        &repo_root,
+        "running",
+        mode_tier,
+        None,
+        estimated_metric_count,
+        0.0,
+        None,
+    ) {
+        eprintln!("Failed to emit runtime fitness running event: {error}");
+    }
 
     for dimension in &dimensions {
         let results = run_metric_batch(
@@ -597,25 +613,25 @@ fn cmd_run(args: RunArgs) -> i32 {
     let report = score_report(&dimension_scores, policy.min_score);
     let report_json = report_to_dict(&report);
 
-        if args.json {
-            println!(
-                "{}",
-                serde_json::to_string_pretty(&report_json).expect("serialize report")
-            );
-        } else {
-            match args.format.as_str() {
-                "ascii" => AsciiReporter::new(18).report(&report),
-                "rich" => {
-                    if let Some(live_reporter) = &live_reporter {
-                        live_reporter.force_render();
-                    }
-                    RichReporter::new(18).report(&report)
+    if args.json {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&report_json).expect("serialize report")
+        );
+    } else {
+        match args.format.as_str() {
+            "ascii" => AsciiReporter::new(18).report(&report),
+            "rich" => {
+                if let Some(live_reporter) = &live_reporter {
+                    live_reporter.force_render();
                 }
-                _ => {
-                    if let Some(reporter) = &reporter {
-                        reporter.report(&report, show_tier);
-                    } else {
-                        print_report_text(&report, policy.verbose);
+                RichReporter::new(18).report(&report)
+            }
+            _ => {
+                if let Some(reporter) = &reporter {
+                    reporter.report(&report, show_tier);
+                } else {
+                    print_report_text(&report, policy.verbose);
                 }
             }
         }
@@ -634,7 +650,6 @@ fn cmd_run(args: RunArgs) -> i32 {
         .flat_map(|dimension| dimension.results.iter())
         .map(|result| result.duration_ms)
         .sum::<f64>();
-    let mode_tier = args.tier.as_deref().or(args.tier_positional.as_deref());
     let artifact_placeholder = match write_runtime_fitness_artifacts(
         &repo_root,
         mode_tier,
@@ -992,7 +1007,8 @@ fn cmd_graph_test_mapping(args: GraphTestMappingArgs) -> i32 {
         args.files
     };
     let registry = test_mapping::ResolverRegistry::default();
-    let graph_build = (!args.no_graph).then(|| build_graph(&repo_root, parse_build_mode(&args.build_mode)));
+    let graph_build =
+        (!args.no_graph).then(|| build_graph(&repo_root, parse_build_mode(&args.build_mode)));
     let graph_test_files_by_source = if args.no_graph {
         BTreeMap::new()
     } else {
@@ -1003,7 +1019,10 @@ fn cmd_graph_test_mapping(args: GraphTestMappingArgs) -> i32 {
             BTreeMap::new()
         } else {
             let mut by_source = BTreeMap::new();
-            for source_file in changed_files.iter().filter(|path| !registry.is_test_file(path)) {
+            for source_file in changed_files
+                .iter()
+                .filter(|path| !registry.is_test_file(path))
+            {
                 let query = query_current_graph(
                     &repo_root,
                     source_file,
