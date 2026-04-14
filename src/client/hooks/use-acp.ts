@@ -254,18 +254,36 @@ export function useAcp(baseUrl: string = ""): UseAcpState & UseAcpActions {
   // Track if user manually cancelled the session (to suppress "process exited" errors)
   const userCancelledRef = useRef(false);
 
-  const [state, setState] = useState<UseAcpState>({
+  const [state, setState] = useState<UseAcpState>(() => ({
     connected: false,
     sessionId: null,
     updates: [],
     providers: getInitialProviderFallbacks(),
-    selectedProvider: loadSelectedAcpProvider(),
+    // SSR-safe default; useEffect hydrates from localStorage after mount
+    // Using lazy initializer to avoid reading localStorage during SSR (returns "opencode")
+    selectedProvider: "opencode",
     loading: false,
     error: null,
     authError: null,
     dockerConfigError: null,
-  });
+  }));
 
+  // Hydrate selectedProvider from localStorage after mount
+  // This ensures SSR (server="opencode") matches client initial render
+  useEffect(() => {
+    const persisted = loadSelectedAcpProvider();
+    setState((s) => {
+      // If persisted provider is unavailable, auto-select first available
+      const persistedProvider = s.providers.find((p) => p.id === persisted);
+      if (persistedProvider?.status === "unavailable") {
+        const firstAvailable = s.providers.find((p) => p.status === "available");
+        const nextProvider = firstAvailable?.id ?? "opencode";
+        saveSelectedAcpProvider(nextProvider);
+        return { ...s, selectedProvider: nextProvider };
+      }
+      return { ...s, selectedProvider: persisted };
+    });
+  }, []);
   // Clean up on unmount
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -353,25 +371,11 @@ export function useAcp(baseUrl: string = ""): UseAcpState & UseAcpActions {
 
       clientRef.current = client;
 
-      // Auto-select first available provider (claude-code-sdk in serverless, or first available)
-      const firstAvailable = allLocalProviders.find((p) => p.status === "available");
-
       setState((s) => ({
-        ...(function () {
-          const persistedProvider = loadSelectedAcpProvider();
-          const preferredProvider = allLocalProviders.find((provider) =>
-            provider.id === persistedProvider && provider.status !== "unavailable"
-          )?.id;
-          const nextSelectedProvider = preferredProvider ?? firstAvailable?.id ?? s.selectedProvider;
-          saveSelectedAcpProvider(nextSelectedProvider);
-          return {
-            ...s,
-            connected: true,
-            providers: allLocalProviders,
-            selectedProvider: nextSelectedProvider,
-            loading: false,
-          };
-        })(),
+        ...s,
+        connected: true,
+        providers: allLocalProviders,
+        loading: false,
       }));
 
       // Background task 1: Check local provider status
