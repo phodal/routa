@@ -104,6 +104,7 @@ pub struct TestMappingRecord {
     pub language: String,
     pub status: TestMappingStatus,
     pub related_test_files: Vec<String>,
+    pub graph_test_files: Vec<String>,
     pub resolver_kind: ResolverKind,
     pub confidence: Confidence,
     pub has_inline_tests: bool,
@@ -172,6 +173,15 @@ impl ResolverRegistry {
         repo_root: &Path,
         changed_files: &[String],
     ) -> TestMappingReport {
+        self.analyze_changed_files_with_graph(repo_root, changed_files, &BTreeMap::new())
+    }
+
+    pub fn analyze_changed_files_with_graph(
+        &self,
+        repo_root: &Path,
+        changed_files: &[String],
+        graph_test_files_by_source: &BTreeMap<String, Vec<String>>,
+    ) -> TestMappingReport {
         let mut normalized_changed = BTreeSet::new();
         for file in changed_files {
             let normalized = normalize_rel_path(file);
@@ -188,7 +198,15 @@ impl ResolverRegistry {
                 skipped_test_files.push(rel_path.clone());
                 continue;
             }
-            mappings.push(self.analyze_file(repo_root, rel_path, &normalized_changed));
+            mappings.push(self.analyze_file_with_graph(
+                repo_root,
+                rel_path,
+                &normalized_changed,
+                graph_test_files_by_source
+                    .get(rel_path)
+                    .map(Vec::as_slice)
+                    .unwrap_or(&[]),
+            ));
         }
 
         let mut status_counts = BTreeMap::new();
@@ -217,6 +235,16 @@ impl ResolverRegistry {
         rel_path: &str,
         changed_files: &BTreeSet<String>,
     ) -> TestMappingRecord {
+        self.analyze_file_with_graph(repo_root, rel_path, changed_files, &[])
+    }
+
+    pub fn analyze_file_with_graph(
+        &self,
+        repo_root: &Path,
+        rel_path: &str,
+        changed_files: &BTreeSet<String>,
+        graph_test_files: &[String],
+    ) -> TestMappingRecord {
         let normalized = normalize_rel_path(rel_path);
         let language = SourceLanguage::from_path(&normalized);
         let outcome = self
@@ -225,16 +253,39 @@ impl ResolverRegistry {
             .find(|resolver| resolver.supports(language))
             .map(|resolver| resolver.resolve(repo_root, &normalized, language))
             .unwrap_or_default();
-
-        let status = if outcome.has_inline_tests {
-            TestMappingStatus::Inline
-        } else if outcome
+        let mut merged_graph_test_files = graph_test_files
+            .iter()
+            .map(|path| normalize_rel_path(path))
+            .filter(|path| !path.is_empty())
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect::<Vec<_>>();
+        let mut related = outcome
             .related_test_files
             .iter()
-            .any(|path| changed_files.contains(path))
+            .map(|path| normalize_rel_path(path))
+            .collect::<BTreeSet<_>>();
+        related.extend(merged_graph_test_files.iter().cloned());
+        let related_test_files = related.into_iter().collect::<Vec<_>>();
+        let has_inline_tests =
+            outcome.has_inline_tests || merged_graph_test_files.iter().any(|path| path == &normalized);
+        let resolver_kind = if merged_graph_test_files.is_empty() {
+            outcome.resolver_kind
+        } else {
+            ResolverKind::SemanticGraph
+        };
+        let confidence = if merged_graph_test_files.is_empty() {
+            outcome.confidence
+        } else {
+            Confidence::High
+        };
+
+        let status = if has_inline_tests {
+            TestMappingStatus::Inline
+        } else if related_test_files.iter().any(|path| changed_files.contains(path))
         {
             TestMappingStatus::Changed
-        } else if !outcome.related_test_files.is_empty() {
+        } else if !related_test_files.is_empty() {
             TestMappingStatus::Exists
         } else if outcome.can_assert_missing {
             TestMappingStatus::Missing
@@ -246,10 +297,11 @@ impl ResolverRegistry {
             source_file: normalized,
             language: language.as_str().to_string(),
             status,
-            related_test_files: outcome.related_test_files,
-            resolver_kind: outcome.resolver_kind,
-            confidence: outcome.confidence,
-            has_inline_tests: outcome.has_inline_tests,
+            related_test_files,
+            graph_test_files: std::mem::take(&mut merged_graph_test_files),
+            resolver_kind,
+            confidence,
+            has_inline_tests,
         }
     }
 
@@ -698,5 +750,43 @@ mod tests {
         assert!(mapping.related_test_files.is_empty());
         assert_eq!(report.status_counts.get("missing"), Some(&1));
         assert_eq!(report.resolver_counts.get("path_heuristic"), Some(&1));
+    }
+
+    #[test]
+    fn graph_enrichment_upgrades_mapping_and_merges_related_tests() {
+        let temp = tempdir().expect("tempdir");
+        let repo_root = temp.path();
+        let source_dir = repo_root.join("src");
+        let tests_dir = source_dir.join("__tests__");
+        fs::create_dir_all(&tests_dir).expect("create test dir");
+        fs::write(source_dir.join("service.ts"), "export function run() {}\n").expect("write source");
+        fs::write(tests_dir.join("service.extra.test.ts"), "it('works', () => {})\n")
+            .expect("write graph test");
+
+        let registry = ResolverRegistry::default();
+        let report = registry.analyze_changed_files_with_graph(
+            repo_root,
+            &["src/service.ts".to_string()],
+            &BTreeMap::from([(
+                "src/service.ts".to_string(),
+                vec!["src/__tests__/service.extra.test.ts".to_string()],
+            )]),
+        );
+
+        assert_eq!(report.mappings.len(), 1);
+        let mapping = &report.mappings[0];
+        assert_eq!(mapping.status, TestMappingStatus::Exists);
+        assert_eq!(mapping.resolver_kind, ResolverKind::SemanticGraph);
+        assert_eq!(mapping.confidence, Confidence::High);
+        assert_eq!(
+            mapping.graph_test_files,
+            vec!["src/__tests__/service.extra.test.ts".to_string()]
+        );
+        assert_eq!(
+            mapping.related_test_files,
+            vec!["src/__tests__/service.extra.test.ts".to_string()]
+        );
+        assert_eq!(report.status_counts.get("exists"), Some(&1));
+        assert_eq!(report.resolver_counts.get("semantic_graph"), Some(&1));
     }
 }

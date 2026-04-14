@@ -19,8 +19,8 @@ use entrix::release_trigger::{
 use entrix::reporting::{report_to_dict, write_report_output};
 use entrix::review_context::{
     analyze_file, analyze_history, analyze_impact, analyze_test_radius, build_graph,
-    build_review_context, graph_stats, query_current_graph, ImpactOptions, ReviewBuildMode,
-    ReviewContextOptions, TestRadiusOptions,
+    build_review_context, graph_stats, query_current_graph, GraphNodePayload, ImpactOptions,
+    ReviewBuildMode, ReviewContextOptions, TestRadiusOptions,
 };
 use entrix::review_trigger::{
     collect_changed_files, collect_diff_stats, evaluate_review_triggers, load_review_triggers,
@@ -36,7 +36,7 @@ use entrix::terminal::{
 };
 use entrix::test_mapping;
 use serde_json::json;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -990,37 +990,82 @@ fn cmd_graph_test_mapping(args: GraphTestMappingArgs) -> i32 {
     } else {
         args.files
     };
-    let report = test_mapping::analyze_changed_files(&repo_root, &changed_files);
+    let registry = test_mapping::ResolverRegistry::default();
+    let graph_build = (!args.no_graph).then(|| build_graph(&repo_root, parse_build_mode(&args.build_mode)));
+    let graph_test_files_by_source = if args.no_graph {
+        BTreeMap::new()
+    } else {
+        let Some(build) = graph_build.as_ref() else {
+            return 1;
+        };
+        if build.status == "unavailable" {
+            BTreeMap::new()
+        } else {
+            let mut by_source = BTreeMap::new();
+            for source_file in changed_files.iter().filter(|path| !registry.is_test_file(path)) {
+                let query = query_current_graph(
+                    &repo_root,
+                    source_file,
+                    "tests_for",
+                    ReviewBuildMode::Skip,
+                );
+                if query.status != "ok" {
+                    continue;
+                }
+                let graph_files = query
+                    .results
+                    .iter()
+                    .map(|node| match node {
+                        GraphNodePayload::File(node) => node.file_path.clone(),
+                        GraphNodePayload::Symbol(node) => node.file_path.clone(),
+                    })
+                    .collect::<BTreeSet<_>>()
+                    .into_iter()
+                    .collect::<Vec<_>>();
+                if !graph_files.is_empty() {
+                    by_source.insert(source_file.clone(), graph_files);
+                }
+            }
+            by_source
+        }
+    };
+    let report = registry.analyze_changed_files_with_graph(
+        &repo_root,
+        &changed_files,
+        &graph_test_files_by_source,
+    );
     let graph_payload = if args.no_graph {
         json!({
             "available": false,
             "status": "disabled",
-            "reason": "graph enrichment disabled by --no-graph"
+            "reason": "graph disabled"
         })
     } else {
-        let radius = analyze_test_radius(
-            &repo_root,
-            &changed_files,
-            TestRadiusOptions {
-                base: &args.base,
-                build_mode: parse_build_mode(&args.build_mode),
-                max_depth: 2,
-                max_targets: 25,
-                max_impacted_files: 200,
-            },
-        );
-        json!({
-            "available": true,
-            "status": radius.status,
-            "test_files": radius.test_files,
-            "untested_targets": radius.untested_targets,
-            "query_failures": radius.query_failures,
-            "wide_blast_radius": radius.wide_blast_radius,
-        })
+        let build = graph_build.expect("graph build");
+        if build.status == "unavailable" {
+            json!({
+                "available": false,
+                "status": "unavailable",
+                "reason": "graph backend unavailable"
+            })
+        } else {
+            json!({
+                "available": true,
+                "status": build.status.clone(),
+                "build": build,
+            })
+        }
     };
 
     if args.json {
         let payload = json!({
+            "status": "ok",
+            "summary": format!(
+                "Analyzed test mappings for {} changed source file(s); skipped {} changed test file(s).",
+                report.mappings.len(),
+                report.skipped_test_files.len()
+            ),
+            "base": args.base,
             "changed_files": report.changed_files,
             "skipped_test_files": report.skipped_test_files,
             "mappings": report.mappings,
