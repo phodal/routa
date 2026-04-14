@@ -11,6 +11,7 @@ import { getKanbanSessionQueue } from "@/core/kanban/workflow-orchestrator-singl
 import { processKanbanColumnTransition } from "@/core/kanban/workflow-orchestrator-singleton";
 import { getHttpSessionStore } from "@/core/acp/http-session-store";
 import { getAcpProcessManager } from "@/core/acp/processer";
+import { getAcpInstanceId, isExecutionLeaseActive } from "@/core/acp/execution-backend";
 import {
   getTaskLaneSession,
   markTaskLaneSessionStatus,
@@ -35,7 +36,24 @@ function isSessionActivelyRunning(
     return false;
   }
 
-  return session.acpStatus !== "error";
+  if (session.acpStatus === "ready" || session.acpStatus === "connecting") {
+    return true;
+  }
+
+  if (session.acpStatus === "error") {
+    return false;
+  }
+
+  // Hydrated sessions from the DB may not carry runtime ACP status after a restart.
+  // In that case, only treat the session as active if its ownership lease is still
+  // valid on this exact instance. Otherwise the lane should be revived instead of
+  // staying blocked by a stale triggerSessionId.
+  const ownerInstanceId = session.ownerInstanceId?.trim();
+  if (ownerInstanceId && ownerInstanceId !== getAcpInstanceId()) {
+    return false;
+  }
+
+  return isExecutionLeaseActive(session.leaseExpiresAt);
 }
 
 function resolveStaleLaneSessionTerminalStatus(task: Pick<Task, "verificationVerdict" | "verificationReport" | "completionSummary">): TaskLaneSessionStatus {
@@ -66,12 +84,14 @@ async function sanitizeStaleCurrentLaneAutomation(
 
   if (nextTask.triggerSessionId && !isSessionActivelyRunning(nextTask.triggerSessionId, options)) {
     const triggerLaneSession = getTaskLaneSession(nextTask, nextTask.triggerSessionId);
-    if (triggerLaneSession && triggerLaneSession.columnId === nextTask.columnId && triggerLaneSession.status === "running") {
-      markTaskLaneSessionStatus(
-        nextTask,
-        triggerLaneSession.sessionId,
-        resolveStaleLaneSessionTerminalStatus(nextTask),
-      );
+    if (triggerLaneSession && triggerLaneSession.columnId === nextTask.columnId) {
+      if (triggerLaneSession.status === "running") {
+        markTaskLaneSessionStatus(
+          nextTask,
+          triggerLaneSession.sessionId,
+          resolveStaleLaneSessionTerminalStatus(nextTask),
+        );
+      }
     }
     nextTask.triggerSessionId = undefined;
     mutated = true;

@@ -293,8 +293,31 @@ describe("/api/kanban/boards GET", () => {
     expect(processKanbanColumnTransition).not.toHaveBeenCalled();
   });
 
-  it("preserves restorable hydrated sessions without explicit acp status", async () => {
+  it("revives hydrated sessions without explicit acp status when no live lease remains", async () => {
     sessionStore.getSession.mockReturnValue({ sessionId: "session-1" });
+    taskStore.listByWorkspace.mockResolvedValue([
+      createTaskWithRunningSession(),
+    ]);
+
+    const response = await GET(new NextRequest("http://localhost/api/kanban/boards?workspaceId=workspace-1"));
+
+    expect(response.status).toBe(200);
+    expect(taskStore.save).toHaveBeenCalledWith(expect.objectContaining({
+      triggerSessionId: undefined,
+      laneSessions: [expect.objectContaining({
+        sessionId: "session-1",
+        status: "timed_out",
+      })],
+    }));
+    expect(processKanbanColumnTransition).toHaveBeenCalledTimes(1);
+  });
+
+  it("preserves hydrated sessions without explicit acp status when the current-instance lease is still active", async () => {
+    sessionStore.getSession.mockReturnValue({
+      sessionId: "session-1",
+      ownerInstanceId: `next-${process.pid}`,
+      leaseExpiresAt: "2099-01-01T00:00:00.000Z",
+    });
     taskStore.listByWorkspace.mockResolvedValue([
       createTaskWithRunningSession(),
     ]);
@@ -320,6 +343,34 @@ describe("/api/kanban/boards GET", () => {
       laneSessions: [expect.objectContaining({
         sessionId: "session-1",
         status: "timed_out",
+      })],
+    }));
+    expect(processKanbanColumnTransition).toHaveBeenCalledTimes(1);
+  });
+
+  it("clears stale trigger session ids when the current-lane session already failed", async () => {
+    sessionStore.getSession.mockReturnValue({ acpStatus: "error" });
+    taskStore.listByWorkspace.mockResolvedValue([
+      {
+        ...createTaskWithRunningSession(),
+        laneSessions: [{
+          sessionId: "session-1",
+          columnId: "backlog",
+          status: "failed",
+          startedAt: "2025-01-01T00:00:00.000Z",
+          completedAt: "2025-01-01T00:05:00.000Z",
+        }],
+      },
+    ]);
+
+    const response = await GET(new NextRequest("http://localhost/api/kanban/boards?workspaceId=workspace-1"));
+
+    expect(response.status).toBe(200);
+    expect(taskStore.save).toHaveBeenCalledWith(expect.objectContaining({
+      triggerSessionId: undefined,
+      laneSessions: [expect.objectContaining({
+        sessionId: "session-1",
+        status: "failed",
       })],
     }));
     expect(processKanbanColumnTransition).toHaveBeenCalledTimes(1);
