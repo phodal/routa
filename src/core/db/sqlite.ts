@@ -17,6 +17,88 @@ export type SqliteDatabase = BetterSQLite3Database<typeof schema>;
 
 const GLOBAL_KEY = "__routa_sqlite_db__";
 const GLOBAL_RAW_KEY = "__routa_sqlite_raw__";
+const WORKTREES_TABLE_NAME = "worktrees";
+const WORKTREES_INDEX_NAMES = [
+  "uq_worktrees_codebase_branch",
+  "uq_worktrees_path",
+  "idx_worktrees_workspace_id",
+] as const;
+
+function hasSqliteSchemaEntry(
+  rawDb: BetterSqlite3.Database,
+  type: "table" | "index",
+  name: string,
+): boolean {
+  const row = rawDb.prepare(`
+    SELECT name
+    FROM sqlite_master
+    WHERE type = ? AND name = ?
+    LIMIT 1
+  `).get(type, name) as { name: string } | undefined;
+  return row?.name === name;
+}
+
+function getMissingWorktreesSchemaEntries(rawDb: BetterSqlite3.Database): string[] {
+  const missing: string[] = [];
+  if (!hasSqliteSchemaEntry(rawDb, "table", WORKTREES_TABLE_NAME)) {
+    missing.push(WORKTREES_TABLE_NAME);
+  }
+  for (const indexName of WORKTREES_INDEX_NAMES) {
+    if (!hasSqliteSchemaEntry(rawDb, "index", indexName)) {
+      missing.push(indexName);
+    }
+  }
+  return missing;
+}
+
+function applyWorktreesSchema(db: SqliteDatabase): void {
+  db.run(sql`
+    CREATE TABLE IF NOT EXISTS worktrees (
+      id TEXT PRIMARY KEY,
+      codebase_id TEXT NOT NULL REFERENCES codebases(id) ON DELETE CASCADE,
+      workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+      worktree_path TEXT NOT NULL,
+      branch TEXT NOT NULL,
+      base_branch TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'creating',
+      session_id TEXT,
+      label TEXT,
+      error_message TEXT,
+      created_at INTEGER NOT NULL DEFAULT (unixepoch('now') * 1000),
+      updated_at INTEGER NOT NULL DEFAULT (unixepoch('now') * 1000)
+    )
+  `);
+  db.run(sql`
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_worktrees_codebase_branch
+    ON worktrees (codebase_id, branch)
+  `);
+  db.run(sql`
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_worktrees_path
+    ON worktrees (worktree_path)
+  `);
+  db.run(sql`
+    CREATE INDEX IF NOT EXISTS idx_worktrees_workspace_id
+    ON worktrees (workspace_id)
+  `);
+}
+
+function ensureWorktreesSchema(db: SqliteDatabase, rawDb?: BetterSqlite3.Database): void {
+  const missingBefore = rawDb ? getMissingWorktreesSchemaEntries(rawDb) : [];
+  if (missingBefore.length > 0) {
+    console.warn(`[SQLite] Missing worktrees schema entries: ${missingBefore.join(", ")}. Applying compatibility DDL.`);
+  }
+
+  applyWorktreesSchema(db);
+
+  if (!rawDb) {
+    return;
+  }
+
+  const missingAfter = getMissingWorktreesSchemaEntries(rawDb);
+  if (missingAfter.length > 0) {
+    throw new Error(`Failed to initialize required worktrees schema entries: ${missingAfter.join(", ")}`);
+  }
+}
 
 /**
  * Get or create a SQLite database instance.
@@ -40,7 +122,7 @@ export function getSqliteDatabase(dbPath?: string): SqliteDatabase {
     const db = drizzle(sqlite, { schema });
 
     // Run migrations / create tables on first use
-    initializeSqliteTables(db);
+    initializeSqliteTables(db, sqlite);
 
     // Store both the drizzle wrapper and the raw connection
     g[GLOBAL_KEY] = db;
@@ -86,7 +168,7 @@ export function ensureSqliteDefaultWorkspace(rawDb?: BetterSqlite3.Database): vo
  * Create all tables if they don't exist.
  * Uses raw SQL for CREATE TABLE IF NOT EXISTS.
  */
-function initializeSqliteTables(db: SqliteDatabase): void {
+function initializeSqliteTables(db: SqliteDatabase, rawDb?: BetterSqlite3.Database): void {
   function runAddColumn(sqlStatement: ReturnType<typeof sql>) {
     try {
       db.run(sqlStatement);
@@ -349,34 +431,7 @@ function initializeSqliteTables(db: SqliteDatabase): void {
   try { db.run(sql`ALTER TABLE codebases ADD COLUMN source_type TEXT`); } catch { /* column already exists */ }
   try { db.run(sql`ALTER TABLE codebases ADD COLUMN source_url TEXT`); } catch { /* column already exists */ }
 
-  db.run(sql`
-    CREATE TABLE IF NOT EXISTS worktrees (
-      id TEXT PRIMARY KEY,
-      codebase_id TEXT NOT NULL REFERENCES codebases(id) ON DELETE CASCADE,
-      workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
-      worktree_path TEXT NOT NULL,
-      branch TEXT NOT NULL,
-      base_branch TEXT NOT NULL,
-      status TEXT NOT NULL DEFAULT 'creating',
-      session_id TEXT,
-      label TEXT,
-      error_message TEXT,
-      created_at INTEGER NOT NULL DEFAULT (unixepoch('now') * 1000),
-      updated_at INTEGER NOT NULL DEFAULT (unixepoch('now') * 1000)
-    )
-  `);
-  db.run(sql`
-    CREATE UNIQUE INDEX IF NOT EXISTS uq_worktrees_codebase_branch
-    ON worktrees (codebase_id, branch)
-  `);
-  db.run(sql`
-    CREATE UNIQUE INDEX IF NOT EXISTS uq_worktrees_path
-    ON worktrees (worktree_path)
-  `);
-  db.run(sql`
-    CREATE INDEX IF NOT EXISTS idx_worktrees_workspace_id
-    ON worktrees (workspace_id)
-  `);
+  ensureWorktreesSchema(db, rawDb);
 
   db.run(sql`
     CREATE TABLE IF NOT EXISTS kanban_boards (

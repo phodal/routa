@@ -1,3 +1,7 @@
+import fs from "fs";
+import os from "os";
+import path from "path";
+import BetterSqlite3 from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
@@ -23,12 +27,27 @@ vi.mock("../agent-trigger", () => ({
 
 vi.mock("../../git/git-worktree-service", () => ({
   GitWorktreeService: vi.fn(class {
-    createWorktree = createGitWorktreeMock;
+    constructor(private worktreeStore: unknown) {}
+
+    createWorktree = (codebaseId: string, options?: unknown) =>
+      createGitWorktreeMock.call(this, codebaseId, options);
   }),
 }));
 
 import { createInMemorySystem } from "../../routa-system";
 import { getHttpSessionStore } from "../../acp/http-session-store";
+import {
+  closeSqliteDatabase,
+  ensureSqliteDefaultWorkspace,
+  getSqliteDatabase,
+} from "../../db/sqlite";
+import {
+  SqliteCodebaseStore,
+  SqliteKanbanBoardStore,
+  SqliteTaskStore,
+  SqliteWorkspaceStore,
+  SqliteWorktreeStore,
+} from "../../db/sqlite-stores";
 import { createCodebase } from "../../models/codebase";
 import { createKanbanBoard } from "../../models/kanban";
 import { createTask, TaskStatus } from "../../models/task";
@@ -51,6 +70,9 @@ describe("workflow orchestrator singleton prompt path", () => {
   afterEach(() => {
     resetWorkflowOrchestrator();
     dispatchSessionPromptMock.mockReset();
+    closeSqliteDatabase();
+    delete process.env.ROUTA_DB_DRIVER;
+    delete process.env.ROUTA_DB_PATH;
   });
 
   it("sends recovery prompt via agent tools when routa agent session exists", async () => {
@@ -236,5 +258,136 @@ describe("workflow orchestrator singleton prompt path", () => {
       worktreeId: "wt-fresh",
       triggerSessionId: "session-dev-1",
     });
+  });
+
+  it("recreates missing worktrees schema for sqlite dev sessions and persists the new worktree record", async () => {
+    const dbPath = path.join(os.tmpdir(), `routa-workflow-sqlite-${Date.now()}.db`);
+    process.env.ROUTA_DB_DRIVER = "sqlite";
+    process.env.ROUTA_DB_PATH = dbPath;
+    closeSqliteDatabase();
+
+    try {
+      getSqliteDatabase(dbPath);
+      closeSqliteDatabase();
+
+      const legacy = new BetterSqlite3(dbPath);
+      legacy.exec("DROP TABLE worktrees");
+      legacy.close();
+
+      const db = getSqliteDatabase(dbPath);
+      ensureSqliteDefaultWorkspace();
+
+      const system = createInMemorySystem();
+      system.workspaceStore = new SqliteWorkspaceStore(db);
+      system.codebaseStore = new SqliteCodebaseStore(db);
+      system.worktreeStore = new SqliteWorktreeStore(db);
+      system.taskStore = new SqliteTaskStore(db);
+      system.kanbanBoardStore = new SqliteKanbanBoardStore(db);
+      system.isPersistent = true;
+
+      const board = createKanbanBoard({
+        id: "board-sqlite",
+        workspaceId: "default",
+        name: "SQLite Board",
+        isDefault: true,
+        columns: [
+          { id: "todo", name: "Todo", position: 0, stage: "todo" },
+          { id: "dev", name: "Dev", position: 1, stage: "dev" },
+        ],
+      });
+      await system.kanbanBoardStore.save(board);
+      await system.codebaseStore.add(createCodebase({
+        id: "repo-sqlite",
+        workspaceId: "default",
+        repoPath: "/tmp/repos/sqlite-main",
+        branch: "main",
+        isDefault: true,
+      }));
+
+      const task = createTask({
+        id: "task-sqlite",
+        title: "Recover legacy sqlite worktree",
+        objective: "Ensure dev entry writes worktree rows after legacy upgrade",
+        workspaceId: "default",
+        boardId: board.id,
+        columnId: "dev",
+        status: TaskStatus.IN_PROGRESS,
+      });
+      await system.taskStore.save(task);
+
+      createGitWorktreeMock.mockImplementation(async function (
+        this: {
+          worktreeStore: {
+            add(worktree: {
+              id: string;
+              codebaseId: string;
+              workspaceId: string;
+              worktreePath: string;
+              branch: string;
+              baseBranch: string;
+              status: string;
+              createdAt: Date;
+              updatedAt: Date;
+            }): Promise<void>;
+          };
+        },
+        codebaseId: string,
+        options?: { branch?: string; baseBranch?: string },
+      ) {
+        const worktree = {
+          id: "wt-sqlite",
+          codebaseId,
+          workspaceId: "default",
+          worktreePath: "/tmp/worktrees/task-sqlite",
+          branch: options?.branch ?? "issue/task-sqlite",
+          baseBranch: options?.baseBranch ?? "main",
+          status: "active",
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        };
+        await this.worktreeStore.add(worktree);
+        return worktree;
+      });
+      triggerAssignedTaskAgentMock.mockResolvedValue({
+        sessionId: "session-sqlite-1",
+        transport: "acp",
+      });
+
+      const result = await enqueueKanbanTaskSession(system, {
+        task,
+        expectedColumnId: "dev",
+        ignoreExistingTrigger: true,
+        bypassQueue: true,
+      });
+
+      expect(result).toEqual({ sessionId: "session-sqlite-1", queued: false, error: undefined });
+      const updatedTask = await system.taskStore.get("task-sqlite");
+      expect(updatedTask).toMatchObject({
+        worktreeId: "wt-sqlite",
+        triggerSessionId: "session-sqlite-1",
+        columnId: "dev",
+        status: TaskStatus.IN_PROGRESS,
+      });
+      expect(updatedTask?.lastSyncError).toBeUndefined();
+      expect(updatedTask?.laneSessions.at(-1)).toMatchObject({
+        sessionId: "session-sqlite-1",
+        worktreeId: "wt-sqlite",
+        cwd: "/tmp/worktrees/task-sqlite",
+      });
+
+      const persistedWorktree = await system.worktreeStore.get("wt-sqlite");
+      expect(persistedWorktree).toMatchObject({
+        id: "wt-sqlite",
+        codebaseId: "repo-sqlite",
+        sessionId: "session-sqlite-1",
+        branch: expect.stringMatching(/^issue\/task-sql/),
+        worktreePath: "/tmp/worktrees/task-sqlite",
+      });
+    } finally {
+      closeSqliteDatabase();
+      if (fs.existsSync(dbPath)) {
+        fs.unlinkSync(dbPath);
+      }
+    }
   });
 });

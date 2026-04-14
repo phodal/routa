@@ -5,6 +5,30 @@ import BetterSqlite3 from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { closeSqliteDatabase, ensureSqliteDefaultWorkspace, getSqliteDatabase } from "../sqlite";
 
+const WORKTREES_INDEX_NAMES = [
+  "uq_worktrees_codebase_branch",
+  "uq_worktrees_path",
+  "idx_worktrees_workspace_id",
+] as const;
+
+function expectWorktreesSchema(raw: BetterSqlite3.Database): void {
+  const tableRow = raw.prepare(`
+    SELECT name
+    FROM sqlite_master
+    WHERE type = 'table' AND name = 'worktrees'
+  `).get() as { name: string } | undefined;
+  const indexRows = raw.prepare(`
+    SELECT name
+    FROM sqlite_master
+    WHERE type = 'index'
+      AND tbl_name = 'worktrees'
+    ORDER BY name
+  `).all() as Array<{ name: string }>;
+
+  expect(tableRow).toEqual({ name: "worktrees" });
+  expect(indexRows.map((row) => row.name)).toEqual(expect.arrayContaining([...WORKTREES_INDEX_NAMES]));
+}
+
 describe("ensureSqliteDefaultWorkspace", () => {
   let sqlite: BetterSqlite3.Database;
 
@@ -61,21 +85,37 @@ describe("ensureSqliteDefaultWorkspace", () => {
     expect(JSON.parse(row.metadata)).toEqual({ keep: true });
   });
 
-  it("initializes the worktrees table for local sqlite databases", () => {
+  it("initializes the worktrees schema for fresh local sqlite databases", () => {
     const dbPath = path.join(os.tmpdir(), `routa-sqlite-init-${Date.now()}.db`);
     closeSqliteDatabase();
 
     try {
       getSqliteDatabase(dbPath);
       const raw = new BetterSqlite3(dbPath, { readonly: true });
-      const row = raw.prepare(`
-        SELECT name
-        FROM sqlite_master
-        WHERE type = 'table' AND name = 'worktrees'
-      `).get() as { name: string } | undefined;
+      expectWorktreesSchema(raw);
       raw.close();
+    } finally {
+      closeSqliteDatabase();
+      if (fs.existsSync(dbPath)) fs.unlinkSync(dbPath);
+    }
+  });
 
-      expect(row).toEqual({ name: "worktrees" });
+  it("repairs a legacy sqlite database missing the worktrees schema on reopen", () => {
+    const dbPath = path.join(os.tmpdir(), `routa-sqlite-legacy-${Date.now()}.db`);
+    closeSqliteDatabase();
+
+    try {
+      getSqliteDatabase(dbPath);
+      closeSqliteDatabase();
+
+      const legacy = new BetterSqlite3(dbPath);
+      legacy.exec("DROP TABLE worktrees");
+      legacy.close();
+
+      getSqliteDatabase(dbPath);
+      const raw = new BetterSqlite3(dbPath, { readonly: true });
+      expectWorktreesSchema(raw);
+      raw.close();
     } finally {
       closeSqliteDatabase();
       if (fs.existsSync(dbPath)) fs.unlinkSync(dbPath);
