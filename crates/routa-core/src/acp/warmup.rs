@@ -29,8 +29,6 @@ use super::CREATE_NO_WINDOW;
 // ─── Constants ─────────────────────────────────────────────────────────────
 
 const PREWARM_TIMEOUT_SECS: u64 = 5 * 60; // 5 minutes
-#[cfg(windows)]
-const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
