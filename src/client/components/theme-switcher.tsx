@@ -32,18 +32,14 @@ export function ThemeSwitcher({ showLabel = false, compact = false, className = 
     },
     () => "system:light",
   );
-  const [themePreference, resolvedTheme] = themeSnapshot.split(":") as [ThemePreference, ResolvedTheme];
+  const [themePreference] = themeSnapshot.split(":") as [ThemePreference, ResolvedTheme];
 
   const buttonBaseClassName = compact
     ? "rounded-md p-1.5 transition-colors"
     : "rounded-md px-2 py-1 text-[11px] font-medium transition-colors";
 
   const renderButton = (nextTheme: ThemePreference) => {
-    const isActivePreference = themePreference === nextTheme;
-    // For system mode, check resolved theme; for explicit modes, check the mode itself
-    const active = nextTheme === "system"
-      ? isActivePreference
-      : resolvedTheme === nextTheme;
+    const active = themePreference === nextTheme;
     const label = nextTheme === "light" ? t.settings.light : nextTheme === "dark" ? t.settings.dark : t.settings.system;
     const title = nextTheme === "system" ? label : (themePreference === "system" ? `${label} · ${t.settings.system}` : label);
 
