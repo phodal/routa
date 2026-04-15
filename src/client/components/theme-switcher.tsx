@@ -12,7 +12,7 @@ import {
   type ResolvedTheme,
   type ThemePreference,
 } from "../utils/theme";
-import { Moon, Sun } from "lucide-react";
+import { Moon, Sun, Monitor } from "lucide-react";
 
 
 interface ThemeSwitcherProps {
@@ -32,16 +32,16 @@ export function ThemeSwitcher({ showLabel = false, compact = false, className = 
     },
     () => "system:light",
   );
-  const [themePreference, resolvedTheme] = themeSnapshot.split(":") as [ThemePreference, ResolvedTheme];
+  const [themePreference] = themeSnapshot.split(":") as [ThemePreference, ResolvedTheme];
 
   const buttonBaseClassName = compact
     ? "rounded-md p-1.5 transition-colors"
     : "rounded-md px-2 py-1 text-[11px] font-medium transition-colors";
 
-  const renderButton = (nextTheme: Exclude<ThemePreference, "system">) => {
-    const active = resolvedTheme === nextTheme;
-    const label = nextTheme === "light" ? t.settings.light : t.settings.dark;
-    const title = themePreference === "system" ? `${label} · ${t.settings.system}` : label;
+  const renderButton = (nextTheme: ThemePreference) => {
+    const active = themePreference === nextTheme;
+    const label = nextTheme === "light" ? t.settings.light : nextTheme === "dark" ? t.settings.dark : t.settings.system;
+    const title = nextTheme === "system" ? label : (themePreference === "system" ? `${label} · ${t.settings.system}` : label);
 
     return (
       <button
@@ -62,8 +62,10 @@ export function ThemeSwitcher({ showLabel = false, compact = false, className = 
         <span className="flex items-center gap-1.5">
           {nextTheme === "light" ? (
             <Sun className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}/>
-          ) : (
+          ) : nextTheme === "dark" ? (
             <Moon className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}/>
+          ) : (
+            <Monitor className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}/>
           )}
           {!compact ? <span>{label}</span> : null}
         </span>
@@ -82,6 +84,7 @@ export function ThemeSwitcher({ showLabel = false, compact = false, className = 
       ) : null}
       {renderButton("light")}
       {renderButton("dark")}
+      {renderButton("system")}
     </div>
   );
 }

@@ -157,6 +157,7 @@ export function RepoPicker({
   const triggerRef = useRef<HTMLButtonElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const cloneInputRef = useRef<HTMLInputElement>(null);
+  const isMountedRef = useRef(true);
   const [dropdownPos, setDropdownPos] = useState<{
     left: number;
     width: number;
@@ -172,11 +173,15 @@ export function RepoPicker({
     try {
       const res = await desktopAwareFetch("/api/clone");
       const data = await res.json();
-      setRepos(data.repos || []);
+      if (isMountedRef.current) {
+        setRepos(data.repos || []);
+      }
     } catch {
       // ignore
     } finally {
-      setLoadingRepos(false);
+      if (isMountedRef.current) {
+        setLoadingRepos(false);
+      }
     }
   }, []);
 
@@ -185,6 +190,14 @@ export function RepoPicker({
       fetchRepos();
     }
   }, [fetchRepos, sourceMode]);
+
+  // Track component mount status for async operations
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   // ── Click outside to close ─────────────────────────────────────────
 
@@ -274,6 +287,8 @@ export function RepoPicker({
               try {
                 const event = JSON.parse(line.slice(6));
 
+                if (!isMountedRef.current) return;
+
                 if (event.phase === "done") {
                   // Clone successful
                   onChange({
@@ -303,12 +318,15 @@ export function RepoPicker({
           }
         }
       } catch (err) {
+        if (!isMountedRef.current) return;
         setCloneError(
           err instanceof Error ? err.message : "Clone failed"
         );
         setCloneProgress(null);
       } finally {
-        setCloning(false);
+        if (isMountedRef.current) {
+          setCloning(false);
+        }
       }
     },
     [onChange, fetchRepos]
@@ -350,6 +368,8 @@ export function RepoPicker({
           );
         }
 
+        if (!isMountedRef.current) return;
+
         onChange({
           name:
             typeof data?.name === "string"
@@ -362,11 +382,14 @@ export function RepoPicker({
         setSearchQuery("");
         setShowDropdown(false);
       } catch (err) {
+        if (!isMountedRef.current) return;
         setLocalRepoError(
           err instanceof Error ? err.message : "Failed to load local repository"
         );
       } finally {
-        setLoadingLocalRepo(false);
+        if (isMountedRef.current) {
+          setLoadingLocalRepo(false);
+        }
       }
     },
     [onChange]
