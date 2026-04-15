@@ -5,6 +5,7 @@
 import * as fsp from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -49,9 +50,13 @@ describe("ensureMcpForProvider", () => {
     expect(result.mcpConfigs[0]).toContain("mcp-tmp");
 
     const parsed = parseMcpServersFromConfigs(result.mcpConfigs);
+    const expectedProxyPath = path.resolve(
+      path.dirname(fileURLToPath(import.meta.url)),
+      "../../../../scripts/mcp-http-proxy.mjs",
+    );
     expect(parsed?.["routa-coordination"]).toMatchObject({
       command: expect.any(String),
-      args: expect.arrayContaining([expect.stringContaining("mcp-http-proxy"), expect.any(String)]),
+      args: [expectedProxyPath, "http://127.0.0.1:3000/api/mcp"],
     });
   });
 
@@ -74,9 +79,13 @@ describe("ensureMcpForProvider", () => {
     expect(result.summary).toContain("inline JSON fallback");
 
     const parsed = parseMcpServersFromConfigs(result.mcpConfigs);
+    const expectedProxyPath = path.resolve(
+      path.dirname(fileURLToPath(import.meta.url)),
+      "../../../../scripts/mcp-http-proxy.mjs",
+    );
     expect(parsed?.["routa-coordination"]).toMatchObject({
       command: expect.any(String),
-      args: expect.arrayContaining([expect.stringContaining("mcp-http-proxy"), expect.any(String)]),
+      args: [expectedProxyPath, "http://127.0.0.1:3000/api/mcp"],
     });
   });
 

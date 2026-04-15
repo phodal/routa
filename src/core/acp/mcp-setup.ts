@@ -34,6 +34,7 @@ import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
 import { createHash } from "crypto";
+import { fileURLToPath } from "url";
 import TOML from "smol-toml";
 import type { McpServerConfig } from "@anthropic-ai/claude-agent-sdk";
 import {
@@ -276,9 +277,30 @@ const CLAUDE_MCP_CONFIG_PREFIX = "routa-mcp-";
 const CLAUDE_MCP_CONFIG_DIRNAME = path.join(".claude", "mcp-tmp");
 const CLAUDE_MCP_CONFIG_MAX_FILES = 64;
 const CLAUDE_MCP_CONFIG_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+const CLAUDE_PROXY_SCRIPT_PATH = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../../../scripts/mcp-http-proxy.mjs",
+);
 
 function getClaudeMcpConfigDir(): string {
   return path.join(os.homedir(), CLAUDE_MCP_CONFIG_DIRNAME);
+}
+
+function toClaudeProxyServerConfig(
+  proxyScriptPath: string,
+  endpoint: string,
+  env?: Record<string, string>,
+  headers?: Record<string, string>,
+): Record<string, unknown> {
+  const args = headers && Object.keys(headers).length > 0
+    ? [proxyScriptPath, endpoint, JSON.stringify(headers)]
+    : [proxyScriptPath, endpoint];
+
+  return {
+    command: process.execPath,
+    args,
+    ...(env && Object.keys(env).length > 0 ? { env } : {}),
+  };
 }
 
 function pruneClaudeMcpConfigDir(configDir: string, currentConfigPath: string): void {
@@ -348,18 +370,50 @@ function ensureMcpForClaude(
   // Claude Code CLI's --mcp-config only supports stdio-type MCP servers.
   // HTTP/SSE type configs are silently ignored (tested on CLI <=2.1.x).
   // Solution: use a stdio proxy script that forwards to Routa's Streamable HTTP endpoint.
-  const proxyScriptPath = path.join(process.cwd(), "scripts", "mcp-http-proxy.mjs");
-  const nodeCommand = process.execPath;
+  const proxyScriptPath = CLAUDE_PROXY_SCRIPT_PATH;
+  if (!fs.existsSync(proxyScriptPath)) {
+    throw new Error(`Claude MCP proxy script not found at ${proxyScriptPath}`);
+  }
+
   const builtIn: Record<string, unknown> = {
-    "routa-coordination": {
-      command: nodeCommand,
-      args: [proxyScriptPath, mcpEndpoint],
-      env: { ROUTA_WORKSPACE_ID: workspaceId || "" },
-    },
+    "routa-coordination": toClaudeProxyServerConfig(
+      proxyScriptPath,
+      mcpEndpoint,
+      { ROUTA_WORKSPACE_ID: workspaceId || "" },
+    ),
   };
-  const mcpConfigObj = {
-    mcpServers: mergeCustomMcpServers(builtIn, customServers),
-  };
+  const mcpServers = mergeCustomMcpServers(builtIn, []);
+  for (const server of customServers) {
+    if (!server.enabled || mcpServers[server.name]) {
+      continue;
+    }
+
+    if (server.type === "stdio") {
+      mcpServers[server.name] = {
+        type: "stdio",
+        command: server.command,
+        args: server.args ?? [],
+        ...(server.env && Object.keys(server.env).length > 0 ? { env: server.env } : {}),
+      };
+      continue;
+    }
+
+    if (server.type === "http" && server.url) {
+      mcpServers[server.name] = toClaudeProxyServerConfig(
+        proxyScriptPath,
+        server.url,
+        server.env,
+        server.headers,
+      );
+      continue;
+    }
+
+    console.warn(
+      `[MCP:Claude] Skipping custom server "${server.name}" of type "${server.type}" because Claude only supports stdio servers`,
+    );
+  }
+
+  const mcpConfigObj = { mcpServers };
   const json = JSON.stringify(mcpConfigObj);
 
   // Write to a temp file so shell:true on Windows doesn't mangle the JSON.

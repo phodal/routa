@@ -17,13 +17,22 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import { ListToolsRequestSchema, CallToolRequestSchema } from "@modelcontextprotocol/sdk/types.js";
+import {
+  CallToolRequestSchema,
+  GetPromptRequestSchema,
+  ListPromptsRequestSchema,
+  ListResourcesRequestSchema,
+  ListToolsRequestSchema,
+  ReadResourceRequestSchema,
+} from "@modelcontextprotocol/sdk/types.js";
 
 const endpoint = process.argv[2];
 if (!endpoint) {
   console.error("[mcp-proxy] Usage: node scripts/mcp-http-proxy.mjs <mcp-endpoint-url>");
   process.exit(1);
 }
+
+const headers = process.argv[3] ? JSON.parse(process.argv[3]) : undefined;
 
 // Normalize localhost → 127.0.0.1 to avoid Node.js fetch DNS issues on Windows
 const normalizedEndpoint = endpoint.replace("//localhost:", "//127.0.0.1:");
@@ -36,7 +45,7 @@ const upstreamClient = new Client(
 // Downstream server exposes tools to Claude Code via stdio
 const proxy = new Server(
   { name: "routa-mcp-stdio-proxy", version: "0.1.0" },
-  { capabilities: { tools: {} } },
+  { capabilities: { tools: {}, resources: {}, prompts: {} } },
 );
 
 // Forward tool listing from upstream
@@ -50,16 +59,88 @@ proxy.setRequestHandler(CallToolRequestSchema, async (request) => {
   return upstreamClient.callTool({ name, arguments: args });
 });
 
+proxy.setRequestHandler(ListResourcesRequestSchema, async (request) => {
+  return upstreamClient.listResources(request.params);
+});
+
+proxy.setRequestHandler(ReadResourceRequestSchema, async (request) => {
+  return upstreamClient.readResource(request.params);
+});
+
+proxy.setRequestHandler(ListPromptsRequestSchema, async (request) => {
+  return upstreamClient.listPrompts(request.params);
+});
+
+proxy.setRequestHandler(GetPromptRequestSchema, async (request) => {
+  return upstreamClient.getPrompt(request.params);
+});
+
+let upstreamTransport;
+let stdioTransport;
+let shuttingDown = false;
+
+async function shutdown(reason) {
+  if (shuttingDown) {
+    return;
+  }
+
+  shuttingDown = true;
+  console.error(`[mcp-proxy] Shutting down: ${reason}`);
+
+  await Promise.allSettled([
+    proxy.close(),
+    upstreamClient.close(),
+    upstreamTransport?.close(),
+    stdioTransport?.close(),
+  ]);
+}
+
+function formatError(err) {
+  return err instanceof Error ? err.message : String(err);
+}
+
 // Connect to upstream first, then start stdio server
 try {
-  const upstreamTransport = new StreamableHTTPClientTransport(new URL(normalizedEndpoint));
+  upstreamTransport = new StreamableHTTPClientTransport(new URL(normalizedEndpoint), {
+    requestInit: headers ? { headers } : undefined,
+  });
   await upstreamClient.connect(upstreamTransport);
   console.error(`[mcp-proxy] Connected to ${normalizedEndpoint}`);
 } catch (err) {
-  console.error(`[mcp-proxy] Failed to connect upstream: ${err.message}`);
+  console.error(`[mcp-proxy] Failed to connect upstream: ${formatError(err)}`);
   process.exit(1);
 }
 
-const stdioTransport = new StdioServerTransport();
+stdioTransport = new StdioServerTransport();
+upstreamClient.onerror = (err) => {
+  console.error(`[mcp-proxy] Upstream client error: ${formatError(err)}`);
+};
+upstreamClient.onclose = () => {
+  void shutdown("upstream client closed");
+};
+upstreamTransport.onerror = (err) => {
+  console.error(`[mcp-proxy] Upstream transport error: ${formatError(err)}`);
+};
+upstreamTransport.onclose = () => {
+  void shutdown("upstream transport closed");
+};
+proxy.onerror = (err) => {
+  console.error(`[mcp-proxy] Proxy error: ${formatError(err)}`);
+};
+proxy.onclose = () => {
+  void shutdown("proxy closed");
+};
+stdioTransport.onerror = (err) => {
+  console.error(`[mcp-proxy] stdio transport error: ${formatError(err)}`);
+};
+stdioTransport.onclose = () => {
+  void shutdown("stdio transport closed");
+};
+process.on("SIGINT", () => {
+  void shutdown("SIGINT").finally(() => process.exit(0));
+});
+process.on("SIGTERM", () => {
+  void shutdown("SIGTERM").finally(() => process.exit(0));
+});
 await proxy.connect(stdioTransport);
 console.error("[mcp-proxy] stdio proxy ready");
