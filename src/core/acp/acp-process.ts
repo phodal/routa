@@ -161,6 +161,22 @@ export class AcpProcess {
             shell: needsShell(command),
         });
 
+        // Await ready promise for async spawn backends (e.g. Tauri).
+        if (this.process.ready) {
+            const SPAWN_READY_TIMEOUT_MS = 30_000;
+            await Promise.race([
+                this.process.ready,
+                new Promise<never>((_, reject) =>
+                    setTimeout(
+                        () => reject(new Error(
+                            `Timed out waiting for process spawn after ${SPAWN_READY_TIMEOUT_MS / 1000}s`
+                        )),
+                        SPAWN_READY_TIMEOUT_MS,
+                    )
+                ),
+            ]);
+        }
+
         if (!this.process || !this.process.pid) {
             throw new Error(
                 `Failed to spawn ${displayName} - is "${command}" installed and in PATH?`

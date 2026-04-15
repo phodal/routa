@@ -139,7 +139,8 @@ export default function HarnessConsolePage() {
   const sectionFromUrl = resolveSectionId(searchParams.get(HARNESS_SECTION_QUERY_KEY));
   const architectureSectionActive = sectionFromUrl === "architecture-quality";
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState("");
-  const workspaceId = selectedWorkspaceId || workspacesHook.workspaces[0]?.id || "";
+  const urlWorkspaceId = searchParams.get("workspaceId") || "";
+  const workspaceId = selectedWorkspaceId || urlWorkspaceId || workspacesHook.workspaces[0]?.id || "";
   const { codebases } = useCodebases(workspaceId);
   const [selectedCodebaseId, setSelectedCodebaseId] = useState("");
   const [selectedRepoOverrideState, setSelectedRepoOverrideState] = useState<{

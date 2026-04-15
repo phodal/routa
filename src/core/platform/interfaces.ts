@@ -35,6 +35,8 @@ export interface IProcessHandle {
   stdout: ReadableStreamLike | null;
   stderr: ReadableStreamLike | null;
   exitCode: number | null;
+  /** Resolves when the process has been spawned and pid is available (Tauri async spawn). */
+  ready?: Promise<void>;
   kill(signal?: string): void;
   on(event: "exit", handler: (code: number | null, signal: string | null) => void): void;
   on(event: "error", handler: (err: Error) => void): void;

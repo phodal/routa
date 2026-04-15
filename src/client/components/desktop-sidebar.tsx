@@ -110,7 +110,9 @@ export function DesktopSidebar({
     {
       id: "settings",
       label: t.settings.title,
-      href: "/settings",
+      href: normalizedWorkspaceId
+        ? `/settings?workspaceId=${encodeURIComponent(normalizedWorkspaceId)}`
+        : "/settings",
       exactMatch: true,
       icon: <Settings className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.7}/>,
     },

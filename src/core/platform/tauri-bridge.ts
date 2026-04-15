@@ -90,6 +90,14 @@ class TauriProcessHandle implements IProcessHandle {
   stderr: ReadableStreamLike | null = null;
   exitCode: number | null = null;
 
+  /** Resolves when the child process has been spawned and pid is available. */
+  private _readyResolve!: () => void;
+  private _readyReject!: (err: Error) => void;
+  readonly ready = new Promise<void>((resolve, reject) => {
+    this._readyResolve = resolve;
+    this._readyReject = reject;
+  });
+
   private _exitHandlers: Array<(code: number | null, signal: string | null) => void> = [];
   private _errorHandlers: Array<(err: Error) => void> = [];
   private _stdoutHandlers: Array<(chunk: Buffer) => void> = [];
@@ -129,6 +137,7 @@ class TauriProcessHandle implements IProcessHandle {
     this.pid = child.pid;
     this._killFn = () => child.kill();
     this._writeFn = (data: string) => child.write(data);
+    this._readyResolve();
   }
 
   /** @internal Forward stdout data from Tauri child */
@@ -208,7 +217,9 @@ class TauriProcess implements IPlatformProcess {
           kill: () => child.kill(),
         });
       } catch (err) {
-        handle._emitError(err instanceof Error ? err : new Error(String(err)));
+        const error = err instanceof Error ? err : new Error(String(err));
+        handle._emitError(error);
+        handle._readyReject(error);
       }
     })();
 
