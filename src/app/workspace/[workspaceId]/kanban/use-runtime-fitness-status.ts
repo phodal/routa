@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "@/i18n";
+import { resolveApiPath } from "@/client/config/backend";
 import { desktopAwareFetch } from "@/client/utils/diagnostics";
 import type { RuntimeFitnessStatusResponse } from "@/core/fitness/runtime-status-types";
 
@@ -39,6 +41,8 @@ export function useRuntimeFitnessStatus({
   const [error, setError] = useState<string | null>(null);
   const [refreshNonce, setRefreshNonce] = useState(0);
   const inFlightRef = useRef(false);
+  const { t } = useTranslation();
+  const loadErrorMessage = t.kanban.fitnessLoadError;
 
   const queryString = useMemo(() => {
     const query = new URLSearchParams();
@@ -64,13 +68,13 @@ export function useRuntimeFitnessStatus({
     }
 
     try {
-      const response = await desktopAwareFetch(`/api/fitness/runtime?${queryString}`, {
+      const response = await desktopAwareFetch(`${resolveApiPath("/api/fitness/runtime")}?${queryString}`, {
         cache: "no-store",
         signal: options?.signal,
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
-        throw new Error(typeof payload?.details === "string" ? payload.details : "Failed to load runtime fitness status");
+        throw new Error(typeof payload?.details === "string" ? payload.details : loadErrorMessage);
       }
       setData(payload as RuntimeFitnessStatusResponse);
       setError(null);
@@ -85,7 +89,7 @@ export function useRuntimeFitnessStatus({
         setLoading(false);
       }
     }
-  }, [enabled, queryString]);
+  }, [enabled, loadErrorMessage, queryString]);
 
   useEffect(() => {
     if (!enabled || !queryString) {

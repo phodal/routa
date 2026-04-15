@@ -427,9 +427,12 @@ export interface ExtendedTranslationDictionarySections extends TailTranslationDi
     fitnessModeFast: string;
     fitnessModeFull: string;
     fitnessLoading: string;
+    fitnessLoadError: string;
     fitnessNoData: string;
     fitnessIssue: string;
     fitnessBlocked: string;
+    fitnessHardGate: string;
+    fitnessScoreBlocked: string;
     fitnessSkipped: string;
     fitnessLast: string;
     fitnessOpenDetails: string;

@@ -617,8 +617,7 @@ export function KanbanTab({
   const runtimeFitness = useRuntimeFitnessStatus({
     workspaceId,
     codebaseId: defaultCodebase?.id ?? null,
-    repoPath: defaultCodebase?.repoPath ?? null,
-    enabled: !!defaultCodebase,
+    enabled: workspaceId !== "__placeholder__",
     refreshSignal,
     isPageVisible,
   });
@@ -1999,15 +1998,13 @@ export function KanbanTab({
     onProviderClick: () => {
       // Could open provider settings or do nothing
     },
-    onFitnessClick: defaultCodebase ? () => {
+    onFitnessClick: () => {
       const query = new URLSearchParams({ workspaceId });
-      if (defaultCodebase.id) {
+      if (defaultCodebase?.id) {
         query.set("codebaseId", defaultCodebase.id);
-      } else {
-        query.set("repoPath", defaultCodebase.repoPath);
       }
       window.location.assign(`/settings/fluency?${query.toString()}`);
-    } : undefined,
+    },
     fileChangesOpen,
     gitLogOpen,
     repoSync,

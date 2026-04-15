@@ -4,6 +4,8 @@ import { useCallback, useEffect, useRef } from "react";
 import { getDesktopApiBaseUrl } from "../utils/diagnostics";
 import { resolveApiPath } from "../config/backend";
 
+const FITNESS_INVALIDATE_THROTTLE_MS = 750;
+
 interface UseKanbanEventsOptions {
   workspaceId: string;
   onInvalidate: () => void;
@@ -12,6 +14,8 @@ interface UseKanbanEventsOptions {
 export function useKanbanEvents({ workspaceId, onInvalidate }: UseKanbanEventsOptions): void {
   const eventSourceRef = useRef<EventSource | null>(null);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const fitnessInvalidateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastFitnessInvalidateAtRef = useRef(0);
   const tearingDownRef = useRef(false);
   const hasConnectedOnceRef = useRef(false);
   const onInvalidateRef = useRef(onInvalidate);
@@ -43,8 +47,26 @@ export function useKanbanEvents({ workspaceId, onInvalidate }: UseKanbanEventsOp
           }
           return;
         }
-        if (data.type === "kanban:changed" || data.type === "fitness:changed") {
+        if (data.type === "kanban:changed") {
           onInvalidateRef.current();
+          return;
+        }
+        if (data.type === "fitness:changed") {
+          const now = Date.now();
+          const elapsed = now - lastFitnessInvalidateAtRef.current;
+          if (elapsed >= FITNESS_INVALIDATE_THROTTLE_MS) {
+            lastFitnessInvalidateAtRef.current = now;
+            onInvalidateRef.current();
+            return;
+          }
+          if (fitnessInvalidateTimerRef.current) {
+            return;
+          }
+          fitnessInvalidateTimerRef.current = setTimeout(() => {
+            fitnessInvalidateTimerRef.current = null;
+            lastFitnessInvalidateAtRef.current = Date.now();
+            onInvalidateRef.current();
+          }, FITNESS_INVALIDATE_THROTTLE_MS - elapsed);
         }
       } catch {
         // Ignore malformed payloads.
@@ -73,6 +95,7 @@ export function useKanbanEvents({ workspaceId, onInvalidate }: UseKanbanEventsOp
 
     tearingDownRef.current = false;
     hasConnectedOnceRef.current = false;
+    lastFitnessInvalidateAtRef.current = 0;
     connectSSE();
 
     return () => {
@@ -81,6 +104,10 @@ export function useKanbanEvents({ workspaceId, onInvalidate }: UseKanbanEventsOp
       if (eventSourceRef.current) {
         eventSourceRef.current.close();
         eventSourceRef.current = null;
+      }
+      if (fitnessInvalidateTimerRef.current) {
+        clearTimeout(fitnessInvalidateTimerRef.current);
+        fitnessInvalidateTimerRef.current = null;
       }
       if (reconnectTimerRef.current) {
         clearTimeout(reconnectTimerRef.current);

@@ -2,9 +2,10 @@ export const RUNTIME_FITNESS_MODES = ["fast", "full"] as const;
 
 export type RuntimeFitnessMode = (typeof RUNTIME_FITNESS_MODES)[number];
 export type RuntimeFitnessStatus = "running" | "passed" | "failed" | "skipped" | "missing";
+export type RuntimeFitnessEventStatus = Exclude<RuntimeFitnessStatus, "missing">;
 
 export type RuntimeFitnessCompletedSummary = {
-  status: Exclude<RuntimeFitnessStatus, "running" | "missing">;
+  status: Exclude<RuntimeFitnessEventStatus, "running">;
   observedAt: string;
   finalScore: number | null;
   hardGateBlocked: boolean | null;

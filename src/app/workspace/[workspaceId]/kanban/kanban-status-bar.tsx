@@ -67,6 +67,53 @@ function formatObservedAt(value: string | null | undefined): string | null {
   return new Date(timestamp).toLocaleString();
 }
 
+function selectDisplayedFitness(runtimeFitness: RuntimeFitnessStatusResponse | null | undefined): RuntimeFitnessModeSummary | null {
+  if (!runtimeFitness) return null;
+  if (runtimeFitness.hasRunning) {
+    return runtimeFitness.modes.find((summary) => summary.currentStatus === "running")
+      ?? runtimeFitness.latest
+      ?? null;
+  }
+  return runtimeFitness.latest ?? null;
+}
+
+function formatStatusLabel(
+  summary: RuntimeFitnessModeSummary | null,
+  t: ReturnType<typeof useTranslation>["t"],
+  runtimeFitnessLoading: boolean,
+  runtimeFitnessError: string | null | undefined,
+): string {
+  if (summary?.currentStatus === "running") return t.kanban.runningLabel;
+  if (summary?.currentStatus === "failed") {
+    if (summary.hardGateBlocked) return t.kanban.fitnessHardGate;
+    if (summary.scoreBlocked) return t.kanban.fitnessScoreBlocked;
+    return t.kanban.fitnessBlocked;
+  }
+  if (summary?.currentStatus === "skipped") return t.kanban.fitnessSkipped;
+  if (summary?.currentStatus === "passed") return t.kanban.synced;
+  if (runtimeFitnessLoading) return t.kanban.fitnessLoading;
+  if (runtimeFitnessError) return t.kanban.fitnessIssue;
+  return t.kanban.fitnessNoData;
+}
+
+function fitnessDotClass(
+  summary: RuntimeFitnessModeSummary | null,
+  runtimeFitnessLoading: boolean,
+  runtimeFitnessError: string | null | undefined,
+): string {
+  if (summary?.currentStatus === "running") return "animate-pulse bg-sky-500";
+  if (summary?.currentStatus === "failed") {
+    if (summary.hardGateBlocked) return "bg-rose-500";
+    if (summary.scoreBlocked) return "bg-orange-500";
+    return "bg-rose-500";
+  }
+  if (summary?.currentStatus === "skipped") return "bg-amber-500";
+  if (summary?.currentStatus === "passed") return "bg-emerald-500";
+  if (runtimeFitnessLoading) return "animate-pulse bg-slate-400";
+  if (runtimeFitnessError) return "bg-rose-500";
+  return "bg-slate-400";
+}
+
 export function KanbanStatusBar({
   defaultCodebase,
   codebases,
@@ -88,55 +135,35 @@ export function KanbanStatusBar({
   runtimeFitnessError,
 }: KanbanStatusBarProps) {
   const { t } = useTranslation();
-  const latestFitness = runtimeFitness?.latest ?? null;
-  const latestModeLabel = formatModeLabel(latestFitness, t.kanban.fitnessModeFast, t.kanban.fitnessModeFull);
-  const currentScore = latestFitness?.currentStatus === "running"
-    ? formatScore(latestFitness.lastCompleted?.finalScore)
-    : formatScore(latestFitness?.finalScore ?? latestFitness?.lastCompleted?.finalScore);
-  const statusLabel = latestFitness?.currentStatus === "running"
-    ? t.kanban.runningLabel
-    : latestFitness?.currentStatus === "failed"
-      ? t.kanban.fitnessBlocked
-      : latestFitness?.currentStatus === "skipped"
-        ? t.kanban.fitnessSkipped
-        : latestFitness?.currentStatus === "passed"
-          ? t.kanban.synced
-          : runtimeFitnessLoading
-            ? t.kanban.fitnessLoading
-            : runtimeFitnessError
-              ? t.kanban.fitnessIssue
-              : t.kanban.fitnessNoData;
-  const fitnessDotClass = latestFitness?.currentStatus === "running"
-    ? "animate-pulse bg-sky-500"
-    : latestFitness?.currentStatus === "failed"
-      ? "bg-rose-500"
-      : latestFitness?.currentStatus === "skipped"
-        ? "bg-amber-500"
-        : latestFitness?.currentStatus === "passed"
-          ? "bg-emerald-500"
-          : runtimeFitnessLoading
-            ? "animate-pulse bg-slate-400"
-            : runtimeFitnessError
-              ? "bg-rose-500"
-              : "bg-slate-400";
+  const selectedFitness = selectDisplayedFitness(runtimeFitness);
+  const latestModeLabel = formatModeLabel(selectedFitness, t.kanban.fitnessModeFast, t.kanban.fitnessModeFull);
+  const currentScore = selectedFitness?.currentStatus === "running"
+    ? formatScore(selectedFitness.lastCompleted?.finalScore)
+    : formatScore(selectedFitness?.finalScore ?? selectedFitness?.lastCompleted?.finalScore);
+  const statusLabel = formatStatusLabel(selectedFitness, t, runtimeFitnessLoading, runtimeFitnessError);
+  const fitnessStatusDotClass = fitnessDotClass(selectedFitness, runtimeFitnessLoading, runtimeFitnessError);
   const fitnessTitleParts = [
     `${t.kanban.fitnessLabel}: ${[
       latestModeLabel,
       statusLabel,
       currentScore,
-      formatObservedAt(latestFitness?.currentObservedAt),
+      formatObservedAt(selectedFitness?.currentObservedAt),
     ].filter(Boolean).join(" · ") || t.kanban.fitnessNoData}`,
   ];
-  if (latestFitness?.currentStatus === "running" && latestFitness.lastCompleted) {
+  if (selectedFitness?.currentStatus === "running" && selectedFitness.lastCompleted) {
     fitnessTitleParts.push(
       `${t.kanban.fitnessLast}: ${[
-        latestFitness.lastCompleted.status === "failed"
-          ? t.kanban.fitnessBlocked
-          : latestFitness.lastCompleted.status === "skipped"
+        selectedFitness.lastCompleted.status === "failed"
+          ? selectedFitness.lastCompleted.hardGateBlocked
+            ? t.kanban.fitnessHardGate
+            : selectedFitness.lastCompleted.scoreBlocked
+              ? t.kanban.fitnessScoreBlocked
+              : t.kanban.fitnessBlocked
+          : selectedFitness.lastCompleted.status === "skipped"
             ? t.kanban.fitnessSkipped
             : t.kanban.synced,
-        formatScore(latestFitness.lastCompleted.finalScore),
-        formatObservedAt(latestFitness.lastCompleted.observedAt),
+        formatScore(selectedFitness.lastCompleted.finalScore),
+        formatObservedAt(selectedFitness.lastCompleted.observedAt),
       ].filter(Boolean).join(" · ")}`,
     );
   }
@@ -261,41 +288,39 @@ export function KanbanStatusBar({
           </div>
         )}
 
-        {defaultCodebase && (
-          onFitnessClick ? (
-            <button
-              onClick={onFitnessClick}
-              className="flex items-center gap-1.5 px-2.5 h-6 text-desktop-text-secondary hover:bg-desktop-bg-active transition-colors"
-              title={fitnessTitleParts.join("\n")}
-              data-testid="kanban-runtime-fitness-status"
-            >
-              <span className={`w-1.5 h-1.5 shrink-0 rounded-full ${fitnessDotClass}`} />
-              <span className="font-medium text-desktop-text-primary">{t.kanban.fitnessLabel}</span>
-              <span className="max-w-[220px] truncate">
-                {[
-                  latestModeLabel,
-                  statusLabel,
-                  currentScore,
-                ].filter(Boolean).join(" · ") || t.kanban.fitnessNoData}
-              </span>
-            </button>
-          ) : (
-            <div
-              className="flex items-center gap-1.5 px-2.5 h-6 text-desktop-text-secondary"
-              title={fitnessTitleParts.join("\n")}
-              data-testid="kanban-runtime-fitness-status"
-            >
-              <span className={`w-1.5 h-1.5 shrink-0 rounded-full ${fitnessDotClass}`} />
-              <span className="font-medium text-desktop-text-primary">{t.kanban.fitnessLabel}</span>
-              <span className="max-w-[220px] truncate">
-                {[
-                  latestModeLabel,
-                  statusLabel,
-                  currentScore,
-                ].filter(Boolean).join(" · ") || t.kanban.fitnessNoData}
-              </span>
-            </div>
-          )
+        {onFitnessClick ? (
+          <button
+            onClick={onFitnessClick}
+            className="flex items-center gap-1.5 px-2.5 h-6 text-desktop-text-secondary hover:bg-desktop-bg-active transition-colors"
+            title={fitnessTitleParts.join("\n")}
+            data-testid="kanban-runtime-fitness-status"
+          >
+            <span className={`w-1.5 h-1.5 shrink-0 rounded-full ${fitnessStatusDotClass}`} />
+            <span className="font-medium text-desktop-text-primary">{t.kanban.fitnessLabel}</span>
+            <span className="max-w-[220px] truncate">
+              {[
+                latestModeLabel,
+                statusLabel,
+                currentScore,
+              ].filter(Boolean).join(" · ") || t.kanban.fitnessNoData}
+            </span>
+          </button>
+        ) : (
+          <div
+            className="flex items-center gap-1.5 px-2.5 h-6 text-desktop-text-secondary"
+            title={fitnessTitleParts.join("\n")}
+            data-testid="kanban-runtime-fitness-status"
+          >
+            <span className={`w-1.5 h-1.5 shrink-0 rounded-full ${fitnessStatusDotClass}`} />
+            <span className="font-medium text-desktop-text-primary">{t.kanban.fitnessLabel}</span>
+            <span className="max-w-[220px] truncate">
+              {[
+                latestModeLabel,
+                statusLabel,
+                currentScore,
+              ].filter(Boolean).join(" · ") || t.kanban.fitnessNoData}
+            </span>
+          </div>
         )}
 
         {/* 运行状态 */}

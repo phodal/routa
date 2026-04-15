@@ -21,14 +21,12 @@ vi.mock("@/client/components/repo-picker", () => ({
   RepoPicker: () => <div data-testid="repo-picker-mock" />,
 }));
 
-vi.mock("../use-runtime-fitness-status", () => ({
-  useRuntimeFitnessStatus: () => ({
-    data: null,
-    loading: false,
-    error: null,
-    refresh: () => {},
-  }),
-}));
+vi.mock("../use-runtime-fitness-status", async () => {
+  const { mockUseRuntimeFitnessStatus } = await import("./test-utils");
+  return {
+    useRuntimeFitnessStatus: mockUseRuntimeFitnessStatus,
+  };
+});
 
 const board: KanbanBoardInfo = {
   id: "board-1",

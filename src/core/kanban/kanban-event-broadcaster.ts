@@ -1,3 +1,5 @@
+import type { RuntimeFitnessEventStatus } from "@/core/fitness/runtime-status-types";
+
 export type KanbanWorkspaceChangedEvent = {
   type: "kanban:changed";
   workspaceId: string;
@@ -15,7 +17,7 @@ export type KanbanFitnessChangedEvent = {
   timestamp: string;
   codebaseId?: string;
   repoPath?: string;
-  status?: "running" | "passed" | "failed" | "skipped";
+  status?: RuntimeFitnessEventStatus;
 };
 
 export type KanbanWorkspaceEvent = KanbanWorkspaceChangedEvent | KanbanFitnessChangedEvent;
