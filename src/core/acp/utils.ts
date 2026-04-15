@@ -4,6 +4,7 @@
  * Uses the platform bridge for process execution and file system access.
  */
 
+import type { IProcessHandle } from "@/core/platform/interfaces";
 import { getServerBridge } from "@/core/platform";
 
 const WINDOWS_SPAWNABLE_EXTENSIONS = [".cmd", ".bat", ".exe", ".com"];
@@ -68,6 +69,38 @@ export function quoteShellCommandPath(command: string): string {
 
   // Quote all shell wrapper paths to handle all special characters
   return `"${command}"`;
+}
+
+/**
+ * Await async process backends (for example Tauri) until pid/stdio are wired.
+ *
+ * The timeout is explicitly cleared so successful spawns do not leave a
+ * dangling timer behind for the full timeout duration.
+ */
+export async function awaitProcessReady(
+  processHandle: IProcessHandle,
+  timeoutMs = 30_000,
+): Promise<void> {
+  if (!processHandle.ready) {
+    return;
+  }
+
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
+  try {
+    await Promise.race([
+      processHandle.ready,
+      new Promise<never>((_, reject) => {
+        timeoutId = setTimeout(() => {
+          reject(new Error(`Timed out waiting for process spawn after ${timeoutMs / 1000}s`));
+        }, timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+  }
 }
 
 function preferSpawnableWindowsPath(candidates: string[]): string | null {

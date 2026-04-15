@@ -1,6 +1,6 @@
 import { NotificationHandler, JsonRpcMessage } from "@/core/acp/processer";
 import { AcpAgentPreset, resolveCommand } from "@/core/acp/acp-presets";
-import { needsShell } from "@/core/acp/utils";
+import { awaitProcessReady, needsShell } from "@/core/acp/utils";
 import type { IProcessHandle } from "@/core/platform/interfaces";
 import { getServerBridge } from "@/core/platform";
 
@@ -262,41 +262,12 @@ export class ClaudeCodeProcess {
             shell: needsShell(cmd[0]),
         });
 
-        // Await ready promise for async spawn backends (e.g. Tauri) where
-        // cmd.spawn() resolves after the handle is returned.
-        // Guard with a 30s timeout to prevent indefinite hangs if the
-        // Tauri shell plugin fails to respond.
-        if (this.process.ready) {
-            const SPAWN_READY_TIMEOUT_MS = 30_000;
-            await Promise.race([
-                this.process.ready,
-                new Promise<never>((_, reject) =>
-                    setTimeout(
-                        () => reject(new Error(
-                            `Timed out waiting for process spawn after ${SPAWN_READY_TIMEOUT_MS / 1000}s`
-                        )),
-                        SPAWN_READY_TIMEOUT_MS,
-                    )
-                ),
-            ]);
-        }
-
-        if (!this.process || !this.process.pid) {
-            const pathSep = process.platform === "win32" ? ";" : ":";
-            const pathHint = process.env.PATH?.split(pathSep).slice(0, 5).join(pathSep) ?? "(empty)";
-            throw new Error(
-                `Failed to spawn Claude Code - is "${command}" installed and in PATH? ` +
-                `(cwd: ${cwd}, PATH starts with: ${pathHint})`
-            );
-        }
-
         if (!this.process.stdin || !this.process.stdout) {
             throw new Error(`Claude Code spawned without required stdio streams`);
         }
 
         this._alive = true;
 
-        // Parse stdout as NDJSON
         this.process.stdout.on("data", (chunk: Buffer) => {
             this.buffer += chunk.toString("utf-8");
             this.processBuffer();
@@ -323,6 +294,17 @@ export class ClaudeCodeProcess {
             console.error(`[ClaudeCode:${displayName}] Process error:`, err);
             this._alive = false;
         });
+
+        await awaitProcessReady(this.process);
+
+        if (!this.process.pid) {
+            const pathSep = process.platform === "win32" ? ";" : ":";
+            const pathHint = process.env.PATH?.split(pathSep).slice(0, 5).join(pathSep) ?? "(empty)";
+            throw new Error(
+                `Failed to spawn Claude Code - is "${command}" installed and in PATH? ` +
+                `(cwd: ${cwd}, PATH starts with: ${pathHint})`
+            );
+        }
 
         // Wait for process to stabilize
         await new Promise((resolve) => setTimeout(resolve, 500));

@@ -8,6 +8,7 @@ import { SettingsPanel } from "@/client/components/settings-panel";
 import type { SettingsTab } from "@/client/components/settings-panel-shared";
 import { useTranslation } from "@/i18n";
 import { desktopAwareFetch } from "@/client/utils/diagnostics";
+import { normalizeWorkspaceQueryId } from "@/client/utils/workspace-id";
 import { Settings } from "lucide-react";
 
 
@@ -24,8 +25,7 @@ export function SettingsPageClient() {
   const [providers, setProviders] = useState<ProviderOption[]>([]);
   const requestedTab = searchParams.get("tab");
   const initialTab = isSettingsTab(requestedTab) ? requestedTab : undefined;
-  // Preserve workspace context so sidebar navigation stays within the same workspace.
-  const workspaceId = searchParams.get("workspaceId") || null;
+  const workspaceId = normalizeWorkspaceQueryId(searchParams.get("workspaceId"));
 
   useEffect(() => {
     const fetchProviders = async () => {

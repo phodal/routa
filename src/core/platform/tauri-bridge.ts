@@ -106,6 +106,7 @@ class TauriProcessHandle implements IProcessHandle {
   private _writeFn: ((data: string) => void) | null = null;
 
   constructor() {
+    this.ready.catch(() => {});
     this.stdout = {
       on: (_event: string, handler: (chunk: Buffer) => void) => {
         this._stdoutHandlers.push(handler);
