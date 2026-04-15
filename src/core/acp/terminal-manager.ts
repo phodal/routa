@@ -183,7 +183,7 @@ export class TerminalManager {
       : bridge.process.spawn(command, args, {
           stdio: ["pipe", "pipe", "pipe"],
           cwd,
-          env: mergedEnv,
+          env: { ...process.env, ...mergedEnv },
           shell: true,
         });
     const backend: ManagedTerminal["backend"] = nodePty ? "node-pty" : "spawn";

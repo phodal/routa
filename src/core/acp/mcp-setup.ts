@@ -128,7 +128,7 @@ export async function ensureMcpForProvider(
     case "auggie":
       return await ensureMcpForAuggie(mcpEndpoint, cfg.workspaceId, customServers);
     case "claude":
-      return ensureMcpForClaude(mcpEndpoint, cfg.workspaceId, customServers);
+      return await ensureMcpForClaude(mcpEndpoint, cfg.workspaceId, customServers);
     case "codex":
       return await ensureMcpForCodex(mcpEndpoint, customServers);
     case "gemini":

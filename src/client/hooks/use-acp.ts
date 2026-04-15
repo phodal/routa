@@ -254,18 +254,26 @@ export function useAcp(baseUrl: string = ""): UseAcpState & UseAcpActions {
   // Track if user manually cancelled the session (to suppress "process exited" errors)
   const userCancelledRef = useRef(false);
 
-  const [state, setState] = useState<UseAcpState>({
+  const [state, setState] = useState<UseAcpState>(() => ({
     connected: false,
     sessionId: null,
     updates: [],
     providers: getInitialProviderFallbacks(),
-    selectedProvider: loadSelectedAcpProvider(),
+    // Always use SSR-safe default; useEffect below hydrates from localStorage
+    selectedProvider: "opencode",
     loading: false,
     error: null,
     authError: null,
     dockerConfigError: null,
-  });
+  }));
 
+  // Hydrate selectedProvider from localStorage after mount to avoid SSR mismatch
+  useEffect(() => {
+    const persisted = loadSelectedAcpProvider();
+    if (persisted !== "opencode") {
+      setState((s) => ({ ...s, selectedProvider: persisted }));
+    }
+  }, []);
   // Clean up on unmount
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -353,9 +361,7 @@ export function useAcp(baseUrl: string = ""): UseAcpState & UseAcpActions {
 
       clientRef.current = client;
 
-      // Auto-select first available provider (claude-code-sdk in serverless, or first available)
       const firstAvailable = allLocalProviders.find((p) => p.status === "available");
-
       setState((s) => ({
         ...(function () {
           const persistedProvider = loadSelectedAcpProvider();

@@ -24,7 +24,23 @@ function getCandidateDirectory(candidate: string): string {
  */
 export function needsShell(command: string): boolean {
   const lower = command.toLowerCase();
-  return lower.endsWith(".cmd") || lower.endsWith(".bat");
+
+  // Explicit .cmd/.bat extension
+  if (lower.endsWith(".cmd") || lower.endsWith(".bat")) {
+    return true;
+  }
+
+  // On Windows, npm-installed CLI tools without extensions might be .cmd files
+  // We need shell to properly resolve and execute them
+  if (process.platform === "win32") {
+    const hasExtension = /\.[a-zA-Z0-9]+$/.test(command);
+    const isPath = command.includes("/") || command.includes("\\");
+    if (!hasExtension && !isPath) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 /**
