@@ -50,8 +50,8 @@ describe("ensureMcpForProvider", () => {
 
     const parsed = parseMcpServersFromConfigs(result.mcpConfigs);
     expect(parsed?.["routa-coordination"]).toMatchObject({
-      type: "http",
-      url: "http://127.0.0.1:3000/api/mcp",
+      command: expect.any(String),
+      args: expect.arrayContaining([expect.stringContaining("mcp-http-proxy"), expect.any(String)]),
     });
   });
 
@@ -75,8 +75,8 @@ describe("ensureMcpForProvider", () => {
 
     const parsed = parseMcpServersFromConfigs(result.mcpConfigs);
     expect(parsed?.["routa-coordination"]).toMatchObject({
-      type: "http",
-      url: "http://127.0.0.1:3000/api/mcp",
+      command: expect.any(String),
+      args: expect.arrayContaining([expect.stringContaining("mcp-http-proxy"), expect.any(String)]),
     });
   });
 

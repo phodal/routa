@@ -12,7 +12,7 @@
  *   │  opencode  │  Merge into ~/.config/opencode/opencode.json (mcp)   │
  *   │  auggie    │  Write ~/.augment/mcp-config.json, pass file path    │
  *   │            │  via  --mcp-config <path>                            │
- *   │  claude    │  Inline JSON via --mcp-config <json>                 │
+ *   │  claude    │  stdio proxy script via --mcp-config <file>        │
  *   │  codex     │  Merge into ~/.codex/config.toml (TOML format)      │
  *   │            │  [mcp_servers.routa-coordination]                    │
  *   │  gemini    │  Merge into ~/.gemini/settings.json (JSON)           │
@@ -345,10 +345,15 @@ function ensureMcpForClaude(
   workspaceId?: string,
   customServers: CustomMcpServerConfig[] = [],
 ): McpSetupResult {
+  // Claude Code CLI's --mcp-config only supports stdio-type MCP servers.
+  // HTTP/SSE type configs are silently ignored (tested on CLI <=2.1.x).
+  // Solution: use a stdio proxy script that forwards to Routa's Streamable HTTP endpoint.
+  const proxyScriptPath = path.join(process.cwd(), "scripts", "mcp-http-proxy.mjs");
+  const nodeCommand = process.execPath;
   const builtIn: Record<string, unknown> = {
     "routa-coordination": {
-      url: mcpEndpoint,
-      type: "http",
+      command: nodeCommand,
+      args: [proxyScriptPath, mcpEndpoint],
       env: { ROUTA_WORKSPACE_ID: workspaceId || "" },
     },
   };
