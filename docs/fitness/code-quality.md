@@ -113,9 +113,11 @@ metrics:
 
   - name: duplicate_code_rust
     command: |
-      # Rust 重复检测（简化版，检查相似的 impl 块）
-      grep -rh "^impl " crates --include="*.rs" 2>/dev/null | sort | uniq -c | \
-      awk '$1 > 3 {dup++} END {print "rust_duplicate_impls:", dup+0}'
+      # Rust 重复检测（简化版，按“文件 + impl 头”分组，避免不同文件中常见类型名误报）
+      grep -rH "^impl " crates --include="*.rs" 2>/dev/null | \
+      sed -E 's#^([^:]+):[[:space:]]*(impl[^\\{]+\\{).*#\1 :: \2#' | \
+      sort | uniq -c | \
+      awk '$1 > 2 {dup++} END {print "rust_duplicate_impls:", dup+0}'
     pattern: "rust_duplicate_impls: 0"
     hard_gate: false
     tier: normal

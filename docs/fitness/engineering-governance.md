@@ -65,9 +65,15 @@ metrics:
 
   - name: todo_fixme_count
     command: |
-      grep -rn "TODO\|FIXME\|XXX\|HACK" --include="*.ts" --include="*.tsx" --include="*.rs" \
-        src apps crates 2>/dev/null | wc -l | awk '{print "todo_count:", $1}'
-    pattern: "todo_count: [0-9]$|todo_count: [1-9][0-9]$"
+      count=$(grep -rn "TODO\|FIXME\|XXX\|HACK" --include="*.ts" --include="*.tsx" --include="*.rs" \
+        src apps crates 2>/dev/null | wc -l | tr -d ' ')
+      echo "todo_count: ${count}"
+      if [ "${count}" -lt 100 ]; then
+        echo "todo_count_ok"
+      else
+        echo "todo_count_exceeded"
+      fi
+    pattern: "todo_count_ok"
     hard_gate: false
     tier: normal
     description: "TODO/FIXME 数量监控（<100）"
