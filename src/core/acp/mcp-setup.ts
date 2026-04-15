@@ -267,13 +267,12 @@ async function ensureMcpForAuggie(
 // ─── Claude Code ───────────────────────────────────────────────────────
 //
 // Claude Code accepts inline JSON via --mcp-config <json>
-// On Windows, we write to a temp file to avoid shell quoting issues with backslashes in JSON
 
-async function ensureMcpForClaude(
+function ensureMcpForClaude(
   mcpEndpoint: string,
   workspaceId?: string,
   customServers: CustomMcpServerConfig[] = [],
-): Promise<McpSetupResult> {
+): McpSetupResult {
   const builtIn: Record<string, unknown> = {
     "routa-coordination": {
       url: mcpEndpoint,
@@ -285,26 +284,6 @@ async function ensureMcpForClaude(
     mcpServers: mergeCustomMcpServers(builtIn, customServers),
   });
 
-  // On Windows, write to a temp file to avoid shell quoting issues
-  // The JSON contains backslashes (e.g., in URLs like http://localhost:3000)
-  // which get misinterpreted in shell mode
-  if (process.platform === "win32") {
-    const tempDir = os.tmpdir();
-    const tempFile = path.join(tempDir, `claude-mcp-${Date.now()}.json`);
-
-    try {
-      await fs.promises.writeFile(tempFile, json, "utf-8");
-      return {
-        mcpConfigs: [tempFile],
-        summary: `claude: temp file ${tempFile} (${json.length} bytes)`,
-      };
-    } catch (err) {
-      console.error(`[MCP:Claude] Failed to write temp file: ${err}`);
-      // Fall through to inline JSON as fallback
-    }
-  }
-
-  // On non-Windows or if temp file write fails, use inline JSON
   return {
     mcpConfigs: [json],
     summary: `claude: inline JSON (${json.length} bytes)`,

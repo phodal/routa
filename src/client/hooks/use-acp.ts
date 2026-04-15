@@ -361,11 +361,23 @@ export function useAcp(baseUrl: string = ""): UseAcpState & UseAcpActions {
 
       clientRef.current = client;
 
+      const firstAvailable = allLocalProviders.find((p) => p.status === "available");
       setState((s) => ({
-        ...s,
-        connected: true,
-        providers: allLocalProviders,
-        loading: false,
+        ...(function () {
+          const persistedProvider = loadSelectedAcpProvider();
+          const preferredProvider = allLocalProviders.find((provider) =>
+            provider.id === persistedProvider && provider.status !== "unavailable"
+          )?.id;
+          const nextSelectedProvider = preferredProvider ?? firstAvailable?.id ?? s.selectedProvider;
+          saveSelectedAcpProvider(nextSelectedProvider);
+          return {
+            ...s,
+            connected: true,
+            providers: allLocalProviders,
+            selectedProvider: nextSelectedProvider,
+            loading: false,
+          };
+        })(),
       }));
 
       // Background task 1: Check local provider status
