@@ -25,7 +25,7 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-interface CreateCanvasBody {
+export interface CreateCanvasBody {
   /** Render mode. Defaults to "dynamic". */
   renderMode?: CanvasRenderMode;
   /** Pre-built template (required for "prebuilt" mode). */
@@ -40,6 +40,15 @@ interface CreateCanvasBody {
   codebaseId?: string;
   repoPath?: string;
   agentId?: string;
+}
+
+export interface CreatedCanvasArtifact {
+  id: string;
+  renderMode: CanvasRenderMode;
+  canvasType?: CanvasType;
+  title: string;
+  taskId: string;
+  createdAt: string;
 }
 
 async function resolveCanvasTaskId(
@@ -87,6 +96,62 @@ async function resolveCanvasTaskId(
   return task.id;
 }
 
+export async function createCanvasArtifact(
+  system: RoutaSystem,
+  body: CreateCanvasBody,
+): Promise<CreatedCanvasArtifact> {
+  const renderMode: CanvasRenderMode = body.renderMode ?? "dynamic";
+  const taskId = await resolveCanvasTaskId(system, body);
+  if (taskId instanceof NextResponse) {
+    const payload = await taskId.json();
+    throw new Error(typeof payload?.error === "string" ? payload.error : "Failed to resolve canvas task");
+  }
+
+  const payload: CanvasArtifactPayload = {
+    metadata: {
+      renderMode,
+      canvasType: renderMode === "prebuilt" ? body.canvasType : undefined,
+      title: body.title,
+      schemaVersion: 1,
+      generatedAt: new Date().toISOString(),
+      workspaceId: body.workspaceId,
+      codebaseId: body.codebaseId,
+      repoPath: body.repoPath,
+    },
+    source: renderMode === "dynamic" ? body.source : undefined,
+    data: renderMode === "prebuilt" ? body.data : undefined,
+  };
+
+  const id = crypto.randomUUID();
+  const artifact = createArtifact({
+    id,
+    type: "canvas",
+    taskId,
+    workspaceId: body.workspaceId,
+    providedByAgentId: body.agentId,
+    content: JSON.stringify(payload),
+    context: `Canvas: ${body.title}`,
+    status: "provided",
+    metadata: {
+      renderMode,
+      canvasType: renderMode === "prebuilt" ? (body.canvasType ?? "") : "",
+      title: body.title,
+      schemaVersion: "1",
+    },
+  });
+
+  await system.artifactStore.saveArtifact(artifact);
+
+  return {
+    id: artifact.id,
+    renderMode,
+    canvasType: payload.metadata.canvasType,
+    title: body.title,
+    taskId,
+    createdAt: artifact.createdAt.toISOString(),
+  };
+}
+
 /**
  * POST /api/canvas — Create a new canvas artifact.
  *
@@ -127,7 +192,6 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // Validate mode-specific fields
   if (renderMode === "dynamic") {
     if (!body.source || typeof body.source !== "string") {
       return NextResponse.json(
@@ -136,7 +200,6 @@ export async function POST(request: NextRequest) {
       );
     }
   } else {
-    // prebuilt
     if (!isValidCanvasType(body.canvasType)) {
       return NextResponse.json(
         { error: `canvasType is required for prebuilt mode. Expected one of: ${VALID_CANVAS_TYPES.join(", ")}` },
@@ -153,63 +216,18 @@ export async function POST(request: NextRequest) {
 
   const system = getRoutaSystem();
   try {
-    const taskId = await resolveCanvasTaskId(system, body);
-    if (taskId instanceof NextResponse) {
-      return taskId;
-    }
-
-    const payload: CanvasArtifactPayload = {
-      metadata: {
-        renderMode,
-        canvasType: renderMode === "prebuilt" ? body.canvasType : undefined,
-        title: body.title,
-        schemaVersion: 1,
-        generatedAt: new Date().toISOString(),
-        workspaceId: body.workspaceId,
-        codebaseId: body.codebaseId,
-        repoPath: body.repoPath,
-      },
-      source: renderMode === "dynamic" ? body.source : undefined,
-      data: renderMode === "prebuilt" ? body.data : undefined,
-    };
-
-    const id = crypto.randomUUID();
-    const artifact = createArtifact({
-      id,
-      type: "canvas",
-      taskId,
-      workspaceId: body.workspaceId,
-      providedByAgentId: body.agentId,
-      content: JSON.stringify(payload),
-      context: `Canvas: ${body.title}`,
-      status: "provided",
-      metadata: {
-        renderMode,
-        canvasType: renderMode === "prebuilt" ? (body.canvasType ?? "") : "",
-        title: body.title,
-        schemaVersion: "1",
-      },
-    });
-
-    await system.artifactStore.saveArtifact(artifact);
-
-    return NextResponse.json({
-      id: artifact.id,
-      renderMode,
-      canvasType: payload.metadata.canvasType,
-      title: body.title,
-      taskId,
-      createdAt: artifact.createdAt.toISOString(),
-    }, { status: 201 });
+    const created = await createCanvasArtifact(system, body);
+    return NextResponse.json(created, { status: 201 });
   } catch (error) {
-    return NextResponse.json(
-      {
-        error: error instanceof Error
-          ? error.message
-          : "Failed to create canvas artifact",
-      },
-      { status: 500 },
-    );
+    const message = error instanceof Error
+      ? error.message
+      : "Failed to create canvas artifact";
+    const status = message.startsWith("Workspace not found:") || message.startsWith("Task not found:")
+      || message.includes("does not belong to workspace")
+      ? 400
+      : 500;
+
+    return NextResponse.json({ error: message }, { status });
   }
 }
 

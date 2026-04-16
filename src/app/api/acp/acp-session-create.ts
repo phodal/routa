@@ -54,7 +54,7 @@ function isWorkspaceProvider(provider: string): boolean {
   return normalized === "workspace" || normalized === "workspace-agent" || normalized === "routa-native";
 }
 
-async function loadSpecialistConfig(
+export async function loadSpecialistConfig(
   specialistId: string | undefined,
   locale: string,
 ): Promise<SpecialistConfig | null> {
