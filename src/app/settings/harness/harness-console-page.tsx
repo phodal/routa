@@ -309,6 +309,7 @@ export default function HarnessConsolePage() {
   const [bottomPanelHeight, setBottomPanelHeight] = useState(DEFAULT_BOTTOM_PANEL_HEIGHT);
 
   const activeSection = sectionFromUrl;
+  const showSectionTabs = activeSection !== "spec";
   const visibleTabs = useMemo(() => (
     openTabs.includes(activeSection) ? openTabs : [...openTabs, activeSection]
   ), [activeSection, openTabs]);
@@ -947,36 +948,38 @@ export default function HarnessConsolePage() {
     );
   }
 
-  const titleBarRight = (
-    <div className="flex items-center gap-2">
-      <RepoPicker
-        value={activeRepoSelection}
-        onChange={(selection) => {
-          setSelectedRepoOverrideState({ workspaceId, selection });
-          if (!selection) {
-            setSelectedCodebaseId("");
-            return;
-          }
-          const matchedCodebase = codebases.find((codebase) => (
-            codebase.repoPath === selection.path
-            && (selection.branch ? (codebase.branch ?? "") === selection.branch : true)
-          )) ?? codebases.find((codebase) => codebase.repoPath === selection.path)
-            ?? codebases.find((codebase) => (
-              (codebase.label ?? codebase.repoPath.split("/").pop() ?? codebase.repoPath) === selection.name
-            ));
-          setSelectedCodebaseId(matchedCodebase?.id ?? "");
-        }}
-        pathDisplay="hidden"
-        additionalRepos={codebases.map((codebase) => ({
-          name: codebase.label ?? codebase.repoPath.split("/").pop() ?? codebase.repoPath,
-          path: codebase.repoPath,
-          branch: codebase.branch ?? "",
-        }))}
-      />
-      <button type="button" className="desktop-btn desktop-btn-secondary" onClick={() => openBottomPanel("plan")}>Plan</button>
-      <button type="button" className="desktop-btn desktop-btn-secondary" onClick={() => openBottomPanel("fitness")}>Fitness</button>
-    </div>
-  );
+  const titleBarRight = activeSection === "spec"
+    ? null
+    : (
+      <div className="flex items-center gap-2">
+        <RepoPicker
+          value={activeRepoSelection}
+          onChange={(selection) => {
+            setSelectedRepoOverrideState({ workspaceId, selection });
+            if (!selection) {
+              setSelectedCodebaseId("");
+              return;
+            }
+            const matchedCodebase = codebases.find((codebase) => (
+              codebase.repoPath === selection.path
+              && (selection.branch ? (codebase.branch ?? "") === selection.branch : true)
+            )) ?? codebases.find((codebase) => codebase.repoPath === selection.path)
+              ?? codebases.find((codebase) => (
+                (codebase.label ?? codebase.repoPath.split("/").pop() ?? codebase.repoPath) === selection.name
+              ));
+            setSelectedCodebaseId(matchedCodebase?.id ?? "");
+          }}
+          pathDisplay="hidden"
+          additionalRepos={codebases.map((codebase) => ({
+            name: codebase.label ?? codebase.repoPath.split("/").pop() ?? codebase.repoPath,
+            path: codebase.repoPath,
+            branch: codebase.branch ?? "",
+          }))}
+        />
+        <button type="button" className="desktop-btn desktop-btn-secondary" onClick={() => openBottomPanel("plan")}>Plan</button>
+        <button type="button" className="desktop-btn desktop-btn-secondary" onClick={() => openBottomPanel("fitness")}>Fitness</button>
+      </div>
+    );
 
   return (
     <DesktopAppShell
@@ -1039,43 +1042,44 @@ export default function HarnessConsolePage() {
         />
 
         <div className="flex min-w-0 flex-1 flex-col">
-          <div className="flex h-9 shrink-0 items-center justify-between border-b border-desktop-border bg-desktop-bg-secondary px-2">
-            <div className="flex h-full items-center overflow-x-auto desktop-scrollbar-thin" data-testid="harness-console-tabs">
-              {visibleTabs.map((tabId) => {
-                const section = sections.find((item) => item.id === tabId);
-                if (!section) {
-                  return null;
-                }
-                const isActive = activeSection === tabId;
-                return (
-                  <div key={tabId} className={`group flex h-full shrink-0 items-center border-r border-desktop-border ${isActive ? "bg-desktop-bg-primary" : "bg-desktop-bg-secondary"}`}>
-                    <button
-                      type="button"
-                      onClick={() => openSection(tabId)}
-                      className={`h-full border-b-2 px-3 text-[11px] font-medium ${isActive ? "border-desktop-accent text-desktop-text-primary" : "border-transparent text-desktop-text-secondary hover:bg-desktop-bg-active/70 hover:text-desktop-text-primary"}`}
-                    >
-                      {section.shortLabel}
-                    </button>
-                    {tabId !== "overview" ? (
+          {showSectionTabs ? (
+            <div className="flex h-9 shrink-0 items-center justify-between border-b border-desktop-border bg-desktop-bg-secondary px-2">
+              <div className="flex h-full items-center overflow-x-auto desktop-scrollbar-thin" data-testid="harness-console-tabs">
+                {visibleTabs.map((tabId) => {
+                  const section = sections.find((item) => item.id === tabId);
+                  if (!section) {
+                    return null;
+                  }
+                  const isActive = activeSection === tabId;
+                  return (
+                    <div key={tabId} className={`group flex h-full shrink-0 items-center border-r border-desktop-border ${isActive ? "bg-desktop-bg-primary" : "bg-desktop-bg-secondary"}`}>
                       <button
                         type="button"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          closeTab(tabId);
-                        }}
-                        className="mr-1 rounded px-1 py-0.5 text-[10px] text-desktop-text-secondary opacity-0 transition-opacity hover:bg-desktop-bg-active hover:text-desktop-text-primary group-hover:opacity-100"
+                        onClick={() => openSection(tabId)}
+                        className={`h-full border-b-2 px-3 text-[11px] font-medium ${isActive ? "border-desktop-accent text-desktop-text-primary" : "border-transparent text-desktop-text-secondary hover:bg-desktop-bg-active/70 hover:text-desktop-text-primary"}`}
                       >
-                        x
+                        {section.shortLabel}
                       </button>
-                    ) : null}
-                  </div>
-                );
-              })}
+                      {tabId !== "overview" ? (
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            closeTab(tabId);
+                          }}
+                          className="mr-1 rounded px-1 py-0.5 text-[10px] text-desktop-text-secondary opacity-0 transition-opacity hover:bg-desktop-bg-active hover:text-desktop-text-primary group-hover:opacity-100"
+                        >
+                          x
+                        </button>
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
+          ) : null}
 
-          </div>
-
-          <div className="min-h-0 flex-1 overflow-y-auto bg-desktop-bg-primary p-4 desktop-scrollbar">
+          <div className={`min-h-0 flex-1 overflow-y-auto bg-desktop-bg-primary ${activeSection === "spec" ? "p-3" : "p-4"} desktop-scrollbar`}>
             {renderSectionContent(activeSection)}
           </div>
 
