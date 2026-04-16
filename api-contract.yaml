@@ -4352,8 +4352,37 @@ paths:
                 sourceType:
                   $ref: "#/components/schemas/CodebaseSourceType"
       responses:
-        "200":
+        "201":
           description: Created codebase
+
+  /api/workspaces/{workspaceId}/codebases/{codebaseId}:
+    delete:
+      operationId: deleteWorkspaceCodebase
+      summary: Delete a codebase from a workspace-scoped route
+      parameters:
+        - name: workspaceId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: codebaseId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeletedResponse"
+        "404":
+          description: Codebase not found in the requested workspace
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /api/workspaces/{id}/codebases/changes:
     get:

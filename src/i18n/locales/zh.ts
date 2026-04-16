@@ -183,6 +183,7 @@ const zh: TranslationDictionary = {
     advancedGroupTools: "工具",
     advancedGroupOther: "其它",
     records: "记录",
+    spec: "规格",
   },
 
   settings: {
@@ -730,6 +731,32 @@ const zh: TranslationDictionary = {
     repoUrlLabel: "仓库地址",
     searchExamples: "搜索示例...",
     skillsShCatalog: "Skills.sh 目录",
+  },
+
+  specBoard: {
+    kind: "类型",
+    severity: "严重级别",
+    area: "领域",
+    date: "日期",
+    reportedBy: "报告人",
+    github: "GitHub",
+    githubLinked: "已关联 GitHub",
+    connectedIssues: "已连接问题",
+    description: "这里是当前工作区的本地 issue 记忆层。除了看哪些记录还开着，也要能看出它们和 GitHub、以及其它本地 issue 之间的关联，再继续进入 harness 或交付流程。",
+    file: "文件",
+    issueLinks: "关联 Issue",
+    linkedFrom: "被这些 Issue 引用",
+    noLinkedIssues: "当前没有记录关联 issue。",
+    noBacklinks: "目前还没有其它 issue 指向这里。",
+    selectIssue: "选择一条 issue",
+    selectIssueBody: "选中一条记录后，可以在这里查看它的 GitHub tracker、关联 issue 和本地上下文。",
+    noIssues: "暂无记录",
+    failedToLoad: "加载本地问题规格失败",
+    githubStateUnknown: "未知",
+    statusOpen: "待处理",
+    statusInvestigating: "调查中",
+    statusResolved: "已解决",
+    statusWontfix: "不修复",
   },
 
   agents: {

@@ -717,6 +717,10 @@ struct UpdateBoardRequest {
     name: Option<String>,
     columns: Option<serde_json::Value>,
     is_default: Option<bool>,
+    #[serde(rename = "githubToken")]
+    github_token: Option<String>,
+    #[serde(rename = "clearGitHubToken")]
+    clear_github_token: Option<bool>,
     auto_provider_id: Option<String>,
     session_concurrency_limit: Option<u32>,
     dev_session_supervision: Option<PartialKanbanDevSessionSupervision>,
@@ -736,6 +740,12 @@ async fn update_board(
     }
     if let Some(is_default) = body.is_default {
         params["isDefault"] = serde_json::json!(is_default);
+    }
+    if let Some(clear_github_token) = body.clear_github_token {
+        params["clearGitHubToken"] = serde_json::json!(clear_github_token);
+    }
+    if let Some(github_token) = body.github_token {
+        params["githubToken"] = serde_json::json!(github_token);
     }
 
     let rpc_result = rpc_result(&state, "kanban.updateBoard", params).await?;
@@ -1207,7 +1217,7 @@ mod tests {
         default_dev_session_supervision, get_dev_session_supervision,
         normalize_dev_session_supervision, persisted_session_is_explicitly_terminal,
         sanitize_stale_current_lane_automation, translate_agent_event_to_kanban_payload,
-        PartialKanbanDevSessionSupervision,
+        PartialKanbanDevSessionSupervision, UpdateBoardRequest,
     };
     use chrono::Utc;
     use routa_core::events::{AgentEvent, AgentEventType};
@@ -1383,6 +1393,20 @@ mod tests {
         assert_eq!(normalized.inactivity_timeout_minutes, 120);
         assert_eq!(normalized.max_recovery_attempts, 10);
         assert_eq!(normalized.completion_requirement, "turn_complete");
+    }
+
+    #[test]
+    fn update_board_request_deserializes_github_token_fields() {
+        let payload = serde_json::json!({
+            "githubToken": "github_pat_test",
+            "clearGitHubToken": true
+        });
+
+        let request: UpdateBoardRequest =
+            serde_json::from_value(payload).expect("request should deserialize");
+
+        assert_eq!(request.github_token.as_deref(), Some("github_pat_test"));
+        assert_eq!(request.clear_github_token, Some(true));
     }
 
     #[tokio::test]

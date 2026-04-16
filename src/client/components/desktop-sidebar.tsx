@@ -14,7 +14,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useTranslation } from "@/i18n";
-import { ChevronLeft, Columns2, House, MonitorUp, ScrollText, Settings, Share2 } from "lucide-react";
+import { ChevronLeft, ClipboardList, Columns2, House, MonitorUp, ScrollText, Settings, Share2 } from "lucide-react";
 import { HarnessMark } from "./harness-mark";
 
 
@@ -83,6 +83,14 @@ export function DesktopSidebar({
       href: workspaceBaseHref ? `${workspaceBaseHref}/kanban` : "/",
       icon: (
         <Columns2 className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}/>
+      ),
+    },
+    {
+      id: "spec",
+      label: t.nav.spec,
+      href: workspaceBaseHref ? `${workspaceBaseHref}/spec` : "/",
+      icon: (
+        <ClipboardList className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}/>
       ),
     },
     {

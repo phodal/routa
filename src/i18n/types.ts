@@ -190,6 +190,7 @@ export interface TranslationDictionary extends ExtendedTranslationDictionarySect
     advancedGroupTools: string;
     advancedGroupOther: string;
     records: string;
+    spec: string;
   };
 
   // Settings panel
@@ -743,6 +744,32 @@ export interface TranslationDictionary extends ExtendedTranslationDictionarySect
   };
 
   // Agents
+  specBoard: {
+    kind: string;
+    severity: string;
+    area: string;
+    date: string;
+    reportedBy: string;
+    github: string;
+    githubLinked: string;
+    connectedIssues: string;
+    description: string;
+    file: string;
+    issueLinks: string;
+    linkedFrom: string;
+    noLinkedIssues: string;
+    noBacklinks: string;
+    selectIssue: string;
+    selectIssueBody: string;
+    noIssues: string;
+    failedToLoad: string;
+    githubStateUnknown: string;
+    statusOpen: string;
+    statusInvestigating: string;
+    statusResolved: string;
+    statusWontfix: string;
+  };
+
   agents: {
     title: string;
     agentName: string;

@@ -112,6 +112,16 @@ pub fn is_git_repository(repo_path: &str) -> bool {
         .unwrap_or(false)
 }
 
+pub fn is_bare_git_repository(repo_path: &str) -> bool {
+    git_command()
+        .args(["rev-parse", "--is-bare-repository"])
+        .current_dir(repo_path)
+        .output()
+        .ok()
+        .filter(|output| output.status.success())
+        .is_some_and(|output| String::from_utf8_lossy(&output.stdout).trim() == "true")
+}
+
 pub fn get_current_branch(repo_path: &str) -> Option<String> {
     let output = git_command()
         .args(["rev-parse", "--abbrev-ref", "HEAD"])

@@ -184,6 +184,7 @@ const en: TranslationDictionary = {
     advancedGroupTools: "Tools",
     advancedGroupOther: "Other",
     records: "Records",
+    spec: "Spec",
   },
 
   settings: {
@@ -735,6 +736,32 @@ const en: TranslationDictionary = {
     repoUrlLabel: "Repository URL",
     searchExamples: "Search examples...",
     skillsShCatalog: "Skills.sh Catalog",
+  },
+
+  specBoard: {
+    kind: "Kind",
+    severity: "Severity",
+    area: "Area",
+    date: "Date",
+    reportedBy: "Reported by",
+    github: "GitHub",
+    githubLinked: "GitHub linked",
+    connectedIssues: "Connected issues",
+    description: "Local issue memory for this workspace. Review what is open, how entries connect to GitHub, and which records form the same issue family before moving into harness or delivery flows.",
+    file: "File",
+    issueLinks: "Issue Links",
+    linkedFrom: "Linked From",
+    noLinkedIssues: "No linked issues recorded.",
+    noBacklinks: "No other issues point here yet.",
+    selectIssue: "Select an issue",
+    selectIssueBody: "Choose a record to inspect its GitHub tracker, linked issues, and local context.",
+    noIssues: "No issues",
+    failedToLoad: "Failed to load local issue specs",
+    githubStateUnknown: "unknown",
+    statusOpen: "Open",
+    statusInvestigating: "Investigating",
+    statusResolved: "Resolved",
+    statusWontfix: "Won't Fix",
   },
 
   agents: {

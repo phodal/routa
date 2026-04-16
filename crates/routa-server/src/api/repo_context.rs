@@ -74,6 +74,12 @@ pub fn validate_local_git_repo_path(candidate: &Path) -> Result<(), ServerError>
         )));
     }
 
+    if git::is_bare_git_repository(&candidate.to_string_lossy()) {
+        return Err(ServerError::BadRequest(
+            "Cannot add a bare git repository as a codebase".to_string(),
+        ));
+    }
+
     Ok(())
 }
 
