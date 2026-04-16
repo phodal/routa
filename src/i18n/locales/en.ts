@@ -184,6 +184,7 @@ const en: TranslationDictionary = {
     advancedGroupTools: "Tools",
     advancedGroupOther: "Other",
     records: "Records",
+    spec: "Spec",
   },
 
   settings: {

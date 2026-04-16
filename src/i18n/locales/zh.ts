@@ -183,6 +183,7 @@ const zh: TranslationDictionary = {
     advancedGroupTools: "工具",
     advancedGroupOther: "其它",
     records: "记录",
+    spec: "规格",
   },
 
   settings: {

@@ -190,6 +190,7 @@ export interface TranslationDictionary extends ExtendedTranslationDictionarySect
     advancedGroupTools: string;
     advancedGroupOther: string;
     records: string;
+    spec: string;
   };
 
   // Settings panel

@@ -44,6 +44,7 @@ pub mod skills;
 pub mod skills_catalog;
 pub mod skills_clone;
 pub mod skills_upload;
+pub mod spec;
 pub mod specialists;
 pub mod tasks;
 pub mod tasks_automation;
@@ -106,6 +107,7 @@ pub fn api_router(state: AppState) -> Router<AppState> {
         .nest("/api/schedules", schedules::router())
         .nest("/api/sandboxes", sandbox::router())
         .nest("/api/specialists", specialists::router())
+        .nest("/api/spec", spec::router())
         .nest("/api/memory", memory::router())
         .nest("/api/debug", debug::router())
         .nest("/api/polling", polling::router())
