@@ -1,11 +1,18 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
 import { InMemoryArtifactStore } from "@/core/store/artifact-store";
+import { InMemoryTaskStore } from "@/core/store/task-store";
+import { InMemoryWorkspaceStore } from "@/core/db/pg-workspace-store";
+import { createWorkspace } from "@/core/models/workspace";
 
 const artifactStore = new InMemoryArtifactStore();
+const taskStore = new InMemoryTaskStore();
+const workspaceStore = new InMemoryWorkspaceStore();
 
 const system = {
   artifactStore,
+  taskStore,
+  workspaceStore,
 };
 
 vi.mock("@/core/routa-system", () => ({
@@ -27,6 +34,12 @@ describe("/api/canvas", () => {
     for (const a of all) {
       await artifactStore.deleteArtifact(a.id);
     }
+
+    await taskStore.deleteByWorkspace("ws-1");
+    await workspaceStore.save(createWorkspace({
+      id: "ws-1",
+      title: "Workspace One",
+    }));
   });
 
   describe("POST — dynamic mode", () => {
@@ -50,6 +63,16 @@ describe("/api/canvas", () => {
       expect(json.id).toBeDefined();
       expect(json.renderMode).toBe("dynamic");
       expect(json.title).toBe("Dynamic Canvas");
+      expect(json.taskId).toBeDefined();
+
+      const tasks = await taskStore.listByWorkspace("ws-1");
+      expect(tasks).toHaveLength(1);
+      expect(tasks[0]).toMatchObject({
+        title: "Canvas artifact: Dynamic Canvas",
+        status: "COMPLETED",
+        workspaceId: "ws-1",
+        labels: ["canvas"],
+      });
     });
 
     it("defaults to dynamic renderMode when not specified", async () => {
@@ -147,6 +170,18 @@ describe("/api/canvas", () => {
   });
 
   describe("POST — common validation", () => {
+    it("rejects non-object JSON bodies", async () => {
+      const req = new NextRequest("http://localhost/api/canvas", {
+        method: "POST",
+        body: JSON.stringify(["not", "an", "object"]),
+        headers: { "Content-Type": "application/json" },
+      });
+
+      const res = await POST(req);
+      expect(res.status).toBe(400);
+      await expect(res.json()).resolves.toEqual({ error: "Invalid JSON body" });
+    });
+
     it("rejects missing title", async () => {
       const body = { source: SAMPLE_TSX, workspaceId: "ws-1" };
       const req = new NextRequest("http://localhost/api/canvas", {
@@ -169,6 +204,25 @@ describe("/api/canvas", () => {
 
       const res = await POST(req);
       expect(res.status).toBe(400);
+    });
+
+    it("rejects an unknown taskId", async () => {
+      const req = new NextRequest("http://localhost/api/canvas", {
+        method: "POST",
+        body: JSON.stringify({
+          title: "Missing task",
+          source: SAMPLE_TSX,
+          workspaceId: "ws-1",
+          taskId: "missing-task",
+        }),
+        headers: { "Content-Type": "application/json" },
+      });
+
+      const res = await POST(req);
+      expect(res.status).toBe(400);
+      await expect(res.json()).resolves.toEqual({
+        error: "Task not found: missing-task",
+      });
     });
   });
 

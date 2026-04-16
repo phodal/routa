@@ -24,7 +24,7 @@ function serializeArtifact(artifact: Artifact) {
 }
 
 function isArtifactType(value: unknown): value is ArtifactType {
-  return value === "screenshot" || value === "test_results" || value === "code_diff" || value === "logs" || value === "canvas";
+  return value === "screenshot" || value === "test_results" || value === "code_diff" || value === "logs";
 }
 
 function isStringRecord(value: unknown): value is Record<string, string> {
