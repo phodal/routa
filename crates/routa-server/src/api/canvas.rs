@@ -8,6 +8,10 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 
 use crate::error::ServerError;
+use routa_core::acp::SessionLaunchOptions;
+use routa_core::orchestration::SpecialistConfig;
+use routa_core::store::acp_session_store::CreateAcpSessionParams;
+
 use crate::models::artifact::{Artifact, ArtifactStatus, ArtifactType};
 use crate::models::canvas_artifact::{
     CanvasArtifactMetadata, CanvasArtifactPayload, CanvasRenderMode, CanvasType,
@@ -18,6 +22,7 @@ use crate::state::AppState;
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/", post(create_canvas).get(list_canvas))
+        .route("/specialist", post(create_canvas_from_specialist))
         .route("/{id}", get(get_canvas).delete(delete_canvas))
 }
 
@@ -34,6 +39,21 @@ struct CreateCanvasBody {
     codebase_id: Option<String>,
     repo_path: Option<String>,
     agent_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CreateCanvasFromSpecialistBody {
+    specialist_id: Option<String>,
+    prompt: Option<String>,
+    workspace_id: Option<String>,
+    title: Option<String>,
+    provider: Option<String>,
+    model: Option<String>,
+    task_id: Option<String>,
+    codebase_id: Option<String>,
+    repo_path: Option<String>,
+    cwd: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -115,76 +135,244 @@ async fn create_canvas(
         }
     };
 
-    let task_id = resolve_canvas_task_id(
+    let created = save_canvas_artifact(
         &state,
-        &workspace_id,
-        &title,
-        body.task_id.as_deref(),
-        body.codebase_id.as_deref(),
+        SaveCanvasArtifactParams {
+            render_mode,
+            canvas_type,
+            title,
+            source,
+            data,
+            workspace_id,
+            task_id: body.task_id,
+            codebase_id: body.codebase_id,
+            repo_path: body.repo_path,
+            agent_id: body.agent_id,
+        },
     )
     .await?;
 
-    let payload = CanvasArtifactPayload {
-        metadata: CanvasArtifactMetadata {
-            render_mode: render_mode.clone(),
-            canvas_type: canvas_type.clone(),
-            title: title.clone(),
-            schema_version: 1,
-            generated_at: Utc::now(),
-            workspace_id: Some(workspace_id.clone()),
-            codebase_id: body.codebase_id.clone(),
-            repo_path: body.repo_path.clone(),
-        },
-        source,
-        data,
+    Ok((axum::http::StatusCode::CREATED, Json(created)))
+}
+
+async fn create_canvas_from_specialist(
+    State(state): State<AppState>,
+    body: Result<Json<Value>, axum::extract::rejection::JsonRejection>,
+) -> Result<(axum::http::StatusCode, Json<Value>), ServerError> {
+    let Json(raw_body) =
+        body.map_err(|_| ServerError::BadRequest("Invalid JSON body".to_string()))?;
+    if !raw_body.is_object() {
+        return Err(ServerError::BadRequest("Invalid JSON body".to_string()));
+    }
+
+    let body: CreateCanvasFromSpecialistBody = serde_json::from_value(raw_body)
+        .map_err(|_| ServerError::BadRequest("Invalid JSON body".to_string()))?;
+
+    let specialist_id = body
+        .specialist_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| ServerError::BadRequest("specialistId is required".to_string()))?;
+    let user_prompt = body
+        .prompt
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| ServerError::BadRequest("prompt is required".to_string()))?;
+    let workspace_id = body
+        .workspace_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| ServerError::BadRequest("workspaceId is required".to_string()))?
+        .to_string();
+
+    let specialist = SpecialistConfig::resolve(specialist_id)
+        .ok_or_else(|| ServerError::NotFound(format!("Specialist not found: {specialist_id}")))?;
+
+    let session_id = uuid::Uuid::new_v4().to_string();
+    let cwd = body
+        .cwd
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+        .or_else(|| {
+            body.repo_path
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(ToOwned::to_owned)
+        })
+        .or_else(|| {
+            std::env::current_dir()
+                .ok()
+                .map(|path| path.to_string_lossy().to_string())
+        })
+        .unwrap_or_else(|| ".".to_string());
+    let provider = body
+        .provider
+        .clone()
+        .or_else(|| specialist.default_provider.clone())
+        .unwrap_or_else(|| "opencode".to_string());
+    let role = specialist.role.as_str().to_string();
+    let launch_options = SessionLaunchOptions {
+        specialist_id: Some(specialist.id.clone()),
+        specialist_system_prompt: build_specialist_system_prompt(&specialist),
+        allowed_native_tools: derive_allowed_native_tools(Some(specialist.id.as_str())),
+        ..SessionLaunchOptions::default()
     };
 
-    let now = Utc::now();
-    let artifact = Artifact {
-        id: uuid::Uuid::new_v4().to_string(),
-        artifact_type: ArtifactType::Canvas,
-        task_id: task_id.clone(),
-        workspace_id: workspace_id.clone(),
-        provided_by_agent_id: body.agent_id,
-        requested_by_agent_id: None,
-        request_id: None,
-        content: Some(
-            serde_json::to_string(&payload)
-                .map_err(|error| ServerError::Internal(format!("Failed to encode canvas payload: {error}")))?,
-        ),
-        context: Some(format!("Canvas: {title}")),
-        status: ArtifactStatus::Provided,
-        expires_at: None,
-        metadata: Some(std::collections::BTreeMap::from([
-            ("renderMode".to_string(), render_mode.as_str().to_string()),
-            (
-                "canvasType".to_string(),
-                canvas_type
-                    .as_ref()
-                    .map(CanvasType::as_str)
-                    .unwrap_or("")
-                    .to_string(),
-            ),
-            ("title".to_string(), title.clone()),
-            ("schemaVersion".to_string(), "1".to_string()),
-        ])),
-        created_at: now,
-        updated_at: now,
+    let provider_session_id = match state
+        .acp_manager
+        .create_session_with_options(
+            session_id.clone(),
+            cwd.clone(),
+            workspace_id.clone(),
+            Some(provider.clone()),
+            Some(role.clone()),
+            body.model.clone(),
+            None,
+            None,
+            None,
+            launch_options,
+        )
+        .await
+    {
+        Ok((_our_sid, provider_sid)) => provider_sid,
+        Err(error) => {
+            return Err(ServerError::Internal(format!(
+                "Failed to create specialist session: {error}"
+            )))
+        }
     };
 
-    state.artifact_store.save(&artifact).await?;
+    let persist_result = state
+        .acp_session_store
+        .create(CreateAcpSessionParams {
+            id: &session_id,
+            cwd: &cwd,
+            branch: None,
+            workspace_id: &workspace_id,
+            provider: Some(provider.as_str()),
+            role: Some(role.as_str()),
+            custom_command: None,
+            custom_args: None,
+            parent_session_id: None,
+        })
+        .await;
+    if let Err(error) = persist_result {
+        tracing::warn!(
+            "[canvas] Failed to persist specialist session {}: {}",
+            session_id,
+            error
+        );
+    } else if let Err(error) = state
+        .acp_session_store
+        .set_provider_session_id(&session_id, Some(&provider_session_id))
+        .await
+    {
+        tracing::warn!(
+            "[canvas] Failed to persist provider session id for {}: {}",
+            session_id,
+            error
+        );
+    }
 
-    Ok((
-        axum::http::StatusCode::CREATED,
-        Json(json!({
-            "id": artifact.id,
-            "renderMode": render_mode.as_str(),
-            "canvasType": canvas_type.as_ref().map(CanvasType::as_str),
-            "title": title,
-            "taskId": task_id,
-            "createdAt": artifact.created_at.to_rfc3339(),
-        })),
-    ))
+    let result = async {
+        let specialist_prompt = build_canvas_specialist_prompt(user_prompt);
+        let prompt_result = state
+            .acp_manager
+            .prompt(&session_id, &specialist_prompt)
+            .await
+            .map_err(|error| {
+                ServerError::Internal(format!("Failed to run specialist prompt: {error}"))
+            })?;
+
+        let history = state
+            .acp_manager
+            .get_session_history(&session_id)
+            .await
+            .unwrap_or_default();
+
+        let prompt_text = extract_text_from_prompt_result(&prompt_result);
+        let history_text = extract_specialist_output_from_history(&history);
+        let combined_output = if !prompt_text.trim().is_empty() {
+            prompt_text
+        } else {
+            history_text
+        };
+
+        let source =
+            if let Some(value) = extract_canvas_source_from_specialist_output(&combined_output) {
+                value
+            } else {
+                return Ok(json!({
+                    "error": "Specialist output did not contain usable canvas TSX",
+                    "sessionId": session_id,
+                    "outputPreview": combined_output.chars().take(500).collect::<String>(),
+                    "__status": 422,
+                }));
+            };
+
+        let default_title = format!("{} Canvas", specialist.name);
+        let title = body
+            .title
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .unwrap_or(default_title.as_str())
+            .to_string();
+
+        let created = save_canvas_artifact(
+            &state,
+            SaveCanvasArtifactParams {
+                render_mode: CanvasRenderMode::Dynamic,
+                canvas_type: None,
+                title,
+                source: Some(source.clone()),
+                data: None,
+                workspace_id: workspace_id.clone(),
+                task_id: body.task_id.clone(),
+                codebase_id: body.codebase_id.clone(),
+                repo_path: body.repo_path.clone(),
+                agent_id: None,
+            },
+        )
+        .await?;
+
+        Ok::<Value, ServerError>(json!({
+            "id": created["id"],
+            "renderMode": created["renderMode"],
+            "canvasType": created["canvasType"],
+            "title": created["title"],
+            "taskId": created["taskId"],
+            "createdAt": created["createdAt"],
+            "sessionId": session_id,
+            "viewerUrl": format!("/canvas/{}", created["id"].as_str().unwrap_or_default()),
+            "source": source,
+        }))
+    }
+    .await;
+
+    state.acp_manager.kill_session(&session_id).await;
+    result.map(|value| {
+        let status = value
+            .get("__status")
+            .and_then(Value::as_u64)
+            .map(|code| axum::http::StatusCode::from_u16(code as u16).unwrap_or(axum::http::StatusCode::CREATED))
+            .unwrap_or(axum::http::StatusCode::CREATED);
+        let response = if status == axum::http::StatusCode::CREATED {
+            value
+        } else if let Some(mut record) = value.as_object().cloned() {
+            record.remove("__status");
+            Value::Object(record)
+        } else {
+            value
+        };
+        (status, Json(response))
+    })
 }
 
 async fn list_canvas(
@@ -279,6 +467,317 @@ async fn delete_canvas(
     Ok(Json(json!({ "deleted": true })))
 }
 
+struct SaveCanvasArtifactParams {
+    render_mode: CanvasRenderMode,
+    canvas_type: Option<CanvasType>,
+    title: String,
+    source: Option<String>,
+    data: Option<Value>,
+    workspace_id: String,
+    task_id: Option<String>,
+    codebase_id: Option<String>,
+    repo_path: Option<String>,
+    agent_id: Option<String>,
+}
+
+async fn save_canvas_artifact(
+    state: &AppState,
+    params: SaveCanvasArtifactParams,
+) -> Result<Value, ServerError> {
+    let task_id = resolve_canvas_task_id(
+        state,
+        &params.workspace_id,
+        &params.title,
+        params.task_id.as_deref(),
+        params.codebase_id.as_deref(),
+    )
+    .await?;
+
+    let payload = CanvasArtifactPayload {
+        metadata: CanvasArtifactMetadata {
+            render_mode: params.render_mode.clone(),
+            canvas_type: params.canvas_type.clone(),
+            title: params.title.clone(),
+            schema_version: 1,
+            generated_at: Utc::now(),
+            workspace_id: Some(params.workspace_id.clone()),
+            codebase_id: params.codebase_id.clone(),
+            repo_path: params.repo_path.clone(),
+        },
+        source: params.source,
+        data: params.data,
+    };
+
+    let now = Utc::now();
+    let artifact = Artifact {
+        id: uuid::Uuid::new_v4().to_string(),
+        artifact_type: ArtifactType::Canvas,
+        task_id: task_id.clone(),
+        workspace_id: params.workspace_id,
+        provided_by_agent_id: params.agent_id,
+        requested_by_agent_id: None,
+        request_id: None,
+        content: Some(serde_json::to_string(&payload).map_err(|error| {
+            ServerError::Internal(format!("Failed to encode canvas payload: {error}"))
+        })?),
+        context: Some(format!("Canvas: {}", params.title)),
+        status: ArtifactStatus::Provided,
+        expires_at: None,
+        metadata: Some(std::collections::BTreeMap::from([
+            (
+                "renderMode".to_string(),
+                params.render_mode.as_str().to_string(),
+            ),
+            (
+                "canvasType".to_string(),
+                params
+                    .canvas_type
+                    .as_ref()
+                    .map(CanvasType::as_str)
+                    .unwrap_or("")
+                    .to_string(),
+            ),
+            ("title".to_string(), params.title.clone()),
+            ("schemaVersion".to_string(), "1".to_string()),
+        ])),
+        created_at: now,
+        updated_at: now,
+    };
+
+    state.artifact_store.save(&artifact).await?;
+
+    Ok(json!({
+        "id": artifact.id,
+        "renderMode": params.render_mode.as_str(),
+        "canvasType": payload.metadata.canvas_type.as_ref().map(CanvasType::as_str),
+        "title": params.title,
+        "taskId": task_id,
+        "createdAt": artifact.created_at.to_rfc3339(),
+    }))
+}
+
+fn build_specialist_system_prompt(specialist: &SpecialistConfig) -> Option<String> {
+    if specialist.system_prompt.trim().is_empty() {
+        return None;
+    }
+
+    if specialist.role_reminder.trim().is_empty() {
+        return Some(specialist.system_prompt.clone());
+    }
+
+    Some(format!(
+        "{}\n\n---\n**Reminder:** {}\n",
+        specialist.system_prompt, specialist.role_reminder
+    ))
+}
+
+fn derive_allowed_native_tools(specialist_id: Option<&str>) -> Option<Vec<String>> {
+    if specialist_id == Some("team-agent-lead") {
+        return Some(Vec::new());
+    }
+
+    None
+}
+
+fn build_canvas_specialist_prompt(user_prompt: &str) -> String {
+    [
+        "Create a Routa browser canvas as TSX source code.",
+        "Return only the TSX source.",
+        "Do not include markdown code fences.",
+        "Do not include explanations, notes, or prose before or after the code.",
+        "The source must `export default function Canvas()` or `export default Canvas`.",
+        "Prefer a self-contained component with inline styles.",
+        "If you import anything, you may only import from `react` or `@canvas-sdk`.",
+        "Do not use browser globals or side effects such as `window`, `document`, `fetch`, or `localStorage`.",
+        "",
+        "User request:",
+        user_prompt.trim(),
+    ]
+    .join("\n")
+}
+
+fn extract_text_from_prompt_result(value: &Value) -> String {
+    fn collect(value: &Value, parts: &mut Vec<String>) {
+        match value {
+            Value::Object(map) => {
+                if let Some(text) = map.get("text").and_then(Value::as_str) {
+                    parts.push(text.to_string());
+                }
+                if let Some(delta) = map.get("delta").and_then(Value::as_str) {
+                    parts.push(delta.to_string());
+                }
+                for nested in map.values() {
+                    collect(nested, parts);
+                }
+            }
+            Value::Array(items) => {
+                for item in items {
+                    collect(item, parts);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    let mut parts = Vec::new();
+    collect(value, &mut parts);
+    parts.join("").trim().to_string()
+}
+
+fn extract_text_from_process_output_line(data: &str) -> Option<String> {
+    for marker in ["Agent message (non-delta) received: \"", "delta: \""] {
+        if let Some(start) = data.find(marker) {
+            let tail = &data[start + marker.len()..];
+            if let Some(end) = tail.rfind('"') {
+                let quoted = format!("\"{}\"", &tail[..end]);
+                return serde_json::from_str::<String>(&quoted).ok().or_else(|| {
+                    Some(tail[..end].replace("\\n", "\n").replace("\\\"", "\""))
+                });
+            }
+        }
+    }
+
+    None
+}
+
+fn extract_update_text(update: &serde_json::Map<String, Value>) -> Option<String> {
+    if let Some(text) = update
+        .get("data")
+        .and_then(Value::as_str)
+        .and_then(extract_text_from_process_output_line)
+    {
+        return Some(text);
+    }
+    if let Some(text) = update.get("delta").and_then(Value::as_str) {
+        return Some(text.to_string());
+    }
+    if let Some(text) = update
+        .get("content")
+        .and_then(|value| value.get("text"))
+        .and_then(Value::as_str)
+    {
+        return Some(text.to_string());
+    }
+    if let Some(text) = update.get("content").and_then(Value::as_str) {
+        return Some(text.to_string());
+    }
+    if let Some(text) = update.get("text").and_then(Value::as_str) {
+        return Some(text.to_string());
+    }
+    if let Some(text) = update.get("message").and_then(Value::as_str) {
+        return Some(text.to_string());
+    }
+    if let Some(text) = update
+        .get("message")
+        .and_then(|value| value.get("text"))
+        .and_then(Value::as_str)
+    {
+        return Some(text.to_string());
+    }
+    if let Some(items) = update.get("content").and_then(Value::as_array) {
+        let output = items
+            .iter()
+            .map(|item| {
+                item.get("text")
+                    .and_then(Value::as_str)
+                    .or_else(|| item.get("content").and_then(Value::as_str))
+                    .unwrap_or("")
+            })
+            .collect::<String>();
+        if !output.is_empty() {
+            return Some(output);
+        }
+    }
+    None
+}
+
+fn extract_specialist_output_from_history(history: &[Value]) -> String {
+    let mut direct_output = String::new();
+    let mut process_output = String::new();
+
+    for entry in history {
+        let Some(update) = entry
+            .get("params")
+            .and_then(|params| params.get("update"))
+            .and_then(Value::as_object)
+        else {
+            continue;
+        };
+
+        let session_update = update
+            .get("sessionUpdate")
+            .and_then(Value::as_str)
+            .unwrap_or("");
+        match session_update {
+            "agent_message" | "agent_message_chunk" | "agent_chunk" => {
+                if let Some(text) = extract_update_text(update) {
+                    direct_output.push_str(&text);
+                }
+            }
+            "process_output" => {
+                if let Some(text) = extract_update_text(update) {
+                    process_output.push_str(&text);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    if direct_output.trim().is_empty() {
+        process_output.trim().to_string()
+    } else {
+        direct_output.trim().to_string()
+    }
+}
+
+fn extract_canvas_source_from_specialist_output(output: &str) -> Option<String> {
+    let normalized = output.trim();
+    if normalized.is_empty() {
+        return None;
+    }
+
+    let source_from_json = serde_json::from_str::<Value>(normalized)
+        .ok()
+        .and_then(|value| {
+            ["source", "tsx", "code", "canvasSource", "component"]
+                .iter()
+                .find_map(|key| value.get(*key).and_then(Value::as_str))
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(ToOwned::to_owned)
+        });
+    let candidate = source_from_json.unwrap_or_else(|| {
+        let fenced = regex::Regex::new(r"```(?:tsx|jsx|typescript|javascript)?\s*([\s\S]*?)```")
+            .ok()
+            .and_then(|re| {
+                re.captures(normalized)
+                    .and_then(|caps| caps.get(1))
+                    .map(|value| value.as_str().trim().to_string())
+            });
+        fenced.unwrap_or_else(|| normalized.to_string())
+    });
+
+    let start_index = ["import ", "export default", "function Canvas(", "const Canvas ="]
+        .iter()
+        .filter_map(|marker| candidate.find(marker))
+        .min();
+    let trimmed = start_index
+        .map(|index| candidate[index..].trim().to_string())
+        .unwrap_or(candidate);
+
+    if trimmed.contains("export default") {
+        return Some(trimmed);
+    }
+    if trimmed.starts_with("function Canvas(") {
+        return Some(format!("export default {trimmed}"));
+    }
+    if trimmed.starts_with("const Canvas =") {
+        return Some(format!("{trimmed}\n\nexport default Canvas;"));
+    }
+
+    None
+}
+
 async fn resolve_canvas_task_id(
     state: &AppState,
     workspace_id: &str,
@@ -332,4 +831,69 @@ async fn resolve_canvas_task_id(
 
 fn parse_canvas_payload(content: Option<&str>) -> Option<CanvasArtifactPayload> {
     serde_json::from_str(content?).ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn build_canvas_specialist_prompt_constrains_output_shape() {
+        let prompt = build_canvas_specialist_prompt("Create a status card.");
+
+        assert!(prompt.contains("Return only the TSX source."));
+        assert!(prompt.contains("Create a status card."));
+    }
+
+    #[test]
+    fn extract_canvas_source_from_fenced_output() {
+        let output = r#"
+Here is the component:
+
+```tsx
+export default function Canvas() {
+  return <div>Hello</div>;
+}
+```
+"#;
+
+        let source = extract_canvas_source_from_specialist_output(output)
+            .expect("expected TSX source from fenced block");
+        assert!(source.contains("export default function Canvas()"));
+        assert!(source.contains("<div>Hello</div>"));
+    }
+
+    #[test]
+    fn extract_canvas_source_from_json_payload() {
+        let output = json!({
+            "source": "export default function Canvas(){ return <div>JSON</div>; }"
+        })
+        .to_string();
+
+        let source = extract_canvas_source_from_specialist_output(&output)
+            .expect("expected TSX source from JSON");
+        assert_eq!(
+            source,
+            "export default function Canvas(){ return <div>JSON</div>; }"
+        );
+    }
+
+    #[test]
+    fn upgrade_bare_canvas_function_to_default_export() {
+        let output = r#"
+function Canvas() {
+  return <div>Ready</div>;
+}
+"#;
+
+        let source = extract_canvas_source_from_specialist_output(output)
+            .expect("expected normalized Canvas component");
+        assert!(source.starts_with("export default function Canvas()"));
+    }
+
+    #[test]
+    fn return_none_when_output_has_no_canvas_component() {
+        assert!(extract_canvas_source_from_specialist_output("I cannot do that.").is_none());
+    }
 }

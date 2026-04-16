@@ -101,6 +101,45 @@ async fn api_canvas_rejects_unknown_task_id() {
 }
 
 #[tokio::test]
+async fn api_canvas_specialist_validates_required_fields() {
+    let fixture = ApiFixture::new().await;
+
+    let response = fixture
+        .client
+        .post(fixture.endpoint("/api/canvas/specialist"))
+        .json(&json!({
+            "workspaceId": "default",
+            "prompt": "Create a canvas."
+        }))
+        .send()
+        .await
+        .expect("create canvas from specialist without specialist id");
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let body: Value = response.json().await.expect("decode error");
+    assert!(json_has_error(&body, "specialistId is required"));
+}
+
+#[tokio::test]
+async fn api_canvas_specialist_rejects_unknown_specialist() {
+    let fixture = ApiFixture::new().await;
+
+    let response = fixture
+        .client
+        .post(fixture.endpoint("/api/canvas/specialist"))
+        .json(&json!({
+            "workspaceId": "default",
+            "specialistId": "missing-specialist",
+            "prompt": "Create a canvas."
+        }))
+        .send()
+        .await
+        .expect("create canvas from unknown specialist");
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    let body: Value = response.json().await.expect("decode error");
+    assert!(json_has_error(&body, "Specialist not found: missing-specialist"));
+}
+
+#[tokio::test]
 async fn api_canvas_delete_removes_artifact() {
     let fixture = ApiFixture::new().await;
 
