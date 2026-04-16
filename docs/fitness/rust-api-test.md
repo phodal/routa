@@ -69,6 +69,7 @@ metrics:
 | harness | `GET /api/harness/templates` | list templates | repo context 解析与模板列表返回 | TODO | `src/app/api/harness/templates/route.ts`, `crates/routa-server/src/api/harness_templates.rs` |
 | harness | `GET /api/harness/templates/validate` | validate template | 缺失 templateId 返回 400；成功返回验证结果 | TODO | `src/app/api/harness/templates/validate/route.ts`, `crates/routa-server/src/api/harness_templates.rs` |
 | harness | `GET /api/harness/templates/doctor` | doctor templates | repo context 解析与诊断结果返回 | TODO | `src/app/api/harness/templates/doctor/route.ts`, `crates/routa-server/src/api/harness_templates.rs` |
+| spec | `GET /api/spec/issues` | list local issue specs | `repoPath` 成功路径返回规范化 issue 元数据；非法路径返回 400；跳过坏文件并将 `closed` 归一到 `resolved` | VERIFIED | `crates/routa-server/tests/rust_api_end_to_end.rs::api_spec_issues_contract` |
 | fitness | `GET /api/fitness/architecture` | architecture report | repo context 解析与架构报告返回 | TODO | `src/app/api/fitness/architecture/route.ts`, `crates/routa-server/src/api/fitness.rs` |
 | task | `GET /api/tasks/{id}/changes` | repo/worktree change summary | 任务缺失返回 404；无 repo 时返回空变更；有 repo 时返回 status/files | TODO | `src/app/api/tasks/[taskId]/changes/route.ts`, `crates/routa-server/src/api/tasks.rs` |
 | github | `GET /api/github/issues` | list workspace-linked issues | workspace/codebase 解析、400/404 负向路径、返回 issue 元数据 | BLOCKED | `env: 需要可控 GitHub API stub 或可注入 base URL 的 rust_api_end_to_end harness` |

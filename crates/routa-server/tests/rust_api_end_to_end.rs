@@ -1073,3 +1073,84 @@ async fn api_mcp_tools_provide_and_list_artifacts() {
     );
     assert_eq!(artifacts[0]["status"], json!("provided"));
 }
+
+#[tokio::test]
+async fn api_spec_issues_contract() {
+    let fixture = ApiFixture::new().await;
+    let repo_root = tempfile::tempdir().expect("temp repo");
+    let issues_dir = repo_root.path().join("docs").join("issues");
+
+    std::fs::create_dir_all(&issues_dir).expect("issues dir");
+    std::fs::write(
+        issues_dir.join("2026-04-11-spec-board.md"),
+        r#"---
+title: "Spec board"
+date: 2026-04-11
+kind: progress_note
+status: closed
+severity: high
+area: ui
+tags: ["spec", "board"]
+reported_by: codex
+related_issues: ["https://github.com/phodal/routa/issues/410"]
+github_issue: "410"
+github_state: closed
+github_url: "https://github.com/phodal/routa/issues/410"
+---
+
+# Spec board
+
+Rendered as markdown.
+"#,
+    )
+    .expect("write issue file");
+    std::fs::write(
+        issues_dir.join("2026-04-10-malformed.md"),
+        "not frontmatter",
+    )
+    .expect("write malformed file");
+
+    let success_response = fixture
+        .client
+        .get(fixture.endpoint("/api/spec/issues"))
+        .query(&[("repoPath", repo_root.path().to_string_lossy().to_string())])
+        .send()
+        .await
+        .expect("list spec issues");
+    assert_eq!(success_response.status(), StatusCode::OK);
+
+    let success_json: Value = success_response
+        .json()
+        .await
+        .expect("decode spec issues response");
+    assert_eq!(
+        success_json["repoRoot"],
+        json!(repo_root.path().to_string_lossy().to_string())
+    );
+    let issues = success_json["issues"].as_array().expect("issues array");
+    assert_eq!(issues.len(), 1);
+    assert_eq!(issues[0]["title"], json!("Spec board"));
+    assert_eq!(issues[0]["date"], json!("2026-04-11"));
+    assert_eq!(issues[0]["status"], json!("resolved"));
+    assert_eq!(issues[0]["kind"], json!("progress_note"));
+    assert_eq!(issues[0]["githubIssue"], json!(410));
+
+    let missing_repo = repo_root.path().join("missing");
+    let error_response = fixture
+        .client
+        .get(fixture.endpoint("/api/spec/issues"))
+        .query(&[("repoPath", missing_repo.to_string_lossy().to_string())])
+        .send()
+        .await
+        .expect("list spec issues with invalid repo");
+    assert_eq!(error_response.status(), StatusCode::BAD_REQUEST);
+
+    let error_json: Value = error_response
+        .json()
+        .await
+        .expect("decode invalid repo response");
+    assert!(
+        json_has_error(&error_json, "repoPath"),
+        "expected invalid repoPath error, got {error_json:?}"
+    );
+}
