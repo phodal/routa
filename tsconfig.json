@@ -40,6 +40,8 @@
     "node_modules",
     "target/**/*",
     "src/test/**/*",
+    "src/app/_api_excluded/**/*",
+    "src/app/_well-known_excluded/**/*",
     "src/core/platform/tauri-bridge.ts",
     "src/core/db/sqlite.ts",
     "src/core/db/sqlite-schema.ts",

@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { handleSessionNew, loadSpecialistConfig } from "@/app/api/acp/acp-session-create";
+import { handleSessionNew, loadSpecialistConfig } from "../../acp/acp-session-create";
 import { dispatchSessionPrompt } from "@/core/acp/session-prompt";
 import {
   getHttpSessionStore,
   type SessionUpdateNotification,
 } from "@/core/acp/http-session-store";
 import { getAcpProcessManager } from "@/core/acp/processer";
-import { createCanvasArtifact } from "@/app/api/canvas/route";
+import { createCanvasArtifact } from "../route";
 import { getRoutaSystem } from "@/core/routa-system";
 import { ensureMcpForProvider } from "@/core/acp/mcp-setup";
 import { getDefaultRoutaMcpConfig } from "@/core/acp/mcp-config-generator";
