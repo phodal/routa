@@ -37,7 +37,7 @@ components:
 
     ArtifactType:
       type: string
-      enum: [screenshot, test_results, code_diff, logs]
+      enum: [screenshot, test_results, code_diff, logs, canvas]
 
     ArtifactStatus:
       type: string

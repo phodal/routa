@@ -6,6 +6,7 @@ pub mod acp_routes;
 pub mod ag_ui;
 pub mod agents;
 pub mod background_tasks;
+pub mod canvas;
 pub mod clone;
 pub mod clone_branches;
 pub mod clone_local;
@@ -91,6 +92,7 @@ pub fn api_router(state: AppState) -> Router<AppState> {
         .nest("/api/harness/templates", harness_templates::router())
         .nest("/api/webhooks", webhooks::router())
         .nest("/api/background-tasks", background_tasks::router())
+        .nest("/api/canvas", canvas::router())
         .nest("/api/test-mcp", test_mcp::router())
         .nest("/api/clone", clone::router())
         .nest("/api/clone/local", clone_local::router())
