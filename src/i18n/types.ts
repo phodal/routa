@@ -744,6 +744,23 @@ export interface TranslationDictionary extends ExtendedTranslationDictionarySect
   };
 
   // Agents
+  specBoard: {
+    kind: string;
+    severity: string;
+    area: string;
+    date: string;
+    reportedBy: string;
+    github: string;
+    file: string;
+    noIssues: string;
+    failedToLoad: string;
+    githubStateUnknown: string;
+    statusOpen: string;
+    statusInvestigating: string;
+    statusResolved: string;
+    statusWontfix: string;
+  };
+
   agents: {
     title: string;
     agentName: string;

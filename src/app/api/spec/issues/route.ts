@@ -12,12 +12,16 @@ import {
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+const SPEC_STATUSES = ["open", "investigating", "resolved", "wontfix"] as const;
+
+type SpecStatus = typeof SPEC_STATUSES[number];
+
 type SpecIssue = {
   filename: string;
   title: string;
   date: string;
   kind: string;
-  status: string;
+  status: SpecStatus;
   severity: string;
   area: string;
   tags: string[];
@@ -37,9 +41,43 @@ function parseContext(searchParams: URLSearchParams): FitnessContext {
   };
 }
 
+function normalizeScalar(value: unknown): string {
+  if (typeof value === "string") return value.trim();
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return value.toISOString().slice(0, 10);
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  return "";
+}
+
 function toStringArray(value: unknown): string[] {
-  if (Array.isArray(value)) return value.filter((v): v is string => typeof v === "string");
-  return [];
+  if (!Array.isArray(value)) return [];
+  return value.map((item) => normalizeScalar(item)).filter(Boolean);
+}
+
+function toNullableString(value: unknown): string | null {
+  const normalized = normalizeScalar(value);
+  return normalized.length > 0 ? normalized : null;
+}
+
+function toNullableNumber(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === "string" && /^\d+$/u.test(value.trim())) {
+    return Number(value);
+  }
+
+  return null;
+}
+
+function normalizeStatus(value: unknown): SpecStatus {
+  const normalized = normalizeScalar(value).toLowerCase();
+  if (normalized === "closed") return "resolved";
+  return SPEC_STATUSES.includes(normalized as SpecStatus) ? normalized as SpecStatus : "open";
 }
 
 export async function GET(request: NextRequest) {
@@ -76,22 +114,29 @@ export async function GET(request: NextRequest) {
     const fullPath = path.join(issuesDir, entry.name);
     try {
       const raw = await fsp.readFile(fullPath, "utf-8");
+      if (!raw.startsWith("---\n") && !raw.startsWith("---\r\n")) {
+        continue;
+      }
+
       const { data, content } = matter(raw);
+      const title = normalizeScalar(data.title) || entry.name.replace(/\.md$/, "");
+      const kind = normalizeScalar(data.kind).toLowerCase() || "issue";
+      const severity = normalizeScalar(data.severity).toLowerCase() || "medium";
 
       issues.push({
         filename: entry.name,
-        title: typeof data.title === "string" ? data.title : entry.name.replace(/\.md$/, ""),
-        date: typeof data.date === "string" ? data.date : "",
-        kind: typeof data.kind === "string" ? data.kind : "issue",
-        status: typeof data.status === "string" ? data.status : "open",
-        severity: typeof data.severity === "string" ? data.severity : "medium",
-        area: typeof data.area === "string" ? data.area : "",
+        title,
+        date: normalizeScalar(data.date),
+        kind,
+        status: normalizeStatus(data.status),
+        severity,
+        area: normalizeScalar(data.area),
         tags: toStringArray(data.tags),
-        reportedBy: typeof data.reported_by === "string" ? data.reported_by : "",
+        reportedBy: normalizeScalar(data.reported_by),
         relatedIssues: toStringArray(data.related_issues),
-        githubIssue: typeof data.github_issue === "number" ? data.github_issue : null,
-        githubState: typeof data.github_state === "string" ? data.github_state : null,
-        githubUrl: typeof data.github_url === "string" ? data.github_url : null,
+        githubIssue: toNullableNumber(data.github_issue),
+        githubState: toNullableString(data.github_state),
+        githubUrl: toNullableString(data.github_url),
         body: content.trim(),
       });
     } catch {

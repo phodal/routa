@@ -738,6 +738,23 @@ const en: TranslationDictionary = {
     skillsShCatalog: "Skills.sh Catalog",
   },
 
+  specBoard: {
+    kind: "Kind",
+    severity: "Severity",
+    area: "Area",
+    date: "Date",
+    reportedBy: "Reported by",
+    github: "GitHub",
+    file: "File",
+    noIssues: "No issues",
+    failedToLoad: "Failed to load local issue specs",
+    githubStateUnknown: "unknown",
+    statusOpen: "Open",
+    statusInvestigating: "Investigating",
+    statusResolved: "Resolved",
+    statusWontfix: "Won't Fix",
+  },
+
   agents: {
     title: "Agents",
     agentName: "Agent name...",

@@ -6,7 +6,7 @@ use axum::{
     Json, Router,
 };
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{json, Value as JsonValue};
 
 use crate::api::repo_context::{
     extract_frontmatter, resolve_repo_root, ResolveRepoRootOptions,
@@ -18,6 +18,8 @@ pub fn router() -> Router<AppState> {
     Router::new().route("/issues", get(list_spec_issues))
 }
 
+const SPEC_STATUSES: [&str; 4] = ["open", "investigating", "resolved", "wontfix"];
+
 #[derive(Debug, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct SpecIssuesQuery {
@@ -26,10 +28,101 @@ struct SpecIssuesQuery {
     repo_path: Option<String>,
 }
 
+fn yaml_scalar_to_string(value: &serde_yaml::Value) -> Option<String> {
+    match value {
+        serde_yaml::Value::Null => None,
+        serde_yaml::Value::Bool(value) => Some(value.to_string()),
+        serde_yaml::Value::Number(value) => Some(value.to_string()),
+        serde_yaml::Value::String(value) => Some(value.trim().to_string()),
+        serde_yaml::Value::Tagged(tagged) => yaml_scalar_to_string(&tagged.value),
+        _ => None,
+    }
+}
+
+fn yaml_string_field(frontmatter: &serde_yaml::Value, key: &str) -> String {
+    frontmatter
+        .get(key)
+        .and_then(yaml_scalar_to_string)
+        .unwrap_or_default()
+}
+
+fn yaml_string_field_or(frontmatter: &serde_yaml::Value, key: &str, default: &str) -> String {
+    let value = yaml_string_field(frontmatter, key);
+    if value.is_empty() {
+        default.to_string()
+    } else {
+        value
+    }
+}
+
+fn yaml_string_vec(frontmatter: &serde_yaml::Value, key: &str) -> Vec<String> {
+    match frontmatter.get(key) {
+        Some(serde_yaml::Value::Sequence(values)) => values
+            .iter()
+            .filter_map(yaml_scalar_to_string)
+            .filter(|value| !value.is_empty())
+            .collect(),
+        Some(serde_yaml::Value::Tagged(tagged)) => match &tagged.value {
+            serde_yaml::Value::Sequence(values) => values
+                .iter()
+                .filter_map(yaml_scalar_to_string)
+                .filter(|value| !value.is_empty())
+                .collect(),
+            _ => Vec::new(),
+        },
+        _ => Vec::new(),
+    }
+}
+
+fn yaml_optional_number(frontmatter: &serde_yaml::Value, key: &str) -> Option<JsonValue> {
+    match frontmatter.get(key) {
+        Some(serde_yaml::Value::Number(value)) => value.as_u64().map(|number| JsonValue::Number(number.into())),
+        Some(serde_yaml::Value::String(value)) => value
+            .trim()
+            .parse::<u64>()
+            .ok()
+            .map(|number| JsonValue::Number(number.into())),
+        Some(serde_yaml::Value::Tagged(tagged)) => match &tagged.value {
+            serde_yaml::Value::Number(value) => value
+                .as_u64()
+                .map(|number| JsonValue::Number(number.into())),
+            serde_yaml::Value::String(value) => value
+                .trim()
+                .parse::<u64>()
+                .ok()
+                .map(|number| JsonValue::Number(number.into())),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+fn yaml_optional_string(frontmatter: &serde_yaml::Value, key: &str) -> Option<JsonValue> {
+    let value = yaml_string_field(frontmatter, key);
+    if value.is_empty() {
+        None
+    } else {
+        Some(JsonValue::String(value))
+    }
+}
+
+fn normalize_status(raw: &str) -> String {
+    let normalized = raw.trim().to_ascii_lowercase();
+    if normalized == "closed" {
+        return "resolved".to_string();
+    }
+
+    if SPEC_STATUSES.contains(&normalized.as_str()) {
+        normalized
+    } else {
+        "open".to_string()
+    }
+}
+
 async fn list_spec_issues(
     State(state): State<AppState>,
     Query(query): Query<SpecIssuesQuery>,
-) -> Result<Json<Value>, ServerError> {
+) -> Result<Json<JsonValue>, ServerError> {
     let repo_root = resolve_repo_root(
         &state,
         query.workspace_id.as_deref(),
@@ -93,75 +186,26 @@ async fn list_spec_issues(
             Err(_) => continue,
         };
 
-        let str_field = |key: &str| -> String {
-            fm.get(key)
-                .and_then(serde_yaml::Value::as_str)
-                .unwrap_or("")
-                .to_string()
-        };
-
-        let str_field_or = |key: &str, default: &str| -> String {
-            let v = str_field(key);
-            if v.is_empty() {
-                default.to_string()
-            } else {
-                v
-            }
-        };
-
-        let tags: Vec<String> = fm
-            .get("tags")
-            .and_then(serde_yaml::Value::as_sequence)
-            .map(|seq| {
-                seq.iter()
-                    .filter_map(serde_yaml::Value::as_str)
-                    .map(ToString::to_string)
-                    .collect()
-            })
-            .unwrap_or_default();
-
-        let related_issues: Vec<String> = fm
-            .get("related_issues")
-            .and_then(serde_yaml::Value::as_sequence)
-            .map(|seq| {
-                seq.iter()
-                    .filter_map(serde_yaml::Value::as_str)
-                    .map(ToString::to_string)
-                    .collect()
-            })
-            .unwrap_or_default();
-
-        let github_issue = fm
-            .get("github_issue")
-            .and_then(serde_yaml::Value::as_u64)
-            .map(|v| Value::Number(v.into()));
-
-        let github_state = fm
-            .get("github_state")
-            .and_then(serde_yaml::Value::as_str)
-            .map(|s| Value::String(s.to_string()));
-
-        let github_url = fm
-            .get("github_url")
-            .and_then(serde_yaml::Value::as_str)
-            .map(|s| Value::String(s.to_string()));
-
         let title_fallback = filename.trim_end_matches(".md").to_string();
+        let title = yaml_string_field_or(&fm, "title", &title_fallback);
+        let kind = yaml_string_field_or(&fm, "kind", "issue").to_ascii_lowercase();
+        let severity = yaml_string_field_or(&fm, "severity", "medium").to_ascii_lowercase();
+        let status = normalize_status(&yaml_string_field(&fm, "status"));
 
         issues.push(json!({
             "filename": filename,
-            "title": str_field_or("title", &title_fallback),
-            "date": str_field("date"),
-            "kind": str_field_or("kind", "issue"),
-            "status": str_field_or("status", "open"),
-            "severity": str_field_or("severity", "medium"),
-            "area": str_field("area"),
-            "tags": tags,
-            "reportedBy": str_field("reported_by"),
-            "relatedIssues": related_issues,
-            "githubIssue": github_issue,
-            "githubState": github_state,
-            "githubUrl": github_url,
+            "title": title,
+            "date": yaml_string_field(&fm, "date"),
+            "kind": kind,
+            "status": status,
+            "severity": severity,
+            "area": yaml_string_field(&fm, "area"),
+            "tags": yaml_string_vec(&fm, "tags"),
+            "reportedBy": yaml_string_field(&fm, "reported_by"),
+            "relatedIssues": yaml_string_vec(&fm, "related_issues"),
+            "githubIssue": yaml_optional_number(&fm, "github_issue"),
+            "githubState": yaml_optional_string(&fm, "github_state"),
+            "githubUrl": yaml_optional_string(&fm, "github_url"),
             "body": body.trim(),
         }));
     }
@@ -210,5 +254,21 @@ Some body content."#,
         assert_eq!(fm.get("status").unwrap().as_str().unwrap(), "open");
         assert_eq!(fm.get("severity").unwrap().as_str().unwrap(), "high");
         assert!(body.contains("Some body content."));
+    }
+
+    #[test]
+    fn normalizes_unquoted_dates_and_closed_status() {
+        let fm: serde_yaml::Value = serde_yaml::from_str(
+            r#"
+date: 2026-03-02
+status: closed
+github_issue: "410"
+"#,
+        )
+        .unwrap();
+
+        assert_eq!(yaml_string_field(&fm, "date"), "2026-03-02");
+        assert_eq!(normalize_status(&yaml_string_field(&fm, "status")), "resolved");
+        assert_eq!(yaml_optional_number(&fm, "github_issue"), Some(JsonValue::Number(410.into())));
     }
 }
