@@ -141,4 +141,25 @@ describe("/api/tasks/[taskId]/artifacts", () => {
     expect(saved[0]?.workspaceId).toBe("workspace-1");
     expect(saved[0]?.providedByAgentId).toBe("agent-1");
   });
+
+  it("rejects canvas artifacts on the generic task artifact route", async () => {
+    const request = new NextRequest("http://localhost/api/tasks/task-1/artifacts", {
+      method: "POST",
+      body: JSON.stringify({
+        agentId: "agent-1",
+        type: "canvas",
+        content: "{\"source\":\"export default function(){return null;}\"}",
+      }),
+      headers: { "Content-Type": "application/json" },
+    });
+
+    const response = await POST(request, {
+      params: Promise.resolve({ taskId: "task-1" }),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "A valid artifact type is required",
+    });
+  });
 });

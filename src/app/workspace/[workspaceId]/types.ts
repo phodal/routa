@@ -74,7 +74,7 @@ export interface KanbanDevSessionSupervisionInfo {
 
 export interface ArtifactInfo {
   id: string;
-  type: "screenshot" | "test_results" | "code_diff" | "logs";
+  type: "screenshot" | "test_results" | "code_diff" | "logs" | "canvas";
   taskId: string;
   providedByAgentId?: string;
   requestedByAgentId?: string;

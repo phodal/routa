@@ -37,7 +37,7 @@ components:
 
     ArtifactType:
       type: string
-      enum: [screenshot, test_results, code_diff, logs]
+      enum: [screenshot, test_results, code_diff, logs, canvas]
 
     ArtifactStatus:
       type: string
@@ -1026,6 +1026,284 @@ paths:
                   timestamp:
                     type: string
                     format: date-time
+
+  # ── Canvas ──
+  /api/canvas:
+    get:
+      operationId: listCanvasArtifacts
+      summary: List canvas artifacts for a workspace
+      parameters:
+        - name: workspaceId
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Canvas artifacts in the workspace
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [canvasArtifacts]
+                properties:
+                  canvasArtifacts:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, renderMode, title, createdAt]
+                      properties:
+                        id:
+                          type: string
+                        renderMode:
+                          type: string
+                          enum: [dynamic, prebuilt]
+                        canvasType:
+                          type: string
+                          nullable: true
+                        title:
+                          type: string
+                        generatedAt:
+                          type: string
+                          format: date-time
+                        createdAt:
+                          type: string
+                          format: date-time
+        "400":
+          description: Missing or invalid workspace id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      operationId: createCanvasArtifact
+      summary: Create a canvas artifact
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title, workspaceId]
+              properties:
+                renderMode:
+                  type: string
+                  enum: [dynamic, prebuilt]
+                  default: dynamic
+                canvasType:
+                  type: string
+                  enum: [fitness_overview]
+                title:
+                  type: string
+                source:
+                  type: string
+                  description: TSX source for dynamic canvases
+                data:
+                  description: Structured data for prebuilt canvases
+                workspaceId:
+                  type: string
+                taskId:
+                  type: string
+                codebaseId:
+                  type: string
+                repoPath:
+                  type: string
+                agentId:
+                  type: string
+      responses:
+        "201":
+          description: Canvas artifact created
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, renderMode, title, taskId, createdAt]
+                properties:
+                  id:
+                    type: string
+                  renderMode:
+                    type: string
+                    enum: [dynamic, prebuilt]
+                  canvasType:
+                    type: string
+                    nullable: true
+                  title:
+                    type: string
+                  taskId:
+                    type: string
+                  createdAt:
+                    type: string
+                    format: date-time
+        "400":
+          description: Invalid request payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/canvas/{id}:
+    get:
+      operationId: getCanvasArtifact
+      summary: Fetch a canvas artifact by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Canvas artifact
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, renderMode, title, schemaVersion, generatedAt, workspaceId, createdAt]
+                properties:
+                  id:
+                    type: string
+                  renderMode:
+                    type: string
+                    enum: [dynamic, prebuilt]
+                  canvasType:
+                    type: string
+                    nullable: true
+                  title:
+                    type: string
+                  schemaVersion:
+                    type: integer
+                  generatedAt:
+                    type: string
+                    format: date-time
+                  source:
+                    type: string
+                    nullable: true
+                  data:
+                    nullable: true
+                  workspaceId:
+                    type: string
+                  createdAt:
+                    type: string
+                    format: date-time
+        "404":
+          description: Canvas artifact not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteCanvasArtifact
+      summary: Delete a canvas artifact
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Canvas artifact deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeletedResponse"
+        "404":
+          description: Canvas artifact not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/canvas/specialist:
+    post:
+      operationId: createCanvasFromSpecialist
+      summary: Generate a canvas artifact directly from a specialist prompt
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [specialistId, prompt, workspaceId]
+              properties:
+                specialistId:
+                  type: string
+                prompt:
+                  type: string
+                workspaceId:
+                  type: string
+                title:
+                  type: string
+                provider:
+                  type: string
+                model:
+                  type: string
+                specialistLocale:
+                  type: string
+                taskId:
+                  type: string
+                codebaseId:
+                  type: string
+                repoPath:
+                  type: string
+                cwd:
+                  type: string
+      responses:
+        "201":
+          description: Specialist generated and saved a canvas artifact
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, renderMode, title, taskId, createdAt, sessionId, viewerUrl, source]
+                properties:
+                  id:
+                    type: string
+                  renderMode:
+                    type: string
+                    enum: [dynamic, prebuilt]
+                  canvasType:
+                    type: string
+                    nullable: true
+                  title:
+                    type: string
+                  taskId:
+                    type: string
+                  createdAt:
+                    type: string
+                    format: date-time
+                  sessionId:
+                    type: string
+                  viewerUrl:
+                    type: string
+                  source:
+                    type: string
+        "400":
+          description: Invalid request payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Specialist not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Specialist output could not be converted into a usable canvas
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error:
+                    type: string
+                  sessionId:
+                    type: string
+                  outputPreview:
+                    type: string
 
   # ── Agents ──
   /api/agents:

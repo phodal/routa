@@ -194,6 +194,7 @@
     "react-dom": "^19.0.0",
     "recharts": "^3.8.1",
     "smol-toml": "^1.6.0",
+    "sucrase": "^3.35.1",
     "utf-8-validate": "^6.0.6",
     "uuid": "^13.0.0",
     "ws": "^8.19.0",

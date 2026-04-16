@@ -91,6 +91,23 @@ impl ArtifactStore {
             .await
     }
 
+    pub async fn list_by_workspace(&self, workspace_id: &str) -> Result<Vec<Artifact>, ServerError> {
+        let workspace_id = workspace_id.to_string();
+        self.db
+            .with_conn_async(move |conn| {
+                let mut stmt = conn.prepare(
+                    "SELECT id, type, task_id, workspace_id, provided_by_agent_id, requested_by_agent_id,
+                     request_id, content, context, status, expires_at, metadata, created_at, updated_at
+                     FROM artifacts WHERE workspace_id = ?1 ORDER BY created_at DESC",
+                )?;
+                let rows = stmt
+                    .query_map(rusqlite::params![workspace_id], |row| Ok(row_to_artifact(row)))?
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(rows)
+            })
+            .await
+    }
+
     pub async fn list_by_task_and_type(
         &self,
         task_id: &str,
@@ -163,6 +180,19 @@ impl ArtifactStore {
                 }
 
                 Ok(result)
+            })
+            .await
+    }
+
+    pub async fn delete(&self, artifact_id: &str) -> Result<(), ServerError> {
+        let artifact_id = artifact_id.to_string();
+        self.db
+            .with_conn_async(move |conn| {
+                conn.execute(
+                    "DELETE FROM artifacts WHERE id = ?1",
+                    rusqlite::params![artifact_id],
+                )?;
+                Ok(())
             })
             .await
     }
