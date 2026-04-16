@@ -14,6 +14,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { resolveApiPath } from "@/client/config/backend";
 import { desktopAwareFetch } from "../utils/diagnostics";
 import type { TraceRecord } from "@/core/trace";
 import type { LaneHandoffInfo, LaneSessionInfo, SessionKanbanContext } from "@/client/types/kanban-context";
@@ -658,11 +659,11 @@ export function TracePanel({ sessionId }: TracePanelProps) {
     if (!sessionId) return;
 
     try {
-      const params = new URLSearchParams({ sessionId });
-      const res = await desktopAwareFetch(`/api/traces/export?${params}`, {
+      const res = await desktopAwareFetch(resolveApiPath("/traces/export"), {
         cache: "no-store",
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId }),
       });
 
       if (!res.ok) {

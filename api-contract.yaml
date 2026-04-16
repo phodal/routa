@@ -4731,18 +4731,20 @@ paths:
                     type: array
                     items:
                       type: object
+
+  /api/traces/export:
     post:
-      operationId: createTrace
-      summary: Create a new trace record
+      operationId: exportTraces
+      summary: Export trace records in Agent Trace JSON format
       requestBody:
-        required: true
+        required: false
         content:
           application/json:
             schema:
               type: object
       responses:
         "200":
-          description: Created trace
+          description: Exported trace payload
 
   /api/traces/stats:
     get:
