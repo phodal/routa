@@ -18,6 +18,7 @@ vi.mock("@/core/git/git-worktree-service", () => ({
   },
 }));
 
+import { NextRequest } from "next/server";
 import { DELETE } from "../route";
 
 describe("DELETE /api/workspaces/[workspaceId]/codebases/[codebaseId]", () => {
@@ -33,7 +34,7 @@ describe("DELETE /api/workspaces/[workspaceId]/codebases/[codebaseId]", () => {
       workspaceId: "ws-1",
     });
 
-    const response = await DELETE(new Request("http://localhost/api/workspaces/ws-1/codebases/cb-1"), {
+    const response = await DELETE(new NextRequest("http://localhost/api/workspaces/ws-1/codebases/cb-1"), {
       params: Promise.resolve({ workspaceId: "ws-1", codebaseId: "cb-1" }),
     });
 
@@ -48,7 +49,7 @@ describe("DELETE /api/workspaces/[workspaceId]/codebases/[codebaseId]", () => {
       workspaceId: "ws-2",
     });
 
-    const response = await DELETE(new Request("http://localhost/api/workspaces/ws-1/codebases/cb-1"), {
+    const response = await DELETE(new NextRequest("http://localhost/api/workspaces/ws-1/codebases/cb-1"), {
       params: Promise.resolve({ workspaceId: "ws-1", codebaseId: "cb-1" }),
     });
     const data = await response.json();
