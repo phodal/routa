@@ -659,7 +659,11 @@ export function TracePanel({ sessionId }: TracePanelProps) {
 
     try {
       const params = new URLSearchParams({ sessionId });
-      const res = await desktopAwareFetch(`/api/traces/export?${params}`, { cache: "no-store" });
+      const res = await desktopAwareFetch(`/api/traces/export?${params}`, {
+        cache: "no-store",
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
 
       if (!res.ok) {
         throw new Error(`Failed to export traces: ${res.statusText}`);
