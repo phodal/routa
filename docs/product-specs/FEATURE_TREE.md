@@ -44,6 +44,7 @@ Multi-agent coordination platform. This document is auto-generated from:
 | Workspace / Overview | `/workspace/:workspaceId/overview` |  |
 | Workspace / Sessions | `/workspace/:workspaceId/sessions` |  |
 | Workspace Session Page (Server Component Wrapper) | `/workspace/:workspaceId/sessions/:sessionId` | This server component provides generateStaticParams for static export and render |
+| Workspace / Spec | `/workspace/:workspaceId/spec` | Dense issue relationship board for local docs/issues records |
 | Workspace / Team | `/workspace/:workspaceId/team` |  |
 | Workspace / Team | `/workspace/:workspaceId/team/:sessionId` |  |
 
@@ -374,6 +375,13 @@ Multi-agent coordination platform. This document is auto-generated from:
 | GET | `/api/skills/catalog` | List available skills in the registry |
 | POST | `/api/skills/catalog` | Refresh the local skill catalog from registry |
 
+### Spec (2)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/spec/issues` | List local issue specs |
+| GET | `/api/spec/surface-index` | Read the generated product surface index for spec analysis |
+
 ### Specialists (4)
 
 | Method | Endpoint | Description |
@@ -414,7 +422,7 @@ Multi-agent coordination platform. This document is auto-generated from:
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/api/traces` | List agent execution traces |
-| POST | `/api/traces` | Create a new trace record |
+| POST | `/api/traces/export` | Export trace records in Agent Trace JSON format |
 | GET | `/api/traces/stats` | Get aggregated trace statistics |
 | GET | `/api/traces/{id}` | Get a single trace by ID |
 
@@ -444,7 +452,7 @@ Multi-agent coordination platform. This document is auto-generated from:
 | DELETE | `/api/workflows/{id}` | Delete a workflow YAML file |
 | POST | `/api/workflows/{id}/trigger` | Trigger a workflow run inside a workspace |
 
-### Workspaces (13)
+### Workspaces (14)
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
@@ -456,6 +464,7 @@ Multi-agent coordination platform. This document is auto-generated from:
 | POST | `/api/workspaces/{id}/archive` | Archive or unarchive a workspace |
 | GET | `/api/workspaces/{id}/codebases` | List codebases in a workspace |
 | POST | `/api/workspaces/{id}/codebases` | Add a codebase to a workspace |
+| DELETE | `/api/workspaces/{workspaceId}/codebases/{codebaseId}` | Delete a codebase from a workspace-scoped route |
 | GET | `/api/workspaces/{id}/codebases/changes` | List git change summaries for workspace codebases |
 | GET | `/api/workspaces/{workspaceId}/codebases/{codebaseId}/reposlide` | Get RepoSlide launch context for an agent-driven deck generation session |
 | GET | `/api/workspaces/{workspaceId}/codebases/{codebaseId}/wiki` | Generate an architecture-aware RepoWiki summary payload for a codebase |

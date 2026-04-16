@@ -1,0 +1,1752 @@
+{
+  "generatedAt": "2026-04-16T14:54:34.269Z",
+  "pages": [
+    {
+      "route": "/",
+      "title": "Home",
+      "description": "",
+      "sourceFile": "src/app/page.tsx"
+    },
+    {
+      "route": "/a2a",
+      "title": "A2A Protocol Test Page",
+      "description": "Interactive testing interface for the Agent-to-Agent (A2A) protocol. - View agent card and capabilit",
+      "sourceFile": "src/app/a2a/page.tsx"
+    },
+    {
+      "route": "/ag-ui",
+      "title": "AG-UI Protocol Test Page",
+      "description": "Standalone page for testing AG-UI protocol integration. Features: - Send prompts via AG-UI protocol ",
+      "sourceFile": "src/app/ag-ui/page.tsx"
+    },
+    {
+      "route": "/debug/acp-replay",
+      "title": "Debug / Acp Replay",
+      "description": "",
+      "sourceFile": "src/app/debug/acp-replay/page.tsx"
+    },
+    {
+      "route": "/mcp-tools",
+      "title": "Mcp Tools",
+      "description": "",
+      "sourceFile": "src/app/mcp-tools/page.tsx"
+    },
+    {
+      "route": "/messages",
+      "title": "Messages Page - Notification & PR Agent Execution History",
+      "description": "Shows: - All notifications with filtering - PR Agent execution history from background tasks - Webho",
+      "sourceFile": "src/app/messages/page.tsx"
+    },
+    {
+      "route": "/settings",
+      "title": "Settings Page",
+      "description": "Provides a full-page UI for all Routa settings: - Providers (default agent providers and model confi",
+      "sourceFile": "src/app/settings/page.tsx"
+    },
+    {
+      "route": "/settings/agents",
+      "title": "Settings / Agents",
+      "description": "",
+      "sourceFile": "src/app/settings/agents/page.tsx"
+    },
+    {
+      "route": "/settings/fitness",
+      "title": "Settings / Fitness",
+      "description": "",
+      "sourceFile": "src/app/settings/fitness/page.tsx"
+    },
+    {
+      "route": "/settings/fluency",
+      "title": "Settings / Fluency",
+      "description": "",
+      "sourceFile": "src/app/settings/fluency/page.tsx"
+    },
+    {
+      "route": "/settings/harness",
+      "title": "Settings / Harness",
+      "description": "",
+      "sourceFile": "src/app/settings/harness/page.tsx"
+    },
+    {
+      "route": "/settings/mcp",
+      "title": "Settings / Mcp",
+      "description": "",
+      "sourceFile": "src/app/settings/mcp/page.tsx"
+    },
+    {
+      "route": "/settings/schedules",
+      "title": "Settings / Schedules",
+      "description": "",
+      "sourceFile": "src/app/settings/schedules/page.tsx"
+    },
+    {
+      "route": "/settings/specialists",
+      "title": "Settings / Specialists",
+      "description": "",
+      "sourceFile": "src/app/settings/specialists/page.tsx"
+    },
+    {
+      "route": "/settings/webhooks",
+      "title": "Settings / Webhooks",
+      "description": "",
+      "sourceFile": "src/app/settings/webhooks/page.tsx"
+    },
+    {
+      "route": "/settings/workflows",
+      "title": "Settings / Workflows",
+      "description": "",
+      "sourceFile": "src/app/settings/workflows/page.tsx"
+    },
+    {
+      "route": "/traces",
+      "title": "Trace Page",
+      "description": "Full-page view for browsing and analyzing Agent Trace records. Sessions are cross-referenced with /a",
+      "sourceFile": "src/app/traces/page.tsx"
+    },
+    {
+      "route": "/workspace/:workspaceId",
+      "title": "Workspace Page (Server Component Wrapper)",
+      "description": "This server component provides generateStaticParams for static export and redirects the workspace ro",
+      "sourceFile": "src/app/workspace/[workspaceId]/page.tsx"
+    },
+    {
+      "route": "/workspace/:workspaceId/codebases/:codebaseId/reposlide",
+      "title": "Codebases / Reposlide",
+      "description": "",
+      "sourceFile": "src/app/workspace/[workspaceId]/codebases/[codebaseId]/reposlide/page.tsx"
+    },
+    {
+      "route": "/workspace/:workspaceId/kanban",
+      "title": "Workspace / Kanban",
+      "description": "",
+      "sourceFile": "src/app/workspace/[workspaceId]/kanban/page.tsx"
+    },
+    {
+      "route": "/workspace/:workspaceId/overview",
+      "title": "Workspace / Overview",
+      "description": "",
+      "sourceFile": "src/app/workspace/[workspaceId]/overview/page.tsx"
+    },
+    {
+      "route": "/workspace/:workspaceId/sessions",
+      "title": "Workspace / Sessions",
+      "description": "",
+      "sourceFile": "src/app/workspace/[workspaceId]/sessions/page.tsx"
+    },
+    {
+      "route": "/workspace/:workspaceId/sessions/:sessionId",
+      "title": "Workspace Session Page (Server Component Wrapper)",
+      "description": "This server component provides generateStaticParams for static export and renders the client compone",
+      "sourceFile": "src/app/workspace/[workspaceId]/sessions/[sessionId]/page.tsx"
+    },
+    {
+      "route": "/workspace/:workspaceId/spec",
+      "title": "Workspace / Spec",
+      "description": "Dense issue relationship board for local docs/issues records. Highlights issue families, linked prod",
+      "sourceFile": "src/app/workspace/[workspaceId]/spec/page.tsx"
+    },
+    {
+      "route": "/workspace/:workspaceId/team",
+      "title": "Workspace / Team",
+      "description": "",
+      "sourceFile": "src/app/workspace/[workspaceId]/team/page.tsx"
+    },
+    {
+      "route": "/workspace/:workspaceId/team/:sessionId",
+      "title": "Workspace / Team",
+      "description": "",
+      "sourceFile": "src/app/workspace/[workspaceId]/team/[sessionId]/page.tsx"
+    }
+  ],
+  "apis": [
+    {
+      "domain": "a2a",
+      "method": "GET",
+      "path": "/api/a2a/card",
+      "operationId": "getAgentCard",
+      "summary": "A2A agent card"
+    },
+    {
+      "domain": "a2a",
+      "method": "POST",
+      "path": "/api/a2a/message",
+      "operationId": "sendA2AMessage",
+      "summary": "Send a message via the A2A protocol"
+    },
+    {
+      "domain": "a2a",
+      "method": "GET",
+      "path": "/api/a2a/rpc",
+      "operationId": "a2aRpcSse",
+      "summary": "A2A SSE stream"
+    },
+    {
+      "domain": "a2a",
+      "method": "POST",
+      "path": "/api/a2a/rpc",
+      "operationId": "a2aRpc",
+      "summary": "A2A JSON-RPC"
+    },
+    {
+      "domain": "a2a",
+      "method": "GET",
+      "path": "/api/a2a/sessions",
+      "operationId": "listA2aSessions",
+      "summary": "List A2A sessions"
+    },
+    {
+      "domain": "a2a",
+      "method": "GET",
+      "path": "/api/a2a/tasks",
+      "operationId": "listA2ATasks",
+      "summary": "List A2A tasks"
+    },
+    {
+      "domain": "a2a",
+      "method": "GET",
+      "path": "/api/a2a/tasks/{id}",
+      "operationId": "getA2ATask",
+      "summary": "Get an A2A task by ID"
+    },
+    {
+      "domain": "a2a",
+      "method": "POST",
+      "path": "/api/a2a/tasks/{id}",
+      "operationId": "updateA2ATask",
+      "summary": "Update / respond to an A2A task"
+    },
+    {
+      "domain": "a2ui",
+      "method": "GET",
+      "path": "/api/a2ui/dashboard",
+      "operationId": "getA2UIDashboard",
+      "summary": "Get A2UI v0.10 dashboard data"
+    },
+    {
+      "domain": "a2ui",
+      "method": "POST",
+      "path": "/api/a2ui/dashboard",
+      "operationId": "postA2UIDashboardMessage",
+      "summary": "Add custom A2UI messages to the dashboard"
+    },
+    {
+      "domain": "acp",
+      "method": "GET",
+      "path": "/api/acp",
+      "operationId": "acpSse",
+      "summary": "ACP SSE stream"
+    },
+    {
+      "domain": "acp",
+      "method": "POST",
+      "path": "/api/acp",
+      "operationId": "acpRpc",
+      "summary": "ACP JSON-RPC endpoint"
+    },
+    {
+      "domain": "acp",
+      "method": "POST",
+      "path": "/api/acp/docker/container/start",
+      "operationId": "startDockerContainer",
+      "summary": "Start a Docker container for OpenCode agent"
+    },
+    {
+      "domain": "acp",
+      "method": "POST",
+      "path": "/api/acp/docker/container/stop",
+      "operationId": "stopDockerContainer",
+      "summary": "Stop a Docker container"
+    },
+    {
+      "domain": "acp",
+      "method": "GET",
+      "path": "/api/acp/docker/containers",
+      "operationId": "listDockerContainers",
+      "summary": "List Docker containers for OpenCode agents"
+    },
+    {
+      "domain": "acp",
+      "method": "POST",
+      "path": "/api/acp/docker/pull",
+      "operationId": "pullDockerImage",
+      "summary": "Pull a Docker image"
+    },
+    {
+      "domain": "acp",
+      "method": "GET",
+      "path": "/api/acp/docker/status",
+      "operationId": "getDockerStatus",
+      "summary": "Get Docker daemon status"
+    },
+    {
+      "domain": "acp",
+      "method": "DELETE",
+      "path": "/api/acp/install",
+      "operationId": "uninstallAcpAgent",
+      "summary": "Uninstall an ACP agent"
+    },
+    {
+      "domain": "acp",
+      "method": "POST",
+      "path": "/api/acp/install",
+      "operationId": "installAcpAgent",
+      "summary": "Install an ACP agent"
+    },
+    {
+      "domain": "acp",
+      "method": "GET",
+      "path": "/api/acp/registry",
+      "operationId": "listAcpRegistry",
+      "summary": "List agents in the ACP registry"
+    },
+    {
+      "domain": "acp",
+      "method": "POST",
+      "path": "/api/acp/registry",
+      "operationId": "registerAcpAgent",
+      "summary": "Register an agent in the ACP registry"
+    },
+    {
+      "domain": "acp",
+      "method": "GET",
+      "path": "/api/acp/runtime",
+      "operationId": "getAcpRuntime",
+      "summary": "Get ACP runtime status"
+    },
+    {
+      "domain": "acp",
+      "method": "POST",
+      "path": "/api/acp/runtime",
+      "operationId": "startAcpRuntime",
+      "summary": "Start ACP runtime"
+    },
+    {
+      "domain": "acp",
+      "method": "GET",
+      "path": "/api/acp/warmup",
+      "operationId": "getAcpWarmupStatus",
+      "summary": "Get ACP warmup status"
+    },
+    {
+      "domain": "acp",
+      "method": "POST",
+      "path": "/api/acp/warmup",
+      "operationId": "triggerAcpWarmup",
+      "summary": "Trigger ACP warmup"
+    },
+    {
+      "domain": "ag-ui",
+      "method": "POST",
+      "path": "/api/ag-ui",
+      "operationId": "postAGUI",
+      "summary": "Process AG-UI protocol request (SSE stream)"
+    },
+    {
+      "domain": "agents",
+      "method": "GET",
+      "path": "/api/agents",
+      "operationId": "listAgents",
+      "summary": "List agents (or get single by id query param)"
+    },
+    {
+      "domain": "agents",
+      "method": "POST",
+      "path": "/api/agents",
+      "operationId": "createAgent",
+      "summary": "Create a new agent"
+    },
+    {
+      "domain": "agents",
+      "method": "DELETE",
+      "path": "/api/agents/{id}",
+      "operationId": "deleteAgent",
+      "summary": "Delete an agent"
+    },
+    {
+      "domain": "agents",
+      "method": "GET",
+      "path": "/api/agents/{id}",
+      "operationId": "getAgent",
+      "summary": "Get agent by ID (REST-style path param)"
+    },
+    {
+      "domain": "agents",
+      "method": "POST",
+      "path": "/api/agents/{id}/status",
+      "operationId": "updateAgentStatus",
+      "summary": "Update agent status"
+    },
+    {
+      "domain": "background-tasks",
+      "method": "GET",
+      "path": "/api/background-tasks",
+      "operationId": "listBackgroundTasks",
+      "summary": "List background tasks"
+    },
+    {
+      "domain": "background-tasks",
+      "method": "POST",
+      "path": "/api/background-tasks",
+      "operationId": "createBackgroundTask",
+      "summary": "Create a background task"
+    },
+    {
+      "domain": "background-tasks",
+      "method": "DELETE",
+      "path": "/api/background-tasks/{id}",
+      "operationId": "cancelBackgroundTask",
+      "summary": "Cancel a background task"
+    },
+    {
+      "domain": "background-tasks",
+      "method": "GET",
+      "path": "/api/background-tasks/{id}",
+      "operationId": "getBackgroundTask",
+      "summary": "Get a background task by ID"
+    },
+    {
+      "domain": "background-tasks",
+      "method": "PATCH",
+      "path": "/api/background-tasks/{id}",
+      "operationId": "updateBackgroundTask",
+      "summary": "Update a background task (PENDING only)"
+    },
+    {
+      "domain": "background-tasks",
+      "method": "POST",
+      "path": "/api/background-tasks/{id}/retry",
+      "operationId": "retryBackgroundTask",
+      "summary": "Retry a failed background task"
+    },
+    {
+      "domain": "background-tasks",
+      "method": "POST",
+      "path": "/api/background-tasks/process",
+      "operationId": "processBackgroundTasks",
+      "summary": "Process the next pending background task"
+    },
+    {
+      "domain": "clone",
+      "method": "GET",
+      "path": "/api/clone",
+      "operationId": "listClonedRepos",
+      "summary": "List cloned repositories"
+    },
+    {
+      "domain": "clone",
+      "method": "PATCH",
+      "path": "/api/clone",
+      "operationId": "switchBranch",
+      "summary": "Switch branch on cloned repo"
+    },
+    {
+      "domain": "clone",
+      "method": "POST",
+      "path": "/api/clone",
+      "operationId": "cloneRepo",
+      "summary": "Clone a GitHub repository"
+    },
+    {
+      "domain": "clone",
+      "method": "DELETE",
+      "path": "/api/clone/branches",
+      "operationId": "deleteBranch",
+      "summary": "Delete local branch"
+    },
+    {
+      "domain": "clone",
+      "method": "GET",
+      "path": "/api/clone/branches",
+      "operationId": "getBranches",
+      "summary": "Get branch info"
+    },
+    {
+      "domain": "clone",
+      "method": "PATCH",
+      "path": "/api/clone/branches",
+      "operationId": "checkoutBranch",
+      "summary": "Checkout branch"
+    },
+    {
+      "domain": "clone",
+      "method": "POST",
+      "path": "/api/clone/branches",
+      "operationId": "fetchBranches",
+      "summary": "Fetch remote branches"
+    },
+    {
+      "domain": "clone",
+      "method": "POST",
+      "path": "/api/clone/local",
+      "operationId": "loadLocalRepo",
+      "summary": "Load an existing local git repository"
+    },
+    {
+      "domain": "clone",
+      "method": "POST",
+      "path": "/api/clone/progress",
+      "operationId": "cloneWithProgress",
+      "summary": "Clone with SSE progress"
+    },
+    {
+      "domain": "codebases",
+      "method": "DELETE",
+      "path": "/api/codebases/{id}",
+      "operationId": "deleteCodebase",
+      "summary": "Delete a codebase"
+    },
+    {
+      "domain": "codebases",
+      "method": "PATCH",
+      "path": "/api/codebases/{id}",
+      "operationId": "updateCodebase",
+      "summary": "Update codebase metadata"
+    },
+    {
+      "domain": "codebases",
+      "method": "POST",
+      "path": "/api/codebases/{id}/default",
+      "operationId": "setDefaultCodebase",
+      "summary": "Set a codebase as the default"
+    },
+    {
+      "domain": "debug",
+      "method": "GET",
+      "path": "/api/debug/path",
+      "operationId": "debugPath",
+      "summary": "Debug endpoint — returns resolved binary paths (desktop only)"
+    },
+    {
+      "domain": "files",
+      "method": "GET",
+      "path": "/api/files/search",
+      "operationId": "searchFiles",
+      "summary": "Search files in a codebase"
+    },
+    {
+      "domain": "fitness",
+      "method": "POST",
+      "path": "/api/fitness/analyze",
+      "operationId": "analyzeFitness",
+      "summary": "Run harness fluency analysis and return the additive harnessability baseline for one or more profiles"
+    },
+    {
+      "domain": "fitness",
+      "method": "GET",
+      "path": "/api/fitness/architecture",
+      "operationId": "getFitnessArchitecture",
+      "summary": "Get backend architecture quality report for a repo context"
+    },
+    {
+      "domain": "fitness",
+      "method": "GET",
+      "path": "/api/fitness/plan",
+      "operationId": "getFitnessPlan",
+      "summary": "Build the executable fitness plan for a repository context"
+    },
+    {
+      "domain": "fitness",
+      "method": "GET",
+      "path": "/api/fitness/report",
+      "operationId": "getFitnessReport",
+      "summary": "Read persisted harness fluency snapshots and their additive harnessability baseline payloads"
+    },
+    {
+      "domain": "fitness",
+      "method": "GET",
+      "path": "/api/fitness/runtime",
+      "operationId": "getRuntimeFitnessStatus",
+      "summary": "Read latest Entrix runtime fitness status and artifact summary for a repository context"
+    },
+    {
+      "domain": "fitness",
+      "method": "GET",
+      "path": "/api/fitness/specs",
+      "operationId": "getFitnessSpecs",
+      "summary": "Inspect docs/fitness source files and parsed metric metadata"
+    },
+    {
+      "domain": "git",
+      "method": "GET",
+      "path": "/api/git/commit",
+      "operationId": "getGitCommitDetail",
+      "summary": "Get git commit metadata and changed files"
+    },
+    {
+      "domain": "git",
+      "method": "GET",
+      "path": "/api/git/log",
+      "operationId": "getGitLogPage",
+      "summary": "List git commit history for a local repository"
+    },
+    {
+      "domain": "git",
+      "method": "GET",
+      "path": "/api/git/refs",
+      "operationId": "getGitRefs",
+      "summary": "List git refs for a local repository"
+    },
+    {
+      "domain": "github",
+      "method": "GET",
+      "path": "/api/github",
+      "operationId": "listGitHubWorkspaces",
+      "summary": "List active GitHub virtual workspaces"
+    },
+    {
+      "domain": "github",
+      "method": "GET",
+      "path": "/api/github/file",
+      "operationId": "getGitHubFile",
+      "summary": "Read a file from an imported GitHub repo"
+    },
+    {
+      "domain": "github",
+      "method": "POST",
+      "path": "/api/github/import",
+      "operationId": "importGitHubRepo",
+      "summary": "Import a GitHub repo as a virtual workspace (zipball download)"
+    },
+    {
+      "domain": "github",
+      "method": "GET",
+      "path": "/api/github/issues",
+      "operationId": "listGitHubIssues",
+      "summary": "List GitHub issues for a workspace codebase"
+    },
+    {
+      "domain": "github",
+      "method": "POST",
+      "path": "/api/github/pr-comment",
+      "operationId": "postGithubPrComment",
+      "summary": "Post a comment on a GitHub pull request"
+    },
+    {
+      "domain": "github",
+      "method": "GET",
+      "path": "/api/github/pulls",
+      "operationId": "listGitHubPulls",
+      "summary": "List GitHub pull requests for a workspace codebase"
+    },
+    {
+      "domain": "github",
+      "method": "GET",
+      "path": "/api/github/search",
+      "operationId": "searchGitHubFiles",
+      "summary": "Search files in an imported GitHub repo"
+    },
+    {
+      "domain": "github",
+      "method": "GET",
+      "path": "/api/github/tree",
+      "operationId": "getGitHubTree",
+      "summary": "Get file tree for an imported GitHub repo"
+    },
+    {
+      "domain": "graph",
+      "method": "GET",
+      "path": "/api/graph/analyze",
+      "operationId": "analyzeDependencyGraph",
+      "summary": "Analyze repository module dependencies and return a graph snapshot"
+    },
+    {
+      "domain": "harness",
+      "method": "GET",
+      "path": "/api/harness/agent-hooks",
+      "operationId": "getHarnessAgentHooks",
+      "summary": "Read and validate agent hook lifecycle configuration"
+    },
+    {
+      "domain": "harness",
+      "method": "GET",
+      "path": "/api/harness/automations",
+      "operationId": "getHarnessAutomations",
+      "summary": "Inspect repo-defined automation definitions, pending findings, and runtime schedule state"
+    },
+    {
+      "domain": "harness",
+      "method": "GET",
+      "path": "/api/harness/codeowners",
+      "operationId": "getHarnessCodeowners",
+      "summary": "Parse CODEOWNERS and report ownership coverage for the selected repository"
+    },
+    {
+      "domain": "harness",
+      "method": "GET",
+      "path": "/api/harness/design-decisions",
+      "operationId": "getHarnessDesignDecisions",
+      "summary": "Detect architecture and ADR design decision sources for the selected repository"
+    },
+    {
+      "domain": "harness",
+      "method": "GET",
+      "path": "/api/harness/github-actions",
+      "operationId": "getHarnessGithubActions",
+      "summary": "Inspect repository GitHub Actions workflow files"
+    },
+    {
+      "domain": "harness",
+      "method": "GET",
+      "path": "/api/harness/hooks",
+      "operationId": "getHarnessHooks",
+      "summary": "Inspect hook runtime profiles, bound hook files, and resolved metrics"
+    },
+    {
+      "domain": "harness",
+      "method": "GET",
+      "path": "/api/harness/hooks/preview",
+      "operationId": "getHarnessHookPreview",
+      "summary": "Run hook runtime preview for a configured profile"
+    },
+    {
+      "domain": "harness",
+      "method": "GET",
+      "path": "/api/harness/instructions",
+      "operationId": "getHarnessInstructions",
+      "summary": "Read repository guidance documents used by harness views"
+    },
+    {
+      "domain": "harness",
+      "method": "GET",
+      "path": "/api/harness/repo-signals",
+      "operationId": "getHarnessRepoSignals",
+      "summary": "Detect YAML-driven build and test harness surfaces for the selected repository"
+    },
+    {
+      "domain": "harness",
+      "method": "GET",
+      "path": "/api/harness/spec-sources",
+      "operationId": "getHarnessSpecSources",
+      "summary": "Detect specification and planning source systems for the selected repository"
+    },
+    {
+      "domain": "harness",
+      "method": "GET",
+      "path": "/api/harness/templates",
+      "operationId": "listHarnessTemplates",
+      "summary": "List harness templates for a repo context"
+    },
+    {
+      "domain": "harness",
+      "method": "GET",
+      "path": "/api/harness/templates/doctor",
+      "operationId": "doctorHarnessTemplates",
+      "summary": "Run harness template diagnostics for a repo context"
+    },
+    {
+      "domain": "harness",
+      "method": "GET",
+      "path": "/api/harness/templates/validate",
+      "operationId": "validateHarnessTemplate",
+      "summary": "Validate a harness template for a repo context"
+    },
+    {
+      "domain": "health",
+      "method": "GET",
+      "path": "/api/health",
+      "operationId": "getHealth",
+      "summary": "Health check — returns service status"
+    },
+    {
+      "domain": "kanban",
+      "method": "GET",
+      "path": "/api/kanban/boards",
+      "operationId": "listKanbanBoards",
+      "summary": "List Kanban boards for a workspace"
+    },
+    {
+      "domain": "kanban",
+      "method": "POST",
+      "path": "/api/kanban/boards",
+      "operationId": "createKanbanBoard",
+      "summary": "Create a Kanban board"
+    },
+    {
+      "domain": "kanban",
+      "method": "GET",
+      "path": "/api/kanban/boards/{boardId}",
+      "operationId": "getKanbanBoard",
+      "summary": "Get a Kanban board by ID"
+    },
+    {
+      "domain": "kanban",
+      "method": "PATCH",
+      "path": "/api/kanban/boards/{boardId}",
+      "operationId": "updateKanbanBoard",
+      "summary": "Update a Kanban board"
+    },
+    {
+      "domain": "kanban",
+      "method": "POST",
+      "path": "/api/kanban/decompose",
+      "operationId": "decomposeKanbanTasks",
+      "summary": "Decompose natural language input into multiple Kanban tasks"
+    },
+    {
+      "domain": "kanban",
+      "method": "GET",
+      "path": "/api/kanban/events",
+      "operationId": "streamKanbanEvents",
+      "summary": "Stream kanban workspace events over SSE"
+    },
+    {
+      "domain": "kanban",
+      "method": "GET",
+      "path": "/api/kanban/export",
+      "operationId": "exportKanbanConfig",
+      "summary": "Export kanban boards as YAML"
+    },
+    {
+      "domain": "kanban",
+      "method": "POST",
+      "path": "/api/kanban/import",
+      "operationId": "importKanbanConfig",
+      "summary": "Import kanban boards from YAML"
+    },
+    {
+      "domain": "mcp",
+      "method": "DELETE",
+      "path": "/api/mcp",
+      "operationId": "mcpDelete",
+      "summary": "Terminate MCP session"
+    },
+    {
+      "domain": "mcp",
+      "method": "GET",
+      "path": "/api/mcp",
+      "operationId": "mcpGet",
+      "summary": "MCP SSE stream"
+    },
+    {
+      "domain": "mcp",
+      "method": "POST",
+      "path": "/api/mcp",
+      "operationId": "mcpPost",
+      "summary": "MCP Streamable HTTP (JSON-RPC)"
+    },
+    {
+      "domain": "mcp",
+      "method": "GET",
+      "path": "/api/mcp/tools",
+      "operationId": "listMcpTools",
+      "summary": "List MCP tools"
+    },
+    {
+      "domain": "mcp",
+      "method": "PATCH",
+      "path": "/api/mcp/tools",
+      "operationId": "updateMcpToolsConfig",
+      "summary": "Update MCP tool configuration"
+    },
+    {
+      "domain": "mcp",
+      "method": "POST",
+      "path": "/api/mcp/tools",
+      "operationId": "executeMcpTool",
+      "summary": "Execute an MCP tool"
+    },
+    {
+      "domain": "mcp-server",
+      "method": "DELETE",
+      "path": "/api/mcp-server",
+      "operationId": "mcpServerStop",
+      "summary": "Stop MCP server"
+    },
+    {
+      "domain": "mcp-server",
+      "method": "GET",
+      "path": "/api/mcp-server",
+      "operationId": "mcpServerStatus",
+      "summary": "Get MCP server status"
+    },
+    {
+      "domain": "mcp-server",
+      "method": "POST",
+      "path": "/api/mcp-server",
+      "operationId": "mcpServerStart",
+      "summary": "Start MCP server"
+    },
+    {
+      "domain": "mcp-servers",
+      "method": "DELETE",
+      "path": "/api/mcp-servers",
+      "operationId": "deleteCustomMcpServer",
+      "summary": "Delete a custom MCP server"
+    },
+    {
+      "domain": "mcp-servers",
+      "method": "GET",
+      "path": "/api/mcp-servers",
+      "operationId": "listCustomMcpServers",
+      "summary": "List custom MCP servers (or get single by id query param)"
+    },
+    {
+      "domain": "mcp-servers",
+      "method": "POST",
+      "path": "/api/mcp-servers",
+      "operationId": "createCustomMcpServer",
+      "summary": "Create a new custom MCP server"
+    },
+    {
+      "domain": "mcp-servers",
+      "method": "PUT",
+      "path": "/api/mcp-servers",
+      "operationId": "updateCustomMcpServer",
+      "summary": "Update an existing custom MCP server"
+    },
+    {
+      "domain": "memory",
+      "method": "DELETE",
+      "path": "/api/memory",
+      "operationId": "deleteMemoryEntry",
+      "summary": "Delete memory entries"
+    },
+    {
+      "domain": "memory",
+      "method": "GET",
+      "path": "/api/memory",
+      "operationId": "listMemory",
+      "summary": "List memory entries for a workspace"
+    },
+    {
+      "domain": "memory",
+      "method": "POST",
+      "path": "/api/memory",
+      "operationId": "createMemoryEntry",
+      "summary": "Create a memory entry"
+    },
+    {
+      "domain": "notes",
+      "method": "DELETE",
+      "path": "/api/notes",
+      "operationId": "deleteNoteByQuery",
+      "summary": "Delete note by query params"
+    },
+    {
+      "domain": "notes",
+      "method": "GET",
+      "path": "/api/notes",
+      "operationId": "listNotes",
+      "summary": "List notes or get single by noteId"
+    },
+    {
+      "domain": "notes",
+      "method": "POST",
+      "path": "/api/notes",
+      "operationId": "createOrUpdateNote",
+      "summary": "Create or update a note"
+    },
+    {
+      "domain": "notes",
+      "method": "DELETE",
+      "path": "/api/notes/{workspaceId}/{noteId}",
+      "operationId": "deleteNotePath",
+      "summary": "Delete note by path params"
+    },
+    {
+      "domain": "notes",
+      "method": "GET",
+      "path": "/api/notes/{workspaceId}/{noteId}",
+      "operationId": "getNote",
+      "summary": "Get note by workspace + note ID"
+    },
+    {
+      "domain": "notes",
+      "method": "GET",
+      "path": "/api/notes/events",
+      "operationId": "noteEventsSse",
+      "summary": "SSE stream for note change events"
+    },
+    {
+      "domain": "polling",
+      "method": "GET",
+      "path": "/api/polling/check",
+      "operationId": "pollCheck",
+      "summary": "Run a polling check (GET)"
+    },
+    {
+      "domain": "polling",
+      "method": "POST",
+      "path": "/api/polling/check",
+      "operationId": "pollCheckPost",
+      "summary": "Run a polling check (POST)"
+    },
+    {
+      "domain": "polling",
+      "method": "GET",
+      "path": "/api/polling/config",
+      "operationId": "getPollingConfig",
+      "summary": "Get polling configuration"
+    },
+    {
+      "domain": "polling",
+      "method": "POST",
+      "path": "/api/polling/config",
+      "operationId": "updatePollingConfig",
+      "summary": "Update polling configuration"
+    },
+    {
+      "domain": "providers",
+      "method": "GET",
+      "path": "/api/providers",
+      "operationId": "listProviders",
+      "summary": "List configured LLM providers"
+    },
+    {
+      "domain": "providers",
+      "method": "GET",
+      "path": "/api/providers/models",
+      "operationId": "listProviderModels",
+      "summary": "List available models for configured providers"
+    },
+    {
+      "domain": "review",
+      "method": "POST",
+      "path": "/api/review/analyze",
+      "operationId": "analyzeReview",
+      "summary": "Analyze a git diff with the single public PR Reviewer specialist"
+    },
+    {
+      "domain": "rpc",
+      "method": "POST",
+      "path": "/api/rpc",
+      "operationId": "rpcCall",
+      "summary": "Generic JSON-RPC endpoint"
+    },
+    {
+      "domain": "rpc",
+      "method": "GET",
+      "path": "/api/rpc/methods",
+      "operationId": "listRpcMethods",
+      "summary": "List available RPC methods"
+    },
+    {
+      "domain": "sandboxes",
+      "method": "GET",
+      "path": "/api/sandboxes",
+      "operationId": "listSandboxes",
+      "summary": "List all active sandbox containers"
+    },
+    {
+      "domain": "sandboxes",
+      "method": "POST",
+      "path": "/api/sandboxes",
+      "operationId": "createSandbox",
+      "summary": "Create a new sandbox container"
+    },
+    {
+      "domain": "sandboxes",
+      "method": "DELETE",
+      "path": "/api/sandboxes/{id}",
+      "operationId": "deleteSandbox",
+      "summary": "Stop and remove a sandbox container"
+    },
+    {
+      "domain": "sandboxes",
+      "method": "GET",
+      "path": "/api/sandboxes/{id}",
+      "operationId": "getSandbox",
+      "summary": "Get sandbox info by ID"
+    },
+    {
+      "domain": "sandboxes",
+      "method": "POST",
+      "path": "/api/sandboxes/{id}/execute",
+      "operationId": "executeSandboxCode",
+      "summary": "Execute code in a sandbox and stream results as NDJSON"
+    },
+    {
+      "domain": "sandboxes",
+      "method": "POST",
+      "path": "/api/sandboxes/{id}/permissions/apply",
+      "operationId": "applySandboxPermissionConstraints",
+      "summary": "Recreate a sandbox with permission constraints applied to its policy"
+    },
+    {
+      "domain": "sandboxes",
+      "method": "POST",
+      "path": "/api/sandboxes/{id}/permissions/explain",
+      "operationId": "explainSandboxPermissionConstraints",
+      "summary": "Preview the effective sandbox policy after applying permission constraints"
+    },
+    {
+      "domain": "sandboxes",
+      "method": "POST",
+      "path": "/api/sandboxes/explain",
+      "operationId": "explainSandboxPolicy",
+      "summary": "Resolve and explain an effective sandbox policy without creating a sandbox"
+    },
+    {
+      "domain": "schedules",
+      "method": "GET",
+      "path": "/api/schedules",
+      "operationId": "listSchedules",
+      "summary": "List scheduled tasks"
+    },
+    {
+      "domain": "schedules",
+      "method": "POST",
+      "path": "/api/schedules",
+      "operationId": "createSchedule",
+      "summary": "Create a new schedule"
+    },
+    {
+      "domain": "schedules",
+      "method": "DELETE",
+      "path": "/api/schedules/{id}",
+      "operationId": "deleteSchedule",
+      "summary": "Delete a schedule"
+    },
+    {
+      "domain": "schedules",
+      "method": "GET",
+      "path": "/api/schedules/{id}",
+      "operationId": "getSchedule",
+      "summary": "Get a schedule by ID"
+    },
+    {
+      "domain": "schedules",
+      "method": "PATCH",
+      "path": "/api/schedules/{id}",
+      "operationId": "updateSchedule",
+      "summary": "Update a schedule"
+    },
+    {
+      "domain": "schedules",
+      "method": "POST",
+      "path": "/api/schedules/{id}/run",
+      "operationId": "runScheduleNow",
+      "summary": "Trigger a schedule to run immediately"
+    },
+    {
+      "domain": "schedules",
+      "method": "GET",
+      "path": "/api/schedules/tick",
+      "operationId": "getScheduleTick",
+      "summary": "Get tick status for scheduled tasks"
+    },
+    {
+      "domain": "schedules",
+      "method": "POST",
+      "path": "/api/schedules/tick",
+      "operationId": "triggerScheduleTick",
+      "summary": "Manually trigger the schedule tick"
+    },
+    {
+      "domain": "sessions",
+      "method": "GET",
+      "path": "/api/sessions",
+      "operationId": "listSessions",
+      "summary": "List ACP sessions"
+    },
+    {
+      "domain": "sessions",
+      "method": "DELETE",
+      "path": "/api/sessions/{id}",
+      "operationId": "deleteSession",
+      "summary": "Delete a session"
+    },
+    {
+      "domain": "sessions",
+      "method": "GET",
+      "path": "/api/sessions/{id}",
+      "operationId": "getSession",
+      "summary": "Get session by ID"
+    },
+    {
+      "domain": "sessions",
+      "method": "PATCH",
+      "path": "/api/sessions/{id}",
+      "operationId": "updateSession",
+      "summary": "Update session metadata"
+    },
+    {
+      "domain": "sessions",
+      "method": "POST",
+      "path": "/api/sessions/{id}/disconnect",
+      "operationId": "disconnectSession",
+      "summary": "Disconnect and kill an active session process"
+    },
+    {
+      "domain": "sessions",
+      "method": "GET",
+      "path": "/api/sessions/{id}/history",
+      "operationId": "getSessionHistory",
+      "summary": "Get message history for a session"
+    },
+    {
+      "domain": "sessions",
+      "method": "GET",
+      "path": "/api/sessions/{id}/transcript",
+      "operationId": "getSessionTranscript",
+      "summary": "Get preferred transcript payload for a session"
+    },
+    {
+      "domain": "sessions",
+      "method": "GET",
+      "path": "/api/sessions/{sessionId}/context",
+      "operationId": "getSessionContext",
+      "summary": "Get hierarchical context for a session"
+    },
+    {
+      "domain": "sessions",
+      "method": "GET",
+      "path": "/api/sessions/{sessionId}/reposlide-result",
+      "operationId": "getRepoSlideSessionResult",
+      "summary": "Read the RepoSlide result payload extracted from a session transcript"
+    },
+    {
+      "domain": "sessions",
+      "method": "GET",
+      "path": "/api/sessions/{sessionId}/reposlide-result/download",
+      "operationId": "downloadRepoSlideSessionResult",
+      "summary": "Download the generated RepoSlide PPTX artifact for a completed session"
+    },
+    {
+      "domain": "shared-sessions",
+      "method": "GET",
+      "path": "/api/shared-sessions",
+      "operationId": "listSharedSessions",
+      "summary": "List shared sessions"
+    },
+    {
+      "domain": "shared-sessions",
+      "method": "POST",
+      "path": "/api/shared-sessions",
+      "operationId": "createSharedSession",
+      "summary": "Create a shared session"
+    },
+    {
+      "domain": "shared-sessions",
+      "method": "DELETE",
+      "path": "/api/shared-sessions/{sharedSessionId}",
+      "operationId": "closeSharedSession",
+      "summary": "Close a shared session"
+    },
+    {
+      "domain": "shared-sessions",
+      "method": "GET",
+      "path": "/api/shared-sessions/{sharedSessionId}",
+      "operationId": "getSharedSession",
+      "summary": "Get a shared session with participants and approvals"
+    },
+    {
+      "domain": "shared-sessions",
+      "method": "POST",
+      "path": "/api/shared-sessions/{sharedSessionId}/approvals/{approvalId}",
+      "operationId": "respondToSharedPromptApproval",
+      "summary": "Approve or reject a pending shared session prompt"
+    },
+    {
+      "domain": "shared-sessions",
+      "method": "POST",
+      "path": "/api/shared-sessions/{sharedSessionId}/join",
+      "operationId": "joinSharedSession",
+      "summary": "Join a shared session"
+    },
+    {
+      "domain": "shared-sessions",
+      "method": "POST",
+      "path": "/api/shared-sessions/{sharedSessionId}/leave",
+      "operationId": "leaveSharedSession",
+      "summary": "Leave a shared session"
+    },
+    {
+      "domain": "shared-sessions",
+      "method": "GET",
+      "path": "/api/shared-sessions/{sharedSessionId}/messages",
+      "operationId": "listSharedSessionMessages",
+      "summary": "List shared session messages"
+    },
+    {
+      "domain": "shared-sessions",
+      "method": "POST",
+      "path": "/api/shared-sessions/{sharedSessionId}/messages",
+      "operationId": "sendSharedSessionMessage",
+      "summary": "Send a shared session message"
+    },
+    {
+      "domain": "shared-sessions",
+      "method": "GET",
+      "path": "/api/shared-sessions/{sharedSessionId}/participants",
+      "operationId": "listSharedSessionParticipants",
+      "summary": "List shared session participants"
+    },
+    {
+      "domain": "shared-sessions",
+      "method": "POST",
+      "path": "/api/shared-sessions/{sharedSessionId}/prompts",
+      "operationId": "sendSharedSessionPrompt",
+      "summary": "Send a shared session prompt"
+    },
+    {
+      "domain": "shared-sessions",
+      "method": "GET",
+      "path": "/api/shared-sessions/{sharedSessionId}/stream",
+      "operationId": "streamSharedSessionEvents",
+      "summary": "Stream shared session events over SSE"
+    },
+    {
+      "domain": "skills",
+      "method": "GET",
+      "path": "/api/skills",
+      "operationId": "listSkills",
+      "summary": "List skills or get by name"
+    },
+    {
+      "domain": "skills",
+      "method": "POST",
+      "path": "/api/skills",
+      "operationId": "reloadSkills",
+      "summary": "Reload skills from disk"
+    },
+    {
+      "domain": "skills",
+      "method": "GET",
+      "path": "/api/skills/catalog",
+      "operationId": "listSkillCatalog",
+      "summary": "List available skills in the registry"
+    },
+    {
+      "domain": "skills",
+      "method": "POST",
+      "path": "/api/skills/catalog",
+      "operationId": "refreshSkillCatalog",
+      "summary": "Refresh the local skill catalog from registry"
+    },
+    {
+      "domain": "skills",
+      "method": "GET",
+      "path": "/api/skills/clone",
+      "operationId": "discoverSkills",
+      "summary": "Discover skills from repo path"
+    },
+    {
+      "domain": "skills",
+      "method": "POST",
+      "path": "/api/skills/clone",
+      "operationId": "cloneSkillRepo",
+      "summary": "Clone a skill repository"
+    },
+    {
+      "domain": "skills",
+      "method": "POST",
+      "path": "/api/skills/upload",
+      "operationId": "uploadSkillZip",
+      "summary": "Upload skill as zip"
+    },
+    {
+      "domain": "spec",
+      "method": "GET",
+      "path": "/api/spec/issues",
+      "operationId": "listSpecIssues",
+      "summary": "List local issue specs"
+    },
+    {
+      "domain": "spec",
+      "method": "GET",
+      "path": "/api/spec/surface-index",
+      "operationId": "getSpecSurfaceIndex",
+      "summary": "Read the generated product surface index for spec analysis"
+    },
+    {
+      "domain": "specialists",
+      "method": "DELETE",
+      "path": "/api/specialists",
+      "operationId": "deleteSpecialist",
+      "summary": "Delete a specialist"
+    },
+    {
+      "domain": "specialists",
+      "method": "GET",
+      "path": "/api/specialists",
+      "operationId": "listSpecialists",
+      "summary": "List configured specialist agents"
+    },
+    {
+      "domain": "specialists",
+      "method": "POST",
+      "path": "/api/specialists",
+      "operationId": "createSpecialist",
+      "summary": "Create a specialist configuration"
+    },
+    {
+      "domain": "specialists",
+      "method": "PUT",
+      "path": "/api/specialists",
+      "operationId": "updateSpecialist",
+      "summary": "Update an existing specialist"
+    },
+    {
+      "domain": "tasks",
+      "method": "DELETE",
+      "path": "/api/tasks",
+      "operationId": "deleteAllTasks",
+      "summary": "Delete all tasks for a workspace"
+    },
+    {
+      "domain": "tasks",
+      "method": "GET",
+      "path": "/api/tasks",
+      "operationId": "listTasks",
+      "summary": "List tasks"
+    },
+    {
+      "domain": "tasks",
+      "method": "POST",
+      "path": "/api/tasks",
+      "operationId": "createTask",
+      "summary": "Create a task"
+    },
+    {
+      "domain": "tasks",
+      "method": "DELETE",
+      "path": "/api/tasks/{id}",
+      "operationId": "deleteTask",
+      "summary": "Delete a task"
+    },
+    {
+      "domain": "tasks",
+      "method": "GET",
+      "path": "/api/tasks/{id}",
+      "operationId": "getTask",
+      "summary": "Get task by ID"
+    },
+    {
+      "domain": "tasks",
+      "method": "PATCH",
+      "path": "/api/tasks/{id}",
+      "operationId": "updateTask",
+      "summary": "Update a task"
+    },
+    {
+      "domain": "tasks",
+      "method": "GET",
+      "path": "/api/tasks/{id}/artifacts",
+      "operationId": "listTaskArtifacts",
+      "summary": "List all artifacts for a task"
+    },
+    {
+      "domain": "tasks",
+      "method": "POST",
+      "path": "/api/tasks/{id}/artifacts",
+      "operationId": "provideTaskArtifact",
+      "summary": "Attach an artifact to a task"
+    },
+    {
+      "domain": "tasks",
+      "method": "GET",
+      "path": "/api/tasks/{id}/runs",
+      "operationId": "listTaskRuns",
+      "summary": "List normalized execution runs for a task"
+    },
+    {
+      "domain": "tasks",
+      "method": "POST",
+      "path": "/api/tasks/{id}/status",
+      "operationId": "updateTaskStatus",
+      "summary": "Update task status"
+    },
+    {
+      "domain": "tasks",
+      "method": "GET",
+      "path": "/api/tasks/{taskId}/changes",
+      "operationId": "getTaskChanges",
+      "summary": "Get repository or worktree changes associated with a task"
+    },
+    {
+      "domain": "tasks",
+      "method": "GET",
+      "path": "/api/tasks/{taskId}/changes/commit",
+      "operationId": "getTaskChangeCommit",
+      "summary": "Get diff for a single commit associated with a task repository"
+    },
+    {
+      "domain": "tasks",
+      "method": "GET",
+      "path": "/api/tasks/{taskId}/changes/file",
+      "operationId": "getTaskChangeFile",
+      "summary": "Get diff for a single changed file associated with a task"
+    },
+    {
+      "domain": "tasks",
+      "method": "GET",
+      "path": "/api/tasks/{taskId}/changes/stats",
+      "operationId": "getTaskChangeStats",
+      "summary": "Get additions and deletions for a subset of changed files associated with a task"
+    },
+    {
+      "domain": "tasks",
+      "method": "GET",
+      "path": "/api/tasks/ready",
+      "operationId": "findReadyTasks",
+      "summary": "Find tasks with all dependencies satisfied"
+    },
+    {
+      "domain": "test-mcp",
+      "method": "GET",
+      "path": "/api/test-mcp",
+      "operationId": "testMcp",
+      "summary": "Test MCP config"
+    },
+    {
+      "domain": "traces",
+      "method": "GET",
+      "path": "/api/traces",
+      "operationId": "listTraces",
+      "summary": "List agent execution traces"
+    },
+    {
+      "domain": "traces",
+      "method": "GET",
+      "path": "/api/traces/{id}",
+      "operationId": "getTrace",
+      "summary": "Get a single trace by ID"
+    },
+    {
+      "domain": "traces",
+      "method": "POST",
+      "path": "/api/traces/export",
+      "operationId": "exportTraces",
+      "summary": "Export trace records in Agent Trace JSON format"
+    },
+    {
+      "domain": "traces",
+      "method": "GET",
+      "path": "/api/traces/stats",
+      "operationId": "getTraceStats",
+      "summary": "Get aggregated trace statistics"
+    },
+    {
+      "domain": "webhooks",
+      "method": "DELETE",
+      "path": "/api/webhooks/configs",
+      "operationId": "deleteWebhookConfig",
+      "summary": "Delete a webhook configuration"
+    },
+    {
+      "domain": "webhooks",
+      "method": "GET",
+      "path": "/api/webhooks/configs",
+      "operationId": "listWebhookConfigs",
+      "summary": "List webhook configurations"
+    },
+    {
+      "domain": "webhooks",
+      "method": "POST",
+      "path": "/api/webhooks/configs",
+      "operationId": "createWebhookConfig",
+      "summary": "Create a webhook configuration"
+    },
+    {
+      "domain": "webhooks",
+      "method": "PUT",
+      "path": "/api/webhooks/configs",
+      "operationId": "updateWebhookConfig",
+      "summary": "Update a webhook configuration"
+    },
+    {
+      "domain": "webhooks",
+      "method": "GET",
+      "path": "/api/webhooks/github",
+      "operationId": "listGithubWebhooks",
+      "summary": "List registered GitHub webhooks"
+    },
+    {
+      "domain": "webhooks",
+      "method": "POST",
+      "path": "/api/webhooks/github",
+      "operationId": "handleGithubWebhook",
+      "summary": "Handle an incoming GitHub webhook event"
+    },
+    {
+      "domain": "webhooks",
+      "method": "DELETE",
+      "path": "/api/webhooks/register",
+      "operationId": "unregisterWebhook",
+      "summary": "Unregister a webhook"
+    },
+    {
+      "domain": "webhooks",
+      "method": "GET",
+      "path": "/api/webhooks/register",
+      "operationId": "listWebhookRegistrations",
+      "summary": "List webhook registrations"
+    },
+    {
+      "domain": "webhooks",
+      "method": "POST",
+      "path": "/api/webhooks/register",
+      "operationId": "registerWebhook",
+      "summary": "Register a new webhook"
+    },
+    {
+      "domain": "webhooks",
+      "method": "GET",
+      "path": "/api/webhooks/webhook-logs",
+      "operationId": "listWebhookLogs",
+      "summary": "List webhook delivery logs"
+    },
+    {
+      "domain": "workflows",
+      "method": "GET",
+      "path": "/api/workflows",
+      "operationId": "listWorkflows",
+      "summary": "List all workflow YAML definitions from resources/flows/"
+    },
+    {
+      "domain": "workflows",
+      "method": "POST",
+      "path": "/api/workflows",
+      "operationId": "createWorkflow",
+      "summary": "Create a new workflow YAML file"
+    },
+    {
+      "domain": "workflows",
+      "method": "DELETE",
+      "path": "/api/workflows/{id}",
+      "operationId": "deleteWorkflow",
+      "summary": "Delete a workflow YAML file"
+    },
+    {
+      "domain": "workflows",
+      "method": "GET",
+      "path": "/api/workflows/{id}",
+      "operationId": "getWorkflow",
+      "summary": "Get a specific workflow by ID"
+    },
+    {
+      "domain": "workflows",
+      "method": "PUT",
+      "path": "/api/workflows/{id}",
+      "operationId": "updateWorkflow",
+      "summary": "Update a workflow YAML file"
+    },
+    {
+      "domain": "workflows",
+      "method": "POST",
+      "path": "/api/workflows/{id}/trigger",
+      "operationId": "triggerWorkflow",
+      "summary": "Trigger a workflow run inside a workspace"
+    },
+    {
+      "domain": "workspaces",
+      "method": "GET",
+      "path": "/api/workspaces",
+      "operationId": "listWorkspaces",
+      "summary": "List all workspaces"
+    },
+    {
+      "domain": "workspaces",
+      "method": "POST",
+      "path": "/api/workspaces",
+      "operationId": "createWorkspace",
+      "summary": "Create a workspace"
+    },
+    {
+      "domain": "workspaces",
+      "method": "DELETE",
+      "path": "/api/workspaces/{id}",
+      "operationId": "deleteWorkspace",
+      "summary": "Delete workspace"
+    },
+    {
+      "domain": "workspaces",
+      "method": "GET",
+      "path": "/api/workspaces/{id}",
+      "operationId": "getWorkspace",
+      "summary": "Get workspace by ID"
+    },
+    {
+      "domain": "workspaces",
+      "method": "PATCH",
+      "path": "/api/workspaces/{id}",
+      "operationId": "updateWorkspace",
+      "summary": "Update workspace (title, repoPath, branch, status, metadata)"
+    },
+    {
+      "domain": "workspaces",
+      "method": "POST",
+      "path": "/api/workspaces/{id}/archive",
+      "operationId": "archiveWorkspace",
+      "summary": "Archive or unarchive a workspace"
+    },
+    {
+      "domain": "workspaces",
+      "method": "GET",
+      "path": "/api/workspaces/{id}/codebases",
+      "operationId": "listWorkspaceCodebases",
+      "summary": "List codebases in a workspace"
+    },
+    {
+      "domain": "workspaces",
+      "method": "POST",
+      "path": "/api/workspaces/{id}/codebases",
+      "operationId": "addWorkspaceCodebase",
+      "summary": "Add a codebase to a workspace"
+    },
+    {
+      "domain": "workspaces",
+      "method": "GET",
+      "path": "/api/workspaces/{id}/codebases/changes",
+      "operationId": "listWorkspaceCodebaseChanges",
+      "summary": "List git change summaries for workspace codebases"
+    },
+    {
+      "domain": "workspaces",
+      "method": "GET",
+      "path": "/api/workspaces/{workspace_id}/codebases/{codebase_id}/worktrees",
+      "operationId": "listWorktrees",
+      "summary": "List worktrees for a codebase"
+    },
+    {
+      "domain": "workspaces",
+      "method": "POST",
+      "path": "/api/workspaces/{workspace_id}/codebases/{codebase_id}/worktrees",
+      "operationId": "createWorktree",
+      "summary": "Create a new git worktree"
+    },
+    {
+      "domain": "workspaces",
+      "method": "DELETE",
+      "path": "/api/workspaces/{workspaceId}/codebases/{codebaseId}",
+      "operationId": "deleteWorkspaceCodebase",
+      "summary": "Delete a codebase from a workspace-scoped route"
+    },
+    {
+      "domain": "workspaces",
+      "method": "GET",
+      "path": "/api/workspaces/{workspaceId}/codebases/{codebaseId}/reposlide",
+      "operationId": "getRepoSlideLaunch",
+      "summary": "Get RepoSlide launch context for an agent-driven deck generation session"
+    },
+    {
+      "domain": "workspaces",
+      "method": "GET",
+      "path": "/api/workspaces/{workspaceId}/codebases/{codebaseId}/wiki",
+      "operationId": "getRepoWiki",
+      "summary": "Generate an architecture-aware RepoWiki summary payload for a codebase"
+    },
+    {
+      "domain": "worktrees",
+      "method": "DELETE",
+      "path": "/api/worktrees/{id}",
+      "operationId": "deleteWorktree",
+      "summary": "Remove a worktree"
+    },
+    {
+      "domain": "worktrees",
+      "method": "GET",
+      "path": "/api/worktrees/{id}",
+      "operationId": "getWorktree",
+      "summary": "Get a single worktree"
+    },
+    {
+      "domain": "worktrees",
+      "method": "POST",
+      "path": "/api/worktrees/{id}/validate",
+      "operationId": "validateWorktree",
+      "summary": "Validate worktree health on disk"
+    }
+  ]
+}
