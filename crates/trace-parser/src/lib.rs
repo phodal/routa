@@ -10,7 +10,7 @@ pub mod transcript_parser;
 pub use analyzer::{SessionAnalysis, SessionAnalyzer};
 pub use catalog::{
     FeatureSurface, FeatureSurfaceCatalog, FeatureSurfaceKind, FeatureSurfaceLink,
-    SurfaceLinkConfidence,
+    FeatureTreeCatalog, ProductFeature, ProductFeatureLink, SurfaceLinkConfidence,
 };
 pub use codex::CodexSessionAdapter;
 pub use error::TraceLearningError;

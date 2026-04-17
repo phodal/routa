@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
+    "crates/feature-trace",
     "crates/routa-core",
     "crates/routa-server",
     "crates/routa-cli",
