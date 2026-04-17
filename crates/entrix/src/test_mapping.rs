@@ -5,6 +5,9 @@
 //! was that test also changed, or is the result unknown?
 
 use crate::model::Confidence;
+use crate::review_context::{
+    build_graph, query_current_graph, GraphBuildReport, GraphNodePayload, ReviewBuildMode,
+};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -117,6 +120,36 @@ pub struct TestMappingReport {
     pub mappings: Vec<TestMappingRecord>,
     pub status_counts: BTreeMap<String, usize>,
     pub resolver_counts: BTreeMap<String, usize>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TestMappingAnalysisOptions<'a> {
+    pub base: &'a str,
+    pub build_mode: ReviewBuildMode,
+    pub use_graph: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct TestMappingGraphReport {
+    pub available: bool,
+    pub status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub build: Option<GraphBuildReport>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct TestMappingAnalysisReport {
+    pub status: String,
+    pub summary: String,
+    pub base: String,
+    pub changed_files: Vec<String>,
+    pub skipped_test_files: Vec<String>,
+    pub mappings: Vec<TestMappingRecord>,
+    pub status_counts: BTreeMap<String, usize>,
+    pub resolver_counts: BTreeMap<String, usize>,
+    pub graph: TestMappingGraphReport,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -324,6 +357,67 @@ impl ResolverRegistry {
 
 pub fn analyze_changed_files(repo_root: &Path, changed_files: &[String]) -> TestMappingReport {
     ResolverRegistry::default().analyze_changed_files(repo_root, changed_files)
+}
+
+pub fn analyze_test_mappings(
+    repo_root: &Path,
+    changed_files: &[String],
+    options: TestMappingAnalysisOptions<'_>,
+) -> TestMappingAnalysisReport {
+    let registry = ResolverRegistry::default();
+    let graph = if options.use_graph {
+        let build = build_graph(repo_root, options.build_mode);
+        if build.status == "unavailable" {
+            TestMappingGraphReport {
+                available: false,
+                status: "unavailable".to_string(),
+                reason: Some("graph backend unavailable".to_string()),
+                build: None,
+            }
+        } else {
+            TestMappingGraphReport {
+                available: true,
+                status: build.status.clone(),
+                reason: None,
+                build: Some(build),
+            }
+        }
+    } else {
+        TestMappingGraphReport {
+            available: false,
+            status: "disabled".to_string(),
+            reason: Some("graph disabled".to_string()),
+            build: None,
+        }
+    };
+
+    let graph_test_files_by_source = graph_test_files_by_source(
+        repo_root,
+        changed_files,
+        &registry,
+        &graph,
+    );
+    let report = registry.analyze_changed_files_with_graph(
+        repo_root,
+        changed_files,
+        &graph_test_files_by_source,
+    );
+
+    TestMappingAnalysisReport {
+        status: "ok".to_string(),
+        summary: format!(
+            "Analyzed test mappings for {} changed source file(s); skipped {} changed test file(s).",
+            report.mappings.len(),
+            report.skipped_test_files.len()
+        ),
+        base: options.base.to_string(),
+        changed_files: report.changed_files,
+        skipped_test_files: report.skipped_test_files,
+        mappings: report.mappings,
+        status_counts: report.status_counts,
+        resolver_counts: report.resolver_counts,
+        graph,
+    }
 }
 
 struct TypeScriptResolver;
@@ -626,6 +720,39 @@ fn normalized_tokens(value: &str) -> BTreeSet<String> {
             }
         })
         .collect()
+}
+
+fn graph_test_files_by_source(
+    repo_root: &Path,
+    changed_files: &[String],
+    registry: &ResolverRegistry,
+    graph: &TestMappingGraphReport,
+) -> BTreeMap<String, Vec<String>> {
+    if !graph.available {
+        return BTreeMap::new();
+    }
+
+    let mut by_source = BTreeMap::new();
+    for source_file in changed_files.iter().filter(|path| !registry.is_test_file(path)) {
+        let query = query_current_graph(repo_root, source_file, "tests_for", ReviewBuildMode::Skip);
+        if query.status != "ok" {
+            continue;
+        }
+        let graph_files = query
+            .results
+            .iter()
+            .map(|node| match node {
+                GraphNodePayload::File(node) => node.file_path.clone(),
+                GraphNodePayload::Symbol(node) => node.file_path.clone(),
+            })
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect::<Vec<_>>();
+        if !graph_files.is_empty() {
+            by_source.insert(source_file.clone(), graph_files);
+        }
+    }
+    by_source
 }
 
 #[cfg(test)]

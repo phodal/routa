@@ -47,7 +47,7 @@ metrics:
     description: "通过代码图估算 changed targets 的测试半径；图后端缺失时跳过不计分"
 
   - name: graph_test_mapping_probe
-    command: node --import tsx tools/hook-runtime/src/test-mapping-smart.ts 2>&1
+    command: graph:test-mapping
     tier: normal
     execution_scope: local
     gate: advisory

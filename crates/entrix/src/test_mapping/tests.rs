@@ -166,3 +166,53 @@ fn graph_enrichment_upgrades_mapping_and_merges_related_tests() {
     assert_eq!(report.status_counts.get("exists"), Some(&1));
     assert_eq!(report.resolver_counts.get("semantic_graph"), Some(&1));
 }
+
+#[test]
+fn shared_analysis_reports_graph_disabled() {
+    let temp = tempdir().expect("tempdir");
+    let repo_root = temp.path();
+    fs::create_dir_all(repo_root.join("src")).expect("create src dir");
+    fs::write(repo_root.join("src/service.ts"), "export function run() {}\n").expect("write source");
+
+    let report = analyze_test_mappings(
+        repo_root,
+        &["src/service.ts".to_string()],
+        TestMappingAnalysisOptions {
+            base: "HEAD",
+            build_mode: ReviewBuildMode::Auto,
+            use_graph: false,
+        },
+    );
+
+    assert_eq!(report.status, "ok");
+    assert_eq!(report.base, "HEAD");
+    assert_eq!(report.graph.status, "disabled");
+    assert!(!report.graph.available);
+    assert_eq!(report.graph.reason.as_deref(), Some("graph disabled"));
+    assert!(report.graph.build.is_none());
+}
+
+#[test]
+fn shared_analysis_reports_graph_ok_when_enabled() {
+    let temp = tempdir().expect("tempdir");
+    let repo_root = temp.path();
+    fs::create_dir_all(repo_root.join("src")).expect("create src dir");
+    fs::write(repo_root.join("src/service.ts"), "export function run() {}\n").expect("write source");
+
+    let report = analyze_test_mappings(
+        repo_root,
+        &["src/service.ts".to_string()],
+        TestMappingAnalysisOptions {
+            base: "HEAD~1",
+            build_mode: ReviewBuildMode::Auto,
+            use_graph: true,
+        },
+    );
+
+    assert_eq!(report.status, "ok");
+    assert_eq!(report.base, "HEAD~1");
+    assert_eq!(report.graph.status, "ok");
+    assert!(report.graph.available);
+    assert!(report.graph.reason.is_none());
+    assert!(report.graph.build.is_some());
+}
