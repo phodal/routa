@@ -47,7 +47,8 @@ pub(crate) struct FeatureTraceCatalogs {
 impl FeatureTraceCatalogs {
     pub(crate) fn load(repo_root: &Path) -> Result<Option<Self>> {
         let feature_tree_path = repo_root.join("docs/product-specs/FEATURE_TREE.md");
-        if !feature_tree_path.exists() {
+        let surface_index_path = repo_root.join("docs/product-specs/feature-tree.index.json");
+        if !feature_tree_path.exists() && !surface_index_path.exists() {
             return Ok(None);
         }
 
@@ -55,13 +56,8 @@ impl FeatureTraceCatalogs {
             FeatureSurfaceCatalog::from_repo_root(repo_root).with_context(|| {
                 format!("load feature surface catalog from {}", repo_root.display())
             })?;
-        let feature_tree = FeatureTreeCatalog::from_feature_tree_markdown(&feature_tree_path)
-            .with_context(|| {
-                format!(
-                    "load feature tree catalog from {}",
-                    feature_tree_path.display()
-                )
-            })?;
+        let feature_tree = FeatureTreeCatalog::from_repo_root(repo_root)
+            .with_context(|| format!("load feature tree catalog from {}", repo_root.display()))?;
 
         Ok(Some(Self {
             surface_catalog,
@@ -259,5 +255,69 @@ feature_metadata:
             vec!["Feature Explorer".to_string()]
         );
         assert_eq!(analysis.tool_call_counts.get("Write"), Some(&1));
+    }
+
+    #[test]
+    fn loads_catalogs_from_surface_index_without_markdown() {
+        let dir = tempdir().expect("tempdir");
+        let repo_root = dir.path();
+
+        fs::create_dir_all(repo_root.join("src/app/workspace/[workspaceId]/spec"))
+            .expect("create page dir");
+        fs::create_dir_all(repo_root.join("docs/product-specs")).expect("create docs dir");
+        fs::write(
+            repo_root.join("src/app/workspace/[workspaceId]/spec/page.tsx"),
+            "export default function Page() { return null; }\n",
+        )
+        .expect("write page");
+        fs::write(
+            repo_root.join("docs/product-specs/feature-tree.index.json"),
+            r#"{
+  "pages": [
+    {
+      "route": "/workspace/:workspaceId/spec",
+      "title": "Workspace / Spec",
+      "description": "Spec board"
+    }
+  ],
+  "contractApis": [
+    {
+      "domain": "spec",
+      "method": "GET",
+      "path": "/api/spec/issues",
+      "summary": "List issue specs"
+    }
+  ],
+  "metadata": {
+    "features": [
+      {
+        "id": "spec-board",
+        "name": "Spec Board",
+        "pages": ["/workspace/:workspaceId/spec"],
+        "sourceFiles": ["src/app/workspace/[workspaceId]/spec/page.tsx"]
+      }
+    ]
+  }
+}"#,
+        )
+        .expect("write feature tree index");
+
+        let catalogs = FeatureTraceCatalogs::load(repo_root)
+            .expect("load catalogs")
+            .expect("catalogs available");
+        let analysis = catalogs.analyze(&SessionTraceMaterial::new(
+            "sess-2",
+            vec!["src/app/workspace/[workspaceId]/spec/page.tsx".to_string()],
+            vec!["Write".to_string()],
+        ));
+
+        assert_eq!(
+            summarize_routes(&analysis, 4),
+            vec!["/workspace/:workspaceId/spec".to_string()]
+        );
+        assert_eq!(
+            summarize_features(&analysis, 4),
+            vec!["Spec Board".to_string()]
+        );
     }
 }

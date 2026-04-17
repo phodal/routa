@@ -127,12 +127,8 @@ fn map_context_error(error: impl std::fmt::Display) -> (StatusCode, Json<Value>)
 }
 
 fn load_feature_tree(repo_root: &Path) -> Result<FeatureTreeCatalog, String> {
-    let feature_tree_path = repo_root.join("docs/product-specs/FEATURE_TREE.md");
-    if !feature_tree_path.exists() {
-        return Err("FEATURE_TREE.md not found".to_string());
-    }
-    FeatureTreeCatalog::from_feature_tree_markdown(&feature_tree_path)
-        .map_err(|e| format!("Failed to parse FEATURE_TREE.md: {e}"))
+    FeatureTreeCatalog::from_repo_root(repo_root)
+        .map_err(|e| format!("Failed to load feature tree sources: {e}"))
 }
 
 fn build_file_tree(source_files: &[String]) -> Vec<FileTreeNode> {

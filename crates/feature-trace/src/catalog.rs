@@ -60,16 +60,17 @@ pub struct ProductFeature {
     pub pages: Vec<String>,
     #[serde(default)]
     pub apis: Vec<String>,
-    #[serde(default)]
+    #[serde(default, alias = "sourceFiles")]
     pub source_files: Vec<String>,
-    #[serde(default)]
+    #[serde(default, alias = "relatedFeatures")]
     pub related_features: Vec<String>,
-    #[serde(default)]
+    #[serde(default, alias = "domainObjects")]
     pub domain_objects: Vec<String>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FrontendPageDetail {
+    #[serde(alias = "title")]
     pub name: String,
     pub route: String,
     #[serde(default)]
@@ -80,8 +81,9 @@ pub struct FrontendPageDetail {
 pub struct ApiEndpointDetail {
     pub domain: String,
     pub method: String,
+    #[serde(alias = "path")]
     pub endpoint: String,
-    #[serde(default)]
+    #[serde(default, alias = "summary")]
     pub description: String,
 }
 
@@ -114,6 +116,39 @@ struct FeatureMetadata {
     capability_groups: Vec<CapabilityGroup>,
     #[serde(default)]
     features: Vec<ProductFeature>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct FeatureSurfaceIndexPayload {
+    #[serde(default)]
+    pages: Vec<FrontendPageDetail>,
+    #[serde(default)]
+    apis: Vec<ApiEndpointDetail>,
+    #[serde(default)]
+    contract_apis: Vec<ApiEndpointDetail>,
+    metadata: Option<FeatureSurfaceIndexMetadata>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct FeatureSurfaceIndexMetadata {
+    #[serde(default, alias = "capability_groups")]
+    capability_groups: Vec<CapabilityGroup>,
+    #[serde(default)]
+    features: Vec<ProductFeature>,
+}
+
+#[derive(Debug, Deserialize)]
+struct OpenApiContract {
+    #[serde(default)]
+    paths: BTreeMap<String, BTreeMap<String, OpenApiOperation>>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct OpenApiOperation {
+    #[serde(default)]
+    summary: String,
 }
 
 impl FeatureSurfaceCatalog {
@@ -202,6 +237,60 @@ impl FeatureSurfaceCatalog {
 }
 
 impl FeatureTreeCatalog {
+    pub fn from_repo_root(repo_root: &Path) -> Result<Self, FeatureTraceError> {
+        let feature_tree_path = repo_root.join("docs/product-specs/FEATURE_TREE.md");
+        let surface_index_path = repo_root.join("docs/product-specs/feature-tree.index.json");
+        let api_contract_path = repo_root.join("api-contract.yaml");
+
+        let markdown_catalog = if feature_tree_path.exists() {
+            Some(Self::from_feature_tree_markdown(&feature_tree_path)?)
+        } else {
+            None
+        };
+        let surface_index_catalog = if surface_index_path.exists() {
+            Some(Self::from_surface_index_json(&surface_index_path)?)
+        } else {
+            None
+        };
+
+        if markdown_catalog.is_none() && surface_index_catalog.is_none() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "feature tree sources not found",
+            )
+            .into());
+        }
+
+        let mut catalog = if let Some(index_catalog) = surface_index_catalog {
+            index_catalog
+        } else {
+            markdown_catalog.clone().unwrap_or_default()
+        };
+
+        if let Some(markdown_catalog) = markdown_catalog {
+            if catalog.capability_groups.is_empty() {
+                catalog.capability_groups = markdown_catalog.capability_groups;
+            }
+            if catalog.features.is_empty() {
+                catalog.features = markdown_catalog.features;
+            }
+            if catalog.frontend_pages.is_empty() {
+                catalog.frontend_pages = markdown_catalog.frontend_pages;
+            }
+            catalog.api_endpoints =
+                merge_api_endpoint_lists([catalog.api_endpoints, markdown_catalog.api_endpoints]);
+        }
+
+        if api_contract_path.exists() {
+            catalog.api_endpoints = merge_api_endpoint_lists([
+                api_endpoints_from_openapi_contract(&api_contract_path)?,
+                catalog.api_endpoints,
+            ]);
+        }
+
+        Ok(catalog)
+    }
+
     pub fn from_feature_tree_markdown(path: &Path) -> Result<Self, FeatureTraceError> {
         let raw = fs::read_to_string(path)?;
         let frontmatter = extract_frontmatter(&raw).ok_or(FeatureTraceError::MissingFrontmatter)?;
@@ -215,30 +304,49 @@ impl FeatureTreeCatalog {
         })
     }
 
+    pub fn from_surface_index_json(path: &Path) -> Result<Self, FeatureTraceError> {
+        let payload: FeatureSurfaceIndexPayload = serde_json::from_str(&fs::read_to_string(path)?)?;
+        let metadata = payload.metadata.unwrap_or_default();
+        let api_endpoints = if payload.contract_apis.is_empty() {
+            payload.apis
+        } else {
+            payload.contract_apis
+        };
+
+        Ok(Self {
+            capability_groups: metadata.capability_groups,
+            features: metadata.features,
+            frontend_pages: payload.pages,
+            api_endpoints,
+        })
+    }
+
     pub fn frontend_page_for_route(&self, route: &str) -> Option<&FrontendPageDetail> {
         self.frontend_pages.iter().find(|page| page.route == route)
     }
 
-    pub fn api_endpoint_for_declaration(
-        &self,
-        declaration: &str,
-    ) -> Option<&ApiEndpointDetail> {
+    pub fn api_endpoint_for_declaration(&self, declaration: &str) -> Option<&ApiEndpointDetail> {
         let (method, endpoint) = split_declared_api(declaration)?;
-        self.api_endpoints.iter().find(|api| {
-            api.method.eq_ignore_ascii_case(method) && api.endpoint == endpoint
-        })
+        self.api_endpoints
+            .iter()
+            .find(|api| api.method.eq_ignore_ascii_case(method) && api.endpoint == endpoint)
     }
 
     pub fn best_links_for_surface(&self, surface: &FeatureSurfaceLink) -> Vec<ProductFeatureLink> {
         self.features
             .iter()
             .filter_map(|feature| {
-                let source_match = feature.source_files.iter().any(|path| {
-                    path == &surface.source_path || path == &surface.via_path
-                });
+                let source_match = feature
+                    .source_files
+                    .iter()
+                    .any(|path| path == &surface.source_path || path == &surface.via_path);
                 let route_match = match surface.kind {
-                    FeatureSurfaceKind::Page => feature.pages.iter().any(|route| route == &surface.route),
-                    FeatureSurfaceKind::Api => feature.apis.iter().any(|route| route == &surface.route),
+                    FeatureSurfaceKind::Page => {
+                        feature.pages.iter().any(|route| route == &surface.route)
+                    }
+                    FeatureSurfaceKind::Api => {
+                        feature.apis.iter().any(|route| route == &surface.route)
+                    }
                 };
                 if !source_match && !route_match {
                     return None;
@@ -261,12 +369,7 @@ impl FeatureTreeCatalog {
     pub fn best_links_for_path(&self, changed_path: &str) -> Vec<ProductFeatureLink> {
         self.features
             .iter()
-            .filter(|feature| {
-                feature
-                    .source_files
-                    .iter()
-                    .any(|path| path == changed_path)
-            })
+            .filter(|feature| feature.source_files.iter().any(|path| path == changed_path))
             .map(|feature| ProductFeatureLink {
                 feature_id: feature.id.clone(),
                 feature_name: feature.name.clone(),
@@ -276,6 +379,38 @@ impl FeatureTreeCatalog {
             })
             .collect()
     }
+}
+
+pub fn api_endpoints_from_openapi_contract(
+    path: &Path,
+) -> Result<Vec<ApiEndpointDetail>, FeatureTraceError> {
+    let payload: OpenApiContract = serde_yaml::from_str(&fs::read_to_string(path)?)?;
+    let mut endpoints = Vec::new();
+
+    for (endpoint, methods) in payload.paths {
+        let Some(domain) = domain_from_api_path(&endpoint) else {
+            continue;
+        };
+
+        for (method, operation) in methods {
+            let method_upper = method.trim().to_ascii_uppercase();
+            if !matches!(
+                method_upper.as_str(),
+                "GET" | "POST" | "PUT" | "PATCH" | "DELETE"
+            ) {
+                continue;
+            }
+
+            endpoints.push(ApiEndpointDetail {
+                domain: domain.to_string(),
+                method: method_upper,
+                endpoint: endpoint.clone(),
+                description: operation.summary.trim().to_string(),
+            });
+        }
+    }
+
+    Ok(sort_api_endpoints(endpoints))
 }
 
 fn collect_paths(dir: &Path, out: &mut Vec<PathBuf>) -> Result<(), FeatureTraceError> {
@@ -417,6 +552,67 @@ fn split_declared_api(declaration: &str) -> Option<(&str, &str)> {
     Some((method.trim(), endpoint.trim()))
 }
 
+fn domain_from_api_path(endpoint: &str) -> Option<&str> {
+    let mut segments = endpoint
+        .trim()
+        .split('/')
+        .filter(|segment| !segment.is_empty());
+    let first = segments.next()?;
+    let second = segments.next()?;
+    if first != "api" {
+        return None;
+    }
+    Some(second)
+}
+
+fn merge_api_endpoint_lists<const N: usize>(
+    lists: [Vec<ApiEndpointDetail>; N],
+) -> Vec<ApiEndpointDetail> {
+    let mut merged: BTreeMap<(String, String), ApiEndpointDetail> = BTreeMap::new();
+
+    for list in lists {
+        for endpoint in list {
+            let key = (
+                endpoint.method.trim().to_ascii_uppercase(),
+                endpoint.endpoint.trim().to_string(),
+            );
+
+            if let Some(existing) = merged.get_mut(&key) {
+                if existing.domain.trim().is_empty() && !endpoint.domain.trim().is_empty() {
+                    existing.domain = endpoint.domain;
+                }
+                if existing.description.trim().is_empty() && !endpoint.description.trim().is_empty()
+                {
+                    existing.description = endpoint.description;
+                }
+                continue;
+            }
+
+            merged.insert(
+                key,
+                ApiEndpointDetail {
+                    domain: endpoint.domain.trim().to_string(),
+                    method: endpoint.method.trim().to_ascii_uppercase(),
+                    endpoint: endpoint.endpoint.trim().to_string(),
+                    description: endpoint.description.trim().to_string(),
+                },
+            );
+        }
+    }
+
+    sort_api_endpoints(merged.into_values().collect())
+}
+
+fn sort_api_endpoints(mut endpoints: Vec<ApiEndpointDetail>) -> Vec<ApiEndpointDetail> {
+    endpoints.sort_by(|left, right| {
+        left.domain
+            .cmp(&right.domain)
+            .then(left.endpoint.cmp(&right.endpoint))
+            .then(left.method.cmp(&right.method))
+    });
+    endpoints
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 enum TableSection {
     #[default]
@@ -552,17 +748,147 @@ feature_metadata:
         let links = catalog.best_links_for_surface(&FeatureSurfaceLink {
             kind: FeatureSurfaceKind::Page,
             route: "/workspace/:workspaceId/sessions/:sessionId".to_string(),
-            source_path: "src/app/workspace/[workspaceId]/sessions/[sessionId]/page.tsx".to_string(),
-            via_path: "src/app/workspace/[workspaceId]/sessions/[sessionId]/session-page-client.tsx".to_string(),
+            source_path: "src/app/workspace/[workspaceId]/sessions/[sessionId]/page.tsx"
+                .to_string(),
+            via_path:
+                "src/app/workspace/[workspaceId]/sessions/[sessionId]/session-page-client.tsx"
+                    .to_string(),
             confidence: SurfaceLinkConfidence::Medium,
         });
 
         assert_eq!(links.len(), 1);
         assert_eq!(links[0].feature_id, "session-recovery");
-        assert_eq!(links[0].route.as_deref(), Some("/workspace/:workspaceId/sessions/:sessionId"));
+        assert_eq!(
+            links[0].route.as_deref(),
+            Some("/workspace/:workspaceId/sessions/:sessionId")
+        );
         assert_eq!(catalog.frontend_pages.len(), 1);
         assert_eq!(catalog.frontend_pages[0].description, "Session detail page");
         assert_eq!(catalog.api_endpoints.len(), 1);
         assert_eq!(catalog.api_endpoints[0].domain, "Sessions");
+    }
+
+    #[test]
+    fn loads_surface_index_json_with_metadata_and_contract_apis() {
+        let dir = tempdir().unwrap();
+        let surface_index = dir.path().join("feature-tree.index.json");
+        fs::write(
+            &surface_index,
+            r#"{
+  "pages": [
+    {
+      "route": "/workspace/:workspaceId/spec",
+      "title": "Workspace / Spec",
+      "description": "Spec board"
+    }
+  ],
+  "apis": [
+    {
+      "domain": "spec",
+      "method": "GET",
+      "path": "/api/spec/issues",
+      "summary": "List issue specs"
+    }
+  ],
+  "contractApis": [
+    {
+      "domain": "spec",
+      "method": "GET",
+      "path": "/api/spec/issues",
+      "summary": "List local issue specs"
+    }
+  ],
+  "metadata": {
+    "capabilityGroups": [
+      {
+        "id": "governance-settings",
+        "name": "Governance and Settings"
+      }
+    ],
+    "features": [
+      {
+        "id": "harness-console",
+        "name": "Harness Console",
+        "group": "governance-settings",
+        "pages": ["/workspace/:workspaceId/spec"],
+        "apis": ["GET /api/spec/issues"],
+        "sourceFiles": ["src/app/workspace/[workspaceId]/spec/page.tsx"],
+        "relatedFeatures": ["workspace-overview"],
+        "domainObjects": ["spec"]
+      }
+    ]
+  }
+}"#,
+        )
+        .unwrap();
+
+        let catalog = FeatureTreeCatalog::from_surface_index_json(&surface_index).unwrap();
+
+        assert_eq!(catalog.capability_groups.len(), 1);
+        assert_eq!(catalog.features.len(), 1);
+        assert_eq!(catalog.features[0].source_files.len(), 1);
+        assert_eq!(
+            catalog.features[0].related_features,
+            vec!["workspace-overview"]
+        );
+        assert_eq!(catalog.features[0].domain_objects, vec!["spec"]);
+        assert_eq!(catalog.frontend_pages[0].name, "Workspace / Spec");
+        assert_eq!(
+            catalog.api_endpoints[0].description,
+            "List local issue specs"
+        );
+    }
+
+    #[test]
+    fn repo_root_loader_prefers_openapi_contract_and_index_metadata() {
+        let dir = tempdir().unwrap();
+        let repo_root = dir.path();
+        let specs_dir = repo_root.join("docs/product-specs");
+        fs::create_dir_all(&specs_dir).unwrap();
+        fs::write(
+            specs_dir.join("feature-tree.index.json"),
+            r#"{
+  "apis": [
+    {
+      "domain": "spec",
+      "method": "GET",
+      "path": "/api/spec/issues",
+      "summary": ""
+    }
+  ],
+  "metadata": {
+    "features": [
+      {
+        "id": "harness-console",
+        "name": "Harness Console",
+        "apis": ["GET /api/spec/issues"]
+      }
+    ]
+  }
+}"#,
+        )
+        .unwrap();
+        fs::write(
+            repo_root.join("api-contract.yaml"),
+            r#"openapi: 3.1.0
+paths:
+  /api/spec/issues:
+    get:
+      summary: List local issue specs
+"#,
+        )
+        .unwrap();
+
+        let catalog = FeatureTreeCatalog::from_repo_root(repo_root).unwrap();
+
+        assert_eq!(catalog.features.len(), 1);
+        assert_eq!(catalog.api_endpoints.len(), 1);
+        assert_eq!(catalog.api_endpoints[0].domain, "spec");
+        assert_eq!(catalog.api_endpoints[0].method, "GET");
+        assert_eq!(catalog.api_endpoints[0].endpoint, "/api/spec/issues");
+        assert_eq!(
+            catalog.api_endpoints[0].description,
+            "List local issue specs"
+        );
     }
 }
