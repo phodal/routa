@@ -39,19 +39,38 @@ pub struct FeatureSurfaceCatalog {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CapabilityGroup {
+    pub id: String,
+    pub name: String,
+    #[serde(default)]
+    pub description: String,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProductFeature {
     pub id: String,
     pub name: String,
+    #[serde(default)]
+    pub group: String,
+    #[serde(default)]
+    pub summary: String,
+    #[serde(default)]
+    pub status: String,
     #[serde(default)]
     pub pages: Vec<String>,
     #[serde(default)]
     pub apis: Vec<String>,
     #[serde(default)]
     pub source_files: Vec<String>,
+    #[serde(default)]
+    pub related_features: Vec<String>,
+    #[serde(default)]
+    pub domain_objects: Vec<String>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FeatureTreeCatalog {
+    pub capability_groups: Vec<CapabilityGroup>,
     pub features: Vec<ProductFeature>,
 }
 
@@ -72,6 +91,8 @@ struct FeatureTreeFrontmatter {
 
 #[derive(Debug, Default, Deserialize)]
 struct FeatureMetadata {
+    #[serde(default)]
+    capability_groups: Vec<CapabilityGroup>,
     #[serde(default)]
     features: Vec<ProductFeature>,
 }
@@ -167,6 +188,7 @@ impl FeatureTreeCatalog {
         let frontmatter = extract_frontmatter(&raw).ok_or(FeatureTraceError::MissingFrontmatter)?;
         let parsed: FeatureTreeFrontmatter = serde_yaml::from_str(frontmatter)?;
         Ok(Self {
+            capability_groups: parsed.feature_metadata.capability_groups,
             features: parsed.feature_metadata.features,
         })
     }
