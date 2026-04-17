@@ -69,4 +69,22 @@ function Canvas() {
     expect(output).toContain("export default function Canvas()");
     expect(output).toContain("History");
   });
+
+  it("extracts TSX from write tool-call updates when the agent writes files instead of replying inline", () => {
+    const output = extractCanvasSpecialistOutputFromHistory([
+      {
+        update: {
+          sessionUpdate: "tool_call_update",
+          kind: "edit",
+          title: "write",
+          rawInput: {
+            content: "export default function Canvas(){ return <div>From tool call</div>; }",
+          },
+        },
+      },
+    ]);
+
+    expect(output).toContain("export default function Canvas()");
+    expect(output).toContain("From tool call");
+  });
 });

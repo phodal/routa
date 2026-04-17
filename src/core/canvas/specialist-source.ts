@@ -151,6 +151,34 @@ function extractUpdateText(update: Record<string, unknown>): string {
   return "";
 }
 
+function extractToolCallCanvasCandidate(update: Record<string, unknown>): string {
+  const sessionUpdate = typeof update.sessionUpdate === "string"
+    ? update.sessionUpdate
+    : "";
+  if (sessionUpdate !== "tool_call" && sessionUpdate !== "tool_call_update") {
+    return "";
+  }
+
+  const kind = typeof update.kind === "string" ? update.kind : "";
+  const title = typeof update.title === "string" ? update.title.toLowerCase() : "";
+  if (kind !== "edit" && title !== "write" && title !== "edit") {
+    return "";
+  }
+
+  const rawInput = isPlainObject(update.rawInput) ? update.rawInput : null;
+  if (!rawInput) return "";
+
+  const candidateKeys = ["content", "new_string", "text", "source"];
+  for (const key of candidateKeys) {
+    const candidate = rawInput[key];
+    if (typeof candidate === "string" && candidate.trim()) {
+      return candidate.trim();
+    }
+  }
+
+  return "";
+}
+
 export function extractCanvasSpecialistOutputFromHistory(
   history: CanvasSpecialistHistoryEntry[],
 ): string {
@@ -177,7 +205,7 @@ export function extractCanvasSpecialistOutputFromHistory(
     return directOutput;
   }
 
-  return history
+  const processOutput = history
     .map((entry) => {
       const update = isPlainObject(entry.update) ? entry.update : null;
       if (!update) return "";
@@ -187,6 +215,21 @@ export function extractCanvasSpecialistOutputFromHistory(
     })
     .join("")
     .trim();
+
+  if (processOutput) {
+    return processOutput;
+  }
+
+  for (let index = history.length - 1; index >= 0; index -= 1) {
+    const update = isPlainObject(history[index]?.update) ? history[index]?.update as Record<string, unknown> : null;
+    if (!update) continue;
+    const candidate = extractToolCallCanvasCandidate(update);
+    if (candidate) {
+      return candidate;
+    }
+  }
+
+  return "";
 }
 
 export function extractCanvasSourceFromSpecialistOutput(output: string): string | null {
