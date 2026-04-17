@@ -795,6 +795,36 @@ fn file_detail_shows_fast_test_mapping_pending_graph_refresh() {
 }
 
 #[test]
+fn file_detail_shows_graph_refresh_budget_note() {
+    let state = sample_state();
+    let mut cache = sample_cache(&state);
+    cache.set_test_mapping_snapshot_for_tests(
+        "test".to_string(),
+        TestMappingAnalysisMode::Fast,
+        vec![TestMappingEntry {
+            source_file: "crates/harness-monitor/src/tui.rs".to_string(),
+            language: "rust".to_string(),
+            status: "changed".to_string(),
+            related_test_files: vec!["crates/harness-monitor/src/tui_tests.rs".to_string()],
+            graph_test_files: Vec::new(),
+            resolver_kind: "hybrid_heuristic".to_string(),
+            confidence: "medium".to_string(),
+            has_inline_tests: false,
+        }],
+        Vec::new(),
+    );
+    cache.set_test_mapping_graph_note_for_tests(
+        "graph refresh skipped: 17 dirty files exceeds budget 12".to_string(),
+    );
+
+    let snapshot = render_snapshot(&state, &mut cache, 180, 40);
+
+    assert!(snapshot.contains("fast heuristic"));
+    assert!(snapshot.contains("graph refresh skipped"));
+    assert!(snapshot.contains("budget 12"));
+}
+
+#[test]
 fn selecting_prompt_session_scopes_files_to_prompt_changes() {
     let mut state = sample_state();
     state.selected_run = state

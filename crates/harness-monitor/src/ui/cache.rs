@@ -19,6 +19,7 @@ const FITNESS_HISTORY_FILE: &str = "fitness-history.json";
 const TEST_MAPPING_HISTORY_SCHEMA_VERSION: u32 = 1;
 const TEST_MAPPING_HISTORY_FILE: &str = "test-mapping-history.json";
 const TEST_MAPPING_HISTORY_CAPACITY: usize = 6;
+const TEST_MAPPING_FULL_REFRESH_MAX_FILES: usize = 12;
 const FITNESS_TREND_CAPACITY: usize = 12;
 const INITIAL_FILE_PREVIEW_LINE_LIMIT: usize = 100;
 const DIRECTORY_PREVIEW_ENTRY_LIMIT: usize = 200;
@@ -197,6 +198,7 @@ pub(super) struct AppCache {
     pending_fitness: bool,
     pending_test_mapping_fast_key: Option<String>,
     pending_test_mapping_full_key: Option<String>,
+    test_mapping_full_refresh_note: Option<String>,
     test_mapping_not_before_ms: Option<i64>,
     pending_scc: bool,
     queued_fitness_refresh: Option<(String, String, bool, fitness::FitnessRunMode)>,
@@ -301,6 +303,7 @@ impl AppCache {
             pending_fitness: false,
             pending_test_mapping_fast_key: None,
             pending_test_mapping_full_key: None,
+            test_mapping_full_refresh_note: None,
             test_mapping_not_before_ms: Some(
                 chrono::Utc::now().timestamp_millis() + TEST_MAPPING_STARTUP_DELAY_MS,
             ),
@@ -526,7 +529,8 @@ impl AppCache {
                                 self.pending_test_mapping_fast_key = None
                             }
                             TestMappingAnalysisMode::Full => {
-                                self.pending_test_mapping_full_key = None
+                                self.pending_test_mapping_full_key = None;
+                                self.test_mapping_full_refresh_note = None;
                             }
                         }
                         self.test_mapping_not_before_ms = None;
@@ -547,6 +551,7 @@ impl AppCache {
                             }
                             TestMappingAnalysisMode::Full => {
                                 self.pending_test_mapping_full_key = None;
+                                self.test_mapping_full_refresh_note = None;
                             }
                         }
                         self.test_mapping_not_before_ms = Some(
@@ -700,6 +705,7 @@ impl AppCache {
         if files.is_empty() {
             self.pending_test_mapping_fast_key = None;
             self.pending_test_mapping_full_key = None;
+            self.test_mapping_full_refresh_note = None;
             self.test_mapping_snapshot = None;
             return;
         }
@@ -724,6 +730,7 @@ impl AppCache {
             {
                 self.pending_test_mapping_fast_key = None;
                 self.pending_test_mapping_full_key = None;
+                self.test_mapping_full_refresh_note = None;
                 self.test_mapping_not_before_ms = None;
                 self.test_mapping_snapshot = Some(snapshot);
                 return;
@@ -747,6 +754,15 @@ impl AppCache {
         if current_mode == Some(TestMappingAnalysisMode::Fast)
             && self.pending_test_mapping_full_key.as_deref() != Some(cache_key.as_str())
         {
+            if files.len() > TEST_MAPPING_FULL_REFRESH_MAX_FILES {
+                self.pending_test_mapping_full_key = None;
+                self.test_mapping_full_refresh_note = Some(format!(
+                    "graph refresh skipped: {} dirty files exceeds budget {}",
+                    files.len(),
+                    TEST_MAPPING_FULL_REFRESH_MAX_FILES
+                ));
+                return;
+            }
             let _ = self.eval_worker_tx.send(EvalCommand::TestMapping {
                 repo_root: state.repo_root.clone(),
                 files,
@@ -755,6 +771,7 @@ impl AppCache {
                 analysis_mode: TestMappingAnalysisMode::Full,
             });
             self.pending_test_mapping_full_key = Some(cache_key);
+            self.test_mapping_full_refresh_note = None;
         }
     }
 
@@ -943,6 +960,13 @@ impl AppCache {
     #[cfg(test)]
     pub(super) fn set_test_mapping_graph_pending_for_tests(&mut self, cache_key: String) {
         self.pending_test_mapping_full_key = Some(cache_key);
+        self.test_mapping_full_refresh_note = None;
+    }
+
+    #[cfg(test)]
+    pub(super) fn set_test_mapping_graph_note_for_tests(&mut self, note: String) {
+        self.pending_test_mapping_full_key = None;
+        self.test_mapping_full_refresh_note = Some(note);
     }
 
     fn active_fitness_history(&self) -> Option<&FitnessHistoryEntry> {
@@ -1115,6 +1139,10 @@ impl AppCache {
 
     pub(super) fn test_mapping_graph_enrichment_pending(&self) -> bool {
         self.pending_test_mapping_full_key.is_some()
+    }
+
+    pub(super) fn test_mapping_graph_enrichment_note(&self) -> Option<&str> {
+        self.test_mapping_full_refresh_note.as_deref()
     }
 
     pub(super) fn repo_review_hints(

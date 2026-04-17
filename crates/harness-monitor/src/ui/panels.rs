@@ -193,6 +193,12 @@ pub(super) fn render_details_panel(
                         "graph refresh pending",
                         Style::default().fg(colors.muted),
                     ));
+                } else if let Some(note) = cache.test_mapping_graph_enrichment_note() {
+                    row.push(Span::raw("  "));
+                    row.push(Span::styled(
+                        note.to_string(),
+                        Style::default().fg(colors.muted),
+                    ));
                 }
                 lines.push(Line::from(row));
             }
