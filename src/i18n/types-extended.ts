@@ -636,6 +636,17 @@ export interface ExtendedTranslationDictionarySections extends TailTranslationDi
     del: string;
     dangerZone: string;
     dangerZoneHint: string;
+    branchLifecycle: string;
+    branchLifecycleSettings: string;
+    branchLifecycleHint: string;
+    deleteBranchOnMerge: string;
+    deleteBranchOnMergeHint: string;
+    removeWorktreeOnMerge: string;
+    removeWorktreeOnMergeHint: string;
+    rebaseDownstream: string;
+    rebaseDownstreamHint: string;
+    autoCreatePullRequest: string;
+    autoCreatePullRequestHint: string;
     dirty: string;
     discardChanges: string;
     down: string;

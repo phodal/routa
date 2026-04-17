@@ -326,6 +326,14 @@ export interface KanbanBoardInfo {
   autoProviderId?: string;
   sessionConcurrencyLimit?: number;
   devSessionSupervision?: KanbanDevSessionSupervisionInfo;
+  branchRules?: {
+    lifecycle: {
+      deleteBranchOnMerge: boolean;
+      removeWorktreeOnMerge: boolean;
+      rebaseDownstream: boolean;
+      autoCreatePullRequest: boolean;
+    };
+  };
   queue?: KanbanBoardQueueInfo;
   columns: KanbanColumnInfo[];
   createdAt: string;

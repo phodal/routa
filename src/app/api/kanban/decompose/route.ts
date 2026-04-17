@@ -7,7 +7,16 @@ export const dynamic = "force-dynamic";
 interface DecomposeBody {
   boardId: string;
   workspaceId: string;
-  tasks: { title: string; description?: string; priority?: "low" | "medium" | "high" | "urgent"; labels?: string[] }[];
+  tasks: {
+    title: string;
+    description?: string;
+    priority?: "low" | "medium" | "high" | "urgent";
+    labels?: string[];
+    scope?: string;
+    acceptanceCriteria?: string[];
+    verificationCommands?: string[];
+    testCases?: string[];
+  }[];
   columnId?: string;
 }
 

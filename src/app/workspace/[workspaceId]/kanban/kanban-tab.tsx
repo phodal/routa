@@ -1759,6 +1759,7 @@ export function KanbanTab({
       sessionConcurrencyLimit: number,
       devSessionSupervision: KanbanDevSessionSupervisionInfo,
       githubTokenUpdate?: { token?: string; clear?: boolean },
+      branchRules?: KanbanBoardInfo["branchRules"],
     ) => {
       const updatedColumns = newColumns.map((col) => ({
         ...col,
@@ -1774,6 +1775,7 @@ export function KanbanTab({
           columns: updatedColumns,
           sessionConcurrencyLimit,
           devSessionSupervision,
+          ...(branchRules ? { branchRules } : {}),
           ...(githubTokenUpdate?.token ? { githubToken: githubTokenUpdate.token } : {}),
           ...(githubTokenUpdate?.clear ? { clearGitHubToken: true } : {}),
         }),

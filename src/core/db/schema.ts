@@ -99,6 +99,9 @@ export const tasks = pgTable("tasks", {
   lastSyncError: text("last_sync_error"),
   isPullRequest: boolean("is_pull_request"),
   dependencies: jsonb("dependencies").$type<string[]>().default([]),
+  blocking: jsonb("blocking").$type<string[]>().default([]),
+  dependencyStatus: text("dependency_status"),
+  parentTaskId: text("parent_task_id"),
   parallelGroup: text("parallel_group"),
   workspaceId: text("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
   /** Session ID that created this task (for session-scoped filtering) */

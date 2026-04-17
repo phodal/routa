@@ -6,6 +6,11 @@ import {
   setKanbanAutoProvider,
 } from "@/core/kanban/board-auto-provider";
 import {
+  getKanbanBranchRules,
+  setKanbanBranchRules,
+  type KanbanBranchRules,
+} from "@/core/kanban/board-branch-rules";
+import {
   getKanbanSessionConcurrencyLimit,
   setKanbanSessionConcurrencyLimit,
 } from "@/core/kanban/board-session-limits";
@@ -29,6 +34,7 @@ interface PatchBoardBody {
   autoProviderId?: string | null;
   sessionConcurrencyLimit?: number;
   devSessionSupervision?: Partial<KanbanDevSessionSupervision>;
+  branchRules?: Partial<KanbanBranchRules>;
 }
 
 function sanitizeBoard(
@@ -37,6 +43,7 @@ function sanitizeBoard(
     autoProviderId?: string | null;
     sessionConcurrencyLimit?: number;
     devSessionSupervision?: KanbanDevSessionSupervision;
+    branchRules?: KanbanBranchRules;
     queue?: unknown;
   },
 ) {
@@ -47,6 +54,7 @@ function sanitizeBoard(
     autoProviderId: extras?.autoProviderId,
     sessionConcurrencyLimit: extras?.sessionConcurrencyLimit,
     devSessionSupervision: extras?.devSessionSupervision,
+    branchRules: extras?.branchRules,
     queue: extras?.queue,
   };
 }
@@ -70,6 +78,7 @@ export async function GET(
       autoProviderId: getKanbanAutoProvider(workspace?.metadata, board.id),
       sessionConcurrencyLimit: getKanbanSessionConcurrencyLimit(workspace?.metadata, board.id),
       devSessionSupervision: getKanbanDevSessionSupervision(workspace?.metadata, board.id),
+      branchRules: getKanbanBranchRules(workspace?.metadata, board.id),
       queue: await queue.getBoardSnapshot(board.id),
     }),
   });
@@ -115,6 +124,7 @@ export async function PATCH(
     body.autoProviderId !== undefined
     || body.sessionConcurrencyLimit !== undefined
     || body.devSessionSupervision !== undefined
+    || body.branchRules !== undefined
   ) {
     const workspace = await system.workspaceStore.get(existing.workspaceId);
     let nextMetadata = workspace?.metadata;
@@ -139,6 +149,13 @@ export async function PATCH(
         body.devSessionSupervision,
       );
     }
+    if (body.branchRules !== undefined) {
+      nextMetadata = setKanbanBranchRules(
+        nextMetadata,
+        boardId,
+        body.branchRules,
+      );
+    }
     await system.workspaceStore.updateMetadata(existing.workspaceId, nextMetadata ?? {});
   }
 
@@ -161,6 +178,7 @@ export async function PATCH(
       autoProviderId: getKanbanAutoProvider(workspace?.metadata, boardId),
       sessionConcurrencyLimit: getKanbanSessionConcurrencyLimit(workspace?.metadata, boardId),
       devSessionSupervision: getKanbanDevSessionSupervision(workspace?.metadata, boardId),
+      branchRules: getKanbanBranchRules(workspace?.metadata, boardId),
       queue: await queue.getBoardSnapshot(boardId),
     }),
   });

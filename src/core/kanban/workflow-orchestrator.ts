@@ -24,6 +24,8 @@ import type { ColumnTransitionData } from "./column-transition";
 import { resolveTransitionAutomation } from "./column-transition";
 import { getDefaultKanbanDevSessionSupervision } from "./board-session-supervision";
 import { markTaskLaneSessionStatus, upsertTaskLaneSession } from "./task-lane-history";
+import { checkDependencyGate } from "./dependency-gate";
+import { getKanbanBranchRules, type KanbanBranchRules } from "./board-branch-rules";
 
 const WATCHDOG_SCAN_INTERVAL_MS = 30_000;
 const COMPLETED_AUTOMATION_CLEANUP_DELAY_MS = 30_000;
@@ -185,12 +187,18 @@ export type ResolveDevSessionSupervision = (params: {
   stage: KanbanColumnStage;
 }) => Promise<KanbanDevSessionSupervision>;
 
+export type ResolveBranchRules = (params: {
+  workspaceId: string;
+  boardId: string;
+}) => Promise<KanbanBranchRules>;
+
 export class KanbanWorkflowOrchestrator {
   private handlerKey = "kanban-workflow-orchestrator";
   private activeAutomations = new Map<string, ActiveAutomation>();
   private started = false;
   private cleanupCardSession?: CleanupCardSession;
   private resolveDevSessionSupervision?: ResolveDevSessionSupervision;
+  private resolveBranchRules?: ResolveBranchRules;
   private sendKanbanSessionPrompt?: SendKanbanSessionPrompt;
   private watchdogTimer?: ReturnType<typeof setInterval>;
 
@@ -255,6 +263,11 @@ export class KanbanWorkflowOrchestrator {
     this.resolveDevSessionSupervision = fn;
   }
 
+  /** Set the resolver for board-level branch rules */
+  setResolveBranchRules(fn: ResolveBranchRules): void {
+    this.resolveBranchRules = fn;
+  }
+
   /** Set the callback used to send a prompt message into a live ACP session */
   setSendKanbanSessionPrompt(fn: SendKanbanSessionPrompt): void {
     this.sendKanbanSessionPrompt = fn;
@@ -307,7 +320,7 @@ export class KanbanWorkflowOrchestrator {
 
     // Dependency gate: block automation if any dependency is unfinished
     if (task && task.dependencies.length > 0) {
-      const depCheck = await this.checkDependencyGate(task, board.columns);
+      const depCheck = await checkDependencyGate(task, board.columns, this.taskStore);
       if (depCheck.blocked) {
         task.lastSyncError = `Blocked by unfinished dependencies: ${depCheck.pendingDependencies.join(", ")}`;
         task.updatedAt = new Date();
@@ -481,6 +494,16 @@ export class KanbanWorkflowOrchestrator {
         this.scheduleWorktreeCleanup(cardId, automation);
       }
 
+      // Auto-create PR if configured and task has no PR yet
+      if (automation.status === "completed" && automation.stage === "done" && task && !task.pullRequestUrl) {
+        const branchRules = this.resolveBranchRules
+          ? await this.resolveBranchRules({ workspaceId: automation.workspaceId, boardId: automation.boardId })
+          : undefined;
+        if (branchRules?.lifecycle.autoCreatePullRequest) {
+          this.triggerAutoPrCreation(cardId, automation, task);
+        }
+      }
+
       if (task) {
         if (!failedToAdvanceWithinLane && successEvent && completionSatisfied) {
           task.lastSyncError = undefined;
@@ -589,41 +612,6 @@ export class KanbanWorkflowOrchestrator {
   }
 
   /**
-   * Check whether all of a task's dependencies are satisfied.
-   * Returns blocked=true if any dependency task is not yet in a done column.
-   */
-  private async checkDependencyGate(
-    task: Task,
-    boardColumns: Array<{ id: string; stage?: string }>,
-  ): Promise<{ blocked: boolean; pendingDependencies: string[] }> {
-    if (!task.dependencies || task.dependencies.length === 0) {
-      return { blocked: false, pendingDependencies: [] };
-    }
-
-    const doneColumnIds = new Set(
-      boardColumns
-        .filter((col) => col.stage === "done")
-        .map((col) => col.id),
-    );
-
-    const pending: string[] = [];
-    for (const depId of task.dependencies) {
-      const depTask = await this.taskStore.get(depId);
-      if (!depTask) continue;
-      const inDoneColumn = depTask.status === TaskStatus.COMPLETED
-        || doneColumnIds.has(depTask.columnId ?? "");
-      // If the dependency has a PR, it must be merged to count as complete
-      const prMerged = !depTask.pullRequestUrl || Boolean(depTask.pullRequestMergedAt);
-      const isDone = inDoneColumn && prMerged;
-      if (!isDone) {
-        pending.push(depTask.title || depId);
-      }
-    }
-
-    return { blocked: pending.length > 0, pendingDependencies: pending };
-  }
-
-  /**
    * When a task completes, scan for dependent tasks that may now be unblocked
    * and re-trigger their automation.
    */
@@ -640,7 +628,7 @@ export class KanbanWorkflowOrchestrator {
     for (const t of allTasks) {
       if (!t.dependencies.includes(completedCardId)) continue;
 
-      const depCheck = await this.checkDependencyGate(t, board.columns);
+      const depCheck = await checkDependencyGate(t, board.columns, this.taskStore);
       if (!depCheck.blocked && t.lastSyncError?.startsWith("Blocked by unfinished dependencies")) {
         t.lastSyncError = undefined;
         t.updatedAt = new Date();
@@ -1059,5 +1047,39 @@ export class KanbanWorkflowOrchestrator {
     } catch (err) {
       console.error("[WorkflowOrchestrator] Auto-advance failed:", err);
     }
+  }
+
+  /**
+   * Trigger automatic PR creation for a completed task.
+   * Emits a PR_CREATE_REQUESTED event so downstream handlers can
+   * create the PR using the task's worktree branch.
+   */
+  private triggerAutoPrCreation(
+    cardId: string,
+    automation: ActiveAutomation,
+    task: Task,
+  ): void {
+    if (!task.worktreeId) {
+      console.log(
+        `[WorkflowOrchestrator] Skipping auto PR creation for ${cardId}: no worktree.`,
+      );
+      return;
+    }
+
+    console.log(
+      `[WorkflowOrchestrator] Triggering auto PR creation for task ${cardId}.`,
+    );
+    this.eventBus.emit({
+      type: AgentEventType.PR_CREATE_REQUESTED,
+      agentId: "kanban-workflow-orchestrator",
+      workspaceId: automation.workspaceId,
+      data: {
+        cardId,
+        cardTitle: automation.cardTitle,
+        boardId: automation.boardId,
+        worktreeId: task.worktreeId,
+      },
+      timestamp: new Date(),
+    });
   }
 }

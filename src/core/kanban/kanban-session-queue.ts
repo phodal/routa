@@ -24,6 +24,7 @@ interface QueueEntry extends KanbanSessionQueueJob {
   status: "queued" | "running";
   enqueuedAt: Date;
   sessionId?: string;
+  dependencies?: string[];
 }
 
 export class KanbanSessionQueue {
@@ -95,10 +96,13 @@ export class KanbanSessionQueue {
 
     const limit = await this.getConcurrencyLimit(job.workspaceId, job.boardId);
     const runningCount = this.countRunning(job.boardId);
+    // Capture dependencies for topological ordering
+    const task = await this.taskStore.get(job.cardId);
     const entry: QueueEntry = {
       ...job,
       status: "queued",
       enqueuedAt: new Date(),
+      dependencies: task?.dependencies ?? [],
     };
     this.jobsByCardId.set(job.cardId, entry);
 
@@ -270,8 +274,19 @@ export class KanbanSessionQueue {
     const queue = this.queuedByBoard.get(boardId);
     if (!queue || queue.length === 0) return;
 
-    while (queue.length > 0 && runningCount < limit) {
-      const nextEntry = queue.shift();
+    // Build set of currently-running card IDs (used as "resolved" nodes in topological sort)
+    const runningCardIds = new Set<string>();
+    for (const entry of this.jobsByCardId.values()) {
+      if (entry.boardId === boardId && entry.status === "running") {
+        runningCardIds.add(entry.cardId);
+      }
+    }
+
+    // Topological sort: prefer entries whose dependencies are all resolved (running or completed)
+    const sortedQueue = this.topologicalSort(queue, runningCardIds);
+
+    while (sortedQueue.length > 0 && runningCount < limit) {
+      const nextEntry = sortedQueue.shift();
       if (!nextEntry) break;
 
       const task = await this.taskStore.get(nextEntry.cardId);
@@ -283,13 +298,76 @@ export class KanbanSessionQueue {
       const result = await this.startEntry(nextEntry);
       if (result.sessionId) {
         runningCount += 1;
+        // Newly running task may unblock other queued entries
+        runningCardIds.add(nextEntry.cardId);
       }
     }
 
-    if (queue.length === 0) {
+    // Update queue with remaining entries (preserving original order for non-topological fields)
+    const remainingCardIds = new Set(sortedQueue.map((e) => e.cardId));
+    const remainingQueue = queue.filter((e) => remainingCardIds.has(e.cardId));
+
+    if (remainingQueue.length === 0) {
       this.queuedByBoard.delete(boardId);
     } else {
-      this.queuedByBoard.set(boardId, queue);
+      this.queuedByBoard.set(boardId, remainingQueue);
     }
+  }
+
+  /**
+   * Topological sort of queued entries based on their dependencies.
+   * Entries with all dependencies resolved (running or absent) come first.
+   */
+  private topologicalSort(entries: QueueEntry[], resolvedIds: Set<string>): QueueEntry[] {
+    const entryMap = new Map(entries.map((e) => [e.cardId, e]));
+    const inDegree = new Map<string, number>();
+    const adjacency = new Map<string, Set<string>>();
+
+    for (const entry of entries) {
+      inDegree.set(entry.cardId, 0);
+      adjacency.set(entry.cardId, new Set());
+    }
+
+    // Build adjacency: dep → dependent (dep must complete before dependent can run)
+    for (const entry of entries) {
+      const deps = entry.dependencies ?? [];
+      let degree = 0;
+      for (const depId of deps) {
+        if (entryMap.has(depId)) {
+          // Dependency is also in queue — add edge
+          adjacency.get(depId)!.add(entry.cardId);
+          degree++;
+        }
+        // If dependency is resolved (running or not in queue), no edge needed
+      }
+      inDegree.set(entry.cardId, degree);
+    }
+
+    // Kahn's algorithm
+    const result: QueueEntry[] = [];
+    const zeroDegree = entries.filter((e) => inDegree.get(e.cardId) === 0);
+
+    while (zeroDegree.length > 0) {
+      const next = zeroDegree.shift()!;
+      result.push(next);
+
+      for (const dependentId of adjacency.get(next.cardId) ?? []) {
+        const newDegree = (inDegree.get(dependentId) ?? 1) - 1;
+        inDegree.set(dependentId, newDegree);
+        if (newDegree === 0) {
+          const dependent = entryMap.get(dependentId);
+          if (dependent) zeroDegree.push(dependent);
+        }
+      }
+    }
+
+    // Append any remaining entries (circular deps or unresolvable) at the end
+    for (const entry of entries) {
+      if (!result.includes(entry)) {
+        result.push(entry);
+      }
+    }
+
+    return result;
   }
 }

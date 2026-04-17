@@ -46,6 +46,8 @@ export enum AgentEventType {
   WORKTREE_CLEANUP = "worktree_cleanup",
   /** Emitted when a GitHub PR associated with a task is merged */
   PR_MERGED = "pr_merged",
+  /** Emitted when a task should automatically create a Pull Request */
+  PR_CREATE_REQUESTED = "pr_create_requested",
 }
 
 export interface AgentEvent {

@@ -771,7 +771,17 @@ export class KanbanTools {
   async decomposeTasks(params: {
     boardId?: string;
     workspaceId: string;
-    tasks: { title: string; description?: string; priority?: "low" | "medium" | "high" | "urgent"; labels?: string[]; assignedProvider?: string }[];
+    tasks: {
+      title: string;
+      description?: string;
+      priority?: "low" | "medium" | "high" | "urgent";
+      labels?: string[];
+      assignedProvider?: string;
+      scope?: string;
+      acceptanceCriteria?: string[];
+      verificationCommands?: string[];
+      testCases?: string[];
+    }[];
     columnId?: string;
   }): Promise<ToolResult> {
     const board = await this.resolveBoard(params.workspaceId, params.boardId);
@@ -809,6 +819,10 @@ export class KanbanTools {
         priority: item.priority as TaskPriority | undefined,
         labels: item.labels,
         assignedProvider: item.assignedProvider,
+        scope: item.scope,
+        acceptanceCriteria: item.acceptanceCriteria,
+        verificationCommands: item.verificationCommands,
+        testCases: item.testCases,
       });
       await this.taskStore.save(task);
       await this.triggerCreatedCardAutomation(board, column, task);

@@ -738,11 +738,17 @@ export function useAcp(baseUrl: string = ""): UseAcpState & UseAcpActions {
     try {
       await client.respondToUserInput(sessionId, toolCallId, response);
     } catch (err) {
-      logRuntime("error", "useAcp.respondToUserInput", "Failed to send AskUserQuestion response", err);
-      setState((s) => ({
-        ...s,
-        error: toErrorMessage(err) || "Failed to submit question response",
-      }));
+      const isMissingRequest = err instanceof Error &&
+        err.message.includes("No pending interactive request found for this session");
+      if (isMissingRequest) {
+        logRuntime("warn", "useAcp.respondToUserInput", "Pending interactive request no longer available", err);
+      } else {
+        logRuntime("error", "useAcp.respondToUserInput", "Failed to send AskUserQuestion response", err);
+        setState((s) => ({
+          ...s,
+          error: toErrorMessage(err) || "Failed to submit question response",
+        }));
+      }
       throw err;
     }
   }, []);
@@ -758,11 +764,17 @@ export function useAcp(baseUrl: string = ""): UseAcpState & UseAcpActions {
     try {
       await client.respondToUserInput(targetSessionId, toolCallId, response);
     } catch (err) {
-      logRuntime("error", "useAcp.respondToUserInputForSession", "Failed to send AskUserQuestion response", err);
-      setState((s) => ({
-        ...s,
-        error: toErrorMessage(err) || "Failed to submit question response",
-      }));
+      const isMissingRequest = err instanceof Error &&
+        err.message.includes("No pending interactive request found for this session");
+      if (isMissingRequest) {
+        logRuntime("warn", "useAcp.respondToUserInputForSession", "Pending interactive request no longer available", err);
+      } else {
+        logRuntime("error", "useAcp.respondToUserInputForSession", "Failed to send AskUserQuestion response", err);
+        setState((s) => ({
+          ...s,
+          error: toErrorMessage(err) || "Failed to submit question response",
+        }));
+      }
       throw err;
     }
   }, []);

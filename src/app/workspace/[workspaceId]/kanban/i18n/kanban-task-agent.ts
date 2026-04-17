@@ -74,7 +74,7 @@ export function buildKanbanTaskAgentPrompt(params: {
 
 推荐参数约定：
 - 只创建一张卡时，调用 create_card，并显式传入 title 和 columnId: "backlog"
-- 需要创建多张卡时，调用 decompose_tasks，并显式传入 tasks 和 columnId: "backlog"
+- 需要创建多张卡时，调用 decompose_tasks，并显式传入 tasks 和 columnId: "backlog"。每个 task 必须包含 scope、acceptanceCriteria 和 verificationCommands 或 testCases，以避免后续移动到 Dev 列时被故事就绪门禁拦截
 - 如果有 boardId，可传入 boardId: ${boardId ?? "default"}
 - 不要发明新的参数名，例如不要用 "column"，优先使用 "columnId"
 
@@ -162,7 +162,7 @@ Target column for every created card: backlog
 
 Preferred tool arguments:
 - When creating a single card, call create_card with title plus columnId: "backlog"
-- When creating multiple cards, call decompose_tasks with tasks plus columnId: "backlog"
+- When creating multiple cards, call decompose_tasks with tasks plus columnId: "backlog". Each task MUST include scope, acceptanceCriteria, and verificationCommands or testCases to prevent story-readiness gate rejections when cards later move to Dev
 - Pass boardId: ${boardId ?? "default"} when available
 - Do not invent alternate argument names such as "column"; prefer "columnId"
 

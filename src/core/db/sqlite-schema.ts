@@ -101,6 +101,9 @@ export const tasks = sqliteTable("tasks", {
   lastSyncError: text("last_sync_error"),
   isPullRequest: integer("is_pull_request", { mode: "boolean" }),
   dependencies: text("dependencies", { mode: "json" }).$type<string[]>().default([]),
+  blocking: text("blocking", { mode: "json" }).$type<string[]>().default([]),
+  dependencyStatus: text("dependency_status"),
+  parentTaskId: text("parent_task_id"),
   parallelGroup: text("parallel_group"),
   workspaceId: text("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
   /** Session ID that created this task (for session-scoped filtering) */

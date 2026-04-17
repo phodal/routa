@@ -134,7 +134,7 @@ export function buildTaskPrompt(
         `- **update_card**: Update this card's title, description, priority, or labels. Use cardId: "${task.id}"`,
         "- **search_cards**: Search the board for duplicates or related work before creating more tasks",
         "- **create_card**: Create exactly one follow-up backlog card if the current card must be refined into a single user story",
-        "- **decompose_tasks**: Create multiple backlog cards when the current card clearly contains multiple independent stories",
+        "- **decompose_tasks**: Create multiple backlog cards when the current card clearly contains multiple independent stories. Each task item MUST include scope, acceptanceCriteria, and verificationCommands or testCases to avoid move gate rejections later",
         "- **create_note**: Create notes for planning or refinement context",
         "- **list_artifacts**: Check whether the required artifacts already exist for this card",
         "- **provide_artifact**: Save test results, code diffs, or other evidence as structured Kanban artifacts",
@@ -167,7 +167,7 @@ export function buildTaskPrompt(
   const instructions = isBacklogPlanning
     ? [
         "1. Treat backlog as planning and refinement, not implementation",
-        "2. Clarify or decompose the work into backlog-ready stories when needed",
+        "2. Clarify or decompose the work into backlog-ready stories when needed. When using `decompose_tasks`, provide scope, acceptanceCriteria, and verificationCommands or testCases for each sub-task so they can pass story-readiness gates without an extra update cycle",
         "3. Do not use native tools such as Bash, Read, Write, Edit, Glob, or Grep in backlog planning",
         "4. Do not use GitHub CLI commands such as gh issue create",
         "5. Do not start implementation work in this column",

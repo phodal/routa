@@ -8,6 +8,7 @@ import { ensureTaskBoardContext } from "@/core/kanban/task-board-context";
 import { buildTaskGitHubIssueBody, updateGitHubIssue } from "@/core/kanban/github-issues";
 import { GitWorktreeService } from "@/core/git/git-worktree-service";
 import { ensureTaskWorktree } from "@/core/kanban/ensure-task-worktree";
+import { getKanbanBranchRules } from "@/core/kanban/board-branch-rules";
 import type { ArtifactType } from "@/core/models/artifact";
 import { emitColumnTransition } from "@/core/kanban/column-transition";
 import { archiveActiveTaskSession, prepareTaskForColumnChange } from "@/core/kanban/task-session-transition";
@@ -50,6 +51,7 @@ import {
   resolveCurrentOrNextContractGate,
 } from "@/core/kanban/task-contract-readiness";
 import { resolveTaskWorktreeTruth } from "@/core/kanban/task-worktree-truth";
+import { checkDependencyGate, updateDependencyRelations, applyDependencyStatus, validateParentAssignment, detectParentCycle } from "@/core/kanban/dependency-gate";
 
 export const dynamic = "force-dynamic";
 
@@ -516,6 +518,21 @@ export async function PATCH(
             );
           }
 
+          // Dependency gate: block column transition if dependencies are unsatisfied
+          if (nextTask.dependencies.length > 0) {
+            const depCheck = await checkDependencyGate(nextTask, board.columns, system.taskStore);
+            applyDependencyStatus(nextTask, depCheck);
+            if (depCheck.blocked) {
+              return NextResponse.json(
+                {
+                  error: `Cannot move task: blocked by unfinished dependencies: ${depCheck.pendingDependencies.join(", ")}`,
+                  pendingDependencies: depCheck.pendingDependencies,
+                },
+                { status: 409 },
+              );
+            }
+          }
+
           if (targetColumn?.automation?.deliveryRules) {
             const deliveryReadiness = await buildTaskDeliveryReadiness(nextTask, system);
             transitionDeliveryReadiness = deliveryReadiness;
@@ -563,7 +580,25 @@ export async function PATCH(
   if (body.githubState !== undefined) nextTask.githubState = body.githubState;
   if (body.lastSyncError !== undefined) nextTask.lastSyncError = body.lastSyncError;
   if (body.isPullRequest !== undefined) nextTask.isPullRequest = body.isPullRequest === true ? true : undefined;
-  if (body.dependencies !== undefined) nextTask.dependencies = body.dependencies;
+  if (body.dependencies !== undefined) {
+    nextTask.dependencies = body.dependencies;
+    // Sync bidirectional relations + update blocked status
+    await updateDependencyRelations(taskId, body.dependencies, system.taskStore);
+  }
+  if (body.parentTaskId !== undefined) {
+    const newParentId = body.parentTaskId || undefined;
+    if (newParentId) {
+      const validationError = validateParentAssignment(taskId, newParentId);
+      if (validationError) {
+        return NextResponse.json({ error: validationError }, { status: 400 });
+      }
+      const hasCycle = await detectParentCycle(taskId, newParentId, system.taskStore);
+      if (hasCycle) {
+        return NextResponse.json({ error: "Circular parent relationship detected." }, { status: 400 });
+      }
+    }
+    nextTask.parentTaskId = newParentId;
+  }
   if (body.parallelGroup !== undefined) nextTask.parallelGroup = body.parallelGroup;
 
   Object.assign(nextTask, await ensureTaskBoardContext(system, nextTask));
@@ -612,12 +647,15 @@ export async function PATCH(
     // Auto-create worktree when entering dev column (if no worktree yet and codebase exists)
     if ((enteringDev || reopenTrigger) && preferredCodebase && !nextTask.worktreeId) {
       const workspace = await system.workspaceStore.get(nextTask.workspaceId);
+      const boardId = nextTask.boardId ?? board?.id;
+      const branchRules = boardId ? getKanbanBranchRules(workspace?.metadata, boardId) : undefined;
       const result = await ensureTaskWorktree(nextTask, preferredCodebase, {
         worktreeStore: system.worktreeStore,
         codebaseStore: system.codebaseStore,
         taskStore: system.taskStore,
         workspace,
         workspaceId: nextTask.workspaceId,
+        rules: branchRules,
       });
       if (!result.ok) {
         console.error("[kanban] Failed to auto-create worktree:", result.errorMessage);
@@ -637,6 +675,7 @@ export async function PATCH(
       task: nextTask,
       expectedColumnId: nextTask.columnId,
       ignoreExistingTrigger: retryingTrigger,
+      bypassDependencyGate: reopenTrigger,
       providerOverride: retryProviderId,
     });
     if (triggerResult.sessionId) {

@@ -237,6 +237,12 @@ export interface Task {
   lastSyncError?: string;
   isPullRequest?: boolean;
   dependencies: string[];
+  /** Tasks this task is blocking (reverse of dependencies) */
+  blocking: string[];
+  /** Dependency gate status: "clear" | "blocked" */
+  dependencyStatus?: "clear" | "blocked";
+  /** Parent task for sub-task hierarchy */
+  parentTaskId?: string;
   parallelGroup?: string;
   workspaceId: string;
   /** Session ID that created this task (for session-scoped filtering) */
@@ -284,6 +290,9 @@ export function createTask(params: {
   verificationCommands?: string[];
   testCases?: string[];
   dependencies?: string[];
+  blocking?: string[];
+  dependencyStatus?: "clear" | "blocked";
+  parentTaskId?: string;
   parallelGroup?: string;
   boardId?: string;
   columnId?: string;
@@ -343,6 +352,9 @@ export function createTask(params: {
     lastSyncError: params.lastSyncError,
     isPullRequest: params.isPullRequest,
     dependencies: params.dependencies ?? [],
+    blocking: params.blocking ?? [],
+    dependencyStatus: params.dependencyStatus,
+    parentTaskId: params.parentTaskId,
     parallelGroup: params.parallelGroup,
     workspaceId: params.workspaceId,
     sessionId: params.sessionId,

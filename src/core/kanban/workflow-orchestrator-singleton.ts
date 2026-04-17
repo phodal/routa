@@ -15,24 +15,19 @@ import type {
   KanbanColumnAutomation,
   KanbanColumnStage,
 } from "../models/kanban";
-import { TaskStatus } from "../models/task";
-import { GitWorktreeService } from "../git/git-worktree-service";
-import {
-  getDefaultWorkspaceWorktreeRoot,
-  getEffectiveWorkspaceMetadata,
-} from "../models/workspace";
+import type { Workspace } from "../models/workspace";
 import {
   resolveKanbanAutomationStep,
   resolveEffectiveTaskAutomation,
   type AutomationSpecialistSummary,
 } from "./effective-task-automation";
-import { buildKanbanWorktreeNaming } from "./worktree-naming";
 import { ensureTaskWorktree } from "./ensure-task-worktree";
 import { getInternalApiOrigin, triggerAssignedTaskAgent } from "./agent-trigger";
 import { KanbanSessionQueue } from "./kanban-session-queue";
 import { getKanbanSessionConcurrencyLimit as getBoardSessionConcurrencyLimit } from "./board-session-limits";
 import { getKanbanDevSessionSupervision } from "./board-session-supervision";
 import { getKanbanAutoProvider } from "./board-auto-provider";
+import { getKanbanBranchRules } from "./board-branch-rules";
 import { upsertTaskLaneSession } from "./task-lane-history";
 import { resolveTaskWorktreeTruth } from "./task-worktree-truth";
 import { getHttpSessionStore } from "../acp/http-session-store";
@@ -41,6 +36,8 @@ import { dispatchSessionPrompt } from "@/core/acp/session-prompt";
 import type { ColumnTransitionData } from "./column-transition";
 import { startWorktreeCleanupListener } from "./worktree-cleanup";
 import { startPrMergeListener } from "./pr-merge-listener";
+import { startPrAutoCreateListener } from "./pr-auto-create";
+import { checkDependencyGate } from "./dependency-gate";
 import {
   buildTaskEvidenceSummary,
   buildTaskInvestValidation,
@@ -99,6 +96,7 @@ export async function enqueueKanbanTaskSession(
     expectedColumnId?: string;
     ignoreExistingTrigger?: boolean;
     bypassQueue?: boolean;
+    bypassDependencyGate?: boolean;
     mutateTask?: (task: NonNullable<Awaited<ReturnType<RoutaSystem["taskStore"]["get"]>>>) => void;
     providerOverride?: string;
     step?: KanbanAutomationStep;
@@ -112,6 +110,20 @@ export async function enqueueKanbanTaskSession(
   }
   if (task.triggerSessionId && !params.ignoreExistingTrigger) {
     return { sessionId: task.triggerSessionId, queued: false };
+  }
+
+  // Dependency gate: block enqueue if dependencies are unsatisfied
+  if (!params.bypassDependencyGate && task.dependencies.length > 0 && task.boardId) {
+    const board = await system.kanbanBoardStore.get(task.boardId);
+    if (board) {
+      const depCheck = await checkDependencyGate(task, board.columns, system.taskStore);
+      if (depCheck.blocked) {
+        return {
+          queued: false,
+          error: `Blocked by unfinished dependencies: ${depCheck.pendingDependencies.join(", ")}`,
+        };
+      }
+    }
   }
 
   if (params.bypassQueue) {
@@ -164,6 +176,7 @@ async function startKanbanTaskSession(
   const board = await system.kanbanBoardStore.get(nextTask.boardId!);
   const workspace = await system.workspaceStore.get(nextTask.workspaceId);
   const autoProviderId = getKanbanAutoProvider(workspace?.metadata, nextTask.boardId!);
+  const branchRules = getKanbanBranchRules(workspace?.metadata, nextTask.boardId!);
 
   const initialWorktreeTruth = await resolveTaskWorktreeTruth(nextTask, system);
   if (nextTask.worktreeId && initialWorktreeTruth?.source !== "task.worktreeId") {
@@ -172,13 +185,14 @@ async function startKanbanTaskSession(
   const preferredCodebase = initialWorktreeTruth?.codebase;
   let worktreeCwd = initialWorktreeTruth?.cwd ?? process.cwd();
   let worktreeBranch = initialWorktreeTruth?.branch;
-  if (params.expectedColumnId === "dev" && preferredCodebase && !nextTask.worktreeId) {
+  if (branchRules.triggers.worktreeCreationColumns.includes(params.expectedColumnId ?? nextTask.columnId ?? "") && preferredCodebase && !nextTask.worktreeId) {
     const result = await ensureTaskWorktree(nextTask, preferredCodebase, {
       worktreeStore: system.worktreeStore,
       codebaseStore: system.codebaseStore,
       taskStore: system.taskStore,
       workspace,
       workspaceId: nextTask.workspaceId,
+      rules: branchRules,
     });
     if (!result.ok) {
       await system.taskStore.save(nextTask);
@@ -406,6 +420,10 @@ export function startWorkflowOrchestrator(system: RoutaSystem): void {
   orchestrator.setResolveDevSessionSupervision(({ workspaceId, boardId, stage }) =>
     resolveDevSessionSupervision(system, workspaceId, boardId, stage)
   );
+  orchestrator.setResolveBranchRules(async ({ workspaceId, boardId }) => {
+    const workspace = await system.workspaceStore.get(workspaceId);
+    return getKanbanBranchRules(workspace?.metadata, boardId);
+  });
   orchestrator.setSendKanbanSessionPrompt((params) => sendPromptToKanbanSession(system, {
     workspaceId: params.workspaceId,
     sessionId: params.sessionId,
@@ -415,6 +433,7 @@ export function startWorkflowOrchestrator(system: RoutaSystem): void {
   queue.start();
   startWorktreeCleanupListener(system);
   startPrMergeListener(system);
+  startPrAutoCreateListener(system);
   g[STARTED_KEY] = true;
 }
 

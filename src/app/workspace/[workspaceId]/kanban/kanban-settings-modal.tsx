@@ -47,6 +47,7 @@ export interface KanbanSettingsModalProps {
     sessionConcurrencyLimit: number,
     devSessionSupervision: KanbanDevSessionSupervisionInfo,
     githubTokenUpdate?: { token?: string; clear?: boolean },
+    branchRules?: KanbanBoardInfo["branchRules"],
   ) => Promise<void>;
 }
 
@@ -76,6 +77,16 @@ export function KanbanSettingsModal({
   const [sessionConcurrencyLimit, setSessionConcurrencyLimit] = useState<number>(board.sessionConcurrencyLimit ?? 1);
   const [devSessionSupervision, setDevSessionSupervision] = useState<KanbanDevSessionSupervisionInfo>(
     board.devSessionSupervision ?? DEFAULT_DEV_SESSION_SUPERVISION,
+  );
+  const [branchRules, setBranchRules] = useState<NonNullable<KanbanBoardInfo["branchRules"]>>(
+    board.branchRules ?? {
+      lifecycle: {
+        deleteBranchOnMerge: true,
+        removeWorktreeOnMerge: true,
+        rebaseDownstream: true,
+        autoCreatePullRequest: false,
+      },
+    },
   );
   const [selectedViewId, setSelectedViewId] = useState<string>(() => board.columns[0]?.id ?? BOARD_VIEW_ID);
   const [saving, setSaving] = useState(false);
@@ -109,6 +120,7 @@ export function KanbanSettingsModal({
     automation: normalizeAutomationForDirtyCheck(initialColumnAutomation, initialEditableColumns),
     sessionConcurrencyLimit: Math.max(1, Math.floor(board.sessionConcurrencyLimit ?? 1)),
     devSessionSupervision: normalizeDevSessionSupervision(board.devSessionSupervision ?? DEFAULT_DEV_SESSION_SUPERVISION),
+    branchRules: board.branchRules ?? branchRules,
     githubTokenConfigured: Boolean(board.githubTokenConfigured),
   }), [board.devSessionSupervision, board.githubTokenConfigured, board.sessionConcurrencyLimit, initialColumnAutomation, initialEditableColumns]);
 
@@ -117,9 +129,11 @@ export function KanbanSettingsModal({
     automation: normalizeAutomationForDirtyCheck(columnAutomation, editableColumns),
     sessionConcurrencyLimit: Math.max(1, Math.floor(sessionConcurrencyLimit)),
     devSessionSupervision: normalizeDevSessionSupervision(devSessionSupervision),
+    branchRules,
     githubTokenConfigured: removeConfiguredGitHubToken ? false : Boolean(board.githubTokenConfigured || githubTokenInput.trim()),
   }), [
     board.githubTokenConfigured,
+    branchRules,
     columnAutomation,
     devSessionSupervision,
     editableColumns,
@@ -349,6 +363,7 @@ export function KanbanSettingsModal({
           : githubTokenInput.trim()
             ? { token: githubTokenInput.trim() }
             : undefined,
+        branchRules,
       );
       if (closeAfterSave) {
         setShowUnsavedChangesPrompt(false);
@@ -635,6 +650,71 @@ export function KanbanSettingsModal({
                           />
                         </div>
                       </div>
+                    </div>
+                  </SectionCard>
+
+                  <SectionCard eyebrow={t.kanban.branchLifecycle} title={t.kanban.branchLifecycleSettings} description={t.kanban.branchLifecycleHint}>
+                    <div className="space-y-2">
+                      <label className="flex items-start gap-3 rounded-lg border border-slate-200 bg-white px-3 py-3 dark:border-slate-800 dark:bg-[#111722]">
+                        <input
+                          type="checkbox"
+                          checked={branchRules?.lifecycle.deleteBranchOnMerge ?? true}
+                          onChange={(event) => setBranchRules((current) => ({
+                            ...current,
+                            lifecycle: { ...current.lifecycle, deleteBranchOnMerge: event.target.checked },
+                          }))}
+                          className="mt-1 h-4 w-4 rounded border-slate-300 text-amber-500 focus:ring-amber-500"
+                        />
+                        <span>
+                          <span className="block text-[13px] font-semibold text-slate-900 dark:text-slate-100">{t.kanban.deleteBranchOnMerge}</span>
+                          <span className="mt-1 block text-xs leading-5 text-slate-500 dark:text-slate-400">{t.kanban.deleteBranchOnMergeHint}</span>
+                        </span>
+                      </label>
+                      <label className="flex items-start gap-3 rounded-lg border border-slate-200 bg-white px-3 py-3 dark:border-slate-800 dark:bg-[#111722]">
+                        <input
+                          type="checkbox"
+                          checked={branchRules?.lifecycle.removeWorktreeOnMerge ?? true}
+                          onChange={(event) => setBranchRules((current) => ({
+                            ...current,
+                            lifecycle: { ...current.lifecycle, removeWorktreeOnMerge: event.target.checked },
+                          }))}
+                          className="mt-1 h-4 w-4 rounded border-slate-300 text-amber-500 focus:ring-amber-500"
+                        />
+                        <span>
+                          <span className="block text-[13px] font-semibold text-slate-900 dark:text-slate-100">{t.kanban.removeWorktreeOnMerge}</span>
+                          <span className="mt-1 block text-xs leading-5 text-slate-500 dark:text-slate-400">{t.kanban.removeWorktreeOnMergeHint}</span>
+                        </span>
+                      </label>
+                      <label className="flex items-start gap-3 rounded-lg border border-slate-200 bg-white px-3 py-3 dark:border-slate-800 dark:bg-[#111722]">
+                        <input
+                          type="checkbox"
+                          checked={branchRules?.lifecycle.rebaseDownstream ?? true}
+                          onChange={(event) => setBranchRules((current) => ({
+                            ...current,
+                            lifecycle: { ...current.lifecycle, rebaseDownstream: event.target.checked },
+                          }))}
+                          className="mt-1 h-4 w-4 rounded border-slate-300 text-amber-500 focus:ring-amber-500"
+                        />
+                        <span>
+                          <span className="block text-[13px] font-semibold text-slate-900 dark:text-slate-100">{t.kanban.rebaseDownstream}</span>
+                          <span className="mt-1 block text-xs leading-5 text-slate-500 dark:text-slate-400">{t.kanban.rebaseDownstreamHint}</span>
+                        </span>
+                      </label>
+                      <label className="flex items-start gap-3 rounded-lg border border-slate-200 bg-white px-3 py-3 dark:border-slate-800 dark:bg-[#111722]">
+                        <input
+                          type="checkbox"
+                          checked={branchRules?.lifecycle.autoCreatePullRequest ?? false}
+                          onChange={(event) => setBranchRules((current) => ({
+                            ...current,
+                            lifecycle: { ...current.lifecycle, autoCreatePullRequest: event.target.checked },
+                          }))}
+                          className="mt-1 h-4 w-4 rounded border-slate-300 text-amber-500 focus:ring-amber-500"
+                        />
+                        <span>
+                          <span className="block text-[13px] font-semibold text-slate-900 dark:text-slate-100">{t.kanban.autoCreatePullRequest}</span>
+                          <span className="mt-1 block text-xs leading-5 text-slate-500 dark:text-slate-400">{t.kanban.autoCreatePullRequestHint}</span>
+                        </span>
+                      </label>
                     </div>
                   </SectionCard>
 

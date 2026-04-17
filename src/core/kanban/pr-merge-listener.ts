@@ -8,13 +8,16 @@
  *   3. Schedules worktree + branch cleanup for the merged task
  *   4. Rebases ALL dev-lane worktrees in the same repo onto the new base
  *   5. Re-triggers dependency gate for blocked downstream tasks
+ *
+ * All lifecycle decisions (delete branch, remove worktree, rebase downstream)
+ * come from KanbanBranchRules via getKanbanBranchRules().
  */
 
 import { AgentEvent, AgentEventType } from "../events/event-bus";
-import { GitWorktreeService } from "../git/git-worktree-service";
 import { rebaseBranchSafe } from "../git/git-operations";
 import { fetchRemote } from "../git/git-utils";
 import type { RoutaSystem } from "../routa-system";
+import { getKanbanBranchRules, DEFAULT_BRANCH_RULES } from "./board-branch-rules";
 
 const HANDLER_KEY = "kanban-pr-merge-listener";
 const CLEANUP_DELAY_MS = 30_000;
@@ -50,6 +53,13 @@ export function startPrMergeListener(system: RoutaSystem): void {
       return;
     }
 
+    // Resolve branch rules for this task's board
+    const workspace = await system.workspaceStore.get(task.workspaceId);
+    const boardId = task.boardId;
+    const rules = boardId
+      ? getKanbanBranchRules(workspace?.metadata, boardId)
+      : DEFAULT_BRANCH_RULES;
+
     // 2. Set pullRequestMergedAt
     if (!task.pullRequestMergedAt) {
       task.pullRequestMergedAt = mergedAt ? new Date(mergedAt) : new Date();
@@ -60,8 +70,8 @@ export function startPrMergeListener(system: RoutaSystem): void {
       );
     }
 
-    // 3. Schedule worktree cleanup for the merged task
-    if (task.worktreeId) {
+    // 3. Schedule worktree cleanup for the merged task (driven by lifecycle rules)
+    if (task.worktreeId && rules.lifecycle.removeWorktreeOnMerge) {
       setTimeout(() => {
         system.eventBus.emit({
           type: AgentEventType.WORKTREE_CLEANUP,
@@ -71,7 +81,7 @@ export function startPrMergeListener(system: RoutaSystem): void {
             worktreeId: task.worktreeId,
             taskId: task.id,
             boardId: task.boardId,
-            deleteBranch: true,
+            deleteBranch: rules.lifecycle.deleteBranchOnMerge,
           },
           timestamp: new Date(),
         });
@@ -83,8 +93,8 @@ export function startPrMergeListener(system: RoutaSystem): void {
       await fetchMainCodebase(system, task.workspaceId);
     }
 
-    // 5. Rebase all dev-lane worktrees in the same repo + unblock dependents
-    await handleDownstreamTasks(system, task, baseBranch);
+    // 5. Rebase all dev-lane worktrees in the same repo + unblock dependents (driven by rules)
+    await handleDownstreamTasks(system, task, baseBranch, rules);
   });
 }
 
@@ -119,6 +129,7 @@ async function fetchMainCodebase(
  * A) Rebase: Every dev-lane worktree in the same workspace that shares
  *    the same codebase gets rebased onto origin/{baseBranch}. This keeps
  *    branches current even without explicit dependency declarations.
+ *    Controlled by rules.lifecycle.rebaseDownstream.
  *
  * B) Unblock: Tasks explicitly blocked by the merged task get their
  *    dependency block cleared and are re-triggered.
@@ -127,14 +138,16 @@ async function handleDownstreamTasks(
   system: RoutaSystem,
   mergedTask: NonNullable<Awaited<ReturnType<RoutaSystem["taskStore"]["get"]>>>,
   baseBranch?: string,
+  rules?: { lifecycle: { rebaseDownstream: boolean } },
 ): Promise<void> {
   if (!mergedTask.workspaceId) return;
 
+  const effectiveRules = rules ?? DEFAULT_BRANCH_RULES;
   const allTasks = await system.taskStore.listByWorkspace(mergedTask.workspaceId);
   const rebasedTasks = new Set<string>();
 
-  // ── A) Rebase all dev-lane worktrees (not just explicit dependents) ──
-  if (baseBranch) {
+  // ── A) Rebase all dev-lane worktrees (gated by rules) ──
+  if (baseBranch && effectiveRules.lifecycle.rebaseDownstream) {
     for (const otherTask of allTasks) {
       // Skip self, skip tasks without worktrees, skip non-dev columns
       if (otherTask.id === mergedTask.id) continue;
