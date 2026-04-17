@@ -3,10 +3,14 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
+import featureSurfaceMetadata from "../../src/core/spec/feature-surface-metadata";
 import {
   generateFeatureTreeForRepo,
   generateSurfaceIndexForRepo,
+  validateSurfaceIndex,
 } from "../docs/framework-feature-tree-generator";
+
+const { mergeSurfaceMetadata } = featureSurfaceMetadata;
 
 function createSpringRepoFixture(root: string): void {
   fs.mkdirSync(path.join(root, "src", "main", "java", "com", "example", "controller"), {
@@ -77,6 +81,118 @@ public class AdminController {
 }
 
 describe("framework-feature-tree-generator", () => {
+  it("merges specialist metadata on top of persisted feature metadata", () => {
+    const merged = mergeSurfaceMetadata(
+      {
+        schemaVersion: 1,
+        capabilityGroups: [
+          { id: "platform-foundation", name: "Platform Foundation" },
+        ],
+        features: [
+          {
+            id: "user-login",
+            name: "User Login",
+            group: "platform-foundation",
+            pages: ["/login"],
+            sourceFiles: ["src/main/resources/templates/login.html"],
+          },
+        ],
+      },
+      {
+        schemaVersion: 1,
+        capabilityGroups: [
+          { id: "authentication", name: "Authentication" },
+        ],
+        features: [
+          {
+            id: "user-login",
+            name: "User Login",
+            group: "authentication",
+            apis: ["GET /login"],
+            domainObjects: ["user", "session"],
+            sourceFiles: ["src/main/java/com/example/controller/LoginController.java"],
+          },
+          {
+            id: "user-registration",
+            name: "User Registration",
+            group: "authentication",
+            pages: ["/registration"],
+          },
+        ],
+      },
+    );
+
+    expect(merged).toEqual({
+      schemaVersion: 1,
+      capabilityGroups: [
+        { id: "authentication", name: "Authentication" },
+        { id: "platform-foundation", name: "Platform Foundation" },
+      ],
+      features: [
+        {
+          id: "user-login",
+          name: "User Login",
+          group: "authentication",
+          pages: ["/login"],
+          apis: ["GET /login"],
+          domainObjects: ["session", "user"],
+          sourceFiles: [
+            "src/main/java/com/example/controller/LoginController.java",
+            "src/main/resources/templates/login.html",
+          ],
+        },
+        {
+          id: "user-registration",
+          name: "User Registration",
+          group: "authentication",
+          pages: ["/registration"],
+        },
+      ],
+    });
+  });
+
+  it("drops inferred generated features before building a new metadata seed", () => {
+    const stripped = featureSurfaceMetadata.stripInferredSurfaceMetadata({
+      schemaVersion: 1,
+      capabilityGroups: [
+        { id: "inferred-surfaces", name: "Inferred Surfaces" },
+        { id: "authentication", name: "Authentication" },
+      ],
+      features: [
+        {
+          id: "login",
+          name: "Login",
+          group: "inferred-surfaces",
+          status: "inferred",
+          pages: ["/login"],
+        },
+        {
+          id: "user-login",
+          name: "User Login",
+          group: "authentication",
+          status: "draft",
+          pages: ["/login"],
+        },
+      ],
+    });
+
+    expect(stripped).toEqual({
+      schemaVersion: 1,
+      capabilityGroups: [
+        { id: "authentication", name: "Authentication" },
+      ],
+      features: [
+        {
+          id: "user-login",
+          name: "User Login",
+          group: "authentication",
+          status: "draft",
+          pages: ["/login"],
+        },
+      ],
+    });
+  });
+
   it("generates a compatible surface index for Spring Boot controllers", () => {
     const dir = fs.mkdtempSync(path.join(process.cwd(), "tmp-framework-generator-"));
 
@@ -154,6 +270,38 @@ describe("framework-feature-tree-generator", () => {
           && feature.sourceFiles?.includes("src/main/java/com/example/controller/AdminController.java"),
         ),
       ).toBe(true);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("validates feature metadata references against declared Spring surfaces", () => {
+    const dir = fs.mkdtempSync(path.join(process.cwd(), "tmp-framework-generator-"));
+
+    try {
+      createSpringRepoFixture(dir);
+
+      const surfaceIndex = generateSurfaceIndexForRepo(dir);
+      surfaceIndex.metadata = {
+        schemaVersion: 1,
+        capabilityGroups: [{ id: "content-management", name: "Content Management" }],
+        features: [
+          {
+            id: "broken-feature",
+            name: "Broken Feature",
+            group: "missing-group",
+            pages: ["/missing"],
+            apis: ["GET /missing"],
+          },
+        ],
+      };
+
+      const validation = validateSurfaceIndex(surfaceIndex);
+      expect(validation.errors).toEqual([
+        'Feature "broken-feature" references missing capability group "missing-group".',
+        'Feature "broken-feature" references undeclared api "GET /missing".',
+        'Feature "broken-feature" references undeclared page "/missing".',
+      ]);
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }

@@ -1,12 +1,20 @@
 #!/usr/bin/env node
 
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
 import featureSurfaceMetadata from "../../src/core/spec/feature-surface-metadata";
 
-const { buildApiLookupKey, normalizeSurfaceMetadata } = featureSurfaceMetadata;
+const {
+  buildApiLookupKey,
+  mergeSurfaceMetadata,
+  normalizeSurfaceMetadata,
+  stripInferredSurfaceMetadata,
+  validateSurfaceMetadata,
+} = featureSurfaceMetadata;
 
 type RouteInfo = {
   route: string;
@@ -116,6 +124,12 @@ type CliArgs = {
   repoRoot: string;
   save: boolean;
   json: boolean;
+  metadataJsonPath: string | null;
+  specialistPath: string | null;
+  specialistProvider: string | null;
+  specialistPrompt: string | null;
+  routaBin: string;
+  routaDbPath: string;
 };
 
 type SpringControllerRoute = {
@@ -133,6 +147,22 @@ const GENERATOR_PATH = "scripts/docs/framework-feature-tree-generator.ts";
 const OUTPUT_MD_RELATIVE = path.join("docs", "product-specs", "FEATURE_TREE.md");
 const OUTPUT_JSON_RELATIVE = path.join("docs", "product-specs", "feature-tree.index.json");
 const SPRING_IMPLEMENTATION_LABEL = "springMvc";
+const DEFAULT_SPECIALIST_PROMPT =
+  "Analyze this Spring Boot repository and return only the required feature metadata JSON based on the generated surface inventory and repository evidence.";
+
+function resolveDefaultRoutaBin(): string {
+  const candidate = path.resolve(
+    process.cwd(),
+    "target",
+    "debug",
+    process.platform === "win32" ? "routa.exe" : "routa",
+  );
+  return fs.existsSync(candidate) ? candidate : "routa";
+}
+
+function resolveDefaultRoutaDbPath(): string {
+  return path.join(os.tmpdir(), "routa-feature-tree-specialist.db");
+}
 
 function normalizeString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -247,6 +277,12 @@ function parseArgs(argv: string[]): CliArgs {
   let repoRoot = process.cwd();
   let save = false;
   let json = false;
+  let metadataJsonPath: string | null = null;
+  let specialistPath: string | null = null;
+  let specialistProvider: string | null = null;
+  let specialistPrompt: string | null = null;
+  let routaBin = resolveDefaultRoutaBin();
+  let routaDbPath = resolveDefaultRoutaDbPath();
 
   for (let index = 0; index < argv.length; index += 1) {
     const value = argv[index];
@@ -267,10 +303,78 @@ function parseArgs(argv: string[]): CliArgs {
       json = true;
       continue;
     }
+    if (value === "--metadata-json") {
+      const next = argv[index + 1];
+      if (!next) {
+        throw new Error("--metadata-json requires a path");
+      }
+      metadataJsonPath = path.resolve(next);
+      index += 1;
+      continue;
+    }
+    if (value === "--specialist") {
+      const next = argv[index + 1];
+      if (!next) {
+        throw new Error("--specialist requires a path");
+      }
+      specialistPath = path.resolve(next);
+      index += 1;
+      continue;
+    }
+    if (value === "--specialist-provider") {
+      const next = argv[index + 1];
+      if (!next) {
+        throw new Error("--specialist-provider requires a provider id");
+      }
+      specialistProvider = next.trim();
+      index += 1;
+      continue;
+    }
+    if (value === "--specialist-prompt") {
+      const next = argv[index + 1];
+      if (!next) {
+        throw new Error("--specialist-prompt requires a prompt");
+      }
+      specialistPrompt = next;
+      index += 1;
+      continue;
+    }
+    if (value === "--routa-bin") {
+      const next = argv[index + 1];
+      if (!next) {
+        throw new Error("--routa-bin requires a path or command name");
+      }
+      routaBin = next;
+      index += 1;
+      continue;
+    }
+    if (value === "--routa-db") {
+      const next = argv[index + 1];
+      if (!next) {
+        throw new Error("--routa-db requires a path");
+      }
+      routaDbPath = path.resolve(next);
+      index += 1;
+      continue;
+    }
     throw new Error(`Unknown argument: ${value}`);
   }
 
-  return { repoRoot, save, json };
+  if (specialistPath && !save) {
+    throw new Error("--specialist requires --save so the generated surface inventory exists on disk before specialist analysis");
+  }
+
+  return {
+    repoRoot,
+    save,
+    json,
+    metadataJsonPath,
+    specialistPath,
+    specialistProvider,
+    specialistPrompt,
+    routaBin,
+    routaDbPath,
+  };
 }
 
 function ensureSpringBootRepo(repoRoot: string): void {
@@ -344,6 +448,110 @@ function loadPersistedFeatureMetadata(repoRoot: string): FeatureMetadata | null 
   }
 
   return null;
+}
+
+function loadMetadataFromJsonFile(metadataJsonPath: string | null): FeatureMetadata | null {
+  if (!metadataJsonPath) {
+    return null;
+  }
+
+  const parsed = JSON.parse(fs.readFileSync(metadataJsonPath, "utf8")) as {
+    metadata?: unknown;
+  };
+  return normalizeFeatureMetadata(parsed?.metadata ?? parsed);
+}
+
+function readQuotedYamlScalar(raw: string, key: string): string {
+  const match = raw.match(new RegExp(`^${key}:\\s*"([^"]*)"\\s*$`, "m"));
+  return match?.[1]?.trim() ?? "";
+}
+
+function readLiteralYamlBlock(raw: string, key: string): string {
+  const lines = raw.split(/\r?\n/);
+  const startIndex = lines.findIndex((line) => line.startsWith(`${key}: |`));
+  if (startIndex < 0) {
+    return "";
+  }
+
+  const block: string[] = [];
+  for (let index = startIndex + 1; index < lines.length; index += 1) {
+    const line = lines[index] ?? "";
+    if (line.startsWith("  ")) {
+      block.push(line.slice(2));
+      continue;
+    }
+    if (!line.trim()) {
+      block.push("");
+      continue;
+    }
+    break;
+  }
+
+  return block.join("\n").trim();
+}
+
+function extractJsonObject(raw: string): unknown {
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    throw new Error("Expected JSON output but received empty content");
+  }
+
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    // Fall through and try extracting a JSON object from prose / code fences.
+  }
+
+  const fencedMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fencedMatch?.[1]) {
+    return JSON.parse(fencedMatch[1].trim());
+  }
+
+  let start = -1;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+
+  for (let index = 0; index < trimmed.length; index += 1) {
+    const char = trimmed[index];
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (char === "\\") {
+      escaped = true;
+      continue;
+    }
+    if (char === "\"") {
+      inString = !inString;
+      continue;
+    }
+    if (inString) {
+      continue;
+    }
+    if (char === "{") {
+      if (depth === 0) {
+        start = index;
+      }
+      depth += 1;
+      continue;
+    }
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0 && start >= 0) {
+        return JSON.parse(trimmed.slice(start, index + 1));
+      }
+    }
+  }
+
+  throw new Error("Failed to extract JSON object from specialist output");
+}
+
+function extractClaudePrintResult(raw: string): string {
+  const parsed = JSON.parse(raw) as {
+    result?: unknown;
+  };
+  return typeof parsed.result === "string" ? parsed.result : raw;
 }
 
 function listFilesRecursive(dir: string, predicate: (filePath: string) => boolean): string[] {
@@ -679,19 +887,31 @@ function createSpringImplementationApis(routes: SpringControllerRoute[]): Implem
   );
 }
 
-function generateSpringBootFeatureTree(repoRoot: string): GeneratedFeatureTree {
+function createMetadataSeed(
+  repoRoot: string,
+  overlayMetadata: FeatureMetadata | null = null,
+): FeatureMetadata {
+  return (
+    mergeSurfaceMetadata(
+      stripInferredSurfaceMetadata(loadPersistedFeatureMetadata(repoRoot)),
+      overlayMetadata,
+    )
+    ?? { schemaVersion: 1, capabilityGroups: [], features: [] }
+  );
+}
+
+function generateSpringBootFeatureTree(
+  repoRoot: string,
+  metadataSeed: FeatureMetadata | null = null,
+): GeneratedFeatureTree {
   ensureSpringBootRepo(repoRoot);
   const { productName, productDescription } = parsePomMetadata(repoRoot);
-  const persistedMetadata = loadPersistedFeatureMetadata(repoRoot);
   const routes = extractSpringControllerRoutes(repoRoot);
   const pages = createSpringPages(repoRoot, routes);
   const contractApis = createSpringContractApis(routes);
   const implementationApis = createSpringImplementationApis(routes);
-  const metadataSeed = normalizeFeatureMetadata(
-    persistedMetadata ?? { schemaVersion: 1, capabilityGroups: [], features: [] },
-  );
   const metadata = normalizeSurfaceMetadata({
-    metadata: metadataSeed,
+    metadata: metadataSeed ?? { schemaVersion: 1, capabilityGroups: [], features: [] },
     pages,
     contractApis,
     nextjsApis: [],
@@ -934,35 +1154,257 @@ function renderMarkdown(
 }
 
 export function generateFeatureTreeForRepo(repoRoot: string): GeneratedFeatureTree {
-  return generateSpringBootFeatureTree(repoRoot);
+  return generateSpringBootFeatureTree(repoRoot, createMetadataSeed(repoRoot));
 }
 
 export function generateSurfaceIndexForRepo(repoRoot: string): FeatureSurfaceIndex {
   return buildSurfaceIndex(generateFeatureTreeForRepo(repoRoot));
 }
 
+type SurfaceIndexValidationResult = {
+  errors: string[];
+  warnings: string[];
+};
+
+export function validateSurfaceIndex(surfaceIndex: FeatureSurfaceIndex): SurfaceIndexValidationResult {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+  const pageRoutes = new Set<string>();
+  const contractApiKeys = new Set<string>();
+  const implementationApiKeys = new Set<string>();
+
+  for (const page of surfaceIndex.pages) {
+    if (pageRoutes.has(page.route)) {
+      errors.push(`Duplicate page route "${page.route}".`);
+    }
+    pageRoutes.add(page.route);
+    if (!page.sourceFile) {
+      warnings.push(`Page "${page.route}" is missing a source file.`);
+    }
+  }
+
+  for (const api of surfaceIndex.contractApis) {
+    const key = buildApiLookupKey(api.method, api.path);
+    if (contractApiKeys.has(key)) {
+      errors.push(`Duplicate contract api "${api.method} ${api.path}".`);
+    }
+    contractApiKeys.add(key);
+  }
+
+  for (const api of surfaceIndex.implementationApis) {
+    const key = `${api.label}:${buildApiLookupKey(api.method, api.path)}`;
+    if (implementationApiKeys.has(key)) {
+      errors.push(`Duplicate implementation api "${api.label}:${api.method} ${api.path}".`);
+    }
+    implementationApiKeys.add(key);
+    if (api.sourceFiles.length === 0) {
+      warnings.push(`Implementation api "${api.method} ${api.path}" has no source files.`);
+    }
+  }
+
+  const metadataValidation = validateSurfaceMetadata({
+    metadata: surfaceIndex.metadata,
+    pages: surfaceIndex.pages,
+    contractApis: surfaceIndex.contractApis,
+    nextjsApis: surfaceIndex.nextjsApis,
+    rustApis: surfaceIndex.rustApis,
+    implementationApis: surfaceIndex.implementationApis,
+  });
+  errors.push(...metadataValidation.errors);
+  warnings.push(...metadataValidation.warnings);
+
+  return {
+    errors: [...new Set(errors)].sort(),
+    warnings: [...new Set(warnings)].sort(),
+  };
+}
+
+function assertValidSurfaceIndex(surfaceIndex: FeatureSurfaceIndex): void {
+  const validation = validateSurfaceIndex(surfaceIndex);
+  if (validation.errors.length > 0) {
+    throw new Error(
+      `Generated surface index is invalid:\n- ${validation.errors.join("\n- ")}`,
+    );
+  }
+}
+
+function writeSurfaceArtifacts(
+  repoRoot: string,
+  result: GeneratedFeatureTree,
+  surfaceIndex: FeatureSurfaceIndex,
+  silent = false,
+): void {
+  const markdown = renderMarkdown(result, surfaceIndex, repoRoot);
+  const mdPath = path.join(repoRoot, OUTPUT_MD_RELATIVE);
+  const jsonPath = path.join(repoRoot, OUTPUT_JSON_RELATIVE);
+  fs.mkdirSync(path.dirname(mdPath), { recursive: true });
+  fs.writeFileSync(mdPath, markdown, "utf8");
+  fs.writeFileSync(jsonPath, JSON.stringify(surfaceIndex, null, 2) + "\n", "utf8");
+  if (!silent) {
+    console.log(`✅ Saved to ${mdPath}`);
+    console.log(`✅ Saved to ${jsonPath}`);
+  }
+}
+
+function runSpecialistForMetadata(args: {
+  repoRoot: string;
+  surfaceIndex: FeatureSurfaceIndex;
+  specialistPath: string;
+  specialistProvider: string | null;
+  specialistPrompt: string | null;
+  routaBin: string;
+  routaDbPath: string;
+}): FeatureMetadata {
+  const normalizeMetadataResult = (raw: string): FeatureMetadata => {
+    const metadata = normalizeFeatureMetadata(extractJsonObject(raw));
+    if (!metadata) {
+      throw new Error(`Specialist output from ${args.specialistPath} is not valid feature metadata JSON`);
+    }
+    return metadata;
+  };
+
+  const runClaudeFallback = (): FeatureMetadata => {
+    const specialistRaw = fs.readFileSync(args.specialistPath, "utf8");
+    const systemPrompt = readLiteralYamlBlock(specialistRaw, "system_prompt");
+    const roleReminder = readQuotedYamlScalar(specialistRaw, "role_reminder");
+    const relevantFiles = [
+      "pom.xml",
+      ...args.surfaceIndex.pages.map((page) => page.sourceFile),
+      ...args.surfaceIndex.implementationApis.flatMap((api) => api.sourceFiles),
+    ];
+    const uniqueRelevantFiles = [...new Set(relevantFiles)]
+      .filter(Boolean)
+      .slice(0, 18);
+    const fileContext = uniqueRelevantFiles.map((relativePath) => {
+      const absolutePath = path.join(args.repoRoot, relativePath);
+      const content = fs.existsSync(absolutePath)
+        ? fs.readFileSync(absolutePath, "utf8").slice(0, 4000)
+        : "[missing]";
+      return [
+        `### ${relativePath}`,
+        "```",
+        content,
+        "```",
+      ].join("\n");
+    }).join("\n\n");
+    const promptSections = [
+      systemPrompt,
+      roleReminder,
+      args.specialistPrompt ?? DEFAULT_SPECIALIST_PROMPT,
+      "Repository surface index:",
+      JSON.stringify(args.surfaceIndex, null, 2),
+      "Relevant repository files:",
+      fileContext,
+      "Return strict JSON only. Do not wrap the answer in markdown fences or any prose.",
+    ].filter(Boolean);
+    try {
+      const raw = execFileSync("claude", [
+        "-p",
+        "--bare",
+        "--no-session-persistence",
+        "--dangerously-skip-permissions",
+        "--output-format",
+        "json",
+        "--tools",
+        "",
+        "--system-prompt",
+        promptSections.join("\n\n"),
+        "Analyze the provided repository context and return the required feature metadata JSON now.",
+      ], {
+        cwd: args.repoRoot,
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "pipe"],
+        timeout: 60_000,
+      });
+      return normalizeMetadataResult(extractClaudePrintResult(raw));
+    } catch (error) {
+      const stdout = error instanceof Error && "stdout" in error
+        ? String((error as { stdout?: unknown }).stdout ?? "")
+        : "";
+      if (stdout.trim()) {
+        return normalizeMetadataResult(extractClaudePrintResult(stdout));
+      }
+      throw error;
+    }
+  };
+
+  const commandArgs = [
+    "--db",
+    args.routaDbPath,
+    "specialist",
+    "run",
+    args.specialistPath,
+    "--provider-timeout-ms",
+    "120000",
+    "--provider-retries",
+    "1",
+    "--json",
+    "-p",
+    args.specialistPrompt ?? DEFAULT_SPECIALIST_PROMPT,
+  ];
+  if (args.specialistProvider) {
+    commandArgs.push("--provider", args.specialistProvider);
+  }
+
+  if (args.specialistProvider === "claude") {
+    return runClaudeFallback();
+  }
+
+  try {
+    const raw = execFileSync(args.routaBin, commandArgs, {
+      cwd: args.repoRoot,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    return normalizeMetadataResult(raw);
+  } catch (error) {
+    const stderr = error instanceof Error && "stderr" in error
+      ? String((error as { stderr?: unknown }).stderr ?? "")
+      : "";
+    if (args.specialistProvider === "claude" && /session_idle_timeout/u.test(stderr)) {
+      return runClaudeFallback();
+    }
+    throw error;
+  }
+}
+
 function main(): void {
   const args = parseArgs(process.argv.slice(2));
-  const result = generateFeatureTreeForRepo(args.repoRoot);
-  const surfaceIndex = buildSurfaceIndex(result);
+  const metadataFromFile = loadMetadataFromJsonFile(args.metadataJsonPath);
+  let metadataSeed = createMetadataSeed(args.repoRoot, metadataFromFile);
+  let result = generateSpringBootFeatureTree(args.repoRoot, metadataSeed);
+  let surfaceIndex = buildSurfaceIndex(result);
+  assertValidSurfaceIndex(surfaceIndex);
+
+  if (args.specialistPath) {
+    writeSurfaceArtifacts(args.repoRoot, result, surfaceIndex, args.json);
+    const specialistMetadata = runSpecialistForMetadata({
+      repoRoot: args.repoRoot,
+      surfaceIndex,
+      specialistPath: args.specialistPath,
+      specialistProvider: args.specialistProvider,
+      specialistPrompt: args.specialistPrompt,
+      routaBin: args.routaBin,
+      routaDbPath: args.routaDbPath,
+    });
+    metadataSeed = mergeSurfaceMetadata(metadataSeed, specialistMetadata)
+      ?? { schemaVersion: 1, capabilityGroups: [], features: [] };
+    result = generateSpringBootFeatureTree(args.repoRoot, metadataSeed);
+    surfaceIndex = buildSurfaceIndex(result);
+    assertValidSurfaceIndex(surfaceIndex);
+  }
 
   if (args.json) {
     console.log(JSON.stringify(surfaceIndex, null, 2));
     return;
   }
 
-  const markdown = renderMarkdown(result, surfaceIndex, args.repoRoot);
   if (args.save) {
-    const mdPath = path.join(args.repoRoot, OUTPUT_MD_RELATIVE);
-    const jsonPath = path.join(args.repoRoot, OUTPUT_JSON_RELATIVE);
-    fs.mkdirSync(path.dirname(mdPath), { recursive: true });
-    fs.writeFileSync(mdPath, markdown, "utf8");
-    fs.writeFileSync(jsonPath, JSON.stringify(surfaceIndex, null, 2) + "\n", "utf8");
-    console.log(`✅ Saved to ${mdPath}`);
-    console.log(`✅ Saved to ${jsonPath}`);
+    writeSurfaceArtifacts(args.repoRoot, result, surfaceIndex, args.json);
     return;
   }
 
+  const markdown = renderMarkdown(result, surfaceIndex, args.repoRoot);
   console.log(markdown);
 }
 

@@ -62,6 +62,11 @@ type InferredFeatureCluster = {
   sourceFiles: Set<string>;
 };
 
+export type SurfaceMetadataValidationResult = {
+  errors: string[];
+  warnings: string[];
+};
+
 export const INFERRED_GROUP_ID = "inferred-surfaces";
 export const INFERRED_GROUP_NAME = "Inferred Surfaces";
 
@@ -111,6 +116,11 @@ function normalizeToken(value: string): string {
 
 function uniqueSorted(values: Iterable<string>): string[] {
   return [...new Set([...values].map((value) => value.trim()).filter(Boolean))].sort();
+}
+
+function mergeUniqueStrings(...collections: Array<string[] | undefined>): string[] | undefined {
+  const merged = uniqueSorted(collections.flatMap((items) => items ?? []));
+  return merged.length > 0 ? merged : undefined;
 }
 
 export function buildApiLookupKey(method: string, endpointPath: string): string {
@@ -475,6 +485,167 @@ function reconcileFeatureApiDeclarations(
   });
 }
 
+export function mergeSurfaceMetadata(
+  base: SurfaceMetadata | null,
+  overlay: SurfaceMetadata | null,
+): SurfaceMetadata | null {
+  if (!base && !overlay) {
+    return null;
+  }
+  if (!base) {
+    return overlay;
+  }
+  if (!overlay) {
+    return base;
+  }
+
+  const groupsById = new Map<string, SurfaceMetadataGroup>();
+  for (const group of base.capabilityGroups) {
+    groupsById.set(group.id, group);
+  }
+  for (const group of overlay.capabilityGroups) {
+    const existing = groupsById.get(group.id);
+    groupsById.set(group.id, {
+      id: group.id,
+      name: group.name || existing?.name || group.id,
+      description: group.description || existing?.description,
+    });
+  }
+
+  const featuresById = new Map<string, SurfaceMetadataFeature>();
+  for (const feature of base.features) {
+    featuresById.set(feature.id, feature);
+  }
+  for (const feature of overlay.features) {
+    const existing = featuresById.get(feature.id);
+    if (!existing) {
+      featuresById.set(feature.id, feature);
+      continue;
+    }
+
+    featuresById.set(feature.id, {
+      id: feature.id,
+      name: feature.name || existing.name,
+      group: feature.group || existing.group,
+      summary: feature.summary || existing.summary,
+      status: feature.status || existing.status,
+      pages: mergeUniqueStrings(existing.pages, feature.pages),
+      apis: mergeUniqueStrings(existing.apis, feature.apis),
+      domainObjects: mergeUniqueStrings(existing.domainObjects, feature.domainObjects),
+      relatedFeatures: mergeUniqueStrings(existing.relatedFeatures, feature.relatedFeatures),
+      sourceFiles: mergeUniqueStrings(existing.sourceFiles, feature.sourceFiles),
+      screenshots: mergeUniqueStrings(existing.screenshots, feature.screenshots),
+    });
+  }
+
+  return {
+    schemaVersion: Math.max(base.schemaVersion, overlay.schemaVersion),
+    capabilityGroups: [...groupsById.values()].sort((left, right) => left.id.localeCompare(right.id)),
+    features: [...featuresById.values()].sort((left, right) => left.id.localeCompare(right.id)),
+  };
+}
+
+export function stripInferredSurfaceMetadata(
+  metadata: SurfaceMetadata | null,
+): SurfaceMetadata | null {
+  if (!metadata) {
+    return null;
+  }
+
+  const capabilityGroups = metadata.capabilityGroups
+    .filter((group) => group.id !== INFERRED_GROUP_ID);
+  const features = metadata.features.filter((feature) =>
+    feature.group !== INFERRED_GROUP_ID
+    && feature.status !== "inferred",
+  );
+
+  return {
+    schemaVersion: metadata.schemaVersion,
+    capabilityGroups,
+    features,
+  };
+}
+
+export function validateSurfaceMetadata(params: {
+  metadata: SurfaceMetadata | null;
+  pages: SurfacePage[];
+  contractApis: SurfaceContractApi[];
+  nextjsApis: SurfaceImplementationApi[];
+  rustApis: SurfaceImplementationApi[];
+  implementationApis?: SurfaceImplementationApi[];
+}): SurfaceMetadataValidationResult {
+  const {
+    metadata,
+    pages,
+    contractApis,
+    nextjsApis,
+    rustApis,
+    implementationApis = [],
+  } = params;
+  if (!metadata) {
+    return { errors: [], warnings: [] };
+  }
+
+  const errors: string[] = [];
+  const warnings: string[] = [];
+  const pageRoutes = new Set(pages.map((page) => page.route));
+  const apiEntries = buildSurfaceApiEntries(
+    contractApis,
+    nextjsApis,
+    rustApis,
+    implementationApis,
+  );
+  const apiDeclarations = new Set(apiEntries.map((api) => buildApiLookupKey(api.method, api.path)));
+  const groupIds = new Set<string>();
+  const featureIds = new Set<string>();
+
+  for (const group of metadata.capabilityGroups) {
+    if (groupIds.has(group.id)) {
+      errors.push(`Duplicate capability group id "${group.id}".`);
+      continue;
+    }
+    groupIds.add(group.id);
+  }
+
+  for (const feature of metadata.features) {
+    if (featureIds.has(feature.id)) {
+      errors.push(`Duplicate feature id "${feature.id}".`);
+      continue;
+    }
+    featureIds.add(feature.id);
+
+    if (feature.group && feature.group !== INFERRED_GROUP_ID && !groupIds.has(feature.group)) {
+      errors.push(`Feature "${feature.id}" references missing capability group "${feature.group}".`);
+    }
+
+    for (const route of feature.pages ?? []) {
+      if (!pageRoutes.has(route)) {
+        errors.push(`Feature "${feature.id}" references undeclared page "${route}".`);
+      }
+    }
+
+    for (const declaration of feature.apis ?? []) {
+      const [method = "GET", endpointPath = declaration.trim()] = declaration.trim().split(/\s+/, 2);
+      if (!apiDeclarations.has(buildApiLookupKey(method, endpointPath))) {
+        errors.push(`Feature "${feature.id}" references undeclared api "${declaration.trim()}".`);
+      }
+    }
+
+    if ((feature.pages?.length ?? 0) === 0 && (feature.apis?.length ?? 0) === 0) {
+      warnings.push(`Feature "${feature.id}" has no declared pages or apis.`);
+    }
+
+    if ((feature.sourceFiles?.length ?? 0) === 0 && ((feature.pages?.length ?? 0) > 0 || (feature.apis?.length ?? 0) > 0)) {
+      warnings.push(`Feature "${feature.id}" has surfaces but no source files.`);
+    }
+  }
+
+  return {
+    errors: uniqueSorted(errors),
+    warnings: uniqueSorted(warnings),
+  };
+}
+
 export function normalizeSurfaceMetadata(params: {
   metadata: SurfaceMetadata | null;
   pages: SurfacePage[];
@@ -531,5 +702,8 @@ export default {
   INFERRED_GROUP_NAME,
   buildApiDeclaration,
   buildApiLookupKey,
+  mergeSurfaceMetadata,
   normalizeSurfaceMetadata,
+  stripInferredSurfaceMetadata,
+  validateSurfaceMetadata,
 };
