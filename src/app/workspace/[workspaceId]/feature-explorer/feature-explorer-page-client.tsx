@@ -24,56 +24,20 @@ import { desktopAwareFetch } from "@/client/utils/diagnostics";
 import { loadRepoSelection, saveRepoSelection } from "@/client/utils/repo-selection-storage";
 import { useTranslation } from "@/i18n";
 
-import type { ApiDetail, CapabilityGroup, FeatureDetail, FileTreeNode, InspectorTab } from "./types";
+import type {
+  ApiDetail,
+  CapabilityGroup,
+  FeatureDetail,
+  FeatureSurfaceApi,
+  FeatureSurfaceImplementationApi,
+  FeatureSurfacePage,
+  FileTreeNode,
+  InspectorTab,
+} from "./types";
 import { useFeatureExplorerData } from "./use-feature-explorer-data";
 
-const FEATURE_EXPLORER_DEBUG_WORKSPACE_ID = "default";
-const FEATURE_EXPLORER_DEBUG_REPO_SELECTION: RepoSelection = {
-  name: "routa-js",
-  path: "/Users/phodal/ai/routa-js",
-  branch: "",
-};
-
-function featureExplorerDebugSeedKey(workspaceId: string): string {
-  return `routa.featureExplorer.debugRepoSeed.${workspaceId}`;
-}
-
 function loadInitialRepoSelection(workspaceId: string): RepoSelection | null {
-  const persisted = loadRepoSelection("featureExplorer", workspaceId);
-  if (persisted) {
-    return persisted;
-  }
-
-  if (typeof window === "undefined" || workspaceId !== FEATURE_EXPLORER_DEBUG_WORKSPACE_ID) {
-    return null;
-  }
-
-  const host = window.location.hostname;
-  if (host !== "localhost" && host !== "127.0.0.1") {
-    return null;
-  }
-
-  try {
-    if (window.localStorage.getItem(featureExplorerDebugSeedKey(workspaceId)) === "true") {
-      return null;
-    }
-  } catch {
-    return null;
-  }
-
-  return FEATURE_EXPLORER_DEBUG_REPO_SELECTION;
-}
-
-function markFeatureExplorerDebugSeeded(workspaceId: string): void {
-  if (typeof window === "undefined" || workspaceId !== FEATURE_EXPLORER_DEBUG_WORKSPACE_ID) {
-    return;
-  }
-
-  try {
-    window.localStorage.setItem(featureExplorerDebugSeedKey(workspaceId), "true");
-  } catch {
-    // Ignore storage failures in restricted environments.
-  }
+  return loadRepoSelection("featureExplorer", workspaceId);
 }
 
 function flattenFiles(nodes: FileTreeNode[], acc: Record<string, FileTreeNode> = {}): Record<string, FileTreeNode> {
@@ -114,6 +78,72 @@ function formatShortDate(iso: string): string {
   return `${mm}-${dd}`;
 }
 
+type ExplorerSurfaceKind = "feature" | "page" | "contract-api" | "nextjs-api" | "rust-api";
+
+type ExplorerSurfaceItem = {
+  key: string;
+  kind: ExplorerSurfaceKind;
+  label: string;
+  secondary: string;
+  featureIds: string[];
+  sourceFiles: string[];
+  selectable: boolean;
+};
+
+type ExplorerSection = {
+  id: string;
+  title: string;
+  items: ExplorerSurfaceItem[];
+};
+
+function buildApiDeclaration(method: string, endpointPath: string): string {
+  return `${method.trim().toUpperCase()} ${endpointPath.trim()}`.trim();
+}
+
+function buildApiLookupKey(method: string, endpointPath: string): string {
+  const normalizedPath = endpointPath
+    .trim()
+    .replace(/:[A-Za-z0-9_]+/g, "{}")
+    .replace(/\{[^}]+\}/g, "{}");
+  return `${method.trim().toUpperCase()} ${normalizedPath}`;
+}
+
+function parseApiDeclaration(declaration: string): { method: string; path: string } {
+  const [method, endpointPath] = declaration.trim().split(/\s+/, 2);
+  return {
+    method: method || "GET",
+    path: endpointPath || declaration.trim(),
+  };
+}
+
+function matchesQuery(query: string, values: Array<string | undefined>): boolean {
+  const normalized = query.trim().toLowerCase();
+  if (!normalized) {
+    return true;
+  }
+
+  return values.some((value) => value?.toLowerCase().includes(normalized));
+}
+
+function dedupeFeatureIds(featureIds: string[]): string[] {
+  return [...new Set(featureIds.filter(Boolean))];
+}
+
+function surfaceKindBadge(kind: ExplorerSurfaceKind): string {
+  switch (kind) {
+    case "feature":
+      return "FT";
+    case "page":
+      return "PG";
+    case "contract-api":
+      return "API";
+    case "nextjs-api":
+      return "NX";
+    case "rust-api":
+      return "RS";
+  }
+}
+
 export function FeatureExplorerPageClient({
   workspaceId,
 }: {
@@ -147,9 +177,6 @@ export function FeatureExplorerPageClient({
   const repoRefreshKey = `${effectiveRepoSelection?.path ?? ""}:${effectiveRepoSelection?.branch ?? ""}`;
 
   useEffect(() => {
-    if (manualRepoSelection?.path === FEATURE_EXPLORER_DEBUG_REPO_SELECTION.path) {
-      markFeatureExplorerDebugSeeded(workspaceId);
-    }
     saveRepoSelection("featureExplorer", workspaceId, manualRepoSelection);
   }, [manualRepoSelection, workspaceId]);
 
@@ -158,6 +185,7 @@ export function FeatureExplorerPageClient({
     error,
     capabilityGroups,
     features,
+    surfaceIndex,
     featureDetail,
     featureDetailLoading,
     initialFeatureId,
@@ -171,6 +199,7 @@ export function FeatureExplorerPageClient({
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>("context");
   const [middleView, setMiddleView] = useState<"list" | "tree">("tree");
   const [featureId, setFeatureId] = useState<string>("");
+  const [selectedSurfaceKey, setSelectedSurfaceKey] = useState<string>("");
   const [query, setQuery] = useState("");
   const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>({});
   const [selectedFileIds, setSelectedFileIds] = useState<string[]>([]);
@@ -178,15 +207,205 @@ export function FeatureExplorerPageClient({
 
   // Derive effective feature ID: user-selected or auto-initialized from hook
   const effectiveFeatureId = featureId || initialFeatureId;
+  const featureMetadata = useMemo(
+    () => surfaceIndex.metadata?.features ?? [],
+    [surfaceIndex.metadata],
+  );
+  const featureSummaryById = useMemo(
+    () => new Map(features.map((feature) => [feature.id, feature])),
+    [features],
+  );
+  const featureMetadataById = useMemo(
+    () => new Map(featureMetadata.map((feature) => [feature.id, feature])),
+    [featureMetadata],
+  );
+  const pageFeatureMap = useMemo(() => {
+    const map = new Map<string, string[]>();
+    for (const metadataItem of featureMetadata) {
+      for (const route of metadataItem.pages ?? []) {
+        const current = map.get(route) ?? [];
+        current.push(metadataItem.id);
+        map.set(route, current);
+      }
+    }
+    for (const page of surfaceIndex.pages) {
+      if (!page.sourceFile) {
+        continue;
+      }
+      for (const metadataItem of featureMetadata) {
+        if (!(metadataItem.sourceFiles ?? []).includes(page.sourceFile)) {
+          continue;
+        }
+        const current = map.get(page.route) ?? [];
+        current.push(metadataItem.id);
+        map.set(page.route, current);
+      }
+    }
+    return map;
+  }, [featureMetadata, surfaceIndex.pages]);
+  const apiFeatureMap = useMemo(() => {
+    const map = new Map<string, string[]>();
+    for (const metadataItem of featureMetadata) {
+      for (const declaration of metadataItem.apis ?? []) {
+        const parsedDeclaration = parseApiDeclaration(declaration);
+        const lookupKey = buildApiLookupKey(parsedDeclaration.method, parsedDeclaration.path);
+        const current = map.get(lookupKey) ?? [];
+        current.push(metadataItem.id);
+        map.set(lookupKey, current);
+      }
+    }
 
-  const filteredFeatures = useMemo(() => {
-    const normalized = query.trim().toLowerCase();
-    if (!normalized) return features;
-    return features.filter((f) => f.name.toLowerCase().includes(normalized));
-  }, [features, query]);
+    for (const implementationApi of [...surfaceIndex.nextjsApis, ...surfaceIndex.rustApis]) {
+      const lookupKey = buildApiLookupKey(implementationApi.method, implementationApi.path);
+      for (const metadataItem of featureMetadata) {
+        if (!(metadataItem.sourceFiles ?? []).some((sourceFile) => implementationApi.sourceFiles.includes(sourceFile))) {
+          continue;
+        }
+        const current = map.get(lookupKey) ?? [];
+        current.push(metadataItem.id);
+        map.set(lookupKey, current);
+      }
+    }
+    return map;
+  }, [featureMetadata, surfaceIndex.nextjsApis, surfaceIndex.rustApis]);
 
-  const fileTree = useMemo(() => featureDetail?.fileTree ?? [], [featureDetail]);
-  const fileStats = useMemo(() => featureDetail?.fileStats ?? {}, [featureDetail]);
+  const featureItems = useMemo<ExplorerSurfaceItem[]>(
+    () => features
+      .filter((feature) => matchesQuery(query, [feature.name, feature.summary, feature.id]))
+      .map((feature): ExplorerSurfaceItem => {
+        const metadataItem = featureMetadataById.get(feature.id);
+        const sourceFiles = metadataItem?.sourceFiles ?? [];
+        return {
+          key: `feature:${feature.id}`,
+          kind: "feature",
+          label: feature.name,
+          secondary: capabilityGroups.find((group) => group.id === feature.group)?.name ?? feature.group,
+          featureIds: [feature.id],
+          sourceFiles,
+          selectable: true,
+        };
+      }),
+    [capabilityGroups, featureMetadataById, features, query],
+  );
+  const pageItems = useMemo<ExplorerSurfaceItem[]>(
+    () => surfaceIndex.pages
+      .filter((page) => matchesQuery(query, [page.route, page.title, page.description, page.sourceFile]))
+      .map((page: FeatureSurfacePage): ExplorerSurfaceItem => {
+        const featureIds = dedupeFeatureIds(pageFeatureMap.get(page.route) ?? []);
+        return {
+          key: `page:${page.route}`,
+          kind: "page",
+          label: page.route,
+          secondary: page.title || page.sourceFile,
+          featureIds,
+          sourceFiles: page.sourceFile ? [page.sourceFile] : [],
+          selectable: true,
+        };
+      })
+      .sort((a, b) => a.label.localeCompare(b.label)),
+    [pageFeatureMap, query, surfaceIndex.pages],
+  );
+  const contractApiItems = useMemo<ExplorerSurfaceItem[]>(
+    () => surfaceIndex.contractApis
+      .filter((api) => matchesQuery(query, [api.method, api.path, api.domain, api.summary]))
+      .map((api: FeatureSurfaceApi): ExplorerSurfaceItem => {
+        const declaration = buildApiDeclaration(api.method, api.path);
+        const lookupKey = buildApiLookupKey(api.method, api.path);
+        return {
+          key: `contract-api:${declaration}`,
+          kind: "contract-api",
+          label: declaration,
+          secondary: api.summary || api.domain,
+          featureIds: dedupeFeatureIds(apiFeatureMap.get(lookupKey) ?? []),
+          sourceFiles: [],
+          selectable: true,
+        };
+      })
+      .sort((a, b) => a.label.localeCompare(b.label)),
+    [apiFeatureMap, query, surfaceIndex.contractApis],
+  );
+  const nextjsApiItems = useMemo<ExplorerSurfaceItem[]>(
+    () => surfaceIndex.nextjsApis
+      .filter((api) => matchesQuery(query, [api.method, api.path, api.domain, ...api.sourceFiles]))
+      .map((api: FeatureSurfaceImplementationApi): ExplorerSurfaceItem => {
+        const declaration = buildApiDeclaration(api.method, api.path);
+        const lookupKey = buildApiLookupKey(api.method, api.path);
+        return {
+          key: `nextjs-api:${declaration}`,
+          kind: "nextjs-api",
+          label: declaration,
+          secondary: api.sourceFiles[0] ?? api.domain,
+          featureIds: dedupeFeatureIds(apiFeatureMap.get(lookupKey) ?? []),
+          sourceFiles: api.sourceFiles,
+          selectable: true,
+        };
+      })
+      .sort((a, b) => a.label.localeCompare(b.label)),
+    [apiFeatureMap, query, surfaceIndex.nextjsApis],
+  );
+  const rustApiItems = useMemo<ExplorerSurfaceItem[]>(
+    () => surfaceIndex.rustApis
+      .filter((api) => matchesQuery(query, [api.method, api.path, api.domain, ...api.sourceFiles]))
+      .map((api: FeatureSurfaceImplementationApi): ExplorerSurfaceItem => {
+        const declaration = buildApiDeclaration(api.method, api.path);
+        const lookupKey = buildApiLookupKey(api.method, api.path);
+        return {
+          key: `rust-api:${declaration}`,
+          kind: "rust-api",
+          label: declaration,
+          secondary: api.sourceFiles[0] ?? api.domain,
+          featureIds: dedupeFeatureIds(apiFeatureMap.get(lookupKey) ?? []),
+          sourceFiles: api.sourceFiles,
+          selectable: true,
+        };
+      })
+      .sort((a, b) => a.label.localeCompare(b.label)),
+    [apiFeatureMap, query, surfaceIndex.rustApis],
+  );
+  const explorerSections = useMemo<ExplorerSection[]>(
+    () => [
+      { id: "features", title: t.featureExplorer.featureSection, items: featureItems },
+      { id: "pages", title: t.featureExplorer.pageSection, items: pageItems },
+      { id: "contract-apis", title: t.featureExplorer.contractApiSection, items: contractApiItems },
+      { id: "nextjs-apis", title: t.featureExplorer.nextjsApiSection, items: nextjsApiItems },
+      { id: "rust-apis", title: t.featureExplorer.rustApiSection, items: rustApiItems },
+    ].filter((section) => section.items.length > 0),
+    [
+      contractApiItems,
+      featureItems,
+      nextjsApiItems,
+      pageItems,
+      rustApiItems,
+      t.featureExplorer.contractApiSection,
+      t.featureExplorer.featureSection,
+      t.featureExplorer.nextjsApiSection,
+      t.featureExplorer.pageSection,
+      t.featureExplorer.rustApiSection,
+    ],
+  );
+  const explorerItemsByKey = useMemo(() => {
+    const entries = explorerSections.flatMap((section) => section.items.map((item) => [item.key, item] as const));
+    return new Map(entries);
+  }, [explorerSections]);
+  const resolvedSurfaceKey = selectedSurfaceKey && explorerItemsByKey.has(selectedSurfaceKey)
+    ? selectedSurfaceKey
+    : (effectiveFeatureId ? `feature:${effectiveFeatureId}` : "");
+
+  const selectedSurface = useMemo(() => {
+    if (resolvedSurfaceKey) {
+      return explorerItemsByKey.get(resolvedSurfaceKey) ?? null;
+    }
+    return null;
+  }, [explorerItemsByKey, resolvedSurfaceKey]);
+  const surfaceOnlySelection = Boolean(
+    selectedSurface && selectedSurface.kind !== "feature" && selectedSurface.featureIds.length === 0,
+  );
+
+  const fileTree = useMemo(() => (surfaceOnlySelection ? [] : featureDetail?.fileTree ?? []), [featureDetail, surfaceOnlySelection]);
+  const fileStats = useMemo(
+    () => (surfaceOnlySelection ? {} : featureDetail?.fileStats ?? {}),
+    [featureDetail, surfaceOnlySelection],
+  );
   const flatMap = useMemo(() => flattenFiles(fileTree), [fileTree]);
 
   // Flat file list sorted by sessions desc, then changes desc
@@ -209,6 +428,18 @@ export function FeatureExplorerPageClient({
   const activeGroup = activeFeature
     ? capabilityGroups.find((group) => group.id === activeFeature.group) ?? null
     : null;
+  const activeSurfaceKey = selectedSurface?.key ?? (effectiveFeatureId ? `feature:${effectiveFeatureId}` : "");
+  const selectedSurfaceFeatureNames = useMemo(
+    () => (selectedSurface?.featureIds ?? []).map(
+      (id) => featureSummaryById.get(id)?.name ?? featureMetadataById.get(id)?.name ?? id,
+    ),
+    [featureMetadataById, featureSummaryById, selectedSurface],
+  );
+  const middleHeadingDetail = selectedSurface?.kind === "feature"
+    ? activeFeature?.name ?? ""
+    : selectedSurface
+      ? `${selectedSurface.label}${selectedSurfaceFeatureNames[0] ? ` -> ${selectedSurfaceFeatureNames[0]}` : ""}`
+      : "";
 
   const handleWorkspaceSelect = (nextWorkspaceId: string) => {
     router.push(`/workspace/${encodeURIComponent(nextWorkspaceId)}/feature-explorer`);
@@ -260,6 +491,24 @@ export function FeatureExplorerPageClient({
     fetchFeatureDetail(nextFeatureId).then((detail) => {
       if (detail) applyFileAutoSelect(detail);
     });
+  };
+  const handleSelectSurface = (item: ExplorerSurfaceItem) => {
+    setSelectedSurfaceKey(item.key);
+    setInspectorTab("context");
+
+    if (item.kind === "feature") {
+      handleSelectFeature(item.featureIds[0] ?? "");
+      return;
+    }
+
+    if (item.featureIds[0]) {
+      handleSelectFeature(item.featureIds[0]);
+      return;
+    }
+
+    setSelectedFileIds([]);
+    setActiveFileId("");
+    setExpandedIds({});
   };
 
   const handleToggleNode = (nodeId: string) => {
@@ -349,49 +598,70 @@ export function FeatureExplorerPageClient({
                   <div className="px-3 py-4 text-xs text-desktop-text-secondary">Loading…</div>
                 ) : error ? (
                   <div className="px-3 py-4 text-xs text-red-400">{error}</div>
-                ) : filteredFeatures.length === 0 ? (
+                ) : explorerSections.length === 0 ? (
                   <div className="px-3 py-4 text-xs text-desktop-text-secondary">
                     {t.featureExplorer.noFeatureMatches}
                   </div>
                 ) : (
-                  <div className="px-2 pb-2">
-                    {filteredFeatures.map((feature) => {
-                      const isActive = feature.id === effectiveFeatureId;
-                      return (
-                        <button
-                          key={feature.id}
-                          onClick={() => handleSelectFeature(feature.id)}
-                          className={`mb-1 w-full rounded-sm border px-2 py-1.5 text-left transition-colors ${
-                            isActive
-                              ? "border-desktop-accent bg-desktop-bg-active text-desktop-text-primary"
-                              : "border-transparent text-desktop-text-secondary hover:border-desktop-border hover:bg-desktop-bg-primary/70 hover:text-desktop-text-primary"
-                          }`}
-                        >
-                          <div className="flex items-center gap-2">
-                            <span className={`inline-flex h-5 w-7 items-center justify-center rounded-sm border text-[10px] font-semibold ${
-                              isActive
-                                ? "border-desktop-accent bg-desktop-bg-primary text-desktop-text-primary"
-                                : "border-desktop-border bg-desktop-bg-primary text-desktop-text-secondary"
-                            }`}>
-                              {featureCodeBadge(feature.id)}
-                            </span>
-                            <span className="min-w-0 flex-1 truncate text-[12px] font-medium">
-                              {feature.name}
-                            </span>
-                            <span className={`rounded-sm border px-1 py-0.5 text-[9px] font-medium ${
-                              feature.status === "shipped"
-                                ? "border-emerald-500/30 text-emerald-400"
-                                : "border-amber-500/30 text-amber-400"
-                            }`}>
-                              {feature.status}
-                            </span>
-                          </div>
-                          <div className="mt-1 line-clamp-2 text-[10px] leading-4 text-current/80">
-                            {feature.summary}
-                          </div>
-                        </button>
-                      );
-                    })}
+                  <div className="space-y-3 px-2 pb-3 pt-2">
+                    {explorerSections.map((section) => (
+                      <div key={section.id}>
+                        <div className="mb-1 flex items-center justify-between px-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-desktop-text-secondary">
+                          <span>{section.title}</span>
+                          <span>{section.items.length}</span>
+                        </div>
+                        <div className="space-y-1">
+                          {section.items.map((item) => {
+                            const isActive = item.key === activeSurfaceKey;
+                            const firstFeatureId = item.featureIds[0] ?? "";
+                            const featureBadge = firstFeatureId ? featureCodeBadge(firstFeatureId) : "";
+                            const mappingLabel = item.kind === "feature"
+                              ? ""
+                              : firstFeatureId
+                                ? item.featureIds.length > 1
+                                  ? `${featureBadge}+${item.featureIds.length - 1}`
+                                  : featureBadge
+                                : t.featureExplorer.unmappedLabel;
+                            return (
+                              <button
+                                key={item.key}
+                                onClick={() => handleSelectSurface(item)}
+                                className={`w-full rounded-sm border px-2 py-1.5 text-left transition-colors ${
+                                  isActive
+                                    ? "border-desktop-accent bg-desktop-bg-active text-desktop-text-primary"
+                                    : "border-transparent text-desktop-text-secondary hover:border-desktop-border hover:bg-desktop-bg-primary/70 hover:text-desktop-text-primary"
+                                }`}
+                              >
+                                <div className="flex items-start gap-2">
+                                  <span className={`inline-flex h-5 min-w-7 items-center justify-center rounded-sm border px-1 text-[9px] font-semibold ${
+                                    isActive
+                                      ? "border-desktop-accent bg-desktop-bg-primary text-desktop-text-primary"
+                                      : "border-desktop-border bg-desktop-bg-primary text-desktop-text-secondary"
+                                  }`}>
+                                    {item.kind === "feature" ? featureCodeBadge(firstFeatureId) : surfaceKindBadge(item.kind)}
+                                  </span>
+                                  <div className="min-w-0 flex-1">
+                                    <div className="truncate text-[12px] font-medium">
+                                      {item.label}
+                                    </div>
+                                    {item.secondary ? (
+                                      <div className="mt-0.5 truncate text-[10px] text-current/75">
+                                        {item.secondary}
+                                      </div>
+                                    ) : null}
+                                  </div>
+                                  {mappingLabel ? (
+                                    <span className="rounded-sm border border-desktop-border bg-desktop-bg-primary px-1.5 py-0.5 text-[9px] font-medium text-current/80">
+                                      {mappingLabel}
+                                    </span>
+                                  ) : null}
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>
@@ -400,8 +670,15 @@ export function FeatureExplorerPageClient({
             {/* ── Middle panel: File tree ── */}
             <section className="flex min-h-0 flex-col border-r border-desktop-border bg-desktop-bg-primary">
               <div className="flex items-center justify-between border-b border-desktop-border px-3 py-2">
-                <div className="text-xs font-semibold text-desktop-text-secondary">
-                  {t.featureExplorer.filesHeading}
+                <div>
+                  <div className="text-xs font-semibold text-desktop-text-secondary">
+                    {t.featureExplorer.filesHeading}
+                  </div>
+                  {middleHeadingDetail ? (
+                    <div className="mt-0.5 truncate text-[10px] text-desktop-text-secondary">
+                      {middleHeadingDetail}
+                    </div>
+                  ) : null}
                 </div>
                 <div className="flex items-center gap-1">
                   <button
@@ -547,18 +824,20 @@ export function FeatureExplorerPageClient({
                   <ContextPanel
                     activeFile={activeFile}
                     activeGroup={activeGroup}
-                    featureDetail={featureDetail}
+                    featureDetail={surfaceOnlySelection ? null : featureDetail}
+                    selectedSurface={selectedSurface}
+                    selectedSurfaceFeatureNames={selectedSurfaceFeatureNames}
                     t={t}
                   />
                 )}
 
                 {inspectorTab === "screenshot" && (
-                  <ScreenshotPanel featureDetail={featureDetail} t={t} />
+                  <ScreenshotPanel featureDetail={surfaceOnlySelection ? null : featureDetail} t={t} />
                 )}
 
                 {inspectorTab === "api" && (
                   <ApiPanel
-                    featureDetail={featureDetail}
+                    featureDetail={surfaceOnlySelection ? null : featureDetail}
                     t={t}
                     onRequest={handleApiRequest}
                   />
@@ -594,41 +873,89 @@ function ContextPanel({
   activeFile,
   activeGroup,
   featureDetail,
+  selectedSurface,
+  selectedSurfaceFeatureNames,
   t,
 }: {
   activeFile: FileTreeNode | null;
   activeGroup: CapabilityGroup | null;
   featureDetail: FeatureDetail | null;
+  selectedSurface: ExplorerSurfaceItem | null;
+  selectedSurfaceFeatureNames: string[];
   t: ReturnType<typeof useTranslation>["t"];
 }) {
-  if (!featureDetail) {
+  if (!featureDetail && !selectedSurface) {
     return <div className="text-xs text-desktop-text-secondary">-</div>;
   }
 
   return (
     <div className="space-y-2">
-      <ContextSection title={t.featureExplorer.featureSummary}>
-        <div className="space-y-3">
-          <div>
-            <div className="text-[13px] font-semibold text-desktop-text-primary">{featureDetail.name}</div>
-            <div className="mt-1 text-[11px] leading-5 text-desktop-text-secondary">{featureDetail.summary}</div>
-          </div>
-
-          <div className="grid gap-px overflow-hidden rounded-sm border border-desktop-border bg-desktop-border sm:grid-cols-2">
-            <MetricCell label={t.featureExplorer.capabilityGroup} value={activeGroup?.name ?? featureDetail.group} />
-            <MetricCell label={t.featureExplorer.statusLabel} value={featureDetail.status} />
-            <MetricCell label={t.featureExplorer.sourceFilesLabel} value={String(featureDetail.sourceFiles.length)} />
-            <MetricCell label={t.featureExplorer.sessionsLabel} value={String(featureDetail.sessionCount)} />
-          </div>
-
-          {activeGroup?.description ? (
-            <div className="rounded-sm border border-desktop-border bg-desktop-bg-secondary px-2.5 py-2 text-[11px] leading-5 text-desktop-text-secondary">
-              <span className="font-medium text-desktop-text-primary">{t.featureExplorer.groupDescription}: </span>
-              {activeGroup.description}
+      {selectedSurface ? (
+        <ContextSection title={t.featureExplorer.selectedSurface}>
+          <div className="space-y-3">
+            <div>
+              <div className="text-[13px] font-semibold text-desktop-text-primary">{selectedSurface.label}</div>
+              {selectedSurface.secondary ? (
+                <div className="mt-1 text-[11px] leading-5 text-desktop-text-secondary">{selectedSurface.secondary}</div>
+              ) : null}
             </div>
-          ) : null}
-        </div>
-      </ContextSection>
+
+            <div className="grid gap-px overflow-hidden rounded-sm border border-desktop-border bg-desktop-border sm:grid-cols-2">
+              <MetricCell label={t.featureExplorer.state} value={surfaceKindBadge(selectedSurface.kind)} />
+              <MetricCell
+                label={t.featureExplorer.linkedFeatures}
+                value={selectedSurfaceFeatureNames.length > 0 ? String(selectedSurfaceFeatureNames.length) : t.featureExplorer.unmappedLabel}
+              />
+            </div>
+
+            {selectedSurfaceFeatureNames.length > 0 ? (
+              <div className="rounded-sm border border-desktop-border bg-desktop-bg-secondary px-2.5 py-2 text-[11px] leading-5 text-desktop-text-secondary">
+                <span className="font-medium text-desktop-text-primary">{t.featureExplorer.linkedFeatures}: </span>
+                {selectedSurfaceFeatureNames.join(", ")}
+              </div>
+            ) : null}
+
+            {selectedSurface.sourceFiles.length > 0 ? (
+              <div className="space-y-1">
+                <div className="text-[10px] font-medium text-desktop-text-secondary">{t.featureExplorer.sourceFilesLabel}</div>
+                {selectedSurface.sourceFiles.map((sourceFile) => (
+                  <div
+                    key={sourceFile}
+                    className="rounded-sm border border-desktop-border bg-desktop-bg-secondary px-2 py-1.5 text-[11px] text-desktop-text-secondary"
+                  >
+                    {sourceFile}
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        </ContextSection>
+      ) : null}
+
+      {featureDetail ? (
+        <ContextSection title={t.featureExplorer.featureSummary}>
+          <div className="space-y-3">
+            <div>
+              <div className="text-[13px] font-semibold text-desktop-text-primary">{featureDetail.name}</div>
+              <div className="mt-1 text-[11px] leading-5 text-desktop-text-secondary">{featureDetail.summary}</div>
+            </div>
+
+            <div className="grid gap-px overflow-hidden rounded-sm border border-desktop-border bg-desktop-border sm:grid-cols-2">
+              <MetricCell label={t.featureExplorer.capabilityGroup} value={activeGroup?.name ?? featureDetail.group} />
+              <MetricCell label={t.featureExplorer.statusLabel} value={featureDetail.status} />
+              <MetricCell label={t.featureExplorer.sourceFilesLabel} value={String(featureDetail.sourceFiles.length)} />
+              <MetricCell label={t.featureExplorer.sessionsLabel} value={String(featureDetail.sessionCount)} />
+            </div>
+
+            {activeGroup?.description ? (
+              <div className="rounded-sm border border-desktop-border bg-desktop-bg-secondary px-2.5 py-2 text-[11px] leading-5 text-desktop-text-secondary">
+                <span className="font-medium text-desktop-text-primary">{t.featureExplorer.groupDescription}: </span>
+                {activeGroup.description}
+              </div>
+            ) : null}
+          </div>
+        </ContextSection>
+      ) : null}
 
       {activeFile && (
         <ContextSection title={t.featureExplorer.activeFile}>
@@ -665,20 +992,22 @@ function ContextPanel({
         </div>
       </ContextSection>
 
-      <ContextSection title={t.featureExplorer.sourceFilesLabel}>
-        <div className="space-y-1">
-          {featureDetail.sourceFiles.map((sourceFile) => (
-            <div
-              key={sourceFile}
-              className="rounded-sm border border-desktop-border bg-desktop-bg-secondary px-2 py-1.5 text-[11px] text-desktop-text-secondary"
-            >
-              {sourceFile}
-            </div>
-          ))}
-        </div>
-      </ContextSection>
+      {featureDetail ? (
+        <ContextSection title={t.featureExplorer.sourceFilesLabel}>
+          <div className="space-y-1">
+            {featureDetail.sourceFiles.map((sourceFile) => (
+              <div
+                key={sourceFile}
+                className="rounded-sm border border-desktop-border bg-desktop-bg-secondary px-2 py-1.5 text-[11px] text-desktop-text-secondary"
+              >
+                {sourceFile}
+              </div>
+            ))}
+          </div>
+        </ContextSection>
+      ) : null}
 
-      {featureDetail.relatedFeatures.length > 0 && (
+      {featureDetail && featureDetail.relatedFeatures.length > 0 && (
         <ContextSection title={t.featureExplorer.relatedFiles}>
           <div className="space-y-1">
             {featureDetail.relatedFeatures.map((relId) => (

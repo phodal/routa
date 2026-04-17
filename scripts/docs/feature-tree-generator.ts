@@ -2,6 +2,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { execFileSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 import yaml from "js-yaml";
 
@@ -15,12 +16,19 @@ type RouteInfo = {
   sourceFile: string;
 };
 
-type ApiFeature = {
+type ContractApiFeature = {
   path: string;
   method: string;
   operationId: string;
   summary: string;
   domain: string;
+};
+
+type ImplementationApiRoute = {
+  path: string;
+  method: string;
+  domain: string;
+  sourceFiles: string[];
 };
 
 type FeatureNode = {
@@ -53,6 +61,25 @@ export type FeatureSurfaceIndex = {
     path: string;
     operationId: string;
     summary: string;
+  }>;
+  contractApis: Array<{
+    domain: string;
+    method: string;
+    path: string;
+    operationId: string;
+    summary: string;
+  }>;
+  nextjsApis: Array<{
+    domain: string;
+    method: string;
+    path: string;
+    sourceFiles: string[];
+  }>;
+  rustApis: Array<{
+    domain: string;
+    method: string;
+    path: string;
+    sourceFiles: string[];
   }>;
   metadata: FeatureMetadata | null;
 };
@@ -94,8 +121,13 @@ type OpenApiDoc = {
 
 const API_CONTRACT = fromRoot("api-contract.yaml");
 const APP_DIR = fromRoot("src", "app");
+const NEXT_API_DIR = fromRoot("src", "app", "api");
+const RUST_API_DIR = fromRoot("crates", "routa-server", "src", "api");
+const RUST_API_MOD = path.join(RUST_API_DIR, "mod.rs");
+const RUST_LIB = fromRoot("crates", "routa-server", "src", "lib.rs");
 const OUTPUT_MD = fromRoot("docs", "product-specs", "FEATURE_TREE.md");
 const OUTPUT_JSON = fromRoot("docs", "product-specs", "feature-tree.index.json");
+const REPO_ROOT = fromRoot();
 
 function normalizeString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -223,6 +255,43 @@ export function readFeatureMetadataFromFeatureTree(markdown: string): FeatureMet
   return normalizeFeatureMetadata(featureMetadata);
 }
 
+export function readFeatureMetadataFromSurfaceIndex(raw: string): FeatureMetadata | null {
+  if (!raw.trim()) {
+    return null;
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+
+  const metadata = parsed && typeof parsed === "object"
+    ? (parsed as { metadata?: unknown }).metadata
+    : null;
+
+  return normalizeFeatureMetadata(metadata);
+}
+
+function readTrackedFileFromHead(relativePath: string): string {
+  try {
+    return execFileSync("git", ["show", `HEAD:${relativePath}`], {
+      cwd: REPO_ROOT,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+  } catch {
+    return "";
+  }
+}
+
+function loadPersistedFeatureMetadata(existingFeatureTree: string, existingSurfaceIndex: string): FeatureMetadata | null {
+  return readFeatureMetadataFromFeatureTree(existingFeatureTree)
+    ?? readFeatureMetadataFromSurfaceIndex(existingSurfaceIndex)
+    ?? readFeatureMetadataFromFeatureTree(readTrackedFileFromHead("docs/product-specs/FEATURE_TREE.md"));
+}
+
 export function parsePageComment(content: string): { title: string | null; description: string | null } {
   const match = content.match(/\/\*\*\s*(.*?)\s*\*\//s);
   if (!match) {
@@ -263,6 +332,335 @@ function formatRouteSegment(segment: string): string {
     return inner.replace(/[-_]/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
   }
   return normalized.replace(/[-_]/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function toRepoRelative(filePath: string): string {
+  return path.relative(REPO_ROOT, filePath).replace(/\\/g, "/");
+}
+
+function domainFromApiPath(apiPath: string): string {
+  const match = apiPath.match(/^\/api\/([^/]+)/);
+  return match?.[1] ?? "root";
+}
+
+function normalizeApiPathSegment(segment: string): string {
+  if (!segment.startsWith("[") || !segment.endsWith("]")) {
+    return segment;
+  }
+
+  if (segment.startsWith("[...") && segment.endsWith("]")) {
+    return `{${segment.slice(4, -1)}}`;
+  }
+
+  return `{${segment.slice(1, -1)}}`;
+}
+
+function normalizeNextjsApiPath(relativeDir: string): string {
+  const normalized = relativeDir === "." ? "" : relativeDir.replace(/\\/g, "/");
+  const segments = normalized
+    .split("/")
+    .filter(Boolean)
+    .map(normalizeApiPathSegment);
+  return segments.length > 0 ? `/api/${segments.join("/")}` : "/api";
+}
+
+function scanNextjsApiRoutes(): ImplementationApiRoute[] {
+  const routes = new Map<string, ImplementationApiRoute>();
+  const exportedMethods = ["GET", "POST", "PUT", "DELETE", "PATCH"];
+
+  function walk(dir: string): void {
+    if (!fs.existsSync(dir)) {
+      return;
+    }
+
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        walk(fullPath);
+        continue;
+      }
+
+      if (entry.name !== "route.ts" && entry.name !== "route.js") {
+        continue;
+      }
+
+      const relativeDir = path.relative(NEXT_API_DIR, path.dirname(fullPath));
+      const routePath = normalizeNextjsApiPath(relativeDir);
+      const content = fs.readFileSync(fullPath, "utf8");
+      const sourceFile = toRepoRelative(fullPath);
+
+      for (const method of exportedMethods) {
+        const regex = new RegExp(
+          `export\\s+(async\\s+)?function\\s+${method}\\b|export\\s*\\{[^}]*\\b${method}\\b`,
+        );
+        if (!regex.test(content)) {
+          continue;
+        }
+
+        const key = `${method} ${routePath}`;
+        routes.set(key, {
+          method,
+          path: routePath,
+          domain: domainFromApiPath(routePath),
+          sourceFiles: [sourceFile],
+        });
+      }
+    }
+  }
+
+  walk(NEXT_API_DIR);
+  return [...routes.values()].sort((left, right) =>
+    left.domain.localeCompare(right.domain)
+    || left.path.localeCompare(right.path)
+    || left.method.localeCompare(right.method),
+  );
+}
+
+type RustModuleContent = {
+  content: string;
+  sourceFiles: string[];
+};
+
+function listRustSourceFiles(dir: string): string[] {
+  if (!fs.existsSync(dir)) {
+    return [];
+  }
+
+  const files: string[] = [];
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const fullPath = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...listRustSourceFiles(fullPath));
+    } else if (entry.isFile() && entry.name.endsWith(".rs")) {
+      files.push(fullPath);
+    }
+  }
+
+  return files.sort();
+}
+
+function extractMethods(handlerChain: string): string[] {
+  const methods: string[] = [];
+  for (const method of ["get", "post", "put", "delete", "patch"]) {
+    const regex = new RegExp(`(?:^|[\\s.:])${method}\\(`, "g");
+    if (regex.test(handlerChain)) {
+      methods.push(method.toUpperCase());
+    }
+  }
+  return methods;
+}
+
+function extractRouteCalls(content: string): Array<{ subPath: string; handlerChain: string }> {
+  const results: Array<{ subPath: string; handlerChain: string }> = [];
+  const prefix = ".route(";
+  let index = 0;
+
+  while (index < content.length) {
+    const routeIndex = content.indexOf(prefix, index);
+    if (routeIndex === -1) {
+      break;
+    }
+
+    let cursor = routeIndex + prefix.length;
+    while (cursor < content.length && /\s/.test(content[cursor] ?? "")) {
+      cursor += 1;
+    }
+
+    if (content[cursor] !== "\"") {
+      index = cursor + 1;
+      continue;
+    }
+    cursor += 1;
+
+    let subPath = "";
+    while (cursor < content.length && content[cursor] !== "\"") {
+      subPath += content[cursor];
+      cursor += 1;
+    }
+    cursor += 1;
+
+    while (cursor < content.length && /[\s,]/.test(content[cursor] ?? "")) {
+      cursor += 1;
+    }
+
+    let depth = 1;
+    const handlerStart = cursor;
+    while (cursor < content.length && depth > 0) {
+      if (content[cursor] === "(") {
+        depth += 1;
+      } else if (content[cursor] === ")") {
+        depth -= 1;
+      }
+      if (depth > 0) {
+        cursor += 1;
+      }
+    }
+
+    results.push({
+      subPath,
+      handlerChain: content.slice(handlerStart, cursor),
+    });
+    index = cursor + 1;
+  }
+
+  return results;
+}
+
+function extractNestCalls(
+  content: string,
+): Array<{ basePath: string; modulePath: string; functionName: string }> {
+  const results: Array<{ basePath: string; modulePath: string; functionName: string }> = [];
+  const regex = /\.nest\("([^"]+)",\s*([\w:]+)::(\w+)\([^)]*\)\)/g;
+  let match: RegExpExecArray | null;
+
+  while ((match = regex.exec(content)) !== null) {
+    results.push({
+      basePath: match[1] ?? "",
+      modulePath: match[2] ?? "",
+      functionName: match[3] ?? "",
+    });
+  }
+
+  return results;
+}
+
+function joinRustRoutePaths(basePath: string, subPath: string): string {
+  const normalizedBase = basePath.replace(/\/+$/, "");
+  const normalizedSubPath = subPath === "/" ? "" : subPath;
+  return `${normalizedBase}${normalizedSubPath || ""}` || "/";
+}
+
+function readRustApiModule(moduleName: string): RustModuleContent | null {
+  const moduleFile = path.join(RUST_API_DIR, `${moduleName}.rs`);
+  const moduleDir = path.join(RUST_API_DIR, moduleName);
+  const files: string[] = [];
+
+  if (fs.existsSync(moduleFile)) {
+    files.push(moduleFile);
+  }
+  files.push(...listRustSourceFiles(moduleDir));
+
+  if (files.length === 0) {
+    return null;
+  }
+
+  return {
+    content: files.map((file) => fs.readFileSync(file, "utf8")).join("\n"),
+    sourceFiles: files.map(toRepoRelative),
+  };
+}
+
+function recordImplementationApiRoute(
+  routes: Map<string, ImplementationApiRoute>,
+  route: Omit<ImplementationApiRoute, "domain"> & { domain?: string },
+): void {
+  const key = `${route.method} ${route.path}`;
+  const existing = routes.get(key);
+  const sourceFiles = [...new Set(route.sourceFiles)].sort();
+
+  if (!existing) {
+    routes.set(key, {
+      method: route.method,
+      path: route.path,
+      domain: route.domain ?? domainFromApiPath(route.path),
+      sourceFiles,
+    });
+    return;
+  }
+
+  routes.set(key, {
+    ...existing,
+    sourceFiles: [...new Set([...existing.sourceFiles, ...sourceFiles])].sort(),
+  });
+}
+
+function collectRustApiRoutes(params: {
+  content: string;
+  basePath: string;
+  sourceFiles: string[];
+  visitedRouters: Set<string>;
+  routes: Map<string, ImplementationApiRoute>;
+}): void {
+  const { content, basePath, sourceFiles, visitedRouters, routes } = params;
+
+  for (const { subPath, handlerChain } of extractRouteCalls(content)) {
+    const fullPath = joinRustRoutePaths(basePath, subPath);
+    for (const method of extractMethods(handlerChain)) {
+      recordImplementationApiRoute(routes, {
+        method,
+        path: fullPath,
+        sourceFiles,
+      });
+    }
+  }
+
+  for (const nest of extractNestCalls(content)) {
+    const moduleName = nest.modulePath.split("::").filter(Boolean).at(-1);
+    if (!moduleName) {
+      continue;
+    }
+
+    const visitKey = `${basePath}::${nest.basePath}::${nest.modulePath}::${nest.functionName}`;
+    if (visitedRouters.has(visitKey)) {
+      continue;
+    }
+    visitedRouters.add(visitKey);
+
+    const apiModule = readRustApiModule(moduleName);
+    if (!apiModule) {
+      continue;
+    }
+
+    collectRustApiRoutes({
+      content: apiModule.content,
+      basePath: joinRustRoutePaths(basePath, nest.basePath),
+      sourceFiles: apiModule.sourceFiles,
+      visitedRouters,
+      routes,
+    });
+  }
+}
+
+function scanRustApiRoutes(): ImplementationApiRoute[] {
+  const routes = new Map<string, ImplementationApiRoute>();
+  const visitedRouters = new Set<string>();
+
+  if (fs.existsSync(RUST_API_MOD)) {
+    collectRustApiRoutes({
+      content: fs.readFileSync(RUST_API_MOD, "utf8"),
+      basePath: "",
+      sourceFiles: [toRepoRelative(RUST_API_MOD)],
+      visitedRouters,
+      routes,
+    });
+  }
+
+  for (const directFile of [RUST_API_MOD, RUST_LIB]) {
+    if (!fs.existsSync(directFile)) {
+      continue;
+    }
+
+    const content = fs.readFileSync(directFile, "utf8");
+    for (const { subPath, handlerChain } of extractRouteCalls(content)) {
+      if (!subPath.startsWith("/api/")) {
+        continue;
+      }
+
+      for (const method of extractMethods(handlerChain)) {
+        recordImplementationApiRoute(routes, {
+          method,
+          path: subPath,
+          sourceFiles: [toRepoRelative(directFile)],
+        });
+      }
+    }
+  }
+
+  return [...routes.values()].sort((left, right) =>
+    left.domain.localeCompare(right.domain)
+    || left.path.localeCompare(right.path)
+    || left.method.localeCompare(right.method),
+  );
 }
 
 function scanFrontendRoutes(): RouteInfo[] {
@@ -321,12 +719,12 @@ function scanFrontendRoutes(): RouteInfo[] {
   return routes.sort((left, right) => left.route.localeCompare(right.route));
 }
 
-export function extractApiFeatures(apiContract: OpenApiDoc | null): Record<string, ApiFeature[]> {
+export function extractApiFeatures(apiContract: OpenApiDoc | null): Record<string, ContractApiFeature[]> {
   if (!apiContract?.paths) {
     return {};
   }
 
-  const domains = new Map<string, ApiFeature[]>();
+  const domains = new Map<string, ContractApiFeature[]>();
   for (const [apiPath, methods] of Object.entries(apiContract.paths)) {
     const match = apiPath.match(/^\/api\/([^/]+)/);
     if (!match) {
@@ -352,7 +750,7 @@ export function extractApiFeatures(apiContract: OpenApiDoc | null): Record<strin
   return Object.fromEntries([...domains.entries()].sort(([a], [b]) => a.localeCompare(b)));
 }
 
-export function buildFeatureTree(routes: RouteInfo[], apiFeatures: Record<string, ApiFeature[]>): FeatureTree {
+export function buildFeatureTree(routes: RouteInfo[], apiFeatures: Record<string, ContractApiFeature[]>): FeatureTree {
   const routesNode: FeatureNode = {
     id: "routes",
     name: "Frontend Pages",
@@ -382,8 +780,8 @@ export function buildFeatureTree(routes: RouteInfo[], apiFeatures: Record<string
 
   const apiNode: FeatureNode = {
     id: "api",
-    name: "API Endpoints",
-    description: `${Object.values(apiFeatures).reduce((count, features) => count + features.length, 0)} REST endpoints`,
+    name: "API Contract Endpoints",
+    description: `${Object.values(apiFeatures).reduce((count, features) => count + features.length, 0)} contract endpoints`,
     children: Object.entries(apiFeatures).map(([domain, endpoints]) => ({
       id: `api.${domain}`,
       name: domainNames[domain] ?? domain.replace(/\b\w/g, (char) => char.toUpperCase()),
@@ -403,11 +801,103 @@ export function buildFeatureTree(routes: RouteInfo[], apiFeatures: Record<string
   };
 }
 
+function flattenContractApis(apiFeatures: Record<string, ContractApiFeature[]>): ContractApiFeature[] {
+  return Object.values(apiFeatures)
+    .flatMap((features) => features)
+    .sort((left, right) => {
+      if (left.domain !== right.domain) {
+        return left.domain.localeCompare(right.domain);
+      }
+      if (left.path !== right.path) {
+        return left.path.localeCompare(right.path);
+      }
+      return left.method.localeCompare(right.method);
+    });
+}
+
+function normalizeApiDeclaration(declaration: string): { method: string; path: string } | null {
+  const [method, ...pathParts] = declaration.trim().split(/\s+/);
+  const endpointPath = pathParts.join(" ").trim();
+  if (!method || !endpointPath) {
+    return null;
+  }
+
+  return {
+    method: method.toUpperCase(),
+    path: endpointPath,
+  };
+}
+
+function augmentFeatureMetadata(params: {
+  metadata: FeatureMetadata | null;
+  routes: RouteInfo[];
+  nextjsApis: ImplementationApiRoute[];
+  rustApis: ImplementationApiRoute[];
+}): FeatureMetadata | null {
+  const { metadata, routes, nextjsApis, rustApis } = params;
+  if (!metadata) {
+    return null;
+  }
+
+  const pageSourceLookup = new Map(routes.map((route) => [route.route, route.sourceFile]));
+  const nextjsLookup = new Map(nextjsApis.map((api) => [`${api.method} ${api.path}`, api.sourceFiles]));
+  const rustLookup = new Map(rustApis.map((api) => [`${api.method} ${api.path}`, api.sourceFiles]));
+
+  return {
+    ...metadata,
+    features: metadata.features.map((feature) => {
+      const sourceFiles = new Set(feature.sourceFiles ?? []);
+
+      for (const route of feature.pages ?? []) {
+        const sourceFile = pageSourceLookup.get(route);
+        if (sourceFile) {
+          sourceFiles.add(sourceFile);
+        }
+      }
+
+      for (const declaration of feature.apis ?? []) {
+        const parsed = normalizeApiDeclaration(declaration);
+        if (!parsed) {
+          continue;
+        }
+
+        for (const sourceFile of nextjsLookup.get(`${parsed.method} ${parsed.path}`) ?? []) {
+          sourceFiles.add(sourceFile);
+        }
+        for (const sourceFile of rustLookup.get(`${parsed.method} ${parsed.path}`) ?? []) {
+          sourceFiles.add(sourceFile);
+        }
+      }
+
+      return {
+        ...feature,
+        ...(sourceFiles.size > 0 ? { sourceFiles: [...sourceFiles].sort() } : {}),
+      };
+    }),
+  };
+}
+
 export function buildFeatureSurfaceIndex(
   routes: RouteInfo[],
-  apiFeatures: Record<string, ApiFeature[]>,
+  apiFeatures: Record<string, ContractApiFeature[]>,
+  nextjsApis: ImplementationApiRoute[],
+  rustApis: ImplementationApiRoute[],
   metadata: FeatureMetadata | null = null,
 ): FeatureSurfaceIndex {
+  const contractApis = flattenContractApis(apiFeatures).map((feature) => ({
+    domain: feature.domain,
+    method: feature.method,
+    path: feature.path,
+    operationId: feature.operationId,
+    summary: feature.summary,
+  }));
+  const augmentedMetadata = augmentFeatureMetadata({
+    metadata,
+    routes,
+    nextjsApis,
+    rustApis,
+  });
+
   return {
     generatedAt: new Date().toISOString(),
     pages: routes.map((route) => ({
@@ -416,25 +906,21 @@ export function buildFeatureSurfaceIndex(
       description: route.description,
       sourceFile: route.sourceFile,
     })),
-    apis: Object.values(apiFeatures)
-      .flatMap((features) => features)
-      .sort((left, right) => {
-        if (left.domain !== right.domain) {
-          return left.domain.localeCompare(right.domain);
-        }
-        if (left.path !== right.path) {
-          return left.path.localeCompare(right.path);
-        }
-        return left.method.localeCompare(right.method);
-      })
-      .map((feature) => ({
-        domain: feature.domain,
-        method: feature.method,
-        path: feature.path,
-        operationId: feature.operationId,
-        summary: feature.summary,
-      })),
-    metadata,
+    apis: contractApis,
+    contractApis,
+    nextjsApis: nextjsApis.map((api) => ({
+      domain: api.domain,
+      method: api.method,
+      path: api.path,
+      sourceFiles: api.sourceFiles,
+    })),
+    rustApis: rustApis.map((api) => ({
+      domain: api.domain,
+      method: api.method,
+      path: api.path,
+      sourceFiles: api.sourceFiles,
+    })),
+    metadata: augmentedMetadata,
   };
 }
 
@@ -466,7 +952,73 @@ function buildFrontmatterMetadata(metadata: FeatureMetadata): string {
   ).trimEnd();
 }
 
-export function renderMarkdown(tree: FeatureTree, metadata: FeatureMetadata | null = null): string {
+function renderApiSection<T extends { domain: string; method: string; path: string }>(
+  lines: string[],
+  title: string,
+  apis: T[],
+  renderDescription: (api: T) => string,
+): void {
+  const grouped = new Map<string, T[]>();
+  for (const api of apis) {
+    const current = grouped.get(api.domain) ?? [];
+    current.push(api);
+    grouped.set(api.domain, current);
+  }
+
+  lines.push(title, "");
+  for (const [domain, endpoints] of [...grouped.entries()].sort(([left], [right]) => left.localeCompare(right))) {
+    const domainName = domain.replace(/\b\w/g, (char) => char.toUpperCase());
+    lines.push(`### ${domainName} (${endpoints.length})`, "");
+    lines.push("| Method | Endpoint | Details |", "|--------|----------|---------|");
+    for (const endpoint of endpoints) {
+      lines.push(`| ${endpoint.method} | \`${endpoint.path}\` | ${renderDescription(endpoint)} |`);
+    }
+    lines.push("");
+  }
+}
+
+function renderContractApiSection(
+  lines: string[],
+  apis: FeatureSurfaceIndex["contractApis"],
+  nextjsApis: ImplementationApiRoute[],
+  rustApis: ImplementationApiRoute[],
+): void {
+  const grouped = new Map<string, FeatureSurfaceIndex["contractApis"][number][]>();
+  const nextjsLookup = new Map(nextjsApis.map((api) => [`${api.method} ${api.path}`, api.sourceFiles]));
+  const rustLookup = new Map(rustApis.map((api) => [`${api.method} ${api.path}`, api.sourceFiles]));
+
+  for (const api of apis) {
+    const current = grouped.get(api.domain) ?? [];
+    current.push(api);
+    grouped.set(api.domain, current);
+  }
+
+  lines.push("## API Contract Endpoints", "");
+  for (const [domain, endpoints] of [...grouped.entries()].sort(([left], [right]) => left.localeCompare(right))) {
+    const domainName = domain.replace(/\b\w/g, (char) => char.toUpperCase());
+    lines.push(`### ${domainName} (${endpoints.length})`, "");
+    lines.push("| Method | Endpoint | Details | Next.js | Rust |", "|--------|----------|---------|---------|------|");
+    for (const endpoint of endpoints) {
+      const key = `${endpoint.method} ${endpoint.path}`;
+      lines.push(
+        `| ${endpoint.method} | \`${endpoint.path}\` | ${endpoint.summary || endpoint.operationId || ""} | ${formatSourceFiles(nextjsLookup.get(key) ?? [])} | ${formatSourceFiles(rustLookup.get(key) ?? [])} |`,
+      );
+    }
+    lines.push("");
+  }
+}
+
+function formatSourceFiles(sourceFiles: string[]): string {
+  if (sourceFiles.length === 0) {
+    return "";
+  }
+  return sourceFiles.map((file) => `\`${file}\``).join(", ");
+}
+
+export function renderMarkdown(
+  tree: FeatureTree,
+  surfaceIndex: FeatureSurfaceIndex,
+): string {
   const lines: string[] = [
     "---",
     "status: generated",
@@ -474,14 +1026,17 @@ export function renderMarkdown(tree: FeatureTree, metadata: FeatureMetadata | nu
     "sources:",
     "  - src/app/**/page.tsx",
     "  - api-contract.yaml",
+    "  - src/app/api/**/route.ts",
+    "  - crates/routa-server/src/api/**/*.rs",
     "update_policy:",
-    "  - Regenerate with `node --import tsx scripts/docs/feature-tree-generator.ts --save`.",
-    "  - Hand-edit only `feature_metadata` in this frontmatter block.",
-    "  - Do not hand-edit generated endpoint or route tables below.",
+    "  - \"Regenerate with `node --import tsx scripts/docs/feature-tree-generator.ts --save`.\"",
+    "  - \"Hand-edit semantic `feature_metadata` fields in this frontmatter block.\"",
+    "  - \"`feature_metadata.features[].source_files` is regenerated from declared pages/APIs.\"",
+    "  - \"Do not hand-edit generated endpoint or route tables below.\"",
   ];
 
-  if (metadata) {
-    lines.push(buildFrontmatterMetadata(metadata));
+  if (surfaceIndex.metadata) {
+    lines.push(buildFrontmatterMetadata(surfaceIndex.metadata));
   }
 
   lines.push(
@@ -491,40 +1046,30 @@ export function renderMarkdown(tree: FeatureTree, metadata: FeatureMetadata | nu
     "",
     `${tree.description}. This document is auto-generated from:`,
     "- Frontend routes: `src/app/**/page.tsx`",
-    "- API contract: `api-contract.yaml`",
-    "- Feature metadata: `feature_metadata` frontmatter in this file",
+    "- Contract API: `api-contract.yaml`",
+    "- Next.js API routes: `src/app/api/**/route.ts`",
+    "- Rust API routes: `crates/routa-server/src/api/**/*.rs`",
+    "- Feature metadata: `feature_metadata` frontmatter in this file (`source_files` regenerated)",
     "",
     "---",
     "",
   );
 
-  for (const section of tree.children) {
-    if (section.id === "routes") {
-      lines.push("## Frontend Pages", "", "| Page | Route | Description |", "|------|-------|-------------|");
-      for (const page of section.children ?? []) {
-        const description = (page.description ?? "").slice(0, 80);
-        const normalizedDescription = description && !description.endsWith(".")
-          ? (description.includes(".") ? description.split(".")[0] : description)
-          : description;
-        lines.push(`| ${page.name} | \`${page.route ?? ""}\` | ${normalizedDescription} |`);
-      }
-      lines.push("", "---", "");
-      continue;
-    }
-
-    if (section.id === "api") {
-      lines.push("## API Endpoints", "");
-      for (const domain of section.children ?? []) {
-        lines.push(`### ${domain.name} (${domain.count ?? (domain.children?.length ?? 0)})`, "");
-        lines.push("| Method | Endpoint | Description |", "|--------|----------|-------------|");
-        for (const endpoint of domain.children ?? []) {
-          const [method = "?", ...rest] = endpoint.name.split(" ");
-          lines.push(`| ${method} | \`${endpoint.path ?? ""}\` | ${rest.join(" ")} |`);
-        }
-        lines.push("");
-      }
-    }
+  lines.push("## Frontend Pages", "", "| Page | Route | Source File | Description |", "|------|-------|-------------|-------------|");
+  for (const page of surfaceIndex.pages) {
+    const description = (page.description ?? "").slice(0, 80);
+    const normalizedDescription = description && !description.endsWith(".")
+      ? (description.includes(".") ? description.split(".")[0] : description)
+      : description;
+    lines.push(`| ${page.title} | \`${page.route}\` | \`${page.sourceFile}\` | ${normalizedDescription} |`);
   }
+
+  lines.push("", "---", "");
+  renderContractApiSection(lines, surfaceIndex.contractApis, surfaceIndex.nextjsApis, surfaceIndex.rustApis);
+  lines.push("---", "");
+  renderApiSection(lines, "## Next.js API Routes", surfaceIndex.nextjsApis, (api) => formatSourceFiles(api.sourceFiles));
+  lines.push("---", "");
+  renderApiSection(lines, "## Rust API Routes", surfaceIndex.rustApis, (api) => formatSourceFiles(api.sourceFiles));
 
   return `${lines.join("\n")}\n`;
 }
@@ -581,12 +1126,15 @@ function printTreeTable(tree: FeatureTree): void {
 function main(): void {
   const args = new Set(process.argv.slice(2));
   const routes = scanFrontendRoutes();
+  const nextjsApis = scanNextjsApiRoutes();
+  const rustApis = scanRustApiRoutes();
   const apiContract = loadYamlFile<OpenApiDoc>(API_CONTRACT);
   const existingFeatureTree = fs.existsSync(OUTPUT_MD) ? fs.readFileSync(OUTPUT_MD, "utf8") : "";
-  const metadata = readFeatureMetadataFromFeatureTree(existingFeatureTree);
+  const existingSurfaceIndex = fs.existsSync(OUTPUT_JSON) ? fs.readFileSync(OUTPUT_JSON, "utf8") : "";
+  const metadata = loadPersistedFeatureMetadata(existingFeatureTree, existingSurfaceIndex);
   const apiFeatures = extractApiFeatures(apiContract);
   const tree = buildFeatureTree(routes, apiFeatures);
-  const surfaceIndex = buildFeatureSurfaceIndex(routes, apiFeatures, metadata);
+  const surfaceIndex = buildFeatureSurfaceIndex(routes, apiFeatures, nextjsApis, rustApis, metadata);
 
   if (args.has("--json")) {
     console.log(JSON.stringify(tree, null, 2));
@@ -598,7 +1146,7 @@ function main(): void {
   }
   if (args.has("--save")) {
     fs.mkdirSync(path.dirname(OUTPUT_MD), { recursive: true });
-    fs.writeFileSync(OUTPUT_MD, renderMarkdown(tree, metadata), "utf8");
+    fs.writeFileSync(OUTPUT_MD, renderMarkdown(tree, surfaceIndex), "utf8");
     fs.writeFileSync(OUTPUT_JSON, JSON.stringify(surfaceIndex, null, 2) + "\n", "utf8");
     console.log(`✅ Saved to ${OUTPUT_MD}`);
     console.log(`✅ Saved to ${OUTPUT_JSON}`);

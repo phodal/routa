@@ -31,22 +31,40 @@ describe("feature-tree-generator", () => {
       capabilityGroups: [{ id: "agent-execution", name: "Agent Execution" }],
       features: [{ id: "session-recovery", name: "Session Recovery", group: "agent-execution", pages: ["/"] }],
     });
+    const surfaceIndex = buildFeatureSurfaceIndex(
+      [{ route: "/", title: "Home", description: "", sourceFile: "src/app/page.tsx" }],
+      { agents: [{ domain: "agents", path: "/api/agents", method: "GET", operationId: "listAgents", summary: "List agents" }] },
+      [{ domain: "agents", method: "GET", path: "/api/agents", sourceFiles: ["src/app/api/agents/route.ts"] }],
+      [{ domain: "agents", method: "GET", path: "/api/agents", sourceFiles: ["crates/routa-server/src/api/agents.rs"] }],
+      metadata,
+    );
 
-    const markdown = renderMarkdown(tree, metadata);
+    const markdown = renderMarkdown(tree, surfaceIndex);
     expect(markdown).toContain("node --import tsx scripts/docs/feature-tree-generator.ts --save");
-    expect(markdown).toContain("| Home | `/` |  |");
+    expect(markdown).toContain("| Home | `/` | `src/app/page.tsx` |  |");
     expect(markdown).toContain("| GET | `/api/agents` | List agents |");
+    expect(markdown).toContain("## Next.js API Routes");
+    expect(markdown).toContain("## Rust API Routes");
     expect(markdown).toContain("feature_metadata:");
     expect(markdown).toContain("schema_version: 1");
-    expect(markdown).toContain("Hand-edit only `feature_metadata` in this frontmatter block.");
-    expect(markdown).toContain("Feature metadata: `feature_metadata` frontmatter in this file");
+    expect(markdown).toContain("Hand-edit semantic `feature_metadata` fields in this frontmatter block.");
+    expect(markdown).toContain("Feature metadata: `feature_metadata` frontmatter in this file (`source_files` regenerated)");
+    expect(readFeatureMetadataFromFeatureTree(markdown)?.features[0]).toMatchObject({
+      id: "session-recovery",
+      sourceFiles: ["src/app/page.tsx"],
+    });
   });
 
   it("builds a machine-readable surface index for runtime consumers", () => {
     const metadata = normalizeFeatureMetadata({
       schemaVersion: 1,
       capabilityGroups: [{ id: "workspace-coordination", name: "Workspace Coordination" }],
-      features: [{ id: "workspace-overview", name: "Workspace Overview", group: "workspace-coordination" }],
+      features: [{
+        id: "workspace-overview",
+        name: "Workspace Overview",
+        group: "workspace-coordination",
+        pages: ["/workspace/:workspaceId/spec"],
+      }],
     });
     const index = buildFeatureSurfaceIndex(
       [{ route: "/workspace/:workspaceId/spec", title: "Workspace / Spec", description: "Issue board", sourceFile: "src/app/workspace/[workspaceId]/spec/page.tsx" }],
@@ -61,6 +79,8 @@ describe("feature-tree-generator", () => {
           },
         ],
       },
+      [{ domain: "spec", method: "GET", path: "/api/spec/issues", sourceFiles: ["src/app/api/spec/issues/route.ts"] }],
+      [{ domain: "spec", method: "GET", path: "/api/spec/issues", sourceFiles: ["crates/routa-server/src/api/spec.rs"] }],
       metadata,
     );
 
@@ -78,8 +98,59 @@ describe("feature-tree-generator", () => {
       method: "GET",
       operationId: "listSpecIssues",
     });
-    expect(index.metadata).toEqual(metadata);
+    expect(index.contractApis[0]).toMatchObject({
+      path: "/api/spec/issues",
+    });
+    expect(index.nextjsApis[0]).toMatchObject({
+      path: "/api/spec/issues",
+      sourceFiles: ["src/app/api/spec/issues/route.ts"],
+    });
+    expect(index.rustApis[0]).toMatchObject({
+      path: "/api/spec/issues",
+      sourceFiles: ["crates/routa-server/src/api/spec.rs"],
+    });
+    expect(index.metadata?.features[0]?.sourceFiles).toEqual([
+      "src/app/workspace/[workspaceId]/spec/page.tsx",
+    ]);
     expect(index.generatedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/u);
+  });
+
+  it("derives feature source files from declared API mappings", () => {
+    const metadata = normalizeFeatureMetadata({
+      schemaVersion: 1,
+      capabilityGroups: [{ id: "team-collaboration", name: "Team Collaboration" }],
+      features: [
+        {
+          id: "team-runs",
+          name: "Team Runs",
+          group: "team-collaboration",
+          apis: ["GET /api/sessions/{id}/context"],
+        },
+      ],
+    });
+
+    const index = buildFeatureSurfaceIndex(
+      [],
+      {
+        sessions: [
+          {
+            domain: "sessions",
+            path: "/api/sessions/{id}/context",
+            method: "GET",
+            operationId: "getSessionContext",
+            summary: "Get session context",
+          },
+        ],
+      },
+      [{ domain: "sessions", method: "GET", path: "/api/sessions/{id}/context", sourceFiles: ["src/app/api/sessions/[sessionId]/context/route.ts"] }],
+      [{ domain: "sessions", method: "GET", path: "/api/sessions/{id}/context", sourceFiles: ["crates/routa-server/src/api/sessions.rs"] }],
+      metadata,
+    );
+
+    expect(index.metadata?.features[0]?.sourceFiles).toEqual([
+      "crates/routa-server/src/api/sessions.rs",
+      "src/app/api/sessions/[sessionId]/context/route.ts",
+    ]);
   });
 
   it("normalizes feature metadata into a stable shape", () => {

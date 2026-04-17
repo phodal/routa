@@ -257,6 +257,11 @@ export interface TranslationDictionary extends ExtendedTranslationDictionarySect
     groupWorkflow: string;
     groupGovernance: string;
     featureMetrics: string;
+    featureSection: string;
+    pageSection: string;
+    contractApiSection: string;
+    nextjsApiSection: string;
+    rustApiSection: string;
     capabilityGroup: string;
     groupDescription: string;
     statusLabel: string;
@@ -271,6 +276,9 @@ export interface TranslationDictionary extends ExtendedTranslationDictionarySect
     sourceFilesLabel: string;
     domainObjectsLabel: string;
     surfaceLinksLabel: string;
+    selectedSurface: string;
+    linkedFeatures: string;
+    unmappedLabel: string;
     noPagesDeclared: string;
     noApisDeclared: string;
     repository: string;

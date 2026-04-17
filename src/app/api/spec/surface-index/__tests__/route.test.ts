@@ -24,32 +24,60 @@ async function createTempRepo(): Promise<string> {
 }
 
 describe("/api/spec/surface-index route", () => {
-  it("reads the generated machine-readable surface index", async () => {
+  it("reads the generated feature tree markdown surface index", async () => {
     const repoRoot = await createTempRepo();
 
     try {
       await writeFile(
-        path.join(repoRoot, "docs", "product-specs", "feature-tree.index.json"),
-        JSON.stringify({
-          generatedAt: "2026-04-16T12:00:00.000Z",
-          pages: [
-            {
-              route: "/workspace/:workspaceId/spec",
-              title: "Workspace / Spec",
-              description: "Dense issue relationship board",
-              sourceFile: "src/app/workspace/[workspaceId]/spec/page.tsx",
-            },
-          ],
-          apis: [
-            {
-              domain: "spec",
-              method: "GET",
-              path: "/api/spec/issues",
-              operationId: "listSpecIssues",
-              summary: "List local issue specs",
-            },
-          ],
-        }),
+        path.join(repoRoot, "docs", "product-specs", "FEATURE_TREE.md"),
+        `---
+feature_metadata:
+  schema_version: 1
+  capability_groups:
+    - id: governance-settings
+      name: Governance and Settings
+  features:
+    - id: harness-console
+      name: Harness Console
+      group: governance-settings
+      pages:
+        - /workspace/:workspaceId/spec
+      apis:
+        - GET /api/spec/issues
+---
+
+# Product Feature Specification
+
+## Frontend Pages
+
+| Page | Route | Source File | Description |
+|------|-------|-------------|-------------|
+| Workspace / Spec | \`/workspace/:workspaceId/spec\` | \`src/app/workspace/[workspaceId]/spec/page.tsx\` | Dense issue relationship board |
+
+## API Contract Endpoints
+
+### Spec (1)
+
+| Method | Endpoint | Details |
+|--------|----------|---------|
+| GET | \`/api/spec/issues\` | List local issue specs |
+
+## Next.js API Routes
+
+### Spec (1)
+
+| Method | Endpoint | Details |
+|--------|----------|---------|
+| GET | \`/api/spec/issues\` | \`src/app/api/spec/issues/route.ts\` |
+
+## Rust API Routes
+
+### Spec (1)
+
+| Method | Endpoint | Details |
+|--------|----------|---------|
+| GET | \`/api/spec/issues\` | \`crates/routa-server/src/api/spec.rs\` |
+`,
       );
 
       const response = await GET(new NextRequest(
@@ -61,12 +89,14 @@ describe("/api/spec/surface-index route", () => {
       expect(payload.repoRoot).toBe(repoRoot);
       expect(payload.warnings).toEqual([]);
       expect(payload.pages).toHaveLength(1);
-      expect(payload.apis).toHaveLength(1);
+      expect(payload.contractApis).toHaveLength(1);
+      expect(payload.nextjsApis).toHaveLength(1);
+      expect(payload.rustApis).toHaveLength(1);
       expect(payload.pages[0]).toMatchObject({
         route: "/workspace/:workspaceId/spec",
         title: "Workspace / Spec",
       });
-      expect(payload.apis[0]).toMatchObject({
+      expect(payload.contractApis[0]).toMatchObject({
         domain: "spec",
         path: "/api/spec/issues",
       });
@@ -87,7 +117,7 @@ describe("/api/spec/surface-index route", () => {
       expect(response.status).toBe(200);
       expect(payload.pages).toEqual([]);
       expect(payload.apis).toEqual([]);
-      expect(payload.warnings[0]).toContain("Feature surface index not found");
+      expect(payload.warnings[0]).toContain("FEATURE_TREE.md");
     } finally {
       await rm(repoRoot, { recursive: true, force: true });
     }

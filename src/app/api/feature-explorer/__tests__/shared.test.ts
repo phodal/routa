@@ -9,7 +9,7 @@ import { execFileSync } from "child_process";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { FeatureTree } from "../shared";
-import { collectFeatureSessionStats } from "../shared";
+import { collectFeatureSessionStats, parseFeatureTree } from "../shared";
 
 function createFeatureTree(): FeatureTree {
   return {
@@ -30,6 +30,8 @@ function createFeatureTree(): FeatureTree {
     ],
     frontendPages: [],
     apiEndpoints: [],
+    nextjsApiEndpoints: [],
+    rustApiEndpoints: [],
   };
 }
 
@@ -52,6 +54,8 @@ function createDirectoryFallbackFeatureTree(): FeatureTree {
     ],
     frontendPages: [],
     apiEndpoints: [],
+    nextjsApiEndpoints: [],
+    rustApiEndpoints: [],
   };
 }
 
@@ -298,5 +302,118 @@ describe("feature explorer transcript stats", () => {
       changes: 1,
       sessions: 1,
     });
+  });
+
+  it("ignores directory paths and strips line-qualified markdown references", () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "feature-explorer-sanitize-"));
+    process.env.HOME = tempRoot;
+
+    const repoRoot = path.join(tempRoot, "repo");
+    const featureRoot = path.join(repoRoot, "src/app/workspace/[workspaceId]/feature-explorer");
+    ensureFile(path.join(featureRoot, "page.tsx"), "export default function Page() { return null; }\n");
+    ensureFile(path.join(featureRoot, "README.md"), "# Feature Explorer\n");
+
+    ensureFile(
+      path.join(tempRoot, ".codex", "sessions", "sanitize.jsonl"),
+      [
+        JSON.stringify({
+          timestamp: "2026-04-17T01:51:41.963Z",
+          type: "session_meta",
+          payload: {
+            id: "sanitize-session",
+            timestamp: "2026-04-17T01:50:56.919Z",
+            cwd: repoRoot,
+            source: "cli",
+            model_provider: "openai",
+          },
+        }),
+        JSON.stringify({
+          timestamp: "2026-04-17T02:31:10.000Z",
+          type: "response_item",
+          payload: {
+            type: "function_call",
+            name: "grep_context",
+            file: "src/app/workspace/[workspaceId]/feature-explorer/README.md:5",
+            path: "src/app/workspace/[workspaceId]/feature-explorer/",
+          },
+        }),
+        "",
+      ].join("\n"),
+    );
+
+    const { fileStats } = collectFeatureSessionStats(repoRoot, createDirectoryFallbackFeatureTree());
+
+    expect(fileStats["src/app/workspace/[workspaceId]/feature-explorer/README.md"]).toMatchObject({
+      changes: 1,
+      sessions: 1,
+    });
+    expect(fileStats["src/app/workspace/[workspaceId]/feature-explorer/"]).toBeUndefined();
+  });
+
+  it("derives feature source files from the generated surface index", () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "feature-explorer-tree-"));
+    const repoRoot = path.join(tempRoot, "repo");
+
+    ensureFile(
+      path.join(repoRoot, "docs/product-specs/FEATURE_TREE.md"),
+      `---
+feature_metadata:
+  capability_groups:
+    - id: workspace-coordination
+      name: Workspace Coordination
+  features:
+    - id: feature-explorer
+      name: Feature Explorer
+      group: workspace-coordination
+      pages:
+        - /workspace/:workspaceId/feature-explorer
+      apis:
+        - GET /api/feature-explorer
+---
+
+# Product Feature Specification
+
+## Frontend Pages
+
+| Page | Route | Source File | Description |
+|------|-------|-------------|-------------|
+| Workspace / Feature Explorer | \`/workspace/:workspaceId/feature-explorer\` | \`src/app/workspace/[workspaceId]/feature-explorer/page.tsx\` |  |
+
+## API Contract Endpoints
+
+### Feature-Explorer (1)
+
+| Method | Endpoint | Details |
+|--------|----------|---------|
+| GET | \`/api/feature-explorer\` | List feature explorer features |
+
+## Next.js API Routes
+
+### Feature-Explorer (1)
+
+| Method | Endpoint | Details |
+|--------|----------|---------|
+| GET | \`/api/feature-explorer\` | \`src/app/api/feature-explorer/route.ts\` |
+
+## Rust API Routes
+
+### Feature-Explorer (1)
+
+| Method | Endpoint | Details |
+|--------|----------|---------|
+| GET | \`/api/feature-explorer\` | \`crates/routa-server/src/api/feature_explorer.rs\` |
+`,
+    );
+
+    const featureTree = parseFeatureTree(repoRoot);
+    expect(featureTree.frontendPages[0]).toMatchObject({
+      route: "/workspace/:workspaceId/feature-explorer",
+      sourceFile: "src/app/workspace/[workspaceId]/feature-explorer/page.tsx",
+    });
+    expect(featureTree.features[0]?.sourceFiles).toEqual([
+      "crates/routa-server/src/api/feature_explorer.rs",
+      "src/app/api/feature-explorer/route.ts",
+      "src/app/workspace/[workspaceId]/feature-explorer/page.tsx",
+    ]);
   });
 });

@@ -86,7 +86,6 @@ import { FeatureExplorerPageClient } from "../feature-explorer-page-client";
 describe("FeatureExplorerPageClient", () => {
   beforeEach(() => {
     window.localStorage.clear();
-    window.localStorage.setItem("routa.featureExplorer.debugRepoSeed.default", "true");
     navState.push.mockReset();
     useWorkspaces.mockReturnValue({
       loading: false,
@@ -113,6 +112,17 @@ describe("FeatureExplorerPageClient", () => {
       error: null,
       capabilityGroups: [],
       features: [],
+      surfaceIndex: {
+        generatedAt: "",
+        pages: [],
+        apis: [],
+        contractApis: [],
+        nextjsApis: [],
+        rustApis: [],
+        metadata: null,
+        repoRoot: "",
+        warnings: [],
+      },
       featureDetail: null,
       featureDetailLoading: false,
       initialFeatureId: "",
@@ -188,25 +198,110 @@ describe("FeatureExplorerPageClient", () => {
     });
   });
 
-  it("seeds the localhost debug repo path once when nothing is stored", async () => {
+  it("falls back to the workspace codebase when nothing is stored", async () => {
     window.localStorage.clear();
 
     render(<FeatureExplorerPageClient workspaceId="default" />);
 
     await waitFor(() => {
       expect(screen.getByTestId("repo-picker-value").textContent).toBe(
-        "routa-js|/Users/phodal/ai/routa-js|",
+        "routa-js|/repo/default|main",
       );
     });
 
     expect(useFeatureExplorerData).toHaveBeenLastCalledWith({
       workspaceId: "default",
-      repoPath: "/Users/phodal/ai/routa-js",
-      refreshKey: "/Users/phodal/ai/routa-js:",
+      repoPath: "/repo/default",
+      refreshKey: "/repo/default:main",
     });
-    expect(window.localStorage.getItem("routa.repoSelection.featureExplorer.default")).toContain(
-      "/Users/phodal/ai/routa-js",
-    );
-    expect(window.localStorage.getItem("routa.featureExplorer.debugRepoSeed.default")).toBe("true");
+    expect(window.localStorage.getItem("routa.repoSelection.featureExplorer.default")).toBeNull();
+  });
+
+  it("renders surface sections from the feature tree index", async () => {
+    useFeatureExplorerData.mockReturnValue({
+      loading: false,
+      error: null,
+      capabilityGroups: [{ id: "execution", name: "Execution", description: "" }],
+      features: [
+        {
+          id: "feature-a",
+          name: "Feature A",
+          group: "execution",
+          summary: "Summary",
+          status: "active",
+          sessionCount: 0,
+          changedFiles: 1,
+          updatedAt: "-",
+          sourceFileCount: 1,
+          pageCount: 1,
+          apiCount: 1,
+        },
+      ],
+      surfaceIndex: {
+        generatedAt: "",
+        pages: [
+          {
+            route: "/workspace/:workspaceId/feature-explorer",
+            title: "Feature Explorer",
+            description: "Explore features.",
+            sourceFile: "src/app/workspace/[workspaceId]/feature-explorer/page.tsx",
+          },
+        ],
+        apis: [],
+        contractApis: [
+          {
+            domain: "feature-explorer",
+            method: "GET",
+            path: "/api/feature-explorer",
+            operationId: "listFeatureExplorer",
+            summary: "List features",
+          },
+        ],
+        nextjsApis: [
+          {
+            domain: "feature-explorer",
+            method: "GET",
+            path: "/api/feature-explorer",
+            sourceFiles: ["src/app/api/feature-explorer/route.ts"],
+          },
+        ],
+        rustApis: [
+          {
+            domain: "feature-explorer",
+            method: "GET",
+            path: "/api/feature-explorer",
+            sourceFiles: ["crates/routa-server/src/api/feature_explorer.rs"],
+          },
+        ],
+        metadata: {
+          schemaVersion: 1,
+          capabilityGroups: [],
+          features: [
+            {
+              id: "feature-a",
+              name: "Feature A",
+              pages: ["/workspace/:workspaceId/feature-explorer"],
+              apis: ["GET /api/feature-explorer"],
+              sourceFiles: ["src/app/workspace/[workspaceId]/feature-explorer/page.tsx"],
+            },
+          ],
+        },
+        repoRoot: "/repo/default",
+        warnings: [],
+      },
+      featureDetail: null,
+      featureDetailLoading: false,
+      initialFeatureId: "feature-a",
+      fetchFeatureDetail: vi.fn().mockResolvedValue(null),
+    });
+
+    render(<FeatureExplorerPageClient workspaceId="default" />);
+
+    expect(screen.getByText("Pages")).toBeTruthy();
+    expect(screen.getByText("API Contract")).toBeTruthy();
+    expect(screen.getByText("Next.js API")).toBeTruthy();
+    expect(screen.getByText("Rust API")).toBeTruthy();
+    expect(screen.getByText("/workspace/:workspaceId/feature-explorer")).toBeTruthy();
+    expect(screen.getAllByText("GET /api/feature-explorer").length).toBeGreaterThan(0);
   });
 });

@@ -89,6 +89,7 @@ function toPageDetails(feature: FeatureTree["features"][number], featureTree: Fe
       name: route,
       route,
       description: "",
+      sourceFile: "",
     };
   });
 }
@@ -96,15 +97,27 @@ function toPageDetails(feature: FeatureTree["features"][number], featureTree: Fe
 function toApiDetails(feature: FeatureTree["features"][number], featureTree: FeatureTree): ApiEndpointDetail[] {
   return feature.apis.map((declaration) => {
     const parsed = splitDeclaredApi(declaration);
+    const nextjsSourceFiles = featureTree.nextjsApiEndpoints
+      .filter((api) => api.method.toUpperCase() === parsed.method.toUpperCase() && api.endpoint === parsed.endpoint)
+      .flatMap((api) => api.sourceFiles);
+    const rustSourceFiles = featureTree.rustApiEndpoints
+      .filter((api) => api.method.toUpperCase() === parsed.method.toUpperCase() && api.endpoint === parsed.endpoint)
+      .flatMap((api) => api.sourceFiles);
     const matched = featureTree.apiEndpoints.find(
       (api) => api.method.toUpperCase() === parsed.method.toUpperCase() && api.endpoint === parsed.endpoint,
     );
 
-    return matched ?? {
+    return matched ? {
+      ...matched,
+      nextjsSourceFiles,
+      rustSourceFiles,
+    } : {
       group: "",
       method: parsed.method,
       endpoint: parsed.endpoint,
       description: "",
+      nextjsSourceFiles,
+      rustSourceFiles,
     };
   });
 }

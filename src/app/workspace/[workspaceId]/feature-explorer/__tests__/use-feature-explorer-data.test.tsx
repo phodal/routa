@@ -69,6 +69,37 @@ describe("useFeatureExplorerData", () => {
         });
       }
 
+      if (url.startsWith("/spec/surface-index?")) {
+        return okJson({
+          generatedAt: "2026-04-17T00:00:00.000Z",
+          pages: [
+            {
+              route: "/workspace/:workspaceId/feature-explorer",
+              title: "Feature Explorer",
+              description: "Explore feature surfaces.",
+              sourceFile: "src/app/workspace/[workspaceId]/feature-explorer/page.tsx",
+            },
+          ],
+          apis: [],
+          contractApis: [],
+          nextjsApis: [],
+          rustApis: [],
+          metadata: {
+            schemaVersion: 1,
+            capabilityGroups: [],
+            features: [
+              {
+                id: "feature-a",
+                name: "Feature A",
+                pages: ["/workspace/:workspaceId/feature-explorer"],
+              },
+            ],
+          },
+          repoRoot: "/tmp/local-project",
+          warnings: [],
+        });
+      }
+
       throw new Error(`Unexpected fetch: ${url}`);
     });
   });
@@ -90,6 +121,7 @@ describe("useFeatureExplorerData", () => {
     });
 
     expect(desktopAwareFetch).toHaveBeenCalledWith("/feature-explorer?workspaceId=default");
+    expect(desktopAwareFetch).toHaveBeenCalledWith("/spec/surface-index?workspaceId=default");
     expect(desktopAwareFetch).toHaveBeenCalledWith("/feature-explorer/feature-a?workspaceId=default");
 
     rerender({
@@ -104,6 +136,9 @@ describe("useFeatureExplorerData", () => {
       );
     });
 
+    expect(desktopAwareFetch).toHaveBeenCalledWith(
+      "/spec/surface-index?workspaceId=default&repoPath=%2Ftmp%2Flocal-project",
+    );
     expect(desktopAwareFetch).toHaveBeenCalledWith(
       "/feature-explorer/feature-a?workspaceId=default&repoPath=%2Ftmp%2Flocal-project",
     );

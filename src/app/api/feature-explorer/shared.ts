@@ -7,6 +7,7 @@ export { isContextError, parseContext, resolveRepoRoot } from "../harness/hooks/
 export type { HarnessContext as FeatureExplorerContext } from "../harness/hooks/shared";
 
 const FEATURE_TREE_PATH = "docs/product-specs/FEATURE_TREE.md";
+const FEATURE_TREE_INDEX_PATH = "docs/product-specs/feature-tree.index.json";
 const APP_ROOT = "src/app";
 const MAX_TRANSCRIPT_FILES = 200;
 const MAX_TRANSCRIPT_FILE_SIZE = 10 * 1024 * 1024;
@@ -38,6 +39,7 @@ export interface FrontendPageDetail {
   name: string;
   route: string;
   description: string;
+  sourceFile: string;
 }
 
 export interface ApiEndpointDetail {
@@ -45,6 +47,15 @@ export interface ApiEndpointDetail {
   method: string;
   endpoint: string;
   description: string;
+  nextjsSourceFiles?: string[];
+  rustSourceFiles?: string[];
+}
+
+export interface ApiImplementationDetail {
+  group: string;
+  method: string;
+  endpoint: string;
+  sourceFiles: string[];
 }
 
 export interface FeatureTree {
@@ -52,6 +63,8 @@ export interface FeatureTree {
   features: FeatureTreeFeature[];
   frontendPages: FrontendPageDetail[];
   apiEndpoints: ApiEndpointDetail[];
+  nextjsApiEndpoints: ApiImplementationDetail[];
+  rustApiEndpoints: ApiImplementationDetail[];
 }
 
 export type FeatureTreeParsed = FeatureTree;
@@ -74,6 +87,39 @@ interface FeatureMetadataRaw {
 
 interface FeatureTreeFrontmatter {
   feature_metadata?: FeatureMetadataRaw;
+}
+
+interface FeatureTreeIndexPayload {
+  pages?: Array<{
+    route?: string;
+    title?: string;
+    description?: string;
+    sourceFile?: string;
+  }>;
+  apis?: Array<{
+    domain?: string;
+    method?: string;
+    path?: string;
+    summary?: string;
+  }>;
+  contractApis?: Array<{
+    domain?: string;
+    method?: string;
+    path?: string;
+    summary?: string;
+  }>;
+  nextjsApis?: Array<{
+    domain?: string;
+    method?: string;
+    path?: string;
+    sourceFiles?: string[];
+  }>;
+  rustApis?: Array<{
+    domain?: string;
+    method?: string;
+    path?: string;
+    sourceFiles?: string[];
+  }>;
 }
 
 export interface SurfaceCatalog {
@@ -159,6 +205,21 @@ function readFeatureTreeContent(repoRoot: string): string {
   return fs.readFileSync(featureTreePath, "utf8");
 }
 
+function readFeatureTreeIndex(repoRoot: string): FeatureTreeIndexPayload | null {
+  const indexPath = path.join(repoRoot, FEATURE_TREE_INDEX_PATH);
+  if (!fs.existsSync(indexPath)) {
+    return null;
+  }
+
+  try {
+    const raw = fs.readFileSync(indexPath, "utf8");
+    const parsed = JSON.parse(raw) as FeatureTreeIndexPayload;
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
 function parseMarkdownRow(line: string): string[] | null {
   const trimmed = line.trim();
   if (!trimmed.startsWith("|") || !trimmed.endsWith("|")) {
@@ -174,47 +235,79 @@ function stripCodeCell(value: string): string {
   return value.trim().replace(/^`+|`+$/g, "");
 }
 
+function normalizeDomainHeading(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function parseSourceFilesCell(value: string): string[] {
+  const codeMatches = [...value.matchAll(/`([^`]+)`/g)]
+    .map((match) => stripCodeCell(match[1] ?? ""))
+    .filter(Boolean);
+  if (codeMatches.length > 0) {
+    return [...new Set(codeMatches)];
+  }
+
+  return value
+    .split(",")
+    .map((part) => stripCodeCell(part))
+    .filter(Boolean);
+}
+
 function parseFeatureTreeTables(raw: string): {
   frontendPages: FrontendPageDetail[];
   apiEndpoints: ApiEndpointDetail[];
+  nextjsApiEndpoints: ApiImplementationDetail[];
+  rustApiEndpoints: ApiImplementationDetail[];
 } {
   const frontendPages: FrontendPageDetail[] = [];
   const apiEndpoints: ApiEndpointDetail[] = [];
+  const nextjsApiEndpoints: ApiImplementationDetail[] = [];
+  const rustApiEndpoints: ApiImplementationDetail[] = [];
 
-  let inFrontend = false;
-  let inApi = false;
+  let section: "frontend" | "contract" | "nextjs" | "rust" | null = null;
   let inTable = false;
   let currentApiGroup = "";
 
   const frontMarker = "## Frontend Pages";
-  const apiMarker = "## API Endpoints";
+  const apiMarkers = new Set(["## API Endpoints", "## API Contract Endpoints"]);
+  const nextjsMarker = "## Next.js API Routes";
+  const rustMarker = "## Rust API Routes";
 
   for (const rawLine of raw.split(/\r?\n/)) {
     const trimmed = rawLine.trim();
 
     if (trimmed === frontMarker) {
-      inFrontend = true;
-      inApi = false;
+      section = "frontend";
       inTable = false;
       continue;
     }
 
-    if (trimmed === apiMarker) {
-      inApi = true;
-      inFrontend = false;
+    if (apiMarkers.has(trimmed)) {
+      section = "contract";
       inTable = false;
       continue;
     }
 
-    if (trimmed.startsWith("## ") && trimmed !== frontMarker && trimmed !== apiMarker) {
-      inFrontend = false;
-      inApi = false;
+    if (trimmed === nextjsMarker) {
+      section = "nextjs";
       inTable = false;
       continue;
     }
 
-    if (inFrontend) {
-      if (trimmed === "| Page | Route | Description |") {
+    if (trimmed === rustMarker) {
+      section = "rust";
+      inTable = false;
+      continue;
+    }
+
+    if (trimmed.startsWith("## ") && trimmed !== frontMarker && !apiMarkers.has(trimmed) && trimmed !== nextjsMarker && trimmed !== rustMarker) {
+      section = null;
+      inTable = false;
+      continue;
+    }
+
+    if (section === "frontend") {
+      if (trimmed === "| Page | Route | Description |" || trimmed === "| Page | Route | Source File | Description |") {
         inTable = true;
         continue;
       }
@@ -228,7 +321,7 @@ function parseFeatureTreeTables(raw: string): {
         continue;
       }
 
-      if (trimmed === "|------|-------|-------------|") {
+      if (trimmed === "|------|-------|-------------|" || trimmed === "|------|-------|-------------|-------------|") {
         continue;
       }
 
@@ -237,23 +330,28 @@ function parseFeatureTreeTables(raw: string): {
         frontendPages.push({
           name: cells[0] ?? "",
           route: stripCodeCell(cells[1] ?? ""),
-          description: cells[2] ?? "",
+          sourceFile: cells.length >= 4 ? stripCodeCell(cells[2] ?? "") : "",
+          description: cells.length >= 4 ? (cells[3] ?? "") : (cells[2] ?? ""),
         });
       }
       continue;
     }
 
-    if (inApi) {
+    if (section === "contract" || section === "nextjs" || section === "rust") {
       if (trimmed.startsWith("### ")) {
-        currentApiGroup = trimmed
+        currentApiGroup = normalizeDomainHeading(trimmed
           .replace(/^###\s+/, "")
           .replace(/\s+\(\d+\)\s*$/, "")
-          .trim();
+          .trim());
         inTable = false;
         continue;
       }
 
-      if (trimmed === "| Method | Endpoint | Description |") {
+      if (
+        trimmed === "| Method | Endpoint | Description |"
+        || trimmed === "| Method | Endpoint | Details |"
+        || trimmed === "| Method | Endpoint | Details | Next.js | Rust |"
+      ) {
         inTable = true;
         continue;
       }
@@ -267,27 +365,125 @@ function parseFeatureTreeTables(raw: string): {
         continue;
       }
 
-      if (trimmed === "|--------|----------|-------------|") {
+      if (
+        trimmed === "|--------|----------|-------------|"
+        || trimmed === "|--------|----------|---------|"
+        || trimmed === "|--------|----------|---------|---------|------|"
+      ) {
         continue;
       }
 
       const cells = parseMarkdownRow(trimmed);
       if (cells && cells.length >= 3) {
-        apiEndpoints.push({
-          group: currentApiGroup,
-          method: cells[0] ?? "",
-          endpoint: stripCodeCell(cells[1] ?? ""),
-          description: cells[2] ?? "",
-        });
+        if (section === "contract") {
+          apiEndpoints.push({
+            group: currentApiGroup,
+            method: cells[0] ?? "",
+            endpoint: stripCodeCell(cells[1] ?? ""),
+            description: cells[2] ?? "",
+          });
+        } else {
+          const target = section === "nextjs" ? nextjsApiEndpoints : rustApiEndpoints;
+          target.push({
+            group: currentApiGroup,
+            method: cells[0] ?? "",
+            endpoint: stripCodeCell(cells[1] ?? ""),
+            sourceFiles: parseSourceFilesCell(cells[2] ?? ""),
+          });
+        }
       }
     }
   }
 
-  return { frontendPages, apiEndpoints };
+  return { frontendPages, apiEndpoints, nextjsApiEndpoints, rustApiEndpoints };
+}
+
+function toFrontendPagesFromIndex(payload: FeatureTreeIndexPayload | null): FrontendPageDetail[] {
+  if (!payload?.pages || !Array.isArray(payload.pages)) {
+    return [];
+  }
+
+  return payload.pages
+    .map((page) => ({
+      name: page.title?.trim() ?? "",
+      route: page.route?.trim() ?? "",
+      description: page.description?.trim() ?? "",
+      sourceFile: page.sourceFile?.trim() ?? "",
+    }))
+    .filter((page) => page.name && page.route);
+}
+
+function toApiEndpointsFromIndex(payload: FeatureTreeIndexPayload | null): ApiEndpointDetail[] {
+  const source = Array.isArray(payload?.contractApis) ? payload?.contractApis : payload?.apis;
+  if (!Array.isArray(source)) {
+    return [];
+  }
+
+  return source
+    .map((api) => ({
+      group: api.domain?.trim() ?? "",
+      method: api.method?.trim() ?? "",
+      endpoint: api.path?.trim() ?? "",
+      description: api.summary?.trim() ?? "",
+    }))
+    .filter((api) => api.method && api.endpoint);
+}
+
+function toImplementationApiEndpoints(
+  source: FeatureTreeIndexPayload["nextjsApis"] | FeatureTreeIndexPayload["rustApis"],
+): ApiImplementationDetail[] {
+  if (!Array.isArray(source)) {
+    return [];
+  }
+
+  return source
+    .map((api) => ({
+      group: api.domain?.trim() ?? "",
+      method: api.method?.trim() ?? "",
+      endpoint: api.path?.trim() ?? "",
+      sourceFiles: Array.isArray(api.sourceFiles)
+        ? api.sourceFiles.map((file) => file.trim()).filter(Boolean)
+        : [],
+    }))
+    .filter((api) => api.method && api.endpoint);
+}
+
+function deriveFeatureSourceFiles(
+  feature: FeatureTreeFeature,
+  frontendPages: FrontendPageDetail[],
+  nextjsApiEndpoints: ApiImplementationDetail[],
+  rustApiEndpoints: ApiImplementationDetail[],
+): string[] {
+  const sourceFiles = new Set(feature.sourceFiles);
+  const pageLookup = new Map(frontendPages.map((page) => [page.route, page.sourceFile]));
+  const nextjsLookup = new Map(nextjsApiEndpoints.map((api) => [`${api.method.toUpperCase()} ${api.endpoint}`, api.sourceFiles]));
+  const rustLookup = new Map(rustApiEndpoints.map((api) => [`${api.method.toUpperCase()} ${api.endpoint}`, api.sourceFiles]));
+
+  for (const route of feature.pages) {
+    const sourceFile = pageLookup.get(route);
+    if (sourceFile) {
+      sourceFiles.add(sourceFile);
+    }
+  }
+
+  for (const declaration of feature.apis) {
+    const parsed = splitDeclaredApi(declaration);
+    const key = `${parsed.method.toUpperCase()} ${parsed.endpoint}`;
+
+    for (const sourceFile of nextjsLookup.get(key) ?? []) {
+      sourceFiles.add(sourceFile);
+    }
+    for (const sourceFile of rustLookup.get(key) ?? []) {
+      sourceFiles.add(sourceFile);
+    }
+  }
+
+  return [...sourceFiles].filter(Boolean).sort();
 }
 
 export function parseFeatureTree(repoRoot: string): FeatureTree {
   const raw = readFeatureTreeContent(repoRoot);
+  const index = readFeatureTreeIndex(repoRoot);
   const frontmatter = extractFrontmatter(raw);
   if (!frontmatter) {
     throw new Error("FEATURE_TREE.md frontmatter not found");
@@ -299,7 +495,15 @@ export function parseFeatureTree(repoRoot: string): FeatureTree {
     throw new Error("feature_metadata not found in frontmatter");
   }
 
-  const { frontendPages, apiEndpoints } = parseFeatureTreeTables(raw);
+  const fallbackTables = parseFeatureTreeTables(raw);
+  const frontendPages = toFrontendPagesFromIndex(index);
+  const apiEndpoints = toApiEndpointsFromIndex(index);
+  const nextjsApiEndpoints = toImplementationApiEndpoints(index?.nextjsApis);
+  const rustApiEndpoints = toImplementationApiEndpoints(index?.rustApis);
+  const resolvedFrontendPages = frontendPages.length > 0 ? frontendPages : fallbackTables.frontendPages;
+  const resolvedApiEndpoints = apiEndpoints.length > 0 ? apiEndpoints : fallbackTables.apiEndpoints;
+  const resolvedNextjsApiEndpoints = nextjsApiEndpoints.length > 0 ? nextjsApiEndpoints : fallbackTables.nextjsApiEndpoints;
+  const resolvedRustApiEndpoints = rustApiEndpoints.length > 0 ? rustApiEndpoints : fallbackTables.rustApiEndpoints;
 
   return {
     capabilityGroups: (featureMetadata.capability_groups ?? []).map((group) => ({
@@ -307,20 +511,34 @@ export function parseFeatureTree(repoRoot: string): FeatureTree {
       name: group.name ?? "",
       description: group.description ?? "",
     })),
-    features: (featureMetadata.features ?? []).map((feature) => ({
-      id: feature.id ?? "",
-      name: feature.name ?? "",
-      group: feature.group ?? "",
-      summary: feature.summary ?? "",
-      status: feature.status ?? "",
-      pages: Array.isArray(feature.pages) ? [...feature.pages] : [],
-      apis: Array.isArray(feature.apis) ? [...feature.apis] : [],
-      sourceFiles: Array.isArray(feature.source_files) ? [...feature.source_files] : [],
-      relatedFeatures: Array.isArray(feature.related_features) ? [...feature.related_features] : [],
-      domainObjects: Array.isArray(feature.domain_objects) ? [...feature.domain_objects] : [],
-    })),
-    frontendPages,
-    apiEndpoints,
+    features: (featureMetadata.features ?? []).map((feature) => {
+      const normalizedFeature: FeatureTreeFeature = {
+        id: feature.id ?? "",
+        name: feature.name ?? "",
+        group: feature.group ?? "",
+        summary: feature.summary ?? "",
+        status: feature.status ?? "",
+        pages: Array.isArray(feature.pages) ? [...feature.pages] : [],
+        apis: Array.isArray(feature.apis) ? [...feature.apis] : [],
+        sourceFiles: Array.isArray(feature.source_files) ? [...feature.source_files] : [],
+        relatedFeatures: Array.isArray(feature.related_features) ? [...feature.related_features] : [],
+        domainObjects: Array.isArray(feature.domain_objects) ? [...feature.domain_objects] : [],
+      };
+
+      return {
+        ...normalizedFeature,
+        sourceFiles: deriveFeatureSourceFiles(
+          normalizedFeature,
+          resolvedFrontendPages,
+          resolvedNextjsApiEndpoints,
+          resolvedRustApiEndpoints,
+        ),
+      };
+    }),
+    frontendPages: resolvedFrontendPages,
+    apiEndpoints: resolvedApiEndpoints,
+    nextjsApiEndpoints: resolvedNextjsApiEndpoints,
+    rustApiEndpoints: resolvedRustApiEndpoints,
   };
 }
 
@@ -798,10 +1016,16 @@ function sanitizePathCandidate(candidate: string): string | null {
     .trim()
     .replace(/^"+|"+$/g, "")
     .replace(/^'+|'+$/g, "")
+    .replace(/^`+|`+$/g, "")
     .replace(/[",;:]+$/g, "");
 
   if (!cleaned) {
     return null;
+  }
+
+  const lineQualifiedPath = cleaned.match(/^(.*\.[^:/\s]+):\d+(?::\d+)?$/);
+  if (lineQualifiedPath?.[1]) {
+    return lineQualifiedPath[1];
   }
 
   if (!/\s/.test(cleaned)) {
@@ -818,6 +1042,27 @@ function sanitizePathCandidate(candidate: string): string | null {
   return cleaned;
 }
 
+function pathLooksFileLike(candidate: string): boolean {
+  const base = path.posix.basename(candidate);
+  return base.includes(".") || ["Dockerfile", "Makefile", "Cargo.toml"].includes(base);
+}
+
+function isExistingDirectory(filePath: string): boolean {
+  try {
+    return fs.statSync(filePath).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+function isExistingFile(filePath: string): boolean {
+  try {
+    return fs.statSync(filePath).isFile();
+  } catch {
+    return false;
+  }
+}
+
 function normalizeRepoRelative(repoRoot: string, candidate: string, sessionCwd: string): string | null {
   const cleaned = sanitizePathCandidate(candidate);
 
@@ -830,14 +1075,30 @@ function normalizeRepoRelative(repoRoot: string, candidate: string, sessionCwd: 
     if (!relativeCandidate || relativeCandidate === "." || relativeCandidate.startsWith("../")) {
       return null;
     }
+    const repoResolved = path.join(repoRoot, relativeCandidate);
+    const sessionResolved = path.join(sessionCwd, relativeCandidate);
+    if (isExistingDirectory(repoResolved) || isExistingDirectory(sessionResolved)) {
+      return null;
+    }
+    if (!isExistingFile(repoResolved) && !isExistingFile(sessionResolved) && !pathLooksFileLike(relativeCandidate)) {
+      return null;
+    }
     return relativeCandidate;
   }
 
   const candidatePaths = [sessionCwd, repoRoot];
   for (const basePath of candidatePaths) {
+    if (isExistingDirectory(cleaned)) {
+      return null;
+    }
     const relative = path.relative(basePath, cleaned);
     const relativePosix = toPosix(relative);
-    if (relativePosix && !relativePosix.startsWith("../") && !path.isAbsolute(relativePosix)) {
+    if (
+      relativePosix
+      && !relativePosix.startsWith("../")
+      && !path.isAbsolute(relativePosix)
+      && (isExistingFile(cleaned) || pathLooksFileLike(relativePosix))
+    ) {
       return relativePosix;
     }
   }

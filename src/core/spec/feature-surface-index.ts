@@ -1,5 +1,6 @@
 import { promises as fsp } from "fs";
 import * as path from "path";
+import * as yaml from "js-yaml";
 
 export type FeatureSurfacePage = {
   route: string;
@@ -14,6 +15,13 @@ export type FeatureSurfaceApi = {
   path: string;
   operationId: string;
   summary: string;
+};
+
+export type FeatureSurfaceImplementationApi = {
+  domain: string;
+  method: string;
+  path: string;
+  sourceFiles: string[];
 };
 
 export type FeatureSurfaceMetadataGroup = {
@@ -46,6 +54,9 @@ export type FeatureSurfaceIndex = {
   generatedAt: string;
   pages: FeatureSurfacePage[];
   apis: FeatureSurfaceApi[];
+  contractApis: FeatureSurfaceApi[];
+  nextjsApis: FeatureSurfaceImplementationApi[];
+  rustApis: FeatureSurfaceImplementationApi[];
   metadata: FeatureSurfaceMetadata | null;
 };
 
@@ -54,8 +65,51 @@ export type FeatureSurfaceIndexResponse = FeatureSurfaceIndex & {
   warnings: string[];
 };
 
+const FEATURE_TREE_PATH = path.join("docs", "product-specs", "FEATURE_TREE.md");
+const FEATURE_TREE_INDEX_PATH = path.join("docs", "product-specs", "feature-tree.index.json");
+
 function normalizeString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function extractFrontmatter(raw: string): string | null {
+  const trimmed = raw.replace(/^\uFEFF/, "");
+  const match = trimmed.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n/);
+  return match?.[1] ?? null;
+}
+
+function parseMarkdownRow(line: string): string[] | null {
+  const trimmed = line.trim();
+  if (!trimmed.startsWith("|") || !trimmed.endsWith("|")) {
+    return null;
+  }
+
+  return trimmed
+    .slice(1, -1)
+    .split("|")
+    .map((cell) => cell.trim());
+}
+
+function stripCodeCell(value: string): string {
+  return value.trim().replace(/^`+|`+$/g, "");
+}
+
+function parseSourceFilesCell(value: string): string[] {
+  const codeMatches = [...value.matchAll(/`([^`]+)`/g)]
+    .map((match) => normalizeString(match[1]))
+    .filter(Boolean);
+  if (codeMatches.length > 0) {
+    return [...new Set(codeMatches)];
+  }
+
+  return value
+    .split(",")
+    .map((part) => stripCodeCell(part))
+    .filter(Boolean);
+}
+
+function normalizeDomainHeading(value: string): string {
+  return value.trim().toLowerCase();
 }
 
 function toPage(value: unknown): FeatureSurfacePage | null {
@@ -95,6 +149,26 @@ function toApi(value: unknown): FeatureSurfaceApi | null {
     path: endpointPath,
     operationId: normalizeString((value as { operationId?: unknown }).operationId),
     summary: normalizeString((value as { summary?: unknown }).summary),
+  };
+}
+
+function toImplementationApi(value: unknown): FeatureSurfaceImplementationApi | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  const domain = normalizeString((value as { domain?: unknown }).domain);
+  const method = normalizeString((value as { method?: unknown }).method);
+  const endpointPath = normalizeString((value as { path?: unknown }).path);
+  if (!domain || !method || !endpointPath) {
+    return null;
+  }
+
+  return {
+    domain,
+    method,
+    path: endpointPath,
+    sourceFiles: toStringArray((value as { sourceFiles?: unknown }).sourceFiles),
   };
 }
 
@@ -141,9 +215,18 @@ function toMetadataItem(value: unknown): FeatureSurfaceMetadataItem | null {
   const status = normalizeString((value as { status?: unknown }).status);
   const pages = toStringArray((value as { pages?: unknown }).pages);
   const apis = toStringArray((value as { apis?: unknown }).apis);
-  const domainObjects = toStringArray((value as { domainObjects?: unknown }).domainObjects);
-  const relatedFeatures = toStringArray((value as { relatedFeatures?: unknown }).relatedFeatures);
-  const sourceFiles = toStringArray((value as { sourceFiles?: unknown }).sourceFiles);
+  const domainObjects = toStringArray(
+    (value as { domainObjects?: unknown; domain_objects?: unknown }).domainObjects
+      ?? (value as { domainObjects?: unknown; domain_objects?: unknown }).domain_objects,
+  );
+  const relatedFeatures = toStringArray(
+    (value as { relatedFeatures?: unknown; related_features?: unknown }).relatedFeatures
+      ?? (value as { relatedFeatures?: unknown; related_features?: unknown }).related_features,
+  );
+  const sourceFiles = toStringArray(
+    (value as { sourceFiles?: unknown; source_files?: unknown }).sourceFiles
+      ?? (value as { sourceFiles?: unknown; source_files?: unknown }).source_files,
+  );
   const screenshots = toStringArray((value as { screenshots?: unknown }).screenshots);
 
   return {
@@ -166,12 +249,18 @@ function toMetadata(value: unknown): FeatureSurfaceMetadata | null {
     return null;
   }
 
-  const schemaVersion = Number((value as { schemaVersion?: unknown }).schemaVersion);
-  const capabilityGroups = Array.isArray((value as { capabilityGroups?: unknown }).capabilityGroups)
-    ? (value as { capabilityGroups: unknown[] }).capabilityGroups.map(toMetadataGroup).filter((item): item is FeatureSurfaceMetadataGroup => Boolean(item))
+  const schemaVersion = Number(
+    (value as { schemaVersion?: unknown; schema_version?: unknown }).schemaVersion
+      ?? (value as { schemaVersion?: unknown; schema_version?: unknown }).schema_version,
+  );
+  const rawCapabilityGroups = (value as { capabilityGroups?: unknown; capability_groups?: unknown }).capabilityGroups
+    ?? (value as { capabilityGroups?: unknown; capability_groups?: unknown }).capability_groups;
+  const capabilityGroups = Array.isArray(rawCapabilityGroups)
+    ? rawCapabilityGroups.map(toMetadataGroup).filter((item): item is FeatureSurfaceMetadataGroup => Boolean(item))
     : [];
-  const features = Array.isArray((value as { features?: unknown }).features)
-    ? (value as { features: unknown[] }).features.map(toMetadataItem).filter((item): item is FeatureSurfaceMetadataItem => Boolean(item))
+  const rawFeatures = (value as { features?: unknown }).features;
+  const features = Array.isArray(rawFeatures)
+    ? rawFeatures.map(toMetadataItem).filter((item): item is FeatureSurfaceMetadataItem => Boolean(item))
     : [];
 
   return {
@@ -181,11 +270,179 @@ function toMetadata(value: unknown): FeatureSurfaceMetadata | null {
   };
 }
 
+function parseFeatureTreeMarkdown(raw: string): FeatureSurfaceIndex {
+  const pages: FeatureSurfacePage[] = [];
+  const contractApis: FeatureSurfaceApi[] = [];
+  const nextjsApis: FeatureSurfaceImplementationApi[] = [];
+  const rustApis: FeatureSurfaceImplementationApi[] = [];
+
+  const frontmatter = extractFrontmatter(raw);
+  let metadata: FeatureSurfaceMetadata | null = null;
+  if (frontmatter) {
+    try {
+      const parsed = yaml.load(frontmatter) as { feature_metadata?: unknown } | null;
+      metadata = toMetadata(parsed?.feature_metadata ?? null);
+    } catch {
+      metadata = null;
+    }
+  }
+
+  let section: "pages" | "contract" | "nextjs" | "rust" | null = null;
+  let inTable = false;
+  let currentGroup = "";
+
+  for (const rawLine of raw.split(/\r?\n/)) {
+    const trimmed = rawLine.trim();
+
+    if (trimmed === "## Frontend Pages") {
+      section = "pages";
+      inTable = false;
+      currentGroup = "";
+      continue;
+    }
+
+    if (trimmed === "## API Contract Endpoints" || trimmed === "## API Endpoints") {
+      section = "contract";
+      inTable = false;
+      currentGroup = "";
+      continue;
+    }
+
+    if (trimmed === "## Next.js API Routes") {
+      section = "nextjs";
+      inTable = false;
+      currentGroup = "";
+      continue;
+    }
+
+    if (trimmed === "## Rust API Routes") {
+      section = "rust";
+      inTable = false;
+      currentGroup = "";
+      continue;
+    }
+
+    if (trimmed.startsWith("## ")) {
+      section = null;
+      inTable = false;
+      currentGroup = "";
+      continue;
+    }
+
+    if (!section) {
+      continue;
+    }
+
+    if (trimmed.startsWith("### ")) {
+      currentGroup = normalizeDomainHeading(
+        trimmed.replace(/^###\s+/, "").replace(/\s+\(\d+\)\s*$/, "").trim(),
+      );
+      inTable = false;
+      continue;
+    }
+
+    if (section === "pages") {
+      if (trimmed === "| Page | Route | Source File | Description |" || trimmed === "| Page | Route | Description |") {
+        inTable = true;
+        continue;
+      }
+      if (!trimmed) {
+        inTable = false;
+        continue;
+      }
+      if (!inTable || trimmed === "|------|-------|-------------|-------------|" || trimmed === "|------|-------|-------------|") {
+        continue;
+      }
+
+      const cells = parseMarkdownRow(trimmed);
+      if (cells && cells.length >= 3) {
+        pages.push({
+          route: stripCodeCell(cells[1] ?? ""),
+          title: normalizeString(cells[0]),
+          sourceFile: cells.length >= 4 ? stripCodeCell(cells[2] ?? "") : "",
+          description: normalizeString(cells.length >= 4 ? cells[3] : cells[2]),
+        });
+      }
+      continue;
+    }
+
+    if (
+      trimmed === "| Method | Endpoint | Details |"
+      || trimmed === "| Method | Endpoint | Description |"
+      || trimmed === "| Method | Endpoint | Details | Next.js | Rust |"
+    ) {
+      inTable = true;
+      continue;
+    }
+    if (!trimmed) {
+      inTable = false;
+      continue;
+    }
+    if (
+      !inTable
+      || trimmed === "|--------|----------|---------|"
+      || trimmed === "|--------|----------|-------------|"
+      || trimmed === "|--------|----------|---------|---------|------|"
+    ) {
+      continue;
+    }
+
+    const cells = parseMarkdownRow(trimmed);
+    if (!cells || cells.length < 3) {
+      continue;
+    }
+
+    const method = normalizeString(cells[0]);
+    const endpointPath = stripCodeCell(cells[1] ?? "");
+    const details = normalizeString(cells[2]);
+    if (!method || !endpointPath) {
+      continue;
+    }
+
+    if (section === "contract") {
+      contractApis.push({
+        domain: currentGroup,
+        method,
+        path: endpointPath,
+        operationId: "",
+        summary: details,
+      });
+      continue;
+    }
+
+    const parsedImplementationApi: FeatureSurfaceImplementationApi = {
+      domain: currentGroup,
+      method,
+      path: endpointPath,
+      sourceFiles: parseSourceFilesCell(cells[2] ?? ""),
+    };
+
+    if (section === "nextjs") {
+      nextjsApis.push(parsedImplementationApi);
+    } else if (section === "rust") {
+      rustApis.push(parsedImplementationApi);
+    }
+  }
+
+  return {
+    generatedAt: "",
+    pages,
+    apis: contractApis,
+    contractApis,
+    nextjsApis,
+    rustApis,
+    metadata,
+  };
+}
+
 function emptyResponse(repoRoot: string, warnings: string[] = []): FeatureSurfaceIndexResponse {
   return {
     generatedAt: "",
     pages: [],
     apis: [],
+    contractApis: [],
+    nextjsApis: [],
+    rustApis: [],
     metadata: null,
     repoRoot,
     warnings,
@@ -193,13 +450,24 @@ function emptyResponse(repoRoot: string, warnings: string[] = []): FeatureSurfac
 }
 
 export async function readFeatureSurfaceIndex(repoRoot: string): Promise<FeatureSurfaceIndexResponse> {
-  const indexPath = path.join(repoRoot, "docs", "product-specs", "feature-tree.index.json");
+  const featureTreePath = path.join(repoRoot, FEATURE_TREE_PATH);
+  try {
+    const raw = await fsp.readFile(featureTreePath, "utf-8");
+    return {
+      ...parseFeatureTreeMarkdown(raw),
+      repoRoot,
+      warnings: [],
+    };
+  } catch {
+    // Fall back to the machine-readable cache when the markdown source is absent.
+  }
 
+  const indexPath = path.join(repoRoot, FEATURE_TREE_INDEX_PATH);
   let raw: string;
   try {
     raw = await fsp.readFile(indexPath, "utf-8");
   } catch {
-    return emptyResponse(repoRoot, [`Feature surface index not found at ${path.relative(repoRoot, indexPath)}`]);
+    return emptyResponse(repoRoot, [`Feature surface index not found at ${path.relative(repoRoot, featureTreePath)}`]);
   }
 
   let payload: unknown;
@@ -215,11 +483,27 @@ export async function readFeatureSurfaceIndex(repoRoot: string): Promise<Feature
   const apis = Array.isArray((payload as { apis?: unknown }).apis)
     ? ((payload as { apis: unknown[] }).apis.map(toApi).filter((item): item is FeatureSurfaceApi => Boolean(item)))
     : [];
+  const contractApis = Array.isArray((payload as { contractApis?: unknown }).contractApis)
+    ? ((payload as { contractApis: unknown[] }).contractApis.map(toApi).filter((item): item is FeatureSurfaceApi => Boolean(item)))
+    : apis;
+  const nextjsApis = Array.isArray((payload as { nextjsApis?: unknown }).nextjsApis)
+    ? ((payload as { nextjsApis: unknown[] }).nextjsApis
+      .map(toImplementationApi)
+      .filter((item): item is FeatureSurfaceImplementationApi => Boolean(item)))
+    : [];
+  const rustApis = Array.isArray((payload as { rustApis?: unknown }).rustApis)
+    ? ((payload as { rustApis: unknown[] }).rustApis
+      .map(toImplementationApi)
+      .filter((item): item is FeatureSurfaceImplementationApi => Boolean(item)))
+    : [];
 
   return {
     generatedAt: normalizeString((payload as { generatedAt?: unknown }).generatedAt),
     pages,
     apis,
+    contractApis,
+    nextjsApis,
+    rustApis,
     metadata: toMetadata((payload as { metadata?: unknown }).metadata),
     repoRoot,
     warnings: [],
