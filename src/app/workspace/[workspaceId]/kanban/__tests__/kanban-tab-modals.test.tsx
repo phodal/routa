@@ -17,6 +17,18 @@ const codebase: CodebaseData = {
   updatedAt: "2025-01-01T00:00:00.000Z",
 };
 
+const secondCodebase: CodebaseData = {
+  id: "codebase-2",
+  workspaceId: "workspace-1",
+  repoPath: "/tmp/repos/design-system",
+  branch: "develop",
+  label: "design-system",
+  isDefault: false,
+  sourceType: "local",
+  createdAt: "2025-01-01T00:00:00.000Z",
+  updatedAt: "2025-01-01T00:00:00.000Z",
+};
+
 function createTask(id: string, title: string, overrides: Partial<TaskInfo> = {}): TaskInfo {
   return {
     id,
@@ -52,9 +64,15 @@ describe("KanbanCodebaseModal", () => {
 
     render(
       <KanbanCodebaseModal
+        open
         selectedCodebase={codebase}
         editingCodebase={false}
         codebases={[codebase]}
+        addRepoSelection={null}
+        setAddRepoSelection={vi.fn()}
+        addSaving={false}
+        addError={null}
+        onAddRepository={vi.fn()}
         editRepoSelection={null}
         onRepoSelectionChange={vi.fn()}
         editError={null}
@@ -73,6 +91,8 @@ describe("KanbanCodebaseModal", () => {
         deletingWorktreeIds={[]}
         liveBranchInfo={null}
         branchActionError={null}
+        repoHealth={{ missingRepoTasks: 0, cwdMismatchTasks: 0 }}
+        onSelectCodebase={vi.fn()}
         handleDeleteIssueBranch={vi.fn()}
         handleDeleteIssueBranches={vi.fn()}
         deletingBranchNames={[]}
@@ -109,9 +129,15 @@ describe("KanbanCodebaseModal", () => {
 
     render(
       <KanbanCodebaseModal
+        open
         selectedCodebase={codebase}
         editingCodebase={false}
         codebases={[codebase]}
+        addRepoSelection={null}
+        setAddRepoSelection={vi.fn()}
+        addSaving={false}
+        addError={null}
+        onAddRepository={vi.fn()}
         editRepoSelection={null}
         onRepoSelectionChange={vi.fn()}
         editError={null}
@@ -132,6 +158,8 @@ describe("KanbanCodebaseModal", () => {
           branches: ["main", "issue/bf7f4dea", "issue/3487c6ee-js-hello-world", "feature/polish"],
         }}
         branchActionError={null}
+        repoHealth={{ missingRepoTasks: 0, cwdMismatchTasks: 0 }}
+        onSelectCodebase={vi.fn()}
         handleDeleteIssueBranch={handleDeleteIssueBranch}
         handleDeleteIssueBranches={handleDeleteIssueBranches}
         deletingBranchNames={[]}
@@ -161,5 +189,57 @@ describe("KanbanCodebaseModal", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /Clear issue|清理 issue/ }));
     expect(handleDeleteIssueBranches).toHaveBeenCalledWith(["issue/3487c6ee-js-hello-world"]);
+  });
+
+  it("renders a repository rail for multiple codebases and allows switching", () => {
+    const onSelectCodebase = vi.fn();
+
+    render(
+      <KanbanCodebaseModal
+        open
+        selectedCodebase={codebase}
+        editingCodebase={false}
+        codebases={[codebase, secondCodebase]}
+        addRepoSelection={null}
+        setAddRepoSelection={vi.fn()}
+        addSaving={false}
+        addError={null}
+        onAddRepository={vi.fn()}
+        editRepoSelection={null}
+        onRepoSelectionChange={vi.fn()}
+        editError={null}
+        recloneError={null}
+        editSaving={false}
+        replacingAll={false}
+        setShowReplaceAllConfirm={vi.fn()}
+        handleCancelEditCodebase={vi.fn()}
+        codebaseWorktrees={[]}
+        worktreeActionError={null}
+        localTasks={[]}
+        handleDeleteCodebaseWorktrees={vi.fn()}
+        deletingWorktreeIds={[]}
+        liveBranchInfo={null}
+        branchActionError={null}
+        repoHealth={{ missingRepoTasks: 2, cwdMismatchTasks: 1 }}
+        onSelectCodebase={onSelectCodebase}
+        handleDeleteIssueBranch={vi.fn()}
+        handleDeleteIssueBranches={vi.fn()}
+        deletingBranchNames={[]}
+        handleReclone={vi.fn()}
+        recloning={false}
+        recloneSuccess={null}
+        onStartEditCodebase={vi.fn()}
+        onRequestRemoveCodebase={vi.fn()}
+        onClose={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText(/Repository Control Center|仓库控制中心/)).toBeTruthy();
+    expect(screen.getByText(/Current repository demo|当前仓库 demo/)).toBeTruthy();
+    expect(screen.getAllByText("design-system").length).toBeGreaterThan(0);
+    expect(screen.getByText(/Health issues 3|健康问题 3/)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: /design-system/ }));
+    expect(onSelectCodebase).toHaveBeenCalledWith(secondCodebase);
   });
 });

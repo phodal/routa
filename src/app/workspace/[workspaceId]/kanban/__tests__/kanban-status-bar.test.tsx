@@ -23,6 +23,70 @@ const board: KanbanBoardInfo = {
 };
 
 describe("KanbanStatusBar runtime fitness", () => {
+  it("shows the workspace repository control entry and keeps it clickable without a default repo", () => {
+    const onRepoClick = vi.fn();
+
+    const { rerender } = render(
+      <KanbanStatusBar
+        defaultCodebase={{
+          id: "codebase-1",
+          workspaceId: "workspace-1",
+          repoPath: "/tmp/repo",
+          branch: "main",
+          label: "routa-js",
+          isDefault: true,
+          createdAt: "2025-01-01T00:00:00.000Z",
+          updatedAt: "2025-01-01T00:00:00.000Z",
+        }}
+        codebases={[
+          {
+            id: "codebase-1",
+            workspaceId: "workspace-1",
+            repoPath: "/tmp/repo",
+            branch: "main",
+            label: "routa-js",
+            isDefault: true,
+            createdAt: "2025-01-01T00:00:00.000Z",
+            updatedAt: "2025-01-01T00:00:00.000Z",
+          },
+          {
+            id: "codebase-2",
+            workspaceId: "workspace-1",
+            repoPath: "/tmp/repo-two",
+            branch: "develop",
+            label: "docs-site",
+            isDefault: false,
+            createdAt: "2025-01-01T00:00:00.000Z",
+            updatedAt: "2025-01-01T00:00:00.000Z",
+          },
+        ]}
+        fileChangesSummary={{ changedFiles: 0, totalAdditions: 0, totalDeletions: 0 }}
+        board={board}
+        boardQueue={board.queue}
+        onRepoClick={onRepoClick}
+      />,
+    );
+
+    const repoButton = screen.getByRole("button", { name: /Repos\s*2\s*routa-js\s*@\s*main|仓库\s*2\s*routa-js\s*@\s*main/ });
+    fireEvent.click(repoButton);
+    expect(onRepoClick).toHaveBeenCalledTimes(1);
+
+    rerender(
+      <KanbanStatusBar
+        defaultCodebase={null}
+        codebases={[]}
+        fileChangesSummary={{ changedFiles: 0, totalAdditions: 0, totalDeletions: 0 }}
+        board={board}
+        boardQueue={board.queue}
+        onRepoClick={onRepoClick}
+      />,
+    );
+
+    const emptyRepoButton = screen.getByRole("button", { name: /Repos\s*0\s*No repositories linked|仓库\s*0\s*未关联仓库/ });
+    fireEvent.click(emptyRepoButton);
+    expect(onRepoClick).toHaveBeenCalledTimes(2);
+  });
+
   it("renders runtime fitness summary and opens details on click", () => {
     const onFitnessClick = vi.fn();
 

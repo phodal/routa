@@ -860,8 +860,19 @@ export interface ExtendedTranslationDictionarySections extends TailTranslationDi
   // Kanban modal dialogs
   kanbanModals: {
     removeRepo: string;
+    openRepoSlide: string;
     selectOrCloneRepo: string;
     updatingRepo: string;
+    repositoriesOverview: string;
+    currentRepository: string;
+    healthIssuesLabel: string;
+    defaultRepositoryLabel: string;
+    localSourcesLabel: string;
+    githubSourcesLabel: string;
+    workspaceHealthTitle: string;
+    addRepository: string;
+    addingRepository: string;
+    selectRepositoryHint: string;
     replaceAllHint: string;
     replaceAllRepos: string;
     path: string;
