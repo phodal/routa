@@ -31,7 +31,7 @@ pub struct TranscriptSessionBackfill {
     pub recovered_events: Vec<TranscriptRecoveredEvent>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 struct TranscriptTurnBackfill {
     turn_id: Option<String>,
     prompt: Option<String>,
@@ -1010,16 +1010,13 @@ fn extract_text_parts(content: &Value) -> Option<String> {
     let items = content.as_array()?;
     let mut parts = Vec::new();
     for item in items {
-        match item.get("type").and_then(Value::as_str) {
-            Some("text" | "input_text") => {
-                if let Some(text) = item.get("text").and_then(Value::as_str) {
-                    let trimmed = text.trim();
-                    if !trimmed.is_empty() {
-                        parts.push(trimmed.to_string());
-                    }
+        if let Some("text" | "input_text") = item.get("type").and_then(Value::as_str) {
+            if let Some(text) = item.get("text").and_then(Value::as_str) {
+                let trimmed = text.trim();
+                if !trimmed.is_empty() {
+                    parts.push(trimmed.to_string());
                 }
             }
-            _ => {}
         }
     }
     if parts.is_empty() {
@@ -1222,18 +1219,6 @@ fn dedupe_prompt_previews(prompts: Vec<String>, limit: usize) -> Vec<String> {
         }
     }
     deduped
-}
-
-impl Default for TranscriptTurnBackfill {
-    fn default() -> Self {
-        Self {
-            turn_id: None,
-            prompt: None,
-            completed: false,
-            started_at_ms: 0,
-            events: Vec::new(),
-        }
-    }
 }
 
 #[cfg(test)]
