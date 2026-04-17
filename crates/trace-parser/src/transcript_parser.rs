@@ -8,6 +8,7 @@ use serde_json::{json, Value};
 use std::collections::{BTreeSet, HashSet};
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 const BACKFILL_WINDOW_MS: i64 = 24 * 60 * 60 * 1000;
 const ACTIVE_WINDOW_MS: i64 = 30 * 60 * 1000;
@@ -210,6 +211,61 @@ pub fn collect_recent_transcripts_from_dirs(
     dirs: &mut Vec<PathBuf>,
     allowed_extensions: &[&str],
 ) -> Result<Vec<(PathBuf, i64)>, TraceLearningError> {
+    if let Some(files) = collect_recent_transcripts_with_rg(dirs, allowed_extensions) {
+        return Ok(files);
+    }
+
+    collect_recent_transcripts_from_dirs_fallback(dirs, allowed_extensions)
+}
+
+fn collect_recent_transcripts_with_rg(
+    dirs: &[PathBuf],
+    allowed_extensions: &[&str],
+) -> Option<Vec<(PathBuf, i64)>> {
+    let globs = transcript_globs(allowed_extensions);
+    if globs.is_empty() {
+        return None;
+    }
+
+    let mut files = Vec::new();
+    for dir in dirs {
+        let output = Command::new("rg")
+            .arg("--files")
+            .arg(dir)
+            .args(globs.iter().flat_map(|glob| ["-g", glob]))
+            .output()
+            .ok()?;
+        if !output.status.success() {
+            return None;
+        }
+
+        let stdout = String::from_utf8(output.stdout).ok()?;
+        for raw_line in stdout.lines() {
+            let candidate = raw_line.trim();
+            if candidate.is_empty() {
+                continue;
+            }
+            let path = PathBuf::from(candidate);
+            if !should_keep_transcript_candidate(&path, allowed_extensions) {
+                continue;
+            }
+            let modified_ms = std::fs::metadata(&path)
+                .ok()
+                .and_then(|meta| meta.modified().ok())
+                .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|dur| dur.as_millis() as i64)
+                .unwrap_or_default();
+            files.push((path, modified_ms));
+        }
+    }
+
+    Some(files)
+}
+
+fn collect_recent_transcripts_from_dirs_fallback(
+    dirs: &mut Vec<PathBuf>,
+    allowed_extensions: &[&str],
+) -> Result<Vec<(PathBuf, i64)>, TraceLearningError> {
     let mut files = Vec::new();
     while let Some(dir) = dirs.pop() {
         let entries = match std::fs::read_dir(&dir) {
@@ -228,23 +284,7 @@ pub fn collect_recent_transcripts_from_dirs(
             if !file_type.is_file() {
                 continue;
             }
-            let Some(extension) = path.extension().and_then(|ext| ext.to_str()) else {
-                continue;
-            };
-            if !allowed_extensions.contains(&extension) {
-                continue;
-            }
-            if extension == "jsonl"
-                && path.file_name().and_then(|name| name.to_str()) == Some("sessions-index.json")
-            {
-                continue;
-            }
-            if extension == "json"
-                && path
-                    .file_name()
-                    .and_then(|name| name.to_str())
-                    .is_some_and(|name| name.ends_with("-session.json"))
-            {
+            if !should_keep_transcript_candidate(&path, allowed_extensions) {
                 continue;
             }
             let modified_ms = entry
@@ -258,6 +298,40 @@ pub fn collect_recent_transcripts_from_dirs(
         }
     }
     Ok(files)
+}
+
+fn transcript_globs<'a>(allowed_extensions: &'a [&'a str]) -> Vec<&'a str> {
+    let mut globs = Vec::new();
+    if allowed_extensions.contains(&"jsonl") {
+        globs.push("*.jsonl");
+    }
+    if allowed_extensions.contains(&"json") {
+        globs.push("*.json");
+    }
+    globs
+}
+
+fn should_keep_transcript_candidate(path: &Path, allowed_extensions: &[&str]) -> bool {
+    let Some(extension) = path.extension().and_then(|ext| ext.to_str()) else {
+        return false;
+    };
+    if !allowed_extensions.contains(&extension) {
+        return false;
+    }
+    if extension == "jsonl"
+        && path.file_name().and_then(|name| name.to_str()) == Some("sessions-index.json")
+    {
+        return false;
+    }
+    if extension == "json"
+        && path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| name.ends_with("-session.json"))
+    {
+        return false;
+    }
+    true
 }
 
 pub fn parse_transcript_backfill(
@@ -1262,5 +1336,32 @@ mod tests {
                 "first task".to_string()
             ]
         );
+    }
+
+    #[test]
+    fn transcript_candidate_filter_skips_index_and_qoder_sidecar() {
+        assert!(!should_keep_transcript_candidate(
+            Path::new("/tmp/sessions-index.json"),
+            &["jsonl"]
+        ));
+        assert!(!should_keep_transcript_candidate(
+            Path::new("/tmp/demo-session.json"),
+            &["json"]
+        ));
+        assert!(should_keep_transcript_candidate(
+            Path::new("/tmp/demo.jsonl"),
+            &["jsonl"]
+        ));
+        assert!(should_keep_transcript_candidate(
+            Path::new("/tmp/demo.json"),
+            &["json"]
+        ));
+    }
+
+    #[test]
+    fn transcript_globs_follow_allowed_extensions() {
+        assert_eq!(transcript_globs(&["jsonl"]), vec!["*.jsonl"]);
+        assert_eq!(transcript_globs(&["json"]), vec!["*.json"]);
+        assert_eq!(transcript_globs(&["jsonl", "json"]), vec!["*.jsonl", "*.json"]);
     }
 }
