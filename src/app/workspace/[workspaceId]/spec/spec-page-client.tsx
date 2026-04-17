@@ -149,6 +149,39 @@ function CompactBadge({ children, className = "" }: { children: React.ReactNode;
   );
 }
 
+type IssueAreaGroup = {
+  id: string;
+  label: string;
+  issueCount: number;
+  unresolvedCount: number;
+  families: IssueFamily[];
+};
+
+function isUsefulSurfaceHit(hit: SurfaceHit): boolean {
+  return (hit.explicit || hit.confidence !== "low")
+    && hit.secondaryLabel !== "/"
+    && hit.secondaryLabel !== "/workspace/:workspaceId"
+    && !hit.label.toLowerCase().includes("wrapper");
+}
+
+function pickLeadIssue(family: IssueFamily): SpecIssue {
+  return family.issues.find((issue) => {
+    const status = normalizeSpecStatus(issue.status);
+    return status === "open" || status === "investigating";
+  }) ?? family.issues[0] as SpecIssue;
+}
+
+function getAreaLabel(family: IssueFamily): string {
+  return family.dominantAreas[0]
+    ?? family.issues.find((issue) => issue.area.trim().length > 0)?.area
+    ?? family.label;
+}
+
+function getClusterLabel(family: IssueFamily): string {
+  const leadIssue = pickLeadIssue(family);
+  return leadIssue.title || leadIssue.filename || family.label;
+}
+
 function SpecToolbar({
   filters,
   filteredCount,
@@ -168,11 +201,6 @@ function SpecToolbar({
   const statusLabels = getStatusLabels(t);
   const statuses = useMemo(
     () => [...new Set(issues.map((issue) => normalizeSpecStatus(issue.status)))],
-    [issues],
-  );
-  const kinds = useMemo(() => [...new Set(issues.map((issue) => issue.kind).filter(Boolean))].sort(), [issues]);
-  const severities = useMemo(
-    () => [...new Set(issues.map((issue) => issue.severity).filter(Boolean))].sort(),
     [issues],
   );
   const areas = useMemo(
@@ -203,30 +231,6 @@ function SpecToolbar({
       </select>
 
       <select
-        aria-label={t.specBoard.kind}
-        value={filters.kind}
-        onChange={(event) => onFiltersChange({ ...filters, kind: event.target.value })}
-        className={selectClassName}
-      >
-        <option value="">{`${t.specBoard.kind}: ${t.common.all}`}</option>
-        {kinds.map((kind) => (
-          <option key={kind} value={kind}>{kind}</option>
-        ))}
-      </select>
-
-      <select
-        aria-label={t.specBoard.severity}
-        value={filters.severity}
-        onChange={(event) => onFiltersChange({ ...filters, severity: event.target.value })}
-        className={selectClassName}
-      >
-        <option value="">{`${t.specBoard.severity}: ${t.common.all}`}</option>
-        {severities.map((severity) => (
-          <option key={severity} value={severity}>{severity}</option>
-        ))}
-      </select>
-
-      <select
         aria-label={t.specBoard.area}
         value={filters.area}
         onChange={(event) => onFiltersChange({ ...filters, area: event.target.value })}
@@ -253,21 +257,6 @@ function SpecToolbar({
   );
 }
 
-function SurfacePreviewPill({ hit }: { hit: SurfaceHit }) {
-  const icon = hit.kind === "page" ? (
-    <Rows3 className="h-3 w-3" strokeWidth={1.8} />
-  ) : (
-    <Route className="h-3 w-3" strokeWidth={1.8} />
-  );
-
-  return (
-    <span className="inline-flex items-center gap-1 rounded-full border border-black/6 bg-white/80 px-2 py-0.5 text-[10px] text-slate-500 dark:border-white/10 dark:bg-white/5 dark:text-slate-300">
-      {icon}
-      <span className="truncate">{hit.secondaryLabel}</span>
-    </span>
-  );
-}
-
 function SpecFamilyExplorer({
   families,
   relationsByFilename,
@@ -282,32 +271,98 @@ function SpecFamilyExplorer({
   onSelectIssue: (issue: SpecIssue) => void;
 }) {
   const { t } = useTranslation();
-  const [expandedFamilyIds, setExpandedFamilyIds] = useState<Set<string>>(
-    () => new Set(families.slice(0, 5).map((family) => family.id)),
+  const statusLabels = getStatusLabels(t);
+  const [expandedAreaIds, setExpandedAreaIds] = useState<Set<string>>(
+    () => new Set(families.slice(0, 4).map((family) => getAreaLabel(family))),
   );
-  const [expandedIssueIds, setExpandedIssueIds] = useState<Set<string>>(
-    () => new Set(selectedIssue ? [selectedIssue.filename] : []),
+  const [expandedClusterIds, setExpandedClusterIds] = useState<Set<string>>(
+    () => new Set(families.slice(0, 3).map((family) => family.id)),
   );
 
-  const toggleFamily = useCallback((familyId: string) => {
-    setExpandedFamilyIds((current) => {
+  const selectedFamilyId = selectedIssue
+    ? (relationsByFilename.get(selectedIssue.filename)?.familyId ?? selectedIssue.filename)
+    : null;
+  const selectedAreaId = selectedFamilyId
+    ? getAreaLabel(families.find((family) => family.id === selectedFamilyId) ?? {
+      id: "",
+      label: "",
+      issues: selectedIssue ? [selectedIssue] : [],
+      unresolvedCount: 0,
+      relationCount: 0,
+      surfaces: [],
+      dominantAreas: selectedIssue?.area ? [selectedIssue.area] : [],
+    } satisfies IssueFamily)
+    : null;
+
+  const areaGroups = useMemo((): IssueAreaGroup[] => {
+    const grouped = new Map<string, IssueAreaGroup>();
+
+    for (const family of families) {
+      const areaLabel = getAreaLabel(family);
+      const existing = grouped.get(areaLabel);
+      if (existing) {
+        existing.issueCount += family.issues.length;
+        existing.unresolvedCount += family.unresolvedCount;
+        existing.families.push(family);
+        continue;
+      }
+
+      grouped.set(areaLabel, {
+        id: areaLabel,
+        label: areaLabel,
+        issueCount: family.issues.length,
+        unresolvedCount: family.unresolvedCount,
+        families: [family],
+      });
+    }
+
+    return [...grouped.values()]
+      .map((group) => ({
+        ...group,
+        families: [...group.families].sort((a, b) => {
+          const unresolvedDiff = b.unresolvedCount - a.unresolvedCount;
+          if (unresolvedDiff !== 0) {
+            return unresolvedDiff;
+          }
+          const relationDiff = b.relationCount - a.relationCount;
+          if (relationDiff !== 0) {
+            return relationDiff;
+          }
+          return getClusterLabel(a).localeCompare(getClusterLabel(b));
+        }),
+      }))
+      .sort((a, b) => {
+        const unresolvedDiff = b.unresolvedCount - a.unresolvedCount;
+        if (unresolvedDiff !== 0) {
+          return unresolvedDiff;
+        }
+        const sizeDiff = b.issueCount - a.issueCount;
+        if (sizeDiff !== 0) {
+          return sizeDiff;
+        }
+        return a.label.localeCompare(b.label);
+      });
+  }, [families]);
+
+  const toggleArea = useCallback((areaId: string) => {
+    setExpandedAreaIds((current) => {
       const next = new Set(current);
-      if (next.has(familyId)) {
-        next.delete(familyId);
+      if (next.has(areaId)) {
+        next.delete(areaId);
       } else {
-        next.add(familyId);
+        next.add(areaId);
       }
       return next;
     });
   }, []);
 
-  const toggleIssue = useCallback((filename: string) => {
-    setExpandedIssueIds((current) => {
+  const toggleCluster = useCallback((familyId: string) => {
+    setExpandedClusterIds((current) => {
       const next = new Set(current);
-      if (next.has(filename)) {
-        next.delete(filename);
+      if (next.has(familyId)) {
+        next.delete(familyId);
       } else {
-        next.add(filename);
+        next.add(familyId);
       }
       return next;
     });
@@ -319,204 +374,178 @@ function SpecFamilyExplorer({
         {t.specBoard.families}
       </div>
 
-      <div className="flex-1 space-y-2 overflow-y-auto p-2.5">
-        {families.length === 0 ? (
+      <div className="flex-1 overflow-y-auto px-2 py-2.5">
+        {areaGroups.length === 0 ? (
           <div className="flex h-full min-h-40 items-center justify-center rounded-xl border border-dashed border-black/8 bg-white/60 px-4 text-center text-sm text-slate-500 dark:border-white/10 dark:bg-white/[0.03] dark:text-slate-400">
             {t.specBoard.noIssues}
           </div>
         ) : null}
 
-        {families.map((family) => {
-          const isFamilyExpanded = expandedFamilyIds.has(family.id)
-            || selectedIssue != null
-            && (relationsByFilename.get(selectedIssue.filename)?.familyId === family.id);
-          const visibleFamilySurfaces = family.surfaces.filter(
-            (surface) =>
-              (surface.explicit || surface.confidence !== "low") &&
-              surface.secondaryLabel !== "/" &&
-              surface.secondaryLabel !== "/workspace/:workspaceId" &&
-              !surface.label.toLowerCase().includes("wrapper"),
-          );
+        <div className="space-y-1.5">
+          {areaGroups.map((area) => {
+            const isAreaExpanded = expandedAreaIds.has(area.id) || selectedAreaId === area.id;
+            return (
+              <section key={area.id} className="rounded-lg border border-black/6 bg-[#f8fafc] dark:border-white/10 dark:bg-white/[0.02]">
+                <button
+                  type="button"
+                  onClick={() => toggleArea(area.id)}
+                  className="flex w-full items-center gap-2 px-2.5 py-2 text-left"
+                >
+                  {isAreaExpanded ? (
+                    <ChevronDown className="h-3.5 w-3.5 shrink-0 text-slate-400" strokeWidth={1.8} />
+                  ) : (
+                    <ChevronRight className="h-3.5 w-3.5 shrink-0 text-slate-400" strokeWidth={1.8} />
+                  )}
+                  <span className="min-w-0 flex-1 truncate text-[12px] font-semibold text-slate-900 dark:text-slate-50">
+                    {area.label}
+                  </span>
+                  <span className="shrink-0 text-[10px] text-slate-500 dark:text-slate-400">
+                    {area.unresolvedCount} {statusLabels.open} · {area.issueCount}
+                  </span>
+                </button>
 
-          return (
-            <section key={family.id} className="rounded-lg border border-black/6 bg-[#f8fafc] dark:border-white/10 dark:bg-white/[0.02]">
-              <button
-                type="button"
-                onClick={() => toggleFamily(family.id)}
-                className="flex w-full items-start gap-2 px-2.5 py-2 text-left"
-              >
-                {isFamilyExpanded ? (
-                  <ChevronDown className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-400" strokeWidth={1.8} />
-                ) : (
-                  <ChevronRight className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-400" strokeWidth={1.8} />
-                )}
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-[12px] font-semibold text-slate-900 dark:text-slate-50">
-                    {family.label}
-                  </div>
-                  <div className="mt-1 flex flex-wrap items-center gap-1 text-[10px] text-slate-500 dark:text-slate-400">
-                    <CompactBadge className="bg-rose-50 text-rose-700 dark:bg-rose-500/15 dark:text-rose-200">
-                      {family.unresolvedCount} {t.specBoard.statusOpen}
-                    </CompactBadge>
-                    <CompactBadge className="bg-black/[0.04] text-slate-600 dark:bg-white/6 dark:text-slate-200">
-                      {family.issues.length} {t.specBoard.members}
-                    </CompactBadge>
-                    <CompactBadge className="bg-black/[0.04] text-slate-600 dark:bg-white/6 dark:text-slate-200">
-                      {family.relationCount} {t.specBoard.relations}
-                    </CompactBadge>
-                    {visibleFamilySurfaces[0] ? <SurfacePreviewPill hit={visibleFamilySurfaces[0]} /> : null}
-                    {!visibleFamilySurfaces[0] && family.dominantAreas[0] ? (
-                      <CompactBadge className="bg-black/[0.04] text-slate-600 dark:bg-white/6 dark:text-slate-200">
-                        {family.dominantAreas[0]}
-                      </CompactBadge>
-                    ) : null}
-                  </div>
-                </div>
-              </button>
+                {isAreaExpanded ? (
+                  <div className="mx-2.5 mb-2.5 border-l border-black/8 pl-2.5 dark:border-white/10">
+                    <div className="space-y-1">
+                      {area.families.map((family) => {
+                        const leadIssue = pickLeadIssue(family);
+                        const clusterLabel = getClusterLabel(family);
+                        const clusterSurface = family.surfaces.find(isUsefulSurfaceHit)?.secondaryLabel ?? null;
+                        const isClusterExpanded = expandedClusterIds.has(family.id) || selectedFamilyId === family.id;
 
-              {isFamilyExpanded ? (
-                <div className="mx-2.5 mb-2.5 border-l border-black/8 pl-2.5 dark:border-white/10">
-                  <div className="space-y-1.5">
-                    {family.issues.map((issue) => {
-                      const relations = relationsByFilename.get(issue.filename) ?? {
-                        outgoing: [],
-                        incoming: [],
-                        localOutgoing: [],
-                        familyId: issue.filename,
-                        familyIssues: [],
-                      };
-                      const visibleHits = (surfaceHitsByFilename.get(issue.filename) ?? [])
-                        .filter((hit) => hit.explicit || hit.confidence !== "low")
-                        .slice(0, 2);
-                      const isSelected = selectedIssue?.filename === issue.filename;
-                      const isIssueExpanded = isSelected || expandedIssueIds.has(issue.filename);
-                      const normalizedStatus = normalizeSpecStatus(issue.status);
-                      const theme = STATUS_THEMES[normalizedStatus];
-                      const severityClass = SEVERITY_STYLES[issue.severity] ?? SEVERITY_STYLES.info;
-
-                      return (
-                        <div key={issue.filename} className="space-y-1">
-                          <div className="flex items-start gap-1.5">
-                            <button
-                              type="button"
-                              onClick={() => toggleIssue(issue.filename)}
-                              className="mt-1 shrink-0 text-slate-400"
-                              aria-label={isIssueExpanded ? t.specBoard.collapseBranch : t.specBoard.expandBranch}
-                            >
-                              {isIssueExpanded ? (
-                                <ChevronDown className="h-3 w-3" strokeWidth={1.8} />
-                              ) : (
-                                <ChevronRight className="h-3 w-3" strokeWidth={1.8} />
-                              )}
-                            </button>
-
+                        return (
+                          <div key={family.id} className="space-y-1">
                             <button
                               type="button"
                               onClick={() => {
-                                onSelectIssue(issue);
-                                setExpandedIssueIds((current) => new Set([...current, issue.filename]));
+                                toggleCluster(family.id);
+                                onSelectIssue(leadIssue);
                               }}
-                              className={`min-w-0 flex-1 rounded-md border px-2 py-1.5 text-left ${
-                                isSelected
-                                  ? theme.selected
-                                  : "border-transparent bg-white/50 hover:border-black/8 hover:bg-white dark:bg-white/[0.03] dark:hover:border-white/10 dark:hover:bg-white/[0.06]"
+                              className={`flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left ${
+                                selectedFamilyId === family.id
+                                  ? "bg-slate-100 text-slate-950 dark:bg-white/[0.08] dark:text-slate-50"
+                                  : "hover:bg-white/70 dark:hover:bg-white/[0.04]"
                               }`}
                             >
-                              <div className="flex items-start gap-2">
-                                <span className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${theme.dot}`} />
-                                <div className="min-w-0 flex-1">
-                                  <div className="truncate text-[12px] font-medium text-slate-900 dark:text-slate-50">
-                                    {issue.title || issue.filename}
-                                  </div>
-                                  <div className="mt-1 flex flex-wrap items-center gap-1 text-[10px] text-slate-500 dark:text-slate-400">
-                                    <CompactBadge className={theme.badge}>
-                                      {getStatusLabels(t)[normalizedStatus]}
-                                    </CompactBadge>
-                                    {issue.area ? (
-                                      <CompactBadge className="bg-black/[0.04] text-slate-600 dark:bg-white/6 dark:text-slate-200">
-                                        {issue.area}
-                                      </CompactBadge>
-                                    ) : null}
-                                    {relations.localOutgoing.length > 0 ? (
-                                      <CompactBadge className="bg-black/[0.04] text-slate-600 dark:bg-white/6 dark:text-slate-200">
-                                        <Link2 className="h-3 w-3" strokeWidth={1.8} />
-                                        {relations.localOutgoing.length}
-                                      </CompactBadge>
-                                    ) : null}
-                                    {relations.incoming.length > 0 ? (
-                                      <CompactBadge className="bg-black/[0.04] text-slate-600 dark:bg-white/6 dark:text-slate-200">
-                                        <GitBranch className="h-3 w-3" strokeWidth={1.8} />
-                                        {relations.incoming.length}
-                                      </CompactBadge>
-                                    ) : null}
-                                    {visibleHits[0] ? <SurfacePreviewPill hit={visibleHits[0]} /> : null}
-                                  </div>
+                              {isClusterExpanded ? (
+                                <ChevronDown className="mt-0.5 h-3 w-3 shrink-0 text-slate-400" strokeWidth={1.8} />
+                              ) : (
+                                <ChevronRight className="mt-0.5 h-3 w-3 shrink-0 text-slate-400" strokeWidth={1.8} />
+                              )}
+                              <div className="min-w-0 flex-1">
+                                <div className="truncate text-[12px] font-medium text-slate-900 dark:text-slate-50">
+                                  {clusterLabel}
                                 </div>
-                                <CompactBadge className={`border font-semibold uppercase ${severityClass}`}>
-                                  {issue.severity}
-                                </CompactBadge>
-                              </div>
-                            </button>
-                          </div>
-
-                          {isIssueExpanded ? (
-                            <div className="ml-4 border-l border-black/8 pl-2.5 dark:border-white/10">
-                              <div className="space-y-1">
-                                {relations.localOutgoing.slice(0, 2).map((localIssue) => (
-                                  <button
-                                    key={`out:${localIssue.filename}`}
-                                    type="button"
-                                    onClick={() => onSelectIssue(localIssue)}
-                                    className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-[11px] text-slate-600 hover:bg-white/70 dark:text-slate-300 dark:hover:bg-white/[0.04]"
-                                  >
-                                    <Link2 className="h-3 w-3 shrink-0 text-slate-400" strokeWidth={1.8} />
-                                    <span className="truncate">{localIssue.title || localIssue.filename}</span>
-                                  </button>
-                                ))}
-
-                                {relations.incoming.slice(0, 1).map((incomingIssue) => (
-                                  <button
-                                    key={`in:${incomingIssue.filename}`}
-                                    type="button"
-                                    onClick={() => onSelectIssue(incomingIssue)}
-                                    className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-[11px] text-slate-600 hover:bg-white/70 dark:text-slate-300 dark:hover:bg-white/[0.04]"
-                                  >
-                                    <GitBranch className="h-3 w-3 shrink-0 text-slate-400" strokeWidth={1.8} />
-                                    <span className="truncate">{incomingIssue.title || incomingIssue.filename}</span>
-                                  </button>
-                                ))}
-
-                                {visibleHits.slice(0, 2).map((hit) => (
-                                  <div
-                                    key={`surface:${hit.key}`}
-                                    className="flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] text-slate-500 dark:text-slate-400"
-                                  >
-                                    {hit.kind === "page" ? (
-                                      <Rows3 className="h-3 w-3 shrink-0" strokeWidth={1.8} />
-                                    ) : (
-                                      <Route className="h-3 w-3 shrink-0" strokeWidth={1.8} />
-                                    )}
-                                    <span className="truncate">{hit.secondaryLabel}</span>
-                                  </div>
-                                ))}
-
-                                {relations.localOutgoing.length > 2 ? (
-                                  <div className="px-2 text-[11px] text-slate-400 dark:text-slate-500">
-                                    +{relations.localOutgoing.length - 2} {t.specBoard.relations}
+                                <div className="truncate text-[10px] text-slate-500 dark:text-slate-400">
+                                  {family.issues.length} {t.specBoard.members} · {family.unresolvedCount} {statusLabels.open}
+                                  {family.relationCount > 0 ? ` · ${family.relationCount} ${t.specBoard.relations}` : ""}
+                                </div>
+                                {clusterSurface ? (
+                                  <div className="truncate text-[10px] text-slate-400 dark:text-slate-500">
+                                    {clusterSurface}
                                   </div>
                                 ) : null}
                               </div>
-                            </div>
-                          ) : null}
-                        </div>
-                      );
-                    })}
+                            </button>
+
+                            {isClusterExpanded ? (
+                              <div className="ml-4 border-l border-black/8 pl-2 dark:border-white/10">
+                                <div className="space-y-0.5">
+                                  {family.issues.map((issue) => {
+                                    const relations = relationsByFilename.get(issue.filename) ?? {
+                                      outgoing: [],
+                                      incoming: [],
+                                      localOutgoing: [],
+                                      familyId: issue.filename,
+                                      familyIssues: [],
+                                    };
+                                    const visibleHits = (surfaceHitsByFilename.get(issue.filename) ?? [])
+                                      .filter(isUsefulSurfaceHit)
+                                      .slice(0, 1);
+                                    const normalizedStatus = normalizeSpecStatus(issue.status);
+                                    const isSelected = selectedIssue?.filename === issue.filename;
+                                    const metaParts = [
+                                      statusLabels[normalizedStatus],
+                                      issue.severity,
+                                      issue.githubIssue != null ? `#${issue.githubIssue}` : null,
+                                    ].filter(Boolean);
+
+                                    return (
+                                      <button
+                                        key={issue.filename}
+                                        type="button"
+                                        onClick={() => onSelectIssue(issue)}
+                                        className={`flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left ${
+                                          isSelected
+                                            ? "bg-white text-slate-950 shadow-sm dark:bg-white/[0.06] dark:text-slate-50"
+                                            : "hover:bg-white/70 dark:hover:bg-white/[0.03]"
+                                        }`}
+                                      >
+                                        <span className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${STATUS_THEMES[normalizedStatus].dot}`} />
+                                        <div className="min-w-0 flex-1">
+                                          <div className="truncate text-[12px] text-slate-800 dark:text-slate-100">
+                                            {issue.title || issue.filename}
+                                          </div>
+                                          <div className="truncate text-[10px] text-slate-500 dark:text-slate-400">
+                                            {metaParts.join(" · ")}
+                                          </div>
+
+                                          {isSelected ? (
+                                            <div className="mt-1 space-y-0.5">
+                                              {relations.localOutgoing.slice(0, 2).map((localIssue) => (
+                                                <div
+                                                  key={`out:${localIssue.filename}`}
+                                                  className="flex items-center gap-1.5 text-[10px] text-slate-500 dark:text-slate-400"
+                                                >
+                                                  <Link2 className="h-3 w-3 shrink-0" strokeWidth={1.8} />
+                                                  <span className="truncate">{localIssue.title || localIssue.filename}</span>
+                                                </div>
+                                              ))}
+                                              {relations.incoming.slice(0, 1).map((incomingIssue) => (
+                                                <div
+                                                  key={`in:${incomingIssue.filename}`}
+                                                  className="flex items-center gap-1.5 text-[10px] text-slate-500 dark:text-slate-400"
+                                                >
+                                                  <GitBranch className="h-3 w-3 shrink-0" strokeWidth={1.8} />
+                                                  <span className="truncate">{incomingIssue.title || incomingIssue.filename}</span>
+                                                </div>
+                                              ))}
+                                              {visibleHits.map((hit) => (
+                                                <div
+                                                  key={`surface:${hit.key}`}
+                                                  className="flex items-center gap-1.5 text-[10px] text-slate-400 dark:text-slate-500"
+                                                >
+                                                  {hit.kind === "page" ? (
+                                                    <Rows3 className="h-3 w-3 shrink-0" strokeWidth={1.8} />
+                                                  ) : (
+                                                    <Route className="h-3 w-3 shrink-0" strokeWidth={1.8} />
+                                                  )}
+                                                  <span className="truncate">{hit.secondaryLabel}</span>
+                                                </div>
+                                              ))}
+                                            </div>
+                                          ) : visibleHits[0] ? (
+                                            <div className="truncate text-[10px] text-slate-400 dark:text-slate-500">
+                                              {visibleHits[0].secondaryLabel}
+                                            </div>
+                                          ) : null}
+                                        </div>
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            ) : null}
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
-                </div>
-              ) : null}
-            </section>
-          );
-        })}
+                ) : null}
+              </section>
+            );
+          })}
+        </div>
       </div>
     </section>
   );

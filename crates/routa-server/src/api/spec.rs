@@ -8,9 +8,7 @@ use axum::{
 use serde::Deserialize;
 use serde_json::{json, Value as JsonValue};
 
-use crate::api::repo_context::{
-    extract_frontmatter, resolve_repo_root, ResolveRepoRootOptions,
-};
+use crate::api::repo_context::{extract_frontmatter, resolve_repo_root, ResolveRepoRootOptions};
 use crate::error::ServerError;
 use crate::state::AppState;
 
@@ -111,7 +109,9 @@ fn yaml_string_vec(frontmatter: &serde_yaml::Value, key: &str) -> Vec<String> {
 
 fn yaml_optional_number(frontmatter: &serde_yaml::Value, key: &str) -> Option<JsonValue> {
     match frontmatter.get(key) {
-        Some(serde_yaml::Value::Number(value)) => value.as_u64().map(|number| JsonValue::Number(number.into())),
+        Some(serde_yaml::Value::Number(value)) => value
+            .as_u64()
+            .map(|number| JsonValue::Number(number.into())),
         Some(serde_yaml::Value::String(value)) => value
             .trim()
             .parse::<u64>()
@@ -335,7 +335,9 @@ async fn get_surface_index(
         Err(_) => {
             return Ok(Json(empty_surface_index_response(
                 &repo_root,
-                vec![format!("Feature surface index not found at {relative_index_path}")],
+                vec![format!(
+                    "Feature surface index not found at {relative_index_path}"
+                )],
             )))
         }
     };
@@ -407,7 +409,13 @@ github_issue: "410"
         .unwrap();
 
         assert_eq!(yaml_string_field(&fm, "date"), "2026-03-02");
-        assert_eq!(normalize_status(&yaml_string_field(&fm, "status")), "resolved");
-        assert_eq!(yaml_optional_number(&fm, "github_issue"), Some(JsonValue::Number(410.into())));
+        assert_eq!(
+            normalize_status(&yaml_string_field(&fm, "status")),
+            "resolved"
+        );
+        assert_eq!(
+            yaml_optional_number(&fm, "github_issue"),
+            Some(JsonValue::Number(410.into()))
+        );
     }
 }

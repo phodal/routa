@@ -136,7 +136,10 @@ async fn api_canvas_specialist_rejects_unknown_specialist() {
         .expect("create canvas from unknown specialist");
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
     let body: Value = response.json().await.expect("decode error");
-    assert!(json_has_error(&body, "Specialist not found: missing-specialist"));
+    assert!(json_has_error(
+        &body,
+        "Specialist not found: missing-specialist"
+    ));
 }
 
 #[tokio::test]

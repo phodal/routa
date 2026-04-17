@@ -91,7 +91,10 @@ impl ArtifactStore {
             .await
     }
 
-    pub async fn list_by_workspace(&self, workspace_id: &str) -> Result<Vec<Artifact>, ServerError> {
+    pub async fn list_by_workspace(
+        &self,
+        workspace_id: &str,
+    ) -> Result<Vec<Artifact>, ServerError> {
         let workspace_id = workspace_id.to_string();
         self.db
             .with_conn_async(move |conn| {

@@ -2649,6 +2649,9 @@ mod tests {
         assert!(!has_local_branch(repo_path, "missing"));
 
         checkout_existing_branch(repo_path, "feature/test").unwrap();
-        assert_eq!(get_current_branch(repo_path).as_deref(), Some("feature/test"));
+        assert_eq!(
+            get_current_branch(repo_path).as_deref(),
+            Some("feature/test")
+        );
     }
 }

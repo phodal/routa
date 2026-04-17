@@ -761,7 +761,8 @@ async fn reset_branch_handler(
     let result = tokio::task::spawn_blocking(move || {
         routa_core::git::reset_branch(&repo_path_for_git, &to_for_git, &mode_for_git, confirm)?;
 
-        let is_target_local_branch = routa_core::git::has_local_branch(&repo_path_for_git, &to_for_git);
+        let is_target_local_branch =
+            routa_core::git::has_local_branch(&repo_path_for_git, &to_for_git);
         if is_target_local_branch {
             let current_branch = routa_core::git::get_current_branch(&repo_path_for_git);
             if current_branch.as_deref() != Some(to_for_git.as_str()) {
