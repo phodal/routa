@@ -147,10 +147,10 @@ describe("buildKanbanFitnessWorkbenchUserPrompt", () => {
     expect(prompt).toContain('"finalScore": 87.5');
     expect(prompt).toContain("Use `entrixRun.report` as the primary source of truth");
     expect(prompt).toContain('"fitnessSpecs"');
-    expect(prompt).toContain("Canvas SDK source of truth:");
-    expect(prompt).toContain('"moduleSpecifier": "@canvas-sdk"');
-    expect(prompt).toContain("Compact API surface:");
-    expect(prompt).toContain("- StackProps = { children?: ReactNode; gap?: number; style?: CSSProperties");
-    expect(prompt).toContain("- TableProps = { headers: ReactNode[]; rows: ReactNode[][];");
+    expect(prompt).toContain("Canvas SDK access:");
+    expect(prompt).toContain("resource://routa/canvas-sdk/manifest");
+    expect(prompt).toContain("resource://routa/canvas-sdk/defs/primitives");
+    expect(prompt).toContain("Import only from `@canvas-sdk` or `react`.");
+    expect(prompt).not.toContain("Compact API surface:");
   });
 });
