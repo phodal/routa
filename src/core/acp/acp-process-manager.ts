@@ -101,6 +101,14 @@ export class AcpProcessManager {
     private workspaceAgents = new Map<string, ManagedWorkspaceAgent>();
     private mcpSessionCleanups = new Map<string, McpSetupCleanup>();
 
+    private combineProviderArgs(
+        providerArgs?: string[],
+        extraArgs?: string[],
+    ): string[] | undefined {
+        const combined = [...(providerArgs ?? []), ...(extraArgs ?? [])];
+        return combined.length > 0 ? combined : undefined;
+    }
+
     private async prepareMcpForSession(
         sessionId: string,
         presetId: string,
@@ -108,16 +116,13 @@ export class AcpProcessManager {
         workspaceId?: string,
         toolMode?: "essential" | "full",
         mcpProfile?: McpServerProfile,
-    ): Promise<string[] | undefined> {
+    ): Promise<{ mcpConfigs?: string[]; providerArgs?: string[] } | undefined> {
         if (!providerSupportsMcp(presetId)) {
             return undefined;
         }
 
         const baseConfig = getDefaultRoutaMcpConfig(workspaceId, sessionId, toolMode, mcpProfile);
-        const baseProviderId = presetId.endsWith("-registry")
-            ? presetId.slice(0, -"-registry".length)
-            : presetId;
-        const mcpConfig = baseProviderId === "qoder" ? { ...baseConfig, cwd } : baseConfig;
+        const mcpConfig = cwd ? { ...baseConfig, cwd } : baseConfig;
         const mcpResult = await ensureMcpForProvider(presetId, mcpConfig);
         if (mcpResult.cleanup) {
             this.mcpSessionCleanups.set(sessionId, mcpResult.cleanup);
@@ -125,7 +130,12 @@ export class AcpProcessManager {
             this.mcpSessionCleanups.delete(sessionId);
         }
         logAcpDebug(`[AcpProcessManager] MCP setup for ${presetId}: ${mcpResult.summary}`);
-        return mcpResult.mcpConfigs.length > 0 ? mcpResult.mcpConfigs : undefined;
+        return {
+            mcpConfigs: mcpResult.mcpConfigs.length > 0 ? mcpResult.mcpConfigs : undefined,
+            providerArgs: mcpResult.providerArgs && mcpResult.providerArgs.length > 0
+                ? mcpResult.providerArgs
+                : undefined,
+        };
     }
 
     private async cleanupSessionMcp(sessionId: string): Promise<void> {
@@ -181,7 +191,7 @@ export class AcpProcessManager {
         }
 
         try {
-            const mcpConfigs = await this.prepareMcpForSession(
+            const mcpSetup = await this.prepareMcpForSession(
                 sessionId,
                 presetId,
                 cwd,
@@ -189,7 +199,13 @@ export class AcpProcessManager {
                 toolMode,
                 mcpProfile,
             );
-            const config = await buildConfigFromPreset(presetId, cwd, extraArgs, extraEnv, mcpConfigs);
+            const config = await buildConfigFromPreset(
+                presetId,
+                cwd,
+                this.combineProviderArgs(mcpSetup?.providerArgs, extraArgs),
+                extraEnv,
+                mcpSetup?.mcpConfigs,
+            );
             const proc = new AcpProcess(config, onNotification);
 
             await proc.start();
@@ -242,7 +258,7 @@ export class AcpProcessManager {
         providerSessionId?: string,
     ): Promise<string> {
         try {
-            const mcpConfigs = await this.prepareMcpForSession(
+            const mcpSetup = await this.prepareMcpForSession(
                 sessionId,
                 presetId,
                 cwd,
@@ -250,7 +266,13 @@ export class AcpProcessManager {
                 toolMode,
                 mcpProfile,
             );
-            const config = await buildConfigFromPreset(presetId, cwd, undefined, undefined, mcpConfigs);
+            const config = await buildConfigFromPreset(
+                presetId,
+                cwd,
+                this.combineProviderArgs(mcpSetup?.providerArgs),
+                undefined,
+                mcpSetup?.mcpConfigs,
+            );
             const proc = new AcpProcess(config, onNotification);
 
             await proc.start();
