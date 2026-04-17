@@ -1,7 +1,5 @@
 "use client";
 
-import { ChevronDown, ChevronRight, Folder } from "lucide-react";
-
 export type ExplorerSurfaceKind = "feature" | "page" | "contract-api" | "nextjs-api" | "rust-api";
 
 export type ExplorerSurfaceMetric = {
@@ -136,7 +134,7 @@ export function buildSurfaceTree(
 
     for (const [index, segment] of entry.segments.entries()) {
       const isLeaf = index === entry.segments.length - 1;
-      const nodeId = `${parentId}/${segment}:${isLeaf ? entry.nodeId : index}`;
+      const nodeId = `${parentId}/${segment}`;
       const existing = level.get(nodeId);
 
       if (existing) {
@@ -170,7 +168,7 @@ export function buildSurfaceTree(
           label: node.label,
           ...(node.item ? { item: node.item } : {}),
           children,
-          itemCount: node.item ? 1 : children.reduce((sum, child) => sum + child.itemCount, 0),
+          itemCount: (node.item ? 1 : 0) + children.reduce((sum, child) => sum + child.itemCount, 0),
         };
       });
 
@@ -278,6 +276,35 @@ export function surfaceKindBadge(kind: ExplorerSurfaceKind): string {
   }
 }
 
+export function getHttpMethodBadgeClass(method: string, density: "default" | "compact" = "default"): string {
+  const sizeClass = density === "compact"
+    ? "inline-flex items-center rounded-sm px-1.5 py-0.5 text-[9px] font-semibold"
+    : "inline-flex items-center rounded-sm px-2 py-0.5 text-[10px] font-semibold";
+
+  const toneClass = (() => {
+    switch (method.trim().toUpperCase()) {
+      case "GET":
+        return "border border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/80 dark:bg-emerald-950/40 dark:text-emerald-200";
+      case "POST":
+        return "border border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-900/80 dark:bg-sky-950/40 dark:text-sky-200";
+      case "PUT":
+        return "border border-indigo-200 bg-indigo-50 text-indigo-700 dark:border-indigo-900/80 dark:bg-indigo-950/40 dark:text-indigo-200";
+      case "PATCH":
+        return "border border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/80 dark:bg-amber-950/40 dark:text-amber-200";
+      case "DELETE":
+        return "border border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-900/80 dark:bg-rose-950/40 dark:text-rose-200";
+      case "OPTIONS":
+        return "border border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-800 dark:bg-slate-900/70 dark:text-slate-200";
+      case "HEAD":
+        return "border border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-900/80 dark:bg-violet-950/40 dark:text-violet-200";
+      default:
+        return "border border-zinc-200 bg-zinc-50 text-zinc-700 dark:border-zinc-800 dark:bg-zinc-900/70 dark:text-zinc-200";
+    }
+  })();
+
+  return `${sizeClass} ${toneClass}`;
+}
+
 export function ExplorerSurfaceCard({
   item,
   isActive,
@@ -297,9 +324,6 @@ export function ExplorerSurfaceCard({
   const chipClass = density === "compact"
     ? "inline-flex items-center rounded-sm border border-desktop-border bg-desktop-bg-primary px-1.5 py-0.5 text-[9px] font-medium text-current/80"
     : "inline-flex items-center rounded-sm border border-desktop-border bg-desktop-bg-primary px-2 py-0.5 text-[10px] font-medium text-current/80";
-  const methodChipClass = density === "compact"
-    ? "inline-flex items-center rounded-sm border border-sky-200 bg-sky-50 px-1.5 py-0.5 text-[9px] font-semibold text-sky-700 dark:border-sky-900/80 dark:bg-sky-950/40 dark:text-sky-200"
-    : "inline-flex items-center rounded-sm border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-semibold text-sky-700 dark:border-sky-900/80 dark:bg-sky-950/40 dark:text-sky-200";
 
   return (
     <button
@@ -320,7 +344,7 @@ export function ExplorerSurfaceCard({
             {item.badges?.map((badge) => (
               <span
                 key={badge}
-                className={methodChipClass}
+                className={getHttpMethodBadgeClass(badge, density)}
               >
                 {badge}
               </span>
@@ -363,61 +387,98 @@ export function SurfaceTreeRow({
   unmappedLabel: string;
   defaultExpandedDepth?: number;
 }) {
-  const paddingLeft = 8 + depth * 14;
-
-  if (!node.item) {
-    const isExpanded = expandedIds[node.id] ?? depth < defaultExpandedDepth;
-
-    return (
-      <>
-        <button
-          type="button"
-          onClick={() => onToggleNode(node.id)}
-          className="flex w-full items-center gap-1.5 rounded-sm px-2 py-0.5 text-left text-[11px] font-medium text-desktop-text-secondary hover:bg-desktop-bg-primary/70 hover:text-desktop-text-primary"
-          style={{ paddingLeft }}
-        >
-          {isExpanded ? (
-            <ChevronDown className="h-3.5 w-3.5" />
-          ) : (
-            <ChevronRight className="h-3.5 w-3.5" />
-          )}
-          <Folder className="h-3.5 w-3.5 text-amber-400" />
-          <span className="truncate">{node.label}</span>
-          <span className="ml-auto rounded-sm border border-desktop-border bg-desktop-bg-primary px-1.5 py-0.5 text-[9px] font-medium text-current/80">
-            {node.itemCount}
-          </span>
-        </button>
-        {isExpanded ? (
-          <div className="space-y-1">
-            {node.children.map((child) => (
-              <SurfaceTreeRow
-                key={child.id}
-                node={child}
-                depth={depth + 1}
-                activeSurfaceKey={activeSurfaceKey}
-                expandedIds={expandedIds}
-                onSelectSurface={onSelectSurface}
-                onToggleNode={onToggleNode}
-                unmappedLabel={unmappedLabel}
-                defaultExpandedDepth={defaultExpandedDepth}
-              />
-            ))}
-          </div>
-        ) : null}
-      </>
-    );
-  }
+  const paddingLeft = 8 + depth * 16;
+  const isExpanded = expandedIds[node.id] ?? depth < defaultExpandedDepth;
+  const isBranch = node.children.length > 0;
+  const isSelectable = Boolean(node.item);
+  const isActive = node.item?.key === activeSurfaceKey;
+  const countLabel = isBranch ? String(node.itemCount) : "";
+  const mappingLabel = node.item && node.item.kind !== "feature" && node.item.featureIds.length === 0
+    ? unmappedLabel
+    : "";
+  const badges = node.item?.badges ?? [];
+  const metrics = node.item?.metrics ?? [];
+  const chipClass = "inline-flex items-center rounded-sm border border-desktop-border bg-desktop-bg-primary px-1.5 py-0.5 text-[9px] font-medium text-current/80";
+  const toggleClass = isBranch
+    ? "inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-[3px] border border-desktop-border bg-desktop-bg-primary font-mono text-[10px] text-desktop-text-secondary hover:text-desktop-text-primary"
+    : "inline-flex h-4 w-4 shrink-0";
 
   return (
-    <div style={{ paddingLeft }}>
-      <ExplorerSurfaceCard
-        item={node.item}
-        isActive={node.item.key === activeSurfaceKey}
-        onSelect={() => onSelectSurface(node.item!)}
-        unmappedLabel={unmappedLabel}
-        labelOverride={node.label}
-        density="compact"
-      />
-    </div>
+    <>
+      <div
+        className={`flex items-center gap-1.5 rounded-sm px-2 py-0.5 text-[11px] transition-colors ${
+          isActive
+            ? "bg-desktop-bg-active text-desktop-text-primary"
+            : "text-desktop-text-secondary hover:bg-desktop-bg-primary/70 hover:text-desktop-text-primary"
+        }`}
+        style={{ paddingLeft }}
+      >
+        {isBranch ? (
+          <button
+            type="button"
+            onClick={() => onToggleNode(node.id)}
+            className={toggleClass}
+            aria-label={isExpanded ? `Collapse ${node.label}` : `Expand ${node.label}`}
+          >
+            {isExpanded ? "-" : "+"}
+          </button>
+        ) : (
+          <span className={toggleClass} aria-hidden="true" />
+        )}
+        {isSelectable ? (
+          <button
+            type="button"
+            onClick={() => onSelectSurface(node.item!)}
+            className={`min-w-0 flex-1 truncate text-left font-medium ${
+              isActive ? "text-desktop-text-primary" : "text-current"
+            }`}
+            title={node.item?.label ?? node.label}
+          >
+            {node.label}
+          </button>
+        ) : (
+          <span className="min-w-0 flex-1 truncate font-medium" title={node.label}>
+            {node.label}
+          </span>
+        )}
+        {badges.length || metrics.length || mappingLabel || countLabel ? (
+          <div className="ml-auto flex shrink-0 flex-wrap items-center justify-end gap-1">
+            {badges.map((badge) => (
+              <span key={badge} className={getHttpMethodBadgeClass(badge, "compact")}>
+                {badge}
+              </span>
+            ))}
+            {metrics.map((metric) => (
+              <span key={metric.id} data-testid={metric.testId} className={chipClass}>
+                {metric.value} {metric.label}
+              </span>
+            ))}
+            {mappingLabel ? (
+              <span className={chipClass}>{mappingLabel}</span>
+            ) : null}
+            {countLabel ? (
+              <span className={chipClass}>{countLabel}</span>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+      {isBranch && isExpanded ? (
+        <div className="space-y-0.5">
+          {node.children.map((child) => (
+            <SurfaceTreeRow
+              key={child.id}
+              node={child}
+              depth={depth + 1}
+              activeSurfaceKey={activeSurfaceKey}
+              expandedIds={expandedIds}
+              onSelectSurface={onSelectSurface}
+              onToggleNode={onToggleNode}
+              unmappedLabel={unmappedLabel}
+              defaultExpandedDepth={defaultExpandedDepth}
+            />
+          ))}
+        </div>
+      ) : null}
+    </>
   );
 }
