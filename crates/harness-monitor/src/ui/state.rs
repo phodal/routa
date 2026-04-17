@@ -177,6 +177,7 @@ impl PromptSessionListItem {
 pub struct RuntimeState {
     pub repo_root: String,
     pub branch: String,
+    pub branch_oid: Option<String>,
     pub ahead_count: Option<usize>,
     pub committed_change_summary: Option<(usize, usize)>,
     pub worktree_count: Option<usize>,
@@ -217,6 +218,7 @@ impl RuntimeState {
         let mut state = Self {
             repo_root,
             branch,
+            branch_oid: None,
             ahead_count: None,
             committed_change_summary: None,
             worktree_count: None,
@@ -442,6 +444,10 @@ impl RuntimeState {
 
     pub fn set_ahead_count(&mut self, count: Option<usize>) {
         self.ahead_count = count;
+    }
+
+    pub fn set_branch_oid(&mut self, branch_oid: Option<String>) {
+        self.branch_oid = branch_oid;
     }
 
     pub fn set_committed_change_summary(&mut self, summary: Option<(usize, usize)>) {

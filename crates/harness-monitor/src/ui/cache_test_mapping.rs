@@ -1,21 +1,40 @@
 use crate::ui::state::RuntimeState;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 use std::process::Command;
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub(in crate::ui::tui) enum TestMappingAnalysisMode {
+    #[default]
+    Fast,
+    Full,
+}
+
+impl TestMappingAnalysisMode {
+    pub(in crate::ui::tui) fn uses_graph(self) -> bool {
+        matches!(self, Self::Full)
+    }
+
+    pub(in crate::ui::tui) fn label(self) -> &'static str {
+        match self {
+            Self::Fast => "fast heuristic",
+            Self::Full => "graph-aware",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub(in crate::ui::tui) struct TestMappingSnapshot {
     pub(in crate::ui::tui) cache_key: String,
+    pub(in crate::ui::tui) analysis_mode: TestMappingAnalysisMode,
     pub(in crate::ui::tui) by_file: BTreeMap<String, TestMappingEntry>,
     pub(in crate::ui::tui) skipped_test_files: BTreeSet<String>,
     pub(in crate::ui::tui) status_counts: BTreeMap<String, usize>,
-    pub(in crate::ui::tui) graph_status: String,
-    pub(in crate::ui::tui) graph_reason: Option<String>,
 }
 
 #[allow(dead_code)]
-#[derive(Clone, Debug, Default, Deserialize)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub(in crate::ui::tui) struct TestMappingEntry {
     #[serde(default)]
     pub(in crate::ui::tui) source_file: String,
@@ -43,21 +62,12 @@ struct TestMappingCliPayload {
     skipped_test_files: Vec<String>,
     #[serde(default)]
     status_counts: BTreeMap<String, usize>,
-    #[serde(default)]
-    graph: TestMappingGraphPayload,
-}
-
-#[derive(Debug, Default, Deserialize)]
-struct TestMappingGraphPayload {
-    #[serde(default)]
-    status: String,
-    #[serde(default)]
-    reason: Option<String>,
 }
 
 #[cfg(test)]
 pub(super) fn build_test_mapping_snapshot(
     cache_key: String,
+    analysis_mode: TestMappingAnalysisMode,
     entries: Vec<TestMappingEntry>,
     skipped_test_files: Vec<String>,
 ) -> TestMappingSnapshot {
@@ -68,14 +78,13 @@ pub(super) fn build_test_mapping_snapshot(
 
     TestMappingSnapshot {
         cache_key,
+        analysis_mode,
         by_file: entries
             .into_iter()
             .map(|entry| (entry.source_file.clone(), entry))
             .collect(),
         skipped_test_files: skipped_test_files.into_iter().collect(),
         status_counts,
-        graph_status: String::new(),
-        graph_reason: None,
     }
 }
 
@@ -95,20 +104,26 @@ pub(super) fn test_mapping_cache_key(state: &RuntimeState) -> String {
     markers.join("|")
 }
 
+pub(super) fn test_mapping_full_cache_key(state: &RuntimeState) -> Option<String> {
+    let branch_oid = state.branch_oid.as_deref()?.trim();
+    if branch_oid.is_empty() {
+        return None;
+    }
+    Some(format!(
+        "head={branch_oid};files={}",
+        test_mapping_cache_key(state)
+    ))
+}
+
 pub(super) fn load_test_mapping_snapshot(
     repo_root: &str,
     files: &[String],
     cache_key: String,
+    analysis_mode: TestMappingAnalysisMode,
 ) -> Result<TestMappingSnapshot, String> {
     let mut command = entrix_command(Path::new(repo_root));
-    command
-        .current_dir(repo_root)
-        .arg("graph")
-        .arg("test-mapping")
-        .arg("--json");
-    if !files.is_empty() {
-        command.args(files);
-    }
+    command.current_dir(repo_root);
+    command.args(test_mapping_cli_args(files, analysis_mode));
 
     let output = command.output().map_err(|error| error.to_string())?;
     if !output.status.success() {
@@ -128,6 +143,7 @@ pub(super) fn load_test_mapping_snapshot(
         serde_json::from_slice(&output.stdout).map_err(|error| error.to_string())?;
     Ok(TestMappingSnapshot {
         cache_key,
+        analysis_mode,
         by_file: payload
             .mappings
             .into_iter()
@@ -135,8 +151,6 @@ pub(super) fn load_test_mapping_snapshot(
             .collect(),
         skipped_test_files: payload.skipped_test_files.into_iter().collect(),
         status_counts: payload.status_counts,
-        graph_status: payload.graph.status,
-        graph_reason: payload.graph.reason,
     })
 }
 
@@ -158,6 +172,19 @@ fn entrix_command(repo_root: &Path) -> Command {
     }
 }
 
+fn test_mapping_cli_args(files: &[String], analysis_mode: TestMappingAnalysisMode) -> Vec<String> {
+    let mut args = vec![
+        "graph".to_string(),
+        "test-mapping".to_string(),
+        "--json".to_string(),
+    ];
+    if !analysis_mode.uses_graph() {
+        args.push("--no-graph".to_string());
+    }
+    args.extend(files.iter().cloned());
+    args
+}
+
 pub(super) fn is_test_like_path(path: &str) -> bool {
     let lower = path.to_ascii_lowercase();
     lower.ends_with(".snap")
@@ -168,24 +195,32 @@ pub(super) fn is_test_like_path(path: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::{test_mapping_cli_args, TestMappingAnalysisMode};
 
     #[test]
-    fn cli_payload_parses_graph_status_and_reason() {
-        let payload = serde_json::from_str::<TestMappingCliPayload>(
-            r#"{
-              "mappings": [],
-              "skipped_test_files": [],
-              "status_counts": {"missing": 1},
-              "graph": {
-                "status": "disabled",
-                "reason": "graph disabled"
-              }
-            }"#,
-        )
-        .expect("payload");
+    fn fast_mode_uses_no_graph_flag() {
+        let args = test_mapping_cli_args(
+            &["src/lib.rs".to_string(), "tests/lib_test.rs".to_string()],
+            TestMappingAnalysisMode::Fast,
+        );
 
-        assert_eq!(payload.graph.status, "disabled");
-        assert_eq!(payload.graph.reason.as_deref(), Some("graph disabled"));
+        assert_eq!(
+            args,
+            vec![
+                "graph",
+                "test-mapping",
+                "--json",
+                "--no-graph",
+                "src/lib.rs",
+                "tests/lib_test.rs",
+            ]
+        );
+    }
+
+    #[test]
+    fn full_mode_runs_without_no_graph_flag() {
+        let args = test_mapping_cli_args(&[], TestMappingAnalysisMode::Full);
+
+        assert_eq!(args, vec!["graph", "test-mapping", "--json"]);
     }
 }

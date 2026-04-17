@@ -16,6 +16,9 @@ use std::thread;
 
 const FITNESS_HISTORY_SCHEMA_VERSION: u32 = 1;
 const FITNESS_HISTORY_FILE: &str = "fitness-history.json";
+const TEST_MAPPING_HISTORY_SCHEMA_VERSION: u32 = 1;
+const TEST_MAPPING_HISTORY_FILE: &str = "test-mapping-history.json";
+const TEST_MAPPING_HISTORY_CAPACITY: usize = 6;
 const FITNESS_TREND_CAPACITY: usize = 12;
 const INITIAL_FILE_PREVIEW_LINE_LIMIT: usize = 100;
 const DIRECTORY_PREVIEW_ENTRY_LIMIT: usize = 200;
@@ -115,6 +118,8 @@ enum EvalCommand {
         repo_root: String,
         files: Vec<String>,
         cache_key: String,
+        full_cache_key: Option<String>,
+        analysis_mode: TestMappingAnalysisMode,
     },
     Scc {
         repo_root: String,
@@ -141,6 +146,8 @@ enum BackgroundResult {
         result: Box<Result<fitness::FitnessSnapshot, String>>,
     },
     TestMapping {
+        analysis_mode: TestMappingAnalysisMode,
+        full_cache_key: Option<String>,
         result: Result<TestMappingSnapshot, String>,
     },
     Scc {
@@ -163,7 +170,8 @@ struct PendingFactsCommands {
 #[derive(Debug, Default)]
 struct PendingEvalCommands {
     fitness: Option<(String, String, fitness::FitnessRunMode)>,
-    test_mapping: Option<(String, Vec<String>, String)>,
+    test_mapping_fast: Option<(String, Vec<String>, String, Option<String>)>,
+    test_mapping_full: Option<(String, Vec<String>, String, Option<String>)>,
     scc: Option<String>,
 }
 
@@ -187,7 +195,8 @@ pub(super) struct AppCache {
     pending_facts_key: Option<String>,
     pending_git_history_key: Option<String>,
     pending_fitness: bool,
-    pending_test_mapping_key: Option<String>,
+    pending_test_mapping_fast_key: Option<String>,
+    pending_test_mapping_full_key: Option<String>,
     test_mapping_not_before_ms: Option<i64>,
     pending_scc: bool,
     queued_fitness_refresh: Option<(String, String, bool, fitness::FitnessRunMode)>,
@@ -197,6 +206,7 @@ pub(super) struct AppCache {
     fitness_cache_key: Option<String>,
     fitness_repo_root: String,
     test_mapping_snapshot: Option<TestMappingSnapshot>,
+    test_mapping_full_history: BTreeMap<String, TestMappingHistoryEntry>,
     scc_summary: Option<SccSummary>,
     review_triggers: ReviewTriggerCache,
     preview_worker_tx: Sender<PreviewCommand>,
@@ -238,6 +248,22 @@ struct FitnessHistoryRecord {
     cache_key: Option<String>,
 }
 
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+struct TestMappingHistoryEntry {
+    #[serde(default)]
+    snapshot: Option<TestMappingSnapshot>,
+    #[serde(default)]
+    observed_at_ms: Option<i64>,
+}
+
+#[derive(Debug, Default, Serialize, Deserialize)]
+struct TestMappingHistoryRecord {
+    #[serde(default)]
+    schema_version: u32,
+    #[serde(default)]
+    histories: BTreeMap<String, TestMappingHistoryEntry>,
+}
+
 impl AppCache {
     pub(super) fn new(repo_root: &str) -> Self {
         let (preview_worker_tx, preview_worker_rx_cmd) = mpsc::channel();
@@ -273,7 +299,8 @@ impl AppCache {
             pending_facts_key: None,
             pending_git_history_key: None,
             pending_fitness: false,
-            pending_test_mapping_key: None,
+            pending_test_mapping_fast_key: None,
+            pending_test_mapping_full_key: None,
             test_mapping_not_before_ms: Some(
                 chrono::Utc::now().timestamp_millis() + TEST_MAPPING_STARTUP_DELAY_MS,
             ),
@@ -285,6 +312,7 @@ impl AppCache {
             fitness_cache_key: None,
             fitness_repo_root: repo_root.to_string(),
             test_mapping_snapshot: None,
+            test_mapping_full_history: BTreeMap::new(),
             scc_summary: None,
             review_triggers: ReviewTriggerCache::load(repo_root),
             preview_worker_tx,
@@ -294,6 +322,7 @@ impl AppCache {
             result_signal_rx: Some(result_signal_rx),
         };
         cache.load_fitness_history();
+        cache.load_test_mapping_history();
         cache
     }
 
@@ -362,6 +391,51 @@ impl AppCache {
             }
         }
         self.sync_cache_key_from_active_mode();
+    }
+
+    fn persist_test_mapping_history(&self) {
+        let path = match test_mapping_history_path(&self.fitness_repo_root) {
+            Some(path) => path,
+            None => return,
+        };
+        let payload = serde_json::to_vec_pretty(&TestMappingHistoryRecord {
+            schema_version: TEST_MAPPING_HISTORY_SCHEMA_VERSION,
+            histories: self.test_mapping_full_history.clone(),
+        });
+        let Ok(payload) = payload else {
+            return;
+        };
+        if let Some(parent) = path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let _ = std::fs::write(path, payload);
+    }
+
+    fn load_test_mapping_history(&mut self) {
+        let Some(record) = read_test_mapping_history_record(&self.fitness_repo_root) else {
+            return;
+        };
+        if record.schema_version > TEST_MAPPING_HISTORY_SCHEMA_VERSION {
+            return;
+        }
+        self.test_mapping_full_history = record.histories;
+        self.trim_test_mapping_history();
+    }
+
+    fn trim_test_mapping_history(&mut self) {
+        if self.test_mapping_full_history.len() <= TEST_MAPPING_HISTORY_CAPACITY {
+            return;
+        }
+        let mut entries = self
+            .test_mapping_full_history
+            .iter()
+            .map(|(key, entry)| (key.clone(), entry.observed_at_ms.unwrap_or_default()))
+            .collect::<Vec<_>>();
+        entries.sort_by_key(|(_, observed_at_ms)| *observed_at_ms);
+        let overflow = self.test_mapping_full_history.len() - TEST_MAPPING_HISTORY_CAPACITY;
+        for (key, _) in entries.into_iter().take(overflow) {
+            self.test_mapping_full_history.remove(&key);
+        }
     }
 
     pub(super) fn sync_results(&mut self) -> bool {
@@ -441,15 +515,40 @@ impl AppCache {
                         self.request_fitness_refresh(repo_root, cache_key, force, mode);
                     }
                 }
-                BackgroundResult::TestMapping { result } => match result {
+                BackgroundResult::TestMapping {
+                    analysis_mode,
+                    full_cache_key,
+                    result,
+                } => match result {
                     Ok(snapshot) => {
-                        self.pending_test_mapping_key = None;
+                        match analysis_mode {
+                            TestMappingAnalysisMode::Fast => {
+                                self.pending_test_mapping_fast_key = None
+                            }
+                            TestMappingAnalysisMode::Full => {
+                                self.pending_test_mapping_full_key = None
+                            }
+                        }
                         self.test_mapping_not_before_ms = None;
+                        if analysis_mode == TestMappingAnalysisMode::Full {
+                            self.store_test_mapping_full_snapshot(
+                                full_cache_key,
+                                chrono::Utc::now().timestamp_millis(),
+                                snapshot.clone(),
+                            );
+                        }
                         self.test_mapping_snapshot = Some(snapshot);
                     }
                     Err(_) => {
-                        self.pending_test_mapping_key = None;
-                        self.test_mapping_snapshot = None;
+                        match analysis_mode {
+                            TestMappingAnalysisMode::Fast => {
+                                self.pending_test_mapping_fast_key = None;
+                                self.test_mapping_snapshot = None;
+                            }
+                            TestMappingAnalysisMode::Full => {
+                                self.pending_test_mapping_full_key = None;
+                            }
+                        }
                         self.test_mapping_not_before_ms = Some(
                             chrono::Utc::now().timestamp_millis() + TEST_MAPPING_FAILURE_BACKOFF_MS,
                         );
@@ -599,26 +698,64 @@ impl AppCache {
             .map(|file| file.rel_path.clone())
             .collect::<Vec<_>>();
         if files.is_empty() {
-            self.pending_test_mapping_key = None;
+            self.pending_test_mapping_fast_key = None;
+            self.pending_test_mapping_full_key = None;
             self.test_mapping_snapshot = None;
             return;
         }
 
         let cache_key = test_mapping_cache_key(state);
-        let already_loaded = self
+        let full_cache_key = test_mapping_full_cache_key(state);
+        let current_mode = self
             .test_mapping_snapshot
             .as_ref()
-            .is_some_and(|snapshot| snapshot.cache_key == cache_key);
-        if already_loaded || self.pending_test_mapping_key.as_deref() == Some(cache_key.as_str()) {
+            .filter(|snapshot| snapshot.cache_key == cache_key)
+            .map(|snapshot| snapshot.analysis_mode);
+        if current_mode == Some(TestMappingAnalysisMode::Full) {
             return;
         }
 
-        let _ = self.eval_worker_tx.send(EvalCommand::TestMapping {
-            repo_root: state.repo_root.clone(),
-            files,
-            cache_key: cache_key.clone(),
-        });
-        self.pending_test_mapping_key = Some(cache_key);
+        if let Some(full_cache_key) = full_cache_key.as_deref() {
+            if let Some(snapshot) = self
+                .test_mapping_full_history
+                .get(full_cache_key)
+                .and_then(|entry| entry.snapshot.clone())
+                .filter(|snapshot| snapshot.cache_key == cache_key)
+            {
+                self.pending_test_mapping_fast_key = None;
+                self.pending_test_mapping_full_key = None;
+                self.test_mapping_not_before_ms = None;
+                self.test_mapping_snapshot = Some(snapshot);
+                return;
+            }
+        }
+
+        if current_mode.is_none()
+            && self.pending_test_mapping_fast_key.as_deref() != Some(cache_key.as_str())
+        {
+            let _ = self.eval_worker_tx.send(EvalCommand::TestMapping {
+                repo_root: state.repo_root.clone(),
+                files: files.clone(),
+                cache_key: cache_key.clone(),
+                full_cache_key: None,
+                analysis_mode: TestMappingAnalysisMode::Fast,
+            });
+            self.pending_test_mapping_fast_key = Some(cache_key);
+            return;
+        }
+
+        if current_mode == Some(TestMappingAnalysisMode::Fast)
+            && self.pending_test_mapping_full_key.as_deref() != Some(cache_key.as_str())
+        {
+            let _ = self.eval_worker_tx.send(EvalCommand::TestMapping {
+                repo_root: state.repo_root.clone(),
+                files,
+                cache_key: cache_key.clone(),
+                full_cache_key,
+                analysis_mode: TestMappingAnalysisMode::Full,
+            });
+            self.pending_test_mapping_full_key = Some(cache_key);
+        }
     }
 
     pub(super) fn diff_stat<'a>(
@@ -790,19 +927,22 @@ impl AppCache {
     #[cfg(test)]
     pub(super) fn set_test_mapping_snapshot_for_tests(
         &mut self,
+        cache_key: String,
+        analysis_mode: TestMappingAnalysisMode,
         entries: Vec<TestMappingEntry>,
         skipped_test_files: Vec<String>,
-        graph_status: Option<String>,
-        graph_reason: Option<String>,
     ) {
-        let mut snapshot = build_test_mapping_snapshot(
-            "test".to_string(),
+        self.test_mapping_snapshot = Some(build_test_mapping_snapshot(
+            cache_key,
+            analysis_mode,
             entries,
             skipped_test_files,
-        );
-        snapshot.graph_status = graph_status.unwrap_or_default();
-        snapshot.graph_reason = graph_reason;
-        self.test_mapping_snapshot = Some(snapshot);
+        ));
+    }
+
+    #[cfg(test)]
+    pub(super) fn set_test_mapping_graph_pending_for_tests(&mut self, cache_key: String) {
+        self.pending_test_mapping_full_key = Some(cache_key);
     }
 
     fn active_fitness_history(&self) -> Option<&FitnessHistoryEntry> {
@@ -857,6 +997,26 @@ impl AppCache {
         self.fitness_is_running = false;
         self.pending_fitness = false;
         self.persist_fitness_history();
+    }
+
+    fn store_test_mapping_full_snapshot(
+        &mut self,
+        full_cache_key: Option<String>,
+        observed_at_ms: i64,
+        snapshot: TestMappingSnapshot,
+    ) {
+        let Some(full_cache_key) = full_cache_key else {
+            return;
+        };
+        self.test_mapping_full_history.insert(
+            full_cache_key,
+            TestMappingHistoryEntry {
+                snapshot: Some(snapshot),
+                observed_at_ms: Some(observed_at_ms),
+            },
+        );
+        self.trim_test_mapping_history();
+        self.persist_test_mapping_history();
     }
 
     fn sync_cache_key_from_active_mode(&mut self) {
@@ -947,14 +1107,14 @@ impl AppCache {
             .map(|snapshot| &snapshot.status_counts)
     }
 
-    pub(super) fn test_mapping_graph_status(&self) -> Option<(&str, Option<&str>)> {
-        self.test_mapping_snapshot.as_ref().and_then(|snapshot| {
-            if snapshot.graph_status.is_empty() {
-                None
-            } else {
-                Some((snapshot.graph_status.as_str(), snapshot.graph_reason.as_deref()))
-            }
-        })
+    pub(super) fn test_mapping_analysis_mode(&self) -> Option<TestMappingAnalysisMode> {
+        self.test_mapping_snapshot
+            .as_ref()
+            .map(|snapshot| snapshot.analysis_mode)
+    }
+
+    pub(super) fn test_mapping_graph_enrichment_pending(&self) -> bool {
+        self.pending_test_mapping_full_key.is_some()
     }
 
     pub(super) fn repo_review_hints(
@@ -1399,12 +1559,42 @@ fn eval_worker(
                 },
             );
         }
-        if let Some((repo_root, files, cache_key)) = pending.test_mapping.take() {
-            let result = load_test_mapping_snapshot(&repo_root, &files, cache_key);
+        if let Some((repo_root, files, cache_key, full_cache_key)) =
+            pending.test_mapping_fast.take()
+        {
+            let result = load_test_mapping_snapshot(
+                &repo_root,
+                &files,
+                cache_key,
+                TestMappingAnalysisMode::Fast,
+            );
             send_background_result(
                 &tx,
                 &result_signal_tx,
-                BackgroundResult::TestMapping { result },
+                BackgroundResult::TestMapping {
+                    analysis_mode: TestMappingAnalysisMode::Fast,
+                    full_cache_key,
+                    result,
+                },
+            );
+        }
+        if let Some((repo_root, files, cache_key, full_cache_key)) =
+            pending.test_mapping_full.take()
+        {
+            let result = load_test_mapping_snapshot(
+                &repo_root,
+                &files,
+                cache_key,
+                TestMappingAnalysisMode::Full,
+            );
+            send_background_result(
+                &tx,
+                &result_signal_tx,
+                BackgroundResult::TestMapping {
+                    analysis_mode: TestMappingAnalysisMode::Full,
+                    full_cache_key,
+                    result,
+                },
             );
         }
         if let Some(repo_root) = pending.scc.take() {
@@ -1478,9 +1668,16 @@ fn queue_eval_command(pending: &mut PendingEvalCommands, command: EvalCommand) {
             repo_root,
             files,
             cache_key,
-        } => {
-            pending.test_mapping = Some((repo_root, files, cache_key));
-        }
+            full_cache_key,
+            analysis_mode,
+        } => match analysis_mode {
+            TestMappingAnalysisMode::Fast => {
+                pending.test_mapping_fast = Some((repo_root, files, cache_key, full_cache_key));
+            }
+            TestMappingAnalysisMode::Full => {
+                pending.test_mapping_full = Some((repo_root, files, cache_key, full_cache_key));
+            }
+        },
         EvalCommand::Scc { repo_root } => {
             pending.scc = Some(repo_root);
         }
@@ -1656,12 +1853,19 @@ mod tests;
 mod test_mapping;
 #[cfg(test)]
 use self::test_mapping::build_test_mapping_snapshot;
-use self::test_mapping::{load_test_mapping_snapshot, test_mapping_cache_key};
-pub(super) use self::test_mapping::{TestMappingEntry, TestMappingSnapshot};
+use self::test_mapping::{
+    load_test_mapping_snapshot, test_mapping_cache_key, test_mapping_full_cache_key,
+};
+pub(super) use self::test_mapping::{
+    TestMappingAnalysisMode, TestMappingEntry, TestMappingSnapshot,
+};
 
 #[path = "cache_history.rs"]
 mod history;
-use history::{fitness_history_path, latest_fitness_mailbox_event, read_fitness_history_record};
+use history::{
+    fitness_history_path, latest_fitness_mailbox_event, read_fitness_history_record,
+    read_test_mapping_history_record, test_mapping_history_path,
+};
 
 pub(super) fn load_diff_text(
     repo_root: &str,

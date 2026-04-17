@@ -177,6 +177,7 @@ fn sample_state() -> RuntimeState {
     ]);
 
     let mut state = RuntimeState::new("/tmp/project".to_string(), "main".to_string());
+    state.set_branch_oid(Some("abcdef".to_string()));
     state.tasks = tasks;
     state.task_change_paths.insert(
         live_task_id,
@@ -355,6 +356,8 @@ fn sample_cache(state: &RuntimeState) -> AppCache {
         },
     );
     cache.set_test_mapping_snapshot_for_tests(
+        "test".to_string(),
+        TestMappingAnalysisMode::Full,
         vec![
             TestMappingEntry {
                 source_file: "crates/harness-monitor/src/tui.rs".to_string(),
@@ -378,8 +381,6 @@ fn sample_cache(state: &RuntimeState) -> AppCache {
             },
         ],
         Vec::new(),
-        Some("ok".to_string()),
-        None,
     );
     cache
 }
@@ -755,13 +756,42 @@ fn tui_snapshot_run_details_decision_first() {
 fn file_detail_surfaces_test_mapping_context() {
     let state = sample_state();
     let mut cache = sample_cache(&state);
-    assert_eq!(cache.test_mapping_graph_status(), Some(("ok", None)));
 
-    let snapshot = render_snapshot(&state, &mut cache, 180, 32);
+    let snapshot = render_snapshot(&state, &mut cache, 180, 40);
 
     assert!(snapshot.contains("Test mapping:"));
     assert!(snapshot.contains("changed") || snapshot.contains("missing"));
+    assert!(snapshot.contains("Analysis:"));
+    assert!(snapshot.contains("graph-aware"));
     assert!(snapshot.contains("TM "));
+}
+
+#[test]
+fn file_detail_shows_fast_test_mapping_pending_graph_refresh() {
+    let state = sample_state();
+    let mut cache = sample_cache(&state);
+    let cache_key = "test".to_string();
+    cache.set_test_mapping_snapshot_for_tests(
+        cache_key.clone(),
+        TestMappingAnalysisMode::Fast,
+        vec![TestMappingEntry {
+            source_file: "crates/harness-monitor/src/tui.rs".to_string(),
+            language: "rust".to_string(),
+            status: "changed".to_string(),
+            related_test_files: vec!["crates/harness-monitor/src/tui_tests.rs".to_string()],
+            graph_test_files: Vec::new(),
+            resolver_kind: "hybrid_heuristic".to_string(),
+            confidence: "medium".to_string(),
+            has_inline_tests: false,
+        }],
+        Vec::new(),
+    );
+    cache.set_test_mapping_graph_pending_for_tests(cache_key);
+
+    let snapshot = render_snapshot(&state, &mut cache, 180, 40);
+
+    assert!(snapshot.contains("fast heuristic"));
+    assert!(snapshot.contains("graph refresh pending"));
 }
 
 #[test]
@@ -1250,6 +1280,7 @@ fn parse_repo_status_reads_branch_and_ahead_count() {
     );
 
     assert_eq!(status.branch.as_deref(), Some("main"));
+    assert_eq!(status.branch_oid.as_deref(), Some("abcdef"));
     assert_eq!(status.upstream.as_deref(), Some("origin/main"));
     assert_eq!(status.ahead_count, Some(7));
     assert_eq!(status.committed_change_summary, None);

@@ -182,16 +182,19 @@ pub(super) fn render_details_panel(
                 Span::styled("Confidence: ", Style::default().fg(colors.muted)),
                 Span::styled(mapping.confidence.clone(), Style::default().fg(colors.text)),
             ]));
-            if let Some((graph_status, graph_reason)) = cache.test_mapping_graph_status() {
-                lines.push(Line::from(vec![
-                    Span::styled("Graph: ", Style::default().fg(colors.muted)),
-                    Span::styled(graph_status.to_string(), Style::default().fg(colors.text)),
-                    Span::raw("  "),
-                    Span::styled(
-                        graph_reason.unwrap_or("semantic enrichment active").to_string(),
+            if let Some(analysis_mode) = cache.test_mapping_analysis_mode() {
+                let mut row = vec![
+                    Span::styled("Analysis: ", Style::default().fg(colors.muted)),
+                    Span::styled(analysis_mode.label(), Style::default().fg(colors.text)),
+                ];
+                if cache.test_mapping_graph_enrichment_pending() {
+                    row.push(Span::raw("  "));
+                    row.push(Span::styled(
+                        "graph refresh pending",
                         Style::default().fg(colors.muted),
-                    ),
-                ]));
+                    ));
+                }
+                lines.push(Line::from(row));
             }
             if !mapping.related_test_files.is_empty() {
                 let preview = summarize_test_paths(&mapping.related_test_files, 2);
