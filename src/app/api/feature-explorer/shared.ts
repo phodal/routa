@@ -397,7 +397,7 @@ export function parseFeatureSurfaceCatalog(repoRoot: string): SurfaceCatalog[] {
       continue;
     }
 
-    if (relativePath.endsWith("/route.ts")) {
+    if (relativePath.endsWith("/route.ts") && relativePath.includes("/api/")) {
       const sourcePath = `${APP_ROOT}/${relativePath}`;
       const sourceDir = sourcePath.slice(0, -"/route.ts".length);
       catalog.push({
@@ -460,20 +460,22 @@ export function parseFeatureSurfaceLinks(catalog: SurfaceCatalog[], changedPath:
   }));
 }
 
-export function parseFeatureTreeLinks(feature: FeatureTreeFeature, surfaceLinks: SurfaceLink[]): FeatureLink[] {
+export function parseFeatureTreeLinks(
+  feature: FeatureTreeFeature,
+  surfaceLinks: SurfaceLink[],
+  changedFile: string,
+): FeatureLink[] {
   const links: FeatureLink[] = [];
   const seen = new Set<string>();
 
   for (const surface of surfaceLinks) {
-    const sourceMatch = feature.sourceFiles.includes(surface.sourcePath);
+    const sourceMatch = feature.sourceFiles.includes(changedFile) || feature.sourceFiles.includes(surface.sourcePath);
     const routeMatch = feature.pages.includes(surface.route) || feature.apis.includes(surface.route);
     if (!sourceMatch && !routeMatch) {
       continue;
     }
 
-    const viaPath = sourceMatch
-      ? surface.sourcePath
-      : feature.sourceFiles.find((sourceFile) => sourceFile === surface.sourcePath) ?? surface.sourcePath;
+    const viaPath = changedFile;
     const key = `${feature.id}|${surface.route}|${viaPath}`;
     if (seen.has(key)) {
       continue;
@@ -915,7 +917,7 @@ export function collectFeatureSessionStats(repoRoot: string, featureTree: Featur
         const surfaceLinks = parseFeatureSurfaceLinks(surfaceCatalog, changedFile);
 
         for (const feature of featureTree.features) {
-          const links = parseFeatureTreeLinks(feature, surfaceLinks);
+          const links = parseFeatureTreeLinks(feature, surfaceLinks, changedFile);
 
           if (links.length > 0) {
             sessionFeatures.add(feature.id);
