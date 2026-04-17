@@ -216,6 +216,7 @@ function buildSurfaceApiEntries(
   contractApis: SurfaceContractApi[],
   nextjsApis: SurfaceImplementationApi[],
   rustApis: SurfaceImplementationApi[],
+  implementationApis: SurfaceImplementationApi[] = [],
 ): SurfaceApiEntry[] {
   const entries = new Map<string, SurfaceApiEntry>();
 
@@ -258,6 +259,9 @@ function buildSurfaceApiEntries(
     ensureEntry(api);
   }
   for (const api of rustApis) {
+    ensureEntry(api);
+  }
+  for (const api of implementationApis) {
     ensureEntry(api);
   }
 
@@ -477,13 +481,26 @@ export function normalizeSurfaceMetadata(params: {
   contractApis: SurfaceContractApi[];
   nextjsApis: SurfaceImplementationApi[];
   rustApis: SurfaceImplementationApi[];
+  implementationApis?: SurfaceImplementationApi[];
 }): SurfaceMetadata | null {
-  const { metadata, pages, contractApis, nextjsApis, rustApis } = params;
+  const {
+    metadata,
+    pages,
+    contractApis,
+    nextjsApis,
+    rustApis,
+    implementationApis = [],
+  } = params;
   if (!metadata) {
     return null;
   }
 
-  const apiEntries = buildSurfaceApiEntries(contractApis, nextjsApis, rustApis);
+  const apiEntries = buildSurfaceApiEntries(
+    contractApis,
+    nextjsApis,
+    rustApis,
+    implementationApis,
+  );
   const augmentedFeatures = reconcileFeatureApiDeclarations(
     metadata.features.map((feature) => buildAugmentedFeature(feature, pages, apiEntries)),
     apiEntries,
