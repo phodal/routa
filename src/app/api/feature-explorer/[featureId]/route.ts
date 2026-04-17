@@ -50,6 +50,7 @@ interface FeatureDetailResponse {
       promptSnippet: string;
       promptHistory: string[];
       toolNames: string[];
+      changedFiles?: string[];
       resumeCommand?: string;
     }>;
     toolHistory: string[];

@@ -656,8 +656,13 @@ describe("FeatureExplorerPageClient", () => {
                 promptHistory: [
                   "Connect selected file signals to the right inspector panel",
                   "Keep user prompts grouped under the owning session card",
+                  "Move session changed files into the owning session card",
                 ],
                 toolNames: ["exec_command", "apply_patch"],
+                changedFiles: [
+                  "crates/routa-server/src/api/mcp_routes/tool_executor/agents_tasks.rs",
+                  "src/app/workspace/[workspaceId]/kanban/kanban-page-client.tsx",
+                ],
                 resumeCommand: "codex resume 019d-selected-file",
               },
             ],
@@ -678,20 +683,168 @@ describe("FeatureExplorerPageClient", () => {
     });
 
     expect(screen.getByText("019d-selected-file")).toBeTruthy();
-    expect(screen.getByText("codex resume 019d-selected-file")).toBeTruthy();
+    expect(screen.queryByText("codex resume 019d-selected-file")).toBeNull();
     expect(screen.queryByText("exec_command")).toBeNull();
     expect(screen.getByText("Connect selected file signals to the right inspector panel")).toBeTruthy();
     expect(screen.getByText("Keep user prompts grouped under the owning session card")).toBeTruthy();
+    expect(screen.queryByText("Move session changed files into the owning session card")).toBeNull();
+    expect(screen.getByRole("button", { name: "Show All" })).toBeTruthy();
     expect(screen.getByText("Related files")).toBeTruthy();
-    expect(screen.getAllByText("src/app/workspace/[workspaceId]/kanban/kanban-page-client.tsx").length).toBeGreaterThan(0);
+    expect(screen.getByText("crates/routa-server/src/api/mcp_routes/tool_executor/agents_tasks.rs")).toBeTruthy();
+    expect(screen.getByText("src/app/workspace/[workspaceId]/kanban/kanban-page-client.tsx")).toBeTruthy();
     expect(screen.queryByText("Active file")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Show All" }));
+    expect(screen.getByText("Move session changed files into the owning session card")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Show Less" })).toBeTruthy();
 
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Copy to clipboard: codex resume 019d-selected-file",
+        name: "Resume: 019d-selected-file",
       }),
     );
     expect(clipboardState.writeText).toHaveBeenCalledWith("codex resume 019d-selected-file");
+  });
+
+  it("aggregates folder selection sessions across descendant files", async () => {
+    useFeatureExplorerData.mockReturnValue({
+      loading: false,
+      error: null,
+      capabilityGroups: [{ id: "workspace", name: "Workspace", description: "" }],
+      features: [
+        {
+          id: "workspace-overview",
+          name: "Workspace Overview",
+          group: "workspace",
+          summary: "Workspace shell",
+          status: "shipped",
+          sessionCount: 12,
+          changedFiles: 2,
+          updatedAt: "2026-04-17T08:00:00.000Z",
+          sourceFileCount: 2,
+          pageCount: 1,
+          apiCount: 0,
+        },
+      ],
+      surfaceIndex: {
+        generatedAt: "",
+        pages: [],
+        apis: [],
+        contractApis: [],
+        nextjsApis: [],
+        rustApis: [],
+        metadata: null,
+        repoRoot: "",
+        warnings: [],
+      },
+      featureDetail: {
+        id: "workspace-overview",
+        name: "Workspace Overview",
+        group: "workspace",
+        summary: "Workspace shell",
+        status: "shipped",
+        pages: [],
+        apis: [],
+        sourceFiles: [
+          "src/app/workspace/[workspaceId]/kanban/kanban-page-client.tsx",
+          "src/app/workspace/[workspaceId]/overview/page.tsx",
+        ],
+        relatedFeatures: [],
+        domainObjects: [],
+        sessionCount: 12,
+        changedFiles: 2,
+        updatedAt: "2026-04-17T08:00:00.000Z",
+        fileTree: [
+          {
+            id: "folder-workspace",
+            name: "workspace",
+            path: "src/app/workspace/[workspaceId]",
+            kind: "folder",
+            children: [
+              {
+                id: "file-kanban-page",
+                name: "kanban-page-client.tsx",
+                path: "src/app/workspace/[workspaceId]/kanban/kanban-page-client.tsx",
+                kind: "file",
+                children: [],
+              },
+              {
+                id: "file-overview-page",
+                name: "page.tsx",
+                path: "src/app/workspace/[workspaceId]/overview/page.tsx",
+                kind: "file",
+                children: [],
+              },
+            ],
+          },
+        ],
+        fileStats: {
+          "src/app/workspace/[workspaceId]/kanban/kanban-page-client.tsx": {
+            changes: 3,
+            sessions: 1,
+            updatedAt: "2026-04-17T08:00:00.000Z",
+          },
+          "src/app/workspace/[workspaceId]/overview/page.tsx": {
+            changes: 1,
+            sessions: 1,
+            updatedAt: "2026-04-16T08:00:00.000Z",
+          },
+        },
+        fileSignals: {
+          "src/app/workspace/[workspaceId]/kanban/kanban-page-client.tsx": {
+            sessions: [
+              {
+                provider: "codex",
+                sessionId: "019d-folder-a",
+                updatedAt: "2026-04-17T08:00:00.000Z",
+                promptSnippet: "Kanban workspace file changes",
+                promptHistory: ["Kanban workspace file changes"],
+                toolNames: ["apply_patch"],
+                changedFiles: ["src/app/workspace/[workspaceId]/kanban/kanban-page-client.tsx"],
+                resumeCommand: "codex resume 019d-folder-a",
+              },
+            ],
+            toolHistory: ["apply_patch"],
+            promptHistory: ["Kanban workspace file changes"],
+          },
+          "src/app/workspace/[workspaceId]/overview/page.tsx": {
+            sessions: [
+              {
+                provider: "codex",
+                sessionId: "019d-folder-b",
+                updatedAt: "2026-04-16T08:00:00.000Z",
+                promptSnippet: "Overview page cleanup",
+                promptHistory: ["Overview page cleanup"],
+                toolNames: ["exec_command"],
+                changedFiles: ["src/app/workspace/[workspaceId]/overview/page.tsx"],
+                resumeCommand: "codex resume 019d-folder-b",
+              },
+            ],
+            toolHistory: ["exec_command"],
+            promptHistory: ["Overview page cleanup"],
+          },
+        },
+      },
+      featureDetailLoading: false,
+      initialFeatureId: "workspace-overview",
+      fetchFeatureDetail: vi.fn().mockResolvedValue(null),
+    });
+
+    render(<FeatureExplorerPageClient workspaceId="default" />);
+
+    await waitFor(() => {
+      expect(screen.getByText("019d-folder-a")).toBeTruthy();
+    });
+
+    expect(screen.queryByText("019d-folder-b")).toBeNull();
+
+    fireEvent.click(screen.getByTestId("feature-tree-select-folder-workspace"));
+
+    await waitFor(() => {
+      expect(screen.getByText("019d-folder-b")).toBeTruthy();
+    });
+
+    expect(screen.getByText("2f")).toBeTruthy();
   });
 
   it("hydrates file selection from the url and keeps it in sync", async () => {

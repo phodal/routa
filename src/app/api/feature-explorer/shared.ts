@@ -19,6 +19,7 @@ const BROAD_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
 const MAX_FILE_SIGNAL_SESSIONS = 6;
 const MAX_FILE_SIGNAL_TOOLS = 8;
 const MAX_FILE_SIGNAL_PROMPTS = 6;
+const MAX_FILE_SIGNAL_CHANGED_FILES = 12;
 const MAX_PROMPT_SNIPPET_LENGTH = 180;
 const IGNORED_PATHS = new Set([".git", "node_modules", ".next", "dist", "out", "target"]);
 
@@ -174,6 +175,7 @@ export interface FileSessionSignal {
   promptSnippet: string;
   promptHistory: string[];
   toolNames: string[];
+  changedFiles?: string[];
   resumeCommand?: string;
 }
 
@@ -1772,6 +1774,9 @@ export function collectFeatureSessionStats(repoRoot: string, featureTree: Featur
           promptSnippet: transcript.promptHistory[0] ?? "",
           promptHistory: transcript.promptHistory.slice(0, MAX_FILE_SIGNAL_PROMPTS),
           toolNames: transcript.toolHistory.slice(0, MAX_FILE_SIGNAL_TOOLS),
+          changedFiles: [...changedFromTranscript].slice(0, MAX_FILE_SIGNAL_CHANGED_FILES).sort((left, right) =>
+            left.localeCompare(right)
+          ),
           ...(transcript.resumeCommand ? { resumeCommand: transcript.resumeCommand } : {}),
         });
       }

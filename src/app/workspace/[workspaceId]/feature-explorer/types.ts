@@ -54,6 +54,7 @@ export interface FileSessionSignal {
   promptSnippet: string;
   promptHistory?: string[];
   toolNames: string[];
+  changedFiles?: string[];
   resumeCommand?: string;
 }
 

@@ -15,6 +15,7 @@ import {
   FlaskConical,
   Folder,
   ImageIcon,
+  RotateCcw,
   Search,
 } from "lucide-react";
 
@@ -29,7 +30,6 @@ import { useTranslation } from "@/i18n";
 import type {
   ApiDetail,
   FeatureDetail,
-  FileSignal,
   FeatureSurfacePage,
   FileTreeNode,
   InspectorTab,
@@ -137,6 +137,16 @@ function buildSelectableFileIdsByNode(
 
   return acc;
 }
+
+type AggregatedSelectionSession = {
+  provider: string;
+  sessionId: string;
+  updatedAt: string;
+  promptSnippet: string;
+  promptHistory: string[];
+  resumeCommand?: string;
+  changedFiles: string[];
+};
 
 function formatShortDate(iso: string): string {
   if (!iso || iso === "-") return "-";
@@ -659,9 +669,70 @@ export function FeatureExplorerPageClient({
   }, [flatMap, fileStats]);
 
   const activeFile = flatMap[activeFileId] ?? null;
-  const activeFileSignal = activeFile
-    ? (resolvedFeatureDetail?.fileSignals?.[activeFile.path] ?? null)
-    : null;
+  const selectedScopeSessions = useMemo<AggregatedSelectionSession[]>(() => {
+    if (!resolvedFeatureDetail?.fileSignals || selectedFileIds.length === 0) {
+      return [];
+    }
+
+    const aggregated = new Map<string, AggregatedSelectionSession>();
+
+    for (const fileId of selectedFileIds) {
+      const fileNode = flatMap[fileId];
+      if (!fileNode || fileNode.kind !== "file") {
+        continue;
+      }
+
+      const signal = resolvedFeatureDetail.fileSignals[fileNode.path];
+      if (!signal) {
+        continue;
+      }
+
+      for (const session of signal.sessions) {
+        const sessionKey = `${session.provider}:${session.sessionId}`;
+        const existing = aggregated.get(sessionKey);
+
+        if (existing) {
+          if (session.updatedAt > existing.updatedAt) {
+            existing.updatedAt = session.updatedAt;
+          }
+          if (!existing.promptSnippet && session.promptSnippet) {
+            existing.promptSnippet = session.promptSnippet;
+          }
+          if (!existing.resumeCommand && session.resumeCommand) {
+            existing.resumeCommand = session.resumeCommand;
+          }
+          for (const prompt of session.promptHistory ?? []) {
+            if (!existing.promptHistory.includes(prompt)) {
+              existing.promptHistory.push(prompt);
+            }
+          }
+          for (const changedFile of session.changedFiles ?? [fileNode.path]) {
+            if (!existing.changedFiles.includes(changedFile)) {
+              existing.changedFiles.push(changedFile);
+            }
+          }
+          continue;
+        }
+
+        aggregated.set(sessionKey, {
+          provider: session.provider,
+          sessionId: session.sessionId,
+          updatedAt: session.updatedAt,
+          promptSnippet: session.promptSnippet,
+          promptHistory: [...(session.promptHistory ?? [])],
+          ...(session.resumeCommand ? { resumeCommand: session.resumeCommand } : {}),
+          changedFiles: [...(session.changedFiles ?? [fileNode.path])],
+        });
+      }
+    }
+
+    return [...aggregated.values()]
+      .map((session) => ({
+        ...session,
+        changedFiles: session.changedFiles.sort((left, right) => left.localeCompare(right)),
+      }))
+      .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+  }, [flatMap, resolvedFeatureDetail, selectedFileIds]);
   const activeFeature = features.find((f) => f.id === effectiveFeatureId);
   const activeSurfaceKey = selectedSurface?.key ?? (effectiveFeatureId ? `feature:${effectiveFeatureId}` : "");
   const selectedSurfaceFeatureNames = useMemo(
@@ -845,18 +916,8 @@ export function FeatureExplorerPageClient({
 
   const handleClearSelection = () => {
     setSelectedFileIds([]);
-  };
-
-  const handleContinue = () => {
-    router.push(`/workspace/${encodeURIComponent(workspaceId)}/sessions`);
-  };
-
-  const handleCopyContext = async () => {
-    const payload = {
-      featureId: effectiveFeatureId,
-      selectedFiles: selectedFileIds.map((id) => flatMap[id]?.path).filter(Boolean),
-    };
-    await navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
+    setActiveFileId("");
+    setDesiredFilePath("");
   };
 
   const handleApiRequest = async (method: string, apiPath: string) => {
@@ -1158,7 +1219,7 @@ export function FeatureExplorerPageClient({
                       {t.featureExplorer.clearSelection}
                     </button>
                     <button
-                      onClick={handleContinue}
+                      onClick={() => router.push(`/workspace/${encodeURIComponent(workspaceId)}/sessions`)}
                       className="inline-flex items-center gap-1 rounded-sm border border-desktop-accent bg-desktop-bg-active px-2 py-1 text-[11px] text-desktop-text-primary hover:bg-desktop-bg-primary"
                     >
                       {t.featureExplorer.continueAction}
@@ -1203,9 +1264,9 @@ export function FeatureExplorerPageClient({
               <div className="min-h-0 flex-1 overflow-y-auto p-3">
                 {inspectorTab === "context" && (
                   <ContextPanel
-                    activeFile={activeFile}
-                    activeFileSignal={activeFileSignal}
                     featureDetail={surfaceOnlySelection ? null : resolvedFeatureDetail}
+                    selectedFileCount={selectedFileIds.length}
+                    selectedScopeSessions={selectedScopeSessions}
                     selectedSurface={selectedSurface}
                     selectedSurfaceFeatureNames={selectedSurfaceFeatureNames}
                     t={t}
@@ -1224,23 +1285,6 @@ export function FeatureExplorerPageClient({
                   />
                 )}
               </div>
-
-              <div className="border-t border-desktop-border bg-desktop-bg-secondary/20 px-3 py-1.5">
-                <div className="flex items-center justify-between gap-2">
-                  <button
-                    onClick={() => router.push(`/workspace/${encodeURIComponent(workspaceId)}/sessions`)}
-                    className="rounded-sm border border-desktop-border bg-desktop-bg-primary px-2 py-1 text-[11px] text-desktop-text-secondary hover:bg-desktop-bg-active hover:text-desktop-text-primary"
-                  >
-                    {t.featureExplorer.openSessions}
-                  </button>
-                  <button
-                    onClick={handleCopyContext}
-                    className="rounded-sm border border-desktop-accent bg-desktop-bg-active px-2 py-1 text-[11px] text-desktop-text-primary hover:bg-desktop-bg-primary"
-                  >
-                    {t.featureExplorer.copyContext}
-                  </button>
-                </div>
-              </div>
             </aside>
           </section>
         </main>
@@ -1251,21 +1295,22 @@ export function FeatureExplorerPageClient({
 
 /* ── Context Panel ── */
 function ContextPanel({
-  activeFile,
-  activeFileSignal,
   featureDetail,
+  selectedFileCount,
+  selectedScopeSessions,
   selectedSurface,
   selectedSurfaceFeatureNames,
   t,
 }: {
-  activeFile: FileTreeNode | null;
-  activeFileSignal: FileSignal | null;
   featureDetail: FeatureDetail | null;
+  selectedFileCount: number;
+  selectedScopeSessions: AggregatedSelectionSession[];
   selectedSurface: ExplorerSurfaceItem | null;
   selectedSurfaceFeatureNames: string[];
   t: ReturnType<typeof useTranslation>["t"];
 }) {
   const [copiedResumeCommand, setCopiedResumeCommand] = useState("");
+  const [expandedPromptSessions, setExpandedPromptSessions] = useState<Record<string, boolean>>({});
 
   if (!featureDetail && !selectedSurface) {
     return <div className="text-xs text-desktop-text-secondary">-</div>;
@@ -1342,68 +1387,112 @@ function ContextPanel({
       ) : null}
 
       <ContextSection title={t.featureExplorer.selectedFileSignals}>
-        {activeFile ? (
-          activeFileSignal?.sessions.length ? (
+        {selectedFileCount > 0 ? (
+          selectedScopeSessions.length > 0 ? (
             <div className="space-y-1.5">
-              {activeFileSignal.sessions.map((session) => (
-                <div
-                  key={`${session.provider}:${session.sessionId}`}
-                  className="rounded-sm border border-desktop-border bg-desktop-bg-secondary px-2.5 py-2"
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        <span className={`rounded-sm border px-1.5 py-0.5 text-[10px] font-semibold ${getSignalProviderBadgeClass(session.provider)}`}>
-                          {formatSignalProvider(session.provider)}
-                        </span>
-                        <code className="break-all text-[10px] text-desktop-text-primary">{session.sessionId}</code>
-                      </div>
-                      {session.resumeCommand ? (
-                        <div className="mt-1.5 flex items-center gap-2 rounded-sm border border-desktop-border bg-desktop-bg-primary px-2 py-1.5">
+              {selectedScopeSessions.map((session) => {
+                const sessionKey = `${session.provider}:${session.sessionId}`;
+                const isExpanded = expandedPromptSessions[sessionKey] ?? false;
+                const promptHistory = session.promptHistory.length > 0
+                  ? session.promptHistory
+                  : (session.promptSnippet ? [session.promptSnippet] : []);
+                const visiblePrompts = isExpanded ? promptHistory : promptHistory.slice(0, 2);
+
+                return (
+                  <div
+                    key={sessionKey}
+                    className="rounded-sm border border-desktop-border bg-desktop-bg-secondary px-2.5 py-2"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span
+                            className={`rounded-sm border px-1.5 py-0.5 text-[10px] font-semibold ${getSignalProviderBadgeClass(session.provider)}`}
+                          >
+                            {formatSignalProvider(session.provider)}
+                          </span>
                           <code className="min-w-0 flex-1 break-all text-[10px] text-desktop-text-primary">
-                            {session.resumeCommand}
+                            {session.sessionId}
                           </code>
                           <button
                             type="button"
                             onClick={async () => {
-                              await navigator.clipboard.writeText(session.resumeCommand ?? "");
-                              setCopiedResumeCommand(`${session.provider}:${session.sessionId}`);
+                              await navigator.clipboard.writeText(session.resumeCommand ?? session.sessionId);
+                              setCopiedResumeCommand(sessionKey);
                             }}
-                            className="inline-flex shrink-0 items-center gap-1 rounded-sm border border-desktop-border bg-desktop-bg-secondary px-1.5 py-1 text-[10px] text-desktop-text-secondary hover:text-desktop-text-primary"
-                            aria-label={`${t.common.copyToClipboard}: ${session.resumeCommand}`}
-                            title={t.common.copyToClipboard}
+                            className="inline-flex shrink-0 items-center gap-1 rounded-sm border border-desktop-border bg-desktop-bg-primary px-1.5 py-0.5 text-[10px] text-desktop-text-secondary hover:text-desktop-text-primary"
+                            aria-label={
+                              session.resumeCommand
+                                ? `${t.featureExplorer.resumeCommandLabel}: ${session.sessionId}`
+                                : `${t.common.copyToClipboard}: ${session.sessionId}`
+                            }
+                            title={session.resumeCommand ? t.featureExplorer.resumeCommandLabel : t.common.copyToClipboard}
                           >
-                            {copiedResumeCommand === `${session.provider}:${session.sessionId}` ? (
+                            {copiedResumeCommand === sessionKey ? (
                               <Check className="h-3 w-3" />
+                            ) : session.resumeCommand ? (
+                              <RotateCcw className="h-3 w-3" />
                             ) : (
                               <Copy className="h-3 w-3" />
                             )}
                           </button>
                         </div>
-                      ) : null}
+                      </div>
+                      <span className="shrink-0 text-[10px] text-desktop-text-secondary">
+                        {formatShortDate(session.updatedAt)}
+                      </span>
                     </div>
-                    <span className="shrink-0 text-[10px] text-desktop-text-secondary">
-                      {formatShortDate(session.updatedAt)}
-                    </span>
-                  </div>
-                  {(session.promptHistory?.length ?? 0) > 0 ? (
-                    <div className="mt-1.5 space-y-1">
-                      {session.promptHistory?.map((prompt, index) => (
-                        <div
-                          key={`${session.sessionId}:prompt:${index}`}
-                          className="rounded-sm border border-desktop-border bg-desktop-bg-primary px-2 py-1 text-[10px] leading-4 text-desktop-text-secondary"
-                        >
-                          {prompt}
+
+                    {visiblePrompts.length > 0 ? (
+                      <div className={`mt-1.5 space-y-1 pr-1 ${isExpanded ? "max-h-48 overflow-y-auto" : ""}`}>
+                        {visiblePrompts.map((prompt, index) => (
+                          <div
+                            key={`${session.sessionId}:prompt:${index}`}
+                            className={`rounded-sm border border-desktop-border bg-desktop-bg-primary px-2 py-1 text-[10px] leading-4 text-desktop-text-secondary ${
+                              isExpanded ? "" : "line-clamp-4"
+                            }`}
+                          >
+                            {prompt}
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+
+                    {promptHistory.length > 2 ? (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setExpandedPromptSessions((prev) => ({
+                            ...prev,
+                            [sessionKey]: !isExpanded,
+                          }))}
+                        className="mt-1 inline-flex items-center gap-1 rounded-sm border border-desktop-border bg-desktop-bg-primary px-1.5 py-1 text-[10px] text-desktop-text-secondary hover:text-desktop-text-primary"
+                      >
+                        {isExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+                        {isExpanded ? t.common.showLess : t.common.showAll}
+                      </button>
+                    ) : null}
+
+                    {session.changedFiles.length > 0 ? (
+                      <div className="mt-2 space-y-1">
+                        <div className="text-[10px] font-medium text-desktop-text-secondary">
+                          {t.featureExplorer.relatedFiles}
                         </div>
-                      ))}
-                    </div>
-                  ) : session.promptSnippet ? (
-                    <div className="mt-1.5 rounded-sm border border-desktop-border bg-desktop-bg-primary px-2 py-1 text-[10px] leading-4 text-desktop-text-secondary">
-                      {session.promptSnippet}
-                    </div>
-                  ) : null}
-                </div>
-              ))}
+                        <div className="max-h-24 space-y-1 overflow-y-auto pr-1">
+                          {session.changedFiles.map((filePath) => (
+                            <div
+                              key={`${sessionKey}:${filePath}`}
+                              className="rounded-sm border border-desktop-border bg-desktop-bg-primary px-2 py-1 text-[10px] text-desktop-text-secondary"
+                            >
+                              {filePath}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })}
             </div>
           ) : (
             <SignalEmptyState message={t.featureExplorer.noSessionEvidence} />
@@ -1414,12 +1503,6 @@ function ContextPanel({
           </div>
         )}
       </ContextSection>
-
-      {featureDetail && (featureDetail.relatedFiles?.length ?? 0) > 0 ? (
-        <ContextSection title={t.featureExplorer.relatedFiles}>
-          <CompactFileList files={featureDetail.relatedFiles ?? []} />
-        </ContextSection>
-      ) : null}
 
       {featureDetail && featureDetail.relatedFeatures.length > 0 ? (
         <ContextSection title={t.featureExplorer.relatedFeaturesLabel}>
