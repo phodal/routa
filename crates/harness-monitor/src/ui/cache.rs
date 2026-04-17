@@ -792,12 +792,17 @@ impl AppCache {
         &mut self,
         entries: Vec<TestMappingEntry>,
         skipped_test_files: Vec<String>,
+        graph_status: Option<String>,
+        graph_reason: Option<String>,
     ) {
-        self.test_mapping_snapshot = Some(build_test_mapping_snapshot(
+        let mut snapshot = build_test_mapping_snapshot(
             "test".to_string(),
             entries,
             skipped_test_files,
-        ));
+        );
+        snapshot.graph_status = graph_status.unwrap_or_default();
+        snapshot.graph_reason = graph_reason;
+        self.test_mapping_snapshot = Some(snapshot);
     }
 
     fn active_fitness_history(&self) -> Option<&FitnessHistoryEntry> {
@@ -940,6 +945,16 @@ impl AppCache {
         self.test_mapping_snapshot
             .as_ref()
             .map(|snapshot| &snapshot.status_counts)
+    }
+
+    pub(super) fn test_mapping_graph_status(&self) -> Option<(&str, Option<&str>)> {
+        self.test_mapping_snapshot.as_ref().and_then(|snapshot| {
+            if snapshot.graph_status.is_empty() {
+                None
+            } else {
+                Some((snapshot.graph_status.as_str(), snapshot.graph_reason.as_deref()))
+            }
+        })
     }
 
     pub(super) fn repo_review_hints(

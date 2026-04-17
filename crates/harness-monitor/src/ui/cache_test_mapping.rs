@@ -10,6 +10,8 @@ pub(in crate::ui::tui) struct TestMappingSnapshot {
     pub(in crate::ui::tui) by_file: BTreeMap<String, TestMappingEntry>,
     pub(in crate::ui::tui) skipped_test_files: BTreeSet<String>,
     pub(in crate::ui::tui) status_counts: BTreeMap<String, usize>,
+    pub(in crate::ui::tui) graph_status: String,
+    pub(in crate::ui::tui) graph_reason: Option<String>,
 }
 
 #[allow(dead_code)]
@@ -41,6 +43,16 @@ struct TestMappingCliPayload {
     skipped_test_files: Vec<String>,
     #[serde(default)]
     status_counts: BTreeMap<String, usize>,
+    #[serde(default)]
+    graph: TestMappingGraphPayload,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct TestMappingGraphPayload {
+    #[serde(default)]
+    status: String,
+    #[serde(default)]
+    reason: Option<String>,
 }
 
 #[cfg(test)]
@@ -62,6 +74,8 @@ pub(super) fn build_test_mapping_snapshot(
             .collect(),
         skipped_test_files: skipped_test_files.into_iter().collect(),
         status_counts,
+        graph_status: String::new(),
+        graph_reason: None,
     }
 }
 
@@ -91,8 +105,7 @@ pub(super) fn load_test_mapping_snapshot(
         .current_dir(repo_root)
         .arg("graph")
         .arg("test-mapping")
-        .arg("--json")
-        .arg("--no-graph");
+        .arg("--json");
     if !files.is_empty() {
         command.args(files);
     }
@@ -122,6 +135,8 @@ pub(super) fn load_test_mapping_snapshot(
             .collect(),
         skipped_test_files: payload.skipped_test_files.into_iter().collect(),
         status_counts: payload.status_counts,
+        graph_status: payload.graph.status,
+        graph_reason: payload.graph.reason,
     })
 }
 
@@ -149,4 +164,28 @@ pub(super) fn is_test_like_path(path: &str) -> bool {
         || lower.ends_with(".snapshot")
         || lower.contains("/__snapshots__/")
         || lower.contains("/snapshots/")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cli_payload_parses_graph_status_and_reason() {
+        let payload = serde_json::from_str::<TestMappingCliPayload>(
+            r#"{
+              "mappings": [],
+              "skipped_test_files": [],
+              "status_counts": {"missing": 1},
+              "graph": {
+                "status": "disabled",
+                "reason": "graph disabled"
+              }
+            }"#,
+        )
+        .expect("payload");
+
+        assert_eq!(payload.graph.status, "disabled");
+        assert_eq!(payload.graph.reason.as_deref(), Some("graph disabled"));
+    }
 }

@@ -378,6 +378,8 @@ fn sample_cache(state: &RuntimeState) -> AppCache {
             },
         ],
         Vec::new(),
+        Some("ok".to_string()),
+        None,
     );
     cache
 }
@@ -753,6 +755,7 @@ fn tui_snapshot_run_details_decision_first() {
 fn file_detail_surfaces_test_mapping_context() {
     let state = sample_state();
     let mut cache = sample_cache(&state);
+    assert_eq!(cache.test_mapping_graph_status(), Some(("ok", None)));
 
     let snapshot = render_snapshot(&state, &mut cache, 180, 32);
 
