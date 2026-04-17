@@ -83,22 +83,32 @@ describe("mcp-setup file-based providers", () => {
     expect(result.summary).toContain("--mcp-config");
   });
 
-  it("writes Codex MCP config in TOML format", async () => {
+  it("writes Codex MCP config to a private overlay and returns CLI overrides", async () => {
     const { ensureMcpForProvider } = await import("../mcp-setup");
 
     const result = await ensureMcpForProvider("codex", {
       routaServerUrl: "http://127.0.0.1:3210",
       includeCustomServers: false,
+      cwd: "/workspace/routa-overlay",
     });
 
     expect(result.mcpConfigs).toEqual([]);
-    const configPath = path.join(tmpHome, ".codex", "config.toml");
+    expect(result.providerArgs).toEqual([
+      "-c",
+      'projects."/workspace/routa-overlay".trust_level="trusted"',
+      "-c",
+      'mcp_servers.routa-coordination.url="http://127.0.0.1:3210/api/mcp"',
+      "-c",
+      "mcp_servers.routa-coordination.enabled=true",
+    ]);
+
+    const configPath = path.join(tmpHome, ".routa", "codex", "config.toml");
     const raw = await fs.readFile(configPath, "utf-8");
 
-    expect(raw).toContain("[mcp_servers.routa-coordination]");
+    expect(raw).toContain("routa-coordination");
     expect(raw).toContain('url = "http://127.0.0.1:3210/api/mcp"');
     expect(raw).toContain("enabled = true");
-    expect(result.summary).toContain("codex: wrote");
+    expect(result.summary).toContain("codex: wrote private overlay");
   });
 
   it("adds and removes qoder MCP servers through the qodercli lifecycle", async () => {

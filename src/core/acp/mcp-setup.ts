@@ -76,6 +76,8 @@ export interface McpSetupCleanup {
 export interface McpSetupResult {
   /** Strings to pass as --mcp-config <value> */
   mcpConfigs: string[];
+  /** Additional provider-specific CLI arguments (for example Codex -c overrides) */
+  providerArgs?: string[];
   /** Human-readable summary for logs */
   summary: string;
   /** Provider-specific teardown instructions for session-end cleanup */
@@ -238,7 +240,7 @@ export async function ensureMcpForProvider(
     case "claude":
       return await ensureMcpForClaude(mcpEndpoint, cfg.workspaceId, customServers);
     case "codex":
-      return await ensureMcpForCodex(mcpEndpoint, customServers);
+      return await ensureMcpForCodex(mcpEndpoint, customServers, cfg.cwd);
     case "gemini":
       return await ensureMcpForGemini(mcpEndpoint, customServers);
     case "kimi":
@@ -593,73 +595,125 @@ function ensureMcpForClaude(
 
 // ─── Codex (OpenAI) ─────────────────────────────────────────────────────
 //
-// Codex stores MCP config in TOML format at ~/.codex/config.toml
-// https://developers.openai.com/codex/mcp/
-//
-// Streamable HTTP servers use:
-//   [mcp_servers.<server-name>]
-//   url = "http://..."
-//   enabled = true
-//
-// We merge a "routa-coordination" entry preserving all existing settings.
+// Routa keeps Codex MCP state in a private overlay and passes the effective
+// values via `codex-acp -c key=value` overrides. This avoids mutating the
+// user's shared ~/.codex/config.toml while still using Codex's highest-
+// precedence config surface.
 
-const CODEX_CONFIG_DIR = path.join(os.homedir(), ".codex");
-const CODEX_CONFIG_FILE = path.join(CODEX_CONFIG_DIR, "config.toml");
+const ROUTA_CODEX_CONFIG_DIR = path.join(os.homedir(), ".routa", "codex");
+const ROUTA_CODEX_CONFIG_FILE = path.join(ROUTA_CODEX_CONFIG_DIR, "config.toml");
 
-async function ensureMcpForCodex(mcpEndpoint: string, customServers: CustomMcpServerConfig[] = []): Promise<McpSetupResult> {
-  try {
-    // Read existing config (or start fresh)
-    let existing: Record<string, unknown> = {};
-    try {
-      const raw = await fs.promises.readFile(CODEX_CONFIG_FILE, "utf-8");
-      existing = TOML.parse(raw) as Record<string, unknown>;
-    } catch {
-      // file doesn't exist yet
+type CodexServerConfig = {
+  enabled: boolean;
+  url?: string;
+  type?: "stdio";
+  command?: string;
+  args?: string[];
+};
+
+function normalizeCodexServerConfigs(
+  mcpEndpoint: string,
+  customServers: CustomMcpServerConfig[] = [],
+): Record<string, CodexServerConfig> {
+  const builtIn: Record<string, unknown> = {
+    "routa-coordination": { url: mcpEndpoint, enabled: true },
+  };
+  const merged = mergeCustomMcpServers(builtIn, customServers);
+  const normalized: Record<string, CodexServerConfig> = {};
+
+  for (const [name, cfg] of Object.entries(merged)) {
+    const serverCfg = cfg as Record<string, unknown>;
+    if (serverCfg.type === "stdio") {
+      const args = Array.isArray(serverCfg.args)
+        ? serverCfg.args.filter((arg): arg is string => typeof arg === "string")
+        : undefined;
+      normalized[name] = {
+        type: "stdio",
+        enabled: true,
+        ...(typeof serverCfg.command === "string" ? { command: serverCfg.command } : {}),
+        ...(args ? { args } : {}),
+      };
+      continue;
     }
 
-    // Ensure "mcp_servers" key exists as an object
-    const mcpServers = (existing.mcp_servers ?? {}) as Record<string, unknown>;
-
-    // Built-in server
-    const builtIn: Record<string, unknown> = {
-      "routa-coordination": { url: mcpEndpoint, enabled: true },
+    normalized[name] = {
+      enabled: true,
+      ...(typeof serverCfg.url === "string" ? { url: serverCfg.url } : {}),
     };
-    // Merge custom servers — Codex uses url-based entries with enabled flag
-    const merged = mergeCustomMcpServers(builtIn, customServers);
-    for (const [name, cfg] of Object.entries(merged)) {
-      const serverCfg = cfg as Record<string, unknown>;
-      if (serverCfg.type === "stdio") {
-        mcpServers[name] = { command: serverCfg.command, args: serverCfg.args ?? [], enabled: true };
-      } else {
-        mcpServers[name] = { url: serverCfg.url, enabled: true };
-      }
+  }
+
+  return normalized;
+}
+
+function quoteCodexConfigSegment(segment: string): string {
+  return /^[A-Za-z0-9_-]+$/.test(segment) ? segment : JSON.stringify(segment);
+}
+
+function buildCodexProjectTrustOverride(cwd: string): string {
+  return `projects.${JSON.stringify(cwd)}.trust_level="trusted"`;
+}
+
+function buildCodexProviderArgs(
+  cwd: string | undefined,
+  mcpServers: Record<string, CodexServerConfig>,
+): string[] {
+  const overrides: string[] = [];
+
+  if (cwd) {
+    overrides.push(buildCodexProjectTrustOverride(cwd));
+  }
+
+  for (const [name, serverCfg] of Object.entries(mcpServers)) {
+    const serverPath = `mcp_servers.${quoteCodexConfigSegment(name)}`;
+    if (serverCfg.url) {
+      overrides.push(`${serverPath}.url=${JSON.stringify(serverCfg.url)}`);
     }
+    if (serverCfg.type) {
+      overrides.push(`${serverPath}.type=${JSON.stringify(serverCfg.type)}`);
+    }
+    if (serverCfg.command) {
+      overrides.push(`${serverPath}.command=${JSON.stringify(serverCfg.command)}`);
+    }
+    if (serverCfg.args) {
+      overrides.push(`${serverPath}.args=${JSON.stringify(serverCfg.args)}`);
+    }
+    overrides.push(`${serverPath}.enabled=${serverCfg.enabled ? "true" : "false"}`);
+  }
 
-    existing.mcp_servers = mcpServers;
+  return overrides.flatMap((override) => ["-c", override]);
+}
 
-    // Write back
-    await fs.promises.mkdir(CODEX_CONFIG_DIR, { recursive: true });
+async function ensureMcpForCodex(
+  mcpEndpoint: string,
+  customServers: CustomMcpServerConfig[] = [],
+  cwd?: string,
+): Promise<McpSetupResult> {
+  try {
+    const mcpServers = normalizeCodexServerConfigs(mcpEndpoint, customServers);
+
+    await fs.promises.mkdir(ROUTA_CODEX_CONFIG_DIR, { recursive: true });
     await fs.promises.writeFile(
-      CODEX_CONFIG_FILE,
-      TOML.stringify(existing as Record<string, unknown>) + "\n",
+      ROUTA_CODEX_CONFIG_FILE,
+      TOML.stringify({ mcp_servers: mcpServers }) + "\n",
       "utf-8",
     );
 
     console.log(
-      `[MCP:Codex] Wrote routa-coordination to ${CODEX_CONFIG_FILE}`,
+      `[MCP:Codex] Wrote private Routa overlay to ${ROUTA_CODEX_CONFIG_FILE}`,
     );
 
-    // Codex reads the config file itself – nothing to pass on the CLI
     return {
       mcpConfigs: [],
-      summary: `codex: wrote ${CODEX_CONFIG_FILE}`,
+      providerArgs: buildCodexProviderArgs(cwd, mcpServers),
+      summary: `codex: wrote private overlay ${ROUTA_CODEX_CONFIG_FILE}`,
     };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error(`[MCP:Codex] Failed to write config: ${msg}`);
     return {
       mcpConfigs: [],
-      summary: `codex: config write failed – ${msg}`,
+      providerArgs: [],
+      summary: `codex: private overlay write failed – ${msg}`,
     };
   }
 }
