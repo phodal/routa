@@ -301,8 +301,10 @@ describe("FeatureExplorerPageClient", () => {
     expect(screen.getByText("API Contract")).toBeTruthy();
     expect(screen.getAllByText("Next.js API").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Rust API").length).toBeGreaterThan(0);
-    expect(screen.getByText("/workspace/:workspaceId/feature-explorer")).toBeTruthy();
-    expect(screen.getAllByText("GET /api/feature-explorer").length).toBeGreaterThan(0);
+    expect(screen.getByText("/workspace")).toBeTruthy();
+    expect(screen.queryByText("/workspace/:workspaceId/feature-explorer")).toBeNull();
+    expect(screen.getAllByText("/feature-explorer").length).toBeGreaterThan(0);
+    expect(screen.queryByText("/api/feature-explorer")).toBeNull();
     expect(screen.getByTestId("feature-section-metric-sessions").textContent).toBe("0 sessions");
     expect(screen.getByTestId("feature-metric-sessions-feature-a").textContent).toBe("0 sessions");
     expect(screen.getByTestId("feature-metric-files-feature-a").textContent).toBe("1 files");
@@ -344,9 +346,67 @@ describe("FeatureExplorerPageClient", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Browser URL" }));
 
-    expect(screen.getByText("workspace")).toBeTruthy();
-    expect(screen.getByText(":workspaceId")).toBeTruthy();
-    expect(screen.getByText("feature-explorer")).toBeTruthy();
+    expect(screen.getByText("/workspace")).toBeTruthy();
+    expect(screen.queryByText(":workspaceId")).toBeNull();
+    expect(screen.queryByText("feature-explorer")).toBeNull();
+  });
+
+  it("sorts features by sessions and file counts", async () => {
+    useFeatureExplorerData.mockReturnValue({
+      loading: false,
+      error: null,
+      capabilityGroups: [{ id: "execution", name: "Execution", description: "" }],
+      features: [
+        {
+          id: "feature-low",
+          name: "Feature Low",
+          group: "execution",
+          summary: "Low priority",
+          status: "active",
+          sessionCount: 1,
+          changedFiles: 10,
+          updatedAt: "-",
+          sourceFileCount: 1,
+          pageCount: 0,
+          apiCount: 0,
+        },
+        {
+          id: "feature-high",
+          name: "Feature High",
+          group: "execution",
+          summary: "High priority",
+          status: "active",
+          sessionCount: 9,
+          changedFiles: 2,
+          updatedAt: "-",
+          sourceFileCount: 1,
+          pageCount: 0,
+          apiCount: 0,
+        },
+      ],
+      surfaceIndex: {
+        generatedAt: "",
+        pages: [],
+        apis: [],
+        contractApis: [],
+        nextjsApis: [],
+        rustApis: [],
+        metadata: null,
+        repoRoot: "/repo/default",
+        warnings: [],
+      },
+      featureDetail: null,
+      featureDetailLoading: false,
+      initialFeatureId: "",
+      fetchFeatureDetail: vi.fn().mockResolvedValue(null),
+    });
+
+    render(<FeatureExplorerPageClient workspaceId="default" />);
+
+    const highFeature = screen.getByRole("button", { name: /Feature High/ });
+    const lowFeature = screen.getByRole("button", { name: /Feature Low/ });
+
+    expect(highFeature.compareDocumentPosition(lowFeature) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it("summarizes folder session counts from descendant files", async () => {

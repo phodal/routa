@@ -28,8 +28,6 @@ import type {
   ApiDetail,
   CapabilityGroup,
   FeatureDetail,
-  FeatureSurfaceApi,
-  FeatureSurfaceImplementationApi,
   FeatureSurfacePage,
   FileTreeNode,
   InspectorTab,
@@ -41,7 +39,7 @@ import {
   type SurfaceTreeNode,
   ExplorerSurfaceCard,
   SurfaceTreeRow,
-  buildApiDeclaration,
+  buildGroupedApiItems,
   buildApiLookupKey,
   buildSurfaceTree,
   dedupeFeatureIds,
@@ -256,6 +254,15 @@ export function FeatureExplorerPageClient({
   const featureItems = useMemo<ExplorerSurfaceItem[]>(
     () => features
       .filter((feature) => matchesQuery(query, [feature.name, feature.summary, feature.id]))
+      .sort((left, right) => {
+        if (right.sessionCount !== left.sessionCount) {
+          return right.sessionCount - left.sessionCount;
+        }
+        if (right.changedFiles !== left.changedFiles) {
+          return right.changedFiles - left.changedFiles;
+        }
+        return left.name.localeCompare(right.name);
+      })
       .map((feature): ExplorerSurfaceItem => {
         const metadataItem = featureMetadataById.get(feature.id);
         const sourceFiles = metadataItem?.sourceFiles ?? [];
@@ -304,60 +311,30 @@ export function FeatureExplorerPageClient({
     [pageFeatureMap, query, surfaceIndex.pages],
   );
   const contractApiItems = useMemo<ExplorerSurfaceItem[]>(
-    () => surfaceIndex.contractApis
-      .filter((api) => matchesQuery(query, [api.method, api.path, api.domain, api.summary]))
-      .map((api: FeatureSurfaceApi): ExplorerSurfaceItem => {
-        const declaration = buildApiDeclaration(api.method, api.path);
-        const lookupKey = buildApiLookupKey(api.method, api.path);
-        return {
-          key: `contract-api:${declaration}`,
-          kind: "contract-api",
-          label: declaration,
-          secondary: api.summary || api.domain,
-          featureIds: dedupeFeatureIds(apiFeatureMap.get(lookupKey) ?? []),
-          sourceFiles: [],
-          selectable: true,
-        };
-      })
-      .sort((a, b) => a.label.localeCompare(b.label)),
+    () => buildGroupedApiItems({
+      kind: "contract-api",
+      apis: surfaceIndex.contractApis,
+      query,
+      resolveFeatureIds: (method, path) => dedupeFeatureIds(apiFeatureMap.get(buildApiLookupKey(method, path)) ?? []),
+    }),
     [apiFeatureMap, query, surfaceIndex.contractApis],
   );
   const nextjsApiItems = useMemo<ExplorerSurfaceItem[]>(
-    () => surfaceIndex.nextjsApis
-      .filter((api) => matchesQuery(query, [api.method, api.path, api.domain, ...api.sourceFiles]))
-      .map((api: FeatureSurfaceImplementationApi): ExplorerSurfaceItem => {
-        const declaration = buildApiDeclaration(api.method, api.path);
-        const lookupKey = buildApiLookupKey(api.method, api.path);
-        return {
-          key: `nextjs-api:${declaration}`,
-          kind: "nextjs-api",
-          label: declaration,
-          secondary: api.sourceFiles[0] ?? api.domain,
-          featureIds: dedupeFeatureIds(apiFeatureMap.get(lookupKey) ?? []),
-          sourceFiles: api.sourceFiles,
-          selectable: true,
-        };
-      })
-      .sort((a, b) => a.label.localeCompare(b.label)),
+    () => buildGroupedApiItems({
+      kind: "nextjs-api",
+      apis: surfaceIndex.nextjsApis,
+      query,
+      resolveFeatureIds: (method, path) => dedupeFeatureIds(apiFeatureMap.get(buildApiLookupKey(method, path)) ?? []),
+    }),
     [apiFeatureMap, query, surfaceIndex.nextjsApis],
   );
   const rustApiItems = useMemo<ExplorerSurfaceItem[]>(
-    () => surfaceIndex.rustApis
-      .filter((api) => matchesQuery(query, [api.method, api.path, api.domain, ...api.sourceFiles]))
-      .map((api: FeatureSurfaceImplementationApi): ExplorerSurfaceItem => {
-        const declaration = buildApiDeclaration(api.method, api.path);
-        const lookupKey = buildApiLookupKey(api.method, api.path);
-        return {
-          key: `rust-api:${declaration}`,
-          kind: "rust-api",
-          label: declaration,
-          secondary: api.sourceFiles[0] ?? api.domain,
-          featureIds: dedupeFeatureIds(apiFeatureMap.get(lookupKey) ?? []),
-          sourceFiles: api.sourceFiles,
-          selectable: true,
-        };
-      })
-      .sort((a, b) => a.label.localeCompare(b.label)),
+    () => buildGroupedApiItems({
+      kind: "rust-api",
+      apis: surfaceIndex.rustApis,
+      query,
+      resolveFeatureIds: (method, path) => dedupeFeatureIds(apiFeatureMap.get(buildApiLookupKey(method, path)) ?? []),
+    }),
     [apiFeatureMap, query, surfaceIndex.rustApis],
   );
   const explorerSections = useMemo<ExplorerSection[]>(
@@ -488,6 +465,39 @@ export function FeatureExplorerPageClient({
     t.featureExplorer.pathView,
     t.featureExplorer.rustApiSection,
   ]);
+  const sectionTreeNodesById = useMemo<Record<string, SurfaceTreeNode[]>>(
+    () => ({
+      pages: buildSurfaceTree(
+        pageItems.map((item) => ({
+          nodeId: item.key,
+          segments: splitBrowserRouteSegments(item.label),
+          item,
+        })),
+      ),
+      "contract-apis": buildSurfaceTree(
+        contractApiItems.map((item) => ({
+          nodeId: item.key,
+          segments: splitApiRouteSegments(item.label),
+          item,
+        })),
+      ),
+      "nextjs-apis": buildSurfaceTree(
+        nextjsApiItems.map((item) => ({
+          nodeId: item.key,
+          segments: splitApiRouteSegments(item.label),
+          item,
+        })),
+      ),
+      "rust-apis": buildSurfaceTree(
+        rustApiItems.map((item) => ({
+          nodeId: item.key,
+          segments: splitApiRouteSegments(item.label),
+          item,
+        })),
+      ),
+    }),
+    [contractApiItems, nextjsApiItems, pageItems, rustApiItems],
+  );
   const explorerItemsByKey = useMemo(() => {
     const treeItems = surfaceTreeSection
       ? (function collect(nodes: SurfaceTreeNode[], acc: ExplorerSurfaceItem[] = []): ExplorerSurfaceItem[] {
@@ -752,6 +762,7 @@ export function FeatureExplorerPageClient({
                       .filter((section) => surfaceNavigationView === "sections" || section.id === "features")
                       .map((section) => {
                         const collapsed = surfaceSectionCollapsed[section.id] ?? false;
+                        const sectionTreeNodes = surfaceNavigationView === "sections" ? (sectionTreeNodesById[section.id] ?? []) : [];
                         return (
                           <div key={section.id}>
                             <button
@@ -779,17 +790,35 @@ export function FeatureExplorerPageClient({
                               </div>
                             </button>
                             {!collapsed ? (
-                              <div className="space-y-1">
-                                {section.items.map((item) => (
-                                  <ExplorerSurfaceCard
-                                    key={item.key}
-                                    item={item}
-                                    isActive={item.key === activeSurfaceKey}
-                                    onSelect={() => handleSelectSurface(item)}
-                                    unmappedLabel={t.featureExplorer.unmappedLabel}
-                                  />
-                                ))}
-                              </div>
+                              sectionTreeNodes.length > 0 ? (
+                                <div className="space-y-1">
+                                  {sectionTreeNodes.map((node) => (
+                                    <SurfaceTreeRow
+                                      key={node.id}
+                                      node={node}
+                                      depth={0}
+                                      activeSurfaceKey={activeSurfaceKey}
+                                      expandedIds={surfaceTreeExpandedIds}
+                                      onSelectSurface={handleSelectSurface}
+                                      onToggleNode={handleToggleSurfaceTreeNode}
+                                      unmappedLabel={t.featureExplorer.unmappedLabel}
+                                      defaultExpandedDepth={0}
+                                    />
+                                  ))}
+                                </div>
+                              ) : (
+                                <div className="space-y-1">
+                                  {section.items.map((item) => (
+                                    <ExplorerSurfaceCard
+                                      key={item.key}
+                                      item={item}
+                                      isActive={item.key === activeSurfaceKey}
+                                      onSelect={() => handleSelectSurface(item)}
+                                      unmappedLabel={t.featureExplorer.unmappedLabel}
+                                    />
+                                  ))}
+                                </div>
+                              )
                             ) : null}
                           </div>
                         );
@@ -822,6 +851,7 @@ export function FeatureExplorerPageClient({
                                 onSelectSurface={handleSelectSurface}
                                 onToggleNode={handleToggleSurfaceTreeNode}
                                 unmappedLabel={t.featureExplorer.unmappedLabel}
+                                defaultExpandedDepth={0}
                               />
                             ))}
                           </div>
