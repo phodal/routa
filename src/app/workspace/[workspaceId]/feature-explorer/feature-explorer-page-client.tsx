@@ -244,7 +244,7 @@ export function FeatureExplorerPageClient({
     >
       <div className="flex h-full min-h-0 bg-desktop-bg-primary">
         <main className="flex min-w-0 flex-1">
-          <section className="grid min-h-0 flex-1 xl:grid-cols-[240px_minmax(0,1fr)_340px]">
+          <section className="grid min-h-0 flex-1 xl:grid-cols-[280px_minmax(0,1fr)_340px]">
             {/* ── Left panel: Feature list ── */}
             <aside className="flex min-h-0 flex-col border-r border-desktop-border bg-desktop-bg-secondary/20">
               {repoLabel && (
@@ -318,7 +318,13 @@ export function FeatureExplorerPageClient({
                                 <span className="min-w-0 flex-1 truncate text-[12px] font-medium">
                                   {feature.name}
                                 </span>
-                                <span className="text-[10px] text-current/70">{feature.sessionCount}</span>
+                                <span className={`rounded-sm border px-1 py-0.5 text-[9px] font-medium ${
+                                  feature.status === "shipped"
+                                    ? "border-emerald-500/30 text-emerald-400"
+                                    : "border-amber-500/30 text-amber-400"
+                                }`}>
+                                  {feature.status}
+                                </span>
                               </div>
                               <div className="mt-1 line-clamp-2 text-[10px] leading-4 text-current/80">
                                 {feature.summary}
