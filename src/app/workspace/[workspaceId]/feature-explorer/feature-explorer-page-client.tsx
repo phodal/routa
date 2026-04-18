@@ -23,7 +23,6 @@ import { useTranslation } from "@/i18n";
 import type {
   AggregatedSelectionSession,
   FeatureDetail,
-  InspectorTab,
 } from "./types";
 import {
   buildSessionAnalysisSessionName,
@@ -107,7 +106,6 @@ export function FeatureExplorerPageClient({
     refreshKey: repoRefreshKey,
   });
 
-  const [inspectorTab, setInspectorTab] = useState<InspectorTab>("context");
   const [middleView, setMiddleView] = useState<"list" | "tree">("tree");
   const [surfaceNavigationView, setSurfaceNavigationView] = useState<SurfaceNavigationView>("capabilities");
   const [initialUrlState] = useState<FeatureExplorerUrlState>(() => readFeatureExplorerUrlState());
@@ -287,7 +285,6 @@ export function FeatureExplorerPageClient({
 
   const handleSelectFeature = (nextFeatureId: string) => {
     setFeatureId(nextFeatureId);
-    setInspectorTab("context");
     setSelectedFileIds([]);
     setActiveFileId("");
     setDesiredFilePath("");
@@ -298,7 +295,6 @@ export function FeatureExplorerPageClient({
   };
   const handleSelectSurface = (item: ExplorerSurfaceItem) => {
     setSelectedSurfaceKey(item.key);
-    setInspectorTab("context");
 
     if (item.kind === "feature") {
       handleSelectFeature(item.featureIds[0] ?? "");
@@ -369,15 +365,6 @@ export function FeatureExplorerPageClient({
     setSelectedFileIds([]);
     setActiveFileId("");
     setDesiredFilePath("");
-  };
-
-  const handleApiRequest = async (method: string, apiPath: string) => {
-    try {
-      const response = await desktopAwareFetch(apiPath, { method });
-      return await response.text();
-    } catch (err) {
-      return err instanceof Error ? err.message : t.featureExplorer.requestFailed;
-    }
   };
 
   useEffect(() => {
@@ -490,6 +477,12 @@ export function FeatureExplorerPageClient({
       setIsStartingSessionAnalysis(false);
     }
   };
+  const middlePanelTitle = selectedSurface && selectedSurface.kind !== "feature"
+    ? (middleHeadingDetail || activeFeature?.name || t.featureExplorer.featureStructureHeading)
+    : (activeFeature?.name || middleHeadingDetail || t.featureExplorer.featureStructureHeading);
+  const middlePanelSummary = selectedSurface && selectedSurface.kind !== "feature"
+    ? (activeFeature?.summary || selectedSurface.secondary || "")
+    : (activeFeature?.summary || "");
 
   return (
     <DesktopAppShell
@@ -533,7 +526,7 @@ export function FeatureExplorerPageClient({
                   {t.featureExplorer.generateFeatureTree}
                 </button>
               </div>
-              <div className="border-b border-desktop-border px-3 py-2">
+              <div className="border-b border-desktop-border px-3 py-1.5">
                 <label className="flex items-center gap-2 rounded-sm border border-desktop-border bg-desktop-bg-primary px-2.5 py-1.5 text-xs text-desktop-text-secondary">
                   <Search className="h-3.5 w-3.5" />
                   <input
@@ -543,10 +536,7 @@ export function FeatureExplorerPageClient({
                     className="w-full bg-transparent text-xs text-desktop-text-primary outline-none placeholder:text-desktop-text-secondary"
                   />
                 </label>
-                <div className="mt-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-desktop-text-secondary">
-                  {t.featureExplorer.workViewLabel}
-                </div>
-                <div className="mt-2 flex flex-wrap items-center gap-1">
+                <div className="mt-1.5 flex flex-wrap items-center gap-1">
                   {surfaceNavigationOptions.map((option) => (
                     <button
                       key={option.id}
@@ -562,18 +552,18 @@ export function FeatureExplorerPageClient({
                     </button>
                   ))}
                 </div>
-                <div className={`mt-3 rounded-sm border px-2.5 py-2 ${
+                <div className={`mt-1.5 rounded-sm border px-2 py-1.5 ${
                   repositoryStatusTone === "ready"
                     ? "border-emerald-300/60 bg-emerald-50/70 text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200"
                     : repositoryStatusTone === "inferred"
                       ? "border-sky-300/60 bg-sky-50/70 text-sky-800 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-200"
                       : "border-amber-300/60 bg-amber-50/70 text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200"
                 }`}>
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="text-[10px] font-semibold uppercase tracking-[0.14em]">
+                  <div className="flex items-center justify-between gap-2 text-[10px]">
+                    <div className="font-semibold uppercase tracking-[0.14em]">
                       {t.featureExplorer.repositoryStatus}
                     </div>
-                    <div className="text-[10px] font-semibold">
+                    <div className="truncate font-semibold normal-case tracking-normal">
                       {repositoryStatusTone === "ready"
                         ? t.featureExplorer.repositoryReady
                         : repositoryStatusTone === "inferred"
@@ -581,14 +571,14 @@ export function FeatureExplorerPageClient({
                         : t.featureExplorer.repositoryMissingTaxonomy}
                     </div>
                   </div>
-                  <div className="mt-1 text-[11px] leading-5">
+                  <div className="mt-1 line-clamp-1 text-[10px] leading-4 opacity-90">
                     {repositoryStatusTone === "ready"
                       ? t.featureExplorer.repositoryReadyDescription
                       : repositoryStatusTone === "inferred"
                         ? t.featureExplorer.repositoryInferredDescription
                       : t.featureExplorer.repositoryMissingTaxonomyDescription}
                   </div>
-                  <div className="mt-2 flex flex-wrap gap-1.5 text-[10px]">
+                  <div className="mt-1 flex flex-wrap gap-1 text-[9px]">
                     <span className="rounded-sm border border-current/20 bg-white/60 px-1.5 py-0.5 dark:bg-black/10">
                       {curatedFeatureCount} {t.featureExplorer.curatedFeaturesLabel}
                     </span>
@@ -601,9 +591,11 @@ export function FeatureExplorerPageClient({
                     <span className="rounded-sm border border-current/20 bg-white/60 px-1.5 py-0.5 dark:bg-black/10">
                       {surfaceIndex.contractApis.length} {t.featureExplorer.contractApiSection}
                     </span>
-                  </div>
-                  <div className="mt-2 text-[10px]">
-                    {t.featureExplorer.lastGeneratedLabel}: {surfaceIndex.generatedAt ? formatShortDate(surfaceIndex.generatedAt) : "-"}
+                    {surfaceIndex.generatedAt ? (
+                      <span className="rounded-sm border border-current/20 bg-white/60 px-1.5 py-0.5 dark:bg-black/10">
+                        {formatShortDate(surfaceIndex.generatedAt)}
+                      </span>
+                    ) : null}
                   </div>
                 </div>
               </div>
@@ -725,14 +717,25 @@ export function FeatureExplorerPageClient({
             </aside>
 
             <section className="flex min-h-0 flex-col border-r border-desktop-border bg-desktop-bg-primary">
-              <div className="flex items-center justify-between border-b border-desktop-border px-3 py-2">
-                <div>
-                  <div className="text-xs font-semibold text-desktop-text-secondary">
-                    {t.featureExplorer.featureStructureHeading}
+              <div className="border-b border-desktop-border px-3 py-2.5">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-[14px] font-semibold text-desktop-text-primary">
+                      {middlePanelTitle}
+                    </div>
+                    {middlePanelSummary ? (
+                      <div className="mt-1 text-[11px] leading-5 text-desktop-text-secondary">
+                        {middlePanelSummary}
+                      </div>
+                    ) : null}
                   </div>
-                  {middleHeadingDetail ? (
-                    <div className="mt-0.5 truncate text-[10px] text-desktop-text-secondary">
-                      {middleHeadingDetail}
+                  {activeFeature ? (
+                    <div className="flex flex-wrap gap-1.5">
+                      <InlineStatPill label={t.featureExplorer.statusLabel} value={activeFeature.status || "-"} />
+                      <InlineStatPill label={t.featureExplorer.pageSection} value={String(featurePageDetails.length)} />
+                      <InlineStatPill label={t.featureExplorer.apiSurfacesLabel} value={String(featureApiDetails.length)} />
+                      <InlineStatPill label={t.featureExplorer.sourceFilesLabel} value={String(featureSourceFiles.length)} />
+                      <InlineStatPill label={t.featureExplorer.sessionsLabel} value={String(activeFeature.sessionCount)} />
                     </div>
                   ) : null}
                 </div>
@@ -747,33 +750,11 @@ export function FeatureExplorerPageClient({
                   </div>
                 ) : (
                   <div className="space-y-3 px-3 py-3">
-                    {activeFeature ? (
-                      <section className="rounded-sm border border-desktop-border bg-desktop-bg-primary p-3">
-                        <div className="flex flex-wrap items-start justify-between gap-3">
-                          <div className="min-w-0 flex-1">
-                            <div className="text-[14px] font-semibold text-desktop-text-primary">
-                              {activeFeature.name}
-                            </div>
-                            {activeFeature.summary ? (
-                              <div className="mt-1 text-[11px] leading-5 text-desktop-text-secondary">
-                                {activeFeature.summary}
-                              </div>
-                            ) : null}
-                          </div>
-                          <div className="flex flex-wrap gap-1.5">
-                            <InlineStatPill label={t.featureExplorer.statusLabel} value={activeFeature.status || "-"} />
-                            <InlineStatPill label={t.featureExplorer.pageSection} value={String(featurePageDetails.length)} />
-                            <InlineStatPill label={t.featureExplorer.apiSurfacesLabel} value={String(featureApiDetails.length)} />
-                            <InlineStatPill label={t.featureExplorer.sourceFilesLabel} value={String(featureSourceFiles.length)} />
-                            <InlineStatPill label={t.featureExplorer.sessionsLabel} value={String(activeFeature.sessionCount)} />
-                          </div>
-                        </div>
-                      </section>
-                    ) : (
+                    {!activeFeature ? (
                       <div className="rounded-sm border border-desktop-border bg-desktop-bg-primary p-3 text-[11px] text-desktop-text-secondary">
                         {t.featureExplorer.featureStructureUnavailable}
                       </div>
-                    )}
+                    ) : null}
 
                     <FeatureStructureSection
                       title={t.featureExplorer.frontendRoutesLabel}
@@ -935,15 +916,12 @@ export function FeatureExplorerPageClient({
             </section>
 
             <FeatureExplorerInspectorPane
-              inspectorTab={inspectorTab}
-              onSelectInspectorTab={setInspectorTab}
               featureDetail={surfaceOnlySelection ? null : resolvedFeatureDetail}
               selectedFileCount={selectedFileIds.length}
               selectedScopeSessions={selectedScopeSessions}
               selectedSurface={selectedSurface}
               selectedSurfaceFeatureNames={selectedSurfaceFeatureNames}
               onOpenSessionAnalysis={handleOpenSessionAnalysisDrawer}
-              onRequestApi={handleApiRequest}
               t={t}
             />
 

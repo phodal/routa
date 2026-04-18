@@ -488,7 +488,7 @@ describe("FeatureExplorerPageClient", () => {
     const executionGroupToggle = screen.getByRole("button", { name: /Execution/i });
     expect(screen.getAllByText("Execution").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Feature A").length).toBeGreaterThan(0);
-    expect(screen.getByText("Feature Structure")).toBeTruthy();
+    expect(screen.queryByText("Feature Structure")).toBeNull();
     expect(screen.getByText("Summary")).toBeTruthy();
     expect(screen.getByTestId("feature-metric-pages-feature-a").textContent).toContain("1");
     expect(screen.getByTestId("feature-metric-apis-feature-a").textContent).toContain("1");
@@ -503,6 +503,9 @@ describe("FeatureExplorerPageClient", () => {
     expect(screen.getByText("Frontend routes")).toBeTruthy();
     expect(screen.getAllByText("API surfaces").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Source files").length).toBeGreaterThan(0);
+    expect(screen.queryByRole("button", { name: "Context" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Screenshot" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "API" })).toBeNull();
   });
 
   it("switches surface navigation to surfaces tree mode", async () => {
