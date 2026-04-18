@@ -32,6 +32,7 @@ function createFeatureTree(): FeatureTree {
     apiEndpoints: [],
     nextjsApiEndpoints: [],
     rustApiEndpoints: [],
+    implementationApiEndpoints: [],
   };
 }
 
@@ -56,6 +57,7 @@ function createDirectoryFallbackFeatureTree(): FeatureTree {
     apiEndpoints: [],
     nextjsApiEndpoints: [],
     rustApiEndpoints: [],
+    implementationApiEndpoints: [],
   };
 }
 
@@ -450,5 +452,68 @@ feature_metadata:
         "src/app/settings/agents/page.tsx",
       ],
     });
+  });
+
+  it("parses generic implementation API sections from generated markdown", () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "feature-explorer-spring-"));
+    const repoRoot = path.join(tempRoot, "repo");
+
+    ensureFile(
+      path.join(repoRoot, "docs/product-specs/FEATURE_TREE.md"),
+      `---
+feature_metadata:
+  capability_groups:
+    - id: administration
+      name: Administration
+  features:
+    - id: admin-dashboard
+      name: Admin Dashboard
+      group: administration
+      pages:
+        - /admin/dashboard
+      apis:
+        - GET /admin/dashboard
+---
+
+# Product Feature Specification
+
+## Frontend Pages
+
+| Page | Route | Source File | Description |
+|------|-------|-------------|-------------|
+| Admin Dashboard | \`/admin/dashboard\` | \`src/main/resources/templates/dashboard.html\` |  |
+
+## API Contract Endpoints
+
+### Admin (1)
+
+| Method | Endpoint | Details |
+|--------|----------|---------|
+| GET | \`/admin/dashboard\` | Render Dashboard |
+
+## Spring MVC API Routes
+
+### Admin (1)
+
+| Method | Endpoint | Source Files |
+|--------|----------|--------------|
+| GET | \`/admin/dashboard\` | \`src/main/java/com/example/controller/AdminController.java\` |
+`,
+    );
+
+    const featureTree = parseFeatureTree(repoRoot);
+    expect(featureTree.implementationApiEndpoints).toEqual([
+      {
+        label: "springMvc",
+        group: "admin",
+        method: "GET",
+        endpoint: "/admin/dashboard",
+        sourceFiles: ["src/main/java/com/example/controller/AdminController.java"],
+      },
+    ]);
+    expect(featureTree.features[0]?.sourceFiles).toEqual([
+      "src/main/java/com/example/controller/AdminController.java",
+      "src/main/resources/templates/dashboard.html",
+    ]);
   });
 });

@@ -76,6 +76,7 @@ feature_metadata:
       expect(payload.contractApis).toHaveLength(1);
       expect(payload.nextjsApis).toHaveLength(1);
       expect(payload.rustApis).toHaveLength(1);
+      expect(payload.implementationApis).toHaveLength(2);
       expect(payload.pages[0]).toMatchObject({
         route: "/workspace/:workspaceId/spec",
         title: "Workspace / Spec",
@@ -84,6 +85,18 @@ feature_metadata:
         domain: "spec",
         path: "/api/spec/issues",
       });
+      expect(payload.implementationApis).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            label: "nextjs",
+            path: "/api/spec/issues",
+          }),
+          expect.objectContaining({
+            label: "rust",
+            path: "/api/spec/issues",
+          }),
+        ]),
+      );
     } finally {
       await rm(repoRoot, { recursive: true, force: true });
     }

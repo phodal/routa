@@ -3,14 +3,28 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
+import { parseFeatureTree } from "../../src/app/api/feature-explorer/shared";
+import { readFeatureSurfaceIndex } from "../../src/core/spec/feature-surface-index";
 import featureSurfaceMetadata from "../../src/core/spec/feature-surface-metadata";
 import {
   generateFeatureTreeForRepo,
   generateSurfaceIndexForRepo,
+  renderFeatureTreeMarkdown,
   validateSurfaceIndex,
 } from "../docs/framework-feature-tree-generator";
 
 const { mergeSurfaceMetadata } = featureSurfaceMetadata;
+
+function stripOperationIds(
+  apis: Array<{ domain: string; method: string; path: string; summary: string }>,
+): Array<{ domain: string; method: string; path: string; summary: string }> {
+  return apis.map((api) => ({
+    domain: api.domain,
+    method: api.method,
+    path: api.path,
+    summary: api.summary,
+  }));
+}
 
 function createSpringRepoFixture(root: string): void {
   fs.mkdirSync(path.join(root, "src", "main", "java", "com", "example", "controller"), {
@@ -270,6 +284,58 @@ describe("framework-feature-tree-generator", () => {
           && feature.sourceFiles?.includes("src/main/java/com/example/controller/AdminController.java"),
         ),
       ).toBe(true);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("round-trips generic implementation APIs through generated markdown readers", async () => {
+    const dir = fs.mkdtempSync(path.join(process.cwd(), "tmp-framework-generator-"));
+
+    try {
+      createSpringRepoFixture(dir);
+      fs.mkdirSync(path.join(dir, "docs", "product-specs"), { recursive: true });
+
+      const tree = generateFeatureTreeForRepo(dir);
+      const surfaceIndex = generateSurfaceIndexForRepo(dir);
+      const markdown = renderFeatureTreeMarkdown(tree, surfaceIndex, dir);
+
+      fs.writeFileSync(
+        path.join(dir, "docs", "product-specs", "FEATURE_TREE.md"),
+        markdown,
+        "utf8",
+      );
+
+      const parsedSurfaceIndex = await readFeatureSurfaceIndex(dir);
+      const parsedFeatureTree = parseFeatureTree(dir);
+
+      expect(stripOperationIds(parsedSurfaceIndex.contractApis)).toEqual(
+        stripOperationIds(surfaceIndex.contractApis),
+      );
+      expect(parsedSurfaceIndex.implementationApis).toEqual(surfaceIndex.implementationApis);
+      expect(parsedFeatureTree.implementationApiEndpoints).toEqual([
+        {
+          label: "springMvc",
+          group: "admin",
+          method: "GET",
+          endpoint: "/admin/audit/{username}",
+          sourceFiles: ["src/main/java/com/example/controller/AdminController.java"],
+        },
+        {
+          label: "springMvc",
+          group: "admin",
+          method: "GET",
+          endpoint: "/admin/dashboard",
+          sourceFiles: ["src/main/java/com/example/controller/AdminController.java"],
+        },
+        {
+          label: "springMvc",
+          group: "admin",
+          method: "POST",
+          endpoint: "/admin/posts",
+          sourceFiles: ["src/main/java/com/example/controller/AdminController.java"],
+        },
+      ]);
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }

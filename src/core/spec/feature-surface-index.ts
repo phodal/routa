@@ -22,6 +22,7 @@ export type FeatureSurfaceApi = {
 };
 
 export type FeatureSurfaceImplementationApi = {
+  label: string;
   domain: string;
   method: string;
   path: string;
@@ -61,6 +62,7 @@ export type FeatureSurfaceIndex = {
   contractApis: FeatureSurfaceApi[];
   nextjsApis: FeatureSurfaceImplementationApi[];
   rustApis: FeatureSurfaceImplementationApi[];
+  implementationApis: FeatureSurfaceImplementationApi[];
   metadata: FeatureSurfaceMetadata | null;
 };
 
@@ -116,6 +118,38 @@ function normalizeDomainHeading(value: string): string {
   return value.trim().toLowerCase();
 }
 
+function normalizeImplementationLabel(value: string): string {
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+  if (!normalized) {
+    return "";
+  }
+
+  const parts = normalized.split(/\s+/);
+  if (parts.join("") === "nextjs") {
+    return "nextjs";
+  }
+
+  return parts
+    .map((part, index) => (index === 0 ? part : part.charAt(0).toUpperCase() + part.slice(1)))
+    .join("");
+}
+
+function implementationSectionLabelFromHeading(heading: string): string | null {
+  const match = heading
+    .trim()
+    .match(/^##\s+(.+?)\s+(?:API Routes|API Route Sources|API Source Files)$/u);
+  if (!match) {
+    return null;
+  }
+
+  const label = normalizeImplementationLabel(match[1] ?? "");
+  return label || null;
+}
+
 function toPage(value: unknown): FeatureSurfacePage | null {
   if (!value || typeof value !== "object") {
     return null;
@@ -169,6 +203,9 @@ function toImplementationApi(value: unknown): FeatureSurfaceImplementationApi | 
   }
 
   return {
+    label: normalizeImplementationLabel(
+      normalizeString((value as { label?: unknown }).label) || "implementation",
+    ),
     domain,
     method,
     path: endpointPath,
@@ -279,6 +316,7 @@ function parseFeatureTreeMarkdown(raw: string): FeatureSurfaceIndex {
   const contractApis: FeatureSurfaceApi[] = [];
   const nextjsApis: FeatureSurfaceImplementationApi[] = [];
   const rustApis: FeatureSurfaceImplementationApi[] = [];
+  const implementationApis: FeatureSurfaceImplementationApi[] = [];
 
   const frontmatter = extractFrontmatter(raw);
   let metadata: FeatureSurfaceMetadata | null = null;
@@ -291,9 +329,10 @@ function parseFeatureTreeMarkdown(raw: string): FeatureSurfaceIndex {
     }
   }
 
-  let section: "pages" | "contract" | "nextjs" | "rust" | null = null;
+  let section: "pages" | "contract" | "implementation" | null = null;
   let inTable = false;
   let currentGroup = "";
+  let currentImplementationLabel = "";
 
   for (const rawLine of raw.split(/\r?\n/)) {
     const trimmed = rawLine.trim();
@@ -313,16 +352,27 @@ function parseFeatureTreeMarkdown(raw: string): FeatureSurfaceIndex {
     }
 
     if (trimmed === "## Next.js API Routes" || trimmed === "## Next.js-only API Routes") {
-      section = "nextjs";
+      section = "implementation";
       inTable = false;
       currentGroup = "";
+      currentImplementationLabel = "nextjs";
       continue;
     }
 
     if (trimmed === "## Rust API Routes" || trimmed === "## Rust-only API Routes") {
-      section = "rust";
+      section = "implementation";
       inTable = false;
       currentGroup = "";
+      currentImplementationLabel = "rust";
+      continue;
+    }
+
+    const implementationLabel = implementationSectionLabelFromHeading(trimmed);
+    if (implementationLabel) {
+      section = "implementation";
+      inTable = false;
+      currentGroup = "";
+      currentImplementationLabel = implementationLabel;
       continue;
     }
 
@@ -330,6 +380,7 @@ function parseFeatureTreeMarkdown(raw: string): FeatureSurfaceIndex {
       section = null;
       inTable = false;
       currentGroup = "";
+      currentImplementationLabel = "";
       continue;
     }
 
@@ -416,37 +467,45 @@ function parseFeatureTreeMarkdown(raw: string): FeatureSurfaceIndex {
       if (cells.length >= 5) {
         const nextjsSourceFiles = parseSourceFilesCell(cells[3] ?? "");
         if (nextjsSourceFiles.length > 0) {
-          nextjsApis.push({
+          const nextjsApi: FeatureSurfaceImplementationApi = {
+            label: "nextjs",
             domain: currentGroup,
             method,
             path: endpointPath,
             sourceFiles: nextjsSourceFiles,
-          });
+          };
+          nextjsApis.push(nextjsApi);
+          implementationApis.push(nextjsApi);
         }
 
         const rustSourceFiles = parseSourceFilesCell(cells[4] ?? "");
         if (rustSourceFiles.length > 0) {
-          rustApis.push({
+          const rustApi: FeatureSurfaceImplementationApi = {
+            label: "rust",
             domain: currentGroup,
             method,
             path: endpointPath,
             sourceFiles: rustSourceFiles,
-          });
+          };
+          rustApis.push(rustApi);
+          implementationApis.push(rustApi);
         }
       }
       continue;
     }
 
     const parsedImplementationApi: FeatureSurfaceImplementationApi = {
+      label: currentImplementationLabel,
       domain: currentGroup,
       method,
       path: endpointPath,
       sourceFiles: parseSourceFilesCell(cells[2] ?? ""),
     };
 
-    if (section === "nextjs") {
+    implementationApis.push(parsedImplementationApi);
+    if (currentImplementationLabel === "nextjs") {
       nextjsApis.push(parsedImplementationApi);
-    } else if (section === "rust") {
+    } else if (currentImplementationLabel === "rust") {
       rustApis.push(parsedImplementationApi);
     }
   }
@@ -458,12 +517,14 @@ function parseFeatureTreeMarkdown(raw: string): FeatureSurfaceIndex {
     contractApis,
     nextjsApis,
     rustApis,
+    implementationApis,
     metadata: normalizeSurfaceMetadata({
       metadata,
       pages,
       contractApis,
       nextjsApis,
       rustApis,
+      implementationApis,
     }),
   };
 }
@@ -476,6 +537,7 @@ function emptyResponse(repoRoot: string, warnings: string[] = []): FeatureSurfac
     contractApis: [],
     nextjsApis: [],
     rustApis: [],
+    implementationApis: [],
     metadata: null,
     repoRoot,
     warnings,
@@ -522,13 +584,23 @@ export async function readFeatureSurfaceIndex(repoRoot: string): Promise<Feature
   const nextjsApis = Array.isArray((payload as { nextjsApis?: unknown }).nextjsApis)
     ? ((payload as { nextjsApis: unknown[] }).nextjsApis
       .map(toImplementationApi)
+      .map((item) => (item ? { ...item, label: "nextjs" } : null))
       .filter((item): item is FeatureSurfaceImplementationApi => Boolean(item)))
     : [];
   const rustApis = Array.isArray((payload as { rustApis?: unknown }).rustApis)
     ? ((payload as { rustApis: unknown[] }).rustApis
       .map(toImplementationApi)
+      .map((item) => (item ? { ...item, label: "rust" } : null))
       .filter((item): item is FeatureSurfaceImplementationApi => Boolean(item)))
     : [];
+  const implementationApisFromPayload = Array.isArray((payload as { implementationApis?: unknown }).implementationApis)
+    ? ((payload as { implementationApis: unknown[] }).implementationApis
+      .map(toImplementationApi)
+      .filter((item): item is FeatureSurfaceImplementationApi => Boolean(item)))
+    : [];
+  const implementationApis = implementationApisFromPayload.length > 0
+    ? implementationApisFromPayload
+    : [...nextjsApis, ...rustApis];
 
   const normalizedMetadata = normalizeSurfaceMetadata({
     metadata: toMetadata((payload as { metadata?: unknown }).metadata),
@@ -536,6 +608,7 @@ export async function readFeatureSurfaceIndex(repoRoot: string): Promise<Feature
     contractApis,
     nextjsApis,
     rustApis,
+    implementationApis,
   });
 
   return {
@@ -545,6 +618,7 @@ export async function readFeatureSurfaceIndex(repoRoot: string): Promise<Feature
     contractApis,
     nextjsApis,
     rustApis,
+    implementationApis,
     metadata: normalizedMetadata,
     repoRoot,
     warnings: [],

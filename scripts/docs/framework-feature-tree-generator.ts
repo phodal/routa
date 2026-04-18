@@ -1073,25 +1073,27 @@ function buildFrontmatterMetadata(
   return lines.join("\n");
 }
 
-function renderMarkdown(
+export function renderFeatureTreeMarkdown(
   result: GeneratedFeatureTree,
   surfaceIndex: FeatureSurfaceIndex,
   repoRoot: string,
 ): string {
-  const implementationLabels = [...new Set(surfaceIndex.implementationApis.map((api) => api.label))];
-  const implementationLookups = new Map(
-    implementationLabels.map((label) => [
-      label,
-      new Map(
-        surfaceIndex.implementationApis
-          .filter((api) => api.label === label)
-          .map((api) => [buildApiLookupKey(api.method, api.path), api.sourceFiles]),
-      ),
-    ]),
-  );
-  const implementationHeaders = implementationLabels.map((label) =>
-    label === SPRING_IMPLEMENTATION_LABEL ? "Spring MVC" : humanizeIdentifier(label),
-  );
+  const implementationLabels = [...new Set(surfaceIndex.implementationApis.map((api) => api.label))].sort();
+  const groupByDomain = <T extends { domain: string }>(items: T[]): Array<[string, T[]]> => {
+    const grouped = new Map<string, T[]>();
+
+    for (const item of items) {
+      const domain = item.domain.trim() || "general";
+      const existing = grouped.get(domain);
+      if (existing) {
+        existing.push(item);
+      } else {
+        grouped.set(domain, [item]);
+      }
+    }
+
+    return [...grouped.entries()].sort(([left], [right]) => left.localeCompare(right));
+  };
 
   const lines = [
     "---",
@@ -1132,22 +1134,45 @@ function renderMarkdown(
     );
   }
 
-  lines.push("", "---", "", "## HTTP Contract Endpoints", "");
-  const headerCells = ["Method", "Endpoint", "Details", ...implementationHeaders];
-  const separatorCells = headerCells.map(() => "--------");
-  lines.push(
-    `| ${headerCells.join(" | ")} |`,
-    `| ${separatorCells.join(" | ")} |`,
-  );
+  lines.push("", "---", "", "## API Contract Endpoints");
 
-  for (const api of surfaceIndex.contractApis) {
-    const lookupKey = buildApiLookupKey(api.method, api.path);
-    const sourceColumns = implementationLabels.map((label) =>
-      formatSourceFiles(implementationLookups.get(label)?.get(lookupKey) ?? []),
-    );
+  for (const [domain, apis] of groupByDomain(surfaceIndex.contractApis)) {
     lines.push(
-      `| ${api.method} | \`${api.path}\` | ${api.summary || api.operationId} | ${sourceColumns.join(" | ")} |`,
+      "",
+      `### ${humanizeIdentifier(domain)} (${apis.length})`,
+      "",
+      "| Method | Endpoint | Details |",
+      "|--------|----------|---------|",
     );
+
+    for (const api of apis) {
+      lines.push(
+        `| ${api.method} | \`${api.path}\` | ${api.summary || api.operationId} |`,
+      );
+    }
+  }
+
+  for (const label of implementationLabels) {
+    const heading = label === SPRING_IMPLEMENTATION_LABEL ? "Spring MVC" : humanizeIdentifier(label);
+    lines.push("", "---", "", `## ${heading} API Routes`);
+
+    const implementationApis = surfaceIndex.implementationApis
+      .filter((api) => api.label === label);
+    for (const [domain, apis] of groupByDomain(implementationApis)) {
+      lines.push(
+        "",
+        `### ${humanizeIdentifier(domain)} (${apis.length})`,
+        "",
+        "| Method | Endpoint | Source Files |",
+        "|--------|----------|--------------|",
+      );
+
+      for (const api of apis) {
+        lines.push(
+          `| ${api.method} | \`${api.path}\` | ${formatSourceFiles(api.sourceFiles)} |`,
+        );
+      }
+    }
   }
 
   return `${lines.join("\n")}\n`;
@@ -1234,7 +1259,7 @@ function writeSurfaceArtifacts(
   surfaceIndex: FeatureSurfaceIndex,
   silent = false,
 ): void {
-  const markdown = renderMarkdown(result, surfaceIndex, repoRoot);
+  const markdown = renderFeatureTreeMarkdown(result, surfaceIndex, repoRoot);
   const mdPath = path.join(repoRoot, OUTPUT_MD_RELATIVE);
   const jsonPath = path.join(repoRoot, OUTPUT_JSON_RELATIVE);
   fs.mkdirSync(path.dirname(mdPath), { recursive: true });
@@ -1404,7 +1429,7 @@ function main(): void {
     return;
   }
 
-  const markdown = renderMarkdown(result, surfaceIndex, args.repoRoot);
+  const markdown = renderFeatureTreeMarkdown(result, surfaceIndex, args.repoRoot);
   console.log(markdown);
 }
 

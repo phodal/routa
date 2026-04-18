@@ -53,9 +53,14 @@ export interface ApiEndpointDetail {
   description: string;
   nextjsSourceFiles?: string[];
   rustSourceFiles?: string[];
+  implementationSources?: Array<{
+    label: string;
+    sourceFiles: string[];
+  }>;
 }
 
 export interface ApiImplementationDetail {
+  label: string;
   group: string;
   method: string;
   endpoint: string;
@@ -69,6 +74,7 @@ export interface FeatureTree {
   apiEndpoints: ApiEndpointDetail[];
   nextjsApiEndpoints: ApiImplementationDetail[];
   rustApiEndpoints: ApiImplementationDetail[];
+  implementationApiEndpoints: ApiImplementationDetail[];
 }
 
 export type FeatureTreeParsed = FeatureTree;
@@ -113,12 +119,21 @@ interface FeatureTreeIndexPayload {
     summary?: string;
   }>;
   nextjsApis?: Array<{
+    label?: string;
     domain?: string;
     method?: string;
     path?: string;
     sourceFiles?: string[];
   }>;
   rustApis?: Array<{
+    label?: string;
+    domain?: string;
+    method?: string;
+    path?: string;
+    sourceFiles?: string[];
+  }>;
+  implementationApis?: Array<{
+    label?: string;
     domain?: string;
     method?: string;
     path?: string;
@@ -243,6 +258,38 @@ function normalizeDomainHeading(value: string): string {
   return value.trim().toLowerCase();
 }
 
+function normalizeImplementationLabel(value: string): string {
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+  if (!normalized) {
+    return "";
+  }
+
+  const parts = normalized.split(/\s+/);
+  if (parts.join("") === "nextjs") {
+    return "nextjs";
+  }
+
+  return parts
+    .map((part, index) => (index === 0 ? part : part.charAt(0).toUpperCase() + part.slice(1)))
+    .join("");
+}
+
+function implementationSectionLabelFromHeading(heading: string): string | null {
+  const match = heading
+    .trim()
+    .match(/^##\s+(.+?)\s+(?:API Routes|API Route Sources|API Source Files)$/u);
+  if (!match) {
+    return null;
+  }
+
+  const label = normalizeImplementationLabel(match[1] ?? "");
+  return label || null;
+}
+
 function parseSourceFilesCell(value: string): string[] {
   const codeMatches = [...value.matchAll(/`([^`]+)`/g)]
     .map((match) => stripCodeCell(match[1] ?? ""))
@@ -262,18 +309,21 @@ function parseFeatureTreeTables(raw: string): {
   apiEndpoints: ApiEndpointDetail[];
   nextjsApiEndpoints: ApiImplementationDetail[];
   rustApiEndpoints: ApiImplementationDetail[];
+  implementationApiEndpoints: ApiImplementationDetail[];
 } {
   const frontendPages: FrontendPageDetail[] = [];
   const apiEndpoints: ApiEndpointDetail[] = [];
   const nextjsApiEndpoints: ApiImplementationDetail[] = [];
   const rustApiEndpoints: ApiImplementationDetail[] = [];
+  const implementationApiEndpoints: ApiImplementationDetail[] = [];
 
-  let section: "frontend" | "contract" | "nextjs" | "rust" | null = null;
+  let section: "frontend" | "contract" | "implementation" | null = null;
   let inTable = false;
   let currentApiGroup = "";
+  let currentImplementationLabel = "";
 
   const frontMarker = "## Frontend Pages";
-  const apiMarkers = new Set(["## API Endpoints", "## API Contract Endpoints"]);
+  const apiMarkers = new Set(["## API Endpoints", "## API Contract Endpoints", "## HTTP Contract Endpoints"]);
   const nextjsMarkers = new Set(["## Next.js API Routes", "## Next.js-only API Routes"]);
   const rustMarkers = new Set(["## Rust API Routes", "## Rust-only API Routes"]);
 
@@ -293,20 +343,31 @@ function parseFeatureTreeTables(raw: string): {
     }
 
     if (nextjsMarkers.has(trimmed)) {
-      section = "nextjs";
+      section = "implementation";
       inTable = false;
+      currentImplementationLabel = "nextjs";
       continue;
     }
 
     if (rustMarkers.has(trimmed)) {
-      section = "rust";
+      section = "implementation";
       inTable = false;
+      currentImplementationLabel = "rust";
+      continue;
+    }
+
+    const implementationLabel = implementationSectionLabelFromHeading(trimmed);
+    if (implementationLabel) {
+      section = "implementation";
+      inTable = false;
+      currentImplementationLabel = implementationLabel;
       continue;
     }
 
     if (trimmed.startsWith("## ") && trimmed !== frontMarker && !apiMarkers.has(trimmed) && !nextjsMarkers.has(trimmed) && !rustMarkers.has(trimmed)) {
       section = null;
       inTable = false;
+      currentImplementationLabel = "";
       continue;
     }
 
@@ -341,7 +402,7 @@ function parseFeatureTreeTables(raw: string): {
       continue;
     }
 
-    if (section === "contract" || section === "nextjs" || section === "rust") {
+    if (section === "contract" || section === "implementation") {
       if (trimmed.startsWith("### ")) {
         currentApiGroup = normalizeDomainHeading(trimmed
           .replace(/^###\s+/, "")
@@ -394,36 +455,54 @@ function parseFeatureTreeTables(raw: string): {
           });
 
           if (nextjsSourceFiles.length > 0) {
-            nextjsApiEndpoints.push({
+            const nextjsApi = {
+              label: "nextjs",
               group: currentApiGroup,
               method: cells[0] ?? "",
               endpoint: stripCodeCell(cells[1] ?? ""),
               sourceFiles: nextjsSourceFiles,
-            });
+            };
+            nextjsApiEndpoints.push(nextjsApi);
+            implementationApiEndpoints.push(nextjsApi);
           }
 
           if (rustSourceFiles.length > 0) {
-            rustApiEndpoints.push({
+            const rustApi = {
+              label: "rust",
               group: currentApiGroup,
               method: cells[0] ?? "",
               endpoint: stripCodeCell(cells[1] ?? ""),
               sourceFiles: rustSourceFiles,
-            });
+            };
+            rustApiEndpoints.push(rustApi);
+            implementationApiEndpoints.push(rustApi);
           }
         } else {
-          const target = section === "nextjs" ? nextjsApiEndpoints : rustApiEndpoints;
-          target.push({
+          const implementationApi = {
+            label: currentImplementationLabel || "implementation",
             group: currentApiGroup,
             method: cells[0] ?? "",
             endpoint: stripCodeCell(cells[1] ?? ""),
             sourceFiles: parseSourceFilesCell(cells[2] ?? ""),
-          });
+          };
+          implementationApiEndpoints.push(implementationApi);
+          if (implementationApi.label === "nextjs") {
+            nextjsApiEndpoints.push(implementationApi);
+          } else if (implementationApi.label === "rust") {
+            rustApiEndpoints.push(implementationApi);
+          }
         }
       }
     }
   }
 
-  return { frontendPages, apiEndpoints, nextjsApiEndpoints, rustApiEndpoints };
+  return {
+    frontendPages,
+    apiEndpoints,
+    nextjsApiEndpoints,
+    rustApiEndpoints,
+    implementationApiEndpoints,
+  };
 }
 
 function toFrontendPagesFromIndex(payload: FeatureTreeIndexPayload | null): FrontendPageDetail[] {
@@ -458,7 +537,11 @@ function toApiEndpointsFromIndex(payload: FeatureTreeIndexPayload | null): ApiEn
 }
 
 function toImplementationApiEndpoints(
-  source: FeatureTreeIndexPayload["nextjsApis"] | FeatureTreeIndexPayload["rustApis"],
+  source:
+    | FeatureTreeIndexPayload["nextjsApis"]
+    | FeatureTreeIndexPayload["rustApis"]
+    | FeatureTreeIndexPayload["implementationApis"],
+  fallbackLabel?: string,
 ): ApiImplementationDetail[] {
   if (!Array.isArray(source)) {
     return [];
@@ -466,6 +549,7 @@ function toImplementationApiEndpoints(
 
   return source
     .map((api) => ({
+      label: normalizeImplementationLabel(api.label?.trim() ?? fallbackLabel ?? "implementation"),
       group: api.domain?.trim() ?? "",
       method: api.method?.trim() ?? "",
       endpoint: api.path?.trim() ?? "",
@@ -473,7 +557,38 @@ function toImplementationApiEndpoints(
         ? api.sourceFiles.map((file) => file.trim()).filter(Boolean)
         : [],
     }))
-    .filter((api) => api.method && api.endpoint);
+    .filter((api) => api.label && api.method && api.endpoint);
+}
+
+function mergeImplementationApiEndpoints(...lists: ApiImplementationDetail[][]): ApiImplementationDetail[] {
+  const merged = new Map<string, ApiImplementationDetail>();
+
+  for (const api of lists.flat()) {
+    const key = `${api.label}:${buildApiLookupKey(api.method, api.endpoint)}`;
+    const existing = merged.get(key);
+    if (existing) {
+      existing.sourceFiles = [...new Set([...existing.sourceFiles, ...api.sourceFiles])].sort();
+      if (!existing.group && api.group) {
+        existing.group = api.group;
+      }
+      continue;
+    }
+
+    merged.set(key, {
+      label: api.label,
+      group: api.group,
+      method: api.method,
+      endpoint: api.endpoint,
+      sourceFiles: [...new Set(api.sourceFiles)].sort(),
+    });
+  }
+
+  return [...merged.values()].sort((left, right) =>
+    left.label.localeCompare(right.label)
+    || left.group.localeCompare(right.group)
+    || left.endpoint.localeCompare(right.endpoint)
+    || left.method.localeCompare(right.method),
+  );
 }
 
 export function parseFeatureTree(repoRoot: string): FeatureTree {
@@ -493,12 +608,19 @@ export function parseFeatureTree(repoRoot: string): FeatureTree {
   const fallbackTables = parseFeatureTreeTables(raw);
   const frontendPages = toFrontendPagesFromIndex(index);
   const apiEndpoints = toApiEndpointsFromIndex(index);
-  const nextjsApiEndpoints = toImplementationApiEndpoints(index?.nextjsApis);
-  const rustApiEndpoints = toImplementationApiEndpoints(index?.rustApis);
+  const nextjsApiEndpoints = toImplementationApiEndpoints(index?.nextjsApis, "nextjs");
+  const rustApiEndpoints = toImplementationApiEndpoints(index?.rustApis, "rust");
+  const implementationApiEndpoints = toImplementationApiEndpoints(index?.implementationApis);
   const resolvedFrontendPages = frontendPages.length > 0 ? frontendPages : fallbackTables.frontendPages;
   const resolvedApiEndpoints = apiEndpoints.length > 0 ? apiEndpoints : fallbackTables.apiEndpoints;
   const resolvedNextjsApiEndpoints = nextjsApiEndpoints.length > 0 ? nextjsApiEndpoints : fallbackTables.nextjsApiEndpoints;
   const resolvedRustApiEndpoints = rustApiEndpoints.length > 0 ? rustApiEndpoints : fallbackTables.rustApiEndpoints;
+  const resolvedImplementationApiEndpoints = mergeImplementationApiEndpoints(
+    implementationApiEndpoints,
+    resolvedNextjsApiEndpoints,
+    resolvedRustApiEndpoints,
+    fallbackTables.implementationApiEndpoints,
+  );
   const normalizedMetadata = normalizeSurfaceMetadata({
     metadata: {
       schemaVersion: 1,
@@ -544,6 +666,12 @@ export function parseFeatureTree(repoRoot: string): FeatureTree {
       path: api.endpoint,
       sourceFiles: api.sourceFiles,
     })),
+    implementationApis: resolvedImplementationApiEndpoints.map((api) => ({
+      domain: api.group,
+      method: api.method,
+      path: api.endpoint,
+      sourceFiles: api.sourceFiles,
+    })),
   });
 
   return {
@@ -568,6 +696,7 @@ export function parseFeatureTree(repoRoot: string): FeatureTree {
     apiEndpoints: resolvedApiEndpoints,
     nextjsApiEndpoints: resolvedNextjsApiEndpoints,
     rustApiEndpoints: resolvedRustApiEndpoints,
+    implementationApiEndpoints: resolvedImplementationApiEndpoints,
   };
 }
 
