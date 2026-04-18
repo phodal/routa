@@ -112,6 +112,10 @@ pub struct HarnessEvolveArgs {
     #[arg(long, default_value_t = false)]
     pub learn: bool,
 
+    /// Run a single dry-run fitness speed experiment via harness-autoresearch.sh (experimental).
+    #[arg(long, default_value_t = false)]
+    pub speed_profile: bool,
+
     /// Use AI specialist for contextual recommendations (experimental).
     #[arg(long, default_value_t = false)]
     pub ai: bool,
@@ -450,6 +454,7 @@ async fn run_evolve(db_path: &str, args: &HarnessEvolveArgs) -> Result<(), Strin
             ai_provider_timeout_ms: args.provider_timeout_ms,
             ai_provider_retries: args.provider_retries,
             learn: args.learn,
+            speed_profile: args.speed_profile,
         },
         state.as_ref(),
     )

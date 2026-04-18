@@ -557,6 +557,52 @@ fn app_cache_does_not_start_local_run_without_force() {
 }
 
 #[test]
+fn app_cache_ignores_duplicate_idle_force_refresh_within_debounce_window() {
+    let state = sample_runtime_state_with_dirty_file();
+    let mut cache = AppCache::new(&state.repo_root);
+    let cache_key = "mode=fast;branch=main;ahead=0;files=src/lib.rs:modify:1".to_string();
+
+    cache.active_fitness_history_mut().cache_key = Some(cache_key.clone());
+    cache.sync_cache_key_from_active_mode();
+    cache.fitness_last_triggered_ms = Some(chrono::Utc::now().timestamp_millis());
+
+    cache.request_fitness_refresh(
+        state.repo_root.clone(),
+        cache_key,
+        true,
+        fitness::FitnessRunMode::Fast,
+    );
+
+    assert!(!cache.is_fitness_running());
+    assert!(!cache.pending_fitness);
+    assert!(cache.queued_fitness_refresh.is_none());
+}
+
+#[test]
+fn app_cache_starts_new_force_refresh_for_new_cache_key_within_debounce_window() {
+    let state = sample_runtime_state_with_dirty_file();
+    let mut cache = AppCache::new(&state.repo_root);
+
+    cache.active_fitness_history_mut().cache_key = Some("mode=fast;branch=main;ahead=0;files=".to_string());
+    cache.sync_cache_key_from_active_mode();
+    cache.fitness_last_triggered_ms = Some(chrono::Utc::now().timestamp_millis());
+
+    cache.request_fitness_refresh(
+        state.repo_root.clone(),
+        "mode=fast;branch=main;ahead=1;files=src/lib.rs:modify:2".to_string(),
+        true,
+        fitness::FitnessRunMode::Fast,
+    );
+
+    assert!(cache.is_fitness_running());
+    assert!(cache.pending_fitness);
+    assert_eq!(
+        cache.fitness_cache_key.as_deref(),
+        Some("mode=fast;branch=main;ahead=1;files=src/lib.rs:modify:2")
+    );
+}
+
+#[test]
 fn warm_test_mappings_waits_for_startup_delay() {
     let state = sample_runtime_state_with_dirty_file();
     let mut cache = AppCache::new(&state.repo_root);

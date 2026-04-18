@@ -210,6 +210,10 @@ pub(super) struct AppCache {
     fitness_is_running: bool,
     fitness_cache_key: Option<String>,
     fitness_repo_root: String,
+    /// Timestamp (ms since epoch) of the last fitness trigger dispatch, used for
+    /// debounce: rapid consecutive force-refresh requests within the debounce window
+    /// are coalesced into a single queued run instead of launching immediately.
+    fitness_last_triggered_ms: Option<i64>,
     feature_trace_catalogs: Option<FeatureTraceCatalogs>,
     feature_trace_load_attempted: bool,
     test_mapping_snapshot: Option<TestMappingSnapshot>,
@@ -320,6 +324,7 @@ impl AppCache {
             fitness_is_running: false,
             fitness_cache_key: None,
             fitness_repo_root: repo_root.to_string(),
+            fitness_last_triggered_ms: None,
             feature_trace_catalogs: None,
             feature_trace_load_attempted: false,
             test_mapping_snapshot: None,
@@ -843,6 +848,18 @@ impl AppCache {
             self.queued_fitness_refresh = Some((repo_root, cache_key, force, mode));
             return;
         }
+        // Debounce: suppress identical force-refresh requests that arrive shortly
+        // after the previous dispatch. Queueing while idle would strand the refresh
+        // because there is no active run left to drain queued_fitness_refresh.
+        const FITNESS_DEBOUNCE_MS: i64 = 500;
+        let now_ms = chrono::Utc::now().timestamp_millis();
+        if let Some(last_triggered_ms) = self.fitness_last_triggered_ms {
+            let same_cache_key = self.fitness_cache_key.as_deref() == Some(cache_key.as_str());
+            if same_cache_key && now_ms - last_triggered_ms < FITNESS_DEBOUNCE_MS {
+                return;
+            }
+        }
+        self.fitness_last_triggered_ms = Some(now_ms);
         self.fitness_cache_key = Some(cache_key.clone());
         self.active_fitness_history_mut().cache_key = Some(cache_key.clone());
         let _ = self.eval_worker_tx.send(EvalCommand::Fitness {

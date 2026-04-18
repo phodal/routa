@@ -54,6 +54,20 @@ export type EntrixRunSummary = {
   metricCount: number;
   failingMetricCount: number;
   dimensions: EntrixDimensionSummary[];
+  /** Total wall-time of the entrix run in milliseconds (from command start to output). */
+  durationMs?: number;
+  /** Duration of the single slowest metric in milliseconds. */
+  slowestMetricMs?: number | null;
+  /**
+   * Aliases for metricCount/failingMetricCount using the pi-autoresearch METRIC naming
+   * convention so autoresearch consumers can consume them without field remapping.
+   */
+  /** Number of checks run (autoresearch alias for metricCount). */
+  checksCount?: number;
+  /** Number of checks that did not pass (autoresearch alias for failingMetricCount). */
+  failedChecks?: number;
+  /** Ratio of passed/waived checks to total checks (0.0-1.0). */
+  passRate?: number;
 };
 
 export type EntrixRunResponse = {

@@ -25,6 +25,7 @@ pub use types::*;
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 use crate::commands::specialist;
 use chrono::Utc;
@@ -55,6 +56,11 @@ pub async fn evaluate_harness_engineering(
     // Learn mode: Generate playbooks from evolution history
     if options.learn {
         return generate_playbooks_from_history(repo_root, options);
+    }
+
+    // Speed profile mode: run harness-autoresearch.sh dry-run experiment
+    if options.speed_profile {
+        return run_speed_profile_experiment(repo_root, options);
     }
 
     // Bootstrap mode: detect weak repo and synthesize initial harness
@@ -1305,4 +1311,120 @@ fn required_string(value: &Value, key: &str) -> Result<String, String> {
         .and_then(Value::as_str)
         .map(ToString::to_string)
         .ok_or_else(|| format!("missing string field {key}"))
+}
+
+/// Run a single fitness speed-profile experiment via `scripts/fitness/harness-autoresearch.sh`.
+/// This is a dry-run mode: it runs the experiment and emits METRIC lines but does not apply any
+/// changes. The structured result is embedded in the `warnings` field for traceability.
+fn run_speed_profile_experiment(
+    repo_root: &Path,
+    options: &HarnessEngineeringOptions,
+) -> Result<HarnessEngineeringReport, String> {
+    let script_path = repo_root.join("scripts/fitness/harness-autoresearch.sh");
+    let script_exists = script_path.is_file();
+
+    let mut warnings = Vec::new();
+    let mut speed_metrics: Vec<String> = Vec::new();
+
+    if script_exists {
+        let output = Command::new("bash")
+            .arg(&script_path)
+            .arg("--tier")
+            .arg("fast")
+            .arg("--repo-root")
+            .arg(repo_root)
+            .current_dir(repo_root)
+            .output();
+
+        match output {
+            Ok(result) => {
+                let stdout = String::from_utf8_lossy(&result.stdout).to_string();
+                let stderr = String::from_utf8_lossy(&result.stderr).to_string();
+                for line in stdout.lines() {
+                    if line.starts_with("METRIC ") || line.starts_with("checks_failed") {
+                        speed_metrics.push(line.to_string());
+                    }
+                }
+                if !result.status.success() && !stderr.is_empty() {
+                    warnings.push(format!(
+                        "speed-profile experiment exited with status {}; stderr: {}",
+                        result.status,
+                        stderr.trim().chars().take(200).collect::<String>()
+                    ));
+                }
+            }
+            Err(error) => {
+                warnings.push(format!("speed-profile experiment failed to launch: {error}"));
+            }
+        }
+    } else {
+        warnings.push(format!(
+            "speed-profile: experiment script not found at {}; run entrix directly to gather metrics",
+            script_path.display()
+        ));
+    }
+
+    let metrics_summary = if speed_metrics.is_empty() {
+        "No METRIC output captured.".to_string()
+    } else {
+        speed_metrics.join(", ")
+    };
+
+    warnings.push(format!("speed-profile metrics: {metrics_summary}"));
+
+    Ok(HarnessEngineeringReport {
+        generated_at: chrono::Utc::now().to_rfc3339(),
+        repo_root: repo_root.display().to_string(),
+        mode: "speed-profile-dry-run".to_string(),
+        report_path: options.output_path.display().to_string(),
+        summary: HarnessEngineeringSummary {
+            total_gaps: 0,
+            blocking_gaps: 0,
+            harness_mutation_candidates: 0,
+            non_harness_gaps: 0,
+            low_risk_patch_candidates: 0,
+        },
+        inputs: HarnessEngineeringInputs {
+            repo_signals: None,
+            templates: TemplateSummary {
+                templates_checked: 0,
+                drift_error_count: 0,
+                drift_warning_count: 0,
+                missing_sensor_files: 0,
+                missing_automation_refs: 0,
+                warnings: 0,
+            },
+            automations: AutomationSummary {
+                definition_count: 0,
+                pending_signal_count: 0,
+                recent_run_count: 0,
+                definition_only_count: 0,
+                warnings: 0,
+            },
+            specs: SpecSummary {
+                source_count: 0,
+                feature_count: 0,
+                systems: Vec::new(),
+                warnings: 0,
+            },
+            fitness: FitnessSummary {
+                manifest_present: repo_root.join(FITNESS_MANIFEST_RELATIVE_PATH).exists(),
+                fluency_snapshots_loaded: 0,
+                blocking_criteria_count: 0,
+                critical_blocking_criteria_count: 0,
+            },
+        },
+        gaps: Vec::new(),
+        recommended_actions: Vec::new(),
+        patch_candidates: Vec::new(),
+        verification_plan: vec![HarnessEngineeringVerificationStep {
+            label: "Fitness dry-run check".to_string(),
+            command: format!("cd {} && entrix run --dry-run", repo_root.display()),
+            proves: "Fitness rulebook remains intact after speed-profile experiment.".to_string(),
+        }],
+        verification_results: Vec::new(),
+        ratchet: None,
+        ai_assessment: None,
+        warnings,
+    })
 }

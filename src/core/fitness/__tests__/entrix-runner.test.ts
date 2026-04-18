@@ -60,6 +60,7 @@ describe("entrix-runner helpers", () => {
       dimensionCount: 1,
       metricCount: 8,
       failingMetricCount: 1,
+      passRate: 0.875,
     });
     expect(summary.dimensions[0]).toMatchObject({
       name: "code_quality",

@@ -191,17 +191,32 @@ export function summarizeEntrixReport(report: unknown): EntrixRunSummary {
     }))
     .sort((left, right) => right.failingMetrics.length - left.failingMetrics.length);
 
+  const metricCount = normalized.dimensions.reduce((sum, dimension) => sum + dimension.total, 0);
+  const failingMetricCount = summarizedDimensions.reduce(
+    (sum, dimension) => sum + dimension.failingMetrics.length,
+    0,
+  );
+
+  const allMetrics = normalized.dimensions.flatMap((d) => d.results);
+  const slowestMetricMs = allMetrics.length > 0
+    ? Math.max(...allMetrics.map((m) => m.durationMs ?? 0))
+    : null;
+  const passRate = metricCount > 0
+    ? (metricCount - failingMetricCount) / metricCount
+    : 1.0;
+
   return {
     finalScore: normalized.finalScore,
     hardGateBlocked: normalized.hardGateBlocked,
     scoreBlocked: normalized.scoreBlocked,
     dimensionCount: summarizedDimensions.length,
-    metricCount: normalized.dimensions.reduce((sum, dimension) => sum + dimension.total, 0),
-    failingMetricCount: summarizedDimensions.reduce(
-      (sum, dimension) => sum + dimension.failingMetrics.length,
-      0,
-    ),
+    metricCount,
+    failingMetricCount,
     dimensions: summarizedDimensions.slice(0, 8),
+    slowestMetricMs,
+    checksCount: metricCount,
+    failedChecks: failingMetricCount,
+    passRate: Math.round(passRate * 10000) / 10000,
   };
 }
 
@@ -285,6 +300,7 @@ export async function executeEntrixRun(params: {
       const jsonOutput = extractJsonOutput(result.stdout);
       const report = JSON.parse(jsonOutput) as unknown;
       const normalizedReport = normalizeEntrixReport(report);
+      const summary = summarizeEntrixReport(normalizedReport);
       return {
         generatedAt: new Date().toISOString(),
         repoRoot: params.repoRoot,
@@ -295,7 +311,7 @@ export async function executeEntrixRun(params: {
         durationMs: result.durationMs,
         exitCode: result.exitCode,
         report: normalizedReport,
-        summary: summarizeEntrixReport(normalizedReport),
+        summary: { ...summary, durationMs: result.durationMs },
       };
     } catch (error) {
       const details = result.stderr.trim() || result.stdout.trim() || result.error;
