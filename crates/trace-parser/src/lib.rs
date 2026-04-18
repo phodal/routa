@@ -26,9 +26,8 @@ pub use transcript_discovery::{
 };
 pub use transcript_parser::{
     collect_active_transcript_summaries, collect_broad_transcript_summaries,
-    collect_recent_claude_project_transcripts,
-    collect_recent_codex_transcripts, collect_recent_transcript_summaries,
-    collect_recent_transcript_summaries_for_client,
+    collect_recent_claude_project_transcripts, collect_recent_codex_transcripts,
+    collect_recent_transcript_summaries, collect_recent_transcript_summaries_for_client,
     collect_recent_transcripts, collect_recent_transcripts_from_dirs,
     parse_matching_transcript_summaries, parse_transcript_backfill,
     recent_prompt_previews_from_transcript, recover_prompt_from_transcript,

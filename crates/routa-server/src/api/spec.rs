@@ -1,16 +1,16 @@
 use std::path::{Path, PathBuf};
 
 use axum::{
-    Json, Router,
     extract::{Query, State},
     routing::get,
+    Json, Router,
 };
 use feature_trace::api_endpoints_from_openapi_contract;
 use serde::Deserialize;
-use serde_json::{Value as JsonValue, json};
+use serde_json::{json, Value as JsonValue};
 use std::collections::BTreeMap;
 
-use crate::api::repo_context::{ResolveRepoRootOptions, extract_frontmatter, resolve_repo_root};
+use crate::api::repo_context::{extract_frontmatter, resolve_repo_root, ResolveRepoRootOptions};
 use crate::error::ServerError;
 use crate::state::AppState;
 

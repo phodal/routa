@@ -196,17 +196,15 @@ mod tests {
             Some(&custom_claude_root),
         );
 
-        assert!(
-            roots
-                .iter()
-                .any(|root| root.kind == TranscriptSessionSource::Codex && root.path == codex_root)
-        );
+        assert!(roots
+            .iter()
+            .any(|root| root.kind == TranscriptSessionSource::Codex && root.path == codex_root));
         assert!(roots.iter().any(|root| {
-            root.kind == TranscriptSessionSource::ClaudeProjects && root.path == override_claude_root
+            root.kind == TranscriptSessionSource::ClaudeProjects
+                && root.path == override_claude_root
         }));
         assert!(!roots.iter().any(|root| {
-            root.kind == TranscriptSessionSource::ClaudeProjects
-                && root.path == default_claude_root
+            root.kind == TranscriptSessionSource::ClaudeProjects && root.path == default_claude_root
         }));
     }
 
@@ -241,7 +239,9 @@ mod tests {
             .all(|root| root.kind == TranscriptSessionSource::AugmentSessions));
 
         let all = discover_transcript_session_roots_for_client(Some("all"));
-        assert!(all.iter().any(|root| root.kind == TranscriptSessionSource::Codex));
+        assert!(all
+            .iter()
+            .any(|root| root.kind == TranscriptSessionSource::Codex));
         assert!(all
             .iter()
             .any(|root| root.kind == TranscriptSessionSource::ClaudeProjects));
@@ -277,21 +277,19 @@ mod tests {
 
         assert!(roots
             .iter()
-            .any(|root| root.kind == TranscriptSessionSource::QoderProjects && root.path == qoder_root));
+            .any(|root| root.kind == TranscriptSessionSource::QoderProjects
+                && root.path == qoder_root));
         assert!(roots
             .iter()
-            .any(|root| root.kind == TranscriptSessionSource::AugmentSessions && root.path == augment_root));
-        assert!(
-            !roots
-                .iter()
-                .any(|root| root.kind == TranscriptSessionSource::QoderProjects
-                    && root.path == default_qoder_root)
-        );
-        assert!(
-            !roots
-                .iter()
-                .any(|root| root.kind == TranscriptSessionSource::AugmentSessions
-                    && root.path == default_augment_root)
-        );
+            .any(|root| root.kind == TranscriptSessionSource::AugmentSessions
+                && root.path == augment_root));
+        assert!(!roots
+            .iter()
+            .any(|root| root.kind == TranscriptSessionSource::QoderProjects
+                && root.path == default_qoder_root));
+        assert!(!roots
+            .iter()
+            .any(|root| root.kind == TranscriptSessionSource::AugmentSessions
+                && root.path == default_augment_root));
     }
 }

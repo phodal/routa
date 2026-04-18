@@ -1005,9 +1005,8 @@ paths:
         assert!(apis.iter().any(|api| {
             api.domain == "v1" && api.endpoint == "/v1/users" && api.method == "GET"
         }));
-        assert!(
-            apis.iter()
-                .any(|api| { api.domain == "spec" && api.endpoint == "/api/spec/issues" })
-        );
+        assert!(apis
+            .iter()
+            .any(|api| { api.domain == "spec" && api.endpoint == "/api/spec/issues" }));
     }
 }

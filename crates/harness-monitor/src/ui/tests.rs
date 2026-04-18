@@ -397,11 +397,13 @@ fn seed_live_run_feature_trace(cache: &mut AppCache) {
             session_id: "live-hook-check".to_string(),
             changed_files: vec!["crates/harness-monitor/src/tui.rs".to_string()],
             tool_call_counts: BTreeMap::from([("Write".to_string(), 1)]),
-            prompt_previews: vec!["Inspect the feature explorer live hook output".to_string()], file_operation_counts: BTreeMap::from([("modified".to_string(), 1)]),
+            prompt_previews: vec!["Inspect the feature explorer live hook output".to_string()],
+            file_operation_counts: BTreeMap::from([("modified".to_string(), 1)]),
             surface_links: vec![trace_parser::FeatureSurfaceLink {
                 kind: trace_parser::FeatureSurfaceKind::Page,
                 route: "/workspace/:workspaceId/feature-explorer".to_string(),
-                source_path: "src/app/workspace/[workspaceId]/feature-explorer/page.tsx".to_string(),
+                source_path: "src/app/workspace/[workspaceId]/feature-explorer/page.tsx"
+                    .to_string(),
                 via_path: "crates/harness-monitor/src/tui.rs".to_string(),
                 confidence: trace_parser::SurfaceLinkConfidence::Medium,
             }],

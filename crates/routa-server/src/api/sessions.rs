@@ -123,7 +123,8 @@ async fn list_sessions(
     let limit = query.limit;
     let surface = query.surface.clone();
     let parent_session_id = query.parent_session_id.clone();
-    let use_team_surface = should_apply_team_surface(surface.as_deref(), query.parent_session_id.as_deref());
+    let use_team_surface =
+        should_apply_team_surface(surface.as_deref(), query.parent_session_id.as_deref());
     let service_limit = service_limit_for_query(limit, query.parent_session_id.as_deref());
     let mut sessions = service
         .list_sessions(SessionListQuery {
@@ -176,7 +177,11 @@ fn session_specialist_id(session: &Value) -> Option<&str> {
 }
 
 fn normalize_session_name(name: Option<&str>) -> String {
-    name.unwrap_or_default().split_whitespace().collect::<Vec<_>>().join(" ").to_lowercase()
+    name.unwrap_or_default()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .to_lowercase()
 }
 
 fn should_apply_team_surface(surface: Option<&str>, parent_session_id: Option<&str>) -> bool {
@@ -293,7 +298,12 @@ fn count_descendants(
                     if visiting.iter().any(|current| current == child_id) {
                         0
                     } else {
-                        1 + count_descendants(child_id, child_map, descendants_by_session_id, visiting)
+                        1 + count_descendants(
+                            child_id,
+                            child_map,
+                            descendants_by_session_id,
+                            visiting,
+                        )
                     }
                 })
                 .sum()
@@ -1476,10 +1486,7 @@ mod tests {
             }),
         ];
 
-        let non_empty: Vec<_> = sessions
-            .into_iter()
-            .filter(session_is_non_empty)
-            .collect();
+        let non_empty: Vec<_> = sessions.into_iter().filter(session_is_non_empty).collect();
 
         assert_eq!(non_empty.len(), 1);
         assert_eq!(non_empty[0]["sessionId"].as_str(), Some("visible-session"));
