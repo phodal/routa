@@ -291,6 +291,10 @@ export interface TranslationDictionary extends ExtendedTranslationDictionarySect
     pendingImplementation: string;
     screenshotComingSoon: string;
     selectedFileSignals: string;
+    selectedSessionsLabel: string;
+    selectAllSessions: string;
+    clearSessionSelection: string;
+    noSessionsSelected: string;
     sessionDiagnosticsLabel: string;
     declaredPages: string;
     declaredApis: string;

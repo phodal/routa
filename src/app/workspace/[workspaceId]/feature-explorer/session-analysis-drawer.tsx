@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useMemo, useState } from "react";
 import { X } from "lucide-react";
 
 import type { AcpProviderInfo } from "@/client/acp-client";
@@ -9,6 +9,10 @@ import { useTranslation } from "@/i18n";
 
 import { sanitizeChangedFiles } from "./session-analysis";
 import type { AggregatedSelectionSession } from "./types";
+
+function sessionKeyFor(session: Pick<AggregatedSelectionSession, "provider" | "sessionId">): string {
+  return `${session.provider}:${session.sessionId}`;
+}
 
 function formatShortDate(iso: string): string {
   if (!iso || iso === "-") return "-";
@@ -49,11 +53,22 @@ function getSignalProviderBadgeClass(provider: string): string {
   }
 }
 
-function ContextSection({ title, children }: { title: string; children: ReactNode }) {
+function ContextSection({
+  title,
+  actions,
+  children,
+}: {
+  title: string;
+  actions?: ReactNode;
+  children: ReactNode;
+}) {
   return (
     <section className="rounded-sm border border-desktop-border bg-desktop-bg-primary p-2.5">
-      <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-desktop-text-secondary">
-        {title}
+      <div className="mb-1.5 flex items-center justify-between gap-2">
+        <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-desktop-text-secondary">
+          {title}
+        </div>
+        {actions}
       </div>
       {children}
     </section>
@@ -114,12 +129,24 @@ export function SessionAnalysisDrawer({
   isStartingSessionAnalysis?: boolean;
   sessionAnalysisError?: string | null;
   onClose: () => void;
-  onStartSessionAnalysis: () => void;
+  onStartSessionAnalysis: (sessions: AggregatedSelectionSession[]) => void;
   t: ReturnType<typeof useTranslation>["t"];
 }) {
-  const [selectedSessionKey, setSelectedSessionKey] = useState("");
+  const allSessionKeys = useMemo(
+    () => selectedScopeSessions.map((session) => sessionKeyFor(session)),
+    [selectedScopeSessions],
+  );
+  const [selectedSessionKey, setSelectedSessionKey] = useState(() => allSessionKeys[0] ?? "");
+  const [selectedSessionKeys, setSelectedSessionKeys] = useState<string[]>(() => allSessionKeys);
+
+  const selectedSessionKeySet = useMemo(() => new Set(selectedSessionKeys), [selectedSessionKeys]);
+  const selectedSessions = useMemo(
+    () => selectedScopeSessions.filter((session) => selectedSessionKeySet.has(sessionKeyFor(session))),
+    [selectedScopeSessions, selectedSessionKeySet],
+  );
+
   const activeSession = selectedScopeSessions.find(
-    (session) => `${session.provider}:${session.sessionId}` === selectedSessionKey,
+    (session) => sessionKeyFor(session) === selectedSessionKey,
   ) ?? selectedScopeSessions[0] ?? null;
   const activeSessionDiagnostics = activeSession?.diagnostics;
   const activeSessionPrompts = activeSession
@@ -130,7 +157,15 @@ export function SessionAnalysisDrawer({
         : [])
     : [];
   const activeSessionChangedFiles = activeSession ? sanitizeChangedFiles(activeSession.changedFiles) : [];
-  const activeSessionKey = activeSession ? `${activeSession.provider}:${activeSession.sessionId}` : "";
+  const activeSessionKey = activeSession ? sessionKeyFor(activeSession) : "";
+
+  const handleToggleSession = (sessionKey: string) => {
+    setSelectedSessionKeys((current) => (
+      current.includes(sessionKey)
+        ? current.filter((key) => key !== sessionKey)
+        : [...current, sessionKey]
+    ));
+  };
 
   if (!open) {
     return null;
@@ -144,7 +179,7 @@ export function SessionAnalysisDrawer({
         data-testid="feature-explorer-session-analysis-backdrop"
       />
       <aside
-        className="fixed inset-y-0 right-0 z-50 flex h-full w-full max-w-[72rem] flex-col overflow-hidden border-l border-desktop-border bg-desktop-bg-primary shadow-2xl"
+        className="fixed inset-y-0 right-0 z-50 flex h-full w-full max-w-[88rem] flex-col overflow-hidden border-l border-desktop-border bg-desktop-bg-primary shadow-2xl 2xl:max-w-[100rem]"
         role="dialog"
         aria-modal="true"
         aria-label={t.featureExplorer.sessionAnalysisTitle}
@@ -174,82 +209,108 @@ export function SessionAnalysisDrawer({
           <div className="flex flex-wrap items-center gap-2">
             <InlineMetricPill label={t.featureExplorer.filesLabel} value={String(selectedFilePaths.length)} />
             <InlineMetricPill label={t.featureExplorer.sessionsLabel} value={String(selectedScopeSessions.length)} />
-            <div className="ml-auto flex items-center gap-2">
-              <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-desktop-text-secondary">
-                {t.settings.provider}
-              </span>
-              <AcpProviderDropdown
-                providers={providers}
-                selectedProvider={selectedProvider}
-                onProviderChange={onProviderChange}
-                dataTestId="feature-explorer-session-analysis-provider"
-              />
-            </div>
+            <InlineMetricPill label={t.featureExplorer.selectedSessionsLabel} value={String(selectedSessions.length)} />
           </div>
         </div>
 
         <div className="min-h-0 flex-1 overflow-hidden">
           <div className="flex h-full min-h-0 flex-col xl:flex-row">
-            <div className="flex min-h-0 w-full shrink-0 flex-col border-b border-desktop-border xl:w-[24rem] xl:border-b-0 xl:border-r">
+            <div className="flex min-h-0 w-full shrink-0 flex-col border-b border-desktop-border xl:w-[30rem] xl:border-b-0 xl:border-r 2xl:w-[34rem]">
               <div className="space-y-3 overflow-y-auto p-4">
                 <ContextSection title={t.featureExplorer.selectedFiles}>
                   <CompactFileList files={selectedFilePaths} />
                 </ContextSection>
 
-                <ContextSection title={t.featureExplorer.selectedFileSignals}>
+                <ContextSection
+                  title={t.featureExplorer.selectedFileSignals}
+                  actions={(
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedSessionKeys(selectedScopeSessions.map((session) => sessionKeyFor(session)))}
+                        className="rounded-sm border border-desktop-border bg-desktop-bg-secondary px-2 py-1 text-[10px] text-desktop-text-secondary hover:text-desktop-text-primary"
+                      >
+                        {t.featureExplorer.selectAllSessions}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedSessionKeys([])}
+                        className="rounded-sm border border-desktop-border bg-desktop-bg-secondary px-2 py-1 text-[10px] text-desktop-text-secondary hover:text-desktop-text-primary"
+                      >
+                        {t.featureExplorer.clearSessionSelection}
+                      </button>
+                    </div>
+                  )}
+                >
                   <div className="space-y-2">
                     {selectedScopeSessions.map((session) => {
-                      const sessionKey = `${session.provider}:${session.sessionId}`;
+                      const sessionKey = sessionKeyFor(session);
                       const diagnostics = session.diagnostics;
                       const isActive = sessionKey === activeSessionKey;
+                      const isSelected = selectedSessionKeySet.has(sessionKey);
 
                       return (
-                        <button
+                        <div
                           key={sessionKey}
-                          type="button"
-                          onClick={() => setSelectedSessionKey(sessionKey)}
                           className={`w-full rounded-sm border px-3 py-2 text-left transition-colors ${
                             isActive
                               ? "border-desktop-accent bg-desktop-bg-active"
-                              : "border-desktop-border bg-desktop-bg-secondary hover:bg-desktop-bg-primary"
+                              : isSelected
+                                ? "border-desktop-border bg-desktop-bg-primary"
+                                : "border-desktop-border bg-desktop-bg-secondary"
                           }`}
                         >
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="min-w-0 flex-1">
-                              <div className="flex flex-wrap items-center gap-1.5">
-                                <span
-                                  className={`rounded-sm border px-1.5 py-0.5 text-[10px] font-semibold ${getSignalProviderBadgeClass(session.provider)}`}
-                                >
-                                  {formatSignalProvider(session.provider)}
+                          <div className="flex items-start gap-2">
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => handleToggleSession(sessionKey)}
+                              className="mt-1 h-3.5 w-3.5 rounded border-desktop-border bg-desktop-bg-secondary accent-[var(--desktop-accent)]"
+                              data-testid={`feature-explorer-session-analysis-toggle-${session.sessionId}`}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setSelectedSessionKey(sessionKey)}
+                              className="min-w-0 flex-1 text-left"
+                            >
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex flex-wrap items-center gap-1.5">
+                                    <span
+                                      className={`rounded-sm border px-1.5 py-0.5 text-[10px] font-semibold ${getSignalProviderBadgeClass(session.provider)}`}
+                                    >
+                                      {formatSignalProvider(session.provider)}
+                                    </span>
+                                    <code className="min-w-0 flex-1 break-all text-[10px] text-desktop-text-primary">
+                                      {session.sessionId}
+                                    </code>
+                                  </div>
+                                  <div className="mt-1 line-clamp-3 text-[11px] leading-5 text-desktop-text-secondary">
+                                    {session.promptSnippet || t.featureExplorer.noPromptHistory}
+                                  </div>
+                                </div>
+                                <span className="shrink-0 text-[10px] text-desktop-text-secondary">
+                                  {formatShortDate(session.updatedAt)}
                                 </span>
-                                <code className="min-w-0 flex-1 break-all text-[10px] text-desktop-text-primary">
-                                  {session.sessionId}
-                                </code>
                               </div>
-                              <div className="mt-1 line-clamp-3 text-[11px] leading-5 text-desktop-text-secondary">
-                                {session.promptSnippet || t.featureExplorer.noPromptHistory}
-                              </div>
-                            </div>
-                            <span className="shrink-0 text-[10px] text-desktop-text-secondary">
-                              {formatShortDate(session.updatedAt)}
-                            </span>
-                          </div>
 
-                          <div className="mt-2 flex flex-wrap gap-1.5">
-                            <InlineMetricPill
-                              label={t.featureExplorer.toolCallsLabel}
-                              value={String(diagnostics?.toolCallCount ?? session.toolNames.length)}
-                            />
-                            <InlineMetricPill
-                              label={t.featureExplorer.failedToolCallsLabel}
-                              value={String(diagnostics?.failedToolCallCount ?? 0)}
-                            />
-                            <InlineMetricPill
-                              label={t.featureExplorer.readFilesLabel}
-                              value={String(diagnostics?.readFiles.length ?? 0)}
-                            />
+                              <div className="mt-2 flex flex-wrap gap-1.5">
+                                <InlineMetricPill
+                                  label={t.featureExplorer.toolCallsLabel}
+                                  value={String(diagnostics?.toolCallCount ?? session.toolNames.length)}
+                                />
+                                <InlineMetricPill
+                                  label={t.featureExplorer.failedToolCallsLabel}
+                                  value={String(diagnostics?.failedToolCallCount ?? 0)}
+                                />
+                                <InlineMetricPill
+                                  label={t.featureExplorer.readFilesLabel}
+                                  value={String(diagnostics?.readFiles.length ?? 0)}
+                                />
+                              </div>
+                            </button>
                           </div>
-                        </button>
+                        </div>
                       );
                     })}
                   </div>
@@ -304,7 +365,7 @@ export function SessionAnalysisDrawer({
                     </div>
                   </ContextSection>
 
-                  <div className="grid gap-3 2xl:grid-cols-2">
+                  <div className="grid gap-3 xl:grid-cols-2">
                     <ContextSection title={t.featureExplorer.promptHistory}>
                       {activeSessionPrompts.length > 0 ? (
                         <div className="space-y-1.5">
@@ -435,28 +496,46 @@ export function SessionAnalysisDrawer({
         </div>
 
         <div className="border-t border-desktop-border bg-desktop-bg-secondary/40 px-4 py-3">
-          <div className="flex items-center justify-end gap-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-sm border border-desktop-border bg-desktop-bg-primary px-3 py-1.5 text-[11px] text-desktop-text-secondary hover:text-desktop-text-primary"
-            >
-              {t.common.close}
-            </button>
-            <button
-              type="button"
-              onClick={onStartSessionAnalysis}
-              disabled={isStartingSessionAnalysis}
-              className={`rounded-sm border px-3 py-1.5 text-[11px] font-medium transition-colors ${
-                isStartingSessionAnalysis
-                  ? "cursor-wait border-desktop-border bg-desktop-bg-primary/40 text-desktop-text-secondary/60"
-                  : "border-desktop-accent bg-desktop-bg-active text-desktop-text-primary hover:bg-desktop-bg-primary"
-              }`}
-            >
-              {isStartingSessionAnalysis
-                ? t.featureExplorer.sessionAnalysisStarting
-                : t.featureExplorer.sessionAnalysisAction}
-            </button>
+          <div className="flex items-center justify-between gap-3">
+            <div className="text-[11px] text-desktop-text-secondary">
+              {selectedSessions.length > 0
+                ? `${selectedSessions.length} ${t.featureExplorer.selectedSessionsLabel}`
+                : t.featureExplorer.noSessionsSelected}
+            </div>
+            <div className="flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className="rounded-sm border border-desktop-border bg-desktop-bg-primary px-3 py-1.5 text-[11px] text-desktop-text-secondary hover:text-desktop-text-primary"
+              >
+                {t.common.close}
+              </button>
+              <div className="inline-flex items-center gap-2 rounded-sm border border-desktop-border bg-desktop-bg-secondary px-2 py-1">
+                <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-desktop-text-secondary">
+                  {t.settings.provider}
+                </span>
+                <AcpProviderDropdown
+                  providers={providers}
+                  selectedProvider={selectedProvider}
+                  onProviderChange={onProviderChange}
+                  dataTestId="feature-explorer-session-analysis-provider"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => onStartSessionAnalysis(selectedSessions)}
+                disabled={isStartingSessionAnalysis || selectedSessions.length === 0}
+                className={`rounded-sm border px-3 py-1.5 text-[11px] font-medium transition-colors ${
+                  isStartingSessionAnalysis || selectedSessions.length === 0
+                    ? "cursor-wait border-desktop-border bg-desktop-bg-primary/40 text-desktop-text-secondary/60"
+                    : "border-desktop-accent bg-desktop-bg-active text-desktop-text-primary hover:bg-desktop-bg-primary"
+                }`}
+              >
+                {isStartingSessionAnalysis
+                  ? t.featureExplorer.sessionAnalysisStarting
+                  : t.featureExplorer.sessionAnalysisAction}
+              </button>
+            </div>
           </div>
         </div>
       </aside>

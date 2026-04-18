@@ -1016,6 +1016,36 @@ describe("FeatureExplorerPageClient", () => {
                 },
                 resumeCommand: "codex resume 019d-kanban-analysis",
               },
+              {
+                provider: "codex",
+                sessionId: "019d-kanban-followup",
+                updatedAt: "2026-04-17T06:00:00.000Z",
+                promptSnippet: "Verify whether kanban handlers were re-read too often",
+                promptHistory: [
+                  "Verify whether kanban handlers were re-read too often",
+                ],
+                toolNames: ["exec_command"],
+                changedFiles: [
+                  "crates/routa-server/src/api/kanban.rs",
+                  "src/app/workspace/[workspaceId]/kanban/kanban-tab.tsx",
+                ],
+                diagnostics: {
+                  toolCallCount: 2,
+                  failedToolCallCount: 0,
+                  toolCallsByName: {
+                    exec_command: 2,
+                  },
+                  readFiles: [
+                    "crates/routa-server/src/api/kanban.rs",
+                    "src/app/workspace/[workspaceId]/kanban/kanban-tab.tsx",
+                  ],
+                  writtenFiles: ["src/app/workspace/[workspaceId]/kanban/kanban-tab.tsx"],
+                  repeatedReadFiles: [],
+                  repeatedCommands: ["rg -n kanban src/app/workspace/[workspaceId]/kanban/kanban-tab.tsx x2"],
+                  failedTools: [],
+                },
+                resumeCommand: "codex resume 019d-kanban-followup",
+              },
             ],
             toolHistory: ["exec_command", "apply_patch"],
             promptHistory: ["Trace why kanban.rs needed multiple follow-up passes"],
@@ -1049,6 +1079,12 @@ describe("FeatureExplorerPageClient", () => {
     expect(screen.getByText("Failed tools")).toBeTruthy();
     expect(screen.getByText("git status --short")).toBeTruthy();
     expect(screen.getByText("crates/routa-server/src/api/kanban.rs x2")).toBeTruthy();
+    expect(
+      (screen.getByTestId("feature-explorer-session-analysis-toggle-019d-kanban-analysis") as HTMLInputElement).checked,
+    ).toBe(true);
+    expect(
+      (screen.getByTestId("feature-explorer-session-analysis-toggle-019d-kanban-followup") as HTMLInputElement).checked,
+    ).toBe(true);
 
     fireEvent.click(
       within(screen.getByTestId("feature-explorer-session-analysis-provider")).getByRole("button", { name: "Codex" }),
@@ -1090,6 +1126,7 @@ describe("FeatureExplorerPageClient", () => {
     const prompt = analysisAcpState.promptSession.mock.calls[0]?.[1];
     expect(prompt).toBeTruthy();
     expect(prompt).toContain("019d-kanban-analysis");
+    expect(prompt).toContain("019d-kanban-followup");
     expect(prompt).toContain("Summarize what context should have been provided earlier");
     expect(prompt).not.toContain("Operation not permitted");
     expect(sessionLaunchState.storePendingPrompt).not.toHaveBeenCalled();

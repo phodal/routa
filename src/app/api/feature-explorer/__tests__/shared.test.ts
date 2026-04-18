@@ -201,7 +201,6 @@ describe("feature explorer transcript stats", () => {
       sessions: 1,
     });
   });
-
   it("does not attribute unrelated changed files to every feature", () => {
     const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "feature-explorer-unrelated-"));
     process.env.HOME = tempRoot;

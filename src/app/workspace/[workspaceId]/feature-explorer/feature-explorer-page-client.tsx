@@ -880,8 +880,8 @@ export function FeatureExplorerPageClient({
     [analysisProviders, analysisSessionProviderId],
   );
   const featureExplorerLayoutClassName = isAnalysisSessionPaneOpen
-    ? "grid min-h-0 flex-1 xl:grid-cols-[360px_minmax(0,1fr)_500px_minmax(24rem,36rem)] 2xl:grid-cols-[420px_minmax(0,1fr)_560px_minmax(26rem,40rem)]"
-    : "grid min-h-0 flex-1 xl:grid-cols-[360px_minmax(0,1fr)_500px] 2xl:grid-cols-[420px_minmax(0,1fr)_560px]";
+    ? "grid min-h-0 flex-1 xl:grid-cols-[320px_minmax(260px,1fr)_minmax(340px,420px)_minmax(22rem,30rem)] 2xl:grid-cols-[380px_minmax(320px,1fr)_minmax(400px,500px)_minmax(24rem,34rem)]"
+    : "grid min-h-0 flex-1 xl:grid-cols-[320px_minmax(280px,1fr)_minmax(340px,420px)] 2xl:grid-cols-[380px_minmax(320px,1fr)_minmax(400px,500px)]";
 
   const handleWorkspaceSelect = (nextWorkspaceId: string) => {
     router.push(`/workspace/${encodeURIComponent(nextWorkspaceId)}/feature-explorer`);
@@ -1093,8 +1093,8 @@ export function FeatureExplorerPageClient({
     setIsSessionAnalysisDrawerOpen(true);
   };
 
-  const handleStartSessionAnalysis = async () => {
-    if (!effectiveRepoSelection?.path || selectedFilePaths.length === 0 || selectedScopeSessions.length === 0) {
+  const handleStartSessionAnalysis = async (sessionsToAnalyze: AggregatedSelectionSession[] = selectedScopeSessions) => {
+    if (!effectiveRepoSelection?.path || selectedFilePaths.length === 0 || sessionsToAnalyze.length === 0) {
       return;
     }
 
@@ -1115,7 +1115,7 @@ export function FeatureExplorerPageClient({
         branch: effectiveRepoSelection.branch,
         featureDetail: surfaceOnlySelection ? null : resolvedFeatureDetail,
         selectedFilePaths,
-        sessions: selectedScopeSessions,
+        sessions: sessionsToAnalyze,
       });
 
       const response = await desktopAwareFetch("/api/acp", {
@@ -1456,20 +1456,20 @@ export function FeatureExplorerPageClient({
               </div>
 
               <div className="border-t border-desktop-border bg-desktop-bg-secondary/20 px-3 py-1.5">
-                <div className="flex items-center justify-between gap-3">
+                <div className="flex min-w-0 items-center justify-between gap-3">
                   <div className="truncate text-[11px] text-desktop-text-secondary">
                     {selectedFileIds.length}f
                   </div>
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex min-w-0 items-center gap-1.5 overflow-x-auto">
                     <button
                       onClick={handleClearSelection}
-                      className="rounded-sm border border-desktop-border bg-desktop-bg-primary px-2 py-1 text-[11px] text-desktop-text-secondary hover:bg-desktop-bg-active hover:text-desktop-text-primary"
+                      className="shrink-0 whitespace-nowrap rounded-sm border border-desktop-border bg-desktop-bg-primary px-2 py-1 text-[11px] text-desktop-text-secondary hover:bg-desktop-bg-active hover:text-desktop-text-primary"
                     >
                       {t.featureExplorer.clearSelection}
                     </button>
                     <button
                       onClick={() => router.push(`/workspace/${encodeURIComponent(workspaceId)}/sessions`)}
-                      className="inline-flex items-center gap-1 rounded-sm border border-desktop-accent bg-desktop-bg-active px-2 py-1 text-[11px] text-desktop-text-primary hover:bg-desktop-bg-primary"
+                      className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-sm border border-desktop-accent bg-desktop-bg-active px-2 py-1 text-[11px] text-desktop-text-primary hover:bg-desktop-bg-primary"
                     >
                       {t.featureExplorer.continueAction}
                       <ArrowRight className="h-3 w-3" />
@@ -1482,7 +1482,7 @@ export function FeatureExplorerPageClient({
             {/* ── Right panel: Inspector ── */}
             <aside className="flex min-h-0 flex-col bg-desktop-bg-secondary/10">
               <div className="border-b border-desktop-border px-3 py-2">
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-1.5 overflow-x-auto">
                   {([
                     { id: "context" as const, label: t.featureExplorer.contextTab, icon: FileText },
                     { id: "screenshot" as const, label: t.featureExplorer.screenshotTab, icon: ImageIcon },
@@ -1494,7 +1494,7 @@ export function FeatureExplorerPageClient({
                       <button
                         key={tab.id}
                         onClick={() => (!isScreenshot ? setInspectorTab(tab.id) : null)}
-                        className={`inline-flex items-center gap-1.5 rounded-sm border px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                        className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-sm border px-2.5 py-1 text-[11px] font-medium transition-colors ${
                           inspectorTab === tab.id
                             ? "border-desktop-accent bg-desktop-bg-active text-desktop-text-primary"
                             : isScreenshot
@@ -1597,6 +1597,7 @@ export function FeatureExplorerPageClient({
         </main>
 
         <SessionAnalysisDrawer
+          key={`session-analysis:${isSessionAnalysisDrawerOpen ? "open" : "closed"}:${selectedFilePaths.join("|")}:${selectedScopeSessions.map((session) => `${session.provider}:${session.sessionId}`).join("|")}`}
           open={isSessionAnalysisDrawerOpen}
           selectedFilePaths={selectedFilePaths}
           selectedScopeSessions={selectedScopeSessions}

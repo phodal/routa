@@ -73,6 +73,7 @@ Co-authored-by: Kiro AI (Claude Opus 4.6) <kiro@kiro.dev>
 Co-authored-by: GitHub Copilot Agent (GPT 5.4) <198982749+copilot@users.noreply.github.com>
 Co-authored-by: QoderAI (Qwen 3.5 Max) <qoder_ai@qoder.com>
 Co-authored-by: gemini-cli (...) <218195315+gemini-cli@users.noreply.github.com>
+Co-authored-by: Codex (GPT 5.4) <codex@openai.com>
 
 ## Pull Request
 

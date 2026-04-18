@@ -13,7 +13,7 @@ export const REQUIRED_HOOK_FILES = [
 ];
 const SUSPICIOUS_LOCAL_IDENTITY_PATTERNS = {
   email: [/@example\.com$/i, /placeholder/i],
-  name: [/^test$/i, /placeholder/i, /routa test/i],
+  name: [/^test$/i, /^codex$/i, /placeholder/i, /routa test/i],
 };
 
 function runGit(args, cwd) {
@@ -87,6 +87,7 @@ export function inspectGitControlPlane(cwd = process.cwd()) {
   }
 
   const hooksPath = readLocalGitConfig(repoRoot, "core.hooksPath");
+  const localCoreWorktree = readLocalGitConfig(repoRoot, "core.worktree");
   const localUserName = readLocalGitConfig(repoRoot, "user.name");
   const localUserEmail = readLocalGitConfig(repoRoot, "user.email");
   const missingHookRuntimeFiles = getMissingHookRuntimeFiles(repoRoot);
@@ -113,6 +114,17 @@ export function inspectGitControlPlane(cwd = process.cwd()) {
           currentHooksPath: hooksPath,
           expectedHooksPath: EXPECTED_HOOKS_PATH,
         },
+      ),
+    );
+  }
+
+  if (localCoreWorktree) {
+    issues.push(
+      createIssue(
+        "unexpected-core-worktree",
+        `Local git core.worktree is set to "${localCoreWorktree}". This repo expects core.worktree to stay unset in the primary checkout; unexpected values can make Git treat the wrong path as repo root.`,
+        "warning",
+        { localCoreWorktree },
       ),
     );
   }
@@ -147,6 +159,7 @@ export function inspectGitControlPlane(cwd = process.cwd()) {
         ? "Git control-plane drift detected."
         : "Git control-plane configuration matches repo policy.",
     hooksPath,
+    localCoreWorktree,
     expectedHooksPath: EXPECTED_HOOKS_PATH,
     localUserName,
     localUserEmail,
@@ -183,6 +196,9 @@ export function buildSessionStartDoctorOutput(report) {
   if (report.issues.some((issue) => issue.code === "missing-husky-runtime")) {
     hints.push("reinstall Husky runtime with `npm run hooks:sync`");
   }
+  if (report.issues.some((issue) => issue.code === "unexpected-core-worktree")) {
+    hints.push("remove the unexpected local core.worktree override before continuing");
+  }
   if (
     report.issues.some((issue) =>
       issue.code === "suspicious-local-user-name" || issue.code === "suspicious-local-user-email",
@@ -197,7 +213,7 @@ export function buildSessionStartDoctorOutput(report) {
     hookSpecificOutput: {
       hookEventName: "SessionStart",
       additionalContext:
-        "Repository control-plane drift is treated as suspicious. Do not mutate .git/config or hook files manually; use npm run hooks:sync for hooksPath repair, and avoid placeholder commit identity values.",
+        "Repository control-plane drift is treated as suspicious. Do not mutate .git/config or hook files manually; use npm run hooks:sync for hooksPath repair, keep core.worktree unset in the primary checkout, and avoid placeholder commit identity values.",
     },
   };
 }

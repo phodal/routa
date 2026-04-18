@@ -401,7 +401,7 @@ export function ContextPanel({
             type="button"
             onClick={() => onOpenSessionAnalysis?.()}
             disabled={!canOpenSessionAnalysis}
-            className={`inline-flex w-full items-center justify-center rounded-sm border px-2 py-1.5 text-[11px] font-medium transition-colors ${
+            className={`inline-flex w-full items-center justify-center whitespace-nowrap rounded-sm border px-2 py-1.5 text-[11px] font-medium transition-colors ${
               canOpenSessionAnalysis
                 ? "border-desktop-accent bg-desktop-bg-active text-desktop-text-primary hover:bg-desktop-bg-primary"
                 : "cursor-not-allowed border-desktop-border bg-desktop-bg-primary/40 text-desktop-text-secondary/60"
