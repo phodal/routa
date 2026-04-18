@@ -1131,7 +1131,9 @@ describe("FeatureExplorerPageClient", () => {
     expect(prompt).not.toContain("Operation not permitted");
     expect(sessionLaunchState.storePendingPrompt).not.toHaveBeenCalled();
     expect(navState.push).not.toHaveBeenCalledWith("/workspace/default/sessions/analysis-session-1");
-    expect(screen.getByTestId("feature-explorer-analysis-session-pane")).toBeTruthy();
+    await waitFor(() => {
+      expect(screen.getByTestId("feature-explorer-analysis-session-drawer")).toBeTruthy();
+    });
     expect(screen.getByTestId("chat-panel").textContent).toBe("analysis-session-1");
   });
 
