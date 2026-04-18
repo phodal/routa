@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useId } from "react";
 import { desktopAwareFetch } from "../utils/diagnostics";
 import { GitHubWebhookPanel } from "./github-webhook-panel";
+import { GitLabWebhookPanel } from "./gitlab-webhook-panel";
 import { AgentInstallPanel } from "./agent-install-panel";
 import { SettingsCenterNav } from "./settings-center-nav";
 import {
@@ -574,17 +575,47 @@ function ProviderCatalogSection({ allProviders }: ProviderCatalogSectionProps) {
 
 function WebhooksTab() {
   const { t } = useTranslation();
+  const wt = t.webhook;
+  const [webhookPlatform, setWebhookPlatform] = useState<"github" | "gitlab">("github");
   const [showFullPanel, setShowFullPanel] = useState(false);
   const isTauriEnv = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+
+  const webhookUrl = webhookPlatform === "github"
+    ? `${typeof window !== "undefined" ? window.location.origin : ""}/api/webhooks/github`
+    : `${typeof window !== "undefined" ? window.location.origin : ""}/api/webhooks/gitlab`;
 
   // In Tauri, show the full panel directly
   if (isTauriEnv && showFullPanel) {
     return (
       <div className="h-full flex flex-col">
         <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 dark:border-slate-700">
-          <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-            GitHub Webhook Triggers
-          </h3>
+          <div className="flex items-center gap-3">
+            <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+              {webhookPlatform === "github" ? "GitHub" : "GitLab"} Webhook Triggers
+            </h3>
+            <div className="flex gap-1 bg-slate-100 dark:bg-slate-800 rounded-lg p-0.5">
+              <button
+                onClick={() => setWebhookPlatform("github")}
+                className={`px-2 py-0.5 text-xs rounded-md transition-colors ${
+                  webhookPlatform === "github"
+                    ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 shadow-sm"
+                    : "text-slate-500 dark:text-slate-400"
+                }`}
+              >
+                {wt.platformGithub}
+              </button>
+              <button
+                onClick={() => setWebhookPlatform("gitlab")}
+                className={`px-2 py-0.5 text-xs rounded-md transition-colors ${
+                  webhookPlatform === "gitlab"
+                    ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 shadow-sm"
+                    : "text-slate-500 dark:text-slate-400"
+                }`}
+              >
+                {wt.platformGitlab}
+              </button>
+            </div>
+          </div>
           <button
             onClick={() => setShowFullPanel(false)}
             className="p-1.5 rounded-md hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
@@ -594,7 +625,7 @@ function WebhooksTab() {
           </button>
         </div>
         <div className="flex-1 min-h-0 overflow-hidden">
-          <GitHubWebhookPanel />
+          {webhookPlatform === "github" ? <GitHubWebhookPanel /> : <GitLabWebhookPanel />}
         </div>
       </div>
     );
@@ -603,32 +634,63 @@ function WebhooksTab() {
   return (
     <div className="p-4 space-y-4">
       <div>
-        <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100 mb-1">
-          GitHub Webhook Triggers
-        </h3>
+        <div className="flex items-center gap-3 mb-1">
+          <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+            Webhook Triggers
+          </h3>
+          <div className="flex gap-1 bg-slate-100 dark:bg-slate-800 rounded-lg p-0.5">
+            <button
+              onClick={() => setWebhookPlatform("github")}
+              className={`px-2 py-0.5 text-xs rounded-md transition-colors ${
+                webhookPlatform === "github"
+                  ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 shadow-sm"
+                  : "text-slate-500 dark:text-slate-400"
+              }`}
+            >
+              {wt.platformGithub}
+            </button>
+            <button
+              onClick={() => setWebhookPlatform("gitlab")}
+              className={`px-2 py-0.5 text-xs rounded-md transition-colors ${
+                webhookPlatform === "gitlab"
+                  ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 shadow-sm"
+                  : "text-slate-500 dark:text-slate-400"
+              }`}
+            >
+              {wt.platformGitlab}
+            </button>
+          </div>
+        </div>
         <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">
-          Automatically trigger agents (Claude Code, GLM-4, etc.) when GitHub events occur
-          — issue created, PR opened, CI completed, and more.
+          Automatically trigger agents when {webhookPlatform === "github" ? "GitHub" : "GitLab"} events occur
+          — issue created, {webhookPlatform === "github" ? "PR opened" : "MR opened"}, CI completed, and more.
         </p>
-        <div className="rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 px-3 py-2.5 mb-3">
-          <p className="text-xs text-blue-700 dark:text-blue-300">
+        <div className={`rounded-lg px-3 py-2.5 mb-3 ${
+          webhookPlatform === "github"
+            ? "bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800"
+            : "bg-orange-50 dark:bg-orange-900/10 border border-orange-200 dark:border-orange-800/50"
+        }`}>
+          <p className={`text-xs ${webhookPlatform === "github" ? "text-blue-700 dark:text-blue-300" : "text-orange-700 dark:text-orange-300"}`}>
             <span className="font-semibold">Webhook URL:</span>{" "}
-            <code className="font-mono bg-blue-100 dark:bg-blue-900/30 px-1 rounded">
-              {typeof window !== "undefined" ? window.location.origin : ""}/api/webhooks/github
+            <code className={`font-mono px-1 rounded ${
+              webhookPlatform === "github" ? "bg-blue-100 dark:bg-blue-900/30" : "bg-orange-100 dark:bg-orange-900/30"
+            }`}>
+              {webhookUrl}
             </code>
           </p>
-          <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
-            Point your GitHub repository webhook at this URL to start receiving events.
+          <p className={`text-xs mt-1 ${webhookPlatform === "github" ? "text-blue-600 dark:text-blue-400" : "text-orange-600 dark:text-orange-400"}`}>
+            Point your {webhookPlatform === "github" ? "GitHub" : "GitLab"} {webhookPlatform === "github" ? "repository" : "project"} webhook at this URL to start receiving events.
           </p>
         </div>
         {isTauriEnv ? (
           <button
             onClick={() => setShowFullPanel(true)}
-            className="inline-flex items-center gap-1.5 px-3 py-2 bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 text-xs font-medium rounded-lg hover:bg-slate-700 dark:hover:bg-slate-300 transition-colors"
+            className={`inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-lg transition-colors ${
+              webhookPlatform === "gitlab"
+                ? "bg-orange-600 hover:bg-orange-700 text-white"
+                : "bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 hover:bg-slate-700 dark:hover:bg-slate-300"
+            }`}
           >
-            <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z" />
-            </svg>
             Manage Webhook Triggers
           </button>
         ) : (
@@ -636,11 +698,12 @@ function WebhooksTab() {
             href="/settings/webhooks"
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 px-3 py-2 bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 text-xs font-medium rounded-lg hover:bg-slate-700 dark:hover:bg-slate-300 transition-colors"
+            className={`inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-lg transition-colors ${
+              webhookPlatform === "gitlab"
+                ? "bg-orange-600 hover:bg-orange-700 text-white"
+                : "bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 hover:bg-slate-700 dark:hover:bg-slate-300"
+            }`}
           >
-            <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z" />
-            </svg>
             Manage Webhook Triggers
           </a>
         )}
