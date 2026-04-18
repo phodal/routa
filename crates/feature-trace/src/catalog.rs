@@ -142,13 +142,7 @@ struct FeatureSurfaceIndexMetadata {
 #[derive(Debug, Deserialize)]
 struct OpenApiContract {
     #[serde(default)]
-    paths: BTreeMap<String, BTreeMap<String, OpenApiOperation>>,
-}
-
-#[derive(Debug, Default, Deserialize)]
-struct OpenApiOperation {
-    #[serde(default)]
-    summary: String,
+    paths: BTreeMap<String, BTreeMap<String, serde_yaml::Value>>,
 }
 
 impl FeatureSurfaceCatalog {
@@ -248,18 +242,17 @@ impl FeatureTreeCatalog {
             None
         };
         let surface_index_catalog = if surface_index_path.exists() {
-            Some(Self::from_surface_index_json(&surface_index_path)?)
+            match Self::from_surface_index_json(&surface_index_path) {
+                Ok(catalog) => Some(catalog),
+                Err(error) if markdown_catalog.is_some() => {
+                    let _ = error;
+                    None
+                }
+                Err(error) => return Err(error),
+            }
         } else {
             None
         };
-
-        if markdown_catalog.is_none() && surface_index_catalog.is_none() {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::NotFound,
-                "feature tree sources not found",
-            )
-            .into());
-        }
 
         let mut catalog = if let Some(index_catalog) = surface_index_catalog {
             index_catalog
@@ -282,10 +275,10 @@ impl FeatureTreeCatalog {
         }
 
         if api_contract_path.exists() {
-            catalog.api_endpoints = merge_api_endpoint_lists([
-                api_endpoints_from_openapi_contract(&api_contract_path)?,
-                catalog.api_endpoints,
-            ]);
+            if let Ok(contract_apis) = api_endpoints_from_openapi_contract(&api_contract_path) {
+                catalog.api_endpoints =
+                    merge_api_endpoint_lists([contract_apis, catalog.api_endpoints]);
+            }
         }
 
         Ok(catalog)
@@ -394,18 +387,15 @@ pub fn api_endpoints_from_openapi_contract(
 
         for (method, operation) in methods {
             let method_upper = method.trim().to_ascii_uppercase();
-            if !matches!(
-                method_upper.as_str(),
-                "GET" | "POST" | "PUT" | "PATCH" | "DELETE"
-            ) {
+            if !is_http_method(&method_upper) {
                 continue;
             }
 
             endpoints.push(ApiEndpointDetail {
-                domain: domain.to_string(),
+                domain: domain.clone(),
                 method: method_upper,
                 endpoint: endpoint.clone(),
-                description: operation.summary.trim().to_string(),
+                description: operation_summary(&operation),
             });
         }
     }
@@ -452,7 +442,7 @@ fn parse_feature_tree_tables(raw: &str) -> (Vec<FrontendPageDetail>, Vec<ApiEndp
                 active_table = ActiveTable::None;
                 continue;
             }
-            "## API Endpoints" => {
+            "## API Endpoints" | "## API Contract Endpoints" | "## HTTP Contract Endpoints" => {
                 section = TableSection::ApiEndpoints;
                 active_table = ActiveTable::None;
                 continue;
@@ -467,12 +457,16 @@ fn parse_feature_tree_tables(raw: &str) -> (Vec<FrontendPageDetail>, Vec<ApiEndp
 
         match section {
             TableSection::FrontendPages => {
-                if trimmed == "| Page | Route | Description |" {
+                if trimmed == "| Page | Route | Description |"
+                    || trimmed == "| Page | Route | Source File | Description |"
+                {
                     active_table = ActiveTable::FrontendPages;
                     continue;
                 }
                 if active_table == ActiveTable::FrontendPages {
-                    if trimmed == "|------|-------|-------------|" {
+                    if trimmed == "|------|-------|-------------|"
+                        || trimmed == "|------|-------|-------------|-------------|"
+                    {
                         continue;
                     }
                     if trimmed.is_empty() || trimmed == "---" {
@@ -484,7 +478,11 @@ fn parse_feature_tree_tables(raw: &str) -> (Vec<FrontendPageDetail>, Vec<ApiEndp
                             frontend_pages.push(FrontendPageDetail {
                                 name: cells[0].clone(),
                                 route: strip_inline_code(&cells[1]),
-                                description: cells[2].clone(),
+                                description: if cells.len() >= 4 {
+                                    cells[3].clone()
+                                } else {
+                                    cells[2].clone()
+                                },
                             });
                         }
                     }
@@ -499,12 +497,16 @@ fn parse_feature_tree_tables(raw: &str) -> (Vec<FrontendPageDetail>, Vec<ApiEndp
                     active_table = ActiveTable::None;
                     continue;
                 }
-                if trimmed == "| Method | Endpoint | Description |" {
+                if trimmed == "| Method | Endpoint | Description |"
+                    || trimmed == "| Method | Endpoint | Details |"
+                {
                     active_table = ActiveTable::ApiEndpoints;
                     continue;
                 }
                 if active_table == ActiveTable::ApiEndpoints {
-                    if trimmed == "|--------|----------|-------------|" {
+                    if trimmed == "|--------|----------|-------------|"
+                        || trimmed == "|--------|----------|---------|"
+                    {
                         continue;
                     }
                     if trimmed.is_empty() {
@@ -552,17 +554,38 @@ fn split_declared_api(declaration: &str) -> Option<(&str, &str)> {
     Some((method.trim(), endpoint.trim()))
 }
 
-fn domain_from_api_path(endpoint: &str) -> Option<&str> {
+fn domain_from_api_path(endpoint: &str) -> Option<String> {
     let mut segments = endpoint
         .trim()
         .split('/')
-        .filter(|segment| !segment.is_empty());
+        .filter(|segment| !segment.is_empty())
+        .filter(|segment| !(segment.starts_with('{') && segment.ends_with('}')))
+        .filter(|segment| !segment.starts_with(':'));
     let first = segments.next()?;
-    let second = segments.next()?;
-    if first != "api" {
-        return None;
+    if first == "api" {
+        return segments
+            .next()
+            .map(str::to_string)
+            .or_else(|| Some(first.to_string()));
     }
-    Some(second)
+    Some(first.to_string())
+}
+
+fn is_http_method(method: &str) -> bool {
+    matches!(
+        method,
+        "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "OPTIONS" | "HEAD"
+    )
+}
+
+fn operation_summary(operation: &serde_yaml::Value) -> String {
+    operation
+        .as_mapping()
+        .and_then(|mapping| mapping.get(serde_yaml::Value::String("summary".to_string())))
+        .and_then(serde_yaml::Value::as_str)
+        .unwrap_or_default()
+        .trim()
+        .to_string()
 }
 
 fn merge_api_endpoint_lists<const N: usize>(
@@ -889,6 +912,102 @@ paths:
         assert_eq!(
             catalog.api_endpoints[0].description,
             "List local issue specs"
+        );
+    }
+
+    #[test]
+    fn repo_root_loader_falls_back_to_markdown_when_surface_index_is_invalid() {
+        let dir = tempdir().unwrap();
+        let repo_root = dir.path();
+        let specs_dir = repo_root.join("docs/product-specs");
+        fs::create_dir_all(&specs_dir).unwrap();
+        fs::write(
+            specs_dir.join("FEATURE_TREE.md"),
+            r#"---
+feature_metadata:
+  features:
+    - id: harness-console
+      name: Harness Console
+      apis:
+        - GET /api/spec/issues
+---
+
+# Placeholder
+
+## Frontend Pages
+
+| Page | Route | Description |
+|------|-------|-------------|
+| Workspace / Spec | `/workspace/:workspaceId/spec` | Spec board |
+
+## API Contract Endpoints
+
+### Spec (1)
+
+| Method | Endpoint | Details |
+|--------|----------|---------|
+| GET | `/api/spec/issues` | List local issue specs |
+"#,
+        )
+        .unwrap();
+        fs::write(specs_dir.join("feature-tree.index.json"), "{ invalid").unwrap();
+
+        let catalog = FeatureTreeCatalog::from_repo_root(repo_root).unwrap();
+
+        assert_eq!(catalog.features.len(), 1);
+        assert_eq!(catalog.frontend_pages.len(), 1);
+        assert_eq!(catalog.api_endpoints.len(), 1);
+        assert_eq!(catalog.api_endpoints[0].endpoint, "/api/spec/issues");
+    }
+
+    #[test]
+    fn repo_root_loader_returns_default_catalog_when_sources_are_missing() {
+        let dir = tempdir().unwrap();
+        let catalog = FeatureTreeCatalog::from_repo_root(dir.path()).unwrap();
+
+        assert!(catalog.capability_groups.is_empty());
+        assert!(catalog.features.is_empty());
+        assert!(catalog.frontend_pages.is_empty());
+        assert!(catalog.api_endpoints.is_empty());
+    }
+
+    #[test]
+    fn parses_openapi_contract_with_path_item_metadata_and_non_api_routes() {
+        let dir = tempdir().unwrap();
+        let contract_path = dir.path().join("api-contract.yaml");
+        fs::write(
+            &contract_path,
+            r#"openapi: 3.1.0
+paths:
+  /admin/dashboard:
+    summary: Admin dashboard routes
+    parameters: []
+    get:
+      summary: Render admin dashboard
+  /v1/users:
+    get:
+      summary: List users
+  /api/spec/issues:
+    get:
+      summary: List local issue specs
+"#,
+        )
+        .unwrap();
+
+        let apis = api_endpoints_from_openapi_contract(&contract_path).unwrap();
+
+        assert_eq!(apis.len(), 3);
+        assert!(apis.iter().any(|api| {
+            api.domain == "admin"
+                && api.endpoint == "/admin/dashboard"
+                && api.description == "Render admin dashboard"
+        }));
+        assert!(apis.iter().any(|api| {
+            api.domain == "v1" && api.endpoint == "/v1/users" && api.method == "GET"
+        }));
+        assert!(
+            apis.iter()
+                .any(|api| { api.domain == "spec" && api.endpoint == "/api/spec/issues" })
         );
     }
 }

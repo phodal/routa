@@ -1,16 +1,16 @@
 use std::path::{Path, PathBuf};
 
 use axum::{
+    Json, Router,
     extract::{Query, State},
     routing::get,
-    Json, Router,
 };
 use feature_trace::api_endpoints_from_openapi_contract;
 use serde::Deserialize;
-use serde_json::{json, Value as JsonValue};
+use serde_json::{Value as JsonValue, json};
 use std::collections::BTreeMap;
 
-use crate::api::repo_context::{extract_frontmatter, resolve_repo_root, ResolveRepoRootOptions};
+use crate::api::repo_context::{ResolveRepoRootOptions, extract_frontmatter, resolve_repo_root};
 use crate::error::ServerError;
 use crate::state::AppState;
 
@@ -480,12 +480,22 @@ async fn get_surface_index(
     };
 
     let openapi_contract_apis = if api_contract_path.exists() {
-        let apis = api_endpoints_from_openapi_contract(&api_contract_path).map_err(|error| {
-            ServerError::Internal(format!(
-                "Failed to parse OpenAPI contract at {relative_api_contract_path}: {error}"
-            ))
-        })?;
-        Some(to_surface_api_from_contract(apis))
+        match api_endpoints_from_openapi_contract(&api_contract_path) {
+            Ok(apis) => {
+                if apis.is_empty() {
+                    warnings.push(format!(
+                        "OpenAPI contract produced no endpoints at {relative_api_contract_path}"
+                    ));
+                }
+                Some(to_surface_api_from_contract(apis))
+            }
+            Err(error) => {
+                warnings.push(format!(
+                    "Failed to parse OpenAPI contract at {relative_api_contract_path}: {error}"
+                ));
+                None
+            }
+        }
     } else {
         None
     };

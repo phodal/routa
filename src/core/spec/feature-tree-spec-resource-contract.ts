@@ -1,5 +1,6 @@
-import fs from "fs";
+import { existsSync, readFileSync } from "fs";
 import path from "path";
+import { fileURLToPath } from "url";
 
 import featureTreeSpecManifestJson from "../../../resources/specialists/specs/feature-tree/manifest.json";
 
@@ -32,13 +33,63 @@ export const FEATURE_TREE_SPEC_MANIFEST_RESOURCE_URI =
   "resource://routa/specialists/feature-tree/manifest";
 
 const featureTreeSpecManifest = featureTreeSpecManifestJson as FeatureTreeSpecManifest;
-const featureTreeSpecRootDir = path.join(
-  process.cwd(),
-  "resources",
-  "specialists",
-  "specs",
-  "feature-tree",
-);
+const featureTreeSpecModuleDir = path.dirname(fileURLToPath(import.meta.url));
+
+function collectSpecialistRootCandidates(baseDir: string): string[] {
+  const resolvedBaseDir = path.resolve(baseDir);
+  const candidates: string[] = [];
+  let current = resolvedBaseDir;
+
+  while (true) {
+    candidates.push(path.join(current, "specialists"));
+    candidates.push(path.join(current, "resources", "specialists"));
+
+    const parent = path.dirname(current);
+    if (parent === current) {
+      break;
+    }
+    current = parent;
+  }
+
+  return candidates;
+}
+
+function resolveFeatureTreeSpecRootDir(): string {
+  const envRoot = process.env.ROUTA_SPECIALISTS_RESOURCE_DIR?.trim();
+  const candidateRoots = [
+    ...(envRoot ? [
+      path.resolve(envRoot),
+      path.resolve(envRoot, "specialists"),
+      path.resolve(envRoot, "resources", "specialists"),
+    ] : []),
+    ...collectSpecialistRootCandidates(featureTreeSpecModuleDir),
+  ];
+
+  const uniqueRoots = [...new Set(candidateRoots)];
+  for (const root of uniqueRoots) {
+    const specRoot = path.join(root, "specs", "feature-tree");
+    const manifestPath = path.join(specRoot, "manifest.json");
+    if (!existsSync(manifestPath)) {
+      continue;
+    }
+
+    const allSpecFilesExist = featureTreeSpecManifest.specs.every((spec) =>
+      spec.fileName
+      && path.basename(spec.fileName) === spec.fileName
+      && existsSync(path.join(specRoot, spec.fileName)),
+    );
+    if (allSpecFilesExist) {
+      return specRoot;
+    }
+  }
+
+  throw new Error(
+    "Unable to resolve bundled feature-tree specialist specs. " +
+    "Set ROUTA_SPECIALISTS_RESOURCE_DIR or run from a traced Routa build.",
+  );
+}
+
+const featureTreeSpecRootDir = resolveFeatureTreeSpecRootDir();
 
 export function getFeatureTreeSpecManifest(): FeatureTreeSpecManifest {
   return featureTreeSpecManifest;
@@ -67,7 +118,7 @@ export function readFeatureTreeSpecResource(uri: string): FeatureTreeSpecResolve
   }
 
   const filePath = path.join(featureTreeSpecRootDir, spec.fileName);
-  const text = fs.readFileSync(filePath, "utf-8");
+  const text = readFileSync(filePath, "utf-8");
 
   return {
     uri,

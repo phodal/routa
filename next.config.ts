@@ -45,6 +45,7 @@ const nextConfig: NextConfig = {
   outputFileTracingIncludes: {
     "/api/**": [
       "./node_modules/@anthropic-ai/claude-agent-sdk/**/*",
+      "./resources/specialists/**/*",
       // Include skill definitions so Claude Code SDK can discover them on Vercel
       "./.claude/skills/**/*",
       "./.agents/skills/**/*",
@@ -57,7 +58,10 @@ const nextConfig: NextConfig = {
     ? {
         output: "standalone",
         outputFileTracingIncludes: {
-          "/api/**": ["./node_modules/@anthropic-ai/claude-agent-sdk/**/*"],
+          "/api/**": [
+            "./node_modules/@anthropic-ai/claude-agent-sdk/**/*",
+            "./resources/specialists/**/*",
+          ],
           "/*": ["./node_modules/better-sqlite3/**/*"],
         },
       }

@@ -128,6 +128,20 @@ export async function executeMcpTool(
     }
   }
 
+  if (name === "read_specialist_spec_resource") {
+    const uri = args.uri;
+    if (typeof uri !== "string" || !uri.trim()) {
+      return formatResult({ success: false, error: "uri is required" });
+    }
+
+    const resource = readFeatureTreeSpecResource(uri);
+    return formatResult(
+      resource
+        ? { success: true, data: resource }
+        : { success: false, error: `Unknown specialist spec resource URI: ${uri}` },
+    );
+  }
+
   const workspace = args.workspaceId as string;
   if (!workspace) {
     return {
@@ -325,15 +339,6 @@ export async function executeMcpTool(
           outputPath: args.outputPath as string | undefined,
         })
       );
-    case "read_specialist_spec_resource": {
-      const resource = readFeatureTreeSpecResource(args.uri as string);
-      return formatResult(
-        resource
-          ? { success: true, data: resource }
-          : { success: false, error: `Unknown specialist spec resource URI: ${String(args.uri ?? "")}` }
-      );
-    }
-
     // ── Note tools ───────────────────────────────────────────────────
     case "create_note":
       if (!noteTools) return formatResult({ success: false, error: "Note tools not available." });
