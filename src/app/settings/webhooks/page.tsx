@@ -1,3 +1,7 @@
+/**
+ * Settings / Webhooks - /settings/webhooks
+ * Settings page for configuring GitHub webhook ingestion and inspecting the webhook endpoint used by Routa.
+ */
 "use client";
 
 import { Link2 } from "lucide-react";

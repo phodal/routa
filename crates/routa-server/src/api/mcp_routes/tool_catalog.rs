@@ -249,6 +249,13 @@ fn build_tool_list_inner() -> Vec<serde_json::Value> {
             "type": "object",
             "properties": {}
         })),
+        tool_def("read_canvas_sdk_resource", "Read the Routa Canvas SDK manifest or a generated definition resource by resource URI. Use this when your provider cannot call MCP resources/read directly.", serde_json::json!({
+            "type": "object",
+            "properties": {
+                "uri": { "type": "string", "description": "Canvas SDK resource URI, e.g. resource://routa/canvas-sdk/manifest" }
+            },
+            "required": ["uri"]
+        })),
         // ── Event tools ──────────────────────────────────────────────────
         tool_def("subscribe_to_events", "Subscribe to workspace events", serde_json::json!({
             "type": "object",

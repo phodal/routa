@@ -61,6 +61,7 @@ const RUNTIME_FEED_SIGNAL_MS: u64 = 120;
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 struct RepoStatusSummary {
     branch: Option<String>,
+    branch_oid: Option<String>,
     upstream: Option<String>,
     ahead_count: Option<usize>,
     committed_change_summary: Option<(usize, usize)>,
@@ -183,17 +184,10 @@ fn run_loop(terminal: &mut DefaultTerminal, ctx: RepoContext, poll_interval_ms: 
     let transcript_ctx = ctx.clone();
     let transcript_signal_tx = signal_tx.clone();
     thread::spawn(move || {
-        let mut result = crate::observe::codex_transcript::bootstrap_codex_transcript_messages(
+        let result = crate::observe::codex_transcript::bootstrap_codex_transcript_messages(
             &transcript_ctx.repo_root,
         )
         .unwrap_or_default();
-        result.extend(
-            crate::observe::auggie_session::bootstrap_auggie_session_messages(
-                &transcript_ctx.repo_root,
-            )
-            .unwrap_or_default(),
-        );
-        result.sort_by_key(RuntimeMessage::observed_at_ms);
         let _ = transcript_signal_tx.send(UiSignal::TranscriptBootstrap(result));
     });
     for message in render_feed.read_recent_since(bootstrap_cutoff)? {
@@ -581,6 +575,7 @@ fn refresh_fitness_from_event(
 fn apply_repo_status(state: &mut RuntimeState, repo_status: Option<RepoStatusSummary>) {
     let repo_status = repo_status.unwrap_or_default();
     state.branch = repo_status.branch.unwrap_or_else(|| "-".to_string());
+    state.set_branch_oid(repo_status.branch_oid);
     state.set_ahead_count(repo_status.ahead_count);
     state.set_committed_change_summary(repo_status.committed_change_summary);
 }
@@ -610,11 +605,17 @@ fn read_repo_status(ctx: &RepoContext) -> Result<RepoStatusSummary> {
 
 fn parse_repo_status(output: &str) -> RepoStatusSummary {
     let mut branch = None;
+    let mut branch_oid = None;
     let mut upstream = None;
     let mut ahead_count = None;
 
     for line in output.lines().map(str::trim) {
-        if let Some(value) = line.strip_prefix("# branch.head ") {
+        if let Some(value) = line.strip_prefix("# branch.oid ") {
+            let value = value.trim();
+            if !value.is_empty() && value != "(initial)" {
+                branch_oid = Some(value.to_string());
+            }
+        } else if let Some(value) = line.strip_prefix("# branch.head ") {
             branch = normalize_branch_name(value.trim());
         } else if let Some(value) = line.strip_prefix("# branch.upstream ") {
             upstream = Some(value.trim().to_string());
@@ -625,6 +626,7 @@ fn parse_repo_status(output: &str) -> RepoStatusSummary {
 
     RepoStatusSummary {
         branch,
+        branch_oid,
         upstream,
         ahead_count,
         committed_change_summary: None,

@@ -135,6 +135,10 @@ export function KanbanStatusBar({
   runtimeFitnessError,
 }: KanbanStatusBarProps) {
   const { t } = useTranslation();
+  const repoCount = codebases.length;
+  const repoDisplayName = defaultCodebase
+    ? defaultCodebase.label ?? defaultCodebase.repoPath.split("/").pop() ?? defaultCodebase.repoPath
+    : null;
   const selectedFitness = selectDisplayedFitness(runtimeFitness);
   const latestModeLabel = formatModeLabel(selectedFitness, t.kanban.fitnessModeFast, t.kanban.fitnessModeFull);
   const currentScore = selectedFitness?.currentStatus === "running"
@@ -182,27 +186,40 @@ export function KanbanStatusBar({
       {/* 左侧：仓库和状态信息 */}
       <div className="flex items-center divide-x divide-desktop-border/50">
         {/* 仓库信息 */}
-        {defaultCodebase ? (
+        {onRepoClick ? (
           <button
             onClick={onRepoClick}
             className="flex items-center gap-1.5 px-2.5 h-6 text-desktop-text-primary hover:bg-desktop-bg-active transition-colors"
-            title={`${defaultCodebase.repoPath}${defaultCodebase.branch ? ` @ ${defaultCodebase.branch}` : ""}`}
+            title={defaultCodebase
+              ? `${defaultCodebase.repoPath}${defaultCodebase.branch ? ` @ ${defaultCodebase.branch}` : ""}`
+              : t.kanbanBoard.noReposLinked}
           >
             <GitBranch className="w-3 h-3" />
-            <span className="max-w-[180px] truncate font-medium">
-              {defaultCodebase.label ?? defaultCodebase.repoPath.split("/").pop() ?? defaultCodebase.repoPath}
+            <span className="font-medium">{t.kanbanBoard.repos}</span>
+            <span className="rounded-full bg-desktop-bg-active px-1.5 py-0.5 text-[10px] text-desktop-text-secondary">
+              {repoCount}
             </span>
-            {defaultCodebase.branch && (
-              <span className="text-desktop-text-secondary">@ {defaultCodebase.branch}</span>
+            {repoDisplayName ? (
+              <span className="max-w-[180px] truncate text-desktop-text-secondary">
+                {repoDisplayName}
+              </span>
+            ) : (
+              <span className="max-w-[180px] truncate text-desktop-text-secondary">
+                {t.kanbanBoard.noReposLinked}
+              </span>
             )}
-            {codebases.length > 1 && (
-              <span className="text-desktop-text-secondary">+{codebases.length - 1}</span>
+            {defaultCodebase?.branch && (
+              <span className="text-desktop-text-secondary">@ {defaultCodebase.branch}</span>
             )}
           </button>
         ) : (
           <div className="flex items-center gap-1.5 px-2.5 h-6 text-desktop-text-secondary">
             <GitBranch className="w-3 h-3" />
-            <span>{t.kanbanBoard.noReposLinked}</span>
+            <span className="font-medium">{t.kanbanBoard.repos}</span>
+            <span className="rounded-full bg-desktop-bg-active px-1.5 py-0.5 text-[10px]">
+              {repoCount}
+            </span>
+            <span>{repoDisplayName ?? t.kanbanBoard.noReposLinked}</span>
           </div>
         )}
 

@@ -4,6 +4,7 @@ use crate::attribute::attribution::{
 use crate::evaluate::gates::{
     effect_classes_summary, evidence_inline_summary, EvidenceRequirementStatus,
 };
+use crate::feature_trace::{summarize_features, summarize_routes, FeatureTraceCatalogs};
 use crate::observe::detect::scan_agents;
 use crate::run::run::{Role, RunMode};
 use crate::run::workspace::WorkspaceState;
@@ -111,6 +112,8 @@ pub(crate) fn handle_run_command(action: RunCommand, db: &Db, repo_root: &str) -
             let found = runs.iter().find(|run| run.run_id == id);
             match found {
                 Some(run) => {
+                    let session_feature_trace =
+                        load_session_feature_trace(db, repo_root, &run.run_id)?;
                     println!("run_id:      {}", run.run_id);
                     println!("mode:        {}", run.mode.as_str());
                     println!("origin:      {}", run.origin.as_str());
@@ -170,6 +173,26 @@ pub(crate) fn handle_run_command(action: RunCommand, db: &Db, repo_root: &str) -
                         println!("changed:");
                         for path in &run.changed_files {
                             println!("  - {path}");
+                        }
+                    }
+                    if let Some(analysis) = session_feature_trace {
+                        let routes = summarize_routes(&analysis, 8);
+                        let features = summarize_features(&analysis, 8);
+                        if routes.is_empty() {
+                            println!("routes:      -");
+                        } else {
+                            println!("routes:");
+                            for route in routes {
+                                println!("  - {route}");
+                            }
+                        }
+                        if features.is_empty() {
+                            println!("features:    -");
+                        } else {
+                            println!("features:");
+                            for feature in features {
+                                println!("  - {feature}");
+                            }
                         }
                     }
                 }
@@ -313,6 +336,21 @@ fn format_timestamp_ms(timestamp_ms: i64) -> String {
     chrono::DateTime::from_timestamp_millis(timestamp_ms)
         .map(|dt| dt.to_rfc3339())
         .unwrap_or_else(|| timestamp_ms.to_string())
+}
+
+fn load_session_feature_trace(
+    db: &Db,
+    repo_root: &str,
+    session_id: &str,
+) -> Result<Option<trace_parser::SessionAnalysis>> {
+    let Some(catalogs) = FeatureTraceCatalogs::load(Path::new(repo_root))? else {
+        return Ok(None);
+    };
+    let material = db.session_trace_material(repo_root, session_id)?;
+    if material.changed_files.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(catalogs.analyze(&material)))
 }
 
 fn load_cli_run_summaries(

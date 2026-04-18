@@ -16,6 +16,10 @@ path = "src/lib.rs"
 # Core domain (with axum IntoResponse support)
 routa-core = { version = "0.16.0", path = "../routa-core", features = ["axum"] }
 
+# Feature trace & session analysis
+feature-trace = { path = "../feature-trace" }
+trace-parser = { path = "../trace-parser" }
+
 # Web framework
 axum = { version = "0.8", features = ["macros"] }
 axum-extra = { version = "0.10", features = ["multipart"] }

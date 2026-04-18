@@ -1,7 +1,6 @@
 #![allow(unused_imports)]
 #![allow(clippy::module_inception)]
 
-pub mod auggie_session;
 pub mod codex_transcript;
 pub mod detect;
 pub mod events;

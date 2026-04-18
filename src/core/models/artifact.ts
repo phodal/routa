@@ -7,9 +7,10 @@
  * - Test results (for quality gates)
  * - Code diffs (for code review)
  * - Logs (for debugging)
+ * - Canvas (for analytical artifacts — fitness reports, dashboards)
  */
 
-export type ArtifactType = "screenshot" | "test_results" | "code_diff" | "logs";
+export type ArtifactType = "screenshot" | "test_results" | "code_diff" | "logs" | "canvas";
 
 export type ArtifactStatus = "pending" | "provided" | "expired";
 

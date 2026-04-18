@@ -59,16 +59,18 @@ metrics:
 | task | `POST /api/tasks` | create | 创建成功与字段校验 | VERIFIED | `crates/routa-server/tests/rust_api_end_to_end.rs::api_task_flow_with_validation` |
 | kanban | `POST /api/kanban/import` | import | YAML 导入成功并返回 applied 明细 | VERIFIED | `crates/routa-server/tests/rust_api_task_artifacts.rs::api_kanban_import_export_roundtrip` |
 | kanban | `GET /api/kanban/export` | export + validation | YAML 导出成功；缺失 `workspaceId` 返回 400 | VERIFIED | `crates/routa-server/tests/rust_api_task_artifacts.rs::api_kanban_import_export_roundtrip` |
-| codebase | `POST /api/workspaces/{workspaceId}/codebases` | create + duplicate handling | 冲突返回语义一致性 | VERIFIED | `crates/routa-server/tests/rust_api_end_to_end.rs::api_codebase_and_file_search_flow` |
-| codebase | `GET /api/files/search` | search path | 空路径/非法路径/结果可见性 | VERIFIED | `crates/routa-server/tests/rust_api_end_to_end.rs::api_codebase_and_file_search_flow` |
+| codebase | `POST /api/workspaces/{workspaceId}/codebases` | create + duplicate handling | bare repo 拒绝、创建返回 201、冲突返回语义一致性 | VERIFIED | `crates/routa-server/tests/rust_api_end_to_end.rs::api_codebase_and_file_search_flow` |
+| codebase | `GET /api/files/search` | search path | 缺失 repoPath 返回 400；结果可见性与扫描计数正确 | VERIFIED | `crates/routa-server/tests/rust_api_end_to_end.rs::api_codebase_and_file_search_flow` |
 | codebase | `PATCH /api/codebases/{id}` | update | 更新字段成功 | VERIFIED | `crates/routa-server/tests/rust_api_end_to_end.rs::api_codebase_and_file_search_flow` |
 | codebase | `POST /api/codebases/{id}/default` | set default | 默认目标可读返回正确 | VERIFIED | `crates/routa-server/tests/rust_api_end_to_end.rs::api_codebase_and_file_search_flow` |
-| codebase | `DELETE /api/codebases/{id}` | delete | 删除成功返回 ok | VERIFIED | `crates/routa-server/tests/rust_api_end_to_end.rs::api_codebase_and_file_search_flow` |
+| codebase | `DELETE /api/codebases/{id}` | delete | 全局删除成功返回 ok | VERIFIED | `crates/routa-server/tests/rust_api_end_to_end.rs::api_codebase_and_file_search_flow` |
+| codebase | `DELETE /api/workspaces/{workspaceId}/codebases/{codebaseId}` | workspace-scoped delete | workspace 不匹配返回 404；匹配时删除成功 | VERIFIED | `crates/routa-server/tests/rust_api_end_to_end.rs::api_codebase_and_file_search_flow` |
 | clone | `DELETE /api/clone/branches` | delete local branch | 成功删除本地 issue 分支；当前分支返回 409；缺失分支返回 404 | TODO | `src/app/api/clone/branches/__tests__/route.test.ts` |
 | github | `GET /api/github/pulls` | list workspace-linked pulls | workspace/codebase 解析、400/404 负向路径、返回 PR 元数据 | TODO | `src/app/api/github/pulls/route.ts`, `crates/routa-server/src/api/github.rs` |
 | harness | `GET /api/harness/templates` | list templates | repo context 解析与模板列表返回 | TODO | `src/app/api/harness/templates/route.ts`, `crates/routa-server/src/api/harness_templates.rs` |
 | harness | `GET /api/harness/templates/validate` | validate template | 缺失 templateId 返回 400；成功返回验证结果 | TODO | `src/app/api/harness/templates/validate/route.ts`, `crates/routa-server/src/api/harness_templates.rs` |
 | harness | `GET /api/harness/templates/doctor` | doctor templates | repo context 解析与诊断结果返回 | TODO | `src/app/api/harness/templates/doctor/route.ts`, `crates/routa-server/src/api/harness_templates.rs` |
+| spec | `GET /api/spec/issues` | list local issue specs | `repoPath` 成功路径返回规范化 issue 元数据；非法路径返回 400；跳过坏文件并将 `closed` 归一到 `resolved` | VERIFIED | `crates/routa-server/tests/rust_api_end_to_end.rs::api_spec_issues_contract` |
 | fitness | `GET /api/fitness/architecture` | architecture report | repo context 解析与架构报告返回 | TODO | `src/app/api/fitness/architecture/route.ts`, `crates/routa-server/src/api/fitness.rs` |
 | task | `GET /api/tasks/{id}/changes` | repo/worktree change summary | 任务缺失返回 404；无 repo 时返回空变更；有 repo 时返回 status/files | TODO | `src/app/api/tasks/[taskId]/changes/route.ts`, `crates/routa-server/src/api/tasks.rs` |
 | github | `GET /api/github/issues` | list workspace-linked issues | workspace/codebase 解析、400/404 负向路径、返回 issue 元数据 | BLOCKED | `env: 需要可控 GitHub API stub 或可注入 base URL 的 rust_api_end_to_end harness` |

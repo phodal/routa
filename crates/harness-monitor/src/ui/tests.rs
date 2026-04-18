@@ -1,4 +1,5 @@
 use super::*;
+use crate::feature_trace::SessionTraceMaterial;
 use crate::observe::ipc::RuntimeFeed;
 use crate::shared::models::{
     AttributionConfidence, DetectedAgent, EntryKind, EventLogEntry, EventSource, FileView,
@@ -177,6 +178,7 @@ fn sample_state() -> RuntimeState {
     ]);
 
     let mut state = RuntimeState::new("/tmp/project".to_string(), "main".to_string());
+    state.set_branch_oid(Some("abcdef".to_string()));
     state.tasks = tasks;
     state.task_change_paths.insert(
         live_task_id,
@@ -355,6 +357,8 @@ fn sample_cache(state: &RuntimeState) -> AppCache {
         },
     );
     cache.set_test_mapping_snapshot_for_tests(
+        "test".to_string(),
+        TestMappingAnalysisMode::Full,
         vec![
             TestMappingEntry {
                 source_file: "crates/harness-monitor/src/tui.rs".to_string(),
@@ -380,6 +384,36 @@ fn sample_cache(state: &RuntimeState) -> AppCache {
         Vec::new(),
     );
     cache
+}
+
+fn seed_live_run_feature_trace(cache: &mut AppCache) {
+    cache.set_session_feature_trace_for_tests(
+        SessionTraceMaterial::new(
+            "live-hook-check",
+            vec!["crates/harness-monitor/src/tui.rs".to_string()],
+            vec!["Write".to_string()],
+        ),
+        trace_parser::SessionAnalysis {
+            session_id: "live-hook-check".to_string(),
+            changed_files: vec!["crates/harness-monitor/src/tui.rs".to_string()],
+            tool_call_counts: BTreeMap::from([("Write".to_string(), 1)]),
+            surface_links: vec![trace_parser::FeatureSurfaceLink {
+                kind: trace_parser::FeatureSurfaceKind::Page,
+                route: "/workspace/:workspaceId/feature-explorer".to_string(),
+                source_path: "src/app/workspace/[workspaceId]/feature-explorer/page.tsx"
+                    .to_string(),
+                via_path: "crates/harness-monitor/src/tui.rs".to_string(),
+                confidence: trace_parser::SurfaceLinkConfidence::Medium,
+            }],
+            feature_links: vec![trace_parser::ProductFeatureLink {
+                feature_id: "feature-explorer".to_string(),
+                feature_name: "Feature Explorer".to_string(),
+                route: Some("/workspace/:workspaceId/feature-explorer".to_string()),
+                via_path: "crates/harness-monitor/src/tui.rs".to_string(),
+                confidence: trace_parser::SurfaceLinkConfidence::Medium,
+            }],
+        },
+    );
 }
 
 fn render_snapshot(state: &RuntimeState, cache: &mut AppCache, width: u16, height: u16) -> String {
@@ -724,6 +758,7 @@ fn run_details_surface_run_centric_operator_context() {
     let mut state = sample_state();
     select_live_run(&mut state);
     let mut cache = sample_cache(&state);
+    seed_live_run_feature_trace(&mut cache);
 
     let snapshot = render_snapshot(&state, &mut cache, 180, 52);
 
@@ -734,6 +769,7 @@ fn run_details_surface_run_centric_operator_context() {
     assert!(snapshot.contains("Next: generate coverage evidence"));
     assert!(snapshot.contains("Evidence:"));
     assert!(snapshot.contains("Trace:"));
+    assert!(snapshot.contains("Feature Explorer"));
     assert!(snapshot.contains("commit: stabilize monitor journey"));
 }
 
@@ -742,6 +778,7 @@ fn tui_snapshot_run_details_decision_first() {
     let mut state = sample_state();
     select_live_run(&mut state);
     let mut cache = sample_cache(&state);
+    seed_live_run_feature_trace(&mut cache);
 
     insta::assert_snapshot!(
         "routa_watch_tui_run_details_decision_first",
@@ -754,11 +791,71 @@ fn file_detail_surfaces_test_mapping_context() {
     let state = sample_state();
     let mut cache = sample_cache(&state);
 
-    let snapshot = render_snapshot(&state, &mut cache, 180, 32);
+    let snapshot = render_snapshot(&state, &mut cache, 180, 40);
 
     assert!(snapshot.contains("Test mapping:"));
     assert!(snapshot.contains("changed") || snapshot.contains("missing"));
+    assert!(snapshot.contains("Analysis:"));
+    assert!(snapshot.contains("graph-aware"));
     assert!(snapshot.contains("TM "));
+}
+
+#[test]
+fn file_detail_shows_fast_test_mapping_pending_graph_refresh() {
+    let state = sample_state();
+    let mut cache = sample_cache(&state);
+    let cache_key = "test".to_string();
+    cache.set_test_mapping_snapshot_for_tests(
+        cache_key.clone(),
+        TestMappingAnalysisMode::Fast,
+        vec![TestMappingEntry {
+            source_file: "crates/harness-monitor/src/tui.rs".to_string(),
+            language: "rust".to_string(),
+            status: "changed".to_string(),
+            related_test_files: vec!["crates/harness-monitor/src/tui_tests.rs".to_string()],
+            graph_test_files: Vec::new(),
+            resolver_kind: "hybrid_heuristic".to_string(),
+            confidence: "medium".to_string(),
+            has_inline_tests: false,
+        }],
+        Vec::new(),
+    );
+    cache.set_test_mapping_graph_pending_for_tests(cache_key);
+
+    let snapshot = render_snapshot(&state, &mut cache, 180, 40);
+
+    assert!(snapshot.contains("fast heuristic"));
+    assert!(snapshot.contains("graph refresh pending"));
+}
+
+#[test]
+fn file_detail_shows_graph_refresh_budget_note() {
+    let state = sample_state();
+    let mut cache = sample_cache(&state);
+    cache.set_test_mapping_snapshot_for_tests(
+        "test".to_string(),
+        TestMappingAnalysisMode::Fast,
+        vec![TestMappingEntry {
+            source_file: "crates/harness-monitor/src/tui.rs".to_string(),
+            language: "rust".to_string(),
+            status: "changed".to_string(),
+            related_test_files: vec!["crates/harness-monitor/src/tui_tests.rs".to_string()],
+            graph_test_files: Vec::new(),
+            resolver_kind: "hybrid_heuristic".to_string(),
+            confidence: "medium".to_string(),
+            has_inline_tests: false,
+        }],
+        Vec::new(),
+    );
+    cache.set_test_mapping_graph_note_for_tests(
+        "graph refresh skipped: 17 dirty files exceeds budget 12".to_string(),
+    );
+
+    let snapshot = render_snapshot(&state, &mut cache, 180, 40);
+
+    assert!(snapshot.contains("fast heuristic"));
+    assert!(snapshot.contains("graph refresh skipped"));
+    assert!(snapshot.contains("budget 12"));
 }
 
 #[test]
@@ -1247,6 +1344,7 @@ fn parse_repo_status_reads_branch_and_ahead_count() {
     );
 
     assert_eq!(status.branch.as_deref(), Some("main"));
+    assert_eq!(status.branch_oid.as_deref(), Some("abcdef"));
     assert_eq!(status.upstream.as_deref(), Some("origin/main"));
     assert_eq!(status.ahead_count, Some(7));
     assert_eq!(status.committed_change_summary, None);

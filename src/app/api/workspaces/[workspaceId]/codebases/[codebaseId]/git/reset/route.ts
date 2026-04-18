@@ -1,7 +1,12 @@
 import { NextResponse } from "next/server";
 import { getRoutaSystem } from "@/core/routa-system";
 import { isGitRepository } from "@/core/git";
-import { resetBranch } from "@/core/git/git-operations";
+import {
+  checkoutExistingBranch,
+  getCurrentBranchName,
+  hasLocalBranch,
+  resetBranch,
+} from "@/core/git/git-operations";
 
 export const dynamic = "force-dynamic";
 
@@ -50,7 +55,7 @@ export async function POST(
 
   const codebase = await system.codebaseStore.get(codebaseId);
   
-  if (!codebase) {
+  if (!codebase || codebase.workspaceId !== workspaceId) {
     return NextResponse.json(
       { success: false, error: "Codebase not found" },
       { status: 404 },
@@ -66,9 +71,19 @@ export async function POST(
 
   try {
     await resetBranch(codebase.repoPath, to, mode);
+
+    const isTargetLocalBranch = await hasLocalBranch(codebase.repoPath, to);
+    if (isTargetLocalBranch) {
+      const currentBranch = await getCurrentBranchName(codebase.repoPath);
+      if (currentBranch !== to) {
+        await checkoutExistingBranch(codebase.repoPath, to);
+      }
+      await system.codebaseStore.update(codebaseId, { branch: to });
+    }
     
     return NextResponse.json({
       success: true,
+      ...(isTargetLocalBranch ? { branch: to } : {}),
     });
   } catch (error) {
     return NextResponse.json(

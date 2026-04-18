@@ -12,14 +12,13 @@ import {
   isGitRepository,
   getCurrentBranch,
 } from "@/core/git";
-import { getServerBridge } from "@/core/platform";
+import { gitExec as runGit } from "@/core/utils/safe-exec";
 import type { GitRef, GitRefsResult } from "@/app/workspace/[workspaceId]/kanban/git-log/types";
 
 export const dynamic = "force-dynamic";
 
-function gitExec(command: string, cwd: string): string {
-  const bridge = getServerBridge();
-  return bridge.process.execSync(command, { cwd }).trimEnd();
+function gitExec(args: string[], cwd: string): string {
+  return runGit(args, { cwd }).trimEnd();
 }
 
 export async function GET(request: NextRequest) {
@@ -42,7 +41,7 @@ export async function GET(request: NextRequest) {
     // Local branches
     try {
       const output = gitExec(
-        `git for-each-ref --format=%(refname:short)%09%(objectname) refs/heads/`,
+        ["for-each-ref", "--format=%(refname:short)%09%(objectname)", "refs/heads/"],
         repoPath,
       );
       for (const line of output.split("\n").filter(Boolean)) {
@@ -61,7 +60,7 @@ export async function GET(request: NextRequest) {
     // Remote branches
     try {
       const output = gitExec(
-        `git for-each-ref --format=%(refname:short)%09%(objectname) refs/remotes/`,
+        ["for-each-ref", "--format=%(refname:short)%09%(objectname)", "refs/remotes/"],
         repoPath,
       );
       for (const line of output.split("\n").filter(Boolean)) {
@@ -77,7 +76,7 @@ export async function GET(request: NextRequest) {
     // Tags
     try {
       const output = gitExec(
-        `git for-each-ref --format=%(refname:short)%09%(*objectname)%09%(objectname) refs/tags/`,
+        ["for-each-ref", "--format=%(refname:short)%09%(*objectname)%09%(objectname)", "refs/tags/"],
         repoPath,
       );
       for (const line of output.split("\n").filter(Boolean)) {

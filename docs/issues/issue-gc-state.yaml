@@ -1,13 +1,10 @@
-last_reviewed_at: "2026-04-11"
+last_reviewed_at: "2026-04-17"
 cadence_days: 7
 owner: "agent"
 notes: "Weekly issue hygiene heartbeat for status/implementation sync checks."
 last_cleanup_summary: |
-  2026-04-11 cleanup:
-  - Synced closed GitHub issues back into local records: #296, #303, #363, #394, #399, #401, #409
-  - Continued sync: closed local issue #222 and filled active tracking metadata for #406
-  - Normalized local status vocabulary to the template set (`open`, `investigating`, `resolved`)
-  - Reclassified unresolved ACP inventory mismatch as active open work: #364
-  - Deduplicated local issue families: merged Rust task API analysis into #406, merged harness build metadata into the broader build/test harness tracker, and reclassified the #314 fix batch as a progress note
-  - Further family cleanup: merged harness governance-loop semantic drift into the broader harness build/test surface tracker
-  - Remaining active local issues were trimmed to the still-open or still-investigating set
+  2026-04-17 cleanup:
+  - Synced harness-monitor local state drift with GitHub closures: marked #413 and #442 local mirrors as resolved/closed after verifying shipped code paths
+  - Narrowed the harness-monitor selection-latency issue from the outdated "single worker" framing to the remaining facts/git-history enrichment bottleneck
+  - Narrowed the decision-console issue to the remaining journey/go-no-go summary gaps after Run Details moved to a decision-first layout
+  - Refreshed the issue hygiene heartbeat after a focused harness-monitor local issue review

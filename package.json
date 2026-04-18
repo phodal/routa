@@ -36,6 +36,7 @@
     "build:desktop:server": "cross-env NODE_OPTIONS='--max-old-space-size=8192' ROUTA_DESKTOP_SERVER_BUILD=1 next build",
     "build:desktop:bundle": "node scripts/build/build-desktop-bundle.mjs",
     "build:static": "node scripts/build/build-static.mjs",
+    "canvas:sdk:generate": "node scripts/canvas/generate-sdk-prompt-artifacts.mjs",
     "build:desktop": "npm run build:desktop:bundle && npm run build:static",
     "build:docker": "cross-env NODE_OPTIONS='--max-old-space-size=8192' ROUTA_DESKTOP_STANDALONE=1 next build && node scripts/build/build-docker.mjs",
     "start": "next start",
@@ -194,6 +195,7 @@
     "react-dom": "^19.0.0",
     "recharts": "^3.8.1",
     "smol-toml": "^1.6.0",
+    "sucrase": "^3.35.1",
     "utf-8-validate": "^6.0.6",
     "uuid": "^13.0.0",
     "ws": "^8.19.0",
@@ -205,6 +207,17 @@
     "better-sqlite3": "^12.6.2",
     "node-pty": "^1.1.0",
     "opencode-ai": "latest"
+  },
+  "overrides": {
+    "@hono/node-server": "1.19.14",
+    "dompurify": "3.4.0",
+    "esbuild": "0.28.0",
+    "follow-redirects": "1.16.0",
+    "hono": "4.12.14",
+    "lodash": "4.18.1",
+    "protobufjs": "8.0.1",
+    "serialize-javascript": "7.0.5",
+    "vite": "8.0.8"
   },
   "devDependencies": {
     "@docusaurus/core": "^3.9.2",

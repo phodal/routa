@@ -2,7 +2,8 @@
 title: "Harness monitor 无法从 Codex hooks 把真实用户 task 串到 session 与 file changes"
 date: "2026-04-12"
 kind: issue
-status: open
+status: resolved
+resolved_at: "2026-04-13"
 severity: medium
 area: "harness-monitor"
 tags: ["harness-monitor", "codex-hooks", "task-tracking", "session-attribution", "tui"]
@@ -10,13 +11,16 @@ reported_by: "codex"
 related_issues:
   - "docs/issues/2026-04-12-harness-monitor-semantic-refactor-for-run-centric-operator-model.md"
 github_issue: 413
-github_state: open
+github_state: closed
 github_url: "https://github.com/phodal/routa/issues/413"
+resolution: "Codex hook ingestion now materializes first-class tasks and session/turn links in SQLite, and task list/show paths read those task entities instead of treating session as task."
 ---
 
 # Harness monitor 无法从 Codex hooks 把真实用户 task 串到 session 与 file changes
 
 ## What Happened
+
+这张 issue 记录的是 2026-04-12 当时的缺口；截至 2026-04-13，这条链路已经补齐。
 
 `crates/harness-monitor` 目前能跟踪：
 
@@ -82,6 +86,13 @@ Harness monitor 应该把 Codex hooks 中的 task 信号串成一条稳定链路
 - Codex `SessionStart` schema只有 `session_id` / `cwd` / `transcript_path` / `source` / `model`，不包含 prompt。
 - Codex `UserPromptSubmit` schema 明确包含 `prompt` 与 `turn_id`，它才是当前最可靠的 task 事实源。
 - 本地 `~/.codex/sessions/*.jsonl` 提供了 transcript 回填路径，可作为 hook 缺失或 resume 场景下的补偿数据源。
+
+## Resolution Notes
+
+- SQLite schema 现在已有 `tasks`、`session_task_links`、`turn_task_links`。
+- `UserPromptSubmit` 与 transcript recovery 都会落真实 task，并建立 session/turn 到 task 的映射。
+- `list_tasks`、`get_task`、`active_task_for_session` 现在都以 task 作为一等对象读取。
+- 剩余未完成部分更偏向 task journey / decision summary 的 UI 收敛，已由其他 open issue 跟踪。
 
 ## References
 

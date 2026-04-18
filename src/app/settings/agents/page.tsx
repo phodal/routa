@@ -1,3 +1,7 @@
+/**
+ * Settings / Agents - /settings/agents
+ * Settings page for installing, discovering, and managing ACP-compatible agent runtimes.
+ */
 "use client";
 
 import { Bot } from "lucide-react";

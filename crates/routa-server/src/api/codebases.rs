@@ -1,5 +1,6 @@
 use axum::{
     extract::State,
+    http::StatusCode,
     routing::{get, patch, post},
     Json, Router,
 };
@@ -20,11 +21,19 @@ fn repo_label_from_path(repo_path: &str) -> String {
         .unwrap_or_else(|| repo_path.to_string())
 }
 
+fn should_set_new_codebase_as_default(has_existing_default: bool, requested_default: bool) -> bool {
+    requested_default || !has_existing_default
+}
+
 pub fn router() -> Router<AppState> {
     Router::new()
         .route(
             "/workspaces/{workspace_id}/codebases",
             get(list_codebases).post(add_codebase),
+        )
+        .route(
+            "/workspaces/{workspace_id}/codebases/{codebase_id}",
+            axum::routing::delete(delete_workspace_codebase),
         )
         .route(
             "/workspaces/{workspace_id}/codebases/changes",
@@ -135,7 +144,7 @@ async fn add_codebase(
     State(state): State<AppState>,
     axum::extract::Path(workspace_id): axum::extract::Path<String>,
     Json(body): Json<AddCodebaseRequest>,
-) -> Result<Json<serde_json::Value>, ServerError> {
+) -> Result<(StatusCode, Json<serde_json::Value>), ServerError> {
     let source_type = body.source_type.unwrap_or(CodebaseSourceType::Local);
     let repo_path = normalize_local_repo_path(&body.repo_path);
     match source_type {
@@ -150,10 +159,18 @@ async fn add_codebase(
         .find_by_repo_path(&workspace_id, &repo_path)
         .await?
     {
-        return Err(ServerError::Conflict(format!(
-            "Codebase with repo_path '{repo_path}' already exists in workspace {workspace_id}"
-        )));
+        return Err(ServerError::Conflict(
+            "Codebase with this repoPath already exists in the workspace".to_string(),
+        ));
     }
+
+    let has_existing_default = state
+        .codebase_store
+        .get_default(&workspace_id)
+        .await?
+        .is_some();
+    let should_set_default =
+        should_set_new_codebase_as_default(has_existing_default, body.is_default);
 
     let codebase = Codebase::new(
         uuid::Uuid::new_v4().to_string(),
@@ -161,13 +178,30 @@ async fn add_codebase(
         repo_path,
         body.branch,
         body.label,
-        body.is_default,
+        false,
         Some(source_type),
         body.source_url,
     );
 
     state.codebase_store.save(&codebase).await?;
-    Ok(Json(serde_json::json!({ "codebase": codebase })))
+
+    if should_set_default {
+        state
+            .codebase_store
+            .set_default(&codebase.workspace_id, &codebase.id)
+            .await?;
+    }
+
+    let saved_codebase = state
+        .codebase_store
+        .get(&codebase.id)
+        .await?
+        .ok_or_else(|| ServerError::NotFound(format!("Codebase {} not found", codebase.id)))?;
+
+    Ok((
+        StatusCode::CREATED,
+        Json(serde_json::json!({ "codebase": saved_codebase })),
+    ))
 }
 
 #[derive(Debug, Deserialize)]
@@ -210,10 +244,9 @@ async fn update_codebase(
             .await?
         {
             if duplicate.id != id {
-                return Err(ServerError::Conflict(format!(
-                    "Codebase with repo_path '{}' already exists in workspace {}",
-                    normalized, existing.workspace_id
-                )));
+                return Err(ServerError::Conflict(
+                    "Codebase with this repoPath already exists in the workspace".to_string(),
+                ));
             }
         }
 
@@ -247,8 +280,28 @@ async fn delete_codebase(
     State(state): State<AppState>,
     axum::extract::Path(id): axum::extract::Path<String>,
 ) -> Result<Json<serde_json::Value>, ServerError> {
+    delete_codebase_by_id(&state, &id, None).await
+}
+
+async fn delete_workspace_codebase(
+    State(state): State<AppState>,
+    axum::extract::Path((workspace_id, codebase_id)): axum::extract::Path<(String, String)>,
+) -> Result<Json<serde_json::Value>, ServerError> {
+    delete_codebase_by_id(&state, &codebase_id, Some(&workspace_id)).await
+}
+
+async fn delete_codebase_by_id(
+    state: &AppState,
+    id: &str,
+    workspace_id: Option<&str>,
+) -> Result<Json<serde_json::Value>, ServerError> {
     // Clean up worktrees on disk before deleting the codebase
-    if let Ok(Some(codebase)) = state.codebase_store.get(&id).await {
+    let codebase = state.codebase_store.get(id).await?;
+    if let Some(codebase) = codebase {
+        if workspace_id.is_some_and(|workspace_id| codebase.workspace_id != workspace_id) {
+            return Err(ServerError::NotFound("Codebase not found".to_string()));
+        }
+
         let repo_path = &codebase.repo_path;
 
         // Acquire repo lock to prevent races with concurrent worktree operations
@@ -263,7 +316,7 @@ async fn delete_codebase(
 
         let worktrees = state
             .worktree_store
-            .list_by_codebase(&id)
+            .list_by_codebase(id)
             .await
             .map_err(|e| ServerError::Internal(format!("Failed to list worktrees: {e}")))?;
         for wt in &worktrees {
@@ -278,9 +331,11 @@ async fn delete_codebase(
         if !worktrees.is_empty() {
             let _ = crate::git::worktree_prune(repo_path);
         }
+    } else if workspace_id.is_some() {
+        return Err(ServerError::NotFound("Codebase not found".to_string()));
     }
 
-    state.codebase_store.delete(&id).await?;
+    state.codebase_store.delete(id).await?;
     Ok(Json(serde_json::json!({ "deleted": true })))
 }
 
@@ -1373,5 +1428,16 @@ mod tests {
         assert!(entry_paths.contains(&"README.md"));
         assert!(entry_paths.contains(&"docs/ARCHITECTURE.md"));
         assert!(!entry_paths.contains(&"docs"));
+    }
+
+    #[test]
+    fn new_codebase_becomes_default_when_workspace_has_no_default() {
+        assert!(should_set_new_codebase_as_default(false, false));
+    }
+
+    #[test]
+    fn requested_default_overrides_existing_default_presence() {
+        assert!(should_set_new_codebase_as_default(true, true));
+        assert!(!should_set_new_codebase_as_default(true, false));
     }
 }

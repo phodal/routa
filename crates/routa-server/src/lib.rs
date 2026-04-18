@@ -197,7 +197,25 @@ fn resolve_static_target(path: &str) -> (String, &'static str) {
             ("index.html".to_string(), "text/html; charset=utf-8")
         }
     } else {
-        let clean_path = path.trim_start_matches('/').trim_end_matches('/');
+        let clean_path = path
+            .trim_start_matches('/')
+            .trim_end_matches(".txt")
+            .trim_end_matches('/');
+        let segments: Vec<&str> = clean_path.split('/').filter(|s| !s.is_empty()).collect();
+        if segments.len() >= 2 && segments[0] == "canvas" {
+            let ext = if is_rsc_request { "txt" } else { "html" };
+            let content = if is_rsc_request {
+                "text/x-component; charset=utf-8"
+            } else {
+                "text/html; charset=utf-8"
+            };
+            let suffix = if segments.len() > 2 {
+                format!("/{}", segments[2..].join("/"))
+            } else {
+                String::new()
+            };
+            return (format!("canvas/__placeholder__{suffix}.{ext}"), content);
+        }
         if is_rsc_request {
             (
                 if clean_path.is_empty() {
@@ -491,5 +509,26 @@ mod tests {
             "workspace/__placeholder__/codebases/__placeholder__/reposlide.html"
         );
         assert_eq!(content_type, "text/html; charset=utf-8");
+    }
+
+    #[test]
+    fn resolves_canvas_placeholder() {
+        let (target, content_type) = resolve_static_target("/canvas/canvas-123");
+        assert_eq!(target, "canvas/__placeholder__.html");
+        assert_eq!(content_type, "text/html; charset=utf-8");
+    }
+
+    #[test]
+    fn resolves_canvas_rsc_placeholder() {
+        let (target, content_type) = resolve_static_target("/canvas/canvas-123.txt");
+        assert_eq!(target, "canvas/__placeholder__.txt");
+        assert_eq!(content_type, "text/x-component; charset=utf-8");
+    }
+
+    #[test]
+    fn resolves_canvas_tree_placeholder() {
+        let (target, content_type) = resolve_static_target("/canvas/canvas-123/__next._tree.txt");
+        assert_eq!(target, "canvas/__placeholder__/__next._tree.txt");
+        assert_eq!(content_type, "text/x-component; charset=utf-8");
     }
 }

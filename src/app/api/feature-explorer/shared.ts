@@ -1,0 +1,1327 @@
+import * as fs from "fs";
+import * as path from "path";
+import * as yaml from "js-yaml";
+
+import featureSurfaceMetadata from "@/core/spec/feature-surface-metadata";
+import {
+  collectMatchingTranscriptSessions,
+  commandFromUnknown,
+  commandOutputFromUnknown,
+} from "./transcript-sessions";
+import type { TranscriptProvider } from "./transcript-sessions";
+
+const { buildApiLookupKey, normalizeSurfaceMetadata } = featureSurfaceMetadata;
+
+export { isContextError, parseContext, resolveRepoRoot } from "../harness/hooks/shared";
+export type { HarnessContext as FeatureExplorerContext } from "../harness/hooks/shared";
+export type { TranscriptProvider } from "./transcript-sessions";
+
+const FEATURE_TREE_PATH = "docs/product-specs/FEATURE_TREE.md";
+const FEATURE_TREE_INDEX_PATH = "docs/product-specs/feature-tree.index.json";
+const APP_ROOT = "src/app";
+const MAX_FILE_SIGNAL_SESSIONS = 6;
+const MAX_FILE_SIGNAL_TOOLS = 8;
+const MAX_FILE_SIGNAL_PROMPTS = 6;
+const MAX_FILE_SIGNAL_CHANGED_FILES = 12;
+const IGNORED_PATHS = new Set([".git", "node_modules", ".next", "dist", "out", "target"]);
+
+type FallbackSourceDir = string;
+
+export interface CapabilityGroup {
+  id: string;
+  name: string;
+  description: string;
+}
+
+export interface FeatureTreeFeature {
+  id: string;
+  name: string;
+  group: string;
+  summary: string;
+  status: string;
+  pages: string[];
+  apis: string[];
+  sourceFiles: string[];
+  relatedFeatures: string[];
+  domainObjects: string[];
+}
+
+export interface FrontendPageDetail {
+  name: string;
+  route: string;
+  description: string;
+  sourceFile: string;
+}
+
+export interface ApiEndpointDetail {
+  group: string;
+  method: string;
+  endpoint: string;
+  description: string;
+  nextjsSourceFiles?: string[];
+  rustSourceFiles?: string[];
+}
+
+export interface ApiImplementationDetail {
+  group: string;
+  method: string;
+  endpoint: string;
+  sourceFiles: string[];
+}
+
+export interface FeatureTree {
+  capabilityGroups: CapabilityGroup[];
+  features: FeatureTreeFeature[];
+  frontendPages: FrontendPageDetail[];
+  apiEndpoints: ApiEndpointDetail[];
+  nextjsApiEndpoints: ApiImplementationDetail[];
+  rustApiEndpoints: ApiImplementationDetail[];
+}
+
+export type FeatureTreeParsed = FeatureTree;
+
+interface FeatureMetadataRaw {
+  capability_groups?: CapabilityGroup[];
+  features?: Array<{
+    id?: string;
+    name?: string;
+    group?: string;
+    summary?: string;
+    status?: string;
+    pages?: string[];
+    apis?: string[];
+    source_files?: string[];
+    related_features?: string[];
+    domain_objects?: string[];
+  }>;
+}
+
+interface FeatureTreeFrontmatter {
+  feature_metadata?: FeatureMetadataRaw;
+}
+
+interface FeatureTreeIndexPayload {
+  pages?: Array<{
+    route?: string;
+    title?: string;
+    description?: string;
+    sourceFile?: string;
+  }>;
+  apis?: Array<{
+    domain?: string;
+    method?: string;
+    path?: string;
+    summary?: string;
+  }>;
+  contractApis?: Array<{
+    domain?: string;
+    method?: string;
+    path?: string;
+    summary?: string;
+  }>;
+  nextjsApis?: Array<{
+    domain?: string;
+    method?: string;
+    path?: string;
+    sourceFiles?: string[];
+  }>;
+  rustApis?: Array<{
+    domain?: string;
+    method?: string;
+    path?: string;
+    sourceFiles?: string[];
+  }>;
+}
+
+export interface SurfaceCatalog {
+  kind: "Page" | "API";
+  route: string;
+  sourcePath: string;
+  sourceDir: string;
+}
+
+export interface SurfaceLink {
+  kind: string;
+  route: string;
+  sourcePath: string;
+  confidence: "High" | "Medium";
+}
+
+export interface FeatureLink {
+  featureId: string;
+  featureName: string;
+  route?: string;
+  viaPath: string;
+  confidence: "High" | "Medium";
+}
+
+export interface FeatureTreeSummary {
+  sessionCount: number;
+  changedFiles: number;
+  updatedAt: string;
+  matchedFiles: string[];
+}
+
+export interface FileStat {
+  changes: number;
+  sessions: number;
+  updatedAt: string;
+}
+
+export interface FileSessionSignal {
+  provider: TranscriptProvider;
+  sessionId: string;
+  updatedAt: string;
+  promptSnippet: string;
+  promptHistory: string[];
+  toolNames: string[];
+  changedFiles?: string[];
+  resumeCommand?: string;
+}
+
+export interface FileSignal {
+  sessions: FileSessionSignal[];
+  toolHistory: string[];
+  promptHistory: string[];
+}
+
+export interface FeatureStats {
+  featureStats: Record<string, FeatureTreeSummary>;
+  fileStats: Record<string, FileStat>;
+  fileSignals: Record<string, FileSignal>;
+}
+
+export interface FileTreeNode {
+  id: string;
+  name: string;
+  path: string;
+  kind: "file" | "folder";
+  children: FileTreeNode[];
+}
+
+function toPosix(value: string): string {
+  return value.replace(/\\/g, "/");
+}
+
+function extractFrontmatter(raw: string): string | null {
+  const trimmed = raw.replace(/^\uFEFF/, "");
+  const match = trimmed.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n/);
+  return match ? match[1] ?? null : null;
+}
+
+function readFeatureTreeContent(repoRoot: string): string {
+  const featureTreePath = path.join(repoRoot, FEATURE_TREE_PATH);
+  if (!fs.existsSync(featureTreePath)) {
+    throw new Error("FEATURE_TREE.md not found");
+  }
+  return fs.readFileSync(featureTreePath, "utf8");
+}
+
+function readFeatureTreeIndex(repoRoot: string): FeatureTreeIndexPayload | null {
+  const indexPath = path.join(repoRoot, FEATURE_TREE_INDEX_PATH);
+  if (!fs.existsSync(indexPath)) {
+    return null;
+  }
+
+  try {
+    const raw = fs.readFileSync(indexPath, "utf8");
+    const parsed = JSON.parse(raw) as FeatureTreeIndexPayload;
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function parseMarkdownRow(line: string): string[] | null {
+  const trimmed = line.trim();
+  if (!trimmed.startsWith("|") || !trimmed.endsWith("|")) {
+    return null;
+  }
+  return trimmed
+    .slice(1, -1)
+    .split("|")
+    .map((cell) => cell.trim());
+}
+
+function stripCodeCell(value: string): string {
+  return value.trim().replace(/^`+|`+$/g, "");
+}
+
+function normalizeDomainHeading(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function parseSourceFilesCell(value: string): string[] {
+  const codeMatches = [...value.matchAll(/`([^`]+)`/g)]
+    .map((match) => stripCodeCell(match[1] ?? ""))
+    .filter(Boolean);
+  if (codeMatches.length > 0) {
+    return [...new Set(codeMatches)];
+  }
+
+  return value
+    .split(",")
+    .map((part) => stripCodeCell(part))
+    .filter(Boolean);
+}
+
+function parseFeatureTreeTables(raw: string): {
+  frontendPages: FrontendPageDetail[];
+  apiEndpoints: ApiEndpointDetail[];
+  nextjsApiEndpoints: ApiImplementationDetail[];
+  rustApiEndpoints: ApiImplementationDetail[];
+} {
+  const frontendPages: FrontendPageDetail[] = [];
+  const apiEndpoints: ApiEndpointDetail[] = [];
+  const nextjsApiEndpoints: ApiImplementationDetail[] = [];
+  const rustApiEndpoints: ApiImplementationDetail[] = [];
+
+  let section: "frontend" | "contract" | "nextjs" | "rust" | null = null;
+  let inTable = false;
+  let currentApiGroup = "";
+
+  const frontMarker = "## Frontend Pages";
+  const apiMarkers = new Set(["## API Endpoints", "## API Contract Endpoints"]);
+  const nextjsMarkers = new Set(["## Next.js API Routes", "## Next.js-only API Routes"]);
+  const rustMarkers = new Set(["## Rust API Routes", "## Rust-only API Routes"]);
+
+  for (const rawLine of raw.split(/\r?\n/)) {
+    const trimmed = rawLine.trim();
+
+    if (trimmed === frontMarker) {
+      section = "frontend";
+      inTable = false;
+      continue;
+    }
+
+    if (apiMarkers.has(trimmed)) {
+      section = "contract";
+      inTable = false;
+      continue;
+    }
+
+    if (nextjsMarkers.has(trimmed)) {
+      section = "nextjs";
+      inTable = false;
+      continue;
+    }
+
+    if (rustMarkers.has(trimmed)) {
+      section = "rust";
+      inTable = false;
+      continue;
+    }
+
+    if (trimmed.startsWith("## ") && trimmed !== frontMarker && !apiMarkers.has(trimmed) && !nextjsMarkers.has(trimmed) && !rustMarkers.has(trimmed)) {
+      section = null;
+      inTable = false;
+      continue;
+    }
+
+    if (section === "frontend") {
+      if (trimmed === "| Page | Route | Description |" || trimmed === "| Page | Route | Source File | Description |") {
+        inTable = true;
+        continue;
+      }
+
+      if (!trimmed) {
+        inTable = false;
+        continue;
+      }
+
+      if (!inTable) {
+        continue;
+      }
+
+      if (trimmed === "|------|-------|-------------|" || trimmed === "|------|-------|-------------|-------------|") {
+        continue;
+      }
+
+      const cells = parseMarkdownRow(trimmed);
+      if (cells && cells.length >= 3) {
+        frontendPages.push({
+          name: cells[0] ?? "",
+          route: stripCodeCell(cells[1] ?? ""),
+          sourceFile: cells.length >= 4 ? stripCodeCell(cells[2] ?? "") : "",
+          description: cells.length >= 4 ? (cells[3] ?? "") : (cells[2] ?? ""),
+        });
+      }
+      continue;
+    }
+
+    if (section === "contract" || section === "nextjs" || section === "rust") {
+      if (trimmed.startsWith("### ")) {
+        currentApiGroup = normalizeDomainHeading(trimmed
+          .replace(/^###\s+/, "")
+          .replace(/\s+\(\d+\)\s*$/, "")
+          .trim());
+        inTable = false;
+        continue;
+      }
+
+      if (
+        trimmed === "| Method | Endpoint | Description |"
+        || trimmed === "| Method | Endpoint | Details |"
+        || trimmed === "| Method | Endpoint | Details | Next.js | Rust |"
+        || trimmed === "| Method | Endpoint | Source Files |"
+      ) {
+        inTable = true;
+        continue;
+      }
+
+      if (!trimmed) {
+        inTable = false;
+        continue;
+      }
+
+      if (!inTable) {
+        continue;
+      }
+
+      if (
+        trimmed === "|--------|----------|-------------|"
+        || trimmed === "|--------|----------|---------|"
+        || trimmed === "|--------|----------|---------|---------|------|"
+        || trimmed === "|--------|----------|--------------|"
+      ) {
+        continue;
+      }
+
+      const cells = parseMarkdownRow(trimmed);
+      if (cells && cells.length >= 3) {
+        if (section === "contract") {
+          const nextjsSourceFiles = cells.length >= 5 ? parseSourceFilesCell(cells[3] ?? "") : [];
+          const rustSourceFiles = cells.length >= 5 ? parseSourceFilesCell(cells[4] ?? "") : [];
+          apiEndpoints.push({
+            group: currentApiGroup,
+            method: cells[0] ?? "",
+            endpoint: stripCodeCell(cells[1] ?? ""),
+            description: cells[2] ?? "",
+            ...(nextjsSourceFiles.length > 0 ? { nextjsSourceFiles } : {}),
+            ...(rustSourceFiles.length > 0 ? { rustSourceFiles } : {}),
+          });
+
+          if (nextjsSourceFiles.length > 0) {
+            nextjsApiEndpoints.push({
+              group: currentApiGroup,
+              method: cells[0] ?? "",
+              endpoint: stripCodeCell(cells[1] ?? ""),
+              sourceFiles: nextjsSourceFiles,
+            });
+          }
+
+          if (rustSourceFiles.length > 0) {
+            rustApiEndpoints.push({
+              group: currentApiGroup,
+              method: cells[0] ?? "",
+              endpoint: stripCodeCell(cells[1] ?? ""),
+              sourceFiles: rustSourceFiles,
+            });
+          }
+        } else {
+          const target = section === "nextjs" ? nextjsApiEndpoints : rustApiEndpoints;
+          target.push({
+            group: currentApiGroup,
+            method: cells[0] ?? "",
+            endpoint: stripCodeCell(cells[1] ?? ""),
+            sourceFiles: parseSourceFilesCell(cells[2] ?? ""),
+          });
+        }
+      }
+    }
+  }
+
+  return { frontendPages, apiEndpoints, nextjsApiEndpoints, rustApiEndpoints };
+}
+
+function toFrontendPagesFromIndex(payload: FeatureTreeIndexPayload | null): FrontendPageDetail[] {
+  if (!payload?.pages || !Array.isArray(payload.pages)) {
+    return [];
+  }
+
+  return payload.pages
+    .map((page) => ({
+      name: page.title?.trim() ?? "",
+      route: page.route?.trim() ?? "",
+      description: page.description?.trim() ?? "",
+      sourceFile: page.sourceFile?.trim() ?? "",
+    }))
+    .filter((page) => page.name && page.route);
+}
+
+function toApiEndpointsFromIndex(payload: FeatureTreeIndexPayload | null): ApiEndpointDetail[] {
+  const source = Array.isArray(payload?.contractApis) ? payload?.contractApis : payload?.apis;
+  if (!Array.isArray(source)) {
+    return [];
+  }
+
+  return source
+    .map((api) => ({
+      group: api.domain?.trim() ?? "",
+      method: api.method?.trim() ?? "",
+      endpoint: api.path?.trim() ?? "",
+      description: api.summary?.trim() ?? "",
+    }))
+    .filter((api) => api.method && api.endpoint);
+}
+
+function toImplementationApiEndpoints(
+  source: FeatureTreeIndexPayload["nextjsApis"] | FeatureTreeIndexPayload["rustApis"],
+): ApiImplementationDetail[] {
+  if (!Array.isArray(source)) {
+    return [];
+  }
+
+  return source
+    .map((api) => ({
+      group: api.domain?.trim() ?? "",
+      method: api.method?.trim() ?? "",
+      endpoint: api.path?.trim() ?? "",
+      sourceFiles: Array.isArray(api.sourceFiles)
+        ? api.sourceFiles.map((file) => file.trim()).filter(Boolean)
+        : [],
+    }))
+    .filter((api) => api.method && api.endpoint);
+}
+
+export function parseFeatureTree(repoRoot: string): FeatureTree {
+  const raw = readFeatureTreeContent(repoRoot);
+  const index = readFeatureTreeIndex(repoRoot);
+  const frontmatter = extractFrontmatter(raw);
+  if (!frontmatter) {
+    throw new Error("FEATURE_TREE.md frontmatter not found");
+  }
+
+  const parsed = yaml.load(frontmatter) as FeatureTreeFrontmatter | null;
+  const featureMetadata = parsed?.feature_metadata;
+  if (!featureMetadata) {
+    throw new Error("feature_metadata not found in frontmatter");
+  }
+
+  const fallbackTables = parseFeatureTreeTables(raw);
+  const frontendPages = toFrontendPagesFromIndex(index);
+  const apiEndpoints = toApiEndpointsFromIndex(index);
+  const nextjsApiEndpoints = toImplementationApiEndpoints(index?.nextjsApis);
+  const rustApiEndpoints = toImplementationApiEndpoints(index?.rustApis);
+  const resolvedFrontendPages = frontendPages.length > 0 ? frontendPages : fallbackTables.frontendPages;
+  const resolvedApiEndpoints = apiEndpoints.length > 0 ? apiEndpoints : fallbackTables.apiEndpoints;
+  const resolvedNextjsApiEndpoints = nextjsApiEndpoints.length > 0 ? nextjsApiEndpoints : fallbackTables.nextjsApiEndpoints;
+  const resolvedRustApiEndpoints = rustApiEndpoints.length > 0 ? rustApiEndpoints : fallbackTables.rustApiEndpoints;
+  const normalizedMetadata = normalizeSurfaceMetadata({
+    metadata: {
+      schemaVersion: 1,
+      capabilityGroups: (featureMetadata.capability_groups ?? []).map((group) => ({
+        id: group.id ?? "",
+        name: group.name ?? "",
+        description: group.description ?? "",
+      })),
+      features: (featureMetadata.features ?? []).map((feature) => ({
+        id: feature.id ?? "",
+        name: feature.name ?? "",
+        group: feature.group ?? "",
+        summary: feature.summary ?? "",
+        status: feature.status ?? "",
+        pages: Array.isArray(feature.pages) ? [...feature.pages] : [],
+        apis: Array.isArray(feature.apis) ? [...feature.apis] : [],
+        sourceFiles: Array.isArray(feature.source_files) ? [...feature.source_files] : [],
+        relatedFeatures: Array.isArray(feature.related_features) ? [...feature.related_features] : [],
+        domainObjects: Array.isArray(feature.domain_objects) ? [...feature.domain_objects] : [],
+      })),
+    },
+    pages: resolvedFrontendPages.map((page) => ({
+      route: page.route,
+      title: page.name,
+      description: page.description,
+      sourceFile: page.sourceFile,
+    })),
+    contractApis: resolvedApiEndpoints.map((api) => ({
+      domain: api.group,
+      method: api.method,
+      path: api.endpoint,
+      summary: api.description,
+    })),
+    nextjsApis: resolvedNextjsApiEndpoints.map((api) => ({
+      domain: api.group,
+      method: api.method,
+      path: api.endpoint,
+      sourceFiles: api.sourceFiles,
+    })),
+    rustApis: resolvedRustApiEndpoints.map((api) => ({
+      domain: api.group,
+      method: api.method,
+      path: api.endpoint,
+      sourceFiles: api.sourceFiles,
+    })),
+  });
+
+  return {
+    capabilityGroups: (normalizedMetadata?.capabilityGroups ?? []).map((group) => ({
+      id: group.id,
+      name: group.name,
+      description: group.description ?? "",
+    })),
+    features: (normalizedMetadata?.features ?? []).map((feature) => ({
+      id: feature.id,
+      name: feature.name,
+      group: feature.group ?? "",
+      summary: feature.summary ?? "",
+      status: feature.status ?? "",
+      pages: Array.isArray(feature.pages) ? [...feature.pages] : [],
+      apis: Array.isArray(feature.apis) ? [...feature.apis] : [],
+      sourceFiles: Array.isArray(feature.sourceFiles) ? [...feature.sourceFiles] : [],
+      relatedFeatures: Array.isArray(feature.relatedFeatures) ? [...feature.relatedFeatures] : [],
+      domainObjects: Array.isArray(feature.domainObjects) ? [...feature.domainObjects] : [],
+    })),
+    frontendPages: resolvedFrontendPages,
+    apiEndpoints: resolvedApiEndpoints,
+    nextjsApiEndpoints: resolvedNextjsApiEndpoints,
+    rustApiEndpoints: resolvedRustApiEndpoints,
+  };
+}
+
+function normalizePageSegment(segment: string): string {
+  if (!segment.startsWith("[") || !segment.endsWith("]")) {
+    return segment;
+  }
+
+  if (segment.startsWith("[...") && segment.endsWith("]")) {
+    return `:${segment.slice(4, -1)}`;
+  }
+
+  return `:${segment.slice(1, -1)}`;
+}
+
+function normalizeApiSegment(segment: string): string {
+  if (!segment.startsWith("[") || !segment.endsWith("]")) {
+    return segment;
+  }
+
+  if (segment.startsWith("[...") && segment.endsWith("]")) {
+    return `{${segment.slice(4, -1)}}`;
+  }
+
+  return `{${segment.slice(1, -1)}}`;
+}
+
+function normalizePageRoute(sourcePath: string): string {
+  if (sourcePath === "src/app/page.tsx") {
+    return "/";
+  }
+
+  const normalized = toPosix(sourcePath)
+    .replace(/^src\/app\//, "")
+    .replace(/\/page\.tsx$/, "");
+
+  const segments = normalized
+    .split("/")
+    .filter((segment) => segment.length > 0)
+    .map(normalizePageSegment);
+
+  return `/${segments.join("/")}`;
+}
+
+function normalizeApiRoute(sourcePath: string): string {
+  const normalized = toPosix(sourcePath)
+    .replace(/^src\/app\//, "")
+    .replace(/\/route\.ts$/, "");
+
+  const segments = normalized
+    .split("/")
+    .filter((segment) => segment.length > 0)
+    .map(normalizeApiSegment);
+
+  return `/${segments.join("/")}`;
+}
+
+function walkAppFiles(root: string, current: string, out: string[]): void {
+  if (!fs.existsSync(current)) {
+    return;
+  }
+
+  const stat = fs.statSync(current);
+  if (!stat.isDirectory()) {
+    if (current.endsWith(".tsx") || current.endsWith(".ts")) {
+      out.push(toPosix(path.relative(root, current)));
+    }
+    return;
+  }
+
+  for (const entry of fs.readdirSync(current)) {
+    if (IGNORED_PATHS.has(entry)) {
+      continue;
+    }
+    walkAppFiles(root, path.join(current, entry), out);
+  }
+}
+
+function getFallbackSourceDirs(featureSourceFiles: string[]): FallbackSourceDir[] {
+  const sourceDirs = new Set<string>();
+
+  for (const sourceFile of featureSourceFiles) {
+    const normalized = toPosix(sourceFile);
+
+    if (!normalized.startsWith(`${APP_ROOT}/`)) {
+      continue;
+    }
+
+    let sourceDir: string;
+    if (normalized.endsWith("/page.tsx")) {
+      sourceDir = normalized.slice(0, -"/page.tsx".length);
+    } else if (normalized.endsWith("/route.ts")) {
+      sourceDir = normalized.slice(0, -"/route.ts".length);
+    } else {
+      sourceDir = path.posix.dirname(normalized);
+    }
+
+    if (sourceDir === APP_ROOT) {
+      continue;
+    }
+
+    const appRelative = sourceDir.slice(`${APP_ROOT}/`.length);
+    const segments = appRelative.split("/").filter(Boolean);
+    if (segments.length <= 1) {
+      continue;
+    }
+
+    if (segments.length === 2 && segments[segments.length - 1] === "[workspaceId]") {
+      continue;
+    }
+
+    sourceDirs.add(sourceDir);
+  }
+
+  return [...sourceDirs];
+}
+
+function hasDirectoryMatch(
+  featureSourceFiles: string[],
+  changedFile: string,
+): boolean {
+  const fallbackSourceDirs = getFallbackSourceDirs(featureSourceFiles);
+  const normalizedChangedFile = toPosix(changedFile);
+
+  return fallbackSourceDirs.some(
+    (sourceDir) =>
+      normalizedChangedFile === sourceDir || normalizedChangedFile.startsWith(`${sourceDir}/`),
+  );
+}
+
+export function parseFeatureSurfaceCatalog(repoRoot: string): SurfaceCatalog[] {
+  const appRoot = path.join(repoRoot, APP_ROOT);
+  const entries: string[] = [];
+  walkAppFiles(appRoot, appRoot, entries);
+
+  const catalog: SurfaceCatalog[] = [];
+
+  for (const relativePath of entries) {
+    if (relativePath.endsWith("/page.tsx")) {
+      const sourcePath = `${APP_ROOT}/${relativePath}`;
+      const sourceDir = sourcePath.slice(0, -"/page.tsx".length);
+      catalog.push({
+        kind: "Page",
+        route: normalizePageRoute(sourcePath),
+        sourcePath,
+        sourceDir,
+      });
+      continue;
+    }
+
+    if (relativePath.endsWith("/route.ts") && relativePath.includes("/api/")) {
+      const sourcePath = `${APP_ROOT}/${relativePath}`;
+      const sourceDir = sourcePath.slice(0, -"/route.ts".length);
+      catalog.push({
+        kind: "API",
+        route: normalizeApiRoute(sourcePath),
+        sourcePath,
+        sourceDir,
+      });
+    }
+  }
+
+  return catalog.sort((left, right) => {
+    const byKind = left.kind.localeCompare(right.kind);
+    if (byKind !== 0) {
+      return byKind;
+    }
+    return left.route.localeCompare(right.route) || left.sourcePath.localeCompare(right.sourcePath);
+  });
+}
+
+function specificityFromSourceDir(sourceDir: string): number {
+  return sourceDir
+    .split("/")
+    .filter(Boolean)
+    .length;
+}
+
+export function parseFeatureSurfaceLinks(catalog: SurfaceCatalog[], changedPath: string): SurfaceLink[] {
+  const bestByKind = new Map<string, SurfaceCatalog & { specificity: number; direct: boolean }>();
+
+  for (const surface of catalog) {
+    const direct = surface.sourcePath === changedPath;
+    const nested = surface.route !== "/" && changedPath.startsWith(`${surface.sourceDir}/`);
+    if (!direct && !nested) {
+      continue;
+    }
+
+    const specificity = specificityFromSourceDir(surface.sourceDir);
+    const current = bestByKind.get(surface.kind);
+
+    if (!current) {
+      bestByKind.set(surface.kind, { ...surface, specificity, direct });
+      continue;
+    }
+
+    const replace =
+      (direct && !current.direct)
+      || (direct === current.direct && specificity > current.specificity);
+
+    if (replace) {
+      bestByKind.set(surface.kind, { ...surface, specificity, direct });
+    }
+  }
+
+  return Array.from(bestByKind.values()).map((value) => ({
+    kind: value.kind,
+    route: value.route,
+    sourcePath: value.sourcePath,
+    confidence: value.direct ? "High" : "Medium",
+  }));
+}
+
+export function parseFeatureTreeLinks(
+  feature: FeatureTreeFeature,
+  surfaceLinks: SurfaceLink[],
+  changedFile: string,
+): FeatureLink[] {
+  const links: FeatureLink[] = [];
+  const seen = new Set<string>();
+  let hasExactMatch = false;
+
+  for (const surface of surfaceLinks) {
+    const sourceMatch = feature.sourceFiles.includes(changedFile) || feature.sourceFiles.includes(surface.sourcePath);
+    const normalizedSurfaceApiPath = buildApiLookupKey("GET", surface.route).slice(4);
+    const routeMatch = feature.pages.includes(surface.route)
+      || feature.apis.some((declaration) => buildApiLookupKey(splitDeclaredApi(declaration).method, splitDeclaredApi(declaration).endpoint).slice(4) === normalizedSurfaceApiPath);
+    if (!sourceMatch && !routeMatch) {
+      continue;
+    }
+
+    const viaPath = changedFile;
+    const key = `${feature.id}|${surface.route}|${viaPath}`;
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+
+    links.push({
+      featureId: feature.id,
+      featureName: feature.name,
+      route: surface.route,
+      viaPath,
+      confidence: sourceMatch ? "High" : "Medium",
+    });
+    hasExactMatch = true;
+  }
+
+  if (hasExactMatch) {
+    return links;
+  }
+
+  if (hasDirectoryMatch(feature.sourceFiles, changedFile)) {
+    for (const surface of surfaceLinks) {
+      const key = `${feature.id}|${surface.route}|${changedFile}`;
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      links.push({
+        featureId: feature.id,
+        featureName: feature.name,
+        route: surface.route,
+        viaPath: changedFile,
+        confidence: "Medium",
+      });
+    }
+  }
+
+  return links;
+}
+
+function parsePatchBlock(text: string): string[] {
+  const out: string[] = [];
+
+  for (const line of text.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    const [, , value] = trimmed.match(/^(\*{3} (Update|Add|Delete|Move to):)\s*(.*)$/) ?? [];
+    if (!value) {
+      continue;
+    }
+    out.push(value);
+  }
+
+  return out;
+}
+
+function shellLikeSplit(command: string): string[] {
+  const tokens: string[] = [];
+  let current = "";
+  let quote: string | null = null;
+
+  for (const ch of command) {
+    if (quote !== null) {
+      if (ch === quote) {
+        quote = null;
+        continue;
+      }
+      current += ch;
+      continue;
+    }
+
+    if (ch === "'" || ch === '"') {
+      quote = ch;
+      continue;
+    }
+
+    if (/\s/.test(ch)) {
+      if (current.length > 0) {
+        tokens.push(current);
+        current = "";
+      }
+      continue;
+    }
+
+    current += ch;
+  }
+
+  if (current.length > 0) {
+    tokens.push(current);
+  }
+
+  return tokens;
+}
+
+function parseCommandPaths(command: string): string[] {
+  const tokens = shellLikeSplit(command);
+  if (tokens.length === 0) {
+    return [];
+  }
+
+  const separatorIndex = tokens.indexOf("--");
+  if (separatorIndex >= 0) {
+    return tokens
+      .slice(separatorIndex + 1)
+      .filter((token) => token.length > 0 && !token.startsWith("-"));
+  }
+
+  if (tokens[0] === "git" && (tokens[1] === "add" || tokens[1] === "rm")) {
+    return tokens
+      .slice(2)
+      .filter((token) => token.length > 0 && !token.startsWith("-"));
+  }
+
+  return [];
+}
+
+function collectFileValues(value: unknown, out: Set<string>): void {
+  if (value === null || value === undefined) {
+    return;
+  }
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      collectFileValues(item, out);
+    }
+    return;
+  }
+
+  if (typeof value === "string") {
+    for (const candidate of parsePatchBlock(value)) {
+      out.add(candidate);
+    }
+    return;
+  }
+
+  if (typeof value !== "object") {
+    return;
+  }
+
+  const map = value as Record<string, unknown>;
+  const pathKeys = new Set([
+    "path",
+    "paths",
+    "file",
+    "filepath",
+    "file_path",
+    "filename",
+    "target",
+    "source",
+    "target_file",
+    "source_file",
+    "absolute_path",
+    "relative_path",
+  ]);
+
+  for (const [key, child] of Object.entries(map)) {
+    const lower = key.toLowerCase();
+    if (pathKeys.has(lower)) {
+      if (typeof child === "string") {
+        out.add(child);
+      } else if (Array.isArray(child)) {
+        for (const item of child) {
+          if (typeof item === "string") {
+            out.add(item);
+          }
+        }
+      }
+    }
+    collectFileValues(child, out);
+  }
+}
+
+function appendLimitedUnique(target: string[], value: string, limit: number): void {
+  if (!value || target.includes(value) || target.length >= limit) {
+    return;
+  }
+  target.push(value);
+}
+
+function sanitizePathCandidate(candidate: string): string | null {
+  const cleaned = toPosix(candidate)
+    .trim()
+    .replace(/^"+|"+$/g, "")
+    .replace(/^'+|'+$/g, "")
+    .replace(/^`+|`+$/g, "")
+    .replace(/[",;:]+$/g, "");
+
+  if (!cleaned) {
+    return null;
+  }
+
+  const lineQualifiedPath = cleaned.match(/^(.*\.[^:/\s]+):\d+(?::\d+)?$/);
+  if (lineQualifiedPath?.[1]) {
+    return lineQualifiedPath[1];
+  }
+
+  if (!/\s/.test(cleaned)) {
+    return cleaned;
+  }
+
+  const embeddedPath = cleaned.match(
+    /([A-Za-z0-9_@()[\]{}.\-/]+?\.(?:[cm]?[jt]sx?|jsx?|tsx?|rs|md|json|ya?ml|toml|css|scss|html))/,
+  );
+  if (embeddedPath?.[1]) {
+    return embeddedPath[1];
+  }
+
+  return cleaned;
+}
+
+function pathLooksFileLike(candidate: string): boolean {
+  const base = path.posix.basename(candidate);
+  return base.includes(".") || ["Dockerfile", "Makefile", "Cargo.toml"].includes(base);
+}
+
+function isExistingDirectory(filePath: string): boolean {
+  try {
+    return fs.statSync(filePath).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+function isExistingFile(filePath: string): boolean {
+  try {
+    return fs.statSync(filePath).isFile();
+  } catch {
+    return false;
+  }
+}
+
+function normalizeRepoRelative(repoRoot: string, candidate: string, sessionCwd: string): string | null {
+  const cleaned = sanitizePathCandidate(candidate);
+
+  if (!cleaned || cleaned === "/dev/null") {
+    return null;
+  }
+
+  if (!path.isAbsolute(cleaned)) {
+    const relativeCandidate = toPosix(cleaned).replace(/^\.\//, "");
+    if (!relativeCandidate || relativeCandidate === "." || relativeCandidate.startsWith("../")) {
+      return null;
+    }
+    const repoResolved = path.join(repoRoot, relativeCandidate);
+    const sessionResolved = path.join(sessionCwd, relativeCandidate);
+    if (isExistingDirectory(repoResolved) || isExistingDirectory(sessionResolved)) {
+      return null;
+    }
+    if (!isExistingFile(repoResolved) && !isExistingFile(sessionResolved) && !pathLooksFileLike(relativeCandidate)) {
+      return null;
+    }
+    return relativeCandidate;
+  }
+
+  const candidatePaths = [sessionCwd, repoRoot];
+  for (const basePath of candidatePaths) {
+    if (isExistingDirectory(cleaned)) {
+      return null;
+    }
+    const relative = path.relative(basePath, cleaned);
+    const relativePosix = toPosix(relative);
+    if (
+      relativePosix
+      && !relativePosix.startsWith("../")
+      && !path.isAbsolute(relativePosix)
+      && (isExistingFile(cleaned) || pathLooksFileLike(relativePosix))
+    ) {
+      return relativePosix;
+    }
+  }
+
+  return null;
+}
+
+function extractChangedFilesFromCommandOutput(command: string, output: string): string[] {
+  const changed = new Set<string>();
+  const lines = output.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+
+  if (command.includes("git status --short")) {
+    for (const line of lines) {
+      const match = line.match(/^[ MADRCU?!]{1,2}\s+(.+)$/);
+      const pathCandidate = (match?.[1] ?? line).split(" -> ").pop()?.trim();
+      if (pathCandidate) {
+        changed.add(pathCandidate);
+      }
+    }
+  }
+
+  if (command.includes("git diff --name-only")) {
+    for (const line of lines) {
+      changed.add(line);
+    }
+  }
+
+  if (command.includes("git diff") || command.includes("git show")) {
+    for (const line of lines) {
+      const match = line.match(/^diff --git a\/(.+?) b\/(.+)$/);
+      if (match?.[2]) {
+        changed.add(match[2]);
+      }
+    }
+  }
+
+  return [...changed];
+}
+
+function collectChangedFilesFromToolLike(event: unknown, repoRoot: string, sessionCwd: string): string[] {
+  const candidates = new Set<string>();
+  collectFileValues(event, candidates);
+
+  const command = commandFromUnknown(event);
+  if (typeof command === "string") {
+    for (const line of parsePatchBlock(command)) {
+      candidates.add(line);
+    }
+    for (const token of parseCommandPaths(command)) {
+      candidates.add(token);
+    }
+  }
+  const commandOutput = commandOutputFromUnknown(event);
+  if (command && commandOutput) {
+    for (const candidate of extractChangedFilesFromCommandOutput(command, commandOutput)) {
+      candidates.add(candidate);
+    }
+  }
+
+  const changed: string[] = [];
+  for (const candidate of candidates) {
+    const normalized = normalizeRepoRelative(repoRoot, candidate, sessionCwd);
+    if (normalized) {
+      changed.push(normalized);
+    }
+  }
+
+  return changed;
+}
+
+export function collectFeatureSessionStats(repoRoot: string, featureTree: FeatureTree): FeatureStats {
+  const featureStats: Record<string, FeatureTreeSummary> = {};
+  const fileStats: Record<string, FileStat> = {};
+  const fileSignals: Record<string, FileSignal> = {};
+
+  const featureSessionIds = new Map<string, Set<string>>();
+  const featureChangedFiles = new Map<string, Set<string>>();
+  const featureUpdatedAt = new Map<string, string>();
+
+  const surfaceCatalog = parseFeatureSurfaceCatalog(repoRoot);
+  const transcripts = collectMatchingTranscriptSessions(repoRoot);
+
+  for (const transcript of transcripts) {
+    const changedFromTranscript = new Set<string>();
+    const sessionFeatures = new Set<string>();
+    const featureMatchedFiles = new Map<string, Set<string>>();
+
+    for (const event of transcript.events) {
+      for (const changed of collectChangedFilesFromToolLike(event, repoRoot, transcript.cwd)) {
+        changedFromTranscript.add(changed);
+      }
+    }
+
+    if (changedFromTranscript.size === 0) {
+      continue;
+    }
+
+    const transcriptKey = `${transcript.provider}:${transcript.sessionId}`;
+
+    for (const changedFile of changedFromTranscript) {
+      const fileEntry = fileStats[changedFile] ?? {
+        changes: 0,
+        sessions: 0,
+        updatedAt: "",
+      };
+      fileEntry.changes += 1;
+      fileEntry.sessions += 1;
+      if (!fileEntry.updatedAt || (transcript.updatedAt && transcript.updatedAt > fileEntry.updatedAt)) {
+        fileEntry.updatedAt = transcript.updatedAt;
+      }
+      fileStats[changedFile] = fileEntry;
+
+      const signalEntry = fileSignals[changedFile] ?? {
+        sessions: [],
+        toolHistory: [],
+        promptHistory: [],
+      };
+      if (
+        signalEntry.sessions.length < MAX_FILE_SIGNAL_SESSIONS
+        && !signalEntry.sessions.some(
+          (session) => `${session.provider}:${session.sessionId}` === transcriptKey,
+        )
+      ) {
+        signalEntry.sessions.push({
+          provider: transcript.provider,
+          sessionId: transcript.sessionId,
+          updatedAt: transcript.updatedAt,
+          promptSnippet: transcript.promptHistory[0] ?? "",
+          promptHistory: transcript.promptHistory.slice(0, MAX_FILE_SIGNAL_PROMPTS),
+          toolNames: transcript.toolHistory.slice(0, MAX_FILE_SIGNAL_TOOLS),
+          changedFiles: [...changedFromTranscript].slice(0, MAX_FILE_SIGNAL_CHANGED_FILES).sort((left, right) =>
+            left.localeCompare(right)
+          ),
+          ...(transcript.resumeCommand ? { resumeCommand: transcript.resumeCommand } : {}),
+        });
+      }
+      for (const toolName of transcript.toolHistory) {
+        appendLimitedUnique(signalEntry.toolHistory, toolName, MAX_FILE_SIGNAL_TOOLS);
+      }
+      for (const prompt of transcript.promptHistory) {
+        appendLimitedUnique(signalEntry.promptHistory, prompt, MAX_FILE_SIGNAL_PROMPTS);
+      }
+      fileSignals[changedFile] = signalEntry;
+
+      const surfaceLinks = parseFeatureSurfaceLinks(surfaceCatalog, changedFile);
+
+      for (const feature of featureTree.features) {
+        const links = parseFeatureTreeLinks(feature, surfaceLinks, changedFile);
+
+        if (links.length > 0) {
+          sessionFeatures.add(feature.id);
+          const files = featureMatchedFiles.get(feature.id) ?? new Set<string>();
+          for (const link of links) {
+            files.add(link.viaPath);
+          }
+          featureMatchedFiles.set(feature.id, files);
+          continue;
+        }
+
+        if (surfaceLinks.length === 0 && feature.sourceFiles.includes(changedFile)) {
+          sessionFeatures.add(feature.id);
+          const files = featureMatchedFiles.get(feature.id) ?? new Set<string>();
+          files.add(changedFile);
+          featureMatchedFiles.set(feature.id, files);
+        }
+      }
+    }
+
+    for (const featureId of sessionFeatures) {
+      const sessions = featureSessionIds.get(featureId) ?? new Set<string>();
+      sessions.add(transcriptKey);
+      featureSessionIds.set(featureId, sessions);
+
+      const changedFiles = featureChangedFiles.get(featureId) ?? new Set<string>();
+      for (const changedFile of featureMatchedFiles.get(featureId) ?? changedFromTranscript) {
+        changedFiles.add(changedFile);
+      }
+      featureChangedFiles.set(featureId, changedFiles);
+
+      const currentUpdatedAt = featureUpdatedAt.get(featureId) ?? "";
+      if (!currentUpdatedAt || (transcript.updatedAt && transcript.updatedAt > currentUpdatedAt)) {
+        featureUpdatedAt.set(featureId, transcript.updatedAt);
+      }
+    }
+  }
+
+  for (const [featureId, sessions] of featureSessionIds.entries()) {
+    featureStats[featureId] = {
+      sessionCount: sessions.size,
+      changedFiles: featureChangedFiles.get(featureId)?.size ?? 0,
+      updatedAt: featureUpdatedAt.get(featureId) ?? "",
+      matchedFiles: [...(featureChangedFiles.get(featureId) ?? new Set<string>())].sort(),
+    };
+  }
+
+  return {
+    featureStats,
+    fileStats,
+    fileSignals,
+  };
+}
+
+export function buildFileTree(sourceFiles: string[]): FileTreeNode[] {
+  const root: FileTreeNode[] = [];
+
+  function insert(nodes: FileTreeNode[], parts: string[], fullPath: string): void {
+    if (parts.length === 0) {
+      return;
+    }
+
+    const [head, ...tail] = parts;
+    const isLeaf = tail.length === 0;
+    let existing = nodes.find((node) => node.name === head);
+
+    if (!existing) {
+      const depth = fullPath.split("/").length - parts.length;
+      const nodePath = fullPath
+        .split("/")
+        .slice(0, depth + 1)
+        .join("/");
+
+      existing = {
+        id: nodePath.replace(/\//g, "-").replace(/\[/g, "").replace(/\]/g, ""),
+        name: head,
+        path: nodePath,
+        kind: isLeaf ? "file" : "folder",
+        children: [],
+      };
+      nodes.push(existing);
+    }
+
+    if (!isLeaf) {
+      insert(existing.children, tail, fullPath);
+    }
+  }
+
+  for (const filePath of sourceFiles) {
+    insert(root, toPosix(filePath).split("/"), toPosix(filePath));
+  }
+
+  return root;
+}
+
+export function splitDeclaredApi(declaration: string): { method: string; endpoint: string } {
+  const [method, endpoint] = declaration.split(/\s+/, 2);
+  if (endpoint) {
+    return { method, endpoint };
+  }
+
+  return { method: "GET", endpoint: declaration };
+}

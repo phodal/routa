@@ -1,7 +1,10 @@
 use super::{
-    detail_cache_key, display_status_code, facts_cache_key, fitness, load_diff_text,
-    load_file_preview, AppCache, FileFactsEntry, FilePreviewScope, FitnessHistoryEntry,
-    FitnessHistoryRecord, FITNESS_HISTORY_FILE, FITNESS_HISTORY_SCHEMA_VERSION,
+    build_test_mapping_snapshot, detail_cache_key, display_status_code, facts_cache_key, fitness,
+    load_diff_text, load_file_preview, read_test_mapping_history_record, test_mapping_cache_key,
+    test_mapping_full_cache_key, test_mapping_history_path, AppCache, FileFactsEntry,
+    FilePreviewScope, FitnessHistoryEntry, FitnessHistoryRecord, TestMappingAnalysisMode,
+    TestMappingEntry, TestMappingHistoryRecord, FITNESS_HISTORY_FILE,
+    FITNESS_HISTORY_SCHEMA_VERSION,
 };
 use crate::observe as repo;
 use crate::shared::models::{
@@ -13,6 +16,7 @@ use tempfile::tempdir;
 
 fn sample_runtime_state_with_dirty_file() -> RuntimeState {
     let mut state = RuntimeState::new("/tmp/project".to_string(), "main".to_string());
+    state.set_branch_oid(Some("abc123".to_string()));
     state.files.insert(
         "src/lib.rs".to_string(),
         FileView {
@@ -559,7 +563,123 @@ fn warm_test_mappings_waits_for_startup_delay() {
 
     cache.warm_test_mappings(&state);
 
-    assert!(cache.pending_test_mapping_key.is_none());
+    assert!(cache.pending_test_mapping_fast_key.is_none());
+    assert!(cache.pending_test_mapping_full_key.is_none());
+}
+
+#[test]
+fn store_test_mapping_full_snapshot_persists_history_record() {
+    let dir = tempdir().expect("tempdir");
+    let repo_root = dir.path().to_string_lossy().to_string();
+    let mut cache = AppCache::new(&repo_root);
+    let cache_key = "src/lib.rs:modify:1".to_string();
+    let full_cache_key = "head=abc123;files=src/lib.rs:modify:1".to_string();
+    let snapshot = build_test_mapping_snapshot(
+        cache_key,
+        TestMappingAnalysisMode::Full,
+        vec![TestMappingEntry {
+            source_file: "src/lib.rs".to_string(),
+            language: "rust".to_string(),
+            status: "changed".to_string(),
+            related_test_files: vec!["tests/lib_test.rs".to_string()],
+            graph_test_files: Vec::new(),
+            resolver_kind: "hybrid_heuristic".to_string(),
+            confidence: "high".to_string(),
+            has_inline_tests: false,
+        }],
+        Vec::new(),
+    );
+
+    cache.store_test_mapping_full_snapshot(Some(full_cache_key.clone()), 123, snapshot);
+
+    let record = read_test_mapping_history_record(&repo_root).expect("history record");
+    assert_eq!(record.schema_version, 1);
+    assert_eq!(
+        record
+            .histories
+            .get(&full_cache_key)
+            .and_then(|entry| entry.observed_at_ms),
+        Some(123)
+    );
+    assert_eq!(
+        record
+            .histories
+            .get(&full_cache_key)
+            .and_then(|entry| entry.snapshot.as_ref())
+            .map(|snapshot| snapshot.analysis_mode),
+        Some(TestMappingAnalysisMode::Full)
+    );
+}
+
+#[test]
+fn warm_test_mappings_prefers_persisted_full_snapshot() {
+    let dir = tempdir().expect("tempdir");
+    let repo_root = dir.path().to_string_lossy().to_string();
+    let mut state = RuntimeState::new(repo_root.clone(), "main".to_string());
+    state.set_branch_oid(Some("persisted-head".to_string()));
+    state.files.insert(
+        "src/lib.rs".to_string(),
+        FileView {
+            rel_path: "src/lib.rs".to_string(),
+            dirty: true,
+            state_code: "modify".to_string(),
+            entry_kind: EntryKind::File,
+            last_modified_at_ms: 1,
+            last_session_id: None,
+            last_task_id: None,
+            confidence: AttributionConfidence::Unknown,
+            conflicted: false,
+            touched_by: BTreeSet::new(),
+            recent_events: Vec::new(),
+        },
+    );
+    state.refresh_views();
+    let cache_key = test_mapping_cache_key(&state);
+    let full_cache_key = test_mapping_full_cache_key(&state).expect("full cache key");
+    let history_path = test_mapping_history_path(&repo_root).expect("history path");
+    std::fs::create_dir_all(history_path.parent().expect("history parent")).expect("create dir");
+    std::fs::write(
+        &history_path,
+        serde_json::to_vec_pretty(&TestMappingHistoryRecord {
+            schema_version: 1,
+            histories: [(
+                full_cache_key,
+                super::TestMappingHistoryEntry {
+                    snapshot: Some(build_test_mapping_snapshot(
+                        cache_key.clone(),
+                        TestMappingAnalysisMode::Full,
+                        vec![TestMappingEntry {
+                            source_file: "src/lib.rs".to_string(),
+                            language: "rust".to_string(),
+                            status: "changed".to_string(),
+                            related_test_files: vec!["tests/lib_test.rs".to_string()],
+                            graph_test_files: Vec::new(),
+                            resolver_kind: "hybrid_heuristic".to_string(),
+                            confidence: "high".to_string(),
+                            has_inline_tests: false,
+                        }],
+                        Vec::new(),
+                    )),
+                    observed_at_ms: Some(456),
+                },
+            )]
+            .into_iter()
+            .collect(),
+        })
+        .expect("serialize history"),
+    )
+    .expect("write history");
+
+    let mut cache = AppCache::new(&repo_root);
+    cache.test_mapping_not_before_ms = None;
+    cache.warm_test_mappings(&state);
+
+    assert_eq!(
+        cache.test_mapping_analysis_mode(),
+        Some(TestMappingAnalysisMode::Full)
+    );
+    assert!(cache.pending_test_mapping_fast_key.is_none());
+    assert!(cache.pending_test_mapping_full_key.is_none());
 }
 
 #[test]
@@ -570,5 +690,104 @@ fn warm_test_mappings_respects_retry_backoff() {
 
     cache.warm_test_mappings(&state);
 
-    assert!(cache.pending_test_mapping_key.is_none());
+    assert!(cache.pending_test_mapping_fast_key.is_none());
+    assert!(cache.pending_test_mapping_full_key.is_none());
+}
+
+#[test]
+fn warm_test_mappings_requests_fast_snapshot_first() {
+    let state = sample_runtime_state_with_dirty_file();
+    let mut cache = AppCache::new(&state.repo_root);
+    cache.test_mapping_not_before_ms = None;
+
+    cache.warm_test_mappings(&state);
+
+    assert_eq!(
+        cache.pending_test_mapping_fast_key.as_deref(),
+        Some(test_mapping_cache_key(&state).as_str())
+    );
+    assert!(cache.pending_test_mapping_full_key.is_none());
+}
+
+#[test]
+fn warm_test_mappings_enqueues_full_refresh_after_fast_snapshot() {
+    let state = sample_runtime_state_with_dirty_file();
+    let mut cache = AppCache::new(&state.repo_root);
+    let cache_key = test_mapping_cache_key(&state);
+    cache.test_mapping_not_before_ms = None;
+    cache.set_test_mapping_snapshot_for_tests(
+        cache_key.clone(),
+        TestMappingAnalysisMode::Fast,
+        vec![TestMappingEntry {
+            source_file: "src/lib.rs".to_string(),
+            language: "rust".to_string(),
+            status: "changed".to_string(),
+            related_test_files: vec!["tests/lib_test.rs".to_string()],
+            graph_test_files: Vec::new(),
+            resolver_kind: "path_heuristic".to_string(),
+            confidence: "medium".to_string(),
+            has_inline_tests: false,
+        }],
+        Vec::new(),
+    );
+
+    cache.warm_test_mappings(&state);
+
+    assert_eq!(
+        cache.pending_test_mapping_full_key.as_deref(),
+        Some(cache_key.as_str())
+    );
+    assert!(cache.pending_test_mapping_fast_key.is_none());
+}
+
+#[test]
+fn warm_test_mappings_skips_full_refresh_when_dirty_set_exceeds_budget() {
+    let mut state = RuntimeState::new("/tmp/project".to_string(), "main".to_string());
+    state.set_branch_oid(Some("budget-head".to_string()));
+    for idx in 0..13 {
+        let rel_path = format!("src/file_{idx}.rs");
+        state.files.insert(
+            rel_path.clone(),
+            FileView {
+                rel_path,
+                dirty: true,
+                state_code: "modify".to_string(),
+                entry_kind: EntryKind::File,
+                last_modified_at_ms: idx,
+                last_session_id: None,
+                last_task_id: None,
+                confidence: AttributionConfidence::Unknown,
+                conflicted: false,
+                touched_by: BTreeSet::new(),
+                recent_events: Vec::new(),
+            },
+        );
+    }
+    state.refresh_views();
+
+    let mut cache = AppCache::new(&state.repo_root);
+    cache.test_mapping_not_before_ms = None;
+    cache.set_test_mapping_snapshot_for_tests(
+        test_mapping_cache_key(&state),
+        TestMappingAnalysisMode::Fast,
+        vec![TestMappingEntry {
+            source_file: "src/file_0.rs".to_string(),
+            language: "rust".to_string(),
+            status: "changed".to_string(),
+            related_test_files: vec!["tests/file_0_test.rs".to_string()],
+            graph_test_files: Vec::new(),
+            resolver_kind: "path_heuristic".to_string(),
+            confidence: "medium".to_string(),
+            has_inline_tests: false,
+        }],
+        Vec::new(),
+    );
+
+    cache.warm_test_mappings(&state);
+
+    assert!(cache.pending_test_mapping_full_key.is_none());
+    assert_eq!(
+        cache.test_mapping_graph_enrichment_note(),
+        Some("graph refresh skipped: 13 dirty files exceeds budget 12")
+    );
 }

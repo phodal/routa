@@ -245,7 +245,15 @@ fn probe_test_mapping(repo_root: &Path, changed_files: &[String], _base: &str) -
         .filter(|file| is_code_file(repo_root, file))
         .cloned()
         .collect::<Vec<_>>();
-    let report = test_mapping::analyze_changed_files(repo_root, &code_files);
+    let report = test_mapping::analyze_test_mappings(
+        repo_root,
+        &code_files,
+        test_mapping::TestMappingAnalysisOptions {
+            base: _base,
+            build_mode: ReviewBuildMode::Auto,
+            use_graph: true,
+        },
+    );
     let source_file_count = report.mappings.len();
     if source_file_count == 0 {
         return MetricResult::new(
@@ -295,8 +303,8 @@ fn probe_test_mapping(repo_root: &Path, changed_files: &[String], _base: &str) -
             inline,
             missing,
             unknown,
-            mapping_source_preview(&report, "missing"),
-            mapping_source_preview(&report, "unknown"),
+            mapping_source_preview(&report.mappings, "missing"),
+            mapping_source_preview(&report.mappings, "unknown"),
             resolver_breakdown(&report.resolver_counts),
         ),
         crate::model::Tier::Normal,
@@ -312,9 +320,8 @@ fn is_code_file(repo_root: &Path, rel_path: &str) -> bool {
     CODE_EXTENSIONS.contains(&extension.as_str()) && repo_root.join(rel_path).exists()
 }
 
-fn mapping_source_preview(report: &test_mapping::TestMappingReport, status: &str) -> String {
-    let preview = report
-        .mappings
+fn mapping_source_preview(mappings: &[test_mapping::TestMappingRecord], status: &str) -> String {
+    let preview = mappings
         .iter()
         .filter(|mapping| mapping.status.as_str() == status)
         .map(|mapping| mapping.source_file.clone())
@@ -336,4 +343,56 @@ fn resolver_breakdown(counts: &BTreeMap<String, usize>) -> String {
         .map(|(name, count)| format!("{name}:{count}"))
         .collect::<Vec<_>>()
         .join(",")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    #[test]
+    fn probe_test_mapping_skips_when_no_changed_source_files() {
+        let temp = tempdir().expect("tempdir");
+        let result = probe_test_mapping(temp.path(), &[], "HEAD");
+        assert_eq!(result.state, ResultState::Skipped);
+        assert!(result.output.contains("changed_source_files: 0"));
+    }
+
+    #[test]
+    fn probe_test_mapping_passes_on_unknown_without_missing() {
+        let temp = tempdir().expect("tempdir");
+        let repo_root = temp.path();
+        std::fs::create_dir_all(repo_root.join("src")).expect("create src");
+        std::fs::write(repo_root.join("src/service.rs"), "pub fn run() {}\n")
+            .expect("write source");
+
+        let result = probe_test_mapping(repo_root, &["src/service.rs".to_string()], "HEAD");
+        assert!(result.passed);
+        assert_eq!(result.state, ResultState::Pass);
+        assert!(result.output.contains("unknown_mappings: 1"));
+        assert!(result.output.contains("missing_mappings: 0"));
+    }
+
+    #[test]
+    fn probe_test_mapping_warns_on_missing() {
+        let temp = tempdir().expect("tempdir");
+        let repo_root = temp.path();
+        std::fs::create_dir_all(repo_root.join("src/main/java/com/example"))
+            .expect("create java dir");
+        std::fs::write(
+            repo_root.join("src/main/java/com/example/OrderService.java"),
+            "class OrderService {}\n",
+        )
+        .expect("write java source");
+
+        let result = probe_test_mapping(
+            repo_root,
+            &["src/main/java/com/example/OrderService.java".to_string()],
+            "HEAD",
+        );
+        assert!(!result.passed);
+        assert_eq!(result.state, ResultState::Fail);
+        assert!(result.output.contains("graph_test_mapping: warn"));
+        assert!(result.output.contains("missing_mappings: 1"));
+    }
 }

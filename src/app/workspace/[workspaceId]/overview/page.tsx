@@ -1,3 +1,7 @@
+/**
+ * Workspace / Overview - /workspace/:workspaceId/overview
+ * Workspace entry route that currently redirects to the sessions surface while preserving workspace scope.
+ */
 import { redirect } from "next/navigation";
 
 export async function generateStaticParams() {

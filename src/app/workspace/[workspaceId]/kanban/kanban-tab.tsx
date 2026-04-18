@@ -228,12 +228,18 @@ export function KanbanTab({
   const [agentLoading, setAgentLoading] = useState(false);
   const [agentSessionId, setAgentSessionId] = useState<string | null>(null);
   const [agentPanelOpen, setAgentPanelOpen] = useState(false);
+  const [showFitnessWorkbench, setShowFitnessWorkbench] = useState(false);
+  const [fitnessWorkbenchSessionId, setFitnessWorkbenchSessionId] = useState<string | null>(null);
   const [detailSplitRatio, setDetailSplitRatio] = useState(0.48);
   const [isDraggingDetailSplit, setIsDraggingDetailSplit] = useState(false);
 
   // Codebase detail popup state
+  const [showCodebaseModal, setShowCodebaseModal] = useState(false);
   const [selectedCodebase, setSelectedCodebase] = useState<CodebaseData | null>(null);
   const [codebaseWorktrees, setCodebaseWorktrees] = useState<WorktreeInfo[]>([]);
+  const [addRepoSelection, setAddRepoSelection] = useState<RepoSelection | null>(null);
+  const [addSaving, setAddSaving] = useState(false);
+  const [addError, setAddError] = useState<string | null>(null);
   // Codebase edit state - use RepoPicker for re-selecting/cloning
   const [editingCodebase, setEditingCodebase] = useState(false);
   const [editRepoSelection, setEditRepoSelection] = useState<RepoSelection | null>(null);
@@ -1189,22 +1195,32 @@ export function KanbanTab({
 
   // Close modal on Escape key
   useEffect(() => {
-    if (!activeTaskId && !activeSessionId && !showSettings && !selectedCodebase) return;
+    if (!activeTaskId && !activeSessionId && !showSettings && !showCodebaseModal) return;
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         if (activeTaskId || activeSessionId) {
           closeTaskDetail();
         } else if (showSettings) {
           setShowSettings(false);
-        } else if (selectedCodebase) {
+        } else if (showCodebaseModal) {
+          setShowCodebaseModal(false);
           setSelectedCodebase(null);
           setCodebaseWorktrees([]);
+          setEditingCodebase(false);
+          setLiveBranchInfo(null);
+          setBranchActionError(null);
+          setDeletingBranchNames([]);
+          setRecloneError(null);
+          setRecloneSuccess(null);
+          setAddRepoSelection(null);
+          setAddError(null);
+          setShowDeleteCodebaseConfirm(false);
         }
       }
     };
     window.addEventListener("keydown", handleEscape);
     return () => window.removeEventListener("keydown", handleEscape);
-  }, [activeTaskId, activeSessionId, showSettings, selectedCodebase, closeTaskDetail]);
+  }, [activeTaskId, activeSessionId, showSettings, showCodebaseModal, closeTaskDetail]);
 
   // Fetch worktrees for tasks that have worktreeId
   useEffect(() => {
@@ -1260,7 +1276,7 @@ export function KanbanTab({
     })();
   }, [localTasks, missingWorktreeIds, patchTask, worktreeCache]);
 
-  async function fetchCodebaseWorktrees(codebase: CodebaseData) {
+  const fetchCodebaseWorktrees = useCallback(async (codebase: CodebaseData) => {
     // Reset live branch info
     setLiveBranchInfo(null);
     setBranchActionError(null);
@@ -1283,7 +1299,89 @@ export function KanbanTab({
         setLiveBranchInfo({ current: branchData.current, branches: branchData.local || [] });
       }
     } catch { /* ignore */ }
-  }
+  }, [workspaceId]);
+
+  const selectCodebase = useCallback(async (codebase: CodebaseData | null) => {
+    setSelectedCodebase(codebase);
+    setCodebaseWorktrees([]);
+    setLiveBranchInfo(null);
+    setBranchActionError(null);
+    setWorktreeActionError(null);
+    setDeletingBranchNames([]);
+    setDeletingWorktreeIds([]);
+    setEditingCodebase(false);
+    setEditError(null);
+    setEditRepoSelection(null);
+    setRecloneError(null);
+    setRecloneSuccess(null);
+    setShowDeleteCodebaseConfirm(false);
+
+    if (codebase) {
+      await fetchCodebaseWorktrees(codebase);
+    }
+  }, [fetchCodebaseWorktrees]);
+
+  const closeCodebaseModal = useCallback(() => {
+    setShowCodebaseModal(false);
+    setSelectedCodebase(null);
+    setCodebaseWorktrees([]);
+    setEditingCodebase(false);
+    setLiveBranchInfo(null);
+    setBranchActionError(null);
+    setDeletingBranchNames([]);
+    setRecloneError(null);
+    setRecloneSuccess(null);
+    setAddRepoSelection(null);
+    setAddError(null);
+    setShowDeleteCodebaseConfirm(false);
+  }, []);
+
+  const openCodebaseModal = useCallback(() => {
+    setShowCodebaseModal(true);
+    const nextCodebase = selectedCodebase ?? defaultCodebase ?? codebases[0] ?? null;
+    if (nextCodebase) {
+      void selectCodebase(nextCodebase);
+    }
+  }, [codebases, defaultCodebase, selectedCodebase, selectCodebase]);
+
+  const handleAddCodebase = useCallback(async (selection: RepoSelection | null) => {
+    if (!selection) return;
+    setAddRepoSelection(selection);
+    setAddSaving(true);
+    setAddError(null);
+    try {
+      const res = await desktopAwareFetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/codebases`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ repoPath: selection.path, branch: selection.branch, label: selection.name }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Failed to add repository");
+      onRefresh();
+      const nextCodebase = data.codebase as CodebaseData | undefined;
+      if (nextCodebase) {
+        await selectCodebase(nextCodebase);
+      }
+      setAddRepoSelection(null);
+    } catch (error) {
+      setAddError(error instanceof Error ? error.message : "Failed to add repository");
+    } finally {
+      setAddSaving(false);
+    }
+  }, [onRefresh, selectCodebase, workspaceId]);
+
+  useEffect(() => {
+    if (!showCodebaseModal) return;
+    if (selectedCodebase && codebases.some((codebase) => codebase.id === selectedCodebase.id)) return;
+    const nextCodebase = defaultCodebase ?? codebases[0] ?? null;
+    if (nextCodebase) {
+      void selectCodebase(nextCodebase);
+    } else {
+      setSelectedCodebase(null);
+      setCodebaseWorktrees([]);
+      setLiveBranchInfo(null);
+    }
+  }, [codebases, defaultCodebase, selectedCodebase, selectCodebase, showCodebaseModal]);
 
   const deleteIssueBranches = useCallback(async (branches: string[]) => {
     if (!selectedCodebase || branches.length === 0) return;
@@ -1909,10 +2007,16 @@ export function KanbanTab({
   };
 
   const codebaseModalProps = {
-    key: selectedCodebase?.id ?? "no-codebase-selected",
+    key: showCodebaseModal ? (selectedCodebase?.id ?? "workspace-repos-open") : "workspace-repos-closed",
+    open: showCodebaseModal,
     selectedCodebase,
     editingCodebase,
     codebases,
+    addRepoSelection,
+    setAddRepoSelection,
+    addSaving,
+    addError,
+    onAddRepository: handleAddCodebase,
     editRepoSelection,
     onRepoSelectionChange: handleRepoSelectionChange,
     editError,
@@ -1928,6 +2032,10 @@ export function KanbanTab({
     deletingWorktreeIds,
     liveBranchInfo,
     branchActionError,
+    repoHealth,
+    onSelectCodebase: (codebase: CodebaseData) => {
+      void selectCodebase(codebase);
+    },
     handleDeleteIssueBranch,
     handleDeleteIssueBranches,
     deletingBranchNames,
@@ -1936,16 +2044,7 @@ export function KanbanTab({
     recloneSuccess,
     onStartEditCodebase: handleStartEditCodebase,
     onRequestRemoveCodebase: () => setShowDeleteCodebaseConfirm(true),
-    onClose: () => {
-      setSelectedCodebase(null);
-      setCodebaseWorktrees([]);
-      setEditingCodebase(false);
-      setLiveBranchInfo(null);
-      setBranchActionError(null);
-      setDeletingBranchNames([]);
-      setRecloneError(null);
-      setRecloneSuccess(null);
-    },
+    onClose: closeCodebaseModal,
   };
 
   const deleteCodebaseModalProps = {
@@ -1996,23 +2095,14 @@ export function KanbanTab({
     boardQueue,
     repoHealth,
     selectedProvider: selectedProviderInfo,
-    onRepoClick: () => {
-      if (defaultCodebase) {
-        setSelectedCodebase(defaultCodebase);
-        void fetchCodebaseWorktrees(defaultCodebase);
-      }
-    },
+    onRepoClick: openCodebaseModal,
     onFileChangesClick: () => setFileChangesOpen((prev) => !prev),
     onGitLogClick: () => setGitLogOpen((prev) => !prev),
     onProviderClick: () => {
       // Could open provider settings or do nothing
     },
     onFitnessClick: () => {
-      const query = new URLSearchParams({ workspaceId });
-      if (defaultCodebase?.id) {
-        query.set("codebaseId", defaultCodebase.id);
-      }
-      window.location.assign(`/settings/fluency?${query.toString()}`);
+      setShowFitnessWorkbench(true);
     },
     fileChangesOpen,
     gitLogOpen,
@@ -2020,6 +2110,16 @@ export function KanbanTab({
     runtimeFitness: runtimeFitness.data,
     runtimeFitnessLoading: runtimeFitness.loading,
     runtimeFitnessError: runtimeFitness.error,
+  };
+
+  const fitnessWorkbenchModalProps = {
+    open: showFitnessWorkbench,
+    workspaceId,
+    codebase: defaultCodebase,
+    runtimeFitness: runtimeFitness.data,
+    sessionId: fitnessWorkbenchSessionId,
+    onSessionIdChange: setFitnessWorkbenchSessionId,
+    onClose: () => setShowFitnessWorkbench(false),
   };
 
   return (
@@ -2038,6 +2138,7 @@ export function KanbanTab({
       deleteTaskModalProps={deleteTaskModalProps}
       moveBlockedModalProps={moveBlockedModalProps}
       statusBarProps={statusBarProps}
+      fitnessWorkbenchModalProps={fitnessWorkbenchModalProps}
     />
   );
 }

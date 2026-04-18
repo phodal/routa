@@ -112,6 +112,16 @@ pub fn is_git_repository(repo_path: &str) -> bool {
         .unwrap_or(false)
 }
 
+pub fn is_bare_git_repository(repo_path: &str) -> bool {
+    git_command()
+        .args(["rev-parse", "--is-bare-repository"])
+        .current_dir(repo_path)
+        .output()
+        .ok()
+        .filter(|output| output.status.success())
+        .is_some_and(|output| String::from_utf8_lossy(&output.stdout).trim() == "true")
+}
+
 pub fn get_current_branch(repo_path: &str) -> Option<String> {
     let output = git_command()
         .args(["rev-parse", "--abbrev-ref", "HEAD"])
@@ -583,6 +593,29 @@ pub fn reset_branch(
     }
 
     Ok(())
+}
+
+pub fn has_local_branch(repo_path: &str, branch: &str) -> bool {
+    git_command()
+        .args(["rev-parse", "--verify", &format!("refs/heads/{branch}")])
+        .current_dir(repo_path)
+        .output()
+        .map(|output| output.status.success())
+        .unwrap_or(false)
+}
+
+pub fn checkout_existing_branch(repo_path: &str, branch: &str) -> Result<(), String> {
+    let output = git_command()
+        .args(["checkout", branch])
+        .current_dir(repo_path)
+        .output()
+        .map_err(|error| error.to_string())?;
+
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err(String::from_utf8_lossy(&output.stderr).trim().to_string())
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -2560,5 +2593,65 @@ mod tests {
         assert!(dest.join("nested/kept.txt").is_file());
         assert!(!dest.join(".git").exists());
         assert!(!dest.join("node_modules").exists());
+    }
+
+    #[test]
+    fn detects_and_checks_out_existing_local_branches() {
+        let temp = tempdir().unwrap();
+        let repo = temp.path();
+
+        let init = git_command()
+            .args(["init", "-b", "main"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        assert!(init.status.success());
+
+        let config_name = git_command()
+            .args(["config", "user.name", "Test User"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        assert!(config_name.status.success());
+
+        let config_email = git_command()
+            .args(["config", "user.email", "test@example.com"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        assert!(config_email.status.success());
+
+        fs::write(repo.join("README.md"), "hello\n").unwrap();
+        let add = git_command()
+            .args(["add", "README.md"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        assert!(add.status.success());
+
+        let commit = git_command()
+            .args(["commit", "-m", "init"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        assert!(commit.status.success());
+
+        let branch = git_command()
+            .args(["branch", "feature/test"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        assert!(branch.status.success());
+
+        let repo_path = repo.to_str().unwrap();
+        assert!(has_local_branch(repo_path, "main"));
+        assert!(has_local_branch(repo_path, "feature/test"));
+        assert!(!has_local_branch(repo_path, "missing"));
+
+        checkout_existing_branch(repo_path, "feature/test").unwrap();
+        assert_eq!(
+            get_current_branch(repo_path).as_deref(),
+            Some("feature/test")
+        );
     }
 }

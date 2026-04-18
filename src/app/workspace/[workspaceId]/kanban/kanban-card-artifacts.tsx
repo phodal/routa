@@ -24,6 +24,7 @@ function getArtifactLabels(t: TranslationDictionary): Record<ArtifactType, strin
     test_results: t.kanban.testResultsType,
     code_diff: t.kanban.codeDiffType,
     logs: t.kanban.logsType,
+    canvas: "Canvas",
   };
 }
 

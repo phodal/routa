@@ -313,6 +313,74 @@ async fn api_mcp_kanban_profile_filters_tools_list() {
 }
 
 #[tokio::test]
+async fn api_mcp_default_profile_exposes_canvas_sdk_resource_tool() {
+    let fixture = ApiFixture::new().await;
+    let (session_id, _) = fixture.initialize_session(None).await;
+    fixture.complete_initialization(None, &session_id).await;
+
+    let list_response = fixture
+        .post_mcp(
+            None,
+            Some(&session_id),
+            json!({
+                "jsonrpc": "2.0",
+                "id": "tools-list-default",
+                "method": "tools/list",
+                "params": {}
+            }),
+        )
+        .await;
+    assert_eq!(list_response.status(), StatusCode::OK);
+
+    let list_body = read_first_sse_json(list_response, "default tools/list response").await;
+    let tools = list_body["result"]["tools"]
+        .as_array()
+        .expect("tools/list should return tools array");
+    assert!(
+        tools
+            .iter()
+            .any(|tool| tool["name"] == "read_canvas_sdk_resource"),
+        "default profile should expose read_canvas_sdk_resource"
+    );
+
+    let call_response = fixture
+        .post_mcp(
+            None,
+            Some(&session_id),
+            json!({
+                "jsonrpc": "2.0",
+                "id": "tools-call-canvas-sdk",
+                "method": "tools/call",
+                "params": {
+                    "name": "read_canvas_sdk_resource",
+                    "arguments": {
+                        "uri": "resource://routa/canvas-sdk/manifest"
+                    }
+                }
+            }),
+        )
+        .await;
+    assert_eq!(call_response.status(), StatusCode::OK);
+
+    let call_body = read_first_sse_json(call_response, "canvas sdk tool call response").await;
+    let content_text = call_body["result"]["content"][0]["text"]
+        .as_str()
+        .expect("tool call should return text content");
+    let payload: Value = serde_json::from_str(content_text).expect("parse tool payload");
+    assert_eq!(
+        payload["uri"],
+        json!("resource://routa/canvas-sdk/manifest")
+    );
+    assert_eq!(payload["mimeType"], json!("application/json"));
+    assert!(
+        payload["text"]
+            .as_str()
+            .is_some_and(|text| text.contains("\"moduleSpecifier\": \"@canvas-sdk\"")),
+        "manifest payload should contain canvas sdk module specifier"
+    );
+}
+
+#[tokio::test]
 async fn api_mcp_kanban_profile_rejects_disallowed_tool_call() {
     let fixture = ApiFixture::new().await;
     let profile_query = "mcpProfile=kanban-planning";

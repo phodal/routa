@@ -1,3 +1,7 @@
+/**
+ * Settings / Schedules - /settings/schedules
+ * Workspace-aware schedule management page for triggers, recurring runs, and schedule tick diagnostics.
+ */
 "use client";
 
 import { useState } from "react";

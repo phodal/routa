@@ -2,7 +2,8 @@
 title: "Kanban should surface Entrix fitness state in real time"
 date: "2026-04-14"
 kind: issue
-status: open
+status: resolved
+resolved_at: "2026-04-15"
 severity: medium
 area: "kanban"
 tags: ["kanban", "entrix", "fitness", "realtime", "ui", "observability"]
@@ -12,32 +13,29 @@ related_issues: [
   "docs/issues/2026-04-11-routa-watch-entrix-fast-fitness-tui.md"
 ]
 github_issue: 442
-github_state: open
+github_state: closed
 github_url: "https://github.com/phodal/routa/issues/442"
+resolution: "Kanban now loads runtime fitness through a dedicated runtime endpoint, invalidates on `fitness:changed`, and shows a compact runtime fitness status surface in the Kanban status bar/workbench."
 ---
 
 # Kanban 应该实时显示 Entrix fitness 状态
 
 ## What Happened
 
+这张 issue 记录的是 2026-04-14 当时的缺口；截至 2026-04-15，这个 Kanban runtime fitness surface 已经补齐。
+
 截至 2026-04-15，`Entrix` runtime 已经可以产出 live fitness event / artifact，但 `/workspace/{workspaceId}/kanban` 仍然只展示 board / task / session 运行态，不展示 repo fitness 运行态。这个缺口在 Web 和 Desktop 两条 backend surface 都存在。
 
 结果是：Kanban 已经是任务执行的主工作台，但用户在这个页面里看不到当前仓库的 fitness 是否正在运行、最近一次结果是否通过、是否存在 hard gate / score blocker，也无法第一时间获知状态变化。
 
-## Current Code Status (2026-04-15)
+## Resolution Notes (2026-04-15)
 
 - `crates/entrix/src/main.rs` 在每次 `entrix run` 后都会调用 `emit_runtime_fitness_event` / `write_runtime_fitness_artifacts`。
-- 运行态数据的 canonical 输出路径现在在 `crates/entrix/src/cli_runtime.rs`：
-  - `/tmp/harness-monitor/runtime/<repo-hash>/events.jsonl`
-  - `/tmp/harness-monitor/runtime/<repo-hash>/artifacts/fitness/latest-{mode}.json`
-  - `/tmp/harness-monitor/runtime/<repo-hash>/mailbox/fitness/new/<observed_at_ms>-<mode>.json`
-- `crates/harness-monitor/src/ui/cache_history.rs` 和 `crates/harness-monitor/src/ui/cache.rs` 已经会优先读取 latest mailbox event / artifact；说明 runtime source 已经被一个现有 UI 成功消费。
-- `src/app/api/fitness/report/route.ts` 和 `crates/routa-server/src/api/fitness.rs` 目前仍然只读取 `docs/fitness/reports/harness-fluency-*.json` 快照，并返回 `source: "snapshot"`。
-- `src/app/api/fitness/analyze/route.ts` 与 Rust 对应实现可以显式触发分析，但它们是“请求触发 -> 同步返回结果”的诊断接口，不是 Kanban 可订阅的 live runtime read model。
-- `src/core/kanban/kanban-event-broadcaster.ts` 与 `crates/routa-server/src/api/kanban.rs` 目前只广播 `kanban:changed`；事件模型只覆盖 `task | board | column | queue` 变化。
-- `src/client/hooks/use-kanban-events.ts` 只在 `connected` 或 `kanban:changed` 时触发 invalidation。
-- `src/app/workspace/[workspaceId]/kanban/kanban-page-client.tsx` 只拉取 boards、tasks、sessions、specialists、repo changes 等上下文，没有 fitness state loading。
-- `src/app/workspace/[workspaceId]/kanban/kanban-status-bar.tsx` 只显示 repo / file changes / git log / sync / running / queued / provider，没有 fitness badge 或 summary。
+- `src/app/api/fitness/runtime/route.ts` 与 Rust 对应 API 现在都提供 runtime fitness read model。
+- `src/app/workspace/[workspaceId]/kanban/use-runtime-fitness-status.ts` 会按 workspace/codebase 维度拉取当前 runtime fitness。
+- `src/client/hooks/use-kanban-events.ts` 已经响应 `fitness:changed` 并触发 invalidation。
+- `src/app/workspace/[workspaceId]/kanban/kanban-status-bar.tsx` 现在会显示紧凑 runtime fitness badge / summary，并支持打开细节面板。
+- 这意味着最初提到的“Kanban 完全看不到 runtime fitness”缺口已经关闭；后续演进若有需求，应转成新的收窄 issue，而不是继续沿用本问题。
 
 ## Expected Behavior
 

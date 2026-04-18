@@ -78,6 +78,10 @@ async fn resolve_codebase_repo_path(
         .map_err(|error| ServerError::Internal(error.to_string()))?
         .ok_or_else(|| ServerError::NotFound("Codebase not found".to_string()))?;
 
+    if codebase.workspace_id != workspace_id {
+        return Err(ServerError::NotFound("Codebase not found".to_string()));
+    }
+
     if !routa_core::git::is_git_repository(&codebase.repo_path) {
         return Err(ServerError::BadRequest(
             "Not a valid git repository".to_string(),
@@ -318,6 +322,7 @@ struct ResetBranchRequest {
 struct GitOperationResponse {
     success: bool,
     error: Option<String>,
+    branch: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -633,6 +638,7 @@ async fn pull_commits_handler(
                 Json(GitOperationResponse {
                     success: false,
                     error: Some(server_error_message(error)),
+                    branch: None,
                 }),
             ));
         }
@@ -652,6 +658,7 @@ async fn pull_commits_handler(
             Json(GitOperationResponse {
                 success: true,
                 error: None,
+                branch: None,
             }),
         )),
         Err(error) => Ok((
@@ -659,6 +666,7 @@ async fn pull_commits_handler(
             Json(GitOperationResponse {
                 success: false,
                 error: Some(error),
+                branch: None,
             }),
         )),
     }
@@ -689,6 +697,7 @@ async fn rebase_branch_handler(
             Json(GitOperationResponse {
                 success: true,
                 error: None,
+                branch: None,
             }),
         )),
         Err(error) => Ok((
@@ -696,6 +705,7 @@ async fn rebase_branch_handler(
             Json(GitOperationResponse {
                 success: false,
                 error: Some(error),
+                branch: None,
             }),
         )),
     }
@@ -728,6 +738,7 @@ async fn reset_branch_handler(
             Json(GitOperationResponse {
                 success: false,
                 error: Some("Mode must be 'soft' or 'hard'".to_string()),
+                branch: None,
             }),
         ));
     }
@@ -737,31 +748,62 @@ async fn reset_branch_handler(
             Json(GitOperationResponse {
                 success: false,
                 error: Some("Hard reset requires explicit confirmation".to_string()),
+                branch: None,
             }),
         ));
     }
     let repo_path = resolve_codebase_repo_path(&state, &workspace_id, &codebase_id).await?;
     let confirm = req.confirm.unwrap_or(false);
+    let repo_path_for_git = repo_path.clone();
+    let to_for_git = to.clone();
+    let mode_for_git = mode.clone();
 
     let result = tokio::task::spawn_blocking(move || {
-        routa_core::git::reset_branch(&repo_path, &to, &mode, confirm)
+        routa_core::git::reset_branch(&repo_path_for_git, &to_for_git, &mode_for_git, confirm)?;
+
+        let is_target_local_branch =
+            routa_core::git::has_local_branch(&repo_path_for_git, &to_for_git);
+        if is_target_local_branch {
+            let current_branch = routa_core::git::get_current_branch(&repo_path_for_git);
+            if current_branch.as_deref() != Some(to_for_git.as_str()) {
+                routa_core::git::checkout_existing_branch(&repo_path_for_git, &to_for_git)?;
+            }
+        }
+
+        Ok::<bool, String>(is_target_local_branch)
     })
     .await
     .map_err(|error| ServerError::Internal(error.to_string()))?;
 
     match result {
-        Ok(()) => Ok((
-            StatusCode::OK,
-            Json(GitOperationResponse {
-                success: true,
-                error: None,
-            }),
-        )),
+        Ok(is_target_local_branch) => {
+            if is_target_local_branch {
+                state
+                    .codebase_store
+                    .update(&codebase_id, Some(&to), None, None, None, None)
+                    .await
+                    .map_err(|error| ServerError::Internal(error.to_string()))?;
+            }
+
+            Ok((
+                StatusCode::OK,
+                Json(GitOperationResponse {
+                    success: true,
+                    error: None,
+                    branch: if is_target_local_branch {
+                        Some(to)
+                    } else {
+                        None
+                    },
+                }),
+            ))
+        }
         Err(error) => Ok((
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(GitOperationResponse {
                 success: false,
                 error: Some(error),
+                branch: None,
             }),
         )),
     }

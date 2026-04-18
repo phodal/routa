@@ -1,0 +1,65 @@
+{
+  "schemaVersion": 1,
+  "prompt": {
+    "artifactDescription": "Create a Routa browser canvas as TSX source code.",
+    "requireSourceOnly": true,
+    "allowMarkdownCodeFences": false,
+    "allowProse": false
+  },
+  "output": {
+    "defaultExportForms": [
+      "export default function Canvas()",
+      "export default Canvas"
+    ],
+    "jsonSourceKeys": [
+      "source",
+      "tsx",
+      "code",
+      "canvasSource",
+      "component"
+    ]
+  },
+  "imports": {
+    "allowedModules": [
+      "react",
+      "@canvas-sdk",
+      "@canvas-sdk/*"
+    ],
+    "normalizedPrefixes": [
+      "./client/canvas-sdk",
+      "@/client/canvas-sdk",
+      "src/client/canvas-sdk"
+    ]
+  },
+  "runtime": {
+    "forbiddenGlobals": [
+      "window",
+      "document",
+      "fetch",
+      "localStorage"
+    ]
+  },
+  "layout": {
+    "forbiddenShellChrome": [
+      "browser frames",
+      "global app shells",
+      "left sidebars",
+      "chat panes"
+    ]
+  },
+  "style": {
+    "principles": [
+      "flat",
+      "minimal",
+      "purposeful"
+    ],
+    "forbiddenPatterns": [
+      "gradients",
+      "emojis",
+      "box shadows"
+    ]
+  },
+  "storage": {
+    "projectCanvasRoot": "~/.routa/projects/{folderSlug}/canvases"
+  }
+}

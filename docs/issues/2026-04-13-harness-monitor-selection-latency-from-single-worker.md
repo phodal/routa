@@ -1,5 +1,5 @@
 ---
-title: "Harness monitor 文件切换和预览加载仍会被单一后台 worker 拖慢"
+title: "Harness monitor 文件切换仍会被 facts / git history enrichment 拖慢"
 date: "2026-04-13"
 kind: issue
 status: open
@@ -15,7 +15,7 @@ github_state: null
 github_url: null
 ---
 
-# Harness monitor 文件切换和预览加载仍会被单一后台 worker 拖慢
+# Harness monitor 文件切换仍会被 facts / git history enrichment 拖慢
 
 ## What Happened
 
@@ -27,16 +27,19 @@ github_url: null
 
 但在真实仓库里切换 `Git Status` / `Change Status` 选中项时，UI 仍然会明显发卡，尤其是大仓库或 dirty files 较多时更明显。
 
-调查发现，当前 `AppCache` 只有一个后台 worker，以下任务都共享同一个命令队列：
+当前实现已经不再是“一个 omnibus worker”：
 
-- 文件预览 / diff 加载
+- preview / diff 走独立 preview worker
+- facts / git history / diff stats 走 facts worker
+- fitness / test mapping / scc 走 eval worker
+
+但选中项切换时的感知延迟仍然存在，因为 facts lane 里仍把这些 enrichment 串在一起：
+
 - diff stats
 - file facts
-- fitness
-- test mapping
-- scc
+- git history count
 
-其中 `file facts` 还会触发 `git log --follow`，这会把真正影响操作手感的预览热路径和慢元数据任务串在一起。
+其中 `git history` 仍会触发 `git log --follow`，而这条慢路径会继续拖住 facts/enrichment 结果返回，进而让用户把“元数据未跟上”感知成“切换发卡”。
 
 ## Expected Behavior
 
@@ -55,9 +58,9 @@ github_url: null
 
 ## Why This Might Happen
 
-- `AppCache` 只有一个后台 worker，selection-critical work 和 metadata enrichment 共用一个 FIFO 队列
-- `LoadFacts` 里会执行 `git log --follow`，容易形成 head-of-line blocking
-- 当前 UI 循环仍偏 polling 驱动，缺少更细粒度的结果通道和热路径优先级
+- selection-critical preview 已经拆出独立 worker，但 facts lane 仍把 `diff stats / facts / git history` 串在一个后台路径里
+- `git log --follow` 仍然是慢点，容易在 enrichment lane 里形成 head-of-line blocking
+- UI 仍会把一部分 enrichment 缺失感知成“当前切换没完成”，所以用户体感上仍像选中项切换被拖慢
 
 ## Relevant Files
 
@@ -70,8 +73,9 @@ github_url: null
 
 ## Observations
 
-- 已经做过一次 lazy preview，只读前 100 行，说明热点已从“读整文件”部分转移到“后台任务竞争”
+- 已经做过一次 lazy preview，只读前 100 行，说明热点已从“读整文件”部分转移到“facts / git history enrichment 竞争”
 - `codex-rs` 更接近 event-driven + feature-owned async tasks，而不是一个 omnibus worker
+- 这张 issue 的根因表述需要更新：问题还在，但已经不是“single worker”，而是 “facts lane 仍然过宽”
 - 这一问题不只是性能问题，也直接影响 run/session 旅程在 UI 上的可信度，因为用户会把延迟误判成状态错误
 
 ## References

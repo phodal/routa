@@ -273,7 +273,7 @@ describe("AcpProcessManager", () => {
 
     expect(acpSessionId).toBe("acp-session-1");
     expect(getDefaultRoutaMcpConfigMock).toHaveBeenCalledWith("ws-1", "session-1", "full", undefined);
-    expect(ensureMcpForProviderMock).toHaveBeenCalledWith("codex", { type: "http" });
+    expect(ensureMcpForProviderMock).toHaveBeenCalledWith("codex", { type: "http", cwd: "/repo" });
     expect(buildConfigFromPresetMock).toHaveBeenCalledWith(
       "codex",
       "/repo",
@@ -404,6 +404,34 @@ describe("AcpProcessManager", () => {
 
     await manager.killSession("session-qoder");
     expect(cleanupMcpForProviderMock).toHaveBeenCalledWith(cleanup);
+  });
+
+  it("prepends MCP provider args before caller extra args", async () => {
+    const manager = new AcpProcessManager();
+    ensureMcpForProviderMock.mockResolvedValueOnce({
+      mcpConfigs: ["mcp-config"],
+      providerArgs: ["-c", 'mcp_servers.routa-coordination.url="http://localhost:3210/api/mcp"'],
+      summary: "codex: wrote private overlay",
+    });
+
+    await manager.createSession(
+      "session-args",
+      "/repo",
+      vi.fn(),
+      "codex",
+      undefined,
+      ["--verbose"],
+      undefined,
+      "ws-1",
+    );
+
+    expect(buildConfigFromPresetMock).toHaveBeenCalledWith(
+      "codex",
+      "/repo",
+      ["-c", 'mcp_servers.routa-coordination.url="http://localhost:3210/api/mcp"', "--verbose"],
+      undefined,
+      ["mcp-config"],
+    );
   });
 
   it("routes explicit opencode-sdk sessions to the direct api adapter when no server url is set", async () => {

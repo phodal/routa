@@ -1,5 +1,10 @@
 "use client";
 
+/**
+ * Home - /
+ * Workspace-first landing page for selecting a workspace, connecting providers, and entering recent sessions or team runs.
+ */
+
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";

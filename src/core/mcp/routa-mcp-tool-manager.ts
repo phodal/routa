@@ -13,6 +13,7 @@ import { NoteTools } from "../tools/note-tools";
 import { WorkspaceTools } from "../tools/workspace-tools";
 import { ToolResult } from "../tools/tool-result";
 import type { RoutaOrchestrator } from "../orchestration/orchestrator";
+import { readCanvasSdkResource } from "../canvas/sdk-resource-contract";
 
 /**
  * Tool registration mode for MCP server.
@@ -198,6 +199,7 @@ export class RoutaMcpToolManager {
     register("get_artifact", () => this.registerGetArtifact(server));
     register("list_pending_artifact_requests", () => this.registerListPendingArtifactRequests(server));
     register("capture_screenshot", () => this.registerCaptureScreenshot(server));
+    register("read_canvas_sdk_resource", () => this.registerReadCanvasSdkResource(server));
   }
 
   private shouldRegisterTool(toolName: string): boolean {
@@ -1383,6 +1385,29 @@ Can be in response to a request or proactively provided.`,
           outputPath: params.outputPath,
         });
         return this.toMcpResult(result);
+      }
+    );
+  }
+
+  private registerReadCanvasSdkResource(server: McpServer) {
+    server.tool(
+      "read_canvas_sdk_resource",
+      "Read the Routa Canvas SDK manifest or a generated definition resource by resource URI. Use this when your provider cannot call MCP resources/read directly.",
+      {
+        uri: z.string().describe("Canvas SDK resource URI, e.g. resource://routa/canvas-sdk/manifest"),
+      },
+      async (params) => {
+        const resource = readCanvasSdkResource(params.uri);
+        if (!resource) {
+          return this.toMcpResult({
+            success: false,
+            error: `Unknown Canvas SDK resource URI: ${params.uri}`,
+          });
+        }
+        return this.toMcpResult({
+          success: true,
+          data: resource,
+        });
       }
     );
   }

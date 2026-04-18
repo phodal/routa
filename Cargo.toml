@@ -1,11 +1,13 @@
 [workspace]
 resolver = "2"
 members = [
+    "crates/feature-trace",
     "crates/routa-core",
     "crates/routa-server",
     "crates/routa-cli",
     "crates/routa-rpc",
     "crates/routa-scanner",
+    "crates/trace-parser",
     "crates/entrix",
     "apps/desktop/src-tauri",
     "crates/harness-monitor",

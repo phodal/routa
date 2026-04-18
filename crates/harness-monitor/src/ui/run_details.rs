@@ -6,11 +6,13 @@ use crate::attribute::attribution::{
 use crate::evaluate::gates::{
     effect_classes_summary, evidence_inline_summary, EvidenceRequirementStatus,
 };
+use crate::feature_trace::{summarize_features, summarize_routes, SessionTraceMaterial};
 use crate::run::run::{Role, RunMode};
 use crate::run::workspace::WorkspaceState;
 use crate::shared::models::{AttributionConfidence, FileView};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
+use std::collections::BTreeSet;
 
 #[allow(dead_code)]
 pub(super) struct RunOperatorModel {
@@ -188,11 +190,24 @@ pub(super) fn render_run_details(
         ]));
     }
 
+    let feature_scope_summary = feature_trace_summary_for_run(state, cache, run, &model);
     if let Some(trace_summary) = activity_trace_for_run(state, run, &model) {
+        let trace_text = match feature_scope_summary.as_deref() {
+            Some(scope_summary) => format!("{trace_summary}  ->  {scope_summary}"),
+            None => trace_summary,
+        };
         lines.push(Line::from(vec![
             Span::styled("Trace: ", Style::default().fg(colors.muted)),
             Span::styled(
-                shorten_path(&trace_summary, width.saturating_sub(12) as usize),
+                shorten_path(&trace_text, width.saturating_sub(12) as usize),
+                Style::default().fg(colors.accent),
+            ),
+        ]));
+    } else if let Some(scope_summary) = feature_scope_summary {
+        lines.push(Line::from(vec![
+            Span::styled("Scope: ", Style::default().fg(colors.muted)),
+            Span::styled(
+                shorten_path(&scope_summary, width.saturating_sub(12) as usize),
                 Style::default().fg(colors.accent),
             ),
         ]));
@@ -369,6 +384,52 @@ fn activity_trace_for_run(
     }
 
     (!segments.is_empty()).then(|| segments.join("  ->  "))
+}
+
+fn feature_trace_material_for_run(
+    state: &RuntimeState,
+    run: &crate::ui::state::SessionListItem,
+    model: &RunOperatorModel,
+) -> Option<SessionTraceMaterial> {
+    if run.is_all_runs_bucket || run.is_unknown_bucket || run.is_synthetic_agent_run {
+        return None;
+    }
+
+    let mut changed_files = BTreeSet::new();
+    if let Some(session) = state.sessions.get(&run.session_id) {
+        changed_files.extend(session.touched_files.iter().cloned());
+    }
+    changed_files.extend(model.changed_files.iter().cloned());
+    changed_files.extend(model.journey_files.iter().cloned());
+
+    if changed_files.is_empty() {
+        return None;
+    }
+
+    Some(SessionTraceMaterial::new(
+        run.session_id.clone(),
+        changed_files.into_iter().collect(),
+        run.last_tool_name.clone().into_iter().collect(),
+    ))
+}
+
+fn feature_trace_summary_for_run(
+    state: &RuntimeState,
+    cache: &mut AppCache,
+    run: &crate::ui::state::SessionListItem,
+    model: &RunOperatorModel,
+) -> Option<String> {
+    let material = feature_trace_material_for_run(state, run, model)?;
+    let analysis = cache.session_feature_trace(material)?;
+    let routes = summarize_routes(analysis, 2);
+    let features = summarize_features(analysis, 2);
+
+    match (features.is_empty(), routes.is_empty()) {
+        (false, false) => Some(format!("{} @ {}", features.join(" | "), routes.join(" | "))),
+        (false, true) => Some(features.join(" | ")),
+        (true, false) => Some(routes.join(" | ")),
+        (true, true) => None,
+    }
 }
 
 fn recovered_history_label(

@@ -124,6 +124,7 @@ routa.db-shm
 dogfood-output
 .worktrees
 docs/issues/*-gh-*.md
+docs/product-specs/feature-tree.index.json
 tools/ppt-template/output/
 tools/ppt-template/node_modules/
 .agents

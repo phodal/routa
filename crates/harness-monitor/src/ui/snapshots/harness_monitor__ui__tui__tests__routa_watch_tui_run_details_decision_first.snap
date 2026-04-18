@@ -36,7 +36,7 @@ routa.js  2 dirty  1 unassigned  lines: --  loc: --  fitness: fast  transport: s
 │                                         ││Next: generate coverage evidence                                                     ││                                                │
 │                                         ││Evidence: ok:diff_summary, ok:test_report, missing:coverage_report                   ││                                                │
 │                                         ││Policy: allow_with_evidence  Effects: repo_write                                     ││                                                │
-│                                         ││Trace: ...crates/harness-monitor/src/tui.rs  ->  commit: stabilize monitor journey   ││                                                │
+│                                         ││Trace: ...journey  ->  Feature Explorer @ /workspace/:workspaceId/feature-explorer   ││                                                │
 │                                         ││Context: codex  fixer  hook  gpt-5.4                                                 ││                                                │
 │                                         ││Workspace: dirty  <repo>                                                       ││                                                │
 └─────────────────────────────────────────┘└─────────────────────────────────────────────────────────────────────────────────────┘└────────────────────────────────────────────────┘

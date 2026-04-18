@@ -242,6 +242,33 @@ export async function resetBranch(
   await gitExec(`git reset ${resetMode} ${shellQuote(to)}`, repoPath);
 }
 
+/**
+ * Returns true when the provided name resolves to a local branch.
+ */
+export async function hasLocalBranch(repoPath: string, branch: string): Promise<boolean> {
+  try {
+    await gitExec(`git rev-parse --verify ${shellQuote(`refs/heads/${branch}`)}`, repoPath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Returns the currently checked out branch name, or null when detached HEAD.
+ */
+export async function getCurrentBranchName(repoPath: string): Promise<string | null> {
+  const branch = await gitExec("git branch --show-current", repoPath);
+  return branch.trim() || null;
+}
+
+/**
+ * Checkout an existing local branch.
+ */
+export async function checkoutExistingBranch(repoPath: string, branch: string): Promise<void> {
+  await gitExec(`git checkout ${shellQuote(branch)}`, repoPath);
+}
+
 export interface CommitInfo {
   sha: string;
   shortSha: string;

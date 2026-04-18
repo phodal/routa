@@ -1,5 +1,5 @@
 ---
-title: "Harness monitor 仍然更像 observer，而不是帮助用户驾驭多智能体的 decision console"
+title: "Harness monitor 仍缺少 journey-first 的决策汇总"
 date: "2026-04-13"
 kind: issue
 status: open
@@ -16,7 +16,7 @@ github_state: null
 github_url: null
 ---
 
-# Harness monitor 仍然更像 observer，而不是帮助用户驾驭多智能体的 decision console
+# Harness monitor 仍缺少 journey-first 的决策汇总
 
 ## What Happened
 
@@ -28,20 +28,16 @@ github_url: null
 - `All` aggregate run
 - dirty files、journey files、recent git activity
 - run-scoped operator assessment
+- decision-first 的 `Run Details`
 
-但从用户价值看，当前产品仍然更擅长回答：
-
-- “现在发生了什么？”
-- “哪个 session / file 在动？”
-
-还不够擅长回答：
+当前剩下的缺口已经不再是“完全 observer-first”，而是用户仍然需要跨多个 panel 自己拼装这些问题的答案：
 
 - “我现在最该管哪个 run？”
 - “它为什么卡住？”
 - “下一步应该继续、评审、补证据还是停下来？”
 - “这条任务旅程已经交付到了哪一步？”
 
-换句话说，`harness-monitor` 已经接近一个 run-centric operator console，但 UI 的主表达仍偏向 observer / provenance 视角。
+换句话说，`harness-monitor` 已经更接近一个 run-centric operator console，但 journey 与 go/no-go summary 仍不够收束成一个一眼可判的 surface。
 
 ## Expected Behavior
 
@@ -51,7 +47,7 @@ github_url: null
 
 ## User Value Gaps
 
-### 1. Run Details 应优先展示 operator decision，而不是 provenance
+### 1. Run Details 已经 decision-first，但 continue / merge judgement 仍分散在多个 panel
 
 当前 `Run Details` 已经能拿到：
 
@@ -62,23 +58,7 @@ github_url: null
 - `next_action`
 - `handoff`
 
-但 UI 仍主要先展示：
-
-- client / role / origin / model
-- last tool
-- files / commits
-
-这让用户仍需要自己把信号翻译成结论。
-
-应调整为：
-
-- `State`
-- `Block reason`
-- `Next action`
-- `Approval`
-- `Evidence`
-- `Handoff`
-- 然后再展示 context / provenance / files / commits
+`Run Details` 的排序已经在往决策优先收敛，但“能不能继续 / 能不能 merge / 是否缺测试或证据”这类判断，仍然要跨 `Run Details`、`Fitness`、`Git Status`、`Prompt` 等区域自己拼出来。
 
 ### 2. Task journey 仍然是摘要，不是连续链路
 
@@ -133,10 +113,10 @@ github_url: null
 
 ## Near-Term Implementation Order
 
-1. 把 `Run Details` 重排为 decision-first surface
-2. 把 task journey 扩成连续链路，而不是摘要字段
-3. 把 test mapping / eval / evidence 汇总成 run-level continue/merge safety
-4. 把 committed changes 纳入 run journey / evidence surface
+1. 把 task journey 扩成连续链路，而不是摘要字段
+2. 把 test mapping / eval / evidence 汇总成 run-level continue/merge safety
+3. 把 committed changes 纳入 run journey / evidence surface
+4. 把最需要人工介入的 run 提升成更显式的 decision summary
 
 ## Relevant Files
 
@@ -154,4 +134,3 @@ github_url: null
 - 不能回退现有 prompt-first runs / recovered markers / synthetic run fallback
 - 不能为了“更好看”重新把 run 语义退回 session-centric
 - 不能把 continue/merge safety 写死在 UI heuristics 中，而应尽量复用已有 assessment / evaluator 输出
-

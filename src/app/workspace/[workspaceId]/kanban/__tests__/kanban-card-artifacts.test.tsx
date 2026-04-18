@@ -2,6 +2,10 @@ import { render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { KanbanCardArtifacts } from "../kanban-card-artifacts";
 
+vi.mock("@/client/components/codemirror/code-viewer", () => ({
+  CodeViewer: ({ code }: { code: string }) => <pre>{code}</pre>,
+}));
+
 describe("KanbanCardArtifacts", () => {
   beforeEach(() => {
     Object.defineProperty(window, "matchMedia", {

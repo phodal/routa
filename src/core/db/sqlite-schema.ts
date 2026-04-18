@@ -406,6 +406,27 @@ export const githubWebhookConfigs = sqliteTable("github_webhook_configs", {
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
 });
 
+// ─── GitLab Webhook Configs ────────────────────────────────────────────────
+
+export const gitlabWebhookConfigs = sqliteTable("gitlab_webhook_configs", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  repo: text("repo").notNull(),
+  gitlabToken: text("gitlab_token").notNull(),
+  webhookSecret: text("webhook_secret").notNull().default(""),
+  eventTypes: text("event_types", { mode: "json" }).$type<string[]>().notNull().default([]),
+  labelFilter: text("label_filter", { mode: "json" }).$type<string[]>().default([]),
+  /** ACP agent/provider ID to trigger when event fires (mutually exclusive with workflowId) */
+  triggerAgentId: text("trigger_agent_id").notNull(),
+  /** Workflow ID to trigger instead of single agent (e.g., "pr-verify") */
+  workflowId: text("workflow_id"),
+  workspaceId: text("workspace_id"),
+  enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
+  promptTemplate: text("prompt_template"),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+});
+
 // ─── Schedules (cron-based agent triggers) ───────────────────────────────────
 
 export const schedules = sqliteTable("schedules", {

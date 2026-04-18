@@ -16,17 +16,15 @@ import {
   isGitRepository,
   getCurrentBranch,
 } from "@/core/git";
-import { shellQuote } from "@/core/git/git-utils";
-import { getServerBridge } from "@/core/platform";
+import { gitExec as runGit } from "@/core/utils/safe-exec";
 import type { GitCommit, GitRef, GitLogPage } from "@/app/workspace/[workspaceId]/kanban/git-log/types";
 
 export const dynamic = "force-dynamic";
 
 const SEARCH_SCAN_LIMIT = 2000;
 
-function gitExec(command: string, cwd: string): string {
-  const bridge = getServerBridge();
-  return bridge.process.execSync(command, { cwd }).trimEnd();
+function gitExec(args: string[], cwd: string): string {
+  return runGit(args, { cwd }).trimEnd();
 }
 
 function parseRefs(repoPath: string): GitRef[] {
@@ -36,7 +34,7 @@ function parseRefs(repoPath: string): GitRef[] {
   // Local branches
   try {
     const output = gitExec(
-      `git for-each-ref --format=%(refname:short)%09%(objectname) refs/heads/`,
+      ["for-each-ref", "--format=%(refname:short)%09%(objectname)", "refs/heads/"],
       repoPath,
     );
     for (const line of output.split("\n").filter(Boolean)) {
@@ -55,7 +53,7 @@ function parseRefs(repoPath: string): GitRef[] {
   // Remote branches
   try {
     const output = gitExec(
-      `git for-each-ref --format=%(refname:short)%09%(objectname) refs/remotes/`,
+      ["for-each-ref", "--format=%(refname:short)%09%(objectname)", "refs/remotes/"],
       repoPath,
     );
     for (const line of output.split("\n").filter(Boolean)) {
@@ -71,7 +69,7 @@ function parseRefs(repoPath: string): GitRef[] {
   // Tags
   try {
     const output = gitExec(
-      `git for-each-ref --format=%(refname:short)%09%(*objectname)%09%(objectname) refs/tags/`,
+      ["for-each-ref", "--format=%(refname:short)%09%(*objectname)%09%(objectname)", "refs/tags/"],
       repoPath,
     );
     for (const line of output.split("\n").filter(Boolean)) {
@@ -99,12 +97,10 @@ function buildRefMap(refs: GitRef[]): Map<string, GitRef[]> {
 }
 
 function buildLogCommand(
-  repoPath: string,
   branchesParam: string | null,
   maxCount: number | null,
-): string {
+): string[] {
   const parts = [
-    "git",
     "--no-pager",
     "log",
     "--date-order",
@@ -117,14 +113,12 @@ function buildLogCommand(
 
   if (branchesParam) {
     const branches = branchesParam.split(",").map((b) => b.trim()).filter(Boolean);
-    for (const branch of branches) {
-      parts.push(shellQuote(branch));
-    }
+    parts.push(...branches);
   } else {
     parts.push("--all");
   }
 
-  return parts.join(" ");
+  return parts;
 }
 
 function matchesSearch(commit: GitCommit, search: string): boolean {
@@ -164,7 +158,6 @@ export async function GET(request: NextRequest) {
       try {
         return gitExec(
           buildLogCommand(
-            repoPath,
             branchesParam,
             shouldScanForSearch ? SEARCH_SCAN_LIMIT : skip + limit + 1,
           ),
@@ -216,8 +209,8 @@ export async function GET(request: NextRequest) {
     if (!shouldScanForSearch) {
       try {
         const countCmd = branchesParam
-          ? `git rev-list --count ${branchesParam.split(",").map((branch) => shellQuote(branch.trim())).join(" ")}`
-          : "git rev-list --count --all";
+          ? ["rev-list", "--count", ...branchesParam.split(",").map((branch) => branch.trim()).filter(Boolean)]
+          : ["rev-list", "--count", "--all"];
         const countStr = gitExec(countCmd, repoPath);
         total = Number.parseInt(countStr, 10) || total;
       } catch {

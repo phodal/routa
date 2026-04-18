@@ -1,3 +1,4 @@
+use crate::feature_trace::SessionTraceMaterial;
 use crate::shared::models::{
     AttributionConfidence, FileEventRecord, FileStateRow, SessionRecord, TaskView,
 };
@@ -558,6 +559,59 @@ impl Db {
             )
             .optional()
             .context("query session last_seen_at_ms")
+    }
+
+    pub fn session_trace_material(
+        &self,
+        repo_root: &str,
+        session_id: &str,
+    ) -> Result<SessionTraceMaterial> {
+        let mut changed_stmt = self
+            .conn
+            .prepare(
+                "SELECT DISTINCT rel_path
+                 FROM file_events
+                 WHERE repo_root = ?1 AND session_id = ?2
+                 ORDER BY rel_path ASC",
+            )
+            .context("prepare session changed files query")?;
+        let changed_rows = changed_stmt
+            .query_map(params![repo_root, session_id], |row| {
+                row.get::<_, String>(0)
+            })
+            .context("query session changed files")?;
+        let mut changed_files = Vec::new();
+        for row in changed_rows {
+            changed_files.push(row.context("read session changed file")?);
+        }
+
+        let mut tool_stmt = self
+            .conn
+            .prepare(
+                "SELECT tool_name
+                 FROM turns
+                 WHERE repo_root = ?1
+                   AND session_id = ?2
+                   AND tool_name IS NOT NULL
+                   AND TRIM(tool_name) != ''
+                 ORDER BY observed_at_ms ASC",
+            )
+            .context("prepare session tool calls query")?;
+        let tool_rows = tool_stmt
+            .query_map(params![repo_root, session_id], |row| {
+                row.get::<_, String>(0)
+            })
+            .context("query session tool calls")?;
+        let mut tool_call_names = Vec::new();
+        for row in tool_rows {
+            tool_call_names.push(row.context("read session tool name")?);
+        }
+
+        Ok(SessionTraceMaterial::new(
+            session_id.to_string(),
+            changed_files,
+            tool_call_names,
+        ))
     }
 
     pub fn file_state_all_dirty(&self, repo_root: &str) -> Result<Vec<FileStateRow>> {

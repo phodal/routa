@@ -105,13 +105,16 @@ describe("RoutaMcpToolManager", () => {
     expect(registrations.some((entry) => entry.name === "list_tasks")).toBe(true);
     expect(registrations.some((entry) => entry.name === "git_status")).toBe(true);
     expect(registrations.some((entry) => entry.name === "create_note")).toBe(true);
+    expect(registrations.some((entry) => entry.name === "read_canvas_sdk_resource")).toBe(true);
 
     const createTaskTool = registrations.find((entry) => entry.name === "create_task");
     const noteTool = registrations.find((entry) => entry.name === "create_note");
     const delegateTool = registrations.find((entry) => entry.name === "delegate_task_to_agent");
+    const canvasSdkTool = registrations.find((entry) => entry.name === "read_canvas_sdk_resource");
     expect(createTaskTool).toBeDefined();
     expect(noteTool).toBeDefined();
     expect(delegateTool).toBeDefined();
+    expect(canvasSdkTool).toBeDefined();
 
     await createTaskTool!.handler({
       title: "Task",
@@ -160,6 +163,18 @@ describe("RoutaMcpToolManager", () => {
     expect((result as { content: Array<{ text: string }> }).content[0]?.text).toContain(
       '"callerAgentId": "agent-1"',
     );
+
+    const canvasSdkResult = await canvasSdkTool!.handler({
+      uri: "resource://routa/canvas-sdk/manifest",
+    });
+    expect(canvasSdkResult).toMatchObject({
+      content: [{ type: "text" }],
+      isError: false,
+    });
+    const canvasSdkPayload = JSON.parse(
+      (canvasSdkResult as { content: Array<{ text: string }> }).content[0]?.text ?? "{}",
+    ) as { text?: string };
+    expect(canvasSdkPayload.text).toContain('"moduleSpecifier"');
   });
 
   it("returns MCP errors when orchestrator or note tools are unavailable", async () => {

@@ -23,11 +23,26 @@ export interface CustomAcpProvider {
 
 export const DEFAULT_VISIBLE_PROVIDER_IDS = ["codex", "claude", "opencode", "kimi"] as const;
 
+function getLocalStorage(): Storage | null {
+  if (typeof window === "undefined") return null;
+  const storage = window.localStorage;
+  if (
+    storage == null ||
+    typeof storage.getItem !== "function" ||
+    typeof storage.setItem !== "function" ||
+    typeof storage.removeItem !== "function"
+  ) {
+    return null;
+  }
+  return storage;
+}
+
 /** Load all custom ACP providers from localStorage. */
 export function loadCustomAcpProviders(): CustomAcpProvider[] {
-  if (typeof window === "undefined") return [];
+  const storage = getLocalStorage();
+  if (!storage) return [];
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = storage.getItem(STORAGE_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     // Security: Validate parsed data is an array and has correct shape
@@ -48,9 +63,10 @@ export function loadCustomAcpProviders(): CustomAcpProvider[] {
 
 /** Save custom ACP providers to localStorage. */
 export function saveCustomAcpProviders(providers: CustomAcpProvider[]): void {
-  if (typeof window === "undefined") return;
+  const storage = getLocalStorage();
+  if (!storage) return;
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(providers));
+    storage.setItem(STORAGE_KEY, JSON.stringify(providers));
   } catch (err) {
     // Security: Gracefully handle localStorage errors (quota exceeded, disabled, privacy mode)
     console.warn("[custom-acp-providers] Failed to save providers to localStorage:", err);
@@ -86,22 +102,24 @@ function parseStoredProviderIds(raw: string | null): string[] {
 
 /** Load the list of hidden provider IDs from localStorage, with legacy fallback. */
 export function loadHiddenProviders(): string[] {
-  if (typeof window === "undefined") return [];
-  const hiddenProviderIds = parseStoredProviderIds(localStorage.getItem(HIDDEN_PROVIDERS_KEY));
+  const storage = getLocalStorage();
+  if (!storage) return [];
+  const hiddenProviderIds = parseStoredProviderIds(storage.getItem(HIDDEN_PROVIDERS_KEY));
   if (hiddenProviderIds.length > 0) {
     return hiddenProviderIds;
   }
-  return parseStoredProviderIds(localStorage.getItem(LEGACY_DISABLED_PROVIDERS_KEY));
+  return parseStoredProviderIds(storage.getItem(LEGACY_DISABLED_PROVIDERS_KEY));
 }
 
 /** Save the list of hidden provider IDs to localStorage and keep the legacy key in sync. */
 export function saveHiddenProviders(providerIds: string[]): void {
-  if (typeof window === "undefined") return;
+  const storage = getLocalStorage();
+  if (!storage) return;
   try {
     const normalizedProviderIds = dedupeProviderIds(providerIds);
     const serializedProviderIds = JSON.stringify(normalizedProviderIds);
-    localStorage.setItem(HIDDEN_PROVIDERS_KEY, serializedProviderIds);
-    localStorage.setItem(LEGACY_DISABLED_PROVIDERS_KEY, serializedProviderIds);
+    storage.setItem(HIDDEN_PROVIDERS_KEY, serializedProviderIds);
+    storage.setItem(LEGACY_DISABLED_PROVIDERS_KEY, serializedProviderIds);
   } catch (err) {
     console.warn("[custom-acp-providers] Failed to save hidden providers to localStorage:", err);
   }
@@ -170,12 +188,13 @@ export function toggleProviderDisabled(providerId: string): boolean {
 
 /** Load provider display preferences from localStorage. */
 export function loadProviderDisplayPreferences(): ProviderDisplayPreferences {
-  if (typeof window === "undefined") {
+  const storage = getLocalStorage();
+  if (!storage) {
     return { visibleProviderIds: [...DEFAULT_VISIBLE_PROVIDER_IDS] };
   }
 
   try {
-    const raw = localStorage.getItem(PROVIDER_DISPLAY_PREFERENCES_KEY);
+    const raw = storage.getItem(PROVIDER_DISPLAY_PREFERENCES_KEY);
     if (!raw) {
       return { visibleProviderIds: [...DEFAULT_VISIBLE_PROVIDER_IDS] };
     }
@@ -201,14 +220,15 @@ export function loadProviderDisplayPreferences(): ProviderDisplayPreferences {
 
 /** Save provider display preferences and notify listeners in the current window. */
 export function saveProviderDisplayPreferences(preferences: ProviderDisplayPreferences): void {
-  if (typeof window === "undefined") return;
+  const storage = getLocalStorage();
+  if (!storage || typeof window === "undefined") return;
 
   const normalizedPreferences = {
     visibleProviderIds: dedupeProviderIds(preferences.visibleProviderIds),
   };
 
   try {
-    localStorage.setItem(PROVIDER_DISPLAY_PREFERENCES_KEY, JSON.stringify(normalizedPreferences));
+    storage.setItem(PROVIDER_DISPLAY_PREFERENCES_KEY, JSON.stringify(normalizedPreferences));
     window.dispatchEvent(new CustomEvent(PROVIDER_DISPLAY_PREFERENCES_CHANGED_EVENT));
   } catch (err) {
     console.warn("[custom-acp-providers] Failed to save provider display preferences:", err);

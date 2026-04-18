@@ -1,0 +1,89 @@
+╔══════════════════════════════════════════════════════════════════════╗
+║          多仓库看板协同 - 架构分析与根治方案                              ║
+║          Multi-Repo Kanban Coordination Architecture                    ║
+╚══════════════════════════════════════════════════════════════════════╝
+
+┌─────────────────────────────────────────────────────────────────────────┐
+│ 现状分析 - Current State Analysis                                       │
+└─────────────────────────────────────────────────────────────────────────┘
+
+已有架构基础 ✅                        架构缺口 ❌
+─────────────                        ────────────
+• Workspace:Codebase = 1:N           • 看板视图无法按仓库过滤
+• Task.codebaseIds: string[]         • 分支规则单一，无 per-codebase 配置
+• Worktree.codebaseId FK             • 多仓库任务只创建一个工作树
+• KanbanBoard.workspaceId FK         • 单仓库 Issue/PR 同步
+                                      • 缺少跨仓库依赖编排
+                                      • 单 PR URL 存储
+
+┌─────────────────────────────────────────────────────────────────────────┐
+│ 根治方案 - Root Solution Design                                         │
+└─────────────────────────────────────────────────────────────────────────┘
+
+1. 数据模型扩展
+   ├── Task.worktreesByCodebase: Record<codebaseId, worktreeId>
+   ├── Task.pullRequests: Array<{codebaseId, url, number, state}>
+   ├── Task.repositoryDependencies: Array<{codebaseId, type}>
+   ├── KanbanBranchRules.perCodebaseOverrides
+   └── KanbanBranchRules.multiRepoStrategy
+
+2. API 增强
+   ├── GET /api/tasks?codebaseId={id} - 仓库过滤
+   └── workspace.metadata - 存储看板过滤状态
+
+3. 核心组件改造
+   ├── TaskWorktreeTruth → MultiCodebaseWorktreePlan
+   ├── BoardBranchRules → resolveCodebaseBranchRules(codebaseId)
+   ├── WorkflowOrchestrator → handleMultiRepoCompletion()
+   └── MultiRepoPRCoordinator (NEW)
+
+4. UI 增强组件
+   ├── KanbanCodebaseFilter - 仓库过滤器
+   ├── KanbanMultiRepoPRs - 多 PR 展示
+   └── KanbanWorktreeSwitcher - 工作树切换器
+
+┌─────────────────────────────────────────────────────────────────────────┐
+│ 实施路线图 - Implementation Roadmap                                     │
+└─────────────────────────────────────────────────────────────────────────┘
+
+Phase 1 (Week 1-2): 数据模型与基础 API
+  └─ 验收: 可创建多 codebase 任务，可按仓库过滤
+
+Phase 2 (Week 3-4): 核心逻辑增强
+  └─ 验收: 多仓库任务可创建多个工作树
+
+Phase 3 (Week 5-6): 看板 UI 增强
+  └─ 验收: 可按仓库过滤卡片，可查看多 PR 状态
+
+Phase 4 (Week 7-8): 跨仓库依赖编排
+  └─ 验收: 可配置跨仓库依赖，PR 按顺序合并
+
+Phase 5 (Week 9+): 高级特性
+  └─ 跨仓库任务模板、变更影响分析、发布流水线集成
+
+┌─────────────────────────────────────────────────────────────────────────┐
+│ 兼容性保证 - Compatibility Guarantee                                    │
+└─────────────────────────────────────────────────────────────────────────┘
+
+  codebaseIds.length === 1  →  行为与现在一致 (向后兼容)
+  worktreesByCodebase = {}  →  使用 worktreeId (渐进增强)
+  pullRequests.length ≤ 1   →  使用 pullRequestUrl (平滑降级)
+
+┌─────────────────────────────────────────────────────────────────────────┐
+│ 验收标准验证 - Acceptance Criteria Status                               │
+└─────────────────────────────────────────────────────────────────────────┘
+
+  AC1: ✅  完整架构分析文档
+  AC2: ✅  数据模型扩展设计
+  AC3: ✅  API 增强设计
+  AC4: ✅  核心组件改造方案
+  AC5: ✅  UI 增强设计
+  AC6: ✅  跨仓库依赖管理设计
+  AC7: ✅  5阶段实施路线图
+  AC8: ✅  兼容性保证说明
+  AC9: ✅  风险缓解和测试策略
+
+═════════════════════════════════════════════════════════════════════════
+  文档位置: spec note
+  验证报告: docs/analysis/multi-repo-kanban-verification.md
+═════════════════════════════════════════════════════════════════════════

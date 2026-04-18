@@ -314,11 +314,11 @@ export function KanbanEnhancedFileChangesPanel({
   const handleReset = useCallback(async () => {
     const targetBranch = activeRepo?.targetBranch || "main";
     const confirmed = window.confirm(
-      `Reset to ${targetBranch} and keep working? This will discard all local commits but keep your working directory changes.`
+      `Reset to a clean ${targetBranch}? This will discard all local commits and working directory changes.`
     );
     if (!confirmed) return;
 
-    await resetBranch(targetBranch, "soft");
+    await resetBranch(targetBranch, "hard", true);
   }, [resetBranch, activeRepo?.targetBranch]);
 
   const handleArchive = useCallback(() => {

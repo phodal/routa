@@ -6,12 +6,14 @@ pub mod acp_routes;
 pub mod ag_ui;
 pub mod agents;
 pub mod background_tasks;
+pub mod canvas;
 pub mod clone;
 pub mod clone_branches;
 pub mod clone_local;
 pub mod clone_progress;
 pub mod codebases;
 pub mod debug;
+pub mod feature_explorer;
 pub mod files;
 pub mod fitness;
 pub mod git;
@@ -44,6 +46,7 @@ pub mod skills;
 pub mod skills_catalog;
 pub mod skills_clone;
 pub mod skills_upload;
+pub mod spec;
 pub mod specialists;
 pub mod tasks;
 pub mod tasks_automation;
@@ -89,8 +92,10 @@ pub fn api_router(state: AppState) -> Router<AppState> {
         .nest("/api/graph", graph::router())
         .nest("/api/harness", harness::router())
         .nest("/api/harness/templates", harness_templates::router())
+        .nest("/api/feature-explorer", feature_explorer::router())
         .nest("/api/webhooks", webhooks::router())
         .nest("/api/background-tasks", background_tasks::router())
+        .nest("/api/canvas", canvas::router())
         .nest("/api/test-mcp", test_mcp::router())
         .nest("/api/clone", clone::router())
         .nest("/api/clone/local", clone_local::router())
@@ -106,6 +111,7 @@ pub fn api_router(state: AppState) -> Router<AppState> {
         .nest("/api/schedules", schedules::router())
         .nest("/api/sandboxes", sandbox::router())
         .nest("/api/specialists", specialists::router())
+        .nest("/api/spec", spec::router())
         .nest("/api/memory", memory::router())
         .nest("/api/debug", debug::router())
         .nest("/api/polling", polling::router())

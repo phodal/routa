@@ -1,3 +1,7 @@
+/**
+ * Settings / Specialists - /settings/specialists
+ * Settings page for configuring specialist personas, bindings, and model-aware specialist behavior.
+ */
 "use client";
 
 import { useState } from "react";

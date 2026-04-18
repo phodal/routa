@@ -12,6 +12,7 @@ import { initRoutaOrchestrator } from "../orchestration/orchestrator-singleton";
 import { KanbanTools } from "../tools/kanban-tools";
 import { startWorkflowOrchestrator as startKanbanWorkflowOrchestrator } from "../kanban/workflow-orchestrator-singleton";
 import { getMcpProfileToolAllowlist, getMcpServerName, type McpServerProfile } from "./mcp-server-profiles";
+import { registerCanvasSdkResources } from "./canvas-sdk-resources";
 
 export interface RoutaMcpServerResult {
   server: McpServer;
@@ -87,6 +88,7 @@ export function createRoutaMcpServer(
   startKanbanWorkflowOrchestrator(routaSystem);
 
   toolManager.registerTools(server);
+  registerCanvasSdkResources(server);
 
   return { server, system: routaSystem, toolManager };
 }

@@ -1,3 +1,7 @@
+/**
+ * Settings / Workflows - /settings/workflows
+ * Settings page for defining reusable workflows and reviewing workflow-focused execution configuration.
+ */
 "use client";
 
 import { useTranslation } from "@/i18n";

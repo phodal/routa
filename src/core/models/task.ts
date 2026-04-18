@@ -4,6 +4,7 @@
  * Represents a unit of work within the multi-agent system.
  */
 
+import type { ArtifactType } from "./artifact";
 import type { KanbanRequiredTaskField } from "./kanban";
 import type { TaskCreationSource } from "../kanban/task-creation-policy";
 
@@ -67,9 +68,9 @@ export interface TaskStoryReadiness {
 
 export interface TaskArtifactSummary {
   total: number;
-  byType: Partial<Record<"screenshot" | "test_results" | "code_diff" | "logs", number>>;
+  byType: Partial<Record<ArtifactType, number>>;
   requiredSatisfied: boolean;
-  missingRequired: Array<"screenshot" | "test_results" | "code_diff" | "logs">;
+  missingRequired: ArtifactType[];
 }
 
 export interface TaskEvidenceSummary {
