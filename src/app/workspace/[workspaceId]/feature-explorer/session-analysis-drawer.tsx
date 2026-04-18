@@ -209,8 +209,7 @@ export function SessionAnalysisDrawer({
           <div className="flex flex-wrap items-center gap-2">
             <InlineMetricPill label={t.featureExplorer.filesLabel} value={String(selectedFilePaths.length)} />
             <InlineMetricPill label={t.featureExplorer.sessionsLabel} value={String(selectedScopeSessions.length)} />
-            <InlineMetricPill label={t.featureExplorer.selectedSessionsLabel} value={String(selectedSessions.length)} />
-            <div className="ml-auto flex items-center gap-2">
+            <div className="inline-flex items-center gap-2 rounded-sm border border-desktop-border bg-desktop-bg-secondary px-2 py-1">
               <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-desktop-text-secondary">
                 {t.settings.provider}
               </span>
@@ -221,6 +220,7 @@ export function SessionAnalysisDrawer({
                 dataTestId="feature-explorer-session-analysis-provider"
               />
             </div>
+            <InlineMetricPill label={t.featureExplorer.selectedSessionsLabel} value={String(selectedSessions.length)} />
           </div>
         </div>
 
