@@ -316,6 +316,14 @@ export interface TranslationDictionary extends ExtendedTranslationDictionarySect
     noPagesDeclared: string;
     noApisDeclared: string;
     repository: string;
+    learnedPromptContext: string;
+    learnedPromptContextDescription: string;
+    promptPatternsLabel: string;
+    toolPatternsLabel: string;
+    fileOperationPatternsLabel: string;
+    noLearnedPrompts: string;
+    noLearnedTools: string;
+    noLearnedFileOperations: string;
     sessionAnalysisTitle: string;
     sessionAnalysisDescription: string;
     sessionAnalysisEmpty: string;
@@ -323,6 +331,23 @@ export interface TranslationDictionary extends ExtendedTranslationDictionarySect
     sessionAnalysisAction: string;
     sessionAnalysisStarting: string;
     sessionAnalysisFailed: string;
+    generateFeatureTree: string;
+    generateDrawerTitle: string;
+    generateDrawerDescription: string;
+    frameworkLabel: string;
+    frameworkAuto: string;
+    dryRunLabel: string;
+    dryRunDescription: string;
+    generateAction: string;
+    generating: string;
+    generateSuccess: string;
+    generateFailed: string;
+    pagesDetected: string;
+    apisDetected: string;
+    filesWritten: string;
+    frameworkDetected: string;
+    previewMode: string;
+    writeMode: string;
   };
 
   // Settings panel

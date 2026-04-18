@@ -12,6 +12,7 @@ import {
   FlaskConical,
   Folder,
   ImageIcon,
+  RefreshCw,
   Search,
 } from "lucide-react";
 
@@ -40,6 +41,7 @@ import {
   SessionAnalysisDrawer,
   ScreenshotPanel,
 } from "./feature-explorer-inspector-panels";
+import { GenerateFeatureTreeDrawer } from "./generate-feature-tree-drawer";
 import { buildSessionAnalysisPrompt } from "./session-analysis";
 import {
   type ExplorerSection,
@@ -292,13 +294,14 @@ export function FeatureExplorerPageClient({
     const initialSelection = loadInitialRepoSelection(workspaceId);
     return initialSelection ? { [workspaceId]: initialSelection } : {};
   });
+  const [generateRefreshCounter, setGenerateRefreshCounter] = useState(0);
   const hasRepoSelectionOverride = Object.prototype.hasOwnProperty.call(repoSelectionOverrides, workspaceId);
   const manualRepoSelection = hasRepoSelectionOverride
     ? (repoSelectionOverrides[workspaceId] ?? null)
     : loadInitialRepoSelection(workspaceId);
   const fallbackRepoSelection = workspaceRepos[0] ?? null;
   const effectiveRepoSelection = manualRepoSelection ?? fallbackRepoSelection;
-  const repoRefreshKey = `${effectiveRepoSelection?.path ?? ""}:${effectiveRepoSelection?.branch ?? ""}`;
+  const repoRefreshKey = `${effectiveRepoSelection?.path ?? ""}:${effectiveRepoSelection?.branch ?? ""}:${generateRefreshCounter}`;
 
   useEffect(() => {
     saveRepoSelection("featureExplorer", workspaceId, manualRepoSelection);
@@ -337,6 +340,7 @@ export function FeatureExplorerPageClient({
     initialUrlState.featureId === "",
   );
   const [isSessionAnalysisDrawerOpen, setIsSessionAnalysisDrawerOpen] = useState(false);
+  const [isGenerateDrawerOpen, setIsGenerateDrawerOpen] = useState(false);
   const [isStartingSessionAnalysis, setIsStartingSessionAnalysis] = useState(false);
   const [sessionAnalysisError, setSessionAnalysisError] = useState<string | null>(null);
   const [analysisSessionId, setAnalysisSessionId] = useState<string | null>(null);
@@ -1207,6 +1211,15 @@ export function FeatureExplorerPageClient({
                   additionalRepos={workspaceRepos}
                   pathDisplay="below-muted"
                 />
+                <button
+                  type="button"
+                  onClick={() => setIsGenerateDrawerOpen(true)}
+                  className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-sm border border-desktop-accent/50 bg-desktop-accent/10 px-2.5 py-1.5 text-[11px] font-medium text-desktop-accent hover:bg-desktop-accent/20"
+                  data-testid="generate-feature-tree-button"
+                >
+                  <RefreshCw className="h-3 w-3" />
+                  {t.featureExplorer.generateFeatureTree}
+                </button>
               </div>
               <div className="border-b border-desktop-border px-3 py-2">
                 <label className="flex items-center gap-2 rounded-sm border border-desktop-border bg-desktop-bg-primary px-2.5 py-1.5 text-xs text-desktop-text-secondary">
@@ -1538,6 +1551,14 @@ export function FeatureExplorerPageClient({
 
           </section>
         </main>
+
+        <GenerateFeatureTreeDrawer
+          open={isGenerateDrawerOpen}
+          workspaceId={workspaceId}
+          repoPath={effectiveRepoSelection?.path}
+          onClose={() => setIsGenerateDrawerOpen(false)}
+          onGenerated={() => setGenerateRefreshCounter((c) => c + 1)}
+        />
 
         <SessionAnalysisDrawer
           key={`session-analysis:${isSessionAnalysisDrawerOpen ? "open" : "closed"}:${selectedFilePaths.join("|")}:${selectedScopeSessions.map((session) => `${session.provider}:${session.sessionId}`).join("|")}`}
