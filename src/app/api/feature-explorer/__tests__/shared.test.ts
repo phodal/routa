@@ -171,6 +171,7 @@ describe("feature explorer transcript stats", () => {
 
     const repoRoot = path.join(tempRoot, "repo");
     const worktreeRoot = path.join(tempRoot, "repo-worktree");
+    const branchName = `feature/worktree-stats-${path.basename(tempRoot)}`;
     ensureFile(path.join(repoRoot, "src/app/page.tsx"), "export default function Page() { return null; }\n");
 
     runGit(repoRoot, ["init"]);
@@ -178,7 +179,7 @@ describe("feature explorer transcript stats", () => {
     runGit(repoRoot, ["config", "user.email", "test@example.com"]);
     runGit(repoRoot, ["add", "src/app/page.tsx"]);
     runGit(repoRoot, ["commit", "-m", "init"]);
-    runGit(repoRoot, ["worktree", "add", "-b", "feature/worktree-stats", worktreeRoot]);
+    runGit(repoRoot, ["worktree", "add", "-b", branchName, worktreeRoot]);
 
     writeCodexTranscript(
       path.join(tempRoot, ".codex", "sessions", "worktree.jsonl"),
