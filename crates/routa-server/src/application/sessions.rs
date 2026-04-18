@@ -22,9 +22,7 @@ impl SessionApplicationService {
     pub async fn list_sessions(&self, query: ListSessionsQuery) -> Vec<Value> {
         let in_memory_sessions = self.state.acp_manager.list_sessions().await;
         let db_sessions = self
-            .state
-            .acp_session_store
-            .list(query.workspace_id.as_deref(), query.limit)
+            .list_db_sessions_for_query(&query)
             .await
             .unwrap_or_default();
 
@@ -128,6 +126,23 @@ impl SessionApplicationService {
             .ok()
             .flatten()
             .and_then(|session| session.provider)
+    }
+
+    async fn list_db_sessions_for_query(
+        &self,
+        query: &ListSessionsQuery,
+    ) -> Result<Vec<AcpSessionRow>, ServerError> {
+        if query.parent_session_id.is_none() && query.limit.is_none() {
+            self.state
+                .acp_session_store
+                .list_unbounded(query.workspace_id.as_deref())
+                .await
+        } else {
+            self.state
+                .acp_session_store
+                .list(query.workspace_id.as_deref(), query.limit)
+                .await
+        }
     }
 }
 
@@ -945,6 +960,43 @@ mod tests {
             .await
             .expect("cached history");
         assert_eq!(cached, history);
+
+        let _ = fs::remove_file(db_path);
+    }
+
+    #[tokio::test]
+    async fn list_sessions_fetches_top_level_queries_without_default_window() {
+        let (service, db_path) = setup_service().await;
+
+        for index in 0..105 {
+            let session_id = format!("session-{index:03}");
+            service
+                .state
+                .acp_session_store
+                .create(CreateAcpSessionParams {
+                    id: &session_id,
+                    cwd: "/tmp",
+                    branch: Some("main"),
+                    workspace_id: "default",
+                    provider: Some("codex"),
+                    role: Some("ROUTA"),
+                    custom_command: None,
+                    custom_args: None,
+                    parent_session_id: None,
+                })
+                .await
+                .expect("create session");
+        }
+
+        let sessions = service
+            .list_sessions(ListSessionsQuery {
+                workspace_id: Some("default".to_string()),
+                parent_session_id: None,
+                limit: None,
+            })
+            .await;
+
+        assert_eq!(sessions.len(), 105);
 
         let _ = fs::remove_file(db_path);
     }

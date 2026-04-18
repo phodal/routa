@@ -143,24 +143,55 @@ impl AcpSessionStore {
         workspace_id: Option<&str>,
         limit: Option<usize>,
     ) -> Result<Vec<AcpSessionRow>, ServerError> {
+        self.list_with_limit(workspace_id, Some(limit.unwrap_or(100)))
+            .await
+    }
+
+    /// List all sessions, optionally filtered by workspace.
+    pub async fn list_unbounded(
+        &self,
+        workspace_id: Option<&str>,
+    ) -> Result<Vec<AcpSessionRow>, ServerError> {
+        self.list_with_limit(workspace_id, None).await
+    }
+
+    async fn list_with_limit(
+        &self,
+        workspace_id: Option<&str>,
+        limit: Option<usize>,
+    ) -> Result<Vec<AcpSessionRow>, ServerError> {
         let workspace_filter = workspace_id.map(|s| s.to_string());
-        let limit = limit.unwrap_or(100);
+        let limit = limit.map(|value| value as i64);
         self.db
             .with_conn_async(move |conn| {
-                let (sql, params): (&str, Vec<Box<dyn rusqlite::ToSql>>) = match &workspace_filter {
-                    Some(ws) => (
+                let (sql, params): (&str, Vec<Box<dyn rusqlite::ToSql>>) = match (&workspace_filter, limit) {
+                    (Some(ws), Some(limit)) => (
                         "SELECT id, name, cwd, branch, workspace_id, routa_agent_id, provider_session_id, provider, role, mode_id,
                                 custom_command, custom_args, first_prompt_sent, message_history,
                                 created_at, updated_at, parent_session_id
                          FROM acp_sessions WHERE workspace_id = ?1 ORDER BY updated_at DESC LIMIT ?2",
-                        vec![Box::new(ws.clone()) as Box<dyn rusqlite::ToSql>, Box::new(limit as i64)],
+                        vec![Box::new(ws.clone()) as Box<dyn rusqlite::ToSql>, Box::new(limit)],
                     ),
-                    None => (
+                    (Some(ws), None) => (
+                        "SELECT id, name, cwd, branch, workspace_id, routa_agent_id, provider_session_id, provider, role, mode_id,
+                                custom_command, custom_args, first_prompt_sent, message_history,
+                                created_at, updated_at, parent_session_id
+                         FROM acp_sessions WHERE workspace_id = ?1 ORDER BY updated_at DESC",
+                        vec![Box::new(ws.clone()) as Box<dyn rusqlite::ToSql>],
+                    ),
+                    (None, Some(limit)) => (
                         "SELECT id, name, cwd, branch, workspace_id, routa_agent_id, provider_session_id, provider, role, mode_id,
                                 custom_command, custom_args, first_prompt_sent, message_history,
                                 created_at, updated_at, parent_session_id
                          FROM acp_sessions ORDER BY updated_at DESC LIMIT ?1",
-                        vec![Box::new(limit as i64) as Box<dyn rusqlite::ToSql>],
+                        vec![Box::new(limit) as Box<dyn rusqlite::ToSql>],
+                    ),
+                    (None, None) => (
+                        "SELECT id, name, cwd, branch, workspace_id, routa_agent_id, provider_session_id, provider, role, mode_id,
+                                custom_command, custom_args, first_prompt_sent, message_history,
+                                created_at, updated_at, parent_session_id
+                         FROM acp_sessions ORDER BY updated_at DESC",
+                        vec![],
                     ),
                 };
 
