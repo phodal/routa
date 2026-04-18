@@ -113,6 +113,9 @@ export class GitWorktreeService {
     const repoPath = codebase.repoPath;
     const baseBranch = options.baseBranch ?? codebase.branch ?? GIT_DEFAULT_BRANCH;
 
+    // Fetch base branch ref before creating worktree to ensure up-to-date baseline
+    await execGit(["fetch", "origin", baseBranch], repoPath).catch(() => {});
+
     // Generate branch name if not provided
     const shortId = crypto.randomUUID().slice(0, 8);
     const branch =

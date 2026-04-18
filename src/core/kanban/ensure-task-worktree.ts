@@ -29,6 +29,7 @@ import {
   resolveDependencyBaseBranch,
   generateCollisionSuffix,
 } from "./branch-plan";
+import { getRepoStatus } from "../git/git-utils";
 
 export interface EnsureTaskWorktreeDeps {
   worktreeStore: WorktreeStore;
@@ -96,12 +97,21 @@ export async function ensureTaskWorktree(
     }
   }
 
-  // 3. Resolve worktree root
+  // 3. Check source repo working tree cleanliness
+  const repoStatus = getRepoStatus(preferredCodebase.repoPath);
+  if (!repoStatus.clean) {
+    console.warn(
+      `[ensureTaskWorktree] Source repo has ${repoStatus.modified} modified, ${repoStatus.untracked} untracked file(s). ` +
+      `Worktree will be created from the committed state of '${effectiveBaseBranch}'.`,
+    );
+  }
+
+  // 4. Resolve worktree root
   const worktreeRoot = deps.workspace
     ? getEffectiveWorkspaceMetadata(deps.workspace).worktreeRoot
     : getDefaultWorkspaceWorktreeRoot(deps.workspaceId);
 
-  // 4. Attempt creation
+  // 5. Attempt creation
   try {
     const worktree = await worktreeService.createWorktree(preferredCodebase.id, {
       branch: plan.branch,
@@ -115,7 +125,7 @@ export async function ensureTaskWorktree(
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
 
-    // 5. Retry with collision suffix on branch-name collision
+    // 6. Retry with collision suffix on branch-name collision
     if (message.includes("already in use")) {
       try {
         const suffix = generateCollisionSuffix(plan.collisionStrategy);

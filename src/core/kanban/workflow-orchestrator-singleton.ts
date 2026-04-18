@@ -22,6 +22,7 @@ import {
   type AutomationSpecialistSummary,
 } from "./effective-task-automation";
 import { ensureTaskWorktree } from "./ensure-task-worktree";
+import { fetchRemote } from "../git/git-utils";
 import { getInternalApiOrigin, triggerAssignedTaskAgent } from "./agent-trigger";
 import { KanbanSessionQueue } from "./kanban-session-queue";
 import { getKanbanSessionConcurrencyLimit as getBoardSessionConcurrencyLimit } from "./board-session-limits";
@@ -201,6 +202,15 @@ async function startKanbanTaskSession(
   let worktreeCwd = initialWorktreeTruth?.cwd ?? process.cwd();
   let worktreeBranch = initialWorktreeTruth?.branch;
   if (branchRules.triggers.worktreeCreationColumns.includes(params.expectedColumnId ?? nextTask.columnId ?? "") && preferredCodebase && !nextTask.worktreeId) {
+    // Sync source repo before worktree creation to ensure latest base ref
+    try {
+      if (preferredCodebase.repoPath) {
+        fetchRemote(preferredCodebase.repoPath);
+      }
+    } catch {
+      // fetch failure should not block worktree creation
+    }
+
     const result = await ensureTaskWorktree(nextTask, preferredCodebase, {
       worktreeStore: system.worktreeStore,
       codebaseStore: system.codebaseStore,
