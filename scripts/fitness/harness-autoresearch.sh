@@ -101,7 +101,7 @@ dims = data.get("dimensions", [])
 all_metrics = [m for d in dims for m in d.get("metrics", [])]
 
 checks_count   = len(all_metrics)
-failed_checks  = sum(1 for m in all_metrics if not m.get("passed", False) and m.get("state", "") not in ("waived",))
+failed_checks  = sum(1 for m in all_metrics if not m.get("passed", False) and m.get("state", "") not in ["waived"])
 passed_checks  = checks_count - failed_checks
 cache_hit_ratio = round(passed_checks / checks_count, 4) if checks_count > 0 else 0.0
 

@@ -58,9 +58,13 @@ export type EntrixRunSummary = {
   durationMs?: number;
   /** Duration of the single slowest metric in milliseconds. */
   slowestMetricMs?: number | null;
-  /** Number of checks run (same as metricCount, exposed for autoresearch consumers). */
+  /**
+   * Aliases for metricCount/failingMetricCount using the pi-autoresearch METRIC naming
+   * convention so autoresearch consumers can consume them without field remapping.
+   */
+  /** Number of checks run (autoresearch alias for metricCount). */
   checksCount?: number;
-  /** Number of checks that did not pass (fail or unknown state). */
+  /** Number of checks that did not pass (autoresearch alias for failingMetricCount). */
   failedChecks?: number;
   /** Ratio of passed/waived checks to total checks (0.0–1.0). */
   cacheHitRatio?: number;

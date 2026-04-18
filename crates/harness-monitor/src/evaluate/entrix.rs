@@ -12,6 +12,10 @@ use std::path::Path;
 use std::thread;
 use std::time::Instant;
 
+/// Minimum per-metric timeout (seconds) applied when `HARNESS_FAST_TIMEOUT_MS` is set.
+/// Prevents very short timeouts from causing spurious metric failures.
+const MIN_FAST_TIMEOUT_SECS: u64 = 5;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum FitnessRunMode {
@@ -170,10 +174,10 @@ pub fn run_fitness(repo_root: &str, mode: FitnessRunMode) -> Result<FitnessSnaps
         ),
         FitnessRunMode::Full => filter_dimensions(&dimensions, &policy),
     };
-    // Apply HARNESS_FAST_TIMEOUT_MS as a per-metric timeout (in seconds, capped at minimum 5s).
+    // Apply HARNESS_FAST_TIMEOUT_MS as a per-metric timeout (in seconds, capped at minimum MIN_FAST_TIMEOUT_SECS).
     // The env var is expressed in milliseconds for consistency with frontend metrics.
     let runner = if let Some(timeout_ms) = fast_timeout_ms.filter(|_| matches!(mode, FitnessRunMode::Fast)) {
-        let timeout_secs = (timeout_ms / 1000).max(5);
+        let timeout_secs = (timeout_ms / 1000).max(MIN_FAST_TIMEOUT_SECS);
         ShellRunner::new(root).with_timeout(timeout_secs)
     } else {
         ShellRunner::new(root)
@@ -183,6 +187,9 @@ pub fn run_fitness(repo_root: &str, mode: FitnessRunMode) -> Result<FitnessSnaps
     let mut coverage_metric_available = false;
 
     thread::scope(|scope| {
+        // When HARNESS_PARALLEL_DIMENSIONS is set to N, process dimensions in batches of N
+        // so that at most N dimension threads are active at any time.  When unset, all
+        // dimensions are placed in one batch and run fully in parallel (original behavior).
         let chunk_size = parallel_limit.unwrap_or(dimensions.len()).max(1);
         for batch in dimensions.chunks(chunk_size) {
             let mut handles = Vec::new();
