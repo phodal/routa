@@ -9,9 +9,39 @@ import yaml from "js-yaml";
 import { fromRoot } from "../lib/paths";
 import { loadYamlFile } from "../lib/yaml";
 import featureSurfaceMetadata from "../../src/core/spec/feature-surface-metadata";
-import { generateFeatureTree as generateFeatureTreeArtifacts } from "../../src/core/spec/feature-tree-generator";
 
 const { INFERRED_GROUP_ID, buildApiLookupKey, normalizeSurfaceMetadata } = featureSurfaceMetadata;
+
+type GenerateFeatureTreeArtifacts = (options: {
+  repoRoot: string;
+  dryRun?: boolean;
+}) => Promise<{
+  generatedAt: string;
+  frameworksDetected: string[];
+  wroteFiles: string[];
+  warnings: string[];
+  pagesCount: number;
+  apisCount: number;
+}>;
+
+async function loadGenerateFeatureTreeArtifacts(): Promise<GenerateFeatureTreeArtifacts> {
+  const moduleUrl = pathToFileURL(fromRoot("src/core/spec/feature-tree-generator.ts")).href;
+  const featureTreeGeneratorModule = await import(moduleUrl) as {
+    generateFeatureTree?: GenerateFeatureTreeArtifacts;
+    default?: {
+      generateFeatureTree?: GenerateFeatureTreeArtifacts;
+    };
+  };
+
+  const generateFeatureTreeArtifacts = featureTreeGeneratorModule.generateFeatureTree
+    ?? featureTreeGeneratorModule.default?.generateFeatureTree;
+
+  if (typeof generateFeatureTreeArtifacts !== "function") {
+    throw new Error("Unable to resolve generateFeatureTree from src/core/spec/feature-tree-generator.ts");
+  }
+
+  return generateFeatureTreeArtifacts;
+}
 
 type RouteInfo = {
   route: string;
@@ -1163,6 +1193,7 @@ function printTreeTable(tree: FeatureTree): void {
 
 async function main(): Promise<void> {
   const args = new Set(process.argv.slice(2));
+  const generateFeatureTreeArtifacts = await loadGenerateFeatureTreeArtifacts();
 
   if (args.has("--json")) {
     const result = await generateFeatureTreeArtifacts({
