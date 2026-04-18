@@ -109,6 +109,17 @@ export async function enqueueKanbanTaskSession(
   if (!task?.boardId) {
     return { queued: false, error: "Task is missing board context." };
   }
+
+  // Sync source repos before any lane automation so analysis runs on latest code
+  try {
+    const codebases = await system.codebaseStore.listByWorkspace(task.workspaceId);
+    for (const cb of codebases) {
+      if (cb.repoPath) fetchRemote(cb.repoPath);
+    }
+  } catch {
+    // fetch failure should not block automation
+  }
+
   if (task.triggerSessionId && !params.ignoreExistingTrigger) {
     const sessionStore = getHttpSessionStore();
     const activity = sessionStore.getSessionActivity(task.triggerSessionId);
