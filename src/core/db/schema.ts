@@ -447,6 +447,40 @@ export const githubWebhookConfigs = pgTable("github_webhook_configs", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+// ─── GitLab Webhook Configs ────────────────────────────────────────────────
+
+/**
+ * Stores user-configured GitLab webhook trigger rules.
+ * Each row describes: which project, which events, which agent to trigger.
+ */
+export const gitlabWebhookConfigs = pgTable("gitlab_webhook_configs", {
+  id: text("id").primaryKey(),
+  /** Human-readable name for this trigger config */
+  name: text("name").notNull(),
+  /** GitLab project in "group/project" or "owner/repo" format */
+  repo: text("repo").notNull(),
+  /** GitLab personal access token (stored encrypted/plaintext) */
+  gitlabToken: text("gitlab_token").notNull(),
+  /** Token secret used to verify webhook payloads */
+  webhookSecret: text("webhook_secret").notNull().default(""),
+  /** GitLab event types to subscribe to, e.g. ["issues", "merge_request"] */
+  eventTypes: jsonb("event_types").$type<string[]>().notNull().default([]),
+  /** Optional label filter for issues.opened events */
+  labelFilter: jsonb("label_filter").$type<string[]>().default([]),
+  /** ACP agent/provider ID to trigger when event fires (mutually exclusive with workflowId) */
+  triggerAgentId: text("trigger_agent_id").notNull(),
+  /** Workflow ID to trigger instead of single agent (e.g., "pr-verify") */
+  workflowId: text("workflow_id"),
+  /** Workspace scope */
+  workspaceId: text("workspace_id"),
+  /** Whether this config is active */
+  enabled: boolean("enabled").notNull().default(true),
+  /** Optional prompt template; {event} and {payload} are substituted */
+  promptTemplate: text("prompt_template"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 // ─── Schedules (cron-based agent triggers) ───────────────────────────────────
 
 /**
