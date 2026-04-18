@@ -498,8 +498,9 @@ describe("FeatureExplorerPageClient", () => {
     expect(screen.getByText("/workspace/:workspaceId/feature-explorer")).toBeTruthy();
     expect(screen.getByText("/api/feature-explorer")).toBeTruthy();
     expect(screen.getByLabelText("Expand Feature A")).toBeTruthy();
-    expect(screen.getByText("Repository status")).toBeTruthy();
     expect(screen.getByText("Feature taxonomy ready")).toBeTruthy();
+    expect(screen.getByText("1 curated")).toBeTruthy();
+    expect(screen.getByText("0 inferred")).toBeTruthy();
     expect(screen.getByText("Frontend routes")).toBeTruthy();
     expect(screen.getAllByText("API surfaces").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Source files").length).toBeGreaterThan(0);
@@ -617,7 +618,8 @@ describe("FeatureExplorerPageClient", () => {
     render(<FeatureExplorerPageClient workspaceId="default" />);
 
     expect(screen.getByText("Inferred feature map available")).toBeTruthy();
-    expect(screen.getByText("This codebase has no curated taxonomy yet, but inferred feature groups were derived from routes and APIs.")).toBeTruthy();
+    expect(screen.getByText("0 curated")).toBeTruthy();
+    expect(screen.getByText("1 inferred")).toBeTruthy();
     expect(screen.queryByText("Feature taxonomy missing")).toBeNull();
     expect(screen.getByText("Inferred Surfaces")).toBeTruthy();
   });

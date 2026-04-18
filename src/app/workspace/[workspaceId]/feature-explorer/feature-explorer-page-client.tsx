@@ -6,7 +6,6 @@ import {
   ArrowRight,
   ChevronDown,
   ChevronRight,
-  Folder,
   RefreshCw,
   Search,
 } from "lucide-react";
@@ -483,6 +482,16 @@ export function FeatureExplorerPageClient({
   const middlePanelSummary = selectedSurface && selectedSurface.kind !== "feature"
     ? (activeFeature?.summary || selectedSurface.secondary || "")
     : (activeFeature?.summary || "");
+  const repositoryStatusLabel = repositoryStatusTone === "ready"
+    ? t.featureExplorer.repositoryReady
+    : repositoryStatusTone === "inferred"
+      ? t.featureExplorer.repositoryInferred
+      : t.featureExplorer.repositoryMissingTaxonomy;
+  const repositoryStatusChipClassName = repositoryStatusTone === "ready"
+    ? "border-emerald-300/60 bg-emerald-50/70 text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200"
+    : repositoryStatusTone === "inferred"
+      ? "border-sky-300/60 bg-sky-50/70 text-sky-800 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-200"
+      : "border-amber-300/60 bg-amber-50/70 text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200";
 
   return (
     <DesktopAppShell
@@ -506,37 +515,42 @@ export function FeatureExplorerPageClient({
           <section className={featureExplorerLayoutClassName}>
             <aside className="flex min-h-0 flex-col border-r border-desktop-border bg-desktop-bg-secondary/20">
               <div className="border-b border-desktop-border px-3 py-2">
-                <div className="mb-2 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-desktop-text-secondary">
-                  <Folder className="h-3.5 w-3.5 shrink-0" />
-                  <span>{t.featureExplorer.codebase}</span>
+                <div className="flex items-center gap-2">
+                  <div className="min-w-0 flex-1 rounded-sm border border-desktop-border bg-desktop-bg-primary px-2.5 py-1.5">
+                    <RepoPicker
+                      value={effectiveRepoSelection}
+                      onChange={handleRepoSelectionChange}
+                      additionalRepos={workspaceRepos}
+                      pathDisplay="hidden"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsGenerateDrawerOpen(true)}
+                    className="inline-flex shrink-0 items-center gap-1 rounded-sm border border-desktop-accent/50 bg-desktop-accent/10 px-2 py-1.5 text-[10px] font-medium text-desktop-accent hover:bg-desktop-accent/20"
+                    data-testid="generate-feature-tree-button"
+                    title={t.featureExplorer.generateFeatureTree}
+                    aria-label={t.featureExplorer.generateFeatureTree}
+                  >
+                    <RefreshCw className="h-3 w-3" />
+                    <span className="hidden xl:inline">{t.featureExplorer.generateFeatureTree}</span>
+                  </button>
                 </div>
-                <RepoPicker
-                  value={effectiveRepoSelection}
-                  onChange={handleRepoSelectionChange}
-                  additionalRepos={workspaceRepos}
-                  pathDisplay="below-muted"
-                />
-                <button
-                  type="button"
-                  onClick={() => setIsGenerateDrawerOpen(true)}
-                  className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-sm border border-desktop-accent/50 bg-desktop-accent/10 px-2.5 py-1.5 text-[11px] font-medium text-desktop-accent hover:bg-desktop-accent/20"
-                  data-testid="generate-feature-tree-button"
-                >
-                  <RefreshCw className="h-3 w-3" />
-                  {t.featureExplorer.generateFeatureTree}
-                </button>
-              </div>
-              <div className="border-b border-desktop-border px-3 py-1.5">
-                <label className="flex items-center gap-2 rounded-sm border border-desktop-border bg-desktop-bg-primary px-2.5 py-1.5 text-xs text-desktop-text-secondary">
-                  <Search className="h-3.5 w-3.5" />
-                  <input
-                    value={query}
-                    onChange={(e) => setQuery(e.target.value)}
-                    placeholder={t.featureExplorer.searchPlaceholder}
-                    className="w-full bg-transparent text-xs text-desktop-text-primary outline-none placeholder:text-desktop-text-secondary"
-                  />
-                </label>
+                <div className="mt-1.5 flex items-center gap-1.5">
+                  <label className="flex min-w-0 flex-1 items-center gap-2 rounded-sm border border-desktop-border bg-desktop-bg-primary px-2.5 py-1.5 text-xs text-desktop-text-secondary">
+                    <Search className="h-3.5 w-3.5" />
+                    <input
+                      value={query}
+                      onChange={(e) => setQuery(e.target.value)}
+                      placeholder={t.featureExplorer.searchPlaceholder}
+                      className="w-full bg-transparent text-xs text-desktop-text-primary outline-none placeholder:text-desktop-text-secondary"
+                    />
+                  </label>
+                </div>
                 <div className="mt-1.5 flex flex-wrap items-center gap-1">
+                  <span className={`rounded-sm border px-1.5 py-1 text-[9px] font-semibold normal-case tracking-normal ${repositoryStatusChipClassName}`}>
+                    {repositoryStatusLabel}
+                  </span>
                   {surfaceNavigationOptions.map((option) => (
                     <button
                       key={option.id}
@@ -552,51 +566,24 @@ export function FeatureExplorerPageClient({
                     </button>
                   ))}
                 </div>
-                <div className={`mt-1.5 rounded-sm border px-2 py-1.5 ${
-                  repositoryStatusTone === "ready"
-                    ? "border-emerald-300/60 bg-emerald-50/70 text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200"
-                    : repositoryStatusTone === "inferred"
-                      ? "border-sky-300/60 bg-sky-50/70 text-sky-800 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-200"
-                      : "border-amber-300/60 bg-amber-50/70 text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200"
-                }`}>
-                  <div className="flex items-center justify-between gap-2 text-[10px]">
-                    <div className="font-semibold uppercase tracking-[0.14em]">
-                      {t.featureExplorer.repositoryStatus}
-                    </div>
-                    <div className="truncate font-semibold normal-case tracking-normal">
-                      {repositoryStatusTone === "ready"
-                        ? t.featureExplorer.repositoryReady
-                        : repositoryStatusTone === "inferred"
-                          ? t.featureExplorer.repositoryInferred
-                        : t.featureExplorer.repositoryMissingTaxonomy}
-                    </div>
-                  </div>
-                  <div className="mt-1 line-clamp-1 text-[10px] leading-4 opacity-90">
-                    {repositoryStatusTone === "ready"
-                      ? t.featureExplorer.repositoryReadyDescription
-                      : repositoryStatusTone === "inferred"
-                        ? t.featureExplorer.repositoryInferredDescription
-                      : t.featureExplorer.repositoryMissingTaxonomyDescription}
-                  </div>
-                  <div className="mt-1 flex flex-wrap gap-1 text-[9px]">
-                    <span className="rounded-sm border border-current/20 bg-white/60 px-1.5 py-0.5 dark:bg-black/10">
-                      {curatedFeatureCount} {t.featureExplorer.curatedFeaturesLabel}
+                <div className="mt-1 flex flex-wrap gap-1 text-[9px] text-desktop-text-secondary">
+                  <span className="rounded-sm border border-desktop-border bg-desktop-bg-primary px-1.5 py-0.5">
+                    {curatedFeatureCount} {t.featureExplorer.curatedFeaturesLabel}
+                  </span>
+                  <span className="rounded-sm border border-desktop-border bg-desktop-bg-primary px-1.5 py-0.5">
+                    {inferredFeatureCount} {t.featureExplorer.inferredFeaturesLabel}
+                  </span>
+                  <span className="rounded-sm border border-desktop-border bg-desktop-bg-primary px-1.5 py-0.5">
+                    {surfaceIndex.pages.length} {t.featureExplorer.pageSection}
+                  </span>
+                  <span className="rounded-sm border border-desktop-border bg-desktop-bg-primary px-1.5 py-0.5">
+                    {surfaceIndex.contractApis.length} {t.featureExplorer.contractApiSection}
+                  </span>
+                  {surfaceIndex.generatedAt ? (
+                    <span className="rounded-sm border border-desktop-border bg-desktop-bg-primary px-1.5 py-0.5">
+                      {formatShortDate(surfaceIndex.generatedAt)}
                     </span>
-                    <span className="rounded-sm border border-current/20 bg-white/60 px-1.5 py-0.5 dark:bg-black/10">
-                      {inferredFeatureCount} {t.featureExplorer.inferredFeaturesLabel}
-                    </span>
-                    <span className="rounded-sm border border-current/20 bg-white/60 px-1.5 py-0.5 dark:bg-black/10">
-                      {surfaceIndex.pages.length} {t.featureExplorer.pageSection}
-                    </span>
-                    <span className="rounded-sm border border-current/20 bg-white/60 px-1.5 py-0.5 dark:bg-black/10">
-                      {surfaceIndex.contractApis.length} {t.featureExplorer.contractApiSection}
-                    </span>
-                    {surfaceIndex.generatedAt ? (
-                      <span className="rounded-sm border border-current/20 bg-white/60 px-1.5 py-0.5 dark:bg-black/10">
-                        {formatShortDate(surfaceIndex.generatedAt)}
-                      </span>
-                    ) : null}
-                  </div>
+                  ) : null}
                 </div>
               </div>
 
