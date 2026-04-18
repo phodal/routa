@@ -24,8 +24,8 @@ interface SpecialistSummary {
 }
 
 interface TeamRunSessionInfo extends SessionInfo {
-  descendants?: number;
-  directDelegates?: number;
+  descendants: number;
+  directDelegates: number;
 }
 
 const TEAM_MEMBER_DISPLAY_ORDER = [

@@ -13,7 +13,7 @@ vi.mock("@/core/acp/http-session-store", () => ({
   }),
 }));
 
-import { GET } from "../route";
+import { GET, TEAM_LEAD_SPECIALIST_ID } from "../route";
 
 describe("/api/sessions GET", () => {
   beforeEach(() => {
@@ -153,7 +153,7 @@ describe("/api/sessions GET", () => {
         workspaceId: "workspace-1",
         cwd: "/tmp/project",
         role: "ROUTA",
-        specialistId: "team-agent-lead",
+        specialistId: TEAM_LEAD_SPECIALIST_ID,
         createdAt: "2026-04-03T10:01:00.000Z",
       },
       {

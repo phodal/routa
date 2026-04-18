@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic";
 
 /** Stale threshold: sessions older than 7 days without an active process are considered stale */
 const STALE_THRESHOLD_MS = 7 * 24 * 60 * 60 * 1000;
-const TEAM_LEAD_SPECIALIST_ID = "team-agent-lead";
+export const TEAM_LEAD_SPECIALIST_ID = "team-agent-lead";
 
 export type SessionContinuityStatus = "active" | "interrupted" | "restorable" | "stale";
 
