@@ -1,4 +1,5 @@
-import { loadRepoSelection, type RepoSelection } from "@/client/utils/repo-selection-storage";
+import type { RepoSelection } from "@/client/components/repo-picker";
+import { loadRepoSelection } from "@/client/utils/repo-selection-storage";
 
 import type { FeatureDetail, FileSessionDiagnostics } from "./types";
 
