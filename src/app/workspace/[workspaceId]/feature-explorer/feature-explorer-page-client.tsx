@@ -1,10 +1,9 @@
 "use client";
 
-import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   ArrowRight,
-  Braces,
   ChevronDown,
   ChevronRight,
   FileCode2,
@@ -17,21 +16,30 @@ import {
 } from "lucide-react";
 
 import { DesktopAppShell } from "@/client/components/desktop-app-shell";
+import { ChatPanel } from "@/client/components/chat-panel";
 import { RepoPicker, type RepoSelection } from "@/client/components/repo-picker";
 import { WorkspaceSwitcher } from "@/client/components/workspace-switcher";
+import { useAcp } from "@/client/hooks/use-acp";
 import { useCodebases, useWorkspaces } from "@/client/hooks/use-workspaces";
 import { desktopAwareFetch } from "@/client/utils/diagnostics";
 import { loadRepoSelection, saveRepoSelection } from "@/client/utils/repo-selection-storage";
 import { useTranslation } from "@/i18n";
 
 import type {
-  ApiDetail,
-  CapabilityGroup,
+  AggregatedSelectionSession,
   FeatureDetail,
   FeatureSurfacePage,
+  FileSessionDiagnostics,
   FileTreeNode,
   InspectorTab,
 } from "./types";
+import {
+  ApiPanel,
+  ContextPanel,
+  SessionAnalysisDrawer,
+  ScreenshotPanel,
+} from "./feature-explorer-inspector-panels";
+import { buildSessionAnalysisPrompt } from "./session-analysis";
 import {
   type ExplorerSection,
   type ExplorerSurfaceItem,
@@ -48,7 +56,6 @@ import {
   splitApiRouteSegments,
   splitBrowserRouteSegments,
   splitPathSegments,
-  surfaceKindBadge,
 } from "./surface-navigation";
 import { useFeatureExplorerData } from "./use-feature-explorer-data";
 
@@ -114,6 +121,76 @@ function buildTreeNodeStats(
   return statsByNodeId;
 }
 
+function buildSelectableFileIdsByNode(
+  nodes: FileTreeNode[],
+  acc: Record<string, string[]> = {},
+): Record<string, string[]> {
+  const visit = (node: FileTreeNode): string[] => {
+    if (node.kind === "file") {
+      acc[node.id] = [node.id];
+      return acc[node.id];
+    }
+
+    const descendantFileIds = node.children.flatMap((child) => visit(child));
+    acc[node.id] = descendantFileIds;
+    return descendantFileIds;
+  };
+
+  for (const node of nodes) {
+    visit(node);
+  }
+
+  return acc;
+}
+
+function mergeDistinctStrings(left: string[], right: string[]): string[] {
+  return [...new Set([...left, ...right])];
+}
+
+function mergeSessionDiagnostics(
+  left?: FileSessionDiagnostics,
+  right?: FileSessionDiagnostics,
+): FileSessionDiagnostics | undefined {
+  if (!left) {
+    return right ? {
+      ...right,
+      toolCallsByName: { ...right.toolCallsByName },
+      readFiles: [...right.readFiles],
+      writtenFiles: [...right.writtenFiles],
+      repeatedReadFiles: [...right.repeatedReadFiles],
+      repeatedCommands: [...right.repeatedCommands],
+      failedTools: right.failedTools.map((failure) => ({ ...failure })),
+    } : undefined;
+  }
+
+  if (!right) {
+    return left;
+  }
+
+  const toolCallsByName: Record<string, number> = { ...left.toolCallsByName };
+  for (const [toolName, count] of Object.entries(right.toolCallsByName)) {
+    toolCallsByName[toolName] = Math.max(toolCallsByName[toolName] ?? 0, count);
+  }
+
+  const failedTools = new Map(
+    left.failedTools.map((failure) => [`${failure.toolName}|${failure.command ?? ""}|${failure.message}`, failure] as const),
+  );
+  for (const failure of right.failedTools) {
+    failedTools.set(`${failure.toolName}|${failure.command ?? ""}|${failure.message}`, failure);
+  }
+
+  return {
+    toolCallCount: Math.max(left.toolCallCount, right.toolCallCount),
+    failedToolCallCount: Math.max(left.failedToolCallCount, right.failedToolCallCount),
+    toolCallsByName,
+    readFiles: mergeDistinctStrings(left.readFiles, right.readFiles).sort((a, b) => a.localeCompare(b)),
+    writtenFiles: mergeDistinctStrings(left.writtenFiles, right.writtenFiles).sort((a, b) => a.localeCompare(b)),
+    repeatedReadFiles: mergeDistinctStrings(left.repeatedReadFiles, right.repeatedReadFiles).sort((a, b) => a.localeCompare(b)),
+    repeatedCommands: mergeDistinctStrings(left.repeatedCommands, right.repeatedCommands),
+    failedTools: [...failedTools.values()],
+  };
+}
+
 function formatShortDate(iso: string): string {
   if (!iso || iso === "-") return "-";
   const d = new Date(iso);
@@ -123,22 +200,62 @@ function formatShortDate(iso: string): string {
   return `${mm}-${dd}`;
 }
 
-function humanizeImplementationLabel(label: string): string {
-  if (!label) {
-    return "Implementation";
-  }
-  if (label === "nextjs") {
-    return "Next.js";
-  }
-  if (label === "springMvc") {
-    return "Spring MVC";
+type FeatureExplorerUrlState = {
+  featureId: string;
+  filePath: string;
+};
+
+function readFeatureExplorerUrlState(): FeatureExplorerUrlState {
+  if (typeof window === "undefined") {
+    return { featureId: "", filePath: "" };
   }
 
-  return label
-    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
-    .replace(/[-_]+/g, " ")
-    .trim()
-    .replace(/\b\w/g, (match) => match.toUpperCase());
+  const params = new URLSearchParams(window.location.search);
+  return {
+    featureId: params.get("feature") ?? "",
+    filePath: params.get("file") ?? "",
+  };
+}
+
+function replaceFeatureExplorerUrlState(nextState: FeatureExplorerUrlState): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  const params = new URLSearchParams(window.location.search);
+  if (nextState.featureId) {
+    params.set("feature", nextState.featureId);
+  } else {
+    params.delete("feature");
+  }
+  if (nextState.filePath) {
+    params.set("file", nextState.filePath);
+  } else {
+    params.delete("file");
+  }
+
+  const query = params.toString();
+  const nextUrl = query ? `${window.location.pathname}?${query}` : window.location.pathname;
+  window.history.replaceState(window.history.state, "", nextUrl);
+}
+
+function buildSessionAnalysisSessionName(
+  locale: string,
+  featureDetail: FeatureDetail | null,
+  selectedFilePaths: string[],
+): string {
+  const firstFile = selectedFilePaths[0]?.split("/").pop() ?? "";
+  const focus = firstFile || featureDetail?.name || "feature";
+
+  if (selectedFilePaths.length > 1) {
+    return locale === "zh"
+      ? `文件会话分析 · ${focus} +${selectedFilePaths.length - 1}`
+      : `File session analysis · ${focus} +${selectedFilePaths.length - 1}`;
+  }
+
+  return locale === "zh"
+    ? `文件会话分析 · ${focus}`
+    : `File session analysis · ${focus}`;
 }
 
 export function FeatureExplorerPageClient({
@@ -147,11 +264,20 @@ export function FeatureExplorerPageClient({
   workspaceId: string;
 }) {
   const router = useRouter();
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const workspacesHook = useWorkspaces();
   const { codebases } = useCodebases(workspaceId);
 
   const workspace = workspacesHook.workspaces.find((item) => item.id === workspaceId) ?? null;
+  const analysisAcp = useAcp();
+  const analysisAcpConnected = analysisAcp.connected;
+  const analysisAcpLoading = analysisAcp.loading;
+  const connectAnalysisAcp = analysisAcp.connect;
+  const analysisProviders = analysisAcp.providers;
+  const analysisSelectedProvider = analysisAcp.selectedProvider;
+  const setAnalysisProvider = analysisAcp.setProvider;
+  const selectAnalysisSession = analysisAcp.selectSession;
+  const promptAnalysisSession = analysisAcp.promptSession;
   const workspaceRepos = useMemo(
     () =>
       codebases.map((codebase) => ({
@@ -196,7 +322,8 @@ export function FeatureExplorerPageClient({
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>("context");
   const [middleView, setMiddleView] = useState<"list" | "tree">("tree");
   const [surfaceNavigationView, setSurfaceNavigationView] = useState<SurfaceNavigationView>("sections");
-  const [featureId, setFeatureId] = useState<string>("");
+  const [initialUrlState] = useState<FeatureExplorerUrlState>(() => readFeatureExplorerUrlState());
+  const [featureId, setFeatureId] = useState<string>(initialUrlState.featureId);
   const [selectedSurfaceKey, setSelectedSurfaceKey] = useState<string>("");
   const [query, setQuery] = useState("");
   const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>({});
@@ -204,6 +331,17 @@ export function FeatureExplorerPageClient({
   const [surfaceTreeExpandedIds, setSurfaceTreeExpandedIds] = useState<Record<string, boolean>>({});
   const [selectedFileIds, setSelectedFileIds] = useState<string[]>([]);
   const [activeFileId, setActiveFileId] = useState<string>("");
+  const [desiredFilePath, setDesiredFilePath] = useState<string>(initialUrlState.filePath);
+  const [hasResolvedInitialUrlSelection, setHasResolvedInitialUrlSelection] = useState(
+    initialUrlState.featureId === "",
+  );
+  const [isSessionAnalysisDrawerOpen, setIsSessionAnalysisDrawerOpen] = useState(false);
+  const [isStartingSessionAnalysis, setIsStartingSessionAnalysis] = useState(false);
+  const [sessionAnalysisError, setSessionAnalysisError] = useState<string | null>(null);
+  const [analysisSessionId, setAnalysisSessionId] = useState<string | null>(null);
+  const [analysisSessionName, setAnalysisSessionName] = useState("");
+  const [analysisSessionProviderId, setAnalysisSessionProviderId] = useState("");
+  const [isAnalysisSessionPaneOpen, setIsAnalysisSessionPaneOpen] = useState(false);
 
   // Derive effective feature ID: user-selected or auto-initialized from hook
   const effectiveFeatureId = featureId || initialFeatureId;
@@ -268,18 +406,69 @@ export function FeatureExplorerPageClient({
     }
     return map;
   }, [featureMetadata, surfaceIndex.nextjsApis, surfaceIndex.rustApis]);
+  const browserViewFeatureIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const feature of features) {
+      if (feature.pageCount > 0) {
+        ids.add(feature.id);
+      }
+    }
+    for (const metadataItem of featureMetadata) {
+      if ((metadataItem.pages?.length ?? 0) > 0) {
+        ids.add(metadataItem.id);
+      }
+    }
+    for (const page of surfaceIndex.pages) {
+      for (const featureId of dedupeFeatureIds(pageFeatureMap.get(page.route) ?? [])) {
+        ids.add(featureId);
+      }
+    }
+    return ids;
+  }, [featureMetadata, features, pageFeatureMap, surfaceIndex.pages]);
+  const nextjsApiFeatureIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const api of surfaceIndex.nextjsApis) {
+      const lookupKey = buildApiLookupKey(api.method, api.path);
+      for (const featureId of dedupeFeatureIds(apiFeatureMap.get(lookupKey) ?? [])) {
+        ids.add(featureId);
+      }
+    }
+    return ids;
+  }, [apiFeatureMap, surfaceIndex.nextjsApis]);
+  const rustApiFeatureIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const api of surfaceIndex.rustApis) {
+      const lookupKey = buildApiLookupKey(api.method, api.path);
+      for (const featureId of dedupeFeatureIds(apiFeatureMap.get(lookupKey) ?? [])) {
+        ids.add(featureId);
+      }
+    }
+    return ids;
+  }, [apiFeatureMap, surfaceIndex.rustApis]);
 
   const featureItems = useMemo<ExplorerSurfaceItem[]>(
     () => features
-      .filter((feature) => matchesQuery(query, [feature.name, feature.summary, feature.id]))
-      .sort((left, right) => {
-        if (right.sessionCount !== left.sessionCount) {
-          return right.sessionCount - left.sessionCount;
+      .filter((feature) => {
+        if (!matchesQuery(query, [feature.name, feature.summary, feature.id])) {
+          return false;
         }
-        if (right.changedFiles !== left.changedFiles) {
-          return right.changedFiles - left.changedFiles;
+
+        if (feature.id === effectiveFeatureId) {
+          return true;
         }
-        return left.name.localeCompare(right.name);
+
+        switch (surfaceNavigationView) {
+          case "sections":
+            return true;
+          case "browser-url":
+            return browserViewFeatureIds.has(feature.id);
+          case "nextjs-api":
+            return nextjsApiFeatureIds.has(feature.id);
+          case "rust-api":
+            return rustApiFeatureIds.has(feature.id);
+          case "path":
+            return true;
+        }
       })
       .map((feature): ExplorerSurfaceItem => {
         const metadataItem = featureMetadataById.get(feature.id);
@@ -308,7 +497,19 @@ export function FeatureExplorerPageClient({
           selectable: true,
         };
       }),
-    [capabilityGroups, featureMetadataById, features, query, t.featureExplorer.filesLabel, t.featureExplorer.sessionsLabel],
+    [
+      browserViewFeatureIds,
+      capabilityGroups,
+      effectiveFeatureId,
+      featureMetadataById,
+      features,
+      nextjsApiFeatureIds,
+      query,
+      rustApiFeatureIds,
+      surfaceNavigationView,
+      t.featureExplorer.filesLabel,
+      t.featureExplorer.sessionsLabel,
+    ],
   );
   const pageItems = useMemo<ExplorerSurfaceItem[]>(
     () => surfaceIndex.pages
@@ -547,14 +748,30 @@ export function FeatureExplorerPageClient({
   const surfaceOnlySelection = Boolean(
     selectedSurface && selectedSurface.kind !== "feature" && selectedSurface.featureIds.length === 0,
   );
-
-  const fileTree = useMemo(() => (surfaceOnlySelection ? [] : featureDetail?.fileTree ?? []), [featureDetail, surfaceOnlySelection]);
+  const resolvedFeatureDetail = useMemo(
+    () => (featureDetail?.id === effectiveFeatureId ? featureDetail : null),
+    [effectiveFeatureId, featureDetail],
+  );
+  const fileTree = useMemo(
+    () => (surfaceOnlySelection ? [] : resolvedFeatureDetail?.fileTree ?? []),
+    [resolvedFeatureDetail, surfaceOnlySelection],
+  );
   const fileStats = useMemo(
-    () => (surfaceOnlySelection ? {} : featureDetail?.fileStats ?? {}),
-    [featureDetail, surfaceOnlySelection],
+    () => (surfaceOnlySelection ? {} : resolvedFeatureDetail?.fileStats ?? {}),
+    [resolvedFeatureDetail, surfaceOnlySelection],
   );
   const flatMap = useMemo(() => flattenFiles(fileTree), [fileTree]);
+  const selectedFilePaths = useMemo(
+    () => [...new Set(
+      selectedFileIds
+        .map((fileId) => flatMap[fileId])
+        .filter((node): node is FileTreeNode => Boolean(node && node.kind === "file"))
+        .map((node) => node.path),
+    )].sort((left, right) => left.localeCompare(right)),
+    [flatMap, selectedFileIds],
+  );
   const treeNodeStats = useMemo(() => buildTreeNodeStats(fileTree, fileStats), [fileTree, fileStats]);
+  const selectableFileIdsByNode = useMemo(() => buildSelectableFileIdsByNode(fileTree), [fileTree]);
 
   // Flat file list sorted by sessions desc, then changes desc
   const sessionSortedFiles = useMemo(() => {
@@ -572,10 +789,80 @@ export function FeatureExplorerPageClient({
   }, [flatMap, fileStats]);
 
   const activeFile = flatMap[activeFileId] ?? null;
+  const selectedScopeSessions = useMemo<AggregatedSelectionSession[]>(() => {
+    if (!resolvedFeatureDetail?.fileSignals || selectedFileIds.length === 0) {
+      return [];
+    }
+
+    const aggregated = new Map<string, AggregatedSelectionSession>();
+
+    for (const fileId of selectedFileIds) {
+      const fileNode = flatMap[fileId];
+      if (!fileNode || fileNode.kind !== "file") {
+        continue;
+      }
+
+      const signal = resolvedFeatureDetail.fileSignals[fileNode.path];
+      if (!signal) {
+        continue;
+      }
+
+      for (const session of signal.sessions) {
+        const sessionKey = `${session.provider}:${session.sessionId}`;
+        const existing = aggregated.get(sessionKey);
+
+        if (existing) {
+          if (session.updatedAt > existing.updatedAt) {
+            existing.updatedAt = session.updatedAt;
+          }
+          if (!existing.promptSnippet && session.promptSnippet) {
+            existing.promptSnippet = session.promptSnippet;
+          }
+          if (!existing.resumeCommand && session.resumeCommand) {
+            existing.resumeCommand = session.resumeCommand;
+          }
+          existing.diagnostics = mergeSessionDiagnostics(existing.diagnostics, session.diagnostics);
+          for (const prompt of session.promptHistory ?? []) {
+            if (!existing.promptHistory.includes(prompt)) {
+              existing.promptHistory.push(prompt);
+            }
+          }
+          for (const toolName of session.toolNames ?? []) {
+            if (!existing.toolNames.includes(toolName)) {
+              existing.toolNames.push(toolName);
+            }
+          }
+          for (const changedFile of session.changedFiles ?? [fileNode.path]) {
+            if (!existing.changedFiles.includes(changedFile)) {
+              existing.changedFiles.push(changedFile);
+            }
+          }
+          continue;
+        }
+
+        aggregated.set(sessionKey, {
+          provider: session.provider,
+          sessionId: session.sessionId,
+          updatedAt: session.updatedAt,
+          promptSnippet: session.promptSnippet,
+          promptHistory: [...(session.promptHistory ?? [])],
+          toolNames: [...(session.toolNames ?? [])],
+          ...(session.resumeCommand ? { resumeCommand: session.resumeCommand } : {}),
+          changedFiles: [...(session.changedFiles ?? [fileNode.path])],
+          ...(session.diagnostics ? { diagnostics: mergeSessionDiagnostics(undefined, session.diagnostics) } : {}),
+        });
+      }
+    }
+
+    return [...aggregated.values()]
+      .map((session) => ({
+        ...session,
+        toolNames: session.toolNames.sort((left, right) => left.localeCompare(right)),
+        changedFiles: session.changedFiles.sort((left, right) => left.localeCompare(right)),
+      }))
+      .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+  }, [flatMap, resolvedFeatureDetail, selectedFileIds]);
   const activeFeature = features.find((f) => f.id === effectiveFeatureId);
-  const activeGroup = activeFeature
-    ? capabilityGroups.find((group) => group.id === activeFeature.group) ?? null
-    : null;
   const activeSurfaceKey = selectedSurface?.key ?? (effectiveFeatureId ? `feature:${effectiveFeatureId}` : "");
   const selectedSurfaceFeatureNames = useMemo(
     () => (selectedSurface?.featureIds ?? []).map(
@@ -588,6 +875,13 @@ export function FeatureExplorerPageClient({
     : selectedSurface
       ? `${selectedSurface.label}${selectedSurfaceFeatureNames[0] ? ` -> ${selectedSurfaceFeatureNames[0]}` : ""}`
       : "";
+  const analysisSessionProviderName = useMemo(
+    () => analysisProviders.find((provider) => provider.id === analysisSessionProviderId)?.name ?? analysisSessionProviderId,
+    [analysisProviders, analysisSessionProviderId],
+  );
+  const featureExplorerLayoutClassName = isAnalysisSessionPaneOpen
+    ? "grid min-h-0 flex-1 xl:grid-cols-[360px_minmax(0,1fr)_500px_minmax(24rem,36rem)] 2xl:grid-cols-[420px_minmax(0,1fr)_560px_minmax(26rem,40rem)]"
+    : "grid min-h-0 flex-1 xl:grid-cols-[360px_minmax(0,1fr)_500px] 2xl:grid-cols-[420px_minmax(0,1fr)_560px]";
 
   const handleWorkspaceSelect = (nextWorkspaceId: string) => {
     router.push(`/workspace/${encodeURIComponent(nextWorkspaceId)}/feature-explorer`);
@@ -604,12 +898,17 @@ export function FeatureExplorerPageClient({
     setRepoSelectionOverrides((prev) => ({ ...prev, [workspaceId]: selection }));
   };
 
-  const applyFileAutoSelect = (detail: FeatureDetail) => {
+  const applyFileAutoSelect = (detail: FeatureDetail, preferredFilePath = "") => {
     const flat = flattenFiles(detail.fileTree);
-    const firstFile = Object.values(flat).find((n) => n.kind === "file");
-    if (firstFile) {
-      setActiveFileId(firstFile.id);
-      setSelectedFileIds([firstFile.id]);
+    const leafFiles = Object.values(flat).filter((node) => node.kind === "file");
+    const nextFile = (preferredFilePath
+      ? leafFiles.find((node) => node.path === preferredFilePath)
+      : null) ?? leafFiles[0];
+
+    if (nextFile) {
+      setActiveFileId(nextFile.id);
+      setSelectedFileIds([nextFile.id]);
+      setDesiredFilePath(nextFile.path);
       const expanded: Record<string, boolean> = {};
       for (const node of Object.values(flat)) {
         if (node.kind === "folder") {
@@ -617,24 +916,69 @@ export function FeatureExplorerPageClient({
         }
       }
       setExpandedIds(expanded);
+      return;
     }
+
+    setActiveFileId("");
+    setSelectedFileIds([]);
+    setDesiredFilePath("");
   };
 
   // Auto-select first file when initial detail loads from hook
   const [prevDetailId, setPrevDetailId] = useState<string>("");
   useEffect(() => {
-    if (featureDetail && featureDetail.id !== prevDetailId) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- legitimate initialization of derived selection state
-      setPrevDetailId(featureDetail.id);
-      applyFileAutoSelect(featureDetail);
+    if (resolvedFeatureDetail && resolvedFeatureDetail.id !== prevDetailId) {
+      setPrevDetailId(resolvedFeatureDetail.id);
+      applyFileAutoSelect(
+        resolvedFeatureDetail,
+        resolvedFeatureDetail.id === effectiveFeatureId ? desiredFilePath : "",
+      );
     }
-  }, [featureDetail, prevDetailId]);
+  }, [desiredFilePath, effectiveFeatureId, prevDetailId, resolvedFeatureDetail]);
+
+  useEffect(() => {
+    if (hasResolvedInitialUrlSelection || !initialUrlState.featureId || loading || featureDetailLoading) {
+      return;
+    }
+
+    if (resolvedFeatureDetail?.id === initialUrlState.featureId) {
+      setHasResolvedInitialUrlSelection(true);
+      return;
+    }
+
+    fetchFeatureDetail(initialUrlState.featureId).then((detail) => {
+      if (detail) {
+        applyFileAutoSelect(detail, initialUrlState.filePath);
+      }
+      setHasResolvedInitialUrlSelection(true);
+    });
+  }, [
+    featureDetailLoading,
+    fetchFeatureDetail,
+    hasResolvedInitialUrlSelection,
+    initialUrlState.featureId,
+    initialUrlState.filePath,
+    loading,
+    resolvedFeatureDetail,
+  ]);
+
+  useEffect(() => {
+    if (!hasResolvedInitialUrlSelection) {
+      return;
+    }
+
+    replaceFeatureExplorerUrlState({
+      featureId: effectiveFeatureId,
+      filePath: activeFile?.path ?? "",
+    });
+  }, [activeFile?.path, effectiveFeatureId, hasResolvedInitialUrlSelection]);
 
   const handleSelectFeature = (nextFeatureId: string) => {
     setFeatureId(nextFeatureId);
     setInspectorTab("context");
     setSelectedFileIds([]);
     setActiveFileId("");
+    setDesiredFilePath("");
     setExpandedIds({});
     fetchFeatureDetail(nextFeatureId).then((detail) => {
       if (detail) applyFileAutoSelect(detail);
@@ -671,27 +1015,44 @@ export function FeatureExplorerPageClient({
     setSurfaceTreeExpandedIds((prev) => ({ ...prev, [nodeId]: !(prev[nodeId] ?? true) }));
   };
 
-  const handleToggleFileSelection = (fileId: string) => {
-    setSelectedFileIds((prev) =>
-      prev.includes(fileId) ? prev.filter((item) => item !== fileId) : [...prev, fileId],
-    );
+  const handleSetActiveFile = (fileId: string) => {
     setActiveFileId(fileId);
+    setDesiredFilePath(flatMap[fileId]?.path ?? "");
+  };
+
+  const handleToggleNodeSelection = (nodeId: string) => {
+    const targetFileIds = selectableFileIdsByNode[nodeId] ?? [];
+    if (targetFileIds.length === 0) {
+      return;
+    }
+
+    const isRemoving = targetFileIds.every((fileId) => selectedFileIds.includes(fileId));
+    const nextSelectedIds = isRemoving
+      ? selectedFileIds.filter((fileId) => !targetFileIds.includes(fileId))
+      : [...new Set([...selectedFileIds, ...targetFileIds])];
+
+    setSelectedFileIds(nextSelectedIds);
+
+    if (!isRemoving) {
+      handleSetActiveFile(targetFileIds[0] ?? "");
+      return;
+    }
+
+    if (activeFileId && targetFileIds.includes(activeFileId)) {
+      const nextActiveFileId = nextSelectedIds[0] ?? "";
+      if (nextActiveFileId) {
+        handleSetActiveFile(nextActiveFileId);
+      } else {
+        setActiveFileId("");
+        setDesiredFilePath("");
+      }
+    }
   };
 
   const handleClearSelection = () => {
     setSelectedFileIds([]);
-  };
-
-  const handleContinue = () => {
-    router.push(`/workspace/${encodeURIComponent(workspaceId)}/sessions`);
-  };
-
-  const handleCopyContext = async () => {
-    const payload = {
-      featureId: effectiveFeatureId,
-      selectedFiles: selectedFileIds.map((id) => flatMap[id]?.path).filter(Boolean),
-    };
-    await navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
+    setActiveFileId("");
+    setDesiredFilePath("");
   };
 
   const handleApiRequest = async (method: string, apiPath: string) => {
@@ -700,6 +1061,117 @@ export function FeatureExplorerPageClient({
       return await response.text();
     } catch (err) {
       return err instanceof Error ? err.message : t.featureExplorer.requestFailed;
+    }
+  };
+
+  useEffect(() => {
+    if (!isSessionAnalysisDrawerOpen) {
+      return;
+    }
+
+    if (selectedFilePaths.length === 0 || selectedScopeSessions.length === 0) {
+      setIsSessionAnalysisDrawerOpen(false);
+    }
+  }, [isSessionAnalysisDrawerOpen, selectedFilePaths.length, selectedScopeSessions.length]);
+
+  useEffect(() => {
+    if ((!isSessionAnalysisDrawerOpen && !isAnalysisSessionPaneOpen) || analysisAcpConnected || analysisAcpLoading) {
+      return;
+    }
+
+    void connectAnalysisAcp();
+  }, [
+    analysisAcpConnected,
+    analysisAcpLoading,
+    connectAnalysisAcp,
+    isAnalysisSessionPaneOpen,
+    isSessionAnalysisDrawerOpen,
+  ]);
+
+  const handleOpenSessionAnalysisDrawer = () => {
+    setSessionAnalysisError(null);
+    setIsSessionAnalysisDrawerOpen(true);
+  };
+
+  const handleStartSessionAnalysis = async () => {
+    if (!effectiveRepoSelection?.path || selectedFilePaths.length === 0 || selectedScopeSessions.length === 0) {
+      return;
+    }
+
+    setSessionAnalysisError(null);
+    setIsStartingSessionAnalysis(true);
+
+    try {
+      const sessionName = buildSessionAnalysisSessionName(
+        locale,
+        surfaceOnlySelection ? null : resolvedFeatureDetail,
+        selectedFilePaths,
+      );
+      const prompt = buildSessionAnalysisPrompt({
+        locale,
+        workspaceId,
+        repoName: effectiveRepoSelection.name,
+        repoPath: effectiveRepoSelection.path,
+        branch: effectiveRepoSelection.branch,
+        featureDetail: surfaceOnlySelection ? null : resolvedFeatureDetail,
+        selectedFilePaths,
+        sessions: selectedScopeSessions,
+      });
+
+      const response = await desktopAwareFetch("/api/acp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: `feature-explorer-analysis:${Date.now()}`,
+          method: "session/new",
+          params: {
+            workspaceId,
+            cwd: effectiveRepoSelection.path,
+            branch: effectiveRepoSelection.branch || undefined,
+            role: "ROUTA",
+            specialistId: "file-session-analyst",
+            specialistLocale: locale,
+            name: sessionName,
+            provider: analysisSelectedProvider,
+          },
+        }),
+      });
+
+      const payload = await response.json().catch(() => null) as {
+        result?: { sessionId?: string };
+        error?: { message?: string };
+      } | null;
+
+      if (!response.ok) {
+        throw new Error(payload?.error?.message || t.featureExplorer.sessionAnalysisFailed);
+      }
+
+      if (payload?.error?.message) {
+        throw new Error(payload.error.message);
+      }
+
+      const sessionId = payload?.result?.sessionId;
+      if (!sessionId) {
+        throw new Error(t.featureExplorer.sessionAnalysisFailed);
+      }
+
+      await connectAnalysisAcp();
+      selectAnalysisSession(sessionId);
+      setAnalysisSessionId(sessionId);
+      setAnalysisSessionName(sessionName);
+      setAnalysisSessionProviderId(analysisSelectedProvider);
+      setIsAnalysisSessionPaneOpen(true);
+      setIsSessionAnalysisDrawerOpen(false);
+      void promptAnalysisSession(sessionId, prompt);
+    } catch (err) {
+      setSessionAnalysisError(
+        err instanceof Error && err.message
+          ? err.message
+          : t.featureExplorer.sessionAnalysisFailed,
+      );
+    } finally {
+      setIsStartingSessionAnalysis(false);
     }
   };
 
@@ -722,7 +1194,7 @@ export function FeatureExplorerPageClient({
     >
       <div className="flex h-full min-h-0 bg-desktop-bg-primary">
         <main className="flex min-w-0 flex-1">
-          <section className="grid min-h-0 flex-1 xl:grid-cols-[360px_minmax(0,1fr)_500px] 2xl:grid-cols-[420px_minmax(0,1fr)_560px]">
+          <section className={featureExplorerLayoutClassName}>
             {/* ── Left panel: Feature list ── */}
             <aside className="flex min-h-0 flex-col border-r border-desktop-border bg-desktop-bg-secondary/20">
               <div className="border-b border-desktop-border px-3 py-2">
@@ -747,6 +1219,9 @@ export function FeatureExplorerPageClient({
                     className="w-full bg-transparent text-xs text-desktop-text-primary outline-none placeholder:text-desktop-text-secondary"
                   />
                 </label>
+                <div className="mt-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-desktop-text-secondary">
+                  {t.featureExplorer.workViewLabel}
+                </div>
                 <div className="mt-2 flex flex-wrap items-center gap-1">
                   {surfaceNavigationOptions.map((option) => (
                     <button
@@ -942,11 +1417,12 @@ export function FeatureExplorerPageClient({
                           <div className="flex items-center gap-1.5">
                             <input
                               type="checkbox"
+                              data-testid={`feature-tree-select-${node.id}`}
                               checked={isSelected}
-                              onChange={() => handleToggleFileSelection(node.id)}
+                              onChange={() => handleToggleNodeSelection(node.id)}
                               className="h-3.5 w-3.5 rounded border-black/15 bg-transparent dark:border-white/20"
                             />
-                            <button onClick={() => setActiveFileId(node.id)} className="flex min-w-0 items-center gap-1.5 text-left">
+                            <button onClick={() => handleSetActiveFile(node.id)} className="flex min-w-0 items-center gap-1.5 text-left">
                               <FileIcon path={node.path} />
                               <span className="break-all text-[12px] text-desktop-text-primary" title={node.path}>{node.path}</span>
                             </button>
@@ -969,9 +1445,10 @@ export function FeatureExplorerPageClient({
                         activeFileId={activeFileId}
                         selectedFileIds={selectedFileIds}
                         treeNodeStats={treeNodeStats}
+                        selectableFileIdsByNode={selectableFileIdsByNode}
                         onToggleNode={handleToggleNode}
-                        onToggleFileSelection={handleToggleFileSelection}
-                        onSetActiveFile={setActiveFileId}
+                        onToggleNodeSelection={handleToggleNodeSelection}
+                        onSetActiveFile={handleSetActiveFile}
                       />
                     ))}
                   </div>
@@ -991,7 +1468,7 @@ export function FeatureExplorerPageClient({
                       {t.featureExplorer.clearSelection}
                     </button>
                     <button
-                      onClick={handleContinue}
+                      onClick={() => router.push(`/workspace/${encodeURIComponent(workspaceId)}/sessions`)}
                       className="inline-flex items-center gap-1 rounded-sm border border-desktop-accent bg-desktop-bg-active px-2 py-1 text-[11px] text-desktop-text-primary hover:bg-desktop-bg-primary"
                     >
                       {t.featureExplorer.continueAction}
@@ -1036,374 +1513,104 @@ export function FeatureExplorerPageClient({
               <div className="min-h-0 flex-1 overflow-y-auto p-3">
                 {inspectorTab === "context" && (
                   <ContextPanel
-                    activeFile={activeFile}
-                    activeGroup={activeGroup}
-                    featureDetail={surfaceOnlySelection ? null : featureDetail}
+                    featureDetail={surfaceOnlySelection ? null : resolvedFeatureDetail}
+                    selectedFileCount={selectedFileIds.length}
+                    selectedScopeSessions={selectedScopeSessions}
                     selectedSurface={selectedSurface}
                     selectedSurfaceFeatureNames={selectedSurfaceFeatureNames}
+                    onOpenSessionAnalysis={handleOpenSessionAnalysisDrawer}
                     t={t}
                   />
                 )}
 
                 {inspectorTab === "screenshot" && (
-                  <ScreenshotPanel featureDetail={surfaceOnlySelection ? null : featureDetail} t={t} />
+                  <ScreenshotPanel featureDetail={surfaceOnlySelection ? null : resolvedFeatureDetail} t={t} />
                 )}
 
                 {inspectorTab === "api" && (
                   <ApiPanel
-                    featureDetail={surfaceOnlySelection ? null : featureDetail}
+                    featureDetail={surfaceOnlySelection ? null : resolvedFeatureDetail}
                     t={t}
                     onRequest={handleApiRequest}
                   />
                 )}
               </div>
-
-              <div className="border-t border-desktop-border bg-desktop-bg-secondary/20 px-3 py-1.5">
-                <div className="flex items-center justify-between gap-2">
-                  <button
-                    onClick={() => router.push(`/workspace/${encodeURIComponent(workspaceId)}/sessions`)}
-                    className="rounded-sm border border-desktop-border bg-desktop-bg-primary px-2 py-1 text-[11px] text-desktop-text-secondary hover:bg-desktop-bg-active hover:text-desktop-text-primary"
-                  >
-                    {t.featureExplorer.openSessions}
-                  </button>
-                  <button
-                    onClick={handleCopyContext}
-                    className="rounded-sm border border-desktop-accent bg-desktop-bg-active px-2 py-1 text-[11px] text-desktop-text-primary hover:bg-desktop-bg-primary"
-                  >
-                    {t.featureExplorer.copyContext}
-                  </button>
-                </div>
-              </div>
             </aside>
+
+            {isAnalysisSessionPaneOpen && analysisSessionId ? (
+              <aside
+                className="flex min-h-0 flex-col border-l border-desktop-border bg-desktop-bg-primary"
+                data-testid="feature-explorer-analysis-session-pane"
+              >
+                <div className="flex items-center justify-between gap-3 border-b border-desktop-border px-4 py-3">
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-semibold text-desktop-text-primary">
+                      {analysisSessionName || t.featureExplorer.sessionAnalysisTitle}
+                    </div>
+                    <div
+                      className="mt-0.5 overflow-x-auto whitespace-nowrap text-[11px] text-desktop-text-secondary"
+                      title={analysisSessionId}
+                    >
+                      {analysisSessionProviderName || analysisSessionProviderId || analysisSelectedProvider} · {analysisSessionId}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <a
+                      href={`/workspace/${encodeURIComponent(workspaceId)}/sessions/${encodeURIComponent(analysisSessionId)}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="rounded-sm border border-desktop-border bg-desktop-bg-primary px-2 py-1 text-[11px] text-desktop-text-secondary hover:text-desktop-text-primary"
+                    >
+                      {t.common.openInNewTab}
+                    </a>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsAnalysisSessionPaneOpen(false);
+                        setAnalysisSessionId(null);
+                      }}
+                      className="rounded-sm border border-desktop-border bg-desktop-bg-primary px-2 py-1 text-[11px] text-desktop-text-secondary hover:text-desktop-text-primary"
+                    >
+                      {t.common.close}
+                    </button>
+                  </div>
+                </div>
+                <div className="min-h-0 flex-1">
+                  <ChatPanel
+                    acp={analysisAcp}
+                    activeSessionId={analysisSessionId}
+                    onEnsureSession={async () => analysisSessionId}
+                    onSelectSession={async (sessionId) => {
+                      setAnalysisSessionId(sessionId);
+                      selectAnalysisSession(sessionId);
+                    }}
+                    repoSelection={effectiveRepoSelection}
+                    onRepoChange={() => {}}
+                    codebases={codebases}
+                    activeWorkspaceId={workspaceId}
+                    agentRole="ROUTA"
+                  />
+                </div>
+              </aside>
+            ) : null}
           </section>
         </main>
+
+        <SessionAnalysisDrawer
+          open={isSessionAnalysisDrawerOpen}
+          selectedFilePaths={selectedFilePaths}
+          selectedScopeSessions={selectedScopeSessions}
+          providers={analysisProviders}
+          selectedProvider={analysisSelectedProvider}
+          onProviderChange={setAnalysisProvider}
+          isStartingSessionAnalysis={isStartingSessionAnalysis}
+          sessionAnalysisError={sessionAnalysisError}
+          onClose={() => setIsSessionAnalysisDrawerOpen(false)}
+          onStartSessionAnalysis={handleStartSessionAnalysis}
+          t={t}
+        />
       </div>
     </DesktopAppShell>
-  );
-}
-
-/* ── Context Panel ── */
-function ContextPanel({
-  activeFile,
-  activeGroup,
-  featureDetail,
-  selectedSurface,
-  selectedSurfaceFeatureNames,
-  t,
-}: {
-  activeFile: FileTreeNode | null;
-  activeGroup: CapabilityGroup | null;
-  featureDetail: FeatureDetail | null;
-  selectedSurface: ExplorerSurfaceItem | null;
-  selectedSurfaceFeatureNames: string[];
-  t: ReturnType<typeof useTranslation>["t"];
-}) {
-  if (!featureDetail && !selectedSurface) {
-    return <div className="text-xs text-desktop-text-secondary">-</div>;
-  }
-
-  return (
-    <div className="space-y-2">
-      {selectedSurface ? (
-        <ContextSection title={t.featureExplorer.selectedSurface}>
-          <div className="space-y-3">
-            <div>
-              <div className="text-[13px] font-semibold text-desktop-text-primary">{selectedSurface.label}</div>
-              {selectedSurface.secondary ? (
-                <div className="mt-1 text-[11px] leading-5 text-desktop-text-secondary">{selectedSurface.secondary}</div>
-              ) : null}
-            </div>
-
-            <div className="grid gap-px overflow-hidden rounded-sm border border-desktop-border bg-desktop-border sm:grid-cols-2">
-              <MetricCell label={t.featureExplorer.state} value={surfaceKindBadge(selectedSurface.kind)} />
-              <MetricCell
-                label={t.featureExplorer.linkedFeatures}
-                value={selectedSurfaceFeatureNames.length > 0 ? String(selectedSurfaceFeatureNames.length) : t.featureExplorer.unmappedLabel}
-              />
-            </div>
-
-            {selectedSurfaceFeatureNames.length > 0 ? (
-              <div className="rounded-sm border border-desktop-border bg-desktop-bg-secondary px-2.5 py-2 text-[11px] leading-5 text-desktop-text-secondary">
-                <span className="font-medium text-desktop-text-primary">{t.featureExplorer.linkedFeatures}: </span>
-                {selectedSurfaceFeatureNames.join(", ")}
-              </div>
-            ) : null}
-
-            {selectedSurface.sourceFiles.length > 0 ? (
-              <div className="space-y-1">
-                <div className="text-[10px] font-medium text-desktop-text-secondary">{t.featureExplorer.sourceFilesLabel}</div>
-                {selectedSurface.sourceFiles.map((sourceFile) => (
-                  <div
-                    key={sourceFile}
-                    className="rounded-sm border border-desktop-border bg-desktop-bg-secondary px-2 py-1.5 text-[11px] text-desktop-text-secondary"
-                  >
-                    {sourceFile}
-                  </div>
-                ))}
-              </div>
-            ) : null}
-          </div>
-        </ContextSection>
-      ) : null}
-
-      {featureDetail ? (
-        <ContextSection title={t.featureExplorer.featureSummary}>
-          <div className="space-y-3">
-            <div>
-              <div className="text-[13px] font-semibold text-desktop-text-primary">{featureDetail.name}</div>
-              <div className="mt-1 text-[11px] leading-5 text-desktop-text-secondary">{featureDetail.summary}</div>
-            </div>
-
-            <div className="grid gap-px overflow-hidden rounded-sm border border-desktop-border bg-desktop-border sm:grid-cols-2">
-              <MetricCell label={t.featureExplorer.capabilityGroup} value={activeGroup?.name ?? featureDetail.group} />
-              <MetricCell label={t.featureExplorer.statusLabel} value={featureDetail.status} />
-              <MetricCell label={t.featureExplorer.sourceFilesLabel} value={String(featureDetail.sourceFiles.length)} />
-              <MetricCell label={t.featureExplorer.sessionsLabel} value={String(featureDetail.sessionCount)} />
-            </div>
-
-            {activeGroup?.description ? (
-              <div className="rounded-sm border border-desktop-border bg-desktop-bg-secondary px-2.5 py-2 text-[11px] leading-5 text-desktop-text-secondary">
-                <span className="font-medium text-desktop-text-primary">{t.featureExplorer.groupDescription}: </span>
-                {activeGroup.description}
-              </div>
-            ) : null}
-          </div>
-        </ContextSection>
-      ) : null}
-
-      {activeFile && (
-        <ContextSection title={t.featureExplorer.activeFile}>
-          <div className="flex items-center gap-2 text-desktop-text-primary">
-            <FileIcon path={activeFile.path} />
-            <span className="truncate text-xs font-semibold">{activeFile.name}</span>
-          </div>
-          <div className="mt-1 break-all text-[10px] text-desktop-text-secondary">
-            {activeFile.path}
-          </div>
-        </ContextSection>
-      )}
-
-      <ContextSection title={t.featureExplorer.selectedFileSignals}>
-        <div className="space-y-2">
-          <div>
-            <div className="text-[10px] font-medium text-desktop-text-secondary">{t.featureExplorer.sessionEvidence}</div>
-            <div className="mt-1 rounded-sm border border-desktop-border bg-desktop-bg-secondary px-2 py-1.5 text-[11px] text-desktop-text-secondary">
-              {activeFile ? t.featureExplorer.pendingImplementation : t.featureExplorer.noFilesSelected}
-            </div>
-          </div>
-          <div>
-            <div className="text-[10px] font-medium text-desktop-text-secondary">{t.featureExplorer.toolHistory}</div>
-            <div className="mt-1 rounded-sm border border-desktop-border bg-desktop-bg-secondary px-2 py-1.5 text-[11px] text-desktop-text-secondary">
-              {activeFile ? t.featureExplorer.pendingImplementation : t.featureExplorer.noFilesSelected}
-            </div>
-          </div>
-          <div>
-            <div className="text-[10px] font-medium text-desktop-text-secondary">{t.featureExplorer.promptHistory}</div>
-            <div className="mt-1 rounded-sm border border-desktop-border bg-desktop-bg-secondary px-2 py-1.5 text-[11px] text-desktop-text-secondary">
-              {activeFile ? t.featureExplorer.pendingImplementation : t.featureExplorer.noFilesSelected}
-            </div>
-          </div>
-        </div>
-      </ContextSection>
-
-      {featureDetail ? (
-        <ContextSection title={t.featureExplorer.sourceFilesLabel}>
-          <div className="space-y-1">
-            {featureDetail.sourceFiles.map((sourceFile) => (
-              <div
-                key={sourceFile}
-                className="rounded-sm border border-desktop-border bg-desktop-bg-secondary px-2 py-1.5 text-[11px] text-desktop-text-secondary"
-              >
-                {sourceFile}
-              </div>
-            ))}
-          </div>
-        </ContextSection>
-      ) : null}
-
-      {featureDetail && featureDetail.relatedFeatures.length > 0 && (
-        <ContextSection title={t.featureExplorer.relatedFiles}>
-          <div className="space-y-1">
-            {featureDetail.relatedFeatures.map((relId) => (
-              <div
-                key={relId}
-                className="rounded-sm border border-desktop-border bg-desktop-bg-secondary px-2 py-1.5 text-[11px] text-desktop-text-secondary"
-              >
-                {relId}
-              </div>
-            ))}
-          </div>
-        </ContextSection>
-      )}
-    </div>
-  );
-}
-
-function ScreenshotPanel({
-  featureDetail,
-  t,
-}: {
-  featureDetail: FeatureDetail | null;
-  t: ReturnType<typeof useTranslation>["t"];
-}) {
-  if (!featureDetail) {
-    return <div className="text-xs text-desktop-text-secondary">-</div>;
-  }
-
-  return (
-    <ContextSection title={t.featureExplorer.screenshotTab}>
-      <div className="space-y-2">
-        <div className="text-[11px] text-desktop-text-secondary">{t.featureExplorer.screenshotComingSoon}</div>
-        <div className="rounded-sm border border-desktop-border bg-desktop-bg-secondary px-2.5 py-2 text-[11px] text-desktop-text-secondary">
-          {featureDetail.pageDetails?.length || featureDetail.pages.length > 0
-            ? t.featureExplorer.pendingImplementation
-            : t.featureExplorer.noPagesDeclared}
-        </div>
-      </div>
-    </ContextSection>
-  );
-}
-
-/* ── API Panel ── */
-function ApiPanel({
-  featureDetail,
-  t,
-  onRequest,
-}: {
-  featureDetail: FeatureDetail | null;
-  t: ReturnType<typeof useTranslation>["t"];
-  onRequest: (method: string, path: string) => Promise<string>;
-}) {
-  const [selectedApiIdx, setSelectedApiIdx] = useState(0);
-  const [responseBody, setResponseBody] = useState("");
-  const [requestState, setRequestState] = useState<"idle" | "loading" | "done" | "error">("idle");
-
-  const fallbackApiDetails: ApiDetail[] = featureDetail?.apis.map((declaration): ApiDetail => {
-    const [method, endpoint] = declaration.split(/\s+/, 2);
-    if (endpoint) {
-      return { group: "", method, endpoint, description: "" };
-    }
-    return { group: "", method: "GET", endpoint: declaration, description: "" };
-  }) ?? [];
-  const apiDetails: ApiDetail[] = featureDetail?.apiDetails ?? fallbackApiDetails;
-
-  if (!featureDetail || apiDetails.length === 0) {
-    return <div className="text-xs text-desktop-text-secondary">-</div>;
-  }
-
-  const selectedApi: ApiDetail = apiDetails[selectedApiIdx] ?? apiDetails[0] ?? {
-    group: "",
-    method: "GET",
-    endpoint: "",
-    description: "",
-  };
-  const method = selectedApi.method;
-  const apiPath = selectedApi.endpoint;
-  const nextjsSources: string[] = [...new Set(selectedApi.nextjsSourceFiles ?? [])];
-  const rustSources: string[] = [...new Set(selectedApi.rustSourceFiles ?? [])];
-  const implementationSourceGroups = (selectedApi.implementationSources ?? [])
-    .map((entry) => ({
-      label: entry.label,
-      sourceFiles: [...new Set(entry.sourceFiles)],
-    }))
-    .filter((entry) => entry.sourceFiles.length > 0);
-  const resolvedImplementationSourceGroups = implementationSourceGroups.length > 0
-    ? implementationSourceGroups
-    : [
-      ...(nextjsSources.length > 0 ? [{ label: "nextjs", sourceFiles: nextjsSources }] : []),
-      ...(rustSources.length > 0 ? [{ label: "rust", sourceFiles: rustSources }] : []),
-    ];
-
-  const methodTone = method === "GET"
-    ? "border-emerald-300/70 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/12 dark:text-emerald-200"
-    : method === "POST"
-      ? "border-sky-300/70 bg-sky-50 text-sky-700 dark:border-sky-500/30 dark:bg-sky-500/12 dark:text-sky-200"
-      : "border-amber-300/70 bg-amber-50 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/12 dark:text-amber-200";
-
-  const handleRequest = async () => {
-    setRequestState("loading");
-    try {
-      const result = await onRequest(method, apiPath);
-      setResponseBody(result);
-      setRequestState("done");
-    } catch {
-      setRequestState("error");
-    }
-  };
-
-  return (
-    <div className="space-y-2">
-      <ContextSection title={t.featureExplorer.apiTab}>
-        <select
-          value={selectedApiIdx}
-          onChange={(e) => {
-            setSelectedApiIdx(Number(e.target.value));
-            setResponseBody("");
-            setRequestState("idle");
-          }}
-          className="w-full rounded-sm border border-desktop-border bg-desktop-bg-secondary px-2 py-1.5 text-[11px] text-desktop-text-primary outline-none"
-        >
-          {apiDetails.map((api, idx) => (
-            <option key={`${api.method}-${api.endpoint}`} value={idx}>{`${api.method} ${api.endpoint}`}</option>
-          ))}
-        </select>
-        <div className="mt-2 flex items-center gap-2 text-[11px]">
-          <span className={`rounded-sm border px-2 py-0.5 font-semibold ${methodTone}`}>
-            {method}
-          </span>
-          <code className="truncate text-desktop-text-secondary">{apiPath}</code>
-        </div>
-        {selectedApi.group || selectedApi.description || resolvedImplementationSourceGroups.length > 0 ? (
-          <div className="mt-2 rounded-sm border border-desktop-border bg-desktop-bg-secondary px-2.5 py-2">
-            {selectedApi.group ? (
-              <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-desktop-text-secondary">
-                {selectedApi.group}
-              </div>
-            ) : null}
-            {selectedApi.description ? (
-              <div className="mt-1 text-[11px] leading-5 text-desktop-text-secondary">
-                {selectedApi.description}
-              </div>
-            ) : null}
-            {resolvedImplementationSourceGroups.map((entry) => (
-              <div key={entry.label} className="mt-2">
-                <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-desktop-text-secondary">
-                  {humanizeImplementationLabel(entry.label)}
-                </div>
-                <div className="mt-1 space-y-1">
-                  {entry.sourceFiles.map((sourceFile) => (
-                    <div key={sourceFile} className="break-all text-[11px] text-desktop-text-secondary">
-                      {sourceFile}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : null}
-      </ContextSection>
-
-      <ContextSection title={t.featureExplorer.requestBody}>
-        <div className="flex items-center gap-1.5">
-          <button
-            onClick={handleRequest}
-            className="inline-flex items-center gap-1 rounded-sm border border-desktop-accent bg-desktop-bg-active px-2 py-1 text-[10px] text-desktop-text-primary"
-          >
-            <Braces className="h-3 w-3" />
-            {t.featureExplorer.tryLiveRequest}
-          </button>
-          <span className="text-[10px] text-desktop-text-secondary">{requestState}</span>
-        </div>
-      </ContextSection>
-
-      {responseBody && (
-        <ContextSection title={t.featureExplorer.response}>
-          <pre className="overflow-x-auto rounded-sm border border-desktop-border bg-desktop-bg-secondary p-2 text-[11px] leading-5 text-desktop-text-primary">
-            {responseBody}
-          </pre>
-        </ContextSection>
-      )}
-    </div>
   );
 }
 
@@ -1415,8 +1622,9 @@ function TreeNodeRow({
   activeFileId,
   selectedFileIds,
   treeNodeStats,
+  selectableFileIdsByNode,
   onToggleNode,
-  onToggleFileSelection,
+  onToggleNodeSelection,
   onSetActiveFile,
 }: {
   node: FileTreeNode;
@@ -1425,8 +1633,9 @@ function TreeNodeRow({
   activeFileId: string;
   selectedFileIds: string[];
   treeNodeStats: Record<string, TreeNodeStat>;
+  selectableFileIdsByNode: Record<string, string[]>;
   onToggleNode: (nodeId: string) => void;
-  onToggleFileSelection: (fileId: string) => void;
+  onToggleNodeSelection: (nodeId: string) => void;
   onSetActiveFile: (fileId: string) => void;
 }) {
   const paddingLeft = 12 + depth * 16;
@@ -1434,23 +1643,33 @@ function TreeNodeRow({
 
   if (node.kind === "folder") {
     const isExpanded = expandedIds[node.id] ?? true;
+    const descendantFileIds = selectableFileIdsByNode[node.id] ?? [];
+    const isSelected = descendantFileIds.length > 0 && descendantFileIds.every((fileId) => selectedFileIds.includes(fileId));
 
     return (
       <>
         <div className="grid grid-cols-[minmax(0,1fr)_56px_72px_96px] items-center px-3 py-1 text-xs text-desktop-text-primary">
-          <button
-            onClick={() => onToggleNode(node.id)}
-            className="flex items-center gap-1.5 rounded-sm px-1 py-0.5 text-left hover:bg-desktop-bg-active"
-            style={{ paddingLeft }}
-          >
-            {isExpanded ? (
-              <ChevronDown className="h-3.5 w-3.5 text-desktop-text-secondary" />
-            ) : (
-              <ChevronRight className="h-3.5 w-3.5 text-desktop-text-secondary" />
-            )}
-            <Folder className="h-3.5 w-3.5 text-amber-400" />
-            <span className="text-[12px]">{node.name}</span>
-          </button>
+          <div className="flex items-center gap-1.5" style={{ paddingLeft }}>
+            <input
+              type="checkbox"
+              data-testid={`feature-tree-select-${node.id}`}
+              checked={isSelected}
+              onChange={() => onToggleNodeSelection(node.id)}
+              className="h-3.5 w-3.5 rounded border-black/15 bg-transparent dark:border-white/20"
+            />
+            <button
+              onClick={() => onToggleNode(node.id)}
+              className="flex min-w-0 items-center gap-1.5 rounded-sm px-1 py-0.5 text-left hover:bg-desktop-bg-active"
+            >
+              {isExpanded ? (
+                <ChevronDown className="h-3.5 w-3.5 text-desktop-text-secondary" />
+              ) : (
+                <ChevronRight className="h-3.5 w-3.5 text-desktop-text-secondary" />
+              )}
+              <Folder className="h-3.5 w-3.5 text-amber-400" />
+              <span className="truncate text-[12px]">{node.name}</span>
+            </button>
+          </div>
           <div data-testid={`feature-tree-changes-${node.id}`} className="text-[11px] text-desktop-text-secondary">
             {stat?.changes ? stat.changes : "-"}
           </div>
@@ -1472,8 +1691,9 @@ function TreeNodeRow({
               activeFileId={activeFileId}
               selectedFileIds={selectedFileIds}
               treeNodeStats={treeNodeStats}
+              selectableFileIdsByNode={selectableFileIdsByNode}
               onToggleNode={onToggleNode}
-              onToggleFileSelection={onToggleFileSelection}
+              onToggleNodeSelection={onToggleNodeSelection}
               onSetActiveFile={onSetActiveFile}
             />
           ))}
@@ -1493,8 +1713,9 @@ function TreeNodeRow({
       <div className="flex items-center gap-1.5" style={{ paddingLeft }}>
         <input
           type="checkbox"
+          data-testid={`feature-tree-select-${node.id}`}
           checked={isSelected}
-          onChange={() => onToggleFileSelection(node.id)}
+          onChange={() => onToggleNodeSelection(node.id)}
           className="h-3.5 w-3.5 rounded border-black/15 bg-transparent dark:border-white/20"
         />
         <button onClick={() => onSetActiveFile(node.id)} className="flex min-w-0 items-center gap-1.5 text-left">
@@ -1505,29 +1726,6 @@ function TreeNodeRow({
       <div className="text-[11px] text-desktop-text-secondary">{stat?.changes ?? "-"}</div>
       <div className="text-[11px] text-desktop-text-secondary">{stat?.sessions ?? "-"}</div>
       <div className="text-[11px] text-desktop-text-secondary">{stat?.updatedAt ? formatShortDate(stat.updatedAt) : "-"}</div>
-    </div>
-  );
-}
-
-/* ── Shared components ── */
-function ContextSection({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <section className="rounded-sm border border-desktop-border bg-desktop-bg-primary p-3">
-      <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-desktop-text-secondary">
-        {title}
-      </div>
-      {children}
-    </section>
-  );
-}
-
-function MetricCell({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="bg-desktop-bg-primary px-2.5 py-2">
-      <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-desktop-text-secondary">
-        {label}
-      </div>
-      <div className="mt-1 text-[12px] font-medium text-desktop-text-primary">{value}</div>
     </div>
   );
 }

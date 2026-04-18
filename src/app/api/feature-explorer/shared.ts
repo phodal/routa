@@ -1,21 +1,30 @@
 import * as fs from "fs";
 import * as path from "path";
-import { execFileSync } from "child_process";
 import * as yaml from "js-yaml";
 
 import featureSurfaceMetadata from "@/core/spec/feature-surface-metadata";
+import {
+  collectMatchingTranscriptSessions,
+  commandFromUnknown,
+  commandOutputFromUnknown,
+} from "./transcript-sessions";
+import type { TranscriptProvider } from "./transcript-sessions";
 
 const { buildApiLookupKey, normalizeSurfaceMetadata } = featureSurfaceMetadata;
 
 export { isContextError, parseContext, resolveRepoRoot } from "../harness/hooks/shared";
 export type { HarnessContext as FeatureExplorerContext } from "../harness/hooks/shared";
+export type { TranscriptProvider } from "./transcript-sessions";
 
 const FEATURE_TREE_PATH = "docs/product-specs/FEATURE_TREE.md";
 const FEATURE_TREE_INDEX_PATH = "docs/product-specs/feature-tree.index.json";
 const APP_ROOT = "src/app";
-const MAX_TRANSCRIPT_FILES = 200;
-const MAX_TRANSCRIPT_FILE_SIZE = 10 * 1024 * 1024;
-const BROAD_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
+const MAX_FILE_SIGNAL_SESSIONS = 6;
+const MAX_FILE_SIGNAL_TOOLS = 8;
+const MAX_FILE_SIGNAL_PROMPTS = 6;
+const MAX_FILE_SIGNAL_CHANGED_FILES = 12;
+const MAX_FILE_SIGNAL_FAILED_TOOLS = 6;
+const MAX_FILE_SIGNAL_REPEATED_COMMANDS = 6;
 const IGNORED_PATHS = new Set([".git", "node_modules", ".next", "dist", "out", "target"]);
 
 type FallbackSourceDir = string;
@@ -176,26 +185,45 @@ export interface FileStat {
   updatedAt: string;
 }
 
+export interface FileSessionSignal {
+  provider: TranscriptProvider;
+  sessionId: string;
+  updatedAt: string;
+  promptSnippet: string;
+  promptHistory: string[];
+  toolNames: string[];
+  changedFiles?: string[];
+  resumeCommand?: string;
+  diagnostics?: FileSessionDiagnostics;
+}
+
+export interface FileSignal {
+  sessions: FileSessionSignal[];
+  toolHistory: string[];
+  promptHistory: string[];
+}
+
+export interface FileSessionToolFailure {
+  toolName: string;
+  command?: string;
+  message: string;
+}
+
+export interface FileSessionDiagnostics {
+  toolCallCount: number;
+  failedToolCallCount: number;
+  toolCallsByName: Record<string, number>;
+  readFiles: string[];
+  writtenFiles: string[];
+  repeatedReadFiles: string[];
+  repeatedCommands: string[];
+  failedTools: FileSessionToolFailure[];
+}
+
 export interface FeatureStats {
   featureStats: Record<string, FeatureTreeSummary>;
   fileStats: Record<string, FileStat>;
-}
-
-interface TranscriptCandidate {
-  transcriptPath: string;
-  modifiedMs: number;
-}
-
-interface ParsedFeatureTranscript {
-  sessionId: string;
-  cwd: string;
-  updatedAt: string;
-  events: unknown[];
-}
-
-interface RepoIdentity {
-  topLevel: string;
-  commonDir: string;
+  fileSignals: Record<string, FileSignal>;
 }
 
 export interface FileTreeNode {
@@ -208,6 +236,10 @@ export interface FileTreeNode {
 
 function toPosix(value: string): string {
   return value.replace(/\\/g, "/");
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function extractFrontmatter(raw: string): string | null {
@@ -1100,75 +1132,252 @@ function collectFileValues(value: unknown, out: Set<string>): void {
   }
 }
 
-function commandFromUnknown(event: unknown): string | undefined {
-  if (!event || typeof event !== "object") {
-    return undefined;
+function appendLimitedUnique(target: string[], value: string, limit: number): void {
+  if (!value || target.includes(value) || target.length >= limit) {
+    return;
   }
-
-  const map = event as Record<string, unknown>;
-  const directCommand = stringifyCommand(map.command) ?? stringifyCommand(map.cmd);
-  if (directCommand) return directCommand;
-
-  if (typeof map.tool_input === "object" && map.tool_input !== null) {
-    const toolInput = map.tool_input as Record<string, unknown>;
-    return stringifyCommand(toolInput.command) ?? stringifyCommand(toolInput.cmd);
-  }
-
-  return undefined;
+  target.push(value);
 }
 
-function commandOutputFromUnknown(event: unknown): string | undefined {
-  if (!event || typeof event !== "object") {
-    return undefined;
-  }
-
-  const map = event as Record<string, unknown>;
-  const directOutput = firstString(
-    map.aggregated_output,
-    map.output,
-    map.stdout,
-    map.stderr,
-    map.result,
-  );
-  if (directOutput) {
-    return directOutput;
-  }
-
-  if (typeof map.tool_output === "object" && map.tool_output !== null) {
-    const toolOutput = map.tool_output as Record<string, unknown>;
-    return firstString(
-      toolOutput.aggregated_output,
-      toolOutput.output,
-      toolOutput.stdout,
-      toolOutput.stderr,
-      toolOutput.result,
-    );
-  }
-
-  return undefined;
-}
-
-function stringifyCommand(value: unknown): string | undefined {
-  if (typeof value === "string") {
-    return value;
-  }
-
-  if (Array.isArray(value)) {
-    const parts = value.filter((part): part is string => typeof part === "string");
-    return parts.length > 0 ? parts.join(" ") : undefined;
-  }
-
-  return undefined;
-}
-
-function firstString(...values: unknown[]): string | undefined {
+function firstNonEmptyString(...values: unknown[]): string | undefined {
   for (const value of values) {
     if (typeof value === "string" && value.trim().length > 0) {
-      return value;
+      return value.trim();
+    }
+  }
+  return undefined;
+}
+
+function normalizeCommandSignature(command: string): string {
+  return command.replace(/\s+/g, " ").trim();
+}
+
+function truncateDiagnosticText(text: string, maxLength: number = 220): string {
+  const normalized = text.replace(/\s+/g, " ").trim();
+  if (normalized.length <= maxLength) {
+    return normalized;
+  }
+  return `${normalized.slice(0, maxLength - 3)}...`;
+}
+
+function unwrapShellCommand(command: string): string {
+  const tokens = shellLikeSplit(command);
+  if (tokens.length < 3) {
+    return command;
+  }
+
+  const executable = path.posix.basename(tokens[0] ?? "");
+  const shellLike = executable === "sh" || executable === "bash" || executable === "zsh";
+  if (!shellLike) {
+    return command;
+  }
+
+  const cFlagIndex = tokens.findIndex((token) => token === "-c" || token === "-lc");
+  if (cFlagIndex >= 0 && tokens[cFlagIndex + 1]) {
+    return tokens.slice(cFlagIndex + 1).join(" ");
+  }
+
+  return command;
+}
+
+function toolNameFromFeatureEvent(event: unknown): string | undefined {
+  if (!isRecord(event)) {
+    return undefined;
+  }
+
+  if (event.type === "function_call" && typeof event.name === "string") {
+    return event.name;
+  }
+
+  if (typeof event.tool_name === "string") {
+    return event.tool_name;
+  }
+
+  if (event.type === "exec_command_end" || event.type === "exec_command_begin") {
+    return "exec_command";
+  }
+
+  return commandFromUnknown(event) ? "exec_command" : undefined;
+}
+
+function extractReadCandidatesFromCommand(command: string): string[] {
+  const innerCommand = unwrapShellCommand(command);
+  const tokens = shellLikeSplit(innerCommand);
+  if (tokens.length === 0) {
+    return [];
+  }
+
+  const executable = path.posix.basename(tokens[0] ?? "");
+  const readCommands = new Set(["bat", "cat", "head", "less", "more", "nl", "sed", "tail"]);
+  if (!readCommands.has(executable)) {
+    return [];
+  }
+
+  return tokens.slice(1).filter((token) => token !== "--" && !token.startsWith("-"));
+}
+
+function collectReadFilesFromToolLike(event: unknown, repoRoot: string, sessionCwd: string): string[] {
+  const candidates = new Set<string>();
+  const toolName = toolNameFromFeatureEvent(event)?.toLowerCase() ?? "";
+  const command = commandFromUnknown(event);
+  const directReadTool = toolName.includes("read")
+    || toolName === "open"
+    || toolName === "view"
+    || toolName === "fs/read_text_file";
+
+  if (directReadTool) {
+    collectFileValues(event, candidates);
+  }
+
+  if (command) {
+    for (const token of extractReadCandidatesFromCommand(command)) {
+      candidates.add(token);
     }
   }
 
-  return undefined;
+  const readFiles: string[] = [];
+  for (const candidate of candidates) {
+    const normalized = normalizeRepoRelative(repoRoot, candidate, sessionCwd);
+    if (normalized && !readFiles.includes(normalized)) {
+      readFiles.push(normalized);
+    }
+  }
+
+  return readFiles;
+}
+
+function detectFailedToolCall(event: unknown): FileSessionToolFailure | null {
+  if (!isRecord(event)) {
+    return null;
+  }
+
+  const exitCode = typeof event.exit_code === "number"
+    ? event.exit_code
+    : typeof event.exitCode === "number"
+      ? event.exitCode
+      : undefined;
+  const status = typeof event.status === "string" ? event.status.trim().toLowerCase() : "";
+  const failed = (typeof exitCode === "number" && exitCode !== 0)
+    || status === "failed"
+    || status === "error";
+
+  if (!failed) {
+    return null;
+  }
+
+  const toolName = toolNameFromFeatureEvent(event) ?? "tool";
+  const message = firstNonEmptyString(
+    event.stderr,
+    event.error,
+    event.message,
+    commandOutputFromUnknown(event),
+  ) ?? (typeof exitCode === "number" ? `Exit code ${exitCode}` : "Tool call failed");
+
+  return {
+    toolName,
+    ...(commandFromUnknown(event) ? { command: truncateDiagnosticText(commandFromUnknown(event) ?? "") } : {}),
+    message: truncateDiagnosticText(message),
+  };
+}
+
+function deriveTranscriptSessionDiagnostics(
+  transcript: ReturnType<typeof collectMatchingTranscriptSessions>[number],
+  repoRoot: string,
+  writtenFiles: string[],
+): FileSessionDiagnostics {
+  const toolCallsByName: Record<string, number> = {};
+  const readCounts = new Map<string, number>();
+  const repeatedCommandCounts = new Map<string, number>();
+  const failedTools: FileSessionToolFailure[] = [];
+  const pendingExecRequests = new Map<string, number>();
+  let failedToolCallCount = 0;
+
+  const incrementToolCall = (toolName: string) => {
+    toolCallsByName[toolName] = (toolCallsByName[toolName] ?? 0) + 1;
+  };
+
+  const incrementCommand = (signature: string) => {
+    if (!signature) {
+      return;
+    }
+    repeatedCommandCounts.set(signature, (repeatedCommandCounts.get(signature) ?? 0) + 1);
+  };
+
+  const appendFailure = (failure: FileSessionToolFailure | null) => {
+    if (!failure) {
+      return;
+    }
+    failedToolCallCount += 1;
+    if (failedTools.length < MAX_FILE_SIGNAL_FAILED_TOOLS) {
+      failedTools.push(failure);
+    }
+  };
+
+  for (const event of transcript.events) {
+    const toolName = toolNameFromFeatureEvent(event);
+    const command = commandFromUnknown(event);
+    const commandSignature = command ? normalizeCommandSignature(unwrapShellCommand(command)) : "";
+
+    for (const readFile of collectReadFilesFromToolLike(event, repoRoot, transcript.cwd)) {
+      readCounts.set(readFile, (readCounts.get(readFile) ?? 0) + 1);
+    }
+
+    if (!isRecord(event)) {
+      continue;
+    }
+
+    if (event.type === "function_call") {
+      if (toolName) {
+        incrementToolCall(toolName);
+      }
+      if (toolName === "exec_command" && commandSignature) {
+        pendingExecRequests.set(commandSignature, (pendingExecRequests.get(commandSignature) ?? 0) + 1);
+      }
+      incrementCommand(commandSignature);
+      appendFailure(detectFailedToolCall(event));
+      continue;
+    }
+
+    if (event.type === "exec_command_begin" || event.type === "exec_command_end") {
+      const pending = commandSignature ? (pendingExecRequests.get(commandSignature) ?? 0) : 0;
+      if (pending > 0 && commandSignature) {
+        pendingExecRequests.set(commandSignature, pending - 1);
+      } else {
+        incrementToolCall("exec_command");
+        incrementCommand(commandSignature);
+      }
+      appendFailure(detectFailedToolCall(event));
+      continue;
+    }
+
+    if (toolName) {
+      incrementToolCall(toolName);
+      incrementCommand(commandSignature);
+      appendFailure(detectFailedToolCall(event));
+    }
+  }
+
+  const sortedReadFiles = [...readCounts.keys()].sort((left, right) => left.localeCompare(right));
+  const repeatedReadFiles = [...readCounts.entries()]
+    .filter(([, count]) => count > 1)
+    .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
+    .map(([filePath, count]) => `${filePath} x${count}`);
+  const repeatedCommands = [...repeatedCommandCounts.entries()]
+    .filter(([, count]) => count > 1)
+    .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
+    .slice(0, MAX_FILE_SIGNAL_REPEATED_COMMANDS)
+    .map(([commandText, count]) => `${truncateDiagnosticText(commandText, 120)} x${count}`);
+
+  return {
+    toolCallCount: Object.values(toolCallsByName).reduce((sum, count) => sum + count, 0),
+    failedToolCallCount,
+    toolCallsByName,
+    readFiles: sortedReadFiles,
+    writtenFiles: [...new Set(writtenFiles)].sort((left, right) => left.localeCompare(right)),
+    repeatedReadFiles,
+    repeatedCommands,
+    failedTools,
+  };
 }
 
 function sanitizePathCandidate(candidate: string): string | null {
@@ -1329,341 +1538,10 @@ function collectChangedFilesFromToolLike(event: unknown, repoRoot: string, sessi
   return changed;
 }
 
-function collectTranscriptCandidates(): TranscriptCandidate[] {
-  const roots = [
-    path.join(process.env.HOME ?? "", ".codex", "sessions"),
-    path.join(process.env.HOME ?? "", ".qoder", "projects"),
-    path.join(process.env.HOME ?? "", ".augment", "sessions"),
-    path.join(process.env.HOME ?? "", ".claude", "projects"),
-  ];
-
-  if (process.env.CLAUDE_CONFIG_DIR) {
-    roots.push(path.join(process.env.CLAUDE_CONFIG_DIR, "projects"));
-  }
-
-  const queue = roots.filter(Boolean);
-  const visited = new Set<string>();
-  const collected: TranscriptCandidate[] = [];
-
-  while (queue.length > 0) {
-    const current = queue.shift();
-    if (!current || visited.has(current)) {
-      continue;
-    }
-    visited.add(current);
-
-    let stat: fs.Stats;
-    try {
-      stat = fs.statSync(current);
-    } catch {
-      continue;
-    }
-
-    if (!stat.isDirectory()) {
-      const lower = current.toLowerCase();
-      if ((lower.endsWith(".jsonl") || lower.endsWith(".json")) && stat.size < MAX_TRANSCRIPT_FILE_SIZE) {
-        collected.push({ transcriptPath: current, modifiedMs: stat.mtimeMs });
-      }
-      continue;
-    }
-
-    let entries: string[];
-    try {
-      entries = fs.readdirSync(current);
-    } catch {
-      continue;
-    }
-
-    for (const entry of entries) {
-      if (IGNORED_PATHS.has(entry)) {
-        continue;
-      }
-      queue.push(path.join(current, entry));
-    }
-  }
-
-  return collected.sort((left, right) => right.modifiedMs - left.modifiedMs);
-}
-
-function parseTranscriptUpdatedAt(root: Record<string, unknown>): string {
-  const candidates = [
-    root.last_seen_at_ms,
-    root.updated_at,
-    root.updatedAt,
-    root.timestamp,
-    root.created_at,
-    root.createdAt,
-  ];
-
-  for (const value of candidates) {
-    if (typeof value === "number") {
-      const parsed = new Date(value);
-      if (!Number.isNaN(parsed.getTime())) {
-        return parsed.toISOString().slice(0, 19);
-      }
-    }
-
-    if (typeof value === "string") {
-      const parsed = new Date(value);
-      if (!Number.isNaN(parsed.getTime())) {
-        return value.slice(0, 19);
-      }
-    }
-  }
-
-  return "";
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function parseTranscriptEntries(transcriptPath: string, content: string): Record<string, unknown>[] {
-  const lines = content.split(/\r?\n/).filter(Boolean);
-  const payloads: Record<string, unknown>[] = [];
-
-  if (transcriptPath.endsWith(".jsonl")) {
-    for (const line of lines) {
-      try {
-        const parsed = JSON.parse(line);
-        if (isRecord(parsed)) {
-          payloads.push(parsed);
-        }
-      } catch {
-        continue;
-      }
-    }
-    return payloads;
-  }
-
-  try {
-    const parsed = JSON.parse(content);
-    if (isRecord(parsed)) {
-      payloads.push(parsed);
-      return payloads;
-    }
-  } catch {
-    // Fallback to line-oriented parsing below.
-  }
-
-  for (const line of lines) {
-    try {
-      const parsed = JSON.parse(line);
-      if (isRecord(parsed)) {
-        payloads.push(parsed);
-      }
-    } catch {
-      continue;
-    }
-  }
-
-  return payloads;
-}
-
-function extractEventsFromTranscript(root: unknown): unknown[] {
-  if (!root || typeof root !== "object") {
-    return [];
-  }
-
-  const map = root as Record<string, unknown>;
-  const events: unknown[] = [];
-
-  if (Array.isArray(map.events)) {
-    events.push(...map.events);
-  }
-
-  if (Array.isArray(map.tool_uses)) {
-    events.push(...map.tool_uses);
-  }
-
-  if (Array.isArray(map.recovered_events)) {
-    events.push(...map.recovered_events);
-  }
-
-  if (Array.isArray(map.tool_calls)) {
-    events.push(...map.tool_calls);
-  }
-
-  if (events.length === 0) {
-    events.push(root);
-  }
-
-  return events;
-}
-
-function canonicalizePath(value: string): string {
-  try {
-    return fs.realpathSync.native(value);
-  } catch {
-    return path.resolve(value);
-  }
-}
-
-function gitRevParsePath(cwd: string, args: string[]): string | null {
-  try {
-    const raw = execFileSync("git", ["-C", cwd, ...args], {
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-    }).trim();
-    if (!raw) {
-      return null;
-    }
-    return path.isAbsolute(raw) ? canonicalizePath(raw) : canonicalizePath(path.join(cwd, raw));
-  } catch {
-    return null;
-  }
-}
-
-function resolveRepoIdentity(repoRoot: string): RepoIdentity | null {
-  const topLevel = gitRevParsePath(repoRoot, ["rev-parse", "--show-toplevel"]);
-  if (!topLevel) {
-    return null;
-  }
-
-  const commonDir = gitRevParsePath(repoRoot, ["rev-parse", "--git-common-dir"]) ?? canonicalizePath(path.join(topLevel, ".git"));
-  return {
-    topLevel,
-    commonDir,
-  };
-}
-
-function isSameOrDescendant(basePath: string, candidatePath: string): boolean {
-  const relative = path.relative(basePath, candidatePath);
-  return relative === "" || (!relative.startsWith("../") && !path.isAbsolute(relative));
-}
-
-function repoPathMatches(
-  repoRoot: string,
-  sessionCwd: string,
-  repoIdentity: RepoIdentity | null,
-  identityCache: Map<string, RepoIdentity | null>,
-): boolean {
-  const normalizedRepoRoot = canonicalizePath(repoRoot);
-  const normalizedSessionCwd = canonicalizePath(sessionCwd);
-
-  if (
-    normalizedRepoRoot === normalizedSessionCwd
-    || isSameOrDescendant(normalizedRepoRoot, normalizedSessionCwd)
-    || isSameOrDescendant(normalizedSessionCwd, normalizedRepoRoot)
-  ) {
-    return true;
-  }
-
-  if (!repoIdentity) {
-    return false;
-  }
-
-  const cached = identityCache.get(normalizedSessionCwd);
-  const sessionIdentity = cached !== undefined ? cached : resolveRepoIdentity(normalizedSessionCwd);
-  if (cached === undefined) {
-    identityCache.set(normalizedSessionCwd, sessionIdentity);
-  }
-
-  return !!sessionIdentity && (
-    sessionIdentity.topLevel === repoIdentity.topLevel
-    || sessionIdentity.commonDir === repoIdentity.commonDir
-  );
-}
-
-function parseTranscriptSession(transcriptPath: string, modifiedMs: number): ParsedFeatureTranscript | null {
-  let content: string;
-  try {
-    content = fs.readFileSync(transcriptPath, "utf8");
-  } catch {
-    return null;
-  }
-
-  const entries = parseTranscriptEntries(transcriptPath, content);
-  if (entries.length === 0) {
-    return null;
-  }
-
-  let sessionId = path.basename(transcriptPath);
-  let cwd = "";
-  let updatedAt = new Date(modifiedMs).toISOString().slice(0, 19);
-  const events: unknown[] = [];
-
-  for (const entry of entries) {
-    const payload = isRecord(entry.payload) ? entry.payload : undefined;
-    const topLevelType = typeof entry.type === "string" ? entry.type : undefined;
-
-    if (topLevelType === "session_meta" && payload) {
-      sessionId = firstString(
-        payload.id,
-        payload.session_id,
-        payload.sessionId,
-        entry.session_id,
-        entry.sessionId,
-      ) ?? sessionId;
-      cwd = firstString(payload.cwd, entry.cwd) ?? cwd;
-      updatedAt = parseTranscriptUpdatedAt(payload) || parseTranscriptUpdatedAt(entry) || updatedAt;
-      continue;
-    }
-
-    sessionId = firstString(
-      entry.session_id,
-      entry.sessionId,
-      payload?.session_id,
-      payload?.sessionId,
-    ) ?? sessionId;
-    cwd = firstString(entry.cwd, payload?.cwd) ?? cwd;
-    updatedAt = parseTranscriptUpdatedAt(entry) || parseTranscriptUpdatedAt(payload ?? {}) || updatedAt;
-
-    if ((topLevelType === "event_msg" || topLevelType === "response_item") && payload) {
-      events.push(payload);
-      continue;
-    }
-
-    const nestedEvents = extractEventsFromTranscript(entry);
-    if (nestedEvents.length > 0 && !(nestedEvents.length === 1 && nestedEvents[0] === entry)) {
-      events.push(...nestedEvents);
-    }
-  }
-
-  if (!cwd) {
-    return null;
-  }
-
-  return {
-    sessionId,
-    cwd,
-    updatedAt,
-    events,
-  };
-}
-
-function collectMatchingTranscriptSessions(repoRoot: string): ParsedFeatureTranscript[] {
-  const now = Date.now();
-  const repoIdentity = resolveRepoIdentity(repoRoot);
-  const identityCache = new Map<string, RepoIdentity | null>();
-  const matched: ParsedFeatureTranscript[] = [];
-
-  for (const candidate of collectTranscriptCandidates()) {
-    if (matched.length >= MAX_TRANSCRIPT_FILES) {
-      break;
-    }
-    if (now - candidate.modifiedMs > BROAD_WINDOW_MS) {
-      continue;
-    }
-
-    const transcript = parseTranscriptSession(candidate.transcriptPath, candidate.modifiedMs);
-    if (!transcript) {
-      continue;
-    }
-
-    if (!repoPathMatches(repoRoot, transcript.cwd, repoIdentity, identityCache)) {
-      continue;
-    }
-
-    matched.push(transcript);
-  }
-
-  return matched;
-}
-
 export function collectFeatureSessionStats(repoRoot: string, featureTree: FeatureTree): FeatureStats {
   const featureStats: Record<string, FeatureTreeSummary> = {};
   const fileStats: Record<string, FileStat> = {};
+  const fileSignals: Record<string, FileSignal> = {};
 
   const featureSessionIds = new Map<string, Set<string>>();
   const featureChangedFiles = new Map<string, Set<string>>();
@@ -1687,6 +1565,12 @@ export function collectFeatureSessionStats(repoRoot: string, featureTree: Featur
       continue;
     }
 
+    const transcriptKey = `${transcript.provider}:${transcript.sessionId}`;
+    const changedFiles = [...changedFromTranscript]
+      .slice(0, MAX_FILE_SIGNAL_CHANGED_FILES)
+      .sort((left, right) => left.localeCompare(right));
+    const diagnostics = deriveTranscriptSessionDiagnostics(transcript, repoRoot, changedFiles);
+
     for (const changedFile of changedFromTranscript) {
       const fileEntry = fileStats[changedFile] ?? {
         changes: 0,
@@ -1699,6 +1583,37 @@ export function collectFeatureSessionStats(repoRoot: string, featureTree: Featur
         fileEntry.updatedAt = transcript.updatedAt;
       }
       fileStats[changedFile] = fileEntry;
+
+      const signalEntry = fileSignals[changedFile] ?? {
+        sessions: [],
+        toolHistory: [],
+        promptHistory: [],
+      };
+      if (
+        signalEntry.sessions.length < MAX_FILE_SIGNAL_SESSIONS
+        && !signalEntry.sessions.some(
+          (session) => `${session.provider}:${session.sessionId}` === transcriptKey,
+        )
+      ) {
+        signalEntry.sessions.push({
+          provider: transcript.provider,
+          sessionId: transcript.sessionId,
+          updatedAt: transcript.updatedAt,
+          promptSnippet: transcript.promptHistory[0] ?? "",
+          promptHistory: transcript.promptHistory.slice(0, MAX_FILE_SIGNAL_PROMPTS),
+          toolNames: transcript.toolHistory.slice(0, MAX_FILE_SIGNAL_TOOLS),
+          changedFiles,
+          diagnostics,
+          ...(transcript.resumeCommand ? { resumeCommand: transcript.resumeCommand } : {}),
+        });
+      }
+      for (const toolName of transcript.toolHistory) {
+        appendLimitedUnique(signalEntry.toolHistory, toolName, MAX_FILE_SIGNAL_TOOLS);
+      }
+      for (const prompt of transcript.promptHistory) {
+        appendLimitedUnique(signalEntry.promptHistory, prompt, MAX_FILE_SIGNAL_PROMPTS);
+      }
+      fileSignals[changedFile] = signalEntry;
 
       const surfaceLinks = parseFeatureSurfaceLinks(surfaceCatalog, changedFile);
 
@@ -1726,7 +1641,7 @@ export function collectFeatureSessionStats(repoRoot: string, featureTree: Featur
 
     for (const featureId of sessionFeatures) {
       const sessions = featureSessionIds.get(featureId) ?? new Set<string>();
-      sessions.add(transcript.sessionId);
+      sessions.add(transcriptKey);
       featureSessionIds.set(featureId, sessions);
 
       const changedFiles = featureChangedFiles.get(featureId) ?? new Set<string>();
@@ -1754,6 +1669,7 @@ export function collectFeatureSessionStats(repoRoot: string, featureTree: Featur
   return {
     featureStats,
     fileStats,
+    fileSignals,
   };
 }
 

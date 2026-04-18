@@ -27,6 +27,7 @@ export interface FeatureDetail {
   pages: string[];
   apis: string[];
   sourceFiles: string[];
+  relatedFiles?: string[];
   relatedFeatures: string[];
   domainObjects: string[];
   sessionCount: number;
@@ -37,12 +38,60 @@ export interface FeatureDetail {
   pageDetails?: PageDetail[];
   apiDetails?: ApiDetail[];
   fileStats?: Record<string, FileStat>;
+  fileSignals?: Record<string, FileSignal>;
 }
 
 export interface FileStat {
   changes: number;
   sessions: number;
   updatedAt: string;
+}
+
+export interface FileSessionToolFailure {
+  toolName: string;
+  command?: string;
+  message: string;
+}
+
+export interface FileSessionDiagnostics {
+  toolCallCount: number;
+  failedToolCallCount: number;
+  toolCallsByName: Record<string, number>;
+  readFiles: string[];
+  writtenFiles: string[];
+  repeatedReadFiles: string[];
+  repeatedCommands: string[];
+  failedTools: FileSessionToolFailure[];
+}
+
+export interface FileSessionSignal {
+  provider: string;
+  sessionId: string;
+  updatedAt: string;
+  promptSnippet: string;
+  promptHistory?: string[];
+  toolNames: string[];
+  changedFiles?: string[];
+  resumeCommand?: string;
+  diagnostics?: FileSessionDiagnostics;
+}
+
+export interface FileSignal {
+  sessions: FileSessionSignal[];
+  toolHistory: string[];
+  promptHistory: string[];
+}
+
+export interface AggregatedSelectionSession {
+  provider: string;
+  sessionId: string;
+  updatedAt: string;
+  promptSnippet: string;
+  promptHistory: string[];
+  toolNames: string[];
+  resumeCommand?: string;
+  changedFiles: string[];
+  diagnostics?: FileSessionDiagnostics;
 }
 
 export interface FileTreeNode {

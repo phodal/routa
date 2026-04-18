@@ -353,6 +353,92 @@ describe("feature explorer transcript stats", () => {
     expect(fileStats["src/app/workspace/[workspaceId]/feature-explorer/"]).toBeUndefined();
   });
 
+  it("collects file session evidence with provider, session id, and prompt history", () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "feature-explorer-signals-"));
+    process.env.HOME = tempRoot;
+
+    const repoRoot = path.join(tempRoot, "repo");
+    ensureFile(path.join(repoRoot, "src/app/page.tsx"), "export default function Page() { return null; }\n");
+
+    ensureFile(
+      path.join(tempRoot, ".codex", "sessions", "signals.jsonl"),
+      [
+        JSON.stringify({
+          timestamp: "2026-04-17T01:51:41.963Z",
+          type: "session_meta",
+          payload: {
+            id: "019d-signal-session",
+            timestamp: "2026-04-17T01:50:56.919Z",
+            cwd: repoRoot,
+            source: "cli",
+            model_provider: "openai",
+          },
+        }),
+        JSON.stringify({
+          timestamp: "2026-04-17T01:55:10.000Z",
+          type: "event_msg",
+          payload: {
+            type: "user_message",
+            message: "Please wire feature explorer file signals into the right panel",
+          },
+        }),
+        JSON.stringify({
+          timestamp: "2026-04-17T01:56:10.000Z",
+          type: "response_item",
+          payload: {
+            type: "function_call",
+            name: "exec_command",
+            arguments: "{\"cmd\":\"sed -n '1,200p' src/app/page.tsx\"}",
+          },
+        }),
+        JSON.stringify({
+          timestamp: "2026-04-17T01:56:40.000Z",
+          type: "response_item",
+          payload: {
+            type: "function_call",
+            name: "apply_patch",
+            arguments: "*** Begin Patch\n*** Update File: src/app/page.tsx\n@@\n-const oldView = null;\n+const nextView = <main />;\n*** End Patch\n",
+          },
+        }),
+        JSON.stringify({
+          timestamp: "2026-04-17T01:57:10.000Z",
+          type: "event_msg",
+          payload: {
+            type: "exec_command_end",
+            command: ["/bin/zsh", "-lc", "git status --short"],
+            aggregated_output: " M src/app/page.tsx\n",
+          },
+        }),
+        "",
+      ].join("\n"),
+    );
+
+    const { fileSignals } = collectFeatureSessionStats(repoRoot, createFeatureTree());
+    const signal = fileSignals["src/app/page.tsx"];
+
+    expect(signal).toBeDefined();
+    expect(signal?.sessions[0]).toMatchObject({
+      provider: "codex",
+      sessionId: "019d-signal-session",
+      resumeCommand: "codex resume 019d-signal-session",
+      changedFiles: ["src/app/page.tsx"],
+    });
+    expect(signal?.sessions[0]?.diagnostics).toMatchObject({
+      toolCallCount: 3,
+      failedToolCallCount: 0,
+      readFiles: ["src/app/page.tsx"],
+      writtenFiles: ["src/app/page.tsx"],
+    });
+    expect(signal?.sessions[0]?.diagnostics?.toolCallsByName).toMatchObject({
+      apply_patch: 1,
+      exec_command: 2,
+    });
+    expect(signal?.sessions[0]?.promptHistory[0]).toContain("feature explorer file signals");
+    expect(signal?.sessions[0]?.toolNames).toContain("apply_patch");
+    expect(signal?.toolHistory).toContain("exec_command");
+    expect(signal?.promptHistory[0]).toContain("feature explorer file signals");
+  });
+
   it("derives feature source files from the generated surface index", () => {
     const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "feature-explorer-tree-"));
     const repoRoot = path.join(tempRoot, "repo");

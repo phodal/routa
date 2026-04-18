@@ -31,6 +31,7 @@ interface FeatureDetailResponse {
   pages: string[];
   apis: string[];
   sourceFiles: string[];
+  relatedFiles: string[];
   relatedFeatures: string[];
   domainObjects: string[];
   sessionCount: number;
@@ -41,19 +42,49 @@ interface FeatureDetailResponse {
   pageDetails: FrontendPageDetail[];
   apiDetails: ApiEndpointDetail[];
   fileStats: Record<string, { changes: number; sessions: number; updatedAt: string }>;
+  fileSignals: Record<string, {
+    sessions: Array<{
+      provider: string;
+      sessionId: string;
+      updatedAt: string;
+      promptSnippet: string;
+      promptHistory: string[];
+      toolNames: string[];
+      changedFiles?: string[];
+      resumeCommand?: string;
+      diagnostics?: {
+        toolCallCount: number;
+        failedToolCallCount: number;
+        toolCallsByName: Record<string, number>;
+        readFiles: string[];
+        writtenFiles: string[];
+        repeatedReadFiles: string[];
+        repeatedCommands: string[];
+        failedTools: Array<{
+          toolName: string;
+          command?: string;
+          message: string;
+        }>;
+      };
+    }>;
+    toolHistory: string[];
+    promptHistory: string[];
+  }>;
 }
 
 function toMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-function collectRelatedFiles(
+function collectFeatureFileScope(
   feature: FeatureTree["features"][number],
   repoRoot: string,
   observedFiles: string[],
-): string[] {
+): { allFiles: string[]; relatedFiles: string[] } {
   const catalog = parseFeatureSurfaceCatalog(repoRoot);
-  const files = new Set<string>([...feature.sourceFiles, ...observedFiles]);
+  const declaredSourceFiles = [...new Set(feature.sourceFiles)].sort();
+  const declaredSourceFileSet = new Set(declaredSourceFiles);
+  const files = new Set<string>([...declaredSourceFiles, ...observedFiles]);
 
   for (const sourceFile of files) {
     const links = parseFeatureSurfaceLinks(catalog, sourceFile);
@@ -62,7 +93,13 @@ function collectRelatedFiles(
     }
   }
 
-  return [...files].sort();
+  const allFiles = [...files].sort();
+  const relatedFiles = allFiles.filter((filePath) => !declaredSourceFileSet.has(filePath));
+
+  return {
+    allFiles,
+    relatedFiles,
+  };
 }
 
 function collectSurfaceLinks(
@@ -156,7 +193,11 @@ export async function GET(
       );
     }
 
-    const { featureStats, fileStats: rawFileStats } = collectFeatureSessionStats(repoRoot, featureTree);
+    const {
+      featureStats,
+      fileStats: rawFileStats,
+      fileSignals: rawFileSignals,
+    } = collectFeatureSessionStats(repoRoot, featureTree);
 
     const featureStat = featureStats[feature.id] ?? {
       sessionCount: 0,
@@ -164,7 +205,7 @@ export async function GET(
       updatedAt: "",
       matchedFiles: [],
     };
-    const allFiles = collectRelatedFiles(feature, repoRoot, featureStat.matchedFiles);
+    const { allFiles, relatedFiles } = collectFeatureFileScope(feature, repoRoot, featureStat.matchedFiles);
 
     const response: FeatureDetailResponse = {
       id: feature.id,
@@ -174,7 +215,8 @@ export async function GET(
       status: feature.status,
       pages: feature.pages,
       apis: feature.apis,
-      sourceFiles: allFiles,
+      sourceFiles: [...new Set(feature.sourceFiles)].sort(),
+      relatedFiles,
       relatedFeatures: feature.relatedFeatures,
       domainObjects: feature.domainObjects,
       sessionCount: featureStat.sessionCount,
@@ -185,11 +227,16 @@ export async function GET(
       pageDetails: toPageDetails(feature, featureTree),
       apiDetails: toApiDetails(feature, featureTree),
       fileStats: {},
+      fileSignals: {},
     };
 
     for (const filePath of allFiles) {
       const stat = rawFileStats[filePath];
       if (!stat) {
+        const signal = rawFileSignals[filePath];
+        if (signal) {
+          response.fileSignals[filePath] = signal;
+        }
         continue;
       }
 
@@ -198,6 +245,11 @@ export async function GET(
         sessions: stat.sessions,
         updatedAt: stat.updatedAt,
       };
+
+      const signal = rawFileSignals[filePath];
+      if (signal) {
+        response.fileSignals[filePath] = signal;
+      }
     }
 
     return NextResponse.json(response);
