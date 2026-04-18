@@ -36,6 +36,14 @@ export type FeatureSurfaceApi = {
   summary: string;
 };
 
+export type FeatureSurfaceImplementationApi = {
+  label: string;
+  domain: string;
+  method: string;
+  path: string;
+  sourceFiles: string[];
+};
+
 export type FeatureSurfaceMetadataGroup = {
   id: string;
   name: string;
@@ -66,6 +74,10 @@ export type FeatureSurfaceIndexResponse = {
   generatedAt: string;
   pages: FeatureSurfacePage[];
   apis: FeatureSurfaceApi[];
+  contractApis?: FeatureSurfaceApi[];
+  nextjsApis?: FeatureSurfaceImplementationApi[];
+  rustApis?: FeatureSurfaceImplementationApi[];
+  implementationApis?: FeatureSurfaceImplementationApi[];
   metadata: FeatureSurfaceMetadata | null;
   repoRoot: string;
   warnings: string[];

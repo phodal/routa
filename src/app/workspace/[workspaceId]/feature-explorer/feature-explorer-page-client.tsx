@@ -123,6 +123,24 @@ function formatShortDate(iso: string): string {
   return `${mm}-${dd}`;
 }
 
+function humanizeImplementationLabel(label: string): string {
+  if (!label) {
+    return "Implementation";
+  }
+  if (label === "nextjs") {
+    return "Next.js";
+  }
+  if (label === "springMvc") {
+    return "Spring MVC";
+  }
+
+  return label
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/[-_]+/g, " ")
+    .trim()
+    .replace(/\b\w/g, (match) => match.toUpperCase());
+}
+
 export function FeatureExplorerPageClient({
   workspaceId,
 }: {
@@ -1283,6 +1301,18 @@ function ApiPanel({
   const apiPath = selectedApi.endpoint;
   const nextjsSources: string[] = [...new Set(selectedApi.nextjsSourceFiles ?? [])];
   const rustSources: string[] = [...new Set(selectedApi.rustSourceFiles ?? [])];
+  const implementationSourceGroups = (selectedApi.implementationSources ?? [])
+    .map((entry) => ({
+      label: entry.label,
+      sourceFiles: [...new Set(entry.sourceFiles)],
+    }))
+    .filter((entry) => entry.sourceFiles.length > 0);
+  const resolvedImplementationSourceGroups = implementationSourceGroups.length > 0
+    ? implementationSourceGroups
+    : [
+      ...(nextjsSources.length > 0 ? [{ label: "nextjs", sourceFiles: nextjsSources }] : []),
+      ...(rustSources.length > 0 ? [{ label: "rust", sourceFiles: rustSources }] : []),
+    ];
 
   const methodTone = method === "GET"
     ? "border-emerald-300/70 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/12 dark:text-emerald-200"
@@ -1323,7 +1353,7 @@ function ApiPanel({
           </span>
           <code className="truncate text-desktop-text-secondary">{apiPath}</code>
         </div>
-        {selectedApi.group || selectedApi.description || nextjsSources.length > 0 || rustSources.length > 0 ? (
+        {selectedApi.group || selectedApi.description || resolvedImplementationSourceGroups.length > 0 ? (
           <div className="mt-2 rounded-sm border border-desktop-border bg-desktop-bg-secondary px-2.5 py-2">
             {selectedApi.group ? (
               <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-desktop-text-secondary">
@@ -1335,34 +1365,20 @@ function ApiPanel({
                 {selectedApi.description}
               </div>
             ) : null}
-            {nextjsSources.length > 0 ? (
-              <div className="mt-2">
+            {resolvedImplementationSourceGroups.map((entry) => (
+              <div key={entry.label} className="mt-2">
                 <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-desktop-text-secondary">
-                  Next.js
+                  {humanizeImplementationLabel(entry.label)}
                 </div>
                 <div className="mt-1 space-y-1">
-                  {nextjsSources.map((sourceFile) => (
+                  {entry.sourceFiles.map((sourceFile) => (
                     <div key={sourceFile} className="break-all text-[11px] text-desktop-text-secondary">
                       {sourceFile}
                     </div>
                   ))}
                 </div>
               </div>
-            ) : null}
-            {rustSources.length > 0 ? (
-              <div className="mt-2">
-                <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-desktop-text-secondary">
-                  Rust
-                </div>
-                <div className="mt-1 space-y-1">
-                  {rustSources.map((sourceFile) => (
-                    <div key={sourceFile} className="break-all text-[11px] text-desktop-text-secondary">
-                      {sourceFile}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ) : null}
+            ))}
           </div>
         ) : null}
       </ContextSection>

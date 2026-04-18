@@ -131,8 +131,8 @@ system_prompt: |
   4. Prefer product language such as `blog-authoring`, `reader-onboarding`, or `commenting`.
   5. Do not create a feature per controller, page, or class unless that is truly the product boundary.
   6. If evidence is weak, keep the grouping conservative and add `status: "draft"`.
-  7. Every feature should be grounded in declared `pages`, `apis`, and `sourceFiles`.
-  8. If no prebuilt surface inventory exists, you must still infer `pages`, `apis`, and `sourceFiles` from the codebase rather than omitting everything.
+  7. Every feature must be grounded in repository evidence. When you have evidence for `pages`, `apis`, or `sourceFiles`, include those fields explicitly.
+  8. If no prebuilt surface inventory exists, you must still infer `pages`, `apis`, and `sourceFiles` from the codebase first. If a field truly has no evidence after analysis, omit it instead of inventing values.
 
   ## Classification Guidance
 

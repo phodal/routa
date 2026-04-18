@@ -56,6 +56,7 @@ function emptySurfaceIndexResponse(warnings: string[] = []): FeatureSurfaceIndex
     contractApis: [],
     nextjsApis: [],
     rustApis: [],
+    implementationApis: [],
     metadata: null,
     repoRoot: "",
     warnings,
@@ -88,6 +89,9 @@ function normalizeSurfaceIndexPayload(
       : [],
     rustApis: Array.isArray((payload as { rustApis?: unknown }).rustApis)
       ? (payload as { rustApis: FeatureSurfaceIndexResponse["rustApis"] }).rustApis
+      : [],
+    implementationApis: Array.isArray((payload as { implementationApis?: unknown }).implementationApis)
+      ? (payload as { implementationApis: FeatureSurfaceIndexResponse["implementationApis"] }).implementationApis
       : [],
     metadata: typeof (payload as { metadata?: unknown }).metadata === "object"
       ? (payload as { metadata: FeatureSurfaceIndexResponse["metadata"] }).metadata
