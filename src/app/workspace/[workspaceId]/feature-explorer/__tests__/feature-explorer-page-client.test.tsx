@@ -405,7 +405,7 @@ describe("FeatureExplorerPageClient", () => {
     });
   });
 
-  it("renders surface sections from the feature tree index", async () => {
+  it("renders a feature-first structure view from the feature tree index", async () => {
     useFeatureExplorerData.mockReturnValue({
       loading: false,
       error: null,
@@ -485,19 +485,19 @@ describe("FeatureExplorerPageClient", () => {
 
     render(<FeatureExplorerPageClient workspaceId="default" />);
 
-    expect(screen.getByText("Pages")).toBeTruthy();
-    expect(screen.getByText("API Contract")).toBeTruthy();
+    expect(screen.getByText("Execution")).toBeTruthy();
+    expect(screen.getAllByText("Feature A").length).toBeGreaterThan(0);
+    expect(screen.getByText("Feature Structure")).toBeTruthy();
+    expect(screen.getByText("Summary")).toBeTruthy();
+    expect(screen.getByText("/workspace/:workspaceId/feature-explorer")).toBeTruthy();
+    expect(screen.getByText("/api/feature-explorer")).toBeTruthy();
     expect(screen.getAllByText("Next.js API").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Rust API").length).toBeGreaterThan(0);
-    expect(screen.getByText("/workspace")).toBeTruthy();
-    expect(screen.queryByText("/workspace/:workspaceId/feature-explorer")).toBeNull();
-    expect(screen.getAllByText("/feature-explorer").length).toBeGreaterThan(0);
-    expect(screen.queryByText("/api/feature-explorer")).toBeNull();
-    expect(screen.getByTestId("feature-section-metric-sessions").textContent).toBe("0 sessions");
-    expect(screen.getByTestId("feature-metric-sessions-feature-a").textContent).toBe("0 sessions");
-    expect(screen.getByTestId("feature-metric-files-feature-a").textContent).toBe("1 files");
-    expect(screen.getAllByText("1 items").length).toBeGreaterThan(0);
-    expect(screen.queryByText("Summary")).toBeNull();
+    expect(screen.getByText("Repository status")).toBeTruthy();
+    expect(screen.getByText("Feature taxonomy ready")).toBeTruthy();
+    expect(screen.getByText("Frontend routes")).toBeTruthy();
+    expect(screen.getAllByText("API surfaces").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Source files").length).toBeGreaterThan(0);
   });
 
   it("switches surface navigation to browser-url tree mode", async () => {
@@ -597,7 +597,7 @@ describe("FeatureExplorerPageClient", () => {
     expect(lowFeature.compareDocumentPosition(highFeature) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
-  it("filters feature navigation by nextjs api work view", async () => {
+  it("switches to a Next.js API tree work view", async () => {
     useFeatureExplorerData.mockReturnValue({
       loading: false,
       error: null,
@@ -668,12 +668,13 @@ describe("FeatureExplorerPageClient", () => {
 
     render(<FeatureExplorerPageClient workspaceId="default" />);
 
-    expect(screen.getByRole("button", { name: /Feature Next.js/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Feature Next\.js/ })).toBeTruthy();
     expect(screen.getByRole("button", { name: /Feature Hidden/ })).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Next.js API" }));
 
-    expect(screen.getByRole("button", { name: /Feature Next.js/ })).toBeTruthy();
+    expect(screen.getByText("/feature-explorer")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Feature Next\.js/ })).toBeNull();
     expect(screen.queryByRole("button", { name: /Feature Hidden/ })).toBeNull();
   });
 
@@ -828,7 +829,8 @@ describe("FeatureExplorerPageClient", () => {
       expect(screen.getByTestId("feature-tree-sessions-folder-src").textContent).toBe("6");
     });
 
-    expect(screen.getByTestId("feature-section-metric-sessions").textContent).toBe("6 sessions");
+    expect(screen.getAllByText("Kanban Workflow").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Source files").length).toBeGreaterThan(0);
     expect(screen.getByTestId("feature-tree-changes-folder-src").textContent).toBe("6");
     expect(screen.getByTestId("feature-tree-sessions-folder-app").textContent).toBe("6");
     expect(screen.getByTestId("feature-tree-updated-folder-src").textContent).not.toBe("-");
