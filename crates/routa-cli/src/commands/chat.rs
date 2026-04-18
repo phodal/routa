@@ -534,6 +534,12 @@ fn build_specialist_prompt(
 ) -> String {
     format!(
         "{}\n\n---\n\n**Your Agent ID:** {}\n**Workspace ID:** {}\n\n## User Request\n\n{}\n\n---\n**Reminder:** {}\n",
-        specialist.system_prompt, agent_id, workspace_id, user_req, specialist.role_reminder
+        specialist
+            .system_prompt_body()
+            .unwrap_or_else(|| specialist.system_prompt.clone()),
+        agent_id,
+        workspace_id,
+        user_req,
+        specialist.role_reminder
     )
 }

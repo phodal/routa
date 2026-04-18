@@ -27,6 +27,7 @@ import {
 } from "@/core/acp/execution-backend";
 import type { McpServerProfile } from "@/core/mcp/mcp-server-profiles";
 import { pendingAcpCreations } from "@/core/acp/pending-acp-creations";
+import { buildFeatureTreeSpecPromptSection } from "@/core/spec/feature-tree-spec-resource-contract";
 
 export interface IdempotencyEntry {
   sessionId: string;
@@ -86,11 +87,17 @@ function buildSpecialistSystemPrompt(
     return undefined;
   }
 
-  if (!specialist.roleReminder) {
-    return specialist.systemPrompt;
+  const sections = [specialist.systemPrompt.trim()];
+
+  if (specialist.id === "feature-surface-metadata-analyst") {
+    sections.push(buildFeatureTreeSpecPromptSection());
   }
 
-  return `${specialist.systemPrompt}\n\n---\n**Reminder:** ${specialist.roleReminder}`;
+  if (specialist.roleReminder) {
+    sections.push(`**Reminder:** ${specialist.roleReminder}`);
+  }
+
+  return sections.join("\n\n---\n");
 }
 
 function deriveAllowedNativeTools(

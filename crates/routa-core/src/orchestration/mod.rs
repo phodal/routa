@@ -20,6 +20,7 @@ use crate::acp::AcpManager;
 use crate::error::ServerError;
 use crate::events::{AgentEvent, AgentEventType, EventBus};
 use crate::models::agent::{AgentRole, AgentStatus, ModelTier};
+use crate::models::build_feature_tree_spec_prompt_section;
 use crate::models::task::TaskStatus;
 use crate::store::{AgentStore, TaskStore};
 use crate::tools::{CompletionReport, ToolResult};
@@ -48,6 +49,33 @@ pub struct SpecialistConfig {
 }
 
 impl SpecialistConfig {
+    pub fn system_prompt_body(&self) -> Option<String> {
+        if self.system_prompt.trim().is_empty() {
+            return None;
+        }
+
+        let mut prompt = self.system_prompt.trim().to_string();
+
+        if self.id == "feature-surface-metadata-analyst" {
+            prompt.push_str("\n\n---\n\n");
+            prompt.push_str(&build_feature_tree_spec_prompt_section());
+        }
+
+        Some(prompt)
+    }
+
+    pub fn system_prompt_with_reminder(&self) -> Option<String> {
+        let mut prompt = self.system_prompt_body()?;
+
+        if !self.role_reminder.trim().is_empty() {
+            prompt.push_str("\n\n---\n**Reminder:** ");
+            prompt.push_str(self.role_reminder.trim());
+            prompt.push('\n');
+        }
+
+        Some(prompt)
+    }
+
     /// Get the CRAFTER specialist config.
     pub fn crafter() -> Self {
         Self {
@@ -875,7 +903,12 @@ fn build_delegation_prompt(
     parent_agent_id: &str,
     additional_context: Option<&str>,
 ) -> String {
-    let mut prompt = format!("{}\n\n---\n\n", specialist.system_prompt);
+    let mut prompt = format!(
+        "{}\n\n---\n\n",
+        specialist
+            .system_prompt_body()
+            .unwrap_or_else(|| specialist.system_prompt.clone())
+    );
     prompt.push_str(&format!("**Your Agent ID:** {agent_id}\n"));
     prompt.push_str(&format!("**Your Parent Agent ID:** {parent_agent_id}\n"));
     prompt.push_str(&format!("**Task ID:** {task_id}\n\n"));

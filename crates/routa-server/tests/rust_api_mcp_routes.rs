@@ -342,6 +342,12 @@ async fn api_mcp_default_profile_exposes_canvas_sdk_resource_tool() {
             .any(|tool| tool["name"] == "read_canvas_sdk_resource"),
         "default profile should expose read_canvas_sdk_resource"
     );
+    assert!(
+        tools
+            .iter()
+            .any(|tool| tool["name"] == "read_specialist_spec_resource"),
+        "default profile should expose read_specialist_spec_resource"
+    );
 
     let call_response = fixture
         .post_mcp(
@@ -377,6 +383,47 @@ async fn api_mcp_default_profile_exposes_canvas_sdk_resource_tool() {
             .as_str()
             .is_some_and(|text| text.contains("\"moduleSpecifier\": \"@canvas-sdk\"")),
         "manifest payload should contain canvas sdk module specifier"
+    );
+
+    let feature_tree_call_response = fixture
+        .post_mcp(
+            None,
+            Some(&session_id),
+            json!({
+                "jsonrpc": "2.0",
+                "id": "tools-call-feature-tree-spec",
+                "method": "tools/call",
+                "params": {
+                    "name": "read_specialist_spec_resource",
+                    "arguments": {
+                        "uri": "resource://routa/specialists/feature-tree/manifest"
+                    }
+                }
+            }),
+        )
+        .await;
+    assert_eq!(feature_tree_call_response.status(), StatusCode::OK);
+
+    let feature_tree_call_body = read_first_sse_json(
+        feature_tree_call_response,
+        "feature tree spec tool call response",
+    )
+    .await;
+    let feature_tree_content_text = feature_tree_call_body["result"]["content"][0]["text"]
+        .as_str()
+        .expect("feature tree tool call should return text content");
+    let feature_tree_payload: Value =
+        serde_json::from_str(feature_tree_content_text).expect("parse feature tree tool payload");
+    assert_eq!(
+        feature_tree_payload["uri"],
+        json!("resource://routa/specialists/feature-tree/manifest")
+    );
+    assert_eq!(feature_tree_payload["mimeType"], json!("application/json"));
+    assert!(
+        feature_tree_payload["text"]
+            .as_str()
+            .is_some_and(|text| text.contains("\"availableSpecIds\"")),
+        "feature tree manifest payload should contain bundled spec ids"
     );
 }
 

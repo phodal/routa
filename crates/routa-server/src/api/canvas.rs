@@ -620,18 +620,7 @@ async fn save_canvas_artifact(
 }
 
 fn build_specialist_system_prompt(specialist: &SpecialistConfig) -> Option<String> {
-    if specialist.system_prompt.trim().is_empty() {
-        return None;
-    }
-
-    if specialist.role_reminder.trim().is_empty() {
-        return Some(specialist.system_prompt.clone());
-    }
-
-    Some(format!(
-        "{}\n\n---\n**Reminder:** {}\n",
-        specialist.system_prompt, specialist.role_reminder
-    ))
+    specialist.system_prompt_with_reminder()
 }
 
 fn derive_allowed_native_tools(specialist_id: Option<&str>) -> Option<Vec<String>> {

@@ -13,6 +13,7 @@ import { KanbanTools } from "../tools/kanban-tools";
 import { startWorkflowOrchestrator as startKanbanWorkflowOrchestrator } from "../kanban/workflow-orchestrator-singleton";
 import { getMcpProfileToolAllowlist, getMcpServerName, type McpServerProfile } from "./mcp-server-profiles";
 import { registerCanvasSdkResources } from "./canvas-sdk-resources";
+import { registerFeatureTreeSpecResources } from "./feature-tree-spec-resources";
 
 export interface RoutaMcpServerResult {
   server: McpServer;
@@ -89,6 +90,7 @@ export function createRoutaMcpServer(
 
   toolManager.registerTools(server);
   registerCanvasSdkResources(server);
+  registerFeatureTreeSpecResources(server);
 
   return { server, system: routaSystem, toolManager };
 }

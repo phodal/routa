@@ -256,6 +256,13 @@ fn build_tool_list_inner() -> Vec<serde_json::Value> {
             },
             "required": ["uri"]
         })),
+        tool_def("read_specialist_spec_resource", "Read a bundled specialist framework spec resource by URI. Use this when your provider cannot call MCP resources/read directly.", serde_json::json!({
+            "type": "object",
+            "properties": {
+                "uri": { "type": "string", "description": "Specialist spec resource URI, e.g. resource://routa/specialists/feature-tree/manifest" }
+            },
+            "required": ["uri"]
+        })),
         // ── Event tools ──────────────────────────────────────────────────
         tool_def("subscribe_to_events", "Subscribe to workspace events", serde_json::json!({
             "type": "object",

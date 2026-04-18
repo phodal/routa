@@ -106,15 +106,18 @@ describe("RoutaMcpToolManager", () => {
     expect(registrations.some((entry) => entry.name === "git_status")).toBe(true);
     expect(registrations.some((entry) => entry.name === "create_note")).toBe(true);
     expect(registrations.some((entry) => entry.name === "read_canvas_sdk_resource")).toBe(true);
+    expect(registrations.some((entry) => entry.name === "read_specialist_spec_resource")).toBe(true);
 
     const createTaskTool = registrations.find((entry) => entry.name === "create_task");
     const noteTool = registrations.find((entry) => entry.name === "create_note");
     const delegateTool = registrations.find((entry) => entry.name === "delegate_task_to_agent");
     const canvasSdkTool = registrations.find((entry) => entry.name === "read_canvas_sdk_resource");
+    const specialistSpecTool = registrations.find((entry) => entry.name === "read_specialist_spec_resource");
     expect(createTaskTool).toBeDefined();
     expect(noteTool).toBeDefined();
     expect(delegateTool).toBeDefined();
     expect(canvasSdkTool).toBeDefined();
+    expect(specialistSpecTool).toBeDefined();
 
     await createTaskTool!.handler({
       title: "Task",
@@ -175,6 +178,18 @@ describe("RoutaMcpToolManager", () => {
       (canvasSdkResult as { content: Array<{ text: string }> }).content[0]?.text ?? "{}",
     ) as { text?: string };
     expect(canvasSdkPayload.text).toContain('"moduleSpecifier"');
+
+    const specialistSpecResult = await specialistSpecTool!.handler({
+      uri: "resource://routa/specialists/feature-tree/manifest",
+    });
+    expect(specialistSpecResult).toMatchObject({
+      content: [{ type: "text" }],
+      isError: false,
+    });
+    const specialistSpecPayload = JSON.parse(
+      (specialistSpecResult as { content: Array<{ text: string }> }).content[0]?.text ?? "{}",
+    ) as { text?: string };
+    expect(specialistSpecPayload.text).toContain('"baseRulesInPrompt"');
   });
 
   it("returns MCP errors when orchestrator or note tools are unavailable", async () => {

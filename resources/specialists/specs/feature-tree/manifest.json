@@ -1,0 +1,111 @@
+{
+  "schemaVersion": 1,
+  "id": "feature-tree-framework-specs",
+  "description": "Framework-specific overlay specs for the Feature Surface Metadata Analyst. Base feature grouping rules remain built into the specialist prompt.",
+  "baseRulesInPrompt": true,
+  "availableSpecIds": [
+    "nextjs",
+    "axum",
+    "express",
+    "spring-boot",
+    "gin",
+    "eggjs"
+  ],
+  "selectionRules": [
+    "Read this manifest first, then load only the framework specs supported by repository evidence.",
+    "A single repository may require multiple specs when it has more than one runtime surface, such as Next.js plus Axum.",
+    "Prefer framework-specific specs over language-only guesses.",
+    "If no matching spec exists, continue with the built-in path model and conservative repository evidence."
+  ],
+  "specs": [
+    {
+      "id": "nextjs",
+      "title": "Next.js App Router",
+      "resourceUri": "resource://routa/specialists/feature-tree/specs/nextjs",
+      "fileName": "nextjs.spec.md",
+      "description": "Overlay guidance for App Router pages, route handlers, server actions, and hybrid page/API flows.",
+      "signals": [
+        "src/app/**/page.tsx",
+        "src/app/**/route.ts",
+        "server actions",
+        "generateMetadata",
+        "layout.tsx"
+      ]
+    },
+    {
+      "id": "axum",
+      "title": "Rust Axum",
+      "resourceUri": "resource://routa/specialists/feature-tree/specs/axum",
+      "fileName": "axum.spec.md",
+      "description": "Overlay guidance for Axum routers, nested services, handlers, extractors, and backend state boundaries.",
+      "signals": [
+        "Router::new()",
+        ".route(",
+        ".nest(",
+        ".merge(",
+        "axum::extract",
+        "IntoResponse"
+      ]
+    },
+    {
+      "id": "express",
+      "title": "Express",
+      "resourceUri": "resource://routa/specialists/feature-tree/specs/express",
+      "fileName": "express.spec.md",
+      "description": "Overlay guidance for Express routers, controllers, rendered templates, redirects, and middleware-driven flows.",
+      "signals": [
+        "app.use(",
+        "router.get(",
+        "router.post(",
+        "res.render(",
+        "res.redirect(",
+        "res.json("
+      ]
+    },
+    {
+      "id": "spring-boot",
+      "title": "Spring Boot MVC",
+      "resourceUri": "resource://routa/specialists/feature-tree/specs/spring-boot",
+      "fileName": "spring-boot.spec.md",
+      "description": "Overlay guidance for Spring MVC controllers, template rendering, REST endpoints, services, and repositories.",
+      "signals": [
+        "@Controller",
+        "@RestController",
+        "@RequestMapping",
+        "@GetMapping",
+        "Model model",
+        "JpaRepository"
+      ]
+    },
+    {
+      "id": "gin",
+      "title": "Go Gin",
+      "resourceUri": "resource://routa/specialists/feature-tree/specs/gin",
+      "fileName": "gin.spec.md",
+      "description": "Overlay guidance for Gin router declarations, route groups, middleware, HTML template rendering, and GORM-backed flows.",
+      "signals": [
+        "gin.Default()",
+        "router.GET(",
+        "router.POST(",
+        "router.Group(",
+        "c.HTML(",
+        "gorm.Open("
+      ]
+    },
+    {
+      "id": "eggjs",
+      "title": "Egg.js",
+      "resourceUri": "resource://routa/specialists/feature-tree/specs/eggjs",
+      "fileName": "eggjs.spec.md",
+      "description": "Overlay guidance for Egg.js router setup, controller/service layering, and framework conventions around app, ctx, and config.",
+      "signals": [
+        "app/router.js",
+        "router.resources(",
+        "controller.",
+        "ctx.render(",
+        "ctx.service",
+        "app/model"
+      ]
+    }
+  ]
+}

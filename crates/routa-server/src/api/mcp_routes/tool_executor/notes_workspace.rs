@@ -1,5 +1,6 @@
 use crate::state::AppState;
 use routa_core::models::read_canvas_sdk_resource;
+use routa_core::models::read_feature_tree_spec_resource;
 
 use super::{tool_result_error, tool_result_json, tool_result_text};
 
@@ -211,6 +212,15 @@ pub(super) async fn execute(
                     tool_result_json(&serde_json::to_value(resource).unwrap_or_default())
                 }
                 None => tool_result_error(&format!("Unknown Canvas SDK resource URI: {uri}")),
+            }
+        }
+        "read_specialist_spec_resource" => {
+            let uri = args.get("uri").and_then(|v| v.as_str()).unwrap_or("");
+            match read_feature_tree_spec_resource(uri) {
+                Some(resource) => {
+                    tool_result_json(&serde_json::to_value(resource).unwrap_or_default())
+                }
+                None => tool_result_error(&format!("Unknown specialist spec resource URI: {uri}")),
             }
         }
         _ => return None,

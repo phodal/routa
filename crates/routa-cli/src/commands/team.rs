@@ -448,7 +448,9 @@ fn build_team_prompt(
          **Workspace ID:** {}\n\n\
          ## User Requirement\n\n{}\n\n\
          ---\n**Reminder:** {}\n",
-        specialist.system_prompt,
+        specialist
+            .system_prompt_body()
+            .unwrap_or_else(|| specialist.system_prompt.clone()),
         team_roster,
         agent_id,
         workspace_id,
@@ -468,7 +470,11 @@ fn build_team_user_prompt(agent_id: &str, workspace_id: &str, user_requirement: 
 fn build_team_system_prompt(specialist: &SpecialistConfig, team_roster: &str) -> String {
     format!(
         "{}\n\n---\n\n{}\n\n---\n**Reminder:** {}\n",
-        specialist.system_prompt, team_roster, specialist.role_reminder
+        specialist
+            .system_prompt_body()
+            .unwrap_or_else(|| specialist.system_prompt.clone()),
+        team_roster,
+        specialist.role_reminder
     )
 }
 

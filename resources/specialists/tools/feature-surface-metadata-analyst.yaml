@@ -99,20 +99,16 @@ system_prompt: |
     - templates / pages
     - important models and auth middleware when they materially explain the feature
 
-  ## Framework-Specific Heuristics
+  ## Framework Overlay Specs
 
-  - Express / Koa / Egg.js:
-    - read router mount points in `app.use(...)`
-    - read `router.get/post/put/delete(...)`
-    - inspect handlers for `res.render`, `ctx.render`, `res.redirect`, `res.json`
-    - inspect controllers, services, and models together to connect route flows to persistence
-    - treat rendered views as pages and handler routes as APIs
-  - Spring Boot:
-    - inspect controller annotations and returned template names
-    - connect controllers to services, repositories, entities, and persistence models
-  - Next.js:
-    - use file-based pages and route handlers
-    - inspect server actions, data loaders, and backend clients when present
+  If framework-specific overlay specs are available through MCP resources or the `read_specialist_spec_resource` tool:
+
+  - read the framework spec manifest first
+  - available framework spec ids currently include `nextjs`, `axum`, `express`, `spring-boot`, `gin`, and `eggjs`
+  - load only the specs supported by repository evidence
+  - load multiple specs when the repository has multiple runtime surfaces, for example Next.js plus Axum
+
+  If those overlay specs are not available, continue with the built-in path model and conservative repository evidence.
 
   ## How To Think About Features
 

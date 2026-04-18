@@ -14,6 +14,7 @@ import { WorkspaceTools } from "../tools/workspace-tools";
 import { ToolResult } from "../tools/tool-result";
 import type { RoutaOrchestrator } from "../orchestration/orchestrator";
 import { readCanvasSdkResource } from "../canvas/sdk-resource-contract";
+import { readFeatureTreeSpecResource } from "../spec/feature-tree-spec-resource-contract";
 
 /**
  * Tool registration mode for MCP server.
@@ -135,6 +136,7 @@ export class RoutaMcpToolManager {
       register("get_artifact", () => this.registerGetArtifact(server));
       register("list_pending_artifact_requests", () => this.registerListPendingArtifactRequests(server));
       register("capture_screenshot", () => this.registerCaptureScreenshot(server));
+      register("read_specialist_spec_resource", () => this.registerReadSpecialistSpecResource(server));
       return;
     }
 
@@ -200,6 +202,7 @@ export class RoutaMcpToolManager {
     register("list_pending_artifact_requests", () => this.registerListPendingArtifactRequests(server));
     register("capture_screenshot", () => this.registerCaptureScreenshot(server));
     register("read_canvas_sdk_resource", () => this.registerReadCanvasSdkResource(server));
+    register("read_specialist_spec_resource", () => this.registerReadSpecialistSpecResource(server));
   }
 
   private shouldRegisterTool(toolName: string): boolean {
@@ -1398,6 +1401,29 @@ Can be in response to a request or proactively provided.`,
           return this.toMcpResult({
             success: false,
             error: `Unknown Canvas SDK resource URI: ${params.uri}`,
+          });
+        }
+        return this.toMcpResult({
+          success: true,
+          data: resource,
+        });
+      }
+    );
+  }
+
+  private registerReadSpecialistSpecResource(server: McpServer) {
+    server.tool(
+      "read_specialist_spec_resource",
+      "Read a bundled specialist framework spec resource by URI. Use this when your provider cannot call MCP resources/read directly.",
+      {
+        uri: z.string().describe("Specialist spec resource URI, e.g. resource://routa/specialists/feature-tree/manifest"),
+      },
+      async (params) => {
+        const resource = readFeatureTreeSpecResource(params.uri);
+        if (!resource) {
+          return this.toMcpResult({
+            success: false,
+            error: `Unknown specialist spec resource URI: ${params.uri}`,
           });
         }
         return this.toMcpResult({
