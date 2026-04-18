@@ -102,6 +102,9 @@ export function KanbanSettingsModal({
   const [showUnsavedChangesPrompt, setShowUnsavedChangesPrompt] = useState(false);
   const [githubTokenInput, setGitHubTokenInput] = useState("");
   const [removeConfiguredGitHubToken, setRemoveConfiguredGitHubToken] = useState(false);
+  const [gitlabTokenInput, setGitLabTokenInput] = useState("");
+  const [gitlabServerUrl, setGitLabServerUrl] = useState("https://gitlab.com");
+  const [gitlabProjectId, setGitLabProjectId] = useState("");
   const kanbanImportInputRef = useRef<HTMLInputElement>(null);
 
   const sortedColumns = useMemo(
@@ -795,6 +798,55 @@ export function KanbanSettingsModal({
                     <p className="mt-3 text-sm text-slate-600 dark:text-slate-300">
                       {githubImportAvailable ? t.kanban.githubImportEnabledHint : t.kanban.githubImportDisabledHint}
                     </p>
+                  </SectionCard>
+
+                  <SectionCard eyebrow={t.webhook.platformGitlab} title={t.webhook.platformGitlab + " Webhook"} description={t.webhook.gitlabEmptyDescription}>
+                    <div className="space-y-2">
+                      <label className="block space-y-1">
+                        <span className="block text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-300">
+                          {t.webhook.gitlabServerUrl}
+                        </span>
+                        <input
+                          type="text"
+                          value={gitlabServerUrl}
+                          onChange={(event) => setGitLabServerUrl(event.target.value)}
+                          placeholder="https://gitlab.com"
+                          className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-orange-400 dark:border-slate-700 dark:bg-[#0b1119] dark:text-slate-100"
+                          aria-label="GitLab server URL"
+                        />
+                      </label>
+                      <label className="block space-y-1">
+                        <span className="block text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-300">
+                          {t.webhook.gitlabProjectId}
+                        </span>
+                        <input
+                          type="text"
+                          value={gitlabProjectId}
+                          onChange={(event) => setGitLabProjectId(event.target.value)}
+                          placeholder="namespace/project or 12345"
+                          className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-orange-400 dark:border-slate-700 dark:bg-[#0b1119] dark:text-slate-100"
+                          aria-label="GitLab project ID"
+                        />
+                      </label>
+                      <label className="block space-y-1">
+                        <span className="block text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-300">
+                          {t.webhook.gitlabToken}
+                        </span>
+                        <input
+                          type="password"
+                          value={gitlabTokenInput}
+                          onChange={(event) => setGitLabTokenInput(event.target.value)}
+                          placeholder="glpat-..."
+                          autoComplete="off"
+                          spellCheck={false}
+                          className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-orange-400 dark:border-slate-700 dark:bg-[#0b1119] dark:text-slate-100"
+                          aria-label="GitLab personal access token"
+                        />
+                      </label>
+                      <p className="text-xs leading-5 text-slate-500 dark:text-slate-400">
+                        {t.webhook.gitlabServerUrlHint}
+                      </p>
+                    </div>
                   </SectionCard>
 
                   <SectionCard eyebrow={t.common.import} title={t.kanban.boardTransfer} description={t.kanban.boardTransferHint}>
