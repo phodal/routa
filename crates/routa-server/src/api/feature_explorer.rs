@@ -182,6 +182,9 @@ fn insert_into_tree(children: &mut Vec<FileTreeNode>, parts: &[&str], full_path:
 /// Per-file statistics: (change_count, session_count, latest_timestamp)
 type FileStats = HashMap<String, (usize, usize, String)>;
 
+/// Per-feature statistics: (session_count, changed_file_count, latest_timestamp)
+type FeatureStats = HashMap<String, (usize, usize, String)>;
+
 #[derive(Debug, Default)]
 struct FeatureStatAggregate {
     session_ids: BTreeSet<String>,
@@ -200,7 +203,7 @@ fn collect_session_stats(
     repo_root: &Path,
     feature_tree: &FeatureTreeCatalog,
 ) -> (
-    HashMap<String, (usize, usize, String)>,
+    FeatureStats,
     FileStats,
     Vec<SessionAnalysis>,
 ) {

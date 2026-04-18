@@ -13,7 +13,7 @@ pub fn generate(
     framework: Option<&str>,
 ) -> Result<(), String> {
     let repo_root = repo_path
-        .map(|p| std::path::PathBuf::from(p))
+        .map(std::path::PathBuf::from)
         .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| ".".into()));
 
     let script = repo_root.join("scripts/docs/feature-tree-generator.ts");
@@ -86,7 +86,7 @@ pub fn generate(
 /// Run `feature-tree inspect` — read and display the current feature tree index.
 pub fn inspect(repo_path: Option<&str>) -> Result<(), String> {
     let repo_root = repo_path
-        .map(|p| std::path::PathBuf::from(p))
+        .map(std::path::PathBuf::from)
         .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| ".".into()));
 
     let json_path = repo_root.join("docs/product-specs/feature-tree.index.json");
