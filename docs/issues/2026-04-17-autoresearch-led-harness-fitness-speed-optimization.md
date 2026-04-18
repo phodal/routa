@@ -2,7 +2,7 @@
 title: "Harness Fitness 加速：引入 pi-autoresearch 进行自动化闭环实验"
 date: "2026-04-17"
 kind: issue
-status: open
+status: in_progress
 severity: high
 area: "harness"
 tags: ["fitness", "harness-monitor", "entrix", "autoresearch", "performance", "automated-optimization"]
@@ -11,9 +11,9 @@ related_issues:
   - "docs/issues/2026-04-13-harness-monitor-selection-latency-from-single-worker.md"
   - "docs/issues/2026-04-14-kanban-entrix-live-fitness-surface.md"
   - "docs/issues/2026-03-28-harness-execution-plan-react-flow.md"
-github_issue: null
-github_state: null
-github_url: null
+github_issue: 482
+github_state: open
+github_url: "https://github.com/phodal/routa/issues/482"
 ---
 
 # Harness Fitness 加速：引入 pi-autoresearch 进行自动化闭环实验

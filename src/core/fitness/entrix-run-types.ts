@@ -54,6 +54,16 @@ export type EntrixRunSummary = {
   metricCount: number;
   failingMetricCount: number;
   dimensions: EntrixDimensionSummary[];
+  /** Total wall-time of the entrix run in milliseconds (from command start to output). */
+  durationMs?: number;
+  /** Duration of the single slowest metric in milliseconds. */
+  slowestMetricMs?: number | null;
+  /** Number of checks run (same as metricCount, exposed for autoresearch consumers). */
+  checksCount?: number;
+  /** Number of checks that did not pass (fail or unknown state). */
+  failedChecks?: number;
+  /** Ratio of passed/waived checks to total checks (0.0–1.0). */
+  cacheHitRatio?: number;
 };
 
 export type EntrixRunResponse = {
