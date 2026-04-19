@@ -98,6 +98,12 @@ const RECOMMENDED_AUTOMATION_BY_STAGE: Partial<Record<KanbanColumnStage, KanbanC
         specialistName: "PR Publisher",
       },
       {
+        id: "auto-merger",
+        role: "DEVELOPER",
+        specialistId: "kanban-auto-merger",
+        specialistName: "Auto Merger",
+      },
+      {
         id: "done-reporter",
         role: "GATE",
         specialistId: "kanban-done-reporter",
@@ -122,7 +128,7 @@ const LEGACY_SPECIALIST_IDS_BY_STAGE: Partial<Record<KanbanColumnStage, string[]
   dev: ["pr-reviewer", "developer", "claude-code", "kanban-workflow"],
   review: ["desk-check", "gate", "pr-reviewer", "kanban-workflow", "kanban-review-guard"],
   blocked: ["claude-code", "developer", "routa", "kanban-workflow"],
-  done: ["gate", "verifier", "claude-code", "kanban-workflow", "kanban-done-reporter"],
+  done: ["gate", "verifier", "claude-code", "kanban-workflow", "kanban-done-reporter", "kanban-auto-merger"],
 };
 
 function getStepIdentity(step: ReturnType<typeof getKanbanAutomationSteps>[number]): string {

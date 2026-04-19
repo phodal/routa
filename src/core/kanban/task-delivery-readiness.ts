@@ -160,7 +160,8 @@ export function hasDeliveryRules(
     rules
     && (rules.requireCommittedChanges
       || rules.requireCleanWorktree
-      || rules.requirePullRequestReady),
+      || rules.requirePullRequestReady
+      || rules.autoMergeAfterPR),
   );
 }
 
