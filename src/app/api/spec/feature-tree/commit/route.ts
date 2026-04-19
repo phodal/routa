@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import path from "node:path";
 
 import { NextRequest, NextResponse } from "next/server";
@@ -56,21 +57,40 @@ export async function POST(request: NextRequest) {
     let scanRoot: string;
     if (body.scanRoot) {
       const resolved = path.resolve(body.scanRoot);
-      const resolvedRepo = path.resolve(repoRoot);
-      if (!resolved.startsWith(resolvedRepo + path.sep) && resolved !== resolvedRepo) {
+      if (!fs.existsSync(resolved)) {
+        return NextResponse.json(
+          { error: "scanRoot does not exist" },
+          { status: 400 },
+        );
+      }
+      const realScanRoot = fs.realpathSync(resolved);
+      const realRepoRoot = fs.realpathSync(path.resolve(repoRoot));
+      if (realScanRoot !== realRepoRoot && !realScanRoot.startsWith(realRepoRoot + path.sep)) {
         return NextResponse.json(
           { error: "scanRoot must be inside the repository" },
           { status: 400 },
         );
       }
-      scanRoot = resolved;
+      scanRoot = realScanRoot;
     } else {
       scanRoot = preflightFeatureTree(repoRoot).selectedScanRoot;
     }
+
+    let metadata: FeatureTreeMetadata | null = null;
+    if (body.metadata != null) {
+      if (typeof body.metadata !== "object" || !Array.isArray(body.metadata.features)) {
+        return NextResponse.json(
+          { error: "Invalid metadata: must contain a features array" },
+          { status: 400 },
+        );
+      }
+      metadata = body.metadata;
+    }
+
     const result = await generateFeatureTree({
       repoRoot,
       scanRoot,
-      metadata: body.metadata ?? null,
+      metadata,
       dryRun: false,
     });
     return NextResponse.json(result);

@@ -15,6 +15,20 @@ vi.mock("@/core/fitness/repo-root", () => ({
   normalizeFitnessContextValue: (v: string | null) => v ?? undefined,
 }));
 
+vi.mock("node:fs", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs")>();
+  return {
+    ...actual,
+    default: {
+      ...actual,
+      existsSync: vi.fn(() => true),
+      realpathSync: vi.fn((p: string) => p),
+    },
+  };
+});
+
+import fs from "node:fs";
+
 import { POST } from "../route";
 
 describe("POST /api/spec/feature-tree/commit", () => {
@@ -93,6 +107,8 @@ describe("POST /api/spec/feature-tree/commit", () => {
 
   it("rejects scanRoot outside the repository", async () => {
     mockResolveFitnessRepoRoot.mockResolvedValue("/tmp/repo");
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.realpathSync).mockImplementation((p) => String(p));
 
     const req = new NextRequest("http://localhost/api/spec/feature-tree/commit", {
       method: "POST",
@@ -104,6 +120,43 @@ describe("POST /api/spec/feature-tree/commit", () => {
 
     expect(res.status).toBe(400);
     expect(body.error).toBe("scanRoot must be inside the repository");
+    expect(mockGenerateFeatureTree).not.toHaveBeenCalled();
+  });
+
+  it("rejects scanRoot that resolves outside repo via symlink", async () => {
+    mockResolveFitnessRepoRoot.mockResolvedValue("/tmp/repo");
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.realpathSync).mockImplementation((p) => {
+      if (String(p) === "/tmp/repo/symlink-dir") return "/outside/repo";
+      return String(p);
+    });
+
+    const req = new NextRequest("http://localhost/api/spec/feature-tree/commit", {
+      method: "POST",
+      body: JSON.stringify({ repoPath: "/tmp/repo", scanRoot: "/tmp/repo/symlink-dir" }),
+    });
+
+    const res = await POST(req);
+    const body = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(body.error).toBe("scanRoot must be inside the repository");
+    expect(mockGenerateFeatureTree).not.toHaveBeenCalled();
+  });
+
+  it("rejects invalid metadata without features array", async () => {
+    mockResolveFitnessRepoRoot.mockResolvedValue("/tmp/repo");
+
+    const req = new NextRequest("http://localhost/api/spec/feature-tree/commit", {
+      method: "POST",
+      body: JSON.stringify({ repoPath: "/tmp/repo", metadata: { bad: true } }),
+    });
+
+    const res = await POST(req);
+    const body = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(body.error).toBe("Invalid metadata: must contain a features array");
     expect(mockGenerateFeatureTree).not.toHaveBeenCalled();
   });
 });
