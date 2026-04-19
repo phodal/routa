@@ -1,10 +1,13 @@
 use chrono::Utc;
 use reqwest::header::{HeaderName, HeaderValue, ACCEPT, CONTENT_TYPE};
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
+use super::shared::{default_workspace_id, resolve_board, tasks_for_board};
 use crate::events::{AgentEvent, AgentEventType};
+use crate::kanban::KanbanCard;
 use crate::models::kanban::{KanbanAutomationStep, KanbanBoard, KanbanColumn, KanbanTransport};
 use crate::models::task::{
     build_task_evidence_summary, build_task_invest_validation, build_task_story_readiness, Task,
@@ -1003,6 +1006,162 @@ pub(super) fn apply_trigger_result(
     } else {
         task.lane_sessions.push(lane_session);
     }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListAutomationsParams {
+    #[serde(default = "default_workspace_id")]
+    pub workspace_id: String,
+    pub board_id: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AutomationColumnSummary {
+    pub id: String,
+    pub name: String,
+    pub stage: String,
+    pub position: i64,
+    pub card_count: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub automation: Option<crate::models::kanban::KanbanColumnAutomation>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListAutomationsResult {
+    pub board_id: String,
+    pub columns: Vec<AutomationColumnSummary>,
+}
+
+pub async fn list_automations(
+    state: &AppState,
+    params: ListAutomationsParams,
+) -> Result<ListAutomationsResult, RpcError> {
+    let board = resolve_board(state, &params.workspace_id, params.board_id.as_deref()).await?;
+    let tasks = tasks_for_board(state, &board).await?;
+    let mut columns = board.columns.clone();
+    columns.sort_by_key(|column| column.position);
+    let summaries = columns
+        .into_iter()
+        .map(|column| {
+            let card_count = tasks
+                .iter()
+                .filter(|task| task.column_id.as_deref().unwrap_or("backlog") == column.id)
+                .count();
+            AutomationColumnSummary {
+                id: column.id,
+                name: column.name,
+                stage: column.stage,
+                position: column.position,
+                card_count,
+                automation: column.automation,
+            }
+        })
+        .collect();
+
+    Ok(ListAutomationsResult {
+        board_id: board.id,
+        columns: summaries,
+    })
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TriggerAutomationParams {
+    pub card_id: String,
+    pub column_id: Option<String>,
+    #[serde(default)]
+    pub force: bool,
+    #[serde(default)]
+    pub dry_run: bool,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TriggerAutomationResult {
+    pub card: KanbanCard,
+    pub triggered: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub session_id: Option<String>,
+}
+
+pub async fn trigger_automation(
+    state: &AppState,
+    params: TriggerAutomationParams,
+) -> Result<TriggerAutomationResult, RpcError> {
+    let mut task = state
+        .task_store
+        .get(&params.card_id)
+        .await?
+        .ok_or_else(|| RpcError::NotFound(format!("Card {} not found", params.card_id)))?;
+    let board_id = task.board_id.clone().ok_or_else(|| {
+        RpcError::BadRequest(format!(
+            "Card {} is not associated with a board",
+            params.card_id
+        ))
+    })?;
+    let board = state
+        .kanban_store
+        .get(&board_id)
+        .await?
+        .ok_or_else(|| RpcError::NotFound(format!("Board {board_id} not found")))?;
+    let column_id = params
+        .column_id
+        .as_deref()
+        .or_else(|| task.column_id.as_deref())
+        .ok_or_else(|| RpcError::BadRequest("Card has no column".to_string()))?;
+    let column = board
+        .columns
+        .iter()
+        .find(|column| column.id == column_id)
+        .cloned()
+        .ok_or_else(|| RpcError::NotFound(format!("Column {column_id} not found")))?;
+    let Some(automation) = column.automation.as_ref() else {
+        return Err(RpcError::BadRequest(format!(
+            "Column {column_id} has no automation configured"
+        )));
+    };
+    if !automation.enabled {
+        return Err(RpcError::BadRequest(format!(
+            "Column {column_id} automation is disabled"
+        )));
+    }
+
+    if params.dry_run {
+        return Ok(TriggerAutomationResult {
+            card: crate::kanban::task_to_card(&task),
+            triggered: false,
+            message: Some("Dry run: automation not triggered".to_string()),
+            session_id: None,
+        });
+    }
+
+    if params.force {
+        task.trigger_session_id = None;
+        task.last_sync_error = None;
+    }
+
+    maybe_apply_lane_automation_defaults(&mut task, Some(&column));
+    let previous_session = task.trigger_session_id.clone();
+    maybe_trigger_lane_automation(state, &mut task, Some(&column)).await;
+    let triggered = task.trigger_session_id.as_ref() != previous_session.as_ref();
+    let message = task.last_sync_error.clone().or_else(|| {
+        (!triggered).then_some(
+            "Automation did not trigger (already running or transition type mismatch)".to_string(),
+        )
+    });
+    state.task_store.save(&task).await?;
+
+    Ok(TriggerAutomationResult {
+        card: crate::kanban::task_to_card(&task),
+        triggered,
+        message,
+        session_id: task.trigger_session_id.clone(),
+    })
 }
 
 async fn load_task_board(state: &AppState, task: &Task) -> Result<Option<KanbanBoard>, String> {

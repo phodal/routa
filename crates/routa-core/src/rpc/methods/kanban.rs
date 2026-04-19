@@ -14,14 +14,25 @@
 //! - `kanban.searchCards`
 //! - `kanban.listCardsByColumn`
 //! - `kanban.decomposeTasks`
+//! - `kanban.listCards`
+//! - `kanban.status`
+//! - `kanban.listAutomations`
+//! - `kanban.triggerAutomation`
+//! - `kanban.createGithubIssue`
+//! - `kanban.syncGithubIssue`
 
 mod automation;
 mod boards;
 mod cards;
+mod github;
 mod handoffs;
 mod queries;
 mod shared;
 
+pub use automation::{
+    list_automations, trigger_automation, ListAutomationsParams, ListAutomationsResult,
+    TriggerAutomationParams, TriggerAutomationResult,
+};
 pub use boards::{
     create_board, create_column, delete_column, get_board, list_boards, update_board,
     CreateBoardParams, CreateBoardResult, CreateColumnParams, CreateColumnResult,
@@ -35,13 +46,18 @@ pub use cards::{
     DeleteCardParams, DeleteCardResult, MoveCardParams, MoveCardResult, UpdateCardParams,
     UpdateCardResult,
 };
+pub use github::{
+    create_github_issue, sync_github_issue, CreateGithubIssueParams, CreateGithubIssueResult,
+    SyncGithubIssueParams, SyncGithubIssueResult,
+};
 pub use handoffs::{
     request_previous_lane_handoff, submit_lane_handoff, RequestPreviousLaneHandoffParams,
     RequestPreviousLaneHandoffResult, SubmitLaneHandoffParams, SubmitLaneHandoffResult,
 };
 pub use queries::{
-    list_cards_by_column, search_cards, ListCardsByColumnParams, ListCardsByColumnResult,
-    SearchCardsParams, SearchCardsResult,
+    kanban_status, list_cards, list_cards_by_column, search_cards, KanbanStatusParams,
+    KanbanStatusResult, ListCardsByColumnParams, ListCardsByColumnResult, ListCardsParams,
+    ListCardsResult, SearchCardsParams, SearchCardsResult,
 };
 
 #[cfg(test)]
@@ -54,6 +70,7 @@ mod tests {
     use chrono::Utc;
 
     use crate::db::Database;
+    use crate::kanban::set_task_column;
     use crate::models::kanban::{
         KanbanAutomationStep, KanbanBoard, KanbanColumn, KanbanColumnAutomation, KanbanTransport,
     };
@@ -1259,5 +1276,157 @@ mod tests {
             Some("Environment prepared and command rerun")
         );
         assert!(saved.lane_handoffs[0].responded_at.is_some());
+    }
+
+    #[tokio::test]
+    async fn kanban_status_counts_cards_by_column_and_status() {
+        let state = setup_state().await;
+        let boards = list_boards(
+            &state,
+            ListBoardsParams {
+                workspace_id: "default".to_string(),
+            },
+        )
+        .await
+        .expect("boards should list");
+        let board_id = boards.boards[0].id.clone();
+
+        let mut backlog_task = Task::new(
+            "task-backlog".to_string(),
+            "Backlog task".to_string(),
+            "Objective".to_string(),
+            "default".to_string(),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        );
+        backlog_task.board_id = Some(board_id.clone());
+        set_task_column(&mut backlog_task, "backlog");
+        state.task_store.save(&backlog_task).await.expect("save");
+
+        let mut dev_task = Task::new(
+            "task-dev".to_string(),
+            "Dev task".to_string(),
+            "Objective".to_string(),
+            "default".to_string(),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        );
+        dev_task.board_id = Some(board_id.clone());
+        set_task_column(&mut dev_task, "dev");
+        state.task_store.save(&dev_task).await.expect("save");
+
+        let status = kanban_status(
+            &state,
+            KanbanStatusParams {
+                workspace_id: "default".to_string(),
+                board_id: Some(board_id.clone()),
+            },
+        )
+        .await
+        .expect("status should succeed");
+
+        assert_eq!(status.totals.total, 2);
+        assert_eq!(
+            status
+                .totals
+                .by_status
+                .get("in_progress")
+                .copied()
+                .unwrap_or(0),
+            1
+        );
+        let backlog = status
+            .columns
+            .iter()
+            .find(|column| column.id == "backlog")
+            .expect("backlog column");
+        let dev = status
+            .columns
+            .iter()
+            .find(|column| column.id == "dev")
+            .expect("dev column");
+        assert_eq!(backlog.card_count, 1);
+        assert_eq!(dev.card_count, 1);
+    }
+
+    #[tokio::test]
+    async fn list_cards_applies_filters() {
+        let state = setup_state().await;
+        let boards = list_boards(
+            &state,
+            ListBoardsParams {
+                workspace_id: "default".to_string(),
+            },
+        )
+        .await
+        .expect("boards should list");
+        let board_id = boards.boards[0].id.clone();
+
+        let mut low_task = Task::new(
+            "task-low".to_string(),
+            "Low priority".to_string(),
+            "Objective".to_string(),
+            "default".to_string(),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        );
+        low_task.board_id = Some(board_id.clone());
+        set_task_column(&mut low_task, "todo");
+        low_task.priority = Some(crate::models::task::TaskPriority::Low);
+        low_task.labels = vec!["bug".to_string()];
+        state.task_store.save(&low_task).await.expect("save");
+
+        let mut high_task = Task::new(
+            "task-high".to_string(),
+            "High priority".to_string(),
+            "Objective".to_string(),
+            "default".to_string(),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        );
+        high_task.board_id = Some(board_id.clone());
+        set_task_column(&mut high_task, "dev");
+        high_task.priority = Some(crate::models::task::TaskPriority::High);
+        high_task.labels = vec!["feature".to_string(), "kanban".to_string()];
+        state.task_store.save(&high_task).await.expect("save");
+
+        let filtered = list_cards(
+            &state,
+            ListCardsParams {
+                workspace_id: "default".to_string(),
+                board_id: Some(board_id),
+                status: None,
+                column_id: Some("dev".to_string()),
+                labels: vec!["feature".to_string()],
+                assignee: None,
+                priority: Some("high".to_string()),
+            },
+        )
+        .await
+        .expect("list cards should succeed");
+
+        assert_eq!(filtered.cards.len(), 1);
+        assert_eq!(filtered.cards[0].id, "task-high");
+        assert_eq!(filtered.cards[0].column_id, "dev");
     }
 }

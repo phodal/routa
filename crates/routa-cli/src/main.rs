@@ -404,6 +404,18 @@ enum KanbanAction {
         #[command(subcommand)]
         action: KanbanColumnAction,
     },
+    /// Show board status
+    Status {
+        #[arg(long, default_value = "default")]
+        workspace_id: String,
+        #[arg(long)]
+        board_id: Option<String>,
+    },
+    /// Inspect and trigger automations
+    Automation {
+        #[command(subcommand)]
+        action: KanbanAutomationAction,
+    },
 }
 
 #[derive(Subcommand)]
@@ -552,6 +564,23 @@ enum KanbanCardAction {
         #[arg(long)]
         card_id: String,
     },
+    /// List cards with optional filters
+    List {
+        #[arg(long, default_value = "default")]
+        workspace_id: String,
+        #[arg(long)]
+        board_id: Option<String>,
+        #[arg(long)]
+        column_id: Option<String>,
+        #[arg(long)]
+        status: Option<String>,
+        #[arg(long, value_delimiter = ',')]
+        labels: Option<Vec<String>>,
+        #[arg(long)]
+        assignee: Option<String>,
+        #[arg(long)]
+        priority: Option<String>,
+    },
     /// Search cards
     Search {
         #[arg(long)]
@@ -581,6 +610,30 @@ enum KanbanCardAction {
         #[arg(long)]
         column_id: Option<String>,
     },
+    /// Create a GitHub issue from a card
+    CreateIssue {
+        #[arg(long)]
+        card_id: String,
+        #[arg(long)]
+        repo: String,
+        #[arg(long)]
+        assignee: Option<String>,
+        #[arg(long, value_delimiter = ',')]
+        labels: Option<Vec<String>>,
+        #[arg(long)]
+        title: Option<String>,
+        #[arg(long)]
+        body: Option<String>,
+    },
+    /// Sync GitHub issue state back to a card
+    SyncIssue {
+        #[arg(long)]
+        card_id: String,
+        #[arg(long)]
+        repo: Option<String>,
+        #[arg(long)]
+        issue_number: Option<i64>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -602,6 +655,28 @@ enum KanbanColumnAction {
         column_id: String,
         #[arg(long, default_value_t = false)]
         delete_cards: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum KanbanAutomationAction {
+    /// List automation settings for a board
+    List {
+        #[arg(long, default_value = "default")]
+        workspace_id: String,
+        #[arg(long)]
+        board_id: Option<String>,
+    },
+    /// Trigger automation for a card/column
+    Trigger {
+        #[arg(long)]
+        card_id: String,
+        #[arg(long)]
+        column_id: Option<String>,
+        #[arg(long, default_value_t = false)]
+        force: bool,
+        #[arg(long, default_value_t = false)]
+        dry_run: bool,
     },
 }
 
@@ -1195,6 +1270,59 @@ async fn main() {
                             )
                             .await
                         }
+                        KanbanCardAction::List {
+                            workspace_id,
+                            board_id,
+                            column_id,
+                            status,
+                            labels,
+                            assignee,
+                            priority,
+                        } => {
+                            commands::kanban::list_cards(
+                                &state,
+                                &workspace_id,
+                                board_id.as_deref(),
+                                column_id.as_deref(),
+                                status.as_deref(),
+                                labels,
+                                assignee.as_deref(),
+                                priority.as_deref(),
+                            )
+                            .await
+                        }
+                        KanbanCardAction::CreateIssue {
+                            card_id,
+                            repo,
+                            assignee,
+                            labels,
+                            title,
+                            body,
+                        } => {
+                            commands::kanban::create_github_issue(
+                                &state,
+                                &card_id,
+                                &repo,
+                                assignee.as_deref(),
+                                labels,
+                                title.as_deref(),
+                                body.as_deref(),
+                            )
+                            .await
+                        }
+                        KanbanCardAction::SyncIssue {
+                            card_id,
+                            repo,
+                            issue_number,
+                        } => {
+                            commands::kanban::sync_github_issue(
+                                &state,
+                                &card_id,
+                                repo.as_deref(),
+                                issue_number,
+                            )
+                            .await
+                        }
                     },
                     KanbanAction::Column { action } => match action {
                         KanbanColumnAction::Create {
@@ -1220,6 +1348,41 @@ async fn main() {
                                 &board_id,
                                 &column_id,
                                 delete_cards,
+                            )
+                            .await
+                        }
+                    },
+                    KanbanAction::Status {
+                        workspace_id,
+                        board_id,
+                    } => {
+                        commands::kanban::kanban_status(&state, &workspace_id, board_id.as_deref())
+                            .await
+                    }
+                    KanbanAction::Automation { action } => match action {
+                        KanbanAutomationAction::List {
+                            workspace_id,
+                            board_id,
+                        } => {
+                            commands::kanban::list_automations(
+                                &state,
+                                &workspace_id,
+                                board_id.as_deref(),
+                            )
+                            .await
+                        }
+                        KanbanAutomationAction::Trigger {
+                            card_id,
+                            column_id,
+                            force,
+                            dry_run,
+                        } => {
+                            commands::kanban::trigger_automation(
+                                &state,
+                                &card_id,
+                                column_id.as_deref(),
+                                force,
+                                dry_run,
                             )
                             .await
                         }
@@ -1429,13 +1592,9 @@ async fn main() {
             }
 
             Commands::FeatureTree { action } => match action {
-                FeatureTreeAction::Generate {
-                    repo_path,
-                    dry_run,
-                } => commands::feature_tree::generate(
-                    repo_path.as_deref(),
-                    dry_run,
-                ),
+                FeatureTreeAction::Generate { repo_path, dry_run } => {
+                    commands::feature_tree::generate(repo_path.as_deref(), dry_run)
+                }
                 FeatureTreeAction::Inspect { repo_path } => {
                     commands::feature_tree::inspect(repo_path.as_deref())
                 }

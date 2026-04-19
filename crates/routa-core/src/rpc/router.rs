@@ -245,6 +245,11 @@ impl RpcRouter {
                 let r = methods::kanban::search_cards(&self.state, p).await?;
                 Ok(serde_json::to_value(r).unwrap())
             }
+            "kanban.listCards" => {
+                let p = parse_params(params)?;
+                let r = methods::kanban::list_cards(&self.state, p).await?;
+                Ok(serde_json::to_value(r).unwrap())
+            }
             "kanban.listCardsByColumn" => {
                 let p = parse_params(params)?;
                 let r = methods::kanban::list_cards_by_column(&self.state, p).await?;
@@ -253,6 +258,31 @@ impl RpcRouter {
             "kanban.decomposeTasks" => {
                 let p = parse_params(params)?;
                 let r = methods::kanban::decompose_tasks(&self.state, p).await?;
+                Ok(serde_json::to_value(r).unwrap())
+            }
+            "kanban.status" => {
+                let p = parse_params(params)?;
+                let r = methods::kanban::kanban_status(&self.state, p).await?;
+                Ok(serde_json::to_value(r).unwrap())
+            }
+            "kanban.listAutomations" => {
+                let p = parse_params(params)?;
+                let r = methods::kanban::list_automations(&self.state, p).await?;
+                Ok(serde_json::to_value(r).unwrap())
+            }
+            "kanban.triggerAutomation" => {
+                let p = parse_params(params)?;
+                let r = methods::kanban::trigger_automation(&self.state, p).await?;
+                Ok(serde_json::to_value(r).unwrap())
+            }
+            "kanban.createGithubIssue" => {
+                let p = parse_params(params)?;
+                let r = methods::kanban::create_github_issue(&self.state, p).await?;
+                Ok(serde_json::to_value(r).unwrap())
+            }
+            "kanban.syncGithubIssue" => {
+                let p = parse_params(params)?;
+                let r = methods::kanban::sync_github_issue(&self.state, p).await?;
                 Ok(serde_json::to_value(r).unwrap())
             }
             "kanban.requestPreviousLaneHandoff" => {
@@ -359,8 +389,14 @@ impl RpcRouter {
             "kanban.createColumn",
             "kanban.deleteColumn",
             "kanban.searchCards",
+            "kanban.listCards",
             "kanban.listCardsByColumn",
             "kanban.decomposeTasks",
+            "kanban.status",
+            "kanban.listAutomations",
+            "kanban.triggerAutomation",
+            "kanban.createGithubIssue",
+            "kanban.syncGithubIssue",
             "notes.list",
             "notes.get",
             "notes.create",

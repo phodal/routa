@@ -667,3 +667,183 @@ pub async fn export_config(
 
     Ok(())
 }
+
+pub async fn list_cards(
+    state: &AppState,
+    workspace_id: &str,
+    board_id: Option<&str>,
+    column_id: Option<&str>,
+    status: Option<&str>,
+    labels: Option<Vec<String>>,
+    assignee: Option<&str>,
+    priority: Option<&str>,
+) -> Result<(), String> {
+    let mut params = serde_json::json!({
+        "workspaceId": workspace_id,
+    });
+    if let Some(board_id) = board_id {
+        params["boardId"] = serde_json::json!(board_id);
+    }
+    if let Some(column_id) = column_id {
+        params["columnId"] = serde_json::json!(column_id);
+    }
+    if let Some(status) = status {
+        params["status"] = serde_json::json!(status);
+    }
+    if let Some(priority) = priority {
+        params["priority"] = serde_json::json!(priority);
+    }
+    if let Some(labels) = labels {
+        params["labels"] = serde_json::json!(labels);
+    }
+    if let Some(assignee) = assignee {
+        params["assignee"] = serde_json::json!(assignee);
+    }
+
+    let response = RpcRouter::new(state.clone())
+        .handle_value(serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "kanban.listCards",
+            "params": params
+        }))
+        .await;
+    print_json(&response);
+    Ok(())
+}
+
+pub async fn kanban_status(
+    state: &AppState,
+    workspace_id: &str,
+    board_id: Option<&str>,
+) -> Result<(), String> {
+    let mut params = serde_json::json!({ "workspaceId": workspace_id });
+    if let Some(board_id) = board_id {
+        params["boardId"] = serde_json::json!(board_id);
+    }
+
+    let response = RpcRouter::new(state.clone())
+        .handle_value(serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "kanban.status",
+            "params": params
+        }))
+        .await;
+    print_json(&response);
+    Ok(())
+}
+
+pub async fn list_automations(
+    state: &AppState,
+    workspace_id: &str,
+    board_id: Option<&str>,
+) -> Result<(), String> {
+    let mut params = serde_json::json!({ "workspaceId": workspace_id });
+    if let Some(board_id) = board_id {
+        params["boardId"] = serde_json::json!(board_id);
+    }
+
+    let response = RpcRouter::new(state.clone())
+        .handle_value(serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "kanban.listAutomations",
+            "params": params
+        }))
+        .await;
+    print_json(&response);
+    Ok(())
+}
+
+pub async fn trigger_automation(
+    state: &AppState,
+    card_id: &str,
+    column_id: Option<&str>,
+    force: bool,
+    dry_run: bool,
+) -> Result<(), String> {
+    let mut params = serde_json::json!({
+        "cardId": card_id,
+        "force": force,
+        "dryRun": dry_run,
+    });
+    if let Some(column_id) = column_id {
+        params["columnId"] = serde_json::json!(column_id);
+    }
+
+    let response = RpcRouter::new(state.clone())
+        .handle_value(serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "kanban.triggerAutomation",
+            "params": params
+        }))
+        .await;
+    print_json(&response);
+    Ok(())
+}
+
+pub async fn create_github_issue(
+    state: &AppState,
+    card_id: &str,
+    repo: &str,
+    assignee: Option<&str>,
+    labels: Option<Vec<String>>,
+    title: Option<&str>,
+    body: Option<&str>,
+) -> Result<(), String> {
+    let mut params = serde_json::json!({
+        "cardId": card_id,
+        "repo": repo,
+    });
+    if let Some(assignee) = assignee {
+        params["assignee"] = serde_json::json!(assignee);
+    }
+    if let Some(labels) = labels {
+        params["labels"] = serde_json::json!(labels);
+    }
+    if let Some(title) = title {
+        params["title"] = serde_json::json!(title);
+    }
+    if let Some(body) = body {
+        params["body"] = serde_json::json!(body);
+    }
+
+    let response = RpcRouter::new(state.clone())
+        .handle_value(serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "kanban.createGithubIssue",
+            "params": params
+        }))
+        .await;
+    print_json(&response);
+    Ok(())
+}
+
+pub async fn sync_github_issue(
+    state: &AppState,
+    card_id: &str,
+    repo: Option<&str>,
+    issue_number: Option<i64>,
+) -> Result<(), String> {
+    let mut params = serde_json::json!({ "cardId": card_id });
+    if let Some(repo) = repo {
+        params["repo"] = serde_json::json!(repo);
+    }
+    if let Some(issue_number) = issue_number {
+        params["issueNumber"] = serde_json::json!(issue_number);
+    }
+
+    let response = RpcRouter::new(state.clone())
+        .handle_value(serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "kanban.syncGithubIssue",
+            "params": params
+        }))
+        .await;
+    print_json(&response);
+    Ok(())
+}
