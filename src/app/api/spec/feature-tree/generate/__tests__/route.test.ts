@@ -4,8 +4,10 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 // ── Mocks ──────────────────────────────────────────────────────────
 
 const mockGenerateFeatureTree = vi.fn();
+const mockPreflightFeatureTree = vi.fn();
 vi.mock("@/core/spec/feature-tree-generator", () => ({
   generateFeatureTree: (...args: unknown[]) => mockGenerateFeatureTree(...args),
+  preflightFeatureTree: (...args: unknown[]) => mockPreflightFeatureTree(...args),
 }));
 
 const mockResolveFitnessRepoRoot = vi.fn();
@@ -34,6 +36,7 @@ describe("POST /api/spec/feature-tree/generate", () => {
       apisCount: 3,
     };
     mockResolveFitnessRepoRoot.mockResolvedValue("/tmp/repo");
+    mockPreflightFeatureTree.mockReturnValue({ selectedScanRoot: "/tmp/repo" });
     mockGenerateFeatureTree.mockResolvedValue(fakeResult);
 
     const req = new NextRequest("http://localhost/api/spec/feature-tree/generate", {
@@ -46,14 +49,17 @@ describe("POST /api/spec/feature-tree/generate", () => {
 
     expect(res.status).toBe(200);
     expect(body).toEqual(fakeResult);
+    expect(mockPreflightFeatureTree).toHaveBeenCalledWith("/tmp/repo");
     expect(mockGenerateFeatureTree).toHaveBeenCalledWith({
       repoRoot: "/tmp/repo",
+      scanRoot: "/tmp/repo",
       dryRun: false,
     });
   });
 
   it("passes dryRun option through", async () => {
     mockResolveFitnessRepoRoot.mockResolvedValue("/tmp/repo");
+    mockPreflightFeatureTree.mockReturnValue({ selectedScanRoot: "/tmp/repo/src" });
     mockGenerateFeatureTree.mockResolvedValue({ pagesCount: 0, apisCount: 0 });
 
     const req = new NextRequest("http://localhost/api/spec/feature-tree/generate", {
@@ -65,6 +71,7 @@ describe("POST /api/spec/feature-tree/generate", () => {
     expect(res.status).toBe(200);
     expect(mockGenerateFeatureTree).toHaveBeenCalledWith({
       repoRoot: "/tmp/repo",
+      scanRoot: "/tmp/repo/src",
       dryRun: true,
     });
   });
@@ -95,6 +102,7 @@ describe("POST /api/spec/feature-tree/generate", () => {
 
   it("returns 500 when generation throws", async () => {
     mockResolveFitnessRepoRoot.mockResolvedValue("/tmp/repo");
+    mockPreflightFeatureTree.mockReturnValue({ selectedScanRoot: "/tmp/repo" });
     mockGenerateFeatureTree.mockRejectedValue(new Error("scan failed"));
 
     const req = new NextRequest("http://localhost/api/spec/feature-tree/generate", {
