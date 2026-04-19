@@ -14,7 +14,7 @@ path.
 - [Design Docs Index](/design-docs)
 - [Architecture Decisions](/adr)
 - [Product Specs](/product-specs/FEATURE_TREE)
-- [Specialists](/specialists)
+- [Providers & Models](/configuration/providers-and-models)
 - [Common Workflows](/use-routa/common-workflows)
 
 ## Maintainer Resources

@@ -1,3 +1,7 @@
+---
+title: Merge Plan - Windows Compat & i18n
+---
+
 # 合并方案：fix/windows-compatibility-and-i18n → upstream/main
 
 > 创建日期：2026-03-31

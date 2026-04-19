@@ -1,3 +1,7 @@
+---
+title: Harness Trace Learning Guide
+---
+
 # Harness Trace Learning - User Guide
 
 > **Learn from experience, evolve faster**: A practical guide to using Harness Evolution's self-learning capabilities.

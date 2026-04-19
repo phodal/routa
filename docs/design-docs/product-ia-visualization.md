@@ -1,3 +1,7 @@
+---
+title: Product IA Visualization
+---
+
 # Product IA Visualization
 
 ## Purpose

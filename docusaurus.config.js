@@ -45,8 +45,15 @@ module.exports = {
             "**/blog/**",
             "**/fitness/**",
             "**/bdd/**",
+            "**/exec-plans/**",
+            "**/harness/**",
+            "**/operational/**",
+            "**/copilot-fs-base-agent/**",
+            "**/references/**",
             "**/RELEASE_CHECKLIST.md",
             "**/RELEASE_SETUP.md",
+            "**/ARCHITECTURE_QUALITY_GUIDE.md",
+            "**/REFACTOR.md",
           ],
         },
         blog: {
@@ -130,6 +137,11 @@ module.exports = {
             },
             {
               type: "doc",
+              docId: "developer-guide/contributing",
+              label: "Contributing",
+            },
+            {
+              type: "doc",
               docId: "deployment/index",
               label: "Deployment",
             },
@@ -181,16 +193,12 @@ module.exports = {
               to: "/platforms",
             },
             {
+              label: "Core Concepts",
+              to: "/core-concepts",
+            },
+            {
               label: "Configuration",
               to: "/configuration",
-            },
-            {
-              label: "Administration",
-              to: "/administration",
-            },
-            {
-              label: "Use Routa",
-              to: "/use-routa",
             },
             {
               label: "What's New",
@@ -245,6 +253,10 @@ module.exports = {
             {
               label: "Reference",
               to: "/reference",
+            },
+            {
+              label: "Guides",
+              to: "/guides/harness-trace-learning-guide",
             },
           ],
         },

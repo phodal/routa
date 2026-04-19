@@ -17,9 +17,9 @@ These are the reference pages most readers should reach first:
     <strong>Product Specs</strong>
     Use this when you need route, endpoint, or API surface inventory rather than narrative docs.
   </a>
-  <a href="/routa/specialists">
-    <strong>Specialists</strong>
-    Look up the built-in specialist catalog and how specialist roles are described.
+  <a href="/routa/configuration/providers-and-models">
+    <strong>Providers & Models</strong>
+    Look up supported providers, model configuration, and specialist setup.
   </a>
   <a href="/routa/reference/resources">
     <strong>Resources</strong>

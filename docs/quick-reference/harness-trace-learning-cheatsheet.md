@@ -1,3 +1,7 @@
+---
+title: Harness Trace Learning Cheatsheet
+---
+
 # Harness Trace Learning - Quick Reference
 
 > **One-page cheatsheet** for Harness Evolution's self-learning features.
@@ -218,7 +222,6 @@ routa harness evolve --dry-run 2>&1 | grep "Loaded learned playbook"
 ## Related Docs
 
 - **User Guide**: [docs/guides/harness-trace-learning-guide.md](../guides/harness-trace-learning-guide.md)
-- **Technical Reference**: [docs/references/harness-trace-learning-technical.md](../references/harness-trace-learning-technical.md)
 - **Feature Overview**: [docs/features/harness-trace-learning.md](../features/harness-trace-learning.md)
 - **Issue #294**: https://github.com/phodal/routa/issues/294
 - **PR #345**: https://github.com/phodal/routa/pull/345

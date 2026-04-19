@@ -1,3 +1,7 @@
+---
+title: Harness Trace Learning Phase 2
+---
+
 # Harness Trace Learning - Phase 2: Runtime Integration
 
 **Status**: In Development  

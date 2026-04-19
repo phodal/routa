@@ -1,3 +1,7 @@
+---
+title: File Deletion Safety Mechanism
+---
+
 # File Deletion Safety Mechanism
 
 **Date**: 2026-04-06  

@@ -1,3 +1,7 @@
+---
+title: Core Beliefs
+---
+
 # Core Beliefs
 
 These are the operating beliefs behind Routa's repository-as-system-of-record direction.

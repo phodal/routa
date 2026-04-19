@@ -1,3 +1,7 @@
+---
+title: Workspace-Centric Redesign
+---
+
 # Workspace-Centric Redesign
 
 ## Status
@@ -101,4 +105,3 @@ Source material normalized into this document:
 
 Related docs:
 - [ARCHITECTURE.md](../ARCHITECTURE.md)
-- [workspace-centric-normalization.md](../exec-plans/active/workspace-centric-normalization.md)

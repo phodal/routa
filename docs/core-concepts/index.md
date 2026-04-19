@@ -25,7 +25,7 @@ The stable concepts to understand first are:
 - [Architecture](/ARCHITECTURE)
 - [Execution Modes](/design-docs/execution-modes)
 - [Architecture Decisions](/adr)
-- [Specialists](/specialists)
+- [Providers & Models](/configuration/providers-and-models)
 
 ## Why This Section Exists
 

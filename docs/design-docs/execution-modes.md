@@ -1,3 +1,7 @@
+---
+title: Execution Modes
+---
+
 # Execution Modes
 
 Durable design note for how Routa's three primary execution modes differ in behavior, orchestration boundary, and delivery model.

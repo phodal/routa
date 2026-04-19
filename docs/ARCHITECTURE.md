@@ -139,7 +139,7 @@ Important invariant:
 ### Harness And Worker
 
 - Harness detects repository signals, script entrypoints, and spec sources to power governance and quality analysis (`src/core/harness/`).
-- `crates/harness-monitor` is documented as a four-layer harness loop of `Context -> Run -> Observe -> Govern`; stable records remain `Task / Run / Workspace / EvalSnapshot / PolicyDecision / Evidence`, and CLI/TUI still consume one shared run assessment path. See [docs/harness/harness-monitor-run-centric-operator-model.md](./harness/harness-monitor-run-centric-operator-model.md).
+- `crates/harness-monitor` is documented as a four-layer harness loop of `Context -> Run -> Observe -> Govern`; stable records remain `Task / Run / Workspace / EvalSnapshot / PolicyDecision / Evidence`, and CLI/TUI still consume one shared run assessment path.
 - Workers abstract local and Docker-based execution environments (`src/core/worker/`).
 - Sandbox policy resolution in Rust enforces workspace-aware Docker constraints (`crates/routa-core/src/sandbox/`).
 
@@ -293,6 +293,6 @@ Current ADRs:
 - Product/API index: [docs/product-specs/FEATURE_TREE.md](./product-specs/FEATURE_TREE.md)
 - Architecture decisions: [docs/adr/](./adr/)
 - Design intent: [docs/design-docs/](./design-docs/)
-- Fitness and verification: [docs/fitness/README.md](./fitness/README.md)
-- Repository operating contract: [AGENTS.md](../AGENTS.md)
+- Coding style: [docs/coding-style.md](./coding-style)
+- Repository operating contract: `AGENTS.md` (repo root)
 - [MCP Spec](https://modelcontextprotocol.io/) · [ACP Spec](https://github.com/agentclientprotocol/typescript-sdk) · [A2A Spec](https://a2aprotocol.ai/)

@@ -36,4 +36,4 @@ usually the better starting point.
 ## Read Next
 
 - [Best Practices](/use-routa/best-practices)
-- [Specialists](/specialists)
+- [Providers & Models](/configuration/providers-and-models)

@@ -1,3 +1,7 @@
+---
+title: Disabled Providers
+---
+
 # Disabled Providers Feature
 
 ## Overview

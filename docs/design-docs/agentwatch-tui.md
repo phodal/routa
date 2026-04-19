@@ -1,3 +1,7 @@
+---
+title: AgentWatch TUI
+---
+
 # AgentWatch TUI
 
 AgentWatch is a TUI-first local runtime for multi-agent coding attribution inside one repository.

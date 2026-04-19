@@ -1,3 +1,7 @@
+---
+title: Architecture Rule DSL
+---
+
 # Architecture Rule DSL
 
 ## Purpose

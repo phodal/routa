@@ -1,3 +1,7 @@
+---
+title: Architecture Decision Records
+---
+
 # Architecture Decision Records
 
 Lightweight records of decisions that shape Routa.js boundaries, protocols, and evolution.

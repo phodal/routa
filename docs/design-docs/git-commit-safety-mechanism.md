@@ -1,3 +1,7 @@
+---
+title: Git Commit Safety Mechanism
+---
+
 # Git Commit Safety Mechanism
 
 **Date**: 2026-04-06

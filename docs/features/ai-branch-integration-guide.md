@@ -1,3 +1,7 @@
+---
+title: AI Branch Integration Guide
+---
+
 # AI 代码分支整合操作指南
 
 > 基于 `fix/windows-compatibility-and-i18n` 与 `upstream/main` 整合实践总结

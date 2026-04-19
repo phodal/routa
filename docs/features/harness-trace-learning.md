@@ -1,3 +1,7 @@
+---
+title: Harness Trace Learning
+---
+
 # Harness Evolution Trace Learning
 
 > **Self-Improving Harness Evolution**: Learn from past runs, generate evidence-backed playbooks, and accelerate future evolutions.
