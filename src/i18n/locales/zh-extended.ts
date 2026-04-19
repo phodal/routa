@@ -685,6 +685,8 @@ export const zhExtended: ExtendedTranslationDictionarySections = {
     screenshotHint: "继续前需要 UI 证据。",
     testResults: "测试结果",
     testResultsHint: "确保附加验证工件。",
+    doneAutoOpenPrSession: "Done 时自动启动 PR 会话",
+    doneAutoOpenPrSessionHint: "默认保持关闭。只有在卡片进入 Done 后需要先自动排队 PR Publisher、再执行 Done Reporter 时再打开。",
     codeDiff: "代码差异",
     codeDiffHint: "收集实现差异用于审查流程。",
     up: "上移",

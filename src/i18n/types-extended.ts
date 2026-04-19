@@ -687,6 +687,8 @@ export interface ExtendedTranslationDictionarySections extends TailTranslationDi
     selectedStageHint: string;
     showAllFiles: string;
     showLess: string;
+    doneAutoOpenPrSession: string;
+    doneAutoOpenPrSessionHint: string;
     skillId: string;
     skillIdPlaceholder: string;
     singleStepAdvancedHint: string;

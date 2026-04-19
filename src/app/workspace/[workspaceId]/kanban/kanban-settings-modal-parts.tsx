@@ -42,6 +42,10 @@ export interface SpecialistOption {
 }
 
 export type ColumnAutomationConfig = KanbanColumnAutomation;
+const DONE_REPORTER_SPECIALIST_ID = "kanban-done-reporter";
+const DONE_REPORTER_SPECIALIST_NAME = "Done Reporter";
+const DONE_PR_PUBLISHER_SPECIALIST_ID = "kanban-pr-publisher";
+const DONE_PR_PUBLISHER_SPECIALIST_NAME = "PR Publisher";
 
 export const DEFAULT_DEV_SESSION_SUPERVISION: KanbanDevSessionSupervisionInfo = {
   mode: "watchdog_retry",
@@ -58,6 +62,42 @@ export function createEmptyAutomationStep(index: number): KanbanAutomationStep {
     transport: "acp",
     role: "DEVELOPER",
   };
+}
+
+function createDoneReporterStep(
+  specialistLanguage?: KanbanSpecialistLanguage,
+  index = 0,
+): KanbanAutomationStep {
+  return {
+    id: `step-${index + 1}`,
+    transport: "acp",
+    role: "GATE",
+    specialistId: DONE_REPORTER_SPECIALIST_ID,
+    specialistName: DONE_REPORTER_SPECIALIST_NAME,
+    specialistLocale: specialistLanguage,
+  };
+}
+
+function createDonePrPublisherStep(
+  specialistLanguage?: KanbanSpecialistLanguage,
+  index = 0,
+): KanbanAutomationStep {
+  return {
+    id: `step-${index + 1}`,
+    transport: "acp",
+    role: "DEVELOPER",
+    specialistId: DONE_PR_PUBLISHER_SPECIALIST_ID,
+    specialistName: DONE_PR_PUBLISHER_SPECIALIST_NAME,
+    specialistLocale: specialistLanguage,
+  };
+}
+
+function isDonePrPublisherStep(step?: KanbanAutomationStep): boolean {
+  return step?.specialistId === DONE_PR_PUBLISHER_SPECIALIST_ID;
+}
+
+function isDoneReporterStep(step?: KanbanAutomationStep): boolean {
+  return step?.specialistId === DONE_REPORTER_SPECIALIST_ID;
 }
 
 export function getStageTypeOptions(t: TranslationDictionary) {
@@ -208,7 +248,10 @@ export function normalizeDevSessionSupervision(
   };
 }
 
-export function getDefaultAutomationForStage(stage: string): ColumnAutomationConfig {
+export function getDefaultAutomationForStage(
+  stage: string,
+  specialistLanguage?: KanbanSpecialistLanguage,
+): ColumnAutomationConfig {
   switch (stage) {
     case "backlog":
       return syncAutomationPrimaryStep({
@@ -231,7 +274,7 @@ export function getDefaultAutomationForStage(stage: string): ColumnAutomationCon
         enabled: true,
         transitionType: "entry",
         requiredArtifacts: ["code_diff"],
-        steps: [{ id: "step-1", role: "ROUTA" }],
+        steps: [createDoneReporterStep(specialistLanguage)],
       });
     case "dev":
       return syncAutomationPrimaryStep({
@@ -383,6 +426,42 @@ export function updateAutomationSteps(
   return syncAutomationPrimaryStep({
     ...automation,
     steps: updater(getEditableAutomationSteps(automation)),
+  });
+}
+
+export function isDonePrPublisherEnabled(
+  automation: ColumnAutomationConfig,
+): boolean {
+  return getEditableAutomationSteps(automation).some((step) => isDonePrPublisherStep(step));
+}
+
+export function setDonePrPublisherEnabled(
+  automation: ColumnAutomationConfig,
+  enabled: boolean,
+  specialistLanguage?: KanbanSpecialistLanguage,
+): ColumnAutomationConfig {
+  const existingSteps = getEditableAutomationSteps(automation);
+  const stepsWithoutPrPublisher = existingSteps.filter((step) => !isDonePrPublisherStep(step));
+
+  const baseSteps = stepsWithoutPrPublisher.length > 0
+    ? stepsWithoutPrPublisher
+    : [createDoneReporterStep(specialistLanguage)];
+  const hasDoneReporter = baseSteps.some((step) => isDoneReporterStep(step));
+  const normalizedBaseSteps = hasDoneReporter
+    ? baseSteps
+    : [...baseSteps, createDoneReporterStep(specialistLanguage, baseSteps.length)];
+
+  const nextSteps = enabled
+    ? [createDonePrPublisherStep(specialistLanguage), ...normalizedBaseSteps]
+    : normalizedBaseSteps;
+
+  return syncAutomationPrimaryStep({
+    ...automation,
+    steps: nextSteps.map((step, index) => ({
+      ...step,
+      id: `step-${index + 1}`,
+      specialistLocale: step.specialistId ? (step.specialistLocale ?? specialistLanguage) : undefined,
+    })),
   });
 }
 
@@ -558,6 +637,10 @@ export function ColumnAutomationWorkspace({
     () => getEditableAutomationSteps(automation),
     [automation],
   );
+  const donePrPublisherEnabled = useMemo(
+    () => column.stage === "done" && isDonePrPublisherEnabled(automation),
+    [automation, column.stage],
+  );
   const filteredSpecialists = useMemo(() => {
     const categorySpecialists = filterSpecialistsByCategory(specialists, specialistCategory);
     const baseSpecialists = categorySpecialists.length > 0 ? categorySpecialists : specialists;
@@ -571,7 +654,7 @@ export function ColumnAutomationWorkspace({
   const firstStepTransport = getStepTransport(firstStep);
   const [advancedExpanded, setAdvancedExpanded] = useState(() => automationSteps.length > 1);
   const applyDefaultAutomation = () => {
-    onUpdate(getDefaultAutomationForStage(column.stage));
+    onUpdate(getDefaultAutomationForStage(column.stage, specialistLanguage));
   };
 
   if (manualOnly) {
@@ -708,6 +791,29 @@ export function ColumnAutomationWorkspace({
             </button>
             {advancedExpanded ? (
             <div className="mt-2 space-y-2">
+              {column.stage === "done" ? (
+                <label className="flex items-start gap-3 rounded-md border border-slate-200 bg-white/85 px-3 py-2 text-sm text-slate-700 dark:border-slate-800 dark:bg-[#111722] dark:text-slate-200">
+                  <input
+                    type="checkbox"
+                    className="mt-1 h-4 w-4 rounded border-slate-300 text-amber-500 focus:ring-amber-400 dark:border-slate-600"
+                    checked={donePrPublisherEnabled}
+                    aria-label={t.kanban.doneAutoOpenPrSession}
+                    onChange={(event) => onUpdate(setDonePrPublisherEnabled(
+                      automation,
+                      event.target.checked,
+                      specialistLanguage,
+                    ))}
+                  />
+                  <span className="space-y-0.5">
+                    <span className="block font-medium text-slate-900 dark:text-slate-100">
+                      {t.kanban.doneAutoOpenPrSession}
+                    </span>
+                    <span className="block text-xs leading-5 text-slate-500 dark:text-slate-400">
+                      {t.kanban.doneAutoOpenPrSessionHint}
+                    </span>
+                  </span>
+                </label>
+              ) : null}
               {automationSteps.length > 1 ? automationSteps.map((step, index) => {
                 const stepSpecialist = findSpecialistById(specialists, step.specialistId) ?? null;
                 const stepTransport = getStepTransport(step);

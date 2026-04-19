@@ -323,6 +323,120 @@ describe("KanbanSettingsModal", () => {
     });
   });
 
+  it("keeps Done PR publisher disabled by default when enabling automation", async () => {
+    const onSave = vi.fn(async () => {});
+    const doneBoard: KanbanBoardInfo = {
+      ...board,
+      columns: [{ id: "done", name: "Done", position: 0, stage: "done" }],
+    };
+
+    render(
+      <KanbanSettingsModal
+        board={doneBoard}
+        columnAutomation={{}}
+        availableProviders={[{ id: "claude", name: "Claude Code", description: "Claude Code provider", command: "claude" }]}
+        specialists={[
+          { id: "kanban-done-reporter", name: "Done Reporter", role: "GATE" },
+          { id: "kanban-pr-publisher", name: "PR Publisher", role: "DEVELOPER" },
+        ]}
+        specialistLanguage="en"
+        onClose={vi.fn()}
+        onClearAll={vi.fn(async () => {})}
+        onSave={onSave}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("checkbox", { name: /toggle automation for done/i }));
+    fireEvent.click(screen.getByRole("button", { name: /save board settings/i }));
+
+    await waitFor(() => {
+      expect(onSave).toHaveBeenCalledWith(
+        [expect.objectContaining({ id: "done", visible: true, position: 0 })],
+        {
+          done: expect.objectContaining({
+            enabled: true,
+            steps: [
+              expect.objectContaining({
+                specialistId: "kanban-done-reporter",
+              }),
+            ],
+          }),
+        },
+        2,
+        {
+          mode: "watchdog_retry",
+          inactivityTimeoutMinutes: 10,
+          maxRecoveryAttempts: 1,
+          completionRequirement: "turn_complete",
+        },
+        undefined,
+      );
+      const firstCall = onSave.mock.calls[0];
+      expect(firstCall).toBeDefined();
+      const savedAutomation = (firstCall as unknown[] | undefined)?.[1] as { done?: { steps?: unknown[] } } | undefined;
+      expect(savedAutomation?.done?.steps).not.toEqual(
+        expect.arrayContaining([expect.objectContaining({ specialistId: "kanban-pr-publisher" })]),
+      );
+    });
+  });
+
+  it("can explicitly enable the Done PR publisher step", async () => {
+    const onSave = vi.fn(async () => {});
+    const doneBoard: KanbanBoardInfo = {
+      ...board,
+      columns: [{ id: "done", name: "Done", position: 0, stage: "done" }],
+    };
+
+    render(
+      <KanbanSettingsModal
+        board={doneBoard}
+        columnAutomation={{
+          done: {
+            enabled: true,
+            transitionType: "entry",
+            steps: [{ id: "step-1", role: "GATE", specialistId: "kanban-done-reporter" }],
+          },
+        }}
+        availableProviders={[{ id: "claude", name: "Claude Code", description: "Claude Code provider", command: "claude" }]}
+        specialists={[
+          { id: "kanban-done-reporter", name: "Done Reporter", role: "GATE" },
+          { id: "kanban-pr-publisher", name: "PR Publisher", role: "DEVELOPER" },
+        ]}
+        specialistLanguage="en"
+        onClose={vi.fn()}
+        onClearAll={vi.fn(async () => {})}
+        onSave={onSave}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /advanced/i }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /auto-open pr session in done/i }));
+    fireEvent.click(screen.getByRole("button", { name: /save board settings/i }));
+
+    await waitFor(() => {
+      expect(onSave).toHaveBeenCalledWith(
+        [expect.objectContaining({ id: "done", visible: true, position: 0 })],
+        {
+          done: expect.objectContaining({
+            enabled: true,
+            steps: [
+              expect.objectContaining({ specialistId: "kanban-pr-publisher" }),
+              expect.objectContaining({ specialistId: "kanban-done-reporter" }),
+            ],
+          }),
+        },
+        2,
+        {
+          mode: "watchdog_retry",
+          inactivityTimeoutMinutes: 10,
+          maxRecoveryAttempts: 1,
+          completionRequirement: "turn_complete",
+        },
+        undefined,
+      );
+    });
+  });
+
   it("clears all cards after confirmation", async () => {
     const onClearAll = vi.fn(async () => {});
     const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);

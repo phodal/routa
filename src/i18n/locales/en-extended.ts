@@ -685,6 +685,8 @@ export const enExtended: ExtendedTranslationDictionarySections = {
     screenshotHint: "Require UI evidence before continuing.",
     testResults: "Test results",
     testResultsHint: "Ensure verification artifacts are attached.",
+    doneAutoOpenPrSession: "Auto-open PR session in Done",
+    doneAutoOpenPrSessionHint: "Keep this off by default. Turn it on only when entering Done should automatically queue PR Publisher before Done Reporter.",
     codeDiff: "Code diff",
     codeDiffHint: "Collect implementation diff for review flows.",
     up: "Up",

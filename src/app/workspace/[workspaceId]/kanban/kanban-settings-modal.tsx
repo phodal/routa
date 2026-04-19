@@ -199,7 +199,7 @@ export function KanbanSettingsModal({
         };
       }
 
-      const defaultAutomation = getDefaultAutomationForStage(column.stage);
+      const defaultAutomation = getDefaultAutomationForStage(column.stage, specialistLanguage);
       const existing = current[column.id];
       return {
         ...current,
