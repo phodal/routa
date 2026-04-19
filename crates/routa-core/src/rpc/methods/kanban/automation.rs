@@ -1,11 +1,14 @@
 use chrono::Utc;
 use reqwest::header::{HeaderName, HeaderValue, ACCEPT, CONTENT_TYPE};
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
 use crate::events::{AgentEvent, AgentEventType};
-use crate::models::kanban::{KanbanAutomationStep, KanbanBoard, KanbanColumn, KanbanTransport};
+use crate::models::kanban::{
+    KanbanAutomationStep, KanbanBoard, KanbanColumn, KanbanColumnAutomation, KanbanTransport,
+};
 use crate::models::task::{
     build_task_evidence_summary, build_task_invest_validation, build_task_story_readiness, Task,
     TaskEvidenceSummary, TaskInvestValidation, TaskLaneSession, TaskLaneSessionStatus,
@@ -1426,7 +1429,148 @@ pub(super) fn absolutize_url(base_url: &str, maybe_relative: &str) -> Result<Str
         .map_err(|error| format!("Invalid relative A2A URL {maybe_relative}: {error}"))
 }
 
-#[cfg(test)]
+// ---- kanban.listAutomations ----
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListAutomationsParams {
+    pub board_id: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ColumnAutomationSummary {
+    pub column_id: String,
+    pub column_name: String,
+    pub automation_enabled: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub automation: Option<KanbanColumnAutomation>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListAutomationsResult {
+    pub board_id: String,
+    pub columns: Vec<ColumnAutomationSummary>,
+}
+
+pub async fn list_automations(
+    state: &AppState,
+    params: ListAutomationsParams,
+) -> Result<ListAutomationsResult, RpcError> {
+    let board = state
+        .kanban_store
+        .get(&params.board_id)
+        .await?
+        .ok_or_else(|| RpcError::NotFound(format!("Board {} not found", params.board_id)))?;
+
+    let columns = board
+        .columns
+        .iter()
+        .map(|column| {
+            let automation_enabled = column
+                .automation
+                .as_ref()
+                .is_some_and(|a| a.enabled);
+            ColumnAutomationSummary {
+                column_id: column.id.clone(),
+                column_name: column.name.clone(),
+                automation_enabled,
+                automation: column.automation.clone(),
+            }
+        })
+        .collect();
+
+    Ok(ListAutomationsResult {
+        board_id: board.id,
+        columns,
+    })
+}
+
+// ---- kanban.triggerAutomation ----
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TriggerAutomationParams {
+    pub card_id: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TriggerAutomationResult {
+    pub card_id: String,
+    pub triggered: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub session_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+pub async fn trigger_automation(
+    state: &AppState,
+    params: TriggerAutomationParams,
+) -> Result<TriggerAutomationResult, RpcError> {
+    let mut task = state
+        .task_store
+        .get(&params.card_id)
+        .await?
+        .ok_or_else(|| RpcError::NotFound(format!("Card {} not found", params.card_id)))?;
+
+    let board = load_task_board(state, &task).await.map_err(|error| {
+        RpcError::Internal(error)
+    })?;
+
+    let column = board.as_ref().and_then(|b| {
+        b.columns
+            .iter()
+            .find(|c| Some(c.id.as_str()) == task.column_id.as_deref())
+    });
+
+    let automation = column.and_then(|c| c.automation.as_ref());
+    if automation.is_none_or(|a| !a.enabled) {
+        return Ok(TriggerAutomationResult {
+            card_id: params.card_id,
+            triggered: false,
+            session_id: None,
+            error: Some(
+                "No enabled automation configured for this card's column. \
+                 Enable automation for the column or move the card to a column with automation enabled."
+                    .to_string(),
+            ),
+        });
+    }
+
+    // Reset trigger_session_id so we can force-trigger even if one already ran
+    let prev_session_id = task.trigger_session_id.take();
+    match trigger_assigned_task_agent(state, &mut task).await {
+        Ok(()) => {
+            task.last_sync_error = None;
+        }
+        Err(error) => {
+            // Restore previous session id on failure
+            task.trigger_session_id = prev_session_id;
+            task.last_sync_error = Some(error.clone());
+            state.task_store.save(&task).await?;
+            return Ok(TriggerAutomationResult {
+                card_id: params.card_id,
+                triggered: false,
+                session_id: None,
+                error: Some(error),
+            });
+        }
+    }
+
+    let session_id = task.trigger_session_id.clone();
+    state.task_store.save(&task).await?;
+
+    Ok(TriggerAutomationResult {
+        card_id: params.card_id,
+        triggered: true,
+        session_id,
+        error: None,
+    })
+}
+
 mod tests {
     use super::*;
     use crate::db::Database;

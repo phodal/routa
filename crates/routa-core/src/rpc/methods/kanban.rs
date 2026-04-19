@@ -13,7 +13,11 @@
 //! - `kanban.deleteColumn`
 //! - `kanban.searchCards`
 //! - `kanban.listCardsByColumn`
+//! - `kanban.listCards`
+//! - `kanban.boardStatus`
 //! - `kanban.decomposeTasks`
+//! - `kanban.listAutomations`
+//! - `kanban.triggerAutomation`
 
 mod automation;
 mod boards;
@@ -22,6 +26,10 @@ mod handoffs;
 mod queries;
 mod shared;
 
+pub use automation::{
+    list_automations, trigger_automation, ColumnAutomationSummary, ListAutomationsParams,
+    ListAutomationsResult, TriggerAutomationParams, TriggerAutomationResult,
+};
 pub use boards::{
     create_board, create_column, delete_column, get_board, list_boards, update_board,
     CreateBoardParams, CreateBoardResult, CreateColumnParams, CreateColumnResult,
@@ -40,8 +48,9 @@ pub use handoffs::{
     RequestPreviousLaneHandoffResult, SubmitLaneHandoffParams, SubmitLaneHandoffResult,
 };
 pub use queries::{
-    list_cards_by_column, search_cards, ListCardsByColumnParams, ListCardsByColumnResult,
-    SearchCardsParams, SearchCardsResult,
+    board_status, list_cards, list_cards_by_column, search_cards, BoardStatusParams,
+    BoardStatusResult, ColumnStatus, ListCardsParams, ListCardsResult, ListCardsByColumnParams,
+    ListCardsByColumnResult, SearchCardsParams, SearchCardsResult,
 };
 
 #[cfg(test)]
@@ -1259,5 +1268,192 @@ mod tests {
             Some("Environment prepared and command rerun")
         );
         assert!(saved.lane_handoffs[0].responded_at.is_some());
+    }
+
+    #[tokio::test]
+    async fn board_status_returns_column_card_counts() {
+        let state = setup_state().await;
+
+        // Create board with default columns
+        let board_result = create_board(
+            &state,
+            CreateBoardParams {
+                workspace_id: "default".to_string(),
+                name: "Test Board".to_string(),
+                columns: None,
+                is_default: Some(true),
+                id: None,
+            },
+        )
+        .await
+        .expect("create board should succeed");
+
+        let board_id = board_result.board.id.clone();
+
+        // Create a card in backlog
+        create_card(
+            &state,
+            super::cards::CreateCardParams {
+                workspace_id: "default".to_string(),
+                board_id: Some(board_id.clone()),
+                column_id: Some("backlog".to_string()),
+                title: "Test Card".to_string(),
+                description: None,
+                priority: None,
+                labels: None,
+            },
+        )
+        .await
+        .expect("create card should succeed");
+
+        let result = board_status(
+            &state,
+            BoardStatusParams {
+                workspace_id: "default".to_string(),
+                board_id: Some(board_id.clone()),
+            },
+        )
+        .await
+        .expect("board status should succeed");
+
+        assert_eq!(result.board_id, board_id);
+        assert_eq!(result.total_cards, 1);
+        let backlog = result.columns.iter().find(|c| c.id == "backlog").unwrap();
+        assert_eq!(backlog.card_count, 1);
+    }
+
+    #[tokio::test]
+    async fn list_cards_filters_by_priority() {
+        let state = setup_state().await;
+
+        let board_result = create_board(
+            &state,
+            CreateBoardParams {
+                workspace_id: "default".to_string(),
+                name: "Test Board".to_string(),
+                columns: None,
+                is_default: Some(true),
+                id: None,
+            },
+        )
+        .await
+        .expect("create board should succeed");
+        let board_id = board_result.board.id.clone();
+
+        // Create cards with different priorities
+        create_card(
+            &state,
+            super::cards::CreateCardParams {
+                workspace_id: "default".to_string(),
+                board_id: Some(board_id.clone()),
+                column_id: Some("backlog".to_string()),
+                title: "High priority card".to_string(),
+                description: None,
+                priority: Some("high".to_string()),
+                labels: None,
+            },
+        )
+        .await
+        .expect("create high priority card should succeed");
+
+        create_card(
+            &state,
+            super::cards::CreateCardParams {
+                workspace_id: "default".to_string(),
+                board_id: Some(board_id.clone()),
+                column_id: Some("backlog".to_string()),
+                title: "Low priority card".to_string(),
+                description: None,
+                priority: Some("low".to_string()),
+                labels: None,
+            },
+        )
+        .await
+        .expect("create low priority card should succeed");
+
+        let result = list_cards(
+            &state,
+            ListCardsParams {
+                workspace_id: "default".to_string(),
+                board_id: Some(board_id.clone()),
+                column_id: None,
+                status: None,
+                priority: Some("high".to_string()),
+                label: None,
+            },
+        )
+        .await
+        .expect("list_cards with priority filter should succeed");
+
+        assert_eq!(result.total, 1);
+        assert_eq!(result.cards[0].title, "High priority card");
+    }
+
+    #[tokio::test]
+    async fn list_automations_returns_column_automation_info() {
+        let state = setup_state().await;
+
+        let automation = KanbanColumnAutomation {
+            enabled: true,
+            provider_id: Some("opencode".to_string()),
+            role: Some("DEVELOPER".to_string()),
+            ..Default::default()
+        };
+
+        let board = KanbanBoard {
+            id: "board-auto-test".to_string(),
+            workspace_id: "default".to_string(),
+            name: "Auto Board".to_string(),
+            is_default: false,
+            columns: vec![
+                KanbanColumn {
+                    id: "backlog".to_string(),
+                    name: "Backlog".to_string(),
+                    color: None,
+                    position: 0,
+                    stage: "backlog".to_string(),
+                    automation: None,
+                    visible: Some(true),
+                    width: None,
+                },
+                KanbanColumn {
+                    id: "dev".to_string(),
+                    name: "Dev".to_string(),
+                    color: None,
+                    position: 1,
+                    stage: "active".to_string(),
+                    automation: Some(automation),
+                    visible: Some(true),
+                    width: None,
+                },
+            ],
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
+        state
+            .kanban_store
+            .create(&board)
+            .await
+            .expect("board create should succeed");
+
+        let result = super::automation::list_automations(
+            &state,
+            super::automation::ListAutomationsParams {
+                board_id: "board-auto-test".to_string(),
+            },
+        )
+        .await
+        .expect("list automations should succeed");
+
+        assert_eq!(result.board_id, "board-auto-test");
+        assert_eq!(result.columns.len(), 2);
+
+        let backlog_col = result.columns.iter().find(|c| c.column_id == "backlog").unwrap();
+        assert!(!backlog_col.automation_enabled);
+        assert!(backlog_col.automation.is_none());
+
+        let dev_col = result.columns.iter().find(|c| c.column_id == "dev").unwrap();
+        assert!(dev_col.automation_enabled);
+        assert!(dev_col.automation.is_some());
     }
 }

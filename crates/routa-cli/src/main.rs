@@ -404,6 +404,18 @@ enum KanbanAction {
         #[command(subcommand)]
         action: KanbanColumnAction,
     },
+    /// Show board status summary
+    Status {
+        #[arg(long, default_value = "default")]
+        workspace_id: String,
+        #[arg(long)]
+        board_id: Option<String>,
+    },
+    /// Manage column automations
+    Automation {
+        #[command(subcommand)]
+        action: KanbanAutomationAction,
+    },
 }
 
 #[derive(Subcommand)]
@@ -570,6 +582,24 @@ enum KanbanCardAction {
         #[arg(long)]
         board_id: Option<String>,
     },
+    /// List cards with optional filters
+    List {
+        #[arg(long, default_value = "default")]
+        workspace_id: String,
+        #[arg(long)]
+        board_id: Option<String>,
+        #[arg(long)]
+        column_id: Option<String>,
+        /// Filter by status (PENDING, IN_PROGRESS, REVIEW_REQUIRED, COMPLETED, NEEDS_FIX, BLOCKED, CANCELLED)
+        #[arg(long)]
+        status: Option<String>,
+        /// Filter by priority (low, medium, high, urgent)
+        #[arg(long)]
+        priority: Option<String>,
+        /// Filter by label
+        #[arg(long)]
+        label: Option<String>,
+    },
     /// Bulk-create cards from a JSON task array
     Decompose {
         #[arg(long)]
@@ -602,6 +632,20 @@ enum KanbanColumnAction {
         column_id: String,
         #[arg(long, default_value_t = false)]
         delete_cards: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum KanbanAutomationAction {
+    /// List automation configurations for a board's columns
+    List {
+        #[arg(long)]
+        board_id: String,
+    },
+    /// Manually trigger automation for a card
+    Trigger {
+        #[arg(long)]
+        card_id: String,
     },
 }
 
@@ -1180,6 +1224,27 @@ async fn main() {
                             )
                             .await
                         }
+                        KanbanCardAction::List {
+                            workspace_id,
+                            board_id,
+                            column_id,
+                            status,
+                            priority,
+                            label,
+                        } => {
+                            commands::kanban::list_cards(
+                                &state,
+                                commands::kanban::ListCardsOptions {
+                                    workspace_id: &workspace_id,
+                                    board_id: board_id.as_deref(),
+                                    column_id: column_id.as_deref(),
+                                    status: status.as_deref(),
+                                    priority: priority.as_deref(),
+                                    label: label.as_deref(),
+                                },
+                            )
+                            .await
+                        }
                         KanbanCardAction::Decompose {
                             tasks_json,
                             workspace_id,
@@ -1222,6 +1287,21 @@ async fn main() {
                                 delete_cards,
                             )
                             .await
+                        }
+                    },
+                    KanbanAction::Status {
+                        workspace_id,
+                        board_id,
+                    } => {
+                        commands::kanban::board_status(&state, &workspace_id, board_id.as_deref())
+                            .await
+                    }
+                    KanbanAction::Automation { action } => match action {
+                        KanbanAutomationAction::List { board_id } => {
+                            commands::kanban::list_automations(&state, &board_id).await
+                        }
+                        KanbanAutomationAction::Trigger { card_id } => {
+                            commands::kanban::trigger_automation(&state, &card_id).await
                         }
                     },
                 }
