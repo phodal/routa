@@ -17,7 +17,7 @@ trigger:
   type: manual
 
 variables:
-  model: "${ANTHROPIC_MODEL:-GLM-4.7}"
+  model: "${ANTHROPIC_MODEL:-glm-5.1}"
   base_url: "${ANTHROPIC_BASE_URL:-https://open.bigmodel.cn/api/anthropic}"
 
 steps:

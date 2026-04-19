@@ -263,6 +263,28 @@ export class KanbanTools {
       }
     }
 
+    // Cross-column active automation guard: reject if another column has an active automation on this card
+    if (this.automationSystem && fromColumnId !== params.targetColumnId) {
+      try {
+        const { getWorkflowOrchestrator } = await import("../kanban/workflow-orchestrator-singleton");
+        const orchestrator = getWorkflowOrchestrator(this.automationSystem);
+        const activeAutomation = orchestrator.getAutomationForCard(task.id);
+        if (
+          activeAutomation
+          && (activeAutomation.status === "queued" || activeAutomation.status === "running")
+          && activeAutomation.columnId !== fromColumnId
+        ) {
+          return errorResult(
+            `Cannot move "${task.title}" to "${targetColumn.name}": an active automation is still running ` +
+            `in column "${activeAutomation.columnName ?? activeAutomation.columnId}" (status: ${activeAutomation.status}). ` +
+            "Wait for it to complete before moving the card.",
+          );
+        }
+      } catch {
+        // Orchestrator may not be initialized in all contexts; skip cross-column check
+      }
+    }
+
     // Check required artifacts before allowing transition
     const requiredArtifacts = targetColumn.automation?.requiredArtifacts;
     if (requiredArtifacts && requiredArtifacts.length > 0 && this.artifactStore) {

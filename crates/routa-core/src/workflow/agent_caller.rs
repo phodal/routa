@@ -38,7 +38,7 @@ impl Default for AgentCallConfig {
             adapter: "claude-code-sdk".to_string(),
             base_url: "https://open.bigmodel.cn/api/anthropic".to_string(),
             api_key: String::new(),
-            model: "GLM-4.7".to_string(),
+            model: "glm-5.1".to_string(),
             max_turns: 1,
             max_tokens: 8192,
             temperature: None,

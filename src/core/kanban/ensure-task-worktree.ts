@@ -11,11 +11,10 @@
  *  3. Create worktree via GitWorktreeService
  *  4. Retry with collision suffix on branch-name collision
  *  5. Clear ephemeral override fields on the task after consumption
- *  6. Mark the task as BLOCKED on unrecoverable failure
+ *  6. Set lastSyncError on unrecoverable failure (caller decides column placement)
  */
 
 import type { Task } from "../models/task";
-import { TaskStatus } from "../models/task";
 import type { Codebase } from "../models/codebase";
 import type { WorktreeStore } from "../db/pg-worktree-store";
 import type { CodebaseStore } from "../db/pg-codebase-store";
@@ -30,6 +29,7 @@ import {
   resolveDependencyBaseBranch,
   generateCollisionSuffix,
 } from "./branch-plan";
+import { getRepoStatus } from "../git/git-utils";
 
 export interface EnsureTaskWorktreeDeps {
   worktreeStore: WorktreeStore;
@@ -60,7 +60,7 @@ export type EnsureTaskWorktreeOutcome =
  *
  * All branch decisions come from resolveBranchPlan() + rules.
  * On success the task's worktreeId is set and override fields are cleared.
- * On failure the task is marked BLOCKED and lastSyncError is set.
+ * On failure lastSyncError is set; column placement is left to the caller.
  */
 export async function ensureTaskWorktree(
   task: Task,
@@ -97,12 +97,25 @@ export async function ensureTaskWorktree(
     }
   }
 
-  // 3. Resolve worktree root
+  // 3. Warn if source repo has uncommitted changes (non-blocking diagnostic)
+  try {
+    const repoStatus = getRepoStatus(preferredCodebase.repoPath);
+    if (!repoStatus.clean) {
+      console.warn(
+        `[ensureTaskWorktree] Source repo has ${repoStatus.modified} modified, ${repoStatus.untracked} untracked file(s). ` +
+        `Worktree will be created from the committed state of '${effectiveBaseBranch}'.`,
+      );
+    }
+  } catch {
+    // Status check failure should not block worktree creation
+  }
+
+  // 4. Resolve worktree root
   const worktreeRoot = deps.workspace
     ? getEffectiveWorkspaceMetadata(deps.workspace).worktreeRoot
     : getDefaultWorkspaceWorktreeRoot(deps.workspaceId);
 
-  // 4. Attempt creation
+  // 5. Attempt creation
   try {
     const worktree = await worktreeService.createWorktree(preferredCodebase.id, {
       branch: plan.branch,
@@ -116,7 +129,7 @@ export async function ensureTaskWorktree(
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
 
-    // 5. Retry with collision suffix on branch-name collision
+    // 6. Retry with collision suffix on branch-name collision
     if (message.includes("already in use")) {
       try {
         const suffix = generateCollisionSuffix(plan.collisionStrategy);
@@ -137,14 +150,14 @@ export async function ensureTaskWorktree(
       } catch (retryError) {
         const retryMsg =
           retryError instanceof Error ? retryError.message : String(retryError);
-        markBlocked(task, `Worktree creation failed after retry: ${retryMsg}`);
+        markWorktreeError(task, `Worktree creation failed after retry: ${retryMsg}`);
         clearOverrides(task);
         return { ok: false, errorMessage: task.lastSyncError! };
       }
     }
 
     // 6. Unrecoverable failure
-    markBlocked(task, `Worktree creation failed: ${message}`);
+    markWorktreeError(task, `Worktree creation failed: ${message}`);
     clearOverrides(task);
     return { ok: false, errorMessage: task.lastSyncError! };
   }
@@ -155,8 +168,6 @@ function clearOverrides(task: Task): void {
   task.nextBaseBranchOverride = undefined;
 }
 
-function markBlocked(task: Task, message: string): void {
-  task.status = TaskStatus.BLOCKED;
-  task.columnId = "blocked";
+function markWorktreeError(task: Task, message: string): void {
   task.lastSyncError = message;
 }

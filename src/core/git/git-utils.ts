@@ -542,11 +542,41 @@ function countDiffPatchLines(patch: string): { additions: number; deletions: num
   return { additions, deletions };
 }
 
-function countNumstatTotals(output: string): { additions: number; deletions: number } {
+const NUMSTAT_EXCLUDED_PATTERNS = [
+  /^node_modules\//,
+  /\/node_modules\//,
+  /^\.next\//,
+  /\/\.next\//,
+  /^target\//,
+  /\/target\//,
+  /^storybook-static\//,
+  /\/storybook-static\//,
+  /^\.routa\//,
+  /\/\.routa\//,
+  /^\.worktrees\//,
+  /\/\.worktrees\//,
+  /^\.entrix\//,
+  /\/\.entrix\//,
+  /(?:^|\/)package-lock\.json$/,
+  /(?:^|\/)yarn\.lock$/,
+  /(?:^|\/)pnpm-lock\.yaml$/,
+];
+
+function isNumstatExcludedPath(filePath: string): boolean {
+  return NUMSTAT_EXCLUDED_PATTERNS.some((p) => p.test(filePath));
+}
+
+function countNumstatTotals(output: string, { excludeGenerated = true }: { excludeGenerated?: boolean } = {}): { additions: number; deletions: number } {
   return output
     .split("\n")
     .map((line) => line.trim())
     .filter(Boolean)
+    .filter((line) => {
+      if (!excludeGenerated) return true;
+      const parts = line.split(/\s+/);
+      const filePath = parts[2];
+      return filePath ? !isNumstatExcludedPath(filePath) : true;
+    })
     .reduce((totals, line) => {
       const [rawAdditions, rawDeletions] = line.split(/\s+/);
       const additions = rawAdditions === "-" ? 0 : Number.parseInt(rawAdditions ?? "", 10);

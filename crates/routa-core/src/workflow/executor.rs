@@ -415,7 +415,7 @@ impl WorkflowExecutor {
             .or_else(|| self.variables.get("model").cloned())
             .or_else(|| specialist.default_model.clone())
             .unwrap_or_else(|| {
-                std::env::var("ANTHROPIC_MODEL").unwrap_or_else(|_| "GLM-4.7".to_string())
+                std::env::var("ANTHROPIC_MODEL").unwrap_or_else(|_| "glm-5.1".to_string())
             });
 
         // System prompt: step override > specialist default
@@ -566,7 +566,7 @@ mod tests {
             .insert("Refine".to_string(), "refined output".to_string());
         executor
             .variables
-            .insert("model".to_string(), "GLM-4.7".to_string());
+            .insert("model".to_string(), "glm-5.1".to_string());
         executor.trigger_payload = Some("issue body".to_string());
 
         assert_eq!(
@@ -575,7 +575,7 @@ mod tests {
         );
         assert_eq!(
             executor.resolve_template("Model: ${variables.model}"),
-            "Model: GLM-4.7"
+            "Model: glm-5.1"
         );
         assert_eq!(
             executor.resolve_template("Payload: ${trigger.payload}"),
@@ -583,7 +583,7 @@ mod tests {
         );
         assert_eq!(
             executor.resolve_template("Model: ${model}"),
-            "Model: GLM-4.7"
+            "Model: glm-5.1"
         );
     }
 }

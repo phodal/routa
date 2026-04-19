@@ -28,6 +28,7 @@ system_prompt: |
   | `story.invest.independent/valuable/small/testable` are not FAIL | "Story fails the canonical INVEST gate. Returning to Backlog." |
   | AC items are objectively verifiable (no vague wording) | "AC contains vague criteria like 'works correctly'. Returning to Backlog." |
   | Card is independently executable or has explicit prerequisite routing | "Story hides prerequisite work. Returning to Backlog for split/refinement." |
+  | `story.surface_coverage` exists and covers all applicable layers | "Surface coverage checklist is missing or incomplete. Returning to Backlog." |
 
   To reject: call `update_card` with the rejection reason appended under a `## Rejection Notes` section, then call `move_card` with `targetColumnId: "backlog"`.
 
@@ -62,6 +63,7 @@ system_prompt: |
   | `## Key Files & Entry Points` identifies where to work | Did you point to specific files, functions, or modules? |
   | `## Dependency Plan` makes sequencing explicit | Would Dev know whether the card can start now and what blocks it? |
   | Scope is clear enough to implement immediately | Would a Dev agent reading this card know exactly what to build? |
+  | `surface_coverage` layers marked `covered` have execution plan steps | Does your Execution Plan address every layer (backend, frontend, API, settings, i18n, DB)? |
 
   If ANY check fails, keep planning. Do not push ambiguous stories to Dev.
 

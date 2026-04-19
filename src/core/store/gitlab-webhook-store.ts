@@ -228,7 +228,7 @@ export class PgGitLabWebhookStore {
       outcome: log.outcome,
       errorMessage: log.errorMessage,
       createdAt,
-    });
+    } as any);
     return { ...log, id, createdAt };
   }
 
@@ -378,7 +378,7 @@ export class SqliteGitLabWebhookStore {
       outcome: log.outcome,
       errorMessage: log.errorMessage,
       createdAt,
-    }).run();
+    } as any).run();
     return { ...log, id, createdAt };
   }
 

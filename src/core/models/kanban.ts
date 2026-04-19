@@ -23,6 +23,8 @@ export const DEFAULT_DEV_REQUIRED_TASK_FIELDS = [
 
 export type KanbanTransport = "acp" | "a2a";
 
+export type KanbanMergeStrategy = "merge_commit" | "squash" | "rebase";
+
 export interface KanbanDeliveryRules {
   /** Require at least one commit ahead of the base branch before transition. */
   requireCommittedChanges?: boolean;
@@ -30,6 +32,10 @@ export interface KanbanDeliveryRules {
   requireCleanWorktree?: boolean;
   /** Require the branch/repo state to be pull-request ready before transition. */
   requirePullRequestReady?: boolean;
+  /** When true, the auto-merger specialist will attempt to merge the PR after CI passes. Defaults to false (human merge). */
+  autoMergeAfterPR?: boolean;
+  /** Merge strategy to use when autoMergeAfterPR is true. Defaults to "squash". */
+  mergeStrategy?: KanbanMergeStrategy;
 }
 
 export interface KanbanContractRules {

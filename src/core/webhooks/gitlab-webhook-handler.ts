@@ -10,7 +10,7 @@
  * This module mirrors the GitHub webhook handler structure for GitLab compatibility.
  */
 
-import { createHmac, timingSafeEqual } from "crypto";
+import { createHmac as _createHmac, timingSafeEqual as _timingSafeEqual } from "crypto";
 import { v4 as uuidv4 } from "uuid";
 import type {
   GitLabWebhookStore,
@@ -97,8 +97,6 @@ export interface GitLabWebhookPayload {
   ref?: string;
   /** Checkout SHA (for push events) */
   checkout_sha?: string;
-  /** Commit data (for push events) */
-  checkout_sha?: string;
   before?: string;
   after?: string;
   /** User who triggered the event */
@@ -107,12 +105,7 @@ export interface GitLabWebhookPayload {
   /** Total commits count (for push events) */
   total_commits_count?: number;
   /** Commits array (for push events) */
-  commits?: Array<{
-    id: string;
-    message: string;
-    title: string;
-    author: { name: string; email: string };
-  }];
+  commits?: Array<Record<string, unknown>>;
   [key: string]: unknown;
 }
 
@@ -316,7 +309,7 @@ function buildContextSection(eventType: string, payload: GitLabWebhookPayload): 
     if (payload.commits && payload.commits.length > 0) {
       lines.push("\nCommits:");
       for (const commit of payload.commits.slice(0, 5)) {
-        lines.push(`  - ${commit.title.slice(0, 80)}`);
+        lines.push(`  - ${String(commit.title).slice(0, 80)}`);
       }
       if (payload.commits.length > 5) {
         lines.push(`  ... and ${payload.commits.length - 5} more`);
@@ -379,7 +372,7 @@ export async function handleGitLabWebhook(
   const {
     eventType,
     token,
-    rawBody,
+    rawBody: _rawBody,
     payload,
     webhookStore,
     backgroundTaskStore,

@@ -142,7 +142,7 @@ fn build_agent_call_config(
             .map(ToString::to_string)
             .or_else(|| specialist.default_model.clone())
             .unwrap_or_else(|| {
-                std::env::var("ANTHROPIC_MODEL").unwrap_or_else(|_| "GLM-4.7".to_string())
+                std::env::var("ANTHROPIC_MODEL").unwrap_or_else(|_| "glm-5.1".to_string())
             }),
         max_turns: 1,
         max_tokens: 8192,

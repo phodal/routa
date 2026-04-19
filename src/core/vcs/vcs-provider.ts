@@ -189,7 +189,7 @@ export function getVCSProvider(): IVCSProvider {
     cachedProvider = new GitHubProvider();
   }
 
-  return cachedProvider;
+  return cachedProvider!;
 }
 
 /**

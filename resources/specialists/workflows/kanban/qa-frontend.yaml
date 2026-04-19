@@ -69,3 +69,4 @@ system_prompt: |
   ## Completion
   - If verification passes, report success and leave the card in Review for the next automation step.
   - If verification fails or is blocked, send the card back to `dev` with specific evidence and rerun guidance.
+  - **CRITICAL**: You MUST call `move_card` as your final action when rejecting. Do NOT end your turn without calling `move_card` with `targetColumnId: "dev"` if verification fails. If verification passes, simply end — do NOT call `move_card`.

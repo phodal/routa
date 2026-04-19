@@ -41,6 +41,13 @@ system_prompt: |
       unblock_condition: 前置条件
     out_of_scope:
       - 明确不做的内容
+    surface_coverage:
+      backend_logic: covered | not_applicable
+      frontend_ui: covered | not_applicable
+      api_endpoints: covered | not_applicable
+      settings_config: covered | not_applicable
+      i18n_translations: covered | not_applicable
+      database_schema: covered | not_applicable
     invest:
       independent: { status: pass | fail, reason: 原因 }
       negotiable: { status: pass | fail | warning, reason: 原因 }

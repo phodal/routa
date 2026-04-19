@@ -162,6 +162,51 @@ describe("kanban restart recovery", () => {
     expect(processKanbanColumnTransition).not.toHaveBeenCalled();
   });
 
+  it("skips re-triggering when the last automation step already completed", async () => {
+    kanbanBoardStore.get.mockResolvedValue({
+      id: "board-1",
+      columns: [{
+        id: "backlog",
+        name: "Backlog",
+        position: 0,
+        stage: "backlog",
+        automation: {
+          enabled: true,
+          transitionType: "entry",
+          steps: [{ id: "backlog-refiner", role: "CRAFTER" }],
+        },
+      }],
+    });
+    taskStore.listByWorkspace.mockResolvedValue([{
+      ...createTask({
+        id: "task-1",
+        title: "Refined backlog story",
+        objective: "Refined backlog story",
+        workspaceId: "workspace-1",
+        boardId: "board-1",
+        columnId: "backlog",
+        status: TaskStatus.PENDING,
+      }),
+      laneSessions: [{
+        sessionId: "session-1",
+        columnId: "backlog",
+        status: "completed",
+        stepId: "backlog-refiner",
+        stepIndex: 0,
+        stepName: "Backlog Refiner",
+        startedAt: "2025-01-01T00:00:00.000Z",
+      }],
+    }]);
+
+    await reviveMissingEntryAutomations(system as never, "workspace-1", "board-1", {
+      sessionStore: sessionStore as never,
+      processManager: processManager as never,
+    });
+
+    expect(processKanbanColumnTransition).not.toHaveBeenCalled();
+    expect(enqueueKanbanTaskSession).not.toHaveBeenCalled();
+  });
+
   it("maps convergence status from the target column stage for custom done columns", async () => {
     const reviewBoard = {
       id: "board-1",

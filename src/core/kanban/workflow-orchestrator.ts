@@ -7,6 +7,7 @@
  */
 
 import { getHttpSessionStore } from "../acp/http-session-store";
+import { isExecutionLeaseActive } from "../acp/execution-backend";
 import { EventBus, AgentEventType, AgentEvent } from "../events/event-bus";
 import type {
   KanbanAutomationStep,
@@ -25,10 +26,12 @@ import { resolveTransitionAutomation } from "./column-transition";
 import { getDefaultKanbanDevSessionSupervision } from "./board-session-supervision";
 import { markTaskLaneSessionStatus, upsertTaskLaneSession } from "./task-lane-history";
 import { checkDependencyGate } from "./dependency-gate";
-import { getKanbanBranchRules, type KanbanBranchRules } from "./board-branch-rules";
+import { type KanbanBranchRules } from "./board-branch-rules";
 
 const WATCHDOG_SCAN_INTERVAL_MS = 30_000;
 const COMPLETED_AUTOMATION_CLEANUP_DELAY_MS = 30_000;
+const STALE_QUEUED_THRESHOLD_MS = 60_000;
+const MAX_AUTOMATION_DURATION_MS = 12 * 60 * 60 * 1000; // 12 hours
 
 interface RecoveryNotificationParams {
   workspaceId: string;
@@ -39,6 +42,7 @@ interface RecoveryNotificationParams {
   columnId: string;
   reason: string;
   mode: KanbanDevSessionSupervisionMode;
+  maxTurnsHit?: boolean;
 }
 
 export type SendKanbanSessionPrompt = (params: {
@@ -62,9 +66,14 @@ function isRecoveryMode(mode: KanbanDevSessionSupervisionMode): mode is "watchdo
   return mode === "watchdog_retry" || mode === "ralph_loop";
 }
 
-function getRecoveryReason(event: AgentEvent, completionSatisfied: boolean): TaskLaneSessionRecoveryReason {
+const MAX_TURNS_STOP_REASONS = new Set(["tool_use", "max_turns"]);
+
+function getRecoveryReason(event: AgentEvent, completionSatisfied: boolean, maxTurnsHit?: boolean): TaskLaneSessionRecoveryReason {
   if (event.type === AgentEventType.AGENT_TIMEOUT) {
     return "watchdog_inactivity";
+  }
+  if (maxTurnsHit) {
+    return "agent_failed";
   }
   if (event.type === AgentEventType.AGENT_FAILED) {
     return "agent_failed";
@@ -77,15 +86,22 @@ function getRecoveryReason(event: AgentEvent, completionSatisfied: boolean): Tas
 
 function buildKanbanRecoveryPrompt(params: RecoveryNotificationParams): string {
   const mode = params.mode === "watchdog_retry" ? "watchdog_retry" : "ralph_loop";
-  return [
+  const lines = [
     `hi，这里有一个 Agent（acp session id = ${params.sessionId}）很久没动了，你看看怎么回事，要不要继续？`,
     `Card: ${params.cardTitle} (${params.cardId})`,
     `Board: ${params.boardId}`,
     `Column: ${params.columnId}`,
     `Mode: ${mode}`,
     `Reason: ${params.reason}`,
-    "如果 session 还在，请直接处理并继续任务；否则尽快确认下一步重建策略。",
-  ].join("\\n");
+  ];
+  if (params.maxTurnsHit) {
+    lines.push(
+      "⚠️ Previous session hit the max-turns limit and was terminated mid-task.",
+      "IMPORTANT: Before continuing the implementation, first commit ALL uncommitted changes from the previous session using `git add` + `git commit`. This preserves partial progress in case this session also runs out of turns.",
+    );
+  }
+  lines.push("如果 session 还在，请直接处理并继续任务；否则尽快确认下一步重建策略。");
+  return lines.join("\\n");
 }
 
 function getAutomationStepLabel(step: KanbanAutomationStep | undefined, stepIndex: number): string {
@@ -125,6 +141,11 @@ export function hasExceededNonDevAutomationRepeatLimit(
   columnId: string,
   stage: KanbanColumnStage,
 ): boolean {
+  // Blocked lane should always allow automation so the resolver can attempt
+  // to unblock the task regardless of previous failure count.
+  if (stage === "blocked") {
+    return false;
+  }
   return getNonDevAutomationRunCount(task, columnId, stage) >= NON_DEV_AUTOMATION_REPEAT_LIMIT;
 }
 
@@ -216,7 +237,9 @@ export class KanbanWorkflowOrchestrator {
     }
     this.eventBus.on(this.handlerKey, (event: AgentEvent) => {
       if (event.type === AgentEventType.COLUMN_TRANSITION) {
-        void this.handleColumnTransition(event);
+        this.handleColumnTransition(event).catch((err) => {
+          console.error("[WorkflowOrchestrator] handleColumnTransition error:", err);
+        });
       }
       if (
         event.type === AgentEventType.AGENT_COMPLETED
@@ -224,7 +247,9 @@ export class KanbanWorkflowOrchestrator {
         || event.type === AgentEventType.AGENT_FAILED
         || event.type === AgentEventType.AGENT_TIMEOUT
       ) {
-        void this.handleAgentCompletion(event);
+        this.handleAgentCompletion(event).catch((err) => {
+          console.error("[WorkflowOrchestrator] handleAgentCompletion error:", err);
+        });
       }
     });
     this.watchdogTimer = setInterval(() => {
@@ -342,13 +367,42 @@ export class KanbanWorkflowOrchestrator {
       : getDisabledSupervisionConfig();
 
     const existingAutomation = this.activeAutomations.get(data.cardId);
-    if (
-      existingAutomation
+    if (existingAutomation
       && existingAutomation.boardId === data.boardId
-      && existingAutomation.columnId === targetColumn.id
-      && (existingAutomation.status === "queued" || existingAutomation.status === "running")
-    ) {
-      return;
+      && (existingAutomation.status === "queued" || existingAutomation.status === "running")) {
+      // If the existing automation is in the same column, skip entirely.
+      if (existingAutomation.columnId === targetColumn.id) {
+        return;
+      }
+
+      // Debounce: if the current automation started very recently (< 5s),
+      // the card is being rapidly moved (e.g. by user or upstream process).
+      // Wait briefly to avoid tearing down a session that will immediately be replaced.
+      const timeSinceStart = Date.now() - existingAutomation.startedAt.getTime();
+      if (timeSinceStart < 5_000) {
+        console.log(
+          `[WorkflowOrchestrator] Debouncing rapid card move for ${data.cardId} ` +
+          `(${existingAutomation.columnId} → ${targetColumn.id}, automation age ${timeSinceStart}ms)`,
+        );
+        await new Promise(r => setTimeout(r, 5_000 - timeSinceStart));
+        // After waiting, re-check whether the card is still in the target column.
+        const latestTask = await this.taskStore.get(data.cardId);
+        if (latestTask?.columnId !== targetColumn.id) {
+          console.log(`[WorkflowOrchestrator] Card ${data.cardId} moved again during debounce, skipping`);
+          return;
+        }
+      }
+
+      // If the existing automation is in a DIFFERENT column but still active,
+      // the agent called move_card while the previous automation was still running.
+      // Cancel the stale automation before starting the new one.
+      console.warn(
+        `[WorkflowOrchestrator] Cancelling stale automation for card ${data.cardId} ` +
+        `in column ${existingAutomation.columnId} (status: ${existingAutomation.status}) ` +
+        `because card moved to column ${targetColumn.id}.`,
+      );
+      existingAutomation.status = "failed";
+      this.cleanupCardSession?.(data.cardId);
     }
 
     const automationEntry: ActiveAutomation = {
@@ -389,6 +443,11 @@ export class KanbanWorkflowOrchestrator {
         if (sessionId) {
           automationEntry.status = "running";
           automationEntry.sessionId = sessionId;
+        } else {
+          automationEntry.status = "failed";
+          console.error(
+            `[WorkflowOrchestrator] createSession returned null for card ${data.cardId} in column ${targetColumn.id}.`,
+          );
         }
       } catch (err) {
         automationEntry.status = "failed";
@@ -424,26 +483,31 @@ export class KanbanWorkflowOrchestrator {
         });
       }
 
+      const stopReason = typeof event.data?.stopReason === "string" ? event.data.stopReason : undefined;
+      const maxTurnsHit = Boolean(stopReason && MAX_TURNS_STOP_REASONS.has(stopReason));
       const successEvent =
         event.type !== AgentEventType.AGENT_FAILED
         && event.type !== AgentEventType.AGENT_TIMEOUT
-        && event.data?.success !== false;
+        && event.data?.success !== false
+        && !maxTurnsHit;
       const completionSatisfied = await this.isCompletionSatisfied(task, automation, successEvent);
       const shouldRecover = task
-        ? await this.shouldRecover(task, automation, event, completionSatisfied)
+        ? await this.shouldRecover(task, automation, event, completionSatisfied, maxTurnsHit)
         : false;
 
       if (task) {
         const nextStatus = event.type === AgentEventType.AGENT_TIMEOUT
           ? "timed_out"
-          : successEvent && completionSatisfied
-            ? "completed"
-            : "failed";
+          : maxTurnsHit
+            ? "timed_out"
+            : successEvent && completionSatisfied
+              ? "completed"
+              : "failed";
         markTaskLaneSessionStatus(task, eventSessionId, nextStatus);
-        if (!successEvent || !completionSatisfied) {
+        if (!successEvent || !completionSatisfied || maxTurnsHit) {
           upsertTaskLaneSession(task, {
             sessionId: eventSessionId,
-            recoveryReason: getRecoveryReason(event, completionSatisfied),
+            recoveryReason: getRecoveryReason(event, completionSatisfied, maxTurnsHit),
           });
         }
       }
@@ -464,7 +528,7 @@ export class KanbanWorkflowOrchestrator {
       }
 
       if (task && shouldRecover) {
-        const recoveryReason = getRecoveryReason(event, completionSatisfied);
+        const recoveryReason = getRecoveryReason(event, completionSatisfied, maxTurnsHit);
         await this.notifyKanbanAgent({
           workspaceId: automation.workspaceId,
           sessionId: eventSessionId,
@@ -474,6 +538,7 @@ export class KanbanWorkflowOrchestrator {
           columnId: automation.columnId,
           reason: `Recovery reason: ${recoveryReason}.`,
           mode: automation.supervision.mode,
+          maxTurnsHit,
         });
         const recovered = await this.recoverAutomation(cardId, automation, task, recoveryReason);
         if (recovered) {
@@ -504,6 +569,10 @@ export class KanbanWorkflowOrchestrator {
         }
       }
 
+      // Save lane-session updates BEFORE autoAdvanceCard, which reloads the task
+      // and emits a synchronous COLUMN_TRANSITION. Saving after would overwrite the
+      // column change, triggerSessionId, and session state set by autoAdvanceCard
+      // and the downstream session-creation chain.
       if (task) {
         if (!failedToAdvanceWithinLane && successEvent && completionSatisfied) {
           task.lastSyncError = undefined;
@@ -515,6 +584,21 @@ export class KanbanWorkflowOrchestrator {
 
       // Auto-advance if configured and successful.
       if (!failedToAdvanceWithinLane && successEvent && completionSatisfied && automation.automation.autoAdvanceOnSuccess) {
+        await this.autoAdvanceCard(cardId, automation);
+      } else if (
+        !failedToAdvanceWithinLane
+        && successEvent
+        && completionSatisfied
+        && !automation.automation.autoAdvanceOnSuccess
+        && automation.steps[automation.currentStepIndex]?.role === "GATE"
+      ) {
+        // Safety net: GATE specialist completed successfully but did not call move_card.
+        // Auto-advance anyway to prevent the card from getting stuck.
+        const specialistId = automation.steps[automation.currentStepIndex]?.specialistId ?? "unknown";
+        console.warn(
+          `[WorkflowOrchestrator] GATE specialist (${specialistId}) completed without moving card ${cardId}. ` +
+          `Auto-advancing as safety net. Specialist should call move_card explicitly.`
+        );
         await this.autoAdvanceCard(cardId, automation);
       }
 
@@ -534,10 +618,49 @@ export class KanbanWorkflowOrchestrator {
 
     for (const automation of this.activeAutomations.values()) {
       if (automation.status !== "running" || !automation.sessionId) continue;
-      if (!isRecoveryMode(automation.supervision.mode)) continue;
 
       const sessionId = automation.sessionId;
       if (automation.signaledSessionIds.has(sessionId)) continue;
+
+      // ── Universal guards (apply to ALL running automations) ──────────────
+
+      // Max automation duration guard — terminates any automation running
+      // longer than MAX_AUTOMATION_DURATION_MS regardless of activity state
+      // or supervision mode. This is a safety net against runaway sessions.
+      const automationDurationMs = now - automation.startedAt.getTime();
+      if (automationDurationMs >= MAX_AUTOMATION_DURATION_MS) {
+        automation.signaledSessionIds.add(sessionId);
+        const hours = Math.floor(MAX_AUTOMATION_DURATION_MS / 3_600_000);
+        const reason = `Automation exceeded maximum duration of ${hours} hours.`;
+        sessionStore.markSessionTimedOut(sessionId, reason);
+        void this.notifyKanbanAgent({
+          workspaceId: automation.workspaceId,
+          sessionId,
+          cardId: automation.cardId,
+          cardTitle: automation.cardTitle,
+          boardId: automation.boardId,
+          columnId: automation.columnId,
+          reason,
+          mode: automation.supervision.mode,
+        });
+        this.eventBus.emit({
+          type: AgentEventType.AGENT_FAILED,
+          agentId: sessionId,
+          workspaceId: automation.workspaceId,
+          data: {
+            sessionId,
+            success: false,
+            error: reason,
+            watchdog: true,
+          },
+          timestamp: new Date(),
+        });
+        continue;
+      }
+
+      // ── Recovery-mode guards (dev-lane supervision only) ─────────────────
+
+      if (!isRecoveryMode(automation.supervision.mode)) continue;
 
       const sessionRecord = sessionStore.getSession(sessionId);
       if (sessionRecord?.acpStatus === "error") {
@@ -560,6 +683,37 @@ export class KanbanWorkflowOrchestrator {
             sessionId,
             success: false,
             error: sessionRecord.acpError ?? "ACP session entered error state.",
+            watchdog: true,
+          },
+          timestamp: new Date(),
+        });
+        continue;
+      }
+
+      // Check execution lease expiration — terminates sessions whose lease has
+      // lapsed even if they are still actively making tool calls.
+      if (sessionRecord?.leaseExpiresAt && !isExecutionLeaseActive(sessionRecord.leaseExpiresAt)) {
+        automation.signaledSessionIds.add(sessionId);
+        const reason = `Execution lease expired at ${sessionRecord.leaseExpiresAt}.`;
+        sessionStore.markSessionTimedOut(sessionId, reason);
+        void this.notifyKanbanAgent({
+          workspaceId: automation.workspaceId,
+          sessionId,
+          cardId: automation.cardId,
+          cardTitle: automation.cardTitle,
+          boardId: automation.boardId,
+          columnId: automation.columnId,
+          reason,
+          mode: automation.supervision.mode,
+        });
+        this.eventBus.emit({
+          type: AgentEventType.AGENT_TIMEOUT,
+          agentId: sessionId,
+          workspaceId: automation.workspaceId,
+          data: {
+            sessionId,
+            success: false,
+            error: reason,
             watchdog: true,
           },
           timestamp: new Date(),
@@ -608,6 +762,45 @@ export class KanbanWorkflowOrchestrator {
         },
         timestamp: new Date(),
       });
+    }
+
+    // Detect stale "queued" automations that never got a session.
+    // This can happen when createSession returned null or an async handler
+    // failed silently (e.g. HMR restart during column transition processing).
+    for (const [cardId, automation] of this.activeAutomations.entries()) {
+      if (automation.status !== "queued") continue;
+      const queuedMs = now - automation.startedAt.getTime();
+      if (queuedMs < STALE_QUEUED_THRESHOLD_MS) continue;
+
+      console.warn(
+        `[WorkflowOrchestrator] Stale queued automation for card ${cardId} ` +
+        `in column ${automation.columnId} (${queuedMs}ms old). Retrying.`,
+      );
+      automation.status = "failed";
+      this.cleanupCardSession?.(cardId);
+      this.activeAutomations.delete(cardId);
+
+      // Re-trigger via processColumnTransition to let restart-recovery logic
+      // pick it up on the next scan.
+      const task = await this.taskStore.get(cardId);
+      if (task?.columnId && task.boardId) {
+        this.eventBus.emit({
+          type: AgentEventType.COLUMN_TRANSITION,
+          agentId: "kanban-workflow-orchestrator-watchdog",
+          workspaceId: automation.workspaceId,
+          data: {
+            cardId,
+            cardTitle: automation.cardTitle,
+            boardId: automation.boardId,
+            workspaceId: automation.workspaceId,
+            fromColumnId: "__watchdog_retry__",
+            toColumnId: task.columnId,
+            fromColumnName: "Watchdog",
+            toColumnName: automation.columnName,
+          } as unknown as Record<string, unknown>,
+          timestamp: new Date(),
+        });
+      }
     }
   }
 
@@ -689,6 +882,7 @@ export class KanbanWorkflowOrchestrator {
     automation: ActiveAutomation,
     event: AgentEvent,
     completionSatisfied: boolean,
+    maxTurnsHit = false,
   ): Promise<boolean> {
     if (!isRecoveryMode(automation.supervision.mode)) {
       return false;
@@ -701,6 +895,9 @@ export class KanbanWorkflowOrchestrator {
     }
 
     if (event.type === AgentEventType.AGENT_TIMEOUT || event.type === AgentEventType.AGENT_FAILED) {
+      return true;
+    }
+    if (maxTurnsHit) {
       return true;
     }
     if (automation.supervision.mode === "ralph_loop" && event.type === AgentEventType.AGENT_COMPLETED) {

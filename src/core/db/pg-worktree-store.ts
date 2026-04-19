@@ -16,6 +16,7 @@ export interface WorktreeStore {
   assignSession(worktreeId: string, sessionId: string | null): Promise<void>;
   remove(worktreeId: string): Promise<void>;
   findByBranch(codebaseId: string, branch: string): Promise<Worktree | undefined>;
+  findByPath(worktreePath: string): Promise<Worktree | undefined>;
 }
 
 /**
@@ -71,6 +72,12 @@ export class InMemoryWorktreeStore implements WorktreeStore {
   async findByBranch(codebaseId: string, branch: string): Promise<Worktree | undefined> {
     return Array.from(this.store.values()).find(
       (wt) => wt.codebaseId === codebaseId && wt.branch === branch
+    );
+  }
+
+  async findByPath(worktreePath: string): Promise<Worktree | undefined> {
+    return Array.from(this.store.values()).find(
+      (wt) => wt.worktreePath === worktreePath
     );
   }
 }
@@ -143,6 +150,15 @@ export class PgWorktreeStore implements WorktreeStore {
       .select()
       .from(worktrees)
       .where(and(eq(worktrees.codebaseId, codebaseId), eq(worktrees.branch, branch)))
+      .limit(1);
+    return rows[0] ? this.toModel(rows[0]) : undefined;
+  }
+
+  async findByPath(worktreePath: string): Promise<Worktree | undefined> {
+    const rows = await this.db
+      .select()
+      .from(worktrees)
+      .where(eq(worktrees.worktreePath, worktreePath))
       .limit(1);
     return rows[0] ? this.toModel(rows[0]) : undefined;
   }

@@ -83,6 +83,8 @@ function findCurrentLaneSession(
         session.status === "running"
         || session.status === "transitioned"
         || session.status === "completed"
+        || session.status === "timed_out"
+        || session.status === "failed"
       )
     ));
 }

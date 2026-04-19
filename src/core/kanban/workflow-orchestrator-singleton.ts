@@ -15,13 +15,14 @@ import type {
   KanbanColumnAutomation,
   KanbanColumnStage,
 } from "../models/kanban";
-import type { Workspace } from "../models/workspace";
+
 import {
   resolveKanbanAutomationStep,
   resolveEffectiveTaskAutomation,
   type AutomationSpecialistSummary,
 } from "./effective-task-automation";
 import { ensureTaskWorktree } from "./ensure-task-worktree";
+import { fetchRemote } from "../git/git-utils";
 import { getInternalApiOrigin, triggerAssignedTaskAgent } from "./agent-trigger";
 import { KanbanSessionQueue } from "./kanban-session-queue";
 import { getKanbanSessionConcurrencyLimit as getBoardSessionConcurrencyLimit } from "./board-session-limits";
@@ -108,8 +109,16 @@ export async function enqueueKanbanTaskSession(
   if (!task?.boardId) {
     return { queued: false, error: "Task is missing board context." };
   }
+
   if (task.triggerSessionId && !params.ignoreExistingTrigger) {
-    return { sessionId: task.triggerSessionId, queued: false };
+    const sessionStore = getHttpSessionStore();
+    const activity = sessionStore.getSessionActivity(task.triggerSessionId);
+    if (activity?.terminalState) {
+      // Stale triggerSessionId from a terminated session — clear and continue
+      task.triggerSessionId = undefined;
+    } else {
+      return { sessionId: task.triggerSessionId, queued: false };
+    }
   }
 
   // Dependency gate: block enqueue if dependencies are unsatisfied
@@ -161,11 +170,34 @@ async function startKanbanTaskSession(
 ): Promise<{ sessionId?: string | null; error?: string }> {
   const task = await system.taskStore.get(taskId);
   if (!task) return { error: "Task no longer exists." };
+
+  // Sync source repos when task starts actual execution (not just queue enqueue).
+  // This ensures agents analyze code based on the latest remote state.
+  if (task.codebaseIds?.length) {
+    let codebases: Awaited<ReturnType<typeof system.codebaseStore.listByWorkspace>>;
+    try {
+      codebases = await system.codebaseStore.listByWorkspace(task.workspaceId);
+    } catch {
+      // Store failure should not block automation
+      codebases = [];
+    }
+    for (const cb of codebases) {
+      if (cb.repoPath) fetchRemote(cb.repoPath);
+    }
+  }
   if (params.expectedColumnId && task.columnId !== params.expectedColumnId) {
     return { error: `Task is no longer in column ${params.expectedColumnId}.` };
   }
   if (task.triggerSessionId && !params.ignoreExistingTrigger) {
-    return { sessionId: task.triggerSessionId };
+    const sessionStore = getHttpSessionStore();
+    const activity = sessionStore.getSessionActivity(task.triggerSessionId);
+    if (activity?.terminalState) {
+      // Stale triggerSessionId from a terminated session — clear and continue
+      task.triggerSessionId = undefined;
+      await system.taskStore.save(task);
+    } else {
+      return { sessionId: task.triggerSessionId };
+    }
   }
 
   const nextTask = {
@@ -202,6 +234,7 @@ async function startKanbanTaskSession(
   const resolvedWorktreeTruth = await resolveTaskWorktreeTruth(nextTask, system);
   worktreeCwd = resolvedWorktreeTruth?.cwd ?? worktreeCwd;
   worktreeBranch = resolvedWorktreeTruth?.branch ?? worktreeBranch;
+  const baseBranch = resolvedWorktreeTruth?.baseBranch ?? preferredCodebase?.branch;
 
   const effectiveAutomation = resolveEffectiveTaskAutomation(
     nextTask,
@@ -236,6 +269,7 @@ async function startKanbanTaskSession(
     workspaceId: nextTask.workspaceId,
     cwd: worktreeCwd,
     branch: worktreeBranch,
+    baseBranch,
     task: taskForSession,
     step: sessionStep,
     specialistLocale: sessionStep?.specialistLocale ?? effectiveAutomation.step?.specialistLocale,

@@ -61,6 +61,7 @@ function formatDeliveryRules(rules: KanbanDeliveryRules | undefined): string {
   if (rules.requireCommittedChanges) labels.push("committed changes");
   if (rules.requireCleanWorktree) labels.push("clean worktree");
   if (rules.requirePullRequestReady) labels.push("PR-ready branch");
+  if (rules.autoMergeAfterPR) labels.push(`auto-merge (${rules.mergeStrategy ?? "squash"})`);
   return labels.length > 0 ? labels.join(", ") : "none";
 }
 
@@ -89,7 +90,7 @@ export function getInternalApiOrigin(): string {
 export function buildTaskPrompt(
   task: Task,
   boardColumns: KanbanColumn[] = [],
-  options?: { currentSessionId?: string; summaryContext?: TaskPromptSummaryContext },
+  options?: { currentSessionId?: string; summaryContext?: TaskPromptSummaryContext; branch?: string },
 ): string {
   const labels = task.labels.length > 0 ? `Labels: ${task.labels.join(", ")}` : "Labels: none";
   const currentColumnId = task.columnId ?? "backlog";
@@ -361,6 +362,7 @@ export function buildTaskPrompt(
     `**Priority:** ${task.priority ?? "medium"}`,
     labels,
     task.githubUrl ? `**GitHub Issue:** ${task.githubUrl}` : "**GitHub Issue:** local-only",
+    ...(options?.branch ? [`**Base Branch:** ${options.branch}`] : []),
     "",
     "## Objective",
     "",
@@ -468,6 +470,7 @@ async function triggerAcpTaskAgent(params: {
   workspaceId: string;
   cwd: string;
   branch?: string;
+  baseBranch?: string;
   task: Task;
   specialistLocale?: string;
   boardColumns: KanbanColumn[];
@@ -518,6 +521,7 @@ async function triggerAcpTaskAgent(params: {
         text: buildTaskPrompt(params.task, params.boardColumns, {
           currentSessionId: sessionId,
           summaryContext: params.summaryContext,
+          branch: params.baseBranch ?? params.branch,
         }),
       }],
     });
@@ -645,6 +649,7 @@ export async function triggerAssignedTaskAgent(params: {
   workspaceId: string;
   cwd: string;
   branch?: string;
+  baseBranch?: string;
   task: Task;
   step?: KanbanAutomationStep;
   specialistLocale?: string;
@@ -657,6 +662,7 @@ export async function triggerAssignedTaskAgent(params: {
     workspaceId,
     cwd,
     branch,
+    baseBranch,
     task,
     step,
     specialistLocale,
@@ -679,6 +685,7 @@ export async function triggerAssignedTaskAgent(params: {
         workspaceId,
         cwd,
         branch,
+        baseBranch,
         task,
         specialistLocale,
         boardColumns,

@@ -55,8 +55,9 @@ function isSessionActivelyRunning(
 }
 
 function resolveStaleLaneSessionTerminalStatus(
-  task: Pick<Task, "verificationVerdict" | "verificationReport" | "completionSummary">,
+  task: Pick<Task, "verificationVerdict" | "verificationReport" | "completionSummary" | "pullRequestUrl">,
 ): TaskLaneSessionStatus {
+  if (task.pullRequestUrl) return "completed";
   return task.verificationVerdict || task.verificationReport || task.completionSummary
     ? "transitioned"
     : "timed_out";
@@ -236,16 +237,18 @@ export async function reviveMissingEntryAutomations(
       laneState.currentSession
       && laneState.currentSession.columnId === currentColumnId
       && (laneState.currentSession.status === "transitioned" || laneState.currentSession.status === "completed")
-      && laneState.nextStep
-      && typeof laneState.currentStepIndex === "number"
     ) {
-      await enqueueKanbanTaskSession(system, {
-        task,
-        expectedColumnId: currentColumnId,
-        ignoreExistingTrigger: true,
-        step: laneState.nextStep,
-        stepIndex: laneState.currentStepIndex + 1,
-      });
+      if (laneState.nextStep && typeof laneState.currentStepIndex === "number") {
+        await enqueueKanbanTaskSession(system, {
+          task,
+          expectedColumnId: currentColumnId,
+          ignoreExistingTrigger: true,
+          step: laneState.nextStep,
+          stepIndex: laneState.currentStepIndex + 1,
+        });
+      }
+      // Lane automation already completed (with or without remaining steps
+      // that were skipped). Skip re-triggering to avoid duplicate sessions.
       continue;
     }
 

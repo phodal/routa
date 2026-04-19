@@ -11,7 +11,7 @@ trigger:
   type: manual
 
 variables:
-  model: "${ANTHROPIC_MODEL:-GLM-4.7}"
+  model: "${ANTHROPIC_MODEL:-glm-5.1}"
   confidence_threshold: "7"
 
 steps:

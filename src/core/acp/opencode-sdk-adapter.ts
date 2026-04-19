@@ -23,7 +23,7 @@
  * - OPENCODE_API_KEY: API key (falls back to ANTHROPIC_AUTH_TOKEN)
  * - OPENCODE_BASE_URL: Chat completions base URL
  *     (default: https://open.bigmodel.cn/api/coding/paas/v4)
- * - OPENCODE_MODEL_ID: Model ID for completions (default: GLM-4.7)
+ * - OPENCODE_MODEL_ID: Model ID for completions (default: glm-5.1)
  *
  * Common:
  * - API_TIMEOUT_MS: Request timeout in milliseconds (default: 55000)
@@ -183,7 +183,7 @@ export function getOpencodeConfig(): {
     directApi: {
       apiKey: process.env.OPENCODE_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN,
       baseUrl: process.env.OPENCODE_BASE_URL || "https://open.bigmodel.cn/api/coding/paas/v4",
-      modelId: process.env.OPENCODE_MODEL_ID || process.env.ANTHROPIC_MODEL || "GLM-4.7",
+      modelId: process.env.OPENCODE_MODEL_ID || process.env.ANTHROPIC_MODEL || "glm-5.1",
     },
   };
 }

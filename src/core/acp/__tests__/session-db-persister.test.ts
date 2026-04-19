@@ -202,7 +202,7 @@ describe("session-db-persister", () => {
       provider: "opencode",
       role: "CRAFTER",
       modeId: "plan",
-      model: "glm-4.7",
+      model: "glm-5.1",
       specialistId: "researcher",
     });
 
@@ -215,7 +215,7 @@ describe("session-db-persister", () => {
       provider: "opencode",
       role: "CRAFTER",
       modeId: "plan",
-      model: "glm-4.7",
+      model: "glm-5.1",
       specialistId: "researcher",
     });
   });

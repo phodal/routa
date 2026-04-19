@@ -231,7 +231,7 @@ describe("ClaudeCodeSdkAdapter", () => {
       expect(callArgs.options.cwd).toBe("/tmp/test-cwd");
       expect(callArgs.options.permissionMode).toBe("bypassPermissions");
       expect(callArgs.options.allowDangerouslySkipPermissions).toBe(true);
-      expect(callArgs.options.maxTurns).toBe(30);
+      expect(callArgs.options.maxTurns).toBe(1200);
       expect(callArgs.options.settingSources).toEqual(["user", "project"]);
       expect(callArgs.options.tools).toEqual([
         "Skill",

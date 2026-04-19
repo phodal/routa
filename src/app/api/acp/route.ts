@@ -266,15 +266,20 @@ export async function GET(request: NextRequest) {
 
       // ─── Heartbeat mechanism ─────────────────────────────────────────────
       // Send a comment every 30 seconds to keep the connection alive
-      // and detect dead connections. If the write fails, cleanup is triggered.
+      // and detect dead connections. Allow up to 3 consecutive failures
+      // before giving up — transient backpressure should not kill the SSE.
+      let heartbeatFailCount = 0;
       heartbeatTimer = setInterval(() => {
         try {
           const encoder = new TextEncoder();
           const heartbeat = ": heartbeat\n\n";
           controller.enqueue(encoder.encode(heartbeat));
+          heartbeatFailCount = 0;
         } catch {
-          // Write failed - connection is dead
-          cleanup("heartbeat write failed");
+          heartbeatFailCount++;
+          if (heartbeatFailCount >= 3) {
+            cleanup("heartbeat write failed after 3 retries");
+          }
         }
       }, 30000); // 30 second heartbeat
 

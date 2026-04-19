@@ -7,7 +7,7 @@ import type { OwnershipRoutingContext } from "../../../src/core/harness/codeowne
 
 const DEFAULT_SPECIALIST_ID = "harness-review-trigger";
 const DEFAULT_ANTHROPIC_BASE_URL = "https://api.anthropic.com";
-const DEFAULT_ANTHROPIC_MODEL = "GLM-4.7";
+const DEFAULT_ANTHROPIC_MODEL = "glm-5.1";
 const MAX_DIFF_CHARS = 40_000;
 const DEFAULT_REVIEW_TIMEOUT_MS = 45_000;
 

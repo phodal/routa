@@ -18,7 +18,7 @@ import type {
 } from "../store/gitlab-webhook-store";
 import type { BackgroundTaskStore } from "../store/background-task-store";
 import {
-  normalizeGitLabEvent,
+  normalizeGitLabEvent as _normalizeGitLabEvent,
   extractGitLabAction,
   eventMatchesConfig,
   buildPrompt,
@@ -305,7 +305,7 @@ export class GitLabPollingAdapter {
     return triggered;
   }
 
-  private mapEventType(event: GitLabEvent): string | null {
+  private mapEventType(event: GitLabEvent): string | undefined {
     // Map GitLab event target_type to webhook event types
     const typeMap: Record<string, string> = {
       "Issue": "issues",

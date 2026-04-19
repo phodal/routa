@@ -11,7 +11,7 @@
 //!   type: manual      # manual | webhook | schedule
 //!
 //! variables:
-//!   model: "GLM-4.7"
+//!   model: "glm-5.1"
 //!   base_url: "${ANTHROPIC_BASE_URL}"
 //!
 //! steps:
@@ -174,7 +174,7 @@ fn default_adapter() -> String {
 /// Configuration for a workflow step's adapter.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct StepConfig {
-    /// Model to use (e.g., "GLM-4.7", "claude-sonnet-4-20250514")
+    /// Model to use (e.g., "glm-5.1", "claude-sonnet-4-20250514")
     #[serde(default)]
     pub model: Option<String>,
 
@@ -279,7 +279,7 @@ trigger:
   source: github
   event: issues.opened
 variables:
-  model: "GLM-4.7"
+  model: "glm-5.1"
   base_url: "https://open.bigmodel.cn/api/anthropic"
 steps:
   - name: "Refine"
@@ -295,7 +295,7 @@ steps:
   - name: "Implement"
     specialist: "crafter"
     config:
-      model: "GLM-4.7"
+      model: "glm-5.1"
     input: "${steps.Refine.output}"
     output_key: "implementation"
     if: "${steps.Refine.output} != ''"
@@ -305,7 +305,7 @@ steps:
         assert_eq!(wf.version, "2.0");
         assert_eq!(wf.trigger.trigger_type, "webhook");
         assert_eq!(wf.trigger.source, Some("github".to_string()));
-        assert_eq!(wf.variables.get("model").unwrap(), "GLM-4.7");
+        assert_eq!(wf.variables.get("model").unwrap(), "glm-5.1");
         assert_eq!(wf.steps.len(), 2);
         assert_eq!(wf.steps[0].actions.len(), 2);
         assert!(wf.steps[1].condition.is_some());

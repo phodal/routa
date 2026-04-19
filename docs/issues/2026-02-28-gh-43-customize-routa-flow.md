@@ -82,7 +82,7 @@ This issue tracks the implementation of a customizable multi-agent workflow syst
    - 通过 `agent-instance-factory.ts` 的 `baseUrl` 参数注入
 
 2. **OpenCode SDK Adapter**（`opencode-sdk-adapter.ts`）
-   - 默认: `https://open.bigmodel.cn/api/coding/paas/v4`，模型 `GLM-4.7`
+   - 默认: `https://open.bigmodel.cn/api/coding/paas/v4`，模型 `glm-5.1`
    - 环境变量: `OPENCODE_BASE_URL`, `OPENCODE_MODEL_ID`
 
 ### 3. Requirement Refinement Agent
@@ -242,7 +242,7 @@ steps:
         adapter: opencode-sdk       # 或使用 OpenCode SDK (GLM)
         config:
           baseUrl: "https://open.bigmodel.cn/api/coding/paas/v4"
-          model: "GLM-4.7"
+          model: "glm-5.1"
 
   - name: "Generate Tests"
     specialist: test-generator

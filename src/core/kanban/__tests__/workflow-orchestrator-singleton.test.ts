@@ -5,11 +5,15 @@ const {
   triggerAssignedTaskAgentMock,
   getInternalApiOriginMock,
   createGitWorktreeMock,
+  fetchRemoteMock,
+  getRepoStatusMock,
 } = vi.hoisted(() => ({
   dispatchSessionPromptMock: vi.fn(),
   triggerAssignedTaskAgentMock: vi.fn(),
   getInternalApiOriginMock: vi.fn(() => "http://localhost"),
   createGitWorktreeMock: vi.fn(),
+  fetchRemoteMock: vi.fn(() => true),
+  getRepoStatusMock: vi.fn(() => ({ clean: true, ahead: 0, behind: 0, modified: 0, untracked: 0 })),
 }));
 
 vi.mock("@/core/acp/session-prompt", () => ({
@@ -25,6 +29,11 @@ vi.mock("../../git/git-worktree-service", () => ({
   GitWorktreeService: vi.fn(class {
     createWorktree = createGitWorktreeMock;
   }),
+}));
+
+vi.mock("../../git/git-utils", () => ({
+  fetchRemote: fetchRemoteMock,
+  getRepoStatus: getRepoStatusMock,
 }));
 
 import { createInMemorySystem } from "../../routa-system";
@@ -46,6 +55,10 @@ describe("workflow orchestrator singleton prompt path", () => {
     getInternalApiOriginMock.mockReset();
     getInternalApiOriginMock.mockReturnValue("http://localhost");
     createGitWorktreeMock.mockReset();
+    fetchRemoteMock.mockReset();
+    fetchRemoteMock.mockReturnValue(true);
+    getRepoStatusMock.mockReset();
+    getRepoStatusMock.mockReturnValue({ clean: true, ahead: 0, behind: 0, modified: 0, untracked: 0 });
   });
 
   afterEach(() => {
@@ -228,7 +241,6 @@ describe("workflow orchestrator singleton prompt path", () => {
 
     expect(result).toEqual({ sessionId: "session-dev-1", queued: false, error: undefined });
     expect(createGitWorktreeMock).toHaveBeenCalledWith("repo-1", expect.objectContaining({
-      branch: "issue/task-1",
       baseBranch: "main",
     }));
     const updatedTask = await system.taskStore.get("task-1");

@@ -170,7 +170,7 @@ async function runReviewSpecialist(params: {
   }
 
   const baseUrl = (process.env.ANTHROPIC_BASE_URL || "https://api.anthropic.com").replace(/\/$/, "");
-  const model = params.modelOverride || process.env.ANTHROPIC_MODEL || "GLM-4.7";
+  const model = params.modelOverride || process.env.ANTHROPIC_MODEL || "glm-5.1";
   const prompt = buildSpecialistFirstPrompt({
     specialist,
     userRequest: [

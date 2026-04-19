@@ -44,6 +44,40 @@ export const PROVIDER_MODEL_TIERS: Record<string, Record<string, string>> = {
   },
 };
 
+// ─── Tier Environment Variable Override ────────────────────────────────────
+
+/**
+ * Maps tier names to the environment variables that override them.
+ * Used when ANTHROPIC_BASE_URL points to a non-Anthropic provider (e.g. GLM).
+ */
+const TIER_ENV_VAR_MAP: Record<ModelTierType, string> = {
+  fast: "ANTHROPIC_SMALL_FAST_MODEL",
+  balanced: "ANTHROPIC_DEFAULT_SONNET_MODEL",
+  smart: "ANTHROPIC_DEFAULT_OPUS_MODEL",
+};
+
+/**
+ * Resolve a model name from environment variables for a given tier.
+ *
+ * Priority:
+ *   1. Tier-specific env var (e.g. ANTHROPIC_DEFAULT_OPUS_MODEL for "smart")
+ *   2. Global fallback ANTHROPIC_MODEL
+ *   3. undefined — caller should fall back to PROVIDER_MODEL_TIERS
+ *
+ * Skipped for opencode (uses dynamic tier names at runtime).
+ */
+export function resolveModelFromEnvVarTier(
+  tier: ModelTierType,
+  providerKey?: string,
+): string | undefined {
+  if (providerKey === "opencode") return undefined;
+
+  const tierValue = process.env[TIER_ENV_VAR_MAP[tier]];
+  if (tierValue) return tierValue;
+
+  return process.env.ANTHROPIC_MODEL || undefined;
+}
+
 // ─── Compound Model ID Utilities ───────────────────────────────────────────
 
 export interface ParsedModelId {

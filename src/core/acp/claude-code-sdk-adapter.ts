@@ -1,3 +1,4 @@
+
 /**
  * Claude Code Agent SDK Adapter for Serverless Environments (Vercel)
  *
@@ -27,6 +28,7 @@ import { isServerlessEnvironment } from "@/core/acp/api-based-providers";
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import type { McpServerConfig, SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import { join } from "path";
+import { resolveModelFromEnvVarTier } from "@/core/acp/provider-registry";
 import type { LifecycleNotifier } from "@/core/acp/lifecycle-notifier";
 
 interface PendingUserInputRequest {
@@ -83,7 +85,7 @@ export function getClaudeCodeSdkConfig(): {
   return {
     apiKey: process.env.ANTHROPIC_AUTH_TOKEN || process.env.ANTHROPIC_API_KEY,
     baseUrl: process.env.ANTHROPIC_BASE_URL,
-    model: process.env.ANTHROPIC_MODEL || "claude-sonnet-4-20250514",
+    model: process.env.ANTHROPIC_MODEL || resolveModelFromEnvVarTier("balanced", "claudeCodeSdk") || "claude-sonnet-4-20250514",
     // Keep 5s below Vercel Pro 60s limit to allow clean shutdown
     timeoutMs: parseInt(process.env.API_TIMEOUT_MS || "55000", 10),
   };
@@ -386,7 +388,7 @@ export class ClaudeCodeSdkAdapter {
       const queryOptions: Parameters<typeof query>[0]["options"] = {
         cwd: promptCwd,
         model: this._modelOverride ?? config.model,
-        maxTurns: this._maxTurnsOverride ?? 30,
+        maxTurns: this._maxTurnsOverride ?? 1200,
         // Required for token-level incremental streaming events.
         includePartialMessages: true,
         abortController: this.abortController,
@@ -615,7 +617,7 @@ export class ClaudeCodeSdkAdapter {
       const queryOptions: Parameters<typeof query>[0]["options"] = {
         cwd: promptCwd,
         model: this._modelOverride ?? config.model,
-        maxTurns: this._maxTurnsOverride ?? 30,
+        maxTurns: this._maxTurnsOverride ?? 1200,
         // Keep message semantics aligned with promptStream().
         includePartialMessages: true,
         abortController: this.abortController,

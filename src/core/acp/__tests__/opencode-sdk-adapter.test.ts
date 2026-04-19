@@ -153,7 +153,7 @@ describe("OpencodeSdkDirectAdapter", () => {
 
   it("initializes and creates a session when credentials are present", async () => {
     process.env.ANTHROPIC_AUTH_TOKEN = "anthropic-token";
-    process.env.OPENCODE_MODEL_ID = "GLM-4.7-plus";
+    process.env.OPENCODE_MODEL_ID = "glm-5.1-plus";
     process.env.OPENCODE_BASE_URL = "https://api.example.test";
 
     const adapter = new OpencodeSdkDirectAdapter(vi.fn());

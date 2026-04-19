@@ -160,6 +160,7 @@ export class BrowserAcpClient {
   private _sessionId: string | null = null;
   private lastEventId: string | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private consecutiveReconnects = 0;
   private sseAttempt = 0;
   private readonly ownershipConflictRetryLimit = 4;
   private readonly ownershipConflictBaseDelayMs = 1200;
@@ -674,6 +675,10 @@ export class BrowserAcpClient {
           if (event.lastEventId) {
             this.lastEventId = event.lastEventId;
           }
+          // First successful message means the connection is healthy — reset backoff.
+          if (this.consecutiveReconnects > 0) {
+            this.consecutiveReconnects = 0;
+          }
           const data = JSON.parse(event.data);
           if (data.method === "session/update" && data.params) {
             const notification = data.params as AcpSessionNotification;
@@ -696,8 +701,11 @@ export class BrowserAcpClient {
         // connection is CLOSED (readyState === 2) — e.g. after a server
         // restart / page refresh — we must reconnect manually.
         if (this.eventSource?.readyState === EventSource.CLOSED) {
-          console.warn("[AcpClient] SSE connection closed, reconnecting in 2s...");
-          this.scheduleReconnect();
+          this.consecutiveReconnects++;
+          const baseDelay = 2000;
+          const delay = Math.min(baseDelay * 2 ** (this.consecutiveReconnects - 1), 30000);
+          console.warn(`[AcpClient] SSE connection closed, reconnecting in ${delay}ms (attempt ${this.consecutiveReconnects})...`);
+          this.scheduleReconnect(delay);
         }
       };
     });

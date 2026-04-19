@@ -17,7 +17,7 @@
  */
 
 import { ClaudeCodeSdkAdapter } from "./claude-code-sdk-adapter";
-import { PROVIDER_MODEL_TIERS, type ModelTierType } from "./provider-registry";
+import { PROVIDER_MODEL_TIERS, type ModelTierType, resolveModelFromEnvVarTier } from "./provider-registry";
 import {
   getSpecialistById,
   getSpecialistByRole,
@@ -95,12 +95,23 @@ function resolveModelFromTier(
       ? "claudeCodeSdk"
       : provider === "claude"
         ? "claude"
-        : provider ?? "claudeCodeSdk";
+        : provider === "opencode"
+          ? "opencode"
+          : provider ?? "claudeCodeSdk";
+
+  const tierKey = tier.toLowerCase() as ModelTierType;
+
+  // Check environment variable overrides before hardcoded tiers.
+  // This allows GLM and other non-Anthropic providers to work correctly
+  // without modifying specialist configs (ANTHROPIC_SMALL_FAST_MODEL, etc.)
+  const envModel = resolveModelFromEnvVarTier(tierKey, providerKey);
+  if (envModel) {
+    return envModel;
+  }
 
   const tiers = PROVIDER_MODEL_TIERS[providerKey];
   if (!tiers) return undefined;
 
-  const tierKey = tier.toLowerCase() as ModelTierType;
   return tiers[tierKey] || undefined;
 }
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
-import { ArrowRightLeft, Check, CircleHelp, Copy, LoaderCircle, OctagonX, X } from "lucide-react";
+import { Check, CircleHelp, Copy, LoaderCircle, OctagonX, X } from "lucide-react";
 import { useTranslation } from "@/i18n";
 import type { AcpProviderInfo } from "@/client/acp-client";
 import { resolveEffectiveTaskAutomation } from "@/core/kanban/effective-task-automation";
@@ -63,7 +63,7 @@ function getTaskRunStatusClasses(status: TaskRunInfo["status"] | undefined): str
     case "running":
       return "bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-200";
     case "transitioned":
-      return "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-200";
+      return "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-200";
     default:
       return "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300";
   }
@@ -80,7 +80,7 @@ function renderTaskRunStatusIcon(status: TaskRunInfo["status"] | undefined) {
     case "running":
       return <LoaderCircle className="h-3.5 w-3.5 animate-spin" />;
     case "transitioned":
-      return <ArrowRightLeft className="h-3.5 w-3.5" />;
+      return <Check className="h-3.5 w-3.5" />;
     default:
       return <CircleHelp className="h-3.5 w-3.5" />;
   }

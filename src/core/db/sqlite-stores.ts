@@ -103,6 +103,15 @@ export class SqliteWorktreeStore implements WorktreeStore {
     return rows[0] ? this.toModel(rows[0]) : undefined;
   }
 
+  async findByPath(worktreePath: string): Promise<Worktree | undefined> {
+    const rows = await this.db
+      .select()
+      .from(sqliteSchema.worktrees)
+      .where(eq(sqliteSchema.worktrees.worktreePath, worktreePath))
+      .limit(1);
+    return rows[0] ? this.toModel(rows[0]) : undefined;
+  }
+
   private toModel(row: typeof sqliteSchema.worktrees.$inferSelect): Worktree {
     return {
       id: row.id,

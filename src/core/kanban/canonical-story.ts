@@ -2,6 +2,8 @@ import * as yaml from "js-yaml";
 
 export type CanonicalStoryStatus = "pass" | "fail" | "warning";
 
+export type SurfaceCoverageStatus = "covered" | "not_applicable";
+
 export interface CanonicalStoryAcceptanceCriterion {
   id: string;
   text: string;
@@ -28,6 +30,7 @@ export interface CanonicalStoryDocument {
       unblock_condition: string;
     };
     out_of_scope: string[];
+    surface_coverage?: Record<string, string>;
     invest: {
       independent: CanonicalStoryInvestCheck;
       negotiable: CanonicalStoryInvestCheck;
@@ -155,6 +158,32 @@ function readInvestCheck(value: unknown, path: string, issues: string[]): Canoni
   };
 }
 
+const SURFACE_COVERAGE_KEYS = [
+  "backend_logic",
+  "frontend_ui",
+  "api_endpoints",
+  "settings_config",
+  "i18n_translations",
+  "database_schema",
+] as const;
+
+function readSurfaceCoverage(
+  value: Record<string, unknown>,
+  path: string,
+  issues: string[],
+): Record<string, string> {
+  const result: Record<string, string> = {};
+  for (const key of SURFACE_COVERAGE_KEYS) {
+    const raw = typeof value[key] === "string" ? (value[key] as string).trim().split(/\s+/)[0] : "";
+    if (raw === "covered" || raw === "not_applicable") {
+      result[key] = raw;
+    } else if (raw) {
+      issues.push(`${path}.${key} must be "covered" or "not_applicable"`);
+    }
+  }
+  return result;
+}
+
 export function extractCanonicalStoryYaml(content: string | null | undefined): string | null {
   const match = content?.match(CANONICAL_STORY_REGEX);
   return match?.[1]?.trim() ?? null;
@@ -254,6 +283,9 @@ export function parseCanonicalStory(content: string | null | undefined): Canonic
           : "",
       },
       out_of_scope: readStringArray(root.out_of_scope, "story.out_of_scope", issues),
+      surface_coverage: isRecord(root.surface_coverage)
+        ? readSurfaceCoverage(root.surface_coverage, "story.surface_coverage", issues)
+        : undefined,
       invest: {
         independent: isRecord(invest)
           ? readInvestCheck(invest.independent, "story.invest.independent", issues)

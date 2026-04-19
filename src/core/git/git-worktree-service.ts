@@ -113,6 +113,9 @@ export class GitWorktreeService {
     const repoPath = codebase.repoPath;
     const baseBranch = options.baseBranch ?? codebase.branch ?? GIT_DEFAULT_BRANCH;
 
+    // Fetch base branch ref before creating worktree to ensure up-to-date baseline
+    await execGit(["fetch", "origin", baseBranch], repoPath).catch(() => {});
+
     // Generate branch name if not provided
     const shortId = crypto.randomUUID().slice(0, 8);
     const branch =
@@ -139,10 +142,20 @@ export class GitWorktreeService {
       const worktreeRoot = options.worktreeRoot?.trim() || getWorktreeBaseDir();
       const worktreePath = path.join(
         worktreeRoot,
-        codebase.workspaceId,
         codebaseId,
         directoryName
       );
+
+      // Clean up stale error-status worktree at the same path before creating a new one.
+      // A previous attempt may have failed (e.g. Windows filename length) leaving an
+      // error record that blocks the unique constraint on worktree_path.
+      const codebaseWorktrees = await this.worktreeStore.listByCodebase(codebaseId);
+      const staleAtSamePath = codebaseWorktrees.find(
+        (wt) => wt.worktreePath === worktreePath && wt.status === "error"
+      );
+      if (staleAtSamePath) {
+        await this.worktreeStore.remove(staleAtSamePath.id);
+      }
 
       // Create DB record
       const worktree = createWorktree({
@@ -159,6 +172,14 @@ export class GitWorktreeService {
       try {
         // Ensure parent directory exists
         await fs.mkdir(path.dirname(worktreePath), { recursive: true });
+
+        // Enable long paths on Windows to avoid MAX_PATH (260) failures.
+        // Set both local (repo-level) and global (--global) so the worktree
+        // checkout respects the setting even before the worktree gitconfig exists.
+        if (process.platform === "win32") {
+          await execGit(["config", "core.longPaths", "true"], repoPath).catch(() => {});
+          await execGit(["config", "--global", "core.longPaths", "true"], repoPath).catch(() => {});
+        }
 
         // Prune stale worktree references
         await execGit(["worktree", "prune"], repoPath).catch(() => {});

@@ -14,7 +14,7 @@ describe("applyRecommendedAutomationToColumns", () => {
       "kanban-todo-orchestrator",
       "kanban-dev-executor",
       "kanban-qa-frontend",
-      "kanban-done-reporter",
+      "kanban-pr-publisher",
       "kanban-blocked-resolver",
     ]);
     expect(columns.map((column) => column.automation?.steps?.[0]?.role)).toEqual([
@@ -22,7 +22,7 @@ describe("applyRecommendedAutomationToColumns", () => {
       "CRAFTER",
       "CRAFTER",
       "GATE",
-      "GATE",
+      "DEVELOPER",
       "CRAFTER",
     ]);
     expect(columns[0].automation?.autoAdvanceOnSuccess).toBe(true);
@@ -40,7 +40,14 @@ describe("applyRecommendedAutomationToColumns", () => {
       requireCommittedChanges: true,
       requireCleanWorktree: true,
       requirePullRequestReady: true,
+      autoMergeAfterPR: undefined,
+      mergeStrategy: undefined,
     });
+    expect(columns[4]?.automation?.steps?.map((step) => step.specialistId)).toEqual([
+      "kanban-pr-publisher",
+      "kanban-auto-merger",
+      "kanban-done-reporter",
+    ]);
     expect(columns[3]?.automation?.steps?.map((step) => step.specialistId)).toEqual([
       "kanban-qa-frontend",
       "kanban-review-guard",

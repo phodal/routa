@@ -388,6 +388,36 @@ export async function appendSessionNotificationEvent(
 ): Promise<void> {
   const driver = getDatabaseDriver();
 
+  // Write JSONL first — getHistory falls back to JSONL when DB lags,
+  // so ensuring JSONL is ahead reduces the "JSONL has more history" noise.
+  if (!isServerless()) {
+    try {
+      let cwd = cwdOverride;
+
+      if (!cwd) {
+        const { getHttpSessionStore } = await import("@/core/acp/http-session-store");
+        cwd = getHttpSessionStore().getSession(sessionId)?.cwd;
+      }
+
+      if (!cwd && driver === "sqlite") {
+        try {
+          const { getSqliteDatabase } = await loadSqliteDatabaseModule();
+          const db = getSqliteDatabase();
+          cwd = (await new SqliteAcpSessionStore(db).get(sessionId))?.cwd;
+        } catch {
+          // ignore — cwd stays undefined
+        }
+      }
+
+      if (cwd) {
+        const local = new LocalSessionProvider(cwd);
+        await local.appendMessage(sessionId, toJsonlHistoryEntry(sessionId, notification));
+      }
+    } catch {
+      // Non-fatal — local event log append is best-effort
+    }
+  }
+
   if (driver !== "memory") {
     try {
       if (driver === "postgres") {
@@ -401,34 +431,6 @@ export async function appendSessionNotificationEvent(
     } catch {
       // Non-fatal — DB append is best-effort
     }
-  }
-
-  if (isServerless()) return;
-
-  try {
-    let cwd = cwdOverride;
-
-    if (!cwd) {
-      const { getHttpSessionStore } = await import("@/core/acp/http-session-store");
-      cwd = getHttpSessionStore().getSession(sessionId)?.cwd;
-    }
-
-    if (!cwd && driver === "sqlite") {
-      try {
-        const { getSqliteDatabase } = await loadSqliteDatabaseModule();
-        const db = getSqliteDatabase();
-        cwd = (await new SqliteAcpSessionStore(db).get(sessionId))?.cwd;
-      } catch {
-        // ignore — cwd stays undefined
-      }
-    }
-
-    if (!cwd) return;
-
-    const local = new LocalSessionProvider(cwd);
-    await local.appendMessage(sessionId, toJsonlHistoryEntry(sessionId, notification));
-  } catch {
-    // Non-fatal — local event log append is best-effort
   }
 }
 
@@ -511,7 +513,13 @@ export async function loadHistoryFromDb(
         .filter(Boolean) as import("@/core/acp/http-session-store").SessionUpdateNotification[]);
 
       if (jsonlHistory.length > dbHistory.length) {
-        console.log(`[SessionDB] JSONL has more history (${jsonlHistory.length}) than DB (${dbHistory.length}) for session ${sessionId}, using JSONL`);
+        const diff = jsonlHistory.length - dbHistory.length;
+        // Only log when the gap is significant — a diff of 1 is expected
+        // during normal operation and would otherwise produce log noise on
+        // every SSE reconnection / history reload.
+        if (diff > 5) {
+          console.warn(`[SessionDB] JSONL leads DB by ${diff} entries (${jsonlHistory.length} vs ${dbHistory.length}) for session ${sessionId}`);
+        }
         return jsonlHistory;
       }
     } catch {

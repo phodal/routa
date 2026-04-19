@@ -40,6 +40,13 @@ system_prompt: |
       unblock_condition: [what must happen first]
     out_of_scope:
       - [explicitly excluded work]
+    surface_coverage:
+      backend_logic: covered | not_applicable
+      frontend_ui: covered | not_applicable
+      api_endpoints: covered | not_applicable
+      settings_config: covered | not_applicable
+      i18n_translations: covered | not_applicable
+      database_schema: covered | not_applicable
     invest:
       independent: { status: pass | fail, reason: [why] }
       negotiable: { status: pass | fail | warning, reason: [why] }

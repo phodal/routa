@@ -122,6 +122,47 @@ describe("workflow orchestrator loop guard", () => {
     expect(hasExceededNonDevAutomationRepeatLimit(task, "review", "review")).toBe(true);
   });
 
+  it("does not apply the repeat limit to blocked lane", () => {
+    const task = createTask({
+      id: "task-blocked-retry",
+      title: "Blocked retry",
+      objective: "Blocked resolver should always be allowed to run",
+      workspaceId: "default",
+      boardId: "board-1",
+      columnId: "blocked",
+    });
+
+    task.laneSessions = [
+      {
+        sessionId: "blocked-1",
+        columnId: "blocked",
+        status: "failed",
+        startedAt: new Date().toISOString(),
+      },
+      {
+        sessionId: "blocked-2",
+        columnId: "blocked",
+        status: "failed",
+        startedAt: new Date().toISOString(),
+      },
+      {
+        sessionId: "blocked-3",
+        columnId: "blocked",
+        status: "failed",
+        startedAt: new Date().toISOString(),
+      },
+      {
+        sessionId: "blocked-4",
+        columnId: "blocked",
+        status: "failed",
+        startedAt: new Date().toISOString(),
+      },
+    ];
+
+    expect(getNonDevAutomationRunCount(task, "blocked", "blocked")).toBe(4);
+    expect(hasExceededNonDevAutomationRepeatLimit(task, "blocked", "blocked")).toBe(false);
+  });
+
   it("does not apply the repeat limit to dev lane recovery runs", () => {
     const task = createTask({
       id: "task-dev-recovery",
