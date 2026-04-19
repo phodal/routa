@@ -596,9 +596,9 @@ enum KanbanCardAction {
         /// Filter by priority (low, medium, high, urgent)
         #[arg(long)]
         priority: Option<String>,
-        /// Filter by label
-        #[arg(long)]
-        label: Option<String>,
+        /// Filter by labels. Repeat the flag or pass a comma-separated list; all labels must match.
+        #[arg(long, value_delimiter = ',')]
+        label: Option<Vec<String>>,
     },
     /// Bulk-create cards from a JSON task array
     Decompose {
@@ -639,13 +639,21 @@ enum KanbanColumnAction {
 enum KanbanAutomationAction {
     /// List automation configurations for a board's columns
     List {
+        #[arg(long, default_value = "default")]
+        workspace_id: String,
         #[arg(long)]
-        board_id: String,
+        board_id: Option<String>,
     },
     /// Manually trigger automation for a card
     Trigger {
         #[arg(long)]
         card_id: String,
+        #[arg(long)]
+        column_id: Option<String>,
+        #[arg(long, default_value_t = false)]
+        force: bool,
+        #[arg(long, default_value_t = false)]
+        dry_run: bool,
     },
 }
 
@@ -1240,7 +1248,9 @@ async fn main() {
                                     column_id: column_id.as_deref(),
                                     status: status.as_deref(),
                                     priority: priority.as_deref(),
-                                    label: label.as_deref(),
+                                    labels: label
+                                        .as_ref()
+                                        .map(|values| values.iter().map(String::as_str).collect()),
                                 },
                             )
                             .await
@@ -1297,11 +1307,31 @@ async fn main() {
                             .await
                     }
                     KanbanAction::Automation { action } => match action {
-                        KanbanAutomationAction::List { board_id } => {
-                            commands::kanban::list_automations(&state, &board_id).await
+                        KanbanAutomationAction::List {
+                            workspace_id,
+                            board_id,
+                        } => {
+                            commands::kanban::list_automations(
+                                &state,
+                                &workspace_id,
+                                board_id.as_deref(),
+                            )
+                            .await
                         }
-                        KanbanAutomationAction::Trigger { card_id } => {
-                            commands::kanban::trigger_automation(&state, &card_id).await
+                        KanbanAutomationAction::Trigger {
+                            card_id,
+                            column_id,
+                            force,
+                            dry_run,
+                        } => {
+                            commands::kanban::trigger_automation(
+                                &state,
+                                &card_id,
+                                column_id.as_deref(),
+                                force,
+                                dry_run,
+                            )
+                            .await
                         }
                     },
                 }

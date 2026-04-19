@@ -20,13 +20,14 @@
 //! - `kanban.triggerAutomation`
 
 mod automation;
+mod automation_commands;
 mod boards;
 mod cards;
 mod handoffs;
 mod queries;
 mod shared;
 
-pub use automation::{
+pub use automation_commands::{
     list_automations, trigger_automation, ColumnAutomationSummary, ListAutomationsParams,
     ListAutomationsResult, TriggerAutomationParams, TriggerAutomationResult,
 };
@@ -49,8 +50,9 @@ pub use handoffs::{
 };
 pub use queries::{
     board_status, list_cards, list_cards_by_column, search_cards, BoardStatusParams,
-    BoardStatusResult, ColumnStatus, ListCardsParams, ListCardsResult, ListCardsByColumnParams,
-    ListCardsByColumnResult, SearchCardsParams, SearchCardsResult,
+    BoardStatusResult, BoardStatusTotals, ColumnStatus, ListCardsByColumnParams,
+    ListCardsByColumnResult, ListCardsParams, ListCardsResult, SearchCardsParams,
+    SearchCardsResult,
 };
 
 #[cfg(test)]
@@ -1380,6 +1382,7 @@ mod tests {
                 status: None,
                 priority: Some("high".to_string()),
                 label: None,
+                labels: vec![],
             },
         )
         .await
@@ -1389,71 +1392,7 @@ mod tests {
         assert_eq!(result.cards[0].title, "High priority card");
     }
 
-    #[tokio::test]
-    async fn list_automations_returns_column_automation_info() {
-        let state = setup_state().await;
-
-        let automation = KanbanColumnAutomation {
-            enabled: true,
-            provider_id: Some("opencode".to_string()),
-            role: Some("DEVELOPER".to_string()),
-            ..Default::default()
-        };
-
-        let board = KanbanBoard {
-            id: "board-auto-test".to_string(),
-            workspace_id: "default".to_string(),
-            name: "Auto Board".to_string(),
-            is_default: false,
-            columns: vec![
-                KanbanColumn {
-                    id: "backlog".to_string(),
-                    name: "Backlog".to_string(),
-                    color: None,
-                    position: 0,
-                    stage: "backlog".to_string(),
-                    automation: None,
-                    visible: Some(true),
-                    width: None,
-                },
-                KanbanColumn {
-                    id: "dev".to_string(),
-                    name: "Dev".to_string(),
-                    color: None,
-                    position: 1,
-                    stage: "active".to_string(),
-                    automation: Some(automation),
-                    visible: Some(true),
-                    width: None,
-                },
-            ],
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
-        };
-        state
-            .kanban_store
-            .create(&board)
-            .await
-            .expect("board create should succeed");
-
-        let result = super::automation::list_automations(
-            &state,
-            super::automation::ListAutomationsParams {
-                board_id: "board-auto-test".to_string(),
-            },
-        )
-        .await
-        .expect("list automations should succeed");
-
-        assert_eq!(result.board_id, "board-auto-test");
-        assert_eq!(result.columns.len(), 2);
-
-        let backlog_col = result.columns.iter().find(|c| c.column_id == "backlog").unwrap();
-        assert!(!backlog_col.automation_enabled);
-        assert!(backlog_col.automation.is_none());
-
-        let dev_col = result.columns.iter().find(|c| c.column_id == "dev").unwrap();
-        assert!(dev_col.automation_enabled);
-        assert!(dev_col.automation.is_some());
-    }
 }
+
+#[cfg(test)]
+mod automation_phase_two_tests;
