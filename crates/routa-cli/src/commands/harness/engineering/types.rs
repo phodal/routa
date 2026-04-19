@@ -17,7 +17,7 @@ pub struct HarnessEngineeringOptions {
     pub ai_provider: Option<String>,
     pub ai_provider_timeout_ms: Option<u64>,
     pub ai_provider_retries: u8,
-    pub learn: bool, // Generate playbooks from evolution history
+    pub learn: bool,         // Generate playbooks from evolution history
     pub speed_profile: bool, // Trigger single dry-run fitness speed experiment
 }
 

@@ -176,7 +176,9 @@ pub fn run_fitness(repo_root: &str, mode: FitnessRunMode) -> Result<FitnessSnaps
     };
     // Apply HARNESS_FAST_TIMEOUT_MS as a per-metric timeout (in seconds, capped at minimum MIN_FAST_TIMEOUT_SECS).
     // The env var is expressed in milliseconds for consistency with frontend metrics.
-    let runner = if let Some(timeout_ms) = fast_timeout_ms.filter(|_| matches!(mode, FitnessRunMode::Fast)) {
+    let runner = if let Some(timeout_ms) =
+        fast_timeout_ms.filter(|_| matches!(mode, FitnessRunMode::Fast))
+    {
         let timeout_secs = (timeout_ms / 1000).max(MIN_FAST_TIMEOUT_SECS);
         ShellRunner::new(root).with_timeout(timeout_secs)
     } else {

@@ -1354,7 +1354,9 @@ fn run_speed_profile_experiment(
                 }
             }
             Err(error) => {
-                warnings.push(format!("speed-profile experiment failed to launch: {error}"));
+                warnings.push(format!(
+                    "speed-profile experiment failed to launch: {error}"
+                ));
             }
         }
     } else {

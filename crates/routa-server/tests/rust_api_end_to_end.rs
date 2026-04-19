@@ -1601,6 +1601,8 @@ async fn api_spec_feature_tree_generate_contract() {
         ])
     );
     assert!(payload["warnings"].as_array().is_some());
-    assert!(payload["pagesCount"].as_u64().is_some_and(|count| count > 0));
+    assert!(payload["pagesCount"]
+        .as_u64()
+        .is_some_and(|count| count > 0));
     assert!(payload["apisCount"].as_u64().is_some_and(|count| count > 0));
 }

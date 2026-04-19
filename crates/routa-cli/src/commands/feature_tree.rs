@@ -7,10 +7,7 @@ use std::process::Command;
 
 /// Run `feature-tree generate` — scan the repo and produce
 /// `FEATURE_TREE.md` + `feature-tree.index.json`.
-pub fn generate(
-    repo_path: Option<&str>,
-    dry_run: bool,
-) -> Result<(), String> {
+pub fn generate(repo_path: Option<&str>, dry_run: bool) -> Result<(), String> {
     let repo_root = repo_path
         .map(std::path::PathBuf::from)
         .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| ".".into()));

@@ -583,7 +583,8 @@ fn app_cache_starts_new_force_refresh_for_new_cache_key_within_debounce_window()
     let state = sample_runtime_state_with_dirty_file();
     let mut cache = AppCache::new(&state.repo_root);
 
-    cache.active_fitness_history_mut().cache_key = Some("mode=fast;branch=main;ahead=0;files=".to_string());
+    cache.active_fitness_history_mut().cache_key =
+        Some("mode=fast;branch=main;ahead=0;files=".to_string());
     cache.sync_cache_key_from_active_mode();
     cache.fitness_last_triggered_ms = Some(chrono::Utc::now().timestamp_millis());
 

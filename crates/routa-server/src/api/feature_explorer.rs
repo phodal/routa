@@ -202,11 +202,7 @@ struct FileStatAggregate {
 fn collect_session_stats(
     repo_root: &Path,
     feature_tree: &FeatureTreeCatalog,
-) -> (
-    FeatureStats,
-    FileStats,
-    Vec<SessionAnalysis>,
-) {
+) -> (FeatureStats, FileStats, Vec<SessionAnalysis>) {
     let mut stats: HashMap<String, FeatureStatAggregate> = HashMap::new();
     let mut file_stats: HashMap<String, FileStatAggregate> = HashMap::new();
     let mut analyses = Vec::new();

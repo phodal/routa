@@ -547,12 +547,11 @@ async fn generate_feature_tree(
     .await?;
 
     let dry_run = body.dry_run;
-    let result = tokio::task::spawn_blocking(move || {
-        run_feature_tree_generator(&repo_root, dry_run)
-    })
-    .await
-    .map_err(|e| ServerError::Internal(format!("Task join error: {e}")))?
-    .map_err(ServerError::Internal)?;
+    let result =
+        tokio::task::spawn_blocking(move || run_feature_tree_generator(&repo_root, dry_run))
+            .await
+            .map_err(|e| ServerError::Internal(format!("Task join error: {e}")))?
+            .map_err(ServerError::Internal)?;
 
     Ok(Json(result))
 }
