@@ -18,7 +18,9 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/issues", get(list_spec_issues))
         .route("/surface-index", get(get_surface_index))
+        .route("/feature-tree/preflight", get(preflight_feature_tree))
         .route("/feature-tree/generate", post(generate_feature_tree))
+        .route("/feature-tree/commit", post(commit_feature_tree))
 }
 
 const SPEC_STATUSES: [&str; 4] = ["open", "investigating", "resolved", "wontfix"];
@@ -522,6 +524,14 @@ async fn get_surface_index(
 
 #[derive(Debug, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct FeatureTreeContextQuery {
+    workspace_id: Option<String>,
+    codebase_id: Option<String>,
+    repo_path: Option<String>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct GenerateFeatureTreeRequest {
     workspace_id: Option<String>,
     codebase_id: Option<String>,
@@ -530,25 +540,155 @@ struct GenerateFeatureTreeRequest {
     dry_run: bool,
 }
 
-async fn generate_feature_tree(
-    State(state): State<AppState>,
-    Json(body): Json<GenerateFeatureTreeRequest>,
-) -> Result<Json<JsonValue>, ServerError> {
-    let repo_root = resolve_repo_root(
-        &state,
-        body.workspace_id.as_deref(),
-        body.codebase_id.as_deref(),
-        body.repo_path.as_deref(),
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CommitFeatureTreeRequest {
+    workspace_id: Option<String>,
+    codebase_id: Option<String>,
+    repo_path: Option<String>,
+    scan_root: Option<String>,
+    metadata: Option<JsonValue>,
+}
+
+async fn resolve_feature_tree_repo_root(
+    state: &AppState,
+    workspace_id: Option<&str>,
+    codebase_id: Option<&str>,
+    repo_path: Option<&str>,
+) -> Result<PathBuf, ServerError> {
+    resolve_repo_root(
+        state,
+        workspace_id,
+        codebase_id,
+        repo_path,
         "Missing context: provide workspaceId, codebaseId, or repoPath",
         ResolveRepoRootOptions {
             prefer_current_repo_for_default_workspace: true,
         },
+    )
+    .await
+}
+
+fn resolve_feature_tree_scan_root(
+    repo_root: &Path,
+    scan_root: Option<&str>,
+) -> Result<Option<PathBuf>, ServerError> {
+    let Some(scan_root) = scan_root else {
+        return Ok(None);
+    };
+
+    let resolved = PathBuf::from(scan_root);
+    if !resolved.exists() {
+        return Err(ServerError::BadRequest(
+            "scanRoot does not exist".to_string(),
+        ));
+    }
+
+    let real_scan_root = resolved
+        .canonicalize()
+        .map_err(|e| ServerError::Internal(format!("Failed to resolve scanRoot: {e}")))?;
+    let real_repo_root = repo_root
+        .canonicalize()
+        .map_err(|e| ServerError::Internal(format!("Failed to resolve repoPath: {e}")))?;
+
+    if real_scan_root != real_repo_root && !real_scan_root.starts_with(&real_repo_root) {
+        return Err(ServerError::BadRequest(
+            "scanRoot must be inside the repository".to_string(),
+        ));
+    }
+
+    Ok(Some(real_scan_root))
+}
+
+fn validate_feature_tree_metadata(
+    metadata: Option<JsonValue>,
+) -> Result<Option<JsonValue>, ServerError> {
+    let Some(metadata) = metadata else {
+        return Ok(None);
+    };
+
+    let has_features = metadata
+        .as_object()
+        .and_then(|object| object.get("features"))
+        .and_then(JsonValue::as_array)
+        .is_some();
+
+    if !has_features {
+        return Err(ServerError::BadRequest(
+            "Invalid metadata: must contain a features array".to_string(),
+        ));
+    }
+
+    Ok(Some(metadata))
+}
+
+async fn preflight_feature_tree(
+    State(state): State<AppState>,
+    Query(query): Query<FeatureTreeContextQuery>,
+) -> Result<Json<JsonValue>, ServerError> {
+    let repo_root = resolve_feature_tree_repo_root(
+        &state,
+        query.workspace_id.as_deref(),
+        query.codebase_id.as_deref(),
+        query.repo_path.as_deref(),
+    )
+    .await?;
+
+    let result = tokio::task::spawn_blocking(move || {
+        crate::feature_tree::preflight_feature_tree_json(&repo_root)
+    })
+    .await
+    .map_err(|e| ServerError::Internal(format!("Task join error: {e}")))?
+    .map_err(ServerError::Internal)?;
+
+    Ok(Json(result))
+}
+
+async fn generate_feature_tree(
+    State(state): State<AppState>,
+    body: Result<Json<GenerateFeatureTreeRequest>, axum::extract::rejection::JsonRejection>,
+) -> Result<Json<JsonValue>, ServerError> {
+    let Json(body) = body.map_err(|_| ServerError::BadRequest("Invalid JSON body".to_string()))?;
+    let repo_root = resolve_feature_tree_repo_root(
+        &state,
+        body.workspace_id.as_deref(),
+        body.codebase_id.as_deref(),
+        body.repo_path.as_deref(),
     )
     .await?;
 
     let dry_run = body.dry_run;
     let result = tokio::task::spawn_blocking(move || {
         crate::feature_tree::generate_feature_tree_json(&repo_root, dry_run)
+    })
+    .await
+    .map_err(|e| ServerError::Internal(format!("Task join error: {e}")))?
+    .map_err(ServerError::Internal)?;
+
+    Ok(Json(result))
+}
+
+async fn commit_feature_tree(
+    State(state): State<AppState>,
+    body: Result<Json<CommitFeatureTreeRequest>, axum::extract::rejection::JsonRejection>,
+) -> Result<Json<JsonValue>, ServerError> {
+    let Json(body) = body.map_err(|_| ServerError::BadRequest("Invalid JSON body".to_string()))?;
+    let repo_root = resolve_feature_tree_repo_root(
+        &state,
+        body.workspace_id.as_deref(),
+        body.codebase_id.as_deref(),
+        body.repo_path.as_deref(),
+    )
+    .await?;
+    let scan_root = resolve_feature_tree_scan_root(&repo_root, body.scan_root.as_deref())?;
+    let metadata = validate_feature_tree_metadata(body.metadata)?;
+
+    let result = tokio::task::spawn_blocking(move || {
+        crate::feature_tree::commit_feature_tree_json(
+            &repo_root,
+            scan_root.as_deref(),
+            metadata.as_ref(),
+        )
     })
     .await
     .map_err(|e| ServerError::Internal(format!("Task join error: {e}")))?

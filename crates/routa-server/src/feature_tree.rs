@@ -65,13 +65,23 @@ pub fn parse_feature_tree_json(output: &Output, context: &str) -> Result<JsonVal
         .map_err(|e| format!("{context}: failed to parse JSON output: {e}"))
 }
 
-pub fn generate_feature_tree_json(repo_root: &Path, dry_run: bool) -> Result<JsonValue, String> {
-    let mut args = vec![
+fn feature_tree_args(mode: &str, repo_root: &Path) -> Vec<String> {
+    vec![
         "--mode".to_string(),
-        "generate".to_string(),
+        mode.to_string(),
         "--repo-root".to_string(),
         repo_root.to_string_lossy().to_string(),
-    ];
+    ]
+}
+
+pub fn preflight_feature_tree_json(repo_root: &Path) -> Result<JsonValue, String> {
+    let args = feature_tree_args("preflight", repo_root);
+    let output = run_feature_tree_script(&args, &workspace_root())?;
+    parse_feature_tree_json(&output, "Feature tree preflight failed")
+}
+
+pub fn generate_feature_tree_json(repo_root: &Path, dry_run: bool) -> Result<JsonValue, String> {
+    let mut args = feature_tree_args("generate", repo_root);
     args.push(if dry_run {
         "--dry-run".to_string()
     } else {
@@ -80,6 +90,39 @@ pub fn generate_feature_tree_json(repo_root: &Path, dry_run: bool) -> Result<Jso
 
     let output = run_feature_tree_script(&args, &workspace_root())?;
     parse_feature_tree_json(&output, "Feature tree generation failed")
+}
+
+pub fn commit_feature_tree_json(
+    repo_root: &Path,
+    scan_root: Option<&Path>,
+    metadata: Option<&JsonValue>,
+) -> Result<JsonValue, String> {
+    let mut args = feature_tree_args("commit", repo_root);
+
+    if let Some(scan_root) = scan_root {
+        args.push("--scan-root".to_string());
+        args.push(scan_root.to_string_lossy().to_string());
+    }
+
+    let metadata_dir = if let Some(metadata) = metadata {
+        let dir = tempfile::tempdir()
+            .map_err(|e| format!("Failed to create feature tree metadata tempdir: {e}"))?;
+        let metadata_path = dir.path().join("metadata.json");
+        let metadata_json = serde_json::to_vec(metadata)
+            .map_err(|e| format!("Failed to serialize feature tree metadata: {e}"))?;
+        std::fs::write(&metadata_path, metadata_json)
+            .map_err(|e| format!("Failed to write feature tree metadata: {e}"))?;
+        args.push("--metadata-file".to_string());
+        args.push(metadata_path.to_string_lossy().to_string());
+        Some(dir)
+    } else {
+        None
+    };
+
+    let output = run_feature_tree_script(&args, &workspace_root())?;
+    let result = parse_feature_tree_json(&output, "Feature tree commit failed");
+    drop(metadata_dir);
+    result
 }
 
 #[cfg(test)]

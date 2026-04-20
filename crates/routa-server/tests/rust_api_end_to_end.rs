@@ -1607,6 +1607,126 @@ async fn api_spec_feature_tree_generate_contract() {
         ])
     );
     assert!(payload["warnings"].as_array().is_some());
-    assert!(payload["pagesCount"].as_u64().is_some_and(|count| count > 0));
+    assert!(payload["pagesCount"]
+        .as_u64()
+        .is_some_and(|count| count > 0));
     assert!(payload["apisCount"].as_u64().is_some_and(|count| count > 0));
+}
+
+#[tokio::test]
+async fn api_spec_feature_tree_preflight_contract() {
+    let fixture = ApiFixture::new().await;
+    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(|path| path.parent())
+        .expect("workspace root")
+        .to_path_buf();
+
+    let response = fixture
+        .client
+        .get(fixture.endpoint("/api/spec/feature-tree/preflight"))
+        .query(&[("repoPath", repo_root.to_string_lossy().to_string())])
+        .send()
+        .await
+        .expect("preflight feature tree");
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let payload: Value = response
+        .json()
+        .await
+        .expect("decode feature tree preflight response");
+
+    assert_eq!(
+        payload["repoRoot"],
+        json!(repo_root.to_string_lossy().to_string())
+    );
+    assert_eq!(
+        payload["selectedScanRoot"],
+        json!(repo_root.to_string_lossy().to_string())
+    );
+    let frameworks = payload["frameworksDetected"]
+        .as_array()
+        .expect("frameworksDetected should be an array");
+    assert!(
+        frameworks.iter().any(|f| f.as_str() == Some("nextjs")),
+        "frameworksDetected should include nextjs, got: {frameworks:?}"
+    );
+    assert!(payload["candidateRoots"].as_array().is_some());
+    assert!(payload["warnings"].as_array().is_some());
+}
+
+#[tokio::test]
+async fn api_spec_feature_tree_commit_contract() {
+    let fixture = ApiFixture::new().await;
+    let repo_root = tempfile::tempdir().expect("temp repo");
+
+    write_file(
+        repo_root.path(),
+        "package.json",
+        r#"{"name":"feature-tree-commit-fixture"}"#,
+    );
+    write_file(
+        repo_root.path(),
+        "pages/index.tsx",
+        "export default function Home() { return null; }\n",
+    );
+
+    let response = fixture
+        .client
+        .post(fixture.endpoint("/api/spec/feature-tree/commit"))
+        .json(&json!({
+            "repoPath": repo_root.path().to_string_lossy().to_string(),
+            "metadata": {
+                "schemaVersion": 1,
+                "capabilityGroups": [],
+                "features": [
+                    {
+                        "id": "home",
+                        "name": "Home",
+                        "description": "Generated in rust contract test",
+                        "route": "/"
+                    }
+                ]
+            }
+        }))
+        .send()
+        .await
+        .expect("commit feature tree");
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let payload: Value = response
+        .json()
+        .await
+        .expect("decode feature tree commit response");
+
+    assert!(payload["generatedAt"].as_str().is_some());
+    assert_eq!(payload["pagesCount"], json!(1));
+    assert!(payload["warnings"].as_array().is_some());
+
+    let feature_tree_index_path = repo_root
+        .path()
+        .join("docs")
+        .join("product-specs")
+        .join("feature-tree.index.json");
+    let feature_tree_markdown_path = repo_root
+        .path()
+        .join("docs")
+        .join("product-specs")
+        .join("FEATURE_TREE.md");
+    assert!(feature_tree_index_path.exists());
+    assert!(feature_tree_markdown_path.exists());
+
+    let saved_index: Value = serde_json::from_str(
+        &fs::read_to_string(&feature_tree_index_path).expect("read committed feature tree index"),
+    )
+    .expect("decode committed feature tree index");
+    assert_eq!(saved_index["pages"][0]["route"], json!("/"));
+    assert_eq!(
+        saved_index["metadata"]["features"]
+            .as_array()
+            .map(|items| items.len()),
+        Some(1)
+    );
 }
