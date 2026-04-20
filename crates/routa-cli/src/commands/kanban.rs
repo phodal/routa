@@ -472,34 +472,38 @@ pub async fn trigger_automation(
     Ok(())
 }
 
+pub struct SyncGithubIssuesOptions<'a> {
+    pub board_id: Option<&'a str>,
+    pub column_id: Option<&'a str>,
+    pub repo: Option<&'a str>,
+    pub codebase_id: Option<&'a str>,
+    pub state_filter: Option<&'a str>,
+    pub dry_run: bool,
+}
+
 pub async fn sync_github_issues(
     state: &AppState,
     workspace_id: &str,
-    board_id: Option<&str>,
-    column_id: Option<&str>,
-    repo: Option<&str>,
-    codebase_id: Option<&str>,
-    state_filter: Option<&str>,
-    dry_run: bool,
+    options: SyncGithubIssuesOptions<'_>,
 ) -> Result<(), String> {
     let router = RpcRouter::new(state.clone());
     let mut params = serde_json::json!({
         "workspaceId": workspace_id,
-        "dryRun": dry_run,
+        "dryRun": options.dry_run,
     });
-    if let Some(board_id) = board_id {
+    if let Some(board_id) = options.board_id {
         params["boardId"] = serde_json::json!(board_id);
     }
-    if let Some(column_id) = column_id {
+    if let Some(column_id) = options.column_id {
         params["columnId"] = serde_json::json!(column_id);
     }
-    if let Some(repo) = repo {
+    if let Some(repo) = options.repo {
         params["repo"] = serde_json::json!(repo);
     }
-    if let Some(codebase_id) = codebase_id {
+    if let Some(codebase_id) = options.codebase_id {
         params["codebaseId"] = serde_json::json!(codebase_id);
     }
-    if let Some(state_filter) = state_filter {
+    if let Some(state_filter) = options.state_filter {
         params["state"] = serde_json::json!(state_filter);
     }
 

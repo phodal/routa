@@ -40,7 +40,7 @@ pub(crate) enum KanbanAction {
 }
 
 #[derive(Subcommand)]
-enum KanbanBoardAction {
+pub(crate) enum KanbanBoardAction {
     /// List boards in a workspace
     List {
         #[arg(long, default_value = "default")]
@@ -106,7 +106,7 @@ enum KanbanBoardAction {
 }
 
 #[derive(Subcommand)]
-enum KanbanCardAction {
+pub(crate) enum KanbanCardAction {
     /// Create a card
     Create {
         #[arg(long)]
@@ -209,7 +209,7 @@ enum KanbanCardAction {
 }
 
 #[derive(Subcommand)]
-enum KanbanColumnAction {
+pub(crate) enum KanbanColumnAction {
     /// Create a column
     Create {
         #[arg(long)]
@@ -231,7 +231,7 @@ enum KanbanColumnAction {
 }
 
 #[derive(Subcommand)]
-enum KanbanAutomationAction {
+pub(crate) enum KanbanAutomationAction {
     /// List automation configurations for a board's columns
     List {
         #[arg(long, default_value = "default")]
@@ -253,7 +253,7 @@ enum KanbanAutomationAction {
 }
 
 #[derive(Subcommand)]
-enum KanbanSyncAction {
+pub(crate) enum KanbanSyncAction {
     /// Import or refresh GitHub issues for a workspace board
     Github {
         #[arg(long, default_value = "default")]
@@ -495,12 +495,14 @@ pub(crate) async fn handle_kanban_action(
                 commands::kanban::sync_github_issues(
                     state,
                     &workspace_id,
-                    board_id.as_deref(),
-                    column_id.as_deref(),
-                    repo.as_deref(),
-                    codebase_id.as_deref(),
-                    state_filter.as_deref(),
-                    dry_run,
+                    commands::kanban::SyncGithubIssuesOptions {
+                        board_id: board_id.as_deref(),
+                        column_id: column_id.as_deref(),
+                        repo: repo.as_deref(),
+                        codebase_id: codebase_id.as_deref(),
+                        state_filter: state_filter.as_deref(),
+                        dry_run,
+                    },
                 )
                 .await
             }
