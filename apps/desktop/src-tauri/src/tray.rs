@@ -1,8 +1,10 @@
 //! System tray module for Routa Desktop.
 //!
-//! Provides a reusable system tray icon with a dynamic menu that shows
-//! GitHub repository quick-links (Pull Requests, Issues) when webhook
-//! configurations are present.
+//! Provides a reusable system tray icon with workspace-first shortcuts.
+//!
+//! The tray is intentionally optimized for "resume and jump" desktop flows:
+//! sessions, kanban, team runs, and message review stay one click away,
+//! while GitHub repo links remain available as a secondary submenu.
 //!
 //! # Usage
 //!
@@ -15,11 +17,20 @@
 //! ```
 
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
-use tauri::tray::TrayIconBuilder;
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Manager};
 
 /// Stable identifier for the single application tray icon.
 pub const TRAY_ID: &str = "routa-tray";
+
+const TRAY_SHOW_HIDE_ID: &str = "tray:show_hide";
+const TRAY_WORKSPACE_SESSIONS_ID: &str = "tray:workspace:sessions";
+const TRAY_WORKSPACE_KANBAN_ID: &str = "tray:workspace:kanban";
+const TRAY_WORKSPACE_TEAM_ID: &str = "tray:workspace:team";
+const TRAY_MESSAGES_ID: &str = "tray:messages";
+const TRAY_SETTINGS_AGENTS_ID: &str = "tray:settings:agents";
+const TRAY_SETTINGS_WEBHOOKS_ID: &str = "tray:settings:webhooks";
+const TRAY_QUIT_ID: &str = "tray:quit";
 
 // ─── Data types ──────────────────────────────────────────────────────────────
 
@@ -69,12 +80,19 @@ impl GitHubRepo {
 /// ```text
 /// Show / Hide Window
 /// ──────────────────
-/// [owner/repo]           (one sub-menu per configured GitHub repo)
-///   ├─ Pull Requests
-///   ├─ Issues
-///   └─ Repository
-/// ──────────────────     (only when repos are present)
-/// Webhook Settings…
+/// Sessions
+/// Kanban Board
+/// Team Runs
+/// Messages
+/// ──────────────────
+/// Settings
+///   ├─ Agent Settings…
+///   └─ Webhook Settings…
+/// GitHub Shortcuts      (optional)
+///   └─ [owner/repo]
+///      ├─ Pull Requests
+///      ├─ Issues
+///      └─ Repository
 /// ──────────────────
 /// Quit Routa
 /// ```
@@ -84,7 +102,7 @@ pub fn build_tray_menu(app: &AppHandle, repos: &[GitHubRepo]) -> tauri::Result<M
     // ── Show / Hide window ──
     let show_hide = MenuItem::with_id(
         app,
-        "tray:show_hide",
+        TRAY_SHOW_HIDE_ID,
         "Show / Hide Window",
         true,
         None::<&str>,
@@ -93,8 +111,52 @@ pub fn build_tray_menu(app: &AppHandle, repos: &[GitHubRepo]) -> tauri::Result<M
 
     menu.append(&PredefinedMenuItem::separator(app)?)?;
 
+    let sessions = MenuItem::with_id(
+        app,
+        TRAY_WORKSPACE_SESSIONS_ID,
+        "Sessions",
+        true,
+        None::<&str>,
+    )?;
+    let kanban = MenuItem::with_id(
+        app,
+        TRAY_WORKSPACE_KANBAN_ID,
+        "Kanban Board",
+        true,
+        None::<&str>,
+    )?;
+    let team_runs =
+        MenuItem::with_id(app, TRAY_WORKSPACE_TEAM_ID, "Team Runs", true, None::<&str>)?;
+    let messages = MenuItem::with_id(app, TRAY_MESSAGES_ID, "Messages", true, None::<&str>)?;
+    menu.append(&sessions)?;
+    menu.append(&kanban)?;
+    menu.append(&team_runs)?;
+    menu.append(&messages)?;
+
+    menu.append(&PredefinedMenuItem::separator(app)?)?;
+
+    let agent_settings = MenuItem::with_id(
+        app,
+        TRAY_SETTINGS_AGENTS_ID,
+        "Agent Settings…",
+        true,
+        None::<&str>,
+    )?;
+    let webhook_settings = MenuItem::with_id(
+        app,
+        TRAY_SETTINGS_WEBHOOKS_ID,
+        "Webhook Settings…",
+        true,
+        None::<&str>,
+    )?;
+    let settings_submenu =
+        Submenu::with_items(app, "Settings", true, &[&agent_settings, &webhook_settings])?;
+    menu.append(&settings_submenu)?;
+
     // ── GitHub repo sub-menus (only when configured) ──
     if !repos.is_empty() {
+        let github_shortcuts = Submenu::new(app, "GitHub Shortcuts", true)?;
+
         for repo in repos {
             let owner_repo = repo.id_prefix();
             let label = if repo.name.is_empty() {
@@ -125,27 +187,17 @@ pub fn build_tray_menu(app: &AppHandle, repos: &[GitHubRepo]) -> tauri::Result<M
                 None::<&str>,
             )?;
 
-            let sub = Submenu::with_items(app, &label, true, &[&pulls, &issues, &repo_link])?;
-            menu.append(&sub)?;
+            let repo_submenu =
+                Submenu::with_items(app, &label, true, &[&pulls, &issues, &repo_link])?;
+            github_shortcuts.append(&repo_submenu)?;
         }
 
+        menu.append(&github_shortcuts)?;
         menu.append(&PredefinedMenuItem::separator(app)?)?;
     }
 
-    // ── Webhook settings page ──
-    let settings = MenuItem::with_id(
-        app,
-        "tray:settings",
-        "Webhook Settings…",
-        true,
-        None::<&str>,
-    )?;
-    menu.append(&settings)?;
-
-    menu.append(&PredefinedMenuItem::separator(app)?)?;
-
     // ── Quit ──
-    let quit = MenuItem::with_id(app, "tray:quit", "Quit Routa", true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, TRAY_QUIT_ID, "Quit Routa", true, None::<&str>)?;
     menu.append(&quit)?;
 
     Ok(menu)
@@ -163,11 +215,25 @@ pub fn setup_tray(app: &AppHandle, repos: &[GitHubRepo]) -> tauri::Result<()> {
     let mut builder = TrayIconBuilder::with_id(TRAY_ID)
         .tooltip("Routa Desktop")
         .menu(&menu)
-        .show_menu_on_left_click(true)
         .on_menu_event(handle_tray_menu_event);
 
     if let Some(icon) = app.default_window_icon() {
         builder = builder.icon(icon.clone());
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        builder = builder
+            .icon_as_template(true)
+            .show_menu_on_left_click(false)
+            .on_tray_icon_event(|tray, event| {
+                handle_tray_icon_event(tray.app_handle(), &event);
+            });
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        builder = builder.show_menu_on_left_click(true);
     }
 
     builder.build(app)?;
@@ -196,10 +262,23 @@ pub fn update_tray_repos(app: &AppHandle, repos: &[GitHubRepo]) -> tauri::Result
 fn handle_tray_menu_event(app: &AppHandle, event: tauri::menu::MenuEvent) {
     let id = event.id().as_ref();
 
+    if id == TRAY_SHOW_HIDE_ID {
+        toggle_main_window(app);
+        return;
+    }
+
+    if let Some(route_suffix) = workspace_route_for_menu_id(id) {
+        navigate_to_workspace_route(app, route_suffix);
+        return;
+    }
+
+    if let Some(path) = absolute_route_for_menu_id(id) {
+        navigate_to_absolute_route(app, path);
+        return;
+    }
+
     match id {
-        "tray:show_hide" => toggle_main_window(app),
-        "tray:settings" => navigate_to(app, "/settings/webhooks"),
-        "tray:quit" => app.exit(0),
+        TRAY_QUIT_ID => app.exit(0),
         id if id.starts_with("tray:gh:") => {
             if let Some(url) = parse_github_menu_id_to_url(id) {
                 open_url_in_browser(app, &url);
@@ -207,6 +286,41 @@ fn handle_tray_menu_event(app: &AppHandle, event: tauri::menu::MenuEvent) {
         }
         _ => {}
     }
+}
+
+fn workspace_route_for_menu_id(id: &str) -> Option<&'static str> {
+    match id {
+        TRAY_WORKSPACE_SESSIONS_ID => Some("/sessions"),
+        TRAY_WORKSPACE_KANBAN_ID => Some("/kanban"),
+        TRAY_WORKSPACE_TEAM_ID => Some("/team"),
+        _ => None,
+    }
+}
+
+fn absolute_route_for_menu_id(id: &str) -> Option<&'static str> {
+    match id {
+        TRAY_MESSAGES_ID => Some("/messages"),
+        TRAY_SETTINGS_AGENTS_ID => Some("/settings/agents"),
+        TRAY_SETTINGS_WEBHOOKS_ID => Some("/settings/webhooks"),
+        _ => None,
+    }
+}
+
+fn handle_tray_icon_event(app: &AppHandle, event: &TrayIconEvent) {
+    if should_open_main_window_for_tray_event(event) {
+        show_main_window(app);
+    }
+}
+
+fn should_open_main_window_for_tray_event(event: &TrayIconEvent) -> bool {
+    matches!(
+        event,
+        TrayIconEvent::Click {
+            button: MouseButton::Left,
+            button_state: MouseButtonState::Up,
+            ..
+        }
+    )
 }
 
 /// Parse a `tray:gh:{type}:{owner}/{repo}` menu-event id and return the
@@ -250,14 +364,21 @@ pub fn parse_github_menu_id_to_url(id: &str) -> Option<String> {
 
     Some(url)
 }
+
+fn show_main_window(app: &AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
+}
+
 /// Toggle the main window's visibility.
 fn toggle_main_window(app: &AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
         if window.is_visible().unwrap_or(false) {
             let _ = window.hide();
         } else {
-            let _ = window.show();
-            let _ = window.set_focus();
+            show_main_window(app);
         }
     }
 }
@@ -267,14 +388,21 @@ fn toggle_main_window(app: &AppHandle) {
 /// # Safety
 /// `path` must be a trusted, internal application path (e.g. `/settings/webhooks`).
 /// It is interpolated directly into JavaScript and must never contain user-controlled data.
-fn navigate_to(app: &AppHandle, path: &str) {
+fn navigate_to_absolute_route(app: &AppHandle, path: &str) {
     if let Some(window) = app.get_webview_window("main") {
         let port = crate::api_port();
         let url = format!("http://127.0.0.1:{port}{path}");
         let js = format!("window.location.href = '{url}';");
         let _ = window.eval(&js);
-        let _ = window.show();
-        let _ = window.set_focus();
+        show_main_window(app);
+    }
+}
+
+fn navigate_to_workspace_route(app: &AppHandle, route_suffix: &str) {
+    if let Some(window) = app.get_webview_window("main") {
+        let js = crate::desktop_workspace_navigation_js(crate::api_port(), route_suffix);
+        let _ = window.eval(&js);
+        show_main_window(app);
     }
 }
 
@@ -291,6 +419,7 @@ fn open_url_in_browser(app: &AppHandle, url: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tauri::{Position, Size};
 
     fn make_repo(name: &str, owner: &str, repo: &str) -> GitHubRepo {
         GitHubRepo {
@@ -369,5 +498,82 @@ mod tests {
             parse_github_menu_id_to_url("tray:gh:pulls:myorg/my-project"),
             Some("https://github.com/myorg/my-project/pulls".to_string())
         );
+    }
+
+    #[test]
+    fn test_workspace_route_for_menu_id() {
+        assert_eq!(
+            workspace_route_for_menu_id(TRAY_WORKSPACE_SESSIONS_ID),
+            Some("/sessions")
+        );
+        assert_eq!(
+            workspace_route_for_menu_id(TRAY_WORKSPACE_KANBAN_ID),
+            Some("/kanban")
+        );
+        assert_eq!(
+            workspace_route_for_menu_id(TRAY_WORKSPACE_TEAM_ID),
+            Some("/team")
+        );
+        assert_eq!(workspace_route_for_menu_id(TRAY_MESSAGES_ID), None);
+    }
+
+    #[test]
+    fn test_absolute_route_for_menu_id() {
+        assert_eq!(
+            absolute_route_for_menu_id(TRAY_MESSAGES_ID),
+            Some("/messages")
+        );
+        assert_eq!(
+            absolute_route_for_menu_id(TRAY_SETTINGS_AGENTS_ID),
+            Some("/settings/agents")
+        );
+        assert_eq!(
+            absolute_route_for_menu_id(TRAY_SETTINGS_WEBHOOKS_ID),
+            Some("/settings/webhooks")
+        );
+        assert_eq!(absolute_route_for_menu_id(TRAY_WORKSPACE_SESSIONS_ID), None);
+    }
+
+    #[test]
+    fn test_should_open_main_window_for_left_click_release() {
+        let event = TrayIconEvent::Click {
+            id: TRAY_ID.into(),
+            position: tauri::PhysicalPosition::new(0.0, 0.0),
+            rect: tauri::Rect {
+                position: Position::Physical(tauri::PhysicalPosition::new(0, 0)),
+                size: Size::Physical(tauri::PhysicalSize::new(12, 12)),
+            },
+            button: MouseButton::Left,
+            button_state: MouseButtonState::Up,
+        };
+
+        assert!(should_open_main_window_for_tray_event(&event));
+    }
+
+    #[test]
+    fn test_should_ignore_non_primary_open_clicks() {
+        let right_click = TrayIconEvent::Click {
+            id: TRAY_ID.into(),
+            position: tauri::PhysicalPosition::new(0.0, 0.0),
+            rect: tauri::Rect {
+                position: Position::Physical(tauri::PhysicalPosition::new(0, 0)),
+                size: Size::Physical(tauri::PhysicalSize::new(12, 12)),
+            },
+            button: MouseButton::Right,
+            button_state: MouseButtonState::Up,
+        };
+        let left_down = TrayIconEvent::Click {
+            id: TRAY_ID.into(),
+            position: tauri::PhysicalPosition::new(0.0, 0.0),
+            rect: tauri::Rect {
+                position: Position::Physical(tauri::PhysicalPosition::new(0, 0)),
+                size: Size::Physical(tauri::PhysicalSize::new(12, 12)),
+            },
+            button: MouseButton::Left,
+            button_state: MouseButtonState::Down,
+        };
+
+        assert!(!should_open_main_window_for_tray_event(&right_click));
+        assert!(!should_open_main_window_for_tray_event(&left_down));
     }
 }

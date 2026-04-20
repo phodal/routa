@@ -388,7 +388,8 @@ fn api_port() -> u16 {
         .unwrap_or(3210)
 }
 
-const DEFAULT_WORKSPACE_ID: &str = "default";
+pub(crate) const DEFAULT_WORKSPACE_ID: &str = "default";
+pub(crate) const DESKTOP_LAST_WORKSPACE_ID_STORAGE_KEY: &str = "routa.desktop.last-workspace-id";
 
 fn escape_html(value: &str) -> String {
     value
@@ -399,17 +400,46 @@ fn escape_html(value: &str) -> String {
         .replace('\'', "&#39;")
 }
 
-fn desktop_workspace_navigation_js(_port: u16, route_suffix: &str) -> String {
+pub(crate) fn desktop_workspace_navigation_js(_port: u16, route_suffix: &str) -> String {
     format!(
         r#"
             (function() {{
                 const match = window.location.pathname.match(/\/workspace\/([^\/]+)/);
-                const workspaceId = match ? match[1] : '{DEFAULT_WORKSPACE_ID}';
+                const query = (() => {{
+                    try {{
+                        const params = new URLSearchParams(window.location.search);
+                        return params.get('workspaceId') || params.get('workspace') || '';
+                    }} catch {{
+                        return '';
+                    }}
+                }})();
+                const persisted = (() => {{
+                    try {{
+                        const value = (window.localStorage.getItem('{DESKTOP_LAST_WORKSPACE_ID_STORAGE_KEY}') || '').trim();
+                        return /^[A-Za-z0-9_-]+$/.test(value) ? value : '';
+                    }} catch {{
+                        return '';
+                    }}
+                }})();
+                const workspaceId = match ? match[1] : (query || persisted || '{DEFAULT_WORKSPACE_ID}');
                 window.location.href = `${{window.location.origin}}/workspace/${{workspaceId}}{route_suffix}`;
             }})();
         "#,
     )
 }
+
+#[cfg(target_os = "macos")]
+fn configure_macos_menu_bar_mode(app: &tauri::AppHandle) {
+    if let Err(error) = app.set_activation_policy(tauri::ActivationPolicy::Accessory) {
+        eprintln!("[macos] Failed to set activation policy to Accessory: {error}");
+    }
+    if let Err(error) = app.set_dock_visibility(false) {
+        eprintln!("[macos] Failed to hide Dock icon: {error}");
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn configure_macos_menu_bar_mode(_app: &tauri::AppHandle) {}
 
 fn resolve_dual_origin_navigation_js(api_url: &str) -> String {
     format!(
@@ -1057,6 +1087,7 @@ pub fn run() {
             if let Err(e) = tray::setup_tray(app.handle(), &[]) {
                 eprintln!("[tray] Failed to set up system tray: {e}");
             }
+            configure_macos_menu_bar_mode(app.handle());
 
             // Only auto-open devtools in debug builds; use View menu in release builds
             #[cfg(debug_assertions)]

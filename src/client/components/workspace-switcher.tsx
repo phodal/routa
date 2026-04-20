@@ -3,8 +3,19 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { WorkspaceData } from "../hooks/use-workspaces";
 import { useTranslation } from "@/i18n";
+import { normalizeWorkspaceQueryId } from "../utils/workspace-id";
 import { Check, ChevronDown, Folder, Plus, Search } from "lucide-react";
 
+const DESKTOP_LAST_WORKSPACE_ID_STORAGE_KEY = "routa.desktop.last-workspace-id";
+
+function hasWorkspaceStorageAccess(): boolean {
+  return (
+    typeof window !== "undefined"
+    && window.localStorage != null
+    && typeof window.localStorage.getItem === "function"
+    && typeof window.localStorage.setItem === "function"
+  );
+}
 
 interface WorkspaceSwitcherProps {
   workspaces: WorkspaceData[];
@@ -70,6 +81,15 @@ export function WorkspaceSwitcher({
     window.addEventListener("keydown", onEscape);
     return () => window.removeEventListener("keydown", onEscape);
   }, [closeDropdown, open]);
+
+  useEffect(() => {
+    const normalizedWorkspaceId = normalizeWorkspaceQueryId(activeWorkspaceId);
+    if (!hasWorkspaceStorageAccess() || !normalizedWorkspaceId) {
+      return;
+    }
+
+    window.localStorage.setItem(DESKTOP_LAST_WORKSPACE_ID_STORAGE_KEY, normalizedWorkspaceId);
+  }, [activeWorkspaceId]);
 
   const handleCreate = async () => {
     const title = newTitle.trim();
