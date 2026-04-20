@@ -12,6 +12,8 @@ const { INFERRED_GROUP_ID, buildApiLookupKey, normalizeSurfaceMetadata } = featu
 
 type GenerateFeatureTreeArtifacts = (options: {
   repoRoot: string;
+  scanRoot?: string;
+  metadata?: FeatureMetadata | null;
   dryRun?: boolean;
 }) => Promise<{
   generatedAt: string;
@@ -22,23 +24,63 @@ type GenerateFeatureTreeArtifacts = (options: {
   apisCount: number;
 }>;
 
-async function loadGenerateFeatureTreeArtifacts(): Promise<GenerateFeatureTreeArtifacts> {
+type FeatureTreePreflightResult = {
+  repoRoot: string;
+  selectedScanRoot: string;
+  frameworksDetected: string[];
+  adapters: Array<{
+    id: string;
+    confidence: "high" | "medium";
+    signals: string[];
+  }>;
+  candidateRoots: Array<{
+    path: string;
+    kind: string;
+    score: number;
+    surfaceCounts: {
+      pages: number;
+      appRouterApis: number;
+      pagesApis: number;
+      rustApis: number;
+    };
+    adapters: string[];
+    warnings: string[];
+  }>;
+  warnings: string[];
+};
+
+type PreflightFeatureTree = (repoRoot: string) => FeatureTreePreflightResult;
+
+async function loadFeatureTreeGeneratorModule(): Promise<{
+  generateFeatureTree: GenerateFeatureTreeArtifacts;
+  preflightFeatureTree: PreflightFeatureTree;
+}> {
   const moduleUrl = pathToFileURL(fromRoot("src/core/spec/feature-tree-generator.ts")).href;
   const featureTreeGeneratorModule = await import(moduleUrl) as {
     generateFeatureTree?: GenerateFeatureTreeArtifacts;
+    preflightFeatureTree?: PreflightFeatureTree;
     default?: {
       generateFeatureTree?: GenerateFeatureTreeArtifacts;
+      preflightFeatureTree?: PreflightFeatureTree;
     };
   };
 
   const generateFeatureTreeArtifacts = featureTreeGeneratorModule.generateFeatureTree
     ?? featureTreeGeneratorModule.default?.generateFeatureTree;
+  const preflightFeatureTree = featureTreeGeneratorModule.preflightFeatureTree
+    ?? featureTreeGeneratorModule.default?.preflightFeatureTree;
 
   if (typeof generateFeatureTreeArtifacts !== "function") {
     throw new Error("Unable to resolve generateFeatureTree from src/core/spec/feature-tree-generator.ts");
   }
+  if (typeof preflightFeatureTree !== "function") {
+    throw new Error("Unable to resolve preflightFeatureTree from src/core/spec/feature-tree-generator.ts");
+  }
 
-  return generateFeatureTreeArtifacts;
+  return {
+    generateFeatureTree: generateFeatureTreeArtifacts,
+    preflightFeatureTree,
+  };
 }
 
 type RouteInfo = {
@@ -1189,12 +1231,61 @@ function printTreeTable(tree: FeatureTree): void {
   console.log(`📊 Total features: ${countNodes(tree) - 1}`);
 }
 
+function hasArg(argv: string[], flag: string): boolean {
+  return argv.includes(flag);
+}
+
+function getArgValue(argv: string[], flag: string): string | null {
+  const index = argv.indexOf(flag);
+  if (index === -1) {
+    return null;
+  }
+  return argv[index + 1] ?? null;
+}
+
 async function main(): Promise<void> {
-  const args = new Set(process.argv.slice(2));
-  const generateFeatureTreeArtifacts = await loadGenerateFeatureTreeArtifacts();
+  const argv = process.argv.slice(2);
+  const args = new Set(argv);
+  const { generateFeatureTree, preflightFeatureTree } = await loadFeatureTreeGeneratorModule();
+  const mode = getArgValue(argv, "--mode");
+  const repoRoot = path.resolve(getArgValue(argv, "--repo-root") ?? REPO_ROOT);
+  const scanRoot = getArgValue(argv, "--scan-root");
+  const metadataFile = getArgValue(argv, "--metadata-file");
+
+  if (mode === "preflight") {
+    console.log(JSON.stringify(preflightFeatureTree(repoRoot), null, 2));
+    return;
+  }
+
+  if (mode === "generate") {
+    const result = await generateFeatureTree({
+      repoRoot,
+      ...(scanRoot ? { scanRoot: path.resolve(scanRoot) } : {}),
+      dryRun: hasArg(argv, "--dry-run") || !hasArg(argv, "--write"),
+    });
+    console.log(JSON.stringify(result, null, 2));
+    return;
+  }
+
+  if (mode === "commit") {
+    let metadata: FeatureMetadata | null = null;
+    if (metadataFile) {
+      const raw = fs.readFileSync(path.resolve(metadataFile), "utf8");
+      metadata = normalizeFeatureMetadata(JSON.parse(raw));
+    }
+
+    const result = await generateFeatureTree({
+      repoRoot,
+      ...(scanRoot ? { scanRoot: path.resolve(scanRoot) } : {}),
+      ...(metadata ? { metadata } : {}),
+      dryRun: false,
+    });
+    console.log(JSON.stringify(result, null, 2));
+    return;
+  }
 
   if (args.has("--json")) {
-    const result = await generateFeatureTreeArtifacts({
+    const result = await generateFeatureTree({
       repoRoot: REPO_ROOT,
       dryRun: true,
     });
@@ -1218,7 +1309,7 @@ async function main(): Promise<void> {
     return;
   }
   if (args.has("--save")) {
-    const result = await generateFeatureTreeArtifacts({
+    const result = await generateFeatureTree({
       repoRoot: REPO_ROOT,
       dryRun: false,
     });

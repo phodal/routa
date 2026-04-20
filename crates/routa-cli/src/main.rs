@@ -798,14 +798,44 @@ enum ReviewAction {
 
 #[derive(Subcommand)]
 enum FeatureTreeAction {
+    /// Run feature-tree preflight and print the selected scan root
+    Preflight {
+        /// Repository path to analyze
+        #[arg(long)]
+        repo_path: Option<String>,
+        /// Print the preflight payload as JSON
+        #[arg(long, default_value_t = false)]
+        json_output: bool,
+    },
     /// Scan the repository and generate FEATURE_TREE.md + feature-tree.index.json
     Generate {
         /// Repository path (defaults to current working directory)
         #[arg(long)]
         repo_path: Option<String>,
+        /// Optional scan root within the repository
+        #[arg(long)]
+        scan_root: Option<String>,
         /// Preview what would be generated without writing files
         #[arg(long, default_value_t = false)]
         dry_run: bool,
+        /// Print the generation result as JSON
+        #[arg(long, default_value_t = false)]
+        json_output: bool,
+    },
+    /// Commit FEATURE_TREE artifacts with optional metadata enrichment
+    Commit {
+        /// Repository path (defaults to current working directory)
+        #[arg(long)]
+        repo_path: Option<String>,
+        /// Optional scan root within the repository
+        #[arg(long)]
+        scan_root: Option<String>,
+        /// Optional JSON file containing feature metadata
+        #[arg(long)]
+        metadata_file: Option<String>,
+        /// Print the commit result as JSON
+        #[arg(long, default_value_t = false)]
+        json_output: bool,
     },
     /// Display a summary of the current feature tree index
     Inspect {
@@ -1539,12 +1569,31 @@ async fn main() {
             }
 
             Commands::FeatureTree { action } => match action {
+                FeatureTreeAction::Preflight {
+                    repo_path,
+                    json_output,
+                } => commands::feature_tree::preflight(repo_path.as_deref(), json_output),
                 FeatureTreeAction::Generate {
                     repo_path,
+                    scan_root,
                     dry_run,
+                    json_output,
                 } => commands::feature_tree::generate(
                     repo_path.as_deref(),
+                    scan_root.as_deref(),
                     dry_run,
+                    json_output,
+                ),
+                FeatureTreeAction::Commit {
+                    repo_path,
+                    scan_root,
+                    metadata_file,
+                    json_output,
+                } => commands::feature_tree::commit(
+                    repo_path.as_deref(),
+                    scan_root.as_deref(),
+                    metadata_file.as_deref(),
+                    json_output,
                 ),
                 FeatureTreeAction::Inspect { repo_path } => {
                     commands::feature_tree::inspect(repo_path.as_deref())
