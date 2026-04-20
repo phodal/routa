@@ -33,6 +33,7 @@ import { getKanbanSessionConcurrencyLimit as getBoardSessionConcurrencyLimit } f
 import { getKanbanDevSessionSupervision } from "./board-session-supervision";
 import { getKanbanAutoProvider } from "./board-auto-provider";
 import { upsertTaskLaneSession } from "./task-lane-history";
+import { analyzeFlowForTasks } from "./flow-ledger";
 import { resolveTaskWorktreeTruth } from "./task-worktree-truth";
 import { getHttpSessionStore } from "../acp/http-session-store";
 import { getSpecialistById } from "../orchestration/specialist-prompts";
@@ -227,6 +228,21 @@ async function startKanbanTaskSession(
     investValidation: buildTaskInvestValidation(taskForSession),
   };
 
+  // Compute board-level flow guidance for the agent
+  const allBoardTasks = await system.taskStore.listByWorkspace(nextTask.workspaceId);
+  const boardTasks = nextTask.boardId
+    ? allBoardTasks.filter((t) => t.boardId === nextTask.boardId)
+    : allBoardTasks;
+  const tasksWithFlow = boardTasks.filter(
+    (t) => (t.laneSessions?.length ?? 0) > 0 || (t.laneHandoffs?.length ?? 0) > 0,
+  );
+  const flowReport = tasksWithFlow.length >= 3
+    ? analyzeFlowForTasks(tasksWithFlow, {
+        workspaceId: nextTask.workspaceId,
+        boardId: nextTask.boardId,
+      })
+    : undefined;
+
   const triggerResult = await triggerAssignedTaskAgent({
     origin: getInternalApiOrigin(),
     workspaceId: nextTask.workspaceId,
@@ -237,6 +253,7 @@ async function startKanbanTaskSession(
     specialistLocale: sessionStep?.specialistLocale ?? effectiveAutomation.step?.specialistLocale,
     boardColumns: board?.columns ?? [],
     summaryContext,
+    flowReport,
     eventBus: system.eventBus,
   });
 

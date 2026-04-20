@@ -16,6 +16,8 @@ import type { TaskLaneSession } from "../models/task";
 import { resolveCurrentLaneAutomationState } from "./lane-automation-state";
 import { getLatestLaneSessionForColumn, getPreviousLaneRun } from "./task-lane-history";
 import type { KanbanAutomationStep, KanbanTransport } from "../models/kanban";
+import type { FlowDiagnosisReport } from "./flow-ledger-types";
+import { formatFlowGuidanceForPrompt } from "./flow-ledger";
 
 export interface TaskPromptSummaryContext {
   evidenceSummary?: TaskEvidenceSummary;
@@ -89,7 +91,7 @@ export function getInternalApiOrigin(): string {
 export function buildTaskPrompt(
   task: Task,
   boardColumns: KanbanColumn[] = [],
-  options?: { currentSessionId?: string; summaryContext?: TaskPromptSummaryContext },
+  options?: { currentSessionId?: string; summaryContext?: TaskPromptSummaryContext; flowReport?: FlowDiagnosisReport },
 ): string {
   const labels = task.labels.length > 0 ? `Labels: ${task.labels.join(", ")}` : "Labels: none";
   const currentColumnId = task.columnId ?? "backlog";
@@ -375,6 +377,7 @@ export function buildTaskPrompt(
     ...laneRunHistorySection,
     ...laneHandoffSection,
     ...devVerificationSection,
+    ...(options?.flowReport ? [formatFlowGuidanceForPrompt(options.flowReport)] : []),
     "## Available MCP Tools",
     "",
     "You have access to the following MCP tools for task management:",
@@ -462,6 +465,7 @@ async function triggerAcpTaskAgent(params: {
   specialistLocale?: string;
   boardColumns: KanbanColumn[];
   summaryContext?: TaskPromptSummaryContext;
+  flowReport?: FlowDiagnosisReport;
   eventBus?: EventBus;
 }): Promise<AutomationRunHandle | { error: string }> {
   const provider = resolveKanbanAutomationProvider(params.task.assignedProvider);
@@ -508,6 +512,7 @@ async function triggerAcpTaskAgent(params: {
         text: buildTaskPrompt(params.task, params.boardColumns, {
           currentSessionId: sessionId,
           summaryContext: params.summaryContext,
+          flowReport: params.flowReport,
         }),
       }],
     });
@@ -544,6 +549,7 @@ async function triggerA2ATaskAgent(params: {
   boardColumns: KanbanColumn[];
   step?: KanbanAutomationStep;
   summaryContext?: TaskPromptSummaryContext;
+  flowReport?: FlowDiagnosisReport;
   eventBus?: EventBus;
 }): Promise<AutomationRunHandle | { error: string }> {
   const agentCardUrl = params.step?.agentCardUrl?.trim();
@@ -585,6 +591,7 @@ async function triggerA2ATaskAgent(params: {
     buildTaskPrompt(params.task, params.boardColumns, {
       currentSessionId: localSessionId,
       summaryContext: params.summaryContext,
+      flowReport: params.flowReport,
     }),
     metadata,
   );
@@ -640,6 +647,7 @@ export async function triggerAssignedTaskAgent(params: {
   specialistLocale?: string;
   boardColumns?: KanbanColumn[];
   summaryContext?: TaskPromptSummaryContext;
+  flowReport?: FlowDiagnosisReport;
   eventBus?: EventBus;
 }): Promise<{ sessionId?: string; error?: string; transport?: KanbanTransport; externalTaskId?: string; contextId?: string; displayTarget?: string }> {
   const {
@@ -652,6 +660,7 @@ export async function triggerAssignedTaskAgent(params: {
     specialistLocale,
     boardColumns = [],
     summaryContext,
+    flowReport,
     eventBus,
   } = params;
   const transport = getStepTransport(step);
@@ -662,6 +671,7 @@ export async function triggerAssignedTaskAgent(params: {
         boardColumns,
         step,
         summaryContext,
+        flowReport,
         eventBus,
       })
     : await triggerAcpTaskAgent({
@@ -673,6 +683,7 @@ export async function triggerAssignedTaskAgent(params: {
         specialistLocale,
         boardColumns,
         summaryContext,
+        flowReport,
         eventBus,
       });
 
