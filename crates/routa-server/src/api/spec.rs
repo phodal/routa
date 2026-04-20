@@ -548,50 +548,13 @@ async fn generate_feature_tree(
 
     let dry_run = body.dry_run;
     let result = tokio::task::spawn_blocking(move || {
-        run_feature_tree_generator(&repo_root, dry_run)
+        crate::feature_tree::generate_feature_tree_json(&repo_root, dry_run)
     })
     .await
     .map_err(|e| ServerError::Internal(format!("Task join error: {e}")))?
     .map_err(ServerError::Internal)?;
 
     Ok(Json(result))
-}
-
-/// Run the TypeScript feature-tree generator via Node and return the
-/// JSON result. This is the same script the CLI wraps.
-fn run_feature_tree_generator(repo_root: &Path, dry_run: bool) -> Result<JsonValue, String> {
-    let script = repo_root.join("scripts/docs/feature-tree-generator.ts");
-    if !script.exists() {
-        return Err(format!(
-            "Feature tree generator script not found at {}",
-            script.display()
-        ));
-    }
-
-    let mut args = vec![
-        "--import".to_string(),
-        "tsx".to_string(),
-        script.to_string_lossy().to_string(),
-        "--json".to_string(),
-    ];
-    if !dry_run {
-        args.push("--save".to_string());
-    }
-
-    let output = std::process::Command::new("node")
-        .args(&args)
-        .current_dir(repo_root)
-        .output()
-        .map_err(|e| format!("Failed to run feature tree generator: {e}"))?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("Feature tree generator failed: {stderr}"));
-    }
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    serde_json::from_str(stdout.trim())
-        .map_err(|e| format!("Failed to parse generator output: {e}"))
 }
 
 #[cfg(test)]

@@ -39,6 +39,7 @@ pub use routa_core::{AppState, AppStateInner, Database, ServerError};
 
 pub mod api;
 mod application;
+pub mod feature_tree;
 
 // ── Server bootstrap ────────────────────────────────────────────────────
 

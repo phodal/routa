@@ -3,15 +3,11 @@
 //! Uses the shared feature-tree script as an execution backend while exposing
 //! a stable Rust CLI surface for preflight, generate, commit, and inspect.
 
-use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::path::PathBuf;
 
-fn workspace_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../..")
-        .canonicalize()
-        .unwrap_or_else(|_| Path::new(env!("CARGO_MANIFEST_DIR")).join("../.."))
-}
+use routa_server::feature_tree::{
+    ensure_feature_tree_success, run_feature_tree_script, workspace_root,
+};
 
 fn repo_root(repo_path: Option<&str>) -> Result<PathBuf, String> {
     let resolved = repo_path
@@ -28,52 +24,6 @@ fn repo_root(repo_path: Option<&str>) -> Result<PathBuf, String> {
     resolved
         .canonicalize()
         .map_err(|e| format!("Failed to resolve repository path: {e}"))
-}
-
-fn feature_tree_script_path() -> Result<PathBuf, String> {
-    let script = workspace_root().join("scripts/docs/feature-tree-generator.ts");
-    if script.exists() {
-        Ok(script)
-    } else {
-        Err(format!(
-            "Feature tree generator script not found at {}",
-            script.display()
-        ))
-    }
-}
-
-fn run_feature_tree_script(
-    args: &[String],
-    working_dir: &Path,
-) -> Result<std::process::Output, String> {
-    let script = feature_tree_script_path()?;
-    let mut command_args = vec!["--import".to_string(), "tsx".to_string()];
-    command_args.push(script.to_string_lossy().to_string());
-    command_args.extend(args.iter().cloned());
-
-    Command::new("node")
-        .args(&command_args)
-        .current_dir(working_dir)
-        .output()
-        .map_err(|e| format!("Failed to run feature tree generator: {e}"))
-}
-
-fn ensure_success(output: &std::process::Output, context: &str) -> Result<(), String> {
-    if output.status.success() {
-        return Ok(());
-    }
-
-    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    let details = if !stderr.is_empty() {
-        stderr
-    } else if !stdout.is_empty() {
-        stdout
-    } else {
-        format!("exit code {}", output.status.code().unwrap_or(-1))
-    };
-
-    Err(format!("{context}: {details}"))
 }
 
 fn print_stdout(output: &std::process::Output) {
@@ -93,7 +43,7 @@ pub fn preflight(repo_path: Option<&str>, json_output: bool) -> Result<(), Strin
     ];
 
     let output = run_feature_tree_script(&args, &workspace_root())?;
-    ensure_success(&output, "Feature tree preflight failed")?;
+    ensure_feature_tree_success(&output, "Feature tree preflight failed")?;
 
     if json_output {
         print_stdout(&output);
@@ -151,7 +101,7 @@ pub fn generate(
     }
 
     let output = run_feature_tree_script(&args, &workspace_root())?;
-    ensure_success(&output, "Feature tree generation failed")?;
+    ensure_feature_tree_success(&output, "Feature tree generation failed")?;
 
     if json_output || dry_run {
         print_stdout(&output);
@@ -194,7 +144,7 @@ pub fn commit(
     }
 
     let output = run_feature_tree_script(&args, &workspace_root())?;
-    ensure_success(&output, "Feature tree commit failed")?;
+    ensure_feature_tree_success(&output, "Feature tree commit failed")?;
 
     if json_output {
         print_stdout(&output);
@@ -267,7 +217,8 @@ pub fn inspect(repo_path: Option<&str>) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{feature_tree_script_path, workspace_root};
+    use super::workspace_root;
+    use routa_server::feature_tree::feature_tree_script_path;
 
     #[test]
     fn resolves_workspace_root_to_repo_root() {
