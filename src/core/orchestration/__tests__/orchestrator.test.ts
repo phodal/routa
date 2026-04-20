@@ -442,7 +442,7 @@ describe("RoutaOrchestrator", () => {
     expect(sendPromptToSessionMock).toHaveBeenCalledTimes(1);
   });
 
-  it("retries waking the parent without rewriting completion memory", async () => {
+  it("retries waking the parent on session-end fallback without rewriting completion memory", async () => {
     const { orchestrator, task } = createOrchestratorFixture();
     (orchestrator as unknown as { spawnChildAgent: () => Promise<{ sandboxId?: string }> }).spawnChildAgent =
       vi.fn(async () => ({ sandboxId: "sandbox-1" }));
@@ -476,24 +476,29 @@ describe("RoutaOrchestrator", () => {
       ).finalizeChildCompletion("child-agent-1", record, "reported"),
     ).rejects.toThrow("wake exploded");
 
-    await expect(
-      (
+    vi.useFakeTimers();
+    try {
+      const completionPromise = (
         orchestrator as unknown as {
-          finalizeChildCompletion: (
+          scheduleSessionEndCompletion: (
             childAgentId: string,
             record: unknown,
-            source: "session_end",
           ) => Promise<void>;
         }
-      ).finalizeChildCompletion("child-agent-1", record, "session_end"),
-    ).resolves.toBeUndefined();
+      ).scheduleSessionEndCompletion("child-agent-1", record);
+
+      await vi.advanceTimersByTimeAsync(500);
+      await expect(completionPromise).resolves.toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
 
     expect(recordChildCompletionMock).toHaveBeenCalledTimes(1);
     expect(sendPromptToSessionMock).toHaveBeenCalledTimes(2);
   });
 
-  it("falls back to session-end finalization when the agent lookup fails", async () => {
-    const { orchestrator, system, task } = createOrchestratorFixture();
+  it("still skips session-end finalization after a successful completion", async () => {
+    const { orchestrator, task } = createOrchestratorFixture();
     (orchestrator as unknown as { spawnChildAgent: () => Promise<{ sandboxId?: string }> }).spawnChildAgent =
       vi.fn(async () => ({ sandboxId: "sandbox-1" }));
     const sendPromptToSessionMock = vi.fn(async () => {});
@@ -511,8 +516,22 @@ describe("RoutaOrchestrator", () => {
     recordChildCompletionMock.mockClear();
     vi.useFakeTimers();
     try {
-      (system.agentStore.get as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error("agent store exploded"));
       const record = orchestrator.getChildAgents("caller-agent")[0];
+      await expect(
+        (
+          orchestrator as unknown as {
+            finalizeChildCompletion: (
+              childAgentId: string,
+              record: unknown,
+              source: "reported",
+            ) => Promise<void>;
+          }
+        ).finalizeChildCompletion("child-agent-1", record, "reported"),
+      ).resolves.toBeUndefined();
+
+      recordChildCompletionMock.mockClear();
+      sendPromptToSessionMock.mockClear();
+
       const completionPromise = (
         orchestrator as unknown as {
           scheduleSessionEndCompletion: (
@@ -528,12 +547,8 @@ describe("RoutaOrchestrator", () => {
       vi.useRealTimers();
     }
 
-    expect(recordChildCompletionMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        snapshotSource: "session_end",
-      }),
-    );
-    expect(sendPromptToSessionMock).toHaveBeenCalledTimes(1);
+    expect(recordChildCompletionMock).not.toHaveBeenCalled();
+    expect(sendPromptToSessionMock).not.toHaveBeenCalled();
   });
 
   it("keeps completion handling non-blocking when the task snapshot lookup fails", async () => {

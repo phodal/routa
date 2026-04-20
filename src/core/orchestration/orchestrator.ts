@@ -340,16 +340,6 @@ export class RoutaOrchestrator {
       return;
     }
 
-    let agentStatus: AgentStatus | undefined;
-    try {
-      agentStatus = (await this.system.agentStore.get(childAgentId))?.status;
-    } catch (err) {
-      console.warn("[Orchestrator] Failed to load agent for session-end completion:", err);
-    }
-    if (agentStatus === AgentStatus.COMPLETED || agentStatus === AgentStatus.ERROR) {
-      return;
-    }
-
     await this.finalizeChildCompletion(childAgentId, record, "session_end");
   }
 
