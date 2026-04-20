@@ -492,6 +492,90 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn move_card_marks_the_previous_lane_session_completed() {
+        let state = setup_state().await;
+        let created = create_card(
+            &state,
+            CreateCardParams {
+                workspace_id: "default".to_string(),
+                board_id: None,
+                column_id: Some("backlog".to_string()),
+                title: "Carry handoff forward".to_string(),
+                description: None,
+                priority: None,
+                labels: None,
+            },
+        )
+        .await
+        .expect("create card should succeed");
+        populate_story_readiness_fields(&state, &created.card.id).await;
+
+        let mut task = state
+            .task_store
+            .get(&created.card.id)
+            .await
+            .expect("task lookup should succeed")
+            .expect("task should exist");
+        task.trigger_session_id = Some("session-backlog-1".to_string());
+        task.lane_sessions.push(TaskLaneSession {
+            session_id: "session-backlog-1".to_string(),
+            routa_agent_id: None,
+            column_id: Some("backlog".to_string()),
+            column_name: Some("Backlog".to_string()),
+            step_id: None,
+            step_index: None,
+            step_name: Some("Backlog Refiner".to_string()),
+            provider: Some("codex".to_string()),
+            role: Some("ROUTA".to_string()),
+            specialist_id: None,
+            specialist_name: Some("Backlog Refiner".to_string()),
+            transport: Some("acp".to_string()),
+            external_task_id: None,
+            context_id: None,
+            attempt: Some(1),
+            loop_mode: None,
+            completion_requirement: None,
+            objective: Some(task.objective.clone()),
+            last_activity_at: None,
+            recovered_from_session_id: None,
+            recovery_reason: None,
+            status: TaskLaneSessionStatus::Running,
+            started_at: Utc::now().to_rfc3339(),
+            completed_at: None,
+        });
+        state
+            .task_store
+            .save(&task)
+            .await
+            .expect("task save should succeed");
+
+        move_card(
+            &state,
+            MoveCardParams {
+                card_id: created.card.id.clone(),
+                target_column_id: "todo".to_string(),
+                position: None,
+            },
+        )
+        .await
+        .expect("move card should succeed");
+
+        let updated = state
+            .task_store
+            .get(&created.card.id)
+            .await
+            .expect("task lookup should succeed")
+            .expect("task should exist");
+        let backlog_session = updated
+            .lane_sessions
+            .iter()
+            .find(|session| session.session_id == "session-backlog-1")
+            .expect("backlog lane session should exist");
+        assert_eq!(backlog_session.status, TaskLaneSessionStatus::Completed);
+        assert!(backlog_session.completed_at.is_some());
+    }
+
+    #[tokio::test]
     async fn update_card_rejects_description_changes_in_dev() {
         let state = setup_state().await;
         let created = create_card(
@@ -784,7 +868,14 @@ mod tests {
             task.last_sync_error
         );
         assert_eq!(task.session_ids, existing_session_ids);
-        assert_eq!(task.lane_sessions, existing_lane_sessions);
+        assert_eq!(task.lane_sessions.len(), existing_lane_sessions.len());
+        let backlog_session = task
+            .lane_sessions
+            .iter()
+            .find(|session| session.session_id == existing_lane_sessions[0].session_id)
+            .expect("existing backlog session should still exist");
+        assert_eq!(backlog_session.status, TaskLaneSessionStatus::Completed);
+        assert!(backlog_session.completed_at.is_some());
         assert!(
             task.lane_sessions
                 .iter()

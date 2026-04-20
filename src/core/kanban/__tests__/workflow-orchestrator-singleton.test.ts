@@ -237,4 +237,69 @@ describe("workflow orchestrator singleton prompt path", () => {
       triggerSessionId: "session-dev-1",
     });
   });
+
+  it("marks the previous lane run completed when a new lane session starts", async () => {
+    const system = createInMemorySystem();
+    const board = createKanbanBoard({
+      id: "board-2",
+      workspaceId: "default",
+      name: "Board",
+      isDefault: true,
+      columns: [
+        { id: "backlog", name: "Backlog", position: 0, stage: "backlog" },
+        { id: "todo", name: "Todo", position: 1, stage: "todo" },
+      ],
+    });
+    await system.kanbanBoardStore.save(board);
+
+    const task = createTask({
+      id: "task-2",
+      title: "Advance into todo",
+      objective: "Stop the backlog run once todo begins",
+      workspaceId: "default",
+      boardId: board.id,
+      columnId: "todo",
+      status: TaskStatus.PENDING,
+    });
+    task.laneSessions = [{
+      sessionId: "session-backlog-1",
+      columnId: "backlog",
+      columnName: "Backlog",
+      provider: "claude",
+      role: "ROUTA",
+      specialistName: "Backlog Refiner",
+      status: "running",
+      startedAt: "2026-03-18T00:00:00.000Z",
+    }];
+    await system.taskStore.save(task);
+
+    triggerAssignedTaskAgentMock.mockResolvedValue({
+      sessionId: "session-todo-1",
+      transport: "acp",
+    });
+
+    const result = await enqueueKanbanTaskSession(system, {
+      task,
+      expectedColumnId: "todo",
+      ignoreExistingTrigger: true,
+      bypassQueue: true,
+    });
+
+    expect(result).toEqual({ sessionId: "session-todo-1", queued: false, error: undefined });
+    const updatedTask = await system.taskStore.get("task-2");
+    expect(updatedTask?.triggerSessionId).toBe("session-todo-1");
+    expect(updatedTask?.laneSessions).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        sessionId: "session-backlog-1",
+        columnId: "backlog",
+        status: "completed",
+        completedAt: expect.any(String),
+      }),
+      expect.objectContaining({
+        sessionId: "session-todo-1",
+        columnId: "todo",
+        status: "running",
+      }),
+    ]));
+  });
 });

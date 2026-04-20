@@ -602,6 +602,23 @@ fn apply_trigger_result(
     step: Option<&KanbanAutomationStep>,
     result: AgentTriggerResult,
 ) {
+    let now = Utc::now().to_rfc3339();
+    for session in &mut task.lane_sessions {
+        if session.session_id == result.session_id
+            || session.status != TaskLaneSessionStatus::Running
+        {
+            continue;
+        }
+        if session.column_id.as_deref() == task.column_id.as_deref() {
+            continue;
+        }
+
+        session.status = TaskLaneSessionStatus::Completed;
+        if session.completed_at.is_none() {
+            session.completed_at = Some(now.clone());
+        }
+    }
+
     task.trigger_session_id = Some(result.session_id.clone());
     if !task.session_ids.iter().any(|id| id == &result.session_id) {
         task.session_ids.push(result.session_id.clone());
@@ -633,11 +650,11 @@ fn apply_trigger_result(
         loop_mode: None,
         completion_requirement: None,
         objective: Some(task.objective.clone()),
-        last_activity_at: Some(Utc::now().to_rfc3339()),
+        last_activity_at: Some(now.clone()),
         recovered_from_session_id: None,
         recovery_reason: None,
         status: TaskLaneSessionStatus::Running,
-        started_at: Utc::now().to_rfc3339(),
+        started_at: now,
         completed_at: None,
     };
 

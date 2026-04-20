@@ -33,6 +33,7 @@ import { getKanbanSessionConcurrencyLimit as getBoardSessionConcurrencyLimit } f
 import { getKanbanDevSessionSupervision } from "./board-session-supervision";
 import { getKanbanAutoProvider } from "./board-auto-provider";
 import { upsertTaskLaneSession } from "./task-lane-history";
+import { completeRunningSessionsOutsideColumn } from "./task-session-transition";
 import { analyzeFlowForTasks } from "./flow-ledger";
 import { resolveTaskWorktreeTruth } from "./task-worktree-truth";
 import { getHttpSessionStore } from "../acp/http-session-store";
@@ -258,6 +259,9 @@ async function startKanbanTaskSession(
   });
 
   if (triggerResult.sessionId) {
+    completeRunningSessionsOutsideColumn(nextTask, nextTask.columnId, {
+      excludeSessionId: triggerResult.sessionId,
+    });
     nextTask.triggerSessionId = triggerResult.sessionId;
     // Track session in history
     if (!nextTask.sessionIds) nextTask.sessionIds = [];

@@ -957,6 +957,23 @@ pub(super) fn apply_trigger_result(
     step: Option<&KanbanAutomationStep>,
     result: AgentTriggerResult,
 ) {
+    let now = Utc::now().to_rfc3339();
+    for session in &mut task.lane_sessions {
+        if session.session_id == result.session_id
+            || session.status != TaskLaneSessionStatus::Running
+        {
+            continue;
+        }
+        if session.column_id.as_deref() == task.column_id.as_deref() {
+            continue;
+        }
+
+        session.status = TaskLaneSessionStatus::Completed;
+        if session.completed_at.is_none() {
+            session.completed_at = Some(now.clone());
+        }
+    }
+
     task.trigger_session_id = Some(result.session_id.clone());
     if !task.session_ids.iter().any(|id| id == &result.session_id) {
         task.session_ids.push(result.session_id.clone());
@@ -967,7 +984,6 @@ pub(super) fn apply_trigger_result(
             (Some(column.id.as_str()) == task.column_id.as_deref()).then(|| column.name.clone())
         })
     });
-    let now = Utc::now().to_rfc3339();
     let lane_session = TaskLaneSession {
         session_id: result.session_id.clone(),
         routa_agent_id: None,
@@ -1588,5 +1604,98 @@ mod tests {
             Some("2026-03-21T00:00:05Z")
         );
         assert_eq!(lane_session.context_id.as_deref(), Some("ctx-1"));
+    }
+
+    #[test]
+    fn apply_trigger_result_completes_running_sessions_from_previous_lanes() {
+        let mut task = Task::new(
+            "task-2".to_string(),
+            "Advance to todo".to_string(),
+            "Finish backlog before todo starts".to_string(),
+            "default".to_string(),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        );
+        task.column_id = Some("todo".to_string());
+        task.assigned_role = Some("ROUTA".to_string());
+        task.assigned_specialist_name = Some("Todo Orchestrator".to_string());
+        task.lane_sessions.push(TaskLaneSession {
+            session_id: "session-backlog-1".to_string(),
+            routa_agent_id: None,
+            column_id: Some("backlog".to_string()),
+            column_name: Some("Backlog".to_string()),
+            step_id: None,
+            step_index: None,
+            step_name: Some("Backlog Refiner".to_string()),
+            provider: Some("claude".to_string()),
+            role: Some("ROUTA".to_string()),
+            specialist_id: None,
+            specialist_name: Some("Backlog Refiner".to_string()),
+            transport: Some("acp".to_string()),
+            external_task_id: None,
+            context_id: None,
+            attempt: Some(1),
+            loop_mode: None,
+            completion_requirement: None,
+            objective: Some(task.objective.clone()),
+            last_activity_at: None,
+            recovered_from_session_id: None,
+            recovery_reason: None,
+            status: TaskLaneSessionStatus::Running,
+            started_at: Utc::now().to_rfc3339(),
+            completed_at: None,
+        });
+
+        let board = KanbanBoard {
+            id: "board-2".to_string(),
+            workspace_id: "default".to_string(),
+            name: "Board".to_string(),
+            is_default: true,
+            github_token: None,
+            columns: vec![KanbanColumn {
+                id: "todo".to_string(),
+                name: "Todo".to_string(),
+                color: None,
+                position: 1,
+                stage: "todo".to_string(),
+                automation: None,
+                visible: Some(true),
+                width: None,
+            }],
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
+        let step = KanbanAutomationStep {
+            id: "todo-step".to_string(),
+            specialist_name: Some("Todo Orchestrator".to_string()),
+            ..Default::default()
+        };
+
+        apply_trigger_result(
+            &mut task,
+            Some(&board),
+            Some(&step),
+            AgentTriggerResult {
+                session_id: "session-todo-1".to_string(),
+                transport: "acp".to_string(),
+                external_task_id: None,
+                context_id: None,
+            },
+        );
+
+        assert_eq!(task.trigger_session_id.as_deref(), Some("session-todo-1"));
+        assert_eq!(task.lane_sessions.len(), 2);
+        assert_eq!(
+            task.lane_sessions[0].status,
+            TaskLaneSessionStatus::Completed
+        );
+        assert!(task.lane_sessions[0].completed_at.is_some());
+        assert_eq!(task.lane_sessions[1].status, TaskLaneSessionStatus::Running);
+        assert_eq!(task.lane_sessions[1].column_id.as_deref(), Some("todo"));
     }
 }

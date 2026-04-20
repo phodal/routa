@@ -2,7 +2,9 @@ use chrono::Utc;
 
 use crate::error::ServerError;
 use crate::models::kanban::{column_id_to_task_status, task_status_to_column_id};
-use crate::models::task::{Task, TaskCreationSource, TaskPriority, TaskStatus};
+use crate::models::task::{
+    Task, TaskCreationSource, TaskLaneSessionStatus, TaskPriority, TaskStatus,
+};
 use crate::state::AppState;
 use routa_core::kanban::{
     ensure_task_board_context, resolve_review_lane_convergence_column, set_task_column,
@@ -316,6 +318,13 @@ impl TaskApplicationService {
             }
         }
 
+        if task.column_id != existing_column_id {
+            let next_column_id = task.column_id.clone();
+            complete_running_lane_sessions_for_handoff(&mut task, next_column_id.as_deref());
+            task.trigger_session_id = None;
+            task.last_sync_error = None;
+        }
+
         let entering_dev = task.column_id.as_deref() == Some("dev")
             && existing_column_id.as_deref() != Some("dev");
         let assigned_while_in_dev = task.column_id.as_deref() == Some("dev")
@@ -504,14 +513,36 @@ fn sanitize_labels(labels: Vec<String>) -> Vec<String> {
     sanitized
 }
 
+fn complete_running_lane_sessions_for_handoff(task: &mut Task, next_column_id: Option<&str>) {
+    let now = Utc::now().to_rfc3339();
+
+    for session in &mut task.lane_sessions {
+        if session.status != TaskLaneSessionStatus::Running {
+            continue;
+        }
+        if session.column_id.as_deref() == next_column_id {
+            continue;
+        }
+
+        session.status = TaskLaneSessionStatus::Completed;
+        if session.completed_at.is_none() {
+            session.completed_at = Some(now.clone());
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::fs;
     use std::path::PathBuf;
 
+    use chrono::Utc;
+
     use super::{CreateTaskCommand, TaskApplicationService, UpdateTaskCommand};
     use crate::create_app_state;
-    use crate::models::task::{Task, TaskCreationSource, TaskStatus, VerificationVerdict};
+    use crate::models::task::{
+        Task, TaskCreationSource, TaskLaneSessionStatus, TaskStatus, VerificationVerdict,
+    };
 
     fn random_db_path() -> PathBuf {
         std::env::temp_dir().join(format!("routa-task-service-{}.db", uuid::Uuid::new_v4()))
@@ -740,6 +771,33 @@ mod tests {
         let mut task = seed_task(&service, Some("backlog")).await;
         task.trigger_session_id = Some("session-1".to_string());
         task.last_sync_error = Some("old error".to_string());
+        task.lane_sessions
+            .push(routa_core::models::task::TaskLaneSession {
+                session_id: "session-1".to_string(),
+                routa_agent_id: None,
+                column_id: Some("backlog".to_string()),
+                column_name: Some("Backlog".to_string()),
+                step_id: None,
+                step_index: None,
+                step_name: None,
+                provider: Some("codex".to_string()),
+                role: Some("ROUTA".to_string()),
+                specialist_id: None,
+                specialist_name: None,
+                transport: Some("acp".to_string()),
+                external_task_id: None,
+                context_id: None,
+                attempt: Some(1),
+                loop_mode: None,
+                completion_requirement: None,
+                objective: Some(task.objective.clone()),
+                last_activity_at: None,
+                recovered_from_session_id: None,
+                recovery_reason: None,
+                status: TaskLaneSessionStatus::Running,
+                started_at: Utc::now().to_rfc3339(),
+                completed_at: None,
+            });
         service
             .state
             .task_store
@@ -764,6 +822,11 @@ mod tests {
         assert_eq!(plan.task.status, TaskStatus::InProgress);
         assert_eq!(plan.task.trigger_session_id, None);
         assert_eq!(plan.task.last_sync_error, None);
+        assert_eq!(
+            plan.task.lane_sessions[0].status,
+            TaskLaneSessionStatus::Completed
+        );
+        assert!(plan.task.lane_sessions[0].completed_at.is_some());
         assert!(plan.should_trigger_agent);
         assert!(!plan.should_sync_github);
 
@@ -803,6 +866,33 @@ mod tests {
         let (service, db_path) = setup_service().await;
         let mut task = seed_task(&service, Some("todo")).await;
         task.trigger_session_id = Some("session-todo".to_string());
+        task.lane_sessions
+            .push(routa_core::models::task::TaskLaneSession {
+                session_id: "session-todo".to_string(),
+                routa_agent_id: None,
+                column_id: Some("todo".to_string()),
+                column_name: Some("Todo".to_string()),
+                step_id: None,
+                step_index: None,
+                step_name: None,
+                provider: Some("opencode".to_string()),
+                role: Some("CRAFTER".to_string()),
+                specialist_id: None,
+                specialist_name: None,
+                transport: Some("acp".to_string()),
+                external_task_id: None,
+                context_id: None,
+                attempt: Some(1),
+                loop_mode: None,
+                completion_requirement: None,
+                objective: Some(task.objective.clone()),
+                last_activity_at: None,
+                recovered_from_session_id: None,
+                recovery_reason: None,
+                status: TaskLaneSessionStatus::Running,
+                started_at: Utc::now().to_rfc3339(),
+                completed_at: None,
+            });
         service
             .state
             .task_store
@@ -852,10 +942,12 @@ mod tests {
             .expect("update task plan");
 
         assert_eq!(plan.task.column_id.as_deref(), Some("dev"));
+        assert_eq!(plan.task.trigger_session_id, None);
         assert_eq!(
-            plan.task.trigger_session_id.as_deref(),
-            Some("session-todo")
+            plan.task.lane_sessions[0].status,
+            TaskLaneSessionStatus::Completed
         );
+        assert!(plan.task.lane_sessions[0].completed_at.is_some());
         assert!(plan.should_trigger_agent);
 
         let _ = fs::remove_file(db_path);

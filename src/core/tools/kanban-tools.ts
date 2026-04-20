@@ -33,7 +33,6 @@ import { ToolResult, successResult, errorResult } from "./tool-result";
 import { EventBus } from "../events/event-bus";
 import { emitColumnTransition } from "../kanban/column-transition";
 import { getKanbanEventBroadcaster } from "../kanban/kanban-event-broadcaster";
-import { markTaskLaneSessionStatus } from "../kanban/task-lane-history";
 import {
   createTaskLaneHandoff,
   getPreviousLaneSession,
@@ -41,6 +40,7 @@ import {
   getTaskLaneSession,
   upsertTaskLaneHandoff,
 } from "../kanban/task-lane-history";
+import { finalizeActiveTaskSession } from "../kanban/task-session-transition";
 import { buildRemainingLaneStepsMessage, resolveCurrentLaneAutomationState } from "../kanban/lane-automation-state";
 import { getInternalApiOrigin } from "../kanban/agent-trigger";
 import {
@@ -340,14 +340,7 @@ export class KanbanTools {
 
     // Preserve the current active session in history before clearing
     // This allows the next column's automation to create a fresh session
-    if (task.triggerSessionId) {
-      if (!task.sessionIds) task.sessionIds = [];
-      if (!task.sessionIds.includes(task.triggerSessionId)) {
-        task.sessionIds.push(task.triggerSessionId);
-      }
-      markTaskLaneSessionStatus(task, task.triggerSessionId, "transitioned");
-      task.triggerSessionId = undefined;
-    }
+    finalizeActiveTaskSession(task);
 
     task.columnId = params.targetColumnId;
     task.status = columnIdToTaskStatus(params.targetColumnId);
@@ -493,13 +486,7 @@ export class KanbanTools {
       ? board.columns.find((column) => column.id === previousLaneSession.columnId)
       : undefined;
     if (shouldReturnToPreviousLane && previousLaneSession.columnId) {
-      if (task.triggerSessionId) {
-        if (!task.sessionIds.includes(task.triggerSessionId)) {
-          task.sessionIds.push(task.triggerSessionId);
-        }
-        markTaskLaneSessionStatus(task, task.triggerSessionId, "transitioned");
-        task.triggerSessionId = undefined;
-      }
+      finalizeActiveTaskSession(task);
       task.columnId = previousLaneSession.columnId;
       task.status = columnIdToTaskStatus(previousLaneSession.columnId);
       task.updatedAt = new Date();
