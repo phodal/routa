@@ -103,7 +103,7 @@ impl AcpPaths {
             other => other,
         };
 
-        format!("{}-{}", os_name, arch)
+        format!("{os_name}-{arch}")
     }
 }
 

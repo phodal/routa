@@ -10,7 +10,7 @@ const {
 } = vi.hoisted(() => ({
   getStoredThemePreference: vi.fn(() => "light"),
   resolveThemePreference: vi.fn(() => "light"),
-  setThemePreference: vi.fn((theme: "light" | "dark") => theme),
+  setThemePreference: vi.fn((theme: "light" | "dark" | "system") => theme),
   subscribeToThemePreference: vi.fn(() => () => {}),
 }));
 
@@ -43,6 +43,7 @@ describe("ThemeSwitcher", () => {
     expect(screen.getByText("Theme")).not.toBeNull();
     expect(screen.getByRole("button", { name: "Light" })).not.toBeNull();
     expect(screen.getByRole("button", { name: "Dark" })).not.toBeNull();
+    expect(screen.getByRole("button", { name: "System" })).not.toBeNull();
   });
 
   it("keeps server markup deterministic and syncs the mounted title afterward", async () => {
@@ -64,5 +65,18 @@ describe("ThemeSwitcher", () => {
     fireEvent.click(screen.getByRole("button", { name: "Dark" }));
 
     expect(setThemePreference).toHaveBeenCalledWith("dark");
+  });
+
+  it("marks only the system button as active when the system preference is selected", async () => {
+    getStoredThemePreference.mockReturnValue("system");
+    resolveThemePreference.mockReturnValue("dark");
+
+    render(<ThemeSwitcher compact />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "System" }).getAttribute("aria-pressed")).toBe("true");
+      expect(screen.getByRole("button", { name: "Dark" }).getAttribute("aria-pressed")).toBe("false");
+      expect(screen.getByRole("button", { name: "Light" }).getAttribute("aria-pressed")).toBe("false");
+    });
   });
 });

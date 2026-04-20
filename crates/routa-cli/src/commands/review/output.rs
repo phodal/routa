@@ -10,7 +10,7 @@ pub(crate) fn print_pretty_json<T: Serialize>(
     println!(
         "{}",
         serde_json::to_string_pretty(value)
-            .map_err(|err| format!("Failed to format {}: {}", error_context, err))?
+            .map_err(|err| format!("Failed to format {error_context}: {err}"))?
     );
     Ok(())
 }
@@ -22,14 +22,14 @@ pub(crate) fn print_review_result(
     error_context: &str,
 ) -> Result<(), String> {
     println!();
-    println!("═══ {} ═══", title);
+    println!("═══ {title} ═══");
     if as_json {
         match serde_json::from_str::<serde_json::Value>(output) {
             Ok(value) => print_pretty_json(&value, error_context)?,
-            Err(_) => println!("{}", output),
+            Err(_) => println!("{output}"),
         }
     } else {
-        println!("{}", output);
+        println!("{output}");
     }
     Ok(())
 }
@@ -61,11 +61,11 @@ pub(crate) fn print_security_acp_runtime_diagnostics(
         Ok(meta) if meta.is_dir() => {
             match std::fs::create_dir_all(probe_path.join("routa-acp-debug")) {
                 Ok(()) => "ok".to_string(),
-                Err(err) => format!("write-failed: {}", err),
+                Err(err) => format!("write-failed: {err}"),
             }
         }
         Ok(_) => "invalid-config-dir".to_string(),
-        Err(err) => format!("missing-config-dir: {}", err),
+        Err(err) => format!("missing-config-dir: {err}"),
     };
 
     println!("┌──────────────── ACP Runtime Diagnostics ────────────────┐");
@@ -89,7 +89,7 @@ pub(crate) fn truncate(content: &str, max_chars: usize) -> String {
         content.to_string()
     } else {
         let truncated: String = content.chars().take(max_chars).collect();
-        format!("{}\n\n[truncated]", truncated)
+        format!("{truncated}\n\n[truncated]")
     }
 }
 

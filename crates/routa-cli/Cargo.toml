@@ -1,6 +1,6 @@
 [package]
 name = "routa-cli"
-version = "0.12.1"
+version = "0.17.2"
 description = "Routa.js CLI — command-line interface for multi-agent coordination"
 authors = ["phodal"]
 edition = "2021"
@@ -18,13 +18,13 @@ path = "src/lib.rs"
 
 [dependencies]
 # Core domain (transport-agnostic, no HTTP deps)
-routa-core = { version = "0.12.1", path = "../routa-core" }
+routa-core = { version = "0.17.2", path = "../routa-core" }
 
 # HTTP server (for the `server` subcommand)
-routa-server = { version = "0.12.1", path = "../routa-server" }
+routa-server = { version = "0.17.2", path = "../routa-server" }
 
 # Reusable scanner module
-routa-scanner = { version = "0.12.1", path = "../routa-scanner" }
+routa-scanner = { version = "0.17.2", path = "../routa-scanner" }
 
 # CLI argument parsing
 clap = { version = "4", features = ["derive", "env"] }
@@ -36,6 +36,7 @@ tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 serde_yaml = "0.9"
+reqwest = { version = "0.12", features = ["json"] }
 regex = "1"
 glob = "0.3"
 walkdir = "2"
@@ -48,9 +49,9 @@ tree-sitter-java = "0.23"
 # Utilities
 uuid = { version = "1", features = ["v4"] }
 chrono = { version = "0.4", features = ["serde"] }
-dirs = "5"
+dirs = "6"
 dialoguer = "0.11"
-console = "0.15"
+console = "0.16"
 
 # Logging
 tracing = "0.1"

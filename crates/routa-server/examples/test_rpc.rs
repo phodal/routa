@@ -15,27 +15,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     let addr = routa_server::start_server(config).await?;
-    println!("Server started on {}", addr);
+    println!("Server started on {addr}");
 
     // Give the server a moment to settle
     tokio::time::sleep(Duration::from_millis(200)).await;
 
     let client = reqwest::Client::new();
-    let base = format!("http://{}", addr);
+    let base = format!("http://{addr}");
 
     // Test 1: List methods
     println!("\n=== Test 1: GET /api/rpc/methods ===");
-    let res = client
-        .get(format!("{}/api/rpc/methods", base))
-        .send()
-        .await?;
+    let res = client.get(format!("{base}/api/rpc/methods")).send().await?;
     let body: serde_json::Value = res.json().await?;
     println!("{}", serde_json::to_string_pretty(&body)?);
 
     // Test 2: agents.list via JSON-RPC
     println!("\n=== Test 2: agents.list ===");
     let res = client
-        .post(format!("{}/api/rpc", base))
+        .post(format!("{base}/api/rpc"))
         .json(&serde_json::json!({
             "jsonrpc": "2.0",
             "id": 1,
@@ -50,7 +47,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Test 3: agents.create
     println!("\n=== Test 3: agents.create ===");
     let res = client
-        .post(format!("{}/api/rpc", base))
+        .post(format!("{base}/api/rpc"))
         .json(&serde_json::json!({
             "jsonrpc": "2.0",
             "id": 2,
@@ -69,7 +66,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Test 4: agents.get
     println!("\n=== Test 4: agents.get ===");
     let res = client
-        .post(format!("{}/api/rpc", base))
+        .post(format!("{base}/api/rpc"))
         .json(&serde_json::json!({
             "jsonrpc": "2.0",
             "id": 3,
@@ -84,7 +81,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Test 5: workspaces.list
     println!("\n=== Test 5: workspaces.list ===");
     let res = client
-        .post(format!("{}/api/rpc", base))
+        .post(format!("{base}/api/rpc"))
         .json(&serde_json::json!({
             "jsonrpc": "2.0",
             "id": 4,
@@ -98,7 +95,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Test 6: Method not found
     println!("\n=== Test 6: Method not found ===");
     let res = client
-        .post(format!("{}/api/rpc", base))
+        .post(format!("{base}/api/rpc"))
         .json(&serde_json::json!({
             "jsonrpc": "2.0",
             "id": 5,
@@ -112,7 +109,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Test 7: tasks.create + tasks.list
     println!("\n=== Test 7: tasks.create ===");
     let res = client
-        .post(format!("{}/api/rpc", base))
+        .post(format!("{base}/api/rpc"))
         .json(&serde_json::json!({
             "jsonrpc": "2.0",
             "id": 6,
@@ -129,7 +126,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("\n=== Test 8: tasks.list ===");
     let res = client
-        .post(format!("{}/api/rpc", base))
+        .post(format!("{base}/api/rpc"))
         .json(&serde_json::json!({
             "jsonrpc": "2.0",
             "id": 7,

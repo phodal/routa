@@ -754,7 +754,7 @@ fn path_exists(repo_root: &Path, rel_path: &str) -> bool {
 fn file_sha256(path: &PathBuf) -> Result<String, String> {
     let bytes = fs::read(path).map_err(|e| e.to_string())?;
     let hash = Sha256::digest(&bytes);
-    Ok(format!("{:x}", hash))
+    Ok(hash.iter().map(|byte| format!("{byte:02x}")).collect())
 }
 
 #[cfg(test)]

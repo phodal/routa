@@ -27,7 +27,7 @@ async fn upload_skill(
             let data = field
                 .bytes()
                 .await
-                .map_err(|e| ServerError::BadRequest(format!("Failed to read file: {}", e)))?;
+                .map_err(|e| ServerError::BadRequest(format!("Failed to read file: {e}")))?;
             file_data = Some(data.to_vec());
         }
     }
@@ -43,12 +43,12 @@ async fn upload_skill(
     let cwd = std::env::current_dir().unwrap_or_default();
     let skills_dir = cwd.join(SKILLS_DIR);
     std::fs::create_dir_all(&skills_dir)
-        .map_err(|e| ServerError::Internal(format!("Failed to create skills dir: {}", e)))?;
+        .map_err(|e| ServerError::Internal(format!("Failed to create skills dir: {e}")))?;
 
     // Write zip to temp file
     let temp_zip = skills_dir.join(format!("_upload_{}.zip", chrono::Utc::now().timestamp()));
     std::fs::write(&temp_zip, &data)
-        .map_err(|e| ServerError::Internal(format!("Failed to write zip: {}", e)))?;
+        .map_err(|e| ServerError::Internal(format!("Failed to write zip: {e}")))?;
 
     // Extract using unzip command
     let result = tokio::task::spawn_blocking({
@@ -75,9 +75,6 @@ async fn upload_skill(
             "Unzip failed: {}",
             String::from_utf8_lossy(&output.stderr)
         ))),
-        Err(e) => Err(ServerError::Internal(format!(
-            "Unzip command failed: {}",
-            e
-        ))),
+        Err(e) => Err(ServerError::Internal(format!("Unzip command failed: {e}"))),
     }
 }

@@ -274,7 +274,7 @@ async fn get_status() -> Result<Json<serde_json::Value>, ServerError> {
 async fn check_now(State(_state): State<AppState>) -> Result<Json<serde_json::Value>, ServerError> {
     let results = poll_all_repos()
         .await
-        .map_err(|e| ServerError::Internal(format!("Polling failed: {}", e)))?;
+        .map_err(|e| ServerError::Internal(format!("Polling failed: {e}")))?;
 
     let summary = PollSummary {
         repos_checked: results.len() as u32,

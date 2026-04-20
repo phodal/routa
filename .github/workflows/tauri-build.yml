@@ -56,7 +56,7 @@ jobs:
     runs-on: ${{ matrix.platform }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Sync release version
         if: ${{ inputs.version || github.event.inputs.version }}
@@ -81,11 +81,14 @@ jobs:
           fi
 
           allowed_files=(
+            "Cargo.toml"
             "package.json"
             "apps/desktop/package.json"
             "apps/desktop/src-tauri/Cargo.toml"
             "apps/desktop/src-tauri/tauri.conf.json"
             "packages/routa-cli/package.json"
+            "packages/harness-monitor/package.json"
+            "crates/harness-monitor/Cargo.toml"
           )
 
           for file in "${changed_files[@]}"; do
@@ -135,9 +138,11 @@ jobs:
       - name: Install root dependencies
         run: npm ci
 
-      - name: Install desktop dependencies
-        working-directory: apps/desktop
-        run: npm ci
+      - name: Verify desktop workspace toolchain
+        run: npm exec --workspace apps/desktop -- tauri --version
+
+      - name: Verify root frontend toolchain
+        run: npm exec --no -- next --version
 
       - name: Create placeholder frontend directory (Unix)
         if: runner.os != 'Windows'
@@ -153,6 +158,22 @@ jobs:
 
       - name: Prepare frontend for Tauri bundling
         run: node scripts/prepare-frontend.mjs
+
+      - name: Set default Tauri build args
+        shell: bash
+        run: echo "TAURI_BUILD_ARGS=${{ matrix.args }}" >> "$GITHUB_ENV"
+
+      - name: Use NSIS-only bundling for Windows prerelease
+        if: ${{ matrix.platform == 'windows-latest' }}
+        shell: bash
+        env:
+          RELEASE_VERSION: ${{ inputs.version || github.event.inputs.version }}
+        run: |
+          if [[ -n "$RELEASE_VERSION" && "$RELEASE_VERSION" == *-* ]]; then
+            build_args="${TAURI_BUILD_ARGS:+${TAURI_BUILD_ARGS} }--bundles nsis"
+            echo "Using NSIS-only bundling for Windows prerelease version ${RELEASE_VERSION}"
+            echo "TAURI_BUILD_ARGS=$build_args" >> "$GITHUB_ENV"
+          fi
 
       - name: Clean previous Tauri bundle outputs
         shell: bash
@@ -173,7 +194,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           projectPath: apps/desktop
-          args: ${{ matrix.args }}
+          args: ${{ env.TAURI_BUILD_ARGS }}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4

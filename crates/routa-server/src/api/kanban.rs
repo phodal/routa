@@ -10,14 +10,25 @@ use routa_core::models::kanban::KanbanColumn;
 use routa_core::models::kanban_config::{KanbanBoardConfig, KanbanColumnConfig, KanbanConfig};
 use routa_core::models::task::{Task, TaskLaneSessionStatus, TaskStatus};
 use routa_core::models::workspace::Workspace;
-use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
+use serde::Deserialize;
+use std::collections::HashSet;
 use std::convert::Infallible;
 use tokio::sync::mpsc;
 
 use crate::error::ServerError;
 use crate::rpc::RpcRouter;
 use crate::state::AppState;
+
+mod board_meta;
+
+use board_meta::{
+    add_board_runtime_meta, sanitize_board_response, set_dev_session_supervision,
+    PartialKanbanDevSessionSupervision,
+};
+
+fn lane_session_uses_in_memory_runtime(transport: Option<&str>) -> bool {
+    transport != Some("a2a")
+}
 
 fn automation_has_effective_config(
     automation: &routa_core::models::kanban::KanbanColumnAutomation,
@@ -59,7 +70,7 @@ fn imported_board_id(
             }
         })
         .collect::<String>();
-    let scoped_id = format!("{}--{}", workspace_prefix, board_id);
+    let scoped_id = format!("{workspace_prefix}--{board_id}");
     if !conflicting_ids.contains(&scoped_id) {
         return scoped_id;
     }
@@ -110,19 +121,27 @@ impl Drop for EventBusSubscriptionGuard {
 fn translate_agent_event_to_kanban_payload(event: &AgentEvent) -> Option<serde_json::Value> {
     match event.event_type {
         AgentEventType::WorkspaceUpdated => {
-            if event.data.get("scope").and_then(|value| value.as_str()) != Some("kanban") {
-                return None;
+            match event.data.get("scope").and_then(|value| value.as_str()) {
+                Some("fitness") => Some(serde_json::json!({
+                    "type": "fitness:changed",
+                    "workspaceId": event.workspace_id,
+                    "source": event.data.get("source").and_then(|value| value.as_str()).unwrap_or("system"),
+                    "codebaseId": event.data.get("codebaseId").and_then(|value| value.as_str()),
+                    "repoPath": event.data.get("repoPath").and_then(|value| value.as_str()),
+                    "status": event.data.get("status").and_then(|value| value.as_str()),
+                    "timestamp": event.timestamp.to_rfc3339(),
+                })),
+                Some("kanban") => Some(serde_json::json!({
+                    "type": "kanban:changed",
+                    "workspaceId": event.workspace_id,
+                    "entity": event.data.get("entity").and_then(|value| value.as_str()).unwrap_or("task"),
+                    "action": event.data.get("action").and_then(|value| value.as_str()).unwrap_or("updated"),
+                    "resourceId": event.data.get("resourceId").and_then(|value| value.as_str()),
+                    "source": event.data.get("source").and_then(|value| value.as_str()).unwrap_or("system"),
+                    "timestamp": event.timestamp.to_rfc3339(),
+                })),
+                _ => None,
             }
-
-            Some(serde_json::json!({
-                "type": "kanban:changed",
-                "workspaceId": event.workspace_id,
-                "entity": event.data.get("entity").and_then(|value| value.as_str()).unwrap_or("task"),
-                "action": event.data.get("action").and_then(|value| value.as_str()).unwrap_or("updated"),
-                "resourceId": event.data.get("resourceId").and_then(|value| value.as_str()),
-                "source": event.data.get("source").and_then(|value| value.as_str()).unwrap_or("system"),
-                "timestamp": event.timestamp.to_rfc3339(),
-            }))
         }
         AgentEventType::TaskStatusChanged
         | AgentEventType::TaskCompleted
@@ -140,157 +159,237 @@ fn translate_agent_event_to_kanban_payload(event: &AgentEvent) -> Option<serde_j
     }
 }
 
-fn get_session_concurrency_limit(metadata: &HashMap<String, String>, board_id: &str) -> u32 {
-    let key = format!("kanbanSessionConcurrencyLimit:{}", board_id);
-    metadata
-        .get(&key)
-        .and_then(|value| value.parse::<u32>().ok())
-        .filter(|&value| value >= 1)
-        .unwrap_or(1)
+async fn is_session_actively_running(state: &AppState, session_id: &str) -> bool {
+    if state.acp_manager.get_session(session_id).await.is_some() {
+        return true;
+    }
+
+    let Ok(Some(session)) = state.acp_session_store.get(session_id).await else {
+        return false;
+    };
+
+    !persisted_session_is_explicitly_terminal(&session.message_history)
 }
 
-fn get_auto_provider(metadata: &HashMap<String, String>, board_id: &str) -> Option<String> {
-    let key = format!("kanbanAutoProvider:{}", board_id);
-    metadata
-        .get(&key)
-        .map(|value| value.trim())
-        .filter(|value| !value.is_empty())
-        .map(ToOwned::to_owned)
+fn persisted_session_is_explicitly_terminal(history: &[serde_json::Value]) -> bool {
+    history
+        .iter()
+        .rev()
+        .find_map(session_history_entry_runtime_state)
+        == Some(PersistedSessionRuntimeState::Error)
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct KanbanDevSessionSupervision {
-    mode: String,
-    inactivity_timeout_minutes: u32,
-    max_recovery_attempts: u32,
-    completion_requirement: String,
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PersistedSessionRuntimeState {
+    Active,
+    Error,
 }
 
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct KanbanQueueCard {
-    card_id: String,
-    card_title: String,
+fn session_history_entry_runtime_state(
+    entry: &serde_json::Value,
+) -> Option<PersistedSessionRuntimeState> {
+    let update = entry.get("update").and_then(serde_json::Value::as_object);
+    let session_update = update
+        .and_then(|update| update.get("sessionUpdate"))
+        .and_then(serde_json::Value::as_str);
+
+    if session_update == Some("error") {
+        return Some(PersistedSessionRuntimeState::Error);
+    }
+
+    if session_update == Some("acp_status") {
+        let status = update
+            .and_then(|update| update.get("status"))
+            .and_then(serde_json::Value::as_str);
+        return match status {
+            Some("error") => Some(PersistedSessionRuntimeState::Error),
+            Some("ready" | "connecting") => Some(PersistedSessionRuntimeState::Active),
+            _ => None,
+        };
+    }
+
+    if entry.get("type").and_then(serde_json::Value::as_str) == Some("error") {
+        return Some(PersistedSessionRuntimeState::Error);
+    }
+
+    None
 }
 
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct KanbanBoardQueueSnapshot {
-    board_id: String,
-    running_count: usize,
-    running_cards: Vec<KanbanQueueCard>,
-    queued_count: usize,
-    queued_card_ids: Vec<String>,
-    queued_cards: Vec<KanbanQueueCard>,
-    queued_positions: HashMap<String, usize>,
-}
-
-fn default_dev_session_supervision() -> KanbanDevSessionSupervision {
-    KanbanDevSessionSupervision {
-        mode: "watchdog_retry".to_string(),
-        inactivity_timeout_minutes: 10,
-        max_recovery_attempts: 1,
-        completion_requirement: "turn_complete".to_string(),
+fn resolve_stale_lane_session_terminal_status(task: &Task) -> TaskLaneSessionStatus {
+    if task.verification_verdict.is_some()
+        || task.verification_report.is_some()
+        || task.completion_summary.is_some()
+    {
+        TaskLaneSessionStatus::Transitioned
+    } else {
+        TaskLaneSessionStatus::TimedOut
     }
 }
 
-fn dev_supervision_metadata_key(board_id: &str) -> String {
-    format!("kanbanDevSessionSupervision:{}", board_id)
+fn mark_lane_session_terminal(
+    lane_session: &mut routa_core::models::task::TaskLaneSession,
+    status: TaskLaneSessionStatus,
+) {
+    lane_session.status = status;
+    lane_session.completed_at = Some(chrono::Utc::now().to_rfc3339());
 }
 
-fn normalize_dev_session_supervision(
-    value: PartialKanbanDevSessionSupervision,
-) -> KanbanDevSessionSupervision {
-    let defaults = default_dev_session_supervision();
-    let mode = match value.mode.as_deref() {
-        Some("disabled" | "watchdog_retry" | "ralph_loop") => value.mode.unwrap_or(defaults.mode),
-        _ => defaults.mode,
-    };
-    let inactivity_timeout_minutes = value
-        .inactivity_timeout_minutes
-        .unwrap_or(defaults.inactivity_timeout_minutes)
-        .clamp(1, 120);
-    let max_recovery_attempts = value
-        .max_recovery_attempts
-        .unwrap_or(defaults.max_recovery_attempts)
-        .clamp(0, 10);
-    let completion_requirement = match value.completion_requirement.as_deref() {
-        Some("turn_complete" | "completion_summary" | "verification_report") => value
-            .completion_requirement
-            .unwrap_or(defaults.completion_requirement),
-        _ => defaults.completion_requirement,
+fn apply_lane_automation_defaults(
+    task: &mut Task,
+    automation: &routa_core::models::kanban::KanbanColumnAutomation,
+) {
+    let Some(step) = automation.primary_step() else {
+        return;
     };
 
-    KanbanDevSessionSupervision {
-        mode,
-        inactivity_timeout_minutes,
-        max_recovery_attempts,
-        completion_requirement,
+    if task.assigned_provider.is_none() {
+        task.assigned_provider = step.provider_id.or_else(|| automation.provider_id.clone());
+    }
+    if task.assigned_role.is_none() {
+        task.assigned_role = step.role.or_else(|| automation.role.clone());
+    }
+    if task.assigned_specialist_id.is_none() {
+        task.assigned_specialist_id = step
+            .specialist_id
+            .or_else(|| automation.specialist_id.clone());
+    }
+    if task.assigned_specialist_name.is_none() {
+        task.assigned_specialist_name = step
+            .specialist_name
+            .or_else(|| automation.specialist_name.clone());
     }
 }
 
-fn get_dev_session_supervision(
-    metadata: &HashMap<String, String>,
-    board_id: &str,
-) -> KanbanDevSessionSupervision {
-    let Some(raw) = metadata.get(&dev_supervision_metadata_key(board_id)) else {
-        return default_dev_session_supervision();
-    };
+async fn sanitize_stale_current_lane_automation(
+    state: &AppState,
+    mut task: Task,
+) -> Result<Task, ServerError> {
+    let mut mutated = false;
+    let terminal_status = resolve_stale_lane_session_terminal_status(&task);
 
-    serde_json::from_str::<PartialKanbanDevSessionSupervision>(raw)
-        .map(normalize_dev_session_supervision)
-        .unwrap_or_else(|_| default_dev_session_supervision())
+    if let Some(trigger_session_id) = task.trigger_session_id.clone() {
+        let trigger_lane_session = task
+            .lane_sessions
+            .iter()
+            .find(|entry| entry.session_id == trigger_session_id);
+        let should_check_runtime = trigger_lane_session
+            .map(|entry| lane_session_uses_in_memory_runtime(entry.transport.as_deref()))
+            .unwrap_or(true);
+
+        if should_check_runtime && !is_session_actively_running(state, &trigger_session_id).await {
+            if let Some(entry) = task.lane_sessions.iter_mut().find(|entry| {
+                entry.session_id == trigger_session_id
+                    && entry.column_id == task.column_id
+                    && entry.status == TaskLaneSessionStatus::Running
+            }) {
+                mark_lane_session_terminal(entry, terminal_status.clone());
+            }
+            task.trigger_session_id = None;
+            mutated = true;
+        }
+    }
+
+    for entry in &mut task.lane_sessions {
+        if entry.column_id != task.column_id
+            || entry.status != TaskLaneSessionStatus::Running
+            || !lane_session_uses_in_memory_runtime(entry.transport.as_deref())
+        {
+            continue;
+        }
+
+        if !is_session_actively_running(state, &entry.session_id).await {
+            mark_lane_session_terminal(entry, terminal_status.clone());
+            mutated = true;
+        }
+    }
+
+    if mutated {
+        task.updated_at = chrono::Utc::now();
+        state.task_store.save(&task).await?;
+    }
+
+    Ok(task)
 }
 
-fn set_dev_session_supervision(
-    metadata: &HashMap<String, String>,
-    board_id: &str,
-    value: PartialKanbanDevSessionSupervision,
-) -> HashMap<String, String> {
-    let mut next = metadata.clone();
-    let normalized = normalize_dev_session_supervision(value);
-    next.insert(
-        dev_supervision_metadata_key(board_id),
-        serde_json::to_string(&normalized).unwrap_or_default(),
-    );
-    next
+async fn has_active_current_lane_session(
+    state: &AppState,
+    task: &Task,
+    current_column_id: &str,
+) -> bool {
+    for entry in &task.lane_sessions {
+        if entry.column_id.as_deref() != Some(current_column_id)
+            || entry.status != TaskLaneSessionStatus::Running
+            || !lane_session_uses_in_memory_runtime(entry.transport.as_deref())
+        {
+            continue;
+        }
+
+        if is_session_actively_running(state, &entry.session_id).await {
+            return true;
+        }
+    }
+
+    false
 }
 
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct PartialKanbanDevSessionSupervision {
-    mode: Option<String>,
-    inactivity_timeout_minutes: Option<u32>,
-    max_recovery_attempts: Option<u32>,
-    completion_requirement: Option<String>,
-}
-
-async fn build_board_queue_snapshot(
+async fn revive_missing_entry_automations(
     state: &AppState,
     workspace_id: &str,
     board_id: &str,
-) -> Result<KanbanBoardQueueSnapshot, ServerError> {
-    let tasks = state.task_store.list_by_workspace(workspace_id).await?;
-    let running_cards = tasks
-        .into_iter()
-        .filter(|task| task.board_id.as_deref() == Some(board_id))
-        .filter(task_has_running_lane_session)
-        .map(|task| KanbanQueueCard {
-            card_id: task.id,
-            card_title: task.title,
-        })
-        .collect::<Vec<_>>();
+) -> Result<(), ServerError> {
+    let Some(board) = state.kanban_store.get(board_id).await? else {
+        return Ok(());
+    };
 
-    Ok(KanbanBoardQueueSnapshot {
-        board_id: board_id.to_string(),
-        running_count: running_cards.len(),
-        running_cards,
-        queued_count: 0,
-        queued_card_ids: Vec::new(),
-        queued_cards: Vec::new(),
-        queued_positions: HashMap::new(),
-    })
+    let tasks = state.task_store.list_by_workspace(workspace_id).await?;
+    for original_task in tasks {
+        if original_task.board_id.as_deref() != Some(board_id) {
+            continue;
+        }
+
+        let task = sanitize_stale_current_lane_automation(state, original_task).await?;
+        if task.trigger_session_id.is_some() {
+            continue;
+        }
+
+        let Some(current_column_id) = task.column_id.clone() else {
+            continue;
+        };
+        let Some(column) = board
+            .columns
+            .iter()
+            .find(|entry| entry.id == current_column_id)
+            .cloned()
+        else {
+            continue;
+        };
+        let Some(automation) = column.automation.clone() else {
+            continue;
+        };
+        let transition_type = automation.transition_type.as_deref().unwrap_or("entry");
+        if !automation.enabled
+            || !matches!(transition_type, "entry" | "both")
+            || automation.primary_step().is_none()
+            || has_active_current_lane_session(state, &task, &current_column_id).await
+        {
+            continue;
+        }
+
+        let mut task = task;
+        apply_lane_automation_defaults(&mut task, &automation);
+        match crate::api::tasks_automation::trigger_assigned_task_agent(
+            state, &mut task, None, None,
+        )
+        .await
+        {
+            Ok(()) => task.last_sync_error = None,
+            Err(error) => task.last_sync_error = Some(error),
+        }
+        task.updated_at = chrono::Utc::now();
+        state.task_store.save(&task).await?;
+    }
+
+    Ok(())
 }
 
 fn task_has_running_lane_session(task: &Task) -> bool {
@@ -344,6 +443,10 @@ async fn list_boards(
         })
         .collect::<Vec<_>>();
 
+    for board_id in &board_ids {
+        revive_missing_entry_automations(&state, &workspace_id, board_id).await?;
+    }
+
     let mut boards = Vec::with_capacity(board_ids.len());
     for board_id in board_ids {
         let rpc_board = rpc_result(
@@ -353,6 +456,7 @@ async fn list_boards(
         )
         .await?;
         let mut board = strip_board_cards(&rpc_board);
+        sanitize_board_response(&mut board);
         add_board_runtime_meta(&state, &mut board, &metadata, &workspace_id).await?;
         boards.push(board);
     }
@@ -419,7 +523,7 @@ async fn create_board(
     State(state): State<AppState>,
     Json(body): Json<CreateBoardRequest>,
 ) -> Result<(axum::http::StatusCode, Json<serde_json::Value>), ServerError> {
-    let rpc_result = rpc_result(
+    let mut rpc_result = rpc_result(
         &state,
         "kanban.createBoard",
         serde_json::json!({
@@ -430,6 +534,10 @@ async fn create_board(
         }),
     )
     .await?;
+
+    if let Some(board) = rpc_result.get_mut("board") {
+        sanitize_board_response(board);
+    }
 
     Ok((
         axum::http::StatusCode::CREATED,
@@ -458,6 +566,7 @@ async fn get_board(
         .unwrap_or_default();
 
     let mut board = strip_board_cards(&rpc_result);
+    sanitize_board_response(&mut board);
     add_board_runtime_meta(&state, &mut board, &metadata, workspace_id).await?;
     Ok(Json(serde_json::json!({ "board": board })))
 }
@@ -468,6 +577,10 @@ struct UpdateBoardRequest {
     name: Option<String>,
     columns: Option<serde_json::Value>,
     is_default: Option<bool>,
+    #[serde(rename = "githubToken")]
+    github_token: Option<String>,
+    #[serde(rename = "clearGitHubToken")]
+    clear_github_token: Option<bool>,
     auto_provider_id: Option<String>,
     session_concurrency_limit: Option<u32>,
     dev_session_supervision: Option<PartialKanbanDevSessionSupervision>,
@@ -487,6 +600,12 @@ async fn update_board(
     }
     if let Some(is_default) = body.is_default {
         params["isDefault"] = serde_json::json!(is_default);
+    }
+    if let Some(clear_github_token) = body.clear_github_token {
+        params["clearGitHubToken"] = serde_json::json!(clear_github_token);
+    }
+    if let Some(github_token) = body.github_token {
+        params["githubToken"] = serde_json::json!(github_token);
     }
 
     let rpc_result = rpc_result(&state, "kanban.updateBoard", params).await?;
@@ -527,6 +646,7 @@ async fn update_board(
         .map(|workspace| workspace.metadata)
         .unwrap_or_default();
     let mut board = board;
+    sanitize_board_response(&mut board);
     add_board_runtime_meta(&state, &mut board, &metadata, &workspace_id).await?;
 
     Ok(Json(serde_json::json!({ "board": board })))
@@ -805,7 +925,7 @@ async fn persist_session_concurrency_limit(
     let limit = limit.max(1);
     let workspace = state.workspace_store.get(workspace_id).await.ok().flatten();
     if let Some(mut workspace) = workspace {
-        let key = format!("kanbanSessionConcurrencyLimit:{}", board_id);
+        let key = format!("kanbanSessionConcurrencyLimit:{board_id}");
         workspace.metadata.insert(key, limit.to_string());
         state.workspace_store.save(&workspace).await?;
     }
@@ -820,7 +940,7 @@ async fn persist_auto_provider(
 ) -> Result<(), ServerError> {
     let workspace = state.workspace_store.get(workspace_id).await.ok().flatten();
     if let Some(mut workspace) = workspace {
-        let key = format!("kanbanAutoProvider:{}", board_id);
+        let key = format!("kanbanAutoProvider:{board_id}");
         if let Some(provider_id) = provider_id
             .map(|value| value.trim().to_string())
             .filter(|value| !value.is_empty())
@@ -867,9 +987,9 @@ async fn rpc_result(
         return Ok(result.clone());
     }
 
-    let error = response.get("error").ok_or_else(|| {
-        ServerError::Internal(format!("Missing RPC result for method {}", method))
-    })?;
+    let error = response
+        .get("error")
+        .ok_or_else(|| ServerError::Internal(format!("Missing RPC result for method {method}")))?;
     let code = error
         .get("code")
         .and_then(|value| value.as_i64())
@@ -915,54 +1035,73 @@ fn strip_board_cards(board: &serde_json::Value) -> serde_json::Value {
     board
 }
 
-async fn add_board_runtime_meta(
-    state: &AppState,
-    board: &mut serde_json::Value,
-    metadata: &HashMap<String, String>,
-    workspace_id: &str,
-) -> Result<(), ServerError> {
-    let Some(object) = board.as_object_mut() else {
-        return Ok(());
-    };
-
-    let board_id = object
-        .get("id")
-        .and_then(|value| value.as_str())
-        .unwrap_or_default()
-        .to_string();
-    let queue = build_board_queue_snapshot(state, workspace_id, &board_id).await?;
-    object.insert(
-        "sessionConcurrencyLimit".to_string(),
-        serde_json::json!(get_session_concurrency_limit(metadata, &board_id)),
-    );
-    object.insert(
-        "autoProviderId".to_string(),
-        serde_json::to_value(get_auto_provider(metadata, &board_id))
-            .unwrap_or(serde_json::Value::Null),
-    );
-    object.insert(
-        "devSessionSupervision".to_string(),
-        serde_json::to_value(get_dev_session_supervision(metadata, &board_id))
-            .unwrap_or(serde_json::Value::Null),
-    );
-    object.insert(
-        "queue".to_string(),
-        serde_json::to_value(queue).unwrap_or(serde_json::Value::Null),
-    );
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::{
-        default_dev_session_supervision, get_dev_session_supervision,
-        normalize_dev_session_supervision, translate_agent_event_to_kanban_payload,
-        PartialKanbanDevSessionSupervision,
+        persisted_session_is_explicitly_terminal, sanitize_stale_current_lane_automation,
+        translate_agent_event_to_kanban_payload, UpdateBoardRequest,
     };
     use chrono::Utc;
     use routa_core::events::{AgentEvent, AgentEventType};
+    use routa_core::models::task::{Task, TaskLaneSession, TaskLaneSessionStatus, TaskStatus};
+    use routa_core::store::acp_session_store::CreateAcpSessionParams;
+    use routa_core::{AppState, AppStateInner, Database};
     use serde_json::json;
-    use std::collections::HashMap;
+    use std::sync::Arc;
+
+    async fn setup_state() -> AppState {
+        let db = Database::open_in_memory().expect("in-memory db should open");
+        let state: AppState = Arc::new(AppStateInner::new(db));
+        state
+            .workspace_store
+            .ensure_default()
+            .await
+            .expect("default workspace should exist");
+        state
+    }
+
+    fn build_task(id: &str) -> Task {
+        let mut task = Task::new(
+            id.to_string(),
+            "Review story".to_string(),
+            "Recover stale automation".to_string(),
+            "default".to_string(),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        );
+        task.board_id = Some("board-1".to_string());
+        task.column_id = Some("review".to_string());
+        task.status = TaskStatus::ReviewRequired;
+        task
+    }
+
+    async fn persist_session(state: &AppState, session_id: &str, history: &[serde_json::Value]) {
+        state
+            .acp_session_store
+            .create(CreateAcpSessionParams {
+                id: session_id,
+                cwd: ".",
+                branch: None,
+                workspace_id: "default",
+                provider: Some("codex-acp"),
+                role: Some("GATE"),
+                custom_command: None,
+                custom_args: None,
+                parent_session_id: None,
+            })
+            .await
+            .expect("session should persist");
+        state
+            .acp_session_store
+            .save_history(session_id, history)
+            .await
+            .expect("history should persist");
+    }
 
     #[test]
     fn translates_workspace_updated_kanban_event() {
@@ -1008,6 +1147,29 @@ mod tests {
     }
 
     #[test]
+    fn translates_runtime_fitness_workspace_updates() {
+        let event = AgentEvent {
+            event_type: AgentEventType::WorkspaceUpdated,
+            agent_id: "system".to_string(),
+            workspace_id: "ws-1".to_string(),
+            data: json!({
+                "scope": "fitness",
+                "source": "system",
+                "repoPath": "/tmp/repo",
+                "status": "running",
+            }),
+            timestamp: Utc::now(),
+        };
+
+        let payload =
+            translate_agent_event_to_kanban_payload(&event).expect("payload should exist");
+        assert_eq!(payload["type"].as_str(), Some("fitness:changed"));
+        assert_eq!(payload["workspaceId"].as_str(), Some("ws-1"));
+        assert_eq!(payload["repoPath"].as_str(), Some("/tmp/repo"));
+        assert_eq!(payload["status"].as_str(), Some("running"));
+    }
+
+    #[test]
     fn translates_task_status_change_to_kanban_update() {
         let event = AgentEvent {
             event_type: AgentEventType::TaskStatusChanged,
@@ -1030,27 +1192,318 @@ mod tests {
     }
 
     #[test]
-    fn dev_session_supervision_defaults_when_missing() {
-        let metadata = HashMap::new();
+    fn update_board_request_deserializes_github_token_fields() {
+        let payload = serde_json::json!({
+            "githubToken": "github_pat_test",
+            "clearGitHubToken": true
+        });
+
+        let request: UpdateBoardRequest =
+            serde_json::from_value(payload).expect("request should deserialize");
+
+        assert_eq!(request.github_token.as_deref(), Some("github_pat_test"));
+        assert_eq!(request.clear_github_token, Some(true));
+    }
+
+    #[tokio::test]
+    async fn stale_current_lane_sessions_are_marked_terminal_and_trigger_is_cleared() {
+        let state = setup_state().await;
+        let mut task = build_task("task-1");
+        task.trigger_session_id = Some("session-1".to_string());
+        task.lane_sessions.push(TaskLaneSession {
+            session_id: "session-1".to_string(),
+            routa_agent_id: None,
+            column_id: Some("review".to_string()),
+            column_name: Some("Review".to_string()),
+            step_id: None,
+            step_index: None,
+            step_name: None,
+            provider: Some("codex-acp".to_string()),
+            role: Some("GATE".to_string()),
+            specialist_id: None,
+            specialist_name: None,
+            transport: Some("acp".to_string()),
+            external_task_id: None,
+            context_id: None,
+            attempt: Some(1),
+            loop_mode: None,
+            completion_requirement: None,
+            objective: Some(task.objective.clone()),
+            last_activity_at: None,
+            recovered_from_session_id: None,
+            recovery_reason: None,
+            status: TaskLaneSessionStatus::Running,
+            started_at: Utc::now().to_rfc3339(),
+            completed_at: None,
+        });
+
+        let updated = sanitize_stale_current_lane_automation(&state, task)
+            .await
+            .expect("sanitize should succeed");
+
+        assert_eq!(updated.trigger_session_id, None);
+        assert_eq!(updated.lane_sessions.len(), 1);
+        assert_eq!(
+            updated.lane_sessions[0].status,
+            TaskLaneSessionStatus::TimedOut
+        );
+        assert!(updated.lane_sessions[0].completed_at.is_some());
+    }
+
+    #[tokio::test]
+    async fn stale_sessions_with_verification_evidence_become_transitioned() {
+        let state = setup_state().await;
+        let mut task = build_task("task-2");
+        task.trigger_session_id = Some("session-2".to_string());
+        task.verification_report = Some("approved".to_string());
+        task.lane_sessions.push(TaskLaneSession {
+            session_id: "session-2".to_string(),
+            routa_agent_id: None,
+            column_id: Some("review".to_string()),
+            column_name: Some("Review".to_string()),
+            step_id: None,
+            step_index: None,
+            step_name: None,
+            provider: Some("codex-acp".to_string()),
+            role: Some("GATE".to_string()),
+            specialist_id: None,
+            specialist_name: None,
+            transport: Some("acp".to_string()),
+            external_task_id: None,
+            context_id: None,
+            attempt: Some(1),
+            loop_mode: None,
+            completion_requirement: None,
+            objective: Some(task.objective.clone()),
+            last_activity_at: None,
+            recovered_from_session_id: None,
+            recovery_reason: None,
+            status: TaskLaneSessionStatus::Running,
+            started_at: Utc::now().to_rfc3339(),
+            completed_at: None,
+        });
+
+        let updated = sanitize_stale_current_lane_automation(&state, task)
+            .await
+            .expect("sanitize should succeed");
 
         assert_eq!(
-            serde_json::to_value(get_dev_session_supervision(&metadata, "board-1")).unwrap(),
-            serde_json::to_value(default_dev_session_supervision()).unwrap()
+            updated.lane_sessions[0].status,
+            TaskLaneSessionStatus::Transitioned
         );
     }
 
-    #[test]
-    fn normalize_dev_session_supervision_clamps_invalid_values() {
-        let normalized = normalize_dev_session_supervision(PartialKanbanDevSessionSupervision {
-            mode: Some("unknown".to_string()),
-            inactivity_timeout_minutes: Some(999),
-            max_recovery_attempts: Some(999),
-            completion_requirement: Some("bogus".to_string()),
+    #[tokio::test]
+    async fn a2a_lane_sessions_are_not_marked_stale_by_missing_acp_runtime() {
+        let state = setup_state().await;
+        let mut task = build_task("task-3");
+        task.trigger_session_id = Some("session-3".to_string());
+        task.lane_sessions.push(TaskLaneSession {
+            session_id: "session-3".to_string(),
+            routa_agent_id: None,
+            column_id: Some("review".to_string()),
+            column_name: Some("Review".to_string()),
+            step_id: None,
+            step_index: None,
+            step_name: None,
+            provider: None,
+            role: None,
+            specialist_id: None,
+            specialist_name: None,
+            transport: Some("a2a".to_string()),
+            external_task_id: Some("remote-task-1".to_string()),
+            context_id: Some("ctx-1".to_string()),
+            attempt: Some(1),
+            loop_mode: None,
+            completion_requirement: None,
+            objective: Some(task.objective.clone()),
+            last_activity_at: None,
+            recovered_from_session_id: None,
+            recovery_reason: None,
+            status: TaskLaneSessionStatus::Running,
+            started_at: Utc::now().to_rfc3339(),
+            completed_at: None,
         });
 
-        assert_eq!(normalized.mode, "watchdog_retry");
-        assert_eq!(normalized.inactivity_timeout_minutes, 120);
-        assert_eq!(normalized.max_recovery_attempts, 10);
-        assert_eq!(normalized.completion_requirement, "turn_complete");
+        let updated = sanitize_stale_current_lane_automation(&state, task)
+            .await
+            .expect("sanitize should succeed");
+
+        assert_eq!(updated.trigger_session_id.as_deref(), Some("session-3"));
+        assert_eq!(
+            updated.lane_sessions[0].status,
+            TaskLaneSessionStatus::Running
+        );
+        assert_eq!(updated.lane_sessions[0].completed_at, None);
+    }
+
+    #[test]
+    fn persisted_session_history_only_becomes_terminal_on_explicit_runtime_error() {
+        assert!(!persisted_session_is_explicitly_terminal(&[
+            json!({
+                "sessionId": "session-4",
+                "update": {
+                    "sessionUpdate": "acp_status",
+                    "status": "ready",
+                }
+            }),
+            json!({
+                "sessionId": "session-4",
+                "update": {
+                    "sessionUpdate": "agent_message",
+                    "content": { "text": "still resumable" }
+                }
+            }),
+        ]));
+
+        assert!(!persisted_session_is_explicitly_terminal(&[json!({
+            "sessionId": "session-4",
+            "update": {
+                "sessionUpdate": "acp_status",
+                "content": { "text": "connected" }
+            }
+        })]));
+
+        assert!(persisted_session_is_explicitly_terminal(&[json!({
+            "sessionId": "session-4",
+            "update": {
+                "sessionUpdate": "acp_status",
+                "status": "error",
+                "error": "session crashed"
+            }
+        })]));
+
+        assert!(!persisted_session_is_explicitly_terminal(&[
+            json!({
+                "sessionId": "session-4",
+                "update": {
+                    "sessionUpdate": "acp_status",
+                    "status": "error",
+                    "error": "session crashed"
+                }
+            }),
+            json!({
+                "sessionId": "session-4",
+                "update": {
+                    "sessionUpdate": "acp_status",
+                    "status": "ready",
+                }
+            }),
+        ]));
+    }
+
+    #[tokio::test]
+    async fn persisted_restorable_sessions_keep_lane_ownership_after_restart() {
+        let state = setup_state().await;
+        persist_session(
+            &state,
+            "session-4",
+            &[json!({
+                "sessionId": "session-4",
+                "update": {
+                    "sessionUpdate": "agent_message",
+                    "content": { "text": "restorable" }
+                }
+            })],
+        )
+        .await;
+
+        let mut task = build_task("task-4");
+        task.trigger_session_id = Some("session-4".to_string());
+        task.lane_sessions.push(TaskLaneSession {
+            session_id: "session-4".to_string(),
+            routa_agent_id: None,
+            column_id: Some("review".to_string()),
+            column_name: Some("Review".to_string()),
+            step_id: None,
+            step_index: None,
+            step_name: None,
+            provider: Some("codex-acp".to_string()),
+            role: Some("GATE".to_string()),
+            specialist_id: None,
+            specialist_name: None,
+            transport: Some("acp".to_string()),
+            external_task_id: None,
+            context_id: None,
+            attempt: Some(1),
+            loop_mode: None,
+            completion_requirement: None,
+            objective: Some(task.objective.clone()),
+            last_activity_at: None,
+            recovered_from_session_id: None,
+            recovery_reason: None,
+            status: TaskLaneSessionStatus::Running,
+            started_at: Utc::now().to_rfc3339(),
+            completed_at: None,
+        });
+
+        let updated = sanitize_stale_current_lane_automation(&state, task)
+            .await
+            .expect("sanitize should succeed");
+
+        assert_eq!(updated.trigger_session_id.as_deref(), Some("session-4"));
+        assert_eq!(
+            updated.lane_sessions[0].status,
+            TaskLaneSessionStatus::Running
+        );
+        assert_eq!(updated.lane_sessions[0].completed_at, None);
+    }
+
+    #[tokio::test]
+    async fn persisted_error_sessions_release_lane_ownership_after_restart() {
+        let state = setup_state().await;
+        persist_session(
+            &state,
+            "session-5",
+            &[json!({
+                "sessionId": "session-5",
+                "update": {
+                    "sessionUpdate": "acp_status",
+                    "status": "error",
+                    "error": "worker exited"
+                }
+            })],
+        )
+        .await;
+
+        let mut task = build_task("task-5");
+        task.trigger_session_id = Some("session-5".to_string());
+        task.lane_sessions.push(TaskLaneSession {
+            session_id: "session-5".to_string(),
+            routa_agent_id: None,
+            column_id: Some("review".to_string()),
+            column_name: Some("Review".to_string()),
+            step_id: None,
+            step_index: None,
+            step_name: None,
+            provider: Some("codex-acp".to_string()),
+            role: Some("GATE".to_string()),
+            specialist_id: None,
+            specialist_name: None,
+            transport: Some("acp".to_string()),
+            external_task_id: None,
+            context_id: None,
+            attempt: Some(1),
+            loop_mode: None,
+            completion_requirement: None,
+            objective: Some(task.objective.clone()),
+            last_activity_at: None,
+            recovered_from_session_id: None,
+            recovery_reason: None,
+            status: TaskLaneSessionStatus::Running,
+            started_at: Utc::now().to_rfc3339(),
+            completed_at: None,
+        });
+
+        let updated = sanitize_stale_current_lane_automation(&state, task)
+            .await
+            .expect("sanitize should succeed");
+
+        assert_eq!(updated.trigger_session_id, None);
+        assert_eq!(
+            updated.lane_sessions[0].status,
+            TaskLaneSessionStatus::TimedOut
+        );
+        assert!(updated.lane_sessions[0].completed_at.is_some());
     }
 }

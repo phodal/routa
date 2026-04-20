@@ -8,7 +8,13 @@ import { createRequire } from "node:module";
 const EXPECTED_HOOKS_PATH = ".husky/_";
 const require = createRequire(import.meta.url);
 const HUSKY_BIN_PATH = path.join(path.dirname(require.resolve("husky")), "bin.js");
-const REQUIRED_PROJECT_HOOK_FILES = ["pre-commit", "pre-push", "post-commit"] as const;
+const REQUIRED_PROJECT_HOOK_FILES = [
+  "pre-commit",
+  "pre-push",
+  "post-commit",
+  "prepare-commit-msg",
+  "commit-msg",
+] as const;
 const REQUIRED_RUNTIME_HOOK_FILES = ["h", ...REQUIRED_PROJECT_HOOK_FILES] as const;
 
 export type HookInstallStatus = "synced" | "repaired" | "skipped";

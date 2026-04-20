@@ -11,6 +11,7 @@ use axum::{
 };
 use serde::Deserialize;
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
 use tokio::process::Command;
 
 use crate::api::repo_context::{
@@ -22,6 +23,7 @@ use crate::state::AppState;
 
 const FITNESS_PROFILES: [&str; 2] = ["generic", "agent_orchestrator"];
 const ARCHITECTURE_SUITES: [&str; 2] = ["boundaries", "cycles"];
+const RUNTIME_FITNESS_MODES: [&str; 2] = ["fast", "full"];
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -29,6 +31,7 @@ pub fn router() -> Router<AppState> {
         .route("/architecture", get(get_fitness_architecture))
         .route("/plan", get(get_fitness_plan))
         .route("/report", get(get_fitness_report))
+        .route("/runtime", get(get_fitness_runtime))
         .route("/specs", get(get_fitness_specs))
 }
 
@@ -53,6 +56,74 @@ struct FitnessPlanQuery {
     repo_path: Option<String>,
     tier: Option<String>,
     scope: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct RuntimeFitnessEventRecord {
+    #[serde(default)]
+    r#type: Option<String>,
+    #[serde(default)]
+    observed_at_ms: Option<i64>,
+    #[serde(default)]
+    mode: Option<String>,
+    #[serde(default)]
+    status: Option<String>,
+    #[serde(default)]
+    final_score: Option<f64>,
+    #[serde(default)]
+    hard_gate_blocked: Option<bool>,
+    #[serde(default)]
+    score_blocked: Option<bool>,
+    #[serde(default)]
+    duration_ms: Option<f64>,
+    #[serde(default)]
+    dimension_count: Option<usize>,
+    #[serde(default)]
+    metric_count: Option<usize>,
+    #[serde(default)]
+    artifact_path: Option<String>,
+}
+
+#[derive(Clone, Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RuntimeFitnessCompletedSummary {
+    status: String,
+    observed_at: String,
+    final_score: Option<f64>,
+    hard_gate_blocked: Option<bool>,
+    score_blocked: Option<bool>,
+    duration_ms: Option<f64>,
+    dimension_count: Option<usize>,
+    metric_count: Option<usize>,
+    artifact_path: Option<String>,
+}
+
+#[derive(Clone, Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RuntimeFitnessModeSummary {
+    mode: String,
+    current_status: String,
+    current_observed_at: Option<String>,
+    final_score: Option<f64>,
+    hard_gate_blocked: Option<bool>,
+    score_blocked: Option<bool>,
+    duration_ms: Option<f64>,
+    dimension_count: Option<usize>,
+    metric_count: Option<usize>,
+    artifact_path: Option<String>,
+    last_completed: Option<RuntimeFitnessCompletedSummary>,
+    #[serde(skip)]
+    current_observed_at_ms: Option<i64>,
+}
+
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RuntimeFitnessStatusPayload {
+    generated_at: String,
+    repo_root: String,
+    has_running: bool,
+    modes: Vec<RuntimeFitnessModeSummary>,
+    latest: Option<RuntimeFitnessModeSummary>,
 }
 
 async fn analyze_fitness(
@@ -151,6 +222,33 @@ async fn get_fitness_report(
         "requestedProfiles": FITNESS_PROFILES,
         "profiles": profiles,
     })))
+}
+
+async fn get_fitness_runtime(
+    State(state): State<AppState>,
+    Query(query): Query<RepoContextQuery>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    let repo_root = resolve_repo_root(
+        &state,
+        query.workspace_id.as_deref(),
+        query.codebase_id.as_deref(),
+        query.repo_path.as_deref(),
+        "缺少 runtime fitness 上下文，请提供 workspaceId / codebaseId / repoPath 之一",
+        ResolveRepoRootOptions {
+            prefer_current_repo_for_default_workspace: true,
+        },
+    )
+    .await
+    .map_err(map_context_error(
+        "Runtime Fitness 上下文无效",
+        "读取 Runtime Fitness 状态失败",
+    ))?;
+
+    let payload = read_runtime_fitness_status(&repo_root)
+        .map_err(map_internal_error("读取 Runtime Fitness 状态失败"))?;
+    Ok(Json(
+        serde_json::to_value(payload).expect("runtime fitness payload should serialize"),
+    ))
 }
 
 async fn get_fitness_architecture(
@@ -1056,6 +1154,289 @@ fn parse_non_markdown_spec(relative_path: &str, raw: &str) -> Value {
     })
 }
 
+fn runtime_fitness_marker(repo_root: &Path) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(repo_root.to_string_lossy().as_bytes());
+    format!("{:x}", hasher.finalize())
+}
+
+fn runtime_fitness_root(repo_root: &Path) -> PathBuf {
+    Path::new("/tmp")
+        .join("harness-monitor")
+        .join("runtime")
+        .join(runtime_fitness_marker(repo_root))
+}
+
+fn runtime_fitness_event_path(repo_root: &Path) -> PathBuf {
+    runtime_fitness_root(repo_root).join("events.jsonl")
+}
+
+fn runtime_fitness_artifact_path(repo_root: &Path, mode: &str) -> PathBuf {
+    runtime_fitness_root(repo_root)
+        .join("artifacts")
+        .join("fitness")
+        .join(format!("latest-{mode}.json"))
+}
+
+fn normalize_runtime_fitness_mode(value: Option<&str>) -> Option<&'static str> {
+    match value {
+        Some("fast") => Some("fast"),
+        Some("full") | Some("normal") => Some("full"),
+        _ => None,
+    }
+}
+
+fn normalize_runtime_fitness_status(value: Option<&str>) -> Option<&'static str> {
+    match value {
+        Some("running") => Some("running"),
+        Some("passed") => Some("passed"),
+        Some("failed") => Some("failed"),
+        Some("skipped") => Some("skipped"),
+        _ => None,
+    }
+}
+
+fn is_terminal_runtime_fitness_status(status: &str) -> bool {
+    matches!(status, "passed" | "failed" | "skipped")
+}
+
+fn timestamp_ms_to_rfc3339(timestamp_ms: Option<i64>) -> Option<String> {
+    timestamp_ms
+        .and_then(chrono::DateTime::<chrono::Utc>::from_timestamp_millis)
+        .map(|value| value.to_rfc3339())
+}
+
+fn derive_runtime_fitness_artifact_status(
+    hard_gate_blocked: Option<bool>,
+    score_blocked: Option<bool>,
+) -> &'static str {
+    if hard_gate_blocked.unwrap_or(false) || score_blocked.unwrap_or(false) {
+        "failed"
+    } else {
+        "passed"
+    }
+}
+
+fn completed_summary_from_runtime_event(
+    event: &RuntimeFitnessEventRecord,
+) -> Option<RuntimeFitnessCompletedSummary> {
+    let status = normalize_runtime_fitness_status(event.status.as_deref())?;
+    if !is_terminal_runtime_fitness_status(status) {
+        return None;
+    }
+    let observed_at = timestamp_ms_to_rfc3339(event.observed_at_ms)?;
+    Some(RuntimeFitnessCompletedSummary {
+        status: status.to_string(),
+        observed_at,
+        final_score: event.final_score,
+        hard_gate_blocked: event.hard_gate_blocked,
+        score_blocked: event.score_blocked,
+        duration_ms: event.duration_ms,
+        dimension_count: event.dimension_count,
+        metric_count: event.metric_count,
+        artifact_path: event.artifact_path.clone(),
+    })
+}
+
+fn read_runtime_fitness_artifact_summary(
+    repo_root: &Path,
+    mode: &str,
+) -> Result<Option<(i64, RuntimeFitnessCompletedSummary)>, ServerError> {
+    let artifact_path = runtime_fitness_artifact_path(repo_root, mode);
+    let raw = match std::fs::read_to_string(&artifact_path) {
+        Ok(raw) => raw,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => {
+            return Err(ServerError::Internal(format!(
+                "读取 Runtime Fitness artifact 失败: {error}"
+            )))
+        }
+    };
+    let parsed = serde_json::from_str::<Value>(&raw).map_err(|error| {
+        ServerError::Internal(format!("解析 Runtime Fitness artifact 失败: {error}"))
+    })?;
+    let generated_at_ms = parsed.get("generated_at_ms").and_then(Value::as_i64);
+    let Some(generated_at_ms) = generated_at_ms else {
+        return Ok(None);
+    };
+    let Some(observed_at) = timestamp_ms_to_rfc3339(Some(generated_at_ms)) else {
+        return Ok(None);
+    };
+    let hard_gate_blocked = parsed.get("hard_gate_blocked").and_then(Value::as_bool);
+    let score_blocked = parsed.get("score_blocked").and_then(Value::as_bool);
+    Ok(Some((
+        generated_at_ms,
+        RuntimeFitnessCompletedSummary {
+            status: derive_runtime_fitness_artifact_status(hard_gate_blocked, score_blocked)
+                .to_string(),
+            observed_at,
+            final_score: parsed.get("final_score").and_then(Value::as_f64),
+            hard_gate_blocked,
+            score_blocked,
+            duration_ms: parsed.get("duration_ms").and_then(Value::as_f64),
+            dimension_count: parsed
+                .get("dimensions")
+                .and_then(Value::as_array)
+                .map(std::vec::Vec::len),
+            metric_count: parsed
+                .get("metric_count")
+                .and_then(Value::as_u64)
+                .map(|value| value as usize),
+            artifact_path: Some(artifact_path.to_string_lossy().to_string()),
+        },
+    )))
+}
+
+fn missing_runtime_fitness_mode_summary(mode: &str) -> RuntimeFitnessModeSummary {
+    RuntimeFitnessModeSummary {
+        mode: mode.to_string(),
+        current_status: "missing".to_string(),
+        current_observed_at: None,
+        final_score: None,
+        hard_gate_blocked: None,
+        score_blocked: None,
+        duration_ms: None,
+        dimension_count: None,
+        metric_count: None,
+        artifact_path: None,
+        last_completed: None,
+        current_observed_at_ms: None,
+    }
+}
+
+fn summarize_runtime_fitness_mode_from_completed(
+    mode: &str,
+    summary: RuntimeFitnessCompletedSummary,
+) -> RuntimeFitnessModeSummary {
+    RuntimeFitnessModeSummary {
+        mode: mode.to_string(),
+        current_status: summary.status.clone(),
+        current_observed_at: Some(summary.observed_at.clone()),
+        final_score: summary.final_score,
+        hard_gate_blocked: summary.hard_gate_blocked,
+        score_blocked: summary.score_blocked,
+        duration_ms: summary.duration_ms,
+        dimension_count: summary.dimension_count,
+        metric_count: summary.metric_count,
+        artifact_path: summary.artifact_path.clone(),
+        last_completed: Some(summary.clone()),
+        current_observed_at_ms: chrono::DateTime::parse_from_rfc3339(&summary.observed_at)
+            .ok()
+            .map(|value| value.timestamp_millis()),
+    }
+}
+
+fn build_runtime_fitness_mode_summary(
+    repo_root: &Path,
+    mode: &str,
+    latest_event: Option<&RuntimeFitnessEventRecord>,
+    latest_terminal_event: Option<&RuntimeFitnessEventRecord>,
+) -> Result<RuntimeFitnessModeSummary, ServerError> {
+    let latest_artifact = read_runtime_fitness_artifact_summary(repo_root, mode)?;
+    let last_completed = latest_terminal_event
+        .and_then(completed_summary_from_runtime_event)
+        .or_else(|| latest_artifact.as_ref().map(|(_, summary)| summary.clone()));
+
+    let current_status =
+        latest_event.and_then(|event| normalize_runtime_fitness_status(event.status.as_deref()));
+
+    if current_status == Some("running") {
+        return Ok(RuntimeFitnessModeSummary {
+            mode: mode.to_string(),
+            current_status: "running".to_string(),
+            current_observed_at: timestamp_ms_to_rfc3339(
+                latest_event.and_then(|event| event.observed_at_ms),
+            ),
+            final_score: latest_event.and_then(|event| event.final_score),
+            hard_gate_blocked: latest_event.and_then(|event| event.hard_gate_blocked),
+            score_blocked: latest_event.and_then(|event| event.score_blocked),
+            duration_ms: latest_event.and_then(|event| event.duration_ms),
+            dimension_count: latest_event.and_then(|event| event.dimension_count),
+            metric_count: latest_event.and_then(|event| event.metric_count),
+            artifact_path: latest_event.and_then(|event| event.artifact_path.clone()),
+            last_completed,
+            current_observed_at_ms: latest_event.and_then(|event| event.observed_at_ms),
+        });
+    }
+
+    if let Some(summary) = latest_event.and_then(completed_summary_from_runtime_event) {
+        return Ok(summarize_runtime_fitness_mode_from_completed(mode, summary));
+    }
+
+    if let Some(summary) = last_completed {
+        return Ok(summarize_runtime_fitness_mode_from_completed(mode, summary));
+    }
+
+    Ok(missing_runtime_fitness_mode_summary(mode))
+}
+
+fn read_runtime_fitness_status(
+    repo_root: &Path,
+) -> Result<RuntimeFitnessStatusPayload, ServerError> {
+    let mut latest_by_mode = BTreeMap::<String, RuntimeFitnessEventRecord>::new();
+    let mut latest_terminal_by_mode = BTreeMap::<String, RuntimeFitnessEventRecord>::new();
+
+    let event_path = runtime_fitness_event_path(repo_root);
+    match std::fs::read_to_string(&event_path) {
+        Ok(raw) => {
+            for line in raw.lines().map(str::trim).filter(|line| !line.is_empty()) {
+                let parsed = match serde_json::from_str::<RuntimeFitnessEventRecord>(line) {
+                    Ok(parsed) => parsed,
+                    Err(_) => continue,
+                };
+                if parsed.r#type.as_deref() != Some("fitness") {
+                    continue;
+                }
+                let Some(mode) = normalize_runtime_fitness_mode(parsed.mode.as_deref()) else {
+                    continue;
+                };
+                let Some(status) = normalize_runtime_fitness_status(parsed.status.as_deref())
+                else {
+                    continue;
+                };
+                latest_by_mode.insert(mode.to_string(), parsed.clone());
+                if is_terminal_runtime_fitness_status(status) {
+                    latest_terminal_by_mode.insert(mode.to_string(), parsed);
+                }
+            }
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => {
+            return Err(ServerError::Internal(format!(
+                "读取 Runtime Fitness event log 失败: {error}"
+            )))
+        }
+    }
+
+    let modes = RUNTIME_FITNESS_MODES
+        .iter()
+        .map(|mode| {
+            build_runtime_fitness_mode_summary(
+                repo_root,
+                mode,
+                latest_by_mode.get(*mode),
+                latest_terminal_by_mode.get(*mode),
+            )
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+
+    let latest = modes
+        .iter()
+        .filter(|summary| summary.current_status != "missing")
+        .max_by_key(|summary| summary.current_observed_at_ms.unwrap_or(-1))
+        .cloned();
+
+    Ok(RuntimeFitnessStatusPayload {
+        generated_at: chrono::Utc::now().to_rfc3339(),
+        repo_root: repo_root.to_string_lossy().to_string(),
+        has_running: modes
+            .iter()
+            .any(|summary| summary.current_status == "running"),
+        modes,
+        latest,
+    })
+}
+
 fn is_fluency_model_spec(relative_path: &str) -> bool {
     matches!(
         relative_path,
@@ -1158,5 +1539,159 @@ fn map_io_error(
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json_error(public_error, error.to_string())),
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    #[test]
+    fn runtime_fitness_status_surfaces_running_and_previous_completed_summary() {
+        let temp = tempdir().expect("tempdir");
+        let repo_root = temp.path();
+        let runtime_root = runtime_fitness_root(repo_root);
+        std::fs::create_dir_all(runtime_root.join("artifacts").join("fitness"))
+            .expect("runtime artifact dir");
+        std::fs::write(
+            runtime_root.join("events.jsonl"),
+            format!(
+                "{}\n{}\n",
+                json!({
+                    "type": "fitness",
+                    "repo_root": repo_root.display().to_string(),
+                    "observed_at_ms": 1_700_000_000_000i64,
+                    "mode": "full",
+                    "status": "passed",
+                    "final_score": 92.4,
+                    "hard_gate_blocked": false,
+                    "score_blocked": false,
+                    "duration_ms": 2180.0,
+                    "dimension_count": 8,
+                    "metric_count": 18,
+                    "artifact_path": runtime_root
+                        .join("artifacts")
+                        .join("fitness")
+                        .join("latest-full.json")
+                        .to_string_lossy()
+                        .to_string(),
+                }),
+                json!({
+                    "type": "fitness",
+                    "repo_root": repo_root.display().to_string(),
+                    "observed_at_ms": 1_700_000_020_000i64,
+                    "mode": "full",
+                    "status": "running",
+                    "metric_count": 19,
+                }),
+            ),
+        )
+        .expect("event log");
+        std::fs::write(
+            runtime_root
+                .join("artifacts")
+                .join("fitness")
+                .join("latest-full.json"),
+            serde_json::to_string_pretty(&json!({
+                "generated_at_ms": 1_700_000_000_000i64,
+                "final_score": 92.4,
+                "hard_gate_blocked": false,
+                "score_blocked": false,
+                "duration_ms": 2180.0,
+                "metric_count": 18,
+                "dimensions": vec![json!({}); 8],
+            }))
+            .expect("serialize artifact"),
+        )
+        .expect("write artifact");
+
+        let payload = read_runtime_fitness_status(repo_root).expect("runtime fitness payload");
+
+        assert!(payload.has_running);
+        let latest = payload.latest.expect("latest runtime fitness summary");
+        assert_eq!(latest.mode, "full");
+        assert_eq!(latest.current_status, "running");
+        assert_eq!(latest.metric_count, Some(19));
+
+        let full = payload
+            .modes
+            .iter()
+            .find(|summary| summary.mode == "full")
+            .expect("full summary");
+        assert_eq!(full.current_status, "running");
+        let last_completed = full.last_completed.as_ref().expect("completed summary");
+        assert_eq!(last_completed.status, "passed");
+        assert_eq!(last_completed.final_score, Some(92.4));
+        assert_eq!(last_completed.dimension_count, Some(8));
+        assert_eq!(last_completed.metric_count, Some(18));
+    }
+
+    #[test]
+    fn runtime_fitness_status_returns_missing_when_runtime_is_absent() {
+        let temp = tempdir().expect("tempdir");
+        let payload = read_runtime_fitness_status(temp.path()).expect("runtime fitness payload");
+
+        assert!(!payload.has_running);
+        assert!(payload.latest.is_none());
+        assert_eq!(payload.modes.len(), 2);
+        assert!(payload
+            .modes
+            .iter()
+            .all(|summary| summary.current_status == "missing"));
+    }
+
+    #[test]
+    fn runtime_fitness_status_ignores_artifacts_without_valid_generated_at_ms() {
+        let temp = tempdir().expect("tempdir");
+        let repo_root = temp.path();
+        let runtime_root = runtime_fitness_root(repo_root);
+        std::fs::create_dir_all(runtime_root.join("artifacts").join("fitness"))
+            .expect("runtime artifact dir");
+        std::fs::write(
+            runtime_root.join("events.jsonl"),
+            format!(
+                "{}\n",
+                json!({
+                    "type": "fitness",
+                    "repo_root": repo_root.display().to_string(),
+                    "observed_at_ms": 1_700_000_020_000i64,
+                    "mode": "full",
+                    "status": "passed",
+                    "final_score": 92.4,
+                    "hard_gate_blocked": false,
+                    "score_blocked": false,
+                    "duration_ms": 2180.0,
+                    "dimension_count": 8,
+                    "metric_count": 18,
+                }),
+            ),
+        )
+        .expect("event log");
+        std::fs::write(
+            runtime_root
+                .join("artifacts")
+                .join("fitness")
+                .join("latest-fast.json"),
+            serde_json::to_string_pretty(&json!({
+                "generated_at_ms": "invalid",
+                "final_score": 61.0,
+                "hard_gate_blocked": true,
+            }))
+            .expect("serialize artifact"),
+        )
+        .expect("write invalid artifact");
+
+        let payload = read_runtime_fitness_status(repo_root).expect("runtime fitness payload");
+
+        let latest = payload.latest.expect("latest runtime fitness summary");
+        assert_eq!(latest.mode, "full");
+        assert_eq!(latest.current_status, "passed");
+        let fast = payload
+            .modes
+            .iter()
+            .find(|summary| summary.mode == "fast")
+            .expect("fast summary");
+        assert_eq!(fast.current_status, "missing");
     }
 }

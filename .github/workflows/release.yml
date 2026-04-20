@@ -1,10 +1,10 @@
 name: Routa Release
 run-name: >-
   Routa Release ${{
-    github.event_name == 'push' && github.ref_name || github.event.inputs.version
+    github.event_name == 'push' && github.ref_name || inputs.version
   }}${{
     github.event_name == 'workflow_dispatch' &&
-    ((github.event.inputs.dry_run == 'true' || github.event.inputs.dry_run == true) && ' [dry-run]' || ' [publish]') ||
+    (inputs.dry_run && ' [dry-run]' || ' [publish]') ||
     ''
   }}
 
@@ -25,6 +25,16 @@ on:
         type: boolean
       publish_cli:
         description: "Publish npm CLI packages"
+        required: false
+        default: true
+        type: boolean
+      publish_harness_monitor:
+        description: "Publish Harness Monitor npm packages"
+        required: false
+        default: true
+        type: boolean
+      publish_entrix:
+        description: "Publish Entrix npm packages"
         required: false
         default: true
         type: boolean
@@ -49,7 +59,7 @@ jobs:
       - name: Resolve version
         id: version
         env:
-          INPUT_VERSION: ${{ github.event.inputs.version }}
+          INPUT_VERSION: ${{ inputs.version }}
         run: |
           if [[ -n "${INPUT_VERSION}" ]]; then
             version="${INPUT_VERSION#v}"
@@ -70,11 +80,12 @@ jobs:
     if: |
       github.event_name == 'push' ||
       (
-        (github.event.inputs.dry_run == 'false' || github.event.inputs.dry_run == false) &&
-        (github.event.inputs.publish_desktop == 'true' || github.event.inputs.publish_desktop == true)
+        !inputs.dry_run &&
+        inputs.publish_desktop
       )
     permissions:
       contents: write
+      actions: read
     uses: ./.github/workflows/tauri-release.yml
     with:
       version: ${{ needs.resolve-version.outputs.version }}
@@ -84,8 +95,7 @@ jobs:
     name: Build desktop only
     needs: resolve-version
     if: |
-      github.event.inputs.dry_run == 'true' ||
-      github.event.inputs.dry_run == true
+      inputs.dry_run
     uses: ./.github/workflows/tauri-build.yml
     with:
       version: ${{ needs.resolve-version.outputs.version }}
@@ -96,14 +106,47 @@ jobs:
     needs: resolve-version
     if: |
       github.event_name == 'push' ||
-      github.event.inputs.dry_run == 'true' ||
-      github.event.inputs.dry_run == true ||
-      github.event.inputs.publish_cli == 'true' ||
-      github.event.inputs.publish_cli == true
+      inputs.dry_run ||
+      inputs.publish_cli
+    permissions:
+      contents: read
+      actions: read
     uses: ./.github/workflows/cli-release.yml
     with:
       version: ${{ needs.resolve-version.outputs.version }}
-      publish: ${{ github.event_name == 'push' || ((github.event.inputs.dry_run != 'true' && github.event.inputs.dry_run != true) && (github.event.inputs.publish_cli == 'true' || github.event.inputs.publish_cli == true)) }}
+      publish: ${{ github.event_name == 'push' || (!inputs.dry_run && inputs.publish_cli) }}
+    secrets: inherit
+
+  release-harness-monitor:
+    name: Release Harness Monitor
+    needs: resolve-version
+    if: |
+      github.event_name == 'push' ||
+      inputs.dry_run ||
+      inputs.publish_harness_monitor
+    permissions:
+      contents: read
+      actions: read
+    uses: ./.github/workflows/harness-monitor-release.yml
+    with:
+      version: ${{ needs.resolve-version.outputs.version }}
+      publish: ${{ github.event_name == 'push' || (!inputs.dry_run && inputs.publish_harness_monitor) }}
+    secrets: inherit
+
+  release-entrix:
+    name: Release Entrix
+    needs: resolve-version
+    if: |
+      github.event_name == 'push' ||
+      inputs.dry_run ||
+      inputs.publish_entrix
+    permissions:
+      contents: read
+      actions: read
+    uses: ./.github/workflows/entrix-release.yml
+    with:
+      version: ${{ needs.resolve-version.outputs.version }}
+      publish: ${{ github.event_name == 'push' || (!inputs.dry_run && inputs.publish_entrix) }}
     secrets: inherit
 
   release-crates:
@@ -112,9 +155,12 @@ jobs:
     if: |
       github.event_name == 'push' ||
       (
-        (github.event.inputs.dry_run == 'false' || github.event.inputs.dry_run == false) &&
-        (github.event.inputs.publish_crates == 'true' || github.event.inputs.publish_crates == true)
+        !inputs.dry_run &&
+        inputs.publish_crates
       )
+    permissions:
+      contents: read
+      actions: read
     uses: ./.github/workflows/cargo-release.yml
     with:
       version: ${{ needs.resolve-version.outputs.version }}

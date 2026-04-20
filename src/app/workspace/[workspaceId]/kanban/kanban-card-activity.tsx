@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
-import { ArrowRightLeft, Check, CircleHelp, LoaderCircle, OctagonX, X } from "lucide-react";
+import { useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
+import { ArrowRightLeft, Check, CircleHelp, Copy, LoaderCircle, OctagonX, X } from "lucide-react";
 import { useTranslation } from "@/i18n";
 import type { AcpProviderInfo } from "@/client/acp-client";
 import { resolveEffectiveTaskAutomation } from "@/core/kanban/effective-task-automation";
@@ -13,6 +13,7 @@ import {
   formatSessionTimestamp,
   getLaneSessionStepLabel,
   getOrderedSessionIds,
+  getStableOrderedSessionIds,
   getSpecialistName,
   type KanbanSpecialistOption,
 } from "./kanban-card-session-utils";
@@ -182,6 +183,61 @@ function ActivitySection({
   );
 }
 
+function handleSessionRowKeyDown(
+  event: KeyboardEvent<HTMLDivElement>,
+  onSelectSession: ((sessionId: string) => void) | undefined,
+  sessionId: string,
+) {
+  if (event.key !== "Enter" && event.key !== " ") {
+    return;
+  }
+
+  event.preventDefault();
+  onSelectSession?.(sessionId);
+}
+
+function SessionIdChip({
+  sessionId,
+  compact = false,
+}: {
+  sessionId: string;
+  compact?: boolean;
+}) {
+  const { t } = useTranslation();
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = (event: MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    navigator.clipboard.writeText(sessionId).then(() => {
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    }).catch(() => {
+      setCopied(false);
+    });
+  };
+
+  return (
+    <div className={`flex min-w-0 items-center gap-1.5 ${compact ? "max-w-[13rem]" : "max-w-[18rem]"}`}>
+      <span
+        className={`min-w-0 break-all rounded-lg bg-slate-100 font-mono text-[10px] text-slate-600 dark:bg-slate-800 dark:text-slate-300 ${compact ? "px-1.5 py-0.5" : "px-2 py-1"}`}
+        title={sessionId}
+      >
+        {sessionId}
+      </span>
+      <button
+        type="button"
+        onClick={handleCopy}
+        className="shrink-0 rounded p-0.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-300"
+        title={t.common.copyToClipboard}
+        aria-label={t.common.copyToClipboard}
+      >
+        {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+      </button>
+    </div>
+  );
+}
+
 export function KanbanCardActivityPanel({
   task,
   sessions,
@@ -301,7 +357,7 @@ export function KanbanCardActivityBar({
     task.id,
     `${task.updatedAt ?? ""}:${task.triggerSessionId ?? ""}:${task.laneSessions?.length ?? 0}`,
   );
-  const orderedSessionIds = runs?.map((run) => run.sessionId ?? run.id) ?? getOrderedSessionIds(task);
+  const orderedSessionIds = getStableOrderedSessionIds(task, runs);
   const laneSessions = task.laneSessions ?? [];
   const laneSessionMap = new Map(laneSessions.map((entry) => [entry.sessionId, entry]));
   const sessionMap = new Map(sessions.map((session) => [session.sessionId, session]));
@@ -347,6 +403,7 @@ export function KanbanCardActivityBar({
             const run = runMap.get(sessionId);
             const laneLabel = laneSession?.columnName ?? laneSession?.columnId ?? t.kanban.runLabel;
             const runLabel = buildSessionDisplayLabel(sessionId, index, sessionMap);
+            const tabLabel = laneSession?.stepName?.trim() || runLabel;
 
             return (
               <button
@@ -359,9 +416,9 @@ export function KanbanCardActivityBar({
                     : "border-b-transparent text-slate-600 hover:border-b-slate-300 dark:border-b-transparent dark:text-slate-400 dark:hover:border-b-slate-600"
                 }`}
                 aria-pressed={active}
-                title={`${laneLabel} · Run ${index + 1} (${runLabel})`}
+                title={`${tabLabel} · ${laneLabel} · Run ${index + 1}`}
               >
-                <span className="truncate font-semibold">{laneLabel}</span>
+                <span className="truncate font-semibold">{tabLabel}</span>
                 {run && (
                   <TaskRunStatusIcon status={run.status} />
                 )}
@@ -443,7 +500,7 @@ function SessionHistoryPanel({
   const { t } = useTranslation();
   const copy = getKanbanSessionCopy(specialistLanguage);
   const laneSessions = task.laneSessions ?? [];
-  const orderedSessionIds = runs?.map((run) => run.sessionId ?? run.id) ?? getOrderedSessionIds(task);
+  const orderedSessionIds = getStableOrderedSessionIds(task, runs);
 
   if (orderedSessionIds.length === 0) {
     return (
@@ -477,6 +534,7 @@ function SessionHistoryPanel({
           const isCurrent = sessionId === currentSessionId;
           const laneSession = laneSessionMap.get(sessionId);
           const run = runMap.get(sessionId);
+          const selectedSessionId = run?.sessionId ?? sessionId;
           const laneSpecialist = getSpecialistName(
             laneSession?.specialistId,
             run?.specialistName ?? laneSession?.specialistName,
@@ -487,14 +545,18 @@ function SessionHistoryPanel({
           const reconnectLabel = run?.resumeTarget?.type === "external_task" ? t.kanban.inspectLabel : t.kanban.openLabel;
 
           return (
-            <button
+            <div
               key={sessionId}
-              onClick={() => onSelectSession?.(run?.sessionId ?? sessionId)}
+              role="button"
+              tabIndex={0}
+              onClick={() => onSelectSession?.(selectedSessionId)}
+              onKeyDown={(event) => handleSessionRowKeyDown(event, onSelectSession, selectedSessionId)}
               className={`w-full border-b border-slate-200/70 text-left transition-colors last:border-b-0 ${compact ? "px-2.5 py-2" : "px-3 py-2.5"} ${
                 isCurrent
                   ? "text-amber-900 dark:text-amber-200"
                   : "text-slate-700 hover:border-slate-300 dark:border-slate-700 dark:text-slate-300"
-              }`}
+              } focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/70 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-slate-950`}
+              aria-pressed={isCurrent}
             >
               <div className="flex flex-wrap items-center gap-2">
                 <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-700 dark:bg-slate-800 dark:text-slate-300">
@@ -553,9 +615,10 @@ function SessionHistoryPanel({
                     {formatSessionTimestamp(run?.startedAt ?? session?.createdAt ?? laneSession?.startedAt)}
                   </div>
                 </div>
-                <span className={`shrink-0 rounded-lg bg-slate-100 font-mono text-[10px] text-slate-600 dark:bg-slate-800 dark:text-slate-300 ${compact ? "px-1.5 py-0.5" : "px-2 py-1"}`}>
-                  {(run?.externalTaskId ?? laneSession?.externalTaskId ?? sessionId).slice(0, 8)}
-                </span>
+                <SessionIdChip
+                  sessionId={run?.externalTaskId ?? laneSession?.externalTaskId ?? sessionId}
+                  compact={compact}
+                />
               </div>
               <div className="mt-2 flex items-center justify-between gap-3 text-[11px] text-slate-500 dark:text-slate-400">
                 <span className="truncate">
@@ -565,7 +628,7 @@ function SessionHistoryPanel({
                 </span>
                 <span className="font-medium text-amber-600 dark:text-amber-300">{reconnectLabel}</span>
               </div>
-            </button>
+            </div>
           );
         })}
       </div>

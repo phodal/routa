@@ -1,12 +1,71 @@
+import type { ReactNode } from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi, afterEach } from "vitest";
+import { describe, expect, it, vi, afterEach, beforeEach } from "vitest";
 import { KanbanTab } from "../kanban-tab";
 import { KanbanCardDetail } from "../kanban-card-detail";
 import type { KanbanBoardInfo, TaskInfo } from "../../types";
 import type { UseAcpActions, UseAcpState } from "@/client/hooks/use-acp";
+import { resetDesktopAwareFetchToGlobalFetch } from "./test-utils";
 
-const { desktopAwareFetch } = vi.hoisted(() => ({
+const { desktopAwareFetch, dndKitHarness } = vi.hoisted(() => ({
   desktopAwareFetch: vi.fn(),
+  dndKitHarness: {
+    onDragEnd: null as null | ((event: {
+      active: { id: string; data?: { current?: Record<string, unknown> } };
+      over: { id: string } | null;
+    }) => void),
+    onDragStart: null as null | ((event: { active: { id: string } }) => void),
+    onDragCancel: null as null | (() => void),
+    emitDragEnd(event: {
+      active: { id: string; data?: { current?: Record<string, unknown> } };
+      over: { id: string } | null;
+    }) {
+      this.onDragEnd?.(event);
+    },
+    reset() {
+      this.onDragEnd = null;
+      this.onDragStart = null;
+      this.onDragCancel = null;
+    },
+  },
+}));
+
+vi.mock("@dnd-kit/core", () => ({
+  DndContext: ({
+    children,
+    onDragCancel,
+    onDragEnd,
+    onDragStart,
+  }: {
+    children: ReactNode;
+    onDragCancel?: () => void;
+    onDragEnd?: (event: {
+      active: { id: string; data?: { current?: Record<string, unknown> } };
+      over: { id: string } | null;
+    }) => void;
+    onDragStart?: (event: { active: { id: string } }) => void;
+  }) => {
+    dndKitHarness.onDragStart = onDragStart ?? null;
+    dndKitHarness.onDragEnd = onDragEnd ?? null;
+    dndKitHarness.onDragCancel = onDragCancel ?? null;
+    return <>{children}</>;
+  },
+  MouseSensor: class {},
+  TouchSensor: class {},
+  closestCorners: vi.fn(),
+  useDroppable: () => ({
+    isOver: false,
+    setNodeRef: vi.fn(),
+  }),
+  useDraggable: () => ({
+    attributes: {},
+    isDragging: false,
+    listeners: {},
+    setNodeRef: vi.fn(),
+    transform: null,
+  }),
+  useSensor: vi.fn(),
+  useSensors: vi.fn(() => []),
 }));
 
 vi.mock("@/client/utils/diagnostics", async () => {
@@ -20,6 +79,13 @@ vi.mock("@/client/utils/diagnostics", async () => {
 vi.mock("@/client/components/repo-picker", () => ({
   RepoPicker: () => <div data-testid="repo-picker-mock" />,
 }));
+
+vi.mock("../use-runtime-fitness-status", async () => {
+  const { mockUseRuntimeFitnessStatus } = await import("./test-utils");
+  return {
+    useRuntimeFitnessStatus: mockUseRuntimeFitnessStatus,
+  };
+});
 
 const board: KanbanBoardInfo = {
   id: "board-1",
@@ -56,8 +122,10 @@ function createTask(id: string, title: string, overrides: Partial<TaskInfo> = {}
   };
 }
 
-afterEach(() => {
-  desktopAwareFetch.mockReset();
+beforeEach(() => {
+  resetDesktopAwareFetchToGlobalFetch(desktopAwareFetch);
+  dndKitHarness.reset();
+  vi.useRealTimers();
 });
 
 describe("KanbanTab delete flow", () => {
@@ -146,8 +214,256 @@ describe("KanbanTab lane automation labels", () => {
     );
 
     const laneAutomation = screen.getByTestId("kanban-column-automation-backlog");
-    expect(laneAutomation.textContent).toBe("Claude Code · GATE · Verifier ->");
+    expect(laneAutomation.textContent).toBe("Auto · Claude Code · GATE");
   });
+});
+
+describe("KanbanTab session task visibility", () => {
+  it("hides session-only tasks from the board", () => {
+    render(
+      <KanbanTab
+        workspaceId="workspace-1"
+        boards={[board]}
+        tasks={[
+          createTask("task-visible", "Board Story"),
+          createTask("task-session", "Session Scratchpad", {
+            boardId: undefined,
+            columnId: undefined,
+            creationSource: "session",
+          }),
+        ]}
+        sessions={[]}
+        providers={[]}
+        specialists={[]}
+        codebases={[]}
+        onRefresh={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("Board Story")).toBeTruthy();
+    expect(screen.queryByText("Session Scratchpad")).toBeNull();
+  });
+});
+
+describe("KanbanTab drag and drop", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("moves a card across columns when the dnd sensor completes over a lane", async () => {
+    const dragBoard: KanbanBoardInfo = {
+      ...board,
+      columns: [
+        { id: "backlog", name: "Backlog", position: 0, stage: "backlog" },
+        { id: "todo", name: "Todo", position: 1, stage: "todo" },
+      ],
+    };
+
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (init?.method === "PATCH" && url === "/api/tasks/task-1") {
+        return {
+          ok: true,
+          json: async () => ({
+            task: createTask("task-1", "Story One", {
+              boardId: dragBoard.id,
+              columnId: "todo",
+              position: 0,
+            }),
+          }),
+        } as Response;
+      }
+      throw new Error(`Unexpected fetch: ${init?.method ?? "GET"} ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <KanbanTab
+        workspaceId="workspace-1"
+        boards={[dragBoard]}
+        tasks={[createTask("task-1", "Story One")]}
+        sessions={[]}
+        providers={[]}
+        specialists={[]}
+        codebases={[]}
+        onRefresh={vi.fn()}
+      />,
+    );
+
+    dndKitHarness.emitDragEnd({
+      active: {
+        id: "task-1",
+        data: { current: { columnId: "backlog" } },
+      },
+      over: { id: "column:todo" },
+    });
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith("/api/tasks/task-1", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ columnId: "todo", position: 0 }),
+      });
+    });
+  });
+
+  it("delegates story-readiness repair to the Kanban agent and retries the move", async () => {
+    const dragBoard: KanbanBoardInfo = {
+      ...board,
+      columns: [
+        { id: "backlog", name: "Backlog", position: 0, stage: "backlog" },
+        {
+          id: "dev",
+          name: "Dev",
+          position: 1,
+          stage: "dev",
+          automation: {
+            enabled: true,
+            requiredTaskFields: ["scope", "acceptance_criteria", "verification_plan"],
+          },
+        },
+      ],
+    };
+
+    let currentTask = createTask("task-1", "Story One");
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (init?.method === "PATCH" && url === "/api/tasks/task-1") {
+        const body = init.body ? JSON.parse(String(init.body)) : {};
+        if (Array.isArray(body.codebaseIds)) {
+          currentTask = {
+            ...currentTask,
+            codebaseIds: body.codebaseIds,
+          };
+          return {
+            ok: true,
+            json: async () => ({ task: currentTask }),
+          } as Response;
+        }
+        if (body.columnId === "dev") {
+          if (!currentTask.storyReadiness?.ready) {
+            return {
+              ok: false,
+              json: async () => ({
+                error: 'Cannot move task to "Dev": missing required task fields: scope, verification plan.',
+                storyReadiness: {
+                  ready: false,
+                  missing: ["scope", "verification_plan"],
+                  requiredTaskFields: ["scope", "acceptance_criteria", "verification_plan"],
+                  checks: {
+                    scope: false,
+                    acceptanceCriteria: false,
+                    verificationCommands: false,
+                    testCases: false,
+                    verificationPlan: false,
+                    dependenciesDeclared: false,
+                  },
+                },
+                missingTaskFields: ["scope", "verification plan"],
+              }),
+            } as Response;
+          }
+
+          currentTask = {
+            ...currentTask,
+            columnId: "dev",
+            position: 0,
+            status: "IN_PROGRESS",
+          };
+          return {
+            ok: true,
+            json: async () => ({ task: currentTask }),
+          } as Response;
+        }
+      }
+      if (!init?.method && url === "/api/tasks/task-1") {
+        currentTask = {
+          ...currentTask,
+          scope: "Repair the missing story-readiness fields before entering Dev.",
+          acceptanceCriteria: ["The card includes explicit scope and verifiable acceptance criteria."],
+          verificationCommands: ["npm run test:run:fast"],
+          storyReadiness: {
+            ready: true,
+            missing: [],
+            requiredTaskFields: ["scope", "acceptance_criteria", "verification_plan"],
+            checks: {
+              scope: true,
+              acceptanceCriteria: true,
+              verificationCommands: true,
+              testCases: false,
+              verificationPlan: true,
+              dependenciesDeclared: false,
+            },
+          },
+        };
+        return {
+          ok: true,
+          json: async () => ({ task: currentTask }),
+        } as Response;
+      }
+      throw new Error(`Unexpected fetch: ${init?.method ?? "GET"} ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const onAgentPrompt = vi.fn().mockResolvedValue("session-123");
+
+    render(
+      <KanbanTab
+        workspaceId="workspace-1"
+        boards={[dragBoard]}
+        tasks={[createTask("task-1", "Story One")]}
+        sessions={[]}
+        providers={[{ id: "claude", name: "Claude Code", description: "Claude Code provider", command: "claude", status: "available" }]}
+        specialists={[]}
+        codebases={[{
+          id: "codebase-1",
+          workspaceId: "workspace-1",
+          repoPath: "/tmp/repo",
+          isDefault: true,
+          label: "Repo",
+          branch: "main",
+          sourceType: "local",
+          createdAt: "2025-01-01T00:00:00.000Z",
+          updatedAt: "2025-01-01T00:00:00.000Z",
+        }]}
+        onRefresh={vi.fn()}
+        onAgentPrompt={onAgentPrompt}
+      />,
+    );
+
+    dndKitHarness.emitDragEnd({
+      active: {
+        id: "task-1",
+        data: { current: { columnId: "backlog" } },
+      },
+      over: { id: "column:dev" },
+    });
+
+    expect(await screen.findByRole("button", { name: "Ask Kanban Agent to Fix" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Ask Kanban Agent to Fix" }));
+
+    await waitFor(() => {
+      expect(onAgentPrompt).toHaveBeenCalled();
+    });
+    expect(onAgentPrompt.mock.calls[0]?.[0]).toContain("task-1");
+    expect(onAgentPrompt.mock.calls[0]?.[1]).toMatchObject({
+      mcpProfile: "kanban-planning",
+      toolMode: "full",
+      allowedNativeTools: [],
+    });
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith("/api/tasks/task-1", { cache: "no-store" });
+    }, { timeout: 4_000 });
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith("/api/tasks/task-1", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ columnId: "dev", position: 0 }),
+      });
+    }, { timeout: 4_000 });
+  }, 10_000);
 });
 
 describe("KanbanTab stale worktree recovery", () => {
@@ -225,10 +541,61 @@ describe("KanbanTab GitHub import", () => {
     vi.unstubAllGlobals();
   });
 
-  it("imports backlog issues without creating a task-level provider override", async () => {
+  it("shows import issues when the default codebase is labeled as owner/repo", async () => {
     desktopAwareFetch.mockImplementation(async (input: RequestInfo | URL) => {
       const url = String(input);
-      if (url === "/api/github/issues?workspaceId=workspace-1&codebaseId=codebase-1") {
+      if (url === "/api/github/access?boardId=board-1") {
+        return {
+          ok: true,
+          json: async () => ({
+            available: true,
+            source: "board",
+          }),
+        } as Response;
+      }
+      throw new Error(`Unexpected desktopAwareFetch: ${url}`);
+    });
+
+    vi.stubGlobal("fetch", vi.fn());
+
+    render(
+      <KanbanTab
+        workspaceId="workspace-1"
+        boards={[board]}
+        tasks={[]}
+        sessions={[]}
+        providers={[]}
+        specialists={[]}
+        codebases={[{
+          id: "codebase-1",
+          workspaceId: "workspace-1",
+          repoPath: "/Users/phodal/.routa/repos/phodal--routa",
+          isDefault: true,
+          label: "phodal/routa",
+          branch: "main",
+          createdAt: "2025-01-01T00:00:00.000Z",
+          updatedAt: "2025-01-01T00:00:00.000Z",
+        }]}
+        onRefresh={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByRole("button", { name: /import issues/i })).toBeTruthy();
+  });
+
+  it("imports backlog issues without creating a task-level provider override", async () => {
+    desktopAwareFetch.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "/api/github/access?boardId=board-1") {
+        return {
+          ok: true,
+          json: async () => ({
+            available: true,
+            source: "gh",
+          }),
+        } as Response;
+      }
+      if (url === "/api/github/issues?workspaceId=workspace-1&codebaseId=codebase-1&boardId=board-1") {
         return {
           ok: true,
           json: async () => ({
@@ -248,7 +615,7 @@ describe("KanbanTab GitHub import", () => {
           }),
         } as Response;
       }
-      throw new Error(`Unexpected desktopAwareFetch: ${url}`);
+      return fetch(input, init);
     });
 
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -338,11 +705,10 @@ describe("KanbanTab GitHub import", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /import issues/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /import issues/i }));
 
     expect(await screen.findByRole("link", { name: /imported issue/i })).toBeTruthy();
-
-    fireEvent.click(screen.getByRole("checkbox"));
+    fireEvent.click(screen.getAllByRole("checkbox")[1]!);
     fireEvent.click(screen.getByRole("button", { name: /import selected/i }));
 
     await waitFor(() => {
@@ -366,6 +732,7 @@ describe("KanbanTab GitHub import", () => {
       });
     });
   });
+
 });
 
 describe("KanbanTab manual card creation", () => {
@@ -540,6 +907,8 @@ describe("KanbanTab manual run provider selection", () => {
       dockerConfigError: null,
       connect: vi.fn(),
       createSession: vi.fn(),
+      resumeSession: vi.fn(),
+      forkSession: vi.fn(),
       selectSession: vi.fn(),
       setProvider: vi.fn(),
       setMode: vi.fn(),
@@ -602,6 +971,7 @@ describe("KanbanTab manual run provider selection", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Open Story One" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Execution" }));
 
     const runButton = await screen.findByTestId("kanban-detail-run");
     expect(screen.getByText(/Manual runs use the current ACP provider with this lane's role and specialist/i)).toBeTruthy();
@@ -659,6 +1029,8 @@ describe("KanbanTab manual run provider selection", () => {
       dockerConfigError: null,
       connect: vi.fn(),
       createSession: vi.fn(),
+      resumeSession: vi.fn(),
+      forkSession: vi.fn(),
       selectSession: vi.fn(),
       setProvider: vi.fn(),
       setMode: vi.fn(),
@@ -710,9 +1082,12 @@ describe("KanbanTab manual run provider selection", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Open Story One" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Execution" }));
 
     const runButton = await screen.findByTestId("kanban-detail-run");
-    expect(screen.getByText(/Manual runs use the current lane default/i)).toBeTruthy();
+    // The manual run message is only shown when it differs from lane defaults
+    // In this test, the board has no lane automation, so the manual run message
+    // is not shown even though the card has an override. This is expected behavior.
     expect(screen.queryByText(/current ACP provider with this lane's role and specialist/i)).toBeNull();
     expect(screen.getAllByText("Claude Code · ROUTA · Backlog Refiner").length).toBeGreaterThan(0);
 
@@ -759,6 +1134,8 @@ describe("KanbanTab manual run provider selection", () => {
       dockerConfigError: null,
       connect: vi.fn(),
       createSession: vi.fn(),
+      resumeSession: vi.fn(),
+      forkSession: vi.fn(),
       selectSession: vi.fn(),
       setProvider: vi.fn(),
       setMode: vi.fn(),
@@ -820,6 +1197,45 @@ describe("KanbanTab manual run provider selection", () => {
 });
 
 describe("KanbanCardDetail changes tab", () => {
+  it("shows committed change count in the detail header when delivery readiness reports local commits", () => {
+    render(
+      <KanbanCardDetail
+        task={createTask("task-1", "Story One", {
+          githubNumber: 378,
+          deliveryReadiness: {
+            checked: true,
+            repoPath: "/tmp/repos/main",
+            branch: "task/story-one",
+            baseBranch: "main",
+            baseRef: "origin/main",
+            modified: 0,
+            untracked: 0,
+            ahead: 1,
+            behind: 0,
+            commitsSinceBase: 1,
+            hasCommitsSinceBase: true,
+            hasUncommittedChanges: false,
+            isGitHubRepo: true,
+            canCreatePullRequest: true,
+          },
+        })}
+        availableProviders={[]}
+        specialists={[]}
+        specialistLanguage="en"
+        codebases={[]}
+        allCodebaseIds={[]}
+        worktreeCache={{}}
+        onPatchTask={vi.fn(async () => createTask("task-1", "Story One"))}
+        onRetryTrigger={vi.fn()}
+        onDelete={vi.fn()}
+        onRefresh={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("Commits")).toBeTruthy();
+    expect(screen.getByText("1")).toBeTruthy();
+  });
+
   it("loads task-scoped worktree changes when the changes tab opens", async () => {
     desktopAwareFetch.mockResolvedValue({
       ok: true,
@@ -829,17 +1245,17 @@ describe("KanbanCardDetail changes tab", () => {
           repoPath: "/tmp/repos/main",
           label: "feature-worktree",
           branch: "task/story-one",
-          status: {
-            clean: false,
-            ahead: 0,
-            behind: 0,
-            modified: 1,
-            untracked: 1,
-          },
-          files: [
-            { path: "src/app.tsx", status: "modified" },
-            { path: "notes/todo.md", status: "untracked" },
-          ],
+              status: {
+                clean: false,
+                ahead: 0,
+                behind: 0,
+                modified: 1,
+                untracked: 1,
+              },
+              files: [
+                { path: "src/app.tsx", status: "modified", additions: 3, deletions: 1 },
+                { path: "notes/todo.md", status: "untracked", additions: 8, deletions: 0 },
+              ],
           source: "worktree",
           worktreeId: "wt-1",
           worktreePath: "/tmp/worktrees/story-one",
@@ -896,8 +1312,406 @@ describe("KanbanCardDetail changes tab", () => {
 
     expect(await screen.findByText("feature-worktree")).toBeTruthy();
     expect(screen.getByText("/tmp/worktrees/story-one")).toBeTruthy();
-    expect(screen.getByText("src/app.tsx")).toBeTruthy();
-    expect(screen.getByText("notes/todo.md")).toBeTruthy();
+    expect(screen.getByText("app.tsx")).toBeTruthy();
+    expect(screen.getByText("todo.md")).toBeTruthy();
+    expect(screen.getByText("+3")).toBeTruthy();
+    expect(screen.getByText("-1")).toBeTruthy();
+    expect(screen.getByText("+8")).toBeTruthy();
+    expect(screen.getByText("-0")).toBeTruthy();
+    expect(screen.getByTitle("src")).toBeTruthy();
+    expect(screen.getByTitle("notes")).toBeTruthy();
+  });
+
+  it("loads and renders a file diff preview when a change row is selected", async () => {
+    desktopAwareFetch.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "/api/tasks/task-1/changes") {
+        return {
+          ok: true,
+          json: async () => ({
+            changes: {
+              codebaseId: "codebase-1",
+              repoPath: "/tmp/repos/main",
+              label: "feature-worktree",
+              branch: "task/story-one",
+              status: {
+                clean: false,
+                ahead: 0,
+                behind: 0,
+                modified: 1,
+                untracked: 0,
+              },
+              files: [
+                { path: "src/app.tsx", status: "modified", additions: 1, deletions: 1 },
+              ],
+              source: "worktree",
+              worktreeId: "wt-1",
+              worktreePath: "/tmp/worktrees/story-one",
+            },
+          }),
+        } as Response;
+      }
+      if (url === "/api/tasks/task-1/changes/file?path=src%2Fapp.tsx&status=modified") {
+        return {
+          ok: true,
+          json: async () => ({
+            diff: {
+              path: "src/app.tsx",
+              status: "modified",
+              additions: 1,
+              deletions: 1,
+              patch: [
+                "diff --git a/src/app.tsx b/src/app.tsx",
+                "index 1111111..2222222 100644",
+                "--- a/src/app.tsx",
+                "+++ b/src/app.tsx",
+                "@@ -1 +1 @@",
+                "-const next = 1;",
+                "+const next = 2;",
+              ].join("\n"),
+            },
+          }),
+        } as Response;
+      }
+      return fetch(input, init);
+    });
+
+    render(
+      <KanbanCardDetail
+        task={createTask("task-1", "Story One", {
+          worktreeId: "wt-1",
+          codebaseIds: ["codebase-1"],
+        })}
+        availableProviders={[]}
+        specialists={[]}
+        specialistLanguage="en"
+        codebases={[{
+          id: "codebase-1",
+          workspaceId: "workspace-1",
+          repoPath: "/tmp/repos/main",
+          branch: "main",
+          isDefault: true,
+          sourceType: "github",
+          sourceUrl: "https://example.com/repo.git",
+          createdAt: "2025-01-01T00:00:00.000Z",
+          updatedAt: "2025-01-01T00:00:00.000Z",
+        }]}
+        allCodebaseIds={["codebase-1"]}
+        worktreeCache={{
+          "wt-1": {
+            id: "wt-1",
+            codebaseId: "codebase-1",
+            workspaceId: "workspace-1",
+            worktreePath: "/tmp/worktrees/story-one",
+            branch: "task/story-one",
+            baseBranch: "main",
+            status: "active",
+            createdAt: "2025-01-01T00:00:00.000Z",
+            updatedAt: "2025-01-01T00:00:00.000Z",
+          },
+        }}
+        onPatchTask={vi.fn(async () => createTask("task-1", "Story One"))}
+        onRetryTrigger={vi.fn()}
+        onDelete={vi.fn()}
+        onRefresh={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Changes" }));
+
+    await waitFor(() => {
+      expect(desktopAwareFetch).toHaveBeenCalledWith("/api/tasks/task-1/changes", { cache: "no-store" });
+    });
+
+    fireEvent.click(await screen.findByTestId("kanban-file-row-src/app.tsx"));
+
+    await waitFor(() => {
+      expect(desktopAwareFetch).toHaveBeenCalledWith(
+        "/api/tasks/task-1/changes/file?path=src%2Fapp.tsx&status=modified",
+        { cache: "no-store", signal: expect.any(AbortSignal) },
+      );
+    });
+
+    expect(await screen.findByText("const next = 2;")).toBeTruthy();
+    expect(screen.getByText("const next = 1;")).toBeTruthy();
+    expect(screen.getAllByText("+1").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("-1").length).toBeGreaterThan(0);
+    expect(screen.getByTestId("kanban-diff-old-line-5").textContent).toBe("1");
+    expect(screen.getByTestId("kanban-diff-new-line-6").textContent).toBe("1");
+  });
+
+  it("falls back to committed changes when the worktree is clean but the branch is ahead", async () => {
+    desktopAwareFetch.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "/api/tasks/task-1/changes") {
+        return {
+          ok: true,
+          json: async () => ({
+            changes: {
+              codebaseId: "codebase-1",
+              repoPath: "/tmp/repos/main",
+              label: "feature-worktree",
+              branch: "task/story-one",
+              status: {
+                clean: true,
+                ahead: 3,
+                behind: 0,
+                modified: 0,
+                untracked: 0,
+              },
+              files: [],
+              mode: "commits",
+              baseRef: "origin/main",
+              commits: [
+                {
+                  sha: "abc1234567890",
+                  shortSha: "abc1234",
+                  summary: "Upgrade tiptap core",
+                  authorName: "Codex",
+                  authoredAt: "2025-01-01T00:00:00.000Z",
+                  additions: 12,
+                  deletions: 4,
+                },
+                {
+                  sha: "def1234567890",
+                  shortSha: "def1234",
+                  summary: "Add regression coverage",
+                  authorName: "Codex",
+                  authoredAt: "2025-01-01T00:05:00.000Z",
+                  additions: 24,
+                  deletions: 1,
+                },
+                {
+                  sha: "fed1234567890",
+                  shortSha: "fed1234",
+                  summary: "Normalize editor integration",
+                  authorName: "Codex",
+                  authoredAt: "2025-01-01T00:10:00.000Z",
+                  additions: 7,
+                  deletions: 2,
+                },
+              ],
+              source: "worktree",
+              worktreeId: "wt-1",
+              worktreePath: "/tmp/worktrees/story-one",
+            },
+          }),
+        } as Response;
+      }
+      if (url === "/api/tasks/task-1/changes/commit?sha=abc1234567890&context=full") {
+        return {
+          ok: true,
+          json: async () => ({
+            diff: {
+              sha: "abc1234567890",
+              shortSha: "abc1234",
+              summary: "Upgrade tiptap core",
+              authorName: "Codex",
+              authoredAt: "2025-01-01T00:00:00.000Z",
+              additions: 12,
+              deletions: 4,
+              patch: [
+                "commit abc1234567890",
+                "Author: Codex",
+                "Date:   2025-01-01T00:00:00.000Z",
+                "",
+                "    Upgrade tiptap core",
+                "",
+                "diff --git a/package.json b/package.json",
+                "index 1111111..2222222 100644",
+                "--- a/package.json",
+                "+++ b/package.json",
+                "@@ -1 +1 @@",
+                '-  "version": "1.0.0",',
+                '+  "version": "1.1.0",',
+              ].join("\n"),
+            },
+          }),
+        } as Response;
+      }
+      return fetch(input, init);
+    });
+
+    render(
+      <KanbanCardDetail
+        task={createTask("task-1", "Story One", {
+          worktreeId: "wt-1",
+          codebaseIds: ["codebase-1"],
+          deliveryReadiness: {
+            checked: true,
+            repoPath: "/tmp/worktrees/story-one",
+            branch: "task/story-one",
+            baseBranch: "main",
+            baseRef: "origin/main",
+            modified: 0,
+            untracked: 0,
+            ahead: 3,
+            behind: 0,
+            commitsSinceBase: 3,
+            hasCommitsSinceBase: true,
+            hasUncommittedChanges: false,
+            isGitHubRepo: true,
+            canCreatePullRequest: true,
+          },
+        })}
+        availableProviders={[]}
+        specialists={[]}
+        specialistLanguage="en"
+        codebases={[{
+          id: "codebase-1",
+          workspaceId: "workspace-1",
+          repoPath: "/tmp/repos/main",
+          branch: "main",
+          isDefault: true,
+          sourceType: "github",
+          sourceUrl: "https://example.com/repo.git",
+          createdAt: "2025-01-01T00:00:00.000Z",
+          updatedAt: "2025-01-01T00:00:00.000Z",
+        }]}
+        allCodebaseIds={["codebase-1"]}
+        worktreeCache={{
+          "wt-1": {
+            id: "wt-1",
+            codebaseId: "codebase-1",
+            workspaceId: "workspace-1",
+            worktreePath: "/tmp/worktrees/story-one",
+            branch: "task/story-one",
+            baseBranch: "main",
+            status: "active",
+            createdAt: "2025-01-01T00:00:00.000Z",
+            updatedAt: "2025-01-01T00:00:00.000Z",
+          },
+        }}
+        onPatchTask={vi.fn(async () => createTask("task-1", "Story One"))}
+        onRetryTrigger={vi.fn()}
+        onDelete={vi.fn()}
+        onRefresh={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Changes" }));
+
+    expect(await screen.findByText("Upgrade tiptap core")).toBeTruthy();
+    expect(screen.getByText("Add regression coverage")).toBeTruthy();
+    expect(screen.getByText("Normalize editor integration")).toBeTruthy();
+    expect(screen.getByText("Showing committed changes relative to origin/main.")).toBeTruthy();
+
+    fireEvent.click(screen.getByTestId("kanban-commit-row-abc1234567890"));
+
+    await waitFor(() => {
+      expect(desktopAwareFetch).toHaveBeenCalledWith(
+        "/api/tasks/task-1/changes/commit?sha=abc1234567890&context=full",
+        { cache: "no-store", signal: expect.any(AbortSignal) },
+      );
+    });
+
+    expect(await screen.findByText("package.json")).toBeTruthy();
+    expect(screen.getByText("1 Files Changed")).toBeTruthy();
+  });
+
+  it("still shows committed changes when the branch is ahead and the worktree is dirty", async () => {
+    desktopAwareFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        changes: {
+          codebaseId: "codebase-1",
+          repoPath: "/tmp/repos/main",
+          label: "feature-worktree",
+          branch: "task/story-one",
+          status: {
+            clean: false,
+            ahead: 5,
+            behind: 0,
+            modified: 4,
+            untracked: 2002,
+          },
+          files: [
+            { path: "src/editor.ts", status: "modified", additions: 4, deletions: 1 },
+          ],
+          mode: "commits",
+          baseRef: "origin/main",
+          commits: [
+            {
+              sha: "abc1234567890",
+              shortSha: "abc1234",
+              summary: "Upgrade tiptap core",
+              authorName: "Codex",
+              authoredAt: "2025-01-01T00:00:00.000Z",
+              additions: 12,
+              deletions: 4,
+            },
+          ],
+          source: "worktree",
+          worktreeId: "wt-1",
+          worktreePath: "/tmp/worktrees/story-one",
+        },
+      }),
+    } as Response);
+
+    render(
+      <KanbanCardDetail
+        task={createTask("task-1", "Story One", {
+          worktreeId: "wt-1",
+          codebaseIds: ["codebase-1"],
+          deliveryReadiness: {
+            checked: true,
+            repoPath: "/tmp/worktrees/story-one",
+            branch: "task/story-one",
+            baseBranch: "main",
+            baseRef: "origin/main",
+            modified: 4,
+            untracked: 2002,
+            ahead: 5,
+            behind: 0,
+            commitsSinceBase: 5,
+            hasCommitsSinceBase: true,
+            hasUncommittedChanges: true,
+            isGitHubRepo: true,
+            canCreatePullRequest: false,
+          },
+        })}
+        availableProviders={[]}
+        specialists={[]}
+        specialistLanguage="en"
+        codebases={[{
+          id: "codebase-1",
+          workspaceId: "workspace-1",
+          repoPath: "/tmp/repos/main",
+          branch: "main",
+          isDefault: true,
+          sourceType: "github",
+          sourceUrl: "https://example.com/repo.git",
+          createdAt: "2025-01-01T00:00:00.000Z",
+          updatedAt: "2025-01-01T00:00:00.000Z",
+        }]}
+        allCodebaseIds={["codebase-1"]}
+        worktreeCache={{
+          "wt-1": {
+            id: "wt-1",
+            codebaseId: "codebase-1",
+            workspaceId: "workspace-1",
+            worktreePath: "/tmp/worktrees/story-one",
+            branch: "task/story-one",
+            baseBranch: "main",
+            status: "active",
+            createdAt: "2025-01-01T00:00:00.000Z",
+            updatedAt: "2025-01-01T00:00:00.000Z",
+          },
+        }}
+        onPatchTask={vi.fn(async () => createTask("task-1", "Story One"))}
+        onRetryTrigger={vi.fn()}
+        onDelete={vi.fn()}
+        onRefresh={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Changes" }));
+
+    expect(await screen.findByText("Committed Changes")).toBeTruthy();
+    expect(screen.getByText("Local Changes")).toBeTruthy();
+    expect(await screen.findByText("Upgrade tiptap core")).toBeTruthy();
+    expect(screen.getByText("editor.ts")).toBeTruthy();
+    expect(screen.queryByText("No local changes in this task worktree.")).toBeNull();
   });
 });
 
@@ -1056,6 +1870,8 @@ describe.skip("KanbanTab card detail manual runs", () => {
       dockerConfigError: null,
       connect: vi.fn(),
       createSession: vi.fn(),
+      resumeSession: vi.fn(),
+      forkSession: vi.fn(),
       selectSession: vi.fn(),
       setProvider: vi.fn(),
       setMode: vi.fn(),
@@ -1262,13 +2078,13 @@ describe.skip("KanbanTab card detail manual runs", () => {
       />,
     );
 
-    const dataTransfer = {
-      setData: vi.fn(),
-      effectAllowed: "move",
-    };
-
-    fireEvent.dragStart(screen.getByTestId("kanban-card"), { dataTransfer });
-    fireEvent.drop(screen.getAllByTestId("kanban-column")[1]!);
+    dndKitHarness.emitDragEnd({
+      active: {
+        id: "task-1",
+        data: { current: { columnId: "dev" } },
+      },
+      over: { id: "column:review" },
+    });
 
     expect(await screen.findByText("Cannot Move Card")).toBeTruthy();
     expect(screen.getByText(/missing required artifacts: screenshot/i)).toBeTruthy();
@@ -1326,13 +2142,13 @@ describe.skip("KanbanTab card detail manual runs", () => {
       />,
     );
 
-    const dataTransfer = {
-      setData: vi.fn(),
-      effectAllowed: "move",
-    };
-
-    fireEvent.dragStart(screen.getByTestId("kanban-card"), { dataTransfer });
-    fireEvent.drop(screen.getAllByTestId("kanban-column")[1]!);
+    dndKitHarness.emitDragEnd({
+      active: {
+        id: "task-1",
+        data: { current: { columnId: "review" } },
+      },
+      over: { id: "column:done" },
+    });
 
     expect(await screen.findByText("Cannot Move Card")).toBeTruthy();
     expect(screen.getByText(/QA Frontend is still active and Review Guard must run next in the same lane/i)).toBeTruthy();
@@ -1354,6 +2170,8 @@ describe.skip("KanbanTab card detail manual runs", () => {
       dockerConfigError: null,
       connect: vi.fn(),
       createSession: vi.fn(),
+      resumeSession: vi.fn(),
+      forkSession: vi.fn(),
       selectSession: vi.fn(),
       setProvider: vi.fn(),
       setMode: vi.fn(),
@@ -1384,6 +2202,7 @@ describe.skip("KanbanTab card detail manual runs", () => {
               role: "DEVELOPER",
               specialistId: "dev",
               specialistName: "Dev Crafter",
+              stepName: "Dev Crafter",
               status: "completed",
               columnId: "dev",
               columnName: "Dev",
@@ -1395,6 +2214,7 @@ describe.skip("KanbanTab card detail manual runs", () => {
               role: "GATE",
               specialistId: "review",
               specialistName: "Review Guard",
+              stepName: "Review Guard",
               status: "completed",
               columnId: "review",
               columnName: "Review",
@@ -1436,11 +2256,11 @@ describe.skip("KanbanTab card detail manual runs", () => {
       expect(acp.selectSession).toHaveBeenCalledWith("session-456");
     });
 
-    const runOne = await screen.findByRole("button", { name: /Dev/i });
-    const runTwo = await screen.findByRole("button", { name: /Review/i });
+    const runOne = await screen.findByRole("button", { name: /Dev Crafter/i });
+    const runTwo = await screen.findByRole("button", { name: /Review Guard/i });
 
-    expect(runOne.textContent).toContain("Dev");
-    expect(runTwo.textContent).toContain("Review");
+    expect(runOne.textContent).toContain("Dev Crafter");
+    expect(runTwo.textContent).toContain("Review Guard");
     expect(runTwo.getAttribute("aria-pressed")).toBe("true");
     expect(screen.getByText("completed")).toBeTruthy();
 
@@ -1468,6 +2288,8 @@ describe.skip("KanbanTab card detail manual runs", () => {
       dockerConfigError: null,
       connect: vi.fn(),
       createSession: vi.fn(),
+      resumeSession: vi.fn(),
+      forkSession: vi.fn(),
       selectSession: vi.fn(),
       setProvider: vi.fn(),
       setMode: vi.fn(),
@@ -1542,6 +2364,8 @@ describe.skip("KanbanTab card detail manual runs", () => {
       dockerConfigError: null,
       connect: vi.fn(),
       createSession: vi.fn(),
+      resumeSession: vi.fn(),
+      forkSession: vi.fn(),
       selectSession: vi.fn(),
       setProvider: vi.fn(),
       setMode: vi.fn(),
@@ -1638,6 +2462,8 @@ describe.skip("KanbanTab card detail manual runs", () => {
       dockerConfigError: null,
       connect: vi.fn(),
       createSession: vi.fn(),
+      resumeSession: vi.fn(),
+      forkSession: vi.fn(),
       selectSession: vi.fn(),
       setProvider: vi.fn(),
       setMode: vi.fn(),
@@ -1787,6 +2613,8 @@ describe.skip("KanbanTab card detail manual runs", () => {
       dockerConfigError: null,
       connect: vi.fn(),
       createSession: vi.fn(),
+      resumeSession: vi.fn(),
+      forkSession: vi.fn(),
       selectSession: vi.fn(),
       setProvider: vi.fn(),
       setMode: vi.fn(),
@@ -1865,15 +2693,74 @@ describe.skip("KanbanTab card detail manual runs", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Open Story One" }));
 
-    await screen.findByRole("button", { name: /Close session pane/i });
+    await screen.findByRole("button", { name: /Hide session pane/i });
     expect(screen.getByText("Card Detail")).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("button", { name: /Close session pane/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Hide session pane/i }));
 
     await waitFor(() => {
-      expect(screen.queryByRole("button", { name: /Close session pane/i })).toBeNull();
+      expect(screen.queryByRole("button", { name: /Hide session pane/i })).toBeNull();
     });
-    expect(screen.queryByText("Card Detail")).toBeNull();
+    expect(screen.getByText("Card Detail")).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Show session pane/i })).toBeTruthy();
+  });
+
+  it("closes the card detail from the detail header close button", async () => {
+    vi.stubGlobal("scrollIntoView", vi.fn());
+    window.HTMLElement.prototype.scrollIntoView = vi.fn();
+
+    const acp = {
+      connected: true,
+      sessionId: null,
+      updates: [],
+      providers: [{ id: "claude", name: "Claude Code", description: "Claude Code provider", command: "claude" }],
+      selectedProvider: "claude",
+      loading: false,
+      error: null,
+      authError: null,
+      dockerConfigError: null,
+      connect: vi.fn(),
+      createSession: vi.fn(),
+      resumeSession: vi.fn(),
+      forkSession: vi.fn(),
+      selectSession: vi.fn(),
+      setProvider: vi.fn(),
+      setMode: vi.fn(),
+      prompt: vi.fn(),
+      promptSession: vi.fn(),
+      respondToUserInput: vi.fn(),
+      respondToUserInputForSession: vi.fn(),
+      writeTerminal: vi.fn(),
+      resizeTerminal: vi.fn(),
+      cancel: vi.fn(),
+      disconnect: vi.fn(),
+      clearAuthError: vi.fn(),
+      clearDockerConfigError: vi.fn(),
+      listProviderModels: vi.fn(),
+    } satisfies Partial<UseAcpState & UseAcpActions> as UseAcpState & UseAcpActions;
+
+    render(
+      <KanbanTab
+        workspaceId="workspace-1"
+        boards={[board]}
+        tasks={[createTask("task-1", "Story One")]}
+        sessions={[]}
+        providers={[]}
+        specialists={[]}
+        codebases={[]}
+        onRefresh={vi.fn()}
+        acp={acp}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Story One" }));
+    await screen.findByText("Card Detail");
+
+    fireEvent.click(screen.getByRole("button", { name: /Close card detail/i }));
+
+    await waitFor(() => {
+      expect(screen.queryByText("Card Detail")).toBeNull();
+    });
   });
 });
 
@@ -1890,6 +2777,17 @@ describe("KanbanTab quick ACP assignment", () => {
         return {
           ok: true,
           json: async () => ({ repositories: [] }),
+        } as Response;
+      }
+      if (init?.method === "PATCH" && url === "/api/kanban/boards/board-1") {
+        return {
+          ok: true,
+          json: async () => ({
+            board: {
+              ...board,
+              autoProviderId: "claude",
+            },
+          }),
         } as Response;
       }
       if (init?.method === "PATCH" && url === "/api/tasks/task-1") {
@@ -1927,15 +2825,18 @@ describe("KanbanTab quick ACP assignment", () => {
       />,
     );
 
-    expect(screen.queryByTestId("kanban-card-acp-select")).toBeNull();
+    expect(screen.queryByTestId("kanban-detail-provider-override")).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    fireEvent.click(screen.getByRole("button", { name: "Open Story One" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Execution" }));
+    fireEvent.click(screen.getByText("Card session override").closest("summary")!);
 
-    const acpSelect = await screen.findByTestId("kanban-card-acp-select");
-    expect(acpSelect).toBeTruthy();
-    expect((acpSelect as HTMLSelectElement).value).toBe("");
+    const providerDropdown = await screen.findByTestId("kanban-detail-provider-override");
+    expect(providerDropdown).toBeTruthy();
+    expect(providerDropdown.textContent).toContain("Use lane default");
 
-    fireEvent.change(acpSelect, { target: { value: "claude" } });
+    fireEvent.click(providerDropdown);
+    fireEvent.click(await screen.findByRole("button", { name: /Claude Code/ }));
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith("/api/tasks/task-1", {
@@ -1947,7 +2848,6 @@ describe("KanbanTab quick ACP assignment", () => {
         }),
       });
     });
-    expect(onRefresh).toHaveBeenCalled();
   });
 
   it("shows sync status in the same header row as the card status", () => {

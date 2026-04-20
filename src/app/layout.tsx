@@ -13,6 +13,24 @@ export const metadata: Metadata = {
   },
 };
 
+// Inline script to prevent flash of wrong theme
+const themeInitScript = `
+  (function() {
+    try {
+      var theme = localStorage.getItem('routa.theme');
+      if (!theme || theme === 'system') {
+        var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        theme = prefersDark ? 'dark' : 'light';
+      }
+      document.documentElement.classList.add(theme);
+      document.documentElement.dataset.themePreference = localStorage.getItem('routa.theme') || 'system';
+      document.documentElement.style.colorScheme = theme;
+    } catch (e) {
+      console.warn('Theme initialization failed:', e);
+    }
+  })();
+`;
+
 export default function RootLayout({
   children,
 }: {
@@ -20,7 +38,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <head />
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+      </head>
       <body className="antialiased">
         <ThemeInitializer />
         <I18nProvider>{children}</I18nProvider>

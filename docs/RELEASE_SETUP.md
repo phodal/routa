@@ -94,10 +94,10 @@ Configure these in repository settings:
 
 ## Documentation
 
-- [Release Guide](docs/release-guide.md) - Detailed release instructions
-- [Release Checklist](docs/RELEASE_CHECKLIST.md) - Quick checklist
-- [CLI README](crates/routa-cli/README.md) - CLI usage documentation
-- [NPM README](packages/routa-cli/README.md) - NPM package documentation
+- [Release Guide](./release-guide.md) - Detailed release instructions
+- [Release Checklist](./RELEASE_CHECKLIST.md) - Quick checklist
+- [CLI README](https://github.com/phodal/routa/blob/main/crates/routa-cli/README.md) - CLI usage documentation
+- [NPM README](https://github.com/phodal/routa/blob/main/packages/routa-cli/README.md) - NPM package documentation
 
 ## Version Management
 
@@ -150,5 +150,4 @@ After first release:
 
 ---
 
-For detailed instructions, see [docs/release-guide.md](docs/release-guide.md).
-
+For detailed instructions, see [release-guide.md](./release-guide.md).

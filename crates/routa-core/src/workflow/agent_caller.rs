@@ -106,7 +106,7 @@ impl AcpAgentCaller {
             }
             "opencode-sdk" | "opencode" => self.call_opencode(config, user_prompt).await,
             "mock" => Ok(self.call_mock(config, user_prompt)),
-            other => Err(format!("Unknown adapter type: '{}'", other)),
+            other => Err(format!("Unknown adapter type: '{other}'")),
         }
     }
 
@@ -232,13 +232,13 @@ impl AcpAgentCaller {
             .json(&body)
             .send()
             .await
-            .map_err(|e| format!("HTTP request failed: {}", e))?;
+            .map_err(|e| format!("HTTP request failed: {e}"))?;
 
         let status = response.status();
         let response_text = response
             .text()
             .await
-            .map_err(|e| format!("Failed to read response body: {}", e))?;
+            .map_err(|e| format!("Failed to read response body: {e}"))?;
 
         if !status.is_success() {
             return Ok(AgentResponse {
@@ -246,13 +246,13 @@ impl AcpAgentCaller {
                 model: config.model.clone(),
                 usage: None,
                 success: false,
-                error: Some(format!("API returned {}: {}", status, response_text)),
+                error: Some(format!("API returned {status}: {response_text}")),
                 raw: serde_json::from_str(&response_text).ok(),
             });
         }
 
         let json: serde_json::Value = serde_json::from_str(&response_text)
-            .map_err(|e| format!("Failed to parse response JSON: {}", e))?;
+            .map_err(|e| format!("Failed to parse response JSON: {e}"))?;
 
         // Extract content from Anthropic response format
         let content = json
@@ -270,7 +270,7 @@ impl AcpAgentCaller {
                             None
                         }
                     })
-                    .reduce(|a, b| format!("{}\n{}", a, b))
+                    .reduce(|a, b| format!("{a}\n{b}"))
             })
             .unwrap_or_default();
 
@@ -347,13 +347,13 @@ impl AcpAgentCaller {
             .json(&body)
             .send()
             .await
-            .map_err(|e| format!("HTTP request failed: {}", e))?;
+            .map_err(|e| format!("HTTP request failed: {e}"))?;
 
         let status = response.status();
         let response_text = response
             .text()
             .await
-            .map_err(|e| format!("Failed to read response body: {}", e))?;
+            .map_err(|e| format!("Failed to read response body: {e}"))?;
 
         if !status.is_success() {
             return Ok(AgentResponse {
@@ -361,13 +361,13 @@ impl AcpAgentCaller {
                 model: config.model.clone(),
                 usage: None,
                 success: false,
-                error: Some(format!("API returned {}: {}", status, response_text)),
+                error: Some(format!("API returned {status}: {response_text}")),
                 raw: serde_json::from_str(&response_text).ok(),
             });
         }
 
         let json: serde_json::Value = serde_json::from_str(&response_text)
-            .map_err(|e| format!("Failed to parse response JSON: {}", e))?;
+            .map_err(|e| format!("Failed to parse response JSON: {e}"))?;
 
         // Extract content from OpenAI-compatible response format
         let content = json
@@ -420,7 +420,7 @@ pub fn resolve_env_vars(input: &str) -> String {
             let default_val = &var_expr[idx + 2..];
             std::env::var(var_name).unwrap_or_else(|_| default_val.to_string())
         } else {
-            std::env::var(var_expr).unwrap_or_else(|_| format!("${{{}}}", var_expr))
+            std::env::var(var_expr).unwrap_or_else(|_| format!("${{{var_expr}}}"))
         }
     })
     .to_string()

@@ -416,11 +416,9 @@ html.dark {
 }
 
 .markdown-viewer.streaming-content {
-  contain: layout style;
 }
 
 .markdown-viewer.simple-content {
-  contain: layout style;
 }
 
 .markdown-viewer.simple-content p {
@@ -428,7 +426,6 @@ html.dark {
 }
 
 .markdown-viewer.static-content {
-  contain: layout style;
 }
 
 .markdown-viewer.static-content > * + * {

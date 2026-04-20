@@ -9,6 +9,8 @@ interface AgentMemoryScope {
   agentId?: string;
 }
 
+export type CompletionSnapshotSource = "reported" | "auto" | "session_end" | "error";
+
 export interface DelegationMemoryInput {
   sessionId: string;
   parentAgentId: string;
@@ -41,16 +43,17 @@ export interface ChildCompletionMemoryInput {
   taskTitle: string;
   status: string;
   summary?: string;
-  verificationVerdict?: string;
-  verificationReport?: string;
+  verificationVerdict?: string | null;
+  verificationReport?: string | null;
+  snapshotSource?: CompletionSnapshotSource;
   timestamp?: string;
 }
 
 function agentMemoryDirName(role: AgentRole, agentId?: string): string {
-  if (role === AgentRole.CRAFTER && agentId) {
-    return `CRAFTER-${agentId.slice(0, 8)}`;
+  if (role === AgentRole.ROUTA || !agentId) {
+    return role;
   }
-  return role;
+  return `${role}-${agentId.slice(0, 8)}`;
 }
 
 export class AgentMemoryWriter {
@@ -162,7 +165,9 @@ export class AgentMemoryWriter {
       taskTitle: input.taskTitle,
       status: input.status,
       summary: input.summary,
-      verificationVerdict: input.verificationVerdict,
+      verificationVerdict: input.verificationVerdict ?? null,
+      verificationReport: input.verificationReport ?? null,
+      snapshotSource: input.snapshotSource ?? null,
     });
 
     if (input.role === AgentRole.GATE) {
@@ -170,8 +175,9 @@ export class AgentMemoryWriter {
         taskId: input.taskId,
         taskTitle: input.taskTitle,
         status: input.status,
-        verdict: input.verificationVerdict,
-        report: input.verificationReport,
+        verdict: input.verificationVerdict ?? null,
+        report: input.verificationReport ?? null,
+        snapshotSource: input.snapshotSource ?? null,
         updatedAt: timestamp,
       });
     } else {
@@ -180,6 +186,7 @@ export class AgentMemoryWriter {
         taskTitle: input.taskTitle,
         status: input.status,
         summary: input.summary,
+        snapshotSource: input.snapshotSource ?? null,
         updatedAt: timestamp,
       });
     }

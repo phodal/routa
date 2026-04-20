@@ -20,6 +20,7 @@ use crate::acp::AcpManager;
 use crate::error::ServerError;
 use crate::events::{AgentEvent, AgentEventType, EventBus};
 use crate::models::agent::{AgentRole, AgentStatus, ModelTier};
+use crate::models::build_feature_tree_spec_prompt_section;
 use crate::models::task::TaskStatus;
 use crate::store::{AgentStore, TaskStore};
 use crate::tools::{CompletionReport, ToolResult};
@@ -48,6 +49,33 @@ pub struct SpecialistConfig {
 }
 
 impl SpecialistConfig {
+    pub fn system_prompt_body(&self) -> Option<String> {
+        if self.system_prompt.trim().is_empty() {
+            return None;
+        }
+
+        let mut prompt = self.system_prompt.trim().to_string();
+
+        if self.id == "feature-surface-metadata-analyst" {
+            prompt.push_str("\n\n---\n\n");
+            prompt.push_str(&build_feature_tree_spec_prompt_section());
+        }
+
+        Some(prompt)
+    }
+
+    pub fn system_prompt_with_reminder(&self) -> Option<String> {
+        let mut prompt = self.system_prompt_body()?;
+
+        if !self.role_reminder.trim().is_empty() {
+            prompt.push_str("\n\n---\n**Reminder:** ");
+            prompt.push_str(self.role_reminder.trim());
+            prompt.push('\n');
+        }
+
+        Some(prompt)
+    }
+
     /// Get the CRAFTER specialist config.
     pub fn crafter() -> Self {
         Self {
@@ -516,8 +544,7 @@ impl RoutaOrchestrator {
                 task.updated_at = Utc::now();
                 self.task_store.save(&task).await?;
                 return Ok(ToolResult::error(format!(
-                    "Failed to spawn agent process: {}",
-                    e
+                    "Failed to spawn agent process: {e}"
                 )));
             }
         };
@@ -790,7 +817,7 @@ impl RoutaOrchestrator {
             task.as_ref().map(|t| &t.status),
             task.as_ref()
                 .and_then(|t| t.completion_summary.as_ref())
-                .map(|s| format!("**Summary:** {}\n", s))
+                .map(|s| format!("**Summary:** {s}\n"))
                 .unwrap_or_default()
         );
 
@@ -876,35 +903,40 @@ fn build_delegation_prompt(
     parent_agent_id: &str,
     additional_context: Option<&str>,
 ) -> String {
-    let mut prompt = format!("{}\n\n---\n\n", specialist.system_prompt);
-    prompt.push_str(&format!("**Your Agent ID:** {}\n", agent_id));
-    prompt.push_str(&format!("**Your Parent Agent ID:** {}\n", parent_agent_id));
-    prompt.push_str(&format!("**Task ID:** {}\n\n", task_id));
-    prompt.push_str(&format!("# Task: {}\n\n", task_title));
-    prompt.push_str(&format!("## Objective\n{}\n", task_objective));
+    let mut prompt = format!(
+        "{}\n\n---\n\n",
+        specialist
+            .system_prompt_body()
+            .unwrap_or_else(|| specialist.system_prompt.clone())
+    );
+    prompt.push_str(&format!("**Your Agent ID:** {agent_id}\n"));
+    prompt.push_str(&format!("**Your Parent Agent ID:** {parent_agent_id}\n"));
+    prompt.push_str(&format!("**Task ID:** {task_id}\n\n"));
+    prompt.push_str(&format!("# Task: {task_title}\n\n"));
+    prompt.push_str(&format!("## Objective\n{task_objective}\n"));
 
     if let Some(scope) = task_scope {
-        prompt.push_str(&format!("\n## Scope\n{}\n", scope));
+        prompt.push_str(&format!("\n## Scope\n{scope}\n"));
     }
 
     if let Some(criteria) = acceptance_criteria {
         prompt.push_str("\n## Definition of Done\n");
         for c in criteria {
-            prompt.push_str(&format!("- {}\n", c));
+            prompt.push_str(&format!("- {c}\n"));
         }
     }
 
     if let Some(commands) = verification_commands {
         prompt.push_str("\n## Verification\n");
         for c in commands {
-            prompt.push_str(&format!("- `{}`\n", c));
+            prompt.push_str(&format!("- `{c}`\n"));
         }
     }
 
     if let Some(cases) = test_cases {
         prompt.push_str("\n## Test Cases\n");
         for case in cases {
-            prompt.push_str(&format!("- {}\n", case));
+            prompt.push_str(&format!("- {case}\n"));
         }
     }
 
@@ -914,7 +946,7 @@ fn build_delegation_prompt(
     ));
 
     if let Some(ctx) = additional_context {
-        prompt.push_str(&format!("\n**Additional Context:** {}\n", ctx));
+        prompt.push_str(&format!("\n**Additional Context:** {ctx}\n"));
     }
 
     prompt.push_str("\n**SCOPE: Complete THIS task only.** When done, call `report_to_parent` with your results.");

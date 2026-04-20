@@ -237,7 +237,10 @@ mod tests {
         )
         .expect("should resolve npx");
 
-        assert_eq!(resolved.to_lowercase(), cmd_file.to_string_lossy().to_lowercase());
+        assert_eq!(
+            resolved.to_lowercase(),
+            cmd_file.to_string_lossy().to_lowercase()
+        );
     }
 
     #[test]
@@ -253,6 +256,9 @@ mod tests {
         )
         .expect("should resolve uv.exe");
 
-        assert_eq!(resolved.to_lowercase(), exe_file.to_string_lossy().to_lowercase());
+        assert_eq!(
+            resolved.to_lowercase(),
+            exe_file.to_string_lossy().to_lowercase()
+        );
     }
 }

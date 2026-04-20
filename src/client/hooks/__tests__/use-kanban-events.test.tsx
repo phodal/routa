@@ -56,6 +56,27 @@ describe("useKanbanEvents", () => {
     expect(onInvalidate).toHaveBeenCalledTimes(1);
   });
 
+  it("throttles rapid fitness change events", () => {
+    vi.useFakeTimers();
+    const onInvalidate = vi.fn();
+    vi.stubGlobal("EventSource", MockEventSource as unknown as typeof EventSource);
+
+    render(<HookHarness workspaceId="workspace-1" onInvalidate={onInvalidate} />);
+
+    const source = MockEventSource.instances[0];
+    source.emit({ type: "connected" });
+    source.emit({ type: "fitness:changed" });
+    source.emit({ type: "fitness:changed" });
+
+    expect(onInvalidate).toHaveBeenCalledTimes(1);
+
+    vi.advanceTimersByTime(749);
+    expect(onInvalidate).toHaveBeenCalledTimes(1);
+
+    vi.advanceTimersByTime(1);
+    expect(onInvalidate).toHaveBeenCalledTimes(2);
+  });
+
   it("invalidates when the SSE connection reconnects after the first connect", () => {
     vi.useFakeTimers();
     const onInvalidate = vi.fn();

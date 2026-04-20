@@ -32,10 +32,10 @@ impl AcpInstallationState {
 
         let content = tokio::fs::read_to_string(&path)
             .await
-            .map_err(|e| format!("Failed to read installed.json: {}", e))?;
+            .map_err(|e| format!("Failed to read installed.json: {e}"))?;
 
         let loaded: InstalledAgentsState = serde_json::from_str(&content)
-            .map_err(|e| format!("Failed to parse installed.json: {}", e))?;
+            .map_err(|e| format!("Failed to parse installed.json: {e}"))?;
 
         *self.state.write().await = loaded;
         Ok(())
@@ -45,15 +45,15 @@ impl AcpInstallationState {
     pub async fn save(&self) -> Result<(), String> {
         self.paths
             .ensure_directories()
-            .map_err(|e| format!("Failed to create directories: {}", e))?;
+            .map_err(|e| format!("Failed to create directories: {e}"))?;
 
         let state = self.state.read().await;
         let content = serde_json::to_string_pretty(&*state)
-            .map_err(|e| format!("Failed to serialize state: {}", e))?;
+            .map_err(|e| format!("Failed to serialize state: {e}"))?;
 
         tokio::fs::write(self.paths.installed_state_path(), content)
             .await
-            .map_err(|e| format!("Failed to write installed.json: {}", e))?;
+            .map_err(|e| format!("Failed to write installed.json: {e}"))?;
 
         Ok(())
     }

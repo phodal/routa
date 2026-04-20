@@ -1,7 +1,7 @@
 ---
 title: "Cross-language architecture rule DSL rollout"
 date: "2026-04-04"
-status: open
+status: resolved
 severity: medium
 area: "fitness"
 tags:
@@ -17,8 +17,9 @@ related_issues:
   - "https://github.com/phodal/routa/issues/286"
   - "https://github.com/phodal/routa/issues/296"
 github_issue: 296
-github_state: "open"
+github_state: "closed"
 github_url: "https://github.com/phodal/routa/issues/296"
+resolved_at: "2026-04-04"
 ---
 
 # Cross-language architecture rule DSL rollout

@@ -20,7 +20,8 @@ use routa_core::store::acp_session_store::CreateAcpSessionParams;
 use tokio::sync::broadcast;
 
 use super::prompt::update_agent_status;
-use super::tui::TuiRenderer;
+use super::review::stream_parser::update_contains_turn_complete;
+use super::tui::{update_has_visible_terminal_activity, IdleExitPolicy, TuiRenderer};
 
 pub async fn run(
     state: &AppState,
@@ -29,12 +30,8 @@ pub async fn run(
     role: &str,
     requested_session_id: Option<&str>,
 ) -> Result<(), String> {
-    let _agent_role = AgentRole::from_str(role).ok_or_else(|| {
-        format!(
-            "Invalid role: {}. Use ROUTA, CRAFTER, GATE, or DEVELOPER",
-            role
-        )
-    })?;
+    let _agent_role = AgentRole::from_str(role)
+        .ok_or_else(|| format!("Invalid role: {role}. Use ROUTA, CRAFTER, GATE, or DEVELOPER"))?;
 
     let router = RpcRouter::new(state.clone());
 
@@ -66,8 +63,8 @@ pub async fn run(
                 .acp_session_store
                 .get(session_id)
                 .await
-                .map_err(|e| format!("Failed to load session {}: {}", session_id, e))?
-                .ok_or_else(|| format!("Session not found: {}", session_id))?,
+                .map_err(|e| format!("Failed to load session {session_id}: {e}"))?
+                .ok_or_else(|| format!("Session not found: {session_id}"))?,
         )
     } else {
         None
@@ -104,8 +101,8 @@ pub async fn run(
         "║  Agent : {:<48} ║",
         format!("{} ({})", &agent_id[..8], effective_role)
     );
-    println!("║  Workspace : {:<44} ║", effective_workspace_id);
-    println!("║  Provider  : {:<44} ║", effective_provider);
+    println!("║  Workspace : {effective_workspace_id:<44} ║");
+    println!("║  Provider  : {effective_provider:<44} ║");
     println!("╚══════════════════════════════════════════════════════════╝");
 
     let session_exists = state.acp_manager.get_session(&session_id).await.is_some();
@@ -133,7 +130,7 @@ pub async fn run(
             Ok((sid, _)) => {
                 println!("  {} Session: {}", style("●").green(), sid);
                 if let Err(err) = update_agent_status(&router, &agent_id, "ACTIVE").await {
-                    eprintln!("Failed to mark agent {} ACTIVE: {}", agent_id, err);
+                    eprintln!("Failed to mark agent {agent_id} ACTIVE: {err}");
                 }
                 if resumed_session.is_none() {
                     state
@@ -150,13 +147,13 @@ pub async fn run(
                             parent_session_id: None,
                         })
                         .await
-                        .map_err(|e| format!("Failed to persist session {}: {}", session_id, e))?;
+                        .map_err(|e| format!("Failed to persist session {session_id}: {e}"))?;
                 }
             }
             Err(e) => {
                 final_status = "ERROR";
                 if let Err(err) = update_agent_status(&router, &agent_id, "ERROR").await {
-                    eprintln!("Failed to mark agent {} ERROR: {}", agent_id, err);
+                    eprintln!("Failed to mark agent {agent_id} ERROR: {err}");
                 }
                 println!(
                     "  {} Could not create ACP session: {}. Running in offline mode.",
@@ -202,7 +199,7 @@ pub async fn run(
     let reader = stdin.lock();
 
     for line in reader.lines() {
-        let line = line.map_err(|e| format!("Failed to read input: {}", e))?;
+        let line = line.map_err(|e| format!("Failed to read input: {e}"))?;
         let trimmed = line.trim();
 
         if trimmed.is_empty() {
@@ -215,7 +212,7 @@ pub async fn run(
         match trimmed {
             "/quit" | "/exit" | "/q" => {
                 if let Err(err) = update_agent_status(&router, &agent_id, final_status).await {
-                    eprintln!("Failed to mark agent {} COMPLETED: {}", agent_id, err);
+                    eprintln!("Failed to mark agent {agent_id} COMPLETED: {err}");
                 }
                 println!("{}", style("Goodbye!").dim());
                 state.acp_manager.kill_session(&session_id).await;
@@ -337,18 +334,24 @@ pub async fn run(
         }
 
         // ── Send prompt ──────────────────────────────────────────────────
-        match state.acp_manager.prompt(&session_id, &final_prompt).await {
+        let prompt_result = if let Some(ref mut rx) = session_rx {
+            prompt_and_stream_until_idle(rx, state, &session_id, &final_prompt).await
+        } else {
+            state
+                .acp_manager
+                .prompt(&session_id, &final_prompt)
+                .await
+                .map(|_| ())
+        };
+
+        match prompt_result {
             Ok(_) => {
                 if let Err(e) = state
                     .acp_session_store
                     .set_first_prompt_sent(&session_id)
                     .await
                 {
-                    eprintln!("Failed to mark first prompt sent: {}", e);
-                }
-                // Stream updates until idle / turn_complete
-                if let Some(ref mut rx) = session_rx {
-                    stream_until_idle(rx, state, &session_id).await;
+                    eprintln!("Failed to mark first prompt sent: {e}");
                 }
                 if let Some(history) = state.acp_manager.get_session_history(&session_id).await {
                     if let Err(e) = state
@@ -356,14 +359,14 @@ pub async fn run(
                         .save_history(&session_id, &history)
                         .await
                     {
-                        eprintln!("Failed to persist session history: {}", e);
+                        eprintln!("Failed to persist session history: {e}");
                     }
                 }
             }
             Err(e) => {
                 final_status = "ERROR";
                 if let Err(status_err) = update_agent_status(&router, &agent_id, "ERROR").await {
-                    eprintln!("Failed to mark agent {} ERROR: {}", agent_id, status_err);
+                    eprintln!("Failed to mark agent {agent_id} ERROR: {status_err}");
                 }
                 println!("{} Failed to send prompt: {}", style("✘").red(), e);
             }
@@ -374,50 +377,77 @@ pub async fn run(
     }
 
     if let Err(err) = update_agent_status(&router, &agent_id, final_status).await {
-        eprintln!(
-            "Failed to mark agent {} {}: {}",
-            agent_id, final_status, err
-        );
+        eprintln!("Failed to mark agent {agent_id} {final_status}: {err}");
     }
 
     Ok(())
 }
 
 /// Drain the broadcast channel until idle (no message for 2 s) or turn_complete.
-async fn stream_until_idle(
+async fn prompt_and_stream_until_idle(
     rx: &mut broadcast::Receiver<serde_json::Value>,
     state: &AppState,
     session_id: &str,
-) {
+    prompt: &str,
+) -> Result<(), String> {
     let mut renderer = TuiRenderer::new();
-    let mut idle_ticks = 0u32;
+    let mut idle_policy = IdleExitPolicy::new(30, 5);
+    let mut prompt_finished = false;
+    let prompt_future = state.acp_manager.prompt(session_id, prompt);
+    tokio::pin!(prompt_future);
 
     loop {
-        match tokio::time::timeout(std::time::Duration::from_secs(1), rx.recv()).await {
-            Ok(Ok(update)) => {
-                idle_ticks = 0;
-                // Detect turn_complete to stop streaming
-                let is_done = update
-                    .get("params")
-                    .and_then(|p| p.get("update"))
-                    .and_then(|u| u.get("sessionUpdate"))
-                    .and_then(|v| v.as_str())
-                    == Some("turn_complete");
-                renderer.handle_update(&update);
-                if is_done {
-                    break;
+        let tick = tokio::time::sleep(std::time::Duration::from_secs(1));
+        tokio::pin!(tick);
+
+        tokio::select! {
+            prompt_result = &mut prompt_future, if !prompt_finished => {
+                prompt_finished = true;
+                if let Err(error) = prompt_result {
+                    renderer.finish();
+                    return Err(error);
                 }
             }
-            Ok(Err(_)) => break,
-            Err(_) => {
-                idle_ticks += 1;
-                if idle_ticks >= 5 || !state.acp_manager.is_alive(session_id).await {
+            recv_result = rx.recv() => {
+                match recv_result {
+                    Ok(update) => {
+                        if update_has_visible_terminal_activity(&update) {
+                            idle_policy.record_update();
+                        }
+
+                        let is_done = update
+                            .get("params")
+                            .and_then(|p| p.get("update"))
+                            .and_then(|u| u.get("sessionUpdate"))
+                            .and_then(|v| v.as_str())
+                            == Some("turn_complete");
+                        renderer.handle_update(&update);
+                        if is_done {
+                            break;
+                        }
+                    }
+                    Err(_) => break,
+                }
+            }
+            _ = &mut tick => {
+                if let Some(history) = state.acp_manager.get_session_history(session_id).await {
+                    if update_contains_turn_complete(&history) {
+                        break;
+                    }
+                }
+
+                if prompt_finished && idle_policy.should_exit_on_idle_tick() {
+                    break;
+                }
+
+                if !state.acp_manager.is_alive(session_id).await {
                     break;
                 }
             }
         }
     }
     renderer.finish();
+    Ok(())
 }
 
 /// Parse `@specialist-id rest of prompt` from a single trimmed line.
@@ -477,7 +507,7 @@ fn pick_specialist_interactive(
                 s.role.as_str(),
                 s.description
                     .as_ref()
-                    .map(|d| format!(" — {}", d))
+                    .map(|d| format!(" — {d}"))
                     .unwrap_or_default()
             )
         })
@@ -504,6 +534,12 @@ fn build_specialist_prompt(
 ) -> String {
     format!(
         "{}\n\n---\n\n**Your Agent ID:** {}\n**Workspace ID:** {}\n\n## User Request\n\n{}\n\n---\n**Reminder:** {}\n",
-        specialist.system_prompt, agent_id, workspace_id, user_req, specialist.role_reminder
+        specialist
+            .system_prompt_body()
+            .unwrap_or_else(|| specialist.system_prompt.clone()),
+        agent_id,
+        workspace_id,
+        user_req,
+        specialist.role_reminder
     )
 }

@@ -5,7 +5,10 @@ status: resolved
 severity: high
 area: polling / background-tasks
 reported_by: copilot
-github_issue: https://github.com/phodal/data-mesh-spike/issues/23
+github_issue: 23
+github_state: closed
+github_url: https://github.com/phodal/data-mesh-spike/issues/23
+resolved_at: "2026-04-11"
 fix_commit: "fix pollRepo() deduplication — break on lastEventId instead of skipping newer events"
 ---
 

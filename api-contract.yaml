@@ -37,7 +37,7 @@ components:
 
     ArtifactType:
       type: string
-      enum: [screenshot, test_results, code_diff, logs]
+      enum: [screenshot, test_results, code_diff, logs, canvas]
 
     ArtifactStatus:
       type: string
@@ -200,6 +200,134 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/VirtualFileEntry"
+
+    GitRefKind:
+      type: string
+      enum: [head, local, remote, tag]
+
+    GitLogRef:
+      type: object
+      required: [name, kind, commitSha]
+      properties:
+        name:
+          type: string
+        remote:
+          type: string
+        kind:
+          $ref: "#/components/schemas/GitRefKind"
+        commitSha:
+          type: string
+        isCurrent:
+          type: boolean
+
+    GitGraphEdge:
+      type: object
+      required: [fromLane, toLane]
+      properties:
+        fromLane:
+          type: integer
+        toLane:
+          type: integer
+        isMerge:
+          type: boolean
+
+    GitLogCommit:
+      type: object
+      required: [sha, shortSha, message, summary, authorName, authorEmail, authoredAt, parents, refs]
+      properties:
+        sha:
+          type: string
+        shortSha:
+          type: string
+        message:
+          type: string
+        summary:
+          type: string
+        authorName:
+          type: string
+        authorEmail:
+          type: string
+        authoredAt:
+          type: string
+          format: date-time
+        parents:
+          type: array
+          items:
+            type: string
+        refs:
+          type: array
+          items:
+            $ref: "#/components/schemas/GitLogRef"
+        lane:
+          type: integer
+        graphEdges:
+          type: array
+          items:
+            $ref: "#/components/schemas/GitGraphEdge"
+
+    GitLogPage:
+      type: object
+      required: [commits, total, hasMore]
+      properties:
+        commits:
+          type: array
+          items:
+            $ref: "#/components/schemas/GitLogCommit"
+        total:
+          type: integer
+        hasMore:
+          type: boolean
+
+    GitRefsResult:
+      type: object
+      required: [local, remote, tags]
+      properties:
+        head:
+          $ref: "#/components/schemas/GitLogRef"
+        local:
+          type: array
+          items:
+            $ref: "#/components/schemas/GitLogRef"
+        remote:
+          type: array
+          items:
+            $ref: "#/components/schemas/GitLogRef"
+        tags:
+          type: array
+          items:
+            $ref: "#/components/schemas/GitLogRef"
+
+    GitCommitFileChangeKind:
+      type: string
+      enum: [added, modified, deleted, renamed, copied]
+
+    GitCommitFileChange:
+      type: object
+      required: [path, status, additions, deletions]
+      properties:
+        path:
+          type: string
+        previousPath:
+          type: string
+        status:
+          $ref: "#/components/schemas/GitCommitFileChangeKind"
+        additions:
+          type: integer
+        deletions:
+          type: integer
+
+    GitCommitDetail:
+      type: object
+      required: [commit, files]
+      properties:
+        commit:
+          $ref: "#/components/schemas/GitLogCommit"
+        files:
+          type: array
+          items:
+            $ref: "#/components/schemas/GitCommitFileChange"
+        patch:
+          type: string
 
     # ── Models ──
     Agent:
@@ -623,6 +751,71 @@ components:
           type: boolean
           const: true
 
+    GraphNode:
+      type: object
+      required: [id, path, language, kind]
+      properties:
+        id:
+          type: string
+        path:
+          type: string
+        language:
+          type: string
+        kind:
+          type: string
+          enum:
+            - file
+            - external_crate
+            - external_package
+            - unresolved_module
+            - package
+            - class
+            - interface
+            - enum
+            - method
+            - field
+            - constructor
+
+    GraphEdge:
+      type: object
+      required: [from, to, kind, specifier, resolved]
+      properties:
+        from:
+          type: string
+        to:
+          type: string
+        kind:
+          type: string
+          enum: [uses, imports, made_of, depends_on, extends, implements]
+        specifier:
+          type: string
+        resolved:
+          type: boolean
+
+    DependencyGraph:
+      type: object
+      required: [generated_at, root_dir, language, node_count, edge_count, nodes, edges]
+      properties:
+        generated_at:
+          type: string
+          format: date-time
+        root_dir:
+          type: string
+        language:
+          type: string
+        node_count:
+          type: integer
+        edge_count:
+          type: integer
+        nodes:
+          type: array
+          items:
+            $ref: "#/components/schemas/GraphNode"
+        edges:
+          type: array
+          items:
+            $ref: "#/components/schemas/GraphEdge"
+
     # ── Sandbox schemas ──
     SandboxInfo:
       type: object
@@ -833,6 +1026,284 @@ paths:
                   timestamp:
                     type: string
                     format: date-time
+
+  # ── Canvas ──
+  /api/canvas:
+    get:
+      operationId: listCanvasArtifacts
+      summary: List canvas artifacts for a workspace
+      parameters:
+        - name: workspaceId
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Canvas artifacts in the workspace
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [canvasArtifacts]
+                properties:
+                  canvasArtifacts:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, renderMode, title, createdAt]
+                      properties:
+                        id:
+                          type: string
+                        renderMode:
+                          type: string
+                          enum: [dynamic, prebuilt]
+                        canvasType:
+                          type: string
+                          nullable: true
+                        title:
+                          type: string
+                        generatedAt:
+                          type: string
+                          format: date-time
+                        createdAt:
+                          type: string
+                          format: date-time
+        "400":
+          description: Missing or invalid workspace id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      operationId: createCanvasArtifact
+      summary: Create a canvas artifact
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title, workspaceId]
+              properties:
+                renderMode:
+                  type: string
+                  enum: [dynamic, prebuilt]
+                  default: dynamic
+                canvasType:
+                  type: string
+                  enum: [fitness_overview]
+                title:
+                  type: string
+                source:
+                  type: string
+                  description: TSX source for dynamic canvases
+                data:
+                  description: Structured data for prebuilt canvases
+                workspaceId:
+                  type: string
+                taskId:
+                  type: string
+                codebaseId:
+                  type: string
+                repoPath:
+                  type: string
+                agentId:
+                  type: string
+      responses:
+        "201":
+          description: Canvas artifact created
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, renderMode, title, taskId, createdAt]
+                properties:
+                  id:
+                    type: string
+                  renderMode:
+                    type: string
+                    enum: [dynamic, prebuilt]
+                  canvasType:
+                    type: string
+                    nullable: true
+                  title:
+                    type: string
+                  taskId:
+                    type: string
+                  createdAt:
+                    type: string
+                    format: date-time
+        "400":
+          description: Invalid request payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/canvas/{id}:
+    get:
+      operationId: getCanvasArtifact
+      summary: Fetch a canvas artifact by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Canvas artifact
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, renderMode, title, schemaVersion, generatedAt, workspaceId, createdAt]
+                properties:
+                  id:
+                    type: string
+                  renderMode:
+                    type: string
+                    enum: [dynamic, prebuilt]
+                  canvasType:
+                    type: string
+                    nullable: true
+                  title:
+                    type: string
+                  schemaVersion:
+                    type: integer
+                  generatedAt:
+                    type: string
+                    format: date-time
+                  source:
+                    type: string
+                    nullable: true
+                  data:
+                    nullable: true
+                  workspaceId:
+                    type: string
+                  createdAt:
+                    type: string
+                    format: date-time
+        "404":
+          description: Canvas artifact not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteCanvasArtifact
+      summary: Delete a canvas artifact
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Canvas artifact deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeletedResponse"
+        "404":
+          description: Canvas artifact not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/canvas/specialist:
+    post:
+      operationId: createCanvasFromSpecialist
+      summary: Generate a canvas artifact directly from a specialist prompt
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [specialistId, prompt, workspaceId]
+              properties:
+                specialistId:
+                  type: string
+                prompt:
+                  type: string
+                workspaceId:
+                  type: string
+                title:
+                  type: string
+                provider:
+                  type: string
+                model:
+                  type: string
+                specialistLocale:
+                  type: string
+                taskId:
+                  type: string
+                codebaseId:
+                  type: string
+                repoPath:
+                  type: string
+                cwd:
+                  type: string
+      responses:
+        "201":
+          description: Specialist generated and saved a canvas artifact
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, renderMode, title, taskId, createdAt, sessionId, viewerUrl, source]
+                properties:
+                  id:
+                    type: string
+                  renderMode:
+                    type: string
+                    enum: [dynamic, prebuilt]
+                  canvasType:
+                    type: string
+                    nullable: true
+                  title:
+                    type: string
+                  taskId:
+                    type: string
+                  createdAt:
+                    type: string
+                    format: date-time
+                  sessionId:
+                    type: string
+                  viewerUrl:
+                    type: string
+                  source:
+                    type: string
+        "400":
+          description: Invalid request payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Specialist not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Specialist output could not be converted into a usable canvas
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error:
+                    type: string
+                  sessionId:
+                    type: string
+                  outputPreview:
+                    type: string
 
   # ── Agents ──
   /api/agents:
@@ -3207,6 +3678,124 @@ paths:
         "200":
           description: Task repository change summary
 
+  /api/tasks/{taskId}/changes/file:
+    get:
+      operationId: getTaskChangeFile
+      summary: Get diff for a single changed file associated with a task
+      parameters:
+        - name: taskId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: path
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: status
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: previousPath
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: File diff payload
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  diff:
+                    type: object
+        "400":
+          description: Missing path or repository unavailable
+        "404":
+          description: Task not found
+
+  /api/tasks/{taskId}/changes/commit:
+    get:
+      operationId: getTaskChangeCommit
+      summary: Get diff for a single commit associated with a task repository
+      parameters:
+        - name: taskId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: sha
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Commit diff payload
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  diff:
+                    type: string
+        "400":
+          description: Missing sha or repository unavailable
+        "404":
+          description: Task not found
+
+  /api/tasks/{taskId}/changes/stats:
+    get:
+      operationId: getTaskChangeStats
+      summary: Get additions and deletions for a subset of changed files associated with a task
+      parameters:
+        - name: taskId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: paths
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: statuses
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Batched file change stats
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  stats:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        path:
+                          type: string
+                        additions:
+                          type: integer
+                        deletions:
+                          type: integer
+                        error:
+                          type: string
+                  requested:
+                    type: integer
+                  successful:
+                    type: integer
+        "400":
+          description: Missing paths or invalid request
+        "404":
+          description: Task not found
+
   # ── A2A ──
   /api/a2a/sessions:
     get:
@@ -3250,6 +3839,124 @@ paths:
           description: SSE stream
           content:
             text/event-stream: {}
+
+  # ── Git ──
+  /api/git/refs:
+    get:
+      operationId: getGitRefs
+      summary: List git refs for a local repository
+      parameters:
+        - name: repoPath
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Git refs grouped by head, local, remote, and tags
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GitRefsResult"
+        "400":
+          description: Missing repo path or invalid git repository
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Failed to enumerate refs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/git/log:
+    get:
+      operationId: getGitLogPage
+      summary: List git commit history for a local repository
+      parameters:
+        - name: repoPath
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: branches
+          in: query
+          description: Comma-separated branch or ref filters
+          schema:
+            type: string
+        - name: search
+          in: query
+          description: Case-insensitive match against sha, summary, and author identity
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 40
+            maximum: 200
+        - name: skip
+          in: query
+          schema:
+            type: integer
+            default: 0
+            minimum: 0
+      responses:
+        "200":
+          description: Paged git log results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GitLogPage"
+        "400":
+          description: Missing repo path or invalid git repository
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Failed to compute git log page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/git/commit:
+    get:
+      operationId: getGitCommitDetail
+      summary: Get git commit metadata and changed files
+      parameters:
+        - name: repoPath
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: sha
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Commit metadata and file change summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GitCommitDetail"
+        "400":
+          description: Missing or invalid request parameters
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Failed to read commit details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   # ── GitHub Virtual Workspace ──
   /api/github:
@@ -3645,8 +4352,37 @@ paths:
                 sourceType:
                   $ref: "#/components/schemas/CodebaseSourceType"
       responses:
-        "200":
+        "201":
           description: Created codebase
+
+  /api/workspaces/{workspaceId}/codebases/{codebaseId}:
+    delete:
+      operationId: deleteWorkspaceCodebase
+      summary: Delete a codebase from a workspace-scoped route
+      parameters:
+        - name: workspaceId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: codebaseId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeletedResponse"
+        "404":
+          description: Codebase not found in the requested workspace
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /api/workspaces/{id}/codebases/changes:
     get:
@@ -4302,18 +5038,20 @@ paths:
                     type: array
                     items:
                       type: object
+
+  /api/traces/export:
     post:
-      operationId: createTrace
-      summary: Create a new trace record
+      operationId: exportTraces
+      summary: Export trace records in Agent Trace JSON format
       requestBody:
-        required: true
+        required: false
         content:
           application/json:
             schema:
               type: object
       responses:
         "200":
-          description: Created trace
+          description: Exported trace payload
 
   /api/traces/stats:
     get:
@@ -4798,6 +5536,43 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /api/fitness/runtime:
+    get:
+      operationId: getRuntimeFitnessStatus
+      summary: Read latest Entrix runtime fitness status and artifact summary for a repository context
+      parameters:
+        - name: workspaceId
+          in: query
+          schema:
+            type: string
+        - name: codebaseId
+          in: query
+          schema:
+            type: string
+        - name: repoPath
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Runtime fitness status payload
+          content:
+            application/json:
+              schema:
+                type: object
+        "400":
+          description: Invalid runtime fitness context
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Failed to read runtime fitness status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /api/fitness/specs:
     get:
       operationId: getFitnessSpecs
@@ -4830,6 +5605,59 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "500":
           description: Failed to read fitness specs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/graph/analyze:
+    get:
+      operationId: analyzeDependencyGraph
+      summary: Analyze repository module dependencies and return a graph snapshot
+      parameters:
+        - name: workspaceId
+          in: query
+          schema:
+            type: string
+        - name: codebaseId
+          in: query
+          schema:
+            type: string
+        - name: repoPath
+          in: query
+          schema:
+            type: string
+        - name: repoRoot
+          in: query
+          schema:
+            type: string
+        - name: lang
+          in: query
+          schema:
+            type: string
+            enum: [auto, rust, typescript, java]
+            default: auto
+        - name: depth
+          in: query
+          schema:
+            type: string
+            enum: [fast, normal]
+            default: fast
+      responses:
+        "200":
+          description: Dependency graph payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DependencyGraph"
+        "400":
+          description: Invalid graph analysis context or query
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Failed to analyze dependency graph
           content:
             application/json:
               schema:
@@ -5289,6 +6117,152 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DeletedResponse"
+
+  # ── Spec ──
+  /api/spec/issues:
+    get:
+      operationId: listSpecIssues
+      summary: List local issue specs
+      parameters:
+        - name: workspaceId
+          in: query
+          schema:
+            type: string
+        - name: codebaseId
+          in: query
+          schema:
+            type: string
+        - name: repoPath
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Normalized docs/issues records
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  repoRoot:
+                    type: string
+                  issues:
+                    type: array
+                    items:
+                      type: object
+        "400":
+          description: Missing or invalid repository context
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/spec/surface-index:
+    get:
+      operationId: getSpecSurfaceIndex
+      summary: Read the generated product surface index for spec analysis
+      parameters:
+        - name: workspaceId
+          in: query
+          schema:
+            type: string
+        - name: codebaseId
+          in: query
+          schema:
+            type: string
+        - name: repoPath
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Machine-readable feature tree index with warnings when unavailable
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  generatedAt:
+                    type: string
+                  repoRoot:
+                    type: string
+                  warnings:
+                    type: array
+                    items:
+                      type: string
+                  pages:
+                    type: array
+                    items:
+                      type: object
+                  apis:
+                    type: array
+                    items:
+                      type: object
+        "400":
+          description: Missing or invalid repository context
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/spec/feature-tree/generate:
+    post:
+      operationId: generateFeatureTree
+      summary: Scan the repository and generate FEATURE_TREE.md + feature-tree.index.json
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                workspaceId:
+                  type: string
+                codebaseId:
+                  type: string
+                repoPath:
+                  type: string
+                dryRun:
+                  type: boolean
+                  default: false
+      responses:
+        "200":
+          description: Generation result with detected frameworks, page/API counts, and written files
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  generatedAt:
+                    type: string
+                  frameworksDetected:
+                    type: array
+                    items:
+                      type: string
+                  wroteFiles:
+                    type: array
+                    items:
+                      type: string
+                  warnings:
+                    type: array
+                    items:
+                      type: string
+                  pagesCount:
+                    type: integer
+                  apisCount:
+                    type: integer
+        "400":
+          description: Missing or invalid repository context
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Generation failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   # ── Memory ──
   /api/memory:

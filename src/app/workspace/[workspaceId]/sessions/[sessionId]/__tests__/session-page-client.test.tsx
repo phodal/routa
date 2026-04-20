@@ -1,12 +1,16 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { AcpClientError } from "@/client/acp-client";
 import { storePendingPrompt } from "@/client/utils/pending-prompt";
 import { SessionPageClient } from "../session-page-client";
 
 const {
   mockPush,
   mockConnect,
+  mockCreateSession,
+  mockResumeSession,
+  mockPromptSession,
   mockSelectSession,
   mockSetProvider,
   mockPrompt,
@@ -14,6 +18,9 @@ const {
 } = vi.hoisted(() => ({
   mockPush: vi.fn(),
   mockConnect: vi.fn(async () => {}),
+  mockCreateSession: vi.fn(async (): Promise<{ sessionId: string; provider: string; role?: string; acpStatus?: string } | null> => null),
+  mockResumeSession: vi.fn(async () => ({ sessionId: "session-1", provider: "codex", acpStatus: "ready", resumeMode: "native" })),
+  mockPromptSession: vi.fn(async () => {}),
   mockSelectSession: vi.fn(),
   mockSetProvider: vi.fn(),
   mockPrompt: vi.fn(async () => {}),
@@ -56,6 +63,7 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: mockPush }),
   useParams: () => navState.params,
   useSearchParams: () => navState.searchParams,
+  usePathname: () => `/workspace/${navState.params.workspaceId}/sessions/${navState.params.sessionId}`,
 }));
 
 vi.mock("@/client/hooks/use-workspaces", () => ({
@@ -84,12 +92,13 @@ vi.mock("@/client/hooks/use-acp", () => ({
     authError: null,
     dockerConfigError: null,
     connect: mockConnect,
-    createSession: vi.fn(async () => null),
+    createSession: mockCreateSession,
+    resumeSession: mockResumeSession,
     selectSession: mockSelectSession,
     setProvider: mockSetProvider,
     setMode: vi.fn(async () => {}),
     prompt: mockPrompt,
-    promptSession: vi.fn(async () => {}),
+    promptSession: mockPromptSession,
     respondToUserInput: vi.fn(async () => {}),
     respondToUserInputForSession: vi.fn(async () => {}),
     cancel: vi.fn(async () => {}),
@@ -160,6 +169,15 @@ vi.mock("@/client/components/desktop-nav-rail", () => ({
 }));
 
 vi.mock("@/client/acp-client", () => ({
+  AcpClientError: class MockAcpClientError extends Error {
+    code: number;
+
+    constructor(message: string, code: number) {
+      super(message);
+      this.name = "AcpClientError";
+      this.code = code;
+    }
+  },
   BrowserAcpClient: class MockBrowserAcpClient {
     initialize = vi.fn(async () => {});
     newSession = vi.fn(async () => ({ sessionId: "child-session-1", routaAgentId: "agent-1" }));
@@ -182,6 +200,9 @@ describe("SessionPageClient", () => {
     notesState.connected = true;
     mockPush.mockReset();
     mockConnect.mockReset();
+    mockCreateSession.mockReset();
+    mockResumeSession.mockReset();
+    mockPromptSession.mockReset();
     mockSelectSession.mockReset();
     mockSetProvider.mockReset();
     mockPrompt.mockReset();
@@ -347,7 +368,7 @@ describe("SessionPageClient", () => {
     );
   });
 
-  it("patches the global tool mode when the header toggle changes", async () => {
+  it("loads the global tool mode on mount", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url === "/api/mcp/tools" && !init?.method) {
@@ -371,15 +392,210 @@ describe("SessionPageClient", () => {
 
     render(<SessionPageClient />);
 
-    const checkbox = await screen.findByRole("checkbox");
-    fireEvent.click(checkbox);
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith("/api/mcp/tools", { cache: "no-store" });
+    });
+  });
+
+  it("shows a Resume action for codex sessions and calls ACP resume", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/specialists") {
+        return { ok: true, json: async () => ({ specialists: [] }) } as Response;
+      }
+      if (url === "/api/sessions/session-1") {
+        return {
+          ok: true,
+          json: async () => ({
+            session: {
+              sessionId: "session-1",
+              provider: "codex",
+              cwd: "/tmp/codex",
+              role: "DEVELOPER",
+              resumeCapabilities: { supported: true, mode: "native" },
+            },
+          }),
+        } as Response;
+      }
+      if (url === "/api/sessions?parentSessionId=session-1") {
+        return { ok: true, json: async () => ({ sessions: [] }) } as Response;
+      }
+      if (url === "/api/mcp/tools") {
+        return { ok: true, json: async () => ({ globalMode: "essential" }) } as Response;
+      }
+      return { ok: true, json: async () => ({}) } as Response;
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<SessionPageClient />);
+
+    const resumeButton = await screen.findByRole("button", { name: "Resume" });
+    fireEvent.click(resumeButton);
 
     await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledWith("/api/mcp/tools", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode: "essential" }),
-      });
+      expect(mockResumeSession).toHaveBeenCalledWith("session-1", "/tmp/codex", { throwOnError: true });
+    });
+  });
+
+  it("recreates a new codex session from transcript when native resume is blocked by ownership lease", async () => {
+    mockResumeSession.mockRejectedValueOnce(
+      new AcpClientError(
+        "Session ownership lease expired on instance next-90290 at 2026-04-09T01:30:18.664Z, and embedded ACP processes cannot be resumed on a different instance.",
+        -32010,
+      ),
+    );
+    mockCreateSession.mockResolvedValueOnce({
+      sessionId: "session-restored",
+      provider: "codex",
+      role: "DEVELOPER",
+      acpStatus: "ready",
+    });
+
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/specialists") {
+        return { ok: true, json: async () => ({ specialists: [] }) } as Response;
+      }
+      if (url === "/api/sessions/session-1") {
+        return {
+          ok: true,
+          json: async () => ({
+            session: {
+              sessionId: "session-1",
+              name: "Original Session",
+              provider: "codex",
+              cwd: "/tmp/codex",
+              branch: "main",
+              role: "DEVELOPER",
+              resumeCapabilities: { supported: true, mode: "native" },
+            },
+          }),
+        } as Response;
+      }
+      if (url === "/api/sessions/session-1/transcript") {
+        return {
+          ok: true,
+          json: async () => ({
+            messages: [
+              { role: "user", content: "Please continue the refactor." },
+              { role: "assistant", content: "I was updating the ACP resume flow." },
+            ],
+          }),
+        } as Response;
+      }
+      if (url === "/api/sessions?parentSessionId=session-1") {
+        return { ok: true, json: async () => ({ sessions: [] }) } as Response;
+      }
+      if (url === "/api/mcp/tools") {
+        return { ok: true, json: async () => ({ globalMode: "essential" }) } as Response;
+      }
+      return { ok: true, json: async () => ({}) } as Response;
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<SessionPageClient />);
+
+    const resumeButton = await screen.findByRole("button", { name: "Resume" });
+    fireEvent.click(resumeButton);
+
+    await waitFor(() => {
+      expect(mockCreateSession).toHaveBeenCalledWith(
+        "/tmp/codex",
+        "codex",
+        undefined,
+        "DEVELOPER",
+        "default",
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        "main",
+      );
+    });
+
+    await waitFor(() => {
+      expect(mockPush).toHaveBeenCalledWith("/workspace/default/sessions/session-restored");
+    });
+
+    const pendingPrompt = sessionStorage.getItem("routa_pending_prompt_session-restored");
+    expect(pendingPrompt).toContain("Transcript excerpt:");
+    expect(mockPromptSession).not.toHaveBeenCalled();
+  });
+
+  it("recreates a new codex session when the backend does not support session/load", async () => {
+    mockResumeSession.mockRejectedValueOnce(
+      new AcpClientError(
+        "session/load not supported - create a new session instead",
+        -32601,
+      ),
+    );
+    mockCreateSession.mockResolvedValueOnce({
+      sessionId: "session-rust-recreated",
+      provider: "codex",
+      role: "CRAFTER",
+      acpStatus: "ready",
+    });
+
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/specialists") {
+        return { ok: true, json: async () => ({ specialists: [] }) } as Response;
+      }
+      if (url === "/api/sessions/session-1") {
+        return {
+          ok: true,
+          json: async () => ({
+            session: {
+              sessionId: "session-1",
+              provider: "codex",
+              cwd: "/tmp/codex",
+              role: "CRAFTER",
+              resumeCapabilities: { supported: true, mode: "native" },
+            },
+          }),
+        } as Response;
+      }
+      if (url === "/api/sessions/session-1/transcript") {
+        return {
+          ok: true,
+          json: async () => ({
+            messages: [{ role: "user", content: "Restore this session on Rust backend." }],
+          }),
+        } as Response;
+      }
+      if (url === "/api/sessions?parentSessionId=session-1") {
+        return { ok: true, json: async () => ({ sessions: [] }) } as Response;
+      }
+      if (url === "/api/mcp/tools") {
+        return { ok: true, json: async () => ({ globalMode: "essential" }) } as Response;
+      }
+      return { ok: true, json: async () => ({}) } as Response;
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<SessionPageClient />);
+
+    const resumeButton = await screen.findByRole("button", { name: "Resume" });
+    fireEvent.click(resumeButton);
+
+    await waitFor(() => {
+      expect(mockCreateSession).toHaveBeenCalledWith(
+        "/tmp/codex",
+        "codex",
+        undefined,
+        "CRAFTER",
+        "default",
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+      );
+      expect(mockPush).toHaveBeenCalledWith("/workspace/default/sessions/session-rust-recreated");
     });
   });
 });

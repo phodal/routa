@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+HARNESS_MONITOR_BIN="${HARNESS_MONITOR_BIN:-${ROUTA_WATCH_BIN:-${AGENTWATCH_BIN:-harness-monitor}}}"
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+
+exec "$HARNESS_MONITOR_BIN" --repo "$REPO_ROOT" git-hook post-commit -- "$@"

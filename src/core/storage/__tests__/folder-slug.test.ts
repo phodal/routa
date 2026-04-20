@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { toFolderSlug } from "../folder-slug";
+import { getCanvasesDir, toFolderSlug } from "../folder-slug";
 
 describe("toFolderSlug", () => {
   it("converts a basic Unix path", () => {
@@ -37,5 +37,22 @@ describe("toFolderSlug", () => {
 
   it("produces same slug with or without trailing slash", () => {
     expect(toFolderSlug("/Users/john/project/")).toBe(toFolderSlug("/Users/john/project"));
+  });
+
+  it("builds the canvases directory under the project storage root", () => {
+    const originalHome = process.env.HOME;
+    process.env.HOME = "/home/tester";
+
+    try {
+      expect(getCanvasesDir("/Users/john/project")).toBe(
+        "/home/tester/.routa/projects/Users-john-project/canvases",
+      );
+    } finally {
+      if (originalHome === undefined) {
+        delete process.env.HOME;
+      } else {
+        process.env.HOME = originalHome;
+      }
+    }
   });
 });

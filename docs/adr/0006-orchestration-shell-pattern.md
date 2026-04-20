@@ -36,5 +36,5 @@ This applies equally to:
 ## Code References
 
 - `AGENTS.md` § Coding Standards — normative enforcement
-- `tools/entrix/docs/adr/0001-git-history-signals-for-long-file-analysis.md` — extraction priority signals
+- `docs/REFACTOR.md` — extraction priority signals and long-file triage workflow
 - `docs/REFACTOR.md` — refactor playbook for long-file triage

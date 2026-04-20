@@ -1,4 +1,5 @@
 import { getAcpProcessManager } from "@/core/acp/processer";
+import { AcpError } from "@/core/acp/acp-process";
 import { getHttpSessionStore, type SessionUpdateNotification } from "@/core/acp/http-session-store";
 import { getPresetById } from "@/core/acp/acp-presets";
 import { isServerlessEnvironment } from "@/core/acp/api-based-providers";
@@ -19,6 +20,7 @@ import {
   recordTrace,
 } from "@/core/trace";
 import {
+  loadSessionFromDb,
   loadSessionFromLocalStorage,
   persistSessionToDb,
   updateSessionExecutionBindingInDb,
@@ -26,6 +28,7 @@ import {
 import { resolveSkillContent } from "@/core/skills/skill-resolver";
 import {
   buildExecutionBinding,
+  getEmbeddedOwnershipIssue,
   refreshExecutionBinding,
 } from "@/core/acp/execution-backend";
 import type { McpServerProfile } from "@/core/mcp/mcp-server-profiles";
@@ -35,7 +38,7 @@ import { persistSessionHistorySnapshot } from "@/core/acp/session-history";
 type JsonRpcResponseFactory = (
   id: string | number | null,
   result: unknown,
-  error?: { code: number; message: string }
+  error?: { code: number; message: string; data?: Record<string, unknown> }
 ) => Response;
 
 type SessionUpdateForwarderFactory = (
@@ -66,7 +69,7 @@ interface DispatchSessionPromptParams {
 function inlineJsonrpcResponse(
   id: string | number | null,
   result: unknown,
-  error?: { code: number; message: string },
+  error?: { code: number; message: string; data?: Record<string, unknown> },
 ): Response {
   const body = error
     ? { jsonrpc: "2.0", id, error }
@@ -125,6 +128,40 @@ function markSessionPromptError(
   const message = error instanceof Error ? error.message : fallbackMessage;
   store.updateSessionAcpStatus(sessionId, "error", message);
   return message;
+}
+
+export function isSessionPromptTimeoutError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  return error.message.includes("Timeout waiting for session/prompt");
+}
+
+function getPromptErrorData(error: unknown): Record<string, unknown> | undefined {
+  if (isAcpErrorLike(error)) {
+    return {
+      source: "acp",
+      code: error.code,
+      authMethods: error.authMethods,
+      agentInfo: error.agentInfo,
+      data: error.data,
+    };
+  }
+  if (error instanceof Error) {
+    return {
+      source: "app",
+      errorName: error.name,
+      errorMessage: error.message,
+    };
+  }
+  return undefined;
+}
+
+function isAcpErrorLike(error: unknown): error is AcpError {
+  if (error instanceof AcpError) return true;
+  if (!error || typeof error !== "object") return false;
+  const candidate = error as Record<string, unknown>;
+  return candidate.name === "AcpError" && typeof candidate.message === "string";
 }
 
 function buildCoordinatorContextPrompt(input: {
@@ -212,13 +249,7 @@ async function ensurePromptSessionExists(args: {
   const forwardSessionUpdate = createSessionUpdateForwarder(store, sessionId);
 
   const sessionExists =
-    manager.getProcess(sessionId) !== undefined ||
-    manager.getClaudeProcess(sessionId) !== undefined ||
-    manager.isDockerAdapterSession(sessionId) ||
-    manager.isClaudeCodeSdkSession(sessionId) ||
-    manager.isOpencodeAdapterSession(sessionId) ||
-    (await manager.isClaudeCodeSdkSessionAsync(sessionId)) ||
-    (await manager.isOpencodeSdkSessionAsync(sessionId));
+    manager.hasActiveSession(sessionId);
 
   if (sessionExists) {
     return null;
@@ -227,23 +258,40 @@ async function ensurePromptSessionExists(args: {
   console.log(`[ACP Route] Session ${sessionId} not found, auto-creating with default settings...`);
 
   const storedSession = store.getSession(sessionId);
-  const persistedSession = storedSession ? null : await loadSessionFromLocalStorage(sessionId);
-  const cwd = storedSession?.cwd ?? persistedSession?.cwd ?? (params.cwd as string | undefined) ?? process.cwd();
+  const persistedSession =
+    storedSession
+      ? null
+      : (await loadSessionFromDb(sessionId)) ?? (await loadSessionFromLocalStorage(sessionId));
+  const recoveredSession = storedSession ?? persistedSession ?? undefined;
+  const ownershipIssue = getEmbeddedOwnershipIssue(recoveredSession);
+  if (ownershipIssue) {
+    return jsonrpcResponse(id ?? null, null, {
+      code: -32010,
+      message: ownershipIssue,
+      data: {
+        source: "app",
+        sessionId,
+      },
+    });
+  }
+
+  const cwd = recoveredSession?.cwd ?? (params.cwd as string | undefined) ?? process.cwd();
   const defaultProvider = isServerlessEnvironment() ? "claude-code-sdk" : "opencode";
-  const provider = (params.provider as string | undefined) ?? storedSession?.provider ?? persistedSession?.provider ?? defaultProvider;
-  const workspaceId = requireWorkspaceId(params.workspaceId) ?? storedSession?.workspaceId ?? persistedSession?.workspaceId;
+  const provider = (params.provider as string | undefined) ?? recoveredSession?.provider ?? defaultProvider;
+  const workspaceId = requireWorkspaceId(params.workspaceId) ?? recoveredSession?.workspaceId;
   if (!workspaceId) {
     return jsonrpcResponse(id ?? null, null, {
       code: -32602,
       message: "workspaceId is required to recreate the session",
     });
   }
-  const role = storedSession?.role ?? persistedSession?.role ?? "CRAFTER";
+  const role = recoveredSession?.role ?? "CRAFTER";
   const toolMode = storedSession?.toolMode;
   const mcpProfile = storedSession?.mcpProfile;
   const allowedNativeTools = storedSession?.allowedNativeTools;
-  const specialistId = storedSession?.specialistId ?? persistedSession?.specialistId;
+  const specialistId = recoveredSession?.specialistId;
   const specialistSystemPrompt = storedSession?.specialistSystemPrompt;
+  const providerSessionId = recoveredSession?.routaAgentId ?? sessionId;
 
   try {
     const preset = getPresetById(provider);
@@ -251,6 +299,7 @@ async function ensurePromptSessionExists(args: {
     const isClaudeCodeSdk = provider === "claude-code-sdk";
     const isOpencodeSdk = provider === "opencode-sdk";
     const isDockerOpenCode = provider === "docker-opencode";
+    const isCodex = provider === "codex";
 
     let acpSessionId: string;
 
@@ -319,6 +368,42 @@ async function ensurePromptSessionExists(args: {
         undefined,
         allowedNativeTools,
       );
+    } else if (isCodex) {
+      try {
+        acpSessionId = await manager.loadSession(
+          sessionId,
+          cwd,
+          forwardSessionUpdate,
+          "codex",
+          workspaceId,
+          toolMode,
+          mcpProfile,
+          {
+            provider,
+            role,
+          },
+          providerSessionId,
+        );
+        console.log(`[ACP Route] Native Codex resume succeeded for session ${sessionId}`);
+      } catch (resumeError) {
+        console.warn(`[ACP Route] Native Codex resume failed for ${sessionId}, falling back to recreate:`, resumeError);
+        acpSessionId = await manager.createSession(
+          sessionId,
+          cwd,
+          forwardSessionUpdate,
+          provider,
+          undefined,
+          undefined,
+          undefined,
+          workspaceId,
+          toolMode,
+          mcpProfile,
+          {
+            provider,
+            role,
+          },
+        );
+      }
     } else {
       acpSessionId = await manager.createSession(
         sessionId,
@@ -331,6 +416,10 @@ async function ensurePromptSessionExists(args: {
         workspaceId,
         toolMode,
         mcpProfile,
+        {
+          provider,
+          role,
+        },
       );
     }
 
@@ -585,6 +674,17 @@ export async function handleSessionPrompt({
           await persistSessionHistorySnapshot(sessionId, store);
           controller.close();
         } catch (err) {
+          if (isSessionPromptTimeoutError(err)) {
+            console.warn(
+              `[ACP Route] session/prompt timed out while waiting for ${sessionId}; keeping ACP session alive for continued lifecycle updates.`,
+              err,
+            );
+            store.flushAgentBuffer(sessionId);
+            store.exitStreamingMode(sessionId);
+            await persistSessionHistorySnapshot(sessionId, store);
+            controller.close();
+            return;
+          }
           const message = markSessionPromptError(store, sessionId, err, "OpenCode SDK prompt failed");
           store.flushAgentBuffer(sessionId);
           store.exitStreamingMode(sessionId);
@@ -638,6 +738,17 @@ export async function handleSessionPrompt({
           await persistSessionHistorySnapshot(sessionId, store);
           controller.close();
         } catch (err) {
+          if (isSessionPromptTimeoutError(err)) {
+            console.warn(
+              `[ACP Route] session/prompt timed out while waiting for ${sessionId}; keeping ACP session alive for continued lifecycle updates.`,
+              err,
+            );
+            store.flushAgentBuffer(sessionId);
+            store.exitStreamingMode(sessionId);
+            await persistSessionHistorySnapshot(sessionId, store);
+            controller.close();
+            return;
+          }
           const message = markSessionPromptError(store, sessionId, err, "Docker OpenCode prompt failed");
           store.flushAgentBuffer(sessionId);
           store.exitStreamingMode(sessionId);
@@ -690,6 +801,17 @@ export async function handleSessionPrompt({
           await persistSessionHistorySnapshot(sessionId, store);
           controller.close();
         } catch (err) {
+          if (isSessionPromptTimeoutError(err)) {
+            console.warn(
+              `[ACP Route] session/prompt timed out while waiting for ${sessionId}; keeping ACP session alive for continued lifecycle updates.`,
+              err,
+            );
+            store.flushAgentBuffer(sessionId);
+            store.exitStreamingMode(sessionId);
+            await persistSessionHistorySnapshot(sessionId, store);
+            controller.close();
+            return;
+          }
           const message = markSessionPromptError(store, sessionId, err, "Claude Code SDK prompt failed");
           store.flushAgentBuffer(sessionId);
           store.exitStreamingMode(sessionId);
@@ -720,7 +842,7 @@ export async function handleSessionPrompt({
 
     if (!claudeProc.alive) {
       console.warn(`[ACP Route] Claude Code process for session ${sessionId} is dead — attempting restart`);
-      manager.killSession(sessionId);
+      await manager.killSession(sessionId);
       const restartRecord = store.getSession(sessionId);
       if (!restartRecord) {
         return jsonrpcResponse(id ?? null, null, {
@@ -777,12 +899,22 @@ export async function handleSessionPrompt({
         void persistSessionHistorySnapshot(sessionId, store);
         return jsonrpcResponse(id ?? null, result);
       } catch (err) {
+        if (isSessionPromptTimeoutError(err)) {
+          console.warn(
+            `[ACP Route] session/prompt timed out while waiting for ${sessionId}; keeping ACP session alive for continued lifecycle updates.`,
+            err,
+          );
+          store.flushAgentBuffer(sessionId);
+          void persistSessionHistorySnapshot(sessionId, store);
+          return jsonrpcResponse(id ?? null, { sessionId, pending: true });
+        }
         const message = markSessionPromptError(store, sessionId, err, "Claude Code prompt failed after restart");
         store.flushAgentBuffer(sessionId);
         void persistSessionHistorySnapshot(sessionId, store);
         return jsonrpcResponse(id ?? null, null, {
           code: -32000,
           message,
+          data: getPromptErrorData(err),
         });
       }
     }
@@ -793,12 +925,22 @@ export async function handleSessionPrompt({
       void persistSessionHistorySnapshot(sessionId, store);
       return jsonrpcResponse(id ?? null, result);
     } catch (err) {
+      if (isSessionPromptTimeoutError(err)) {
+        console.warn(
+          `[ACP Route] session/prompt timed out while waiting for ${sessionId}; keeping ACP session alive for continued lifecycle updates.`,
+          err,
+        );
+        store.flushAgentBuffer(sessionId);
+        void persistSessionHistorySnapshot(sessionId, store);
+        return jsonrpcResponse(id ?? null, { sessionId, pending: true });
+      }
       const message = markSessionPromptError(store, sessionId, err, "Claude Code prompt failed");
       store.flushAgentBuffer(sessionId);
       void persistSessionHistorySnapshot(sessionId, store);
       return jsonrpcResponse(id ?? null, null, {
         code: -32000,
         message,
+        data: getPromptErrorData(err),
       });
     }
   }
@@ -827,12 +969,22 @@ export async function handleSessionPrompt({
     void persistSessionHistorySnapshot(sessionId, store);
     return jsonrpcResponse(id ?? null, result);
   } catch (err) {
+    if (isSessionPromptTimeoutError(err)) {
+      console.warn(
+        `[ACP Route] session/prompt timed out while waiting for ${sessionId}; keeping ACP session alive for continued lifecycle updates.`,
+        err,
+      );
+      store.flushAgentBuffer(sessionId);
+      void persistSessionHistorySnapshot(sessionId, store);
+      return jsonrpcResponse(id ?? null, { sessionId, pending: true });
+    }
     const message = markSessionPromptError(store, sessionId, err, "Prompt failed");
     store.flushAgentBuffer(sessionId);
     void persistSessionHistorySnapshot(sessionId, store);
     return jsonrpcResponse(id ?? null, null, {
       code: -32000,
       message,
+      data: getPromptErrorData(err),
     });
   }
 }

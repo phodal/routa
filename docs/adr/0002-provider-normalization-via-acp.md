@@ -2,7 +2,7 @@
 
 - Status: accepted
 - Date: 2026-02-28
-- Derived from: [issue #33](../issues/2026-02-28-gh-33-model-based-acp-provider.md)
+- Derived from: [issue #33](https://github.com/phodal/routa/issues/33)
 
 ## Context
 

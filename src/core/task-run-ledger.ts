@@ -51,11 +51,17 @@ function resolveStatus(
   laneSession: TaskLaneSession,
   session?: SessionLookup,
 ): TaskRunStatus {
+  if (
+    session?.acpStatus === "error"
+    && (!laneSession.status || laneSession.status === "running")
+  ) {
+    return "failed";
+  }
+
   if (laneSession.status) {
     return laneSession.status;
   }
 
-  if (session?.acpStatus === "error") return "failed";
   if (session?.acpStatus === "connecting" || session?.acpStatus === "ready") return "running";
   return "unknown";
 }

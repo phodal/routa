@@ -9,6 +9,7 @@ import type { OnboardingMode } from "@/client/utils/onboarding";
 import { useTranslation } from "@/i18n";
 import { ChevronDown, Columns2, Plus, SquareArrowOutUpRight, Folder, MessageSquareMore } from "lucide-react";
 
+const ONBOARDING_GITHUB_PLACEHOLDER = "https://github.com/phodal/routa";
 
 interface FeaturedSkill {
   name: string;
@@ -638,6 +639,7 @@ export function OnboardingCard({
   workspaceTitle,
   hasProviderConfig,
   hasCodebase,
+  availableProviderNames,
   preferredMode,
   onCreateWorkspace,
   onOpenProviders,
@@ -649,6 +651,7 @@ export function OnboardingCard({
   workspaceTitle?: string | null;
   hasProviderConfig: boolean;
   hasCodebase: boolean;
+  availableProviderNames: string[];
   preferredMode: OnboardingMode | null;
   onCreateWorkspace: (title: string) => Promise<boolean>;
   onOpenProviders: () => void;
@@ -666,7 +669,13 @@ export function OnboardingCard({
 
   const completeCount = Number(hasProviderConfig) + Number(hasCodebase) + Number(preferredMode !== null);
   const selectedModeLabel =
-    preferredMode === "ROUTA" ? t.onboarding.modeRoutaTitle : preferredMode === "CRAFTER" ? t.onboarding.modeCrafterTitle : null;
+    preferredMode === "SESSION"
+      ? t.onboarding.modeSessionTitle
+      : preferredMode === "KANBAN"
+        ? t.onboarding.modeKanbanTitle
+        : preferredMode === "TEAM"
+          ? t.onboarding.modeTeamTitle
+          : null;
 
   const handleWorkspaceCreate = async () => {
     const title = workspaceName.trim();
@@ -785,13 +794,41 @@ export function OnboardingCard({
               {hasProviderConfig ? t.onboarding.completed : t.onboarding.pending}
             </span>
           </div>
-          <button
-            type="button"
-            onClick={onOpenProviders}
-            className="mt-4 rounded-full border border-sky-200/80 px-4 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-[#356fb0] transition-colors hover:border-sky-300 hover:text-[#0f62d6] dark:border-[#223049] dark:text-slate-300 dark:hover:border-[#314665] dark:hover:text-white"
-          >
-            {hasProviderConfig ? t.onboarding.providerReady : t.onboarding.providerAction}
-          </button>
+          {hasProviderConfig ? (
+            <div className="mt-4">
+              {availableProviderNames.length > 0 ? (
+                <div className="flex flex-wrap gap-2">
+                  {availableProviderNames.map((providerName) => (
+                    <span
+                      key={providerName}
+                      className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/8 dark:text-emerald-300"
+                    >
+                      {providerName}
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <div className="rounded-2xl border border-emerald-100 bg-emerald-50/70 px-3 py-3 text-sm text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/8 dark:text-emerald-300">
+                  {t.onboarding.providerReady}
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={onOpenProviders}
+                className="mt-3 text-xs font-medium text-[#356fb0] transition-colors hover:text-[#0f62d6] dark:text-slate-300 dark:hover:text-white"
+              >
+                {t.onboarding.openProviders}
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={onOpenProviders}
+              className="mt-4 rounded-full border border-sky-200/80 px-4 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-[#356fb0] transition-colors hover:border-sky-300 hover:text-[#0f62d6] dark:border-[#223049] dark:text-slate-300 dark:hover:border-[#314665] dark:hover:text-white"
+            >
+              {t.onboarding.providerAction}
+            </button>
+          )}
         </div>
 
         <div className="rounded-[24px] border border-sky-100/90 bg-white/82 p-4 dark:border-white/8 dark:bg-white/[0.03]">
@@ -811,7 +848,12 @@ export function OnboardingCard({
           ) : (
             <>
               <div className="mt-4">
-                <RepoPicker value={repoSelection} onChange={setRepoSelection} pathDisplay="below-muted" />
+                <RepoPicker
+                  value={repoSelection}
+                  onChange={setRepoSelection}
+                  pathDisplay="below-muted"
+                  clonePlaceholder={ONBOARDING_GITHUB_PLACEHOLDER}
+                />
               </div>
               {codebaseError && (
                 <p className="mt-2 text-sm text-rose-600 dark:text-rose-300">{codebaseError}</p>
@@ -841,19 +883,27 @@ export function OnboardingCard({
           <div className="mt-4 grid gap-2">
             <button
               type="button"
-              onClick={() => onSelectMode("ROUTA")}
-              className={`rounded-2xl border px-4 py-3 text-left transition-colors ${preferredMode === "ROUTA" ? "border-blue-400 bg-blue-50 dark:border-blue-500/50 dark:bg-blue-500/10" : "border-sky-100 hover:border-sky-300 dark:border-white/8 dark:hover:border-[#314665]"}`}
+              onClick={() => onSelectMode("SESSION")}
+              className={`rounded-2xl border px-4 py-3 text-left transition-colors ${preferredMode === "SESSION" ? "border-blue-400 bg-blue-50 dark:border-blue-500/50 dark:bg-blue-500/10" : "border-sky-100 hover:border-sky-300 dark:border-white/8 dark:hover:border-[#314665]"}`}
             >
-              <div className="text-sm font-semibold text-slate-900 dark:text-white">{t.onboarding.modeRoutaTitle}</div>
-              <p className="mt-1 text-sm leading-6 text-[#577090] dark:text-slate-400">{t.onboarding.modeRoutaDescription}</p>
+              <div className="text-sm font-semibold text-slate-900 dark:text-white">{t.onboarding.modeSessionTitle}</div>
+              <p className="mt-1 text-sm leading-6 text-[#577090] dark:text-slate-400">{t.onboarding.modeSessionDescription}</p>
             </button>
             <button
               type="button"
-              onClick={() => onSelectMode("CRAFTER")}
-              className={`rounded-2xl border px-4 py-3 text-left transition-colors ${preferredMode === "CRAFTER" ? "border-amber-400 bg-amber-50 dark:border-amber-500/50 dark:bg-amber-500/10" : "border-sky-100 hover:border-sky-300 dark:border-white/8 dark:hover:border-[#314665]"}`}
+              onClick={() => onSelectMode("KANBAN")}
+              className={`rounded-2xl border px-4 py-3 text-left transition-colors ${preferredMode === "KANBAN" ? "border-amber-400 bg-amber-50 dark:border-amber-500/50 dark:bg-amber-500/10" : "border-sky-100 hover:border-sky-300 dark:border-white/8 dark:hover:border-[#314665]"}`}
             >
-              <div className="text-sm font-semibold text-slate-900 dark:text-white">{t.onboarding.modeCrafterTitle}</div>
-              <p className="mt-1 text-sm leading-6 text-[#577090] dark:text-slate-400">{t.onboarding.modeCrafterDescription}</p>
+              <div className="text-sm font-semibold text-slate-900 dark:text-white">{t.onboarding.modeKanbanTitle}</div>
+              <p className="mt-1 text-sm leading-6 text-[#577090] dark:text-slate-400">{t.onboarding.modeKanbanDescription}</p>
+            </button>
+            <button
+              type="button"
+              onClick={() => onSelectMode("TEAM")}
+              className={`rounded-2xl border px-4 py-3 text-left transition-colors ${preferredMode === "TEAM" ? "border-emerald-400 bg-emerald-50 dark:border-emerald-500/50 dark:bg-emerald-500/10" : "border-sky-100 hover:border-sky-300 dark:border-white/8 dark:hover:border-[#314665]"}`}
+            >
+              <div className="text-sm font-semibold text-slate-900 dark:text-white">{t.onboarding.modeTeamTitle}</div>
+              <p className="mt-1 text-sm leading-6 text-[#577090] dark:text-slate-400">{t.onboarding.modeTeamDescription}</p>
             </button>
           </div>
           {selectedModeLabel && (
@@ -1095,7 +1145,7 @@ export function WorkspaceCards({
                     <Columns2 className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
                   </Link>
                   <Link
-                    href={`/workspace/${workspace.id}`}
+                    href={`/workspace/${workspace.id}/overview`}
                     onClick={(event) => event.stopPropagation()}
                     className="rounded-full border border-transparent p-1 text-slate-400 opacity-0 transition-opacity hover:border-slate-200 hover:text-slate-600 group-hover:opacity-100 dark:hover:border-[#2a3042] dark:hover:text-slate-300"
                     title="Open overview"

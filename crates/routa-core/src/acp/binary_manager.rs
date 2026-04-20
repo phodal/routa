@@ -68,10 +68,10 @@ impl AcpBinaryManager {
         // Create directories
         tokio::fs::create_dir_all(&download_dir)
             .await
-            .map_err(|e| format!("Failed to create download dir: {}", e))?;
+            .map_err(|e| format!("Failed to create download dir: {e}"))?;
         tokio::fs::create_dir_all(&install_dir)
             .await
-            .map_err(|e| format!("Failed to create install dir: {}", e))?;
+            .map_err(|e| format!("Failed to create install dir: {e}"))?;
 
         // Download the archive
         let archive_path = self
@@ -108,7 +108,7 @@ impl AcpBinaryManager {
 
         let response = reqwest::get(url)
             .await
-            .map_err(|e| format!("Failed to download: {}", e))?;
+            .map_err(|e| format!("Failed to download: {e}"))?;
 
         if !response.status().is_success() {
             return Err(format!(
@@ -131,11 +131,11 @@ impl AcpBinaryManager {
         let bytes = response
             .bytes()
             .await
-            .map_err(|e| format!("Failed to read response: {}", e))?;
+            .map_err(|e| format!("Failed to read response: {e}"))?;
 
         tokio::fs::write(&archive_path, &bytes)
             .await
-            .map_err(|e| format!("Failed to write archive: {}", e))?;
+            .map_err(|e| format!("Failed to write archive: {e}"))?;
 
         tracing::info!(
             "[AcpBinaryManager] Downloaded {} bytes to {:?}",
@@ -166,24 +166,23 @@ impl AcpBinaryManager {
                 let filename = archive_path.file_name().unwrap_or_default();
                 let dest = install_dir.join(filename);
                 std::fs::copy(&archive_path, &dest)
-                    .map_err(|e| format!("Failed to copy binary: {}", e))?;
+                    .map_err(|e| format!("Failed to copy binary: {e}"))?;
                 Ok(())
             }
         })
         .await
-        .map_err(|e| format!("Extract task failed: {}", e))?
+        .map_err(|e| format!("Extract task failed: {e}"))?
     }
 
     fn extract_zip(archive: &Path, dest: &Path) -> Result<(), String> {
-        let file =
-            std::fs::File::open(archive).map_err(|e| format!("Failed to open zip: {}", e))?;
+        let file = std::fs::File::open(archive).map_err(|e| format!("Failed to open zip: {e}"))?;
         let mut archive =
-            zip::ZipArchive::new(file).map_err(|e| format!("Failed to read zip: {}", e))?;
+            zip::ZipArchive::new(file).map_err(|e| format!("Failed to read zip: {e}"))?;
 
         for i in 0..archive.len() {
             let mut file = archive
                 .by_index(i)
-                .map_err(|e| format!("Failed to read zip entry: {}", e))?;
+                .map_err(|e| format!("Failed to read zip entry: {e}"))?;
             let outpath = dest.join(file.mangled_name());
 
             if file.name().ends_with('/') {
@@ -193,9 +192,9 @@ impl AcpBinaryManager {
                     std::fs::create_dir_all(p).ok();
                 }
                 let mut outfile = std::fs::File::create(&outpath)
-                    .map_err(|e| format!("Failed to create file: {}", e))?;
+                    .map_err(|e| format!("Failed to create file: {e}"))?;
                 std::io::copy(&mut file, &mut outfile)
-                    .map_err(|e| format!("Failed to extract file: {}", e))?;
+                    .map_err(|e| format!("Failed to extract file: {e}"))?;
             }
         }
         Ok(())
@@ -203,30 +202,29 @@ impl AcpBinaryManager {
 
     fn extract_tar_gz(archive: &Path, dest: &Path) -> Result<(), String> {
         let file =
-            std::fs::File::open(archive).map_err(|e| format!("Failed to open tar.gz: {}", e))?;
+            std::fs::File::open(archive).map_err(|e| format!("Failed to open tar.gz: {e}"))?;
         let gz = flate2::read::GzDecoder::new(file);
         let mut tar = tar::Archive::new(gz);
         tar.unpack(dest)
-            .map_err(|e| format!("Failed to extract tar.gz: {}", e))?;
+            .map_err(|e| format!("Failed to extract tar.gz: {e}"))?;
         Ok(())
     }
 
     fn extract_tar_bz2(archive: &Path, dest: &Path) -> Result<(), String> {
         let file =
-            std::fs::File::open(archive).map_err(|e| format!("Failed to open tar.bz2: {}", e))?;
+            std::fs::File::open(archive).map_err(|e| format!("Failed to open tar.bz2: {e}"))?;
         let bz2 = bzip2::read::BzDecoder::new(file);
         let mut tar = tar::Archive::new(bz2);
         tar.unpack(dest)
-            .map_err(|e| format!("Failed to extract tar.bz2: {}", e))?;
+            .map_err(|e| format!("Failed to extract tar.bz2: {e}"))?;
         Ok(())
     }
 
     fn extract_tar(archive: &Path, dest: &Path) -> Result<(), String> {
-        let file =
-            std::fs::File::open(archive).map_err(|e| format!("Failed to open tar: {}", e))?;
+        let file = std::fs::File::open(archive).map_err(|e| format!("Failed to open tar: {e}"))?;
         let mut tar = tar::Archive::new(file);
         tar.unpack(dest)
-            .map_err(|e| format!("Failed to extract tar: {}", e))?;
+            .map_err(|e| format!("Failed to extract tar: {e}"))?;
         Ok(())
     }
 
@@ -301,12 +299,12 @@ impl AcpBinaryManager {
             use std::os::unix::fs::PermissionsExt;
             let mut perms = tokio::fs::metadata(_exe_path)
                 .await
-                .map_err(|e| format!("Failed to get metadata: {}", e))?
+                .map_err(|e| format!("Failed to get metadata: {e}"))?
                 .permissions();
             perms.set_mode(perms.mode() | 0o755);
             tokio::fs::set_permissions(_exe_path, perms)
                 .await
-                .map_err(|e| format!("Failed to set permissions: {}", e))?;
+                .map_err(|e| format!("Failed to set permissions: {e}"))?;
         }
 
         // Remove macOS quarantine attribute
@@ -328,7 +326,7 @@ impl AcpBinaryManager {
         if agent_dir.exists() {
             tokio::fs::remove_dir_all(&agent_dir)
                 .await
-                .map_err(|e| format!("Failed to remove agent directory: {}", e))?;
+                .map_err(|e| format!("Failed to remove agent directory: {e}"))?;
         }
         Ok(())
     }

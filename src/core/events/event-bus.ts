@@ -26,6 +26,8 @@ export enum AgentEventType {
   ARTIFACT_REQUESTED = "ARTIFACT_REQUESTED",
   /** Emitted when an agent provides an artifact */
   ARTIFACT_PROVIDED = "ARTIFACT_PROVIDED",
+  /** Emitted when agent tools modify files (write_file, edit_file, delete_file) */
+  FILE_CHANGES = "FILE_CHANGES",
   /** Emitted when an agent has no pending work (auto-emitted by ACP adapters) */
   AGENT_IDLE = "AGENT_IDLE",
   /** Emitted when an agent process fails or crashes */

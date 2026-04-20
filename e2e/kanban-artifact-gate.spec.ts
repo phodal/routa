@@ -90,9 +90,8 @@ test.describe("Kanban artifact gates", () => {
       await expect(devCard.getByTestId("kanban-card-artifact-gate")).toContainText("+1");
 
       await devCard.click();
-      await expect(page.getByText("Artifacts", { exact: true })).toBeVisible();
-      await expect(page.getByText("No artifacts attached yet.")).toBeVisible();
-      await expect(page.getByText("Missing for next move: Screenshot, Test Results.")).toBeVisible();
+      await expect(page.getByText("Evidence Bundle").first()).toBeVisible();
+      await expect(page.getByText("Evidence incomplete")).toBeVisible();
 
       const provideArtifactResponse = await request.post("/api/mcp/tools", {
         data: {
@@ -121,9 +120,9 @@ test.describe("Kanban artifact gates", () => {
         status: "provided",
       });
 
+      await page.getByRole("button", { name: "Evidence Bundle" }).click();
       await expect(page.getByText("review-proof.png")).toBeVisible({ timeout: 20_000 });
       await expect(page.getByText("by agent-artifact-e2e")).toBeVisible();
-      await expect(page.getByText("Missing for next move: Test Results.")).toBeVisible();
       await expect(devCard.getByTestId("kanban-card-artifact-gate")).toContainText("Needs Test Results");
       await expect(devCard.getByTestId("kanban-card-artifact-count")).toHaveText("1 artifact");
 
@@ -183,9 +182,9 @@ test.describe("Kanban artifact gates", () => {
         ]),
       });
 
+      await page.getByRole("button", { name: "Evidence Bundle" }).click();
       await expect(page.getByText("review-test-results.txt")).toBeVisible({ timeout: 20_000 });
       await expect(page.getByText(TEST_RESULTS_TEXT)).toBeVisible();
-      await expect(page.getByText("Next-lane requirements satisfied: Screenshot, Test Results.")).toBeVisible();
       await expect(devCard.getByTestId("kanban-card-artifact-gate")).toHaveText("Review ready");
       await expect(devCard.getByTestId("kanban-card-artifact-count")).toHaveText("2 artifacts");
 

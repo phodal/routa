@@ -7,5 +7,82 @@ if [ -n "$SKIP_HOOKS" ]; then
   exit 0
 fi
 
+# ─── Mass File Deletion Protection ────────────────────────────────
+# Prevent accidental deletion of 200+ files in single commit
+
+# Skip if explicitly allowed
+if [ -z "$ALLOW_MASS_DELETE" ]; then
+  DELETED_COUNT=$(git diff --cached --diff-filter=D --name-only 2>/dev/null | wc -l | tr -d ' ')
+
+  if [ "$DELETED_COUNT" -ge 200 ]; then
+    echo "❌ COMMIT BLOCKED: Mass file deletion detected"
+    echo ""
+    echo "   📊 Deleted files: $DELETED_COUNT"
+    echo "   🚫 Threshold: 200 files"
+    echo ""
+    echo "   This protection prevents accidental mass deletions."
+    echo ""
+    echo "   If this deletion is intentional, you have these options:"
+    echo ""
+    echo "   1. Split into smaller commits (RECOMMENDED)"
+    echo "      This makes the change easier to review and revert if needed."
+    echo ""
+    echo "   2. Bypass with clear justification:"
+    echo "      ALLOW_MASS_DELETE=1 git commit -m \"feat: remove deprecated feature X"
+    echo ""
+    echo "      Reason: <explain why 200+ files are being deleted>"
+    echo "      Impact: <describe what's being removed>"
+    echo "      ALLOW_MASS_DELETE: Intentional mass deletion\""
+    echo ""
+    echo "   3. Emergency bypass (not recommended):"
+    echo "      SKIP_HOOKS=1 git commit -m \"...\""
+    echo ""
+    exit 1
+  fi
+fi
+
+# ─── Git Identity Validation ───────────────────────────────────────
+# Block test credentials before commit is created
+AUTHOR_NAME=$(git config user.name 2>/dev/null || echo "")
+AUTHOR_EMAIL=$(git config user.email 2>/dev/null || echo "")
+
+# Check for empty identity
+if [ -z "$AUTHOR_NAME" ] || [ -z "$AUTHOR_EMAIL" ]; then
+  echo "❌ COMMIT BLOCKED: Git identity not configured"
+  echo ""
+  echo "   Please configure your git identity:"
+  echo "   git config user.name \"Your Name\""
+  echo "   git config user.email \"your.email@example.com\""
+  exit 1
+fi
+
+# Block test credentials
+if echo "$AUTHOR_EMAIL" | grep -qiE "(test@example\.com|placeholder@|noreply@test)"; then
+  echo "❌ COMMIT BLOCKED: Test email detected"
+  echo "   Found: $AUTHOR_EMAIL"
+  echo ""
+  echo "   This appears to be a test credential. Please configure your real identity:"
+  echo "   git config user.name \"Your Name\""
+  echo "   git config user.email \"your.email@example.com\""
+  exit 1
+fi
+
+if echo "$AUTHOR_NAME" | grep -qiE "^(routa test|test|placeholder|example user)$"; then
+  echo "❌ COMMIT BLOCKED: Test name detected"
+  echo "   Found: $AUTHOR_NAME"
+  echo ""
+  echo "   Please configure your real name:"
+  echo "   git config user.name \"Your Name\""
+  exit 1
+fi
+
+# Validate email format (basic check)
+if ! echo "$AUTHOR_EMAIL" | grep -qE "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"; then
+  echo "❌ COMMIT BLOCKED: Invalid email format"
+  echo "   Found: $AUTHOR_EMAIL"
+  exit 1
+fi
+
+# ─── Run Standard Checks ───────────────────────────────────────────
 # Run lint phase through hook runtime profile.
 node --import tsx tools/hook-runtime/src/cli.ts --profile pre-commit "$@"

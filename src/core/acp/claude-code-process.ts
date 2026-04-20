@@ -1,6 +1,6 @@
 import { NotificationHandler, JsonRpcMessage } from "@/core/acp/processer";
 import { AcpAgentPreset, resolveCommand } from "@/core/acp/acp-presets";
-import { needsShell } from "@/core/acp/utils";
+import { awaitProcessReady, needsShell } from "@/core/acp/utils";
 import type { IProcessHandle } from "@/core/platform/interfaces";
 import { getServerBridge } from "@/core/platform";
 
@@ -167,6 +167,7 @@ export class ClaudeCodeProcess {
     // Resolve/reject for the current prompt
     private promptResolve: ((value: { stopReason: string }) => void) | null = null;
     private promptReject: ((reason: Error) => void) | null = null;
+    private promptTimeout: ReturnType<typeof setTimeout> | null = null;
 
     constructor(config: ClaudeCodeProcessConfig, onNotification: NotificationHandler) {
         this._config = config;
@@ -262,22 +263,10 @@ export class ClaudeCodeProcess {
             shell: needsShell(cmd[0]),
         });
 
-        if (!this.process || !this.process.pid) {
-            const pathHint = process.env.PATH?.split(":").slice(0, 5).join(":") ?? "(empty)";
-            throw new Error(
-                `Failed to spawn Claude Code - is "${command}" installed and in PATH? ` +
-                `(cwd: ${cwd}, PATH starts with: ${pathHint})`
-            );
-        }
-
-        if (!this.process.stdin || !this.process.stdout) {
-            throw new Error(`Claude Code spawned without required stdio streams`);
-        }
-
-        this._alive = true;
-
-        // Parse stdout as NDJSON
-        this.process.stdout.on("data", (chunk: Buffer) => {
+        // Wire up stdout/stderr/exit listeners BEFORE awaiting ready.
+        // Tauri's shell plugin forwards events immediately after cmd.spawn(),
+        // so binding after the await would miss early output frames (init messages).
+        this.process.stdout?.on("data", (chunk: Buffer) => {
             this.buffer += chunk.toString("utf-8");
             this.processBuffer();
         });
@@ -292,6 +281,7 @@ export class ClaudeCodeProcess {
         this.process.on("exit", (code, signal) => {
             console.log(`[ClaudeCode:${displayName}] Process exited: code=${code}, signal=${signal}`);
             this._alive = false;
+            if (this.promptTimeout) { clearTimeout(this.promptTimeout); this.promptTimeout = null; }
             if (this.promptReject) {
                 this.promptReject(new Error(`Claude Code process exited (code=${code})`));
                 this.promptResolve = null;
@@ -303,6 +293,23 @@ export class ClaudeCodeProcess {
             console.error(`[ClaudeCode:${displayName}] Process error:`, err);
             this._alive = false;
         });
+
+        await awaitProcessReady(this.process);
+
+        if (!this.process || !this.process.pid) {
+            const pathSep = process.platform === "win32" ? ";" : ":";
+            const pathHint = process.env.PATH?.split(pathSep).slice(0, 5).join(pathSep) ?? "(empty)";
+            throw new Error(
+                `Failed to spawn Claude Code - is "${command}" installed and in PATH? ` +
+                `(cwd: ${cwd}, PATH starts with: ${pathHint})`
+            );
+        }
+
+        if (!this.process.stdin || !this.process.stdout) {
+            throw new Error(`Claude Code spawned without required stdio streams`);
+        }
+
+        this._alive = true;
 
         // Wait for process to stabilize
         await new Promise((resolve) => setTimeout(resolve, 500));
@@ -347,12 +354,38 @@ export class ClaudeCodeProcess {
             session_id: this._sessionId ?? undefined,
         });
 
+        const PROMPT_TIMEOUT_MS = 300_000; // 5 min — matches ACP process
+
         return new Promise<{ stopReason: string }>((resolve, reject) => {
+            if (this.promptResolve || this.promptReject) {
+                reject(new Error("Claude Code already has a prompt in flight"));
+                return;
+            }
+
+            // Clear any previous timeout
+            if (this.promptTimeout) {
+                clearTimeout(this.promptTimeout);
+                this.promptTimeout = null;
+            }
+
             this.promptResolve = resolve;
             this.promptReject = reject;
 
+            // Timeout guard: prevents the POST handler from blocking forever
+            // when Claude Code runs a long task or the process hangs.
+            this.promptTimeout = setTimeout(() => {
+                this.promptResolve = null;
+                this.promptReject = null;
+                this.promptTimeout = null;
+                reject(new Error(`Timeout waiting for session/prompt (${PROMPT_TIMEOUT_MS / 1000}s)`));
+            }, PROMPT_TIMEOUT_MS);
+
             // Write to stdin
             if (!this.process?.stdin?.writable) {
+                if (this.promptTimeout) clearTimeout(this.promptTimeout);
+                this.promptTimeout = null;
+                this.promptResolve = null;
+                this.promptReject = null;
                 reject(new Error("Claude Code stdin not writable"));
                 return;
             }
@@ -578,6 +611,7 @@ export class ClaudeCodeProcess {
 
                 // Resolve the prompt promise
                 if (this.promptResolve) {
+                    if (this.promptTimeout) { clearTimeout(this.promptTimeout); this.promptTimeout = null; }
                     this.promptResolve({ stopReason });
                     this.promptResolve = null;
                     this.promptReject = null;

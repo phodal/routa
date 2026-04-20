@@ -25,6 +25,7 @@ pub(super) fn tool_allowed_for_profile(name: &str, profile: Option<&str>) -> boo
                 | "decompose_tasks"
                 | "search_cards"
                 | "list_cards_by_column"
+                | "update_task"
                 | "update_card"
                 | "move_card"
                 | "request_previous_lane_handoff"
@@ -89,8 +90,10 @@ fn build_tool_list_inner() -> Vec<serde_json::Value> {
                 "title": { "type": "string", "description": "Task title" },
                 "objective": { "type": "string", "description": "Task objective" },
                 "workspaceId": { "type": "string" },
+                "sessionId": { "type": "string", "description": "Session that created the task" },
                 "scope": { "type": "string", "description": "Task scope" },
-                "acceptanceCriteria": { "type": "array", "items": { "type": "string" }, "description": "Acceptance criteria" }
+                "acceptanceCriteria": { "type": "array", "items": { "type": "string" }, "description": "Acceptance criteria" },
+                "creationSource": { "type": "string", "enum": ["manual", "agent", "api", "session"] }
             },
             "required": ["title", "objective"]
         })),
@@ -104,12 +107,50 @@ fn build_tool_list_inner() -> Vec<serde_json::Value> {
             },
             "required": ["taskId", "status", "agentId"]
         })),
+        tool_def("update_task", "Atomically update structured task fields. Use this for story-readiness fields such as scope, acceptance criteria, verification commands, and test cases. agentId is optional for Kanban sessions.", serde_json::json!({
+            "type": "object",
+            "properties": {
+                "taskId": { "type": "string", "description": "Task ID" },
+                "agentId": { "type": "string", "description": "Agent making the update (optional in Kanban sessions)" },
+                "title": { "type": "string", "description": "Updated task title" },
+                "objective": { "type": "string", "description": "Updated task objective" },
+                "scope": { "type": "string", "description": "Structured implementation scope" },
+                "acceptanceCriteria": { "type": "array", "items": { "type": "string" }, "description": "Structured acceptance criteria" },
+                "verificationCommands": { "type": "array", "items": { "type": "string" }, "description": "Runnable verification commands" },
+                "testCases": { "type": "array", "items": { "type": "string" }, "description": "Human-readable test cases" },
+                "status": { "type": "string", "enum": ["PENDING","IN_PROGRESS","REVIEW_REQUIRED","COMPLETED","NEEDS_FIX","BLOCKED","CANCELLED"] }
+            },
+            "required": ["taskId"]
+        })),
         tool_def("get_my_task", "Get the task(s) assigned to the calling agent, including objective, scope, and acceptance criteria.", serde_json::json!({
             "type": "object",
             "properties": {
                 "agentId": { "type": "string", "description": "Your agent ID" }
             },
             "required": ["agentId"]
+        })),
+        tool_def("provide_artifact", "Provide an artifact for a task, such as a screenshot, test results, code diff, or logs.", serde_json::json!({
+            "type": "object",
+            "properties": {
+                "workspaceId": { "type": "string" },
+                "agentId": { "type": "string", "description": "Agent providing the artifact" },
+                "taskId": { "type": "string", "description": "Task ID" },
+                "type": { "type": "string", "enum": ["screenshot", "test_results", "code_diff", "logs"], "description": "Artifact type" },
+                "content": { "type": "string", "description": "Artifact content" },
+                "context": { "type": "string", "description": "Optional artifact context" },
+                "requestId": { "type": "string", "description": "Optional request ID being fulfilled" },
+                "metadata": { "type": "object", "description": "Optional artifact metadata" }
+            },
+            "required": ["agentId", "taskId", "type", "content"]
+        })),
+        tool_def("list_artifacts", "List artifacts for a task, optionally filtered by type.", serde_json::json!({
+            "type": "object",
+            "properties": {
+                "workspaceId": { "type": "string" },
+                "taskId": { "type": "string", "description": "Task ID" },
+                "type": { "type": "string", "enum": ["screenshot", "test_results", "code_diff", "logs"], "description": "Artifact type filter" }
+            },
+            "required": ["taskId"]
         })),
         // ── Delegation tools ─────────────────────────────────────────────
         tool_def("delegate_task_to_agent", "Delegate a task to a new agent by spawning a real process. Use specialist='CRAFTER' for implementation, specialist='GATE' for verification, specialist='DEVELOPER' for solo plan+implement.", serde_json::json!({
@@ -208,6 +249,20 @@ fn build_tool_list_inner() -> Vec<serde_json::Value> {
             "type": "object",
             "properties": {}
         })),
+        tool_def("read_canvas_sdk_resource", "Read the Routa Canvas SDK manifest or a generated definition resource by resource URI. Use this when your provider cannot call MCP resources/read directly.", serde_json::json!({
+            "type": "object",
+            "properties": {
+                "uri": { "type": "string", "description": "Canvas SDK resource URI, e.g. resource://routa/canvas-sdk/manifest" }
+            },
+            "required": ["uri"]
+        })),
+        tool_def("read_specialist_spec_resource", "Read a bundled specialist framework spec resource by URI. Use this when your provider cannot call MCP resources/read directly.", serde_json::json!({
+            "type": "object",
+            "properties": {
+                "uri": { "type": "string", "description": "Specialist spec resource URI, e.g. resource://routa/specialists/feature-tree/manifest" }
+            },
+            "required": ["uri"]
+        })),
         // ── Event tools ──────────────────────────────────────────────────
         tool_def("subscribe_to_events", "Subscribe to workspace events", serde_json::json!({
             "type": "object",
@@ -270,7 +325,7 @@ fn build_tool_list_inner() -> Vec<serde_json::Value> {
             },
             "required": ["cardId", "targetColumnId"]
         })),
-        tool_def("update_card", "Update card fields (title, description, comment, priority, labels). From dev onward, use comment because description is frozen.", serde_json::json!({
+        tool_def("update_card", "Update card fields (title, description, comment, priority, labels). From dev onward, use comment because description is frozen. For story-readiness fields such as scope, acceptance criteria, verification commands, or test cases, use update_task instead.", serde_json::json!({
             "type": "object",
             "properties": {
                 "cardId": { "type": "string", "description": "Card ID" },
@@ -410,6 +465,7 @@ mod tests {
             "decompose_tasks",
             "search_cards",
             "list_cards_by_column",
+            "update_task",
             "update_card",
             "move_card",
             "request_previous_lane_handoff",

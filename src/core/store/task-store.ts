@@ -4,7 +4,7 @@
  * In-memory storage for tasks and their lifecycle.
  */
 
-import { Task, TaskStatus } from "../models/task";
+import { hydrateTaskComments, Task, TaskStatus } from "../models/task";
 
 export interface TaskStore {
   save(task: Task): Promise<void>;
@@ -27,28 +27,28 @@ export class InMemoryTaskStore implements TaskStore {
 
   async get(taskId: string): Promise<Task | undefined> {
     const task = this.tasks.get(taskId);
-    return task ? { ...task } : undefined;
+    return task ? this.hydrateTask(task) : undefined;
   }
 
   async listByWorkspace(workspaceId: string): Promise<Task[]> {
-    return Array.from(this.tasks.values()).filter(
-      (t) => t.workspaceId === workspaceId
-    );
+    return Array.from(this.tasks.values())
+      .filter((t) => t.workspaceId === workspaceId)
+      .map((task) => this.hydrateTask(task));
   }
 
   async listByStatus(
     workspaceId: string,
     status: TaskStatus
   ): Promise<Task[]> {
-    return Array.from(this.tasks.values()).filter(
-      (t) => t.workspaceId === workspaceId && t.status === status
-    );
+    return Array.from(this.tasks.values())
+      .filter((t) => t.workspaceId === workspaceId && t.status === status)
+      .map((task) => this.hydrateTask(task));
   }
 
   async listByAssignee(agentId: string): Promise<Task[]> {
-    return Array.from(this.tasks.values()).filter(
-      (t) => t.assignedTo === agentId
-    );
+    return Array.from(this.tasks.values())
+      .filter((t) => t.assignedTo === agentId)
+      .map((task) => this.hydrateTask(task));
   }
 
   async findReadyTasks(workspaceId: string): Promise<Task[]> {
@@ -83,5 +83,12 @@ export class InMemoryTaskStore implements TaskStore {
       deleted += 1;
     }
     return deleted;
+  }
+
+  private hydrateTask(task: Task): Task {
+    return {
+      ...task,
+      comments: hydrateTaskComments(task.comments, task.comment),
+    };
   }
 }

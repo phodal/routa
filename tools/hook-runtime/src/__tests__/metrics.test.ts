@@ -67,4 +67,25 @@ describe("loadHookMetrics", () => {
 
     await rmWithRetry(tempDir);
   });
+
+  it("parses serial execution hints from frontmatter metrics", async () => {
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), "hook-metric-serial-"));
+    const docsDir = path.join(tempDir, "docs", "fitness");
+    await mkdir(docsDir, { recursive: true });
+    await writeFile(path.join(docsDir, "manifest.yaml"), "evidence_files:\n  - docs/fitness/sample.md\n", "utf-8");
+    await writeFile(
+      path.join(docsDir, "sample.md"),
+      "---\nmetrics:\n  - name: rust_test_pass\n    command: cargo test\n    hard_gate: true\n    serial: true\n---\nplaceholder\n",
+      "utf-8",
+    );
+
+    process.chdir(tempDir);
+    vi.resetModules();
+    const { loadHookMetrics } = await import("../metrics.js");
+
+    const [metric] = await loadHookMetrics(["rust_test_pass"]);
+    expect(metric?.serial).toBe(true);
+
+    await rmWithRetry(tempDir);
+  });
 });

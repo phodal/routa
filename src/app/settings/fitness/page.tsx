@@ -1,3 +1,7 @@
+/**
+ * Settings / Fitness - /settings/fitness
+ * Compatibility route that forwards fitness configuration requests to the fluency settings surface with preserved repository context.
+ */
 import { redirect } from "next/navigation";
 
 type SearchParams = {

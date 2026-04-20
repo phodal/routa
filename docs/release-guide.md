@@ -1,13 +1,13 @@
-# Routa CLI Release Guide
+# Routa Release Guide
 
-This guide covers the process for releasing new versions of Routa CLI to multiple distribution channels: **crates.io** (Cargo), **npm**, and **GitHub Releases**.
+This guide covers the process for releasing new Routa artifacts to multiple distribution channels: **crates.io** (Cargo), **npm**, and **GitHub Releases**.
 
 ## Overview
 
 The release process publishes to three channels simultaneously:
 
-1. **crates.io** - Rust users can `cargo install routa-cli`
-2. **npm** - Node.js users can `npm install -g routa-cli`
+1. **crates.io** - Rust users can `cargo install routa-cli`, `cargo install harness-monitor`, and `cargo install entrix`
+2. **npm** - Node.js users can `npm install -g routa-cli`, `npm install -g harness-monitor`, and `npm install -g entrix`
 3. **GitHub Releases** - Desktop binaries and release notes
 
 ## Prerequisites
@@ -18,7 +18,8 @@ Ensure these GitHub secrets are configured:
 
 - `CRATE_TOKEN` - Get from [crates.io/me](https://crates.io/me) → API Tokens (Note: The workflow uses `CRATE_TOKEN`, not `CARGO_REGISTRY_TOKEN`)
 - `NPM_TOKEN` - Get from [npmjs.com](https://www.npmjs.com/) → Access Tokens → Generate New Token → Automation
-- `GITHUB_TOKEN` - Automatically provided by GitHub Actions
+- `ROUTA_GITHUB_TOKEN` - Preferred token for release baseline fetches against the GitHub Actions API
+- `GITHUB_TOKEN` - Automatically provided by GitHub Actions and used as fallback when `ROUTA_GITHUB_TOKEN` is not configured
 
 ### Local Setup
 
@@ -50,9 +51,66 @@ Use the release helper script:
 
 The script will:
 1. Sync version across all packages
-2. Show you the changes
-3. Create commit and tag
-4. Push to trigger GitHub Actions
+2. Generate a release notes preview under `dist/release/release-notes.md`
+3. Show you the changes
+4. Create commit and tag
+5. Push to trigger GitHub Actions
+
+### Method 1.5: Prepare Release Artifacts And Blog Draft
+
+Use the preparation helper when you want the release notes/blog files written into `docs/releases/` before deciding whether to publish:
+
+```bash
+# Prepare release notes, changelog, and docs/releases blog draft
+npm run release:prepare -- 0.2.5
+
+# Use a specific range and AI summary generation
+npm run release:prepare -- 0.2.5 --from v0.2.4 --ai --ai-provider claude
+```
+
+This helper:
+1. Syncs version fields across the repo
+2. Generates preview files under `dist/release/`
+3. Copies the generated release notes to `docs/releases/v<version>-release-notes.md`
+4. Copies the technical changelog to `docs/releases/v<version>-changelog.md`
+5. Leaves commit, tag, and push decisions to a later explicit step
+
+If you are using the repo skill system, the same workflow is exposed through `.agents/skills/release/`.
+
+### Generate Release Notes
+
+Tauri draft releases use commit-derived release notes. Generate the same markdown locally before publishing:
+
+```bash
+npm run release:changelog -- \
+  --from v0.2.5 \
+  --to v0.2.6 \
+  --out dist/release/release-notes.md \
+  --changelog-out dist/release/CHANGELOG.generated.md
+```
+
+For the hybrid workflow, generate the AI prompt package, ask the bundled specialist for a curated `summaryMarkdown`, then re-run the changelog with that curated summary:
+
+```bash
+# deterministic technical changelog + prompt package
+npm run release:changelog -- \
+  --from v0.2.5 \
+  --to v0.2.6 \
+  --prompt-out dist/release/changelog-summary-prompt.json \
+  --changelog-out dist/release/CHANGELOG.generated.md \
+  --out dist/release/release-notes.md
+
+# optional one-step specialist run; requires a configured ACP provider
+npm run release:changelog -- \
+  --from v0.2.5 \
+  --to v0.2.6 \
+  --ai \
+  --ai-provider claude \
+  --out dist/release/release-notes.md \
+  --changelog-out dist/release/CHANGELOG.generated.md
+```
+
+The generated release notes contain a user-facing `Summary`, a technical changelog, commit links, install instructions, and range metadata. `--changelog-out` writes the same tag range as a standalone `# Changelog` entry. If you want manual curation without running a specialist, write the curated summary in Markdown and pass it with `--summary-file`.
 
 ### Method 2: Manual Process
 
@@ -95,7 +153,9 @@ Publishes these crates in order:
 2. `routa-rpc` - RPC layer
 3. `routa-scanner` - Repository scanner
 4. `routa-server` - HTTP server
-5. `routa-cli` - CLI binary
+5. `entrix` - Entrix fitness engine shared by Harness Monitor
+6. `routa-cli` - CLI binary
+7. `harness-monitor` - terminal watch and attribution tool
 
 **Note**: Each crate waits for the previous one to be indexed on crates.io before publishing.
 
@@ -118,7 +178,8 @@ Then publishes to npm as:
 
 Creates GitHub Release with:
 - Tauri desktop app installers for macOS, Linux, and Windows
-- Release notes with CLI install instructions
+- Auto-generated release notes from `scripts/release/generate-changelog.mjs`
+- CLI install instructions
 - Automatic code signing for macOS (if configured)
 
 **Platform Matrix**:
@@ -142,6 +203,10 @@ After the release completes (~15-30 minutes), verify:
 cargo search routa-cli
 cargo install routa-cli@0.2.5
 routa --version
+
+cargo search harness-monitor
+cargo install harness-monitor@0.2.5
+harness-monitor --version
 ```
 
 ### NPM
@@ -188,9 +253,9 @@ Common issues:
 
 **Known Issue**: Cargo crates may not be published automatically. If this happens:
 
-1. Manually update all `crates/*/Cargo.toml` versions:
+1. Manually update all release crate versions:
    ```bash
-   for crate in crates/routa-core crates/routa-rpc crates/routa-scanner crates/routa-server crates/routa-cli; do
+   for crate in crates/routa-core crates/routa-rpc crates/routa-scanner crates/routa-server crates/entrix crates/routa-cli crates/harness-monitor; do
      sed -i '' 's/version = "OLD_VERSION"/version = "NEW_VERSION"/g' "$crate/Cargo.toml"
    done
    ```
@@ -202,7 +267,9 @@ Common issues:
    cd ../routa-rpc && cargo publish --no-verify
    cd ../routa-scanner && cargo publish --no-verify
    cd ../routa-server && cargo publish --no-verify
+   cd ../entrix && cargo publish --no-verify
    cd ../routa-cli && cargo publish --no-verify
+   cd ../harness-monitor && cargo publish --no-verify
    ```
 
 **Root Cause**: The `sync-release-version.mjs` script doesn't sync Rust crate versions (only Desktop Tauri and npm packages).
@@ -275,10 +342,9 @@ It does **not** sync:
 
 ## Related Documentation
 
-- [Cargo.toml workspace config](../../Cargo.toml)
-- [NPM package structure](../../packages/routa-cli/package.json)
-- [CLI Release workflow](../../.github/workflows/cli-release.yml)
-- [Cargo Release workflow](../../.github/workflows/cargo-release.yml)
-- [Desktop Release workflow](../../.github/workflows/tauri-release.yml)
-- [Release Checklist](./RELEASE_CHECKLIST.md)
-
+- [Cargo.toml workspace config](https://github.com/phodal/routa/blob/main/Cargo.toml)
+- [NPM package structure](https://github.com/phodal/routa/blob/main/packages/routa-cli/package.json)
+- [CLI Release workflow](https://github.com/phodal/routa/blob/main/.github/workflows/cli-release.yml)
+- [Cargo Release workflow](https://github.com/phodal/routa/blob/main/.github/workflows/cargo-release.yml)
+- [Desktop Release workflow](https://github.com/phodal/routa/blob/main/.github/workflows/tauri-release.yml)
+- [Release Checklist](https://github.com/phodal/routa/blob/main/docs/RELEASE_CHECKLIST.md)

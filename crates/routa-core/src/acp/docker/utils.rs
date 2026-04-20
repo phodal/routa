@@ -37,7 +37,7 @@ pub fn generate_container_name(session_id: &str) -> String {
     if short_id.is_empty() {
         "routa-agent-session".to_string()
     } else {
-        format!("routa-agent-{}", short_id)
+        format!("routa-agent-{short_id}")
     }
 }
 
@@ -88,7 +88,7 @@ pub fn shell_escape(input: &str) -> String {
 
     // Replace single quotes with escaped version
     let escaped = input.replace('\'', "'\\''");
-    format!("'{}'", escaped)
+    format!("'{escaped}'")
 }
 
 #[cfg(test)]

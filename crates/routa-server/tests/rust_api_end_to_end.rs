@@ -1,104 +1,89 @@
-use std::fs::{self, File};
-use std::io::Write as _;
-use std::path::PathBuf;
+use std::fs;
+use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::time::Duration;
 
-use reqwest::{Client, StatusCode};
+use reqwest::StatusCode;
 use serde_json::{json, Value};
+use tempfile::TempDir;
 
-use routa_server::{start_server, ServerConfig};
+#[path = "common/mod.rs"]
+mod common;
+use common::ApiFixture;
 
-struct ApiFixture {
-    base_url: String,
-    client: Client,
-    db_path: PathBuf,
+struct GitRepoFixture {
+    _temp: TempDir,
+    repo_path: PathBuf,
 }
 
-impl ApiFixture {
-    async fn new() -> Self {
-        let db_path = random_db_path();
+impl GitRepoFixture {
+    fn new() -> Self {
+        let temp = tempfile::tempdir().expect("tempdir should exist");
+        let repo_path = temp.path().join("repo");
+        fs::create_dir_all(&repo_path).expect("repo dir should exist");
 
-        let config = ServerConfig {
-            host: "127.0.0.1".to_string(),
-            port: 0,
-            db_path: db_path.to_string_lossy().to_string(),
-            static_dir: None,
-        };
+        run_git(&repo_path, &["init", "--no-bare", "-b", "main"]);
+        run_git(&repo_path, &["config", "user.name", "Routa Test"]);
+        run_git(
+            &repo_path,
+            &["config", "user.email", "routa-test@example.com"],
+        );
+        write_file(&repo_path, "README.md", "# Codebase Fixture\n");
+        write_file(&repo_path, "src/lib.rs", "pub fn parity_fixture() {}\n");
+        run_git(&repo_path, &["add", "README.md", "src/lib.rs"]);
+        run_git(&repo_path, &["commit", "-m", "chore: initial repo fixture"]);
 
-        let addr = start_server(config)
-            .await
-            .expect("start server for api fixture");
-        let base_url = format!("http://{addr}");
-        let client = Client::new();
-        let fixture = Self {
-            base_url,
-            client,
-            db_path,
-        };
-        fixture.wait_until_ready().await;
-        fixture
+        Self {
+            _temp: temp,
+            repo_path,
+        }
     }
 
-    fn endpoint(&self, path: &str) -> String {
-        format!("{}{}", self.base_url, path)
-    }
-
-    async fn wait_until_ready(&self) {
-        for _ in 0..50 {
-            if self
-                .client
-                .get(self.endpoint("/api/health"))
-                .send()
-                .await
-                .is_ok_and(|resp| resp.status() == StatusCode::OK)
-            {
-                return;
-            }
-            tokio::time::sleep(Duration::from_millis(20)).await;
+    fn new_bare() -> Self {
+        let temp = tempfile::tempdir().expect("tempdir should exist");
+        let repo_path = temp.path().join("repo.git");
+        let output = Command::new("git")
+            .args(["init", "--bare", repo_path.to_string_lossy().as_ref()])
+            .output()
+            .expect("git init --bare should run");
+        if !output.status.success() {
+            panic!(
+                "git init --bare failed: {}",
+                String::from_utf8_lossy(&output.stderr).trim()
+            );
         }
 
-        panic!("server did not become ready");
+        Self {
+            _temp: temp,
+            repo_path,
+        }
     }
 }
 
-impl Drop for ApiFixture {
-    fn drop(&mut self) {
-        let _ = fs::remove_file(&self.db_path);
-    }
-}
-
-fn random_db_path() -> PathBuf {
-    std::env::temp_dir().join(format!("routa-server-api-{}.db", uuid::Uuid::new_v4()))
-}
-
-fn random_repo_path() -> PathBuf {
-    std::env::temp_dir().join(format!("routa-server-repo-{}", uuid::Uuid::new_v4()))
-}
-
-fn write_repo_file(path: &std::path::Path, file_name: &str, content: &str) {
-    let file_path = path.join(file_name);
-    if let Some(parent) = file_path.parent() {
-        fs::create_dir_all(parent).unwrap();
-    }
-    let mut file = File::create(file_path).unwrap();
-    file.write_all(content.as_bytes()).unwrap();
-}
-
-fn run_git(repo_path: &std::path::Path, args: &[&str]) {
-    let status = Command::new("git")
+fn run_git(repo_path: &Path, args: &[&str]) -> String {
+    let output = Command::new("git")
+        .args(["-c", "commit.gpgsign=false", "-c", "tag.gpgsign=false"])
         .args(args)
         .current_dir(repo_path)
-        .status()
-        .expect("run git command");
-    assert!(status.success(), "git {:?} should succeed", args);
+        .output()
+        .unwrap_or_else(|error| panic!("git {args:?} failed to start: {error}"));
+
+    if !output.status.success() {
+        panic!(
+            "git {:?} failed: {}",
+            args,
+            String::from_utf8_lossy(&output.stderr).trim()
+        );
+    }
+
+    String::from_utf8_lossy(&output.stdout).trim().to_string()
 }
 
-fn init_git_repo(repo_path: &std::path::Path) {
-    fs::create_dir_all(repo_path).expect("create repo dir");
-    run_git(repo_path, &["init", "--initial-branch=main"]);
-    run_git(repo_path, &["config", "user.email", "test@example.com"]);
-    run_git(repo_path, &["config", "user.name", "Routa Test"]);
+fn write_file(repo_path: &Path, relative_path: &str, content: &str) {
+    let path = repo_path.join(relative_path);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).expect("parent directory should exist");
+    }
+    fs::write(path, content).expect("file should be written");
 }
 
 fn json_has_error(resp: &Value, expected: &str) -> bool {
@@ -309,7 +294,7 @@ async fn api_workspace_and_note_flow() {
         .expect("decode deleted workspace response");
     assert!(json_has_error(
         &deleted_workspace_json,
-        &format!("Workspace {} not found", workspace_id),
+        &format!("Workspace {workspace_id} not found"),
     ));
 }
 
@@ -448,138 +433,392 @@ async fn api_task_flow_with_validation() {
 }
 
 #[tokio::test]
-async fn api_codebase_and_file_search_flow() {
+async fn api_task_patch_explicit_null_clears_worktree() {
     let fixture = ApiFixture::new().await;
-    let repo_path = random_repo_path();
-    init_git_repo(&repo_path);
-    write_repo_file(&repo_path, "README.md", "# routa\n");
-    write_repo_file(&repo_path, "src/lib.rs", "pub fn main() {}\n");
-    run_git(&repo_path, &["add", "."]);
-    run_git(&repo_path, &["commit", "-m", "initial"]);
-    write_repo_file(
-        &repo_path,
-        "src/lib.rs",
-        "pub fn main() { println!(\"changed\"); }\n",
-    );
-    write_repo_file(&repo_path, "notes/todo.md", "- pending\n");
 
-    let codebase_created = fixture
+    let create_task = fixture
+        .client
+        .post(fixture.endpoint("/api/tasks"))
+        .json(&json!({
+            "title": "Rust API worktree clear",
+            "objective": "Ensure explicit null clears worktreeId",
+            "workspaceId": "default"
+        }))
+        .send()
+        .await
+        .expect("create task");
+    assert_eq!(create_task.status(), StatusCode::CREATED);
+    let created_task: Value = create_task
+        .json()
+        .await
+        .expect("decode task create response");
+    let task_id = created_task["task"]["id"].as_str().expect("task id");
+
+    let assign_worktree = fixture
+        .client
+        .patch(fixture.endpoint(&format!("/api/tasks/{task_id}")))
+        .json(&json!({ "worktreeId": "worktree-stale" }))
+        .send()
+        .await
+        .expect("assign worktree");
+    assert_eq!(assign_worktree.status(), StatusCode::OK);
+
+    let clear_worktree = fixture
+        .client
+        .patch(fixture.endpoint(&format!("/api/tasks/{task_id}")))
+        .json(&json!({ "worktreeId": null }))
+        .send()
+        .await
+        .expect("clear worktree");
+    assert_eq!(clear_worktree.status(), StatusCode::OK);
+    let clear_json: Value = clear_worktree.json().await.expect("decode clear response");
+    assert_eq!(clear_json["task"]["worktreeId"], Value::Null);
+
+    let get_task = fixture
+        .client
+        .get(fixture.endpoint(&format!("/api/tasks/{task_id}")))
+        .send()
+        .await
+        .expect("get task");
+    assert_eq!(get_task.status(), StatusCode::OK);
+    let get_json: Value = get_task.json().await.expect("decode task");
+    assert_eq!(get_json["task"]["worktreeId"], Value::Null);
+}
+
+#[tokio::test]
+async fn api_task_changes_contract() {
+    let fixture = ApiFixture::new().await;
+
+    let missing_response = fixture
+        .client
+        .get(fixture.endpoint("/api/tasks/missing-task/changes"))
+        .send()
+        .await
+        .expect("get missing task changes");
+    assert_eq!(missing_response.status(), StatusCode::NOT_FOUND);
+
+    let standalone_task = fixture
+        .client
+        .post(fixture.endpoint("/api/tasks"))
+        .json(&json!({
+            "title": "No repo task",
+            "objective": "Return an empty change payload when no repo is linked",
+            "workspaceId": "default"
+        }))
+        .send()
+        .await
+        .expect("create standalone task");
+    assert_eq!(standalone_task.status(), StatusCode::CREATED);
+    let standalone_json: Value = standalone_task
+        .json()
+        .await
+        .expect("decode standalone task");
+    let standalone_task_id = standalone_json["task"]["id"]
+        .as_str()
+        .expect("standalone task id");
+
+    let empty_changes = fixture
+        .client
+        .get(fixture.endpoint(&format!("/api/tasks/{standalone_task_id}/changes")))
+        .send()
+        .await
+        .expect("get empty task changes");
+    assert_eq!(empty_changes.status(), StatusCode::OK);
+    let empty_changes_json: Value = empty_changes
+        .json()
+        .await
+        .expect("decode empty task changes");
+    assert_eq!(empty_changes_json["changes"]["files"], json!([]));
+    assert_eq!(
+        empty_changes_json["changes"]["error"],
+        json!("No repository or worktree linked to this task")
+    );
+
+    let repo = GitRepoFixture::new();
+    run_git(&repo.repo_path, &["checkout", "-b", "feature/task-changes"]);
+    run_git(&repo.repo_path, &["branch", "--set-upstream-to=main"]);
+    write_file(
+        &repo.repo_path,
+        "src/lib.rs",
+        "pub fn parity_fixture() {}\npub fn task_changes_contract() {}\n",
+    );
+    run_git(&repo.repo_path, &["add", "src/lib.rs"]);
+    run_git(
+        &repo.repo_path,
+        &["commit", "-m", "feat: add task changes coverage"],
+    );
+
+    let create_codebase = fixture
         .client
         .post(fixture.endpoint("/api/workspaces/default/codebases"))
         .json(&json!({
-            "repoPath": repo_path.to_string_lossy().to_string(),
-            "label": "unit-test-fixture",
-            "isDefault": true
+            "repoPath": repo.repo_path.to_string_lossy().to_string(),
+            "branch": "main",
+            "label": "Task changes repo"
+        }))
+        .send()
+        .await
+        .expect("create codebase for task changes");
+    assert_eq!(create_codebase.status(), StatusCode::CREATED);
+    let create_codebase_json: Value = create_codebase
+        .json()
+        .await
+        .expect("decode codebase response");
+    let codebase_id = create_codebase_json["codebase"]["id"]
+        .as_str()
+        .expect("codebase id");
+
+    let create_task = fixture
+        .client
+        .post(fixture.endpoint("/api/tasks"))
+        .json(&json!({
+            "title": "Task changes contract",
+            "objective": "Surface live commits and branch status from Rust",
+            "workspaceId": "default",
+            "codebaseIds": [codebase_id]
+        }))
+        .send()
+        .await
+        .expect("create task with codebase");
+    assert_eq!(create_task.status(), StatusCode::CREATED);
+    let create_task_json: Value = create_task
+        .json()
+        .await
+        .expect("decode create task response");
+    let task_id = create_task_json["task"]["id"].as_str().expect("task id");
+
+    let changes_response = fixture
+        .client
+        .get(fixture.endpoint(&format!("/api/tasks/{task_id}/changes")))
+        .send()
+        .await
+        .expect("get task changes");
+    assert_eq!(changes_response.status(), StatusCode::OK);
+
+    let changes_json: Value = changes_response
+        .json()
+        .await
+        .expect("decode task changes response");
+    assert_eq!(
+        changes_json["changes"]["branch"],
+        json!("feature/task-changes")
+    );
+    assert_eq!(changes_json["changes"]["status"]["clean"], json!(true));
+    assert_eq!(changes_json["changes"]["status"]["ahead"], json!(1));
+    assert_eq!(changes_json["changes"]["mode"], json!("commits"));
+    assert_eq!(changes_json["changes"]["baseRef"], json!("main"));
+    assert_eq!(changes_json["changes"]["targetBranch"], json!("main"));
+    assert_eq!(
+        changes_json["changes"]["commits"][0]["summary"],
+        json!("feat: add task changes coverage")
+    );
+    assert_eq!(
+        changes_json["changes"]["commits"][0]["shortSha"]
+            .as_str()
+            .map(str::len),
+        Some(7)
+    );
+}
+
+#[tokio::test]
+async fn api_codebase_and_file_search_flow() {
+    let fixture = ApiFixture::new().await;
+    let repo = GitRepoFixture::new();
+    let second_repo = GitRepoFixture::new();
+    let bare_repo = GitRepoFixture::new_bare();
+
+    let bare_response = fixture
+        .client
+        .post(fixture.endpoint("/api/workspaces/default/codebases"))
+        .json(&json!({
+            "repoPath": bare_repo.repo_path.to_string_lossy().to_string(),
+            "label": "Bare repo"
+        }))
+        .send()
+        .await
+        .expect("create bare repo codebase");
+    assert_eq!(bare_response.status(), StatusCode::BAD_REQUEST);
+    let bare_json: Value = bare_response
+        .json()
+        .await
+        .expect("decode bare repo response");
+    assert!(json_has_error(
+        &bare_json,
+        "Cannot add a bare git repository as a codebase",
+    ));
+
+    let create_response = fixture
+        .client
+        .post(fixture.endpoint("/api/workspaces/default/codebases"))
+        .json(&json!({
+            "repoPath": repo.repo_path.to_string_lossy().to_string(),
+            "branch": "main",
+            "label": "Parity repo"
         }))
         .send()
         .await
         .expect("create codebase");
-    assert_eq!(codebase_created.status(), StatusCode::OK);
-    let codebase_json: Value = codebase_created
+    assert_eq!(create_response.status(), StatusCode::CREATED);
+    let create_json: Value = create_response
         .json()
         .await
-        .expect("decode codebase response");
-    let codebase_id = codebase_json["codebase"]["id"]
+        .expect("decode codebase create response");
+    let codebase_id = create_json["codebase"]["id"]
         .as_str()
-        .expect("codebase id");
+        .expect("codebase id")
+        .to_string();
+    assert_eq!(create_json["codebase"]["label"], json!("Parity repo"));
+    assert_eq!(create_json["codebase"]["isDefault"], json!(true));
 
-    let duplicate_codebase = fixture
+    let duplicate_response = fixture
         .client
         .post(fixture.endpoint("/api/workspaces/default/codebases"))
         .json(&json!({
-            "repoPath": repo_path.to_string_lossy().to_string(),
-            "label": "duplicate"
+            "repoPath": repo.repo_path.to_string_lossy().to_string(),
+            "label": "Duplicate repo"
         }))
         .send()
         .await
-        .expect("duplicate codebase");
-    assert_eq!(duplicate_codebase.status(), StatusCode::CONFLICT);
+        .expect("create duplicate codebase");
+    assert_eq!(duplicate_response.status(), StatusCode::CONFLICT);
+    let duplicate_json: Value = duplicate_response
+        .json()
+        .await
+        .expect("decode duplicate codebase response");
+    assert_eq!(
+        duplicate_json["error"],
+        json!("Codebase with this repoPath already exists in the workspace")
+    );
 
-    let update_codebase = fixture
+    let patch_response = fixture
         .client
         .patch(fixture.endpoint(&format!("/api/codebases/{codebase_id}")))
         .json(&json!({
-            "branch":"main"
+            "label": "Parity repo updated",
+            "branch": "main"
         }))
         .send()
         .await
-        .expect("update codebase");
-    assert_eq!(update_codebase.status(), StatusCode::OK);
+        .expect("patch codebase");
+    assert_eq!(patch_response.status(), StatusCode::OK);
+    let patch_json: Value = patch_response.json().await.expect("decode patch response");
+    assert_eq!(
+        patch_json["codebase"]["label"],
+        json!("Parity repo updated")
+    );
 
-    let default_codebase = fixture
+    let default_response = fixture
         .client
         .post(fixture.endpoint(&format!("/api/codebases/{codebase_id}/default")))
         .send()
         .await
-        .expect("set default codebase");
-    assert_eq!(default_codebase.status(), StatusCode::OK);
-    let default_json: Value = default_codebase
+        .expect("set codebase default");
+    assert_eq!(default_response.status(), StatusCode::OK);
+    let default_json: Value = default_response
         .json()
         .await
-        .expect("decode default codebase response");
-    assert!(default_json["codebase"]["isDefault"]
-        .as_bool()
-        .expect("isDefault"));
+        .expect("decode set default response");
+    assert_eq!(default_json["codebase"]["id"], json!(codebase_id));
+    assert_eq!(default_json["codebase"]["isDefault"], json!(true));
 
-    let search = fixture
+    let files_missing_repo_path = fixture
         .client
-        .get(fixture.endpoint(&format!(
-            "/api/files/search?repoPath={}&q=lib&limit=5",
-            repo_path.to_string_lossy()
+        .get(fixture.endpoint("/api/files/search?q=README"))
+        .send()
+        .await
+        .expect("file search without repoPath");
+    assert_eq!(files_missing_repo_path.status(), StatusCode::BAD_REQUEST);
+    let files_missing_repo_path_json: Value = files_missing_repo_path
+        .json()
+        .await
+        .expect("decode file search missing repoPath response");
+    assert!(json_has_error(
+        &files_missing_repo_path_json,
+        "Missing repoPath parameter",
+    ));
+
+    let file_search_response = fixture
+        .client
+        .get(fixture.endpoint("/api/files/search"))
+        .query(&[
+            ("q", "readme"),
+            ("repoPath", repo.repo_path.to_string_lossy().as_ref()),
+            ("limit", "5"),
+        ])
+        .send()
+        .await
+        .expect("search files");
+    assert_eq!(file_search_response.status(), StatusCode::OK);
+    let file_search_json: Value = file_search_response
+        .json()
+        .await
+        .expect("decode file search response");
+    let files = file_search_json["files"].as_array().expect("files array");
+    assert!(files.iter().any(|file| file["path"] == json!("README.md")));
+    assert!(file_search_json["scanned"].as_u64().unwrap_or_default() >= 2);
+
+    let second_create_response = fixture
+        .client
+        .post(fixture.endpoint("/api/workspaces/default/codebases"))
+        .json(&json!({
+            "repoPath": second_repo.repo_path.to_string_lossy().to_string(),
+            "label": "Second repo"
+        }))
+        .send()
+        .await
+        .expect("create second codebase");
+    assert_eq!(second_create_response.status(), StatusCode::CREATED);
+    let second_create_json: Value = second_create_response
+        .json()
+        .await
+        .expect("decode second codebase response");
+    let second_codebase_id = second_create_json["codebase"]["id"]
+        .as_str()
+        .expect("second codebase id");
+
+    let delete_global_response = fixture
+        .client
+        .delete(fixture.endpoint(&format!("/api/codebases/{second_codebase_id}")))
+        .send()
+        .await
+        .expect("delete codebase globally");
+    assert_eq!(delete_global_response.status(), StatusCode::OK);
+    let delete_global_json: Value = delete_global_response
+        .json()
+        .await
+        .expect("decode global delete response");
+    assert_eq!(delete_global_json, json!({ "deleted": true }));
+
+    let delete_wrong_workspace = fixture
+        .client
+        .delete(fixture.endpoint(&format!(
+            "/api/workspaces/other-workspace/codebases/{codebase_id}"
         )))
         .send()
         .await
-        .expect("search repo files");
-    assert_eq!(search.status(), StatusCode::OK);
-    let search_json: Value = search.json().await.expect("decode files search response");
-    let search_files = search_json
-        .get("files")
-        .and_then(Value::as_array)
-        .expect("files array");
-    assert!(search_files.iter().any(|item| {
-        item.get("path")
-            .and_then(Value::as_str)
-            .is_some_and(|path| path.contains("lib.rs"))
-    }));
+        .expect("delete codebase with wrong workspace");
+    assert_eq!(delete_wrong_workspace.status(), StatusCode::NOT_FOUND);
+    let delete_wrong_workspace_json: Value = delete_wrong_workspace
+        .json()
+        .await
+        .expect("decode wrong-workspace delete response");
+    assert_eq!(
+        delete_wrong_workspace_json,
+        json!({ "error": "Codebase not found" })
+    );
 
-    let changes = fixture
+    let delete_workspace_response = fixture
         .client
-        .get(fixture.endpoint("/api/workspaces/default/codebases/changes"))
+        .delete(fixture.endpoint(&format!("/api/workspaces/default/codebases/{codebase_id}")))
         .send()
         .await
-        .expect("list codebase changes");
-    assert_eq!(changes.status(), StatusCode::OK);
-    let changes_json: Value = changes.json().await.expect("decode codebase changes");
-    let repos = changes_json["repos"].as_array().expect("repos array");
-    assert_eq!(repos.len(), 1);
-    assert_eq!(repos[0]["branch"].as_str(), Some("main"));
-    assert_eq!(repos[0]["status"]["modified"].as_i64(), Some(1));
-    assert_eq!(repos[0]["status"]["untracked"].as_i64(), Some(1));
-    let files = repos[0]["files"].as_array().expect("files array");
-    assert!(files
-        .iter()
-        .any(|item| item["path"].as_str() == Some("src/lib.rs")));
-    assert!(files
-        .iter()
-        .any(|item| item["path"].as_str() == Some("notes/todo.md")));
-
-    let invalid_search = fixture
-        .client
-        .get(fixture.endpoint("/api/files/search?q=main"))
-        .send()
+        .expect("delete codebase by workspace-scoped route");
+    assert_eq!(delete_workspace_response.status(), StatusCode::OK);
+    let delete_workspace_json: Value = delete_workspace_response
+        .json()
         .await
-        .expect("invalid search request");
-    assert_eq!(invalid_search.status(), StatusCode::BAD_REQUEST);
-
-    let delete_codebase = fixture
-        .client
-        .delete(fixture.endpoint(&format!("/api/codebases/{codebase_id}")))
-        .send()
-        .await
-        .expect("delete codebase");
-    assert_eq!(delete_codebase.status(), StatusCode::OK);
-
-    let _ = fs::remove_dir_all(&repo_path);
+        .expect("decode workspace-scoped delete response");
+    assert_eq!(delete_workspace_json, json!({ "deleted": true }));
 }
 
 #[tokio::test]
@@ -1005,6 +1244,21 @@ async fn api_mcp_tools_include_delegate_task_tool() {
         has_delegate,
         "delegate_task_to_agent should be discoverable"
     );
+
+    let has_provide_artifact = tools
+        .iter()
+        .filter_map(|tool| tool.get("name").and_then(Value::as_str))
+        .any(|name| name == "provide_artifact");
+    assert!(
+        has_provide_artifact,
+        "provide_artifact should be discoverable"
+    );
+
+    let has_list_artifacts = tools
+        .iter()
+        .filter_map(|tool| tool.get("name").and_then(Value::as_str))
+        .any(|name| name == "list_artifacts");
+    assert!(has_list_artifacts, "list_artifacts should be discoverable");
 }
 
 #[tokio::test]
@@ -1069,8 +1323,7 @@ async fn api_mcp_tools_delegate_task_to_agent_contract() {
             error.contains("Failed to delegate task")
                 || error.contains("Task not found")
                 || error.contains("Failed to spawn agent process"),
-            "unexpected delegate error: {}",
-            error
+            "unexpected delegate error: {error}"
         );
         return;
     } else {
@@ -1101,8 +1354,7 @@ async fn api_mcp_tools_delegate_task_to_agent_contract() {
             error.contains("Failed to delegate task")
                 || error.contains("Task not found")
                 || error.contains("Failed to spawn agent process"),
-            "unexpected delegate error: {}",
-            error
+            "unexpected delegate error: {error}"
         );
     }
 }
@@ -1141,5 +1393,589 @@ async fn api_mcp_tools_accept_prefixed_tool_name() {
     assert!(
         agents.as_array().is_some(),
         "expected agents array, got {agents}"
+    );
+}
+
+#[tokio::test]
+async fn api_mcp_tools_provide_and_list_artifacts() {
+    let fixture = ApiFixture::new().await;
+
+    let create_task = fixture
+        .client
+        .post(fixture.endpoint("/api/tasks"))
+        .json(&json!({
+            "title": "Artifact via MCP tools",
+            "objective": "Validate Rust MCP artifact tool parity",
+            "workspaceId": "default"
+        }))
+        .send()
+        .await
+        .expect("create task");
+    assert_eq!(create_task.status(), StatusCode::CREATED);
+    let created_task: Value = create_task.json().await.expect("decode create task");
+    let task_id = created_task["task"]["id"]
+        .as_str()
+        .expect("task id should exist");
+
+    let provide_response = fixture
+        .client
+        .post(fixture.endpoint("/api/mcp/tools"))
+        .json(&json!({
+            "name": "provide_artifact",
+            "args": {
+                "workspaceId": "default",
+                "agentId": "agent-artifact-e2e",
+                "taskId": task_id,
+                "type": "screenshot",
+                "content": "base64-image",
+                "context": "Review proof",
+                "metadata": {
+                    "filename": "review-proof.png",
+                    "mediaType": "image/png"
+                }
+            }
+        }))
+        .send()
+        .await
+        .expect("call provide_artifact");
+    assert_eq!(provide_response.status(), StatusCode::OK);
+    let provide_json: Value = provide_response
+        .json()
+        .await
+        .expect("decode provide_artifact response");
+    assert_eq!(provide_json["isError"], json!(false));
+    let provide_text = provide_json["content"][0]["text"]
+        .as_str()
+        .expect("provide_artifact text payload");
+    let provide_result: Value =
+        serde_json::from_str(provide_text).expect("decode provide_artifact payload");
+    assert_eq!(provide_result["type"], json!("screenshot"));
+    assert_eq!(provide_result["taskId"], json!(task_id));
+    assert_eq!(provide_result["status"], json!("provided"));
+    assert!(provide_result["artifactId"].as_str().is_some());
+
+    let list_response = fixture
+        .client
+        .post(fixture.endpoint("/api/mcp/tools"))
+        .json(&json!({
+            "name": "list_artifacts",
+            "args": {
+                "workspaceId": "default",
+                "taskId": task_id
+            }
+        }))
+        .send()
+        .await
+        .expect("call list_artifacts");
+    assert_eq!(list_response.status(), StatusCode::OK);
+    let list_json: Value = list_response
+        .json()
+        .await
+        .expect("decode list_artifacts response");
+    assert_eq!(list_json["isError"], json!(false));
+    let list_text = list_json["content"][0]["text"]
+        .as_str()
+        .expect("list_artifacts text payload");
+    let list_result: Value =
+        serde_json::from_str(list_text).expect("decode list_artifacts payload");
+    let artifacts = list_result["artifacts"]
+        .as_array()
+        .expect("artifacts array");
+    assert_eq!(artifacts.len(), 1);
+    assert_eq!(artifacts[0]["type"], json!("screenshot"));
+    assert_eq!(artifacts[0]["taskId"], json!(task_id));
+    assert_eq!(
+        artifacts[0]["providedByAgentId"],
+        json!("agent-artifact-e2e")
+    );
+    assert_eq!(artifacts[0]["status"], json!("provided"));
+}
+
+#[tokio::test]
+async fn api_spec_issues_contract() {
+    let fixture = ApiFixture::new().await;
+    let repo_root = tempfile::tempdir().expect("temp repo");
+    let issues_dir = repo_root.path().join("docs").join("issues");
+
+    std::fs::create_dir_all(&issues_dir).expect("issues dir");
+    std::fs::write(
+        issues_dir.join("2026-04-11-spec-board.md"),
+        r#"---
+title: "Spec board"
+date: 2026-04-11
+kind: progress_note
+status: closed
+severity: high
+area: ui
+tags: ["spec", "board"]
+reported_by: codex
+related_issues: ["https://github.com/phodal/routa/issues/410"]
+github_issue: "410"
+github_state: closed
+github_url: "https://github.com/phodal/routa/issues/410"
+---
+
+# Spec board
+
+Rendered as markdown.
+"#,
+    )
+    .expect("write issue file");
+    std::fs::write(
+        issues_dir.join("2026-04-10-malformed.md"),
+        "not frontmatter",
+    )
+    .expect("write malformed file");
+
+    let success_response = fixture
+        .client
+        .get(fixture.endpoint("/api/spec/issues"))
+        .query(&[("repoPath", repo_root.path().to_string_lossy().to_string())])
+        .send()
+        .await
+        .expect("list spec issues");
+    assert_eq!(success_response.status(), StatusCode::OK);
+
+    let success_json: Value = success_response
+        .json()
+        .await
+        .expect("decode spec issues response");
+    assert_eq!(
+        success_json["repoRoot"],
+        json!(repo_root.path().to_string_lossy().to_string())
+    );
+    let issues = success_json["issues"].as_array().expect("issues array");
+    assert_eq!(issues.len(), 1);
+    assert_eq!(issues[0]["title"], json!("Spec board"));
+    assert_eq!(issues[0]["date"], json!("2026-04-11"));
+    assert_eq!(issues[0]["status"], json!("resolved"));
+    assert_eq!(issues[0]["kind"], json!("progress_note"));
+    assert_eq!(issues[0]["githubIssue"], json!(410));
+
+    let missing_repo = repo_root.path().join("missing");
+    let error_response = fixture
+        .client
+        .get(fixture.endpoint("/api/spec/issues"))
+        .query(&[("repoPath", missing_repo.to_string_lossy().to_string())])
+        .send()
+        .await
+        .expect("list spec issues with invalid repo");
+    assert_eq!(error_response.status(), StatusCode::BAD_REQUEST);
+
+    let error_json: Value = error_response
+        .json()
+        .await
+        .expect("decode invalid repo response");
+    assert!(
+        json_has_error(&error_json, "repoPath"),
+        "expected invalid repoPath error, got {error_json:?}"
+    );
+}
+
+#[tokio::test]
+async fn api_spec_surface_index_contract() {
+    let fixture = ApiFixture::new().await;
+    let repo_root = tempfile::tempdir().expect("temp repo");
+    let specs_dir = repo_root.path().join("docs").join("product-specs");
+
+    std::fs::create_dir_all(&specs_dir).expect("product specs dir");
+    std::fs::write(
+        specs_dir.join("feature-tree.index.json"),
+        r#"{
+  "generatedAt": "2026-04-16T12:00:00.000Z",
+  "pages": [
+    {
+      "route": "/workspace/:workspaceId/spec",
+      "title": "Workspace / Spec",
+      "description": "Dense issue relationship board",
+      "sourceFile": "src/app/workspace/[workspaceId]/spec/page.tsx"
+    }
+  ],
+  "apis": [
+    {
+      "domain": "spec",
+      "method": "GET",
+      "path": "/api/spec/issues",
+      "operationId": "listSpecIssues",
+      "summary": "List local issue specs"
+    }
+  ],
+  "contractApis": [
+    {
+      "domain": "spec",
+      "method": "GET",
+      "path": "/api/spec/issues",
+      "summary": "List local issue specs"
+    }
+  ],
+  "rustApis": [
+    {
+      "domain": "spec",
+      "method": "GET",
+      "path": "/api/spec/issues",
+      "sourceFiles": ["crates/routa-server/src/api/spec.rs"]
+    }
+  ],
+  "metadata": {
+    "capabilityGroups": [
+      {
+        "id": "governance-settings",
+        "name": "Governance and Settings"
+      }
+    ]
+  }
+}"#,
+    )
+    .expect("write surface index");
+
+    let success_response = fixture
+        .client
+        .get(fixture.endpoint("/api/spec/surface-index"))
+        .query(&[("repoPath", repo_root.path().to_string_lossy().to_string())])
+        .send()
+        .await
+        .expect("get spec surface index");
+    assert_eq!(success_response.status(), StatusCode::OK);
+
+    let success_json: Value = success_response
+        .json()
+        .await
+        .expect("decode spec surface index");
+    assert_eq!(success_json["warnings"], json!([]));
+    assert_eq!(
+        success_json["pages"][0]["route"],
+        json!("/workspace/:workspaceId/spec")
+    );
+    assert_eq!(success_json["apis"][0]["domain"], json!("spec"));
+    assert_eq!(
+        success_json["contractApis"][0]["path"],
+        json!("/api/spec/issues")
+    );
+    assert_eq!(
+        success_json["rustApis"][0]["sourceFiles"][0],
+        json!("crates/routa-server/src/api/spec.rs")
+    );
+    assert_eq!(
+        success_json["metadata"]["capabilityGroups"][0]["id"],
+        json!("governance-settings")
+    );
+
+    std::fs::remove_file(specs_dir.join("feature-tree.index.json")).expect("remove surface index");
+    std::fs::write(
+        repo_root.path().join("api-contract.yaml"),
+        r#"openapi: 3.1.0
+paths:
+  /api/spec/issues:
+    get:
+      summary: List local issue specs
+"#,
+    )
+    .expect("write api contract");
+
+    let missing_response = fixture
+        .client
+        .get(fixture.endpoint("/api/spec/surface-index"))
+        .query(&[("repoPath", repo_root.path().to_string_lossy().to_string())])
+        .send()
+        .await
+        .expect("get missing spec surface index");
+    assert_eq!(missing_response.status(), StatusCode::OK);
+
+    let missing_json: Value = missing_response
+        .json()
+        .await
+        .expect("decode missing spec surface index");
+    assert_eq!(missing_json["pages"], json!([]));
+    assert_eq!(missing_json["apis"][0]["path"], json!("/api/spec/issues"));
+    assert_eq!(
+        missing_json["contractApis"][0]["summary"],
+        json!("List local issue specs")
+    );
+    assert!(
+        missing_json["warnings"][0]
+            .as_str()
+            .is_some_and(|warning| warning.contains("Feature surface index not found")),
+        "expected missing surface index warning, got {missing_json:?}"
+    );
+}
+
+#[tokio::test]
+async fn api_feature_explorer_contract_for_workspace_repo() {
+    let fixture = ApiFixture::new().await;
+    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(|path| path.parent())
+        .expect("workspace root")
+        .to_path_buf();
+
+    let response = fixture
+        .client
+        .get(fixture.endpoint("/api/feature-explorer"))
+        .query(&[("repoPath", repo_root.to_string_lossy().to_string())])
+        .send()
+        .await
+        .expect("get feature explorer payload");
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let payload: Value = response
+        .json()
+        .await
+        .expect("decode feature explorer payload");
+
+    assert!(payload["features"].as_array().is_some());
+    assert!(payload["capabilityGroups"].as_array().is_some());
+}
+
+#[tokio::test]
+async fn api_feature_explorer_detail_includes_file_signals_for_workspace_repo() {
+    let fixture = ApiFixture::new().await;
+    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(|path| path.parent())
+        .expect("workspace root")
+        .to_path_buf();
+
+    let response = fixture
+        .client
+        .get(fixture.endpoint("/api/feature-explorer/workspace-overview"))
+        .query(&[("repoPath", repo_root.to_string_lossy().to_string())])
+        .send()
+        .await
+        .expect("get feature explorer detail payload");
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let payload: Value = response
+        .json()
+        .await
+        .expect("decode feature explorer detail payload");
+
+    let file_signals = payload["fileSignals"]
+        .as_object()
+        .expect("fileSignals object should exist");
+    assert!(
+        !file_signals.is_empty(),
+        "expected non-empty fileSignals for workspace-overview detail, got {payload:?}"
+    );
+    assert!(
+        file_signals.values().any(|signal| signal["sessions"]
+            .as_array()
+            .is_some_and(|sessions| !sessions.is_empty())),
+        "expected fileSignals sessions to be populated, got {payload:?}"
+    );
+}
+
+#[tokio::test]
+async fn api_spec_surface_index_falls_back_from_invalid_repo_path_to_workspace_codebase() {
+    let fixture = ApiFixture::new().await;
+    let repo = GitRepoFixture::new();
+
+    let create_codebase = fixture
+        .client
+        .post(fixture.endpoint("/api/workspaces/default/codebases"))
+        .json(&json!({
+            "repoPath": repo.repo_path.to_string_lossy().to_string(),
+            "branch": "main",
+            "label": "fixture",
+            "isDefault": true
+        }))
+        .send()
+        .await
+        .expect("create codebase for default workspace");
+    assert_eq!(create_codebase.status(), StatusCode::CREATED);
+
+    let response = fixture
+        .client
+        .get(fixture.endpoint("/api/spec/surface-index"))
+        .query(&[
+            ("workspaceId", "default".to_string()),
+            (
+                "repoPath",
+                repo.repo_path.join("missing").to_string_lossy().to_string(),
+            ),
+        ])
+        .send()
+        .await
+        .expect("get spec surface index with invalid explicit repo path");
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let payload: Value = response
+        .json()
+        .await
+        .expect("decode fallback surface index response");
+
+    assert_eq!(
+        payload["repoRoot"],
+        json!(repo.repo_path.to_string_lossy().to_string())
+    );
+    assert!(payload["warnings"].as_array().is_some());
+}
+
+#[tokio::test]
+async fn api_spec_feature_tree_generate_contract() {
+    let fixture = ApiFixture::new().await;
+    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(|path| path.parent())
+        .expect("workspace root")
+        .to_path_buf();
+
+    let response = fixture
+        .client
+        .post(fixture.endpoint("/api/spec/feature-tree/generate"))
+        .json(&json!({
+            "repoPath": repo_root.to_string_lossy().to_string(),
+            "dryRun": true
+        }))
+        .send()
+        .await
+        .expect("generate feature tree");
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let payload: Value = response
+        .json()
+        .await
+        .expect("decode feature tree generate response");
+
+    assert!(payload["generatedAt"].as_str().is_some());
+    let frameworks = payload["frameworksDetected"]
+        .as_array()
+        .expect("frameworksDetected should be an array");
+    assert!(
+        frameworks.iter().any(|f| f.as_str() == Some("nextjs")),
+        "frameworksDetected should include nextjs, got: {frameworks:?}"
+    );
+    assert_eq!(
+        payload["wroteFiles"],
+        json!([
+            "docs/product-specs/FEATURE_TREE.md",
+            "docs/product-specs/feature-tree.index.json"
+        ])
+    );
+    assert!(payload["warnings"].as_array().is_some());
+    assert!(payload["pagesCount"]
+        .as_u64()
+        .is_some_and(|count| count > 0));
+    assert!(payload["apisCount"].as_u64().is_some_and(|count| count > 0));
+}
+
+#[tokio::test]
+async fn api_spec_feature_tree_preflight_contract() {
+    let fixture = ApiFixture::new().await;
+    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(|path| path.parent())
+        .expect("workspace root")
+        .to_path_buf();
+
+    let response = fixture
+        .client
+        .get(fixture.endpoint("/api/spec/feature-tree/preflight"))
+        .query(&[("repoPath", repo_root.to_string_lossy().to_string())])
+        .send()
+        .await
+        .expect("preflight feature tree");
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let payload: Value = response
+        .json()
+        .await
+        .expect("decode feature tree preflight response");
+
+    assert_eq!(
+        payload["repoRoot"],
+        json!(repo_root.to_string_lossy().to_string())
+    );
+    assert_eq!(
+        payload["selectedScanRoot"],
+        json!(repo_root.to_string_lossy().to_string())
+    );
+    let frameworks = payload["frameworksDetected"]
+        .as_array()
+        .expect("frameworksDetected should be an array");
+    assert!(
+        frameworks.iter().any(|f| f.as_str() == Some("nextjs")),
+        "frameworksDetected should include nextjs, got: {frameworks:?}"
+    );
+    assert!(payload["candidateRoots"].as_array().is_some());
+    assert!(payload["warnings"].as_array().is_some());
+}
+
+#[tokio::test]
+async fn api_spec_feature_tree_commit_contract() {
+    let fixture = ApiFixture::new().await;
+    let repo_root = tempfile::tempdir().expect("temp repo");
+
+    write_file(
+        repo_root.path(),
+        "package.json",
+        r#"{"name":"feature-tree-commit-fixture"}"#,
+    );
+    write_file(
+        repo_root.path(),
+        "pages/index.tsx",
+        "export default function Home() { return null; }\n",
+    );
+
+    let response = fixture
+        .client
+        .post(fixture.endpoint("/api/spec/feature-tree/commit"))
+        .json(&json!({
+            "repoPath": repo_root.path().to_string_lossy().to_string(),
+            "metadata": {
+                "schemaVersion": 1,
+                "capabilityGroups": [],
+                "features": [
+                    {
+                        "id": "home",
+                        "name": "Home",
+                        "description": "Generated in rust contract test",
+                        "route": "/"
+                    }
+                ]
+            }
+        }))
+        .send()
+        .await
+        .expect("commit feature tree");
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let payload: Value = response
+        .json()
+        .await
+        .expect("decode feature tree commit response");
+
+    assert!(payload["generatedAt"].as_str().is_some());
+    assert_eq!(payload["pagesCount"], json!(1));
+    assert!(payload["warnings"].as_array().is_some());
+
+    let feature_tree_index_path = repo_root
+        .path()
+        .join("docs")
+        .join("product-specs")
+        .join("feature-tree.index.json");
+    let feature_tree_markdown_path = repo_root
+        .path()
+        .join("docs")
+        .join("product-specs")
+        .join("FEATURE_TREE.md");
+    assert!(feature_tree_index_path.exists());
+    assert!(feature_tree_markdown_path.exists());
+
+    let saved_index: Value = serde_json::from_str(
+        &fs::read_to_string(&feature_tree_index_path).expect("read committed feature tree index"),
+    )
+    .expect("decode committed feature tree index");
+    assert_eq!(saved_index["pages"][0]["route"], json!("/"));
+    assert_eq!(
+        saved_index["metadata"]["features"]
+            .as_array()
+            .map(|items| items.len()),
+        Some(1)
     );
 }

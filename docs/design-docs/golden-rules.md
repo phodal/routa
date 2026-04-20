@@ -1,3 +1,7 @@
+---
+title: Golden Rules
+---
+
 # Golden Rules
 
 These rules define the minimum repository hygiene expected for agent-first development in Routa.js.

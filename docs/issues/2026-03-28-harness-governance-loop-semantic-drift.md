@@ -1,12 +1,15 @@
 ---
 title: "Harness governance loop semantic drift"
 date: "2026-03-28"
-status: open
+status: resolved
 severity: medium
 area: "ui"
 tags: ["harness", "governance-loop", "react-flow"]
 reported_by: "codex"
-related_issues: []
+related_issues:
+  - "docs/issues/2026-03-29-harness-build-test-yaml-driven-panels-and-density.md"
+resolved_at: "2026-04-11"
+resolution: "Merged into the broader harness build/test and governance-loop surface tracker because the graph semantic drift is a narrower presentation symptom within the same UI family."
 ---
 
 # Governance loop layout no longer matches harness semantics
@@ -53,3 +56,10 @@ The graph should communicate the harness layers clearly:
 
 - `ci-red-fixer` is a real GitHub Actions repair path, not just a generic remote workflow.
 - The current graph is visually close, but semantic grouping still shifts when nodes move.
+
+## Deduplication Note
+
+This record is retained as evidence for the governance-loop graph symptom, but
+it is no longer tracked as an independent active issue. The authoritative local
+tracker for this UI family is
+`docs/issues/2026-03-29-harness-build-test-yaml-driven-panels-and-density.md`.

@@ -16,18 +16,15 @@ export function SettingsPageHeader({
   extra,
 }: SettingsPageHeaderProps) {
   return (
-    <header className="mb-3 border-b border-desktop-border pb-3">
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div className="min-w-0">
-          <h1 className="truncate text-[15px] font-semibold text-desktop-text-primary">{title}</h1>
-          {description ? (
-            <p className="mt-1 max-w-3xl text-[11px] leading-5 text-desktop-text-secondary">{description}</p>
-          ) : null}
-          {extra ? <div className="mt-2">{extra}</div> : null}
+    <header className="border-b border-desktop-border px-4 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <h1 className="truncate text-[14px] font-semibold text-desktop-text-primary">{title}</h1>
         </div>
 
-        {metadata.length > 0 ? (
-          <div className="flex flex-wrap gap-1.5">
+        {extra || metadata.length > 0 ? (
+          <div className="flex flex-wrap items-center gap-1.5">
+            {extra}
             {metadata.map((item) => (
               <div
                 key={item.label}
@@ -40,6 +37,10 @@ export function SettingsPageHeader({
           </div>
         ) : null}
       </div>
+
+      {description ? (
+        <p className="mt-2 max-w-3xl text-[11px] leading-5 text-desktop-text-secondary">{description}</p>
+      ) : null}
     </header>
   );
 }

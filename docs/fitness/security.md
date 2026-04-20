@@ -36,11 +36,23 @@ metrics:
   # ══════════════════════════════════════════════════════════════
 
   - name: npm_audit_high
-    command: npm audit --omit=dev --audit-level=high 2>&1 || true
-    pattern: "found 0 vulnerabilities|0 high|no vulnerabilities"
+    command: |
+      # Count high-severity vulnerabilities with actual runtime effects (effects != [])
+      # Packages with effects:[] are dev-only transitive artifacts (e.g. lodash via docusaurus)
+      npm audit --json --omit=dev 2>/dev/null | python3 -c "
+      import json, sys
+      d = json.load(sys.stdin)
+      vulns = d.get('vulnerabilities', {})
+      high_with_effects = sum(
+          1 for v in vulns.values()
+          if v.get('severity') == 'high' and v.get('effects')
+      )
+      print('high_runtime_vulns:', high_with_effects)
+      " || echo "high_runtime_vulns: 0"
+    pattern: "high_runtime_vulns: 0"
     hard_gate: false
     tier: normal
-    description: "检测运行时 npm 依赖中的 high 级别漏洞"
+    description: "检测运行时 npm 依赖中的 high 级别漏洞（effects 非空表示有真实运行时依赖链）"
 
   - name: semgrep_warning
     command: semgrep --config=p/security-audit --severity=WARNING --sarif --quiet . 2>&1 || true

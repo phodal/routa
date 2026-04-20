@@ -14,13 +14,14 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { resolveApiPath } from "@/client/config/backend";
 import { desktopAwareFetch } from "../utils/diagnostics";
 import type { TraceRecord } from "@/core/trace";
 import type { LaneHandoffInfo, LaneSessionInfo, SessionKanbanContext } from "@/client/types/kanban-context";
 import { MarkdownViewer } from "./markdown/markdown-viewer";
 import { ToolInputTable, ToolOutputView } from "./tool-call-content";
 import { useTranslation } from "@/i18n";
-import { ChevronRight, FileText } from "lucide-react";
+import { Check, ChevronRight, Copy, FileText } from "lucide-react";
 
 
 interface TracePanelProps {
@@ -585,6 +586,7 @@ export function TracePanel({ sessionId }: TracePanelProps) {
     uniqueSessions: number;
     eventTypes: Record<string, number>;
   } | null>(null);
+  const [copiedSessionId, setCopiedSessionId] = useState(false);
 
   const fetchTraces = useCallback(async () => {
     if (!sessionId) {
@@ -634,7 +636,10 @@ export function TracePanel({ sessionId }: TracePanelProps) {
 
   const fetchStats = useCallback(async () => {
     try {
-      const res = await desktopAwareFetch("/api/traces/stats", { cache: "no-store" });
+      const statsUrl = sessionId
+        ? `/api/traces/stats?${new URLSearchParams({ sessionId }).toString()}`
+        : "/api/traces/stats";
+      const res = await desktopAwareFetch(statsUrl, { cache: "no-store" });
       if (res.ok) {
         const data = await res.json();
         setStats(data.stats || null);
@@ -642,7 +647,7 @@ export function TracePanel({ sessionId }: TracePanelProps) {
     } catch (err) {
       console.error("[TracePanel] Failed to fetch stats:", err);
     }
-  }, []);
+  }, [sessionId]);
 
   useEffect(() => {
     fetchTraces();
@@ -654,8 +659,12 @@ export function TracePanel({ sessionId }: TracePanelProps) {
     if (!sessionId) return;
 
     try {
-      const params = new URLSearchParams({ sessionId });
-      const res = await desktopAwareFetch(`/api/traces/export?${params}`, { cache: "no-store" });
+      const res = await desktopAwareFetch(resolveApiPath("/traces/export"), {
+        cache: "no-store",
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId }),
+      });
 
       if (!res.ok) {
         throw new Error(`Failed to export traces: ${res.statusText}`);
@@ -720,11 +729,21 @@ export function TracePanel({ sessionId }: TracePanelProps) {
     });
   };
 
+  const copySessionId = useCallback(() => {
+    if (!sessionId) return;
+    navigator.clipboard.writeText(sessionId).then(() => {
+      setCopiedSessionId(true);
+      window.setTimeout(() => setCopiedSessionId(false), 1500);
+    }).catch(() => {
+      setCopiedSessionId(false);
+    });
+  }, [sessionId]);
+
   return (
     <div className="h-full flex flex-col bg-white dark:bg-[#13151d]">
       {/* Header */}
       <div className="px-4 py-3 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between shrink-0">
-        <div className="flex items-center gap-2">
+        <div className="flex min-w-0 items-center gap-2">
           <FileText className="w-4 h-4 text-slate-500 dark:text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
           <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">
             {t.trace.agentTrace}
@@ -733,6 +752,25 @@ export function TracePanel({ sessionId }: TracePanelProps) {
             <span className="ml-1 px-1.5 py-0.5 text-[10px] bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 rounded-full">
               {traces.length}
             </span>
+          )}
+          {sessionId && (
+            <>
+              <span
+                className="ml-1 min-w-0 max-w-[18rem] break-all rounded-md bg-slate-100 px-2 py-1 font-mono text-[10px] text-slate-600 dark:bg-slate-800 dark:text-slate-300"
+                title={sessionId}
+              >
+                {sessionId}
+              </span>
+              <button
+                type="button"
+                onClick={copySessionId}
+                className="shrink-0 rounded p-0.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-300"
+                title={t.common.copyToClipboard}
+                aria-label={t.common.copyToClipboard}
+              >
+                {copiedSessionId ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+              </button>
+            </>
           )}
         </div>
 
@@ -760,6 +798,12 @@ export function TracePanel({ sessionId }: TracePanelProps) {
           <span>{stats.totalRecords} {t.trace.totalRecords}</span>
           <span>{stats.uniqueSessions} {t.trace.sessions}</span>
           <span>{stats.totalDays} {t.trace.days}</span>
+        </div>
+      )}
+
+      {!loading && !error && sessionId && traces.length === 0 && (
+        <div className="px-4 py-2 border-b border-amber-200 bg-amber-50/70 text-[11px] text-amber-800 dark:border-amber-900/40 dark:bg-amber-900/10 dark:text-amber-200">
+          {t.trace.noTracesForSession}
         </div>
       )}
 
@@ -872,6 +916,11 @@ export function TracePanel({ sessionId }: TracePanelProps) {
             <p className="text-sm text-slate-500 dark:text-slate-400">
               {sessionId ? t.trace.noTracesForSession : t.trace.selectSessionToView}
             </p>
+            {sessionId && (
+              <p className="mt-2 break-all font-mono text-[11px] text-slate-400 dark:text-slate-500">
+                {sessionId}
+              </p>
+            )}
           </div>
         </div>
       )}

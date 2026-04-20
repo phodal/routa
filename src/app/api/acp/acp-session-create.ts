@@ -27,6 +27,7 @@ import {
 } from "@/core/acp/execution-backend";
 import type { McpServerProfile } from "@/core/mcp/mcp-server-profiles";
 import { pendingAcpCreations } from "@/core/acp/pending-acp-creations";
+import { buildFeatureTreeSpecPromptSection } from "@/core/spec/feature-tree-spec-resource-contract";
 
 export interface IdempotencyEntry {
   sessionId: string;
@@ -54,7 +55,7 @@ function isWorkspaceProvider(provider: string): boolean {
   return normalized === "workspace" || normalized === "workspace-agent" || normalized === "routa-native";
 }
 
-async function loadSpecialistConfig(
+export async function loadSpecialistConfig(
   specialistId: string | undefined,
   locale: string,
 ): Promise<SpecialistConfig | null> {
@@ -86,11 +87,17 @@ function buildSpecialistSystemPrompt(
     return undefined;
   }
 
-  if (!specialist.roleReminder) {
-    return specialist.systemPrompt;
+  const sections = [specialist.systemPrompt.trim()];
+
+  if (specialist.id === "feature-surface-metadata-analyst" || specialist.id === "feature-tree-orchestrator") {
+    sections.push(buildFeatureTreeSpecPromptSection());
   }
 
-  return `${specialist.systemPrompt}\n\n---\n**Reminder:** ${specialist.roleReminder}`;
+  if (specialist.roleReminder) {
+    sections.push(`**Reminder:** ${specialist.roleReminder}`);
+  }
+
+  return sections.join("\n\n---\n");
 }
 
 function deriveAllowedNativeTools(
@@ -193,6 +200,7 @@ export async function handleSessionNew({
   const customCommand = (p.customCommand as string | undefined);
   const customArgs = Array.isArray(p.customArgs) ? (p.customArgs as string[]) : undefined;
   const authJson = (p.authJson as string | undefined);
+  const autoApprovePermissions = p.autoApprovePermissions === true;
 
   if (customCommand !== undefined && (typeof customCommand !== "string" || !customCommand.trim())) {
     return jsonrpcResponse(id ?? null, null, {
@@ -476,6 +484,11 @@ export async function handleSessionNew({
           cwd,
           provider,
           forwardSessionUpdate,
+          {
+            provider,
+            role,
+            autoApprovePermissions,
+          },
         );
       } else {
         const extraArgs: string[] = [];
@@ -493,6 +506,11 @@ export async function handleSessionNew({
           workspaceId,
           toolMode,
           mcpProfile,
+          {
+            provider,
+            role,
+            autoApprovePermissions,
+          },
         );
       }
 

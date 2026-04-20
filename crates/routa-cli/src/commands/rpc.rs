@@ -7,7 +7,7 @@ use super::print_json;
 
 pub async fn call(state: &AppState, method: &str, params_str: &str) -> Result<(), String> {
     let params: serde_json::Value =
-        serde_json::from_str(params_str).map_err(|e| format!("Invalid JSON params: {}", e))?;
+        serde_json::from_str(params_str).map_err(|e| format!("Invalid JSON params: {e}"))?;
 
     let router = RpcRouter::new(state.clone());
     let response = router

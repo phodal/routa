@@ -6,10 +6,12 @@ mod fluency;
 use clap::{Args, Subcommand, ValueEnum};
 use std::path::{Path, PathBuf};
 
-use self::fluency::{
-    evaluate_harness_fluency, format_text_report, EvaluateOptions, FluencyMode, ReportFraming,
-};
 use self::arch_dsl::{run as run_arch_dsl, ArchDslArgs};
+use self::fluency::format_text_report;
+pub use self::fluency::{
+    evaluate_harness_fluency, CriterionStatus, EvaluateOptions, FluencyMode, HarnessFluencyReport,
+    LevelChange, ReportFraming,
+};
 
 const DEFAULT_MODEL_RELATIVE_PATH: &str = "docs/fitness/harness-fluency.model.yaml";
 const AGENT_ORCHESTRATOR_MODEL_RELATIVE_PATH: &str =
@@ -243,24 +245,36 @@ fn resolve_requested_path(requested: &str, cwd: &Path) -> PathBuf {
 }
 
 fn discover_git_toplevel(cwd: &Path) -> Option<PathBuf> {
-    let output = std::process::Command::new("git")
+    // Try `--show-toplevel` first (works in normal repos and worktrees).
+    let git_result = std::process::Command::new("git")
         .arg("-C")
         .arg(cwd)
         .arg("rev-parse")
         .arg("--show-toplevel")
-        .output()
-        .ok()?;
+        .output();
 
-    if !output.status.success() {
-        return None;
+    if let Ok(output) = git_result {
+        if output.status.success() {
+            let raw = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !raw.is_empty() {
+                return Some(PathBuf::from(raw));
+            }
+        }
     }
 
-    let raw = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    if raw.is_empty() {
-        return None;
+    // In a bare repo `--show-toplevel` fails or git unavailable. Fall back to walking ancestors
+    // of `cwd` looking for a known workspace marker file.
+    let mut dir = cwd.to_path_buf();
+    loop {
+        if dir.join("AGENTS.md").exists() {
+            return Some(dir);
+        }
+        if !dir.pop() {
+            break;
+        }
     }
 
-    Some(PathBuf::from(raw))
+    None
 }
 
 fn validate_repo_root(repo_root: PathBuf) -> Result<PathBuf, String> {

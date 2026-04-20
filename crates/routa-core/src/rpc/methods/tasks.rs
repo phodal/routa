@@ -96,7 +96,7 @@ pub async fn list(state: &AppState, params: ListParams) -> Result<ListResult, Rp
         state.task_store.list_by_assignee(assignee).await?
     } else if let Some(status_str) = &params.status {
         let status = TaskStatus::from_str(status_str)
-            .ok_or_else(|| RpcError::BadRequest(format!("Invalid status: {}", status_str)))?;
+            .ok_or_else(|| RpcError::BadRequest(format!("Invalid status: {status_str}")))?;
         state
             .task_store
             .list_by_status(&params.workspace_id, &status)
@@ -354,8 +354,7 @@ pub async fn provide_artifact(
 fn parse_artifact_type(value: &str) -> Result<ArtifactType, RpcError> {
     ArtifactType::from_str(value).ok_or_else(|| {
         RpcError::BadRequest(format!(
-            "Invalid artifact type: {}. Expected one of: screenshot, test_results, code_diff, logs",
-            value
+            "Invalid artifact type: {value}. Expected one of: screenshot, test_results, code_diff, logs"
         ))
     })
 }

@@ -1,19 +1,15 @@
 "use client";
 
-import { useState, type DragEvent } from "react";
+import type { CSSProperties } from "react";
+import { useDraggable } from "@dnd-kit/core";
 import { useTranslation } from "@/i18n";
 import type { AcpProviderInfo } from "@/client/acp-client";
 import type { CodebaseData } from "@/client/hooks/use-workspaces";
 import { resolveEffectiveTaskAutomation } from "@/core/kanban/effective-task-automation";
+import { parseCanonicalStory } from "@/core/kanban/canonical-story";
 import { formatArtifactLabel, resolveKanbanTransitionArtifacts } from "@/core/kanban/transition-artifacts";
 import type { KanbanColumnInfo, SessionInfo, TaskInfo, WorktreeInfo } from "../types";
-import {
-  findSpecialistById,
-  getSpecialistDisplayName,
-  getLanguageSpecificSpecialistId,
-  KANBAN_SPECIALIST_LANGUAGE_LABELS,
-  type KanbanSpecialistLanguage,
-} from "./kanban-specialist-language";
+import { type KanbanSpecialistLanguage } from "./kanban-specialist-language";
 import { createKanbanSpecialistResolver } from "./kanban-card-session-utils";
 import { GripVertical, Trash2 } from "lucide-react";
 
@@ -39,7 +35,6 @@ export interface KanbanCardProps {
   worktreeCache: Record<string, WorktreeInfo>;
   autoProviderId?: string;
   queuePosition?: number;
-  onDragStart: () => void;
   onOpenDetail: () => void;
   onDelete: () => void;
   onPatchTask: (taskId: string, payload: Record<string, unknown>) => Promise<TaskInfo>;
@@ -47,7 +42,29 @@ export interface KanbanCardProps {
   onRefresh: () => void;
 }
 
-const ROLE_OPTIONS = ["CRAFTER", "ROUTA", "GATE", "DEVELOPER"];
+interface KanbanCardSurfaceProps extends KanbanCardProps {
+  dragHandleProps?: Record<string, any>;
+  dragOverlay?: boolean;
+  isDragging?: boolean;
+  style?: CSSProperties;
+  wrapperRef?: (node: HTMLDivElement | null) => void;
+}
+
+function summarizeReviewFeedback(report: string | undefined, maxLength = 180): string | null {
+  const normalized = report
+    ?.split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .join(" ");
+
+  if (!normalized) {
+    return null;
+  }
+
+  return normalized.length <= maxLength
+    ? normalized
+    : `${normalized.slice(0, maxLength - 1).trimEnd()}…`;
+}
 
 function getPriorityTone(priority?: string) {
   switch ((priority ?? "medium").toLowerCase()) {
@@ -60,6 +77,19 @@ function getPriorityTone(priority?: string) {
       return "bg-emerald-100 text-emerald-700 ring-1 ring-inset ring-emerald-200 dark:bg-emerald-900/20 dark:text-emerald-300 dark:ring-emerald-900/40";
     default:
       return "bg-slate-200 text-slate-700 ring-1 ring-inset ring-slate-200 dark:bg-[#1c1f2e] dark:text-slate-300 dark:ring-white/5";
+  }
+}
+
+function getPrioritySizeLabel(priority?: string) {
+  switch ((priority ?? "medium").toLowerCase()) {
+    case "high":
+    case "urgent":
+      return "L";
+    case "low":
+      return "S";
+    case "medium":
+    default:
+      return "M";
   }
 }
 
@@ -148,7 +178,34 @@ function formatArtifactCountTooltip(task: TaskInfo): string {
   return parts.length > 0 ? parts.join(", ") : `${summary.total} artifacts`;
 }
 
-export function KanbanCard({
+function normalizeCardPreviewText(value: string): string {
+  return value
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .join(" ");
+}
+
+function buildCardSummary(task: TaskInfo, fallback: string): string {
+  const canonicalStory = parseCanonicalStory(task.objective);
+  if (canonicalStory.story) {
+    const summary = [
+      canonicalStory.story.story.problem_statement,
+      canonicalStory.story.story.user_value,
+    ]
+      .map((value) => normalizeCardPreviewText(value))
+      .filter(Boolean)
+      .join(" ");
+
+    if (summary) {
+      return summary;
+    }
+  }
+
+  return normalizeCardPreviewText(fallback);
+}
+
+function KanbanCardSurface({
   task,
   boardColumns,
   linkedSession,
@@ -161,15 +218,20 @@ export function KanbanCard({
   worktreeCache,
   autoProviderId,
   queuePosition,
-  onDragStart,
   onOpenDetail,
   onDelete,
   onPatchTask,
   onRetryTrigger,
   onRefresh,
-}: KanbanCardProps) {
+  dragHandleProps = {},
+  dragOverlay = false,
+  isDragging = false,
+  style,
+  wrapperRef,
+}: KanbanCardSurfaceProps) {
   const { t } = useTranslation();
   const sessionStatus = linkedSession?.acpStatus;
+  const isTerminalCard = task.columnId === "done" || task.columnId === "blocked";
   const resolveSpecialist = createKanbanSpecialistResolver(specialists);
   const effectiveAutomation = resolveEffectiveTaskAutomation(task, boardColumns, resolveSpecialist, {
     autoProviderId,
@@ -178,24 +240,17 @@ export function KanbanCard({
     sessionStatus === "error" || (!task.triggerSessionId && task.columnId === "dev")
   ) && !queuePosition;
   const canRun = effectiveAutomation.canRun && !task.triggerSessionId && task.columnId !== "done" && !queuePosition;
-  const [showAssignment, setShowAssignment] = useState(false);
-
-  const hasCardOverride = effectiveAutomation.source === "card";
-  const overrideProviderValue = hasCardOverride ? task.assignedProvider ?? "" : "";
-  const overrideRoleValue = hasCardOverride ? task.assignedRole ?? "DEVELOPER" : "DEVELOPER";
-  const overrideSpecialistValue = hasCardOverride
-    ? getLanguageSpecificSpecialistId(task.assignedSpecialistId, specialistLanguage) ?? ""
-    : "";
   const priorityTone = getPriorityTone(task.priority);
-  const sessionTone = getSessionTone(sessionStatus, queuePosition);
+  const prioritySizeLabel = getPrioritySizeLabel(task.priority);
+  const sessionTone = isTerminalCard
+    ? "bg-emerald-100 text-emerald-700 ring-1 ring-inset ring-emerald-200 dark:bg-emerald-900/20 dark:text-emerald-300 dark:ring-emerald-900/40"
+    : getSessionTone(sessionStatus, queuePosition);
   const statusLabel = getStatusLabel(sessionStatus, queuePosition);
-  const resolvedStatusLabel = queuePosition
-    ? `${t.kanban.queued} #${queuePosition}`
-    : (t.kanban as Record<string, string>)[statusLabel] ?? statusLabel;
-  const automationSourceLabel = hasCardOverride ? t.kanban.cardOverride : t.kanban.laneDefault;
-  const automationSourceTone = hasCardOverride
-    ? "bg-blue-100 text-blue-700 ring-1 ring-inset ring-blue-200 dark:bg-blue-900/20 dark:text-blue-300 dark:ring-blue-900/40"
-    : "bg-slate-100 text-slate-600 ring-1 ring-inset ring-slate-200 dark:bg-[#181c28] dark:text-slate-300 dark:ring-white/5";
+  const resolvedStatusLabel = isTerminalCard
+    ? t.kanban.done
+    : queuePosition
+      ? `${t.kanban.queued} #${queuePosition}`
+      : (t.kanban as Record<string, string>)[statusLabel] ?? statusLabel;
   const visibleLabels = (task.labels ?? []).slice(0, 2);
   const remainingLabelCount = Math.max((task.labels?.length ?? 0) - visibleLabels.length, 0);
   const visibleCodebaseIds = (task.codebaseIds && task.codebaseIds.length > 0 ? task.codebaseIds : allCodebaseIds).slice(0, 1);
@@ -208,7 +263,7 @@ export function KanbanCard({
     ? `${t.kanban.queued} #${queuePosition}`
     : (t.kanban as Record<string, string>)[syncLabelKey] ?? syncLabelKey;
   const syncTone = getSyncTone(sessionStatus, queuePosition, Boolean(task.lastSyncError), task.githubSyncedAt);
-  const objectiveText = task.objective?.trim() || t.kanban.noObjective;
+  const objectiveText = buildCardSummary(task, task.objective?.trim() || t.kanban.noObjective);
   const transitionArtifacts = resolveKanbanTransitionArtifacts(boardColumns, task.columnId);
   const missingNextArtifacts = transitionArtifacts.nextRequiredArtifacts.filter(
     (artifactType) => (task.artifactSummary?.byType?.[artifactType] ?? 0) === 0,
@@ -224,59 +279,65 @@ export function KanbanCard({
       ? `Ready for ${transitionArtifacts.nextColumn?.name ?? "the next lane"}: ${transitionArtifacts.nextRequiredArtifacts.map((artifact) => formatArtifactLabel(artifact)).join(", ")} present.`
       : `Before ${transitionArtifacts.nextColumn?.name ?? "the next lane"}: missing ${missingNextArtifacts.map((artifact) => formatArtifactLabel(artifact)).join(", ")}.`
     : undefined;
+  const hasReviewFeedback = Boolean(task.verificationReport?.trim())
+    || (task.verificationVerdict != null && task.verificationVerdict !== "APPROVED");
+  const reviewFeedbackPreview = summarizeReviewFeedback(task.verificationReport, 160);
+  const reviewVerdictLabel = task.verificationVerdict === "NOT_APPROVED"
+    ? t.kanbanDetail.reviewRequestedChanges
+    : task.verificationVerdict === "BLOCKED"
+      ? t.kanbanDetail.reviewBlockedVerdict
+      : task.verificationVerdict === "APPROVED"
+        ? t.kanbanDetail.reviewApprovedVerdict
+        : t.kanbanDetail.reviewFeedback;
+  const reviewFeedbackTone = task.verificationVerdict === "BLOCKED"
+    ? "border-rose-200/80 bg-rose-50/80 text-rose-800 dark:border-rose-900/40 dark:bg-rose-900/15 dark:text-rose-200"
+    : task.verificationVerdict === "APPROVED"
+      ? "border-emerald-200/80 bg-emerald-50/80 text-emerald-800 dark:border-emerald-900/40 dark:bg-emerald-900/15 dark:text-emerald-200"
+      : "border-amber-200/80 bg-amber-50/80 text-amber-800 dark:border-amber-900/40 dark:bg-amber-900/15 dark:text-amber-200";
+  const cardClassName = `group relative flex flex-col gap-2 border border-slate-200/80 bg-white/90 p-2.5 transition-[background-color,border-color,box-shadow,opacity] duration-150 hover:border-slate-300 hover:bg-white focus:outline-none focus:ring-2 focus:ring-amber-400/50 dark:border-[#262938] dark:bg-[#0d1018] dark:hover:border-[#34384a] ${dragOverlay
+    ? "pointer-events-none border-amber-300/80 bg-white shadow-[0_24px_70px_rgba(15,23,42,0.28)] ring-2 ring-amber-300/55 will-change-transform dark:border-amber-700/60 dark:bg-[#11141d] dark:ring-amber-700/45"
+    : isDragging
+      ? "opacity-15 ring-1 ring-slate-300/70 dark:ring-white/10"
+      : ""}`.trim();
+
+  void availableProviders;
+  void specialistLanguage;
+  void onPatchTask;
+  void onRefresh;
 
   const stopCardInteraction = (event: { stopPropagation: () => void }) => {
     event.stopPropagation();
   };
 
-  const handleProviderChange = async (providerId: string) => {
-    if (providerId) {
-      await onPatchTask(task.id, {
-        assignedProvider: providerId,
-        assignedRole: hasCardOverride ? task.assignedRole ?? "DEVELOPER" : "DEVELOPER",
-      });
-    } else {
-      await onPatchTask(task.id, {
-        assignedProvider: undefined,
-        assignedRole: undefined,
-        assignedSpecialistId: undefined,
-        assignedSpecialistName: undefined,
-      });
-    }
-    onRefresh();
-  };
-
-  const handleDragStart = (event: DragEvent<HTMLDivElement>) => {
-    event.dataTransfer.setData("text/plain", task.id);
-    event.dataTransfer.effectAllowed = "move";
-    onDragStart();
-  };
-
   return (
     <div
-      draggable
-      onDragStart={handleDragStart}
-      onClick={onOpenDetail}
-      onKeyDown={(event) => {
+      ref={wrapperRef}
+      style={style}
+      onClick={dragOverlay ? undefined : onOpenDetail}
+      onKeyDown={dragOverlay ? undefined : (event) => {
         if (event.key === "Enter" || event.key === " ") {
           event.preventDefault();
           onOpenDetail();
         }
       }}
-      role="button"
-      tabIndex={0}
-      aria-label={`${t.kanban.openCard} ${task.title}`}
-      className="group relative flex cursor-grab flex-col gap-3 border border-slate-200/80 bg-white/90 p-3.5 transition duration-150 hover:border-slate-300 hover:bg-white active:cursor-grabbing focus:outline-none focus:ring-2 focus:ring-amber-400/50 dark:border-[#262938] dark:bg-[#0d1018] dark:hover:border-[#34384a]"
-      data-testid="kanban-card"
+      role={dragOverlay ? undefined : "button"}
+      tabIndex={dragOverlay ? -1 : 0}
+      aria-label={dragOverlay ? undefined : `${t.kanban.openCard} ${task.title}`}
+      className={cardClassName}
+      data-testid={dragOverlay ? "kanban-card-overlay" : "kanban-card"}
     >
-      <div
-        className="pointer-events-none absolute left-2.5 top-2.5 rounded-md p-1 text-slate-400 opacity-0 transition-opacity group-hover:opacity-100 dark:text-slate-500"
+      <button
+        type="button"
+        {...dragHandleProps}
+        onClickCapture={stopCardInteraction}
+        className="absolute left-2.5 top-2.5 rounded-lg p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 focus:outline-none focus:ring-2 focus:ring-amber-400/50 dark:text-slate-500 dark:hover:bg-[#191c28] dark:hover:text-slate-300"
+        aria-label={`${t.kanban.dragCard} ${task.title}`}
         title={t.kanban.dragCard}
-        aria-label={t.kanban.dragCard}
+        style={{ touchAction: "none" }}
+        data-testid="kanban-card-drag-handle"
       >
-        <GripVertical className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
-      </div>
-
+        <GripVertical className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" />
+      </button>
       <button
         onClick={(event) => {
           event.stopPropagation();
@@ -289,16 +350,16 @@ export function KanbanCard({
         <Trash2 className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"/>
       </button>
 
-      <div className="flex items-start justify-between gap-3 pr-6">
+      <div className="flex items-start justify-between gap-3 pl-7 pr-6">
         <div className="min-w-0 flex-1">
-          <div className="mb-2 flex flex-wrap items-center gap-1.5">
+          <div className="flex flex-wrap items-center gap-1">
             {task.githubNumber ? (
               <a
                 href={task.githubUrl}
                 target="_blank"
                 rel="noreferrer"
                 onClick={stopCardInteraction}
-                className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ring-1 ring-inset hover:opacity-80 ${task.isPullRequest
+                className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-medium ring-1 ring-inset hover:opacity-80 ${task.isPullRequest
                   ? "bg-purple-50 text-purple-700 ring-purple-200 dark:bg-purple-900/20 dark:text-purple-300 dark:ring-purple-900/40"
                   : "bg-amber-50 text-amber-700 ring-amber-200 hover:bg-amber-100 dark:bg-amber-900/20 dark:text-amber-300 dark:ring-amber-900/40"
                 }`}
@@ -306,27 +367,42 @@ export function KanbanCard({
                 {task.isPullRequest ? `PR #${task.githubNumber}` : `Issue #${task.githubNumber}`}
               </a>
             ) : null}
-            <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] ${sessionTone}`}>
+            <span className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.12em] ${sessionTone}`}>
               {resolvedStatusLabel}
             </span>
-            <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${syncTone}`}>
+            <span className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-medium ${syncTone}`}>
               {resolvedSyncLabel}
             </span>
           </div>
-          <div className="line-clamp-2 text-[15px] font-semibold leading-5 text-slate-900 dark:text-slate-100">
-            {task.title}
-          </div>
         </div>
-        <span className={`inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] ${priorityTone}`}>
-          {task.priority ?? "medium"}
-        </span>
+        <div className="flex shrink-0 items-center gap-1">
+          {(canRun || canRetry) && (
+            <button
+              onClick={() => void onRetryTrigger(task.id)}
+              onClickCapture={stopCardInteraction}
+              className={`shrink-0 rounded-full px-2 py-0.5 text-[9px] font-semibold ${canRetry
+                ? "border border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100 dark:border-amber-800/50 dark:bg-amber-900/10 dark:text-amber-300"
+                : "border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-800/50 dark:bg-emerald-900/10 dark:text-emerald-300"
+                }`}
+            >
+              {canRetry ? t.kanban.rerun : t.kanban.run}
+            </button>
+          )}
+          <span className={`inline-flex shrink-0 items-center rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.12em] ${priorityTone}`}>
+            {prioritySizeLabel}
+          </span>
+        </div>
+      </div>
+
+      <div className="text-[14px] font-semibold leading-[1.2] text-slate-900 dark:text-slate-100">
+        {task.title}
       </div>
 
       {(transitionArtifacts.nextRequiredArtifacts.length > 0 || artifactCount > 0) && (
-        <div className="flex flex-wrap items-center gap-1.5">
+        <div className="flex flex-wrap items-center gap-1">
           {transitionArtifacts.nextRequiredArtifacts.length > 0 && (
             <span
-              className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${artifactGateTone}`}
+              className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-medium ${artifactGateTone}`}
               title={artifactGateTooltip}
               data-testid="kanban-card-artifact-gate"
             >
@@ -335,7 +411,7 @@ export function KanbanCard({
           )}
           {artifactCount > 0 && (
             <span
-              className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600 ring-1 ring-inset ring-slate-200 dark:bg-[#181c28] dark:text-slate-300 dark:ring-white/5"
+              className="inline-flex items-center rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-medium text-slate-600 ring-1 ring-inset ring-slate-200 dark:bg-[#181c28] dark:text-slate-300 dark:ring-white/5"
               title={artifactCountTooltip}
               data-testid="kanban-card-artifact-count"
             >
@@ -345,14 +421,39 @@ export function KanbanCard({
         </div>
       )}
 
-      <p className="line-clamp-3 text-[12px] leading-5 text-slate-600 dark:text-slate-400">{objectiveText}</p>
-      {liveMessageTail && (
-        <div className="rounded-xl border border-sky-200/80 bg-sky-50/70 px-3 py-2.5 dark:border-sky-900/50 dark:bg-sky-900/10">
-          <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-sky-600 dark:text-sky-300">
+      <p className="line-clamp-3 text-[11px] leading-[1.35] text-slate-600 dark:text-slate-400">{objectiveText}</p>
+      {hasReviewFeedback && (
+        <div
+          className={`rounded-lg border px-2 py-1.5 ${reviewFeedbackTone}`}
+          data-testid="kanban-card-review-feedback"
+        >
+          <div className="flex flex-wrap items-center gap-1">
+            <div className="text-[9px] font-semibold uppercase tracking-[0.14em]">
+              {t.kanbanDetail.reviewFeedback}
+            </div>
+            <span className="rounded-full bg-white/70 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.12em] dark:bg-black/20">
+              {task.columnId === "dev" && task.verificationVerdict !== "APPROVED"
+                ? t.kanbanDetail.reviewReturnedToDev
+                : reviewVerdictLabel}
+            </span>
+          </div>
+          {(reviewFeedbackPreview || task.verificationVerdict) && (
+            <div
+              className="mt-1 line-clamp-2 text-[10px] leading-[1.35]"
+              title={task.verificationReport ?? reviewVerdictLabel}
+            >
+              {reviewFeedbackPreview ?? reviewVerdictLabel}
+            </div>
+          )}
+        </div>
+      )}
+      {!isTerminalCard && liveMessageTail && (
+        <div className="rounded-lg border border-sky-200/80 bg-sky-50/70 px-2 py-1.5 dark:border-sky-900/50 dark:bg-sky-900/10">
+          <div className="text-[9px] font-semibold uppercase tracking-[0.14em] text-sky-600 dark:text-sky-300">
             {t.kanban.liveSession}
           </div>
           <div
-            className="mt-1 line-clamp-2 font-mono text-[12px] leading-5 text-sky-700 dark:text-sky-200"
+            className="mt-1 line-clamp-2 font-mono text-[10px] leading-[1.35] text-sky-700 dark:text-sky-200"
             title={liveMessageTail}
             data-testid="kanban-card-live-tail"
           >
@@ -361,135 +462,78 @@ export function KanbanCard({
         </div>
       )}
 
-      {visibleLabels.length > 0 && (
-        <div className="flex flex-wrap gap-1.5">
+      {(visibleLabels.length > 0
+        || ((task.codebaseIds && task.codebaseIds.length > 0) || allCodebaseIds.length > 0)
+        || task.worktreeId) && (
+        <div className="flex flex-wrap gap-1">
           {visibleLabels.map((label) => (
-            <span key={label} className="rounded-full bg-amber-100/80 px-2 py-0.5 text-[10px] font-medium text-amber-800 ring-1 ring-inset ring-amber-200 dark:bg-amber-900/20 dark:text-amber-300 dark:ring-amber-900/40">
+            <span key={label} className="rounded-full bg-amber-100/80 px-1.5 py-0.5 text-[9px] font-medium text-amber-800 ring-1 ring-inset ring-amber-200 dark:bg-amber-900/20 dark:text-amber-300 dark:ring-amber-900/40">
               {label}
             </span>
           ))}
           {remainingLabelCount > 0 && (
-            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-500 ring-1 ring-inset ring-slate-200 dark:bg-[#181c28] dark:text-slate-400 dark:ring-white/5">
+            <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-medium text-slate-500 ring-1 ring-inset ring-slate-200 dark:bg-[#181c28] dark:text-slate-400 dark:ring-white/5">
               +{remainingLabelCount}
             </span>
           )}
-        </div>
-      )}
-
-      {(((task.codebaseIds && task.codebaseIds.length > 0) || allCodebaseIds.length > 0) || task.worktreeId) && (
-        <div className="flex flex-wrap gap-1.5">
           {visibleCodebaseIds.map((cbId) => {
             const cb = codebases.find((c) => c.id === cbId);
             return cb ? (
               <span
                 key={cbId}
-                className="inline-flex items-center gap-1 rounded-full bg-blue-100/90 px-2 py-0.5 text-[10px] font-medium text-blue-700 ring-1 ring-inset ring-blue-200 dark:bg-blue-900/20 dark:text-blue-300 dark:ring-blue-900/40"
+                className="inline-flex items-center gap-1 rounded-full bg-blue-100/90 px-1.5 py-0.5 text-[9px] font-medium text-blue-700 ring-1 ring-inset ring-blue-200 dark:bg-blue-900/20 dark:text-blue-300 dark:ring-blue-900/40"
                 data-testid="repo-badge"
               >
                 <span className="h-1.5 w-1.5 rounded-full bg-blue-500" />
                 {cb.label ?? cb.repoPath.split("/").pop() ?? cb.repoPath}
               </span>
             ) : (
-              <span key={cbId} className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-medium text-red-600 ring-1 ring-inset ring-red-200 dark:bg-red-900/20 dark:text-red-400 dark:ring-red-900/40" title={t.kanban.repoMissing}>
+              <span key={cbId} className="rounded-full bg-red-100 px-1.5 py-0.5 text-[9px] font-medium text-red-600 ring-1 ring-inset ring-red-200 dark:bg-red-900/20 dark:text-red-400 dark:ring-red-900/40" title={t.kanban.repoMissing}>
                 {t.kanban.repoMissing}
               </span>
             );
           })}
           {remainingCodebaseCount > 0 && (
-            <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-500 ring-1 ring-inset ring-slate-200 dark:bg-[#181c28] dark:text-slate-400 dark:ring-white/5">
+            <span className="inline-flex items-center rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-medium text-slate-500 ring-1 ring-inset ring-slate-200 dark:bg-[#181c28] dark:text-slate-400 dark:ring-white/5">
               +{remainingCodebaseCount} repo{remainingCodebaseCount > 1 ? "s" : ""}
             </span>
           )}
           <WorktreeBadge task={task} worktreeCache={worktreeCache} onOpenDetail={onOpenDetail} stopCardInteraction={stopCardInteraction} />
         </div>
       )}
-
-      <div className="border-t border-slate-200/80 pt-2.5 dark:border-[#262938]">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0 flex-1" />
-          {(canRun || canRetry) && (
-            <button
-              onClick={() => void onRetryTrigger(task.id)}
-              onClickCapture={stopCardInteraction}
-              className={`shrink-0 rounded-full px-3 py-1 text-[11px] font-medium ${canRetry
-                ? "border border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100 dark:border-amber-800/50 dark:bg-amber-900/10 dark:text-amber-300"
-                : "border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-800/50 dark:bg-emerald-900/10 dark:text-emerald-300"
-                }`}
-            >
-              {canRetry ? t.kanban.rerun : t.kanban.run}
-            </button>
-          )}
-        </div>
-
-        <div className="mt-2 pt-2">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-1.5">
-                <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">
-                  {t.kanban.automation}
-                </div>
-                <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${automationSourceTone}`}>
-                  {automationSourceLabel}
-                </span>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={(event) => {
-                event.stopPropagation();
-                setShowAssignment((current) => !current);
-              }}
-              className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-medium text-slate-600 transition hover:bg-slate-100 dark:border-gray-700 dark:bg-[#151826] dark:text-slate-300 dark:hover:bg-[#1b1e2b]"
-            >
-              {showAssignment ? t.kanban.done : t.common.edit}
-            </button>
-          </div>
-          {showAssignment && (
-            <div className="mt-1.5 flex items-center gap-2">
-              <label className="flex min-w-0 flex-1 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2 py-1 dark:border-gray-700 dark:bg-[#12141c]">
-                <span className="text-[10px] font-medium uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">
-                  {t.kanban.providerLabel}
-                </span>
-                <select
-                  value={overrideProviderValue}
-                  disabled={availableProviders.length === 0}
-                  onMouseDown={stopCardInteraction}
-                  onClick={stopCardInteraction}
-                  onChange={(event) => {
-                    void handleProviderChange(event.target.value);
-                  }}
-                  className="min-w-0 flex-1 truncate bg-transparent text-[11px] font-medium text-slate-700 outline-none disabled:opacity-50 dark:text-slate-200"
-                  aria-label={`ACP provider for ${task.title}`}
-                  data-testid="kanban-card-acp-select"
-                >
-                  <option value="">{t.kanban.useLaneDefault}</option>
-                  {availableProviders.map((provider) => (
-                    <option key={provider.id} value={provider.id}>
-                      {provider.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-          )}
-        </div>
-
-        {showAssignment && (
-          <AssignmentSection
-            task={task}
-            hasCardOverride={hasCardOverride}
-            overrideRoleValue={overrideRoleValue}
-            overrideSpecialistValue={overrideSpecialistValue}
-            specialists={specialists}
-            specialistLanguage={specialistLanguage}
-            stopCardInteraction={stopCardInteraction}
-            onPatchTask={onPatchTask}
-            onRefresh={onRefresh}
-          />
-        )}
-      </div>
     </div>
   );
+}
+
+export function KanbanCard({
+  ...props
+}: KanbanCardProps) {
+  const {
+    attributes,
+    isDragging,
+    listeners,
+    setNodeRef,
+  } = useDraggable({
+    id: props.task.id,
+    data: {
+      taskId: props.task.id,
+      columnId: props.task.columnId,
+    },
+  });
+
+  return (
+    <KanbanCardSurface
+      {...props}
+      wrapperRef={setNodeRef}
+      dragHandleProps={{ ...attributes, ...listeners }}
+      isDragging={isDragging}
+      style={isDragging ? { opacity: 0.16 } : undefined}
+    />
+  );
+}
+
+export function KanbanCardOverlay(props: KanbanCardProps) {
+  return <KanbanCardSurface {...props} dragOverlay />;
 }
 
 interface WorktreeBadgeProps {
@@ -506,7 +550,7 @@ function WorktreeBadge({ task, worktreeCache, onOpenDetail, stopCardInteraction 
   const wt = worktreeCache[task.worktreeId];
   if (!wt) {
     return (
-      <div className="inline-flex items-center text-[10px] text-slate-500 dark:text-slate-400">
+      <div className="inline-flex items-center text-[9px] text-slate-500 dark:text-slate-400">
         worktree {t.common.loading}...
       </div>
     );
@@ -522,7 +566,7 @@ function WorktreeBadge({ task, worktreeCache, onOpenDetail, stopCardInteraction 
     <button
       onClick={onOpenDetail}
       onClickCapture={stopCardInteraction}
-      className="inline-flex max-w-full items-center gap-1 text-[10px] text-slate-500 transition hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+      className="inline-flex max-w-full items-center gap-1 text-[9px] text-slate-500 transition hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
       title={t.kanban.worktreeLoading}
       data-testid="worktree-badge"
     >
@@ -531,86 +575,5 @@ function WorktreeBadge({ task, worktreeCache, onOpenDetail, stopCardInteraction 
         worktree {wt.status} · {wt.branch}
       </span>
     </button>
-  );
-}
-
-interface AssignmentSectionProps {
-  task: TaskInfo;
-  hasCardOverride: boolean;
-  overrideRoleValue: string;
-  overrideSpecialistValue: string;
-  specialists: SpecialistOption[];
-  specialistLanguage: KanbanSpecialistLanguage;
-  stopCardInteraction: (event: { stopPropagation: () => void }) => void;
-  onPatchTask: (taskId: string, payload: Record<string, unknown>) => Promise<TaskInfo>;
-  onRefresh: () => void;
-}
-
-function AssignmentSection({
-  task,
-  hasCardOverride,
-  overrideRoleValue,
-  overrideSpecialistValue,
-  specialists,
-  specialistLanguage,
-  stopCardInteraction,
-  onPatchTask,
-  onRefresh,
-}: AssignmentSectionProps) {
-  const { t } = useTranslation();
-  return (
-    <div className="mt-2 space-y-2 border-t border-slate-200/80 pt-2 dark:border-[#262938]">
-      {!hasCardOverride && (
-        <div className="rounded-xl border border-dashed border-slate-200 bg-white/80 px-3 py-2 text-[11px] text-slate-500 dark:border-gray-700 dark:bg-[#10131a] dark:text-gray-400">
-          {t.kanban.selectProviderHint}
-        </div>
-      )}
-
-      {hasCardOverride && (
-        <div className="flex items-center gap-2">
-          <span className="w-16 shrink-0 text-[10px] font-medium text-slate-500 dark:text-gray-400">{t.kanban.role}</span>
-          <select
-            value={overrideRoleValue}
-            onClick={stopCardInteraction}
-            onChange={async (event) => {
-              await onPatchTask(task.id, { assignedRole: event.target.value });
-              onRefresh();
-            }}
-            className="flex-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] text-slate-700 dark:border-gray-700 dark:bg-[#12141c] dark:text-slate-200"
-          >
-            {ROLE_OPTIONS.map((role) => (
-              <option key={role} value={role}>{role}</option>
-            ))}
-          </select>
-        </div>
-      )}
-
-      {hasCardOverride && (
-        <div className="flex items-center gap-2">
-          <span className="w-16 shrink-0 text-[10px] font-medium text-slate-500 dark:text-gray-400">{t.kanban.specialist}</span>
-          <select
-            value={overrideSpecialistValue}
-            onClick={stopCardInteraction}
-            onChange={async (event) => {
-              const specialist = findSpecialistById(specialists, event.target.value);
-              await onPatchTask(task.id, {
-                assignedSpecialistId: event.target.value || undefined,
-                assignedSpecialistName: specialist?.name ?? undefined,
-                assignedRole: specialist?.role ?? task.assignedRole,
-              });
-              onRefresh();
-            }}
-            className="min-w-0 flex-1 truncate rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] text-slate-700 dark:border-gray-700 dark:bg-[#12141c] dark:text-slate-200"
-          >
-            <option value="">{KANBAN_SPECIALIST_LANGUAGE_LABELS[specialistLanguage].none}</option>
-            {specialists.map((specialist) => (
-              <option key={specialist.id} value={specialist.id}>
-                {getSpecialistDisplayName(specialist)}
-              </option>
-            ))}
-          </select>
-        </div>
-      )}
-    </div>
   );
 }

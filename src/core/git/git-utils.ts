@@ -13,8 +13,11 @@
  */
 
 import * as path from "path";
+import * as fs from "fs";
+import { LRUCache } from "lru-cache";
 
 import { getServerBridge } from "@/core/platform";
+import { gitExec } from "@/core/utils/safe-exec";
 
 // ─── GitHub URL Parsing ──────────────────────────────────────────────────
 
@@ -25,6 +28,10 @@ const GITHUB_URL_PATTERNS = [
 ];
 
 const SIMPLE_OWNER_REPO = /^([a-zA-Z0-9\-_]+)\/([a-zA-Z0-9\-_.]+)$/;
+
+// Performance limits for file statistics calculation
+const MAX_UNTRACKED_FILES_WITH_SYNTHETIC_STATS = 25;
+const MAX_CHANGED_FILES_WITH_DETAILED_STATS = 500; // Global limit for all file types
 
 export interface ParsedGitHubUrl {
   owner: string;
@@ -66,23 +73,44 @@ export function parseGitHubUrl(url: string): ParsedGitHubUrl | null {
 
 /**
  * Execute a git command synchronously via the platform bridge.
- * Falls back to bridge.process.execSync for Web/Electron.
+ * Uses argv-based execution to avoid shell parsing of git format strings.
  */
-function gitExecSync(command: string, cwd: string): string {
-  const bridge = getServerBridge();
-  return bridge.process.execSync(command, { cwd }).trim();
+function gitExecSync(args: string[], cwd: string): string {
+  // Preserve leading whitespace because `git status --porcelain` encodes
+  // worktree state in fixed columns at the start of each line.
+  return gitExec(args, { cwd }).trimEnd();
 }
 
-function shellQuote(value: string): string {
+/**
+ * Quote a value for safe interpolation into a shell command string.
+ *
+ * Uses POSIX single-quotes on Unix and double-quotes on Windows (cmd.exe
+ * does not recognise single-quote quoting and would pass the quotes
+ * literally to git, creating refs whose *names* contain quote characters).
+ */
+export function shellQuote(value: string): string {
+  if (process.platform === "win32") {
+    // cmd.exe: use double-quotes and escape embedded double-quotes.
+    return `"${value.replace(/"/g, '\\"')}"`;
+  }
+  // Unix (bash/zsh): use strong single-quote quoting.
   return `'${value.replace(/'/g, `'\\''`)}'`;
 }
 
 function hasGitRef(repoPath: string, ref: string): boolean {
   try {
-    gitExecSync(`git rev-parse --verify ${shellQuote(ref)}`, repoPath);
+    gitExecSync(["rev-parse", "--verify", ref], repoPath);
     return true;
   } catch {
     return false;
+  }
+}
+
+export function getRepoRefSha(repoPath: string, ref: string): string | null {
+  try {
+    return gitExecSync(["rev-parse", ref], repoPath);
+  } catch {
+    return null;
   }
 }
 
@@ -121,12 +149,51 @@ export interface GitFileChange {
   path: string;
   status: FileChangeStatus;
   previousPath?: string;
+  additions?: number;
+  deletions?: number;
 }
 
 export interface RepoChanges {
   branch: string;
   status: RepoStatus;
   files: GitFileChange[];
+}
+
+// 🚀 Performance: Cache repo changes to avoid repeated expensive git operations
+// TTL of 5 seconds is fresh enough for UI interactions while preventing rapid re-computation
+const repoChangesCache = new LRUCache<string, RepoChanges>({
+  max: 100, // Cache up to 100 different repo paths
+  ttl: 5000, // 5 seconds - balances freshness with performance
+});
+
+export interface RepoFileDiff {
+  path: string;
+  previousPath?: string;
+  status: FileChangeStatus;
+  patch: string;
+  additions?: number;
+  deletions?: number;
+}
+
+export interface RepoCommitChange {
+  sha: string;
+  shortSha: string;
+  summary: string;
+  authorName: string;
+  authoredAt: string;
+  additions: number;
+  deletions: number;
+}
+
+export interface RepoCommitDiff {
+  sha: string;
+  shortSha: string;
+  summary: string;
+  authorName: string;
+  authoredAt: string;
+  patch: string;
+  additions: number;
+  deletions: number;
 }
 
 export interface RepoDeliveryStatus {
@@ -147,7 +214,7 @@ export interface RepoDeliveryStatus {
  */
 export function isGitRepository(dir: string): boolean {
   try {
-    gitExecSync("git rev-parse --git-dir", dir);
+    gitExecSync(["rev-parse", "--git-dir"], dir);
     return true;
   } catch {
     return false;
@@ -155,11 +222,26 @@ export function isGitRepository(dir: string): boolean {
 }
 
 /**
+ * Check if a git repository path is a bare repository without a worktree.
+ */
+export function isBareGitRepository(dir: string): boolean {
+  try {
+    return gitExecSync(["rev-parse", "--is-bare-repository"], dir) === "true";
+  } catch {
+    return false;
+  }
+}
+
+function supportsGitWorktreeOperations(repoPath: string): boolean {
+  return isGitRepository(repoPath) && !isBareGitRepository(repoPath);
+}
+
+/**
  * Get the current branch name.
  */
 export function getCurrentBranch(repoPath: string): string | null {
   try {
-    const branch = gitExecSync("git rev-parse --abbrev-ref HEAD", repoPath);
+    const branch = gitExecSync(["rev-parse", "--abbrev-ref", "HEAD"], repoPath);
     return branch || null;
   } catch {
     return null;
@@ -171,10 +253,10 @@ export function getCurrentBranch(repoPath: string): string | null {
  */
 export function listBranches(repoPath: string): string[] {
   try {
-    const output = gitExecSync("git branch --format='%(refname:short)'", repoPath);
+    const output = gitExecSync(["branch", "--format=%(refname:short)"], repoPath);
     return output
       .split("\n")
-      .map((b) => b.trim().replace(/^'|'$/g, ""))
+      .map((b) => b.trim())
       .filter(Boolean);
   } catch {
     return [];
@@ -195,12 +277,16 @@ export function getBranchInfo(repoPath: string): RepoBranchInfo {
  * Checkout a branch. Creates it if it doesn't exist locally.
  */
 export function checkoutBranch(repoPath: string, branch: string): boolean {
+  if (!supportsGitWorktreeOperations(repoPath)) {
+    return false;
+  }
+
   try {
-    gitExecSync(`git checkout "${branch}"`, repoPath);
+    gitExecSync(["checkout", branch], repoPath);
     return true;
   } catch {
     try {
-      gitExecSync(`git checkout -b "${branch}"`, repoPath);
+      gitExecSync(["checkout", "-b", branch], repoPath);
       return true;
     } catch {
       return false;
@@ -223,7 +309,7 @@ export function deleteBranch(repoPath: string, branch: string): { success: boole
   }
 
   try {
-    gitExecSync(`git branch -D ${shellQuote(branch)}`, repoPath);
+    gitExecSync(["branch", "-D", branch], repoPath);
     return { success: true };
   } catch (err) {
     return {
@@ -253,18 +339,20 @@ export function getRepoStatus(repoPath: string): RepoStatus {
     untracked: 0,
   };
 
-  try {
-    const output = gitExecSync("git status --porcelain -uall", repoPath);
-    const lines = output.split("\n").filter(Boolean);
-    status.modified = lines.filter((l) => !l.startsWith("??")).length;
-    status.untracked = lines.filter((l) => l.startsWith("??")).length;
-    status.clean = lines.length === 0;
-  } catch {
-    // ignore
+  if (supportsGitWorktreeOperations(repoPath)) {
+    try {
+      const output = gitExecSync(["status", "--porcelain", "-uall"], repoPath);
+      const lines = output.split("\n").filter(Boolean);
+      status.modified = lines.filter((l) => !l.startsWith("??")).length;
+      status.untracked = lines.filter((l) => l.startsWith("??")).length;
+      status.clean = lines.length === 0;
+    } catch {
+      // ignore
+    }
   }
 
   try {
-    const aheadBehind = gitExecSync("git rev-list --left-right --count HEAD...@{upstream}", repoPath);
+    const aheadBehind = gitExecSync(["rev-list", "--left-right", "--count", "HEAD...@{upstream}"], repoPath);
     const [ahead, behind] = aheadBehind.split(/\s+/).map(Number);
     status.ahead = ahead || 0;
     status.behind = behind || 0;
@@ -301,7 +389,7 @@ export function parseGitStatusPorcelain(output: string): GitFileChange[] {
       const code = line.slice(0, 2);
       if (code === "!!") return [];
 
-      const rawPath = line.slice(3).trim();
+      const rawPath = line.slice(3);
       const status = mapPorcelainStatus(code);
 
       if ((status === "renamed" || status === "copied") && rawPath.includes(" -> ")) {
@@ -316,16 +404,82 @@ export function parseGitStatusPorcelain(output: string): GitFileChange[] {
 }
 
 export function getRepoChanges(repoPath: string): RepoChanges {
+  // 🚀 Check cache first (5-second TTL)
+  const cacheKey = `${repoPath}:${Math.floor(Date.now() / 5000)}`; // 5-second buckets
+  const cached = repoChangesCache.get(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
   const branch = getCurrentBranch(repoPath) ?? "unknown";
   const status = getRepoStatus(repoPath);
 
-  try {
-    const output = gitExecSync("git status --porcelain -uall", repoPath);
+  if (!supportsGitWorktreeOperations(repoPath)) {
     return {
       branch,
       status,
-      files: parseGitStatusPorcelain(output),
+      files: [],
     };
+  }
+
+  try {
+    const output = gitExecSync(["status", "--porcelain", "-uall"], repoPath);
+    const parsedFiles = parseGitStatusPorcelain(output);
+
+    // 🚀 Performance optimization: batch fetch all file stats at once
+    // instead of running git diff for each file individually
+    const batchStats = batchGetRepoFileStats(repoPath);
+
+    let syntheticUntrackedStatsCount = 0;
+    let totalStatsCalculated = 0;
+
+    const files = parsedFiles.map((file) => {
+      // 🛡️ Global limit: Skip detailed stats if we've processed too many files
+      if (totalStatsCalculated >= MAX_CHANGED_FILES_WITH_DETAILED_STATS) {
+        return file;
+      }
+
+      // First try to get stats from batch result
+      const batchStat = batchStats.get(file.path);
+      if (batchStat) {
+        totalStatsCalculated++;
+        return {
+          ...file,
+          ...batchStat,
+        };
+      }
+
+      // Fallback to synthetic stats for special cases
+      if (file.status === "untracked") {
+        syntheticUntrackedStatsCount += 1;
+        if (syntheticUntrackedStatsCount > MAX_UNTRACKED_FILES_WITH_SYNTHETIC_STATS) {
+          return file; // Skip stats for too many untracked files
+        }
+      }
+
+      // For files not in batch results (e.g., untracked, renamed),
+      // compute stats using individual file logic
+      try {
+        totalStatsCalculated++;
+        return {
+          ...file,
+          ...getRepoFileLineStats(repoPath, file),
+        };
+      } catch {
+        return file;
+      }
+    });
+
+    const result: RepoChanges = {
+      branch,
+      status,
+      files,
+    };
+
+    // 🚀 Store in cache
+    repoChangesCache.set(cacheKey, result);
+
+    return result;
   } catch {
     return {
       branch,
@@ -333,6 +487,325 @@ export function getRepoChanges(repoPath: string): RepoChanges {
       files: [],
     };
   }
+}
+
+function buildSyntheticAddedDiff(repoPath: string, file: GitFileChange): string {
+  const absolutePath = path.join(repoPath, file.path);
+  const content = fs.readFileSync(absolutePath, "utf8");
+  const lines = content.split(/\r?\n/);
+  const lineCount = content.length === 0 ? 0 : lines.length;
+  const hunkHeader = `@@ -0,0 +1,${lineCount} @@`;
+
+  return [
+    `diff --git a/${file.path} b/${file.path}`,
+    "new file mode 100644",
+    "--- /dev/null",
+    `+++ b/${file.path}`,
+    hunkHeader,
+    ...lines.map((line) => `+${line}`),
+  ].join("\n");
+}
+
+function buildSyntheticRenameDiff(file: GitFileChange): string {
+  return [
+    `diff --git a/${file.previousPath ?? file.path} b/${file.path}`,
+    "similarity index 100%",
+    `rename from ${file.previousPath ?? file.path}`,
+    `rename to ${file.path}`,
+  ].join("\n");
+}
+
+function getFirstNonEmptyGitDiff(repoPath: string, commands: string[][]): string {
+  for (const command of commands) {
+    try {
+      const patch = gitExecSync(command, repoPath);
+      if (patch.trim()) {
+        return patch;
+      }
+    } catch {
+      // Ignore and try the next diff variant.
+    }
+  }
+
+  return "";
+}
+
+function countDiffPatchLines(patch: string): { additions: number; deletions: number } {
+  let additions = 0;
+  let deletions = 0;
+
+  for (const line of patch.split("\n")) {
+    if (line.startsWith("+") && !line.startsWith("+++")) additions += 1;
+    if (line.startsWith("-") && !line.startsWith("---")) deletions += 1;
+  }
+
+  return { additions, deletions };
+}
+
+function countNumstatTotals(output: string): { additions: number; deletions: number } {
+  return output
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .reduce((totals, line) => {
+      const [rawAdditions, rawDeletions] = line.split(/\s+/);
+      const additions = rawAdditions === "-" ? 0 : Number.parseInt(rawAdditions ?? "", 10);
+      const deletions = rawDeletions === "-" ? 0 : Number.parseInt(rawDeletions ?? "", 10);
+      return {
+        additions: totals.additions + (Number.isNaN(additions) ? 0 : additions),
+        deletions: totals.deletions + (Number.isNaN(deletions) ? 0 : deletions),
+      };
+    }, { additions: 0, deletions: 0 });
+}
+
+function parseNumstat(output: string): { additions: number; deletions: number } | null {
+  const firstLine = output
+    .split("\n")
+    .map((line) => line.trim())
+    .find(Boolean);
+  if (!firstLine) return null;
+
+  const [rawAdditions, rawDeletions] = firstLine.split(/\s+/);
+  const additions = rawAdditions === "-" ? 0 : Number.parseInt(rawAdditions ?? "", 10);
+  const deletions = rawDeletions === "-" ? 0 : Number.parseInt(rawDeletions ?? "", 10);
+
+  if (Number.isNaN(additions) || Number.isNaN(deletions)) return null;
+  return { additions, deletions };
+}
+
+/**
+ * Parse numstat output into a map of file path -> stats.
+ * Handles renamed files by using the new path as the key.
+ *
+ * Example numstat output:
+ *   10  5   src/foo.ts
+ *   20  0   src/bar.ts
+ *   15  3   src/{old.ts => new.ts}
+ */
+function parseNumstatToMap(output: string): Map<string, { additions: number; deletions: number }> {
+  const statsMap = new Map<string, { additions: number; deletions: number }>();
+
+  for (const line of output.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+
+    const parts = trimmed.split(/\s+/);
+    if (parts.length < 3) continue;
+
+    const [rawAdditions, rawDeletions, ...pathParts] = parts;
+    const additions = rawAdditions === "-" ? 0 : Number.parseInt(rawAdditions, 10);
+    const deletions = rawDeletions === "-" ? 0 : Number.parseInt(rawDeletions, 10);
+
+    if (Number.isNaN(additions) || Number.isNaN(deletions)) continue;
+
+    const pathStr = pathParts.join(" ");
+
+    // Handle renamed files: "src/{old.ts => new.ts}" -> "src/new.ts"
+    const renameMatch = pathStr.match(/^(.*)?\{.*\s*=>\s*([^}]+)\}(.*)$/);
+    if (renameMatch) {
+      const [, prefix = "", newName, suffix = ""] = renameMatch;
+      const newPath = `${prefix}${newName.trim()}${suffix}`;
+      statsMap.set(newPath, { additions, deletions });
+    } else {
+      statsMap.set(pathStr, { additions, deletions });
+    }
+  }
+
+  return statsMap;
+}
+
+/**
+ * Batch fetch file statistics for all changed files using a single git diff command.
+ * This is dramatically faster than calling git diff for each file individually.
+ *
+ * Strategy:
+ * 1. Try unstaged changes (git diff --numstat)
+ * 2. If no results, try staged changes (git diff --cached --numstat)
+ * 3. If no results, try all changes vs HEAD (git diff HEAD --numstat)
+ *
+ * Returns a map of file path -> { additions, deletions }
+ */
+function batchGetRepoFileStats(repoPath: string): Map<string, { additions: number; deletions: number }> {
+  const commands = [
+    ["--no-pager", "diff", "--no-ext-diff", "--find-renames", "--find-copies", "--numstat"],
+    ["--no-pager", "diff", "--no-ext-diff", "--find-renames", "--find-copies", "--cached", "--numstat"],
+    ["--no-pager", "diff", "--no-ext-diff", "--find-renames", "--find-copies", "HEAD", "--numstat"],
+  ];
+
+  const combinedStats = new Map<string, { additions: number; deletions: number }>();
+
+  for (const command of commands) {
+    try {
+      const output = gitExecSync(command, repoPath);
+      if (output.trim()) {
+        const stats = parseNumstatToMap(output);
+        // Merge stats, preferring earlier (more specific) results
+        for (const [path, stat] of stats.entries()) {
+          if (!combinedStats.has(path)) {
+            combinedStats.set(path, stat);
+          }
+        }
+      }
+    } catch {
+      // Ignore errors and try next command
+    }
+  }
+
+  return combinedStats;
+}
+
+function getRepoFileLineStats(repoPath: string, file: GitFileChange): { additions: number; deletions: number } {
+  const numstat = getFirstNonEmptyGitDiff(repoPath, [
+    ["--no-pager", "diff", "--no-ext-diff", "--find-renames", "--find-copies", "--numstat", "--", file.path],
+    ["--no-pager", "diff", "--no-ext-diff", "--find-renames", "--find-copies", "--cached", "--numstat", "--", file.path],
+    ["--no-pager", "diff", "--no-ext-diff", "--find-renames", "--find-copies", "HEAD", "--numstat", "--", file.path],
+  ]);
+  const parsedNumstat = parseNumstat(numstat);
+  if (parsedNumstat) return parsedNumstat;
+
+  if (file.status === "untracked" || file.status === "added") {
+    return countDiffPatchLines(buildSyntheticAddedDiff(repoPath, file));
+  }
+
+  if (file.status === "renamed" && file.previousPath) {
+    return countDiffPatchLines(buildSyntheticRenameDiff(file));
+  }
+
+  return { additions: 0, deletions: 0 };
+}
+
+export function getRepoFileDiff(repoPath: string, file: GitFileChange): RepoFileDiff {
+  const patch = getFirstNonEmptyGitDiff(repoPath, [
+    ["--no-pager", "diff", "--no-ext-diff", "--find-renames", "--find-copies", "--", file.path],
+    ["--no-pager", "diff", "--no-ext-diff", "--find-renames", "--find-copies", "--cached", "--", file.path],
+    ["--no-pager", "diff", "--no-ext-diff", "--find-renames", "--find-copies", "HEAD", "--", file.path],
+  ]);
+
+  if (patch) {
+    const counts = countDiffPatchLines(patch);
+    return {
+      path: file.path,
+      previousPath: file.previousPath,
+      status: file.status,
+      patch,
+      additions: counts.additions,
+      deletions: counts.deletions,
+    };
+  }
+
+  if (file.status === "untracked" || file.status === "added") {
+    const syntheticPatch = buildSyntheticAddedDiff(repoPath, file);
+    const counts = countDiffPatchLines(syntheticPatch);
+    return {
+      path: file.path,
+      previousPath: file.previousPath,
+      status: file.status,
+      patch: syntheticPatch,
+      additions: counts.additions,
+      deletions: counts.deletions,
+    };
+  }
+
+  if (file.status === "renamed" && file.previousPath) {
+    const syntheticPatch = buildSyntheticRenameDiff(file);
+    const counts = countDiffPatchLines(syntheticPatch);
+    return {
+      path: file.path,
+      previousPath: file.previousPath,
+      status: file.status,
+      patch: syntheticPatch,
+      additions: counts.additions,
+      deletions: counts.deletions,
+    };
+  }
+
+  return {
+    path: file.path,
+    previousPath: file.previousPath,
+    status: file.status,
+    patch: "",
+    additions: 0,
+    deletions: 0,
+  };
+}
+
+export function getRepoCommitChanges(
+  repoPath: string,
+  options: { baseRef: string; maxCount?: number },
+): RepoCommitChange[] {
+  const maxCount = Math.max(1, options.maxCount ?? 20);
+  const range = `${options.baseRef}..HEAD`;
+  const output = (() => {
+    try {
+      return gitExecSync(
+        ["log", "--format=%H%x1f%h%x1f%s%x1f%an%x1f%aI", range, "-n", String(maxCount)],
+        repoPath,
+      );
+    } catch {
+      return null;
+    }
+  })();
+  if (!output) return [];
+
+  return output
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => line.split("\u001f"))
+    .flatMap((parts): RepoCommitChange[] => {
+      const [sha, shortSha, summary, authorName, authoredAt] = parts;
+      if (!sha || !shortSha || !summary || !authorName || !authoredAt) return [];
+
+      const numstat = (() => {
+        try {
+          return gitExecSync(
+            ["--no-pager", "show", "--format=", "--numstat", "--find-renames", "--find-copies", sha],
+            repoPath,
+          );
+        } catch {
+          return "";
+        }
+      })();
+      const counts = countNumstatTotals(numstat);
+
+      return [{
+        sha,
+        shortSha,
+        summary,
+        authorName,
+        authoredAt,
+        additions: counts.additions,
+        deletions: counts.deletions,
+      }];
+    });
+}
+
+export function getRepoCommitDiff(
+  repoPath: string,
+  sha: string,
+  options?: { context?: "preview" | "full" },
+): RepoCommitDiff {
+  const unifiedContext = options?.context === "full" ? 1_000_000 : 3;
+  const summary = gitExecSync(["show", "-s", "--format=%s", sha], repoPath);
+  const shortSha = gitExecSync(["rev-parse", "--short", sha], repoPath);
+  const authorName = gitExecSync(["show", "-s", "--format=%an", sha], repoPath);
+  const authoredAt = gitExecSync(["show", "-s", "--format=%aI", sha], repoPath);
+  const patch = gitExecSync(
+    ["--no-pager", "show", "--no-ext-diff", "--find-renames", "--find-copies", "--format=medium", `--unified=${unifiedContext}`, sha],
+    repoPath,
+  );
+  const counts = countDiffPatchLines(patch);
+
+  return {
+    sha,
+    shortSha,
+    summary,
+    authorName,
+    authoredAt,
+    patch,
+    additions: counts.additions,
+    deletions: counts.deletions,
+  };
 }
 
 export function getRepoDeliveryStatus(
@@ -353,7 +826,7 @@ export function getRepoDeliveryStatus(
   if (baseRef) {
     try {
       commitsSinceBase = Number.parseInt(
-        gitExecSync(`git rev-list --count ${shellQuote(baseRef)}..HEAD`, repoPath),
+        gitExecSync(["rev-list", "--count", `${baseRef}..HEAD`], repoPath),
         10,
       ) || 0;
     } catch {
@@ -471,10 +944,10 @@ export function listClonedRepos(): ClonedRepoInfo[] {
  */
 export function listRemoteBranches(repoPath: string): string[] {
   try {
-    const output = gitExecSync("git branch -r --format='%(refname:short)'", repoPath);
+    const output = gitExecSync(["branch", "-r", "--format=%(refname:short)"], repoPath);
     return output
       .split("\n")
-      .map((b) => b.trim().replace(/^'|'$/g, ""))
+      .map((b) => b.trim())
       .filter(Boolean)
       .filter((b) => !b.includes("HEAD"))
       .map((b) => b.replace(/^origin\//, ""));
@@ -488,7 +961,7 @@ export function listRemoteBranches(repoPath: string): string[] {
  */
 export function fetchRemote(repoPath: string): boolean {
   try {
-    gitExecSync("git fetch --all --prune", repoPath);
+    gitExecSync(["fetch", "--all", "--prune"], repoPath);
     return true;
   } catch {
     return false;
@@ -516,21 +989,23 @@ export function getBranchStatus(
 
   try {
     const aheadBehind = gitExecSync(
-      `git rev-list --left-right --count ${branch}...origin/${branch}`,
+      ["rev-list", "--left-right", "--count", `${branch}...origin/${branch}`],
       repoPath
     );
     const [ahead, behind] = aheadBehind.split(/\s+/).map(Number);
     result.ahead = ahead || 0;
     result.behind = behind || 0;
   } catch {
-    // no upstream or branch doesn't exist on remote
+    // no upstream or branch doesn't exist on remote - this is expected
   }
 
-  try {
-    const status = gitExecSync("git status --porcelain -uall", repoPath);
-    result.hasUncommittedChanges = status.trim().length > 0;
-  } catch {
-    // ignore
+  if (supportsGitWorktreeOperations(repoPath)) {
+    try {
+      const status = gitExecSync(["status", "--porcelain", "-uall"], repoPath);
+      result.hasUncommittedChanges = status.trim().length > 0;
+    } catch {
+      // ignore
+    }
   }
 
   return result;
@@ -541,7 +1016,7 @@ export function getBranchStatus(
  */
 export function pullBranch(repoPath: string): { success: boolean; error?: string } {
   try {
-    gitExecSync("git pull --ff-only", repoPath);
+    gitExecSync(["pull", "--ff-only"], repoPath);
     return { success: true };
   } catch (err) {
     return {
@@ -555,9 +1030,13 @@ export function pullBranch(repoPath: string): { success: boolean; error?: string
  * Reset tracked and untracked local changes to match HEAD.
  */
 export function resetLocalChanges(repoPath: string): { success: boolean; error?: string } {
+  if (!supportsGitWorktreeOperations(repoPath)) {
+    return { success: false, error: "Repository path points to a bare git repo. Reset requires a worktree." };
+  }
+
   try {
-    gitExecSync("git reset --hard HEAD", repoPath);
-    gitExecSync("git clean -fd", repoPath);
+    gitExecSync(["reset", "--hard", "HEAD"], repoPath);
+    gitExecSync(["clean", "-fd"], repoPath);
     return { success: true };
   } catch (err) {
     return {
@@ -572,7 +1051,7 @@ export function resetLocalChanges(repoPath: string): { success: boolean; error?:
  */
 export function getRemoteUrl(repoPath: string): string | null {
   try {
-    return gitExecSync("git remote get-url origin", repoPath) || null;
+    return gitExecSync(["remote", "get-url", "origin"], repoPath) || null;
   } catch {
     return null;
   }

@@ -17,15 +17,15 @@ pub async fn run(
         static_dir,
     };
 
-    println!("Starting Routa server on {}:{}...", host, port);
+    println!("Starting Routa server on {host}:{port}...");
 
     let addr = routa_server::start_server(config).await?;
-    println!("Routa server listening on http://{}", addr);
+    println!("Routa server listening on http://{addr}");
 
     // Keep the process running until interrupted
     tokio::signal::ctrl_c()
         .await
-        .map_err(|e| format!("Failed to listen for Ctrl+C: {}", e))?;
+        .map_err(|e| format!("Failed to listen for Ctrl+C: {e}"))?;
 
     println!("\nShutting down...");
     Ok(())

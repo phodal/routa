@@ -9,8 +9,7 @@ fn required_str_arg<'a>(
     match args.get(key).and_then(|value| value.as_str()) {
         Some(value) if !value.trim().is_empty() => Ok(value),
         _ => Err(tool_result_error(&format!(
-            "Missing required argument: {}",
-            key
+            "Missing required argument: {key}"
         ))),
     }
 }

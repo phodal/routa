@@ -10,6 +10,7 @@ export type HookMetric = {
   hardGate: boolean;
   name: string;
   pattern?: string;
+  serial?: boolean;
   sourceFile: string;
 };
 
@@ -23,6 +24,7 @@ type FrontmatterMetric = {
   hard_gate?: boolean;
   name?: string;
   pattern?: string;
+  serial?: boolean;
 };
 
 const FITNESS_DIR = path.join(process.cwd(), "docs", "fitness");
@@ -76,6 +78,7 @@ export async function loadHookMetrics(names: string[]): Promise<HookMetric[]> {
         pattern: entry.pattern,
         description: entry.description,
         hardGate: Boolean(entry.hard_gate),
+        serial: Boolean(entry.serial),
         sourceFile: relativeFile,
       });
     }

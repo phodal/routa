@@ -1,11 +1,11 @@
 {
   "$schema": "https://raw.githubusercontent.com/tauri-apps/tauri/dev/crates/tauri-config-schema/schema.json",
   "productName": "Routa Desktop",
-  "version": "0.12.1",
+  "version": "0.17.2",
   "identifier": "com.routa.desktop",
   "build": {
     "beforeDevCommand": "cd ../.. && npm run dev",
-    "devUrl": "http://localhost:3000/?runtime=tauri",
+    "devUrl": "http://localhost:3000/?runtime=tauri&backend=http://127.0.0.1:3210",
     "beforeBuildCommand": "node ../../scripts/prepare-frontend.mjs",
     "frontendDist": "../../../out"
   },

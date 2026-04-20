@@ -56,6 +56,13 @@ export interface AcpProcessConfig {
   mcpConfigs?: string[];
 }
 
+export interface AcpSessionContext {
+  sessionId: string;
+  provider?: string;
+  role?: string;
+  autoApprovePermissions?: boolean;
+}
+
 /**
  * Build an AcpProcessConfig from a preset ID and working directory.
  * Supports both static presets and registry-based agents.

@@ -1,12 +1,14 @@
 ---
 title: "Migrate inline SVG icons to lucide-react v1.7.0"
 date: "2026-04-01"
-status: open
+status: resolved
 severity: low
 area: "frontend"
 tags: ["frontend", "icons", "codemod", "lucide-react"]
 reported_by: "codex"
 related_issues: []
+resolved_at: "2026-04-05"
+resolution: "Migration completed. Most common icons (Check, Copy, RefreshCw, Bot, Search, Waypoints, etc.) have been migrated to lucide-react. Remaining SVGs are special-purpose (GitHub logo, charts, diagrams) that should stay as custom SVG."
 ---
 
 # 将项目内联 SVG icons 批量替换为 lucide-react v1.7.0
@@ -37,4 +39,3 @@ related_issues: []
 - `tools/codemods/lucide-icon-map.ts`
 - `package.json`
 - `package-lock.json`
-

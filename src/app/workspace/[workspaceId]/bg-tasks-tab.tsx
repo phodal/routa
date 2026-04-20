@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { OverlayModal, BgTaskStatusIcon, bgTaskStatusClass, formatRelativeTime } from "./ui-components";
 import { useTranslation } from "@/i18n";
+import { desktopAwareFetch } from "@/client/utils/diagnostics";
 import type { BackgroundTaskInfo } from "./types";
 import { Clock, Plus, RefreshCw, Trash2, X, TriangleAlert, SquarePen } from "lucide-react";
 
@@ -28,7 +29,7 @@ export function BgTasksTab({ bgTasks, workspaceId, workspaces, onRefresh }: BgTa
 
   // Fetch specialists for agent selector
   useEffect(() => {
-    fetch("/api/specialists")
+    desktopAwareFetch("/api/specialists")
       .then((r) => r.json())
       .then((d) => setSpecialists((d.specialists ?? []).filter((s: { enabled?: boolean }) => s.enabled !== false)))
       .catch(() => { });
@@ -60,7 +61,7 @@ export function BgTasksTab({ bgTasks, workspaceId, workspaces, onRefresh }: BgTa
     if (!dispatchPrompt.trim() || !dispatchAgentId.trim()) return;
     setDispatchLoading(true);
     try {
-      await fetch("/api/background-tasks", {
+      await desktopAwareFetch("/api/background-tasks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -85,7 +86,7 @@ export function BgTasksTab({ bgTasks, workspaceId, workspaces, onRefresh }: BgTa
   };
 
   const handleRerunTask = async (task: BackgroundTaskInfo) => {
-    await fetch("/api/background-tasks", {
+    await desktopAwareFetch("/api/background-tasks", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -117,7 +118,7 @@ export function BgTasksTab({ bgTasks, workspaceId, workspaces, onRefresh }: BgTa
     if (!editingTask) return;
     setEditLoading(true);
     try {
-      await fetch(`/api/background-tasks/${editingTask.id}`, {
+      await desktopAwareFetch(`/api/background-tasks/${editingTask.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(editForm),
@@ -130,17 +131,17 @@ export function BgTasksTab({ bgTasks, workspaceId, workspaces, onRefresh }: BgTa
   };
 
   const handleCancelTask = async (taskId: string) => {
-    await fetch(`/api/background-tasks/${taskId}`, { method: "DELETE" });
+    await desktopAwareFetch(`/api/background-tasks/${taskId}`, { method: "DELETE" });
     onRefresh();
   };
 
   const handleForceFailTask = async (taskId: string) => {
-    await fetch(`/api/background-tasks/${taskId}?force=true`, { method: "DELETE" });
+    await desktopAwareFetch(`/api/background-tasks/${taskId}?force=true`, { method: "DELETE" });
     onRefresh();
   };
 
   const handleDeleteTask = async (taskId: string) => {
-    await fetch(`/api/background-tasks/${taskId}`, { method: "DELETE" });
+    await desktopAwareFetch(`/api/background-tasks/${taskId}`, { method: "DELETE" });
     onRefresh();
   };
 
@@ -149,14 +150,14 @@ export function BgTasksTab({ bgTasks, workspaceId, workspaces, onRefresh }: BgTa
     try {
       const terminalStatuses = ["COMPLETED", "CANCELLED", "FAILED"];
       const requests: Promise<Response>[] = terminalStatuses.map((status) =>
-        fetch("/api/background-tasks", {
+        desktopAwareFetch("/api/background-tasks", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ action: "deleteByStatus", status, workspaceId }),
         })
       );
       requests.push(
-        fetch("/api/background-tasks", {
+        desktopAwareFetch("/api/background-tasks", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ action: "deleteByStatus", status: "PENDING", workspaceId }),
@@ -382,7 +383,7 @@ export function BgTasksTab({ bgTasks, workspaceId, workspaces, onRefresh }: BgTa
                     {task.status === "FAILED" && task.attempts < task.maxAttempts && (
                       <button
                         onClick={async () => {
-                          await fetch(`/api/background-tasks/${task.id}/retry`, { method: "POST" });
+                          await desktopAwareFetch(`/api/background-tasks/${task.id}/retry`, { method: "POST" });
                           onRefresh();
                         }}
                         className="text-[10px] font-medium px-2 py-0.5 rounded bg-amber-500 hover:bg-amber-600 text-white transition-colors"
@@ -545,7 +546,7 @@ export function BgTasksTab({ bgTasks, workspaceId, workspaces, onRefresh }: BgTa
               <button
                 data-testid="dispatch-submit-btn"
                 onClick={handleDispatchTask}
-                disabled={dispatchLoading || !dispatchPrompt.trim() || !dispatchAgentId.trim()}
+                disabled={dispatchLoading || !dispatchPrompt.trim() || !dispatchAgentId.trim() || !!duplicateWarning}
                 className="px-3 py-1.5 rounded-md text-[12px] font-medium bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white transition-colors"
               >
                 {dispatchLoading ? t.bgTasks.dispatching : t.bgTasks.dispatchNow}

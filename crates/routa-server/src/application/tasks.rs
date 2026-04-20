@@ -2,12 +2,15 @@ use chrono::Utc;
 
 use crate::error::ServerError;
 use crate::models::kanban::{column_id_to_task_status, task_status_to_column_id};
-use crate::models::task::{Task, TaskPriority, TaskStatus};
+use crate::models::task::{
+    Task, TaskCreationSource, TaskLaneSessionStatus, TaskPriority, TaskStatus,
+};
 use crate::state::AppState;
 use routa_core::kanban::{
-    ensure_task_board_context, set_task_column, sync_task_column_from_status,
-    sync_task_status_from_column,
+    ensure_task_board_context, resolve_review_lane_convergence_column, set_task_column,
+    sync_task_column_from_status, sync_task_status_from_column,
 };
+use routa_core::models::task::VerificationVerdict;
 
 #[derive(Clone)]
 pub struct TaskApplicationService {
@@ -69,6 +72,9 @@ impl TaskApplicationService {
             dependencies,
             parallel_group,
         );
+        if task.creation_source.is_none() && task.session_id.is_some() {
+            task.creation_source = Some(TaskCreationSource::Session);
+        }
         task.board_id = board_id;
         if let Some(column_id) = column_id {
             set_task_column(&mut task, column_id);
@@ -157,7 +163,7 @@ impl TaskApplicationService {
         command: UpdateTaskCommand,
     ) -> Result<UpdateTaskPlan, ServerError> {
         let Some(mut task) = self.state.task_store.get(task_id).await? else {
-            return Err(ServerError::NotFound(format!("Task {} not found", task_id)));
+            return Err(ServerError::NotFound(format!("Task {task_id} not found")));
         };
 
         let existing_column_id = task.column_id.clone();
@@ -193,7 +199,7 @@ impl TaskApplicationService {
         }
         if let Some(value) = command.status {
             task.status = TaskStatus::from_str(&value)
-                .ok_or_else(|| ServerError::BadRequest(format!("Invalid status: {}", value)))?;
+                .ok_or_else(|| ServerError::BadRequest(format!("Invalid status: {value}")))?;
         }
         if command.board_id.is_some() {
             task.board_id = command.board_id;
@@ -207,7 +213,7 @@ impl TaskApplicationService {
         if let Some(value) = command.priority {
             task.priority =
                 Some(TaskPriority::from_str(&value).ok_or_else(|| {
-                    ServerError::BadRequest(format!("Invalid priority: {}", value))
+                    ServerError::BadRequest(format!("Invalid priority: {value}"))
                 })?);
         }
         if let Some(value) = command.labels {
@@ -258,6 +264,12 @@ impl TaskApplicationService {
         if command.completion_summary.is_some() {
             task.completion_summary = command.completion_summary;
         }
+        if let Some(value) = command.verification_verdict {
+            task.verification_verdict =
+                Some(VerificationVerdict::from_str(&value).ok_or_else(|| {
+                    ServerError::BadRequest(format!("Invalid verification verdict: {value}"))
+                })?);
+        }
         if command.verification_report.is_some() {
             task.verification_report = command.verification_report;
         }
@@ -265,7 +277,7 @@ impl TaskApplicationService {
             task.codebase_ids = ids;
         }
         if let Some(wt) = command.worktree_id {
-            task.worktree_id = wt.as_str().map(|s| s.to_string());
+            task.worktree_id = wt;
         }
 
         if retry_trigger {
@@ -292,6 +304,26 @@ impl TaskApplicationService {
             sync_task_column_from_status(&mut task);
         }
         ensure_task_board_context(&self.state, &mut task).await?;
+        let board = if let Some(board_id) = &task.board_id {
+            self.state.kanban_store.get(board_id).await?
+        } else {
+            None
+        };
+        if !has_status_update && !has_column_update {
+            if let Some(column_id) = resolve_review_lane_convergence_column(&task, board.as_ref()) {
+                if task.column_id.as_deref() != Some(column_id.as_str()) {
+                    task.column_id = Some(column_id);
+                    sync_task_status_from_column(&mut task);
+                }
+            }
+        }
+
+        if task.column_id != existing_column_id {
+            let next_column_id = task.column_id.clone();
+            complete_running_lane_sessions_for_handoff(&mut task, next_column_id.as_deref());
+            task.trigger_session_id = None;
+            task.last_sync_error = None;
+        }
 
         let entering_dev = task.column_id.as_deref() == Some("dev")
             && existing_column_id.as_deref() != Some("dev");
@@ -434,12 +466,13 @@ pub struct UpdateTaskCommand {
     pub dependencies: Option<Vec<String>>,
     pub parallel_group: Option<String>,
     pub completion_summary: Option<String>,
+    pub verification_verdict: Option<String>,
     pub verification_report: Option<String>,
     pub sync_to_github: Option<bool>,
     pub retry_trigger: Option<bool>,
     pub repo_path: Option<String>,
     pub codebase_ids: Option<Vec<String>>,
-    pub worktree_id: Option<serde_json::Value>, // null clears, string sets
+    pub worktree_id: Option<Option<String>>, // null clears, string sets
 }
 
 #[derive(Debug)]
@@ -463,7 +496,7 @@ pub struct UpdateTaskPlan {
 fn parse_priority(priority: Option<String>) -> Result<Option<TaskPriority>, ServerError> {
     match priority {
         Some(value) => Ok(Some(TaskPriority::from_str(&value).ok_or_else(|| {
-            ServerError::BadRequest(format!("Invalid priority: {}", value))
+            ServerError::BadRequest(format!("Invalid priority: {value}"))
         })?)),
         None => Ok(None),
     }
@@ -480,14 +513,36 @@ fn sanitize_labels(labels: Vec<String>) -> Vec<String> {
     sanitized
 }
 
+fn complete_running_lane_sessions_for_handoff(task: &mut Task, next_column_id: Option<&str>) {
+    let now = Utc::now().to_rfc3339();
+
+    for session in &mut task.lane_sessions {
+        if session.status != TaskLaneSessionStatus::Running {
+            continue;
+        }
+        if session.column_id.as_deref() == next_column_id {
+            continue;
+        }
+
+        session.status = TaskLaneSessionStatus::Completed;
+        if session.completed_at.is_none() {
+            session.completed_at = Some(now.clone());
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::fs;
     use std::path::PathBuf;
 
+    use chrono::Utc;
+
     use super::{CreateTaskCommand, TaskApplicationService, UpdateTaskCommand};
     use crate::create_app_state;
-    use crate::models::task::{Task, TaskStatus};
+    use crate::models::task::{
+        Task, TaskCreationSource, TaskLaneSessionStatus, TaskStatus, VerificationVerdict,
+    };
 
     fn random_db_path() -> PathBuf {
         std::env::temp_dir().join(format!("routa-task-service-{}.db", uuid::Uuid::new_v4()))
@@ -648,6 +703,48 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn create_task_marks_session_created_tasks() {
+        let (service, db_path) = setup_service().await;
+
+        let plan = service
+            .create_task(CreateTaskCommand {
+                title: "Session task".to_string(),
+                objective: "Verify session creation source".to_string(),
+                workspace_id: None,
+                session_id: Some("session-123".to_string()),
+                scope: None,
+                acceptance_criteria: None,
+                verification_commands: None,
+                test_cases: None,
+                dependencies: None,
+                parallel_group: None,
+                board_id: None,
+                column_id: None,
+                position: None,
+                priority: None,
+                labels: None,
+                assignee: None,
+                assigned_provider: None,
+                assigned_role: None,
+                assigned_specialist_id: None,
+                assigned_specialist_name: None,
+                create_github_issue: None,
+                repo_path: None,
+                codebase_ids: None,
+                github_id: None,
+                github_number: None,
+                github_url: None,
+                github_repo: None,
+                github_state: None,
+            })
+            .await
+            .expect("create task plan");
+
+        assert_eq!(plan.task.creation_source, Some(TaskCreationSource::Session));
+        let _ = fs::remove_file(db_path);
+    }
+
+    #[tokio::test]
     async fn update_task_rejects_mismatched_column_and_status() {
         let (service, db_path) = setup_service().await;
         let task = seed_task(&service, Some("backlog")).await;
@@ -674,6 +771,33 @@ mod tests {
         let mut task = seed_task(&service, Some("backlog")).await;
         task.trigger_session_id = Some("session-1".to_string());
         task.last_sync_error = Some("old error".to_string());
+        task.lane_sessions
+            .push(routa_core::models::task::TaskLaneSession {
+                session_id: "session-1".to_string(),
+                routa_agent_id: None,
+                column_id: Some("backlog".to_string()),
+                column_name: Some("Backlog".to_string()),
+                step_id: None,
+                step_index: None,
+                step_name: None,
+                provider: Some("codex".to_string()),
+                role: Some("ROUTA".to_string()),
+                specialist_id: None,
+                specialist_name: None,
+                transport: Some("acp".to_string()),
+                external_task_id: None,
+                context_id: None,
+                attempt: Some(1),
+                loop_mode: None,
+                completion_requirement: None,
+                objective: Some(task.objective.clone()),
+                last_activity_at: None,
+                recovered_from_session_id: None,
+                recovery_reason: None,
+                status: TaskLaneSessionStatus::Running,
+                started_at: Utc::now().to_rfc3339(),
+                completed_at: None,
+            });
         service
             .state
             .task_store
@@ -698,8 +822,41 @@ mod tests {
         assert_eq!(plan.task.status, TaskStatus::InProgress);
         assert_eq!(plan.task.trigger_session_id, None);
         assert_eq!(plan.task.last_sync_error, None);
+        assert_eq!(
+            plan.task.lane_sessions[0].status,
+            TaskLaneSessionStatus::Completed
+        );
+        assert!(plan.task.lane_sessions[0].completed_at.is_some());
         assert!(plan.should_trigger_agent);
         assert!(!plan.should_sync_github);
+
+        let _ = fs::remove_file(db_path);
+    }
+
+    #[tokio::test]
+    async fn update_task_clears_worktree_when_request_explicitly_sets_null() {
+        let (service, db_path) = setup_service().await;
+        let mut task = seed_task(&service, Some("dev")).await;
+        task.worktree_id = Some("worktree-stale".to_string());
+        service
+            .state
+            .task_store
+            .save(&task)
+            .await
+            .expect("persist updated seed task");
+
+        let plan = service
+            .update_task(
+                &task.id,
+                UpdateTaskCommand {
+                    worktree_id: Some(None),
+                    ..UpdateTaskCommand::default()
+                },
+            )
+            .await
+            .expect("update task plan");
+
+        assert_eq!(plan.task.worktree_id, None);
 
         let _ = fs::remove_file(db_path);
     }
@@ -709,6 +866,33 @@ mod tests {
         let (service, db_path) = setup_service().await;
         let mut task = seed_task(&service, Some("todo")).await;
         task.trigger_session_id = Some("session-todo".to_string());
+        task.lane_sessions
+            .push(routa_core::models::task::TaskLaneSession {
+                session_id: "session-todo".to_string(),
+                routa_agent_id: None,
+                column_id: Some("todo".to_string()),
+                column_name: Some("Todo".to_string()),
+                step_id: None,
+                step_index: None,
+                step_name: None,
+                provider: Some("opencode".to_string()),
+                role: Some("CRAFTER".to_string()),
+                specialist_id: None,
+                specialist_name: None,
+                transport: Some("acp".to_string()),
+                external_task_id: None,
+                context_id: None,
+                attempt: Some(1),
+                loop_mode: None,
+                completion_requirement: None,
+                objective: Some(task.objective.clone()),
+                last_activity_at: None,
+                recovered_from_session_id: None,
+                recovery_reason: None,
+                status: TaskLaneSessionStatus::Running,
+                started_at: Utc::now().to_rfc3339(),
+                completed_at: None,
+            });
         service
             .state
             .task_store
@@ -758,10 +942,12 @@ mod tests {
             .expect("update task plan");
 
         assert_eq!(plan.task.column_id.as_deref(), Some("dev"));
+        assert_eq!(plan.task.trigger_session_id, None);
         assert_eq!(
-            plan.task.trigger_session_id.as_deref(),
-            Some("session-todo")
+            plan.task.lane_sessions[0].status,
+            TaskLaneSessionStatus::Completed
         );
+        assert!(plan.task.lane_sessions[0].completed_at.is_some());
         assert!(plan.should_trigger_agent);
 
         let _ = fs::remove_file(db_path);
@@ -834,6 +1020,74 @@ mod tests {
         );
         assert_eq!(plan.task.column_id.as_deref(), Some("todo"));
         assert!(plan.should_trigger_agent);
+
+        let _ = fs::remove_file(db_path);
+    }
+
+    #[tokio::test]
+    async fn update_task_converges_final_review_verdict_into_done() {
+        let (service, db_path) = setup_service().await;
+        let mut task = seed_task(&service, Some("review")).await;
+        task.status = TaskStatus::ReviewRequired;
+        task.assigned_specialist_id = Some("kanban-review-guard".to_string());
+        task.assigned_specialist_name = Some("Review Guard".to_string());
+        service
+            .state
+            .task_store
+            .save(&task)
+            .await
+            .expect("persist review task");
+
+        let plan = service
+            .update_task(
+                &task.id,
+                UpdateTaskCommand {
+                    verification_verdict: Some("APPROVED".to_string()),
+                    verification_report: Some("Checks passed".to_string()),
+                    ..UpdateTaskCommand::default()
+                },
+            )
+            .await
+            .expect("update task plan");
+
+        assert_eq!(plan.task.column_id.as_deref(), Some("done"));
+        assert_eq!(plan.task.status, TaskStatus::Completed);
+        assert_eq!(
+            plan.task.verification_verdict,
+            Some(VerificationVerdict::Approved)
+        );
+
+        let _ = fs::remove_file(db_path);
+    }
+
+    #[tokio::test]
+    async fn update_task_keeps_review_lane_when_follow_up_step_is_pending() {
+        let (service, db_path) = setup_service().await;
+        let mut task = seed_task(&service, Some("review")).await;
+        task.status = TaskStatus::ReviewRequired;
+        task.assigned_specialist_id = Some("kanban-qa-frontend".to_string());
+        task.assigned_specialist_name = Some("QA Frontend".to_string());
+        service
+            .state
+            .task_store
+            .save(&task)
+            .await
+            .expect("persist review task");
+
+        let plan = service
+            .update_task(
+                &task.id,
+                UpdateTaskCommand {
+                    verification_verdict: Some("NOT_APPROVED".to_string()),
+                    verification_report: Some("Needs fixes".to_string()),
+                    ..UpdateTaskCommand::default()
+                },
+            )
+            .await
+            .expect("update task plan");
+
+        assert_eq!(plan.task.column_id.as_deref(), Some("review"));
+        assert_eq!(plan.task.status, TaskStatus::ReviewRequired);
 
         let _ = fs::remove_file(db_path);
     }

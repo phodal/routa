@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "@/i18n";
+import { desktopAwareFetch } from "@/client/utils/diagnostics";
 
 interface DockerStatusResponse {
   available: boolean;
@@ -26,7 +27,7 @@ export function DockerStatusIndicator({ compact = false, className = "" }: Docke
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/acp/docker/status", { cache: "no-store" });
+      const res = await desktopAwareFetch("/api/acp/docker/status", { cache: "no-store" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setStatus((await res.json()) as DockerStatusResponse);
     } catch {
@@ -48,10 +49,14 @@ export function DockerStatusIndicator({ compact = false, className = "" }: Docke
   const available = !!status?.available;
   const isChecking = loading && !status;
   const isRetryable = !available && !isChecking;
+
+  const versionLabel = status?.version?.trim() || "ready";
+  const readyLabel = t.dockerStatus.ready.replace("{version}", versionLabel);
+
   const label = isChecking
     ? t.dockerStatus.checking
     : available
-      ? t.dockerStatus.ready.replace("{{version}}", status?.version ?? "ready")
+      ? readyLabel
       : loading
         ? t.dockerStatus.retrying
         : t.dockerStatus.unavailable;

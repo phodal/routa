@@ -1,3 +1,7 @@
+---
+title: i18n Quick Reference
+---
+
 # i18n 快速参考
 
 ## 不同文件类型使用规范

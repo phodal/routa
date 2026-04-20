@@ -11,6 +11,8 @@
 //!   - uvx agent: `uvx <package>`      → pre-downloads Python + pack
 
 use std::collections::HashMap;
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -21,6 +23,8 @@ use tokio::sync::RwLock;
 use super::paths::AcpPaths;
 use super::registry_fetch::fetch_registry;
 use super::runtime_manager::{AcpRuntimeManager, RuntimeType};
+#[cfg(windows)]
+use super::CREATE_NO_WINDOW;
 
 // ─── Constants ─────────────────────────────────────────────────────────────
 
@@ -194,13 +198,13 @@ impl AcpWarmupService {
         // Fetch agent from registry
         let registry = fetch_registry()
             .await
-            .map_err(|e| format!("Registry fetch failed: {}", e))?;
+            .map_err(|e| format!("Registry fetch failed: {e}"))?;
 
         let agent = registry
             .agents
             .iter()
             .find(|a| a.id == agent_id)
-            .ok_or_else(|| format!("Agent '{}' not found in registry", agent_id))?
+            .ok_or_else(|| format!("Agent '{agent_id}' not found in registry"))?
             .clone();
 
         let dist = &agent.distribution;
@@ -269,13 +273,16 @@ impl AcpWarmupService {
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null());
 
+        #[cfg(windows)]
+        cmd.as_std_mut().creation_flags(CREATE_NO_WINDOW);
+
         // Prepend runtime dir to PATH
         if let Ok(path_env) = std::env::var("PATH") {
             let sep = if cfg!(windows) { ";" } else { ":" };
-            cmd.env("PATH", format!("{}{}{}", runtime_dir, sep, path_env));
+            cmd.env("PATH", format!("{runtime_dir}{sep}{path_env}"));
         }
 
-        let child = cmd.spawn().map_err(|e| format!("spawn failed: {}", e))?;
+        let child = cmd.spawn().map_err(|e| format!("spawn failed: {e}"))?;
 
         match tokio::time::timeout(
             std::time::Duration::from_secs(PREWARM_TIMEOUT_SECS),

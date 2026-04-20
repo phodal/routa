@@ -4,7 +4,9 @@
  * Represents a unit of work within the multi-agent system.
  */
 
+import type { ArtifactType } from "./artifact";
 import type { KanbanRequiredTaskField } from "./kanban";
+import type { TaskCreationSource } from "../kanban/task-creation-policy";
 
 export enum TaskStatus {
   PENDING = "PENDING",
@@ -66,9 +68,9 @@ export interface TaskStoryReadiness {
 
 export interface TaskArtifactSummary {
   total: number;
-  byType: Partial<Record<"screenshot" | "test_results" | "code_diff" | "logs", number>>;
+  byType: Partial<Record<ArtifactType, number>>;
   requiredSatisfied: boolean;
-  missingRequired: Array<"screenshot" | "test_results" | "code_diff" | "logs">;
+  missingRequired: ArtifactType[];
 }
 
 export interface TaskEvidenceSummary {
@@ -120,6 +122,8 @@ export type TaskLaneHandoffStatus =
 export interface TaskLaneSession {
   sessionId: string;
   routaAgentId?: string;
+  worktreeId?: string;
+  cwd?: string;
   columnId?: string;
   columnName?: string;
   stepId?: string;
@@ -153,6 +157,8 @@ export interface TaskLaneHandoff {
   toSessionId: string;
   fromColumnId?: string;
   toColumnId?: string;
+  worktreeId?: string;
+  cwd?: string;
   requestType: TaskLaneHandoffRequestType;
   request: string;
   status: TaskLaneHandoffStatus;
@@ -161,11 +167,52 @@ export interface TaskLaneHandoff {
   responseSummary?: string;
 }
 
+export interface TaskCommentEntry {
+  id: string;
+  body: string;
+  createdAt: string;
+  source?: "legacy_import" | "update_card";
+  agentId?: string;
+  sessionId?: string;
+}
+
+export interface TaskDeliverySnapshotCommit {
+  sha: string;
+  shortSha: string;
+  summary: string;
+  authorName: string;
+  authoredAt: string;
+  additions: number;
+  deletions: number;
+}
+
+export interface TaskDeliverySnapshot {
+  capturedAt: string;
+  repoPath: string;
+  worktreeId?: string;
+  worktreePath?: string;
+  branch?: string;
+  baseBranch?: string;
+  baseRef: string;
+  baseSha: string;
+  headSha: string;
+  commits: TaskDeliverySnapshotCommit[];
+  source: "review_transition" | "done_transition" | "pr_run" | "manual";
+}
+
+export interface FallbackAgent {
+  providerId?: string;
+  role?: string;
+  specialistId?: string;
+  specialistName?: string;
+}
+
 export interface Task {
   id: string;
   title: string;
   objective: string;
   comment?: string;
+  comments: TaskCommentEntry[];
   scope?: string;
   acceptanceCriteria?: string[];
   verificationCommands?: string[];
@@ -182,6 +229,12 @@ export interface Task {
   assignedRole?: string;
   assignedSpecialistId?: string;
   assignedSpecialistName?: string;
+  /** Ordered fallback agents to try when the primary agent fails */
+  fallbackAgentChain?: FallbackAgent[];
+  /** Whether to automatically try the next fallback agent on failure */
+  enableAutomaticFallback?: boolean;
+  /** Maximum number of fallback attempts before giving up */
+  maxFallbackAttempts?: number;
   triggerSessionId?: string;
   /** All session IDs that have been associated with this task (history) */
   sessionIds: string[];
@@ -202,10 +255,13 @@ export interface Task {
   workspaceId: string;
   /** Session ID that created this task (for session-scoped filtering) */
   sessionId?: string;
+  creationSource?: TaskCreationSource;
   /** Associated codebase IDs for this task */
   codebaseIds: string[];
   /** Git worktree ID created for this task when it enters the dev column */
   worktreeId?: string;
+  /** Frozen delivery evidence captured before PR / merge / base sync can erase base..HEAD */
+  deliverySnapshot?: TaskDeliverySnapshot;
   createdAt: Date;
   updatedAt: Date;
   completionSummary?: string;
@@ -218,9 +274,11 @@ export function createTask(params: {
   title: string;
   objective: string;
   comment?: string;
+  comments?: TaskCommentEntry[];
   workspaceId: string;
   triggerSessionId?: string;
   sessionId?: string;
+  creationSource?: TaskCreationSource;
   scope?: string;
   acceptanceCriteria?: string[];
   verificationCommands?: string[];
@@ -237,6 +295,9 @@ export function createTask(params: {
   assignedRole?: string;
   assignedSpecialistId?: string;
   assignedSpecialistName?: string;
+  fallbackAgentChain?: FallbackAgent[];
+  enableAutomaticFallback?: boolean;
+  maxFallbackAttempts?: number;
   githubId?: string;
   githubNumber?: number;
   githubUrl?: string;
@@ -250,11 +311,13 @@ export function createTask(params: {
   worktreeId?: string;
 }): Task {
   const now = new Date();
+  const comments = params.comments ?? buildInitialTaskComments(params.comment, now);
   return {
     id: params.id,
     title: params.title,
     objective: params.objective,
     comment: params.comment,
+    comments,
     scope: params.scope,
     acceptanceCriteria: params.acceptanceCriteria,
     verificationCommands: params.verificationCommands,
@@ -270,6 +333,9 @@ export function createTask(params: {
     assignedRole: params.assignedRole,
     assignedSpecialistId: params.assignedSpecialistId,
     assignedSpecialistName: params.assignedSpecialistName,
+    fallbackAgentChain: params.fallbackAgentChain,
+    enableAutomaticFallback: params.enableAutomaticFallback,
+    maxFallbackAttempts: params.maxFallbackAttempts,
     sessionIds: [],
     laneSessions: [],
     laneHandoffs: [],
@@ -285,10 +351,58 @@ export function createTask(params: {
     parallelGroup: params.parallelGroup,
     workspaceId: params.workspaceId,
     sessionId: params.sessionId,
+    creationSource: params.creationSource,
     codebaseIds: params.codebaseIds ?? [],
     worktreeId: params.worktreeId,
     triggerSessionId: params.triggerSessionId,
     createdAt: now,
     updatedAt: now,
   };
+}
+
+function buildInitialTaskComments(comment: string | undefined, now: Date): TaskCommentEntry[] {
+  const trimmed = comment?.trim();
+  if (!trimmed) {
+    return [];
+  }
+
+  return [{
+    id: createTaskCommentId(),
+    body: trimmed,
+    createdAt: now.toISOString(),
+    source: "legacy_import",
+  }];
+}
+
+function createTaskCommentId(): string {
+  if (typeof globalThis.crypto?.randomUUID === "function") {
+    return globalThis.crypto.randomUUID();
+  }
+
+  return `comment-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
+}
+
+export function hydrateTaskComments(
+  comments: TaskCommentEntry[] | undefined,
+  legacyComment: string | undefined,
+): TaskCommentEntry[] {
+  if ((comments?.length ?? 0) > 0) {
+    return comments ?? [];
+  }
+
+  return splitLegacyTaskComment(legacyComment);
+}
+
+export function splitLegacyTaskComment(comment: string | undefined): TaskCommentEntry[] {
+  const trimmed = comment?.trim();
+  if (!trimmed) {
+    return [];
+  }
+
+  return [{
+    id: "legacy-comment-1",
+    body: trimmed,
+    createdAt: "",
+    source: "legacy_import",
+  }];
 }

@@ -1,9 +1,13 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi, afterEach } from "vitest";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { describe, expect, it, vi, afterEach, beforeEach } from "vitest";
 import { KanbanTab } from "../kanban-tab";
 import { KanbanCardDetail } from "../kanban-card-detail";
+import { KanbanCardActivityPanel } from "../kanban-card-activity";
+import { KanbanMoveBlockedModal } from "../kanban-tab-modals";
+import { buildKanbanSessionRestorePrompt } from "../kanban-tab-panels";
 import type { KanbanBoardInfo, TaskInfo } from "../../types";
 import type { UseAcpActions, UseAcpState } from "@/client/hooks/use-acp";
+import { resetDesktopAwareFetchToGlobalFetch } from "./test-utils";
 
 const { desktopAwareFetch } = vi.hoisted(() => ({
   desktopAwareFetch: vi.fn(),
@@ -20,6 +24,13 @@ vi.mock("@/client/utils/diagnostics", async () => {
 vi.mock("@/client/components/repo-picker", () => ({
   RepoPicker: () => <div data-testid="repo-picker-mock" />,
 }));
+
+vi.mock("../use-runtime-fitness-status", async () => {
+  const { mockUseRuntimeFitnessStatus } = await import("./test-utils");
+  return {
+    useRuntimeFitnessStatus: mockUseRuntimeFitnessStatus,
+  };
+});
 
 const board: KanbanBoardInfo = {
   id: "board-1",
@@ -56,8 +67,94 @@ function createTask(id: string, title: string, overrides: Partial<TaskInfo> = {}
   };
 }
 
+beforeEach(() => {
+  resetDesktopAwareFetchToGlobalFetch(desktopAwareFetch);
+});
+
 afterEach(() => {
-  desktopAwareFetch.mockReset();
+});
+
+describe("kanban session restore prompt", () => {
+  it("uses card context and filters noisy tool or terminal transcript", () => {
+    const prompt = buildKanbanSessionRestorePrompt(
+      createTask("task-restore", "Upgrade dirs", {
+        objective: "Update dirs requirement from 5 to 6",
+        status: "IN_PROGRESS",
+      }),
+      {
+        sessionId: "session-old",
+        name: "Upgrade dirs · Dev Crafter",
+        workspaceId: "workspace-1",
+        cwd: "/tmp/worktree",
+        branch: "issue/dirs",
+        provider: "codex",
+        createdAt: "2025-01-01T00:00:00.000Z",
+      },
+      [
+        {
+          role: "terminal",
+          content: "cargo test --all\nrunning 100 tests\n...",
+        },
+        {
+          role: "assistant",
+          content: "2026-04-09T04:03:47.306949Z INFO routa_server: Starting Routa backend server on 127.0.0.1:0\n".repeat(20),
+        },
+        {
+          role: "tool",
+          toolName: "shell",
+          content: "test result: ok. 8 passed; 0 failed",
+        },
+        {
+          role: "assistant",
+          content: "cargo test --all passed; cargo clippy is the remaining verification.",
+        },
+      ],
+    );
+
+    expect(prompt).toContain("Card context:");
+    expect(prompt).toContain("- Card: Upgrade dirs");
+    expect(prompt).toContain("Assistant: cargo test --all passed");
+    expect(prompt).not.toContain("Starting Routa backend server");
+    expect(prompt).not.toContain("test result: ok");
+    expect(prompt).not.toContain("running 100 tests");
+  });
+});
+
+describe("kanban move blocked modal", () => {
+  it("surfaces story-readiness remediation with update_task guidance", () => {
+    render(
+      <KanbanMoveBlockedModal
+        blocked={{
+          message: 'Cannot move task to "Dev": missing required task fields: scope, verification plan.',
+          storyReadiness: {
+            ready: false,
+            missing: ["scope", "verification_plan"],
+            requiredTaskFields: ["scope", "acceptance_criteria", "verification_plan"],
+            checks: {
+              scope: false,
+              acceptanceCriteria: true,
+              verificationCommands: false,
+              testCases: true,
+              verificationPlan: true,
+              dependenciesDeclared: false,
+            },
+          },
+          missingTaskFields: ["scope", "verification plan"],
+        }}
+        onClose={vi.fn()}
+        onDelegateFix={vi.fn()}
+        onOpenCard={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("Cannot Move Card")).toBeTruthy();
+    expect(screen.getByText("This move is blocked by the story-readiness gate for the target lane.")).toBeTruthy();
+    expect(screen.getByText(/Required for next move:/)).toBeTruthy();
+    expect(screen.getByText(/Missing fields:/)).toBeTruthy();
+    expect(screen.getByText(/Use `update_task` to fill structured fields/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Ask Kanban Agent to Fix" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Open" })).toBeTruthy();
+  });
 });
 
 describe("KanbanCardDetail repository health", () => {
@@ -119,6 +216,7 @@ describe("KanbanCardDetail repository health", () => {
       />,
     );
 
+    fireEvent.click(screen.getByRole("button", { name: "Execution" }));
     fireEvent.click(screen.getByText("Repo").closest("summary")!);
 
     expect(await screen.findByText("Repo Health")).toBeTruthy();
@@ -177,6 +275,7 @@ describe("KanbanCardDetail repository health", () => {
       />
     );
 
+    fireEvent.click(screen.getByRole("button", { name: "Execution" }));
     expect(screen.getByText(/Current run failed on Auggie:/i)).toBeTruthy();
     expect(screen.getByText(/403 Forbidden/i)).toBeTruthy();
   });
@@ -236,6 +335,7 @@ describe("KanbanCardDetail repository health", () => {
       />
     );
 
+    fireEvent.click(screen.getByRole("button", { name: "Execution" }));
     expect(screen.getByText(/Current run failed on Claude Code:/i)).toBeTruthy();
     expect(screen.queryByText(/Current run failed on Codex:/i)).toBeNull();
   });
@@ -300,6 +400,7 @@ describe("KanbanCardDetail repository health", () => {
       />
     );
 
+    fireEvent.click(screen.getByRole("button", { name: "Execution" }));
     expect(screen.getAllByText(/Workspace default · GATE · Remote Review/i).length).toBeGreaterThan(0);
   });
 
@@ -330,7 +431,7 @@ describe("KanbanCardDetail repository health", () => {
 
     expect(screen.getByDisplayValue("Story One")).toBeTruthy();
     expect(screen.getByText("Initial objective")).toBeTruthy();
-    expect(screen.getByDisplayValue("Initial test")).toBeTruthy();
+    expect(screen.getByText("- Initial test")).toBeTruthy();
     expect((screen.getByRole("combobox", { name: "Priority" }) as HTMLSelectElement).value).toBe("medium");
 
     rerender(
@@ -360,12 +461,12 @@ describe("KanbanCardDetail repository health", () => {
     await waitFor(() => {
       expect(screen.getByDisplayValue("Story One Updated")).toBeTruthy();
       expect(screen.getByText("Updated objective")).toBeTruthy();
-      expect(screen.getByDisplayValue("Updated test")).toBeTruthy();
+      expect(screen.getByText("- Updated test")).toBeTruthy();
       expect((screen.getByRole("combobox", { name: "Priority" }) as HTMLSelectElement).value).toBe("high");
     });
   });
 
-  it("shows story readiness and evidence summaries near the top of card detail", () => {
+  it("keeps evidence summary focused on delivery readiness instead of run history", () => {
     render(
       <KanbanCardDetail
         task={{
@@ -433,18 +534,146 @@ describe("KanbanCardDetail repository health", () => {
       />,
     );
 
-    expect(screen.getByText("Story Readiness")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Story Readiness" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Story Readiness" }));
-    expect(screen.getByText("Blocked for Dev")).toBeTruthy();
+    expect(screen.getAllByText("Blocked for Dev").length).toBeGreaterThan(0);
     fireEvent.click(screen.getByRole("button", { name: "Evidence Bundle" }));
     expect(screen.getByRole("button", { name: "Evidence Bundle" })).toBeTruthy();
-    expect(screen.getByText("Evidence incomplete")).toBeTruthy();
+    expect(screen.getAllByText("Evidence incomplete").length).toBeGreaterThan(0);
     expect(screen.getByText(/test_results/i)).toBeTruthy();
+    expect(screen.queryByText("Latest Run")).toBeNull();
+  });
+
+  it("shows the full run session id in activity history", async () => {
+    render(
+      <KanbanCardActivityPanel
+        task={{
+          ...createTask("task-runs", "Story Runs"),
+          columnId: "review",
+          laneSessions: [{
+            sessionId: "session-review-long-id-1234567890",
+            columnId: "review",
+            columnName: "Review",
+            provider: "codex",
+            role: "GATE",
+            status: "running",
+            startedAt: "2025-01-01T00:00:00.000Z",
+          }],
+        }}
+        sessions={[]}
+        specialists={[]}
+        specialistLanguage="en"
+      />,
+    );
+
+    expect(await screen.findByText("session-review-long-id-1234567890")).toBeTruthy();
+  });
+
+  it("keeps run row selection separate from copying the session id", async () => {
+    const onSelectSession = vi.fn();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, {
+      clipboard: { writeText },
+    });
+
+    render(
+      <KanbanCardActivityPanel
+        task={{
+          ...createTask("task-runs-copy", "Story Runs Copy"),
+          columnId: "review",
+          laneSessions: [{
+            sessionId: "session-review-copy-123",
+            columnId: "review",
+            columnName: "Review",
+            provider: "codex",
+            role: "GATE",
+            status: "running",
+            startedAt: "2025-01-01T00:00:00.000Z",
+          }],
+        }}
+        sessions={[]}
+        specialists={[]}
+        specialistLanguage="en"
+        onSelectSession={onSelectSession}
+      />,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: /run 1/i }));
+    expect(onSelectSession).toHaveBeenCalledWith("session-review-copy-123");
+
+    fireEvent.click(screen.getByRole("button", { name: "Copy to clipboard" }));
+    expect(writeText).toHaveBeenCalledWith("session-review-copy-123");
+    expect(onSelectSession).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the runs tab visible in split detail mode", () => {
+    render(
+      <KanbanCardDetail
+        task={{
+          ...createTask("task-split-runs", "Story Split Runs"),
+          laneSessions: [{
+            sessionId: "session-split-1",
+            columnId: "review",
+            columnName: "Review",
+            provider: "codex",
+            role: "GATE",
+            status: "completed",
+            startedAt: "2025-01-01T00:00:00.000Z",
+          }],
+        }}
+        boardColumns={board.columns}
+        availableProviders={[]}
+        specialists={[]}
+        specialistLanguage="en"
+        codebases={[]}
+        allCodebaseIds={[]}
+        worktreeCache={{}}
+        sessions={[]}
+        onPatchTask={vi.fn(async () => createTask("task-split-runs", "Story Split Runs"))}
+        onRetryTrigger={vi.fn()}
+        onDelete={vi.fn()}
+        onRefresh={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "Runs" })).toBeTruthy();
+  });
+
+  it("shows full review feedback in the description tab after review sends the card back", () => {
+    render(
+      <KanbanCardDetail
+        task={{
+          ...createTask("task-review", "Story Review"),
+          columnId: "dev",
+          verificationVerdict: "NOT_APPROVED",
+          verificationReport: "AC3 failed.\n\nEditor compatibility still breaks pasted rich text spans.",
+        }}
+        boardColumns={board.columns}
+        availableProviders={[]}
+        specialists={[]}
+        specialistLanguage="en"
+        codebases={[]}
+        allCodebaseIds={[]}
+        worktreeCache={{}}
+        sessions={[]}
+        fullWidth
+        onPatchTask={vi.fn(async () => createTask("task-review", "Story Review"))}
+        onRetryTrigger={vi.fn()}
+        onDelete={vi.fn()}
+        onRefresh={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("Review Feedback")).toBeTruthy();
+    expect(screen.getByText("Returned to Dev")).toBeTruthy();
+    expect(screen.getByText(/AC3 failed/i)).toBeTruthy();
+    expect(screen.getByText(/Editor compatibility still breaks/i)).toBeTruthy();
   });
 });
 
 describe("KanbanTab live session tail", () => {
   afterEach(() => {
+    vi.useRealTimers();
     vi.unstubAllGlobals();
   });
 
@@ -537,6 +766,124 @@ describe("KanbanTab live session tail", () => {
     });
     expect(screen.queryByTestId("kanban-card-live-tail")).toBeNull();
   });
+
+  it("uses a slower polling cadence for live session tails", async () => {
+    vi.useFakeTimers();
+
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        history: [
+          { update: { sessionUpdate: "agent_message", content: { type: "text", text: "Still working." } } },
+        ],
+      }),
+    }) as Response);
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <KanbanTab
+        workspaceId="workspace-1"
+        boards={[board]}
+        tasks={[{
+          ...createTask("task-1", "Story One"),
+          triggerSessionId: "session-123",
+          laneSessions: [{
+            sessionId: "session-123",
+            status: "running",
+            startedAt: "2025-01-01T00:00:00.000Z",
+          }],
+        }]}
+        sessions={[{
+          sessionId: "session-123",
+          cwd: "/tmp/project",
+          workspaceId: "workspace-1",
+          provider: "claude",
+          acpStatus: "ready",
+          createdAt: "2025-01-01T00:00:00.000Z",
+        }]}
+        providers={[]}
+        specialists={[]}
+        codebases={[]}
+        onRefresh={vi.fn()}
+      />,
+    );
+
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(9_999);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not poll live session tails while the page is hidden", async () => {
+    vi.useFakeTimers();
+
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        history: [
+          { update: { sessionUpdate: "agent_message", content: { type: "text", text: "Still working." } } },
+        ],
+      }),
+    }) as Response);
+    vi.stubGlobal("fetch", fetchMock);
+
+    const visibilityState = { value: "visible" };
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      get: () => visibilityState.value,
+    });
+
+    render(
+      <KanbanTab
+        workspaceId="workspace-1"
+        boards={[board]}
+        tasks={[{
+          ...createTask("task-1", "Story One"),
+          triggerSessionId: "session-123",
+          laneSessions: [{
+            sessionId: "session-123",
+            status: "running",
+            startedAt: "2025-01-01T00:00:00.000Z",
+          }],
+        }]}
+        sessions={[{
+          sessionId: "session-123",
+          cwd: "/tmp/project",
+          workspaceId: "workspace-1",
+          provider: "claude",
+          acpStatus: "ready",
+          createdAt: "2025-01-01T00:00:00.000Z",
+        }]}
+        providers={[]}
+        specialists={[]}
+        codebases={[]}
+        onRefresh={vi.fn()}
+      />,
+    );
+
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      visibilityState.value = "hidden";
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+
+    await vi.advanceTimersByTimeAsync(20_000);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      visibilityState.value = "visible";
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe("KanbanTab agent prompt flow", () => {
@@ -555,7 +902,7 @@ describe("KanbanTab agent prompt flow", () => {
       connected: true,
       sessionId: null,
       updates: [],
-      providers: [{ id: "claude", name: "Claude Code", description: "Claude Code provider", command: "claude" }],
+      providers: [{ id: "claude", name: "Claude Code", description: "Claude Code provider", command: "claude", status: "available" }],
       selectedProvider: "claude",
       loading: false,
       error: null,
@@ -563,6 +910,8 @@ describe("KanbanTab agent prompt flow", () => {
       dockerConfigError: null,
       connect: vi.fn(),
       createSession: vi.fn(),
+      resumeSession: vi.fn(),
+      forkSession: vi.fn(),
       selectSession: vi.fn(),
       setProvider: vi.fn(),
       setMode: vi.fn(),
@@ -595,7 +944,7 @@ describe("KanbanTab agent prompt flow", () => {
             createdAt: "2025-01-01T00:00:00.000Z",
           },
         ]}
-        providers={[{ id: "claude", name: "Claude Code", description: "Claude Code provider", command: "claude" }]}
+        providers={[{ id: "claude", name: "Claude Code", description: "Claude Code provider", command: "claude", status: "available" }]}
         specialists={[]}
         specialistLanguage="en"
         onSpecialistLanguageChange={vi.fn()}
@@ -645,7 +994,7 @@ describe("KanbanTab agent prompt flow", () => {
         boards={[board]}
         tasks={[createTask("task-1", "Story One")]}
         sessions={[]}
-        providers={[{ id: "claude", name: "Claude Code", description: "Claude Code provider", command: "claude" }]}
+        providers={[{ id: "claude", name: "Claude Code", description: "Claude Code provider", command: "claude", status: "available" }]}
         specialists={[]}
         specialistLanguage="zh-CN"
         onSpecialistLanguageChange={vi.fn()}
@@ -676,5 +1025,75 @@ describe("KanbanTab agent prompt flow", () => {
       }),
     );
     expect(screen.getByDisplayValue("调查 lane 问题")).toBeTruthy();
+  });
+
+  it("renders canonical story descriptions instead of leaving the detail blank", () => {
+    render(
+      <KanbanCardDetail
+        task={{
+          ...createTask("task-canonical", "Canonical Story"),
+          objective: `\`\`\`yaml
+story:
+  version: 1
+  language: en
+  title: Upgrade @tiptap/core safely
+  problem_statement: |
+    Dependency upgrades can regress editor behavior without explicit validation.
+  user_value: |
+    Maintainers can review the change as a structured story instead of raw YAML only.
+  acceptance_criteria:
+    - id: AC1
+      text: Detail view shows the canonical story content.
+      testable: true
+    - id: AC2
+      text: Reviewers can inspect the AI-produced analysis in place.
+      testable: true
+  constraints_and_affected_areas:
+    - src/app/workspace/[workspaceId]/kanban/kanban-description-editor.tsx
+  dependencies_and_sequencing:
+    independent_story_check: pass
+    depends_on: []
+    unblock_condition: none
+  out_of_scope:
+    - unrelated UI cleanup
+  invest:
+    independent:
+      status: pass
+      reason: No blocking prerequisites.
+    negotiable:
+      status: pass
+      reason: Tradeoffs can still be discussed.
+    valuable:
+      status: pass
+      reason: Reviewers need visible story context.
+    estimable:
+      status: pass
+      reason: Scope is constrained to description rendering.
+    small:
+      status: pass
+      reason: One focused UI fix.
+    testable:
+      status: pass
+      reason: Visible renderer can be asserted in tests.
+\`\`\``,
+        }}
+        boardColumns={board.columns}
+        availableProviders={[]}
+        specialists={[]}
+        specialistLanguage="en"
+        codebases={[]}
+        allCodebaseIds={[]}
+        worktreeCache={{}}
+        sessions={[]}
+        fullWidth
+        onPatchTask={vi.fn(async () => createTask("task-canonical", "Canonical Story"))}
+        onRetryTrigger={vi.fn()}
+        onDelete={vi.fn()}
+        onRefresh={vi.fn()}
+      />,
+    );
+
+    expect(document.body.textContent ?? "").toContain("Dependency upgrades can regress editor behavior");
+    expect(document.body.textContent ?? "").toContain("Maintainers can review the change as a structured story instead of raw YAML only.");
   });
 });

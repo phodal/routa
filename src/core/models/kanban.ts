@@ -23,6 +23,22 @@ export const DEFAULT_DEV_REQUIRED_TASK_FIELDS = [
 
 export type KanbanTransport = "acp" | "a2a";
 
+export interface KanbanDeliveryRules {
+  /** Require at least one commit ahead of the base branch before transition. */
+  requireCommittedChanges?: boolean;
+  /** Require a clean working tree before transition. */
+  requireCleanWorktree?: boolean;
+  /** Require the branch/repo state to be pull-request ready before transition. */
+  requirePullRequestReady?: boolean;
+}
+
+export interface KanbanContractRules {
+  /** Require a valid canonical story YAML block before transition or description updates. */
+  requireCanonicalStory?: boolean;
+  /** Stop automated retries after this many canonical-story gate failures. */
+  loopBreakerThreshold?: number;
+}
+
 export interface KanbanAutomationStep {
   id: string;
   /** Transport protocol for this automation step */
@@ -76,6 +92,10 @@ export interface KanbanColumnAutomation {
   requiredArtifacts?: ("screenshot" | "test_results" | "code_diff")[];
   /** Task fields that must be present before transition is allowed */
   requiredTaskFields?: KanbanRequiredTaskField[];
+  /** Canonical story contract requirements enforced before transition or description updates */
+  contractRules?: KanbanContractRules;
+  /** Delivery-readiness requirements enforced before transition is allowed */
+  deliveryRules?: KanbanDeliveryRules;
   /** Automatically advance card to next column on agent success */
   autoAdvanceOnSuccess?: boolean;
 }
@@ -99,6 +119,7 @@ export interface KanbanBoard {
   workspaceId: string;
   name: string;
   isDefault: boolean;
+  githubToken?: string;
   columns: KanbanColumn[];
   createdAt: Date;
   updatedAt: Date;
@@ -168,6 +189,12 @@ export function cloneKanbanColumns(columns: KanbanColumn[]): KanbanColumn[] {
           : undefined,
         requiredTaskFields: column.automation.requiredTaskFields
           ? [...column.automation.requiredTaskFields]
+          : undefined,
+        contractRules: column.automation.contractRules
+          ? { ...column.automation.contractRules }
+          : undefined,
+        deliveryRules: column.automation.deliveryRules
+          ? { ...column.automation.deliveryRules }
           : undefined,
         steps: column.automation.steps?.map((step) => ({ ...step })),
       }
@@ -244,6 +271,7 @@ export function createKanbanBoard(params: {
   workspaceId: string;
   name: string;
   isDefault?: boolean;
+  githubToken?: string;
   columns?: KanbanColumn[];
 }): KanbanBoard {
   const now = new Date();
@@ -252,6 +280,7 @@ export function createKanbanBoard(params: {
     workspaceId: params.workspaceId,
     name: params.name,
     isDefault: params.isDefault ?? false,
+    githubToken: params.githubToken?.trim() || undefined,
     columns: cloneKanbanColumns(params.columns ?? DEFAULT_KANBAN_COLUMNS),
     createdAt: now,
     updatedAt: now,
@@ -271,6 +300,32 @@ export function columnIdToTaskStatus(columnId?: string): TaskStatus {
     default:
       return TaskStatus.PENDING;
   }
+}
+
+export function columnStageToTaskStatus(stage?: KanbanColumnStage): TaskStatus {
+  switch (stage ?? "backlog") {
+    case "dev":
+      return TaskStatus.IN_PROGRESS;
+    case "review":
+      return TaskStatus.REVIEW_REQUIRED;
+    case "blocked":
+      return TaskStatus.BLOCKED;
+    case "done":
+      return TaskStatus.COMPLETED;
+    default:
+      return TaskStatus.PENDING;
+  }
+}
+
+export function resolveTaskStatusForBoardColumn(
+  columns: Pick<KanbanColumn, "id" | "stage">[] = [],
+  columnId?: string,
+): TaskStatus {
+  const column = columns.find((entry) => entry.id === columnId);
+  if (column) {
+    return columnStageToTaskStatus(column.stage);
+  }
+  return columnIdToTaskStatus(columnId);
 }
 
 export function taskStatusToColumnId(status: TaskStatus | string | undefined): string {

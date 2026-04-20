@@ -3,10 +3,17 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 
 export const EXPECTED_HOOKS_PATH = ".husky/_";
-export const REQUIRED_HOOK_FILES = ["h", "pre-commit", "pre-push", "post-commit"];
-export const SUSPICIOUS_LOCAL_IDENTITY = {
-  email: "test@test.com",
-  name: "Test",
+export const REQUIRED_HOOK_FILES = [
+  "h",
+  "pre-commit",
+  "pre-push",
+  "post-commit",
+  "prepare-commit-msg",
+  "commit-msg",
+];
+const SUSPICIOUS_LOCAL_IDENTITY_PATTERNS = {
+  email: [/@example\.com$/i, /placeholder/i],
+  name: [/^test$/i, /^codex$/i, /placeholder/i, /routa test/i],
 };
 
 function runGit(args, cwd) {
@@ -58,6 +65,16 @@ function createIssue(code, message, severity = "warning", details = {}) {
   };
 }
 
+function isSuspiciousLocalUserName(value) {
+  if (!value) return false;
+  return SUSPICIOUS_LOCAL_IDENTITY_PATTERNS.name.some((pattern) => pattern.test(value));
+}
+
+function isSuspiciousLocalUserEmail(value) {
+  if (!value) return false;
+  return SUSPICIOUS_LOCAL_IDENTITY_PATTERNS.email.some((pattern) => pattern.test(value));
+}
+
 export function inspectGitControlPlane(cwd = process.cwd()) {
   const repoRoot = resolveGitRepoRoot(cwd);
   if (!repoRoot) {
@@ -70,6 +87,7 @@ export function inspectGitControlPlane(cwd = process.cwd()) {
   }
 
   const hooksPath = readLocalGitConfig(repoRoot, "core.hooksPath");
+  const localCoreWorktree = readLocalGitConfig(repoRoot, "core.worktree");
   const localUserName = readLocalGitConfig(repoRoot, "user.name");
   const localUserEmail = readLocalGitConfig(repoRoot, "user.email");
   const missingHookRuntimeFiles = getMissingHookRuntimeFiles(repoRoot);
@@ -100,7 +118,18 @@ export function inspectGitControlPlane(cwd = process.cwd()) {
     );
   }
 
-  if (localUserName === SUSPICIOUS_LOCAL_IDENTITY.name) {
+  if (localCoreWorktree) {
+    issues.push(
+      createIssue(
+        "unexpected-core-worktree",
+        `Local git core.worktree is set to "${localCoreWorktree}". This repo expects core.worktree to stay unset in the primary checkout; unexpected values can make Git treat the wrong path as repo root.`,
+        "warning",
+        { localCoreWorktree },
+      ),
+    );
+  }
+
+  if (isSuspiciousLocalUserName(localUserName)) {
     issues.push(
       createIssue(
         "suspicious-local-user-name",
@@ -111,7 +140,7 @@ export function inspectGitControlPlane(cwd = process.cwd()) {
     );
   }
 
-  if (localUserEmail === SUSPICIOUS_LOCAL_IDENTITY.email) {
+  if (isSuspiciousLocalUserEmail(localUserEmail)) {
     issues.push(
       createIssue(
         "suspicious-local-user-email",
@@ -130,6 +159,7 @@ export function inspectGitControlPlane(cwd = process.cwd()) {
         ? "Git control-plane drift detected."
         : "Git control-plane configuration matches repo policy.",
     hooksPath,
+    localCoreWorktree,
     expectedHooksPath: EXPECTED_HOOKS_PATH,
     localUserName,
     localUserEmail,
@@ -166,6 +196,9 @@ export function buildSessionStartDoctorOutput(report) {
   if (report.issues.some((issue) => issue.code === "missing-husky-runtime")) {
     hints.push("reinstall Husky runtime with `npm run hooks:sync`");
   }
+  if (report.issues.some((issue) => issue.code === "unexpected-core-worktree")) {
+    hints.push("remove the unexpected local core.worktree override before continuing");
+  }
   if (
     report.issues.some((issue) =>
       issue.code === "suspicious-local-user-name" || issue.code === "suspicious-local-user-email",
@@ -180,7 +213,7 @@ export function buildSessionStartDoctorOutput(report) {
     hookSpecificOutput: {
       hookEventName: "SessionStart",
       additionalContext:
-        "Repository control-plane drift is treated as suspicious. Do not mutate .git/config or hook files manually; use npm run hooks:sync for hooksPath repair, and avoid placeholder commit identity values.",
+        "Repository control-plane drift is treated as suspicious. Do not mutate .git/config or hook files manually; use npm run hooks:sync for hooksPath repair, keep core.worktree unset in the primary checkout, and avoid placeholder commit identity values.",
     },
   };
 }

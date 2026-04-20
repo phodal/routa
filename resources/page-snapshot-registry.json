@@ -17,19 +17,19 @@
   },
   {
     "id": "workspace",
-    "name": "Workspace Overview",
+    "name": "Workspace Entry",
     "group": "workspace",
     "priority": "P0",
-    "ci": true,
+    "ci": false,
     "similarityThreshold": 0.9,
-    "route": "/workspace/default/overview",
-    "pageFile": "src/app/workspace/[workspaceId]/overview/page.tsx",
+    "route": "/workspace/default",
+    "pageFile": "src/app/workspace/[workspaceId]/page.tsx",
     "snapshotFile": "src/app/workspace/[workspaceId]/page.snapshot.yaml",
     "waitFor": {
-      "strategy": "selector",
-      "value": "[data-testid=\"workspace-page-shell\"][data-snapshot-ready=\"true\"]",
+      "strategy": "text-absent",
+      "value": "worktree loading...",
       "timeoutMs": 20000,
-      "settleMs": 1500
+      "settleMs": 1000
     }
   },
   {

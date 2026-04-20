@@ -137,8 +137,7 @@ mod tests {
         // Check for .routa with either path separator (cross-platform)
         assert!(
             dir_str.contains(".routa/projects") || dir_str.contains(".routa\\projects"),
-            "path should contain .routa/projects or .routa\\projects, got: {}",
-            dir_str
+            "path should contain .routa/projects or .routa\\projects, got: {dir_str}"
         );
     }
 

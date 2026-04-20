@@ -60,7 +60,7 @@ async fn list_skills(
             query
                 .repo_path
                 .as_deref()
-                .map(|repo_path| format!(" (also searched in {})", repo_path))
+                .map(|repo_path| format!(" (also searched in {repo_path})"))
                 .unwrap_or_default()
         )));
     }
@@ -102,7 +102,7 @@ fn skill_response(
 
 fn read_skill_body(source_path: &str) -> Result<String, ServerError> {
     let raw = std::fs::read_to_string(source_path)
-        .map_err(|error| ServerError::Internal(format!("Failed to read skill file: {}", error)))?;
+        .map_err(|error| ServerError::Internal(format!("Failed to read skill file: {error}")))?;
 
     Ok(strip_frontmatter(&raw))
 }

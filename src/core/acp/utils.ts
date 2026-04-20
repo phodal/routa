@@ -4,6 +4,7 @@
  * Uses the platform bridge for process execution and file system access.
  */
 
+import type { IProcessHandle } from "@/core/platform/interfaces";
 import { getServerBridge } from "@/core/platform";
 
 const WINDOWS_SPAWNABLE_EXTENSIONS = [".cmd", ".bat", ".exe", ".com"];
@@ -24,7 +25,23 @@ function getCandidateDirectory(candidate: string): string {
  */
 export function needsShell(command: string): boolean {
   const lower = command.toLowerCase();
-  return lower.endsWith(".cmd") || lower.endsWith(".bat");
+
+  // Explicit .cmd/.bat extension
+  if (lower.endsWith(".cmd") || lower.endsWith(".bat")) {
+    return true;
+  }
+
+  // On Windows, npm-installed CLI tools without extensions might be .cmd files
+  // We need shell to properly resolve and execute them
+  if (process.platform === "win32") {
+    const hasExtension = /\.[a-zA-Z0-9]+$/.test(command);
+    const isPath = command.includes("/") || command.includes("\\");
+    if (!hasExtension && !isPath) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 /**
@@ -52,6 +69,38 @@ export function quoteShellCommandPath(command: string): string {
 
   // Quote all shell wrapper paths to handle all special characters
   return `"${command}"`;
+}
+
+/**
+ * Await async process backends (for example Tauri) until pid/stdio are wired.
+ *
+ * The timeout is explicitly cleared so successful spawns do not leave a
+ * dangling timer behind for the full timeout duration.
+ */
+export async function awaitProcessReady(
+  processHandle: IProcessHandle,
+  timeoutMs = 30_000,
+): Promise<void> {
+  if (!processHandle.ready) {
+    return;
+  }
+
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
+  try {
+    await Promise.race([
+      processHandle.ready,
+      new Promise<never>((_, reject) => {
+        timeoutId = setTimeout(() => {
+          reject(new Error(`Timed out waiting for process spawn after ${timeoutMs / 1000}s`));
+        }, timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+  }
 }
 
 function preferSpawnableWindowsPath(candidates: string[]): string | null {

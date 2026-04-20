@@ -65,8 +65,8 @@ RUN npm ci --legacy-peer-deps
 # ── Layer 3: Copy full source ────────────────────────────────────────────
 COPY . .
 
-# ── Install entrix ──────────────────────────────────────────────────────
-RUN pip3 install --break-system-packages -e tools/entrix
+# ── Build entrix ────────────────────────────────────────────────────────
+RUN cargo build -p routa-entrix
 
 # ── Default: run all fitness checks ─────────────────────────────────────
 COPY docker/fitness-entrypoint.sh /usr/local/bin/fitness-entrypoint.sh

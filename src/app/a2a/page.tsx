@@ -12,6 +12,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "@/i18n";
+import { desktopAwareFetch } from "@/client/utils/diagnostics";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -163,7 +164,7 @@ export default function A2APage() {
     setLoadingTasks(true);
     try {
       const qs = workspaceId ? `?workspaceId=${encodeURIComponent(workspaceId)}` : "";
-      const r = await fetch(`/api/a2a/tasks${qs}`);
+      const r = await desktopAwareFetch(`/api/a2a/tasks${qs}`);
       if (r.ok) {
         const data = await r.json();
         setTasks(Array.isArray(data.tasks) ? data.tasks : []);
@@ -207,7 +208,7 @@ export default function A2APage() {
           metadata: workspaceId ? { workspaceId } : {},
         },
       };
-      const r = await fetch("/api/a2a/rpc", {
+      const r = await desktopAwareFetch("/api/a2a/rpc", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),

@@ -9,6 +9,7 @@ const DEFAULT_SPECIALIST_ID = "harness-review-trigger";
 const DEFAULT_ANTHROPIC_BASE_URL = "https://api.anthropic.com";
 const DEFAULT_ANTHROPIC_MODEL = "GLM-4.7";
 const MAX_DIFF_CHARS = 40_000;
+const DEFAULT_REVIEW_TIMEOUT_MS = 45_000;
 
 type SpecialistFile = {
   id?: string;
@@ -165,6 +166,16 @@ function loadSpecialistDefinition(specialistId: string): {
   };
 }
 
+function resolveReviewTimeoutMs(): number {
+  const raw = process.env.ROUTA_REVIEW_TIMEOUT_MS?.trim();
+  if (!raw) {
+    return DEFAULT_REVIEW_TIMEOUT_MS;
+  }
+
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_REVIEW_TIMEOUT_MS;
+}
+
 async function callAnthropicCompatible(prompt: string, model: string): Promise<string> {
   const apiKey = process.env.ANTHROPIC_AUTH_TOKEN ?? process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
@@ -172,8 +183,10 @@ async function callAnthropicCompatible(prompt: string, model: string): Promise<s
   }
 
   const baseUrl = (process.env.ANTHROPIC_BASE_URL ?? DEFAULT_ANTHROPIC_BASE_URL).replace(/\/$/, "");
+  const timeoutMs = resolveReviewTimeoutMs();
   const response = await fetch(`${baseUrl}/v1/messages`, {
     method: "POST",
+    signal: AbortSignal.timeout(timeoutMs),
     headers: {
       "content-type": "application/json",
       "anthropic-version": "2023-06-01",
@@ -235,8 +248,9 @@ function resolveFallbackReviewProvider(primaryProvider: string, defaultAdapter?:
 }
 
 async function callClaudeCli(prompt: string): Promise<string> {
+  const timeoutMs = resolveReviewTimeoutMs();
   const command = `printf '%s' ${shellQuote(prompt)} | claude -p --permission-mode bypassPermissions`;
-  const result = await runCommand(command, { stream: false });
+  const result = await runCommand(command, { stream: false, timeoutMs });
   if (result.exitCode !== 0) {
     throw new Error(`Automatic review specialist failed via claude CLI: ${tailOutput(result.output) || `exit ${result.exitCode}`}`);
   }
@@ -245,6 +259,7 @@ async function callClaudeCli(prompt: string): Promise<string> {
 }
 
 async function callCodexCli(prompt: string): Promise<string> {
+  const timeoutMs = resolveReviewTimeoutMs();
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "routa-review-codex-"));
   const outputFile = path.join(tempDir, "last-message.txt");
   const command = [
@@ -254,7 +269,7 @@ async function callCodexCli(prompt: string): Promise<string> {
   ].join(" ");
 
   try {
-    const result = await runCommand(command, { stream: false });
+    const result = await runCommand(command, { stream: false, timeoutMs });
     const output = fs.existsSync(outputFile)
       ? fs.readFileSync(outputFile, "utf-8")
       : result.output;
@@ -299,27 +314,37 @@ async function callReviewProvider(params: {
   prompt: string;
   model: string;
   defaultAdapter?: string;
+  validate?: (raw: string) => boolean;
 }): Promise<string> {
   const primaryProvider = resolveReviewProvider(params.defaultAdapter);
   const fallbackProvider = resolveFallbackReviewProvider(primaryProvider, params.defaultAdapter);
+  const validate = params.validate;
 
   try {
-    return await callReviewProviderOnce({
+    const raw = await callReviewProviderOnce({
       prompt: params.prompt,
       model: params.model,
       provider: primaryProvider,
     });
+    if (validate && !validate(raw)) {
+      throw new Error(`Automatic review specialist returned an invalid verdict: ${raw || "(empty response)"}`);
+    }
+    return raw;
   } catch (primaryError) {
     if (!fallbackProvider) {
       throw primaryError;
     }
 
     try {
-      return await callReviewProviderOnce({
+      const raw = await callReviewProviderOnce({
         prompt: params.prompt,
         model: params.model,
         provider: fallbackProvider,
       });
+      if (validate && !validate(raw)) {
+        throw new Error(`Automatic review specialist returned an invalid verdict: ${raw || "(empty response)"}`);
+      }
+      return raw;
     } catch (fallbackError) {
       const primaryDetail = primaryError instanceof Error ? primaryError.message : String(primaryError);
       const fallbackDetail = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
@@ -380,6 +405,11 @@ export async function runReviewTriggerSpecialist(params: {
     prompt,
     model,
     defaultAdapter: specialist.defaultAdapter,
+    validate: (candidate) => {
+      const parsed = parseJsonLoose(candidate);
+      const verdict = parsed.verdict?.toLowerCase();
+      return verdict === "pass" || verdict === "fail";
+    },
   });
   const parsed = parseJsonLoose(raw);
   const verdict = parsed.verdict?.toLowerCase();

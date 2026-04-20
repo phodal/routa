@@ -341,10 +341,10 @@ criteria:
     critical: true
     why_it_matters: Agent orchestrators need architecture-aware guardrails that are stronger than generic lint rules.
     recommended_action: Add or maintain a dedicated governance runtime for repository fitness.
-    evidence_hint: tools/entrix
+    evidence_hint: crates/entrix
     detector:
       type: file_exists
-      path: tools/entrix
+      path: crates/entrix
   - id: governance.agent_centric.review_trigger_rules
     level: agent_centric
     dimension: governance

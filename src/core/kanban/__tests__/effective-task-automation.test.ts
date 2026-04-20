@@ -259,4 +259,119 @@ describe("resolveEffectiveTaskAutomation", () => {
       skillId: "review",
     });
   });
+
+  describe("fallback agent chain", () => {
+    it("appends fallback agents as additional steps when card has override", () => {
+      const resolved = resolveEffectiveTaskAutomation(
+        {
+          columnId: "dev",
+          assignedProvider: "claude",
+          assignedRole: "DEVELOPER",
+          fallbackAgentChain: [
+            { providerId: "codex", role: "DEVELOPER" },
+            { providerId: "gemini", role: "DEVELOPER", specialistId: "impl" },
+          ],
+          enableAutomaticFallback: true,
+        },
+        [
+          {
+            id: "dev",
+            automation: {
+              enabled: true,
+              providerId: "default",
+              role: "DEVELOPER",
+            },
+          },
+        ],
+      );
+
+      expect(resolved.canRun).toBe(true);
+      expect(resolved.source).toBe("card");
+      expect(resolved.steps).toHaveLength(3);
+      expect(resolved.steps[0].id).toBe("card-override");
+      expect(resolved.steps[0].providerId).toBe("claude");
+      expect(resolved.steps[1].id).toBe("fallback-1");
+      expect(resolved.steps[1].providerId).toBe("codex");
+      expect(resolved.steps[2].id).toBe("fallback-2");
+      expect(resolved.steps[2].providerId).toBe("gemini");
+      expect(resolved.steps[2].specialistId).toBe("impl");
+    });
+
+    it("does not append fallback steps when there is no card override", () => {
+      const resolved = resolveEffectiveTaskAutomation(
+        {
+          columnId: "dev",
+          fallbackAgentChain: [
+            { providerId: "codex", role: "DEVELOPER" },
+          ],
+          enableAutomaticFallback: true,
+        },
+        [
+          {
+            id: "dev",
+            automation: {
+              enabled: true,
+              providerId: "claude",
+              role: "DEVELOPER",
+            },
+          },
+        ],
+      );
+
+      expect(resolved.source).toBe("lane");
+      expect(resolved.steps).toHaveLength(1);
+      expect(resolved.steps[0].providerId).toBe("claude");
+    });
+
+    it("works with empty fallback chain", () => {
+      const resolved = resolveEffectiveTaskAutomation(
+        {
+          columnId: "dev",
+          assignedProvider: "claude",
+          fallbackAgentChain: [],
+          enableAutomaticFallback: true,
+        },
+        [
+          {
+            id: "dev",
+            automation: {
+              enabled: true,
+              providerId: "default",
+              role: "DEVELOPER",
+            },
+          },
+        ],
+      );
+
+      expect(resolved.source).toBe("card");
+      expect(resolved.steps).toHaveLength(1);
+      expect(resolved.steps[0].id).toBe("card-override");
+    });
+
+    it("does not append fallback steps when automatic fallback is disabled", () => {
+      const resolved = resolveEffectiveTaskAutomation(
+        {
+          columnId: "dev",
+          assignedProvider: "claude",
+          assignedRole: "DEVELOPER",
+          fallbackAgentChain: [{ providerId: "codex", role: "DEVELOPER" }],
+          enableAutomaticFallback: false,
+        },
+        [
+          {
+            id: "dev",
+            automation: {
+              enabled: true,
+              providerId: "default",
+              role: "DEVELOPER",
+            },
+          },
+        ],
+      );
+
+      expect(resolved.source).toBe("card");
+      expect(resolved.steps).toHaveLength(1);
+      expect(resolved.steps[0].id).toBe("card-override");
+    });
+  });
 });

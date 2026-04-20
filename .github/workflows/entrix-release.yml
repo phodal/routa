@@ -1,0 +1,396 @@
+name: Entrix Release
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: "Semver version to publish, ex: 0.2.4"
+        required: true
+        type: string
+      publish:
+        description: "Publish npm packages after packaging"
+        required: false
+        default: true
+        type: boolean
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Semver version to publish, ex: 0.2.4 or v0.2.4"
+        required: true
+        type: string
+      publish:
+        description: "Publish npm packages after packaging"
+        type: boolean
+        default: true
+
+jobs:
+  build:
+    name: Build Entrix binaries
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            key: linux-x64
+          - runner: macos-14
+            target: x86_64-apple-darwin
+            key: darwin-x64
+          - runner: macos-14
+            target: aarch64-apple-darwin
+            key: darwin-arm64
+          - runner: windows-latest
+            target: x86_64-pc-windows-msvc
+            key: win32-x64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: true
+
+      - name: Sync release version
+        shell: bash
+        env:
+          RELEASE_VERSION: ${{ inputs.version || github.event.inputs.version }}
+        run: node scripts/release/sync-release-version.mjs --version "${RELEASE_VERSION}"
+
+      - name: Verify synced release files
+        shell: bash
+        run: |
+          changed_files=()
+          while IFS= read -r line; do
+            changed_files+=("$line")
+          done < <(git diff --name-only)
+
+          if [[ ${#changed_files[@]} -eq 0 ]]; then
+            echo "Release version already aligned"
+            exit 0
+          fi
+
+          allowed_files=(
+            "Cargo.toml"
+            "package.json"
+            "apps/desktop/package.json"
+            "apps/desktop/src-tauri/Cargo.toml"
+            "apps/desktop/src-tauri/tauri.conf.json"
+            "packages/routa-cli/package.json"
+            "packages/harness-monitor/package.json"
+            "packages/entrix/package.json"
+            "crates/routa-core/Cargo.toml"
+            "crates/routa-rpc/Cargo.toml"
+            "crates/routa-scanner/Cargo.toml"
+            "crates/routa-server/Cargo.toml"
+            "crates/routa-cli/Cargo.toml"
+            "crates/entrix/Cargo.toml"
+            "crates/harness-monitor/Cargo.toml"
+          )
+
+          for file in "${changed_files[@]}"; do
+            case " ${allowed_files[*]} " in
+              *" ${file} "*) ;;
+              *)
+                echo "Unexpected file changed during release version sync: ${file}" >&2
+                exit 1
+                ;;
+            esac
+          done
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Build Entrix
+        run: |
+          cargo build --release --package entrix --target ${{ matrix.target }}
+
+      - name: Prepare artifact
+        shell: bash
+        run: |
+          mkdir -p dist/${{ matrix.key }}
+          if [[ "${{ matrix.key }}" == "win32-x64" ]]; then
+            cp target/${{ matrix.target }}/release/entrix.exe dist/${{ matrix.key }}/entrix.exe
+          else
+            cp target/${{ matrix.target }}/release/entrix dist/${{ matrix.key }}/entrix
+            chmod +x dist/${{ matrix.key }}/entrix
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: entrix-${{ matrix.key }}
+          path: dist/${{ matrix.key }}
+
+  stage:
+    name: Stage Entrix npm packages
+    needs: build
+    permissions:
+      contents: read
+      actions: read
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.value }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: true
+
+      - name: Resolve version
+        id: version
+        env:
+          INPUT_VERSION: ${{ inputs.version || github.event.inputs.version }}
+        run: |
+          version="${INPUT_VERSION#v}"
+          echo "value=${version}" >> "$GITHUB_OUTPUT"
+
+      - name: Download Entrix artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist/entrix-artifacts
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Stage npm packages
+        run: |
+          node scripts/release/stage-entrix-npm.mjs \
+            --version "${{ steps.version.outputs.value }}" \
+            --artifacts dist/entrix-artifacts \
+            --out dist/npm
+
+      - name: Generate release manifest
+        run: |
+          node scripts/release/generate-release-manifest.mjs \
+            --cli-artifacts dist/entrix-artifacts \
+            --npm-dir dist/npm \
+            --channel latest \
+            --out dist/release/manifest.json
+
+      - name: Fetch baseline manifest
+        env:
+          ROUTA_GITHUB_TOKEN: ${{ secrets.ROUTA_GITHUB_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          python scripts/release/fetch-release-baseline.py \
+            --repo phodal/routa \
+            --workflow entrix-release.yml \
+            --artifact-name routa-release-manifest-entrix \
+            --exclude-run-id "${{ github.run_id }}" \
+            --out dist/release/baseline-manifest.json
+
+      - name: Install Entrix
+        run: python -m pip install entrix
+
+      - name: Guard release surface
+        run: |
+          if [[ -f dist/release/baseline-manifest.json ]]; then
+              entrix release-trigger \
+                --manifest dist/release/manifest.json \
+                --baseline-manifest dist/release/baseline-manifest.json
+          else
+            entrix release-trigger \
+              --manifest dist/release/manifest.json
+          fi
+
+      - name: Upload release manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: routa-release-manifest-entrix
+          path: dist/release/manifest.json
+
+      - name: Upload npm artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: entrix-npm-${{ steps.version.outputs.value }}
+          path: dist/npm
+
+  verify:
+    name: Verify staged Entrix release
+    needs:
+      - build
+      - stage
+    permissions:
+      contents: read
+      actions: read
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: true
+
+      - name: Download npm artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: entrix-npm-${{ needs.stage.outputs.version }}
+          path: dist/npm
+
+      - name: Download release manifest
+        uses: actions/download-artifact@v4
+        with:
+          name: routa-release-manifest-entrix
+          path: dist/release
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install Entrix
+        run: python -m pip install entrix
+
+      - name: Re-check release surface
+        run: |
+          entrix release-trigger \
+            --manifest dist/release/manifest.json
+
+      - name: Smoke test platform packages
+        shell: bash
+        run: |
+          # Match only platform-specific packages, not the main entrix-<version>.tgz
+          shopt -s nullglob
+          npm_packages=(dist/npm/entrix-{darwin,linux,windows}-*.tgz)
+          if [[ ${#npm_packages[@]} -ne 4 ]]; then
+            echo "Expected 4 platform packages, found ${#npm_packages[@]}" >&2
+            exit 1
+          fi
+
+          for package_tarball in "${npm_packages[@]}"; do
+            package_name=$(basename "${package_tarball}" .tgz)
+            temp_dir=$(mktemp -d)
+            tar -xzf "${package_tarball}" -C "${temp_dir}"
+            package_dir="${temp_dir}/package"
+
+            if [[ ! -d "${package_dir}/vendor" ]]; then
+              echo "Missing vendor directory in ${package_name}" >&2
+              exit 1
+            fi
+
+            binary_count=$(find "${package_dir}/vendor" -type f | wc -l)
+            if [[ ${binary_count} -ne 1 ]]; then
+              echo "Expected 1 binary in ${package_name}/vendor, found ${binary_count}" >&2
+              exit 1
+            fi
+
+            rm -rf "${temp_dir}"
+          done
+
+      - name: Smoke test main package
+        shell: bash
+        run: |
+          main_package="dist/npm/entrix-${{ needs.stage.outputs.version }}.tgz"
+          if [[ ! -f "${main_package}" ]]; then
+            echo "Main package not found: ${main_package}" >&2
+            exit 1
+          fi
+
+          temp_dir=$(mktemp -d)
+          tar -xzf "${main_package}" -C "${temp_dir}"
+          package_dir="${temp_dir}/package"
+
+          if [[ ! -f "${package_dir}/bin/entrix.js" ]]; then
+            echo "Missing bin/entrix.js in main package" >&2
+            exit 1
+          fi
+
+          rm -rf "${temp_dir}"
+
+  publish:
+    name: Publish Entrix to npm
+    needs:
+      - stage
+      - verify
+    permissions:
+      contents: read
+      actions: read
+    if: ${{ (inputs.publish == true || github.event.inputs.publish == 'true' || github.event.inputs.publish == true) }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Download npm artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: entrix-npm-${{ needs.stage.outputs.version }}
+          path: dist/npm
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org/
+
+      - name: Publish to npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        shell: bash
+        run: |
+          if [[ -z "${NODE_AUTH_TOKEN}" ]]; then
+            echo "NPM_TOKEN secret is required for publish" >&2
+            exit 1
+          fi
+
+          # Publish platform packages first, then main package
+          # Platform packages: entrix-{darwin,linux,windows}-*.tgz
+          # Main package: entrix-<version>.tgz (no platform name)
+          shopt -s nullglob
+          platform_tarballs=(dist/npm/entrix-{darwin,linux,windows}-*.tgz)
+          main_tarball=(dist/npm/entrix-[0-9]*.tgz)
+
+          failed=0
+
+          # First, publish all platform packages
+          for tarball in "${platform_tarballs[@]}"; do
+            package_name=$(basename "${tarball}")
+            echo "Publishing platform package: ${package_name}"
+
+            publish_output=$(npm publish "${tarball}" --access public 2>&1) || exit_code=$?
+
+            if [[ -z "${exit_code:-}" ]]; then
+              echo "✓ Published ${package_name}"
+            elif echo "${publish_output}" | grep -qi "cannot publish over the previously published"; then
+              echo "⚠ Warning: ${package_name} already published"
+            else
+              echo "✗ Failed to publish ${package_name}" >&2
+              echo "${publish_output}" >&2
+              failed=1
+            fi
+
+            unset exit_code
+          done
+
+          # Exit early if any platform package failed
+          if [[ ${failed} -eq 1 ]]; then
+            echo "❌ Platform packages failed to publish, aborting" >&2
+            exit 1
+          fi
+
+          # Then publish the main package
+          for tarball in "${main_tarball[@]}"; do
+            package_name=$(basename "${tarball}")
+            echo "Publishing main package: ${package_name}"
+
+            publish_output=$(npm publish "${tarball}" --access public 2>&1) || exit_code=$?
+
+            if [[ -z "${exit_code:-}" ]]; then
+              echo "✓ Published ${package_name}"
+            elif echo "${publish_output}" | grep -qi "cannot publish over the previously published"; then
+              echo "⚠ Warning: ${package_name} already published"
+            else
+              echo "✗ Failed to publish ${package_name}" >&2
+              echo "${publish_output}" >&2
+              failed=1
+            fi
+
+            unset exit_code
+          done
+
+          if [[ ${failed} -eq 1 ]]; then
+            echo "❌ Some packages failed to publish" >&2
+            exit 1
+          fi
+
+          echo "✅ Entrix npm packages published successfully"
+          echo ""
+          echo "Install with:"
+          echo "  npm install -g entrix@${{ needs.stage.outputs.version }}"

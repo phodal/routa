@@ -175,6 +175,8 @@ pub struct KanbanBoard {
     pub workspace_id: String,
     pub name: String,
     pub is_default: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub github_token: Option<String>,
     pub columns: Vec<KanbanColumn>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -608,6 +610,7 @@ pub fn default_kanban_board(workspace_id: String) -> KanbanBoard {
         workspace_id,
         name: "Board".to_string(),
         is_default: true,
+        github_token: None,
         columns: default_kanban_columns(),
         created_at: now,
         updated_at: now,

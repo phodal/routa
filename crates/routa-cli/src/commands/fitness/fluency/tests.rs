@@ -19,7 +19,7 @@ fn write_json(path: &Path, value: serde_json::Value) {
 
 fn init_git_repo(repo_root: &Path) {
     let init = Command::new("git")
-        .args(["init"])
+        .args(["init", "--no-bare"])
         .current_dir(repo_root)
         .status()
         .unwrap();

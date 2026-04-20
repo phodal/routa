@@ -11,8 +11,7 @@ import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTranslation } from "@/i18n";
-import { SettingsPopupMenu } from "./settings-popup-menu";
-import { Columns2, LayoutGrid, House, Share2 } from "lucide-react";
+import { Columns2, House, ScrollText, Settings, Share2 } from "lucide-react";
 
 
 interface DesktopNavRailProps {
@@ -35,19 +34,19 @@ export function DesktopNavRail({
       ),
     },
     {
+      id: "sessions",
+      label: t.nav.sessions,
+      href: `/workspace/${workspaceId}/sessions`,
+      icon: (
+        <ScrollText className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}/>
+      ),
+    },
+    {
       id: "kanban",
       label: t.nav.kanban,
       href: `/workspace/${workspaceId}/kanban`,
       icon: (
         <Columns2 className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}/>
-      ),
-    },
-    {
-      id: "overview",
-      label: t.nav.overview,
-      href: `/workspace/${workspaceId}/overview`,
-      icon: (
-        <LayoutGrid className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}/>
       ),
     },
     {
@@ -58,10 +57,20 @@ export function DesktopNavRail({
         <Share2 className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}/>
       ),
     },
+    {
+      id: "settings",
+      label: t.settings.title,
+      href: "/settings",
+      exactMatch: true,
+      icon: (
+        <Settings className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.7}/>
+      ),
+    },
   ];
 
-  const isActive = (href: string) => {
+  const isActive = (href: string, exactMatch = false) => {
     if (href === "/") return pathname === "/";
+    if (exactMatch) return pathname === href;
     return pathname === href || pathname.startsWith(href + "/");
   };
 
@@ -72,7 +81,7 @@ export function DesktopNavRail({
     >
       <nav className="flex-1 flex flex-col items-center py-2 gap-0.5">
         {navItems.map((item) => {
-          const active = isActive(item.href);
+          const active = isActive(item.href, "exactMatch" in item ? Boolean(item.exactMatch) : false);
           return (
             <Link
               key={item.id}
@@ -94,15 +103,6 @@ export function DesktopNavRail({
           );
         })}
       </nav>
-      <div className="mx-2 border-t border-desktop-border" />
-      <div className="flex flex-col items-center py-2 gap-0.5">
-        <SettingsPopupMenu
-          position="sidebar"
-          showLabel={false}
-          isActive={pathname === "/settings" || pathname.startsWith("/settings/")}
-          buttonClassName="w-10 h-10 px-0 py-0 justify-center"
-        />
-      </div>
     </aside>
   );
 }

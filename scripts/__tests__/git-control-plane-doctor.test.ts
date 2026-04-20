@@ -1,9 +1,22 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import path from "node:path";
-import { execSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+const { spawnSyncMock, existsSyncMock } = vi.hoisted(() => ({
+  spawnSyncMock: vi.fn(),
+  existsSyncMock: vi.fn(),
+}));
+
+vi.mock("node:child_process", () => ({
+  spawnSync: spawnSyncMock,
+  default: {
+    spawnSync: spawnSyncMock,
+  },
+}));
+
+vi.mock("node:fs", () => ({
+  default: {
+    existsSync: existsSyncMock,
+  },
+}));
 
 import {
   buildSessionStartDoctorOutput,
@@ -11,71 +24,100 @@ import {
   inspectGitControlPlane,
 } from "../lib/git-control-plane-doctor.js";
 
-function withTempRepo(run: (repoRoot: string) => void) {
-  const repoRoot = mkdtempSync(path.join(tmpdir(), "routa-git-doctor-"));
-
-  try {
-    execSync("git init", { cwd: repoRoot, stdio: "ignore" });
-    mkdirSync(path.join(repoRoot, ".husky", "_"), { recursive: true });
-    writeFileSync(path.join(repoRoot, ".husky", "_", "h"), "#!/usr/bin/env sh\n", "utf8");
-    writeFileSync(path.join(repoRoot, ".husky", "_", "pre-commit"), "#!/usr/bin/env sh\n", "utf8");
-    writeFileSync(path.join(repoRoot, ".husky", "_", "pre-push"), "#!/usr/bin/env sh\n", "utf8");
-    writeFileSync(path.join(repoRoot, ".husky", "_", "post-commit"), "#!/usr/bin/env sh\n", "utf8");
-    run(repoRoot);
-  } finally {
-    rmSync(repoRoot, { recursive: true, force: true });
-  }
+function gitOk(stdout: string) {
+  return {
+    status: 0,
+    stdout,
+    stderr: "",
+  };
 }
 
-describe("git control-plane doctor", () => {
-  it("reports an ok status when the repo matches policy", () => {
-    withTempRepo((repoRoot) => {
-      execSync("git config --local core.hooksPath .husky/_", { cwd: repoRoot, stdio: "ignore" });
+function gitMissing(stderr = "") {
+  return {
+    status: 1,
+    stdout: "",
+    stderr,
+  };
+}
 
-      const report = inspectGitControlPlane(repoRoot);
+function installGitMock(values: {
+  repoRoot?: string | null;
+  hooksPath?: string | null;
+  coreWorktree?: string | null;
+  userName?: string | null;
+  userEmail?: string | null;
+}) {
+  spawnSyncMock.mockImplementation((_command: string, args: string[]) => {
+    const joined = args.join(" ");
 
-      expect(report.status).toBe("ok");
-      expect(report.issues).toHaveLength(0);
-      expect(formatGitControlPlaneDoctorReport(report)).toContain("ok");
-      expect(buildSessionStartDoctorOutput(report)).toBeNull();
-    });
+    if (joined === "rev-parse --show-toplevel") {
+      return values.repoRoot ? gitOk(`${values.repoRoot}\n`) : gitMissing("not a git repo");
+    }
+
+    if (joined === "config --local --get core.hooksPath") {
+      return values.hooksPath ? gitOk(`${values.hooksPath}\n`) : gitMissing();
+    }
+
+    if (joined === "config --local --get core.worktree") {
+      return values.coreWorktree ? gitOk(`${values.coreWorktree}\n`) : gitMissing();
+    }
+
+    if (joined === "config --local --get user.name") {
+      return values.userName ? gitOk(`${values.userName}\n`) : gitMissing();
+    }
+
+    if (joined === "config --local --get user.email") {
+      return values.userEmail ? gitOk(`${values.userEmail}\n`) : gitMissing();
+    }
+
+    throw new Error(`Unexpected git invocation: ${joined}`);
+  });
+}
+
+describe("git control plane doctor", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    existsSyncMock.mockReturnValue(true);
   });
 
-  it("detects hooksPath drift and placeholder commit identity", () => {
-    withTempRepo((repoRoot) => {
-      execSync("git config --local core.hooksPath /tmp/routa-test-hooks", {
-        cwd: repoRoot,
-        stdio: "ignore",
-      });
-      execSync("git config --local user.name Test", { cwd: repoRoot, stdio: "ignore" });
-      execSync("git config --local user.email test@test.com", { cwd: repoRoot, stdio: "ignore" });
-
-      const report = inspectGitControlPlane(repoRoot);
-
-      expect(report.status).toBe("warning");
-      expect(report.issues.map((issue) => issue.code)).toEqual([
-        "hooks-path-drift",
-        "suspicious-local-user-name",
-        "suspicious-local-user-email",
-      ]);
-
-      const hookOutput = buildSessionStartDoctorOutput(report);
-      expect(hookOutput?.systemMessage).toContain("hooksPath");
-      expect(hookOutput?.hookSpecificOutput?.hookEventName).toBe("SessionStart");
-      expect(hookOutput?.hookSpecificOutput?.additionalContext).toContain("Do not mutate .git/config");
+  it("warns when local core.worktree is set", () => {
+    installGitMock({
+      repoRoot: "/repo",
+      hooksPath: ".husky/_",
+      coreWorktree: "/repo/.git/worktrees",
+      userName: "Codex",
     });
+
+    const report = inspectGitControlPlane("/repo");
+    const hookOutput = buildSessionStartDoctorOutput(report);
+
+    expect(report.status).toBe("warning");
+    expect(report.localCoreWorktree).toBe("/repo/.git/worktrees");
+    expect(report.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "unexpected-core-worktree",
+        }),
+        expect.objectContaining({
+          code: "suspicious-local-user-name",
+        }),
+      ]),
+    );
+    expect(formatGitControlPlaneDoctorReport(report)).toContain("core.worktree is set");
+    expect(hookOutput?.systemMessage).toContain("core.worktree");
   });
 
-  it("warns when tracked husky runtime files are missing", () => {
-    withTempRepo((repoRoot) => {
-      execSync("git config --local core.hooksPath .husky/_", { cwd: repoRoot, stdio: "ignore" });
-      rmSync(path.join(repoRoot, ".husky", "_", "pre-push"), { force: true });
-
-      const report = inspectGitControlPlane(repoRoot);
-
-      expect(report.status).toBe("warning");
-      expect(report.issues[0]?.code).toBe("missing-husky-runtime");
-      expect(formatGitControlPlaneDoctorReport(report)).toContain("missing pre-push");
+  it("reports ok when hooks and local git config are clean", () => {
+    installGitMock({
+      repoRoot: "/repo",
+      hooksPath: ".husky/_",
     });
+
+    const report = inspectGitControlPlane("/repo");
+
+    expect(report.status).toBe("ok");
+    expect(report.issues).toEqual([]);
+    expect(report.localCoreWorktree).toBeNull();
+    expect(buildSessionStartDoctorOutput(report)).toBeNull();
   });
 });

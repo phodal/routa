@@ -150,14 +150,14 @@ impl SpecialistDef {
     /// Parse a specialist definition from a YAML string.
     pub fn from_yaml(yaml: &str) -> Result<Self, String> {
         let parsed: Self = serde_yaml::from_str(yaml)
-            .map_err(|e| format!("Failed to parse specialist YAML: {}", e))?;
+            .map_err(|e| format!("Failed to parse specialist YAML: {e}"))?;
         Ok(parsed.normalize_execution())
     }
 
     /// Load a specialist definition from a YAML file.
     pub fn from_file(path: &str) -> Result<Self, String> {
         let content = std::fs::read_to_string(path)
-            .map_err(|e| format!("Failed to read specialist file '{}': {}", path, e))?;
+            .map_err(|e| format!("Failed to read specialist file '{path}': {e}"))?;
         Self::from_yaml(&content)
     }
 
@@ -170,8 +170,7 @@ impl SpecialistDef {
         {
             "yaml" | "yml" => Self::from_file(path),
             _ => Err(format!(
-                "Unsupported specialist file '{}'. Expected .yaml or .yml",
-                path
+                "Unsupported specialist file '{path}'. Expected .yaml or .yml"
             )),
         }
     }
@@ -222,7 +221,7 @@ impl SpecialistLoader {
         for entry in std::fs::read_dir(dir)
             .map_err(|e| format!("Failed to read directory '{}': {}", dir.display(), e))?
         {
-            let entry = entry.map_err(|e| format!("Directory entry error: {}", e))?;
+            let entry = entry.map_err(|e| format!("Directory entry error: {e}"))?;
             let path = entry.path();
 
             if path.is_dir() {
@@ -300,7 +299,7 @@ impl SpecialistLoader {
     pub fn load_dir(&mut self, dir: &str) -> Result<usize, String> {
         let dir_path = Path::new(dir);
         if !dir_path.is_dir() {
-            return Err(format!("Specialist directory '{}' does not exist", dir));
+            return Err(format!("Specialist directory '{dir}' does not exist"));
         }
 
         let entries = Self::load_entries_from_directory(dir_path, dir)?;
@@ -317,7 +316,7 @@ impl SpecialistLoader {
     pub fn load_dir_with_locale(&mut self, dir: &str, locale: &str) -> Result<usize, String> {
         let dir_path = Path::new(dir);
         if !dir_path.is_dir() {
-            return Err(format!("Specialist directory '{}' does not exist", dir));
+            return Err(format!("Specialist directory '{dir}' does not exist"));
         }
 
         let base_entries = Self::load_entries_from_directory(dir_path, dir)?;

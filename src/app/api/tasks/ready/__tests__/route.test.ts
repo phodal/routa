@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createArtifact } from "@/core/models/artifact";
 import { createTask, TaskStatus, type Task } from "@/core/models/task";
 import { InMemoryArtifactStore } from "@/core/store/artifact-store";
+import type { TaskDeliveryReadiness } from "@/core/kanban/task-delivery-readiness";
 
 const taskStore = {
   findReadyTasks: vi.fn<(_: string) => Promise<Task[]>>(),
@@ -14,9 +15,17 @@ const system = {
   artifactStore,
   kanbanBoardStore: { get: vi.fn() },
 };
+const buildTaskDeliveryReadiness = vi.fn<
+  (task: Task, currentSystem: typeof system) => Promise<TaskDeliveryReadiness>
+>();
 
 vi.mock("@/core/routa-system", () => ({
   getRoutaSystem: () => system,
+}));
+
+vi.mock("@/core/kanban/task-delivery-readiness", () => ({
+  buildTaskDeliveryReadiness: (task: Task, currentSystem: typeof system) =>
+    buildTaskDeliveryReadiness(task, currentSystem),
 }));
 
 import { GET } from "../route";
@@ -24,6 +33,19 @@ import { GET } from "../route";
 describe("/api/tasks/ready GET", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
+    buildTaskDeliveryReadiness.mockResolvedValue({
+      checked: false,
+      modified: 0,
+      untracked: 0,
+      ahead: 0,
+      behind: 0,
+      commitsSinceBase: 0,
+      hasCommitsSinceBase: false,
+      hasUncommittedChanges: false,
+      isGitHubRepo: false,
+      canCreatePullRequest: false,
+      reason: "Task has no linked repository or worktree.",
+    });
     await artifactStore.deleteByTask("task-ready-1");
     taskStore.findReadyTasks.mockResolvedValue([
       createTask({
@@ -104,6 +126,11 @@ describe("/api/tasks/ready GET", () => {
         ready: true,
         missing: [],
         requiredTaskFields: [],
+      },
+      deliveryReadiness: {
+        checked: false,
+        commitsSinceBase: 0,
+        hasCommitsSinceBase: false,
       },
       investValidation: {
         source: "heuristic",

@@ -225,7 +225,7 @@ fn build_specialist_prompt(
     let mut prompt = specialist.system_prompt.clone();
     if let Some(reminder) = &specialist.role_reminder {
         if !reminder.trim().is_empty() {
-            prompt.push_str(&format!("\n\n---\n**Reminder:** {}", reminder));
+            prompt.push_str(&format!("\n\n---\n**Reminder:** {reminder}"));
         }
     }
     prompt.push_str(&format!(
@@ -260,7 +260,7 @@ fn build_worker_prompt(
     candidates_output: Option<&str>,
 ) -> Result<String, ServerError> {
     let payload_json = serde_json::to_string_pretty(payload).map_err(|err| {
-        ServerError::Internal(format!("Failed to serialize review payload: {}", err))
+        ServerError::Internal(format!("Failed to serialize review payload: {err}"))
     })?;
 
     let prompt = match worker_type {
@@ -304,7 +304,7 @@ fn build_review_payload(
     head: &str,
     rules_file: Option<&str>,
 ) -> Result<ReviewAnalysisPayload, ServerError> {
-    let diff_range = format!("{}..{}", base, head);
+    let diff_range = format!("{base}..{head}");
     let historical_related_files =
         compute_historical_related_files(repo_root, &diff_range, head, 20)
             .ok()
@@ -339,11 +339,11 @@ fn resolve_repo_root(repo_path: Option<&str>) -> Result<PathBuf, ServerError> {
     let cwd = repo_path
         .map(PathBuf::from)
         .unwrap_or_else(|| env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
-    let output = Command::new("git")
+    let output = crate::git::git_command()
         .args(["rev-parse", "--show-toplevel"])
         .current_dir(&cwd)
         .output()
-        .map_err(|err| ServerError::Internal(format!("Failed to run git rev-parse: {}", err)))?;
+        .map_err(|err| ServerError::Internal(format!("Failed to run git rev-parse: {err}")))?;
 
     if !output.status.success() {
         return Err(ServerError::BadRequest(
@@ -393,11 +393,11 @@ fn load_review_rules(
 }
 
 fn git_exec<const N: usize>(cwd: &Path, args: [&str; N]) -> Result<String, ServerError> {
-    let output = Command::new("git")
+    let output = crate::git::git_command()
         .args(args)
         .current_dir(cwd)
         .output()
-        .map_err(|err| ServerError::Internal(format!("Failed to run git: {}", err)))?;
+        .map_err(|err| ServerError::Internal(format!("Failed to run git: {err}")))?;
 
     if !output.status.success() {
         return Err(ServerError::Internal(
@@ -434,7 +434,7 @@ fn truncate(content: &str, max_chars: usize) -> String {
 }
 
 fn load_graph_review_context(repo_root: &Path, base: &str) -> Option<serde_json::Value> {
-    let output = Command::new("entrix")
+    let output = entrix_command(repo_root)
         .args(["graph", "review-context", "--base", base, "--json"])
         .current_dir(repo_root)
         .output()
@@ -444,6 +444,24 @@ fn load_graph_review_context(repo_root: &Path, base: &str) -> Option<serde_json:
     }
 
     serde_json::from_str(String::from_utf8_lossy(&output.stdout).trim()).ok()
+}
+
+fn entrix_command(repo_root: &Path) -> Command {
+    let debug_binary = repo_root
+        .join("target")
+        .join("debug")
+        .join(if cfg!(windows) {
+            "entrix.exe"
+        } else {
+            "entrix"
+        });
+    if debug_binary.exists() {
+        Command::new(debug_binary)
+    } else {
+        let mut command = Command::new("cargo");
+        command.args(["run", "-q", "-p", "entrix", "--"]);
+        command
+    }
 }
 
 fn load_dotenv() {

@@ -131,6 +131,7 @@ export function buildSyncedGitHubIssueDocument(issue: GitHubIssueSyncRecord): st
   return `---
 title: ${quoteYamlString(title)}
 date: ${quoteYamlString(getGitHubIssueCreatedDate(issue.createdAt))}
+kind: github_mirror
 status: ${status}
 severity: ${severity}
 area: ${quoteYamlString(area)}

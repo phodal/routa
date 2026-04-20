@@ -10,6 +10,7 @@ export type MetricExecution = {
 };
 
 export type MetricRunOptions = {
+  env?: NodeJS.ProcessEnv;
   onOutput?: (event: CommandOutputEvent) => void;
 };
 
@@ -361,6 +362,7 @@ export async function runMetric(
   options: MetricRunOptions = {},
 ): Promise<MetricExecution> {
   const result = await runCommand(metric.command, {
+    env: options.env,
     stream: false,
     onOutput: options.onOutput,
   });

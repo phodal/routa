@@ -131,6 +131,50 @@ describe("/api/tasks/[taskId]/runs", () => {
     ]);
   });
 
+  it("treats a running lane session as failed when the linked ACP session is already in error", async () => {
+    const task = createTask({
+      id: "task-2",
+      title: "Surface session error state",
+      objective: "Reflect ACP failure in the run ledger",
+      workspaceId: "workspace-1",
+    });
+    task.laneSessions = [
+      {
+        sessionId: "session-stuck-running",
+        columnId: "review",
+        transport: "acp",
+        status: "running",
+        startedAt: "2026-03-27T09:00:00.000Z",
+      },
+    ];
+
+    taskStore.get.mockResolvedValue(task);
+    getSession.mockReturnValue({
+      sessionId: "session-stuck-running",
+      cwd: "/tmp/repo",
+      workspaceId: "workspace-1",
+      provider: "codex",
+      createdAt: "2026-03-27T09:00:00.000Z",
+      executionMode: "embedded",
+      acpStatus: "error",
+      acpError: "Prompt failed",
+    });
+
+    const response = await GET(new NextRequest("http://localhost/api/tasks/task-2/runs"), {
+      params: Promise.resolve({ taskId: "task-2" }),
+    });
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.runs).toEqual([
+      expect.objectContaining({
+        id: "session-stuck-running",
+        kind: "embedded_acp",
+        status: "failed",
+      }),
+    ]);
+  });
+
   it("returns 404 when the task does not exist", async () => {
     taskStore.get.mockResolvedValue(null);
 

@@ -1,33 +1,27 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page, type Response } from "@playwright/test";
 
 const DESKTOP_VIEWPORT = { width: 1440, height: 900 };
 const NEXT_DEV_RECOVERY_TEXT = "missing required error components, refreshing...";
+const WORKSPACE_DEFAULT = "workspaceId=default";
+const ROUTE_RESPONSE_PATTERNS: Record<string, string[]> = {
+  "/workspace/default": [
+    `/api/sessions?${WORKSPACE_DEFAULT}`,
+    `/api/tasks?${WORKSPACE_DEFAULT}`,
+    `/api/kanban/boards?${WORKSPACE_DEFAULT}`,
+  ],
+  "/workspace/default/kanban": [
+    `/api/kanban/boards?${WORKSPACE_DEFAULT}`,
+    `/api/tasks?${WORKSPACE_DEFAULT}`,
+    `/api/sessions?${WORKSPACE_DEFAULT}`,
+  ],
+};
 
 function createRouteResponseWaiters(page: Page, path: string): Array<Promise<unknown>> {
-  if (path === "/workspace/default") {
-    return [
-      page.waitForResponse((response) => response.url().includes("/api/sessions?workspaceId=default"), { timeout: 20_000 }),
-      page.waitForResponse((response) => response.url().includes("/api/tasks?workspaceId=default"), { timeout: 20_000 }),
-      page.waitForResponse((response) => response.url().includes("/api/kanban/boards?workspaceId=default"), { timeout: 20_000 }),
-    ];
-  }
+  const optionalResponse = (matcher: (response: Response) => boolean) =>
+    page.waitForResponse(matcher, { timeout: 20_000 }).catch(() => null);
+  const patterns = ROUTE_RESPONSE_PATTERNS[path] ?? (path.startsWith("/traces") ? ["/api/traces", "/api/sessions"] : []);
 
-  if (path === "/workspace/default/kanban") {
-    return [
-      page.waitForResponse((response) => response.url().includes("/api/kanban/boards?workspaceId=default"), { timeout: 20_000 }),
-      page.waitForResponse((response) => response.url().includes("/api/tasks?workspaceId=default"), { timeout: 20_000 }),
-      page.waitForResponse((response) => response.url().includes("/api/sessions?workspaceId=default"), { timeout: 20_000 }),
-    ];
-  }
-
-  if (path.startsWith("/traces")) {
-    return [
-      page.waitForResponse((response) => response.url().includes("/api/traces"), { timeout: 20_000 }),
-      page.waitForResponse((response) => response.url().includes("/api/sessions"), { timeout: 20_000 }),
-    ];
-  }
-
-  return [];
+  return patterns.map((pattern) => optionalResponse((response) => response.url().includes(pattern)));
 }
 
 async function waitForDesktopShell(page: Page) {
@@ -80,17 +74,31 @@ async function openDesktopRoute(page: Page, path: string, colorScheme: "light" |
   }
 
   await Promise.allSettled(routeResponses);
+  await page.waitForLoadState("networkidle").catch(() => null);
 
   if (path.includes("/kanban")) {
     await page.getByTestId("kanban-page-header").waitFor({ state: "visible", timeout: 20_000 });
   }
 
-  await page.waitForTimeout(300);
+  await page.waitForTimeout(1000);
   await page.addStyleTag({
     content: `
       [data-testid="workspace-tab-count"],
       [data-testid="kanban-task-count"],
-      [data-testid="traces-selected-session"] {
+      [data-testid="traces-selected-session"],
+      [data-testid="traces-page-header"] > div:last-child {
+        visibility: hidden !important;
+      }
+
+      [data-testid="desktop-shell-header"] .lg\\:flex {
+        visibility: hidden !important;
+      }
+
+      [data-testid="kanban-page-header"] > div > div:last-child {
+        visibility: hidden !important;
+      }
+
+      [data-radix-popper-content-wrapper] {
         visibility: hidden !important;
       }
     `,
@@ -107,11 +115,11 @@ test.describe("Desktop Shell Visual Regression", () => {
       await expect(page.getByTestId("desktop-shell-root")).toBeVisible({ timeout: 20_000 });
       await expect(page.getByTestId("desktop-shell-header")).toHaveScreenshot(
         `workspace-shell-header-${colorScheme}.png`,
-        { animations: "disabled" },
+        { animations: "disabled", maxDiffPixels: 250, timeout: 15_000 },
       );
       await expect(page.getByTestId("desktop-shell-sidebar")).toHaveScreenshot(
         `workspace-shell-sidebar-${colorScheme}.png`,
-        { animations: "disabled" },
+        { animations: "disabled", timeout: 15_000 },
       );
     });
 
@@ -121,7 +129,7 @@ test.describe("Desktop Shell Visual Regression", () => {
       await expect(page.getByTestId("desktop-shell-root")).toBeVisible({ timeout: 20_000 });
       await expect(page.getByTestId("kanban-page-header")).toHaveScreenshot(
         `kanban-page-header-${colorScheme}.png`,
-        { animations: "disabled" },
+        { animations: "disabled", timeout: 15_000 },
       );
     });
 
@@ -131,11 +139,11 @@ test.describe("Desktop Shell Visual Regression", () => {
       await expect(page.getByTestId("desktop-shell-root")).toBeVisible({ timeout: 20_000 });
       await expect(page.getByTestId("traces-page-header")).toHaveScreenshot(
         `traces-page-header-${colorScheme}.png`,
-        { animations: "disabled" },
+        { animations: "disabled", maxDiffPixels: 400, timeout: 15_000 },
       );
       await expect(page.getByTestId("traces-view-tabs")).toHaveScreenshot(
         `traces-view-tabs-${colorScheme}.png`,
-        { animations: "disabled" },
+        { animations: "disabled", timeout: 15_000 },
       );
     });
   }

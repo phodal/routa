@@ -217,7 +217,7 @@ fn select_security_specialist_for_category(
     category: &str,
 ) -> Option<(String, String, Option<usize>)> {
     let normalized_category = category.to_lowercase();
-    let direct_id = format!("security-{}-reviewer", normalized_category);
+    let direct_id = format!("security-{normalized_category}-reviewer");
     for specialist in specialists {
         if specialist.id == direct_id {
             return Some((

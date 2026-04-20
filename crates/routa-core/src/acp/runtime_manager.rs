@@ -203,7 +203,7 @@ impl AcpRuntimeManager {
         let _base_path = match base {
             "node" => self.download_node(version, platform).await?,
             "uv" => self.download_uv(version, platform).await?,
-            other => return Err(format!("Unknown runtime base: {}", other)),
+            other => return Err(format!("Unknown runtime base: {other}")),
         };
 
         // For Npx / Uvx we need the companion binary in the same tree.
@@ -238,7 +238,7 @@ impl AcpRuntimeManager {
     /// Concurrent calls for the same version are serialised by a per-key
     /// mutex and will re-use the already-extracted binary.
     pub async fn download_node(&self, version: &str, platform: &str) -> Result<PathBuf, String> {
-        let lock = self.get_lock(&format!("node-{}", version)).await;
+        let lock = self.get_lock(&format!("node-{version}")).await;
         let _guard = lock.lock().await;
 
         let runtime_dir = self.paths.runtime_dir("node", version);
@@ -254,22 +254,19 @@ impl AcpRuntimeManager {
 
         tokio::fs::create_dir_all(&runtime_dir)
             .await
-            .map_err(|e| format!("mkdir runtime_dir: {}", e))?;
+            .map_err(|e| format!("mkdir runtime_dir: {e}"))?;
 
         let (node_os, node_arch) = Self::node_platform(platform)?;
         let is_win = node_os == "win";
         let ext = if is_win { "zip" } else { "tar.gz" };
-        let archive_base = format!("node-v{}-{}-{}", version, node_os, node_arch);
-        let url = format!(
-            "{}/v{}/{}.{}",
-            NODE_DOWNLOAD_BASE, version, archive_base, ext
-        );
+        let archive_base = format!("node-v{version}-{node_os}-{node_arch}");
+        let url = format!("{NODE_DOWNLOAD_BASE}/v{version}/{archive_base}.{ext}");
 
         let download_dir = self.paths.downloads_dir().join("node").join(version);
         tokio::fs::create_dir_all(&download_dir)
             .await
-            .map_err(|e| format!("mkdir download_dir: {}", e))?;
-        let archive_path = download_dir.join(format!("{}.{}", archive_base, ext));
+            .map_err(|e| format!("mkdir download_dir: {e}"))?;
+        let archive_path = download_dir.join(format!("{archive_base}.{ext}"));
 
         tracing::info!(
             "[AcpRuntimeManager] Downloading Node.js {}: {}",
@@ -288,7 +285,7 @@ impl AcpRuntimeManager {
             }
         })
         .await
-        .map_err(|e| format!("extract task panicked: {}", e))??;
+        .map_err(|e| format!("extract task panicked: {e}"))??;
 
         let _ = tokio::fs::remove_dir_all(&download_dir).await;
 
@@ -314,7 +311,7 @@ impl AcpRuntimeManager {
     ///
     /// Returns the path to the `uv` binary.
     pub async fn download_uv(&self, version: &str, platform: &str) -> Result<PathBuf, String> {
-        let lock = self.get_lock(&format!("uv-{}", version)).await;
+        let lock = self.get_lock(&format!("uv-{version}")).await;
         let _guard = lock.lock().await;
 
         let runtime_dir = self.paths.runtime_dir("uv", version);
@@ -329,18 +326,18 @@ impl AcpRuntimeManager {
 
         tokio::fs::create_dir_all(&runtime_dir)
             .await
-            .map_err(|e| format!("mkdir runtime_dir: {}", e))?;
+            .map_err(|e| format!("mkdir runtime_dir: {e}"))?;
 
         let target = Self::uv_target(platform)?;
         let ext = if is_windows { "zip" } else { "tar.gz" };
-        let archive_base = format!("uv-{}", target);
-        let url = format!("{}/{}/{}.{}", UV_DOWNLOAD_BASE, version, archive_base, ext);
+        let archive_base = format!("uv-{target}");
+        let url = format!("{UV_DOWNLOAD_BASE}/{version}/{archive_base}.{ext}");
 
         let download_dir = self.paths.downloads_dir().join("uv").join(version);
         tokio::fs::create_dir_all(&download_dir)
             .await
-            .map_err(|e| format!("mkdir download_dir: {}", e))?;
-        let archive_path = download_dir.join(format!("{}.{}", archive_base, ext));
+            .map_err(|e| format!("mkdir download_dir: {e}"))?;
+        let archive_path = download_dir.join(format!("{archive_base}.{ext}"));
 
         tracing::info!("[AcpRuntimeManager] Downloading uv {}: {}", version, url);
         self.download_file(&url, &archive_path).await?;
@@ -355,7 +352,7 @@ impl AcpRuntimeManager {
             }
         })
         .await
-        .map_err(|e| format!("extract task panicked: {}", e))??;
+        .map_err(|e| format!("extract task panicked: {e}"))??;
 
         let _ = tokio::fs::remove_dir_all(&download_dir).await;
 
@@ -402,7 +399,7 @@ impl AcpRuntimeManager {
             LINUX_X86_64 => Ok(("linux", "x64")),
             WINDOWS_AARCH64 => Ok(("win", "arm64")),
             WINDOWS_X86_64 => Ok(("win", "x64")),
-            other => Err(format!("Unsupported platform for Node.js: {}", other)),
+            other => Err(format!("Unsupported platform for Node.js: {other}")),
         }
     }
 
@@ -415,14 +412,14 @@ impl AcpRuntimeManager {
             LINUX_X86_64 => Ok("x86_64-unknown-linux-gnu"),
             WINDOWS_AARCH64 => Ok("aarch64-pc-windows-msvc"),
             WINDOWS_X86_64 => Ok("x86_64-pc-windows-msvc"),
-            other => Err(format!("Unsupported platform for uv: {}", other)),
+            other => Err(format!("Unsupported platform for uv: {other}")),
         }
     }
 
     async fn download_file(&self, url: &str, dest: &Path) -> Result<(), String> {
         let resp = reqwest::get(url)
             .await
-            .map_err(|e| format!("HTTP GET {}: {}", url, e))?;
+            .map_err(|e| format!("HTTP GET {url}: {e}"))?;
 
         if !resp.status().is_success() {
             return Err(format!("Download failed ({}) for {}", resp.status(), url));
@@ -431,11 +428,11 @@ impl AcpRuntimeManager {
         let bytes = resp
             .bytes()
             .await
-            .map_err(|e| format!("Reading response body: {}", e))?;
+            .map_err(|e| format!("Reading response body: {e}"))?;
 
         tokio::fs::write(dest, &bytes)
             .await
-            .map_err(|e| format!("Writing {:?}: {}", dest, e))?;
+            .map_err(|e| format!("Writing {dest:?}: {e}"))?;
 
         tracing::info!(
             "[AcpRuntimeManager] Downloaded {} bytes → {:?}",
@@ -453,7 +450,7 @@ impl AcpRuntimeManager {
         is_windows: bool,
     ) -> Option<PathBuf> {
         let exe = if is_windows {
-            format!("{}.exe", name)
+            format!("{name}.exe")
         } else {
             name.to_string()
         };
@@ -479,12 +476,12 @@ impl AcpRuntimeManager {
             use std::os::unix::fs::PermissionsExt;
             let mut perms = tokio::fs::metadata(_path)
                 .await
-                .map_err(|e| format!("metadata {:?}: {}", _path, e))?
+                .map_err(|e| format!("metadata {_path:?}: {e}"))?
                 .permissions();
             perms.set_mode(perms.mode() | 0o755);
             tokio::fs::set_permissions(_path, perms)
                 .await
-                .map_err(|e| format!("chmod {:?}: {}", _path, e))?;
+                .map_err(|e| format!("chmod {_path:?}: {e}"))?;
         }
 
         // Remove macOS quarantine
@@ -503,14 +500,10 @@ impl AcpRuntimeManager {
     // Blocking extraction helpers (called via spawn_blocking) ─────────────
 
     fn extract_zip_sync(archive: &Path, dest: &Path) -> Result<(), String> {
-        let f =
-            std::fs::File::open(archive).map_err(|e| format!("open zip {:?}: {}", archive, e))?;
-        let mut z =
-            zip::ZipArchive::new(f).map_err(|e| format!("read zip {:?}: {}", archive, e))?;
+        let f = std::fs::File::open(archive).map_err(|e| format!("open zip {archive:?}: {e}"))?;
+        let mut z = zip::ZipArchive::new(f).map_err(|e| format!("read zip {archive:?}: {e}"))?;
         for i in 0..z.len() {
-            let mut entry = z
-                .by_index(i)
-                .map_err(|e| format!("zip entry {}: {}", i, e))?;
+            let mut entry = z.by_index(i).map_err(|e| format!("zip entry {i}: {e}"))?;
             let out = dest.join(entry.mangled_name());
             if entry.name().ends_with('/') {
                 std::fs::create_dir_all(&out).ok();
@@ -519,20 +512,20 @@ impl AcpRuntimeManager {
                     std::fs::create_dir_all(p).ok();
                 }
                 let mut outf =
-                    std::fs::File::create(&out).map_err(|e| format!("create {:?}: {}", out, e))?;
+                    std::fs::File::create(&out).map_err(|e| format!("create {out:?}: {e}"))?;
                 std::io::copy(&mut entry, &mut outf)
-                    .map_err(|e| format!("extract {:?}: {}", out, e))?;
+                    .map_err(|e| format!("extract {out:?}: {e}"))?;
             }
         }
         Ok(())
     }
 
     fn extract_tgz_sync(archive: &Path, dest: &Path) -> Result<(), String> {
-        let f = std::fs::File::open(archive)
-            .map_err(|e| format!("open tar.gz {:?}: {}", archive, e))?;
+        let f =
+            std::fs::File::open(archive).map_err(|e| format!("open tar.gz {archive:?}: {e}"))?;
         let gz = flate2::read::GzDecoder::new(f);
         tar::Archive::new(gz)
             .unpack(dest)
-            .map_err(|e| format!("unpack tar.gz {:?}: {}", archive, e))
+            .map_err(|e| format!("unpack tar.gz {archive:?}: {e}"))
     }
 }

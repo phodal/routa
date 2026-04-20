@@ -116,11 +116,11 @@ impl TraceWriter {
         let day_dir = self.base_dir.join(date);
         fs::create_dir_all(&day_dir)
             .await
-            .map_err(|e| TraceWriteError::Io(format!("Failed to create trace dir: {}", e)))?;
+            .map_err(|e| TraceWriteError::Io(format!("Failed to create trace dir: {e}")))?;
 
         // Create filename with timestamp
         let datetime = Utc::now().format("%Y%m%d-%H%M%S").to_string();
-        let filename = format!("traces-{}.jsonl", datetime);
+        let filename = format!("traces-{datetime}.jsonl");
         let file_path = day_dir.join(filename);
 
         // Update current file

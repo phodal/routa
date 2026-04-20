@@ -1,56 +1,39 @@
 import { NextRequest, NextResponse } from "next/server";
 import { v4 as uuidv4 } from "uuid";
 import { getRoutaSystem } from "@/core/routa-system";
-import { createKanbanBoard, getKanbanAutomationSteps } from "@/core/models/kanban";
+import { createKanbanBoard } from "@/core/models/kanban";
 import { ensureDefaultBoard } from "@/core/kanban/boards";
 import { getKanbanAutoProvider } from "@/core/kanban/board-auto-provider";
 import { getKanbanSessionConcurrencyLimit } from "@/core/kanban/board-session-limits";
 import { getKanbanDevSessionSupervision } from "@/core/kanban/board-session-supervision";
 import { getKanbanEventBroadcaster } from "@/core/kanban/kanban-event-broadcaster";
+import { reviveMissingEntryAutomations } from "@/core/kanban/restart-recovery";
 import { getKanbanSessionQueue } from "@/core/kanban/workflow-orchestrator-singleton";
-import { processKanbanColumnTransition } from "@/core/kanban/workflow-orchestrator-singleton";
-
-async function reviveMissingEntryAutomations(
-  system: ReturnType<typeof getRoutaSystem>,
-  workspaceId: string,
-  boardId: string,
-): Promise<void> {
-  const board = await system.kanbanBoardStore.get(boardId);
-  if (!board) return;
-
-  const tasks = await system.taskStore.listByWorkspace(workspaceId);
-  for (const task of tasks) {
-    if (task.boardId !== boardId || task.triggerSessionId || !task.columnId) {
-      continue;
-    }
-
-    const column = board.columns.find((entry) => entry.id === task.columnId);
-    const automation = column?.automation;
-    const transitionType = automation?.transitionType ?? "entry";
-    const hasLaneSessionForCurrentColumn = (task.laneSessions ?? []).some((entry) => entry.columnId === task.columnId);
-    if (
-      !automation?.enabled
-      || (transitionType !== "entry" && transitionType !== "both")
-      || getKanbanAutomationSteps(automation).length === 0
-      || hasLaneSessionForCurrentColumn
-    ) {
-      continue;
-    }
-
-    await processKanbanColumnTransition(system, {
-      cardId: task.id,
-      cardTitle: task.title,
-      boardId,
-      workspaceId,
-      fromColumnId: "__revive__",
-      toColumnId: task.columnId,
-      fromColumnName: "Revive",
-      toColumnName: column?.name,
-    });
-  }
-}
+import { getHttpSessionStore } from "@/core/acp/http-session-store";
+import { getAcpProcessManager } from "@/core/acp/processer";
+import type { KanbanBoard, KanbanDevSessionSupervision } from "@/core/models/kanban";
 
 export const dynamic = "force-dynamic";
+
+function sanitizeBoard(
+  board: KanbanBoard,
+  extras?: {
+    autoProviderId?: string | null;
+    sessionConcurrencyLimit?: number;
+    devSessionSupervision?: KanbanDevSessionSupervision;
+    queue?: unknown;
+  },
+) {
+  return {
+    ...board,
+    githubToken: undefined,
+    githubTokenConfigured: Boolean(board.githubToken?.trim()),
+    autoProviderId: extras?.autoProviderId,
+    sessionConcurrencyLimit: extras?.sessionConcurrencyLimit,
+    devSessionSupervision: extras?.devSessionSupervision,
+    queue: extras?.queue,
+  };
+}
 
 function requireWorkspaceId(value: unknown): string | null {
   if (typeof value !== "string") return null;
@@ -68,10 +51,15 @@ export async function GET(request: NextRequest) {
   const boards = await system.kanbanBoardStore.listByWorkspace(workspaceId);
   const workspace = await system.workspaceStore.get(workspaceId);
   const queue = getKanbanSessionQueue(system);
-  await Promise.all(boards.map((board) => reviveMissingEntryAutomations(system, workspaceId, board.id)));
+  const sessionStore = getHttpSessionStore();
+  const processManager = getAcpProcessManager();
+  await sessionStore.hydrateFromDb();
+  await Promise.all(boards.map((board) => reviveMissingEntryAutomations(system, workspaceId, board.id, {
+    sessionStore,
+    processManager,
+  })));
   return NextResponse.json({
-    boards: await Promise.all(boards.map(async (board) => ({
-      ...board,
+    boards: await Promise.all(boards.map(async (board) => sanitizeBoard(board, {
       autoProviderId: getKanbanAutoProvider(workspace?.metadata, board.id),
       sessionConcurrencyLimit: getKanbanSessionConcurrencyLimit(workspace?.metadata, board.id),
       devSessionSupervision: getKanbanDevSessionSupervision(workspace?.metadata, board.id),
@@ -115,5 +103,5 @@ export async function POST(request: NextRequest) {
     resourceId: board.id,
     source: "user",
   });
-  return NextResponse.json({ board }, { status: 201 });
+  return NextResponse.json({ board: sanitizeBoard(board) }, { status: 201 });
 }

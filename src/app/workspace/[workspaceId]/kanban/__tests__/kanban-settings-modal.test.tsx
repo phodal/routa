@@ -53,8 +53,6 @@ describe("KanbanSettingsModal", () => {
     );
 
     fireEvent.click(screen.getByRole("checkbox", { name: /toggle automation for review/i }));
-    fireEvent.click(screen.getByTestId("kanban-settings-provider"));
-    fireEvent.click(screen.getByRole("button", { name: /claude code/i }));
     fireEvent.click(screen.getByRole("button", { name: /save board settings/i }));
 
     await waitFor(() => {
@@ -64,10 +62,8 @@ describe("KanbanSettingsModal", () => {
           review: expect.objectContaining({
             enabled: true,
             steps: [expect.objectContaining({
-              providerId: "claude",
               role: "GATE",
             })],
-            providerId: "claude",
             role: "GATE",
             transitionType: "exit",
             requiredArtifacts: ["screenshot", "test_results"],
@@ -80,9 +76,10 @@ describe("KanbanSettingsModal", () => {
           maxRecoveryAttempts: 1,
           completionRequirement: "turn_complete",
         },
+        undefined,
       );
     });
-  });
+  }, 15_000);
 
   it("does not expose A2A transport settings for a lane", async () => {
     render(
@@ -120,7 +117,7 @@ describe("KanbanSettingsModal", () => {
     expect((screen.getByLabelText("Transport") as HTMLSelectElement).value).toBe("acp");
   });
 
-  it("shows runtime settings by default", () => {
+  it("shows runtime settings on Board view", () => {
     render(
       <KanbanSettingsModal
         board={board}
@@ -134,8 +131,70 @@ describe("KanbanSettingsModal", () => {
       />,
     );
 
+    fireEvent.click(screen.getByRole("button", { name: "Board" }));
     expect(screen.getByLabelText("Dev supervision mode")).not.toBeNull();
     expect(screen.getByDisplayValue("2")).not.toBeNull();
+  });
+
+  it("shows GitHub import availability in board settings", () => {
+    render(
+      <KanbanSettingsModal
+        board={{ ...board, githubTokenConfigured: true }}
+        columnAutomation={{}}
+        availableProviders={[{ id: "claude", name: "Claude Code", description: "Claude Code provider", command: "claude" }]}
+        specialists={[{ id: "verify", name: "Verifier", role: "GATE" }]}
+        specialistLanguage="en"
+        githubImportAvailable
+        githubAccessSource="board"
+        onClose={vi.fn()}
+        onClearAll={vi.fn(async () => {})}
+        onSave={vi.fn(async () => {})}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Board" }));
+    expect(screen.getByText("GitHub import")).not.toBeNull();
+    expect(screen.getByText("Board config")).not.toBeNull();
+    expect(screen.getByText("Configured")).not.toBeNull();
+    expect(screen.getAllByText("Enabled").length).toBeGreaterThan(0);
+  });
+
+  it("passes a board token update when saving GitHub settings", async () => {
+    const onSave = vi.fn(async () => {});
+
+    render(
+      <KanbanSettingsModal
+        board={board}
+        columnAutomation={{}}
+        availableProviders={[{ id: "claude", name: "Claude Code", description: "Claude Code provider", command: "claude" }]}
+        specialists={[{ id: "verify", name: "Verifier", role: "GATE" }]}
+        specialistLanguage="en"
+        onClose={vi.fn()}
+        onClearAll={vi.fn(async () => {})}
+        onSave={onSave}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Board" }));
+    fireEvent.change(screen.getByLabelText("GitHub personal access token"), {
+      target: { value: "github_pat_test" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /save board settings/i }));
+
+    await waitFor(() => {
+      expect(onSave).toHaveBeenCalledWith(
+        expect.any(Array),
+        expect.any(Object),
+        2,
+        {
+          mode: "watchdog_retry",
+          inactivityTimeoutMinutes: 10,
+          maxRecoveryAttempts: 1,
+          completionRequirement: "turn_complete",
+        },
+        { token: "github_pat_test" },
+      );
+    });
   });
 
   it("defaults specialist filtering to kanban in board settings", () => {
@@ -163,7 +222,7 @@ describe("KanbanSettingsModal", () => {
     expect(screen.getAllByRole("button").some((button) => button.textContent?.trim() === "Kanban")).toBe(true);
     expect(screen.getAllByRole("option", { name: "Review Guard" }).length).toBeGreaterThan(0);
     expect(screen.queryAllByRole("option", { name: "Team QA" })).toHaveLength(0);
-  });
+  }, 15_000);
 
   it("shows the resolved auto provider in lane summaries", () => {
     const reviewBoard: KanbanBoardInfo = {
@@ -193,7 +252,9 @@ describe("KanbanSettingsModal", () => {
       />,
     );
 
-    expect(screen.getByText(/Auto \(Codex\) • Review Guard/i)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Review" }));
+    expect(screen.getByTestId("kanban-settings-provider").textContent).toMatch(/Auto/i);
+    expect(screen.getAllByText("Review Guard").length).toBeGreaterThan(0);
   });
 
   it("keeps the selected lane workspace free of redundant summary labels", () => {
@@ -257,6 +318,121 @@ describe("KanbanSettingsModal", () => {
           maxRecoveryAttempts: 1,
           completionRequirement: "turn_complete",
         },
+        undefined,
+      );
+    });
+  });
+
+  it("keeps Done PR publisher disabled by default when enabling automation", async () => {
+    const onSave = vi.fn(async () => {});
+    const doneBoard: KanbanBoardInfo = {
+      ...board,
+      columns: [{ id: "done", name: "Done", position: 0, stage: "done" }],
+    };
+
+    render(
+      <KanbanSettingsModal
+        board={doneBoard}
+        columnAutomation={{}}
+        availableProviders={[{ id: "claude", name: "Claude Code", description: "Claude Code provider", command: "claude" }]}
+        specialists={[
+          { id: "kanban-done-reporter", name: "Done Reporter", role: "GATE" },
+          { id: "kanban-pr-publisher", name: "PR Publisher", role: "DEVELOPER" },
+        ]}
+        specialistLanguage="en"
+        onClose={vi.fn()}
+        onClearAll={vi.fn(async () => {})}
+        onSave={onSave}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("checkbox", { name: /toggle automation for done/i }));
+    fireEvent.click(screen.getByRole("button", { name: /save board settings/i }));
+
+    await waitFor(() => {
+      expect(onSave).toHaveBeenCalledWith(
+        [expect.objectContaining({ id: "done", visible: true, position: 0 })],
+        {
+          done: expect.objectContaining({
+            enabled: true,
+            steps: [
+              expect.objectContaining({
+                specialistId: "kanban-done-reporter",
+              }),
+            ],
+          }),
+        },
+        2,
+        {
+          mode: "watchdog_retry",
+          inactivityTimeoutMinutes: 10,
+          maxRecoveryAttempts: 1,
+          completionRequirement: "turn_complete",
+        },
+        undefined,
+      );
+      const firstCall = onSave.mock.calls[0];
+      expect(firstCall).toBeDefined();
+      const savedAutomation = (firstCall as unknown[] | undefined)?.[1] as { done?: { steps?: unknown[] } } | undefined;
+      expect(savedAutomation?.done?.steps).not.toEqual(
+        expect.arrayContaining([expect.objectContaining({ specialistId: "kanban-pr-publisher" })]),
+      );
+    });
+  });
+
+  it("can explicitly enable the Done PR publisher step", async () => {
+    const onSave = vi.fn(async () => {});
+    const doneBoard: KanbanBoardInfo = {
+      ...board,
+      columns: [{ id: "done", name: "Done", position: 0, stage: "done" }],
+    };
+
+    render(
+      <KanbanSettingsModal
+        board={doneBoard}
+        columnAutomation={{
+          done: {
+            enabled: true,
+            transitionType: "entry",
+            steps: [{ id: "step-1", role: "GATE", specialistId: "kanban-done-reporter" }],
+          },
+        }}
+        availableProviders={[{ id: "claude", name: "Claude Code", description: "Claude Code provider", command: "claude" }]}
+        specialists={[
+          { id: "kanban-done-reporter", name: "Done Reporter", role: "GATE" },
+          { id: "kanban-pr-publisher", name: "PR Publisher", role: "DEVELOPER" },
+        ]}
+        specialistLanguage="en"
+        onClose={vi.fn()}
+        onClearAll={vi.fn(async () => {})}
+        onSave={onSave}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /advanced/i }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /auto-open pr session in done/i }));
+    fireEvent.click(screen.getByRole("button", { name: /save board settings/i }));
+
+    await waitFor(() => {
+      expect(onSave).toHaveBeenCalledWith(
+        [expect.objectContaining({ id: "done", visible: true, position: 0 })],
+        {
+          done: expect.objectContaining({
+            enabled: true,
+            steps: [
+              expect.objectContaining({ specialistId: "kanban-pr-publisher" }),
+              expect.objectContaining({ specialistId: "kanban-done-reporter" }),
+            ],
+          }),
+        },
+        2,
+        {
+          mode: "watchdog_retry",
+          inactivityTimeoutMinutes: 10,
+          maxRecoveryAttempts: 1,
+          completionRequirement: "turn_complete",
+        },
+        undefined,
       );
     });
   });
@@ -278,6 +454,7 @@ describe("KanbanSettingsModal", () => {
       />,
     );
 
+    fireEvent.click(screen.getByRole("button", { name: "Board" }));
     fireEvent.click(screen.getByRole("button", { name: /clear all cards/i }));
 
     await waitFor(() => {
@@ -324,6 +501,7 @@ describe("KanbanSettingsModal", () => {
           maxRecoveryAttempts: 1,
           completionRequirement: "turn_complete",
         },
+        undefined,
       );
     });
   });
@@ -363,6 +541,7 @@ describe("KanbanSettingsModal", () => {
           maxRecoveryAttempts: 1,
           completionRequirement: "turn_complete",
         },
+        undefined,
       );
     });
   });
@@ -423,7 +602,82 @@ describe("KanbanSettingsModal", () => {
           maxRecoveryAttempts: 1,
           completionRequirement: "turn_complete",
         },
+        undefined,
       );
+    });
+  });
+
+  it("warns before closing dirty edits with Escape", () => {
+    const onClose = vi.fn();
+
+    render(
+      <KanbanSettingsModal
+        board={board}
+        columnAutomation={{}}
+        availableProviders={[{ id: "claude", name: "Claude Code", description: "Claude Code provider", command: "claude" }]}
+        specialists={[]}
+        specialistLanguage="en"
+        onClose={onClose}
+        onClearAll={vi.fn(async () => {})}
+        onSave={vi.fn(async () => {})}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("Stage name"), { target: { value: "Queued" } });
+    fireEvent.keyDown(window, { key: "Escape" });
+
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByText("Unsaved board changes")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Keep editing" }));
+    expect(screen.queryByText("Unsaved board changes")).toBeNull();
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("supports discard and save-and-close from the unsaved changes prompt", async () => {
+    const onClose = vi.fn();
+    const onSave = vi.fn(async () => {});
+
+    const { unmount } = render(
+      <KanbanSettingsModal
+        board={board}
+        columnAutomation={{}}
+        availableProviders={[{ id: "claude", name: "Claude Code", description: "Claude Code provider", command: "claude" }]}
+        specialists={[]}
+        specialistLanguage="en"
+        onClose={onClose}
+        onClearAll={vi.fn(async () => {})}
+        onSave={onSave}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("Stage name"), { target: { value: "Queued" } });
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    fireEvent.click(screen.getByRole("button", { name: "Discard changes" }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+
+    unmount();
+
+    render(
+      <KanbanSettingsModal
+        board={board}
+        columnAutomation={{}}
+        availableProviders={[{ id: "claude", name: "Claude Code", description: "Claude Code provider", command: "claude" }]}
+        specialists={[]}
+        specialistLanguage="en"
+        onClose={onClose}
+        onClearAll={vi.fn(async () => {})}
+        onSave={onSave}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("Stage name"), { target: { value: "Queued" } });
+    fireEvent.keyDown(window, { key: "Escape" });
+    fireEvent.click(screen.getByRole("button", { name: "Save & Close" }));
+
+    await waitFor(() => {
+      expect(onSave).toHaveBeenCalled();
+      expect(onClose).toHaveBeenCalledTimes(2);
     });
   });
 });

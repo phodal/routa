@@ -1,6 +1,38 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { needsShell, quoteShellCommandPath } from "../utils";
+const { mockBridge } = vi.hoisted(() => ({
+  mockBridge: {
+    env: {
+      osPlatform: vi.fn(() => "linux"),
+      currentDir: vi.fn(() => "/repo"),
+    },
+    fs: {
+      existsSync: vi.fn(() => false),
+      statSync: vi.fn(),
+    },
+    process: {
+      which: vi.fn(async () => null),
+    },
+  },
+}));
+
+vi.mock("@/core/platform", () => ({
+  getServerBridge: () => mockBridge,
+}));
+
+import { needsShell, quoteShellCommandPath, which } from "../utils";
+
+beforeEach(() => {
+  mockBridge.env.osPlatform.mockReset();
+  mockBridge.env.osPlatform.mockReturnValue("linux");
+  mockBridge.env.currentDir.mockReset();
+  mockBridge.env.currentDir.mockReturnValue("/repo");
+  mockBridge.fs.existsSync.mockReset();
+  mockBridge.fs.existsSync.mockReturnValue(false);
+  mockBridge.fs.statSync.mockReset();
+  mockBridge.process.which.mockReset();
+  mockBridge.process.which.mockResolvedValue(null);
+});
 
 describe("needsShell", () => {
   it("returns true for .cmd files", () => {
@@ -124,5 +156,57 @@ describe("quoteShellCommandPath", () => {
       const path = "C:\\R&D (Test)\\App^Data\\script.cmd";
       expect(quoteShellCommandPath(path)).toBe(`"${path}"`);
     });
+  });
+});
+
+describe("which", () => {
+  it("returns an absolute path when the file exists", async () => {
+    mockBridge.fs.statSync.mockReturnValue({ isFile: true });
+
+    await expect(which("/usr/local/bin/codex")).resolves.toBe("/usr/local/bin/codex");
+    expect(mockBridge.fs.statSync).toHaveBeenCalledWith("/usr/local/bin/codex");
+  });
+
+  it("returns null for missing absolute paths", async () => {
+    mockBridge.fs.statSync.mockImplementation(() => {
+      throw new Error("missing");
+    });
+
+    await expect(which("/missing/codex")).resolves.toBeNull();
+  });
+
+  it("prefers local node_modules binaries on non-Windows", async () => {
+    mockBridge.fs.existsSync.mockImplementation(((candidate: string) => candidate === "/repo/node_modules/.bin/codex") as any);
+    mockBridge.fs.statSync.mockReturnValue({ isFile: true });
+
+    await expect(which("codex")).resolves.toBe("/repo/node_modules/.bin/codex");
+    expect(mockBridge.process.which).not.toHaveBeenCalled();
+  });
+
+  it("prefers .cmd wrappers from node_modules on Windows", async () => {
+    mockBridge.env.osPlatform.mockReturnValue("win32");
+    mockBridge.fs.existsSync.mockImplementation(((candidate: string) => candidate === "/repo/node_modules/.bin/codex.cmd") as any);
+    mockBridge.fs.statSync.mockReturnValue({ isFile: true });
+
+    await expect(which("codex")).resolves.toBe("/repo/node_modules/.bin/codex.cmd");
+  });
+
+  it("falls back to PATH lookup and prefers spawnable Windows extensions", async () => {
+    mockBridge.env.osPlatform.mockReturnValue("win32");
+    mockBridge.process.which.mockResolvedValue(
+      [
+        "C:\\Users\\dev\\AppData\\Roaming\\npm\\codex",
+        "C:\\Users\\dev\\AppData\\Roaming\\npm\\codex.cmd",
+        "C:\\Windows\\System32\\codex.exe",
+      ].join("\n") as any,
+    );
+
+    await expect(which("codex")).resolves.toBe("C:\\Users\\dev\\AppData\\Roaming\\npm\\codex.cmd");
+  });
+
+  it("returns the resolved PATH entry on non-Windows", async () => {
+    mockBridge.process.which.mockResolvedValue("/usr/bin/codex" as any);
+
+    await expect(which("codex")).resolves.toBe("/usr/bin/codex");
   });
 });

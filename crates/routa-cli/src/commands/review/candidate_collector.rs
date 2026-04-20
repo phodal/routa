@@ -317,7 +317,7 @@ fn collect_semgrep_candidates(
             tool_trace.push(ToolTrace {
                 tool: "semgrep".to_string(),
                 status: "failed".to_string(),
-                details: format!("Failed to execute semgrep: {}", err),
+                details: format!("Failed to execute semgrep: {err}"),
             });
             return Vec::new();
         }
@@ -332,20 +332,11 @@ fn collect_semgrep_candidates(
             .map_or_else(|| "unknown".to_string(), |code| code.to_string());
         let details = match (stderr.is_empty(), stdout.is_empty()) {
             (false, false) => truncate(
-                &format!(
-                    "exit_code={} stderr:\n{}\n\nstdout:\n{}",
-                    exit_code, stderr, stdout
-                ),
+                &format!("exit_code={exit_code} stderr:\n{stderr}\n\nstdout:\n{stdout}"),
                 2_000,
             ),
-            (false, true) => truncate(
-                &format!("exit_code={} stderr: {}", exit_code, stderr),
-                1_500,
-            ),
-            (true, false) => truncate(
-                &format!("exit_code={} stdout: {}", exit_code, stdout),
-                1_500,
-            ),
+            (false, true) => truncate(&format!("exit_code={exit_code} stderr: {stderr}"), 1_500),
+            (true, false) => truncate(&format!("exit_code={exit_code} stdout: {stdout}"), 1_500),
             (true, true) => "semgrep failed without stderr/stdout output".to_string(),
         };
         tool_trace.push(ToolTrace {
@@ -418,7 +409,7 @@ fn collect_semgrep_candidates(
             severity,
             summary: message,
             locations: vec![if line > 0 {
-                format!("{}:{}", path, line)
+                format!("{path}:{line}")
             } else {
                 path
             }],
@@ -695,7 +686,7 @@ fn collect_fitness_review_context(
             tool_trace.push(ToolTrace {
                 tool: "entrix".to_string(),
                 status: "failed".to_string(),
-                details: format!("Failed to execute entrix: {}", err),
+                details: format!("Failed to execute entrix: {err}"),
             });
             return None;
         }
@@ -729,7 +720,7 @@ fn collect_fitness_review_context(
             tool_trace.push(ToolTrace {
                 tool: "entrix".to_string(),
                 status: "error".to_string(),
-                details: format!("Failed to parse entrix output: {}", err),
+                details: format!("Failed to parse entrix output: {err}"),
             });
             None
         }

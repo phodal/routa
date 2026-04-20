@@ -1,0 +1,75 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh -lc 'HARNESS_MONITOR_BIN=\"${HARNESS_MONITOR_BIN:-${ROUTA_WATCH_BIN:-${AGENTWATCH_BIN:-harness-monitor}}}\"; \"$HARNESS_MONITOR_BIN\" hook codex SessionStart'"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh -lc 'HARNESS_MONITOR_BIN=\"${HARNESS_MONITOR_BIN:-${ROUTA_WATCH_BIN:-${AGENTWATCH_BIN:-harness-monitor}}}\"; \"$HARNESS_MONITOR_BIN\" hook codex UserPromptSubmit'"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh -lc 'HARNESS_MONITOR_BIN=\"${HARNESS_MONITOR_BIN:-${ROUTA_WATCH_BIN:-${AGENTWATCH_BIN:-harness-monitor}}}\"; \"$HARNESS_MONITOR_BIN\" hook codex PreToolUse'"
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write|MultiEdit|Read|Grep|Glob|Search|LS",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh -lc 'HARNESS_MONITOR_BIN=\"${HARNESS_MONITOR_BIN:-${ROUTA_WATCH_BIN:-${AGENTWATCH_BIN:-harness-monitor}}}\"; \"$HARNESS_MONITOR_BIN\" hook codex PreToolUse'"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh -lc 'HARNESS_MONITOR_BIN=\"${HARNESS_MONITOR_BIN:-${ROUTA_WATCH_BIN:-${AGENTWATCH_BIN:-harness-monitor}}}\"; \"$HARNESS_MONITOR_BIN\" hook codex PostToolUse'"
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write|MultiEdit|Read|Grep|Glob|Search|LS",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh -lc 'HARNESS_MONITOR_BIN=\"${HARNESS_MONITOR_BIN:-${ROUTA_WATCH_BIN:-${AGENTWATCH_BIN:-harness-monitor}}}\"; \"$HARNESS_MONITOR_BIN\" hook codex PostToolUse'"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh -lc 'HARNESS_MONITOR_BIN=\"${HARNESS_MONITOR_BIN:-${ROUTA_WATCH_BIN:-${AGENTWATCH_BIN:-harness-monitor}}}\"; \"$HARNESS_MONITOR_BIN\" hook codex Stop'"
+          }
+        ]
+      }
+    ]
+  }
+}

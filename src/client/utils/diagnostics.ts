@@ -1,3 +1,5 @@
+import { getConfiguredBackendBaseUrl, resolveApiPath } from "../config/backend";
+
 export type LogLevel = "debug" | "info" | "warn" | "error";
 
 const TAURI_RUNTIME_MARKER_KEY = "routa.runtime";
@@ -125,6 +127,9 @@ let _desktopApiBaseUrlCache: string | null = null;
  * from `tauri://localhost` work fine.
  */
 export function getDesktopApiBaseUrl(): string {
+  if (!isTauriRuntime()) return "";
+  const configured = getConfiguredBackendBaseUrl();
+  if (configured) return configured;
   if (!isDesktopStaticRuntime()) return "";
   if (_desktopApiBaseUrlCache !== null) return _desktopApiBaseUrlCache;
   _desktopApiBaseUrlCache = `http://127.0.0.1:${DESKTOP_API_DEFAULT_PORT}`;
@@ -142,5 +147,5 @@ export function desktopAwareFetch(
   options?: RequestInit,
 ): Promise<Response> {
   const base = getDesktopApiBaseUrl();
-  return fetch(`${base}${path}`, options);
+  return fetch(resolveApiPath(path, base), options);
 }

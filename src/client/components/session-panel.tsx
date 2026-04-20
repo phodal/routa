@@ -3,8 +3,17 @@
 import { useCallback, useEffect, useState, useRef } from "react";
 import { desktopAwareFetch } from "../utils/diagnostics";
 import { useTranslation } from "@/i18n";
-import { Folder, Zap, MessageCircle, EllipsisVertical } from "lucide-react";
+import { Folder, Zap, MessageCircle, EllipsisVertical, Play, GitFork, Circle } from "lucide-react";
 
+
+export type SessionContinuityStatus = "active" | "interrupted" | "restorable" | "stale";
+
+export interface SessionResumeCapabilities {
+  supported: boolean;
+  mode: "native" | "replay" | "both";
+  supportsFork?: boolean;
+  supportsList?: boolean;
+}
 
 export interface SessionInfo {
   sessionId: string;
@@ -20,6 +29,10 @@ export interface SessionInfo {
   createdAt: string;
   /** Parent session ID for crafter subtasks */
   parentSessionId?: string;
+  /** Session continuity status */
+  continuityStatus?: SessionContinuityStatus;
+  /** Provider resume capabilities */
+  resumeCapabilities?: SessionResumeCapabilities;
 }
 
 interface WorkspaceGroup {
@@ -34,6 +47,8 @@ interface SessionPanelProps {
   refreshKey?: number;
   onSessionDeleted?: (sessionId: string) => void;
   workspaceId?: string;
+  onResume?: (sessionId: string) => void;
+  onFork?: (sessionId: string) => void;
 }
 
 export function SessionPanel({
@@ -42,6 +57,8 @@ export function SessionPanel({
   refreshKey,
   onSessionDeleted,
   workspaceId,
+  onResume,
+  onFork,
 }: SessionPanelProps) {
   const [workspaceGroups, setWorkspaceGroups] = useState<WorkspaceGroup[]>([]);
   const [loading, setLoading] = useState(false);
@@ -224,6 +241,8 @@ export function SessionPanel({
                               onSetEditName={setEditName}
                               onRename={handleRename}
                               indent={0}
+                              onResume={onResume}
+                              onFork={onFork}
                             />
                             {/* Child crafter sessions */}
                             {children.length > 0 && (
@@ -255,6 +274,8 @@ export function SessionPanel({
                                       onSetEditName={setEditName}
                                       onRename={handleRename}
                                       indent={1}
+                                      onResume={onResume}
+                                      onFork={onFork}
                                     />
                                   );
                                 })}
@@ -291,6 +312,8 @@ export function SessionPanel({
                             onSetEditName={setEditName}
                             onRename={handleRename}
                             indent={0}
+                            onResume={onResume}
+                            onFork={onFork}
                           />
                         );
                       })}
@@ -327,6 +350,8 @@ interface SessionItemProps {
   onSetEditName: (name: string) => void;
   onRename: (sessionId: string, name: string) => void;
   indent: number;
+  onResume?: (sessionId: string) => void;
+  onFork?: (sessionId: string) => void;
 }
 
 function SessionItem({
@@ -347,6 +372,8 @@ function SessionItem({
   onSetEditName,
   onRename,
   indent,
+  onResume,
+  onFork,
 }: SessionItemProps) {
   const { t } = useTranslation();
   const isChild = indent > 0;
@@ -402,6 +429,16 @@ function SessionItem({
                   {displayName}
                 </div>
                 <div className="mt-0.5 flex items-center gap-1.5 text-[10px] text-slate-400 dark:text-slate-500">
+                  {s.continuityStatus && (
+                    <span className={`inline-flex items-center gap-0.5 ${
+                      s.continuityStatus === "active" ? "text-green-500" :
+                      s.continuityStatus === "restorable" ? "text-blue-500" :
+                      s.continuityStatus === "interrupted" ? "text-amber-500" :
+                      "text-slate-400"
+                    }`}>
+                      <Circle className="w-1.5 h-1.5" fill="currentColor" />
+                    </span>
+                  )}
                   {s.provider && <span>{s.provider}</span>}
                   {s.role && <span>• {s.role}</span>}
                 </div>
@@ -428,6 +465,32 @@ function SessionItem({
           ref={menuRef}
           className="absolute right-2 top-8 z-10 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md shadow-lg py-1 min-w-[100px]"
         >
+          {onResume && s.resumeCapabilities?.supported && (
+            <button
+              type="button"
+              onClick={() => {
+                onSetMenuOpen(null);
+                onResume(s.sessionId);
+              }}
+              className="w-full text-left px-3 py-1.5 text-xs hover:bg-slate-100 dark:hover:bg-slate-700 text-blue-600 dark:text-blue-400 flex items-center gap-1.5"
+            >
+              <Play className="w-3 h-3" />
+              {t.sessions.resume}
+            </button>
+          )}
+          {onFork && s.resumeCapabilities?.supportsFork && (
+            <button
+              type="button"
+              onClick={() => {
+                onSetMenuOpen(null);
+                onFork(s.sessionId);
+              }}
+              className="w-full text-left px-3 py-1.5 text-xs hover:bg-slate-100 dark:hover:bg-slate-700 text-purple-600 dark:text-purple-400 flex items-center gap-1.5"
+            >
+              <GitFork className="w-3 h-3" />
+              {t.sessions.fork}
+            </button>
+          )}
           <button
             type="button"
             onClick={() => onStartEdit(s)}

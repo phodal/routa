@@ -197,7 +197,7 @@ pub(crate) fn extract_agent_output_from_process_output(history: &[serde_json::Va
 }
 
 fn decode_log_escaped_text(raw: &str) -> String {
-    let quoted = format!("\"{}\"", raw);
+    let quoted = format!("\"{raw}\"");
     serde_json::from_str::<String>(&quoted).unwrap_or_else(|_| {
         raw.replace("\\n", "\n")
             .replace("\\r", "\r")

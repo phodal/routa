@@ -8,7 +8,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getRoutaSystem } from "@/core/routa-system";
 import { createCodebase } from "@/core/models/codebase";
-import { normalizeLocalRepoPath, validateRepoInput } from "@/core/git";
+import { normalizeLocalRepoPath, validateRepoInput, isBareGitRepository } from "@/core/git";
 
 export const dynamic = "force-dynamic";
 
@@ -43,6 +43,18 @@ export async function POST(
     return NextResponse.json(
       { error: validation.error ?? "repoPath must point to a local git repository" },
       { status: 400 },
+    );
+  }
+
+  // Check if this is a bare repository
+  // Bare repos don't have a working directory and can't be used as normal codebases
+  if (isBareGitRepository(repoPath)) {
+    return NextResponse.json(
+      {
+        error: "Cannot add a bare git repository as a codebase",
+        suggestion: "Bare repos don't have a working directory and can't be synced or checked out. Clone a regular working copy instead, or use this repo as a worktree source for task-specific branches."
+      },
+      { status: 400 }
     );
   }
 

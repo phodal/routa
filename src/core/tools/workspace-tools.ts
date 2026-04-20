@@ -16,6 +16,7 @@ import { EventBus, AgentEventType } from "../events/event-bus";
 import { loadSpecialists } from "../orchestration/specialist-prompts";
 import { ToolResult, successResult, errorResult } from "./tool-result";
 import { getServerBridge } from "@/core/platform";
+import { resolveGitIdentity } from "@/core/git/git-operations";
 
 /**
  * Execute a git command via the platform bridge.
@@ -166,6 +167,28 @@ export class WorkspaceTools {
   }): Promise<ToolResult> {
     const cwd = params.cwd ?? this.defaultCwd ?? getServerBridge().env.currentDir();
     try {
+      const identity = await resolveGitIdentity(cwd);
+      if (!identity) {
+        return errorResult(
+          `Cannot commit: Git user identity is not configured. ` +
+          `Please set your identity:\n` +
+          `  git config --global user.name "Your Name"\n` +
+          `  git config --global user.email "your-real-email@domain.com"`
+        );
+      }
+
+      if (/test@example\.com/i.test(identity.email)
+        || /@example\.com$/i.test(identity.email)
+        || /routa test/i.test(identity.name)
+        || /^test$/i.test(identity.name)
+        || /placeholder/i.test(identity.name)
+        || /placeholder/i.test(identity.email)) {
+        return errorResult(
+          `Cannot commit: Git identity looks like a placeholder (${identity.name} <${identity.email}>). `
+          + `Please configure a real repo-local or global identity before committing.`
+        );
+      }
+
       // Optionally stage all changes
       if (params.stageAll) {
         await execFileAsync("git", ["add", "-A"], { cwd, timeout: 10000 });
@@ -200,6 +223,7 @@ export class WorkspaceTools {
         hash: hashOutput.trim(),
         message: params.message,
         output: stdout.trim(),
+        author: `${identity.name} <${identity.email}>`,
         filesCommitted: staged
           .trim()
           .split("\n")

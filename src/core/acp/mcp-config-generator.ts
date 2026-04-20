@@ -15,6 +15,11 @@ import type { McpServerProfile } from "../mcp/mcp-server-profiles";
 export interface RoutaMcpConfig {
   /** Base URL of the routa-js server (e.g., http://localhost:3000) */
   routaServerUrl: string;
+  /**
+   * Optional working directory used by provider-specific MCP setup flows
+   * that scope configuration to a project path (for example qodercli local MCP).
+   */
+  cwd?: string;
   /** Workspace ID for the MCP session */
   workspaceId?: string;
   /**

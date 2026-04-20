@@ -1,12 +1,16 @@
 ---
 title: "Next.js ACP CLI sessions are bound to a single web instance"
 date: "2026-03-21"
-status: investigating
+status: resolved
 severity: high
 area: "acp"
 tags: ["acp", "nextjs", "multi-instance", "session-routing", "sse"]
 reported_by: "Codex"
 related_issues: ["https://github.com/phodal/routa/issues/222"]
+github_issue: 222
+github_state: "closed"
+github_url: "https://github.com/phodal/routa/issues/222"
+resolved_at: "2026-03-27"
 ---
 
 # Next.js ACP CLI sessions are bound to a single web instance

@@ -1,6 +1,5 @@
 /**
  * GET /api/traces — Query traces with optional filters.
- * POST /api/traces/export — Export traces in Agent Trace JSON format.
  *
  * Query parameters:
  * - sessionId: Filter by session ID
@@ -14,7 +13,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { getTraceReader, type TraceQuery } from "@/core/trace";
+import { queryTracesWithSessionFallback, type TraceQuery } from "@/core/trace";
 
 export const dynamic = "force-dynamic";
 
@@ -64,11 +63,7 @@ export async function GET(request: NextRequest) {
     const params = parseQueryParams(request.url);
     const query = toTraceQuery(params);
 
-    // Use current working directory for trace base path
-    const cwd = process.cwd();
-    const reader = getTraceReader(cwd);
-
-    const traces = await reader.query(query);
+    const traces = await queryTracesWithSessionFallback(query);
 
     return NextResponse.json({
       traces,
@@ -79,52 +74,6 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       {
         error: "Failed to query traces",
-        message: error instanceof Error ? error.message : "Unknown error",
-      },
-      { status: 500 }
-    );
-  }
-}
-
-/**
- * POST /api/traces/export — Export traces in Agent Trace JSON format.
- */
-export async function POST(request: NextRequest) {
-  try {
-    // For POST, parse query params from URL
-    const params = parseQueryParams(request.url);
-    const query = toTraceQuery(params);
-
-    // Allow body to override query params
-    try {
-      const body = await request.json();
-      if (body.sessionId) params.sessionId = body.sessionId;
-      if (body.workspaceId) params.workspaceId = body.workspaceId;
-      if (body.file) params.file = body.file;
-      if (body.eventType) params.eventType = body.eventType;
-      if (body.startDate) params.startDate = body.startDate;
-      if (body.endDate) params.endDate = body.endDate;
-      if (body.limit) params.limit = String(body.limit);
-      if (body.offset) params.offset = String(body.offset);
-    } catch {
-      // No body or invalid JSON, use query params
-    }
-
-    const cwd = process.cwd();
-    const reader = getTraceReader(cwd);
-
-    const traces = await reader.export(query);
-
-    return NextResponse.json({
-      export: traces,
-      format: "agent-trace-json",
-      version: "0.1.0",
-    });
-  } catch (error) {
-    console.error("[Traces API] Export error:", error);
-    return NextResponse.json(
-      {
-        error: "Failed to export traces",
         message: error instanceof Error ? error.message : "Unknown error",
       },
       { status: 500 }

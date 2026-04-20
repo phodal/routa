@@ -60,7 +60,7 @@ impl RpcRouter {
                 return serde_json::to_string(&JsonRpcResponse::error(
                     None,
                     PARSE_ERROR,
-                    format!("Parse error: {}", e),
+                    format!("Parse error: {e}"),
                 ))
                 .unwrap_or_default();
             }
@@ -81,7 +81,7 @@ impl RpcRouter {
                 return serde_json::to_value(JsonRpcResponse::error(
                     None,
                     PARSE_ERROR,
-                    format!("Invalid request: {}", e),
+                    format!("Invalid request: {e}"),
                 ))
                 .unwrap_or_default();
             }
@@ -265,6 +265,36 @@ impl RpcRouter {
                 let r = methods::kanban::submit_lane_handoff(&self.state, p).await?;
                 Ok(serde_json::to_value(r).unwrap())
             }
+            "kanban.listCards" => {
+                let p = parse_params(params)?;
+                let r = methods::kanban::list_cards(&self.state, p).await?;
+                Ok(serde_json::to_value(r).unwrap())
+            }
+            "kanban.boardStatus" => {
+                let p = parse_params(params)?;
+                let r = methods::kanban::board_status(&self.state, p).await?;
+                Ok(serde_json::to_value(r).unwrap())
+            }
+            "kanban.listAutomations" => {
+                let p = parse_params(params)?;
+                let r = methods::kanban::list_automations(&self.state, p).await?;
+                Ok(serde_json::to_value(r).unwrap())
+            }
+            "kanban.triggerAutomation" => {
+                let p = parse_params(params)?;
+                let r = methods::kanban::trigger_automation(&self.state, p).await?;
+                Ok(serde_json::to_value(r).unwrap())
+            }
+            "kanban.createIssueFromCard" => {
+                let p = parse_params(params)?;
+                let r = methods::kanban::create_issue_from_card(&self.state, p).await?;
+                Ok(serde_json::to_value(r).unwrap())
+            }
+            "kanban.syncGitHubIssues" => {
+                let p = parse_params(params)?;
+                let r = methods::kanban::sync_github_issues(&self.state, p).await?;
+                Ok(serde_json::to_value(r).unwrap())
+            }
 
             // ----- Notes -----
             "notes.list" => {
@@ -326,8 +356,7 @@ impl RpcRouter {
 
             // ----- Unknown method -----
             _ => Err(RpcError::MethodNotFound(format!(
-                "Method not found: {}",
-                method
+                "Method not found: {method}"
             ))),
         }
     }
@@ -361,7 +390,13 @@ impl RpcRouter {
             "kanban.deleteColumn",
             "kanban.searchCards",
             "kanban.listCardsByColumn",
+            "kanban.listCards",
+            "kanban.boardStatus",
             "kanban.decomposeTasks",
+            "kanban.listAutomations",
+            "kanban.triggerAutomation",
+            "kanban.createIssueFromCard",
+            "kanban.syncGitHubIssues",
             "notes.list",
             "notes.get",
             "notes.create",
@@ -380,5 +415,5 @@ impl RpcRouter {
 /// Helper: deserialize `serde_json::Value` into a typed params struct.
 fn parse_params<T: serde::de::DeserializeOwned>(value: serde_json::Value) -> Result<T, RpcError> {
     serde_json::from_value(value)
-        .map_err(|e| RpcError::InvalidParams(format!("Invalid params: {}", e)))
+        .map_err(|e| RpcError::InvalidParams(format!("Invalid params: {e}")))
 }

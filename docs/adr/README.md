@@ -1,3 +1,7 @@
+---
+title: Architecture Decision Records
+---
+
 # Architecture Decision Records
 
 Lightweight records of decisions that shape Routa.js boundaries, protocols, and evolution.
@@ -15,11 +19,12 @@ claude -p "Read ADR 0004 and explain the kanban automation boundary"
 | ADR | Decision | Derived From |
 |---|---|---|
 | [0001](./0001-dual-backend-semantic-parity.md) | Web and desktop share domain semantics via api-contract.yaml | code structure |
-| [0002](./0002-provider-normalization-via-acp.md) | All agent runtimes normalized to ACP through adapter layers | [issue #33](../issues/2026-02-28-gh-33-model-based-acp-provider.md) |
+| [0002](./0002-provider-normalization-via-acp.md) | All agent runtimes normalized to ACP through adapter layers | [issue #33](https://github.com/phodal/routa/issues/33) |
 | [0003](./0003-workspace-first-scope.md) | Workspaces are the top-level coordination boundary | [design-doc](../design-docs/workspace-centric-redesign.md) |
-| [0004](./0004-kanban-driven-automation.md) | Kanban lanes trigger ACP sessions with queued concurrency | [issue #96](../issues/2026-03-08-gh-96-feat-kanban-implement-generic-local-first-kanban-data-model.md), [issue #148](../issues/2026-03-14-gh-148-feat-add-session-queueing-and-concurrency-limits-for-kanban-acp-automati.md) |
-| [0005](./0005-specialist-externalization.md) | Specialists as Markdown+YAML with priority loading | [issue #1](../issues/2026-02-16-gh-1-feat-specialist-markdown-yaml-frontmatter-specialist.md) |
+| [0004](./0004-kanban-driven-automation.md) | Kanban lanes trigger ACP sessions with queued concurrency | [issue #96](https://github.com/phodal/routa/issues/96), [issue #148](https://github.com/phodal/routa/issues/148) |
+| [0005](./0005-specialist-externalization.md) | Specialists as Markdown+YAML with priority loading | [issue #1](https://github.com/phodal/routa/issues/1) |
 | [0006](./0006-orchestration-shell-pattern.md) | Complex files use thin shell + domain hooks structure | coding standards |
+| [0007](./0007-kanban-delivery-transition-policies.md) | Kanban transition delivery gates are column policies enforced across UI and MCP | local design follow-up |
 
 ## Rules
 

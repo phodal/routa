@@ -16,6 +16,7 @@ export interface KanbanSessionCopy {
   emptyPaneHint: string;
   expectedTarget: (target: string) => string;
   closeSessionPane: string;
+  showSessionPane: string;
 }
 
 const KANBAN_SESSION_COPY: Record<KanbanSpecialistLanguage, KanbanSessionCopy> = {
@@ -34,7 +35,8 @@ const KANBAN_SESSION_COPY: Record<KanbanSpecialistLanguage, KanbanSessionCopy> =
     emptyPaneDescription: "This card does not have a recorded automation run yet, so the session pane is waiting for the first trigger.",
     emptyPaneHint: "Use Run on the left for a manual start, or wait for lane automation to create the first session.",
     expectedTarget: (target) => `Expected target: ${target}.`,
-    closeSessionPane: "Close session pane",
+    closeSessionPane: "Hide session pane",
+    showSessionPane: "Show session pane",
   },
   "zh-CN": {
     activityTitle: "活动",
@@ -51,7 +53,8 @@ const KANBAN_SESSION_COPY: Record<KanbanSpecialistLanguage, KanbanSessionCopy> =
     emptyPaneDescription: "这张卡还没有记录任何自动化运行，所以右侧 session pane 会先显示等待中的空态。",
     emptyPaneHint: "你可以点击左侧的 Run 手动启动，或者等待 lane 自动化创建第一次 session。",
     expectedTarget: (target) => `预期目标：${target}。`,
-    closeSessionPane: "关闭 session 面板",
+    closeSessionPane: "隐藏 session 面板",
+    showSessionPane: "显示 session 面板",
   },
 };
 

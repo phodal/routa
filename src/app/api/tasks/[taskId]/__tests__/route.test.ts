@@ -15,8 +15,8 @@ const createWorktree = vi.fn();
 const buildTaskDeliveryReadiness = vi.fn<
   (task: Task, currentSystem: typeof system) => Promise<TaskDeliveryReadiness>
 >();
-const buildTaskDeliveryTransitionError = vi.fn<
-  (readiness: TaskDeliveryReadiness, targetColumnName: string, targetColumnId: string) => string | null
+const buildTaskDeliveryTransitionErrorFromRules = vi.fn<
+  (readiness: TaskDeliveryReadiness, targetColumnName: string, deliveryRules: Record<string, unknown> | undefined) => string | null
 >(() => null);
 let capturedEnqueueTask: Task | undefined;
 
@@ -29,7 +29,7 @@ const system = {
   taskStore,
   kanbanBoardStore: { get: vi.fn() },
   workspaceStore: { get: vi.fn() },
-  worktreeStore: { assignSession: vi.fn() },
+  worktreeStore: { assignSession: vi.fn(), get: vi.fn() },
   codebaseStore: { findByRepoPath: vi.fn(), get: vi.fn(), getDefault: vi.fn() },
   eventBus: {},
   artifactStore: undefined as InMemoryArtifactStore | undefined,
@@ -76,11 +76,11 @@ vi.mock("@/core/kanban/task-session-transition", () => ({
 vi.mock("@/core/kanban/task-delivery-readiness", () => ({
   buildTaskDeliveryReadiness: (task: Task, currentSystem: typeof system) =>
     buildTaskDeliveryReadiness(task, currentSystem),
-  buildTaskDeliveryTransitionError: (
+  buildTaskDeliveryTransitionErrorFromRules: (
     readiness: TaskDeliveryReadiness,
     targetColumnName: string,
-    targetColumnId: string,
-  ) => buildTaskDeliveryTransitionError(readiness, targetColumnName, targetColumnId),
+    deliveryRules: Record<string, unknown> | undefined,
+  ) => buildTaskDeliveryTransitionErrorFromRules(readiness, targetColumnName, deliveryRules),
 }));
 
 vi.mock("@/core/kanban/workflow-orchestrator-singleton", () => ({
@@ -109,15 +109,20 @@ describe("/api/tasks/[taskId]", () => {
       canCreatePullRequest: false,
       reason: "Task has no linked repository or worktree.",
     });
-    buildTaskDeliveryTransitionError.mockReturnValue(null);
+    buildTaskDeliveryTransitionErrorFromRules.mockReturnValue(null);
     taskStore.save.mockResolvedValue();
     system.kanbanBoardStore.get = vi.fn().mockResolvedValue(null);
+    system.worktreeStore.get = vi.fn().mockResolvedValue(undefined);
+    system.codebaseStore.findByRepoPath = vi.fn().mockResolvedValue(undefined);
+    system.codebaseStore.get = vi.fn().mockResolvedValue(undefined);
+    system.codebaseStore.getDefault = vi.fn().mockResolvedValue(undefined);
     system.artifactStore = undefined;
     await artifactStore.deleteByTask("task-1");
     taskStore.get.mockResolvedValue(createTask({
       id: "task-1",
       title: "Retry review",
       objective: "Retry review",
+      comment: "Review requested another verification pass.",
       workspaceId: "workspace-1",
       boardId: "board-1",
       columnId: "todo",
@@ -151,6 +156,10 @@ describe("/api/tasks/[taskId]", () => {
     const data = await response.json();
 
     expect(response.status).toBe(200);
+    expect(data.task.comment).toBe("Review requested another verification pass.");
+    expect(data.task.comments).toEqual([
+      expect.objectContaining({ body: "Review requested another verification pass." }),
+    ]);
     expect(data.task.artifactSummary).toEqual({
       total: 0,
       byType: {},
@@ -182,10 +191,42 @@ describe("/api/tasks/[taskId]", () => {
       missing: [],
       requiredTaskFields: [],
     });
+    expect(data.task.deliveryReadiness).toMatchObject({
+      checked: false,
+      commitsSinceBase: 0,
+      hasCommitsSinceBase: false,
+    });
     expect(data.task.investValidation).toMatchObject({
       source: "heuristic",
       overallStatus: "fail",
     });
+  });
+
+  it("keeps legacy appended comments as a single migrated note", async () => {
+    taskStore.get.mockResolvedValueOnce(createTask({
+      id: "task-legacy-comments",
+      title: "Legacy notes",
+      objective: "Show note migration",
+      comment: "Initial note\n\nSecond note\n\nThird note",
+      comments: [],
+      workspaceId: "workspace-1",
+      boardId: "board-1",
+      columnId: "todo",
+      status: TaskStatus.PENDING,
+    }));
+
+    const response = await GET(new NextRequest("http://localhost/api/tasks/task-legacy-comments"), {
+      params: Promise.resolve({ taskId: "task-legacy-comments" }),
+    });
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.task.comments).toEqual([
+      expect.objectContaining({
+        body: "Initial note\n\nSecond note\n\nThird note",
+        source: "legacy_import",
+      }),
+    ]);
   });
 
   it("reports missing required artifacts and latest run status in evidence summary", async () => {
@@ -317,6 +358,179 @@ describe("/api/tasks/[taskId]", () => {
     });
   });
 
+  it("converges a final approved review verdict into done", async () => {
+    const task = createTask({
+      id: "task-1",
+      title: "Finalize review verdict",
+      objective: "Leave review after Review Guard approval",
+      workspaceId: "workspace-1",
+      boardId: "board-1",
+      columnId: "review",
+      status: TaskStatus.REVIEW_REQUIRED,
+    });
+    task.assignedSpecialistId = "kanban-review-guard";
+    task.assignedSpecialistName = "Review Guard";
+    taskStore.get.mockResolvedValue(task);
+    system.kanbanBoardStore.get = vi.fn().mockResolvedValue({
+      id: "board-1",
+      columns: [
+        { id: "dev", name: "Dev", position: 0, stage: "dev" },
+        {
+          id: "review",
+          name: "Review",
+          position: 1,
+          stage: "review",
+          automation: {
+            enabled: true,
+            steps: [
+              {
+                id: "qa-frontend",
+                role: "GATE",
+                specialistId: "kanban-qa-frontend",
+                specialistName: "QA Frontend",
+              },
+              {
+                id: "review-guard",
+                role: "GATE",
+                specialistId: "kanban-review-guard",
+                specialistName: "Review Guard",
+              },
+            ],
+          },
+        },
+        { id: "done", name: "Done", position: 2, stage: "done" },
+      ],
+    });
+
+    const response = await PATCH(new NextRequest("http://localhost/api/tasks/task-1", {
+      method: "PATCH",
+      body: JSON.stringify({
+        verificationVerdict: VerificationVerdict.APPROVED,
+        verificationReport: "Visual and functional checks passed",
+      }),
+    }), {
+      params: Promise.resolve({ taskId: "task-1" }),
+    });
+
+    expect(response.status).toBe(200);
+    const savedTask = taskStore.save.mock.calls.at(-1)?.[0];
+    expect(savedTask).toMatchObject({
+      columnId: "done",
+      status: TaskStatus.COMPLETED,
+      verificationVerdict: VerificationVerdict.APPROVED,
+    });
+  });
+
+  it("rejects malformed canonical YAML when updating a backlog card description", async () => {
+    const existingTask = createTask({
+      id: "task-1",
+      title: "Refine canonical contract",
+      objective: "Initial prose",
+      workspaceId: "workspace-1",
+      boardId: "board-1",
+      columnId: "backlog",
+      status: TaskStatus.PENDING,
+    });
+    taskStore.get.mockResolvedValue(existingTask);
+    system.kanbanBoardStore.get = vi.fn().mockResolvedValue({
+      id: "board-1",
+      columns: [
+        { id: "backlog", name: "Backlog", position: 0, stage: "backlog" },
+        {
+          id: "todo",
+          name: "Todo",
+          position: 1,
+          stage: "todo",
+          automation: {
+            enabled: true,
+            contractRules: {
+              requireCanonicalStory: true,
+              loopBreakerThreshold: 2,
+            },
+          },
+        },
+      ],
+    });
+
+    const request = new NextRequest("http://localhost/api/tasks/task-1", {
+      method: "PATCH",
+      body: JSON.stringify({ objective: "```yaml\nstory: [broken\n```" }),
+      headers: { "Content-Type": "application/json" },
+    });
+
+    const response = await PATCH(request, {
+      params: Promise.resolve({ taskId: "task-1" }),
+    });
+    const data = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(data.error).toContain("Cannot update card description");
+    expect(data.error).toContain('canonical story YAML is invalid for "Todo"');
+    expect(data.contractReadiness).toMatchObject({
+      checked: true,
+      ready: false,
+      hasCanonicalStoryBlock: true,
+    });
+    expect(taskStore.save).toHaveBeenCalledWith(expect.objectContaining({
+      id: "task-1",
+      comment: expect.stringContaining("Contract gate blocked:"),
+    }));
+  });
+
+  it("breaks the contract retry loop after repeated canonical YAML failures", async () => {
+    const existingTask = createTask({
+      id: "task-1",
+      title: "Loop on malformed contract",
+      objective: "Initial prose",
+      workspaceId: "workspace-1",
+      boardId: "board-1",
+      columnId: "backlog",
+      status: TaskStatus.PENDING,
+      comments: [{
+        id: "note-1",
+        body: 'Contract gate blocked: Cannot update card description: canonical story YAML is invalid for "Todo".',
+        createdAt: new Date().toISOString(),
+      }],
+    });
+    taskStore.get.mockResolvedValue(existingTask);
+    system.kanbanBoardStore.get = vi.fn().mockResolvedValue({
+      id: "board-1",
+      columns: [
+        { id: "backlog", name: "Backlog", position: 0, stage: "backlog" },
+        {
+          id: "todo",
+          name: "Todo",
+          position: 1,
+          stage: "todo",
+          automation: {
+            enabled: true,
+            contractRules: {
+              requireCanonicalStory: true,
+              loopBreakerThreshold: 2,
+            },
+          },
+        },
+      ],
+    });
+
+    const request = new NextRequest("http://localhost/api/tasks/task-1", {
+      method: "PATCH",
+      body: JSON.stringify({ objective: "```yaml\nstory: [broken-again\n```" }),
+      headers: { "Content-Type": "application/json" },
+    });
+
+    const response = await PATCH(request, {
+      params: Promise.resolve({ taskId: "task-1" }),
+    });
+
+    expect(response.status).toBe(400);
+    expect(taskStore.save).toHaveBeenCalledWith(expect.objectContaining({
+      id: "task-1",
+      labels: expect.arrayContaining(["contract-gate-blocked"]),
+      lastSyncError: expect.stringContaining('Stopped automatic retries for "Todo"'),
+    }));
+  });
+
   it("clears the active queue entry before rerunning a task trigger", async () => {
     const request = new NextRequest("http://localhost/api/tasks/task-1", {
       method: "PATCH",
@@ -345,6 +559,99 @@ describe("/api/tasks/[taskId]", () => {
       triggerSessionId: "session-new",
     }));
     expect(data.task.triggerSessionId).toBe("session-new");
+  });
+
+  it("reuses the existing task worktree when retrying a dev trigger", async () => {
+    const existingTask = createTask({
+      id: "task-1",
+      title: "Retry dev on the same worktree",
+      objective: "Keep using the existing dev worktree",
+      workspaceId: "workspace-1",
+      boardId: "board-1",
+      columnId: "dev",
+      status: TaskStatus.IN_PROGRESS,
+      triggerSessionId: "session-dev-old",
+      worktreeId: "wt-1",
+    });
+    taskStore.get.mockResolvedValue(existingTask);
+    system.worktreeStore.get = vi.fn().mockResolvedValue({
+      id: "wt-1",
+      codebaseId: "repo-1",
+      workspaceId: "workspace-1",
+      worktreePath: "/tmp/worktrees/task-1",
+      branch: "issue/task-1",
+      baseBranch: "main",
+      status: "active",
+    });
+    system.codebaseStore.get = vi.fn().mockResolvedValue({
+      id: "repo-1",
+      workspaceId: "workspace-1",
+      repoPath: "/tmp/repos/main",
+      branch: "main",
+    });
+
+    const request = new NextRequest("http://localhost/api/tasks/task-1", {
+      method: "PATCH",
+      body: JSON.stringify({ retryTrigger: true }),
+      headers: { "Content-Type": "application/json" },
+    });
+
+    const response = await PATCH(request, {
+      params: Promise.resolve({ taskId: "task-1" }),
+    });
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(createWorktree).not.toHaveBeenCalled();
+    expect(capturedEnqueueTask).toMatchObject({
+      id: "task-1",
+      columnId: "dev",
+      worktreeId: "wt-1",
+      triggerSessionId: undefined,
+    });
+    expect(data.task.worktreeId).toBe("wt-1");
+  });
+
+  it("keeps retrying a dev trigger even when the stored worktree id is stale", async () => {
+    const existingTask = createTask({
+      id: "task-1",
+      title: "Retry dev after stale worktree",
+      objective: "Replace missing worktree records before rerun",
+      workspaceId: "workspace-1",
+      boardId: "board-1",
+      columnId: "dev",
+      status: TaskStatus.IN_PROGRESS,
+      triggerSessionId: "session-dev-old",
+      worktreeId: "wt-stale",
+    });
+    taskStore.get.mockResolvedValue(existingTask);
+    system.worktreeStore.get = vi.fn().mockResolvedValue(undefined);
+    system.codebaseStore.getDefault = vi.fn().mockResolvedValue({
+      id: "repo-1",
+      workspaceId: "workspace-1",
+      repoPath: "/tmp/repos/main",
+      branch: "main",
+    });
+    const request = new NextRequest("http://localhost/api/tasks/task-1", {
+      method: "PATCH",
+      body: JSON.stringify({ retryTrigger: true }),
+      headers: { "Content-Type": "application/json" },
+    });
+
+    const response = await PATCH(request, {
+      params: Promise.resolve({ taskId: "task-1" }),
+    });
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(createWorktree).not.toHaveBeenCalled();
+    expect(capturedEnqueueTask).toMatchObject({
+      id: "task-1",
+      columnId: "dev",
+      worktreeId: "wt-stale",
+      triggerSessionId: undefined,
+    });
+    expect(data.task.worktreeId).toBe("wt-stale");
   });
 
   it("passes a retry provider override without persisting a card provider override", async () => {
@@ -493,7 +800,18 @@ describe("/api/tasks/[taskId]", () => {
       id: "board-1",
       columns: [
         { id: "dev", name: "Dev", position: 1, stage: "dev" },
-        { id: "review", name: "Review", position: 2, stage: "review" },
+        {
+          id: "review",
+          name: "Review",
+          position: 2,
+          stage: "review",
+          automation: {
+            deliveryRules: {
+              requireCommittedChanges: true,
+              requireCleanWorktree: true,
+            },
+          },
+        },
       ],
     });
     buildTaskDeliveryReadiness.mockResolvedValue({
@@ -511,7 +829,7 @@ describe("/api/tasks/[taskId]", () => {
       isGitHubRepo: true,
       canCreatePullRequest: false,
     });
-    buildTaskDeliveryTransitionError.mockReturnValue(
+    buildTaskDeliveryTransitionErrorFromRules.mockReturnValue(
       'Cannot move task to "Review": no committed changes detected on branch "issue/task-1" relative to "origin/main". Commit your implementation before requesting review.',
     );
 
@@ -536,6 +854,76 @@ describe("/api/tasks/[taskId]", () => {
     expect(taskStore.save).not.toHaveBeenCalled();
   });
 
+  it("blocks moving a card to review when the branch still has uncommitted changes", async () => {
+    const existingTask = createTask({
+      id: "task-1",
+      title: "Review blocked until worktree is clean",
+      objective: "Need all implementation committed before review",
+      workspaceId: "workspace-1",
+      boardId: "board-1",
+      columnId: "dev",
+      status: TaskStatus.IN_PROGRESS,
+    });
+    taskStore.get.mockResolvedValue(existingTask);
+    system.kanbanBoardStore.get = vi.fn().mockResolvedValue({
+      id: "board-1",
+      columns: [
+        { id: "dev", name: "Dev", position: 1, stage: "dev" },
+        {
+          id: "review",
+          name: "Review",
+          position: 2,
+          stage: "review",
+          automation: {
+            deliveryRules: {
+              requireCommittedChanges: true,
+              requireCleanWorktree: true,
+            },
+          },
+        },
+      ],
+    });
+    buildTaskDeliveryReadiness.mockResolvedValue({
+      checked: true,
+      branch: "issue/task-1",
+      baseBranch: "main",
+      baseRef: "origin/main",
+      modified: 2,
+      untracked: 1,
+      ahead: 1,
+      behind: 0,
+      commitsSinceBase: 1,
+      hasCommitsSinceBase: true,
+      hasUncommittedChanges: true,
+      isGitHubRepo: true,
+      canCreatePullRequest: false,
+    });
+    buildTaskDeliveryTransitionErrorFromRules.mockReturnValue(
+      'Cannot move task to "Review": branch "issue/task-1" still has uncommitted changes (2 modified, 1 untracked). Commit, stash, or discard them before requesting review.',
+    );
+
+    const request = new NextRequest("http://localhost/api/tasks/task-1", {
+      method: "PATCH",
+      body: JSON.stringify({ columnId: "review" }),
+      headers: { "Content-Type": "application/json" },
+    });
+
+    const response = await PATCH(request, {
+      params: Promise.resolve({ taskId: "task-1" }),
+    });
+    const data = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(data.error).toContain("uncommitted changes");
+    expect(data.error).toContain("before requesting review");
+    expect(data.deliveryReadiness).toMatchObject({
+      checked: true,
+      hasCommitsSinceBase: true,
+      hasUncommittedChanges: true,
+    });
+    expect(taskStore.save).not.toHaveBeenCalled();
+  });
+
   it("blocks moving a card to done when a GitHub task is not PR-ready", async () => {
     const existingTask = createTask({
       id: "task-1",
@@ -551,7 +939,19 @@ describe("/api/tasks/[taskId]", () => {
       id: "board-1",
       columns: [
         { id: "review", name: "Review", position: 2, stage: "review" },
-        { id: "done", name: "Done", position: 3, stage: "done" },
+        {
+          id: "done",
+          name: "Done",
+          position: 3,
+          stage: "done",
+          automation: {
+            deliveryRules: {
+              requireCommittedChanges: true,
+              requireCleanWorktree: true,
+              requirePullRequestReady: true,
+            },
+          },
+        },
       ],
     });
     buildTaskDeliveryReadiness.mockResolvedValue({
@@ -569,7 +969,7 @@ describe("/api/tasks/[taskId]", () => {
       isGitHubRepo: true,
       canCreatePullRequest: false,
     });
-    buildTaskDeliveryTransitionError.mockReturnValue(
+    buildTaskDeliveryTransitionErrorFromRules.mockReturnValue(
       'Cannot move task to "Done": GitHub repo is not PR-ready yet. Use a feature branch instead of "main" so this task can open a pull request cleanly.',
     );
 
@@ -684,5 +1084,144 @@ describe("/api/tasks/[taskId]", () => {
       label: "cf7f1e28",
       baseBranch: "main",
     }));
+    expect(capturedEnqueueTask).toMatchObject({
+      id: taskId,
+      columnId: "dev",
+      worktreeId: "wt-1",
+    });
+  });
+
+  it("returns a review card to dev and reuses the original worktree when review is not approved", async () => {
+    const existingTask = createTask({
+      id: "task-1",
+      title: "Return review feedback to dev",
+      objective: "Send the fix back to dev on the same worktree",
+      workspaceId: "workspace-1",
+      boardId: "board-1",
+      columnId: "review",
+      status: TaskStatus.REVIEW_REQUIRED,
+      triggerSessionId: "session-review-1",
+      worktreeId: "wt-1",
+    });
+    taskStore.get.mockResolvedValue(existingTask);
+    prepareTaskForColumnChange.mockImplementationOnce((_fromColumnId, task) => {
+      if (task) {
+        task.triggerSessionId = undefined;
+        task.lastSyncError = undefined;
+      }
+      return true;
+    });
+    system.worktreeStore.get = vi.fn().mockResolvedValue({
+      id: "wt-1",
+      codebaseId: "repo-1",
+      workspaceId: "workspace-1",
+      worktreePath: "/tmp/worktrees/task-1",
+      branch: "issue/task-1",
+      baseBranch: "main",
+      status: "active",
+    });
+    system.codebaseStore.get = vi.fn().mockResolvedValue({
+      id: "repo-1",
+      workspaceId: "workspace-1",
+      repoPath: "/tmp/repos/main",
+      branch: "main",
+    });
+    system.kanbanBoardStore.get = vi.fn().mockResolvedValue({
+      id: "board-1",
+      columns: [
+        { id: "dev", name: "Dev", position: 1, stage: "dev" },
+        { id: "review", name: "Review", position: 2, stage: "review" },
+      ],
+    });
+
+    const request = new NextRequest("http://localhost/api/tasks/task-1", {
+      method: "PATCH",
+      body: JSON.stringify({
+        verificationVerdict: VerificationVerdict.NOT_APPROVED,
+        verificationReport: "Please address the failing review checks.",
+      }),
+      headers: { "Content-Type": "application/json" },
+    });
+
+    const response = await PATCH(request, {
+      params: Promise.resolve({ taskId: "task-1" }),
+    });
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(createWorktree).not.toHaveBeenCalled();
+    expect(capturedEnqueueTask).toMatchObject({
+      id: "task-1",
+      columnId: "dev",
+      worktreeId: "wt-1",
+    });
+    expect(data.task).toMatchObject({
+      columnId: "dev",
+      status: TaskStatus.IN_PROGRESS,
+      verificationVerdict: VerificationVerdict.NOT_APPROVED,
+      worktreeId: "wt-1",
+    });
+  });
+
+  it("maps approved review convergence from the target column stage when done uses a custom id", async () => {
+    const existingTask = createTask({
+      id: "task-1",
+      title: "Release reviewed task",
+      objective: "Move approved review work into a custom done lane",
+      workspaceId: "workspace-1",
+      boardId: "board-1",
+      columnId: "review",
+      status: TaskStatus.REVIEW_REQUIRED,
+    });
+    existingTask.assignedSpecialistId = "kanban-review-guard";
+    existingTask.assignedSpecialistName = "Review Guard";
+    taskStore.get.mockResolvedValue(existingTask);
+    system.kanbanBoardStore.get = vi.fn().mockResolvedValue({
+      id: "board-1",
+      columns: [
+        {
+          id: "review",
+          name: "Review",
+          position: 1,
+          stage: "review",
+          automation: {
+            enabled: true,
+            steps: [
+              {
+                id: "qa-frontend",
+                role: "GATE",
+                specialistId: "kanban-qa-frontend",
+                specialistName: "QA Frontend",
+              },
+              {
+                id: "review-guard",
+                role: "GATE",
+                specialistId: "kanban-review-guard",
+                specialistName: "Review Guard",
+              },
+            ],
+          },
+        },
+        { id: "released-stage", name: "Released", position: 2, stage: "done" },
+      ],
+    });
+
+    const response = await PATCH(new NextRequest("http://localhost/api/tasks/task-1", {
+      method: "PATCH",
+      body: JSON.stringify({
+        verificationVerdict: VerificationVerdict.APPROVED,
+        verificationReport: "Release checks passed",
+      }),
+    }), {
+      params: Promise.resolve({ taskId: "task-1" }),
+    });
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.task).toMatchObject({
+      columnId: "released-stage",
+      status: TaskStatus.COMPLETED,
+      verificationVerdict: VerificationVerdict.APPROVED,
+    });
   });
 });

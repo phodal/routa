@@ -77,7 +77,14 @@ function findCurrentLaneSession(
 
   return [...(task.laneSessions ?? [])]
     .reverse()
-    .find((session) => session.columnId === currentColumnId && session.status === "running");
+    .find((session) => (
+      session.columnId === currentColumnId
+      && (
+        session.status === "running"
+        || session.status === "transitioned"
+        || session.status === "completed"
+      )
+    ));
 }
 
 export function resolveCurrentLaneAutomationState(

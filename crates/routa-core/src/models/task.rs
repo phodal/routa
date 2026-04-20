@@ -228,6 +228,37 @@ impl TaskStatus {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum TaskCreationSource {
+    Manual,
+    Agent,
+    Api,
+    Session,
+}
+
+impl TaskCreationSource {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Manual => "manual",
+            Self::Agent => "agent",
+            Self::Api => "api",
+            Self::Session => "session",
+        }
+    }
+
+    #[allow(clippy::should_implement_trait)]
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s {
+            "manual" => Some(Self::Manual),
+            "agent" => Some(Self::Agent),
+            "api" => Some(Self::Api),
+            "session" => Some(Self::Session),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum VerificationVerdict {
     #[serde(rename = "APPROVED")]
     Approved,
@@ -439,6 +470,8 @@ pub struct Task {
     /// Session ID that created this task (for session-scoped filtering)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub session_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub creation_source: Option<TaskCreationSource>,
     /// Codebase IDs linked to this task
     #[serde(default)]
     pub codebase_ids: Vec<String>,
@@ -480,6 +513,7 @@ impl Task {
         parallel_group: Option<String>,
     ) -> Self {
         let now = Utc::now();
+        let creation_source = session_id.as_ref().map(|_| TaskCreationSource::Session);
         Self {
             id,
             title,
@@ -513,6 +547,7 @@ impl Task {
             parallel_group,
             workspace_id,
             session_id,
+            creation_source,
             codebase_ids: Vec::new(),
             worktree_id: None,
             session_ids: Vec::new(),

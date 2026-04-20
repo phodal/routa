@@ -11,10 +11,15 @@
  * - 24h inactivity cleanup
  */
 
-import * as Y from "yjs";
+import type { Doc } from "yjs";
+
+// Yjs publishes separate ESM and CJS entrypoints. In the Next/Turbopack server
+// runtime, mixing those entrypoints can trigger Yjs's duplicate-import guard and
+// break constructor checks. Keep this server-side note layer on the CJS entry.
+const Y = require("yjs") as typeof import("yjs");
 
 export interface CRDTDocument {
-  doc: Y.Doc;
+  doc: Doc;
   lastAccess: Date;
   isDirty: boolean;
 }

@@ -9,19 +9,31 @@ threshold:
 
 metrics:
   - name: ts_test_pass
-    command: npm run test:run 2>&1
+    command: npm run test:run:fast 2>&1
     pattern: "Tests\\s+(\\d+)\\s+passed"
     hard_gate: true
     tier: fast
 
+  - name: ts_test_pass_full
+    command: npm run test:run 2>&1
+    pattern: "Tests\\s+(\\d+)\\s+passed"
+    hard_gate: true
+    tier: normal
+
+  - name: ts_test_coverage
+    command: npm run test:cov:ts 2>&1
+    tier: normal
+    description: "Vitest V8 line coverage must stay at or above 80%."
+
   - name: rust_test_pass
     command: cargo test --workspace --exclude routa-desktop 2>&1
     pattern: "test result: ok"
+    serial: true
     hard_gate: true
     tier: normal
 
   - name: graph_test_radius_probe
-    command: graph:test-radius
+    command: entrix graph test-radius --json
     tier: normal
     execution_scope: ci
     gate: advisory
@@ -34,6 +46,21 @@ metrics:
       - apps/**
       - crates/**
     description: "通过代码图估算 changed targets 的测试半径；图后端缺失时跳过不计分"
+
+  - name: graph_test_mapping_probe
+    command: entrix graph test-mapping --no-graph --json
+    tier: normal
+    execution_scope: local
+    gate: advisory
+    kind: holistic
+    analysis: static
+    evidence_type: probe
+    scope: [web, rust, java]
+    run_when_changed:
+      - src/**
+      - apps/**
+      - crates/**
+    description: "检查 changed source file 是否存在对应测试映射；TS/JS/Java 走路径规则，Rust 允许 inline test 或弱断言 unknown"
 ---
 
 # 单元测试与集成测试证据

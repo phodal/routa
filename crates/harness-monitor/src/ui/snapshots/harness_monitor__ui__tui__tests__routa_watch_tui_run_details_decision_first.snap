@@ -1,0 +1,48 @@
+---
+source: crates/harness-monitor/src/ui/tests.rs
+expression: "render_snapshot(&state, &mut cache, 180, 44)"
+---
+routa.js  2 dirty  1 unassigned  lines: --  loc: --  fitness: fast  transport: socket
+┌Runs [Tab]───────────────────────────────┐┌Git Status  +38 -17 (Total: +38 -17)─────────────────────────────────────────────────┐┌Diff Preview────────────────────────────────────┐
+│ 1 active  2 total  2 worktree(s)  mode:u││ 2 files, 0 untracked, 5 commits, 1 agent, branch: main, 2 worktrees                 ││@@ -1,2 +1,3 @@                                 │
+│ recent first  view:1-3/3                ││─────────────────────────────────────────────────────────────────────────────────────││-use old                                        │
+│  = All                        all    2m ││> crates/harness-monitor/src/tui.rs                         M  +38 -5 TM changed   4m││+use new                                        │
+│  builder  hook  all  files:2  e/i/?:1/0/││  src/app/api/a2a/card/route.ts                                D     -12 TM miss   5m││+use cache                                      │
+│▶ ◈ ...itor task journey    active    3m ││                                                                                     ││                                                │
+│  fixer  hook  codex  files:1  e/i/?:1/0/││                                                                                     ││                                                │
+│  ? unassigned           attention    2m ││                                                                                     ││                                                │
+│  reviewer  file-review  unassigned  file││                                                                                     ││                                                │
+│                                         ││                                                                                     ││                                                │
+│                                         ││                                                                                     ││                                                │
+│                                         ││                                                                                     ││                                                │
+│                                         ││                                                                                     ││                                                │
+│                                         ││                                                                                     ││                                                │
+│                                         ││                                                                                     ││                                                │
+│                                         ││                                                                                     ││                                                │
+│                                         ││                                                                                     ││                                                │
+│                                         ││                                                                                     ││                                                │
+│                                         ││                                                                                     ││                                                │
+│                                         ││                                                                                     ││                                                │
+│                                         ││                                                                                     ││                                                │
+└─────────────────────────────────────────┘│                                                                                     │└────────────────────────────────────────────────┘
+┌Sessions─────────────────────────────────┐│                                                                                     │┌Fitness (Entrix Fast) - PASS 91.0% (0/12) 4200ms┐
+│ 1 prompt  source:codex                  ││                                                                                     ││Files: crates/harness-monitor/src/tui.rs,       │
+│                                         ││                                                                                     ││src/app/api/a2a/card/route.ts                   │
+│─────────────────────────────────────────│└─────────────────────────────────────────────────────────────────────────────────────┘│Dimension scores:                               │
+│▶ All prompts                        3m  │┌Run Details──────────────────────────────────────────────────────────────────────────┐│92% code_quality   w18  4/4  █████████████████░ │
+│  codex  active  files:1                 ││Fix harness monitor task journey                                                     ││95% api_contract   w10  2/2  █████████████████░ │
+│  ...harness monitor task journey    3m  ││State: active  Eval: fast pass 91.0%  Approval: waiting_on_evidence                  ││Slowest: all sampled metrics are pass or waived │
+│...1  commit: stabilize monitor journey  ││Block: missing coverage_report                                                       ││no slow metrics in this run                     │
+│                                         ││Next: generate coverage evidence                                                     ││                                                │
+│                                         ││Evidence: ok:diff_summary, ok:test_report, missing:coverage_report                   ││                                                │
+│                                         ││Policy: allow_with_evidence  Effects: repo_write                                     ││                                                │
+│                                         ││Trace: ...journey  ->  Feature Explorer @ /workspace/:workspaceId/feature-explorer   ││                                                │
+│                                         ││Context: codex  fixer  hook  gpt-5.4                                                 ││                                                │
+│                                         ││Workspace: dirty  <repo>                                                       ││                                                │
+└─────────────────────────────────────────┘└─────────────────────────────────────────────────────────────────────────────────────┘└────────────────────────────────────────────────┘
+┌Event Stream (all)────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│<ts>  WATCH  modify   crates/harness-monitor/src/tui.rs                                                                                                                       │
+│<ts>  HOOK   live-hook-check Edit Write                                                                                                                                       │
+│<ts>  GIT    post-commit main                                                                                                                                                 │
+└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+Tab panes  ↑↓ select  d preview/diff  Pg scroll  f follow:on  T theme  Esc clear  g refresh all  m fast/full  q quit

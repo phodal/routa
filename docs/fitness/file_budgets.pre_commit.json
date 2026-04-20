@@ -1,0 +1,24 @@
+{
+  "default_max_lines": 1600,
+  "include_roots": ["src", "apps", "crates", "scripts", "tests", "e2e", "tools"],
+  "extensions": [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".mts", ".cts", ".rs"],
+  "extension_max_lines": {
+    ".ts": 1600,
+    ".tsx": 1600,
+    ".js": 1600,
+    ".jsx": 1600,
+    ".mjs": 1600,
+    ".cjs": 1600,
+    ".mts": 1600,
+    ".cts": 1600,
+    ".rs": 1600
+  },
+  "excluded_parts": ["/node_modules/", "/target/", "/.next/", "/_next/", "/bundled/"],
+  "overrides": [
+    {
+      "path": "crates/routa-core/src/git.rs",
+      "max_lines": 1649,
+      "reason": "legacy hotspot frozen at current baseline; git utility split planned in follow-up refactor"
+    }
+  ]
+}

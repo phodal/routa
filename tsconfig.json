@@ -34,13 +34,14 @@
     "**/*.tsx",
     ".next/types/**/*.ts",
     "next-env.d.ts",
-    ".next/dev/types/**/*.ts",
-    ".next-page-snapshots/types/**/*.ts",
-    ".next-page-snapshots/dev/types/**/*.ts"
+    ".next/dev/types/**/*.ts"
   ],
   "exclude": [
     "node_modules",
+    "target/**/*",
     "src/test/**/*",
+    "src/app/_api_excluded/**/*",
+    "src/app/_well-known_excluded/**/*",
     "src/core/platform/tauri-bridge.ts",
     "src/core/db/sqlite.ts",
     "src/core/db/sqlite-schema.ts",

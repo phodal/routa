@@ -21,7 +21,7 @@ definitions:
       timezone: UTC
     target:
       type: specialist
-      ref: harness-test
+      ref: harness-fluency
     runtime:
       scheduleName: Weekly harness fluency
 

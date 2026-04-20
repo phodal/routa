@@ -67,8 +67,7 @@ async fn list_catalog(
         "skillssh" => handle_skillssh_search(&query).await,
         "github" => handle_github_list(&query).await,
         _ => Err(ServerError::BadRequest(format!(
-            "Unknown catalog type: {}. Use \"skillssh\" or \"github\".",
-            catalog_type
+            "Unknown catalog type: {catalog_type}. Use \"skillssh\" or \"github\"."
         ))),
     }
 }
@@ -93,7 +92,7 @@ async fn handle_skillssh_search(
         .header("User-Agent", "routa-skill-catalog")
         .send()
         .await
-        .map_err(|e| ServerError::Internal(format!("skills.sh API failed: {}", e)))?;
+        .map_err(|e| ServerError::Internal(format!("skills.sh API failed: {e}")))?;
 
     if !response.status().is_success() {
         return Err(ServerError::Internal(format!(
@@ -105,7 +104,7 @@ async fn handle_skillssh_search(
     let data: serde_json::Value = response
         .json()
         .await
-        .map_err(|e| ServerError::Internal(format!("Failed to parse response: {}", e)))?;
+        .map_err(|e| ServerError::Internal(format!("Failed to parse response: {e}")))?;
 
     let installed = installed_skill_names();
 
@@ -153,10 +152,8 @@ async fn handle_github_list(query: &CatalogQuery) -> Result<Json<serde_json::Val
     let catalog_path = query.path.as_deref().unwrap_or(DEFAULT_GITHUB_PATH);
     let git_ref = query.git_ref.as_deref().unwrap_or(DEFAULT_REF);
 
-    let api_url = format!(
-        "https://api.github.com/repos/{}/contents/{}?ref={}",
-        repo, catalog_path, git_ref
-    );
+    let api_url =
+        format!("https://api.github.com/repos/{repo}/contents/{catalog_path}?ref={git_ref}");
 
     let client = reqwest::Client::new();
     let mut req = client
@@ -165,18 +162,17 @@ async fn handle_github_list(query: &CatalogQuery) -> Result<Json<serde_json::Val
         .header("Accept", "application/vnd.github.v3+json");
 
     if let Some(token) = github_token() {
-        req = req.header("Authorization", format!("token {}", token));
+        req = req.header("Authorization", format!("token {token}"));
     }
 
     let response = req
         .send()
         .await
-        .map_err(|e| ServerError::Internal(format!("GitHub API request failed: {}", e)))?;
+        .map_err(|e| ServerError::Internal(format!("GitHub API request failed: {e}")))?;
 
     if response.status() == reqwest::StatusCode::NOT_FOUND {
         return Err(ServerError::NotFound(format!(
-            "Catalog not found: https://github.com/{}/tree/{}/{}",
-            repo, git_ref, catalog_path
+            "Catalog not found: https://github.com/{repo}/tree/{git_ref}/{catalog_path}"
         )));
     }
 
@@ -190,7 +186,7 @@ async fn handle_github_list(query: &CatalogQuery) -> Result<Json<serde_json::Val
     let entries: Vec<serde_json::Value> = response
         .json()
         .await
-        .map_err(|e| ServerError::Internal(format!("Failed to parse GitHub response: {}", e)))?;
+        .map_err(|e| ServerError::Internal(format!("Failed to parse GitHub response: {e}")))?;
 
     let installed = installed_skill_names();
 
@@ -239,8 +235,7 @@ async fn install_from_catalog(
         "skillssh" => install_from_skillssh(&body).await,
         "github" => install_from_github(&body).await,
         _ => Err(ServerError::BadRequest(format!(
-            "Unknown catalog type: {}",
-            catalog_type
+            "Unknown catalog type: {catalog_type}"
         ))),
     }
 }
@@ -250,7 +245,7 @@ async fn install_from_skillssh(
     body: &InstallRequest,
 ) -> Result<Json<serde_json::Value>, ServerError> {
     let skills: Vec<SkillInstallItem> = serde_json::from_value(body.skills.clone())
-        .map_err(|e| ServerError::BadRequest(format!("Invalid skills array: {}", e)))?;
+        .map_err(|e| ServerError::BadRequest(format!("Invalid skills array: {e}")))?;
 
     if skills.is_empty() {
         return Err(ServerError::BadRequest("Empty skills array".into()));
@@ -276,7 +271,7 @@ async fn install_from_skillssh(
                 installed.extend(ok);
                 errors.extend(err);
             }
-            Err(e) => errors.push(format!("Failed for {}: {}", repo_source, e)),
+            Err(e) => errors.push(format!("Failed for {repo_source}: {e}")),
         }
     }
 
@@ -293,7 +288,7 @@ async fn install_from_github(
     body: &InstallRequest,
 ) -> Result<Json<serde_json::Value>, ServerError> {
     let skill_names: Vec<String> = serde_json::from_value(body.skills.clone())
-        .map_err(|e| ServerError::BadRequest(format!("Invalid skills array: {}", e)))?;
+        .map_err(|e| ServerError::BadRequest(format!("Invalid skills array: {e}")))?;
 
     if skill_names.is_empty() {
         return Err(ServerError::BadRequest("Empty skills array".into()));
@@ -331,15 +326,12 @@ async fn download_and_install_skills(
 ) -> Result<(Vec<String>, Vec<String>), String> {
     let parts: Vec<&str> = repo.split('/').collect();
     if parts.len() != 2 {
-        return Err(format!("Invalid repo: {}", repo));
+        return Err(format!("Invalid repo: {repo}"));
     }
     let (owner, repo_name) = (parts[0], parts[1]);
 
     let git_ref = "main";
-    let zip_url = format!(
-        "https://codeload.github.com/{}/{}/zip/{}",
-        owner, repo_name, git_ref
-    );
+    let zip_url = format!("https://codeload.github.com/{owner}/{repo_name}/zip/{git_ref}");
 
     let client = reqwest::Client::new();
     let mut req = client
@@ -347,13 +339,13 @@ async fn download_and_install_skills(
         .header("User-Agent", "routa-skill-install");
 
     if let Some(token) = github_token() {
-        req = req.header("Authorization", format!("token {}", token));
+        req = req.header("Authorization", format!("token {token}"));
     }
 
     let response = req
         .send()
         .await
-        .map_err(|e| format!("Download failed: {}", e))?;
+        .map_err(|e| format!("Download failed: {e}"))?;
 
     if !response.status().is_success() {
         return Err(format!("HTTP {}", response.status()));
@@ -362,18 +354,18 @@ async fn download_and_install_skills(
     let zip_bytes = response
         .bytes()
         .await
-        .map_err(|e| format!("Read failed: {}", e))?;
+        .map_err(|e| format!("Read failed: {e}"))?;
 
-    let tmp_dir = tempfile::tempdir().map_err(|e| format!("Temp dir: {}", e))?;
+    let tmp_dir = tempfile::tempdir().map_err(|e| format!("Temp dir: {e}"))?;
 
     let cursor = std::io::Cursor::new(&zip_bytes);
-    let mut archive = zip::ZipArchive::new(cursor).map_err(|e| format!("Zip: {}", e))?;
+    let mut archive = zip::ZipArchive::new(cursor).map_err(|e| format!("Zip: {e}"))?;
     archive
         .extract(tmp_dir.path())
-        .map_err(|e| format!("Extract: {}", e))?;
+        .map_err(|e| format!("Extract: {e}"))?;
 
     let top_dirs: Vec<_> = std::fs::read_dir(tmp_dir.path())
-        .map_err(|e| format!("Read: {}", e))?
+        .map_err(|e| format!("Read: {e}"))?
         .flatten()
         .filter(|e| e.path().is_dir())
         .collect();
@@ -399,7 +391,7 @@ async fn download_and_install_skills(
     for skill_name in skill_names {
         let dest_dir = dest_base.join(skill_name);
         if dest_dir.exists() {
-            errors.push(format!("Already installed: {}", skill_name));
+            errors.push(format!("Already installed: {skill_name}"));
             continue;
         }
 
@@ -427,9 +419,9 @@ async fn download_and_install_skills(
         match found_src {
             Some(src) => match routa_core::git::copy_dir_recursive(&src, &dest_dir) {
                 Ok(_) => installed.push(skill_name.clone()),
-                Err(e) => errors.push(format!("Copy {}: {}", skill_name, e)),
+                Err(e) => errors.push(format!("Copy {skill_name}: {e}")),
             },
-            None => errors.push(format!("Not found: {}", skill_name)),
+            None => errors.push(format!("Not found: {skill_name}")),
         }
     }
 

@@ -694,7 +694,7 @@ fn validate_architecture_dsl(document: &ArchitectureDslDocument) -> Vec<Architec
                 issues.push(issue(
                     "rule.selector.missing",
                     &format!("{path}.{field_name}"),
-                    format!("selector '{}' is not defined", selector_ref),
+                    format!("selector '{selector_ref}' is not defined"),
                 ));
             }
         }
@@ -934,13 +934,13 @@ fn execute_graph_rules(
                         document_rule.id
                     )
                 })?;
-                let graph = graph_cache
-                    .entry(language)
-                    .or_insert_with(|| analyze_directory(
+                let graph = graph_cache.entry(language).or_insert_with(|| {
+                    analyze_directory(
                         graph_root,
                         language.into_analysis_lang(),
                         crate::commands::graph::AnalysisDepth::Fast, // Use Fast mode for fitness checks
-                    ));
+                    )
+                });
                 rule_plan.execution = Some(execute_graph_rule(document_rule, document, graph)?);
             }
             Some(EngineHint::Archunitts) => {
@@ -970,8 +970,12 @@ fn resolve_graph_root(repo_root: &Path, defaults_root: Option<&str>) -> Result<P
     } else {
         repo_root.join(raw_root)
     };
-    let metadata = fs::metadata(&candidate)
-        .map_err(|error| format!("defaults.root path does not exist: {} ({error})", candidate.display()))?;
+    let metadata = fs::metadata(&candidate).map_err(|error| {
+        format!(
+            "defaults.root path does not exist: {} ({error})",
+            candidate.display()
+        )
+    })?;
 
     if !metadata.is_dir() {
         return Err(format!(
@@ -1363,7 +1367,7 @@ fn format_text_report(report: &ArchitectureDslReport) -> String {
         )
         .ok();
         if let Some(description) = &selector.description {
-            writeln!(&mut out, "    description: {}", description).ok();
+            writeln!(&mut out, "    description: {description}").ok();
         }
     }
 
@@ -1388,13 +1392,13 @@ fn format_text_report(report: &ArchitectureDslReport) -> String {
         .ok();
         writeln!(&mut out, "    refs: {}", rule.references.join(", ")).ok();
         if let Some(executor) = &rule.executor {
-            writeln!(&mut out, "    executor: {}", executor).ok();
+            writeln!(&mut out, "    executor: {executor}").ok();
         }
         if let Some(expression) = &rule.compiled_expression {
-            writeln!(&mut out, "    expression: {}", expression).ok();
+            writeln!(&mut out, "    expression: {expression}").ok();
         }
         if let Some(reason) = &rule.unsupported_reason {
-            writeln!(&mut out, "    reason: {}", reason).ok();
+            writeln!(&mut out, "    reason: {reason}").ok();
         }
         if let Some(execution) = &rule.execution {
             writeln!(
@@ -1405,7 +1409,7 @@ fn format_text_report(report: &ArchitectureDslReport) -> String {
             )
             .ok();
             if let Some(note) = &execution.note {
-                writeln!(&mut out, "    note: {}", note).ok();
+                writeln!(&mut out, "    note: {note}").ok();
             }
         }
     }
@@ -1427,7 +1431,7 @@ fn format_text_report(report: &ArchitectureDslReport) -> String {
         writeln!(&mut out).ok();
         writeln!(&mut out, "warnings").ok();
         for warning in &report.warnings {
-            writeln!(&mut out, "  - {}", warning).ok();
+            writeln!(&mut out, "  - {warning}").ok();
         }
     }
 

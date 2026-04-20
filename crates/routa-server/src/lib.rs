@@ -39,6 +39,7 @@ pub use routa_core::{AppState, AppStateInner, Database, ServerError};
 
 pub mod api;
 mod application;
+pub mod feature_tree;
 
 // ── Server bootstrap ────────────────────────────────────────────────────
 
@@ -75,7 +76,7 @@ impl Default for ServerConfig {
 /// This is useful when you need to share the state between the HTTP server
 /// and other consumers (e.g. Tauri IPC commands, JSON-RPC router).
 pub async fn create_app_state(db_path: &str) -> Result<state::AppState, String> {
-    let db = db::Database::open(db_path).map_err(|e| format!("Failed to open database: {}", e))?;
+    let db = db::Database::open(db_path).map_err(|e| format!("Failed to open database: {e}"))?;
 
     let state: state::AppState = Arc::new(state::AppStateInner::new(db));
 
@@ -84,7 +85,7 @@ pub async fn create_app_state(db_path: &str) -> Result<state::AppState, String> 
         .workspace_store
         .ensure_default()
         .await
-        .map_err(|e| format!("Failed to initialize default workspace: {}", e))?;
+        .map_err(|e| format!("Failed to initialize default workspace: {e}"))?;
 
     // Discover skills
     let cwd = std::env::current_dir()
@@ -117,7 +118,7 @@ fn resolve_static_target(path: &str) -> (String, &'static str) {
         };
         let placeholder_with_suffix = |base: &str, suffix: &[&str]| {
             if suffix.is_empty() {
-                format!("{}.{}", base, ext)
+                format!("{base}.{ext}")
             } else {
                 format!("{}/{}.{}", base, suffix.join("/"), ext)
             }
@@ -197,20 +198,38 @@ fn resolve_static_target(path: &str) -> (String, &'static str) {
             ("index.html".to_string(), "text/html; charset=utf-8")
         }
     } else {
-        let clean_path = path.trim_start_matches('/').trim_end_matches('/');
+        let clean_path = path
+            .trim_start_matches('/')
+            .trim_end_matches(".txt")
+            .trim_end_matches('/');
+        let segments: Vec<&str> = clean_path.split('/').filter(|s| !s.is_empty()).collect();
+        if segments.len() >= 2 && segments[0] == "canvas" {
+            let ext = if is_rsc_request { "txt" } else { "html" };
+            let content = if is_rsc_request {
+                "text/x-component; charset=utf-8"
+            } else {
+                "text/html; charset=utf-8"
+            };
+            let suffix = if segments.len() > 2 {
+                format!("/{}", segments[2..].join("/"))
+            } else {
+                String::new()
+            };
+            return (format!("canvas/__placeholder__{suffix}.{ext}"), content);
+        }
         if is_rsc_request {
             (
                 if clean_path.is_empty() {
                     "index.txt".to_string()
                 } else {
-                    format!("{}.txt", clean_path)
+                    format!("{clean_path}.txt")
                 },
                 "text/x-component; charset=utf-8",
             )
         } else if clean_path.is_empty() {
             ("index.html".to_string(), "text/html; charset=utf-8")
         } else {
-            (format!("{}.html", clean_path), "text/html; charset=utf-8")
+            (format!("{clean_path}.html"), "text/html; charset=utf-8")
         }
     }
 }
@@ -268,7 +287,7 @@ pub async fn start_server_with_state(
         .allow_headers(Any);
 
     let mut app = Router::new()
-        .merge(api::api_router())
+        .merge(api::api_router(state.clone()))
         .route("/api/health", axum::routing::get(health_check))
         .layer(cors.clone())
         .layer(TraceLayer::new_for_http())
@@ -378,15 +397,15 @@ pub async fn start_server_with_state(
     // Bind and serve
     let addr: SocketAddr = format!("{}:{}", config.host, config.port)
         .parse()
-        .map_err(|e| format!("Invalid address: {}", e))?;
+        .map_err(|e| format!("Invalid address: {e}"))?;
 
     let listener = tokio::net::TcpListener::bind(addr)
         .await
-        .map_err(|e| format!("Failed to bind to {}: {}", addr, e))?;
+        .map_err(|e| format!("Failed to bind to {addr}: {e}"))?;
 
     let local_addr = listener
         .local_addr()
-        .map_err(|e| format!("Failed to get local address: {}", e))?;
+        .map_err(|e| format!("Failed to get local address: {e}"))?;
 
     tracing::info!("Routa backend server listening on {}", local_addr);
 
@@ -398,6 +417,15 @@ pub async fn start_server_with_state(
     });
 
     Ok(local_addr)
+}
+
+async fn health_check() -> axum::Json<serde_json::Value> {
+    axum::Json(serde_json::json!({
+        "status": "ok",
+        "timestamp": chrono::Utc::now().to_rfc3339(),
+        "server": "routa-server",
+        "version": env!("CARGO_PKG_VERSION"),
+    }))
 }
 
 #[cfg(test)]
@@ -483,13 +511,25 @@ mod tests {
         );
         assert_eq!(content_type, "text/html; charset=utf-8");
     }
-}
 
-async fn health_check() -> axum::Json<serde_json::Value> {
-    axum::Json(serde_json::json!({
-        "status": "ok",
-        "timestamp": chrono::Utc::now().to_rfc3339(),
-        "server": "routa-server",
-        "version": env!("CARGO_PKG_VERSION"),
-    }))
+    #[test]
+    fn resolves_canvas_placeholder() {
+        let (target, content_type) = resolve_static_target("/canvas/canvas-123");
+        assert_eq!(target, "canvas/__placeholder__.html");
+        assert_eq!(content_type, "text/html; charset=utf-8");
+    }
+
+    #[test]
+    fn resolves_canvas_rsc_placeholder() {
+        let (target, content_type) = resolve_static_target("/canvas/canvas-123.txt");
+        assert_eq!(target, "canvas/__placeholder__.txt");
+        assert_eq!(content_type, "text/x-component; charset=utf-8");
+    }
+
+    #[test]
+    fn resolves_canvas_tree_placeholder() {
+        let (target, content_type) = resolve_static_target("/canvas/canvas-123/__next._tree.txt");
+        assert_eq!(target, "canvas/__placeholder__/__next._tree.txt");
+        assert_eq!(content_type, "text/x-component; charset=utf-8");
+    }
 }

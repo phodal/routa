@@ -1,112 +1,137 @@
 <svg width="1440" height="980" viewBox="0 0 1440 980" fill="none" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1440" y2="980" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#f8fafc"/>
-      <stop offset="1" stop-color="#ecfdf5"/>
+    <linearGradient id="pageBg" x1="0" y1="0" x2="1440" y2="980" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F8FAFC"/>
+      <stop offset="1" stop-color="#F1F5F9"/>
     </linearGradient>
-    <linearGradient id="uiGrad" x1="0" y1="0" x2="1" y2="1">
-      <stop stop-color="#eff6ff"/>
-      <stop offset="1" stop-color="#dbeafe"/>
+    <linearGradient id="heroLine" x1="84" y1="0" x2="1356" y2="0" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#3B82F6"/>
+      <stop offset="0.56" stop-color="#F59E0B"/>
+      <stop offset="1" stop-color="#10B981"/>
     </linearGradient>
-    <linearGradient id="runtimeGrad" x1="0" y1="0" x2="1" y2="1">
-      <stop stop-color="#f8fafc"/>
-      <stop offset="1" stop-color="#f1f5f9"/>
-    </linearGradient>
-    <linearGradient id="acpGrad" x1="0" y1="0" x2="1" y2="1">
-      <stop stop-color="#fffbeb"/>
-      <stop offset="1" stop-color="#fde68a"/>
-    </linearGradient>
-    <linearGradient id="providerGrad" x1="0" y1="0" x2="1" y2="1">
-      <stop stop-color="#ffffff"/>
-      <stop offset="1" stop-color="#f8fafc"/>
-    </linearGradient>
-    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
-      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#0F172A" flood-opacity="0.08"/>
+    <filter id="panelShadow" x="-20%" y="-20%" width="140%" height="160%">
+      <feDropShadow dx="0" dy="10" stdDeviation="16" flood-color="#0F172A" flood-opacity="0.06"/>
     </filter>
-    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
-      <path d="M1 1L10 6L1 11" stroke="#526071" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="160%">
+      <feDropShadow dx="0" dy="6" stdDeviation="10" flood-color="#0F172A" flood-opacity="0.05"/>
+    </filter>
+    <marker id="arrow" markerWidth="7" markerHeight="7" refX="5.8" refY="3.5" orient="auto">
+      <path d="M0.9 0.9L5.8 3.5L0.9 6.1" stroke="#94A3B8" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
     </marker>
     <style>
-      .title { font: 700 30px ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #172033; }
-      .subtitle { font: 500 15px ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #526071; }
-      .section { font: 700 20px ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #172033; }
-      .boxTitle { font: 700 17px ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #172033; }
+      .title { font: 700 30px ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #0F172A; }
+      .subtitle { font: 500 15px ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #475569; }
+      .section { font: 700 22px ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #0F172A; }
+      .panelTitle { font: 700 18px ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #0F172A; }
       .body { font: 500 14px ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #334155; }
-      .small { font: 500 12px ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #526071; }
-      .pill { font: 700 11px ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #FFFFFF; letter-spacing: 0.04em; }
+      .small { font: 500 12px ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #64748B; }
+      .tag { font: 700 11px ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; letter-spacing: 0.08em; }
     </style>
   </defs>
 
-  <rect width="1440" height="980" rx="28" fill="url(#bg)"/>
+  <rect width="1440" height="980" rx="20" fill="url(#pageBg)"/>
+  <rect x="28" y="28" width="1384" height="924" rx="18" fill="none" stroke="rgba(148,163,184,0.18)"/>
 
-  <text x="60" y="70" class="title">Routa.js Architecture</text>
-  <text x="60" y="100" class="subtitle">ACP-centric view: UI → runtime surfaces → ACP orchestration → provider abstraction → provider families → execution substrates</text>
+  <circle cx="1286" cy="124" r="112" fill="#DBEAFE" opacity="0.42"/>
+  <circle cx="168" cy="852" r="132" fill="#ECFDF5" opacity="0.55"/>
+  <circle cx="1186" cy="836" r="86" fill="#FEF3C7" opacity="0.45"/>
 
-  <rect x="60" y="140" width="1320" height="90" rx="22" fill="url(#uiGrad)" stroke="#93c5fd" filter="url(#shadow)"/>
-  <text x="86" y="176" class="section">Product Surface</text>
-  <text x="86" y="201" class="body">Workspace / Session / Kanban / Team / Settings / Traces</text>
-  <text x="86" y="220" class="small">User entry points stay workspace-scoped, with pages and hooks driving APIs and streams</text>
+  <text x="84" y="88" class="title">Routa.js Architecture</text>
+  <text x="84" y="118" class="subtitle">ACP-centric view of the current implementation: product surface → runtime surfaces → orchestration core → provider families → execution substrates</text>
+  <rect x="84" y="138" width="1272" height="4" rx="2" fill="url(#heroLine)"/>
 
-  <rect x="60" y="270" width="640" height="178" rx="24" fill="url(#runtimeGrad)" stroke="#cbd5e1" filter="url(#shadow)"/>
-  <text x="86" y="308" class="section">Web Runtime</text>
-  <text x="86" y="334" class="body">Next.js pages + route handlers</text>
-  <text x="86" y="357" class="body">Exposes REST, ACP, MCP, and SSE endpoints</text>
-  <text x="86" y="380" class="body">Assembles stores, EventBus, tools, and kanban automation via `RoutaSystem`</text>
+  <rect x="84" y="144" width="1272" height="88" rx="16" fill="#FFFFFF" stroke="#E2E8F0" filter="url(#panelShadow)"/>
+  <rect x="84" y="144" width="8" height="88" rx="4" fill="#3B82F6"/>
+  <rect x="112" y="156" width="96" height="24" rx="10" fill="#EFF6FF"/>
+  <text x="128" y="172" class="tag" fill="#1D4ED8">PRODUCT</text>
+  <text x="112" y="202" class="section">Product Surface</text>
+  <text x="112" y="222" class="body">Workspace / Session / Kanban / Team / Settings / Traces</text>
+  <text x="720" y="202" class="body">Shared domain model</text>
+  <text x="720" y="222" class="body">across Web and Desktop</text>
 
-  <rect x="740" y="270" width="640" height="178" rx="24" fill="url(#runtimeGrad)" stroke="#cbd5e1" filter="url(#shadow)"/>
-  <text x="766" y="308" class="section">Desktop Runtime</text>
-  <text x="766" y="334" class="body">Tauri shell + Axum server + Rust AppState</text>
-  <text x="766" y="357" class="body">Exposes local REST, ACP, MCP, RPC, sandbox, worktree, and filesystem capabilities</text>
-  <text x="766" y="380" class="body">More local-first, with fuller support for SQLite, Docker, and native process execution</text>
+  <rect x="84" y="274" width="610" height="182" rx="16" fill="#FFFFFF" stroke="#E2E8F0" filter="url(#panelShadow)"/>
+  <rect x="84" y="274" width="8" height="182" rx="4" fill="#3B82F6"/>
+  <rect x="112" y="292" width="74" height="24" rx="10" fill="#EFF6FF"/>
+  <text x="128" y="308" class="tag" fill="#1D4ED8">WEB</text>
+  <text x="112" y="342" class="section">Web Runtime</text>
+  <text x="112" y="370" class="body">Next.js pages and route handlers in `src/app/`</text>
+  <text x="112" y="394" class="body">REST / ACP / MCP / A2A / AG-UI / A2UI / SSE</text>
+  <text x="112" y="418" class="body">`RoutaSystem` wires stores, tools, and automation</text>
 
-  <rect x="180" y="500" width="1080" height="190" rx="28" fill="url(#acpGrad)" stroke="#f59e0b" filter="url(#shadow)"/>
-  <text x="210" y="540" class="section">ACP / Session Orchestration Core</text>
-  <text x="210" y="566" class="body">This is the real core of the current implementation: unified session lifecycle, provider selection, prompt/stream flow, tool injection, and event fan-in</text>
+  <rect x="746" y="274" width="610" height="182" rx="16" fill="#FFFFFF" stroke="#E2E8F0" filter="url(#panelShadow)"/>
+  <rect x="746" y="274" width="8" height="182" rx="4" fill="#10B981"/>
+  <rect x="774" y="292" width="104" height="24" rx="10" fill="#ECFDF5"/>
+  <text x="790" y="308" class="tag" fill="#047857">DESKTOP</text>
+  <text x="774" y="342" class="section">Desktop Runtime</text>
+  <text x="774" y="370" class="body">Tauri shell plus Axum server powered by Rust `AppState`</text>
+  <text x="774" y="394" class="body">REST / ACP / MCP / RPC / sandbox / worktree / filesystem</text>
+  <text x="774" y="418" class="body">Local-first SQLite, Docker, and native process execution</text>
 
-  <rect x="214" y="598" width="232" height="64" rx="16" fill="#FFFFFF" stroke="#fcd34d"/>
-  <text x="234" y="625" class="boxTitle">Session Lifecycle</text>
-  <text x="234" y="646" class="small">create / prompt / cancel / stream / reconnect</text>
+  <rect x="168" y="494" width="1104" height="210" rx="16" fill="#FFFFFF" stroke="#E2E8F0" filter="url(#panelShadow)"/>
+  <rect x="168" y="494" width="8" height="210" rx="4" fill="#F59E0B"/>
+  <rect x="196" y="512" width="126" height="24" rx="10" fill="#FFFBEB"/>
+  <text x="212" y="528" class="tag" fill="#B45309">ORCHESTRATION</text>
+  <text x="196" y="564" class="section">ACP / Session Orchestration Core</text>
+  <text x="196" y="590" class="body">Session lifecycle, provider selection, streams, tools, kanban, persistence</text>
 
-  <rect x="464" y="598" width="232" height="64" rx="16" fill="#FFFFFF" stroke="#fcd34d"/>
-  <text x="484" y="625" class="boxTitle">Provider Abstraction</text>
-  <text x="484" y="646" class="small">provider adapters, registry, presets, normalized events</text>
+  <rect x="196" y="624" width="236" height="56" rx="12" fill="#FFF8EB" stroke="#FCD34D" filter="url(#softShadow)"/>
+  <text x="216" y="644" class="panelTitle">Session Lifecycle</text>
+  <text x="216" y="660" class="small">create / prompt / cancel</text>
+  <text x="216" y="675" class="small">stream / reconnect</text>
 
-  <rect x="714" y="598" width="232" height="64" rx="16" fill="#FFFFFF" stroke="#fcd34d"/>
-  <text x="734" y="625" class="boxTitle">Task / Kanban Binding</text>
-  <text x="734" y="646" class="small">lane automation, queueing, worktree, supervision</text>
+  <rect x="454" y="624" width="236" height="56" rx="12" fill="#FFF8EB" stroke="#FCD34D" filter="url(#softShadow)"/>
+  <text x="474" y="644" class="panelTitle">Provider Abstraction</text>
+  <text x="474" y="660" class="small">adapters, registry, presets</text>
+  <text x="474" y="675" class="small">normalized events</text>
 
-  <rect x="964" y="598" width="262" height="64" rx="16" fill="#FFFFFF" stroke="#fcd34d"/>
-  <text x="984" y="625" class="boxTitle">Event + Persistence</text>
-  <text x="984" y="646" class="small">EventBus, SSE, traces, session/task/note/artifact stores</text>
+  <rect x="712" y="624" width="236" height="56" rx="12" fill="#FFF8EB" stroke="#FCD34D" filter="url(#softShadow)"/>
+  <text x="732" y="644" class="panelTitle">Task / Kanban Binding</text>
+  <text x="732" y="660" class="small">lane automation, queueing</text>
+  <text x="732" y="675" class="small">worktree, supervision</text>
 
-  <rect x="60" y="732" width="640" height="116" rx="24" fill="url(#providerGrad)" stroke="#93c5fd" filter="url(#shadow)"/>
-  <text x="86" y="770" class="section">BYOK Provider Family</text>
-  <text x="86" y="795" class="body">SDK and API-based integrations routed through the shared provider abstraction.</text>
-  <text x="86" y="819" class="body">Claude Code SDK / OpenCode SDK / OpenAI API / Anthropic API / Gemini API</text>
+  <rect x="970" y="624" width="274" height="56" rx="12" fill="#FFF8EB" stroke="#FCD34D" filter="url(#softShadow)"/>
+  <text x="990" y="644" class="panelTitle">Event + Persistence</text>
+  <text x="990" y="660" class="small">EventBus, SSE, traces</text>
+  <text x="990" y="675" class="small">session/task/note/artifact stores</text>
 
-  <rect x="740" y="732" width="640" height="116" rx="24" fill="url(#providerGrad)" stroke="#f59e0b" filter="url(#shadow)"/>
-  <text x="766" y="770" class="section">ACP Provider Family</text>
-  <text x="766" y="795" class="body">CLI-backed and container-backed providers routed through the same provider abstraction.</text>
-  <text x="766" y="819" class="body">Claude CLI translation / Codex / Gemini CLI / Copilot / Docker OpenCode / ACP presets</text>
+  <rect x="84" y="734" width="610" height="102" rx="16" fill="#FFFFFF" stroke="#E2E8F0" filter="url(#panelShadow)"/>
+  <rect x="84" y="734" width="8" height="102" rx="4" fill="#3B82F6"/>
+  <rect x="112" y="752" width="82" height="24" rx="10" fill="#EFF6FF"/>
+  <text x="128" y="768" class="tag" fill="#1D4ED8">BYOK</text>
+  <text x="112" y="800" class="section">SDK / API Provider Family</text>
+  <text x="112" y="824" class="body">Claude Code SDK / OpenCode SDK / OpenAI API / Anthropic API / Gemini API</text>
 
-  <rect x="60" y="876" width="420" height="70" rx="20" fill="#eff6ff" stroke="#60a5fa" filter="url(#shadow)"/>
-  <text x="86" y="907" class="boxTitle">Execution Substrate A: CLI / Runner</text>
-  <text x="86" y="929" class="small">Local CLI processes or a runner proxy, suitable for Codex, Gemini CLI, Copilot, and Claude CLI</text>
+  <rect x="746" y="734" width="610" height="102" rx="16" fill="#FFFFFF" stroke="#E2E8F0" filter="url(#panelShadow)"/>
+  <rect x="746" y="734" width="8" height="102" rx="4" fill="#F59E0B"/>
+  <rect x="774" y="752" width="72" height="24" rx="10" fill="#FFFBEB"/>
+  <text x="790" y="768" class="tag" fill="#B45309">ACP</text>
+  <text x="774" y="800" class="section">CLI / Container Provider Family</text>
+  <text x="774" y="824" class="body">Claude CLI translation / Codex / Gemini CLI / Copilot / Docker OpenCode / ACP presets</text>
 
-  <rect x="510" y="876" width="420" height="70" rx="20" fill="#fffbeb" stroke="#f59e0b" filter="url(#shadow)"/>
-  <text x="536" y="907" class="boxTitle">Execution Substrate B: SDK / BYOK</text>
-  <text x="536" y="929" class="small">Claude Code SDK, OpenCode SDK, or direct APIs, suitable for serverless and remote integration</text>
+  <rect x="84" y="864" width="392" height="84" rx="16" fill="#FFFFFF" stroke="#E2E8F0" filter="url(#panelShadow)"/>
+  <rect x="84" y="864" width="8" height="84" rx="4" fill="#3B82F6"/>
+  <text x="112" y="892" class="panelTitle">Substrate (CLI / Runner)</text>
+  <text x="112" y="916" class="small">Local CLI processes or runner proxy</text>
+  <text x="112" y="932" class="small">for Codex, Gemini CLI, Copilot, Claude CLI</text>
 
-  <rect x="960" y="876" width="420" height="70" rx="20" fill="#ecfdf5" stroke="#10b981" filter="url(#shadow)"/>
-  <text x="986" y="907" class="boxTitle">Execution Substrate C: Docker</text>
-  <text x="986" y="929" class="small">Docker OpenCode plus sandboxing, suitable for isolated execution and controlled local infrastructure</text>
+  <rect x="524" y="864" width="392" height="84" rx="16" fill="#FFFFFF" stroke="#E2E8F0" filter="url(#panelShadow)"/>
+  <rect x="524" y="864" width="8" height="84" rx="4" fill="#F59E0B"/>
+  <text x="552" y="892" class="panelTitle">Substrate (SDK / BYOK)</text>
+  <text x="552" y="916" class="small">Claude Code SDK, OpenCode SDK, and</text>
+  <text x="552" y="932" class="small">direct API integrations for remote/serverless use</text>
 
-  <path d="M720 230V270" stroke="#526071" stroke-width="3" marker-end="url(#arrow)"/>
-  <path d="M380 448V500" stroke="#526071" stroke-width="3" marker-end="url(#arrow)"/>
-  <path d="M1060 448V500" stroke="#526071" stroke-width="3" marker-end="url(#arrow)"/>
-  <path d="M480 690V732" stroke="#526071" stroke-width="3" marker-end="url(#arrow)"/>
-  <path d="M960 690V732" stroke="#526071" stroke-width="3" marker-end="url(#arrow)"/>
-  <path d="M270 848V876" stroke="#526071" stroke-width="3" marker-end="url(#arrow)"/>
-  <path d="M720 848V876" stroke="#526071" stroke-width="3" marker-end="url(#arrow)"/>
-  <path d="M1170 848V876" stroke="#526071" stroke-width="3" marker-end="url(#arrow)"/>
+  <rect x="964" y="864" width="392" height="84" rx="16" fill="#FFFFFF" stroke="#E2E8F0" filter="url(#panelShadow)"/>
+  <rect x="964" y="864" width="8" height="84" rx="4" fill="#10B981"/>
+  <text x="992" y="892" class="panelTitle">Substrate (Docker)</text>
+  <text x="992" y="916" class="small">Docker OpenCode plus sandboxing</text>
+  <text x="992" y="932" class="small">for isolated local infrastructure and controlled execution</text>
+
+  <path d="M720 232V274" stroke="#94A3B8" stroke-width="3" stroke-linecap="round" marker-end="url(#arrow)"/>
+  <path d="M390 456V494" stroke="#94A3B8" stroke-width="3" stroke-linecap="round" marker-end="url(#arrow)"/>
+  <path d="M1050 456V494" stroke="#94A3B8" stroke-width="3" stroke-linecap="round" marker-end="url(#arrow)"/>
+  <path d="M480 704V734" stroke="#94A3B8" stroke-width="3" stroke-linecap="round" marker-end="url(#arrow)"/>
+  <path d="M960 704V734" stroke="#94A3B8" stroke-width="3" stroke-linecap="round" marker-end="url(#arrow)"/>
+  <path d="M280 836V864" stroke="#94A3B8" stroke-width="3" stroke-linecap="round" marker-end="url(#arrow)"/>
+  <path d="M720 836V864" stroke="#94A3B8" stroke-width="3" stroke-linecap="round" marker-end="url(#arrow)"/>
+  <path d="M1160 836V864" stroke="#94A3B8" stroke-width="3" stroke-linecap="round" marker-end="url(#arrow)"/>
 </svg>

@@ -2,10 +2,12 @@ import React from "react";
 import clsx from "clsx";
 import { useLocation } from "@docusaurus/router";
 import { HtmlClassNameProvider, ThemeClassNames } from "@docusaurus/theme-common";
+import { toJsxRuntime } from "hast-util-to-jsx-runtime";
 import {
   BlogPostProvider,
   useBlogPost,
 } from "@docusaurus/plugin-content-blog/client";
+import { Fragment, jsx, jsxs } from "react/jsx-runtime";
 import BlogLayout from "@theme/BlogLayout";
 import BlogPostItem from "@theme/BlogPostItem";
 import BlogPostPaginator from "@theme/BlogPostPaginator";
@@ -13,7 +15,10 @@ import BlogPostPageMetadata from "@theme/BlogPostPage/Metadata";
 import BlogPostPageStructuredData from "@theme/BlogPostPage/StructuredData";
 import TOC from "@theme/TOC";
 import ContentVisibility from "@theme/ContentVisibility";
-import { marked } from "marked";
+import { unified } from "unified";
+import remarkParse from "remark-parse";
+import remarkGfm from "remark-gfm";
+import remarkRehype from "remark-rehype";
 import {
   getBlogArchiveEntryByPermalink,
   ensureBlogContentMetadata,
@@ -21,9 +26,17 @@ import {
 } from "../blogContentMetadataFallback";
 
 function BlogPostMarkdown({ markdown }) {
-  const html = marked.parse(markdown ?? "", { async: false, gfm: true });
+  const processor = unified().use(remarkParse).use(remarkGfm).use(remarkRehype);
+  const tree = processor.runSync(processor.parse(markdown ?? ""));
+  const content = toJsxRuntime(tree, {
+    Fragment,
+    jsx,
+    jsxs,
+    elementAttributeNameCase: "react",
+    stylePropertyNameCase: "dom",
+  });
 
-  return <div className="markdown" dangerouslySetInnerHTML={{ __html: html }} />;
+  return <div className="markdown">{content}</div>;
 }
 
 function BlogPostPageContent({ sidebar, children }) {

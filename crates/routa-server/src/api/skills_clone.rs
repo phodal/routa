@@ -42,7 +42,7 @@ async fn clone_skills(
     let repo_name = git::repo_to_dir_name(&parsed.owner, &parsed.repo);
     let base_dir = git::get_clone_base_dir();
     std::fs::create_dir_all(&base_dir)
-        .map_err(|e| ServerError::Internal(format!("Failed to create base dir: {}", e)))?;
+        .map_err(|e| ServerError::Internal(format!("Failed to create base dir: {e}")))?;
     let target_dir = base_dir.join(&repo_name);
     let target_str = target_dir.to_string_lossy().to_string();
 
@@ -50,13 +50,13 @@ async fn clone_skills(
     let target_path = target_dir.clone();
     tokio::task::spawn_blocking(move || {
         if target_path.exists() {
-            let _ = std::process::Command::new("git")
+            let _ = git::git_command()
                 .args(["pull", "--ff-only"])
                 .current_dir(&target_path)
                 .output();
         } else {
             let clone_url = format!("https://github.com/{}/{}.git", parsed.owner, parsed.repo);
-            let _ = std::process::Command::new("git")
+            let _ = git::git_command()
                 .args([
                     "clone",
                     "--depth",
@@ -75,8 +75,7 @@ async fn clone_skills(
 
     if discovered.is_empty() {
         return Err(ServerError::NotFound(format!(
-            "No skills found in {}. Checked: skills/, .agents/skills/, .opencode/skills/, .claude/skills/",
-            url
+            "No skills found in {url}. Checked: skills/, .agents/skills/, .opencode/skills/, .claude/skills/"
         )));
     }
 
@@ -84,7 +83,7 @@ async fn clone_skills(
     let cwd = std::env::current_dir().unwrap_or_default();
     let local_skills_base = cwd.join(LOCAL_SKILLS_DIR);
     std::fs::create_dir_all(&local_skills_base)
-        .map_err(|e| ServerError::Internal(format!("Failed to create skills dir: {}", e)))?;
+        .map_err(|e| ServerError::Internal(format!("Failed to create skills dir: {e}")))?;
 
     let mut imported = Vec::new();
 
@@ -123,8 +122,7 @@ async fn discover_skills(
     let rp = Path::new(&repo_path);
     if !rp.exists() {
         return Err(ServerError::NotFound(format!(
-            "Path not found: {}",
-            repo_path
+            "Path not found: {repo_path}"
         )));
     }
 

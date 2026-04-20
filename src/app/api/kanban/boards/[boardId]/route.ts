@@ -16,6 +16,7 @@ import {
 import { getKanbanEventBroadcaster } from "@/core/kanban/kanban-event-broadcaster";
 import { getKanbanSessionQueue } from "@/core/kanban/workflow-orchestrator-singleton";
 import type { KanbanDevSessionSupervision } from "@/core/models/kanban";
+import type { KanbanBoard } from "@/core/models/kanban";
 
 export const dynamic = "force-dynamic";
 
@@ -23,9 +24,31 @@ interface PatchBoardBody {
   name?: string;
   columns?: KanbanColumn[];
   isDefault?: boolean;
+  githubToken?: string | null;
+  clearGitHubToken?: boolean;
   autoProviderId?: string | null;
   sessionConcurrencyLimit?: number;
   devSessionSupervision?: Partial<KanbanDevSessionSupervision>;
+}
+
+function sanitizeBoard(
+  board: KanbanBoard,
+  extras?: {
+    autoProviderId?: string | null;
+    sessionConcurrencyLimit?: number;
+    devSessionSupervision?: KanbanDevSessionSupervision;
+    queue?: unknown;
+  },
+) {
+  return {
+    ...board,
+    githubToken: undefined,
+    githubTokenConfigured: Boolean(board.githubToken?.trim()),
+    autoProviderId: extras?.autoProviderId,
+    sessionConcurrencyLimit: extras?.sessionConcurrencyLimit,
+    devSessionSupervision: extras?.devSessionSupervision,
+    queue: extras?.queue,
+  };
 }
 
 export async function GET(
@@ -43,13 +66,12 @@ export async function GET(
   const workspace = await system.workspaceStore.get(board.workspaceId);
   const queue = getKanbanSessionQueue(system);
   return NextResponse.json({
-    board: {
-      ...board,
+    board: sanitizeBoard(board, {
       autoProviderId: getKanbanAutoProvider(workspace?.metadata, board.id),
       sessionConcurrencyLimit: getKanbanSessionConcurrencyLimit(workspace?.metadata, board.id),
       devSessionSupervision: getKanbanDevSessionSupervision(workspace?.metadata, board.id),
       queue: await queue.getBoardSnapshot(board.id),
-    },
+    }),
   });
 }
 
@@ -77,6 +99,11 @@ export async function PATCH(
   const updated = {
     ...existing,
     name: body.name?.trim() ?? existing.name,
+    githubToken: body.clearGitHubToken
+      ? undefined
+      : body.githubToken !== undefined
+        ? (body.githubToken?.trim() || undefined)
+        : existing.githubToken,
     columns: body.columns ?? existing.columns,
     isDefault: body.isDefault ?? existing.isDefault,
     updatedAt: new Date(),
@@ -130,12 +157,11 @@ export async function PATCH(
   const workspace = await system.workspaceStore.get(existing.workspaceId);
   const queue = getKanbanSessionQueue(system);
   return NextResponse.json({
-    board: {
-      ...updated,
+    board: sanitizeBoard(updated, {
       autoProviderId: getKanbanAutoProvider(workspace?.metadata, boardId),
       sessionConcurrencyLimit: getKanbanSessionConcurrencyLimit(workspace?.metadata, boardId),
       devSessionSupervision: getKanbanDevSessionSupervision(workspace?.metadata, boardId),
       queue: await queue.getBoardSnapshot(boardId),
-    },
+    }),
   });
 }

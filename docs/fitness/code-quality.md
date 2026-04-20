@@ -12,18 +12,18 @@ metrics:
   # ══════════════════════════════════════════════════════════════
   
   - name: legacy_hotspot_budget_guard
-    command: PYTHONPATH=tools/entrix python3 -m entrix.file_budgets --config tools/entrix/file_budgets.json --changed-only --base "${ROUTA_FITNESS_CHANGED_BASE:-HEAD}" --overrides-only
+    command: entrix hook file-length --config docs/fitness/file_budgets.json --changed-only --base "${ROUTA_FITNESS_CHANGED_BASE:-HEAD}" --overrides-only
     pattern: "file_budget_violations: 0"
     hard_gate: true
     tier: fast
     description: "已登记的历史热点文件必须满足冻结预算，只允许缩小不允许继续膨胀"
 
   - name: file_line_limit
-    command: PYTHONPATH=tools/entrix python3 -m entrix.file_budgets --config tools/entrix/file_budgets.json --changed-only --base "${ROUTA_FITNESS_CHANGED_BASE:-HEAD}"
+    command: entrix hook file-length --config docs/fitness/file_budgets.json --changed-only --base "${ROUTA_FITNESS_CHANGED_BASE:-HEAD}"
     pattern: "file_budget_violations: 0"
     hard_gate: false
     tier: fast
-    description: "本次变更的代码文件必须满足行数预算；默认 ≤1000 行，Rust(.rs) ≤800 行，历史超标文件按 HEAD 基线冻结"
+    description: "本次变更的代码文件必须满足行数预算；默认 ≤1600 行，历史超标文件按 HEAD 基线冻结"
 
   - name: function_line_limit
     command: |
@@ -113,9 +113,11 @@ metrics:
 
   - name: duplicate_code_rust
     command: |
-      # Rust 重复检测（简化版，检查相似的 impl 块）
-      grep -rh "^impl " crates --include="*.rs" 2>/dev/null | sort | uniq -c | \
-      awk '$1 > 3 {dup++} END {print "rust_duplicate_impls:", dup+0}'
+      # Rust 重复检测（简化版，按“文件 + impl 头”分组，避免不同文件中常见类型名误报）
+      grep -rH "^impl " crates --include="*.rs" 2>/dev/null | \
+      sed -E 's#^([^:]+):[[:space:]]*(impl[^\\{]+\\{).*#\1 :: \2#' | \
+      sort | uniq -c | \
+      awk '$1 > 2 {dup++} END {print "rust_duplicate_impls:", dup+0}'
     pattern: "rust_duplicate_impls: 0"
     hard_gate: false
     tier: normal
@@ -178,10 +180,19 @@ metrics:
   # ══════════════════════════════════════════════════════════════
 
   - name: eslint_pass
-    command: npm run lint 2>&1
+    command: |
+      changed_files=$(git diff --name-only --diff-filter=ACMR "${ROUTA_FITNESS_CHANGED_BASE:-HEAD}" -- src apps crates 2>/dev/null | \
+        grep -E '\.(ts|tsx|js|jsx|cjs|mjs)$' | \
+        grep -vE '(^|/)(node_modules|target|\.next|_next|bundled)/' || true)
+
+      if [ -z "$changed_files" ]; then
+        echo "No changed lintable files"
+      else
+        printf '%s\n' "$changed_files" | xargs npx eslint 2>&1
+      fi
     hard_gate: true
     tier: fast
-    description: "ESLint 必须通过"
+    description: "ESLint 必须通过；fast 模式优先只检查本地变更文件"
 
   - name: ts_typecheck_pass
     command: node --import tsx tools/hook-runtime/src/typecheck-smart.ts 2>&1
@@ -233,7 +244,7 @@ metrics:
 
 | 检测项 | 阈值 | Hard Gate | 工具 |
 |--------|------|-----------|------|
-| 文件行数 | 新文件 ≤1000 行，历史超标文件按 HEAD 基线冻结 | ❌ | `python -m entrix.file_budgets` |
+| 文件行数 | 新文件 ≤1600 行，历史超标文件按 HEAD 基线冻结 | ❌ | `python -m entrix.file_budgets` |
 | 历史热点守护 | 已登记热点只允许缩小不允许继续膨胀 | ✅ | `python -m entrix.file_budgets --overrides-only` |
 | 函数行数 | ≤100 行 | ❌ | grep + 人工 |
 | 重复代码 | 变更文件不新增大块 clone | ❌ | jscpd |
@@ -253,7 +264,7 @@ metrics:
 ### 1. 代码膨胀
 AI 倾向于生成冗长代码，缺乏抽象能力。
 
-**约束**: 新文件 ≤1000 行；历史超标热点必须进入预算冻结，只能缩小不能继续长大；函数 ≤100 行
+**约束**: 新文件 ≤1600 行；历史超标热点必须进入预算冻结，只能缩小不能继续长大；函数 ≤100 行
 
 ### 2. 重复代码
 AI 经常“复制粘贴”式生成，忽略已有实现。

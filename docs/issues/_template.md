@@ -1,12 +1,16 @@
 ---
 title: ""
 date: "YYYY-MM-DD"
+kind: issue          # issue | analysis | progress_note | verification_report | github_mirror
 status: open          # open | investigating | resolved | wontfix
-severity: medium      # low | medium | high | critical
+severity: medium      # info | low | medium | high | critical
 area: ""              # e.g. background-worker, github-polling, acp, desktop, ui
 tags: []              # free-form tags for cross-referencing
 reported_by: ""       # agent name or human, e.g. "kiro", "claude", "human"
 related_issues: []    # local issue filenames or GitHub issue URLs
+github_issue: null    # optional: GitHub issue number when this file tracks one
+github_state: null    # optional: open | closed
+github_url: null      # optional: full GitHub issue URL
 ---
 
 # [简短描述问题是什么]

@@ -14,6 +14,7 @@ vi.mock("@/core/acp/http-session-store", () => ({
 }));
 
 import { GET } from "../route";
+import { TEAM_LEAD_SPECIALIST_ID } from "../team-run";
 
 describe("/api/sessions GET", () => {
   beforeEach(() => {
@@ -106,5 +107,131 @@ describe("/api/sessions GET", () => {
     expect(data.sessions.map((session: { sessionId: string }) => session.sessionId)).toEqual([
       "child-2",
     ]);
+  });
+
+  it("returns stable team-run summaries for explicit team runs and anonymous top-level ROUTA runs with descendants", async () => {
+    listSessions.mockReturnValue([
+      {
+        sessionId: "anonymous-team-run",
+        workspaceId: "workspace-1",
+        cwd: "/tmp/project",
+        role: "ROUTA",
+        createdAt: "2026-04-03T10:05:00.000Z",
+      },
+      {
+        sessionId: "anonymous-team-child",
+        workspaceId: "workspace-1",
+        cwd: "/tmp/project",
+        role: "DEVELOPER",
+        parentSessionId: "anonymous-team-run",
+        createdAt: "2026-04-03T10:04:00.000Z",
+      },
+      {
+        sessionId: "named-team-run",
+        name: "Team - Investigate regression",
+        workspaceId: "workspace-1",
+        cwd: "/tmp/project",
+        role: "ROUTA",
+        createdAt: "2026-04-03T10:03:00.000Z",
+      },
+      {
+        sessionId: "named-non-routa-run",
+        name: "Team - not actually routa",
+        workspaceId: "workspace-1",
+        cwd: "/tmp/project",
+        role: "DEVELOPER",
+        createdAt: "2026-04-03T10:02:30.000Z",
+      },
+      {
+        sessionId: "non-team-routa",
+        workspaceId: "workspace-1",
+        cwd: "/tmp/project",
+        role: "ROUTA",
+        createdAt: "2026-04-03T10:02:00.000Z",
+      },
+      {
+        sessionId: "team-specialist-run",
+        workspaceId: "workspace-1",
+        cwd: "/tmp/project",
+        specialistId: TEAM_LEAD_SPECIALIST_ID,
+        createdAt: "2026-04-03T10:01:00.000Z",
+      },
+      {
+        sessionId: "session-other-workspace",
+        workspaceId: "workspace-2",
+        cwd: "/tmp/project",
+        role: "ROUTA",
+        createdAt: "2026-04-03T10:00:00.000Z",
+      },
+    ]);
+
+    const response = await GET(
+      new NextRequest("http://localhost/api/sessions?workspaceId=workspace-1&surface=team"),
+    );
+    const data = await response.json();
+
+    expect(data.sessions.map((session: { sessionId: string }) => session.sessionId)).toEqual([
+      "anonymous-team-run",
+      "named-team-run",
+      "team-specialist-run",
+    ]);
+    expect(data.sessions[0]).toMatchObject({
+      sessionId: "anonymous-team-run",
+      directDelegates: 1,
+      descendants: 1,
+    });
+    expect(data.sessions[1]).toMatchObject({
+      sessionId: "named-team-run",
+      directDelegates: 0,
+      descendants: 0,
+    });
+  });
+
+  it("ignores cyclic descendants and excludes named non-ROUTA sessions from the team surface", async () => {
+    listSessions.mockReturnValue([
+      {
+        sessionId: "cycle-root",
+        workspaceId: "workspace-1",
+        cwd: "/tmp/project",
+        role: "ROUTA",
+        createdAt: "2026-04-03T10:05:00.000Z",
+      },
+      {
+        sessionId: "cycle-child",
+        workspaceId: "workspace-1",
+        cwd: "/tmp/project",
+        role: "DEVELOPER",
+        parentSessionId: "cycle-root",
+        createdAt: "2026-04-03T10:04:00.000Z",
+      },
+      {
+        sessionId: "cycle-root",
+        workspaceId: "workspace-1",
+        cwd: "/tmp/project",
+        role: "DEVELOPER",
+        parentSessionId: "cycle-child",
+        createdAt: "2026-04-03T10:03:00.000Z",
+      },
+      {
+        sessionId: "named-non-routa-run",
+        name: "Team - not actually routa",
+        workspaceId: "workspace-1",
+        cwd: "/tmp/project",
+        role: "DEVELOPER",
+        createdAt: "2026-04-03T10:02:30.000Z",
+      },
+    ]);
+
+    const response = await GET(
+      new NextRequest("http://localhost/api/sessions?workspaceId=workspace-1&surface=team"),
+    );
+    const data = await response.json();
+
+    expect(data.sessions).toHaveLength(1);
+    expect(data.sessions[0]).toMatchObject({
+      sessionId: "cycle-root",
+      directDelegates: 1,
+      descendants: 1,
+    });
   });
 });

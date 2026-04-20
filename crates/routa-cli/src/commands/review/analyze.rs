@@ -176,7 +176,7 @@ fn build_worker_prompt(
     candidates_output: Option<&str>,
 ) -> Result<String, String> {
     let payload_json = serde_json::to_string_pretty(payload)
-        .map_err(|err| format!("Failed to serialize review payload: {}", err))?;
+        .map_err(|err| format!("Failed to serialize review payload: {err}"))?;
 
     let prompt = match worker_type {
         ReviewWorkerType::Context => [

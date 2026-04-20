@@ -1,0 +1,7 @@
+# Auto-append Co-authored-by for agent commits when agent identity is present.
+
+if [ -n "$SKIP_HOOKS" ]; then
+  exit 0
+fi
+
+node --import tsx tools/hook-runtime/src/coauthor.ts prepare "$1"

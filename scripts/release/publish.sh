@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Routa CLI Release Helper
+# Routa Release Helper
 # Usage: ./scripts/release/publish.sh [version] [--dry-run]
 #
 # Examples:
@@ -43,7 +43,7 @@ if [[ -z "$VERSION" ]]; then
   exit 1
 fi
 
-echo -e "${GREEN}=== Routa CLI Release Script ===${NC}"
+echo -e "${GREEN}=== Routa Release Script ===${NC}"
 echo "Version: v$VERSION"
 if [[ "$DRY_RUN" == true ]]; then
   echo -e "${YELLOW}Mode: DRY RUN (no publishing)${NC}"
@@ -77,6 +77,19 @@ node scripts/release/sync-release-version.mjs --version "$VERSION"
 echo ""
 echo -e "${GREEN}Files updated:${NC}"
 git diff --name-only
+
+echo ""
+echo -e "${GREEN}Generating release notes preview...${NC}"
+mkdir -p dist/release
+node scripts/release/generate-changelog.mjs \
+  --version "$VERSION" \
+  --to HEAD \
+  --out dist/release/release-notes.md \
+  --changelog-out dist/release/CHANGELOG.generated.md \
+  --prompt-out dist/release/changelog-summary-prompt.json
+echo "Release notes preview: dist/release/release-notes.md"
+echo "Changelog preview: dist/release/CHANGELOG.generated.md"
+echo "AI summary prompt package: dist/release/changelog-summary-prompt.json"
 
 echo ""
 echo -e "${YELLOW}Review the changes above. Continue? (y/N)${NC}"
@@ -126,8 +139,8 @@ echo -e "${GREEN}=== Release started! ===${NC}"
 echo "Monitor the release at:"
 echo "  https://github.com/phodal/routa/actions"
 echo ""
-echo "Once complete, the CLI will be available via:"
+echo "Once complete, the release artifacts will be available via:"
 echo "  - cargo install routa-cli@$VERSION"
+echo "  - cargo install harness-monitor@$VERSION"
 echo "  - npm install -g routa-cli@$VERSION"
 echo "  - GitHub Release: https://github.com/phodal/routa/releases/tag/v$VERSION"
-

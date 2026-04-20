@@ -29,9 +29,9 @@ jobs:
     runs-on: ubuntu-latest
     env:
       RELEASE_VERSION: ${{ inputs.version || github.event.inputs.version }}
-      DRY_RUN: ${{ inputs.dry_run || github.event.inputs.dry_run }}
+      DRY_RUN: ${{ inputs.dry_run }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Sync release version
         shell: bash
@@ -44,10 +44,15 @@ jobs:
         run: |
           version="${RELEASE_VERSION}"
           version="${version#v}"
+          workspace_version=$(grep '^\s*version = ' Cargo.toml | head -n1 | sed 's/.*"\(.*\)".*/\1/')
 
           echo "Checking crate versions..."
-          for crate in crates/routa-core crates/routa-rpc crates/routa-scanner crates/routa-server crates/routa-cli; do
-            crate_version=$(grep '^version = ' "$crate/Cargo.toml" | head -n1 | sed 's/version = "\(.*\)"/\1/')
+          for crate in crates/routa-core crates/routa-rpc crates/routa-scanner crates/routa-server crates/routa-cli crates/entrix crates/harness-monitor; do
+            if grep -q '^version\.workspace = true$' "$crate/Cargo.toml"; then
+              crate_version="${workspace_version}"
+            else
+              crate_version=$(grep '^version = ' "$crate/Cargo.toml" | head -n1 | sed 's/version = "\(.*\)"/\1/')
+            fi
             echo "$crate: $crate_version"
             if [[ "$crate_version" != "$version" ]]; then
               echo "ERROR: $crate version mismatch. Expected $version, got $crate_version" >&2
@@ -56,7 +61,7 @@ jobs:
           done
 
       - name: Cargo login
-        if: ${{ !inputs.dry_run && github.event.inputs.dry_run != 'true' && github.event.inputs.dry_run != true }}
+        if: ${{ !inputs.dry_run }}
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CRATE_TOKEN }}
         run: |
@@ -103,7 +108,20 @@ jobs:
           fi
 
       - name: Wait for crates.io index update
-        if: ${{ !inputs.dry_run && github.event.inputs.dry_run != 'true' && github.event.inputs.dry_run != true }}
+        if: ${{ !inputs.dry_run }}
+        run: sleep 30
+
+      - name: Publish entrix
+        run: |
+          cd crates/entrix
+          if [[ "$DRY_RUN" == "true" ]]; then
+            cargo publish --dry-run
+          else
+            cargo publish --no-verify || echo "entrix may already be published"
+          fi
+
+      - name: Wait for crates.io index update after entrix
+        if: ${{ !inputs.dry_run }}
         run: sleep 30
 
       - name: Publish routa-cli
@@ -113,6 +131,15 @@ jobs:
             cargo publish --dry-run
           else
             cargo publish --no-verify || echo "routa-cli may already be published"
+          fi
+
+      - name: Publish harness-monitor
+        run: |
+          cd crates/harness-monitor
+          if [[ "$DRY_RUN" == "true" ]]; then
+            cargo publish --dry-run
+          else
+            cargo publish --no-verify || echo "harness-monitor may already be published"
           fi
 
       - name: Summary
@@ -126,4 +153,6 @@ jobs:
           echo "Install via cargo:" >> "$GITHUB_STEP_SUMMARY"
           echo '```bash' >> "$GITHUB_STEP_SUMMARY"
           echo "cargo install routa-cli@$version" >> "$GITHUB_STEP_SUMMARY"
+          echo "cargo install entrix@$version" >> "$GITHUB_STEP_SUMMARY"
+          echo "cargo install harness-monitor@$version" >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"

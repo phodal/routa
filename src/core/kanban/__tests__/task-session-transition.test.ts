@@ -19,7 +19,12 @@ describe("task-session-transition", () => {
       columnId: "review",
       triggerSessionId: "session-dev-1",
       sessionIds: ["session-backlog-1"],
-      laneSessions: [],
+      laneSessions: [{
+        sessionId: "session-dev-1",
+        columnId: "dev",
+        status: "running" as const,
+        startedAt: "2026-03-18T00:00:00.000Z",
+      }],
       laneHandoffs: [],
       lastSyncError: "stale error",
     };
@@ -30,6 +35,11 @@ describe("task-session-transition", () => {
     expect(task.sessionIds).toEqual(["session-backlog-1", "session-dev-1"]);
     expect(task.triggerSessionId).toBeUndefined();
     expect(task.lastSyncError).toBeUndefined();
+    expect(task.laneSessions[0]).toMatchObject({
+      sessionId: "session-dev-1",
+      status: "completed",
+      completedAt: expect.any(String),
+    });
   });
 
   it("leaves the active session alone when the card stays in the same column", () => {

@@ -17,8 +17,8 @@ Run these before changing code:
 
 ```bash
 entrix analyze long-file --json
-PYTHONPATH=tools/entrix python3 -m entrix.file_budgets --config tools/entrix/file_budgets.json --changed-only --base "${ROUTA_FITNESS_CHANGED_BASE:-HEAD}"
-PYTHONPATH=tools/entrix python3 -m entrix.file_budgets --config tools/entrix/file_budgets.json --changed-only --base "${ROUTA_FITNESS_CHANGED_BASE:-HEAD}" --overrides-only
+entrix hook file-length --config docs/fitness/file_budgets.json --changed-only --base "${ROUTA_FITNESS_CHANGED_BASE:-HEAD}"
+entrix hook file-length --config docs/fitness/file_budgets.json --changed-only --base "${ROUTA_FITNESS_CHANGED_BASE:-HEAD}" --overrides-only
 ```
 
 Triage order:

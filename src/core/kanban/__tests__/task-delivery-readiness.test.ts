@@ -2,20 +2,24 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createTask } from "@/core/models/task";
 import {
   buildTaskDeliveryReadiness,
+  buildTaskDeliveryTransitionErrorFromRules,
   buildTaskDeliveryTransitionError,
 } from "../task-delivery-readiness";
 
 const isGitRepository = vi.fn();
+const isBareGitRepository = vi.fn();
 const getRepoDeliveryStatus = vi.fn();
 
 vi.mock("@/core/git", () => ({
   isGitRepository: (...args: unknown[]) => isGitRepository(...args),
+  isBareGitRepository: (...args: unknown[]) => isBareGitRepository(...args),
   getRepoDeliveryStatus: (...args: unknown[]) => getRepoDeliveryStatus(...args),
 }));
 
 describe("task delivery readiness", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    isBareGitRepository.mockReturnValue(false);
   });
 
   it("returns unchecked when no codebase or worktree is linked", async () => {
@@ -113,6 +117,40 @@ describe("task delivery readiness", () => {
     });
   });
 
+  it("returns unchecked when the fallback codebase path is a bare repo", async () => {
+    const task = createTask({
+      id: "task-2",
+      title: "Bare repo fallback",
+      objective: "Needs a worktree first",
+      workspaceId: "workspace-1",
+      codebaseIds: ["codebase-1"],
+    });
+    const system = {
+      codebaseStore: {
+        get: vi.fn().mockResolvedValue({
+          id: "codebase-1",
+          repoPath: "/repo/bare",
+          branch: "main",
+          sourceType: "github",
+          sourceUrl: "https://github.com/acme/platform",
+        }),
+        getDefault: vi.fn(),
+      },
+      worktreeStore: {
+        get: vi.fn(),
+      },
+    };
+    isGitRepository.mockReturnValue(true);
+    isBareGitRepository.mockReturnValue(true);
+
+    const readiness = await buildTaskDeliveryReadiness(task, system);
+
+    expect(readiness.checked).toBe(false);
+    expect(readiness.repoPath).toBe("/repo/bare");
+    expect(readiness.reason).toContain("bare git repo");
+    expect(getRepoDeliveryStatus).not.toHaveBeenCalled();
+  });
+
   it("formats blocking messages for review and done transitions", () => {
     const reviewError = buildTaskDeliveryTransitionError({
       checked: true,
@@ -126,6 +164,21 @@ describe("task delivery readiness", () => {
       commitsSinceBase: 0,
       hasCommitsSinceBase: false,
       hasUncommittedChanges: false,
+      isGitHubRepo: true,
+      canCreatePullRequest: false,
+    }, "Review", "review");
+    const reviewDirtyError = buildTaskDeliveryTransitionError({
+      checked: true,
+      branch: "issue/task-1",
+      baseBranch: "main",
+      baseRef: "origin/main",
+      modified: 2,
+      untracked: 1,
+      ahead: 1,
+      behind: 0,
+      commitsSinceBase: 1,
+      hasCommitsSinceBase: true,
+      hasUncommittedChanges: true,
       isGitHubRepo: true,
       canCreatePullRequest: false,
     }, "Review", "review");
@@ -146,6 +199,52 @@ describe("task delivery readiness", () => {
     }, "Done", "done");
 
     expect(reviewError).toContain("no committed changes detected");
+    expect(reviewDirtyError).toContain("uncommitted changes");
+    expect(reviewDirtyError).toContain("before requesting review");
     expect(doneError).toContain("uncommitted changes");
+  });
+
+  it("evaluates configurable delivery rules without relying on hard-coded column ids", () => {
+    const reviewLikeError = buildTaskDeliveryTransitionErrorFromRules({
+      checked: true,
+      branch: "issue/task-2",
+      baseBranch: "main",
+      baseRef: "origin/main",
+      modified: 0,
+      untracked: 0,
+      ahead: 0,
+      behind: 0,
+      commitsSinceBase: 0,
+      hasCommitsSinceBase: false,
+      hasUncommittedChanges: false,
+      isGitHubRepo: true,
+      canCreatePullRequest: false,
+    }, "QA Gate", {
+      requireCommittedChanges: true,
+      requireCleanWorktree: true,
+    });
+
+    const doneLikeError = buildTaskDeliveryTransitionErrorFromRules({
+      checked: true,
+      branch: "main",
+      baseBranch: "main",
+      baseRef: "origin/main",
+      modified: 0,
+      untracked: 0,
+      ahead: 1,
+      behind: 0,
+      commitsSinceBase: 1,
+      hasCommitsSinceBase: true,
+      hasUncommittedChanges: false,
+      isGitHubRepo: true,
+      canCreatePullRequest: false,
+    }, "Release", {
+      requireCommittedChanges: true,
+      requireCleanWorktree: true,
+      requirePullRequestReady: true,
+    });
+
+    expect(reviewLikeError).toContain("no committed changes detected");
+    expect(doneLikeError).toContain("GitHub repo is not PR-ready yet");
   });
 });

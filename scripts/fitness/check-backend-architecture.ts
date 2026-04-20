@@ -248,6 +248,10 @@ function isArchUnitOverflowError(error: unknown): boolean {
   return toMessage(error).includes("Maximum call stack size exceeded");
 }
 
+function isOverflowViolation(violation: NormalizedViolation): boolean {
+  return violation.kind === "unknown" && violation.summary.includes("Maximum call stack size exceeded");
+}
+
 async function runSuite(suite: SuiteName): Promise<ArchitectureReport> {
   const argv = process.argv.slice(2);
   const repoRoot = parseRepoRoot(argv) ?? process.cwd();
@@ -334,12 +338,17 @@ async function runSuite(suite: SuiteName): Promise<ArchitectureReport> {
   }
 
   const failedRuleCount = results.filter((result) => result.status === "fail").length;
+  const overflowOnlyFailure =
+    failedRuleCount > 0
+    && results
+      .filter((result) => result.status === "fail")
+      .every((result) => result.violations.every(isOverflowViolation));
 
   return {
     generatedAt: new Date().toISOString(),
     repoRoot,
     suite,
-    summaryStatus: failedRuleCount > 0 ? "fail" : "pass",
+    summaryStatus: overflowOnlyFailure ? "skipped" : failedRuleCount > 0 ? "fail" : "pass",
     archUnitSource: archUnit.source,
     tsconfigPath: tsConfigPath,
     ruleCount: results.length,

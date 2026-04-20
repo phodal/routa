@@ -8,6 +8,7 @@ pub mod acp_serve;
 pub mod agent;
 pub mod chat;
 pub mod delegate;
+pub mod feature_tree;
 pub mod fitness;
 pub mod graph;
 pub mod harness;
@@ -36,7 +37,7 @@ use std::sync::Arc;
 /// the full HTTP server dependency for non-server commands.
 pub async fn init_state(db_path: &str) -> AppState {
     let db = routa_core::Database::open(db_path).unwrap_or_else(|e| {
-        eprintln!("Failed to open database '{}': {}", db_path, e);
+        eprintln!("Failed to open database '{db_path}': {e}");
         std::process::exit(1);
     });
 
@@ -44,7 +45,7 @@ pub async fn init_state(db_path: &str) -> AppState {
 
     // Ensure the default workspace exists
     if let Err(e) = state.workspace_store.ensure_default().await {
-        eprintln!("Failed to initialize default workspace: {}", e);
+        eprintln!("Failed to initialize default workspace: {e}");
         std::process::exit(1);
     }
 
@@ -72,7 +73,7 @@ pub fn truncate_text(value: &str, max_len: usize) -> String {
     }
 
     let truncated: String = value.chars().take(max_len.saturating_sub(1)).collect();
-    format!("{}…", truncated)
+    format!("{truncated}…")
 }
 
 pub fn format_rfc3339_timestamp(value: Option<&str>) -> String {

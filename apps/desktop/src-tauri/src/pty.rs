@@ -55,16 +55,16 @@ impl PtyManager {
                 pixel_width: 0,
                 pixel_height: 0,
             })
-            .map_err(|e| format!("Failed to open PTY: {}", e))?;
+            .map_err(|e| format!("Failed to open PTY: {e}"))?;
 
         let reader = pty_pair
             .master
             .try_clone_reader()
-            .map_err(|e| format!("Failed to clone PTY reader: {}", e))?;
+            .map_err(|e| format!("Failed to clone PTY reader: {e}"))?;
         let writer = pty_pair
             .master
             .take_writer()
-            .map_err(|e| format!("Failed to take PTY writer: {}", e))?;
+            .map_err(|e| format!("Failed to take PTY writer: {e}"))?;
 
         // Build the command
         let cmd_str = command.as_deref().unwrap_or(if cfg!(windows) {
@@ -108,7 +108,7 @@ impl PtyManager {
         let _child = pty_pair
             .slave
             .spawn_command(cmd)
-            .map_err(|e| format!("Failed to spawn command in PTY: {}", e))?;
+            .map_err(|e| format!("Failed to spawn command in PTY: {e}"))?;
 
         let session_id = format!("pty-{}", self.next_id);
         self.next_id += 1;
@@ -131,14 +131,14 @@ impl PtyManager {
         let session = self
             .sessions
             .get_mut(session_id)
-            .ok_or_else(|| format!("PTY session not found: {}", session_id))?;
+            .ok_or_else(|| format!("PTY session not found: {session_id}"))?;
 
-        write!(session.writer, "{}", data).map_err(|e| format!("Failed to write to PTY: {}", e))?;
+        write!(session.writer, "{data}").map_err(|e| format!("Failed to write to PTY: {e}"))?;
 
         session
             .writer
             .flush()
-            .map_err(|e| format!("Failed to flush PTY: {}", e))?;
+            .map_err(|e| format!("Failed to flush PTY: {e}"))?;
 
         Ok(())
     }
@@ -148,12 +148,12 @@ impl PtyManager {
         let session = self
             .sessions
             .get_mut(session_id)
-            .ok_or_else(|| format!("PTY session not found: {}", session_id))?;
+            .ok_or_else(|| format!("PTY session not found: {session_id}"))?;
 
         let data = session
             .reader
             .fill_buf()
-            .map_err(|e| format!("Failed to read from PTY: {}", e))?;
+            .map_err(|e| format!("Failed to read from PTY: {e}"))?;
 
         if data.is_empty() {
             return Ok(None);
@@ -171,7 +171,7 @@ impl PtyManager {
         let session = self
             .sessions
             .get_mut(session_id)
-            .ok_or_else(|| format!("PTY session not found: {}", session_id))?;
+            .ok_or_else(|| format!("PTY session not found: {session_id}"))?;
 
         session
             .pty_pair
@@ -182,14 +182,14 @@ impl PtyManager {
                 pixel_width: 0,
                 pixel_height: 0,
             })
-            .map_err(|e| format!("Failed to resize PTY: {}", e))
+            .map_err(|e| format!("Failed to resize PTY: {e}"))
     }
 
     /// Kill/close a PTY session.
     pub fn kill(&mut self, session_id: &str) -> Result<(), String> {
         self.sessions
             .remove(session_id)
-            .ok_or_else(|| format!("PTY session not found: {}", session_id))?;
+            .ok_or_else(|| format!("PTY session not found: {session_id}"))?;
         Ok(())
     }
 
@@ -412,7 +412,7 @@ mod tests {
         // Note: Output may be None if process already exited, or contain the text
         if let Some(text) = output {
             // Just verify we got some output (terminal may add control sequences)
-            assert!(!text.is_empty(), "Got output: {}", text);
+            assert!(!text.is_empty(), "Got output: {text}");
         }
 
         // Clean up

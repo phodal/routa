@@ -68,10 +68,10 @@ pub async fn list_specialists(specialist_dir: Option<&str>) -> Result<(), String
 
     if let Some(dir) = specialist_dir {
         let count = loader.load_dir(dir)?;
-        println!("Loaded {} specialist(s) from '{}'", count, dir);
+        println!("Loaded {count} specialist(s) from '{dir}'");
     } else {
         let count = loader.load_default_dirs();
-        println!("Loaded {} specialist(s) from default directories", count);
+        println!("Loaded {count} specialist(s) from default directories");
     }
 
     // Also show builtins

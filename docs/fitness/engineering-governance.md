@@ -57,16 +57,23 @@ metrics:
 
   - name: markdown_external_links
     command: node --import tsx tools/hook-runtime/src/check-markdown-links.ts 2>&1
-    hard_gate: true
+    hard_gate: false
     tier: normal
     execution_scope: ci
-    description: "Markdown 中的外链必须可达；429 与需要鉴权的 4xx 记为告警不阻断"
+    gate: advisory
+    description: "Markdown 中的外链必须可达；429 与需要鉴权的 4xx 记为告警不阻断；外链检查受网络影响大，降级为 advisory"
 
   - name: todo_fixme_count
     command: |
-      grep -rn "TODO\|FIXME\|XXX\|HACK" --include="*.ts" --include="*.tsx" --include="*.rs" \
-        src apps crates 2>/dev/null | wc -l | awk '{print "todo_count:", $1}'
-    pattern: "todo_count: [0-9]$|todo_count: [1-9][0-9]$"
+      count=$(grep -rn "TODO\|FIXME\|XXX\|HACK" --include="*.ts" --include="*.tsx" --include="*.rs" \
+        src apps crates 2>/dev/null | wc -l | tr -d ' ')
+      echo "todo_count: ${count}"
+      if [ "${count}" -lt 100 ]; then
+        echo "todo_count_ok"
+      else
+        echo "todo_count_exceeded"
+      fi
+    pattern: "todo_count_ok"
     hard_gate: false
     tier: normal
     description: "TODO/FIXME 数量监控（<100）"
@@ -84,7 +91,7 @@ metrics:
 |--------|------|-----------|------|
 | scripts 根目录文件数 | 超标目录按基线冻结；当前目标上限 20，已超标时不得继续长大 | ❌ | `git ls-tree` + `find` |
 | blast radius 探针 | 变更范围可解释、可视 | ❌ | `graph:impact` |
-| Markdown 外链 | 外链可达 | ✅ | markdown link checker |
+| Markdown 外链 | 外链可达（advisory，受网络影响大） | ❌ | markdown link checker |
 | TODO/FIXME | <100 | ❌ | grep |
 
 ## 为什么单独成维度
@@ -125,5 +132,5 @@ grep -rn "TODO\|FIXME\|XXX\|HACK" --include="*.ts" --include="*.tsx" --include="
 |------|------|
 | `docs/fitness/code-quality.md` | 代码本体质量与静态门禁 |
 | `docs/fitness/review-triggers.yaml` | review 触发规则与目录治理信号 |
-| `tools/entrix/file_budgets.json` | 文件预算与历史热点冻结配置 |
+| `docs/fitness/file_budgets.json` | 文件预算与历史热点冻结配置 |
 | `docs/fitness/README.md` | Fitness 规则手册 |

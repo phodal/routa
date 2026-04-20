@@ -1,23 +1,38 @@
-import { useState, type Dispatch, type SetStateAction, type RefObject } from "react";
+import {
+  DndContext,
+  DragOverlay,
+  MouseSensor,
+  TouchSensor,
+  closestCorners,
+  useDroppable,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+  type DragStartEvent,
+} from "@dnd-kit/core";
+import { useMemo, useState, type Dispatch, type SetStateAction, type ReactNode, type RefObject } from "react";
+import { createPortal } from "react-dom";
 import { useTranslation } from "@/i18n";
 import type { AcpProviderInfo } from "@/client/acp-client";
 import type { CodebaseData } from "@/client/hooks/use-workspaces";
 import type { UseAcpActions, UseAcpState } from "@/client/hooks/use-acp";
 import { ChatPanel } from "@/client/components/chat-panel";
-import { AcpProviderDropdown } from "@/client/components/acp-provider-dropdown";
-import { RepoPicker, type RepoSelection } from "@/client/components/repo-picker";
+import type { RepoSelection } from "@/client/components/repo-picker";
 import { resolveEffectiveTaskAutomation } from "@/core/kanban/effective-task-automation";
-import { KanbanCard } from "./kanban-card";
+import { KanbanCard, KanbanCardOverlay } from "./kanban-card";
 import { KanbanCardActivityBar, KanbanCardDetail } from "./kanban-card-detail";
-import { KanbanFileChangesPanel, getKanbanFileChangesSummary } from "./kanban-file-changes-panel";
+import { getKanbanFileChangesSummary as _getKanbanFileChangesSummary } from "./kanban-file-changes-panel";
+import { KanbanEnhancedFileChangesPanel } from "./components/kanban-enhanced-file-changes-panel";
 import type { KanbanTaskAgentCopy } from "./i18n/kanban-task-agent";
 import { KanbanCreateModal, type TaskDraft } from "../kanban-create-modal";
 import { KanbanCardActivityPanel, KanbanEmptySessionPane } from "./kanban-card-activity";
 import { formatSessionTimestamp } from "./kanban-card-session-utils";
-import { KanbanRepoSyncStatus, type RepoSyncState } from "./kanban-repo-sync-status";
+import { desktopAwareFetch } from "@/client/utils/diagnostics";
+import type { RepoSyncState } from "./kanban-repo-sync-status";
 import type { KanbanSpecialistLanguage } from "./kanban-specialist-language";
 import {
   canSelectTaskSessionInAcp,
+  formatLaneAutomationCompactLabel,
   formatLaneAutomationSummary,
   getTaskLaneSession,
   isA2ATaskSession,
@@ -26,8 +41,120 @@ import {
 import type { ColumnAutomationConfig } from "./kanban-settings-modal";
 import type { KanbanBoardInfo, SessionInfo, TaskInfo, WorktreeInfo } from "../types";
 import type { KanbanRepoChanges } from "./kanban-file-changes-types";
-import { ChevronRight, ArrowRight } from "lucide-react";
+import { ChevronRight as _ChevronRight, GitBranch as _GitBranch } from "lucide-react";
+import { GitLogPanel, RealGitAdapter, MockGitAdapter } from "./git-log";
 
+interface SessionRestoreTranscriptMessage {
+  role?: string;
+  content?: string;
+  toolName?: string;
+  toolStatus?: string;
+}
+
+const KANBAN_RESTORE_CONTEXT_MESSAGE_LIMIT = 4;
+const KANBAN_RESTORE_CONTEXT_CHAR_LIMIT = 1800;
+const KANBAN_RESTORE_MESSAGE_CHAR_LIMIT = 700;
+
+function isRecoverableAcpSessionError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const message = (error as { message?: unknown }).message;
+  if (typeof message !== "string") return false;
+  return message.includes("embedded ACP processes cannot be resumed on a different instance")
+    || message.includes("session/load not supported");
+}
+
+function normalizeRestoreContent(content: string): string {
+  return content
+    .replace(/\r\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function isNoisyRestoreContent(content: string): boolean {
+  const lines = content.split("\n");
+  if (lines.length > 18) return true;
+  if (content.length > 1200) return true;
+  return /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z\s+(INFO|WARN|ERROR)\s/.test(content)
+    || /\b(test result:|Running tests\/|Doc-tests|SQLite database opened at:)\b/.test(content);
+}
+
+function truncateRestoreContent(content: string): string {
+  if (content.length <= KANBAN_RESTORE_MESSAGE_CHAR_LIMIT) return content;
+  return `${content.slice(0, KANBAN_RESTORE_MESSAGE_CHAR_LIMIT).trimEnd()}\n[truncated]`;
+}
+
+function formatRestoreTranscriptLine(message: SessionRestoreTranscriptMessage): string | null {
+  if (!["user", "assistant", "plan", "info"].includes(message.role ?? "")) return null;
+
+  const content = normalizeRestoreContent(message.content ?? "");
+  if (!content) return null;
+  if (isNoisyRestoreContent(content)) return null;
+
+  const excerpt = truncateRestoreContent(content);
+
+  switch (message.role) {
+    case "user":
+      return `User: ${excerpt}`;
+    case "assistant":
+      return `Assistant: ${excerpt}`;
+    case "plan":
+      return `Plan: ${excerpt}`;
+    case "info":
+      return `Info: ${excerpt}`;
+    default:
+      return null;
+  }
+}
+
+export function buildKanbanSessionRestorePrompt(
+  task: TaskInfo | null,
+  session: SessionInfo,
+  messages: SessionRestoreTranscriptMessage[],
+): string {
+  const recent = messages
+    .filter((message) => message.role !== "thought")
+    .map(formatRestoreTranscriptLine)
+    .filter((value): value is string => Boolean(value))
+    .slice(-KANBAN_RESTORE_CONTEXT_MESSAGE_LIMIT);
+
+  let transcript = recent.join("\n\n");
+  if (transcript.length > KANBAN_RESTORE_CONTEXT_CHAR_LIMIT) {
+    transcript = transcript.slice(transcript.length - KANBAN_RESTORE_CONTEXT_CHAR_LIMIT).trimStart();
+  }
+
+  const taskContext = task
+    ? [
+        `- Card: ${task.title}`,
+        task.objective ? `- Objective: ${task.objective}` : null,
+        task.columnId ? `- Column: ${task.columnId}` : null,
+        task.status ? `- Status: ${task.status}` : null,
+      ].filter(Boolean).join("\n")
+    : "- Card: unknown";
+
+  return [
+    "Continue the previous Routa Kanban card session. Do not summarize the transcript; continue the card work directly.",
+    "",
+    "Card context:",
+    taskContext,
+    "",
+    "Session context:",
+    `- Previous session: ${session.sessionId}`,
+    session.cwd ? `- Working directory: ${session.cwd}` : null,
+    session.branch ? `- Branch: ${session.branch}` : null,
+    transcript ? "" : null,
+    transcript ? "Recent clean conversation:" : null,
+    transcript || null,
+    "",
+    "Next: inspect the repo if needed, then proceed with the smallest next action for this card.",
+  ].filter(Boolean).join("\n");
+}
+
+async function fetchSessionTranscriptForRestore(sessionId: string): Promise<SessionRestoreTranscriptMessage[]> {
+  const response = await desktopAwareFetch(`/api/sessions/${encodeURIComponent(sessionId)}/transcript`, { cache: "no-store" });
+  if (!response.ok) return [];
+  const data = await response.json().catch(() => null) as { messages?: unknown } | null;
+  return Array.isArray(data?.messages) ? data.messages as SessionRestoreTranscriptMessage[] : [];
+}
 
 interface SpecialistOption {
   id: string;
@@ -37,29 +164,53 @@ interface SpecialistOption {
   defaultProvider?: string;
 }
 
+function KanbanDropColumn({
+  children,
+  columnId,
+  hasActiveDrag,
+  widthClass,
+}: {
+  children: ReactNode;
+  columnId: string;
+  hasActiveDrag: boolean;
+  widthClass: string;
+}) {
+  const { isOver, setNodeRef } = useDroppable({
+    id: `column:${columnId}`,
+  });
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={`flex h-full min-h-26.25 shrink-0 flex-col border bg-white p-3 transition dark:bg-[#12141c] ${widthClass} ${isOver
+        ? "border-amber-300 ring-2 ring-amber-300/50 dark:border-amber-700 dark:ring-amber-700/40"
+        : hasActiveDrag
+          ? "border-slate-300/80 dark:border-[#2a2f43]"
+          : "border-slate-200/70 dark:border-[#1c1f2e]"
+        }`}
+      data-testid="kanban-column"
+    >
+      {children}
+    </div>
+  );
+}
+
 export function KanbanBoardSurface({
   moveError,
   onDismissMoveError,
   codebases,
   workspaceId,
   defaultCodebase,
-  repoSync,
-  setSelectedCodebase,
-  fetchCodebaseWorktrees,
+  repoSync: _repoSync,
+  setSelectedCodebase: _setSelectedCodebase,
+  fetchCodebaseWorktrees: _fetchCodebaseWorktrees,
   onRefresh,
-  onAgentPrompt,
   repoChanges,
   repoChangesLoading,
   availableProviders,
   acp,
   boardAutoProviderId,
-  onBoardProviderChange,
   kanbanTaskAgentCopy,
-  agentInput,
-  setAgentInput,
-  agentLoading,
-  handleAgentSubmit,
-  setShowCreateModal,
   agentSessionId,
   openAgentPanel,
   agentPanelOpen,
@@ -75,17 +226,20 @@ export function KanbanBoardSurface({
   allCodebaseIds,
   worktreeCache,
   queuedPositions,
-  dragTaskId,
-  setDragTaskId,
   moveTask,
   confirmDeleteTask,
   patchTask,
   retryTaskTrigger,
+  runTaskPullRequest, // eslint-disable-line @typescript-eslint/no-unused-vars -- used in KanbanTaskCard props
   openTaskDetail,
   agentSession,
   onCloseAgentPanel,
   ensureKanbanAgentSession,
   kanbanRepoSelection,
+  fileChangesOpen,
+  setFileChangesOpen,
+  gitLogOpen,
+  setGitLogOpen,
 }: {
   moveError: string | null;
   onDismissMoveError: () => void;
@@ -96,19 +250,12 @@ export function KanbanBoardSurface({
   setSelectedCodebase: Dispatch<SetStateAction<CodebaseData | null>>;
   fetchCodebaseWorktrees: (codebase: CodebaseData) => Promise<void>;
   onRefresh: () => void;
-  onAgentPrompt?: unknown;
   repoChanges: KanbanRepoChanges[];
   repoChangesLoading: boolean;
   availableProviders: AcpProviderInfo[];
   acp?: UseAcpState & UseAcpActions;
   boardAutoProviderId?: string;
-  onBoardProviderChange: (providerId: string) => void;
   kanbanTaskAgentCopy: KanbanTaskAgentCopy;
-  agentInput: string;
-  setAgentInput: Dispatch<SetStateAction<string>>;
-  agentLoading: boolean;
-  handleAgentSubmit: () => Promise<void>;
-  setShowCreateModal: Dispatch<SetStateAction<boolean>>;
   agentSessionId: string | null;
   openAgentPanel: (sessionId: string) => void;
   agentPanelOpen: boolean;
@@ -124,12 +271,11 @@ export function KanbanBoardSurface({
   allCodebaseIds: string[];
   worktreeCache: Record<string, WorktreeInfo>;
   queuedPositions: Record<string, number | undefined>;
-  dragTaskId: string | null;
-  setDragTaskId: Dispatch<SetStateAction<string | null>>;
   moveTask: (taskId: string, targetColumnId: string) => Promise<void>;
   confirmDeleteTask: (task: TaskInfo) => void;
   patchTask: (taskId: string, payload: Record<string, unknown>) => Promise<TaskInfo>;
   retryTaskTrigger: (taskId: string) => Promise<void>;
+  runTaskPullRequest: (taskId: string) => Promise<string | null>;
   openTaskDetail: (task: TaskInfo) => Promise<void>;
   agentSession?: SessionInfo;
   onCloseAgentPanel: () => void;
@@ -140,10 +286,74 @@ export function KanbanBoardSurface({
     model?: string,
   ) => Promise<string | null>;
   kanbanRepoSelection: RepoSelection | null;
+  fileChangesOpen?: boolean;
+  setFileChangesOpen?: Dispatch<SetStateAction<boolean>>;
+  gitLogOpen?: boolean;
+  setGitLogOpen?: Dispatch<SetStateAction<boolean>>;
 }) {
   const { t } = useTranslation();
-  const [fileChangesOpen, setFileChangesOpen] = useState(false);
-  const fileChangesSummary = getKanbanFileChangesSummary(repoChanges);
+  const [localFileChangesOpen, setLocalFileChangesOpen] = useState(false);
+  const [localGitLogOpen, setLocalGitLogOpen] = useState(false);
+  const [gitLogRepoPath, setGitLogRepoPath] = useState<string | null>(null);
+  const [activeDragTaskId, setActiveDragTaskId] = useState<string | null>(null);
+  const [activeDragCardWidth, setActiveDragCardWidth] = useState<number | null>(null);
+  const sensors = useSensors(
+    useSensor(MouseSensor, {
+      activationConstraint: { distance: 3 },
+    }),
+    useSensor(TouchSensor, {
+      activationConstraint: { delay: 120, tolerance: 8 },
+    }),
+  );
+
+  // Use external state if provided, otherwise use local state
+  const fileChangesOpenValue = fileChangesOpen ?? localFileChangesOpen;
+  const setFileChangesOpenValue = setFileChangesOpen ?? setLocalFileChangesOpen;
+  const gitLogOpenValue = gitLogOpen ?? localGitLogOpen;
+  const _setGitLogOpenValue = setGitLogOpen ?? setLocalGitLogOpen;
+
+  // Use RealGitAdapter when a real repo is available; fall back to MockGitAdapter for demo
+  const gitAdapter = useMemo(() => {
+    const hasRealRepo = codebases.length > 0;
+    return hasRealRepo ? new RealGitAdapter() : new MockGitAdapter();
+  }, [codebases.length]);
+
+  const activeGitLogRepoPath = useMemo(() => {
+    if (gitLogRepoPath && codebases.some((codebase) => codebase.repoPath === gitLogRepoPath)) {
+      return gitLogRepoPath;
+    }
+    return defaultCodebase?.repoPath ?? codebases[0]?.repoPath ?? null;
+  }, [codebases, defaultCodebase?.repoPath, gitLogRepoPath]);
+  const activeDragTask = useMemo(
+    () => activeDragTaskId ? boardTasks.find((task) => task.id === activeDragTaskId) ?? null : null,
+    [activeDragTaskId, boardTasks],
+  );
+
+  const handleDragStart = ({ active }: DragStartEvent) => {
+    setActiveDragTaskId(String(active.id));
+    setActiveDragCardWidth(active.rect.current.initial?.width ?? null);
+  };
+
+  const handleDragEnd = async ({ active, over }: DragEndEvent) => {
+    setActiveDragTaskId(null);
+    setActiveDragCardWidth(null);
+    if (!over) return;
+
+    const targetId = String(over.id);
+    if (!targetId.startsWith("column:")) return;
+
+    const taskId = String(active.id);
+    const sourceColumnId = active.data.current?.columnId;
+    const targetColumnId = targetId.slice("column:".length);
+    if (!targetColumnId) return;
+    if (sourceColumnId === targetColumnId) return;
+    await moveTask(taskId, targetColumnId);
+  };
+
+  const handleDragCancel = () => {
+    setActiveDragTaskId(null);
+    setActiveDragCardWidth(null);
+  };
 
   return (
     <>
@@ -161,245 +371,135 @@ export function KanbanBoardSurface({
           </div>
         </div>
       )}
-      <div className="shrink-0 border border-slate-200/70 bg-white px-4 py-2 dark:border-[#1c1f2e] dark:bg-[#12141c]">
-        <div className="flex flex-col gap-1.5 lg:flex-row lg:items-center lg:justify-between lg:gap-3">
-          <div className="flex min-w-0 flex-1 flex-col gap-1.5 lg:flex-row lg:items-center lg:gap-2">
-            <div className="flex min-w-0 flex-wrap items-center gap-2 xl:max-w-[56rem]">
-              <span className="inline-flex h-8 items-center text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">{t.kanbanBoard.repos}</span>
-              {codebases.length === 0 ? (
-                <div className="flex min-w-0 flex-col gap-2 rounded-xl border border-dashed border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-700 dark:bg-[#0d1018]">
-                  <span className="text-sm text-slate-400 dark:text-slate-500">{t.kanbanBoard.noReposLinked}</span>
-                  <div className="flex items-center gap-2">
-                    <RepoPicker
-                      value={null}
-                      onChange={async (selection) => {
-                        if (!selection) return;
-                        try {
-                          const res = await fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/codebases`, {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({
-                              repoPath: selection.path,
-                              branch: selection.branch,
-                              label: selection.name,
-                            }),
-                          });
-                          const data = await res.json();
-                          if (!res.ok) throw new Error(data.error ?? "Failed to add repository");
-                          onRefresh?.();
-                        } catch (err) {
-                          console.error("Failed to add repository:", err);
-                          alert(err instanceof Error ? err.message : "Failed to add repository");
-                        }
-                      }}
-                      additionalRepos={[]}
-                    />
-                  </div>
-                </div>
-              ) : (
-                <div className="flex min-w-0 items-center gap-2">
-                  {defaultCodebase && (
-                    <button
-                      onClick={() => {
-                        setSelectedCodebase(defaultCodebase);
-                        void fetchCodebaseWorktrees(defaultCodebase);
-                      }}
-                      className="inline-flex h-8 max-w-[200px] items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 text-[11px] text-slate-700 transition-colors hover:border-amber-400 hover:bg-amber-50 dark:border-slate-700 dark:bg-[#0d1018] dark:text-slate-300 dark:hover:bg-amber-900/10"
-                      data-testid="codebase-badge"
-                      title={`${defaultCodebase.label ?? defaultCodebase.repoPath} - ${defaultCodebase.branch ? `@${defaultCodebase.branch}` : ""}`}
-                    >
-                      <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${defaultCodebase.sourceType === "github" ? "bg-blue-500" : "bg-emerald-500"}`} />
-                      <span className="truncate font-medium">{defaultCodebase.label ?? defaultCodebase.repoPath.split("/").pop() ?? defaultCodebase.repoPath}</span>
-                      {defaultCodebase.branch && <span className="shrink-0 text-slate-400 dark:text-slate-500">@{defaultCodebase.branch}</span>}
-                    </button>
-                  )}
-                  {codebases.length > 1 && (
-                    <button
-                      onClick={() => {
-                        const otherRepo = codebases.find((codebase) => codebase.id !== defaultCodebase?.id);
-                        if (otherRepo) {
-                          setSelectedCodebase(otherRepo);
-                          void fetchCodebaseWorktrees(otherRepo);
-                        }
-                      }}
-                      className="inline-flex h-8 items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2 text-[11px] text-slate-600 transition-colors hover:border-amber-400 hover:bg-amber-50 dark:border-slate-700 dark:bg-[#0d1018] dark:text-slate-400 dark:hover:bg-amber-900/10"
-                      title={`+${codebases.length - 1} more ${codebases.length - 1 === 1 ? "repository" : "repositories"} - click to view all`}
-                    >
-                      <span className="font-medium">+{codebases.length - 1}</span>
-                    </button>
-                  )}
-                </div>
-              )}
-              <button
-                type="button"
-                onClick={() => setFileChangesOpen((current) => !current)}
-                className="inline-flex h-8 items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-2.5 text-[11px] font-medium text-slate-700 transition-colors hover:border-amber-400 hover:bg-amber-50 dark:border-slate-700 dark:bg-[#0d1018] dark:text-slate-300 dark:hover:bg-amber-900/10"
-                data-testid={fileChangesOpen ? "kanban-file-changes-close" : "kanban-file-changes-open"}
-                aria-label={fileChangesOpen ? "Close file changes drawer" : "Open file changes drawer"}
-                title={`${fileChangesSummary.changedFiles} changed file${fileChangesSummary.changedFiles === 1 ? "" : "s"}`}
-              >
-                <ChevronRight className={`h-3.5 w-3.5 text-slate-400 transition-transform ${fileChangesOpen ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}/>
-                <span>Changes</span>
-                <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] text-slate-500 dark:bg-[#191c28] dark:text-slate-400">
-                  {fileChangesSummary.changedFiles}
-                </span>
-              </button>
-              <KanbanRepoSyncStatus repoSync={repoSync} />
-            </div>
-          </div>
-
-          {onAgentPrompt ? (
-            <div className="flex min-w-0 flex-1 items-center justify-center">
-                <div className="group relative flex w-full max-w-3xl items-center border border-slate-200 bg-white transition-colors focus-within:border-amber-400/80 focus-within:ring-2 focus-within:ring-amber-400/15 dark:border-slate-700 dark:bg-[#12141c]">
-                  <div className="shrink-0 border-r border-slate-200 dark:border-slate-700">
-                    <AcpProviderDropdown
-                      providers={availableProviders}
-                    selectedProvider={resolveKanbanBoardAutoProviderId(board, acp?.selectedProvider) ?? ""}
-                    onProviderChange={(providerId) => onBoardProviderChange(providerId)}
-                    disabled={!acp?.connected || availableProviders.length === 0}
-                    ariaLabel={kanbanTaskAgentCopy.providerAriaLabel}
-                    dataTestId="kanban-agent-provider"
-                    buttonClassName="flex h-8 items-center gap-1.5 border-r border-slate-200 bg-transparent px-2.5 text-[12px] font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-50 dark:border-r-slate-700 dark:text-slate-200 dark:hover:bg-slate-800/40"
-                    labelClassName="max-w-[120px] truncate"
-                  />
-                </div>
-                <input
-                  type="text"
-                  value={agentInput}
-                  onChange={(event) => setAgentInput(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" && !event.shiftKey) {
-                      event.preventDefault();
-                      void handleAgentSubmit();
-                    }
-                  }}
-                  placeholder={acp?.connected ? kanbanTaskAgentCopy.placeholder : kanbanTaskAgentCopy.connectingPlaceholder}
-                  disabled={agentLoading || !acp?.connected}
-                  className="h-8 w-full bg-transparent px-3 pr-2 text-sm text-slate-800 placeholder-slate-400 outline-none disabled:opacity-50 dark:text-slate-200 dark:placeholder-slate-500"
-                />
-                <button
-                  onClick={() => void handleAgentSubmit()}
-                  disabled={!agentInput.trim() || agentLoading || !acp?.connected}
-                  className="mr-1.5 inline-flex h-8 shrink-0 items-center gap-1 rounded-lg bg-slate-900 px-3 text-[12px] font-semibold text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400 dark:bg-amber-500 dark:hover:bg-amber-400 dark:disabled:bg-[#1a1d29] dark:disabled:text-slate-500"
-                >
-                  {agentLoading ? "..." : (
-                    <>
-                      <span>{kanbanTaskAgentCopy.send}</span>
-                      <ArrowRight className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
-                    </>
-                  )}
-                </button>
-                <button
-                  onClick={() => setShowCreateModal(true)}
-                  className="inline-flex h-8 shrink-0 items-center rounded-lg bg-gradient-to-r from-amber-500 to-amber-500 px-3 py-0 text-[12px] font-semibold text-white shadow-sm transition-all hover:from-amber-600 hover:to-amber-500"
-                >
-                  {kanbanTaskAgentCopy.manual}
-                </button>
-              </div>
-              {agentSessionId && (
-                <button
-                  onClick={() => openAgentPanel(agentSessionId)}
-                  className="shrink-0 text-xs text-amber-600 hover:underline dark:text-amber-400"
-                  title={kanbanTaskAgentCopy.openPanelTitle}
-                >
-                  {kanbanTaskAgentCopy.view}
-                </button>
-              )}
-            </div>
-          ) : (
-            <button
-              onClick={() => setShowCreateModal(true)}
-              className="inline-flex h-8 items-center rounded-lg bg-gradient-to-r from-amber-500 to-amber-500 px-3 text-[12px] font-medium text-white shadow-sm transition-all hover:from-amber-600 hover:to-amber-500"
-            >
-              {kanbanTaskAgentCopy.manual}
-            </button>
-          )}
-        </div>
-      </div>
       <div className="flex min-h-0 flex-1 gap-4">
         <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
-          <KanbanFileChangesPanel
+          <KanbanEnhancedFileChangesPanel
+            workspaceId={workspaceId}
             repos={repoChanges}
             loading={repoChangesLoading}
-            open={fileChangesOpen}
-            onClose={() => setFileChangesOpen(false)}
+            open={fileChangesOpenValue}
+            onClose={() => setFileChangesOpenValue(false)}
+            onRefresh={onRefresh}
           />
+          {gitLogOpenValue && (
+            <div className="absolute bottom-0 left-0 right-0 z-10 border-t border-slate-200 dark:border-[#1c1f2e] shadow-xl" style={{ height: "340px" }}>
+              <GitLogPanel
+                adapter={gitAdapter}
+                repoPath={activeGitLogRepoPath ?? "/mock/repo"}
+                codebases={codebases}
+                onSelectRepoPath={setGitLogRepoPath}
+                title={t.gitLog.title}
+              />
+            </div>
+          )}
           <div className="flex-1 min-h-0 overflow-auto pb-2" data-testid="kanban-board-content">
-            <div className="flex min-h-full min-w-max items-start gap-3 pr-4">
-              {board.columns
-                .slice()
-                .sort((left, right) => left.position - right.position)
-                .filter((column) => visibleColumns.includes(column.id))
-                .map((column) => {
-                  const columnTasks = boardTasks.filter((task) => (task.columnId ?? "backlog") === column.id);
-                  const laneAutomation = columnAutomation[column.id] ?? column.automation;
-                  const widthClass = column.width === "compact" ? "w-[14rem]" : column.width === "wide" ? "w-[24rem]" : "w-[18rem]";
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCorners}
+              onDragStart={handleDragStart}
+              onDragEnd={(event) => {
+                void handleDragEnd(event);
+              }}
+              onDragCancel={handleDragCancel}
+            >
+              <div className="flex min-h-full min-w-max items-start gap-3 pr-4">
+                {board.columns
+                  .slice()
+                  .sort((left, right) => left.position - right.position)
+                  .filter((column) => visibleColumns.includes(column.id))
+                  .map((column) => {
+                    const columnTasks = boardTasks.filter((task) => (task.columnId ?? "backlog") === column.id);
+                    const laneAutomation = columnAutomation[column.id] ?? column.automation;
+                    const widthClass = column.width === "compact" ? "w-[14rem]" : column.width === "wide" ? "w-[24rem]" : "w-[18rem]";
 
-                  return (
-                    <div
-                      key={column.id}
-                      onDragOver={(event) => event.preventDefault()}
-                      onDrop={async () => {
-                        if (!dragTaskId) return;
-                        await moveTask(dragTaskId, column.id);
-                        setDragTaskId(null);
-                      }}
-                      className={`flex h-full min-h-26.25 shrink-0 flex-col border border-slate-200/70 bg-white p-3 dark:border-[#1c1f2e] dark:bg-[#12141c] ${widthClass}`}
-                      data-testid="kanban-column"
-                    >
-                      <div className="mb-3 space-y-2">
-                        <div>
-                          <div className="text-sm font-semibold text-slate-800 dark:text-slate-100">{column.name}</div>
-                          <div className="text-[11px] text-slate-400 dark:text-slate-500">{columnTasks.length} {t.kanbanBoard.cards}</div>
-                        </div>
-                        <div
-                          className="truncate text-[10px] leading-4 text-slate-500 dark:text-slate-400"
-                          data-testid={`kanban-column-automation-${column.id}`}
-                          title={laneAutomation?.enabled ? formatLaneAutomationSummary(laneAutomation, providers, specialists, {
-                            autoProviderId: boardAutoProviderId,
-                            autoLabel: t.common.auto,
-                          }) : column.stage === "blocked" ? t.kanbanBoard.manualLaneOnly : t.kanbanBoard.manualLane}
-                        >
-                          {laneAutomation?.enabled
-                            ? formatLaneAutomationSummary(laneAutomation, providers, specialists, {
+                    return (
+                      <KanbanDropColumn
+                        key={column.id}
+                        columnId={column.id}
+                        hasActiveDrag={activeDragTaskId !== null}
+                        widthClass={widthClass}
+                      >
+                        <div className="mb-3 space-y-1.5">
+                          <div className="flex items-baseline justify-between gap-3">
+                            <div className="text-sm font-semibold text-slate-800 dark:text-slate-100">{column.name}</div>
+                            <div className="shrink-0 text-[10px] text-slate-400 dark:text-slate-500">
+                              {columnTasks.length} {t.kanbanBoard.cards}
+                            </div>
+                          </div>
+                          <div
+                            className="truncate text-[10px] leading-4 text-slate-500 dark:text-slate-400"
+                            data-testid={`kanban-column-automation-${column.id}`}
+                            title={laneAutomation?.enabled ? formatLaneAutomationSummary(laneAutomation, providers, specialists, {
                               autoProviderId: boardAutoProviderId,
                               autoLabel: t.common.auto,
-                            })
-                            : column.stage === "blocked"
-                              ? t.kanbanBoard.manualLaneOnly
-                              : t.kanbanBoard.manualLane}
+                            }) : column.stage === "blocked" ? t.kanbanBoard.manualLaneOnly : t.kanbanBoard.manualLane}
+                          >
+                            {laneAutomation?.enabled
+                              ? formatLaneAutomationCompactLabel(laneAutomation, providers, specialists, {
+                                autoProviderId: boardAutoProviderId,
+                                autoLabel: t.common.auto,
+                              })
+                              : column.stage === "blocked"
+                                ? t.kanbanBoard.manualLaneOnly
+                                : t.kanbanBoard.manualLane}
+                          </div>
                         </div>
-                      </div>
 
-                      <div className="flex-1 min-h-0 space-y-2 overflow-y-auto pr-1">
-                        {columnTasks.map((task) => (
-                          <KanbanCard
-                            key={task.id}
-                            task={task}
-                            boardColumns={board.columns}
-                            linkedSession={task.triggerSessionId ? sessionMap.get(task.triggerSessionId) : undefined}
-                            liveMessageTail={task.triggerSessionId ? liveSessionTails[task.triggerSessionId] : undefined}
-                            availableProviders={availableProviders}
-                            specialists={specialists}
-                            specialistLanguage={specialistLanguage}
-                            codebases={codebases}
-                            allCodebaseIds={allCodebaseIds}
-                            worktreeCache={worktreeCache}
-                            autoProviderId={resolveKanbanBoardAutoProviderId(board, boardAutoProviderId)}
-                            queuePosition={queuedPositions[task.id]}
-                            onDragStart={() => setDragTaskId(task.id)}
-                            onOpenDetail={() => openTaskDetail(task)}
-                            onDelete={() => confirmDeleteTask(task)}
-                            onPatchTask={patchTask}
-                            onRetryTrigger={retryTaskTrigger}
-                            onRefresh={onRefresh}
-                          />
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })}
-            </div>
+                        <div className="flex-1 min-h-0 space-y-2 overflow-y-auto pr-1">
+                          {columnTasks.map((task) => (
+                            <KanbanCard
+                              key={task.id}
+                              task={task}
+                              boardColumns={board.columns}
+                              linkedSession={task.triggerSessionId ? sessionMap.get(task.triggerSessionId) : undefined}
+                              liveMessageTail={task.triggerSessionId ? liveSessionTails[task.triggerSessionId] : undefined}
+                              availableProviders={availableProviders}
+                              specialists={specialists}
+                              specialistLanguage={specialistLanguage}
+                              codebases={codebases}
+                              allCodebaseIds={allCodebaseIds}
+                              worktreeCache={worktreeCache}
+                              autoProviderId={resolveKanbanBoardAutoProviderId(board, boardAutoProviderId)}
+                              queuePosition={queuedPositions[task.id]}
+                              onOpenDetail={() => openTaskDetail(task)}
+                              onDelete={() => confirmDeleteTask(task)}
+                              onPatchTask={patchTask}
+                              onRetryTrigger={retryTaskTrigger}
+                              onRefresh={onRefresh}
+                            />
+                          ))}
+                        </div>
+                      </KanbanDropColumn>
+                    );
+                  })}
+              </div>
+              {activeDragTask && typeof document !== "undefined" && createPortal(
+                <DragOverlay adjustScale={false} dropAnimation={null} zIndex={80}>
+                  <div style={activeDragCardWidth ? { width: activeDragCardWidth } : undefined}>
+                    <KanbanCardOverlay
+                      task={activeDragTask}
+                      boardColumns={board.columns}
+                      linkedSession={activeDragTask.triggerSessionId ? sessionMap.get(activeDragTask.triggerSessionId) : undefined}
+                      liveMessageTail={activeDragTask.triggerSessionId ? liveSessionTails[activeDragTask.triggerSessionId] : undefined}
+                      availableProviders={availableProviders}
+                      specialists={specialists}
+                      specialistLanguage={specialistLanguage}
+                      codebases={codebases}
+                      allCodebaseIds={allCodebaseIds}
+                      worktreeCache={worktreeCache}
+                      autoProviderId={resolveKanbanBoardAutoProviderId(board, boardAutoProviderId)}
+                      queuePosition={queuedPositions[activeDragTask.id]}
+                      onOpenDetail={() => {}}
+                      onDelete={() => {}}
+                      onPatchTask={patchTask}
+                      onRetryTrigger={retryTaskTrigger}
+                      onRefresh={onRefresh}
+                    />
+                  </div>
+                </DragOverlay>,
+                document.body,
+              )}
+            </DndContext>
           </div>
         </div>
 
@@ -411,8 +511,11 @@ export function KanbanBoardSurface({
             <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3 dark:border-[#191c28]">
               <div className="min-w-0">
                 <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">{kanbanTaskAgentCopy.panelTitle}</div>
-                <div className="truncate text-[11px] text-slate-400 dark:text-slate-500">
-                  {agentSession?.provider ?? boardAutoProviderId ?? acp.selectedProvider} · {agentSessionId.slice(0, 12)}...
+                <div
+                  className="overflow-x-auto whitespace-nowrap text-[11px] text-slate-400 dark:text-slate-500"
+                  title={agentSessionId}
+                >
+                  {agentSession?.provider ?? boardAutoProviderId ?? acp.selectedProvider} · {agentSessionId}
                 </div>
               </div>
               <div className="flex items-center gap-2">
@@ -597,14 +700,15 @@ export function KanbanTaskDetailOverlay({
   combinedSessions,
   patchTask,
   retryTaskTrigger,
+  runTaskPullRequest,
   confirmDeleteTask,
   onRefresh,
   setActiveSessionId,
-  closeTaskDetail,
   sessionMap,
   workspaceId,
   isTaskDetailFullscreen,
   onToggleTaskDetailFullscreen,
+  closeTaskDetail,
 }: {
   activeSessionId: string | null;
   activeTaskId: string | null;
@@ -627,17 +731,17 @@ export function KanbanTaskDetailOverlay({
   combinedSessions: SessionInfo[];
   patchTask: (taskId: string, payload: Record<string, unknown>) => Promise<TaskInfo>;
   retryTaskTrigger: (taskId: string) => Promise<void>;
+  runTaskPullRequest: (taskId: string) => Promise<string | null>;
   confirmDeleteTask: (task: TaskInfo) => void;
   onRefresh: () => void;
   setActiveSessionId: Dispatch<SetStateAction<string | null>>;
-  closeTaskDetail: () => void;
   sessionMap: Map<string, SessionInfo>;
   workspaceId: string;
   isTaskDetailFullscreen?: boolean;
   onToggleTaskDetailFullscreen?: (nextFullscreen: boolean) => void;
+  closeTaskDetail: () => void;
 }) {
-  if (!activeSessionId && !activeTaskId) return null;
-
+  const isOverlayOpen = Boolean(activeSessionId || activeTaskId);
   const showEmptySessionPane = Boolean(
     activeTask &&
     !activeSessionId &&
@@ -648,13 +752,74 @@ export function KanbanTaskDetailOverlay({
   );
   const selectedLaneSession = getTaskLaneSession(activeTask, activeSessionId);
   const isA2ASessionPane = Boolean(activeTask && isA2ATaskSession(activeTask, activeSessionId));
-  const hasSessionPane = Boolean(showEmptySessionPane || isA2ASessionPane || (activeSessionId && acp));
+  const canShowSessionPane = Boolean(showEmptySessionPane || isA2ASessionPane || (activeSessionId && acp));
+  const [hiddenSessionPaneTaskId, setHiddenSessionPaneTaskId] = useState<string | null>(null);
+  const [sessionRecoveryInputPrefill, setSessionRecoveryInputPrefill] = useState<string | null>(null);
+  const isSessionPaneVisible = activeTaskId ? hiddenSessionPaneTaskId !== activeTaskId : true;
+  const hasSessionPane = canShowSessionPane && isSessionPaneVisible;
   const selectTaskSession = (task: TaskInfo, sessionId: string) => {
     setActiveSessionId(sessionId);
+    setSessionRecoveryInputPrefill(null);
+    setHiddenSessionPaneTaskId(null);
     if (acp && canSelectTaskSessionInAcp(task, sessionId, sessionMap)) {
       acp.selectSession(sessionId);
     }
   };
+
+  const recoverActiveAcpSession = async () => {
+    if (!acp || !activeSessionId) return;
+    const targetSessionInfo = sessionMap.get(activeSessionId);
+    if (!targetSessionInfo?.cwd) return;
+
+    try {
+      const resumed = await acp.resumeSession(activeSessionId, targetSessionInfo.cwd, { throwOnError: true });
+      if (resumed?.sessionId) {
+        setActiveSessionId(resumed.sessionId);
+        setSessionRecoveryInputPrefill(null);
+        onRefresh();
+      }
+      return;
+    } catch (error) {
+      if (!isRecoverableAcpSessionError(error)) {
+        throw error;
+      }
+    }
+
+    const transcript = await fetchSessionTranscriptForRestore(activeSessionId);
+    const replacement = await acp.createSession(
+      targetSessionInfo.cwd,
+      targetSessionInfo.provider ?? boardAutoProviderId ?? acp.selectedProvider,
+      targetSessionInfo.modeId,
+      targetSessionInfo.role,
+      targetSessionInfo.workspaceId || workspaceId,
+      targetSessionInfo.model,
+      undefined,
+      targetSessionInfo.specialistId,
+      undefined,
+      undefined,
+      undefined,
+      targetSessionInfo.branch,
+    );
+
+    if (!replacement?.sessionId) return;
+
+    if (activeTask) {
+      const nextSessionIds = [
+        ...(activeTask.sessionIds ?? []),
+        activeSessionId,
+        replacement.sessionId,
+      ].filter((sessionId, index, values) => sessionId && values.indexOf(sessionId) === index);
+      await patchTask(activeTask.id, { sessionIds: nextSessionIds });
+    }
+
+    setActiveSessionId(replacement.sessionId);
+    acp.selectSession(replacement.sessionId);
+    setSessionRecoveryInputPrefill(buildKanbanSessionRestorePrompt(activeTask, targetSessionInfo, transcript));
+    setHiddenSessionPaneTaskId(null);
+    onRefresh();
+  };
+
+  if (!isOverlayOpen) return null;
 
   return (
     <div
@@ -694,6 +859,7 @@ export function KanbanTaskDetailOverlay({
                   selectedProvider={resolveKanbanBoardAutoProviderId(board, boardAutoProviderId) ?? null}
                   onPatchTask={patchTask}
                   onRetryTrigger={retryTaskTrigger}
+                  onRunPullRequest={runTaskPullRequest}
                   onDelete={() => confirmDeleteTask(task)}
                   onRefresh={onRefresh}
                   onProviderChange={(providerId) => {
@@ -709,6 +875,10 @@ export function KanbanTaskDetailOverlay({
                   }}
                   isFullscreen={isTaskDetailFullscreen}
                   onToggleFullscreen={onToggleTaskDetailFullscreen}
+                  onClose={closeTaskDetail}
+                  canShowSessionPane={canShowSessionPane}
+                  isSessionPaneVisible={hasSessionPane}
+                  onShowSessionPane={() => setHiddenSessionPaneTaskId(null)}
                 />
               </div>
             );
@@ -759,7 +929,7 @@ export function KanbanTaskDetailOverlay({
                     specialists={specialists}
                     specialistLanguage={specialistLanguage}
                     autoProviderId={resolveKanbanBoardAutoProviderId(board, boardAutoProviderId)}
-                    onCloseSession={closeTaskDetail}
+                    onCloseSession={() => setHiddenSessionPaneTaskId(activeTask?.id ?? null)}
                   />
                 </div>
               );
@@ -778,7 +948,7 @@ export function KanbanTaskDetailOverlay({
                       specialistLanguage={specialistLanguage}
                       currentSessionId={activeSessionId ?? undefined}
                       onSelectSession={(sessionId) => selectTaskSession(activeTask, sessionId)}
-                      onCloseSession={closeTaskDetail}
+                      onCloseSession={() => setHiddenSessionPaneTaskId(activeTask.id)}
                     />
                   </div>
                 )}
@@ -792,7 +962,7 @@ export function KanbanTaskDetailOverlay({
                     refreshSignal={refreshSignal}
                     currentSessionId={activeSessionId ?? undefined}
                     onSelectSession={(sessionId) => selectTaskSession(activeTask, sessionId)}
-                    onCloseSession={closeTaskDetail}
+                    onCloseSession={() => setHiddenSessionPaneTaskId(activeTask.id)}
                   />
                 ) : acp && (
                   <div className="min-h-0 flex-1">
@@ -809,6 +979,9 @@ export function KanbanTaskDetailOverlay({
                       codebases={codebases}
                       activeWorkspaceId={workspaceId}
                       agentRole={taskAgentRole}
+                      inputPrefill={sessionRecoveryInputPrefill}
+                      onInputPrefillConsumed={() => setSessionRecoveryInputPrefill(null)}
+                      onResumeActiveSession={recoverActiveAcpSession}
                     />
                   </div>
                 )}

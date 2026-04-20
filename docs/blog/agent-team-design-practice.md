@@ -16,6 +16,8 @@ date: 2026-03-02
 结合最近正在构建的 Routa（ https://github.com/phodal/routa ），分享我的一些新想法，以及现有一些实践，诸如于如何通过 **Specialist 角色化**、**状态外置** 和 **MCP
 跨 Agent 通信**，将 “多 Agent 协作” 打造成可演进的工程系统，而非一次性 Prompt 的堆叠。
 
+<!-- truncate -->
+
 ## 引子 1：Token 与成本约束下的 Agent Team
 
 在设计 Routa 多 Agent 系统作为软件开发平台的时候，我一直想解决一个成本的问题 + 协同的问题：

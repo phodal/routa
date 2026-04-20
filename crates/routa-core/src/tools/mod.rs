@@ -122,7 +122,7 @@ impl AgentTools {
         let agent = self.agent_store.get(agent_id).await?;
         let agent = match agent {
             Some(a) => a,
-            None => return Ok(ToolResult::error(format!("Agent not found: {}", agent_id))),
+            None => return Ok(ToolResult::error(format!("Agent not found: {agent_id}"))),
         };
 
         let mut messages = if let Some(n) = last_n {
@@ -167,8 +167,7 @@ impl AgentTools {
             Some(r) => r,
             None => {
                 return Ok(ToolResult::error(format!(
-                    "Invalid role: {}. Must be one of: ROUTA, CRAFTER, GATE, DEVELOPER",
-                    role
+                    "Invalid role: {role}. Must be one of: ROUTA, CRAFTER, GATE, DEVELOPER"
                 )))
             }
         };
@@ -217,12 +216,12 @@ impl AgentTools {
     ) -> Result<ToolResult, ServerError> {
         let agent = match self.agent_store.get(agent_id).await? {
             Some(a) => a,
-            None => return Ok(ToolResult::error(format!("Agent not found: {}", agent_id))),
+            None => return Ok(ToolResult::error(format!("Agent not found: {agent_id}"))),
         };
 
         let mut task = match self.task_store.get(task_id).await? {
             Some(t) => t,
-            None => return Ok(ToolResult::error(format!("Task not found: {}", task_id))),
+            None => return Ok(ToolResult::error(format!("Task not found: {task_id}"))),
         };
 
         // Assign and activate
@@ -283,8 +282,7 @@ impl AgentTools {
             Some(a) => a,
             None => {
                 return Ok(ToolResult::error(format!(
-                    "Target agent not found: {}",
-                    to_agent_id
+                    "Target agent not found: {to_agent_id}"
                 )))
             }
         };
@@ -293,7 +291,7 @@ impl AgentTools {
             uuid::Uuid::new_v4().to_string(),
             to_agent_id.to_string(),
             MessageRole::User,
-            format!("[From agent {}]: {}", from_agent_id, message),
+            format!("[From agent {from_agent_id}]: {message}"),
             None,
             None,
             None,
@@ -330,15 +328,14 @@ impl AgentTools {
     ) -> Result<ToolResult, ServerError> {
         let agent = match self.agent_store.get(agent_id).await? {
             Some(a) => a,
-            None => return Ok(ToolResult::error(format!("Agent not found: {}", agent_id))),
+            None => return Ok(ToolResult::error(format!("Agent not found: {agent_id}"))),
         };
 
         let parent_id = match &agent.parent_id {
             Some(p) => p.clone(),
             None => {
                 return Ok(ToolResult::error(format!(
-                    "Agent {} has no parent to report to",
-                    agent_id
+                    "Agent {agent_id} has no parent to report to"
                 )))
             }
         };
@@ -452,7 +449,7 @@ impl AgentTools {
     pub async fn get_task(&self, task_id: &str) -> Result<ToolResult, ServerError> {
         match self.task_store.get(task_id).await? {
             Some(task) => Ok(ToolResult::success(task)),
-            None => Ok(ToolResult::error(format!("Task not found: {}", task_id))),
+            None => Ok(ToolResult::error(format!("Task not found: {task_id}"))),
         }
     }
 
@@ -488,15 +485,14 @@ impl AgentTools {
             Some(s) => s,
             None => {
                 return Ok(ToolResult::error(format!(
-                    "Invalid status: {}. Must be one of: PENDING, IN_PROGRESS, REVIEW_REQUIRED, COMPLETED, NEEDS_FIX, BLOCKED, CANCELLED",
-                    status
+                    "Invalid status: {status}. Must be one of: PENDING, IN_PROGRESS, REVIEW_REQUIRED, COMPLETED, NEEDS_FIX, BLOCKED, CANCELLED"
                 )))
             }
         };
 
         let mut task = match self.task_store.get(task_id).await? {
             Some(t) => t,
-            None => return Ok(ToolResult::error(format!("Task not found: {}", task_id))),
+            None => return Ok(ToolResult::error(format!("Task not found: {task_id}"))),
         };
 
         let old_status = task.status.clone();
@@ -634,7 +630,7 @@ impl AgentTools {
     pub async fn get_agent_status(&self, agent_id: &str) -> Result<ToolResult, ServerError> {
         let agent = match self.agent_store.get(agent_id).await? {
             Some(a) => a,
-            None => return Ok(ToolResult::error(format!("Agent not found: {}", agent_id))),
+            None => return Ok(ToolResult::error(format!("Agent not found: {agent_id}"))),
         };
 
         let message_count = self.conversation_store.get_message_count(agent_id).await?;
@@ -661,7 +657,7 @@ impl AgentTools {
     pub async fn get_agent_summary(&self, agent_id: &str) -> Result<ToolResult, ServerError> {
         let agent = match self.agent_store.get(agent_id).await? {
             Some(a) => a,
-            None => return Ok(ToolResult::error(format!("Agent not found: {}", agent_id))),
+            None => return Ok(ToolResult::error(format!("Agent not found: {agent_id}"))),
         };
 
         let message_count = self.conversation_store.get_message_count(agent_id).await?;

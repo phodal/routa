@@ -10,6 +10,7 @@ use routa_core::trace::{TraceEventType, TraceQuery, TraceReader};
 use serde::Deserialize;
 use serde::Serialize;
 use serde_json::Value;
+use std::collections::HashMap;
 use std::path::{Path as FsPath, PathBuf};
 
 use crate::application::sessions::{
@@ -36,6 +37,7 @@ pub fn router() -> Router<AppState> {
         )
         .route("/{session_id}/context", get(get_session_context))
         .route("/{session_id}/disconnect", post(disconnect_session))
+        .route("/{session_id}/fork", post(fork_session))
 }
 
 #[derive(Debug, Serialize)]
@@ -103,8 +105,11 @@ struct RepoSlideSessionResult {
 struct ListSessionsQuery {
     workspace_id: Option<String>,
     parent_session_id: Option<String>,
+    surface: Option<String>,
     limit: Option<usize>,
 }
+
+const TEAM_LEAD_SPECIALIST_ID: &str = "team-agent-lead";
 
 /// GET /api/sessions — List ACP sessions.
 /// Compatible with the Next.js frontend's session-panel.tsx and chat-panel.tsx.
@@ -115,15 +120,198 @@ async fn list_sessions(
     Query(query): Query<ListSessionsQuery>,
 ) -> Json<serde_json::Value> {
     let service = SessionApplicationService::new(state);
-    let sessions = service
+    let limit = query.limit;
+    let surface = query.surface.clone();
+    let parent_session_id = query.parent_session_id.clone();
+    let use_team_surface =
+        should_apply_team_surface(surface.as_deref(), query.parent_session_id.as_deref());
+    let service_limit = service_limit_for_query(limit, query.parent_session_id.as_deref());
+    let mut sessions = service
         .list_sessions(SessionListQuery {
             workspace_id: query.workspace_id,
-            parent_session_id: query.parent_session_id,
-            limit: query.limit,
+            parent_session_id,
+            limit: service_limit,
         })
         .await;
 
+    if query.parent_session_id.is_none() {
+        sessions.retain(session_is_non_empty);
+    }
+
+    if use_team_surface {
+        sessions = list_team_runs(sessions);
+    }
+
+    if let Some(limit) = limit {
+        sessions.truncate(limit);
+    }
+
     Json(serde_json::json!({ "sessions": sessions }))
+}
+
+fn session_is_non_empty(session: &Value) -> bool {
+    session
+        .get("firstPromptSent")
+        .and_then(Value::as_bool)
+        .unwrap_or(true)
+}
+
+fn session_id(session: &Value) -> Option<&str> {
+    session.get("sessionId").and_then(Value::as_str)
+}
+
+fn parent_session_id(session: &Value) -> Option<&str> {
+    session.get("parentSessionId").and_then(Value::as_str)
+}
+
+fn session_role(session: &Value) -> Option<&str> {
+    session.get("role").and_then(Value::as_str)
+}
+
+fn session_name(session: &Value) -> Option<&str> {
+    session.get("name").and_then(Value::as_str)
+}
+
+fn session_specialist_id(session: &Value) -> Option<&str> {
+    session.get("specialistId").and_then(Value::as_str)
+}
+
+fn normalize_session_name(name: Option<&str>) -> String {
+    name.unwrap_or_default()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .to_lowercase()
+}
+
+fn should_apply_team_surface(surface: Option<&str>, parent_session_id: Option<&str>) -> bool {
+    surface == Some("team") && parent_session_id.is_none()
+}
+
+fn service_limit_for_query(limit: Option<usize>, parent_session_id: Option<&str>) -> Option<usize> {
+    if parent_session_id.is_some() {
+        limit
+    } else {
+        None
+    }
+}
+
+fn has_explicit_team_run_marker(session: &Value) -> bool {
+    if session_specialist_id(session) == Some(TEAM_LEAD_SPECIALIST_ID) {
+        return true;
+    }
+
+    if !session_role(session)
+        .map(|role| role.eq_ignore_ascii_case("ROUTA"))
+        .unwrap_or(false)
+    {
+        return false;
+    }
+
+    let normalized_name = normalize_session_name(session_name(session));
+    if normalized_name.is_empty() {
+        return false;
+    }
+
+    normalized_name.starts_with("team -")
+        || normalized_name.starts_with("team run")
+        || normalized_name.contains("team lead")
+}
+
+fn list_team_runs(sessions: Vec<Value>) -> Vec<Value> {
+    let mut child_map: HashMap<String, Vec<String>> = HashMap::new();
+    let ordered_sessions = sessions;
+
+    for session in ordered_sessions.iter() {
+        let Some(parent_id) = parent_session_id(session) else {
+            continue;
+        };
+        let Some(child_id) = session_id(session) else {
+            continue;
+        };
+        child_map
+            .entry(parent_id.to_string())
+            .or_default()
+            .push(child_id.to_string());
+    }
+
+    let mut descendants_by_session_id: HashMap<String, usize> = HashMap::new();
+    let mut root_sessions = Vec::new();
+
+    for session in ordered_sessions.iter() {
+        if parent_session_id(session).is_some() {
+            continue;
+        }
+
+        let Some(current_session_id) = session_id(session) else {
+            continue;
+        };
+        let direct_delegates = child_map
+            .get(current_session_id)
+            .map(|children| children.len())
+            .unwrap_or(0);
+        let descendants = count_descendants(
+            current_session_id,
+            &child_map,
+            &mut descendants_by_session_id,
+            &mut Vec::new(),
+        );
+
+        if has_explicit_team_run_marker(session)
+            || session_role(session)
+                .map(|role| role.eq_ignore_ascii_case("ROUTA"))
+                .unwrap_or(false)
+                && descendants > 0
+        {
+            let mut session_with_counts = session.clone();
+            if let Some(object) = session_with_counts.as_object_mut() {
+                object.insert("directDelegates".to_string(), Value::from(direct_delegates));
+                object.insert("descendants".to_string(), Value::from(descendants));
+            }
+            root_sessions.push(session_with_counts);
+        }
+    }
+
+    root_sessions
+}
+
+fn count_descendants(
+    session_id: &str,
+    child_map: &HashMap<String, Vec<String>>,
+    descendants_by_session_id: &mut HashMap<String, usize>,
+    visiting: &mut Vec<String>,
+) -> usize {
+    if let Some(cached) = descendants_by_session_id.get(session_id) {
+        return *cached;
+    }
+    if visiting.iter().any(|current| current == session_id) {
+        return 0;
+    }
+
+    visiting.push(session_id.to_string());
+    let total = child_map
+        .get(session_id)
+        .map(|children| {
+            children
+                .iter()
+                .map(|child_id| {
+                    if visiting.iter().any(|current| current == child_id) {
+                        0
+                    } else {
+                        1 + count_descendants(
+                            child_id,
+                            child_map,
+                            descendants_by_session_id,
+                            visiting,
+                        )
+                    }
+                })
+                .sum()
+        })
+        .unwrap_or(0);
+    visiting.pop();
+    descendants_by_session_id.insert(session_id.to_string(), total);
+    total
 }
 
 /// GET /api/sessions/{session_id} — Get session metadata.
@@ -216,8 +404,7 @@ async fn disconnect_session(
     let session = state.acp_manager.get_session(&session_id).await;
     if session.is_none() {
         return Err(ServerError::NotFound(format!(
-            "Session {} not found",
-            session_id
+            "Session {session_id} not found"
         )));
     }
 
@@ -235,6 +422,61 @@ async fn disconnect_session(
     state.acp_manager.kill_session(&session_id).await;
 
     Ok(Json(serde_json::json!({ "ok": true })))
+}
+
+/// POST /api/sessions/{session_id}/fork — Fork a session.
+///
+/// Creates a new session that inherits the parent's provider, workspace, and settings.
+async fn fork_session(
+    State(state): State<AppState>,
+    Path(session_id): Path<String>,
+) -> Result<Json<serde_json::Value>, ServerError> {
+    // Try in-memory first, then DB
+    let (provider, workspace_id, cwd) =
+        if let Some(mem) = state.acp_manager.get_session(&session_id).await {
+            (
+                mem.provider.clone(),
+                mem.workspace_id.clone(),
+                mem.cwd.clone(),
+            )
+        } else if let Ok(Some(row)) = state.acp_session_store.get(&session_id).await {
+            (
+                row.provider.clone(),
+                row.workspace_id.clone(),
+                row.cwd.clone(),
+            )
+        } else {
+            return Err(ServerError::NotFound(format!(
+                "Session {session_id} not found"
+            )));
+        };
+
+    let new_id = uuid::Uuid::new_v4().to_string();
+
+    state
+        .acp_session_store
+        .create(
+            routa_core::store::acp_session_store::CreateAcpSessionParams {
+                id: &new_id,
+                cwd: &cwd,
+                branch: None,
+                workspace_id: &workspace_id,
+                provider: provider.as_deref(),
+                role: None,
+                custom_command: None,
+                custom_args: None,
+                parent_session_id: Some(&session_id),
+            },
+        )
+        .await
+        .map_err(|e| ServerError::Internal(format!("Failed to create forked session: {e}")))?;
+
+    Ok(Json(serde_json::json!({
+        "sessionId": new_id,
+        "parentSessionId": session_id,
+        "provider": provider,
+        "workspaceId": workspace_id,
+    })))
 }
 
 #[derive(Debug, Deserialize)]
@@ -270,18 +512,18 @@ async fn get_session_transcript(
     let service = SessionApplicationService::new(state);
     let history = service.get_session_history(&session_id, true).await?;
     let cwd = std::env::current_dir()
-        .map_err(|error| ServerError::Internal(format!("Failed to get cwd: {}", error)))?;
+        .map_err(|error| ServerError::Internal(format!("Failed to get cwd: {error}")))?;
     let traces = TraceReader::new(&cwd)
         .query(&TraceQuery {
             session_id: Some(session_id.clone()),
             ..TraceQuery::default()
         })
         .await
-        .map_err(|error| ServerError::Internal(format!("Failed to query traces: {}", error)))?;
+        .map_err(|error| ServerError::Internal(format!("Failed to query traces: {error}")))?;
 
     let payload = build_transcript_payload(&session_id, history, traces);
     Ok(Json(serde_json::to_value(payload).map_err(|error| {
-        ServerError::Internal(format!("Failed to serialize transcript payload: {}", error))
+        ServerError::Internal(format!("Failed to serialize transcript payload: {error}"))
     })?))
 }
 
@@ -306,8 +548,7 @@ async fn get_reposlide_result(
         })
         .map_err(|error| {
             ServerError::Internal(format!(
-                "Failed to serialize RepoSlide result payload: {}",
-                error
+                "Failed to serialize RepoSlide result payload: {error}"
             ))
         })?,
     ))
@@ -326,7 +567,7 @@ async fn download_reposlide_result(
                 ServerError::NotFound("RepoSlide deck is not available for download".to_string())
             })?;
     let bytes = std::fs::read(&artifact.path).map_err(|error| {
-        ServerError::NotFound(format!("Failed to read RepoSlide deck: {}", error))
+        ServerError::NotFound(format!("Failed to read RepoSlide deck: {error}"))
     })?;
 
     let mut headers = HeaderMap::new();
@@ -413,14 +654,14 @@ async fn load_session_transcript(
     let service = SessionApplicationService::new(state.clone());
     let history = service.get_session_history(session_id, true).await?;
     let cwd = std::env::current_dir()
-        .map_err(|error| ServerError::Internal(format!("Failed to get cwd: {}", error)))?;
+        .map_err(|error| ServerError::Internal(format!("Failed to get cwd: {error}")))?;
     let traces = TraceReader::new(&cwd)
         .query(&TraceQuery {
             session_id: Some(session_id.to_string()),
             ..TraceQuery::default()
         })
         .await
-        .map_err(|error| ServerError::Internal(format!("Failed to query traces: {}", error)))?;
+        .map_err(|error| ServerError::Internal(format!("Failed to query traces: {error}")))?;
 
     Ok(build_transcript_payload(session_id, history, traces))
 }
@@ -573,7 +814,7 @@ fn history_to_transcript_messages(history: &[Value]) -> Vec<TranscriptMessage> {
             .get("eventId")
             .and_then(Value::as_str)
             .map(str::to_string)
-            .unwrap_or_else(|| format!("history-{}-{}", kind, index));
+            .unwrap_or_else(|| format!("history-{kind}-{index}"));
 
         match kind {
             "user_message" => {
@@ -772,7 +1013,7 @@ fn history_to_transcript_messages(history: &[Value]) -> Vec<TranscriptMessage> {
                                             .get("content")
                                             .and_then(Value::as_str)
                                             .unwrap_or_default();
-                                        format!("[{}] {}", status, body)
+                                        format!("[{status}] {body}")
                                     })
                                     .collect::<Vec<_>>()
                                     .join("\n")
@@ -927,11 +1168,13 @@ fn now_iso() -> String {
 mod tests {
     use crate::application::sessions::consolidate_message_history;
     use routa_core::trace::{Contributor, TraceEventType, TraceRecord};
-    use serde_json::json;
+    use serde_json::{json, Value};
 
     use super::{
-        build_transcript_payload, extract_reposlide_result, history_to_transcript_messages,
-        resolve_reposlide_deck_file, TranscriptMessage,
+        build_transcript_payload, count_descendants, extract_reposlide_result,
+        history_to_transcript_messages, list_team_runs, resolve_reposlide_deck_file,
+        service_limit_for_query, session_is_non_empty, should_apply_team_surface,
+        TranscriptMessage, TEAM_LEAD_SPECIALIST_ID,
     };
 
     #[test]
@@ -1126,5 +1369,126 @@ mod tests {
         let artifact = resolve_reposlide_deck_file(session_dir.path(), deck_path.to_str());
 
         assert!(artifact.is_none());
+    }
+
+    #[test]
+    fn list_team_runs_matches_next_backend_contract() {
+        let sessions = vec![
+            json!({
+                "sessionId": "anonymous-team-run",
+                "workspaceId": "default",
+                "role": "ROUTA",
+                "createdAt": "2026-04-18T00:00:00Z",
+                "firstPromptSent": true,
+            }),
+            json!({
+                "sessionId": "anonymous-team-child",
+                "workspaceId": "default",
+                "role": "DEVELOPER",
+                "parentSessionId": "anonymous-team-run",
+                "createdAt": "2026-04-18T00:01:00Z",
+                "firstPromptSent": true,
+            }),
+            json!({
+                "sessionId": "named-team-run",
+                "workspaceId": "default",
+                "name": "Team - Investigate regression",
+                "role": "ROUTA",
+                "createdAt": "2026-04-18T00:02:00Z",
+                "firstPromptSent": true,
+            }),
+            json!({
+                "sessionId": "named-non-routa-run",
+                "workspaceId": "default",
+                "name": "Team - not actually routa",
+                "role": "DEVELOPER",
+                "createdAt": "2026-04-18T00:03:00Z",
+                "firstPromptSent": true,
+            }),
+            json!({
+                "sessionId": "team-specialist-run",
+                "workspaceId": "default",
+                "role": "ROUTA",
+                "specialistId": TEAM_LEAD_SPECIALIST_ID,
+                "createdAt": "2026-04-18T00:04:00Z",
+                "firstPromptSent": true,
+            }),
+        ];
+
+        let runs = list_team_runs(sessions);
+        let ids: Vec<_> = runs
+            .iter()
+            .filter_map(|session| session["sessionId"].as_str())
+            .collect();
+
+        assert_eq!(
+            ids,
+            vec![
+                "anonymous-team-run",
+                "named-team-run",
+                "team-specialist-run",
+            ]
+        );
+        assert_eq!(runs[0]["directDelegates"], Value::from(1));
+        assert_eq!(runs[0]["descendants"], Value::from(1));
+        assert_eq!(runs[1]["directDelegates"], Value::from(0));
+        assert_eq!(runs[1]["descendants"], Value::from(0));
+    }
+
+    #[test]
+    fn count_descendants_handles_cycles_and_empty_sessions() {
+        let mut descendants_by_session_id = std::collections::HashMap::new();
+        let child_map = std::collections::HashMap::from([
+            ("cycle-root".to_string(), vec!["cycle-child".to_string()]),
+            ("cycle-child".to_string(), vec!["cycle-root".to_string()]),
+        ]);
+
+        let descendants = count_descendants(
+            "cycle-root",
+            &child_map,
+            &mut descendants_by_session_id,
+            &mut Vec::new(),
+        );
+
+        assert_eq!(descendants, 1);
+    }
+
+    #[test]
+    fn team_surface_is_skipped_for_child_queries() {
+        assert!(should_apply_team_surface(Some("team"), None));
+        assert!(!should_apply_team_surface(Some("team"), Some("parent-1")));
+        assert!(!should_apply_team_surface(None, None));
+    }
+
+    #[test]
+    fn top_level_queries_apply_limit_after_filtering() {
+        assert_eq!(service_limit_for_query(Some(5), None), None);
+        assert_eq!(service_limit_for_query(Some(5), Some("parent-1")), Some(5));
+        assert_eq!(service_limit_for_query(None, None), None);
+    }
+
+    #[test]
+    fn session_is_non_empty_filters_placeholder_sessions() {
+        let sessions = vec![
+            json!({
+                "sessionId": "visible-session",
+                "workspaceId": "default",
+                "role": "ROUTA",
+                "createdAt": "2026-04-18T00:00:00Z",
+                "firstPromptSent": true,
+            }),
+            json!({
+                "sessionId": "empty-session",
+                "workspaceId": "default",
+                "role": "ROUTA",
+                "createdAt": "2026-04-18T00:01:00Z",
+                "firstPromptSent": false,
+            }),
+        ];
+
+        let non_empty: Vec<_> = sessions.into_iter().filter(session_is_non_empty).collect();
+
+        assert_eq!(non_empty.len(), 1);
+        assert_eq!(non_empty[0]["sessionId"].as_str(), Some("visible-session"));
     }
 }

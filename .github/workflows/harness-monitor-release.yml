@@ -1,0 +1,407 @@
+name: Harness Monitor Release
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: "Semver version to publish, ex: 0.2.4"
+        required: true
+        type: string
+      publish:
+        description: "Publish npm packages after packaging"
+        required: false
+        default: true
+        type: boolean
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Semver version to publish, ex: 0.2.4 or v0.2.4"
+        required: true
+        type: string
+      publish:
+        description: "Publish npm packages after packaging"
+        type: boolean
+        default: true
+
+jobs:
+  build:
+    name: Build Harness Monitor binaries
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            key: linux-x64
+          - runner: macos-14
+            target: x86_64-apple-darwin
+            key: darwin-x64
+          - runner: macos-14
+            target: aarch64-apple-darwin
+            key: darwin-arm64
+          - runner: windows-latest
+            target: x86_64-pc-windows-msvc
+            key: win32-x64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: true
+
+      - name: Sync release version
+        shell: bash
+        env:
+          RELEASE_VERSION: ${{ inputs.version || github.event.inputs.version }}
+        run: node scripts/release/sync-release-version.mjs --version "${RELEASE_VERSION}"
+
+      - name: Verify synced release files
+        shell: bash
+        run: |
+          changed_files=()
+          while IFS= read -r line; do
+            changed_files+=("$line")
+          done < <(git diff --name-only)
+
+          if [[ ${#changed_files[@]} -eq 0 ]]; then
+            echo "Release version already aligned"
+            exit 0
+          fi
+
+          allowed_files=(
+            "Cargo.toml"
+            "package.json"
+            "apps/desktop/package.json"
+            "apps/desktop/src-tauri/Cargo.toml"
+            "apps/desktop/src-tauri/tauri.conf.json"
+            "packages/routa-cli/package.json"
+            "packages/entrix/package.json"
+            "packages/harness-monitor/package.json"
+            "crates/routa-core/Cargo.toml"
+            "crates/routa-rpc/Cargo.toml"
+            "crates/routa-scanner/Cargo.toml"
+            "crates/routa-server/Cargo.toml"
+            "crates/routa-cli/Cargo.toml"
+            "crates/entrix/Cargo.toml"
+            "crates/harness-monitor/Cargo.toml"
+          )
+
+          for file in "${changed_files[@]}"; do
+            case " ${allowed_files[*]} " in
+              *" ${file} "*) ;;
+              *)
+                echo "Unexpected file changed during release version sync: ${file}" >&2
+                exit 1
+                ;;
+            esac
+          done
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Build Harness Monitor
+        run: |
+          cargo build --release --package harness-monitor --target ${{ matrix.target }}
+
+      - name: Prepare artifact
+        shell: bash
+        run: |
+          mkdir -p dist/${{ matrix.key }}
+          if [[ "${{ matrix.key }}" == "win32-x64" ]]; then
+            cp target/${{ matrix.target }}/release/harness-monitor.exe dist/${{ matrix.key }}/harness-monitor.exe
+          else
+            cp target/${{ matrix.target }}/release/harness-monitor dist/${{ matrix.key }}/harness-monitor
+            chmod +x dist/${{ matrix.key }}/harness-monitor
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: harness-monitor-${{ matrix.key }}
+          path: dist/${{ matrix.key }}
+          if-no-files-found: error
+
+  stage:
+    name: Stage npm packages
+    needs: build
+    permissions:
+      contents: read
+      actions: read
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.value }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: true
+
+      - name: Sync release version
+        env:
+          RELEASE_VERSION: ${{ inputs.version || github.event.inputs.version }}
+        run: node scripts/release/sync-release-version.mjs --version "${RELEASE_VERSION}"
+
+      - name: Verify synced release files
+        shell: bash
+        run: |
+          mapfile -t changed_files < <(git diff --name-only)
+          if [[ ${#changed_files[@]} -eq 0 ]]; then
+            echo "Release version already aligned"
+            exit 0
+          fi
+
+          allowed_files=(
+            "Cargo.toml"
+            "package.json"
+            "apps/desktop/package.json"
+            "apps/desktop/src-tauri/Cargo.toml"
+            "apps/desktop/src-tauri/tauri.conf.json"
+            "packages/routa-cli/package.json"
+            "packages/entrix/package.json"
+            "packages/harness-monitor/package.json"
+            "crates/routa-core/Cargo.toml"
+            "crates/routa-rpc/Cargo.toml"
+            "crates/routa-scanner/Cargo.toml"
+            "crates/routa-server/Cargo.toml"
+            "crates/routa-cli/Cargo.toml"
+            "crates/entrix/Cargo.toml"
+            "crates/harness-monitor/Cargo.toml"
+          )
+
+          for file in "${changed_files[@]}"; do
+            case " ${allowed_files[*]} " in
+              *" ${file} "*) ;;
+              *)
+                echo "Unexpected file changed during release version sync: ${file}" >&2
+                exit 1
+                ;;
+            esac
+          done
+
+      - name: Download Harness Monitor artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist/harness-monitor-artifacts
+
+      - name: Resolve version
+        id: version
+        env:
+          INPUT_VERSION: ${{ inputs.version || github.event.inputs.version }}
+        shell: bash
+        run: |
+          if [[ -n "$INPUT_VERSION" ]]; then
+            version="$INPUT_VERSION"
+            version="${version#v}"
+            version="${version#harness-monitor-v}"
+          else
+            version="${GITHUB_REF_NAME#v}"
+            version="${version#harness-monitor-v}"
+          fi
+
+          if [[ -z "${version}" ]]; then
+            echo "Unable to resolve version" >&2
+            exit 1
+          fi
+
+          echo "value=${version}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Stage npm tarballs
+        run: |
+          node scripts/release/stage-harness-monitor-npm.mjs \
+            --version "${{ steps.version.outputs.value }}" \
+            --artifacts dist/harness-monitor-artifacts \
+            --out dist/npm
+
+      - name: Generate release manifest
+        run: |
+          node scripts/release/generate-release-manifest.mjs \
+            --cli-artifacts dist/harness-monitor-artifacts \
+            --npm-dir dist/npm \
+            --channel latest \
+            --out dist/release/manifest.json
+
+      - name: Fetch baseline manifest
+        env:
+          ROUTA_GITHUB_TOKEN: ${{ secrets.ROUTA_GITHUB_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          python scripts/release/fetch-release-baseline.py \
+            --repo phodal/routa \
+            --workflow harness-monitor-release.yml \
+            --artifact-name routa-release-manifest-harness-monitor \
+            --exclude-run-id "${{ github.run_id }}" \
+            --out dist/release/baseline-manifest.json
+
+      - name: Install Entrix
+        run: python -m pip install entrix
+
+      - name: Guard release surface
+        run: |
+          if [[ -f dist/release/baseline-manifest.json ]]; then
+              entrix release-trigger \
+                --manifest dist/release/manifest.json \
+                --baseline-manifest dist/release/baseline-manifest.json
+          else
+            entrix release-trigger \
+              --manifest dist/release/manifest.json
+          fi
+
+      - name: Upload release manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: routa-release-manifest-harness-monitor
+          path: dist/release/manifest.json
+
+      - name: Upload npm artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: harness-monitor-npm-${{ steps.version.outputs.value }}
+          path: dist/npm
+
+  verify:
+    name: Verify staged Harness Monitor release
+    needs:
+      - build
+      - stage
+    permissions:
+      contents: read
+      actions: read
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: true
+
+      - name: Download npm artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: harness-monitor-npm-${{ needs.stage.outputs.version }}
+          path: dist/npm
+
+      - name: Download release manifest
+        uses: actions/download-artifact@v4
+        with:
+          name: routa-release-manifest-harness-monitor
+          path: dist/release
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install Entrix
+        run: python -m pip install entrix
+
+      - name: Re-check release surface
+        run: |
+          entrix release-trigger \
+            --manifest dist/release/manifest.json
+
+      - name: Verify install smoke
+        run: |
+          node scripts/release/verify-harness-monitor-tarballs.mjs \
+            --tarball-dir dist/npm \
+            --platform linux-x64 \
+            --out dist/release/harness-monitor-verification.json
+
+      - name: Upload verification report
+        uses: actions/upload-artifact@v4
+        with:
+          name: harness-monitor-release-verification
+          path: dist/release/harness-monitor-verification.json
+
+  publish:
+    name: Publish to npm
+    needs:
+      - build
+      - stage
+      - verify
+    permissions:
+      contents: read
+      actions: read
+    if: |
+      github.event_name == 'workflow_call' ||
+      github.event.inputs.publish == 'true' ||
+      github.event.inputs.publish == true ||
+      inputs.publish == true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: true
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: harness-monitor-npm-${{ needs.stage.outputs.version }}
+          path: dist/npm
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org/
+
+      - name: Download release manifest
+        uses: actions/download-artifact@v4
+        with:
+          name: routa-release-manifest-harness-monitor
+          path: dist/release
+
+      - name: Install Entrix
+        run: python -m pip install entrix
+
+      - name: Re-check release surface before publish
+        run: |
+          entrix release-trigger \
+            --manifest dist/release/manifest.json
+
+      - name: Publish tarballs
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${NPM_TOKEN:-}" ]]; then
+            echo "NPM_TOKEN is required for publish" >&2
+            exit 1
+          fi
+
+          version="${{ needs.stage.outputs.version }}"
+          if [[ -z "${version}" ]]; then
+            echo "Unable to resolve version from staging output" >&2
+            exit 1
+          fi
+
+          if [[ "${version}" == *-* ]]; then
+            npm_tag="next"
+          else
+            npm_tag="latest"
+          fi
+
+          npm config set //registry.npmjs.org/:_authToken "$NPM_TOKEN"
+
+          shopt -s nullglob
+          for tarball in dist/npm/*.tgz; do
+            echo "Publishing ${tarball}"
+            set +e
+            output=$(npm publish "${tarball}" --access public --tag "${npm_tag}" 2>&1)
+            status=$?
+            set -e
+            if [[ ${status} -ne 0 ]]; then
+              echo "${output}"
+            fi
+            if [[ ${status} -eq 0 ]]; then
+              continue
+            fi
+            if [[ "${output}" == *"You cannot publish over the previously published version"* || "${output}" == *"already exists"* ]]; then
+              echo "Skip existing version for ${tarball}"
+              continue
+            fi
+            echo "${output}"
+            exit ${status}
+          done

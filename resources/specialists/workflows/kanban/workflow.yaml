@@ -59,7 +59,7 @@ system_prompt: |
 
   ### Review Column
   - **Entry gate**: Verify Dev Evidence exists with AC verification. Reject to dev if missing.
-  - Hard rejection criteria: missing AC verification, no tests, scope creep, lint failures, files over 1000 lines.
+  - Hard rejection criteria: missing AC verification, no tests, scope creep, lint failures, or changed Entrix-tracked source files exceeding `docs/fitness/file_budgets.json`. Ignore lockfiles and generated/build/cache/vendor trees.
   - Reject if Dev quietly bundled prerequisite/follow-up work that should have been tracked as separate cards.
   - Approve only with concrete evidence. Reject aggressively.
   - When done, `move_card` to **done**.

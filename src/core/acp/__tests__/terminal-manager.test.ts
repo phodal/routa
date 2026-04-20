@@ -122,7 +122,10 @@ describe("TerminalManager", () => {
     expect(spawnMock).not.toHaveBeenCalled();
     expect(nodePty.writes).toEqual(["echo hello\n"]);
     expect(nodePty.resizes).toEqual([{ cols: 120, rows: 40 }]);
-    expect(manager.getOutput(result.terminalId)).toEqual({ output: "pty output" });
+    expect(manager.getOutput(result.terminalId)).toEqual({
+      output: "pty output",
+      truncated: false,
+    });
     expect(emitNotification).toHaveBeenCalledWith(expect.objectContaining({
       params: expect.objectContaining({
         update: expect.objectContaining({
@@ -149,7 +152,10 @@ describe("TerminalManager", () => {
 
     nodePty.emit("exit", { exitCode: 7 });
 
-    await expect(manager.waitForExit(result.terminalId)).resolves.toEqual({ exitCode: 7 });
+    await expect(manager.waitForExit(result.terminalId)).resolves.toEqual({
+      exitCode: 7,
+      signal: null,
+    });
     expect(emitNotification).toHaveBeenCalledWith(expect.objectContaining({
       params: expect.objectContaining({
         update: expect.objectContaining({
@@ -158,5 +164,56 @@ describe("TerminalManager", () => {
         }),
       }),
     }));
+  });
+
+  it("returns ACP-shaped terminal output and exit status", async () => {
+    const emitNotification = vi.fn();
+    const result = manager.create(
+      { command: "/bin/sh", args: ["-c", "printf test"] },
+      "session-1",
+      emitNotification,
+    );
+
+    process.stdout.emit("data", Buffer.from("test", "utf-8"));
+    process.emit("exit", 0, null);
+
+    expect(manager.getOutput(result.terminalId)).toEqual({
+      output: "test",
+      truncated: false,
+      exitStatus: {
+        exitCode: 0,
+        signal: null,
+      },
+    });
+    await expect(manager.waitForExit(result.terminalId)).resolves.toEqual({
+      exitCode: 0,
+      signal: null,
+    });
+  });
+
+  it("normalizes ACP env arrays when creating terminals", () => {
+    manager.create(
+      {
+        command: "/bin/sh",
+        args: ["-c", "env"],
+        env: [
+          { name: "FOO", value: "bar" },
+          { name: "BAZ", value: "qux" },
+        ],
+      },
+      "session-1",
+      vi.fn(),
+    );
+
+    expect(spawnMock).toHaveBeenCalledWith(
+      "/bin/sh",
+      ["-c", "env"],
+      expect.objectContaining({
+        env: expect.objectContaining({
+          FOO: "bar",
+          BAZ: "qux",
+        }),
+      }),
+    );
   });
 });

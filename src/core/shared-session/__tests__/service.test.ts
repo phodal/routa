@@ -51,13 +51,19 @@ describe("SharedSessionService", () => {
   let broadcaster: SharedSessionEventBroadcaster;
   let promptDispatcher: ReturnType<typeof vi.fn<SharedPromptDispatcher>>;
   let service: SharedSessionService;
+  let currentTime: Date;
+
+  const advanceTime = (ms: number) => {
+    currentTime = new Date(currentTime.getTime() + ms);
+  };
 
   beforeEach(() => {
     hub = new FakeSessionHub();
     hub.addSession("host-session-1", "workspace-1");
     broadcaster = new SharedSessionEventBroadcaster();
     promptDispatcher = vi.fn<SharedPromptDispatcher>(async () => {});
-    service = new SharedSessionService(hub, promptDispatcher, broadcaster);
+    currentTime = new Date("2026-04-18T00:00:00.000Z");
+    service = new SharedSessionService(hub, promptDispatcher, broadcaster, () => currentTime);
   });
 
   it("fans out host session updates to shared-session subscribers", () => {
@@ -194,5 +200,184 @@ describe("SharedSessionService", () => {
         prompt: "Try prompt in comment mode.",
       }),
     ).toThrowError(SharedSessionError);
+  });
+
+  it("supports message lifecycle, participant leave, and token validation", () => {
+    const { session, hostParticipant } = service.createSession({
+      hostSessionId: "host-session-1",
+      hostUserId: "host-user",
+      mode: "comment_only",
+    });
+
+    const { participant } = service.joinSession({
+      sharedSessionId: session.id,
+      inviteToken: session.inviteToken,
+      userId: "guest-user",
+      displayName: "Guest User",
+      role: "collaborator",
+    });
+
+    const message = service.sendMessage({
+      sharedSessionId: session.id,
+      participantId: participant.id,
+      participantToken: participant.accessToken,
+      text: "  Please keep an eye on this thread.  ",
+    });
+
+    expect(message.text).toBe("Please keep an eye on this thread.");
+    expect(service.listMessages(session.id)).toHaveLength(1);
+
+    const left = service.leaveSession({
+      sharedSessionId: session.id,
+      participantId: participant.id,
+      participantToken: participant.accessToken,
+    });
+    expect(left.leftAt).toBeInstanceOf(Date);
+
+    expect(() =>
+      service.leaveSession({
+        sharedSessionId: session.id,
+        participantId: participant.id,
+        participantToken: participant.accessToken,
+      }),
+    ).toThrowError(expect.objectContaining({ code: "PARTICIPANT_INACTIVE" }));
+
+    expect(() =>
+      service.authenticateParticipant({
+        sharedSessionId: session.id,
+        participantId: participant.id,
+        participantToken: participant.accessToken,
+      }),
+    ).toThrowError(expect.objectContaining({ code: "PARTICIPANT_INACTIVE" }));
+
+    expect(() =>
+      service.authenticateParticipant({
+        sharedSessionId: session.id,
+        participantId: hostParticipant.id,
+        participantToken: "bad-token",
+      }),
+    ).toThrowError(expect.objectContaining({ code: "INVALID_PARTICIPANT_TOKEN" }));
+  });
+
+  it("reuses active participants, rejects prompts, and reports failed dispatches", async () => {
+    promptDispatcher = vi.fn<SharedPromptDispatcher>(async () => {
+      throw new Error("dispatcher failed");
+    });
+    service = new SharedSessionService(hub, promptDispatcher, broadcaster, () => currentTime);
+
+    const { session, hostParticipant } = service.createSession({
+      hostSessionId: "host-session-1",
+      hostUserId: "host-user",
+      mode: "prompt_with_approval",
+    });
+
+    const firstJoin = service.joinSession({
+      sharedSessionId: session.id,
+      inviteToken: session.inviteToken,
+      userId: "guest-user",
+      role: "collaborator",
+    });
+    const secondJoin = service.joinSession({
+      sharedSessionId: session.id,
+      inviteToken: session.inviteToken,
+      userId: "guest-user",
+      role: "viewer",
+    });
+    expect(secondJoin.participant.id).toBe(firstJoin.participant.id);
+
+    const pending = service.sendPrompt({
+      sharedSessionId: session.id,
+      participantId: firstJoin.participant.id,
+      participantToken: firstJoin.participant.accessToken,
+      prompt: "Review the failed deploy.",
+    });
+    expect(service.listApprovals(session.id)).toHaveLength(1);
+
+    const rejected = service.respondToApproval({
+      sharedSessionId: session.id,
+      approvalId: pending.approval!.id,
+      participantId: hostParticipant.id,
+      participantToken: hostParticipant.accessToken,
+      action: "reject",
+    });
+    expect(rejected.status).toBe("rejected");
+
+    expect(() =>
+      service.respondToApproval({
+        sharedSessionId: session.id,
+        approvalId: pending.approval!.id,
+        participantId: hostParticipant.id,
+        participantToken: hostParticipant.accessToken,
+        action: "approve",
+      }),
+    ).toThrowError(expect.objectContaining({ code: "APPROVAL_ALREADY_RESOLVED" }));
+
+    const direct = service.createSession({
+      hostSessionId: "host-session-1",
+      hostUserId: "host-user",
+      mode: "prompt_direct",
+    });
+    const collaborator = service.joinSession({
+      sharedSessionId: direct.session.id,
+      inviteToken: direct.session.inviteToken,
+      userId: "guest-two",
+      role: "collaborator",
+    });
+
+    service.sendPrompt({
+      sharedSessionId: direct.session.id,
+      participantId: collaborator.participant.id,
+      participantToken: collaborator.participant.accessToken,
+      prompt: "Dispatch and fail.",
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const [failedApproval] = service.listApprovals(direct.session.id);
+    expect(failedApproval.status).toBe("failed");
+    expect(failedApproval.errorMessage).toBe("dispatcher failed");
+  });
+
+  it("closes and expires sessions while keeping list results ordered and cloned", () => {
+    const first = service.createSession({
+      hostSessionId: "host-session-1",
+      hostUserId: "host-user",
+      mode: "view_only",
+    });
+
+    advanceTime(1000);
+    const second = service.createSession({
+      hostSessionId: "host-session-1",
+      hostUserId: "host-user",
+      mode: "prompt_direct",
+      expiresAt: new Date(currentTime.getTime() + 1000),
+    });
+
+    const listed = service.listSessions({ workspaceId: "workspace-1" });
+    expect(listed.map((session) => session.id)).toEqual([second.session.id, first.session.id]);
+
+    listed[0].status = "closed";
+    expect(service.getSession(second.session.id)?.status).toBe("active");
+
+    expect(() =>
+      service.closeSession({
+        sharedSessionId: first.session.id,
+        participantId: second.hostParticipant.id,
+        participantToken: second.hostParticipant.accessToken,
+      }),
+    ).toThrowError(expect.objectContaining({ code: "PARTICIPANT_NOT_FOUND" }));
+
+    const closed = service.closeSession({
+      sharedSessionId: first.session.id,
+      participantId: first.hostParticipant.id,
+      participantToken: first.hostParticipant.accessToken,
+    });
+    expect(closed.status).toBe("closed");
+
+    expect(service.getSession(first.session.id)).toBeUndefined();
+
+    advanceTime(1500);
+    expect(service.getSession(second.session.id)).toBeUndefined();
+    expect(service.listSessions({ status: "active" })).toHaveLength(0);
   });
 });

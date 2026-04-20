@@ -37,7 +37,7 @@ pub async fn auto_create_worktree(
 ) -> Result<String, String> {
     let short_id = &task.id[..task.id.len().min(8)];
     let label = short_id.to_string();
-    let branch = format!("issue/{}", short_id);
+    let branch = format!("issue/{short_id}");
 
     let workspace = state
         .workspace_store
@@ -64,7 +64,7 @@ pub async fn auto_create_worktree(
 
     if let Some(parent) = worktree_path.parent() {
         std::fs::create_dir_all(parent)
-            .map_err(|e| format!("Failed to create worktree parent dir: {}", e))?;
+            .map_err(|e| format!("Failed to create worktree parent dir: {e}"))?;
     }
 
     let worktree_path_str = worktree_path.to_string_lossy().to_string();
@@ -86,7 +86,7 @@ pub async fn auto_create_worktree(
         .worktree_store
         .save(&worktree)
         .await
-        .map_err(|e| format!("Failed to save worktree: {}", e))?;
+        .map_err(|e| format!("Failed to save worktree: {e}"))?;
 
     let _ = crate::git::worktree_prune(&codebase.repo_path);
     crate::git::worktree_add(
@@ -96,7 +96,7 @@ pub async fn auto_create_worktree(
         &base_branch,
         false,
     )
-    .map_err(|e| format!("git worktree add failed: {}", e))?;
+    .map_err(|e| format!("git worktree add failed: {e}"))?;
 
     Ok(worktree.id)
 }
@@ -151,6 +151,7 @@ fn build_task_prompt(
         "**IMPORTANT**: You are working in Kanban lane automation for exactly one existing card.".to_string(),
         "Only operate on the current card. Do not create a new task, do not switch to a different card, and do not broaden scope.".to_string(),
         "Use the exact MCP tool names exposed by the provider. In OpenCode, prefer `routa-coordination_update_card` and `routa-coordination_move_card`.".to_string(),
+        "When a move is blocked by missing story definition fields, use `routa-coordination_update_task` to update structured fields such as scope, acceptance criteria, verification commands, or test cases.".to_string(),
         "Do NOT use `gh issue create`, browser automation, Playwright, repo-wide debugging, API exploration, or unrelated codebase research unless the card objective explicitly requires it.".to_string(),
         String::new(),
         "## Task Details".to_string(),
@@ -161,16 +162,16 @@ fn build_task_prompt(
             task.priority.as_ref().map(|value| value.as_str()).unwrap_or("medium")
         ),
         board_id
-            .map(|value| format!("**Board ID:** {}", value))
+            .map(|value| format!("**Board ID:** {value}"))
             .unwrap_or_else(|| "**Board ID:** unavailable".to_string()),
         format!("**Current Lane:** {}", lane_id),
         next_column_id
-            .map(|value| format!("**Next Column ID:** {}", value))
+            .map(|value| format!("**Next Column ID:** {value}"))
             .unwrap_or_else(|| "**Next Column ID:** unavailable".to_string()),
         labels,
         task.github_url
             .as_ref()
-            .map(|url| format!("**GitHub Issue:** {}", url))
+            .map(|url| format!("**GitHub Issue:** {url}"))
             .unwrap_or_else(|| "**GitHub Issue:** local-only".to_string()),
         String::new(),
         "## Objective".to_string(),
@@ -193,7 +194,7 @@ fn build_task_prompt(
         sections.push(
             test_cases
                 .iter()
-                .map(|value| format!("- {}", value))
+                .map(|value| format!("- {value}"))
                 .collect::<Vec<_>>()
                 .join("\n"),
         );
@@ -206,9 +207,14 @@ fn build_task_prompt(
         "Use the exact MCP tool names exposed in this session. For OpenCode, the important ones are:".to_string(),
         String::new(),
         format!(
+            "- **routa-coordination_update_task**: Update structured task fields such as scope, acceptanceCriteria, verificationCommands, and testCases. Use taskId: \"{}\" when story readiness is missing.",
+            task.id
+        ),
+        format!(
             "- **routa-coordination_update_card**: Update this card's title, description, priority, or labels. Use cardId: \"{}\"",
             task.id
         ),
+        "- **routa-coordination_update_card is not a story-readiness tool**: card description or comment text does not satisfy move gates for scope, acceptance criteria, verification commands, or test cases.".to_string(),
         format!(
             "- **routa-coordination_move_card**: Move this same card to targetColumnId \"{}\" when the current lane is complete.",
             next_column_id.unwrap_or("the exact next column id listed above")
@@ -218,7 +224,7 @@ fn build_task_prompt(
         String::new(),
         "1. Start work for the current lane immediately.".to_string(),
         "2. Keep changes focused on this card only.".to_string(),
-        "3. Use the exact tool name `routa-coordination_update_card` to record progress on this card.".to_string(),
+        "3. Use `routa-coordination_update_task` to fix missing structured story fields, and `routa-coordination_update_card` only for card text or progress notes.".to_string(),
         format!(
             "4. Use the exact tool name `routa-coordination_move_card` with targetColumnId `{}` only when the current lane is complete.",
             next_column_id.unwrap_or("the exact next column id listed above")
@@ -273,7 +279,7 @@ async fn trigger_assigned_task_acp_agent(
             Some("kanban-planning".to_string()),
         )
         .await
-        .map_err(|error| format!("Failed to create ACP session: {}", error))?;
+        .map_err(|error| format!("Failed to create ACP session: {error}"))?;
 
     state
         .acp_session_store
@@ -289,7 +295,7 @@ async fn trigger_assigned_task_acp_agent(
             parent_session_id: None,
         })
         .await
-        .map_err(|error| format!("Failed to persist ACP session: {}", error))?;
+        .map_err(|error| format!("Failed to persist ACP session: {error}"))?;
 
     let mut ordered_columns = board.map(|value| value.columns.clone()).unwrap_or_default();
     ordered_columns.sort_by_key(|column| column.position);
@@ -515,7 +521,7 @@ async fn trigger_assigned_task_a2a_agent(
     )?
     .send()
     .await
-    .map_err(|error| format!("Failed to send A2A request: {}", error))?;
+    .map_err(|error| format!("Failed to send A2A request: {error}"))?;
 
     if !response.status().is_success() {
         return Err(format!(
@@ -527,13 +533,13 @@ async fn trigger_assigned_task_a2a_agent(
     let payload: Value = response
         .json()
         .await
-        .map_err(|error| format!("Failed to decode A2A response: {}", error))?;
+        .map_err(|error| format!("Failed to decode A2A response: {error}"))?;
     if let Some(error) = payload.get("error") {
         let message = error
             .get("message")
             .and_then(Value::as_str)
             .unwrap_or("unknown A2A error");
-        return Err(format!("A2A JSON-RPC error: {}", message));
+        return Err(format!("A2A JSON-RPC error: {message}"));
     }
 
     let task_result = payload
@@ -596,6 +602,23 @@ fn apply_trigger_result(
     step: Option<&KanbanAutomationStep>,
     result: AgentTriggerResult,
 ) {
+    let now = Utc::now().to_rfc3339();
+    for session in &mut task.lane_sessions {
+        if session.session_id == result.session_id
+            || session.status != TaskLaneSessionStatus::Running
+        {
+            continue;
+        }
+        if session.column_id.as_deref() == task.column_id.as_deref() {
+            continue;
+        }
+
+        session.status = TaskLaneSessionStatus::Completed;
+        if session.completed_at.is_none() {
+            session.completed_at = Some(now.clone());
+        }
+    }
+
     task.trigger_session_id = Some(result.session_id.clone());
     if !task.session_ids.iter().any(|id| id == &result.session_id) {
         task.session_ids.push(result.session_id.clone());
@@ -627,11 +650,11 @@ fn apply_trigger_result(
         loop_mode: None,
         completion_requirement: None,
         objective: Some(task.objective.clone()),
-        last_activity_at: Some(Utc::now().to_rfc3339()),
+        last_activity_at: Some(now.clone()),
         recovered_from_session_id: None,
         recovery_reason: None,
         status: TaskLaneSessionStatus::Running,
-        started_at: Utc::now().to_rfc3339(),
+        started_at: now,
         completed_at: None,
     };
 
@@ -754,7 +777,7 @@ async fn get_a2a_task_update(
     )?
     .send()
     .await
-    .map_err(|error| format!("Failed to poll A2A task: {}", error))?;
+    .map_err(|error| format!("Failed to poll A2A task: {error}"))?;
 
     if !response.status().is_success() {
         return Err(format!(
@@ -766,13 +789,13 @@ async fn get_a2a_task_update(
     let payload: Value = response
         .json()
         .await
-        .map_err(|error| format!("Failed to decode A2A task payload: {}", error))?;
+        .map_err(|error| format!("Failed to decode A2A task payload: {error}"))?;
     if let Some(error) = payload.get("error") {
         let message = error
             .get("message")
             .and_then(Value::as_str)
             .unwrap_or("unknown A2A error");
-        return Err(format!("A2A JSON-RPC error: {}", message));
+        return Err(format!("A2A JSON-RPC error: {message}"));
     }
 
     let task = payload
@@ -880,7 +903,7 @@ async fn reconcile_a2a_lane_session(
         .task_store
         .save(&task)
         .await
-        .map_err(|error| format!("Failed to save A2A task reconciliation: {}", error))
+        .map_err(|error| format!("Failed to save A2A task reconciliation: {error}"))
 }
 
 async fn wait_for_task_persistence(
@@ -893,7 +916,7 @@ async fn wait_for_task_persistence(
             .task_store
             .get(task_id)
             .await
-            .map_err(|error| format!("Failed to load task {task_id}: {}", error))?
+            .map_err(|error| format!("Failed to load task {task_id}: {error}"))?
         {
             if task
                 .lane_sessions
@@ -936,7 +959,7 @@ async fn load_task_board(state: &AppState, task: &Task) -> Result<Option<KanbanB
             .kanban_store
             .get(board_id)
             .await
-            .map_err(|error| format!("Failed to load Kanban board for automation: {}", error))
+            .map_err(|error| format!("Failed to load Kanban board for automation: {error}"))
     } else {
         Ok(None)
     }
@@ -976,34 +999,26 @@ fn resolve_a2a_auth_headers(
     let raw = std::env::var(A2A_AUTH_CONFIGS_ENV).unwrap_or_default();
     if raw.trim().is_empty() {
         return Err(format!(
-            "A2A auth config \"{}\" was not found in {}.",
-            auth_config_id, A2A_AUTH_CONFIGS_ENV
+            "A2A auth config \"{auth_config_id}\" was not found in {A2A_AUTH_CONFIGS_ENV}."
         ));
     }
 
     let parsed: Value = serde_json::from_str(&raw)
-        .map_err(|error| format!("Invalid {} JSON: {}", A2A_AUTH_CONFIGS_ENV, error))?;
+        .map_err(|error| format!("Invalid {A2A_AUTH_CONFIGS_ENV} JSON: {error}"))?;
     let config = parsed.get(auth_config_id).ok_or_else(|| {
-        format!(
-            "A2A auth config \"{}\" was not found in {}.",
-            auth_config_id, A2A_AUTH_CONFIGS_ENV
-        )
+        format!("A2A auth config \"{auth_config_id}\" was not found in {A2A_AUTH_CONFIGS_ENV}.")
     })?;
     let headers = config.get("headers").unwrap_or(config);
     let headers_obj = headers.as_object().ok_or_else(|| {
         format!(
-            "{}.{} must be a header map or contain a string header map in \"headers\".",
-            A2A_AUTH_CONFIGS_ENV, auth_config_id
+            "{A2A_AUTH_CONFIGS_ENV}.{auth_config_id} must be a header map or contain a string header map in \"headers\"."
         )
     })?;
 
     let mut resolved = HashMap::new();
     for (name, value) in headers_obj {
         let value = value.as_str().ok_or_else(|| {
-            format!(
-                "{}.{} header {} must be a string.",
-                A2A_AUTH_CONFIGS_ENV, auth_config_id, name
-            )
+            format!("{A2A_AUTH_CONFIGS_ENV}.{auth_config_id} header {name} must be a string.")
         })?;
         resolved.insert(name.clone(), value.to_string());
     }
@@ -1018,7 +1033,7 @@ fn apply_a2a_auth_headers(
     if let Some(auth_headers) = auth_headers {
         for (name, value) in auth_headers {
             let header_name = HeaderName::try_from(name.as_str())
-                .map_err(|error| format!("Invalid A2A auth header name {}: {}", name, error))?;
+                .map_err(|error| format!("Invalid A2A auth header name {name}: {error}"))?;
             let header_value = HeaderValue::from_str(value).map_err(|error| {
                 format!(
                     "Invalid A2A auth header value for {}: {}",
@@ -1045,7 +1060,7 @@ async fn resolve_a2a_rpc_endpoint(
         )?
         .send()
         .await
-        .map_err(|error| format!("Failed to fetch A2A agent card: {}", error))?;
+        .map_err(|error| format!("Failed to fetch A2A agent card: {error}"))?;
         if !response.status().is_success() {
             return Err(format!(
                 "A2A agent card fetch failed with HTTP {}",
@@ -1055,7 +1070,7 @@ async fn resolve_a2a_rpc_endpoint(
         let card: Value = response
             .json()
             .await
-            .map_err(|error| format!("Failed to decode A2A agent card: {}", error))?;
+            .map_err(|error| format!("Failed to decode A2A agent card: {error}"))?;
         let rpc_url = card
             .get("url")
             .and_then(Value::as_str)
@@ -1072,8 +1087,8 @@ fn absolutize_url(base_url: &str, maybe_relative: &str) -> Result<String, String
     }
 
     let base = reqwest::Url::parse(base_url)
-        .map_err(|error| format!("Invalid base A2A URL {}: {}", base_url, error))?;
+        .map_err(|error| format!("Invalid base A2A URL {base_url}: {error}"))?;
     base.join(maybe_relative)
         .map(|url| url.to_string())
-        .map_err(|error| format!("Invalid relative A2A URL {}: {}", maybe_relative, error))
+        .map_err(|error| format!("Invalid relative A2A URL {maybe_relative}: {error}"))
 }

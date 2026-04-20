@@ -9,6 +9,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { getHttpSessionStore } from "@/core/acp/http-session-store";
+import { getPresetById } from "@/core/acp/acp-presets";
 import { loadSessionFromDb, loadSessionFromLocalStorage, renameSessionInDb, deleteSessionFromDb } from "@/core/acp/session-db-persister";
 import {
   getRequiredRunnerUrl,
@@ -85,6 +86,9 @@ export async function GET(
       acpStatus: resolvedSession.acpStatus,
       acpError: resolvedSession.acpError,
       modeId: resolvedSession.modeId,
+      mcpProfile: "mcpProfile" in resolvedSession
+        ? (resolvedSession as { mcpProfile?: string }).mcpProfile
+        : undefined,
       model: resolvedSession.model,
       createdAt: resolvedSession.createdAt,
       parentSessionId: resolvedSession.parentSessionId,
@@ -92,6 +96,9 @@ export async function GET(
       executionMode: resolvedSession.executionMode,
       ownerInstanceId: resolvedSession.ownerInstanceId,
       leaseExpiresAt: resolvedSession.leaseExpiresAt,
+      resumeCapabilities: resolvedSession.provider
+        ? getPresetById(resolvedSession.provider)?.resume ?? null
+        : null,
     },
   });
 }

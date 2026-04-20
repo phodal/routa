@@ -7,6 +7,7 @@ import type { ArtifactType } from "@/core/models/artifact";
 import { useTranslation } from "@/i18n";
 import type { TranslationDictionary } from "@/i18n";
 import type { ArtifactInfo } from "../types";
+import { desktopAwareFetch } from "@/client/utils/diagnostics";
 
 interface KanbanCardArtifactsProps {
   taskId: string;
@@ -21,6 +22,7 @@ function getArtifactLabels(t: TranslationDictionary): Record<ArtifactType, strin
     test_results: t.kanban.testResultsType,
     code_diff: t.kanban.codeDiffType,
     logs: t.kanban.logsType,
+    canvas: "Canvas",
   };
 }
 
@@ -141,7 +143,7 @@ export function KanbanCardArtifacts({
       setLoading(true);
       setLoadError(null);
       try {
-        const response = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/artifacts`, {
+        const response = await desktopAwareFetch(`/api/tasks/${encodeURIComponent(taskId)}/artifacts`, {
           cache: "no-store",
           signal: controller.signal,
         });

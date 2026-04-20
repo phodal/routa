@@ -4,8 +4,8 @@
  * Desktop Sidebar Navigation — VS Code-style left navigation for Tauri app.
  *
  * Provides a compact icon-based navigation with:
- * - Primary navigation icons (Overview, Kanban, Traces)
- * - Secondary actions (Settings)
+ * - Primary navigation icons (Home, Sessions, Kanban, Team)
+ * - Secondary tools (Harness, Fluency, Settings)
  * - Workspace indicator
  */
 
@@ -14,9 +14,8 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useTranslation } from "@/i18n";
+import { ChevronLeft, Columns2, FileCode2, House, MonitorUp, ScrollText, Settings, Share2 } from "lucide-react";
 import { HarnessMark } from "./harness-mark";
-import { SettingsPopupMenu } from "./settings-popup-menu";
-import { ChevronLeft, CircleUser, Columns2, LayoutGrid, Server, Calendar, Workflow, House, Share2, MonitorUp, Monitor } from "lucide-react";
 
 
 interface NavItem {
@@ -24,7 +23,7 @@ interface NavItem {
   label: string;
   icon: React.ReactNode;
   href: string;
-  requiresWorkspace?: boolean;
+  exactMatch?: boolean;
 }
 
 interface SidebarTopAction {
@@ -71,104 +70,71 @@ export function DesktopSidebar({
       ),
     },
     {
-      id: "kanban",
-      label: t.nav.kanban,
-      href: workspaceBaseHref ? `${workspaceBaseHref}/kanban` : "/",
-      requiresWorkspace: true,
+      id: "sessions",
+      label: t.nav.sessions,
+      href: workspaceBaseHref ? `${workspaceBaseHref}/sessions` : "/",
       icon: (
-        <Columns2 className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}/>
+        <ScrollText className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}/>
       ),
     },
     {
-      id: "overview",
-      label: t.nav.overview,
-      href: workspaceBaseHref ? `${workspaceBaseHref}/overview` : "/",
-      requiresWorkspace: true,
+      id: "kanban",
+      label: t.nav.kanban,
+      href: workspaceBaseHref ? `${workspaceBaseHref}/kanban` : "/",
       icon: (
-        <LayoutGrid className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}/>
+        <Columns2 className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}/>
       ),
     },
     {
       id: "team",
       label: t.nav.team,
       href: workspaceBaseHref ? `${workspaceBaseHref}/team` : "/",
-      requiresWorkspace: true,
       icon: (
         <Share2 className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}/>
       ),
     },
   ];
-
-  const toolItems: NavItem[] = [
+  const secondaryItems: NavItem[] = [
     {
-      id: "mcp",
-      label: t.nav.mcpServers,
-      href: "/settings/mcp",
+      id: "feature-explorer",
+      label: t.nav.featureExplorer,
+      href: workspaceBaseHref ? `${workspaceBaseHref}/feature-explorer` : "/",
       icon: (
-        <Server className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}/>
-      ),
-    },
-    {
-      id: "schedules",
-      label: t.nav.schedules,
-      href: "/settings/schedules",
-      icon: (
-        <Calendar className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}/>
+        <FileCode2 className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}/>
       ),
     },
     {
       id: "harness",
       label: t.nav.harness,
       href: settingsHarnessHref,
-      icon: <HarnessMark className="h-5 w-5" title="" />,
+      icon: <HarnessMark className="h-4 w-4" title="" />,
     },
     {
       id: "fluency",
       label: t.nav.fluency,
       href: settingsFluencyHref,
-      icon: (
-        <MonitorUp className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}/>
-      ),
+      icon: <MonitorUp className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}/>,
     },
     {
-      id: "workflows",
-      label: t.nav.workflows,
-      href: "/settings/workflows",
-      icon: (
-        <Workflow className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}/>
-      ),
-    },
-    {
-      id: "specialists",
-      label: t.nav.specialists,
-      href: "/settings/specialists",
-      icon: (
-        <CircleUser className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}/>
-      ),
+      id: "settings",
+      label: t.settings.title,
+      href: normalizedWorkspaceId
+        ? `/settings?workspaceId=${encodeURIComponent(normalizedWorkspaceId)}`
+        : "/settings",
+      exactMatch: true,
+      icon: <Settings className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.7}/>,
     },
   ];
-
-  const secondaryItems: NavItem[] = [
-    {
-      id: "debug",
-      label: t.nav.debug,
-      href: "/traces",
-      icon: (
-        <Monitor className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}/>
-      ),
-    },
-  ];
-  const settingsActive = pathname === "/settings" || pathname.startsWith("/settings/");
-
-  const isActive = (href: string) => {
+  const isActive = (href: string, exactMatch = false) => {
     const hrefPath = href.split("?")[0]?.split("#")[0] ?? href;
     if (hrefPath === "/") return pathname === "/";
     if (hrefPath === workspaceBaseHref) return pathname === hrefPath;
+    if (exactMatch) return pathname === hrefPath;
     return pathname === hrefPath || pathname.startsWith(`${hrefPath}/`);
   };
 
   const renderNavItem = (item: NavItem) => {
-    const active = isActive(item.href);
+    const active = isActive(item.href, item.exactMatch);
     const className = `relative flex items-center rounded-xl transition-colors ${
       active
         ? "bg-desktop-bg-active text-desktop-accent"
@@ -242,20 +208,11 @@ export function DesktopSidebar({
           </>
         ) : null}
         {primaryItems.map(renderNavItem)}
-        {!collapsed && <div className="mx-1 my-2 border-t border-desktop-border" />}
-        {toolItems.map(renderNavItem)}
       </nav>
 
       <div className={`${collapsed ? "mx-3" : "mx-2"} border-t border-desktop-border`} />
 
       <div className={`py-3 ${collapsed ? "flex flex-col items-center gap-1" : "px-2 space-y-1"}`}>
-        <SettingsPopupMenu
-          position="sidebar"
-          showLabel={!collapsed}
-          isActive={settingsActive}
-          className="w-full"
-          buttonClassName={collapsed ? "h-10 w-10 px-0 py-0 justify-center" : "h-11 w-full gap-3 px-3 py-0 text-sm font-medium"}
-        />
         {secondaryItems.map(renderNavItem)}
       </div>
     </aside>

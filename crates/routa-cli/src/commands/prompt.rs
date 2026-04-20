@@ -59,7 +59,7 @@ pub async fn run(
                     .get("message")
                     .and_then(|m| m.as_str())
                     .unwrap_or("Unknown error");
-                return Err(format!("Failed to create workspace: {}", err_msg));
+                return Err(format!("Failed to create workspace: {err_msg}"));
             }
 
             // Get the created workspace ID
@@ -71,7 +71,7 @@ pub async fn run(
                 .ok_or("Failed to get created workspace ID")?
                 .to_string();
 
-            println!("Created workspace: {}", created_ws_id);
+            println!("Created workspace: {created_ws_id}");
             created_ws_id
         } else {
             workspace_id.to_string()
@@ -103,7 +103,7 @@ pub async fn run(
                 .and_then(|e| e.get("message"))
                 .and_then(|m| m.as_str())
                 .unwrap_or("Unknown error");
-            format!("Failed to create developer agent: {}", error_msg)
+            format!("Failed to create developer agent: {error_msg}")
         })?
         .to_string();
 
@@ -118,11 +118,11 @@ pub async fn run(
     println!("╠══════════════════════════════════════════════════════════╣");
     println!("║  Workspace : {:<42} ║", &workspace_id);
     println!("║  Agent     : {} (DEVELOPER) {:<23} ║", &agent_id[..8], "");
-    println!("║  Provider  : {:<42} ║", provider);
+    println!("║  Provider  : {provider:<42} ║");
     println!("║  CWD       : {:<42} ║", truncate_path(&cwd, 42));
     println!("╚══════════════════════════════════════════════════════════╝");
     println!();
-    println!("📋 Requirement: {}", prompt);
+    println!("📋 Requirement: {prompt}");
     println!();
 
     let spawn_result = state
@@ -144,14 +144,14 @@ pub async fn run(
         Ok((sid, _)) => {
             tracing::info!("Developer session created: {}", sid);
             if let Err(err) = update_agent_status(&router, &agent_id, "ACTIVE").await {
-                eprintln!("Failed to mark agent {} ACTIVE: {}", agent_id, err);
+                eprintln!("Failed to mark agent {agent_id} ACTIVE: {err}");
             }
         }
         Err(e) => {
             if let Err(err) = update_agent_status(&router, &agent_id, "ERROR").await {
-                eprintln!("Failed to mark agent {} ERROR: {}", agent_id, err);
+                eprintln!("Failed to mark agent {agent_id} ERROR: {err}");
             }
-            return Err(format!("Failed to create ACP session: {}", e));
+            return Err(format!("Failed to create ACP session: {e}"));
         }
     }
 
@@ -160,7 +160,7 @@ pub async fn run(
         Some(rx) => rx,
         None => {
             if let Err(err) = update_agent_status(&router, &agent_id, "ERROR").await {
-                eprintln!("Failed to mark agent {} ERROR: {}", agent_id, err);
+                eprintln!("Failed to mark agent {agent_id} ERROR: {err}");
             }
             state.acp_manager.kill_session(&session_id).await;
             return Err("Failed to subscribe to session updates".to_string());
@@ -193,7 +193,7 @@ pub async fn run(
                 prompt_finished = true;
                 if let Err(err) = prompt_result {
                     renderer.finish();
-                    prompt_error = Some(format!("Failed to send prompt: {}", err));
+                    prompt_error = Some(format!("Failed to send prompt: {err}"));
                     final_status = "ERROR";
                     break;
                 }
@@ -261,7 +261,7 @@ pub async fn run(
                 if idle_count >= max_idle {
                     renderer.finish();
                     final_status = "ERROR";
-                    println!("⏰ Timeout: no activity for {} seconds", max_idle);
+                    println!("⏰ Timeout: no activity for {max_idle} seconds");
                     break;
                 }
 
@@ -277,17 +277,14 @@ pub async fn run(
 
     if let Some(error) = prompt_error {
         if let Err(err) = update_agent_status(&router, &agent_id, "ERROR").await {
-            eprintln!("Failed to mark agent {} ERROR: {}", agent_id, err);
+            eprintln!("Failed to mark agent {agent_id} ERROR: {err}");
         }
         state.acp_manager.kill_session(&session_id).await;
         return Err(error);
     }
 
     if let Err(err) = update_agent_status(&router, &agent_id, final_status).await {
-        eprintln!(
-            "Failed to mark agent {} {}: {}",
-            agent_id, final_status, err
-        );
+        eprintln!("Failed to mark agent {agent_id} {final_status}: {err}");
     }
 
     // ── 9. Print summary ────────────────────────────────────────────────
@@ -381,7 +378,7 @@ pub(crate) async fn print_session_summary(
                     "ERROR" => "❌",
                     _ => "⏳",
                 };
-                println!("    {} {} ({}) — {}", icon, name, role, status);
+                println!("    {icon} {name} ({role}) — {status}");
             }
 
             related_agent_ids
@@ -436,7 +433,7 @@ pub(crate) async fn print_session_summary(
                     "CANCELLED" => "🗑️",
                     _ => "⏳",
                 };
-                println!("    {} {} — {}", icon, title, status);
+                println!("    {icon} {title} — {status}");
             }
         }
     }
@@ -454,9 +451,9 @@ pub(crate) fn truncate_path(path: &str, max_len: usize) -> String {
 
 fn print_summary_heading(label: &str, visible: usize, hidden: usize) {
     if hidden > 0 {
-        println!("  {} ({} shown, {} hidden):", label, visible, hidden);
+        println!("  {label} ({visible} shown, {hidden} hidden):");
     } else {
-        println!("  {} ({}):", label, visible);
+        println!("  {label} ({visible}):");
     }
 }
 

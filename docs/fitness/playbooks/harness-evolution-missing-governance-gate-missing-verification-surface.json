@@ -1,0 +1,25 @@
+{
+  "id": "harness-evolution-missing-governance-gate-missing-verification-surface",
+  "taskType": "harness_evolution",
+  "confidence": 1.0,
+  "strategy": {
+    "preferredPatchOrder": [
+      "patch.create_codeowners",
+      "patch.create_dependabot"
+    ],
+    "gapPatterns": [
+      "missing_governance_gate",
+      "missing_verification_surface"
+    ],
+    "antiPatterns": []
+  },
+  "provenance": {
+    "sourceRuns": [
+      "2026-04-06T10:45:00.000000+00:00",
+      "2026-04-06T10:46:00.000000+00:00",
+      "2026-04-06T10:47:00.000000+00:00"
+    ],
+    "successRate": 1.0,
+    "evidenceCount": 3
+  }
+}

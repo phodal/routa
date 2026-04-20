@@ -87,7 +87,7 @@ impl TerminalManager {
 
         let mut child = command_builder
             .spawn()
-            .map_err(|error| format!("Failed to spawn terminal process: {}", error))?;
+            .map_err(|error| format!("Failed to spawn terminal process: {error}"))?;
 
         let stdin = child.stdin.take();
         let stdout = child.stdout.take();
@@ -155,11 +155,11 @@ impl TerminalManager {
         stdin
             .write_all(data.as_bytes())
             .await
-            .map_err(|error| format!("Failed to write terminal input: {}", error))?;
+            .map_err(|error| format!("Failed to write terminal input: {error}"))?;
         stdin
             .flush()
             .await
-            .map_err(|error| format!("Failed to flush terminal input: {}", error))?;
+            .map_err(|error| format!("Failed to flush terminal input: {error}"))?;
         Ok(())
     }
 
@@ -225,7 +225,7 @@ impl TerminalManager {
         child
             .kill()
             .await
-            .map_err(|error| format!("Failed to kill terminal: {}", error))
+            .map_err(|error| format!("Failed to kill terminal: {error}"))
     }
 
     pub async fn release(&self, terminal_id: &str) {

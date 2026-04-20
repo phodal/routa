@@ -10,6 +10,7 @@ import { NoteTools } from "@/core/tools/note-tools";
 import { WorkspaceTools } from "@/core/tools/workspace-tools";
 import { KanbanTools } from "@/core/tools/kanban-tools";
 import { getRoutaOrchestrator } from "@/core/orchestration/orchestrator-singleton";
+import { readFeatureTreeSpecResource } from "@/core/spec/feature-tree-spec-resource-contract";
 import { ToolMode } from "./routa-mcp-tool-manager";
 import { getMcpProfileToolAllowlist, type McpServerProfile } from "./mcp-server-profiles";
 
@@ -59,6 +60,7 @@ const ESSENTIAL_TOOL_NAMES = new Set([
   "get_artifact",
   "list_pending_artifact_requests",
   "capture_screenshot",
+  "read_specialist_spec_resource",
 ]);
 
 export async function executeMcpTool(
@@ -126,6 +128,20 @@ export async function executeMcpTool(
     }
   }
 
+  if (name === "read_specialist_spec_resource") {
+    const uri = args.uri;
+    if (typeof uri !== "string" || !uri.trim()) {
+      return formatResult({ success: false, error: "uri is required" });
+    }
+
+    const resource = readFeatureTreeSpecResource(uri);
+    return formatResult(
+      resource
+        ? { success: true, data: resource }
+        : { success: false, error: `Unknown specialist spec resource URI: ${uri}` },
+    );
+  }
+
   const workspace = args.workspaceId as string;
   if (!workspace) {
     return {
@@ -148,6 +164,7 @@ export async function executeMcpTool(
           verificationCommands: args.verificationCommands as string[] | undefined,
           dependencies: args.dependencies as string[] | undefined,
           parallelGroup: args.parallelGroup as string | undefined,
+          creationSource: args.creationSource as "manual" | "agent" | "api" | "session" | undefined,
         })
       );
     case "list_tasks":
@@ -168,7 +185,7 @@ export async function executeMcpTool(
         await tools.updateTask({
           taskId: args.taskId as string,
           expectedVersion: args.expectedVersion as number | undefined,
-          agentId: args.agentId as string,
+          agentId: (args.agentId as string | undefined) ?? "system",
           updates: {
             title: args.title as string | undefined,
             objective: args.objective as string | undefined,
@@ -179,6 +196,7 @@ export async function executeMcpTool(
             verificationReport: args.verificationReport as string | undefined,
             assignedTo: args.assignedTo as string | undefined,
             acceptanceCriteria: args.acceptanceCriteria as string[] | undefined,
+            verificationCommands: args.verificationCommands as string[] | undefined,
             testCases: args.testCases as string[] | undefined,
           },
         })
@@ -321,7 +339,6 @@ export async function executeMcpTool(
           outputPath: args.outputPath as string | undefined,
         })
       );
-
     // ── Note tools ───────────────────────────────────────────────────
     case "create_note":
       if (!noteTools) return formatResult({ success: false, error: "Note tools not available." });
@@ -500,6 +517,8 @@ export async function executeMcpTool(
           title: args.title as string | undefined,
           description: args.description as string | undefined,
           comment: args.comment as string | undefined,
+          agentId: args.agentId as string | undefined,
+          sessionId: args.sessionId as string | undefined,
           priority: args.priority as "low" | "medium" | "high" | "urgent" | undefined,
           labels: args.labels as string[] | undefined,
         })
@@ -937,13 +956,13 @@ export function getMcpToolDefinitions(
     },
     {
       name: "update_task",
-      description: "Atomically update task fields with optimistic locking. Provide expectedVersion to detect conflicts.",
+      description: "Atomically update structured task fields with optimistic locking. Use this for story-readiness fields such as scope, acceptance criteria, verification commands, and test cases. agentId is optional for Kanban sessions.",
       inputSchema: {
         type: "object",
         properties: {
           taskId: { type: "string", description: "Task ID" },
           expectedVersion: { type: "number", description: "Expected version for optimistic locking" },
-          agentId: { type: "string", description: "Agent performing the update" },
+          agentId: { type: "string", description: "Agent performing the update (optional in Kanban sessions)" },
           title: { type: "string" },
           objective: { type: "string" },
           scope: { type: "string" },
@@ -953,9 +972,10 @@ export function getMcpToolDefinitions(
           verificationReport: { type: "string" },
           assignedTo: { type: "string" },
           acceptanceCriteria: { type: "array", items: { type: "string" } },
+          verificationCommands: { type: "array", items: { type: "string" } },
           testCases: { type: "array", items: { type: "string" } },
         },
-        required: ["taskId", "agentId"],
+        required: ["taskId"],
       },
     },
     // ── Workspace tools ─────────────────────────────────────────────
@@ -1142,6 +1162,17 @@ export function getMcpToolDefinitions(
         required: ["agentId", "taskId"],
       },
     },
+    {
+      name: "read_specialist_spec_resource",
+      description: "Read a bundled specialist framework spec resource by URI. Use this when your provider cannot call MCP resources/read directly.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          uri: { type: "string", description: "Specialist spec resource URI, e.g. resource://routa/specialists/feature-tree/manifest" },
+        },
+        required: ["uri"],
+      },
+    },
     // ── Kanban tools ──────────────────────────────────────────────────
     {
       name: "create_board",
@@ -1198,7 +1229,7 @@ export function getMcpToolDefinitions(
     },
     {
       name: "update_card",
-      description: "Update a Kanban card's title, description, comment, priority, or labels. From dev onward, use comment for progress notes because the story description is frozen.",
+      description: "Update a Kanban card's title, description, comment, priority, or labels. From dev onward, use comment for progress notes because the story description is frozen. For story-readiness fields such as scope, acceptance criteria, verification commands, or test cases, use update_task instead.",
       inputSchema: {
         type: "object",
         properties: {

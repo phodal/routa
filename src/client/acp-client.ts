@@ -10,6 +10,7 @@
  */
 
 import type { McpServerProfile } from "@/core/mcp/mcp-server-profiles";
+import { resolveApiPath } from "@/client/config/backend";
 
 export interface AcpSessionNotification {
   sessionId: string;
@@ -32,6 +33,33 @@ export interface AcpNewSessionResult {
   sandboxId?: string;
   /** ACP process lifecycle status — "connecting" means the agent is still starting up */
   acpStatus?: "connecting" | "ready" | "error";
+}
+
+export interface AcpLoadSessionResult {
+  sessionId: string;
+  provider?: string;
+  role?: string;
+  acpStatus?: "connecting" | "ready" | "error";
+  resumeMode?: "native" | "recreated" | "attached";
+  nativeResumeError?: string;
+  resumeCapabilities?: {
+    supported: boolean;
+    mode: "native" | "replay" | "both";
+    supportsFork?: boolean;
+    supportsList?: boolean;
+  };
+}
+
+export interface AcpForkSessionResult {
+  sessionId: string;
+  parentSessionId: string;
+  name?: string;
+  provider?: string;
+  role?: string;
+  cwd?: string;
+  branch?: string;
+  workspaceId?: string;
+  createdAt?: string;
 }
 
 export interface AcpPromptResult {
@@ -77,6 +105,7 @@ export interface AcpConnectionIssue {
   status?: number;
   ownerInstanceId?: string;
   leaseExpiresAt?: string;
+  retryDelayMs?: number;
 }
 
 export type SessionConnectionIssueHandler = (issue: AcpConnectionIssue) => void;
@@ -88,18 +117,37 @@ export class AcpClientError extends Error {
   code: number;
   authMethods?: AcpAuthMethod[];
   agentInfo?: { name: string; version: string };
+  data?: unknown;
+  sessionMayContinue?: boolean;
 
   constructor(
     message: string,
     code: number,
     authMethods?: AcpAuthMethod[],
-    agentInfo?: { name: string; version: string }
+    agentInfo?: { name: string; version: string },
+    data?: unknown,
+    sessionMayContinue?: boolean,
   ) {
     super(message);
     this.name = "AcpClientError";
     this.code = code;
     this.authMethods = authMethods;
     this.agentInfo = agentInfo;
+    this.data = data;
+    this.sessionMayContinue = sessionMayContinue;
+  }
+
+  toJSON(): Record<string, unknown> {
+    return {
+      name: this.name,
+      message: this.message,
+      code: this.code,
+      authMethods: this.authMethods,
+      agentInfo: this.agentInfo,
+      data: this.data,
+      sessionMayContinue: this.sessionMayContinue,
+      stack: this.stack,
+    };
   }
 }
 
@@ -113,6 +161,10 @@ export class BrowserAcpClient {
   private lastEventId: string | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private sseAttempt = 0;
+  private readonly ownershipConflictRetryLimit = 4;
+  private readonly ownershipConflictBaseDelayMs = 1200;
+  private readonly ownershipConflictBackoffMultiplier = 2;
+  private readonly ownershipConflictRetryState = new Map<string, number>();
 
   constructor(baseUrl: string = "") {
     this.baseUrl = baseUrl;
@@ -178,6 +230,8 @@ export class BrowserAcpClient {
     customArgs?: string[];
     /** Docker OpenCode: auth.json content to mount into container */
     authJson?: string;
+    /** Allow unattended permission approvals for automation sessions. */
+    autoApprovePermissions?: boolean;
   }): Promise<AcpNewSessionResult> {
     const result = await this.rpc<AcpNewSessionResult>("session/new", {
       cwd: params.cwd,
@@ -205,6 +259,7 @@ export class BrowserAcpClient {
       customCommand: params.customCommand,
       customArgs: params.customArgs,
       authJson: params.authJson,
+      autoApprovePermissions: params.autoApprovePermissions,
     });
     this._sessionId = result.sessionId;
 
@@ -215,10 +270,54 @@ export class BrowserAcpClient {
   }
 
   /**
+   * Load or resume an existing ACP session.
+   */
+  async loadSession(params: {
+    sessionId: string;
+    cwd?: string;
+  }): Promise<AcpLoadSessionResult> {
+    const result = await this.rpc<AcpLoadSessionResult>("session/load", {
+      sessionId: params.sessionId,
+      cwd: params.cwd,
+    });
+    this._sessionId = params.sessionId;
+    this.attachSession(params.sessionId);
+    return {
+      ...result,
+      sessionId: result.sessionId ?? params.sessionId,
+    };
+  }
+
+  /**
+   * Fork a session - creates a child session from an existing one.
+   * The original session is preserved intact.
+   */
+  async forkSession(params: {
+    sessionId: string;
+    name?: string;
+  }): Promise<AcpForkSessionResult> {
+    const response = await fetch(
+      resolveApiPath(`api/sessions/${params.sessionId}/fork`, this.baseUrl),
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: params.name }),
+      },
+    );
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(
+        (err as Record<string, string>).error ?? `Fork failed: ${response.status}`,
+      );
+    }
+    return response.json() as Promise<AcpForkSessionResult>;
+  }
+
+  /**
    * List available models for a provider (e.g. opencode).
    */
   async listProviderModels(provider: string): Promise<string[]> {
-    const response = await fetch(`${this.baseUrl}/api/providers/models?provider=${encodeURIComponent(provider)}`);
+    const response = await fetch(resolveApiPath(`api/providers/models?provider=${encodeURIComponent(provider)}`, this.baseUrl));
     const data = await response.json();
     return Array.isArray(data.models) ? data.models : [];
   }
@@ -233,7 +332,7 @@ export class BrowserAcpClient {
     if (check) params.set("check", "true");
     if (includeRegistry) params.set("registry", "true");
 
-    const response = await fetch(`${this.baseUrl}/api/providers?${params}`);
+    const response = await fetch(resolveApiPath(`api/providers?${params}`, this.baseUrl));
     const data = await response.json();
 
     return Array.isArray(data.providers) ? data.providers : [];
@@ -244,7 +343,7 @@ export class BrowserAcpClient {
    * This is useful for showing local providers first, then loading registry in background.
    */
   async loadRegistryProviders(): Promise<AcpProviderInfo[]> {
-    const response = await fetch(`${this.baseUrl}/api/providers?registry=true`);
+    const response = await fetch(resolveApiPath("api/providers?registry=true", this.baseUrl));
     const data = await response.json();
     return Array.isArray(data.providers) ? data.providers : [];
   }
@@ -254,6 +353,9 @@ export class BrowserAcpClient {
    */
   attachSession(sessionId: string): void {
     if (this._sessionId !== sessionId) {
+      if (this._sessionId) {
+        this.ownershipConflictRetryState.delete(this._sessionId);
+      }
       this.lastEventId = null;
     }
     this._sessionId = sessionId;
@@ -288,7 +390,7 @@ export class BrowserAcpClient {
       params.skillContent = skillContext.skillContent;
     }
 
-    const response = await fetch(`${this.baseUrl}/api/acp`, {
+    const response = await fetch(resolveApiPath("api/acp", this.baseUrl), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -307,13 +409,29 @@ export class BrowserAcpClient {
     }
 
     // Handle traditional JSON response
-    const data = await response.json();
+    let data: any;
+    try {
+      data = await response.json();
+    } catch (error) {
+      throw new AcpClientError(
+        `Invalid ACP response (${response.status} ${response.statusText})`,
+        response.status || -32603,
+        undefined,
+        undefined,
+        {
+          responseContentType: contentType,
+          parseError: error instanceof Error ? error.message : String(error),
+        },
+      );
+    }
     if (data.error) {
       throw new AcpClientError(
         data.error.message,
         data.error.code,
         data.error.authMethods,
-        data.error.agentInfo
+        data.error.agentInfo,
+        data.error.data,
+        data.error.sessionMayContinue,
       );
     }
 
@@ -510,6 +628,7 @@ export class BrowserAcpClient {
     }
     this._sessionId = null;
     this.lastEventId = null;
+    this.ownershipConflictRetryState.clear();
     this.updateHandlers = [];
     this.connectionIssueHandlers = [];
   }
@@ -527,7 +646,7 @@ export class BrowserAcpClient {
       this.eventSource = null;
     }
 
-    const url = new URL(`${this.baseUrl || window.location.origin}/api/acp`);
+    const url = new URL(resolveApiPath("api/acp", this.baseUrl || window.location.origin));
     url.searchParams.set("sessionId", sessionId);
     if (this.lastEventId) {
       url.searchParams.set("lastEventId", this.lastEventId);
@@ -542,7 +661,7 @@ export class BrowserAcpClient {
       if (issue) {
         this.emitConnectionIssue(issue);
         if (issue.retryable) {
-          this.scheduleReconnect();
+          this.scheduleReconnect(issue.retryDelayMs ?? 2000);
         }
         return;
       }
@@ -584,7 +703,7 @@ export class BrowserAcpClient {
     });
   }
 
-  private scheduleReconnect(): void {
+  private scheduleReconnect(delayMs: number = 2000): void {
     if (this.reconnectTimer) {
       return;
     }
@@ -593,7 +712,7 @@ export class BrowserAcpClient {
       if (this._sessionId) {
         this.connectSSE(this._sessionId);
       }
-    }, 2000);
+    }, delayMs);
   }
 
   private emitConnectionIssue(issue: AcpConnectionIssue): void {
@@ -606,6 +725,21 @@ export class BrowserAcpClient {
     }
   }
 
+  private getOwnershipConflictRetryDelayMs(sessionId: string): number | null {
+    const attempts = (this.ownershipConflictRetryState.get(sessionId) ?? 0) + 1;
+    if (attempts > this.ownershipConflictRetryLimit) {
+      this.ownershipConflictRetryState.delete(sessionId);
+      return null;
+    }
+    this.ownershipConflictRetryState.set(sessionId, attempts);
+    const backoff = this.ownershipConflictBaseDelayMs * (this.ownershipConflictBackoffMultiplier ** (attempts - 1));
+    return Math.min(backoff, 10000);
+  }
+
+  private clearOwnershipConflictRetryState(sessionId: string): void {
+    this.ownershipConflictRetryState.delete(sessionId);
+  }
+
   private async probeSse(url: URL, sessionId: string): Promise<AcpConnectionIssue | null> {
     try {
       const response = await fetch(url.toString(), {
@@ -613,6 +747,7 @@ export class BrowserAcpClient {
       });
 
       if (response.ok) {
+        this.clearOwnershipConflictRetryState(sessionId);
         return null;
       }
 
@@ -627,16 +762,25 @@ export class BrowserAcpClient {
         ? payload.error
         : `SSE attach failed with status ${response.status}`;
 
+      const ownershipConflictRetryDelayMs = response.status === 409
+        ? this.getOwnershipConflictRetryDelayMs(sessionId)
+        : null;
+
       return {
         sessionId,
         message,
-        retryable: response.status !== 409,
+        retryable: response.status !== 409 || ownershipConflictRetryDelayMs !== null,
         status: response.status,
         ownerInstanceId: typeof payload?.ownerInstanceId === "string" ? payload.ownerInstanceId : undefined,
         leaseExpiresAt: typeof payload?.leaseExpiresAt === "string" ? payload.leaseExpiresAt : undefined,
+        retryDelayMs:
+          response.status === 409
+            ? ownershipConflictRetryDelayMs ?? undefined
+            : undefined,
       };
     } catch (error) {
       console.warn("[AcpClient] SSE probe failed, falling back to EventSource:", error);
+      this.clearOwnershipConflictRetryState(sessionId);
       return null;
     }
   }
@@ -647,7 +791,7 @@ export class BrowserAcpClient {
   ): Promise<T> {
     const id = ++this.requestId;
 
-    const response = await fetch(`${this.baseUrl}/api/acp`, {
+    const response = await fetch(resolveApiPath("api/acp", this.baseUrl), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -666,7 +810,9 @@ export class BrowserAcpClient {
         data.error.message,
         data.error.code,
         data.error.authMethods,
-        data.error.agentInfo
+        data.error.agentInfo,
+        data.error.data,
+        data.error.sessionMayContinue,
       );
     }
 

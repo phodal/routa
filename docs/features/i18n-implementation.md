@@ -1,3 +1,7 @@
+---
+title: i18n Implementation Guide
+---
+
 # 国际化 (i18n) 实现指南
 
 > 基于 PR #174 的实现经验总结

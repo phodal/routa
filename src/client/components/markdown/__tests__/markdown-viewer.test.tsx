@@ -1,6 +1,14 @@
-import { describe, expect, it } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { MarkdownViewer } from "../markdown-viewer";
+
+const { openExternalUrlMock } = vi.hoisted(() => ({
+  openExternalUrlMock: vi.fn(() => Promise.resolve()),
+}));
+
+vi.mock("@/client/utils/external-links", () => ({
+  openExternalUrl: openExternalUrlMock,
+}));
 
 const canonicalStoryMarkdown = `Context before the contract.
 
@@ -119,5 +127,13 @@ Context after.`}
     expect(rootText.textContent ?? "").toContain("Context after.");
     expect(screen.queryByText("story:")).toBeNull();
     expect(screen.queryByText("Card title")).toBeNull();
+  });
+
+  it("opens markdown links through the external URL helper", () => {
+    render(<MarkdownViewer content="[Open PR](https://github.com/phodal/routa/pull/497)" />);
+
+    fireEvent.click(screen.getByRole("link", { name: "Open PR" }));
+
+    expect(openExternalUrlMock).toHaveBeenCalledWith("https://github.com/phodal/routa/pull/497");
   });
 });

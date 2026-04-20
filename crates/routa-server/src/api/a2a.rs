@@ -187,7 +187,7 @@ async fn rpc_handler(
                     .ok_or_else(|| ServerError::BadRequest("Missing task id".into()))?;
                 let task =
                     state.task_store.get(task_id).await?.ok_or_else(|| {
-                        ServerError::NotFound(format!("Task {} not found", task_id))
+                        ServerError::NotFound(format!("Task {task_id} not found"))
                     })?;
                 build_a2a_task_payload(
                     &task,
@@ -227,7 +227,7 @@ async fn rpc_handler(
                     .await?;
                 let task =
                     state.task_store.get(task_id).await?.ok_or_else(|| {
-                        ServerError::NotFound(format!("Task {} not found", task_id))
+                        ServerError::NotFound(format!("Task {task_id} not found"))
                     })?;
                 build_a2a_task_payload(&task, "canceled", Some(task.updated_at.to_rfc3339()))
             }
@@ -256,7 +256,7 @@ async fn rpc_handler(
                     .unwrap_or("default");
 
                 let agent_role = crate::models::agent::AgentRole::from_str(role)
-                    .ok_or_else(|| ServerError::BadRequest(format!("Invalid role: {}", role)))?;
+                    .ok_or_else(|| ServerError::BadRequest(format!("Invalid role: {role}")))?;
 
                 let agent = crate::models::agent::Agent::new(
                     uuid::Uuid::new_v4().to_string(),
@@ -391,7 +391,7 @@ async fn get_task(
         .get(&id)
         .await?
         .map(|t| Json(serde_json::json!(t)))
-        .ok_or_else(|| ServerError::NotFound(format!("Task {} not found", id)))
+        .ok_or_else(|| ServerError::NotFound(format!("Task {id} not found")))
 }
 
 /// POST /api/a2a/tasks/{id} — Update / respond to an A2A task
@@ -402,7 +402,7 @@ async fn update_task(
 ) -> Result<Json<serde_json::Value>, ServerError> {
     if let Some(status) = body.get("status").and_then(|v| v.as_str()) {
         let task_status = crate::models::task::TaskStatus::from_str(status)
-            .ok_or_else(|| ServerError::BadRequest(format!("Invalid status: {}", status)))?;
+            .ok_or_else(|| ServerError::BadRequest(format!("Invalid status: {status}")))?;
         state.task_store.update_status(&id, &task_status).await?;
         Ok(Json(
             serde_json::json!({ "updated": true, "id": id, "status": status }),

@@ -1,7 +1,7 @@
 ---
 title: "Harness governance loop build stage lacks live build metadata"
 date: "2026-03-29"
-status: open
+status: resolved
 severity: medium
 area: "ui"
 tags: ["harness", "governance-loop", "build", "metadata"]
@@ -9,8 +9,11 @@ reported_by: "codex"
 related_issues: [
   "https://github.com/phodal/routa/issues/245",
   "docs/issues/2026-03-28-harness-governance-loop-semantic-drift.md",
-  "docs/issues/2026-03-29-harness-governance-loop-panel-orchestration-gap.md"
+  "docs/issues/2026-03-29-harness-governance-loop-panel-orchestration-gap.md",
+  "docs/issues/2026-03-29-harness-build-test-yaml-driven-panels-and-density.md"
 ]
+resolved_at: "2026-04-11"
+resolution: "Merged into the broader build/test harness issue because missing build metadata is a narrower symptom of the same missing config contract and compact UI problem."
 ---
 
 # Governance loop build stage is still a static label instead of a live repository signal
@@ -71,3 +74,9 @@ At minimum, the build stage should expose live metadata that answers questions l
 - `useHarnessSettingsData` already fetches five live endpoints, and all response types include `generatedAt`.
 - The selected repository already carries repo identity and branch context before rendering the graph.
 - The app has existing version signals in `/api/health` and git revision helpers in trace utilities, so the missing piece is primarily UI integration and a stable build-stage data shape.
+
+## Deduplication Note
+
+This record is retained as evidence, but it no longer serves as an independent
+active issue. The authoritative local tracker is
+`docs/issues/2026-03-29-harness-build-test-yaml-driven-panels-and-density.md`.

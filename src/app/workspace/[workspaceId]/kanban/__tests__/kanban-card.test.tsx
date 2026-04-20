@@ -3,6 +3,16 @@ import { describe, expect, it, vi } from "vitest";
 import type { KanbanColumnInfo, TaskInfo } from "../../types";
 import { KanbanCard } from "../kanban-card";
 
+vi.mock("@dnd-kit/core", () => ({
+  useDraggable: () => ({
+    attributes: {},
+    isDragging: false,
+    listeners: {},
+    setNodeRef: vi.fn(),
+    transform: null,
+  }),
+}));
+
 const boardColumns: KanbanColumnInfo[] = [
   { id: "backlog", name: "Backlog", position: 0, stage: "backlog" },
   { id: "todo", name: "Todo", position: 1, stage: "todo" },
@@ -51,7 +61,6 @@ describe("KanbanCard artifact gate status", () => {
         codebases={[]}
         allCodebaseIds={[]}
         worktreeCache={{}}
-        onDragStart={vi.fn()}
         onOpenDetail={vi.fn()}
         onDelete={vi.fn()}
         onPatchTask={vi.fn()}
@@ -82,7 +91,6 @@ describe("KanbanCard artifact gate status", () => {
         codebases={[]}
         allCodebaseIds={[]}
         worktreeCache={{}}
-        onDragStart={vi.fn()}
         onOpenDetail={vi.fn()}
         onDelete={vi.fn()}
         onPatchTask={vi.fn()}
@@ -107,7 +115,6 @@ describe("KanbanCard artifact gate status", () => {
         codebases={[]}
         allCodebaseIds={[]}
         worktreeCache={{}}
-        onDragStart={vi.fn()}
         onOpenDetail={vi.fn()}
         onDelete={vi.fn()}
         onPatchTask={vi.fn()}
@@ -118,6 +125,33 @@ describe("KanbanCard artifact gate status", () => {
 
     expect(screen.getByText("Live Session")).toBeTruthy();
     expect(screen.getByTestId("kanban-card-live-tail").textContent).toContain("Updated parser;");
+  });
+
+  it("surfaces review feedback on cards returned to dev", () => {
+    render(
+      <KanbanCard
+        task={buildTask({
+          columnId: "dev",
+          verificationVerdict: "NOT_APPROVED",
+          verificationReport: "AC3 failed: editor still strips nested marks when pasting rich text.",
+        })}
+        boardColumns={boardColumns}
+        specialistLanguage="en"
+        availableProviders={[]}
+        specialists={[]}
+        codebases={[]}
+        allCodebaseIds={[]}
+        worktreeCache={{}}
+        onOpenDetail={vi.fn()}
+        onDelete={vi.fn()}
+        onPatchTask={vi.fn()}
+        onRetryTrigger={vi.fn()}
+        onRefresh={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId("kanban-card-review-feedback").textContent).toContain("Returned to Dev");
+    expect(screen.getByTestId("kanban-card-review-feedback").textContent).toContain("AC3 failed");
   });
 
   it("renders imported pull requests with a PR badge", () => {
@@ -135,7 +169,6 @@ describe("KanbanCard artifact gate status", () => {
         codebases={[]}
         allCodebaseIds={[]}
         worktreeCache={{}}
-        onDragStart={vi.fn()}
         onOpenDetail={vi.fn()}
         onDelete={vi.fn()}
         onPatchTask={vi.fn()}
@@ -172,7 +205,6 @@ describe("KanbanCard artifact gate status", () => {
         allCodebaseIds={[]}
         worktreeCache={{}}
         autoProviderId="codex"
-        onDragStart={vi.fn()}
         onOpenDetail={vi.fn()}
         onDelete={vi.fn()}
         onPatchTask={vi.fn()}
@@ -182,5 +214,74 @@ describe("KanbanCard artifact gate status", () => {
     );
 
     expect(screen.getByRole("button", { name: "Run" })).toBeTruthy();
+  });
+
+  it("renders canonical story body instead of raw yaml on the card", () => {
+    render(
+      <KanbanCard
+        task={buildTask({
+          title: "Canonical story preview",
+          objective: `\`\`\`yaml
+story:
+  version: 1
+  language: en
+  title: Canonical story preview
+  problem_statement: |
+    Dependency upgrades can regress editor behavior without explicit validation.
+  user_value: |
+    Maintainers can review the change as a structured story instead of raw YAML only.
+  acceptance_criteria:
+    - id: AC1
+      text: Card preview shows story content.
+      testable: true
+    - id: AC2
+      text: Raw fenced YAML is hidden in the list.
+      testable: true
+  constraints_and_affected_areas:
+    - src/app/workspace/[workspaceId]/kanban/kanban-card.tsx
+  dependencies_and_sequencing:
+    independent_story_check: pass
+    depends_on: []
+    unblock_condition: none
+  out_of_scope:
+    - unrelated cleanup
+  invest:
+    independent:
+      status: pass
+      reason: no prerequisite
+    negotiable:
+      status: pass
+      reason: presentation only
+    valuable:
+      status: pass
+      reason: faster scanning
+    estimable:
+      status: pass
+      reason: card-only change
+    small:
+      status: pass
+      reason: one component
+    testable:
+      status: pass
+      reason: preview is visible
+\`\`\``,
+        })}
+        boardColumns={boardColumns}
+        specialistLanguage="en"
+        availableProviders={[]}
+        specialists={[]}
+        codebases={[]}
+        allCodebaseIds={[]}
+        worktreeCache={{}}
+        onOpenDetail={vi.fn()}
+        onDelete={vi.fn()}
+        onPatchTask={vi.fn()}
+        onRetryTrigger={vi.fn()}
+        onRefresh={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText(/Dependency upgrades can regress editor behavior/i)).toBeTruthy();
+    expect(screen.queryByText(/```yaml/i)).toBeNull();
   });
 });

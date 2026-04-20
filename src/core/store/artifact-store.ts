@@ -18,6 +18,8 @@ export interface ArtifactStore {
   getArtifact(artifactId: string): Promise<Artifact | undefined>;
   /** List artifacts for a task */
   listByTask(taskId: string): Promise<Artifact[]>;
+  /** List artifacts for a workspace */
+  listByWorkspace(workspaceId: string): Promise<Artifact[]>;
   /** List artifacts by type for a task */
   listByTaskAndType(taskId: string, type: ArtifactType): Promise<Artifact[]>;
   /** List artifacts provided by an agent */
@@ -59,6 +61,12 @@ export class InMemoryArtifactStore implements ArtifactStore {
   async listByTask(taskId: string): Promise<Artifact[]> {
     return Array.from(this.artifacts.values()).filter(
       (a) => a.taskId === taskId
+    );
+  }
+
+  async listByWorkspace(workspaceId: string): Promise<Artifact[]> {
+    return Array.from(this.artifacts.values()).filter(
+      (a) => a.workspaceId === workspaceId
     );
   }
 

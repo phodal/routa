@@ -19,7 +19,7 @@ use axum::{
 use serde::Deserialize;
 
 use crate::api::tasks_github::{
-    list_github_issues, list_github_pulls, resolve_github_repo_for_codebase,
+    github_access_status, list_github_issues, list_github_pulls, resolve_github_repo_for_codebase,
 };
 use crate::error::ServerError;
 use crate::state::AppState;
@@ -27,6 +27,7 @@ use crate::state::AppState;
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/", get(list_workspaces))
+        .route("/access", get(github_access))
         .route("/import", post(import_repo))
         .route("/issues", get(list_issues))
         .route("/pulls", get(list_pulls))
@@ -41,6 +42,39 @@ pub fn router() -> Router<AppState> {
 async fn list_workspaces() -> Json<serde_json::Value> {
     // Desktop mode: no in-memory cache yet — return empty list.
     Json(serde_json::json!({ "workspaces": [] }))
+}
+
+async fn load_board_token(
+    state: &AppState,
+    board_id: Option<&str>,
+) -> Result<Option<String>, ServerError> {
+    let Some(board_id) = board_id.map(str::trim).filter(|value| !value.is_empty()) else {
+        return Ok(None);
+    };
+
+    Ok(state
+        .kanban_store
+        .get(board_id)
+        .await?
+        .and_then(|board| board.github_token))
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AccessQuery {
+    board_id: Option<String>,
+}
+
+async fn github_access(
+    State(state): State<AppState>,
+    Query(q): Query<AccessQuery>,
+) -> Result<Json<serde_json::Value>, ServerError> {
+    let board_token = load_board_token(&state, q.board_id.as_deref()).await?;
+    let (source, available) = github_access_status(board_token.as_deref());
+    Ok(Json(serde_json::json!({
+        "available": available,
+        "source": source,
+    })))
 }
 
 // ─── Import ──────────────────────────────────────────────────────────────────
@@ -191,6 +225,7 @@ async fn search_files(Query(q): Query<SearchQuery>) -> Json<serde_json::Value> {
 struct IssueQuery {
     workspace_id: Option<String>,
     codebase_id: Option<String>,
+    board_id: Option<String>,
     state: Option<String>,
 }
 
@@ -243,7 +278,9 @@ async fn list_issues(
         )
     })?;
 
-    let issues = list_github_issues(&repo, Some(state_filter), Some(50))
+    let board_token = load_board_token(&state, q.board_id.as_deref()).await?;
+
+    let issues = list_github_issues(&repo, Some(state_filter), Some(50), board_token.as_deref())
         .await
         .map_err(ServerError::Internal)?;
 
@@ -268,6 +305,7 @@ async fn list_issues(
 struct PullQuery {
     workspace_id: Option<String>,
     codebase_id: Option<String>,
+    board_id: Option<String>,
     state: Option<String>,
 }
 
@@ -320,7 +358,9 @@ async fn list_pulls(
         )
     })?;
 
-    let pulls = list_github_pulls(&repo, Some(state_filter), Some(50))
+    let board_token = load_board_token(&state, q.board_id.as_deref()).await?;
+
+    let pulls = list_github_pulls(&repo, Some(state_filter), Some(50), board_token.as_deref())
         .await
         .map_err(ServerError::Internal)?;
 

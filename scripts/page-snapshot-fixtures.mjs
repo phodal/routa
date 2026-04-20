@@ -539,7 +539,7 @@ function initializeFixtureDb(dbPath, projectRoot, homeDir) {
     0,
     "high",
     JSON.stringify(["snapshot", "ci"]),
-    "opencode",
+    null,
     "CRAFTER",
     "kanban-backlog-refiner",
     "Backlog Refiner",
@@ -566,7 +566,7 @@ function initializeFixtureDb(dbPath, projectRoot, homeDir) {
     1,
     "medium",
     JSON.stringify(["snapshot"]),
-    "opencode",
+    null,
     "GATE",
     "kanban-done-reporter",
     "Done Reporter",
@@ -636,7 +636,28 @@ export async function prepareSnapshotFixtures(projectRoot) {
       PAGE_SNAPSHOT_FIXTURE_MODE: "1",
     },
     cleanup() {
-      fs.rmSync(tempRoot, { recursive: true, force: true });
+      // Retry cleanup with delays to handle SQLite WAL file locks
+      let attempts = 0;
+      const maxAttempts = 3;
+      while (attempts < maxAttempts) {
+        try {
+          fs.rmSync(tempRoot, { recursive: true, force: true });
+          break;
+        } catch (error) {
+          attempts += 1;
+          if (attempts >= maxAttempts) {
+            // Log but don't fail - temp cleanup failure is not critical
+            console.warn(`Warning: Failed to clean up ${tempRoot}:`, error);
+          } else {
+            // Wait a bit for file locks to be released
+            const delay = 100 * attempts;
+            const now = Date.now();
+            while (Date.now() - now < delay) {
+              // Busy wait
+            }
+          }
+        }
+      }
     },
   };
 }

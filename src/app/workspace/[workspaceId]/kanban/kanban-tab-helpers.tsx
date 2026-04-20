@@ -216,6 +216,44 @@ export function formatLaneAutomationSummary(
   return `-> ${core}`;
 }
 
+export function formatLaneAutomationCompactLabel(
+  automation: ColumnAutomationConfig | undefined,
+  providers: AcpProviderInfo[],
+  specialists: SpecialistOption[],
+  options: {
+    autoProviderId?: string;
+    autoLabel: string;
+  },
+): string {
+  const steps = getKanbanAutomationSteps(automation);
+  if (steps.length === 0) {
+    return options.autoLabel;
+  }
+
+  const resolveSpecialist = createKanbanSpecialistResolver(specialists);
+  const firstStep = resolveKanbanAutomationStep(steps[0], resolveSpecialist, {
+    autoProviderId: options.autoProviderId,
+  });
+
+  if (!firstStep) {
+    return options.autoLabel;
+  }
+
+  if (steps[0]?.transport === "a2a") {
+    return [options.autoLabel, "A2A", firstStep.role ?? "DEVELOPER"].filter(Boolean).join(" · ");
+  }
+
+  const provider = normalizeProviderId(steps[0]?.providerId)
+    ? getProviderDisplayName(firstStep.providerId, providers)
+    : firstStep.providerSource === "auto"
+      ? formatAutoProviderLabel(firstStep.providerId, providers, options.autoLabel)
+      : firstStep.providerSource === "specialist"
+        ? (getProviderDisplayName(firstStep.providerId, providers) ?? options.autoLabel)
+        : options.autoLabel;
+
+  return [options.autoLabel, provider, firstStep.role ?? "DEVELOPER"].filter(Boolean).join(" · ");
+}
+
 function formatAgentCardTarget(agentCardUrl?: string): string | null {
   const trimmed = agentCardUrl?.trim();
   if (!trimmed) return null;

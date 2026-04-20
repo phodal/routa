@@ -139,13 +139,20 @@ function applyToolCallUpdate(messages: ChatMessage[], update: Record<string, unk
   const index = messages.findIndex((message) => message.toolCallId === toolCallId);
   if (index >= 0) {
     const existing = messages[index];
+    const nextToolKind = normalizeToolKind(update.kind as string | undefined) ?? existing.toolKind;
+    const mergedRawInput = nextToolKind === "request-permissions" && existing.toolRawInput
+      ? {
+          ...existing.toolRawInput,
+          ...(asRecord(update.rawInput) ?? {}),
+        }
+      : asRecord(update.rawInput) ?? existing.toolRawInput;
     messages[index] = {
       ...existing,
       toolStatus: (update.status as string | undefined) ?? existing.toolStatus,
       toolName,
-      toolKind: normalizeToolKind(update.kind as string | undefined) ?? existing.toolKind,
+      toolKind: nextToolKind,
       delegatedTaskId: (update.delegatedTaskId as string | undefined) ?? existing.delegatedTaskId,
-      toolRawInput: asRecord(update.rawInput) ?? existing.toolRawInput,
+      toolRawInput: mergedRawInput,
       toolRawOutput: update.rawOutput ?? existing.toolRawOutput,
       content: outputParts.length
         ? `${toolName}\n\nOutput:\n${outputParts.join("\n")}`

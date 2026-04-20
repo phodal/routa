@@ -1,3 +1,7 @@
+---
+title: Architecture Quality
+---
+
 # Architecture Quality
 
 Routa provides real-time architecture quality monitoring for TypeScript and Rust backend code through a unified Architecture DSL and multiple execution backends.

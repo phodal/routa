@@ -11,6 +11,7 @@
  *   await skills.cloneFromGithub("vercel-labs/agent-skills");
  *   const repoSkills = await skills.listFromRepo("/path/to/repo");
  */
+import { resolveApiPath } from "@/client/config/backend";
 
 export interface SkillSummary {
   name: string;
@@ -91,7 +92,7 @@ export class SkillClient {
    * List all available skills
    */
   async list(): Promise<SkillSummary[]> {
-    const response = await fetch(`${this.baseUrl}/api/skills`);
+    const response = await fetch(resolveApiPath("api/skills", this.baseUrl));
     const data = await response.json();
     return (data.skills ?? []).map((s: SkillSummary) => ({
       ...s,
@@ -111,7 +112,7 @@ export class SkillClient {
     const cached = this.cache.get(cacheKey);
     if (cached) return cached;
 
-    let url = `${this.baseUrl}/api/skills?name=${encodeURIComponent(name)}`;
+    let url = resolveApiPath(`api/skills?name=${encodeURIComponent(name)}`, this.baseUrl);
     if (repoPath) {
       url += `&repoPath=${encodeURIComponent(repoPath)}`;
     }
@@ -130,7 +131,7 @@ export class SkillClient {
    */
   async reload(): Promise<{ count: number }> {
     this.cache.clear();
-    const response = await fetch(`${this.baseUrl}/api/skills`, {
+    const response = await fetch(resolveApiPath("api/skills", this.baseUrl), {
       method: "POST",
     });
     return response.json();
@@ -145,7 +146,7 @@ export class SkillClient {
     url: string,
     skillsDir?: string
   ): Promise<CloneSkillsResult> {
-    const response = await fetch(`${this.baseUrl}/api/skills/clone`, {
+    const response = await fetch(resolveApiPath("api/skills/clone", this.baseUrl), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ url, skillsDir }),
@@ -175,7 +176,7 @@ export class SkillClient {
    */
   async listFromRepo(repoPath: string): Promise<SkillSummary[]> {
     const response = await fetch(
-      `${this.baseUrl}/api/skills/clone?repoPath=${encodeURIComponent(repoPath)}`
+      resolveApiPath(`api/skills/clone?repoPath=${encodeURIComponent(repoPath)}`, this.baseUrl)
     );
 
     if (!response.ok) return [];
@@ -192,7 +193,7 @@ export class SkillClient {
    */
   async searchSkillsSh(query: string, limit: number = 30): Promise<SkillsShSearchResult> {
     const params = new URLSearchParams({ type: "skillssh", q: query, limit: String(limit) });
-    const response = await fetch(`${this.baseUrl}/api/skills/catalog?${params}`);
+    const response = await fetch(resolveApiPath(`api/skills/catalog?${params}`, this.baseUrl));
 
     if (!response.ok) {
       const data = await response.json().catch(() => ({}));
@@ -211,7 +212,7 @@ export class SkillClient {
     ref: string = "main"
   ): Promise<GithubCatalogResult> {
     const params = new URLSearchParams({ type: "github", repo, path: catalogPath, ref });
-    const response = await fetch(`${this.baseUrl}/api/skills/catalog?${params}`);
+    const response = await fetch(resolveApiPath(`api/skills/catalog?${params}`, this.baseUrl));
 
     if (!response.ok) {
       const data = await response.json().catch(() => ({}));
@@ -228,7 +229,7 @@ export class SkillClient {
   async installFromSkillsSh(
     skills: Array<{ name: string; source: string }>
   ): Promise<CatalogInstallResult> {
-    const response = await fetch(`${this.baseUrl}/api/skills/catalog`, {
+    const response = await fetch(resolveApiPath("api/skills/catalog", this.baseUrl), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ type: "skillssh", skills }),
@@ -252,7 +253,7 @@ export class SkillClient {
     catalogPath: string = "skills/.curated",
     ref: string = "main"
   ): Promise<CatalogInstallResult> {
-    const response = await fetch(`${this.baseUrl}/api/skills/catalog`, {
+    const response = await fetch(resolveApiPath("api/skills/catalog", this.baseUrl), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ type: "github", repo, path: catalogPath, ref, skills }),
