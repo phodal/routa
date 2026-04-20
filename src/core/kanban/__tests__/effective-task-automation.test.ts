@@ -347,5 +347,31 @@ describe("resolveEffectiveTaskAutomation", () => {
       expect(resolved.steps).toHaveLength(1);
       expect(resolved.steps[0].id).toBe("card-override");
     });
+
+    it("does not append fallback steps when automatic fallback is disabled", () => {
+      const resolved = resolveEffectiveTaskAutomation(
+        {
+          columnId: "dev",
+          assignedProvider: "claude",
+          assignedRole: "DEVELOPER",
+          fallbackAgentChain: [{ providerId: "codex", role: "DEVELOPER" }],
+          enableAutomaticFallback: false,
+        },
+        [
+          {
+            id: "dev",
+            automation: {
+              enabled: true,
+              providerId: "default",
+              role: "DEVELOPER",
+            },
+          },
+        ],
+      );
+
+      expect(resolved.source).toBe("card");
+      expect(resolved.steps).toHaveLength(1);
+      expect(resolved.steps[0].id).toBe("card-override");
+    });
   });
 });
