@@ -222,6 +222,31 @@ pub async fn delete_card(state: &AppState, card_id: &str) -> Result<(), String> 
     Ok(())
 }
 
+pub async fn create_issue_from_card(
+    state: &AppState,
+    card_id: &str,
+    repo: Option<&str>,
+) -> Result<(), String> {
+    let router = RpcRouter::new(state.clone());
+    let mut params = serde_json::json!({
+        "cardId": card_id,
+    });
+    if let Some(repo) = repo {
+        params["repo"] = serde_json::json!(repo);
+    }
+
+    let response = router
+        .handle_value(serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "kanban.createIssueFromCard",
+            "params": params
+        }))
+        .await;
+    print_json(&response);
+    Ok(())
+}
+
 pub async fn create_column(
     state: &AppState,
     board_id: &str,
@@ -440,6 +465,49 @@ pub async fn trigger_automation(
             "jsonrpc": "2.0",
             "id": 1,
             "method": "kanban.triggerAutomation",
+            "params": params
+        }))
+        .await;
+    print_json(&response);
+    Ok(())
+}
+
+pub async fn sync_github_issues(
+    state: &AppState,
+    workspace_id: &str,
+    board_id: Option<&str>,
+    column_id: Option<&str>,
+    repo: Option<&str>,
+    codebase_id: Option<&str>,
+    state_filter: Option<&str>,
+    dry_run: bool,
+) -> Result<(), String> {
+    let router = RpcRouter::new(state.clone());
+    let mut params = serde_json::json!({
+        "workspaceId": workspace_id,
+        "dryRun": dry_run,
+    });
+    if let Some(board_id) = board_id {
+        params["boardId"] = serde_json::json!(board_id);
+    }
+    if let Some(column_id) = column_id {
+        params["columnId"] = serde_json::json!(column_id);
+    }
+    if let Some(repo) = repo {
+        params["repo"] = serde_json::json!(repo);
+    }
+    if let Some(codebase_id) = codebase_id {
+        params["codebaseId"] = serde_json::json!(codebase_id);
+    }
+    if let Some(state_filter) = state_filter {
+        params["state"] = serde_json::json!(state_filter);
+    }
+
+    let response = router
+        .handle_value(serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "kanban.syncGitHubIssues",
             "params": params
         }))
         .await;

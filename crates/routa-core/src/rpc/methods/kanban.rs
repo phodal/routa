@@ -23,6 +23,7 @@ mod automation;
 mod automation_commands;
 mod boards;
 mod cards;
+mod github;
 mod handoffs;
 mod queries;
 mod shared;
@@ -43,6 +44,11 @@ pub use cards::{
     CreateCardResult, DecomposeTaskItem, DecomposeTasksParams, DecomposeTasksResult,
     DeleteCardParams, DeleteCardResult, MoveCardParams, MoveCardResult, UpdateCardParams,
     UpdateCardResult,
+};
+pub use github::{
+    create_issue_from_card, sync_github_issues, CreateIssueFromCardParams,
+    CreateIssueFromCardResult, GitHubIssueRef, SyncGitHubIssuesParams, SyncGitHubIssuesResult,
+    SyncTaskSummary,
 };
 pub use handoffs::{
     request_previous_lane_handoff, submit_lane_handoff, RequestPreviousLaneHandoffParams,

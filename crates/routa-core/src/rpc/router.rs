@@ -285,6 +285,16 @@ impl RpcRouter {
                 let r = methods::kanban::trigger_automation(&self.state, p).await?;
                 Ok(serde_json::to_value(r).unwrap())
             }
+            "kanban.createIssueFromCard" => {
+                let p = parse_params(params)?;
+                let r = methods::kanban::create_issue_from_card(&self.state, p).await?;
+                Ok(serde_json::to_value(r).unwrap())
+            }
+            "kanban.syncGitHubIssues" => {
+                let p = parse_params(params)?;
+                let r = methods::kanban::sync_github_issues(&self.state, p).await?;
+                Ok(serde_json::to_value(r).unwrap())
+            }
 
             // ----- Notes -----
             "notes.list" => {
@@ -385,6 +395,8 @@ impl RpcRouter {
             "kanban.decomposeTasks",
             "kanban.listAutomations",
             "kanban.triggerAutomation",
+            "kanban.createIssueFromCard",
+            "kanban.syncGitHubIssues",
             "notes.list",
             "notes.get",
             "notes.create",

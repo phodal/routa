@@ -416,6 +416,11 @@ enum KanbanAction {
         #[command(subcommand)]
         action: KanbanAutomationAction,
     },
+    /// Sync GitHub issues into Kanban cards
+    Sync {
+        #[command(subcommand)]
+        action: KanbanSyncAction,
+    },
 }
 
 #[derive(Subcommand)]
@@ -559,6 +564,14 @@ enum KanbanCardAction {
         #[arg(long, value_delimiter = ',')]
         labels: Option<Vec<String>>,
     },
+    /// Create a linked GitHub issue for a card
+    CreateIssue {
+        #[arg(long)]
+        card_id: String,
+        /// Optional owner/repo override. Falls back to the task's linked/default codebase.
+        #[arg(long)]
+        repo: Option<String>,
+    },
     /// Delete a card
     Delete {
         #[arg(long)]
@@ -652,6 +665,28 @@ enum KanbanAutomationAction {
         column_id: Option<String>,
         #[arg(long, default_value_t = false)]
         force: bool,
+        #[arg(long, default_value_t = false)]
+        dry_run: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum KanbanSyncAction {
+    /// Import or refresh GitHub issues for a workspace board
+    Github {
+        #[arg(long, default_value = "default")]
+        workspace_id: String,
+        #[arg(long)]
+        board_id: Option<String>,
+        #[arg(long)]
+        column_id: Option<String>,
+        #[arg(long)]
+        repo: Option<String>,
+        #[arg(long)]
+        codebase_id: Option<String>,
+        /// Filter GitHub issues by state: open, closed, or all
+        #[arg(long)]
+        state: Option<String>,
         #[arg(long, default_value_t = false)]
         dry_run: bool,
     },
@@ -1233,6 +1268,14 @@ async fn main() {
                             )
                             .await
                         }
+                        KanbanCardAction::CreateIssue { card_id, repo } => {
+                            commands::kanban::create_issue_from_card(
+                                &state,
+                                &card_id,
+                                repo.as_deref(),
+                            )
+                            .await
+                        }
                         KanbanCardAction::Delete { card_id } => {
                             commands::kanban::delete_card(&state, &card_id).await
                         }
@@ -1359,6 +1402,29 @@ async fn main() {
                                 &card_id,
                                 column_id.as_deref(),
                                 force,
+                                dry_run,
+                            )
+                            .await
+                        }
+                    },
+                    KanbanAction::Sync { action } => match action {
+                        KanbanSyncAction::Github {
+                            workspace_id,
+                            board_id,
+                            column_id,
+                            repo,
+                            codebase_id,
+                            state: state_filter,
+                            dry_run,
+                        } => {
+                            commands::kanban::sync_github_issues(
+                                &state,
+                                &workspace_id,
+                                board_id.as_deref(),
+                                column_id.as_deref(),
+                                repo.as_deref(),
+                                codebase_id.as_deref(),
+                                state_filter.as_deref(),
                                 dry_run,
                             )
                             .await
