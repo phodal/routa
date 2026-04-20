@@ -20,6 +20,8 @@ const MAX_FILE_SIGNAL_SESSIONS: usize = 6;
 const MAX_FILE_SIGNAL_TOOLS: usize = 8;
 const MAX_FILE_SIGNAL_PROMPTS: usize = 6;
 const MAX_FILE_SIGNAL_CHANGED_FILES: usize = 12;
+const MAX_FILE_SIGNAL_FAILED_TOOLS: usize = 6;
+const MAX_FILE_SIGNAL_REPEATED_COMMANDS: usize = 6;
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -103,6 +105,29 @@ struct FileSessionSignalResponse {
     prompt_history: Vec<String>,
     tool_names: Vec<String>,
     changed_files: Vec<String>,
+    resume_command: Option<String>,
+    diagnostics: Option<FileSessionDiagnosticsResponse>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct FileSessionDiagnosticsResponse {
+    tool_call_count: usize,
+    failed_tool_call_count: usize,
+    tool_calls_by_name: HashMap<String, usize>,
+    read_files: Vec<String>,
+    written_files: Vec<String>,
+    repeated_read_files: Vec<String>,
+    repeated_commands: Vec<String>,
+    failed_tools: Vec<FileSessionToolFailureResponse>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct FileSessionToolFailureResponse {
+    tool_name: String,
+    command: Option<String>,
+    message: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -226,6 +251,15 @@ struct FileStatAggregate {
     updated_at: String,
 }
 
+#[derive(Clone, Debug)]
+struct SessionSignalContext {
+    provider: String,
+    prompt_history: Vec<String>,
+    tool_history: Vec<String>,
+    resume_command: Option<String>,
+    diagnostics: Option<FileSessionDiagnosticsResponse>,
+}
+
 fn collect_session_stats(
     repo_root: &Path,
     feature_tree: &FeatureTreeCatalog,
@@ -244,11 +278,26 @@ fn collect_session_stats(
     match trace_parser::collect_broad_transcript_summaries(repo_root) {
         Ok(transcripts) => {
             for transcript in &transcripts {
-                let input = build_feature_trace_input_from_transcript(
-                    repo_root,
-                    transcript,
-                    &normalized_registry,
-                );
+                let normalized_session =
+                    if transcript.client == "codex" || transcript.client == "claude" {
+                        normalized_registry
+                            .parse_path(Path::new(&transcript.transcript_path))
+                            .ok()
+                    } else {
+                        None
+                    };
+                let input = normalized_session
+                    .as_ref()
+                    .and_then(|session| {
+                        build_feature_trace_input_from_normalized_session(repo_root, session)
+                    })
+                    .unwrap_or_else(|| {
+                        build_feature_trace_input_from_transcript(
+                            repo_root,
+                            transcript,
+                            &normalized_registry,
+                        )
+                    });
                 let changed_files = input.changed_files.clone();
                 let analysis = analyzer.analyze_input(&input);
                 analyses.push(analysis.clone());
@@ -259,15 +308,19 @@ fn collect_session_stats(
                         .map(|dt| dt.format("%Y-%m-%dT%H:%M:%S").to_string())
                         .unwrap_or_default()
                 };
+                let signal_context = build_session_signal_context(
+                    repo_root,
+                    transcript,
+                    normalized_session.as_ref(),
+                    &changed_files,
+                );
 
                 record_analysis(
                     &mut stats,
                     &mut file_stats,
                     &mut file_signals,
                     &transcript.session_id,
-                    &transcript.client,
-                    transcript.prompt.as_deref(),
-                    &transcript.recovered_events,
+                    &signal_context,
                     &changed_files,
                     &analysis,
                     &ts_str,
@@ -400,9 +453,7 @@ fn record_analysis(
     file_stats: &mut HashMap<String, FileStatAggregate>,
     file_signals: &mut FileSignals,
     session_id: &str,
-    provider: &str,
-    prompt: Option<&str>,
-    recovered_events: &[trace_parser::TranscriptRecoveredEvent],
+    signal_context: &SessionSignalContext,
     changed_files: &[String],
     analysis: &SessionAnalysis,
     updated_at: &str,
@@ -424,20 +475,8 @@ fn record_analysis(
         }
     }
 
-    let tool_names = recovered_events
-        .iter()
-        .map(|event| match event {
-            trace_parser::TranscriptRecoveredEvent::ToolUse { tool_name, .. } => tool_name.clone(),
-        })
-        .collect::<BTreeSet<_>>()
-        .into_iter()
-        .take(MAX_FILE_SIGNAL_TOOLS)
-        .collect::<Vec<_>>();
-    let prompt_history = prompt
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(|value| vec![value.to_string()])
-        .unwrap_or_default();
+    let tool_names = signal_context.tool_history.clone();
+    let prompt_history = signal_context.prompt_history.clone();
     let prompt_snippet = prompt_history.first().cloned().unwrap_or_default();
     let changed_files_limited = changed_files
         .iter()
@@ -465,19 +504,20 @@ fn record_analysis(
                 });
 
         if signal_entry.sessions.len() < MAX_FILE_SIGNAL_SESSIONS
-            && !signal_entry
-                .sessions
-                .iter()
-                .any(|session| session.provider == provider && session.session_id == session_id)
+            && !signal_entry.sessions.iter().any(|session| {
+                session.provider == signal_context.provider && session.session_id == session_id
+            })
         {
             signal_entry.sessions.push(FileSessionSignalResponse {
-                provider: provider.to_string(),
+                provider: signal_context.provider.clone(),
                 session_id: session_id.to_string(),
                 updated_at: updated_at.to_string(),
                 prompt_snippet: prompt_snippet.clone(),
                 prompt_history: prompt_history.clone(),
                 tool_names: tool_names.clone(),
                 changed_files: changed_files_limited.clone(),
+                resume_command: signal_context.resume_command.clone(),
+                diagnostics: signal_context.diagnostics.clone(),
             });
         }
 
@@ -498,6 +538,583 @@ fn record_analysis(
                 signal_entry.prompt_history.push(prompt_item.clone());
             }
         }
+    }
+}
+
+fn build_session_signal_context(
+    repo_root: &Path,
+    transcript: &trace_parser::TranscriptSessionBackfill,
+    normalized_session: Option<&trace_parser::NormalizedSession>,
+    changed_files: &[String],
+) -> SessionSignalContext {
+    let prompt_history = normalized_session
+        .map(collect_prompt_history_from_normalized_session)
+        .filter(|history| !history.is_empty())
+        .unwrap_or_else(|| {
+            transcript
+                .prompt
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(|value| vec![value.to_string()])
+                .unwrap_or_default()
+        });
+    let tool_history = normalized_session
+        .map(collect_tool_history_from_normalized_session)
+        .filter(|history| !history.is_empty())
+        .unwrap_or_else(|| {
+            transcript
+                .recovered_events
+                .iter()
+                .map(|event| match event {
+                    trace_parser::TranscriptRecoveredEvent::ToolUse { tool_name, .. } => {
+                        tool_name.clone()
+                    }
+                })
+                .collect::<BTreeSet<_>>()
+                .into_iter()
+                .take(MAX_FILE_SIGNAL_TOOLS)
+                .collect()
+        });
+    let raw_events = load_raw_transcript_events(Path::new(&transcript.transcript_path));
+
+    SessionSignalContext {
+        provider: transcript.client.clone(),
+        prompt_history,
+        tool_history,
+        resume_command: build_resume_command(&transcript.client, &transcript.session_id),
+        diagnostics: (!raw_events.is_empty()).then(|| {
+            derive_transcript_session_diagnostics(
+                &raw_events,
+                repo_root,
+                Path::new(&transcript.cwd),
+                changed_files,
+            )
+        }),
+    }
+}
+
+fn load_raw_transcript_events(transcript_path: &Path) -> Vec<Value> {
+    let Ok(content) = std::fs::read_to_string(transcript_path) else {
+        return Vec::new();
+    };
+
+    let mut events = Vec::new();
+    for line in content.lines().filter(|line| !line.trim().is_empty()) {
+        let Ok(entry) = serde_json::from_str::<Value>(line) else {
+            continue;
+        };
+        let Some(payload) = entry.get("payload") else {
+            continue;
+        };
+        match entry.get("type").and_then(Value::as_str) {
+            Some("event_msg") | Some("response_item") => events.push(payload.clone()),
+            _ => {}
+        }
+    }
+
+    events
+}
+
+fn collect_prompt_history_from_normalized_session(
+    session: &trace_parser::NormalizedSession,
+) -> Vec<String> {
+    let mut prompts = Vec::new();
+    for prompt in session
+        .prompts
+        .iter()
+        .filter(|prompt| prompt.role == trace_parser::PromptRole::User)
+    {
+        let text = normalize_user_prompt(&prompt.text);
+        if text.is_empty()
+            || prompts.iter().any(|existing: &String| {
+                existing == &text || existing.starts_with(&text) || text.starts_with(existing)
+            })
+        {
+            continue;
+        }
+        if prompts.len() >= MAX_FILE_SIGNAL_PROMPTS {
+            break;
+        }
+        prompts.push(text);
+    }
+    prompts
+}
+
+fn collect_tool_history_from_normalized_session(
+    session: &trace_parser::NormalizedSession,
+) -> Vec<String> {
+    let mut tools = Vec::new();
+    for tool_call in &session.tool_calls {
+        if tools
+            .iter()
+            .any(|existing| existing == &tool_call.tool_name)
+        {
+            continue;
+        }
+        if tools.len() >= MAX_FILE_SIGNAL_TOOLS {
+            break;
+        }
+        tools.push(tool_call.tool_name.clone());
+    }
+    tools
+}
+
+fn build_resume_command(provider: &str, session_id: &str) -> Option<String> {
+    match provider {
+        "codex" if !session_id.is_empty() => Some(format!("codex resume {session_id}")),
+        _ => None,
+    }
+}
+
+fn normalize_command_signature(command: &str) -> String {
+    command.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+fn normalize_signal_prompt_text(text: &str) -> String {
+    normalize_command_signature(text)
+}
+
+fn normalize_user_prompt(text: &str) -> String {
+    let mut normalized = text.trim().to_string();
+    if let Some(end_index) = normalized.rfind("</INSTRUCTIONS>") {
+        normalized = normalized[end_index + "</INSTRUCTIONS>".len()..]
+            .trim()
+            .to_string();
+    }
+
+    for marker in [
+        "<image",
+        "</image>",
+        "<environment_context>",
+        "</environment_context>",
+    ] {
+        normalized = normalized.replace(marker, " ");
+    }
+
+    truncate_diagnostic_text(&normalize_signal_prompt_text(&normalized), 180)
+}
+
+fn truncate_diagnostic_text(text: &str, max_length: usize) -> String {
+    let normalized = normalize_command_signature(text);
+    if normalized.len() <= max_length {
+        return normalized;
+    }
+    let truncated = normalized
+        .char_indices()
+        .take_while(|(index, _)| *index < max_length.saturating_sub(3))
+        .map(|(_, ch)| ch)
+        .collect::<String>();
+    format!("{truncated}...")
+}
+
+fn unwrap_shell_command(command: &str) -> String {
+    let tokens = shell_like_split(command);
+    if tokens.len() < 3 {
+        return command.to_string();
+    }
+
+    let executable = tokens
+        .first()
+        .map(|token| token.rsplit('/').next().unwrap_or(token.as_str()))
+        .unwrap_or_default();
+    let shell_like = executable == "sh" || executable == "bash" || executable == "zsh";
+    if !shell_like {
+        return command.to_string();
+    }
+
+    if let Some(c_flag_index) = tokens
+        .iter()
+        .position(|token| token == "-c" || token == "-lc")
+    {
+        if tokens.get(c_flag_index + 1).is_some() {
+            return tokens[c_flag_index + 1..].join(" ");
+        }
+    }
+
+    command.to_string()
+}
+
+fn extract_read_candidates_from_command(command: &str) -> Vec<String> {
+    let inner_command = unwrap_shell_command(command);
+    let tokens = shell_like_split(&inner_command);
+    if tokens.is_empty() {
+        return Vec::new();
+    }
+
+    let executable = tokens
+        .first()
+        .map(|token| token.rsplit('/').next().unwrap_or(token.as_str()))
+        .unwrap_or_default();
+    let read_commands = ["bat", "cat", "head", "less", "more", "nl", "sed", "tail"];
+    if !read_commands.contains(&executable) {
+        return Vec::new();
+    }
+
+    tokens[1..]
+        .iter()
+        .filter(|token| {
+            token.as_str() != "--"
+                && !token.starts_with('-')
+                && token.as_str() != "&&"
+                && token.as_str() != "|"
+                && looks_like_file_path_token(token)
+        })
+        .cloned()
+        .collect()
+}
+
+fn looks_like_file_path_token(token: &str) -> bool {
+    if token.is_empty() {
+        return false;
+    }
+    if matches!(token, "&&" | "|" | ";") {
+        return false;
+    }
+    if token.ends_with('p')
+        && token.contains(',')
+        && token
+            .chars()
+            .all(|ch| ch.is_ascii_digit() || ch == ',' || ch == 'p')
+    {
+        return false;
+    }
+
+    token.contains('/')
+        || token.contains('.')
+        || token.contains('[')
+        || matches!(
+            token,
+            "Cargo.toml" | "Cargo.lock" | "package.json" | "README.md" | "AGENTS.md"
+        )
+}
+
+fn normalize_repo_relative_with_cwd(
+    repo_root: &Path,
+    session_cwd: &Path,
+    value: &str,
+) -> Option<String> {
+    let clean = value
+        .trim()
+        .trim_matches('"')
+        .trim_matches('\'')
+        .trim_matches('`')
+        .trim_end_matches([',', ';', ':'])
+        .replace('\\', "/");
+    if clean.is_empty() || clean == "/dev/null" {
+        return None;
+    }
+    if !looks_like_file_path_token(&clean) {
+        return None;
+    }
+
+    let candidate_path = Path::new(&clean);
+    if candidate_path.is_absolute() {
+        return candidate_path
+            .strip_prefix(repo_root)
+            .ok()
+            .map(|path| path.to_string_lossy().replace('\\', "/"));
+    }
+
+    let session_resolved = session_cwd.join(&clean);
+    if let Ok(relative) = session_resolved.strip_prefix(repo_root) {
+        return Some(relative.to_string_lossy().replace('\\', "/"));
+    }
+
+    let repo_resolved = repo_root.join(&clean);
+    repo_resolved
+        .strip_prefix(repo_root)
+        .ok()
+        .map(|path| path.to_string_lossy().replace('\\', "/"))
+}
+
+fn tool_name_from_feature_event(event: &Value) -> Option<String> {
+    if let Some(name) = event.get("name").and_then(Value::as_str) {
+        return Some(name.to_string());
+    }
+    if let Some(tool_name) = event.get("tool_name").and_then(Value::as_str) {
+        return Some(tool_name.to_string());
+    }
+    match event.get("type").and_then(Value::as_str) {
+        Some("exec_command_begin") | Some("exec_command_end") => Some("exec_command".to_string()),
+        _ => command_from_feature_event(event).map(|_| "exec_command".to_string()),
+    }
+}
+
+fn command_from_feature_event(event: &Value) -> Option<String> {
+    if event.get("type").and_then(Value::as_str) == Some("function_call") {
+        if let Some(arguments) = event.get("arguments").and_then(Value::as_str) {
+            if event.get("name").and_then(Value::as_str) == Some("exec_command") {
+                if let Ok(parsed) = serde_json::from_str::<Value>(arguments) {
+                    if let Some(cmd) = parsed
+                        .get("command")
+                        .and_then(Value::as_str)
+                        .or_else(|| parsed.get("cmd").and_then(Value::as_str))
+                    {
+                        return Some(cmd.to_string());
+                    }
+                }
+            }
+            return Some(arguments.trim().to_string());
+        }
+    }
+
+    if let Some(command) = event
+        .get("command")
+        .and_then(Value::as_array)
+        .map(|parts| {
+            parts
+                .iter()
+                .filter_map(Value::as_str)
+                .collect::<Vec<_>>()
+                .join(" ")
+        })
+        .filter(|command| !command.is_empty())
+    {
+        return Some(command);
+    }
+
+    event
+        .get("cmd")
+        .and_then(Value::as_str)
+        .map(ToOwned::to_owned)
+        .or_else(|| {
+            event.get("tool_input").and_then(|tool_input| {
+                tool_input
+                    .get("command")
+                    .and_then(Value::as_str)
+                    .or_else(|| tool_input.get("cmd").and_then(Value::as_str))
+                    .map(ToOwned::to_owned)
+            })
+        })
+}
+
+fn command_output_from_feature_event(event: &Value) -> Option<String> {
+    for value in [
+        event.get("aggregated_output"),
+        event.get("output"),
+        event.get("stdout"),
+        event.get("stderr"),
+        event.get("result"),
+    ] {
+        if let Some(text) = value.and_then(Value::as_str).map(str::trim) {
+            if !text.is_empty() {
+                return Some(text.to_string());
+            }
+        }
+    }
+
+    event.get("tool_output").and_then(|tool_output| {
+        [
+            tool_output.get("aggregated_output"),
+            tool_output.get("output"),
+            tool_output.get("stdout"),
+            tool_output.get("stderr"),
+            tool_output.get("result"),
+        ]
+        .into_iter()
+        .find_map(|value| value.and_then(Value::as_str).map(str::trim))
+        .filter(|text| !text.is_empty())
+        .map(ToOwned::to_owned)
+    })
+}
+
+fn extract_read_files_from_event(
+    event: &Value,
+    repo_root: &Path,
+    session_cwd: &Path,
+) -> Vec<String> {
+    let mut candidates = HashSet::new();
+    let tool_name = tool_name_from_feature_event(event)
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    let direct_read_tool = tool_name.contains("read")
+        || tool_name == "open"
+        || tool_name == "view"
+        || tool_name == "fs/read_text_file";
+
+    if direct_read_tool {
+        collect_file_values(event, &mut candidates);
+    }
+
+    if let Some(command) = command_from_feature_event(event) {
+        for token in extract_read_candidates_from_command(&command) {
+            candidates.insert(token);
+        }
+    }
+
+    let mut read_files = Vec::new();
+    for candidate in candidates {
+        if let Some(normalized) =
+            normalize_repo_relative_with_cwd(repo_root, session_cwd, &candidate)
+        {
+            if !read_files.contains(&normalized) {
+                read_files.push(normalized);
+            }
+        }
+    }
+    read_files
+}
+
+fn detect_failed_tool_call(event: &Value) -> Option<FileSessionToolFailureResponse> {
+    let exit_code = event
+        .get("exit_code")
+        .and_then(Value::as_i64)
+        .or_else(|| event.get("exitCode").and_then(Value::as_i64));
+    let status = event
+        .get("status")
+        .and_then(Value::as_str)
+        .map(|status| status.trim().to_ascii_lowercase())
+        .unwrap_or_default();
+    let failed = exit_code.is_some_and(|code| code != 0) || status == "failed" || status == "error";
+    if !failed {
+        return None;
+    }
+
+    let command_output = command_output_from_feature_event(event);
+    let message = event
+        .get("stderr")
+        .and_then(Value::as_str)
+        .or_else(|| event.get("error").and_then(Value::as_str))
+        .or_else(|| event.get("message").and_then(Value::as_str))
+        .or(command_output.as_deref())
+        .map(|text| truncate_diagnostic_text(text, 220))
+        .unwrap_or_else(|| {
+            exit_code
+                .map(|code| format!("Exit code {code}"))
+                .unwrap_or_else(|| "Tool call failed".to_string())
+        });
+
+    Some(FileSessionToolFailureResponse {
+        tool_name: tool_name_from_feature_event(event).unwrap_or_else(|| "tool".to_string()),
+        command: command_from_feature_event(event)
+            .map(|command| truncate_diagnostic_text(&command, 220)),
+        message,
+    })
+}
+
+fn derive_transcript_session_diagnostics(
+    raw_events: &[Value],
+    repo_root: &Path,
+    session_cwd: &Path,
+    written_files: &[String],
+) -> FileSessionDiagnosticsResponse {
+    let mut tool_calls_by_name: HashMap<String, usize> = HashMap::new();
+    let mut read_counts: HashMap<String, usize> = HashMap::new();
+    let mut repeated_command_counts: HashMap<String, usize> = HashMap::new();
+    let mut failed_tools = Vec::new();
+    let mut pending_exec_requests: HashMap<String, usize> = HashMap::new();
+    let mut failed_tool_call_count = 0usize;
+
+    let increment_tool_call = |tool_calls_by_name: &mut HashMap<String, usize>, tool_name: &str| {
+        *tool_calls_by_name.entry(tool_name.to_string()).or_insert(0) += 1;
+    };
+
+    let increment_command = |repeated_command_counts: &mut HashMap<String, usize>,
+                             signature: &str| {
+        if signature.is_empty() {
+            return;
+        }
+        *repeated_command_counts
+            .entry(signature.to_string())
+            .or_insert(0) += 1;
+    };
+
+    for event in raw_events {
+        let tool_name = tool_name_from_feature_event(event).unwrap_or_default();
+        let command = command_from_feature_event(event).unwrap_or_default();
+        let command_signature = if command.is_empty() {
+            String::new()
+        } else {
+            normalize_command_signature(&unwrap_shell_command(&command))
+        };
+
+        for read_file in extract_read_files_from_event(event, repo_root, session_cwd) {
+            *read_counts.entry(read_file).or_insert(0) += 1;
+        }
+
+        match event.get("type").and_then(Value::as_str) {
+            Some("function_call") => {
+                if !tool_name.is_empty() {
+                    increment_tool_call(&mut tool_calls_by_name, &tool_name);
+                }
+                if tool_name == "exec_command" && !command_signature.is_empty() {
+                    *pending_exec_requests
+                        .entry(command_signature.clone())
+                        .or_insert(0) += 1;
+                }
+                increment_command(&mut repeated_command_counts, &command_signature);
+            }
+            Some("exec_command_begin") | Some("exec_command_end") => {
+                let pending = pending_exec_requests
+                    .get(&command_signature)
+                    .copied()
+                    .unwrap_or_default();
+                if pending > 0 {
+                    pending_exec_requests.insert(command_signature.clone(), pending - 1);
+                } else {
+                    increment_tool_call(&mut tool_calls_by_name, "exec_command");
+                    increment_command(&mut repeated_command_counts, &command_signature);
+                }
+            }
+            _ => {
+                if !tool_name.is_empty() {
+                    increment_tool_call(&mut tool_calls_by_name, &tool_name);
+                    increment_command(&mut repeated_command_counts, &command_signature);
+                }
+            }
+        }
+
+        if let Some(failure) = detect_failed_tool_call(event) {
+            failed_tool_call_count += 1;
+            if failed_tools.len() < MAX_FILE_SIGNAL_FAILED_TOOLS {
+                failed_tools.push(failure);
+            }
+        }
+    }
+
+    let mut read_files = read_counts.keys().cloned().collect::<Vec<_>>();
+    read_files.sort();
+
+    let mut repeated_read_files = read_counts
+        .iter()
+        .filter(|(_, count)| **count > 1)
+        .map(|(file_path, count)| (file_path.clone(), *count))
+        .collect::<Vec<_>>();
+    repeated_read_files
+        .sort_by(|left, right| right.1.cmp(&left.1).then_with(|| left.0.cmp(&right.0)));
+    let repeated_read_files = repeated_read_files
+        .into_iter()
+        .map(|(file_path, count)| format!("{file_path} x{count}"))
+        .collect::<Vec<_>>();
+
+    let mut repeated_commands = repeated_command_counts
+        .iter()
+        .filter(|(_, count)| **count > 1)
+        .map(|(command, count)| (command.clone(), *count))
+        .collect::<Vec<_>>();
+    repeated_commands
+        .sort_by(|left, right| right.1.cmp(&left.1).then_with(|| left.0.cmp(&right.0)));
+    let repeated_commands = repeated_commands
+        .into_iter()
+        .take(MAX_FILE_SIGNAL_REPEATED_COMMANDS)
+        .map(|(command, count)| format!("{} x{count}", truncate_diagnostic_text(&command, 120)))
+        .collect::<Vec<_>>();
+
+    let tool_call_count = tool_calls_by_name.values().sum();
+    let mut written_files = written_files.to_vec();
+    written_files.sort();
+    written_files.dedup();
+
+    FileSessionDiagnosticsResponse {
+        tool_call_count,
+        failed_tool_call_count,
+        tool_calls_by_name,
+        read_files,
+        written_files,
+        repeated_read_files,
+        repeated_commands,
+        failed_tools,
     }
 }
 
@@ -1005,6 +1622,13 @@ mod tests {
         let mut stats = HashMap::new();
         let mut file_stats = HashMap::new();
         let mut file_signals = HashMap::new();
+        let signal_context = SessionSignalContext {
+            provider: "codex".to_string(),
+            prompt_history: vec!["inspect session recovery".to_string()],
+            tool_history: Vec::new(),
+            resume_command: Some("codex resume sess-1".to_string()),
+            diagnostics: None,
+        };
         let analysis = SessionAnalysis {
             session_id: "sess-1".to_string(),
             changed_files: vec![
@@ -1029,9 +1653,7 @@ mod tests {
             &mut file_stats,
             &mut file_signals,
             "sess-1",
-            "codex",
-            Some("inspect session recovery"),
-            &[],
+            &signal_context,
             &["src/app/workspace/[workspaceId]/sessions/page.tsx".to_string()],
             &analysis,
             "2026-04-17T09:00:00",
