@@ -141,7 +141,9 @@ function buildFallbackSteps(chain?: FallbackAgent[]): KanbanAutomationStep[] {
 }
 
 export function resolveEffectiveTaskAutomation(
-  task: TaskAutomationFields,
+  task: TaskAutomationFields & {
+    enableAutomaticFallback?: boolean;
+  },
   boardColumns: ColumnAutomationFields[] = [],
   resolveSpecialist?: AutomationSpecialistResolver,
   options: ResolveAutomationOptions = {},
@@ -156,6 +158,9 @@ export function resolveEffectiveTaskAutomation(
   const hasCardOverride = hasTaskOverrideFields
     && !resolvedLaneSteps.some((step) => taskAssignmentMatchesStep(task, step));
   const canRun = hasCardOverride || Boolean(enabledLaneAutomation);
+  const fallbackSteps = task.enableAutomaticFallback
+    ? buildFallbackSteps(task.fallbackAgentChain)
+    : [];
   const cardOverrideSteps = hasCardOverride
     ? [{
       id: "card-override",
@@ -164,7 +169,7 @@ export function resolveEffectiveTaskAutomation(
       specialistId: task.assignedSpecialistId,
       specialistName: task.assignedSpecialistName,
     },
-    ...buildFallbackSteps(task.fallbackAgentChain),
+    ...fallbackSteps,
     ]
         .map((step) => resolveKanbanAutomationStep(step, resolveSpecialist, options))
         .filter((step): step is ResolvedKanbanAutomationStep => Boolean(step))
