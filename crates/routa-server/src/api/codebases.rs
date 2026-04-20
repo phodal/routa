@@ -7,7 +7,8 @@ use axum::{
 use serde::{Deserialize, Serialize};
 
 use crate::api::repo_context::{
-    normalize_local_repo_path, validate_local_git_repo_path, validate_repo_path,
+    canonical_repo_path_for_response, normalize_local_repo_path, validate_local_git_repo_path,
+    validate_repo_path,
 };
 use crate::error::ServerError;
 use crate::models::codebase::{Codebase, CodebaseSourceType};
@@ -23,6 +24,11 @@ fn repo_label_from_path(repo_path: &str) -> String {
 
 fn should_set_new_codebase_as_default(has_existing_default: bool, requested_default: bool) -> bool {
     requested_default || !has_existing_default
+}
+
+fn normalize_codebase_for_response(mut codebase: Codebase) -> Codebase {
+    codebase.repo_path = canonical_repo_path_for_response(&codebase.repo_path);
+    codebase
 }
 
 pub fn router() -> Router<AppState> {
@@ -65,7 +71,10 @@ async fn list_codebases(
     let codebases = state
         .codebase_store
         .list_by_workspace(&workspace_id)
-        .await?;
+        .await?
+        .into_iter()
+        .map(normalize_codebase_for_response)
+        .collect::<Vec<_>>();
     Ok(Json(serde_json::json!({ "codebases": codebases })))
 }
 
@@ -81,15 +90,16 @@ async fn list_codebase_changes(
     let repos = codebases
         .into_iter()
         .map(|codebase| {
+            let repo_path = canonical_repo_path_for_response(&codebase.repo_path);
             let label = codebase
                 .label
                 .clone()
-                .unwrap_or_else(|| repo_label_from_path(&codebase.repo_path));
+                .unwrap_or_else(|| repo_label_from_path(&repo_path));
 
-            if codebase.repo_path.is_empty() {
+            if repo_path.is_empty() {
                 return serde_json::json!({
                     "codebaseId": codebase.id,
-                    "repoPath": codebase.repo_path,
+                    "repoPath": repo_path,
                     "label": label,
                     "branch": codebase.branch.unwrap_or_else(|| "unknown".to_string()),
                     "status": { "clean": true, "ahead": 0, "behind": 0, "modified": 0, "untracked": 0 },
@@ -98,10 +108,10 @@ async fn list_codebase_changes(
                 });
             }
 
-            if !crate::git::is_git_repository(&codebase.repo_path) {
+            if !crate::git::is_git_repository(&repo_path) {
                 return serde_json::json!({
                     "codebaseId": codebase.id,
-                    "repoPath": codebase.repo_path,
+                    "repoPath": repo_path,
                     "label": label,
                     "branch": codebase.branch.unwrap_or_else(|| "unknown".to_string()),
                     "status": { "clean": true, "ahead": 0, "behind": 0, "modified": 0, "untracked": 0 },
@@ -110,10 +120,10 @@ async fn list_codebase_changes(
                 });
             }
 
-            let changes = crate::git::get_repo_changes(&codebase.repo_path);
+            let changes = crate::git::get_repo_changes(&repo_path);
             serde_json::json!({
                 "codebaseId": codebase.id,
-                "repoPath": codebase.repo_path,
+                "repoPath": repo_path,
                 "label": label,
                 "branch": changes.branch,
                 "status": changes.status,

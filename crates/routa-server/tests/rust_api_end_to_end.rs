@@ -1593,6 +1593,53 @@ async fn api_feature_explorer_contract_for_workspace_repo() {
 }
 
 #[tokio::test]
+async fn api_spec_surface_index_falls_back_from_invalid_repo_path_to_workspace_codebase() {
+    let fixture = ApiFixture::new().await;
+    let repo = GitRepoFixture::new();
+
+    let create_codebase = fixture
+        .client
+        .post(fixture.endpoint("/api/workspaces/default/codebases"))
+        .json(&json!({
+            "repoPath": repo.repo_path.to_string_lossy().to_string(),
+            "branch": "main",
+            "label": "fixture",
+            "isDefault": true
+        }))
+        .send()
+        .await
+        .expect("create codebase for default workspace");
+    assert_eq!(create_codebase.status(), StatusCode::CREATED);
+
+    let response = fixture
+        .client
+        .get(fixture.endpoint("/api/spec/surface-index"))
+        .query(&[
+            ("workspaceId", "default".to_string()),
+            (
+                "repoPath",
+                repo.repo_path.join("missing").to_string_lossy().to_string(),
+            ),
+        ])
+        .send()
+        .await
+        .expect("get spec surface index with invalid explicit repo path");
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let payload: Value = response
+        .json()
+        .await
+        .expect("decode fallback surface index response");
+
+    assert_eq!(
+        payload["repoRoot"],
+        json!(repo.repo_path.to_string_lossy().to_string())
+    );
+    assert!(payload["warnings"].as_array().is_some());
+}
+
+#[tokio::test]
 async fn api_spec_feature_tree_generate_contract() {
     let fixture = ApiFixture::new().await;
     let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))

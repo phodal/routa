@@ -8,7 +8,9 @@ use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use std::path::{Component, Path as FilePath};
 
-use crate::api::repo_context::{normalize_local_repo_path, validate_local_git_repo_path};
+use crate::api::repo_context::{
+    canonical_repo_path_for_response, resolve_repo_dir_or_error, validate_local_git_repo_path,
+};
 use crate::error::ServerError;
 use crate::state::AppState;
 
@@ -40,7 +42,7 @@ fn resolve_repo_path(repo_path: Option<&str>) -> Result<String, ServerError> {
         .filter(|value| !value.is_empty())
         .ok_or_else(|| ServerError::BadRequest("repoPath is required".to_string()))?;
 
-    let normalized = normalize_local_repo_path(repo_path);
+    let normalized = resolve_repo_dir_or_error(repo_path, "repoPath ")?;
     validate_local_git_repo_path(&normalized)?;
 
     Ok(normalized.to_string_lossy().to_string())
@@ -82,13 +84,15 @@ async fn resolve_codebase_repo_path(
         return Err(ServerError::NotFound("Codebase not found".to_string()));
     }
 
-    if !routa_core::git::is_git_repository(&codebase.repo_path) {
+    let repo_path = canonical_repo_path_for_response(&codebase.repo_path);
+
+    if !routa_core::git::is_git_repository(&repo_path) {
         return Err(ServerError::BadRequest(
             "Not a valid git repository".to_string(),
         ));
     }
 
-    Ok(codebase.repo_path)
+    Ok(repo_path)
 }
 
 fn validate_git_file_path(path: &str) -> Result<(), String> {

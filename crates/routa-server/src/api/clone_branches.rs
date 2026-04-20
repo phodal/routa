@@ -8,6 +8,7 @@
 use axum::{extract::Query, routing::get, Json, Router};
 use serde::Deserialize;
 
+use crate::api::repo_context::resolve_repo_dir_or_error;
 use crate::error::ServerError;
 use crate::git;
 use crate::state::AppState;
@@ -34,12 +35,9 @@ async fn get_branches(
     let repo_path = query
         .repo_path
         .ok_or_else(|| ServerError::BadRequest("Missing repoPath".into()))?;
-
-    if !std::path::Path::new(&repo_path).exists() {
-        return Err(ServerError::BadRequest(
-            "Missing or invalid repoPath".into(),
-        ));
-    }
+    let repo_path = resolve_repo_dir_or_error(&repo_path, "repoPath ")?
+        .to_string_lossy()
+        .to_string();
 
     let (current, local, remote, status) = tokio::task::spawn_blocking({
         let rp = repo_path.clone();
@@ -74,12 +72,9 @@ async fn fetch_branches(
     let repo_path = body
         .repo_path
         .ok_or_else(|| ServerError::BadRequest("Missing repoPath".into()))?;
-
-    if !std::path::Path::new(&repo_path).exists() {
-        return Err(ServerError::BadRequest(
-            "Missing or invalid repoPath".into(),
-        ));
-    }
+    let repo_path = resolve_repo_dir_or_error(&repo_path, "repoPath ")?
+        .to_string_lossy()
+        .to_string();
 
     let (current, local, remote, status) = tokio::task::spawn_blocking({
         let rp = repo_path.clone();
@@ -116,10 +111,9 @@ async fn checkout(Json(body): Json<CheckoutBody>) -> Result<Json<serde_json::Val
     let repo_path = body
         .repo_path
         .ok_or_else(|| ServerError::BadRequest("Missing repoPath".into()))?;
-
-    if !std::path::Path::new(&repo_path).exists() {
-        return Err(ServerError::NotFound("Repository not found".into()));
-    }
+    let repo_path = resolve_repo_dir_or_error(&repo_path, "repoPath ")?
+        .to_string_lossy()
+        .to_string();
 
     if body.action.as_deref() == Some("reset") {
         let (branch_info, status, repo_status) = tokio::task::spawn_blocking({
@@ -196,10 +190,9 @@ async fn delete_branch(
     let branch = body
         .branch
         .ok_or_else(|| ServerError::BadRequest("Missing branch".into()))?;
-
-    if !std::path::Path::new(&repo_path).exists() {
-        return Err(ServerError::NotFound("Repository not found".into()));
-    }
+    let repo_path = resolve_repo_dir_or_error(&repo_path, "repoPath ")?
+        .to_string_lossy()
+        .to_string();
 
     let branch_info = tokio::task::spawn_blocking({
         let rp = repo_path.clone();

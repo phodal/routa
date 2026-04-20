@@ -64,6 +64,28 @@ pub fn validate_repo_path(candidate: &Path, label: &str) -> Result<(), ServerErr
     Ok(())
 }
 
+pub fn resolve_existing_repo_dir(value: &str) -> Option<PathBuf> {
+    let candidate = normalize_local_repo_path(value);
+    if candidate.exists() && candidate.is_dir() {
+        Some(candidate)
+    } else {
+        None
+    }
+}
+
+pub fn resolve_repo_dir_or_error(value: &str, label: &str) -> Result<PathBuf, ServerError> {
+    let candidate = normalize_local_repo_path(value);
+    validate_repo_path(&candidate, label)?;
+    Ok(candidate)
+}
+
+pub fn canonical_repo_path_for_response(value: &str) -> String {
+    resolve_existing_repo_dir(value)
+        .unwrap_or_else(|| normalize_local_repo_path(value))
+        .to_string_lossy()
+        .to_string()
+}
+
 pub fn validate_local_git_repo_path(candidate: &Path) -> Result<(), ServerError> {
     validate_repo_path(candidate, "Path ")?;
 
@@ -119,11 +141,13 @@ pub async fn resolve_repo_root(
     let workspace_id = normalize_context_value(workspace_id);
     let codebase_id = normalize_context_value(codebase_id);
     let repo_path = normalize_context_value(repo_path);
+    let mut direct_repo_error = None;
 
     if let Some(repo_path) = repo_path {
-        let candidate = PathBuf::from(repo_path);
-        validate_repo_path(&candidate, "repoPath ")?;
-        return Ok(candidate);
+        match resolve_repo_dir_or_error(&repo_path, "repoPath ") {
+            Ok(candidate) => return Ok(candidate),
+            Err(error) => direct_repo_error = Some(error),
+        }
     }
 
     if let Some(codebase_id) = codebase_id {
@@ -133,13 +157,13 @@ pub async fn resolve_repo_root(
             )));
         };
 
-        let candidate = PathBuf::from(&codebase.repo_path);
-        validate_repo_path(&candidate, "Codebase 的路径")?;
+        let candidate = resolve_repo_dir_or_error(&codebase.repo_path, "Codebase 的路径")?;
         return Ok(candidate);
     }
 
     let Some(workspace_id) = workspace_id else {
-        return Err(ServerError::BadRequest(missing_context_message.to_string()));
+        return Err(direct_repo_error
+            .unwrap_or_else(|| ServerError::BadRequest(missing_context_message.to_string())));
     };
 
     if options.prefer_current_repo_for_default_workspace && workspace_id == "default" {
@@ -158,13 +182,40 @@ pub async fn resolve_repo_root(
         )));
     }
 
+    let preferred_codebase_ids = codebases
+        .iter()
+        .filter(|codebase| codebase.is_default)
+        .map(|codebase| codebase.id.clone())
+        .chain(
+            codebases
+                .iter()
+                .filter(|codebase| !codebase.is_default)
+                .map(|codebase| codebase.id.clone()),
+        )
+        .collect::<Vec<_>>();
+
+    for codebase_id in preferred_codebase_ids {
+        let Some(codebase) = codebases
+            .iter()
+            .find(|candidate| candidate.id == codebase_id)
+        else {
+            continue;
+        };
+        if let Some(candidate) = resolve_existing_repo_dir(&codebase.repo_path) {
+            return Ok(candidate);
+        }
+    }
+
     let fallback = codebases
         .iter()
         .find(|codebase| codebase.is_default)
         .unwrap_or(&codebases[0]);
-    let candidate = PathBuf::from(&fallback.repo_path);
-    validate_repo_path(&candidate, "默认 codebase 的路径")?;
-    Ok(candidate)
+    Err(direct_repo_error.unwrap_or_else(|| {
+        ServerError::BadRequest(format!(
+            "默认 codebase 的路径不存在或不是目录: {}",
+            normalize_local_repo_path(&fallback.repo_path).display()
+        ))
+    }))
 }
 
 pub fn extract_frontmatter(raw: &str) -> Option<(String, String)> {
