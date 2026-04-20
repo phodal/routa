@@ -206,6 +206,32 @@ function formatRouteSegment(segment: string): string {
   return normalized.replace(/[-_]/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
+function normalizePagesRouteSegment(segment: string): string {
+  if (segment.startsWith("[[...") && segment.endsWith("]]")) {
+    return `:${segment.slice(5, -2)}`;
+  }
+  if (segment.startsWith("[...") && segment.endsWith("]")) {
+    return `:${segment.slice(4, -1)}`;
+  }
+  if (segment.startsWith("[") && segment.endsWith("]")) {
+    return `:${segment.slice(1, -1)}`;
+  }
+  return segment;
+}
+
+function normalizePagesRoute(relativeFile: string): string {
+  const withoutExt = relativeFile.replace(/\.(tsx?|jsx?)$/u, "");
+  const normalized = withoutExt
+    .replace(/\\/g, "/")
+    .replace(/^index$/u, "")
+    .replace(/\/index$/u, "")
+    .split("/")
+    .filter(Boolean)
+    .map(normalizePagesRouteSegment)
+    .join("/");
+  return normalized ? `/${normalized}` : "/";
+}
+
 function parsePageComment(content: string): { title: string | null; description: string | null } {
   const match = content.match(/\/\*\*\s*(.*?)\s*\*\//s);
   if (!match) return { title: null, description: null };
@@ -299,14 +325,43 @@ function scanFrontendRoutes(repoRoot: string, scanRoot: string): RouteInfo[] {
     path.join(scanRoot, "src", "app"),
     path.join(scanRoot, "app"),
   ];
+  const pagesDirs = [
+    path.join(scanRoot, "src", "pages"),
+    path.join(scanRoot, "pages"),
+  ];
   const routes: RouteInfo[] = [];
   const pageFileNames = new Set(["page.tsx", "page.ts", "page.jsx", "page.js"]);
+  const pagesRouterSpecialFiles = new Set(["_app", "_document", "_error", "_middleware"]);
 
-  function walk(dir: string): void {
+  function recordRoute(route: string, sourceFilePath: string, content: string, titleSegments: string[]): void {
+    const parsed = parsePageComment(content);
+    let title = parsed.title?.trim();
+    if (!title) {
+      if (route === "/") { title = "Home"; }
+      else {
+        const staticSegments = titleSegments
+          .filter((segment) => !(segment.startsWith("[") && segment.endsWith("]")))
+          .map(formatRouteSegment)
+          .filter(Boolean);
+        title = staticSegments.slice(-2).join(" / ").trim()
+          || formatRouteSegment(titleSegments.at(-1) ?? "")
+          || "Page";
+      }
+    }
+
+    routes.push({
+      route,
+      title,
+      description: parsed.description ?? "",
+      sourceFile: toRepoRelative(repoRoot, sourceFilePath),
+    });
+  }
+
+  function walkAppRouter(dir: string): void {
     if (!fs.existsSync(dir)) return;
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
       const fullPath = path.join(dir, entry.name);
-      if (entry.isDirectory()) { walk(fullPath); continue; }
+      if (entry.isDirectory()) { walkAppRouter(fullPath); continue; }
       if (!pageFileNames.has(entry.name)) continue;
       if (fullPath.includes(`${path.sep}api${path.sep}`)) continue;
 
@@ -315,31 +370,44 @@ function scanFrontendRoutes(repoRoot: string, scanRoot: string): RouteInfo[] {
       let route = `/${relDir.replace(/\\/g, "/")}`;
       if (route === "/" || route === "/.") route = "/";
       route = route.replace(/\[([^\]]+)\]/g, ":$1");
+      recordRoute(route, fullPath, fs.readFileSync(fullPath, "utf8"), relDir.split(path.sep).filter(Boolean));
+    }
+  }
 
-      const content = fs.readFileSync(fullPath, "utf8");
-      const parsed = parsePageComment(content);
-      let title = parsed.title?.trim();
-      if (!title) {
-        if (route === "/") { title = "Home"; }
-        else {
-          const pathSegments = relDir.split(path.sep).filter(Boolean);
-          const staticSegments = pathSegments
-            .filter((segment) => !(segment.startsWith("[") && segment.endsWith("]")))
-            .map(formatRouteSegment).filter(Boolean);
-          title = staticSegments.slice(-2).join(" / ").trim() || formatRouteSegment(pathSegments.at(-1) ?? "") || "Page";
-        }
+  function walkPagesRouter(dir: string, pagesDir: string): void {
+    if (!fs.existsSync(dir)) return;
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (entry.name === "api") continue;
+        walkPagesRouter(fullPath, pagesDir);
+        continue;
       }
+      if (!/\.(tsx?|jsx?)$/u.test(entry.name)) continue;
 
-      routes.push({
-        route, title,
-        description: parsed.description ?? "",
-        sourceFile: toRepoRelative(repoRoot, fullPath),
-      });
+      const relativeFile = path.relative(pagesDir, fullPath).replace(/\\/g, "/");
+      const baseName = path.basename(relativeFile).replace(/\.(tsx?|jsx?)$/u, "");
+      if (pagesRouterSpecialFiles.has(baseName)) continue;
+
+      const titleSegments = relativeFile
+        .replace(/\.(tsx?|jsx?)$/u, "")
+        .replace(/\/index$/u, "")
+        .split("/")
+        .filter(Boolean);
+      recordRoute(
+        normalizePagesRoute(relativeFile),
+        fullPath,
+        fs.readFileSync(fullPath, "utf8"),
+        titleSegments,
+      );
     }
   }
 
   for (const appDir of appDirs) {
-    walk(appDir);
+    walkAppRouter(appDir);
+  }
+  for (const pagesDir of pagesDirs) {
+    walkPagesRouter(pagesDir, pagesDir);
   }
   return routes.sort((a, b) => a.route.localeCompare(b.route));
 }
@@ -667,7 +735,9 @@ function detectFramework(repoRoot: string): string[] {
     fs.existsSync(path.join(repoRoot, "next.config.ts"))
     || fs.existsSync(path.join(repoRoot, "next.config.js"))
     || fs.existsSync(path.join(repoRoot, "src", "app"))
+    || fs.existsSync(path.join(repoRoot, "app"))
     || fs.existsSync(path.join(repoRoot, "src", "pages"))
+    || fs.existsSync(path.join(repoRoot, "pages"))
   ) {
     detected.push("nextjs");
   }
@@ -744,7 +814,12 @@ function candidateKindForRoot(repoRoot: string, candidateRoot: string): FeatureT
   if (path.resolve(repoRoot) === path.resolve(candidateRoot)) {
     return "root";
   }
-  if (fs.existsSync(path.join(candidateRoot, "src", "app")) || fs.existsSync(path.join(candidateRoot, "app"))) {
+  if (
+    fs.existsSync(path.join(candidateRoot, "src", "app"))
+    || fs.existsSync(path.join(candidateRoot, "app"))
+    || fs.existsSync(path.join(candidateRoot, "src", "pages"))
+    || fs.existsSync(path.join(candidateRoot, "pages"))
+  ) {
     return "app";
   }
   if (fs.existsSync(path.join(candidateRoot, "package.json"))) {
@@ -772,6 +847,8 @@ function collectCandidateRoots(repoRoot: string): string[] {
     const hasSurfaceSignal = [
       path.join(dir, "src", "app"),
       path.join(dir, "app"),
+      path.join(dir, "src", "pages"),
+      path.join(dir, "pages"),
       path.join(dir, "src", "pages", "api"),
       path.join(dir, "pages", "api"),
       path.join(dir, "crates", "routa-server", "src", "api"),
@@ -981,8 +1058,14 @@ function renderMarkdown(tree: FeatureTree, surfaceIndex: FeatureSurfaceIndex, ne
     "purpose: Auto-generated route and API surface index for Routa.js.",
     "sources:",
     "  - src/app/**/page.tsx",
+    "  - app/**/page.tsx",
+    "  - src/pages/**/*",
+    "  - pages/**/*",
     "  - api-contract.yaml",
     "  - src/app/api/**/route.ts",
+    "  - app/api/**/route.ts",
+    "  - src/pages/api/**/*",
+    "  - pages/api/**/*",
     "  - crates/routa-server/src/api/**/*.rs",
     "update_policy:",
     "  - \"Regenerate with `routa feature-tree generate` or via the Feature Explorer UI.\"",
@@ -995,8 +1078,10 @@ function renderMarkdown(tree: FeatureTree, surfaceIndex: FeatureSurfaceIndex, ne
   }
   lines.push("---", "", `# ${tree.name} — Product Feature Specification`, "",
     `${tree.description}. This document is auto-generated from:`,
-    "- Frontend routes: `src/app/**/page.tsx`", "- Contract API: `api-contract.yaml`",
-    "- Next.js API routes: `src/app/api/**/route.ts`", "- Rust API routes: `crates/routa-server/src/api/**/*.rs`",
+    "- Frontend routes: `src/app/**/page.tsx`, `app/**/page.tsx`, `src/pages/**/*`, `pages/**/*`",
+    "- Contract API: `api-contract.yaml`",
+    "- Next.js API routes: `src/app/api/**/route.ts`, `app/api/**/route.ts`, `src/pages/api/**/*`, `pages/api/**/*`",
+    "- Rust API routes: `crates/routa-server/src/api/**/*.rs`",
     "- Feature metadata: `feature_metadata` frontmatter in this file (`source_files` regenerated)", "", "---", "");
   lines.push("## Frontend Pages", "", "| Page | Route | Source File | Description |", "|------|-------|-------------|-------------|");
   for (const page of surfaceIndex.pages) {
