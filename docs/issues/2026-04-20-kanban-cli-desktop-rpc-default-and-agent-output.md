@@ -82,6 +82,7 @@ Kanban CLI 在 Desktop/local server 运行时，应优先复用 `http://127.0.0.
 
 - `e6fa02be` `fix(cli): default kanban commands to desktop rpc (#503)`
 - `2410a88d` `fix(core): make kanban default-board switching atomic (#503)`
+- `3584c735` `docs(cli): clarify kanban default board behavior (#503)`
 
 实际验证结果：
 
@@ -89,9 +90,11 @@ Kanban CLI 在 Desktop/local server 运行时，应优先复用 `http://127.0.0.
 - 当本地服务不可达时，CLI 会显式 warning 并回退到本地 DB
 - `board list`、`status`、`card list/search/create/delete` 默认输出为 CLI/agent 友好的文本摘要
 - `--json` 保留纯 `result` 输出，不再暴露 JSON-RPC envelope
+- `card create-issue`、`automation list/trigger`、`sync github`、`status` 这些 #492 关注的工作流命令在当前 CLI surface 上均已可用
 - 在 live Desktop surface 上完成了默认 board 切换、card create、card delete、页面可见性与回收验证
+- 通过 CLI 创建的 card 已验证会在 Kanban UI 中无手动刷新实时出现，删除后也会无手动刷新实时消失
+- CLI help 已补充说明 `card create` 默认落到 workspace 默认 board 和 `backlog` 列，降低 agent 对先 `board list` 的依赖
 
 剩余非阻断项：
 
 - 当前 workspace 里仍然保留了历史测试 board；仓库里还没有一条正式的 board cleanup / delete path
-- CLI help / docs 还可以进一步强调 `card create` 默认会落到默认 board 和 `backlog` 列，减少 agent 先 `board list` 的依赖
