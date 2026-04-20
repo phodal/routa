@@ -9,11 +9,8 @@ import {
   normalizeFitnessContextValue,
   resolveFitnessRepoRoot,
 } from "@/core/fitness/repo-root";
-import {
-  type FeatureTreeMetadata,
-  generateFeatureTree,
-  preflightFeatureTree,
-} from "@/core/spec/feature-tree-generator";
+import type { FeatureTreeMetadata } from "@/core/spec/feature-tree-generator";
+import { commitFeatureTreeViaCli } from "@/core/spec/feature-tree-cli";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -73,7 +70,7 @@ export async function POST(request: NextRequest) {
       }
       scanRoot = realScanRoot;
     } else {
-      scanRoot = preflightFeatureTree(repoRoot).selectedScanRoot;
+      scanRoot = "";
     }
 
     let metadata: FeatureTreeMetadata | null = null;
@@ -87,11 +84,10 @@ export async function POST(request: NextRequest) {
       metadata = body.metadata;
     }
 
-    const result = await generateFeatureTree({
+    const result = await commitFeatureTreeViaCli({
       repoRoot,
-      scanRoot,
+      ...(scanRoot ? { scanRoot } : {}),
       metadata,
-      dryRun: false,
     });
     return NextResponse.json(result);
   } catch (error) {

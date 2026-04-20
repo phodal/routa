@@ -2,8 +2,8 @@ import { NextRequest } from "next/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mockPreflightFeatureTree = vi.fn();
-vi.mock("@/core/spec/feature-tree-generator", () => ({
-  preflightFeatureTree: (...args: unknown[]) => mockPreflightFeatureTree(...args),
+vi.mock("@/core/spec/feature-tree-cli", () => ({
+  preflightFeatureTreeViaCli: (...args: unknown[]) => mockPreflightFeatureTree(...args),
 }));
 
 const mockResolveFitnessRepoRoot = vi.fn();
