@@ -16,6 +16,11 @@ use std::path::Path;
 use crate::api::repo_context::{resolve_repo_root, RepoContextQuery, ResolveRepoRootOptions};
 use crate::state::AppState;
 
+const MAX_FILE_SIGNAL_SESSIONS: usize = 6;
+const MAX_FILE_SIGNAL_TOOLS: usize = 8;
+const MAX_FILE_SIGNAL_PROMPTS: usize = 6;
+const MAX_FILE_SIGNAL_CHANGED_FILES: usize = 12;
+
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/", get(get_feature_list))
@@ -69,6 +74,7 @@ struct FeatureDetailResponse {
     page_details: Vec<PageDetailResponse>,
     api_details: Vec<ApiDetailResponse>,
     file_stats: HashMap<String, FileStatResponse>,
+    file_signals: HashMap<String, FileSignalResponse>,
 }
 
 #[derive(Debug, Serialize)]
@@ -77,6 +83,26 @@ struct FileStatResponse {
     changes: usize,
     sessions: usize,
     updated_at: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct FileSignalResponse {
+    sessions: Vec<FileSessionSignalResponse>,
+    tool_history: Vec<String>,
+    prompt_history: Vec<String>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct FileSessionSignalResponse {
+    provider: String,
+    session_id: String,
+    updated_at: String,
+    prompt_snippet: String,
+    prompt_history: Vec<String>,
+    tool_names: Vec<String>,
+    changed_files: Vec<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -181,6 +207,7 @@ fn insert_into_tree(children: &mut Vec<FileTreeNode>, parts: &[&str], full_path:
 
 /// Per-file statistics: (change_count, session_count, latest_timestamp)
 type FileStats = HashMap<String, (usize, usize, String)>;
+type FileSignals = HashMap<String, FileSignalResponse>;
 
 /// Per-feature statistics: (session_count, changed_file_count, latest_timestamp)
 type FeatureStats = HashMap<String, (usize, usize, String)>;
@@ -202,9 +229,10 @@ struct FileStatAggregate {
 fn collect_session_stats(
     repo_root: &Path,
     feature_tree: &FeatureTreeCatalog,
-) -> (FeatureStats, FileStats, Vec<SessionAnalysis>) {
+) -> (FeatureStats, FileStats, FileSignals, Vec<SessionAnalysis>) {
     let mut stats: HashMap<String, FeatureStatAggregate> = HashMap::new();
     let mut file_stats: HashMap<String, FileStatAggregate> = HashMap::new();
+    let mut file_signals: FileSignals = HashMap::new();
     let mut analyses = Vec::new();
 
     // Try to collect real transcript data
@@ -235,7 +263,11 @@ fn collect_session_stats(
                 record_analysis(
                     &mut stats,
                     &mut file_stats,
+                    &mut file_signals,
                     &transcript.session_id,
+                    &transcript.client,
+                    transcript.prompt.as_deref(),
+                    &transcript.recovered_events,
                     &changed_files,
                     &analysis,
                     &ts_str,
@@ -274,6 +306,7 @@ fn collect_session_stats(
                 )
             })
             .collect(),
+        file_signals,
         analyses,
     )
 }
@@ -365,7 +398,11 @@ fn build_feature_trace_input_from_normalized_session(
 fn record_analysis(
     stats: &mut HashMap<String, FeatureStatAggregate>,
     file_stats: &mut HashMap<String, FileStatAggregate>,
+    file_signals: &mut FileSignals,
     session_id: &str,
+    provider: &str,
+    prompt: Option<&str>,
+    recovered_events: &[trace_parser::TranscriptRecoveredEvent],
     changed_files: &[String],
     analysis: &SessionAnalysis,
     updated_at: &str,
@@ -387,6 +424,27 @@ fn record_analysis(
         }
     }
 
+    let tool_names = recovered_events
+        .iter()
+        .map(|event| match event {
+            trace_parser::TranscriptRecoveredEvent::ToolUse { tool_name, .. } => tool_name.clone(),
+        })
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .take(MAX_FILE_SIGNAL_TOOLS)
+        .collect::<Vec<_>>();
+    let prompt_history = prompt
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| vec![value.to_string()])
+        .unwrap_or_default();
+    let prompt_snippet = prompt_history.first().cloned().unwrap_or_default();
+    let changed_files_limited = changed_files
+        .iter()
+        .take(MAX_FILE_SIGNAL_CHANGED_FILES)
+        .cloned()
+        .collect::<Vec<_>>();
+
     for file_path in changed_files {
         let entry = file_stats.entry(file_path.clone()).or_default();
         entry.change_count += 1;
@@ -395,6 +453,50 @@ fn record_analysis(
             && (entry.updated_at.is_empty() || updated_at > entry.updated_at.as_str())
         {
             entry.updated_at = updated_at.to_string();
+        }
+
+        let signal_entry =
+            file_signals
+                .entry(file_path.clone())
+                .or_insert_with(|| FileSignalResponse {
+                    sessions: Vec::new(),
+                    tool_history: Vec::new(),
+                    prompt_history: Vec::new(),
+                });
+
+        if signal_entry.sessions.len() < MAX_FILE_SIGNAL_SESSIONS
+            && !signal_entry
+                .sessions
+                .iter()
+                .any(|session| session.provider == provider && session.session_id == session_id)
+        {
+            signal_entry.sessions.push(FileSessionSignalResponse {
+                provider: provider.to_string(),
+                session_id: session_id.to_string(),
+                updated_at: updated_at.to_string(),
+                prompt_snippet: prompt_snippet.clone(),
+                prompt_history: prompt_history.clone(),
+                tool_names: tool_names.clone(),
+                changed_files: changed_files_limited.clone(),
+            });
+        }
+
+        for tool_name in &tool_names {
+            if signal_entry.tool_history.len() >= MAX_FILE_SIGNAL_TOOLS {
+                break;
+            }
+            if !signal_entry.tool_history.contains(tool_name) {
+                signal_entry.tool_history.push(tool_name.clone());
+            }
+        }
+
+        for prompt_item in &prompt_history {
+            if signal_entry.prompt_history.len() >= MAX_FILE_SIGNAL_PROMPTS {
+                break;
+            }
+            if !signal_entry.prompt_history.contains(prompt_item) {
+                signal_entry.prompt_history.push(prompt_item.clone());
+            }
         }
     }
 }
@@ -598,7 +700,8 @@ async fn get_feature_list(
     .map_err(map_context_error)?;
 
     let feature_tree = load_feature_tree(&repo_root).map_err(map_error)?;
-    let (session_stats, _file_stats, _analyses) = collect_session_stats(&repo_root, &feature_tree);
+    let (session_stats, _file_stats, _file_signals, _analyses) =
+        collect_session_stats(&repo_root, &feature_tree);
 
     let capability_groups: Vec<CapabilityGroupResponse> = feature_tree
         .capability_groups
@@ -661,7 +764,8 @@ async fn get_feature_detail(
     .map_err(map_context_error)?;
 
     let feature_tree = load_feature_tree(&repo_root).map_err(map_error)?;
-    let (session_stats, file_stats, analyses) = collect_session_stats(&repo_root, &feature_tree);
+    let (session_stats, file_stats, file_signals, analyses) =
+        collect_session_stats(&repo_root, &feature_tree);
 
     let feature = feature_tree
         .features
@@ -763,6 +867,14 @@ async fn get_feature_detail(
             })
         })
         .collect();
+    let feature_file_signals: HashMap<String, FileSignalResponse> = all_files
+        .iter()
+        .filter_map(|f| {
+            file_signals
+                .get(f)
+                .map(|signal| (f.clone(), signal.clone()))
+        })
+        .collect();
 
     let response = FeatureDetailResponse {
         id: feature.id.clone(),
@@ -791,6 +903,7 @@ async fn get_feature_detail(
         page_details,
         api_details,
         file_stats: feature_file_stats,
+        file_signals: feature_file_signals,
     };
 
     Ok(Json(serde_json::to_value(response).map_err(map_error)?))
@@ -891,6 +1004,7 @@ mod tests {
     fn record_analysis_counts_only_matched_feature_sessions() {
         let mut stats = HashMap::new();
         let mut file_stats = HashMap::new();
+        let mut file_signals = HashMap::new();
         let analysis = SessionAnalysis {
             session_id: "sess-1".to_string(),
             changed_files: vec![
@@ -913,7 +1027,11 @@ mod tests {
         record_analysis(
             &mut stats,
             &mut file_stats,
+            &mut file_signals,
             "sess-1",
+            "codex",
+            Some("inspect session recovery"),
+            &[],
             &["src/app/workspace/[workspaceId]/sessions/page.tsx".to_string()],
             &analysis,
             "2026-04-17T09:00:00",
@@ -930,6 +1048,13 @@ mod tests {
             .expect("file stat");
         assert_eq!(file_stat.change_count, 1);
         assert_eq!(file_stat.session_ids.len(), 1);
+
+        let signal = file_signals
+            .get("src/app/workspace/[workspaceId]/sessions/page.tsx")
+            .expect("file signal");
+        assert_eq!(signal.sessions.len(), 1);
+        assert_eq!(signal.sessions[0].provider, "codex");
+        assert_eq!(signal.sessions[0].session_id, "sess-1");
     }
 
     #[test]

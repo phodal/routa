@@ -1593,6 +1593,45 @@ async fn api_feature_explorer_contract_for_workspace_repo() {
 }
 
 #[tokio::test]
+async fn api_feature_explorer_detail_includes_file_signals_for_workspace_repo() {
+    let fixture = ApiFixture::new().await;
+    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(|path| path.parent())
+        .expect("workspace root")
+        .to_path_buf();
+
+    let response = fixture
+        .client
+        .get(fixture.endpoint("/api/feature-explorer/workspace-overview"))
+        .query(&[("repoPath", repo_root.to_string_lossy().to_string())])
+        .send()
+        .await
+        .expect("get feature explorer detail payload");
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let payload: Value = response
+        .json()
+        .await
+        .expect("decode feature explorer detail payload");
+
+    let file_signals = payload["fileSignals"]
+        .as_object()
+        .expect("fileSignals object should exist");
+    assert!(
+        !file_signals.is_empty(),
+        "expected non-empty fileSignals for workspace-overview detail, got {payload:?}"
+    );
+    assert!(
+        file_signals.values().any(|signal| signal["sessions"]
+            .as_array()
+            .is_some_and(|sessions| !sessions.is_empty())),
+        "expected fileSignals sessions to be populated, got {payload:?}"
+    );
+}
+
+#[tokio::test]
 async fn api_spec_surface_index_falls_back_from_invalid_repo_path_to_workspace_codebase() {
     let fixture = ApiFixture::new().await;
     let repo = GitRepoFixture::new();
