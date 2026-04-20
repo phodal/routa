@@ -13,15 +13,25 @@
 //! - `kanban.deleteColumn`
 //! - `kanban.searchCards`
 //! - `kanban.listCardsByColumn`
+//! - `kanban.listCards`
+//! - `kanban.boardStatus`
 //! - `kanban.decomposeTasks`
+//! - `kanban.listAutomations`
+//! - `kanban.triggerAutomation`
 
 mod automation;
+mod automation_commands;
 mod boards;
 mod cards;
+mod github;
 mod handoffs;
 mod queries;
 mod shared;
 
+pub use automation_commands::{
+    list_automations, trigger_automation, ColumnAutomationSummary, ListAutomationsParams,
+    ListAutomationsResult, TriggerAutomationParams, TriggerAutomationResult,
+};
 pub use boards::{
     create_board, create_column, delete_column, get_board, list_boards, update_board,
     CreateBoardParams, CreateBoardResult, CreateColumnParams, CreateColumnResult,
@@ -35,13 +45,20 @@ pub use cards::{
     DeleteCardParams, DeleteCardResult, MoveCardParams, MoveCardResult, UpdateCardParams,
     UpdateCardResult,
 };
+pub use github::{
+    create_issue_from_card, sync_github_issues, CreateIssueFromCardParams,
+    CreateIssueFromCardResult, GitHubIssueRef, SyncGitHubIssuesParams, SyncGitHubIssuesResult,
+    SyncTaskSummary,
+};
 pub use handoffs::{
     request_previous_lane_handoff, submit_lane_handoff, RequestPreviousLaneHandoffParams,
     RequestPreviousLaneHandoffResult, SubmitLaneHandoffParams, SubmitLaneHandoffResult,
 };
 pub use queries::{
-    list_cards_by_column, search_cards, ListCardsByColumnParams, ListCardsByColumnResult,
-    SearchCardsParams, SearchCardsResult,
+    board_status, list_cards, list_cards_by_column, search_cards, BoardStatusParams,
+    BoardStatusResult, BoardStatusTotals, ColumnStatus, ListCardsByColumnParams,
+    ListCardsByColumnResult, ListCardsParams, ListCardsResult, SearchCardsParams,
+    SearchCardsResult,
 };
 
 #[cfg(test)]
@@ -61,6 +78,7 @@ mod tests {
         Task, TaskLaneHandoff, TaskLaneHandoffRequestType, TaskLaneHandoffStatus, TaskLaneSession,
         TaskLaneSessionStatus,
     };
+    use crate::models::workspace::Workspace;
     use crate::rpc::error::RpcError;
     use crate::state::{AppState, AppStateInner};
     use std::sync::Arc;
@@ -160,6 +178,71 @@ mod tests {
         assert_eq!(backlog.cards[0].priority.as_deref(), Some("high"));
     }
 
+    #[tokio::test]
+    async fn create_card_with_cross_workspace_board_id_falls_back_to_current_workspace_default() {
+        let state = setup_state().await;
+        state
+            .workspace_store
+            .save(&Workspace::new(
+                "ws-other".to_string(),
+                "Other Workspace".to_string(),
+                None,
+            ))
+            .await
+            .expect("other workspace should save");
+
+        let foreign_board = create_board(
+            &state,
+            CreateBoardParams {
+                workspace_id: "ws-other".to_string(),
+                name: "Foreign Board".to_string(),
+                columns: None,
+                is_default: None,
+                id: None,
+            },
+        )
+        .await
+        .expect("foreign board should create");
+
+        let default_boards = list_boards(
+            &state,
+            ListBoardsParams {
+                workspace_id: "default".to_string(),
+            },
+        )
+        .await
+        .expect("default boards should list");
+        let default_board_id = default_boards.boards[0].id.clone();
+
+        let created = create_card(
+            &state,
+            CreateCardParams {
+                workspace_id: "default".to_string(),
+                board_id: Some(foreign_board.board.id.clone()),
+                column_id: Some("backlog".to_string()),
+                title: "Stay in current workspace".to_string(),
+                description: None,
+                priority: None,
+                labels: None,
+            },
+        )
+        .await
+        .expect("create card should fall back to current workspace default board");
+
+        let task = state
+            .task_store
+            .get(&created.card.id)
+            .await
+            .expect("task lookup should succeed")
+            .expect("task should exist");
+        assert_eq!(task.workspace_id, "default");
+        assert_eq!(task.board_id.as_deref(), Some(default_board_id.as_str()));
+        assert_ne!(
+            task.board_id.as_deref(),
+            Some(foreign_board.board.id.as_str())
+        );
+    }
+
     #[test]
     fn build_task_prompt_includes_lane_specific_guidance() {
         let mut task = Task::new(
@@ -237,6 +320,7 @@ mod tests {
             workspace_id: "default".to_string(),
             name: "Board".to_string(),
             is_default: true,
+            github_token: None,
             columns: vec![KanbanColumn {
                 id: "todo".to_string(),
                 name: "Todo".to_string(),
@@ -405,6 +489,90 @@ mod tests {
         .await
         .expect_err("negative position should fail");
         assert!(matches!(err, RpcError::BadRequest(_)));
+    }
+
+    #[tokio::test]
+    async fn move_card_marks_the_previous_lane_session_completed() {
+        let state = setup_state().await;
+        let created = create_card(
+            &state,
+            CreateCardParams {
+                workspace_id: "default".to_string(),
+                board_id: None,
+                column_id: Some("backlog".to_string()),
+                title: "Carry handoff forward".to_string(),
+                description: None,
+                priority: None,
+                labels: None,
+            },
+        )
+        .await
+        .expect("create card should succeed");
+        populate_story_readiness_fields(&state, &created.card.id).await;
+
+        let mut task = state
+            .task_store
+            .get(&created.card.id)
+            .await
+            .expect("task lookup should succeed")
+            .expect("task should exist");
+        task.trigger_session_id = Some("session-backlog-1".to_string());
+        task.lane_sessions.push(TaskLaneSession {
+            session_id: "session-backlog-1".to_string(),
+            routa_agent_id: None,
+            column_id: Some("backlog".to_string()),
+            column_name: Some("Backlog".to_string()),
+            step_id: None,
+            step_index: None,
+            step_name: Some("Backlog Refiner".to_string()),
+            provider: Some("codex".to_string()),
+            role: Some("ROUTA".to_string()),
+            specialist_id: None,
+            specialist_name: Some("Backlog Refiner".to_string()),
+            transport: Some("acp".to_string()),
+            external_task_id: None,
+            context_id: None,
+            attempt: Some(1),
+            loop_mode: None,
+            completion_requirement: None,
+            objective: Some(task.objective.clone()),
+            last_activity_at: None,
+            recovered_from_session_id: None,
+            recovery_reason: None,
+            status: TaskLaneSessionStatus::Running,
+            started_at: Utc::now().to_rfc3339(),
+            completed_at: None,
+        });
+        state
+            .task_store
+            .save(&task)
+            .await
+            .expect("task save should succeed");
+
+        move_card(
+            &state,
+            MoveCardParams {
+                card_id: created.card.id.clone(),
+                target_column_id: "todo".to_string(),
+                position: None,
+            },
+        )
+        .await
+        .expect("move card should succeed");
+
+        let updated = state
+            .task_store
+            .get(&created.card.id)
+            .await
+            .expect("task lookup should succeed")
+            .expect("task should exist");
+        let backlog_session = updated
+            .lane_sessions
+            .iter()
+            .find(|session| session.session_id == "session-backlog-1")
+            .expect("backlog lane session should exist");
+        assert_eq!(backlog_session.status, TaskLaneSessionStatus::Completed);
+        assert!(backlog_session.completed_at.is_some());
     }
 
     #[tokio::test]
@@ -700,7 +868,14 @@ mod tests {
             task.last_sync_error
         );
         assert_eq!(task.session_ids, existing_session_ids);
-        assert_eq!(task.lane_sessions, existing_lane_sessions);
+        assert_eq!(task.lane_sessions.len(), existing_lane_sessions.len());
+        let backlog_session = task
+            .lane_sessions
+            .iter()
+            .find(|session| session.session_id == existing_lane_sessions[0].session_id)
+            .expect("existing backlog session should still exist");
+        assert_eq!(backlog_session.status, TaskLaneSessionStatus::Completed);
+        assert!(backlog_session.completed_at.is_some());
         assert!(
             task.lane_sessions
                 .iter()
@@ -1194,4 +1369,127 @@ mod tests {
         );
         assert!(saved.lane_handoffs[0].responded_at.is_some());
     }
+
+    #[tokio::test]
+    async fn board_status_returns_column_card_counts() {
+        let state = setup_state().await;
+
+        // Create board with default columns
+        let board_result = create_board(
+            &state,
+            CreateBoardParams {
+                workspace_id: "default".to_string(),
+                name: "Test Board".to_string(),
+                columns: None,
+                is_default: Some(true),
+                id: None,
+            },
+        )
+        .await
+        .expect("create board should succeed");
+
+        let board_id = board_result.board.id.clone();
+
+        // Create a card in backlog
+        create_card(
+            &state,
+            super::cards::CreateCardParams {
+                workspace_id: "default".to_string(),
+                board_id: Some(board_id.clone()),
+                column_id: Some("backlog".to_string()),
+                title: "Test Card".to_string(),
+                description: None,
+                priority: None,
+                labels: None,
+            },
+        )
+        .await
+        .expect("create card should succeed");
+
+        let result = board_status(
+            &state,
+            BoardStatusParams {
+                workspace_id: "default".to_string(),
+                board_id: Some(board_id.clone()),
+            },
+        )
+        .await
+        .expect("board status should succeed");
+
+        assert_eq!(result.board_id, board_id);
+        assert_eq!(result.total_cards, 1);
+        let backlog = result.columns.iter().find(|c| c.id == "backlog").unwrap();
+        assert_eq!(backlog.card_count, 1);
+    }
+
+    #[tokio::test]
+    async fn list_cards_filters_by_priority() {
+        let state = setup_state().await;
+
+        let board_result = create_board(
+            &state,
+            CreateBoardParams {
+                workspace_id: "default".to_string(),
+                name: "Test Board".to_string(),
+                columns: None,
+                is_default: Some(true),
+                id: None,
+            },
+        )
+        .await
+        .expect("create board should succeed");
+        let board_id = board_result.board.id.clone();
+
+        // Create cards with different priorities
+        create_card(
+            &state,
+            super::cards::CreateCardParams {
+                workspace_id: "default".to_string(),
+                board_id: Some(board_id.clone()),
+                column_id: Some("backlog".to_string()),
+                title: "High priority card".to_string(),
+                description: None,
+                priority: Some("high".to_string()),
+                labels: None,
+            },
+        )
+        .await
+        .expect("create high priority card should succeed");
+
+        create_card(
+            &state,
+            super::cards::CreateCardParams {
+                workspace_id: "default".to_string(),
+                board_id: Some(board_id.clone()),
+                column_id: Some("backlog".to_string()),
+                title: "Low priority card".to_string(),
+                description: None,
+                priority: Some("low".to_string()),
+                labels: None,
+            },
+        )
+        .await
+        .expect("create low priority card should succeed");
+
+        let result = list_cards(
+            &state,
+            ListCardsParams {
+                workspace_id: "default".to_string(),
+                board_id: Some(board_id.clone()),
+                column_id: None,
+                status: None,
+                priority: Some("high".to_string()),
+                label: None,
+                labels: vec![],
+            },
+        )
+        .await
+        .expect("list_cards with priority filter should succeed");
+
+        assert_eq!(result.total, 1);
+        assert_eq!(result.cards[0].title, "High priority card");
+    }
 }
+
+#[cfg(test)]
+mod automation_phase_two_tests;

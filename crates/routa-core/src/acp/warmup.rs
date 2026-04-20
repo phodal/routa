@@ -11,6 +11,8 @@
 //!   - uvx agent: `uvx <package>`      → pre-downloads Python + pack
 
 use std::collections::HashMap;
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -21,6 +23,8 @@ use tokio::sync::RwLock;
 use super::paths::AcpPaths;
 use super::registry_fetch::fetch_registry;
 use super::runtime_manager::{AcpRuntimeManager, RuntimeType};
+#[cfg(windows)]
+use super::CREATE_NO_WINDOW;
 
 // ─── Constants ─────────────────────────────────────────────────────────────
 
@@ -268,6 +272,9 @@ impl AcpWarmupService {
         cmd.args(&args)
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null());
+
+        #[cfg(windows)]
+        cmd.as_std_mut().creation_flags(CREATE_NO_WINDOW);
 
         // Prepend runtime dir to PATH
         if let Ok(path_env) = std::env::var("PATH") {

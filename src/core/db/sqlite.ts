@@ -17,6 +17,55 @@ export type SqliteDatabase = BetterSQLite3Database<typeof schema>;
 
 const GLOBAL_KEY = "__routa_sqlite_db__";
 const GLOBAL_RAW_KEY = "__routa_sqlite_raw__";
+const WORKTREES_DDL_STATEMENTS = [
+  `CREATE TABLE IF NOT EXISTS worktrees (
+    id TEXT PRIMARY KEY,
+    codebase_id TEXT NOT NULL REFERENCES codebases(id) ON DELETE CASCADE,
+    workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    worktree_path TEXT NOT NULL,
+    branch TEXT NOT NULL,
+    base_branch TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'creating',
+    session_id TEXT,
+    label TEXT,
+    error_message TEXT,
+    created_at INTEGER NOT NULL DEFAULT (unixepoch('now') * 1000),
+    updated_at INTEGER NOT NULL DEFAULT (unixepoch('now') * 1000)
+  )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS uq_worktrees_codebase_branch
+  ON worktrees (codebase_id, branch)`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS uq_worktrees_path
+  ON worktrees (worktree_path)`,
+  `CREATE INDEX IF NOT EXISTS idx_worktrees_workspace_id
+  ON worktrees (workspace_id)`,
+] as const;
+
+function applyWorktreesTableDdl(execute: (statement: string) => void): void {
+  for (const statement of WORKTREES_DDL_STATEMENTS) {
+    execute(statement);
+  }
+}
+
+function hasSqliteTable(sqlite: BetterSqlite3.Database, tableName: string): boolean {
+  return Boolean(
+    sqlite.prepare(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name = ?"
+    ).get(tableName),
+  );
+}
+
+function ensureWorktreesTable(sqlite: BetterSqlite3.Database): void {
+  if (hasSqliteTable(sqlite, "worktrees")) {
+    return;
+  }
+
+  console.warn("[SQLite] worktrees table missing, creating it now");
+  applyWorktreesTableDdl((statement) => sqlite.exec(statement));
+
+  if (!hasSqliteTable(sqlite, "worktrees")) {
+    throw new Error("[SQLite] Failed to create missing worktrees table");
+  }
+}
 
 /**
  * Get or create a SQLite database instance.
@@ -41,6 +90,13 @@ export function getSqliteDatabase(dbPath?: string): SqliteDatabase {
 
     // Run migrations / create tables on first use
     initializeSqliteTables(db);
+
+    try {
+      ensureWorktreesTable(sqlite);
+    } catch (error) {
+      console.error("[SQLite] Failed to ensure worktrees table exists:", error);
+      throw error;
+    }
 
     // Store both the drizzle wrapper and the raw connection
     g[GLOBAL_KEY] = db;
@@ -134,6 +190,7 @@ function initializeSqliteTables(db: SqliteDatabase): void {
       title TEXT NOT NULL,
       objective TEXT NOT NULL,
       comment TEXT,
+      comments TEXT DEFAULT '[]',
       scope TEXT,
       acceptance_criteria TEXT,
       verification_commands TEXT,
@@ -166,6 +223,7 @@ function initializeSqliteTables(db: SqliteDatabase): void {
       parallel_group TEXT,
       workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
       session_id TEXT,
+      delivery_snapshot TEXT,
       completion_summary TEXT,
       verification_verdict TEXT,
       verification_report TEXT,
@@ -175,6 +233,7 @@ function initializeSqliteTables(db: SqliteDatabase): void {
     )
   `);
   runAddColumn(sql`ALTER TABLE tasks ADD COLUMN comment TEXT`);
+  runAddColumn(sql`ALTER TABLE tasks ADD COLUMN comments TEXT DEFAULT '[]'`);
   runAddColumn(sql`ALTER TABLE tasks ADD COLUMN board_id TEXT`);
   runAddColumn(sql`ALTER TABLE tasks ADD COLUMN column_id TEXT`);
   runAddColumn(sql`ALTER TABLE tasks ADD COLUMN position INTEGER NOT NULL DEFAULT 0`);
@@ -196,8 +255,10 @@ function initializeSqliteTables(db: SqliteDatabase): void {
   runAddColumn(sql`ALTER TABLE tasks ADD COLUMN is_pull_request INTEGER`);
   runAddColumn(sql`ALTER TABLE tasks ADD COLUMN test_cases TEXT`);
   runAddColumn(sql`ALTER TABLE tasks ADD COLUMN session_id TEXT`);
+  runAddColumn(sql`ALTER TABLE tasks ADD COLUMN creation_source TEXT`);
   runAddColumn(sql`ALTER TABLE tasks ADD COLUMN codebase_ids TEXT DEFAULT '[]'`);
   runAddColumn(sql`ALTER TABLE tasks ADD COLUMN worktree_id TEXT`);
+  runAddColumn(sql`ALTER TABLE tasks ADD COLUMN delivery_snapshot TEXT`);
   runAddColumn(sql`ALTER TABLE tasks ADD COLUMN session_ids TEXT DEFAULT '[]'`);
   runAddColumn(sql`ALTER TABLE tasks ADD COLUMN lane_sessions TEXT DEFAULT '[]'`);
   runAddColumn(sql`ALTER TABLE tasks ADD COLUMN lane_handoffs TEXT DEFAULT '[]'`);
@@ -344,12 +405,17 @@ function initializeSqliteTables(db: SqliteDatabase): void {
   try { db.run(sql`ALTER TABLE codebases ADD COLUMN source_type TEXT`); } catch { /* column already exists */ }
   try { db.run(sql`ALTER TABLE codebases ADD COLUMN source_url TEXT`); } catch { /* column already exists */ }
 
+  applyWorktreesTableDdl((statement) => {
+    db.run(sql.raw(statement));
+  });
+
   db.run(sql`
     CREATE TABLE IF NOT EXISTS kanban_boards (
       id TEXT PRIMARY KEY,
       workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
       name TEXT NOT NULL,
       is_default INTEGER NOT NULL DEFAULT 0,
+      github_token TEXT,
       columns TEXT NOT NULL DEFAULT '[]',
       created_at INTEGER NOT NULL DEFAULT (unixepoch('now') * 1000),
       updated_at INTEGER NOT NULL DEFAULT (unixepoch('now') * 1000)
@@ -391,6 +457,7 @@ function initializeSqliteTables(db: SqliteDatabase): void {
     )
   `);
 
+  try { db.run(sql`ALTER TABLE kanban_boards ADD COLUMN github_token TEXT`); } catch { /* column already exists */ }
   db.run(sql`DROP INDEX IF EXISTS kanban_boards_workspace_default_idx`);
 
   db.run(sql`

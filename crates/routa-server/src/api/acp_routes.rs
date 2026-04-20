@@ -1,5 +1,6 @@
 use axum::{
     extract::{Query, State},
+    http::StatusCode,
     response::{
         sse::{Event, Sse},
         IntoResponse, Response,
@@ -247,7 +248,7 @@ async fn acp_rpc(
                 "id": id,
                 "result": {
                     "protocolVersion": protocol_version,
-                    "agentCapabilities": { "loadSession": false },
+                    "agentCapabilities": { "loadSession": true },
                     "agentInfo": {
                         "name": "routa-acp",
                         "version": "0.1.0"
@@ -551,7 +552,7 @@ async fn acp_rpc(
             };
 
             match create_result {
-                Ok((_our_sid, _agent_sid)) => {
+                Ok((_our_sid, agent_sid)) => {
                     // Assign worktree session now that creation succeeded
                     if let Some(ref wt_id) = validated_worktree_id {
                         if let Err(e) = state
@@ -586,6 +587,17 @@ async fn acp_rpc(
                         tracing::warn!("[ACP Route] Failed to persist session to DB: {}", e);
                     } else {
                         tracing::info!("[ACP Route] Session {} persisted to DB", session_id);
+                        if let Err(e) = state
+                            .acp_session_store
+                            .set_provider_session_id(&session_id, Some(&agent_sid))
+                            .await
+                        {
+                            tracing::warn!(
+                                "[ACP Route] Failed to persist provider session id for {}: {}",
+                                session_id,
+                                e
+                            );
+                        }
                     }
 
                     let routa_agent_id = match ensure_routa_agent_registration(
@@ -1213,14 +1225,284 @@ async fn acp_rpc(
             }))))
         }
 
-        "session/load" => Ok(AcpResponse::Json(Json(serde_json::json!({
-            "jsonrpc": "2.0",
-            "id": id,
-            "error": {
-                "code": -32601,
-                "message": "session/load not supported - create a new session instead"
+        "session/load" => {
+            let session_id = match params.get("sessionId").and_then(|v| v.as_str()) {
+                Some(sid) => sid.to_string(),
+                None => {
+                    return Ok(AcpResponse::Json(Json(serde_json::json!({
+                        "jsonrpc": "2.0",
+                        "id": id,
+                        "error": {
+                            "code": -32602,
+                            "message": "Missing sessionId"
+                        }
+                    }))));
+                }
+            };
+
+            let existing_session_alive = state.acp_manager.is_alive(&session_id).await;
+            let persisted_session = match state.acp_session_store.get(&session_id).await? {
+                Some(session) => session,
+                None => {
+                    return Ok(AcpResponse::Json(Json(serde_json::json!({
+                        "jsonrpc": "2.0",
+                        "id": id,
+                        "error": {
+                            "code": -32004,
+                            "message": format!("Persisted session not found: {}", session_id)
+                        }
+                    }))));
+                }
+            };
+
+            let provider = persisted_session
+                .provider
+                .clone()
+                .unwrap_or_else(|| "opencode".to_string());
+            let cwd = params
+                .get("cwd")
+                .and_then(|value| value.as_str())
+                .filter(|value| !value.trim().is_empty())
+                .map(str::to_string)
+                .unwrap_or_else(|| persisted_session.cwd.clone());
+            let workspace_id = persisted_session.workspace_id.clone();
+            let role = persisted_session.role.clone();
+            let branch = persisted_session.branch.clone();
+            let parent_session_id = persisted_session.parent_session_id.clone();
+            let tool_mode = params
+                .get("toolMode")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+            let mcp_profile = params
+                .get("mcpProfile")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+
+            if existing_session_alive {
+                return Ok(AcpResponse::Json(Json(serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "result": {
+                        "sessionId": session_id,
+                        "provider": provider,
+                        "role": role.as_deref().unwrap_or("CRAFTER"),
+                        "acpStatus": "ready",
+                        "resumeMode": "attached"
+                    }
+                }))));
             }
-        })))),
+
+            let custom_provider_launch = custom_provider_launch_from_row(&persisted_session);
+            let provider_session_id = persisted_session.provider_session_id.clone();
+            let mut resume_mode = "recreated";
+            let mut native_resume_error: Option<String> = None;
+
+            let create_result = if should_attempt_native_resume(&persisted_session, &provider) {
+                match if let Some(custom) = custom_provider_launch.clone() {
+                    state
+                        .acp_manager
+                        .load_session_from_inline(
+                            session_id.clone(),
+                            cwd.clone(),
+                            workspace_id.clone(),
+                            provider.clone(),
+                            role.clone(),
+                            None,
+                            parent_session_id.clone(),
+                            custom.command,
+                            custom.args,
+                            provider_session_id.clone(),
+                            SessionLaunchOptions::default(),
+                        )
+                        .await
+                } else {
+                    state
+                        .acp_manager
+                        .load_session(
+                            session_id.clone(),
+                            cwd.clone(),
+                            workspace_id.clone(),
+                            Some(provider.clone()),
+                            role.clone(),
+                            None,
+                            parent_session_id.clone(),
+                            tool_mode.clone(),
+                            mcp_profile.clone(),
+                            provider_session_id.clone(),
+                        )
+                        .await
+                } {
+                    Ok(result) => {
+                        resume_mode = "native";
+                        Ok(result)
+                    }
+                    Err(error) => {
+                        native_resume_error = Some(error.clone());
+                        tracing::warn!(
+                            "[ACP Route] Native resume failed for {}, falling back to recreate: {}",
+                            session_id,
+                            error
+                        );
+                        if let Some(custom) = custom_provider_launch.clone() {
+                            state
+                                .acp_manager
+                                .create_session_from_inline(
+                                    session_id.clone(),
+                                    cwd.clone(),
+                                    workspace_id.clone(),
+                                    provider.clone(),
+                                    role.clone(),
+                                    None,
+                                    parent_session_id.clone(),
+                                    custom.command,
+                                    custom.args,
+                                    SessionLaunchOptions::default(),
+                                )
+                                .await
+                        } else {
+                            state
+                                .acp_manager
+                                .create_session(
+                                    session_id.clone(),
+                                    cwd.clone(),
+                                    workspace_id.clone(),
+                                    Some(provider.clone()),
+                                    role.clone(),
+                                    None,
+                                    parent_session_id.clone(),
+                                    tool_mode.clone(),
+                                    mcp_profile.clone(),
+                                )
+                                .await
+                        }
+                    }
+                }
+            } else if provider == "codex" && !persisted_session.first_prompt_sent {
+                native_resume_error = Some(
+                    "Skipping native resume because the Codex session has no persisted rollout yet"
+                        .to_string(),
+                );
+                if let Some(custom) = custom_provider_launch.clone() {
+                    state
+                        .acp_manager
+                        .create_session_from_inline(
+                            session_id.clone(),
+                            cwd.clone(),
+                            workspace_id.clone(),
+                            provider.clone(),
+                            role.clone(),
+                            None,
+                            parent_session_id.clone(),
+                            custom.command,
+                            custom.args,
+                            SessionLaunchOptions::default(),
+                        )
+                        .await
+                } else {
+                    state
+                        .acp_manager
+                        .create_session(
+                            session_id.clone(),
+                            cwd.clone(),
+                            workspace_id.clone(),
+                            Some(provider.clone()),
+                            role.clone(),
+                            None,
+                            parent_session_id.clone(),
+                            tool_mode.clone(),
+                            mcp_profile.clone(),
+                        )
+                        .await
+                }
+            } else if let Some(custom) = custom_provider_launch.clone() {
+                state
+                    .acp_manager
+                    .create_session_from_inline(
+                        session_id.clone(),
+                        cwd.clone(),
+                        workspace_id.clone(),
+                        provider.clone(),
+                        role.clone(),
+                        None,
+                        parent_session_id.clone(),
+                        custom.command,
+                        custom.args,
+                        SessionLaunchOptions::default(),
+                    )
+                    .await
+            } else {
+                state
+                    .acp_manager
+                    .create_session(
+                        session_id.clone(),
+                        cwd.clone(),
+                        workspace_id.clone(),
+                        Some(provider.clone()),
+                        role.clone(),
+                        None,
+                        parent_session_id.clone(),
+                        tool_mode.clone(),
+                        mcp_profile.clone(),
+                    )
+                    .await
+            };
+
+            match create_result {
+                Ok((_our_sid, agent_sid)) => {
+                    let _ = state
+                        .acp_session_store
+                        .set_routa_agent_id(&session_id, Some(&agent_sid))
+                        .await;
+                    let _ = state
+                        .acp_session_store
+                        .set_provider_session_id(&session_id, Some(&agent_sid))
+                        .await;
+
+                    persist_session_to_jsonl(
+                        &session_id,
+                        &cwd,
+                        branch.as_deref(),
+                        &workspace_id,
+                        Some(&provider),
+                        role.as_deref(),
+                        custom_provider_launch
+                            .as_ref()
+                            .map(|launch| launch.command.as_str()),
+                        custom_provider_launch
+                            .as_ref()
+                            .map(|launch| launch.args.as_slice()),
+                        parent_session_id.as_deref(),
+                    )
+                    .await;
+
+                    let resume_capabilities = routa_core::acp::get_resume_capability(&provider)
+                        .map(|c| serde_json::to_value(c).unwrap_or(serde_json::json!(null)))
+                        .unwrap_or(serde_json::json!({ "supported": false, "mode": "replay" }));
+
+                    Ok(AcpResponse::Json(Json(serde_json::json!({
+                        "jsonrpc": "2.0",
+                        "id": id,
+                        "result": {
+                            "sessionId": session_id,
+                            "provider": provider,
+                            "role": role.as_deref().unwrap_or("CRAFTER"),
+                            "acpStatus": "ready",
+                            "resumeMode": resume_mode,
+                            "resumeCapabilities": resume_capabilities,
+                            "nativeResumeError": native_resume_error,
+                        }
+                    }))))
+                }
+                Err(error) => Ok(AcpResponse::Json(Json(serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "error": {
+                        "code": -32000,
+                        "message": format!("Failed to load session: {}", error)
+                    }
+                })))),
+            }
+        }
 
         "session/respond_user_input" => {
             let session_id = params.get("sessionId").and_then(|v| v.as_str());
@@ -1415,18 +1697,7 @@ async fn acp_rpc(
 }
 
 fn build_specialist_system_prompt(specialist: &SpecialistConfig) -> Option<String> {
-    if specialist.system_prompt.trim().is_empty() {
-        return None;
-    }
-
-    if specialist.role_reminder.trim().is_empty() {
-        return Some(specialist.system_prompt.clone());
-    }
-
-    Some(format!(
-        "{}\n\n---\n**Reminder:** {}\n",
-        specialist.system_prompt, specialist.role_reminder
-    ))
+    specialist.system_prompt_with_reminder()
 }
 
 fn derive_allowed_native_tools(specialist_id: Option<&str>) -> Option<Vec<String>> {
@@ -1441,13 +1712,146 @@ fn derive_allowed_native_tools(specialist_id: Option<&str>) -> Option<Vec<String
 #[serde(rename_all = "camelCase")]
 struct AcpSseQuery {
     session_id: Option<String>,
+    probe: Option<String>,
+    last_event_id: Option<String>,
 }
 
-async fn acp_sse(
-    State(state): State<AppState>,
-    Query(query): Query<AcpSseQuery>,
-) -> Sse<std::pin::Pin<Box<dyn tokio_stream::Stream<Item = Result<Event, Infallible>> + Send>>> {
+fn history_since_event_id(
+    history: &[serde_json::Value],
+    last_event_id: &str,
+) -> Vec<serde_json::Value> {
+    let index = history.iter().position(|entry| {
+        entry.get("eventId").and_then(|value| value.as_str()) == Some(last_event_id)
+    });
+
+    match index {
+        Some(index) => history.iter().skip(index + 1).cloned().collect(),
+        None => Vec::new(),
+    }
+}
+
+fn consolidate_replay_events(notifications: Vec<serde_json::Value>) -> Vec<serde_json::Value> {
+    if notifications.is_empty() {
+        return Vec::new();
+    }
+
+    let mut result = Vec::new();
+    let mut current_chunks = Vec::new();
+    let mut current_session_id: Option<String> = None;
+    let mut current_event_id: Option<String> = None;
+
+    let flush_chunks = |result: &mut Vec<serde_json::Value>,
+                        chunks: &mut Vec<String>,
+                        session_id: &Option<String>,
+                        event_id: &mut Option<String>| {
+        if !chunks.is_empty() {
+            if let Some(session_id) = session_id {
+                let mut consolidated = serde_json::json!({
+                    "sessionId": session_id,
+                    "update": {
+                        "sessionUpdate": "agent_message",
+                        "content": { "type": "text", "text": chunks.join("") }
+                    }
+                });
+                if let Some(event_id) = event_id.take() {
+                    consolidated["eventId"] = serde_json::Value::String(event_id);
+                }
+                result.push(consolidated);
+            }
+            chunks.clear();
+        }
+    };
+
+    for notification in notifications {
+        let session_id = notification
+            .get("sessionId")
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_string);
+        let session_update = notification
+            .get("update")
+            .and_then(|update| update.get("sessionUpdate"))
+            .and_then(serde_json::Value::as_str);
+
+        if session_update == Some("agent_message_chunk") {
+            let text = notification
+                .get("update")
+                .and_then(|update| update.get("content"))
+                .and_then(|content| content.get("text"))
+                .and_then(serde_json::Value::as_str);
+
+            if let Some(text) = text {
+                if current_session_id != session_id {
+                    flush_chunks(
+                        &mut result,
+                        &mut current_chunks,
+                        &current_session_id,
+                        &mut current_event_id,
+                    );
+                    current_session_id = session_id;
+                }
+                current_chunks.push(text.to_string());
+                current_event_id = notification
+                    .get("eventId")
+                    .and_then(serde_json::Value::as_str)
+                    .map(str::to_string);
+            }
+            continue;
+        }
+
+        flush_chunks(
+            &mut result,
+            &mut current_chunks,
+            &current_session_id,
+            &mut current_event_id,
+        );
+        current_session_id = session_id;
+        result.push(notification);
+    }
+
+    flush_chunks(
+        &mut result,
+        &mut current_chunks,
+        &current_session_id,
+        &mut current_event_id,
+    );
+
+    result
+}
+
+fn sse_event_id_from_rpc_message(message: &serde_json::Value) -> Option<String> {
+    message
+        .get("params")
+        .and_then(|params| params.get("eventId"))
+        .and_then(|value| value.as_str())
+        .map(str::to_string)
+}
+
+fn sse_event_from_rpc_message(message: serde_json::Value) -> Event {
+    let payload = message.to_string();
+    if let Some(event_id) = sse_event_id_from_rpc_message(&message) {
+        Event::default().id(event_id).data(payload)
+    } else {
+        Event::default().data(payload)
+    }
+}
+
+async fn acp_sse(State(state): State<AppState>, Query(query): Query<AcpSseQuery>) -> Response {
+    if query.probe.as_deref() == Some("1") {
+        return StatusCode::NO_CONTENT.into_response();
+    }
+
     let session_id = query.session_id.clone().unwrap_or_default();
+    let replay_events = match query.last_event_id.as_deref() {
+        Some(last_event_id) if !last_event_id.trim().is_empty() => state
+            .acp_session_store
+            .get_history(&session_id)
+            .await
+            .map(|history| {
+                consolidate_replay_events(history_since_event_id(&history, last_event_id))
+            })
+            .unwrap_or_default(),
+        _ => Vec::new(),
+    };
 
     // Send initial connected event
     let connected_event = serde_json::json!({
@@ -1462,9 +1866,17 @@ async fn acp_sse(
         }
     });
 
-    let initial = tokio_stream::once(Ok::<_, Infallible>(
-        Event::default().data(connected_event.to_string()),
-    ));
+    let initial = tokio_stream::once(Ok::<_, Infallible>(sse_event_from_rpc_message(
+        connected_event,
+    )));
+    let replay = tokio_stream::iter(replay_events.into_iter().map(|params| {
+        let msg = serde_json::json!({
+            "jsonrpc": "2.0",
+            "method": "session/update",
+            "params": params,
+        });
+        Ok::<_, Infallible>(sse_event_from_rpc_message(msg))
+    }));
 
     // Heartbeat (keep connection alive)
     let heartbeat = tokio_stream::wrappers::IntervalStream::new(tokio::time::interval(
@@ -1480,18 +1892,20 @@ async fn acp_sse(
         let notifications = async_stream::stream! {
             while let Ok(msg) = rx.recv().await {
                 yield Ok::<_, Infallible>(
-                    Event::default().data(msg.to_string())
+                    sse_event_from_rpc_message(msg)
                 );
             }
         };
         // Merge initial + notifications + heartbeat
-        Box::pin(initial.chain(tokio_stream::StreamExt::merge(notifications, heartbeat)))
+        Box::pin(
+            initial.chain(replay.chain(tokio_stream::StreamExt::merge(notifications, heartbeat))),
+        )
     } else {
-        // No process yet — just initial + heartbeat
-        Box::pin(initial.chain(heartbeat))
+        // No process yet — replay persisted history if requested, then keep the connection open.
+        Box::pin(initial.chain(replay.chain(heartbeat)))
     };
 
-    Sse::new(stream)
+    Sse::new(stream).into_response()
 }
 
 /// Persist a session to local JSONL file (best-effort, non-blocking).
@@ -1565,6 +1979,68 @@ mod tests {
     }
 
     #[test]
+    fn history_since_event_id_returns_only_newer_entries() {
+        let history = vec![
+            json!({ "eventId": "evt-1", "update": { "sessionUpdate": "agent_message_chunk" } }),
+            json!({ "eventId": "evt-2", "update": { "sessionUpdate": "tool_call" } }),
+            json!({ "eventId": "evt-3", "update": { "sessionUpdate": "tool_result" } }),
+        ];
+
+        let replay = history_since_event_id(&history, "evt-1");
+
+        assert_eq!(replay, history[1..]);
+        assert!(history_since_event_id(&history, "missing-event").is_empty());
+    }
+
+    #[test]
+    fn consolidate_replay_events_merges_chunks_and_preserves_latest_event_id() {
+        let replay = consolidate_replay_events(vec![
+            json!({
+                "sessionId": "s1",
+                "eventId": "evt-2",
+                "update": { "sessionUpdate": "agent_message_chunk", "content": { "text": "Hel" } }
+            }),
+            json!({
+                "sessionId": "s1",
+                "eventId": "evt-3",
+                "update": { "sessionUpdate": "agent_message_chunk", "content": { "text": "lo" } }
+            }),
+            json!({
+                "sessionId": "s1",
+                "eventId": "evt-4",
+                "update": { "sessionUpdate": "tool_call", "title": "run" }
+            }),
+        ]);
+
+        assert_eq!(replay.len(), 2);
+        assert_eq!(replay[0]["eventId"].as_str(), Some("evt-3"));
+        assert_eq!(
+            replay[0]["update"]["sessionUpdate"].as_str(),
+            Some("agent_message")
+        );
+        assert_eq!(
+            replay[0]["update"]["content"]["text"].as_str(),
+            Some("Hello")
+        );
+        assert_eq!(replay[1]["eventId"].as_str(), Some("evt-4"));
+    }
+
+    #[test]
+    fn sse_event_id_from_rpc_message_reads_nested_event_id() {
+        let event_id = sse_event_id_from_rpc_message(&json!({
+            "jsonrpc": "2.0",
+            "method": "session/update",
+            "params": {
+                "sessionId": "s1",
+                "eventId": "evt-9",
+                "update": { "sessionUpdate": "agent_message", "content": { "text": "hi" } }
+            }
+        }));
+
+        assert_eq!(event_id.as_deref(), Some("evt-9"));
+    }
+
+    #[test]
     fn custom_provider_launch_extracts_command_and_args() {
         let launch = extract_custom_provider_launch(&json!({
             "customCommand": "codex-acp2",
@@ -1602,6 +2078,7 @@ mod tests {
             branch: Some("main".to_string()),
             workspace_id: "default".to_string(),
             routa_agent_id: None,
+            provider_session_id: None,
             provider: Some("custom-inline".to_string()),
             role: Some("CRAFTER".to_string()),
             mode_id: None,
@@ -1666,6 +2143,42 @@ mod tests {
         let cwd = resolve_session_cwd(&state, "default", Some("/tmp/explicit-repo")).await;
 
         assert_eq!(cwd, "/tmp/explicit-repo");
+    }
+
+    #[tokio::test]
+    async fn session_new_rejects_invalid_explicit_cwd_before_spawn() {
+        let db = Database::open_in_memory().expect("db should open");
+        let state = Arc::new(AppStateInner::new(db));
+        state
+            .workspace_store
+            .ensure_default()
+            .await
+            .expect("default workspace should exist");
+
+        let response = acp_rpc(
+            State(state),
+            Json(json!({
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "session/new",
+                "params": {
+                    "workspaceId": "default",
+                    "cwd": "/definitely/missing-routa-acp-cwd",
+                    "provider": "opencode"
+                }
+            })),
+        )
+        .await
+        .expect("request should complete");
+
+        let value = json_response_value(response);
+        assert_eq!(value["error"]["code"].as_i64(), Some(-32000));
+        assert_eq!(
+            value["error"]["message"].as_str(),
+            Some(
+                "Failed to create session: Invalid session cwd '/definitely/missing-routa-acp-cwd': directory does not exist"
+            )
+        );
     }
 
     #[tokio::test]
@@ -1806,5 +2319,58 @@ mod tests {
             .await
             .expect("terminal should kill");
         TerminalManager::global().release(&terminal_id).await;
+    }
+
+    #[tokio::test]
+    async fn initialize_advertises_session_load_support() {
+        let db = Database::open_in_memory().expect("db should open");
+        let state = Arc::new(AppStateInner::new(db));
+
+        let response = acp_rpc(
+            State(state),
+            Json(json!({
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                    "protocolVersion": 1
+                }
+            })),
+        )
+        .await
+        .expect("initialize should succeed");
+
+        let value = json_response_value(response);
+        assert_eq!(
+            value["result"]["agentCapabilities"]["loadSession"].as_bool(),
+            Some(true)
+        );
+    }
+
+    #[tokio::test]
+    async fn session_load_rejects_missing_persisted_session() {
+        let db = Database::open_in_memory().expect("db should open");
+        let state = Arc::new(AppStateInner::new(db));
+
+        let response = acp_rpc(
+            State(state),
+            Json(json!({
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "session/load",
+                "params": {
+                    "sessionId": "missing-session"
+                }
+            })),
+        )
+        .await
+        .expect("request should complete");
+
+        let value = json_response_value(response);
+        assert_eq!(value["error"]["code"].as_i64(), Some(-32004));
+        assert_eq!(
+            value["error"]["message"].as_str(),
+            Some("Persisted session not found: missing-session")
+        );
     }
 }

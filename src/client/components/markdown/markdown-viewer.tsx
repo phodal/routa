@@ -22,6 +22,7 @@ import { CanonicalStoryRenderer } from "./canonical-story-renderer";
 import { MermaidRenderer } from "./mermaid-renderer";
 import { HtmlPreviewRenderer } from "./html-preview-renderer";
 import { parseCanonicalStory, type CanonicalStoryParseResult } from "@/core/kanban/canonical-story";
+import { openExternalUrl } from "@/client/utils/external-links";
 import { Editor } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import CodeBlockLowlight from "@tiptap/extension-code-block-lowlight";
@@ -162,6 +163,9 @@ interface MarkdownViewerProps {
   onFileClick?: (path: string) => void;
   /** Hide canonical story renderer and only render canonical YAML as plain markdown */
   hideCanonicalStory?: boolean;
+  compactCanonicalStory?: boolean;
+  hideCanonicalStoryTitle?: boolean;
+  hideCanonicalStoryInvestSummary?: boolean;
 }
 
 export function MarkdownViewer({
@@ -170,6 +174,9 @@ export function MarkdownViewer({
   className = "",
   onFileClick,
   hideCanonicalStory = false,
+  compactCanonicalStory = false,
+  hideCanonicalStoryTitle = false,
+  hideCanonicalStoryInvestSummary = false,
 }: MarkdownViewerProps) {
   const processedContent = useMemo(
     () => (hideCanonicalStory ? stripCanonicalStoryBlocks(content) : content),
@@ -203,7 +210,16 @@ export function MarkdownViewer({
             if (hideCanonicalStory) {
               return null;
             }
-            return <CanonicalStoryRenderer key={i} parseResult={seg.parseResult} className="my-2" />;
+            return (
+              <CanonicalStoryRenderer
+                key={i}
+                parseResult={seg.parseResult}
+                compact={compactCanonicalStory}
+                className="my-2"
+                hideTitle={hideCanonicalStoryTitle}
+                hideInvestSummary={hideCanonicalStoryInvestSummary}
+              />
+            );
           }
           return (
             <MarkdownViewer
@@ -213,6 +229,9 @@ export function MarkdownViewer({
               className=""
               onFileClick={onFileClick}
               hideCanonicalStory={hideCanonicalStory}
+              compactCanonicalStory={compactCanonicalStory}
+              hideCanonicalStoryTitle={hideCanonicalStoryTitle}
+              hideCanonicalStoryInvestSummary={hideCanonicalStoryInvestSummary}
             />
           );
         })}
@@ -274,8 +293,9 @@ function StaticMarkdownContent({
       const anchor = target.closest("a");
       if (anchor?.href) {
         e.preventDefault();
+        e.stopPropagation();
         if (anchor.href.startsWith("http://") || anchor.href.startsWith("https://")) {
-          window.open(anchor.href, "_blank");
+          void openExternalUrl(anchor.href);
         }
         return;
       }
@@ -396,7 +416,7 @@ function TiptapMarkdownContent({
         e.preventDefault();
         e.stopPropagation();
         if (anchor.href.startsWith("http")) {
-          window.open(anchor.href, "_blank");
+          void openExternalUrl(anchor.href);
         }
         return;
       }

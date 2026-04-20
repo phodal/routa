@@ -1,3 +1,7 @@
+/**
+ * Settings / Schedules - /settings/schedules
+ * Workspace-aware schedule management page for triggers, recurring runs, and schedule tick diagnostics.
+ */
 "use client";
 
 import { useState } from "react";
@@ -18,9 +22,11 @@ export default function SchedulesSettingsPage() {
 
   return (
     <SettingsRouteShell
+      activeSettingsItem="schedules"
       title={t.settingsExtended.schedulesTitle}
       description={t.settingsExtended.schedulesDesc}
       badgeLabel={t.settingsExtended.schedulesBadge}
+      contentClassName="flex h-full min-h-0 w-full flex-col"
       workspaceSwitcher={(
         <WorkspaceSwitcher
           workspaces={workspacesHook.workspaces}
@@ -46,14 +52,23 @@ export default function SchedulesSettingsPage() {
         { label: t.settingsExtended.runtimeLabel, value: t.settingsExtended.runtimeValue },
       ]}
     >
-      <div className="space-y-6">
-        <SettingsPageHeader title={t.settingsExtended.schedulesPageTitle} />
-        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-desktop-border bg-desktop-bg-secondary/70 px-3 py-2 text-[11px] text-desktop-text-secondary">
-          <span className="font-medium text-desktop-text-primary">{t.settingsExtended.tickEndpoint}</span>
-          <code className="rounded bg-desktop-bg-primary px-1.5 py-0.5 font-mono text-desktop-text-primary">/api/schedules/tick</code>
-          <span>{t.settingsExtended.vercelCron}</span>
+      <div className="flex min-h-0 flex-1 flex-col">
+        <SettingsPageHeader
+          title={t.settingsExtended.schedulesPageTitle}
+          metadata={[
+            { label: t.settingsExtended.triggerLabel, value: t.settingsExtended.triggerValue },
+            { label: t.settingsExtended.runtimeLabel, value: t.settingsExtended.runtimeValue },
+          ]}
+          extra={(
+            <div className="inline-flex items-center gap-2 rounded-full border border-desktop-border bg-desktop-bg-primary/50 px-2.5 py-1 text-[10px] font-medium text-desktop-text-secondary">
+              <span className="opacity-70">{t.settingsExtended.tickEndpoint}:</span>
+              <code className="font-mono text-desktop-text-primary">/api/schedules/tick</code>
+            </div>
+          )}
+        />
+        <div className="min-h-0 flex-1 overflow-auto px-4 py-4">
+          <SchedulePanel workspaceId={effectiveWorkspaceId || undefined} />
         </div>
-        <SchedulePanel workspaceId={effectiveWorkspaceId || undefined} />
       </div>
     </SettingsRouteShell>
   );

@@ -52,7 +52,7 @@ describe("detectHarnessAutomations", () => {
       "      scheduleName: Weekly harness fluency",
     ].join("\n"));
 
-    writeFile(path.join(tmpDir, "tools/entrix/file_budgets.json"), JSON.stringify({
+    writeFile(path.join(tmpDir, "docs/fitness/file_budgets.json"), JSON.stringify({
       default_max_lines: 20,
       include_roots: ["src"],
       extensions: [".ts"],

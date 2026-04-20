@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { TaskRunInfo } from "../types";
+import { desktopAwareFetch } from "@/client/utils/diagnostics";
 
 export function useTaskRuns(taskId: string, refreshKey?: string | number) {
   const [runs, setRuns] = useState<TaskRunInfo[] | null>(null);
@@ -13,7 +14,7 @@ export function useTaskRuns(taskId: string, refreshKey?: string | number) {
     void (async () => {
       try {
         setError(null);
-        const response = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/runs`, {
+        const response = await desktopAwareFetch(`/api/tasks/${encodeURIComponent(taskId)}/runs`, {
           cache: "no-store",
           signal: controller.signal,
         });

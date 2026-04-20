@@ -387,8 +387,9 @@ export class AgentMemoryWriter {
         taskId: input.taskId,
         taskTitle: input.taskTitle,
         status: input.status,
-        verdict: input.verificationVerdict,
-        report: input.verificationReport,
+        verdict: input.verificationVerdict ?? null,
+        report: input.verificationReport ?? null,
+        snapshotSource: input.snapshotSource ?? null,
         updatedAt: timestamp,
       });
       await this.appendText(

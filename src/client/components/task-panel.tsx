@@ -21,6 +21,7 @@ import { normalizeThoughtContent } from "./chat-panel/thought-content";
 import { getToolEventLabel } from "./chat-panel/tool-call-name";
 import { useTranslation } from "@/i18n";
 import { Check, ChevronDown, ChevronRight, TriangleAlert, Zap } from "lucide-react";
+import { desktopAwareFetch } from "@/client/utils/diagnostics";
 
 
 // ─── Types ──────────────────────────────────────────────────────────────
@@ -266,7 +267,7 @@ export function CraftersView({
       setHistoryStateByAgentId((prev) => ({ ...prev, [activeAgent.id]: "loading" }));
     });
 
-    fetch(`/api/sessions/${activeAgent.sessionId}/history?consolidated=true`)
+    desktopAwareFetch(`/api/sessions/${activeAgent.sessionId}/history?consolidated=true`)
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (!data?.history?.length) {

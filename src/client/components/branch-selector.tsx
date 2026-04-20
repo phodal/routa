@@ -41,6 +41,15 @@ interface BranchSelectorProps {
   disabled?: boolean;
 }
 
+function interpolateBranchSelectorLabel(
+  template: string,
+  values: Record<"count" | "plural", string>,
+): string {
+  return template
+    .replace(/\{\{?count\}?\}/g, values.count)
+    .replace(/\{\{?plural\}?\}/g, values.plural);
+}
+
 // ─── Component ──────────────────────────────────────────────────────────
 
 export function BranchSelector({
@@ -304,7 +313,10 @@ export function BranchSelector({
               className="w-full px-3 py-2 flex items-center gap-2 text-xs text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/10 border-b border-slate-100 dark:border-slate-800 transition-colors"
             >
               <Download className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}/>
-              {t.branchSelector.pullNewCommits.replace("{{count}}", String(status.behind)).replace("{{plural}}", status.behind > 1 ? "s" : "")}
+              {interpolateBranchSelectorLabel(t.branchSelector.pullNewCommits, {
+                count: String(status.behind),
+                plural: status.behind > 1 ? "s" : "",
+              })}
             </Button>
           )}
 

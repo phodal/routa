@@ -33,7 +33,6 @@ import { ToolResult, successResult, errorResult } from "./tool-result";
 import { EventBus } from "../events/event-bus";
 import { emitColumnTransition } from "../kanban/column-transition";
 import { getKanbanEventBroadcaster } from "../kanban/kanban-event-broadcaster";
-import { markTaskLaneSessionStatus } from "../kanban/task-lane-history";
 import {
   createTaskLaneHandoff,
   getPreviousLaneSession,
@@ -41,6 +40,7 @@ import {
   getTaskLaneSession,
   upsertTaskLaneHandoff,
 } from "../kanban/task-lane-history";
+import { finalizeActiveTaskSession } from "../kanban/task-session-transition";
 import { buildRemainingLaneStepsMessage, resolveCurrentLaneAutomationState } from "../kanban/lane-automation-state";
 import { getInternalApiOrigin } from "../kanban/agent-trigger";
 import {
@@ -48,6 +48,30 @@ import {
   resolveTargetRequiredTaskFields,
   validateTaskReadiness,
 } from "../kanban/task-derived-summary";
+import {
+  appendTaskComment,
+  appendTaskCommentEntry,
+} from "../kanban/task-comment-log";
+import {
+  buildTaskDeliveryReadiness,
+  buildTaskDeliveryTransitionErrorFromRules,
+  type TaskDeliveryReadiness,
+} from "../kanban/task-delivery-readiness";
+import {
+  captureTaskDeliverySnapshot,
+  shouldCaptureTaskDeliverySnapshotForColumn,
+} from "../kanban/task-delivery-snapshot";
+import {
+  buildContractGateNote,
+  buildContractLoopBreakerMessage,
+  buildTaskContractReadiness,
+  buildTaskContractTransitionErrorFromRules,
+  buildTaskContractUpdateErrorFromRules,
+  CONTRACT_GATE_BLOCKED_LABEL,
+  countContractGateFailures,
+  resolveCurrentOrNextContractGate,
+} from "../kanban/task-contract-readiness";
+import { resolveTaskWorktreeTruth } from "../kanban/task-worktree-truth";
 
 const DESCRIPTION_FROZEN_STAGES = new Set<KanbanColumnStage>(["dev", "review", "blocked", "done"]);
 
@@ -226,7 +250,10 @@ export class KanbanTools {
 
     const fromColumnId = task.columnId ?? "backlog";
     const fromColumn = board.columns.find((c) => c.id === fromColumnId);
-    if (fromColumnId !== params.targetColumnId && task.triggerSessionId) {
+    const allowReviewFallbackToDev = fromColumnId === "review"
+      && params.targetColumnId === "dev"
+      && task.verificationVerdict === "NOT_APPROVED";
+    if (fromColumnId !== params.targetColumnId && task.triggerSessionId && !allowReviewFallbackToDev) {
       const laneAutomationState = resolveCurrentLaneAutomationState(task, board.columns, {
         currentSessionId: task.triggerSessionId,
       });
@@ -269,16 +296,51 @@ export class KanbanTools {
       }
     }
 
+    const contractReadiness = buildTaskContractReadiness(task, targetColumn.automation?.contractRules);
+    const contractError = buildTaskContractTransitionErrorFromRules(
+      contractReadiness,
+      targetColumn.name,
+      targetColumn.automation?.contractRules,
+    );
+    if (contractError) {
+      await this.recordTaskContractGateFailure(
+        task,
+        contractError,
+        targetColumn.name,
+        contractReadiness.loopBreakerThreshold,
+        task.triggerSessionId,
+      );
+      return errorResult(contractError);
+    }
+
+    let deliveryReadiness: TaskDeliveryReadiness | undefined;
+    if (this.isAutomationSystemCompatible()) {
+      deliveryReadiness = await buildTaskDeliveryReadiness(task, this.automationSystem!);
+      const deliveryError = buildTaskDeliveryTransitionErrorFromRules(
+        deliveryReadiness,
+        targetColumn.name,
+        targetColumn.automation?.deliveryRules,
+      );
+      if (deliveryError) {
+        await this.recordTaskMoveBlockComment(task, deliveryError, task.triggerSessionId);
+        return errorResult(deliveryError);
+      }
+    }
+
+    if (
+      fromColumnId !== params.targetColumnId
+      && shouldCaptureTaskDeliverySnapshotForColumn(params.targetColumnId)
+      && this.isAutomationSystemCompatible()
+    ) {
+      deliveryReadiness ??= await buildTaskDeliveryReadiness(task, this.automationSystem!);
+      task.deliverySnapshot = captureTaskDeliverySnapshot(task, deliveryReadiness, {
+        source: params.targetColumnId === "done" ? "done_transition" : "review_transition",
+      });
+    }
+
     // Preserve the current active session in history before clearing
     // This allows the next column's automation to create a fresh session
-    if (task.triggerSessionId) {
-      if (!task.sessionIds) task.sessionIds = [];
-      if (!task.sessionIds.includes(task.triggerSessionId)) {
-        task.sessionIds.push(task.triggerSessionId);
-      }
-      markTaskLaneSessionStatus(task, task.triggerSessionId, "transitioned");
-      task.triggerSessionId = undefined;
-    }
+    finalizeActiveTaskSession(task);
 
     task.columnId = params.targetColumnId;
     task.status = columnIdToTaskStatus(params.targetColumnId);
@@ -310,6 +372,8 @@ export class KanbanTools {
     title?: string;
     description?: string;
     comment?: string;
+    agentId?: string;
+    sessionId?: string;
     priority?: "low" | "medium" | "high" | "urgent";
     labels?: string[];
   }): Promise<ToolResult> {
@@ -325,9 +389,44 @@ export class KanbanTools {
       );
     }
 
+    if (params.description !== undefined && task.boardId) {
+      const board = await this.kanbanBoardStore.get(task.boardId);
+      const contractGate = board
+        ? resolveCurrentOrNextContractGate(board.columns, task.columnId)
+        : null;
+      if (contractGate) {
+        const nextTask = {
+          ...task,
+          objective: params.description,
+        };
+        const contractReadiness = buildTaskContractReadiness(nextTask, contractGate.rules);
+        const contractError = buildTaskContractUpdateErrorFromRules(
+          contractReadiness,
+          contractGate.columnName,
+          contractGate.rules,
+        );
+        if (contractError) {
+          await this.recordTaskContractGateFailure(
+            task,
+            contractError,
+            contractGate.columnName,
+            contractReadiness.loopBreakerThreshold,
+            params.sessionId,
+          );
+          return errorResult(contractError);
+        }
+      }
+    }
+
     if (params.title !== undefined) task.title = params.title;
     if (params.description !== undefined) task.objective = params.description;
-    if (params.comment !== undefined) task.comment = appendTaskComment(task.comment, params.comment);
+    if (params.comment !== undefined) {
+      task.comment = appendTaskComment(task.comment, params.comment);
+      task.comments = appendTaskCommentEntry(task.comments, params.comment, {
+        agentId: params.agentId,
+        sessionId: params.sessionId,
+      });
+    }
     if (params.priority !== undefined) task.priority = params.priority as TaskPriority;
     if (params.labels !== undefined) task.labels = params.labels;
     task.updatedAt = new Date();
@@ -362,6 +461,10 @@ export class KanbanTools {
     if (!previousLaneSession?.sessionId) {
       return errorResult(`No previous lane session found for card ${params.taskId}`);
     }
+    const taskWorktreeTruth = this.automationSystem
+      ? await resolveTaskWorktreeTruth(task, this.automationSystem)
+      : null;
+    const targetCwd = previousLaneSession.cwd ?? taskWorktreeTruth?.cwd ?? currentLaneSession?.cwd;
 
     const handoff = createTaskLaneHandoff({
       id: uuidv4(),
@@ -369,11 +472,41 @@ export class KanbanTools {
       toSessionId: previousLaneSession.sessionId,
       fromColumnId: currentLaneSession?.columnId ?? task.columnId,
       toColumnId: previousLaneSession.columnId,
+      worktreeId: task.worktreeId,
+      cwd: targetCwd,
       requestType: params.requestType,
       request: params.request,
     });
     upsertTaskLaneHandoff(task, handoff);
+    const shouldReturnToPreviousLane = task.columnId === "review"
+      && task.verificationVerdict === "NOT_APPROVED"
+      && previousLaneSession.columnId
+      && previousLaneSession.columnId !== task.columnId;
+    const previousColumn = shouldReturnToPreviousLane
+      ? board.columns.find((column) => column.id === previousLaneSession.columnId)
+      : undefined;
+    if (shouldReturnToPreviousLane && previousLaneSession.columnId) {
+      finalizeActiveTaskSession(task);
+      task.columnId = previousLaneSession.columnId;
+      task.status = columnIdToTaskStatus(previousLaneSession.columnId);
+      task.updatedAt = new Date();
+    }
     await this.taskStore.save(task);
+    if (shouldReturnToPreviousLane && previousLaneSession.columnId) {
+      this.notifyWorkspaceChanged(task.workspaceId, "task", "moved", task.id);
+      if (this.eventBus) {
+        emitColumnTransition(this.eventBus, {
+          cardId: task.id,
+          cardTitle: task.title,
+          boardId: task.boardId,
+          workspaceId: task.workspaceId,
+          fromColumnId: "review",
+          toColumnId: previousLaneSession.columnId,
+          fromColumnName: board.columns.find((column) => column.id === "review")?.name,
+          toColumnName: previousColumn?.name,
+        });
+      }
+    }
 
     try {
       await this.promptSession(
@@ -386,6 +519,8 @@ export class KanbanTools {
           request: params.request,
           requestingColumnId: handoff.fromColumnId,
           requestingSessionId: params.sessionId,
+          worktreeId: handoff.worktreeId,
+          cwd: handoff.cwd,
         }),
       );
       handoff.status = "delivered";
@@ -692,6 +827,7 @@ export class KanbanTools {
       title: task.title,
       description: task.objective,
       comment: task.comment,
+      comments: task.comments,
       status: task.status,
       columnId: task.columnId ?? "backlog",
       position: task.position,
@@ -760,6 +896,8 @@ export class KanbanTools {
     request: string;
     requestingColumnId?: string;
     requestingSessionId: string;
+    worktreeId?: string;
+    cwd?: string;
   }): string {
     return [
       `You have received a lane handoff request for card ${params.task.id}: ${params.task.title}.`,
@@ -767,6 +905,8 @@ export class KanbanTools {
       `Requesting lane: ${params.requestingColumnId ?? "unknown"}`,
       `Request type: ${this.formatHandoffRequestType(params.requestType)}`,
       `Request: ${params.request}`,
+      params.worktreeId ? `Task worktreeId: ${params.worktreeId}` : undefined,
+      params.cwd ? `Task cwd: ${params.cwd}` : undefined,
       "",
       "Complete only the requested support work for this card.",
       "If runtime setup or environment preparation is needed, perform it in this session.",
@@ -786,6 +926,8 @@ export class KanbanTools {
       `Request type: ${this.formatHandoffRequestType(handoff.requestType)}`,
       `Status: ${handoff.status}`,
       `Original request: ${handoff.request}`,
+      handoff.worktreeId ? `Task worktreeId: ${handoff.worktreeId}` : undefined,
+      handoff.cwd ? `Task cwd: ${handoff.cwd}` : undefined,
       handoff.responseSummary ? `Response: ${handoff.responseSummary}` : "Response: no summary provided",
       "",
       "Continue your current lane work using this updated runtime context.",
@@ -809,7 +951,10 @@ export class KanbanTools {
 
   private async resolveBoard(workspaceId: string, boardId?: string) {
     if (boardId) {
-      return await this.kanbanBoardStore.get(boardId);
+      const board = await this.kanbanBoardStore.get(boardId);
+      if (board?.workspaceId === workspaceId) {
+        return board;
+      }
     }
 
     return await this.kanbanBoardStore.getDefault(workspaceId);
@@ -859,6 +1004,66 @@ export class KanbanTools {
       && this.automationSystem.kanbanBoardStore === this.kanbanBoardStore,
     );
   }
+
+  private async recordTaskMoveBlockComment(
+    task: Task,
+    message: string,
+    sessionId?: string,
+  ): Promise<void> {
+    const note = `Move blocked: ${message}`.trim();
+    const lastComment = task.comments?.[task.comments.length - 1]?.body?.trim();
+    if (lastComment === note) {
+      return;
+    }
+
+    task.comment = appendTaskComment(task.comment, note);
+    task.comments = appendTaskCommentEntry(task.comments, note, {
+      sessionId,
+      source: undefined,
+    });
+    task.updatedAt = new Date();
+    await this.taskStore.save(task);
+    this.notifyWorkspaceChanged(task.workspaceId, "task", "updated", task.id);
+  }
+
+  private async recordTaskContractGateFailure(
+    task: Task,
+    message: string,
+    targetColumnName: string,
+    threshold: number,
+    sessionId?: string,
+  ): Promise<void> {
+    const note = buildContractGateNote(message);
+    let changed = true;
+
+    task.comment = appendTaskComment(task.comment, note);
+    task.comments = appendTaskCommentEntry(task.comments, note, {
+      sessionId,
+      source: undefined,
+    });
+
+    const failureCount = countContractGateFailures(task);
+    if (failureCount >= threshold) {
+      const nextLabels = Array.from(new Set([...(task.labels ?? []), CONTRACT_GATE_BLOCKED_LABEL]));
+      const nextMessage = buildContractLoopBreakerMessage(targetColumnName, failureCount, threshold);
+      if (task.lastSyncError !== nextMessage) {
+        task.lastSyncError = nextMessage;
+        changed = true;
+      }
+      if (nextLabels.length !== (task.labels ?? []).length) {
+        task.labels = nextLabels;
+        changed = true;
+      }
+    }
+
+    if (!changed) {
+      return;
+    }
+
+    task.updatedAt = new Date();
+    await this.taskStore.save(task);
+    this.notifyWorkspaceChanged(task.workspaceId, "task", "updated", task.id);
+  }
 }
 
 function normalizeColumnStage(columnId?: string): KanbanColumnStage | undefined {
@@ -873,13 +1078,4 @@ function normalizeColumnStage(columnId?: string): KanbanColumnStage | undefined 
     default:
       return undefined;
   }
-}
-
-function appendTaskComment(existing: string | undefined, next: string): string {
-  const trimmedNext = next.trim();
-  if (!trimmedNext) {
-    return existing ?? "";
-  }
-  const trimmedExisting = existing?.trim();
-  return trimmedExisting ? `${trimmedExisting}\n\n${trimmedNext}` : trimmedNext;
 }

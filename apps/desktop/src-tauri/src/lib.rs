@@ -117,6 +117,16 @@ fn update_tray_github_repos(app: tauri::AppHandle, repos: Vec<GitHubRepo>) -> Re
     tray::update_tray_repos(&app, &repos).map_err(|e| e.to_string())
 }
 
+/// Open an external URL in the user's default browser.
+#[tauri::command]
+fn open_external_url(app: tauri::AppHandle, url: String) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt;
+
+    app.opener()
+        .open_url(&url, None::<&str>)
+        .map_err(|e| format!("Failed to open URL {url}: {e}"))
+}
+
 // ─── ACP Agent Installation State ─────────────────────────────────────────
 
 /// Shared state for ACP agent installation.
@@ -388,7 +398,8 @@ fn api_port() -> u16 {
         .unwrap_or(3210)
 }
 
-const DEFAULT_WORKSPACE_ID: &str = "default";
+pub(crate) const DEFAULT_WORKSPACE_ID: &str = "default";
+pub(crate) const DESKTOP_LAST_WORKSPACE_ID_STORAGE_KEY: &str = "routa.desktop.last-workspace-id";
 
 fn escape_html(value: &str) -> String {
     value
@@ -399,7 +410,7 @@ fn escape_html(value: &str) -> String {
         .replace('\'', "&#39;")
 }
 
-fn desktop_workspace_navigation_js(port: u16, route_suffix: &str) -> String {
+pub(crate) fn desktop_workspace_navigation_js(_port: u16, route_suffix: &str) -> String {
     format!(
         r#"
             (function() {{
@@ -531,7 +542,7 @@ fn show_startup_error(window: &tauri::WebviewWindow, api_url: &str, db_path: &st
     let serialized_html = serde_json::to_string(&html)
         .unwrap_or_else(|_| "\"<h1>Routa Desktop startup failed</h1>\"".to_string());
     let js = format!("document.open(); document.write({serialized_html}); document.close();");
-    let _ = window.eval(&js);
+    let _ = window.eval(js);
 }
 
 fn start_local_next_server(host: &str, port: u16) -> Result<Child, String> {
@@ -766,6 +777,7 @@ pub fn run() {
             get_home_dir,
             is_git_repo,
             log_frontend,
+            open_external_url,
             rpc_call,
             fetch_acp_registry,
             get_installed_agents,
@@ -954,15 +966,28 @@ pub fn run() {
                         if let Some(window) = app_handle.get_webview_window("main") {
                             let js = r#"
                                 (async () => {
+                                    const resolveApiBase = () => {
+                                        try {
+                                            const params = new URLSearchParams(window.location.search);
+                                            const backend = (params.get("backend") || localStorage.getItem("routa.backendBaseUrl") || "").trim();
+                                            if (backend) return backend;
+                                            if (window.location.protocol === "tauri:") return "http://127.0.0.1:3210";
+                                        } catch {}
+                                        return "";
+                                    };
+
+                                    const apiBase = resolveApiBase();
+                                    const apiPath = (path) => `${apiBase || ""}${path}`;
+
                                     try {
                                         // Get current mode
-                                        const res = await fetch('/api/mcp/tools');
+                                        const res = await fetch(apiPath('/api/mcp/tools'));
                                         const data = await res.json();
                                         const currentMode = data?.globalMode || 'essential';
                                         const newMode = currentMode === 'essential' ? 'full' : 'essential';
 
                                         // Update mode
-                                        await fetch('/api/mcp/tools', {
+                                        await fetch(apiPath('/api/mcp/tools'), {
                                             method: 'PATCH',
                                             headers: { 'Content-Type': 'application/json' },
                                             body: JSON.stringify({ mode: newMode })
@@ -986,7 +1011,7 @@ pub fn run() {
                         if let Some(window) = app_handle.get_webview_window("main") {
                             let port = api_port();
                             let js = desktop_workspace_navigation_js(port, "");
-                            let _ = window.eval(&js);
+                            let _ = window.eval(js);
                             println!("[menu] Navigating to Dashboard");
                         }
                     }
@@ -995,7 +1020,7 @@ pub fn run() {
                         if let Some(window) = app_handle.get_webview_window("main") {
                             let port = api_port();
                             let js = desktop_workspace_navigation_js(port, "/kanban");
-                            let _ = window.eval(&js);
+                            let _ = window.eval(js);
                             println!("[menu] Navigating to Kanban");
                         }
                     }

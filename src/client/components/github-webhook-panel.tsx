@@ -14,6 +14,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Select } from "./select";
 import { useTranslation } from "@/i18n";
 import type { TranslationDictionary } from "@/i18n/types";
+import { desktopAwareFetch, getDesktopApiBaseUrl } from "@/client/utils/diagnostics";
 import { Plus, RefreshCw, SquarePen, Trash2, Link2, Circle, CircleOff } from "lucide-react";
 
 
@@ -119,17 +120,18 @@ export function GitHubWebhookPanel() {
 
   // Detect server URL for webhook registration
   useEffect(() => {
-    setServerUrl(window.location.origin);
+    const backendBase = getDesktopApiBaseUrl();
+    setServerUrl(backendBase || window.location.origin);
   }, []);
 
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
       const [cfgRes, logRes, pollRes, specRes] = await Promise.all([
-        fetch("/api/webhooks/configs"),
-        fetch("/api/webhooks/webhook-logs?limit=50"),
-        fetch("/api/polling/config"),
-        fetch("/api/specialists"),
+        desktopAwareFetch("/api/webhooks/configs"),
+        desktopAwareFetch("/api/webhooks/webhook-logs?limit=50"),
+        desktopAwareFetch("/api/polling/config"),
+        desktopAwareFetch("/api/specialists"),
       ]);
       if (cfgRes.ok) {
         const data = await cfgRes.json();
@@ -219,7 +221,7 @@ export function GitHubWebhookPanel() {
         promptTemplate: form.promptTemplate || undefined,
       };
 
-      const res = await fetch("/api/webhooks/configs", {
+      const res = await desktopAwareFetch("/api/webhooks/configs", {
         method: editId ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -244,7 +246,7 @@ export function GitHubWebhookPanel() {
   async function handleDelete(id: string) {
     if (!window.confirm(wt.deleteConfirm)) return;
     try {
-      const res = await fetch(`/api/webhooks/configs?id=${id}`, { method: "DELETE" });
+      const res = await desktopAwareFetch(`/api/webhooks/configs?id=${id}`, { method: "DELETE" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setSuccess(wt.configDeleted);
       await loadData();
@@ -264,7 +266,7 @@ export function GitHubWebhookPanel() {
     setError(null);
     try {
       const webhookUrl = `${serverUrl}/api/webhooks/github`;
-      const res = await fetch("/api/webhooks/register", {
+      const res = await desktopAwareFetch("/api/webhooks/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -292,7 +294,7 @@ export function GitHubWebhookPanel() {
 
   async function handleToggleEnabled(config: WebhookConfig) {
     try {
-      const res = await fetch("/api/webhooks/configs", {
+      const res = await desktopAwareFetch("/api/webhooks/configs", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: config.id, enabled: !config.enabled }),
@@ -309,7 +311,7 @@ export function GitHubWebhookPanel() {
   async function handleTogglePolling() {
     try {
       const newEnabled = !pollingEnabled;
-      const res = await fetch("/api/polling/config", {
+      const res = await desktopAwareFetch("/api/polling/config", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ enabled: newEnabled, intervalSeconds: pollingInterval }),
@@ -327,7 +329,7 @@ export function GitHubWebhookPanel() {
   async function handleManualCheck() {
     try {
       setPollingChecking(true);
-      const res = await fetch("/api/polling/check", { method: "POST" });
+      const res = await desktopAwareFetch("/api/polling/check", { method: "POST" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       setPollingLastChecked(data.checkedAt);
@@ -344,7 +346,7 @@ export function GitHubWebhookPanel() {
   async function handleUpdatePollingInterval(newInterval: number) {
     if (newInterval < 10) return;
     try {
-      const res = await fetch("/api/polling/config", {
+      const res = await desktopAwareFetch("/api/polling/config", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ intervalSeconds: newInterval }),

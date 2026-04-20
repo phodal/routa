@@ -8,6 +8,7 @@ pub mod acp_serve;
 pub mod agent;
 pub mod chat;
 pub mod delegate;
+pub mod feature_tree;
 pub mod fitness;
 pub mod graph;
 pub mod harness;

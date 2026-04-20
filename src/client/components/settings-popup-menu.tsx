@@ -28,6 +28,9 @@ interface SettingsPopupMenuProps {
   isActive?: boolean;
   buttonClassName?: string;
   className?: string;
+  showSettingsLink?: boolean;
+  showLanguageMenu?: boolean;
+  showThemeMenu?: boolean;
 }
 
 export function SettingsPopupMenu({
@@ -36,6 +39,9 @@ export function SettingsPopupMenu({
   isActive = false,
   buttonClassName,
   className,
+  showSettingsLink = true,
+  showLanguageMenu = true,
+  showThemeMenu = true,
 }: SettingsPopupMenuProps) {
   const { t, locale, setLocale } = useTranslation();
   const themeSnapshot = React.useSyncExternalStore(
@@ -68,22 +74,24 @@ export function SettingsPopupMenu({
     if (preference === "dark") return t.settings.dark;
     return t.settings.system;
   };
+  const buttonAriaLabel = showSettingsLink ? t.settings.title : t.settings.preferences;
+  const hasPreferenceMenus = showLanguageMenu || showThemeMenu;
 
   return (
     <div className={`relative group ${className ?? ""}`}>
       <button
         type="button"
-        aria-label={t.settings.title}
+        aria-label={buttonAriaLabel}
         className={`inline-flex items-center rounded-md border border-desktop-border text-xs font-medium transition-colors ${buttonClassName ?? "h-8 px-2 py-1"} ${
           isActive
-            ? "bg-desktop-bg-active text-desktop-accent"
-            : "text-desktop-text-secondary hover:border-desktop-accent/40 hover:text-desktop-text-primary hover:bg-desktop-bg-active/60"
+            ? "bg-desktop-bg-active text-desktop-text-primary"
+            : "text-desktop-text-secondary hover:border-desktop-border hover:text-desktop-text-secondary hover:bg-desktop-bg-active/60"
         }`}
       >
         <Settings className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.7}/>
         {showLabel ? (
           <>
-            <span className="ml-1.5 mr-1.5">{t.settings.title}</span>
+            <span className="ml-1.5 mr-1.5">{buttonAriaLabel}</span>
             <ChevronDown className="h-3 w-3 opacity-70" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
           </>
         ) : null}
@@ -91,14 +99,19 @@ export function SettingsPopupMenu({
       <div
         className={`invisible absolute z-20 ${menuPositionClass} ${menuWidthClass} rounded-lg border border-desktop-border bg-desktop-bg-secondary/95 p-1 text-[11px] opacity-0 shadow-lg backdrop-blur transition-all duration-150 group-hover:visible group-hover:opacity-100 ${isTopbar ? "translate-y-1" : "translate-y-0"} group-hover:translate-y-0`}
       >
-        <Link
-          href="/settings"
-          className="mb-1 block rounded-md border border-transparent px-2 py-1.5 font-semibold text-desktop-text-secondary transition-colors hover:bg-desktop-bg-active hover:text-desktop-text-primary hover:border-desktop-border"
-        >
-          {t.settings.title}
-        </Link>
-        <div className="border-t border-desktop-border/70" />
-        <div className="relative group/language">
+        {showSettingsLink ? (
+          <>
+            <Link
+              href="/settings"
+              className="block rounded-md border border-transparent px-2 py-1.5 font-semibold text-desktop-text-secondary transition-colors hover:bg-desktop-bg-active hover:text-desktop-text-secondary hover:border-desktop-border"
+            >
+              {t.settings.title}
+            </Link>
+            {hasPreferenceMenus ? <div className="mt-1 border-t border-desktop-border/70" /> : null}
+          </>
+        ) : null}
+        {showLanguageMenu ? (
+          <div className="relative group/language">
           <button
             type="button"
             className="mt-1 inline-flex w-full items-center justify-between rounded-md border border-transparent px-2 py-1.5 text-desktop-text-secondary transition-colors hover:bg-desktop-bg-active hover:text-desktop-text-primary hover:border-desktop-border"
@@ -130,8 +143,10 @@ export function SettingsPopupMenu({
               );
             })}
           </div>
-        </div>
-        <div className="relative group/theme">
+          </div>
+        ) : null}
+        {showThemeMenu ? (
+          <div className="relative group/theme">
           <button
             type="button"
             className="mt-1 inline-flex w-full items-center justify-between rounded-md border border-transparent px-2 py-1.5 text-desktop-text-secondary transition-colors hover:bg-desktop-bg-active hover:text-desktop-text-primary hover:border-desktop-border"
@@ -170,7 +185,8 @@ export function SettingsPopupMenu({
               );
             })}
           </div>
-        </div>
+          </div>
+        ) : null}
       </div>
     </div>
   );

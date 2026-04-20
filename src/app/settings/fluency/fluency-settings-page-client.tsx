@@ -3,10 +3,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
+import { DesktopAppShell } from "@/client/components/desktop-app-shell";
 import { FitnessAnalysisPanel } from "@/client/components/fitness-analysis-panel";
 import { RepoPicker, type RepoSelection } from "@/client/components/repo-picker";
-import { SettingsPageHeader } from "@/client/components/settings-page-header";
-import { SettingsRouteShell } from "@/client/components/settings-route-shell";
 import { WorkspaceSwitcher } from "@/client/components/workspace-switcher";
 import { useCodebases, useWorkspaces } from "@/client/hooks/use-workspaces";
 import { loadRepoSelection, saveRepoSelection } from "@/client/utils/repo-selection-storage";
@@ -96,6 +95,11 @@ export function FluencySettingsPageClient({ defaultRepoPath }: FluencySettingsPa
   }, [activeCodebase, codebases, effectiveRepoOverride, initialRepoPath]);
 
   const activeRepoCodebaseId = matchedSelectedCodebase?.id;
+  const activeWorkspaceStatus = activeWorkspaceTitle || workspaceId || "-";
+  const activeRepoBranch = activeRepoSelection?.branch?.trim() ?? "";
+  const activeRepoStatus = activeRepoSelection?.path
+    ? (activeRepoBranch ? `${activeRepoSelection.name} (${activeRepoBranch})` : activeRepoSelection.name)
+    : t.settings.repository;
 
   useEffect(() => {
     if (requestedRepoPath || requestedCodebaseId) {
@@ -106,10 +110,7 @@ export function FluencySettingsPageClient({ defaultRepoPath }: FluencySettingsPa
   }, [activeRepoSelection, requestedCodebaseId, requestedRepoPath, workspaceId]);
 
   return (
-    <SettingsRouteShell
-      title={t.nav.fluency}
-      description={t.settings.fluencyDescription}
-      badgeLabel={t.settings.diagnosticsBeta}
+    <DesktopAppShell
       workspaceId={workspaceId}
       workspaceTitle={activeWorkspaceTitle}
       workspaceSwitcher={(
@@ -134,56 +135,74 @@ export function FluencySettingsPageClient({ defaultRepoPath }: FluencySettingsPa
           desktop
         />
       )}
+      titleBarRight={(
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="desktop-badge">{t.settings.diagnosticsBeta}</span>
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-desktop-text-secondary">
+              {t.settings.repository}
+            </span>
+            <RepoPicker
+              value={activeRepoSelection}
+              onChange={(selection) => {
+                setInitialRepoPath("");
+                setSelectedRepoOverrideState({ workspaceId, selection });
+                if (!selection) {
+                  setSelectedCodebaseId("");
+                  return;
+                }
+
+                const matchedCodebase = codebases.find((codebase) => (
+                  codebase.repoPath === selection.path
+                  && (selection.branch ? (codebase.branch ?? "") === selection.branch : true)
+                )) ?? codebases.find((codebase) => codebase.repoPath === selection.path)
+                  ?? codebases.find((codebase) => (
+                    (codebase.label ?? codebase.repoPath.split("/").pop() ?? codebase.repoPath) === selection.name
+                  ));
+
+                setSelectedCodebaseId(matchedCodebase?.id ?? "");
+              }}
+              pathDisplay="hidden"
+              additionalRepos={codebases.map((codebase) => ({
+                name: codebase.label ?? codebase.repoPath.split("/").pop() ?? codebase.repoPath,
+                path: codebase.repoPath,
+                branch: codebase.branch ?? "",
+              }))}
+            />
+          </div>
+        </div>
+      )}
     >
-      <div className="space-y-4">
-        <SettingsPageHeader
-          title={t.nav.fluency}
-          description=""
-          metadata={[]}
-          extra={(
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-[11px]">
-              <div className="flex min-w-0 items-center gap-2">
-                <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-desktop-text-secondary">
-                  {t.settings.repository}
-                </span>
-                <RepoPicker
-                  value={activeRepoSelection}
-                  onChange={(selection) => {
-                    setInitialRepoPath("");
-                    setSelectedRepoOverrideState({ workspaceId, selection });
-                    if (!selection) {
-                      setSelectedCodebaseId("");
-                      return;
-                    }
+      <div className="flex h-full min-h-0 overflow-hidden bg-desktop-bg-primary text-desktop-text-primary" data-testid="fluency-console-root">
+        <div className="flex min-w-0 flex-1 flex-col">
+          <div className="border-b border-desktop-border bg-desktop-bg-secondary/50 px-4 py-2 text-[11px] text-desktop-text-secondary">
+            <span>{t.workspace.workspaceLabel} </span>
+            <span className="text-desktop-text-primary">{activeWorkspaceStatus}</span>
+            <span className="mx-2 text-desktop-text-tertiary">|</span>
+            <span>{t.settings.repository}: </span>
+            <span className="text-desktop-text-primary">{activeRepoSelection?.name ?? "-"}</span>
+            <span className="mx-2 text-desktop-text-tertiary">|</span>
+            <span className="truncate">{activeRepoSelection?.path ?? "-"}</span>
+          </div>
 
-                    const matchedCodebase = codebases.find((codebase) => (
-                      codebase.repoPath === selection.path
-                      && (selection.branch ? (codebase.branch ?? "") === selection.branch : true)
-                    )) ?? codebases.find((codebase) => codebase.repoPath === selection.path)
-                      ?? codebases.find((codebase) => (
-                        (codebase.label ?? codebase.repoPath.split("/").pop() ?? codebase.repoPath) === selection.name
-                      ));
+          <div className="min-h-0 flex-1 overflow-y-auto bg-desktop-bg-primary desktop-scrollbar">
+            <FitnessAnalysisPanel
+              workspaceId={workspaceId}
+              codebaseId={activeRepoCodebaseId}
+              repoPath={activeRepoSelection?.path}
+            />
+          </div>
 
-                    setSelectedCodebaseId(matchedCodebase?.id ?? "");
-                  }}
-                  pathDisplay="hidden"
-                  additionalRepos={codebases.map((codebase) => ({
-                    name: codebase.label ?? codebase.repoPath.split("/").pop() ?? codebase.repoPath,
-                    path: codebase.repoPath,
-                    branch: codebase.branch ?? "",
-                  }))}
-                />
-              </div>
+          <div className="flex h-6 shrink-0 items-center justify-between bg-desktop-accent px-3 text-[10px] text-desktop-accent-text">
+            <div className="flex items-center gap-3">
+              <span>{activeWorkspaceStatus}</span>
             </div>
-          )}
-        />
-
-        <FitnessAnalysisPanel
-          workspaceId={workspaceId}
-          codebaseId={activeRepoCodebaseId}
-          repoPath={activeRepoSelection?.path}
-        />
+            <div className="flex items-center gap-3">
+              <span>{activeRepoStatus}</span>
+            </div>
+          </div>
+        </div>
       </div>
-    </SettingsRouteShell>
+    </DesktopAppShell>
   );
 }

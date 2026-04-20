@@ -114,7 +114,7 @@ export function useSessionPageBootstrap(params: UseSessionPageBootstrapParams) {
   useEffect(() => {
     const loadSpecialists = async () => {
       try {
-        const res = await fetch("/api/specialists");
+        const res = await desktopAwareFetch("/api/specialists");
         if (!res.ok) return;
         const data = await res.json();
         const items: SpecialistOption[] = (data.specialists || [])
@@ -153,7 +153,7 @@ export function useSessionPageBootstrap(params: UseSessionPageBootstrapParams) {
     if (sessionMetadataLoadedRef.current.has(displaySessionId)) return;
     sessionMetadataLoadedRef.current.add(displaySessionId);
 
-    fetch(`/api/sessions/${displaySessionId}`)
+    desktopAwareFetch(`/api/sessions/${displaySessionId}`)
       .then((res) => {
         if (!res.ok) return null;
         return res.json();
@@ -243,7 +243,7 @@ export function useSessionPageBootstrap(params: UseSessionPageBootstrapParams) {
   }, [acpUpdates, acpSelectedProvider, setDockerErrorMessage, setDockerRetryText]);
 
   useEffect(() => {
-    fetch("/api/mcp/tools")
+    desktopAwareFetch("/api/mcp/tools")
       .then((res) => res.json())
       .then((data) => {
         if (data?.globalMode) {
@@ -257,7 +257,7 @@ export function useSessionPageBootstrap(params: UseSessionPageBootstrapParams) {
     const newMode = checked ? "essential" : "full";
     setToolMode(newMode);
     try {
-      await fetch("/api/mcp/tools", {
+      await desktopAwareFetch("/api/mcp/tools", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ mode: newMode }),

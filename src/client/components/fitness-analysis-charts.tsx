@@ -50,7 +50,7 @@ export function FluencyRadarChart({ report, compact = false }: { report: Fitness
   const polygonPoints = points.map(({ point }) => `${point.x},${point.y}`).join(" ");
 
   return (
-    <section className="rounded-2xl border border-desktop-border bg-white/80 p-4 dark:bg-white/6">
+    <section className="rounded-sm border border-desktop-border bg-desktop-bg-secondary/60 p-4">
       <div className="flex items-center justify-between gap-3">
         <div>
           <div className="text-xs font-semibold uppercase tracking-[0.14em] text-desktop-text-secondary">Readiness radar</div>
@@ -109,7 +109,7 @@ export function FluencyLevelLadder({ report, compact = false }: { report: Fitnes
   const nextLevel = report.nextLevel;
 
   return (
-    <section className="rounded-2xl border border-desktop-border bg-white/80 p-4 dark:bg-white/6">
+    <section className="rounded-sm border border-desktop-border bg-desktop-bg-secondary/60 p-4">
       <div className="flex items-center justify-between gap-3">
         <div>
           <div className="text-xs font-semibold uppercase tracking-[0.14em] text-desktop-text-secondary">Level ladder</div>
@@ -140,7 +140,7 @@ export function FluencyLevelLadder({ report, compact = false }: { report: Fitnes
               >
                 {index + 1}
               </div>
-              <div className="min-w-0 flex-1 rounded-xl border border-desktop-border bg-desktop-bg-primary/80 px-3 py-2">
+              <div className="min-w-0 flex-1 rounded-sm border border-desktop-border bg-desktop-bg-primary/80 px-3 py-2">
                 <div className="flex items-center justify-between gap-2">
                   <div className="text-sm font-semibold text-desktop-text-primary">{levelName}</div>
                   <div className="text-[10px] uppercase tracking-[0.12em] text-desktop-text-secondary">
@@ -171,7 +171,7 @@ export function FluencyBlockerBarChart({ blockers, compact = false }: { blockers
   const max = Math.max(...rows.map((row) => row.count), 1);
 
   return (
-    <section className="rounded-2xl border border-desktop-border bg-white/80 p-4 dark:bg-white/6">
+    <section className="rounded-sm border border-desktop-border bg-desktop-bg-secondary/60 p-4">
       <div className="flex items-center justify-between gap-3">
         <div>
           <div className="text-xs font-semibold uppercase tracking-[0.14em] text-desktop-text-secondary">Blocker impact</div>
@@ -193,7 +193,7 @@ export function FluencyBlockerBarChart({ blockers, compact = false }: { blockers
             </div>
           </div>
         )) : (
-          <div className="rounded-xl border border-dashed border-desktop-border px-3 py-5 text-sm text-desktop-text-secondary">
+          <div className="rounded-sm border border-dashed border-desktop-border px-3 py-5 text-sm text-desktop-text-secondary">
             当前没有 blocker，可以把重点放在能力提升或趋势对比上。
           </div>
         )}

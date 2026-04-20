@@ -15,11 +15,13 @@
  */
 import { spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, rmSync } from "fs";
+import { createRequire } from "module";
 import path from "path";
 import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, "..", "..");
+const requireFromRoot = createRequire(path.join(root, "package.json"));
 
 const standaloneDir = path.join(root, ".next-desktop", "standalone");
 const staticDir = path.join(root, ".next-desktop", "static");
@@ -33,51 +35,100 @@ const bundleRoot = path.join(
   "desktop-server"
 );
 
+function resolveLocalCli(moduleId) {
+  try {
+    return requireFromRoot.resolve(moduleId);
+  } catch {
+    return null;
+  }
+}
+
 function runNextBuild() {
+  const nextCliPath = resolveLocalCli("next/dist/bin/next");
   // nosemgrep: javascript.lang.security.detect-child-process.detect-child-process
   // Commands are hardcoded and invoked without shell interpolation.
-  const result = spawnSync("npx", ["next", "build"], {
-    cwd: root,
-    stdio: "inherit",
-    env: {
-      ...process.env,
-      ROUTA_DESKTOP_SERVER_BUILD: "1",
-      ROUTA_DESKTOP_STANDALONE: "1",
-    },
-    shell: false,
-  });
+  const result = nextCliPath
+    ? spawnSync(process.execPath, [nextCliPath, "build"], {
+        cwd: root,
+        stdio: "inherit",
+        env: {
+          ...process.env,
+          ROUTA_DESKTOP_SERVER_BUILD: "1",
+          ROUTA_DESKTOP_STANDALONE: "1",
+        },
+        shell: false,
+      })
+    : spawnSync("npm", ["exec", "--no", "--", "next", "build"], {
+        cwd: root,
+        stdio: "inherit",
+        env: {
+          ...process.env,
+          ROUTA_DESKTOP_SERVER_BUILD: "1",
+          ROUTA_DESKTOP_STANDALONE: "1",
+        },
+        shell: false,
+      });
   if (result.error) {
     throw result.error;
   }
   if (result.status !== 0) {
     const code = typeof result.status === "number" ? result.status : 1;
-    throw new Error(`Command failed with status ${code}: npx next build`);
+    if (!nextCliPath) {
+      throw new Error(
+        `Command failed with status ${code}: npm exec --no -- next build. Root frontend dependencies may be missing; run \`npm ci\` first.`
+      );
+    }
+    throw new Error(`Command failed with status ${code}: next build`);
   }
 }
 
 function runEsbuild(entry, outfile) {
+  const esbuildCliPath = resolveLocalCli("esbuild/bin/esbuild");
   // nosemgrep: javascript.lang.security.detect-child-process.detect-child-process
   // Esbuild args are derived from internal constants for packaging.
-  const result = spawnSync("npx", [
-    "esbuild",
-    entry,
-    "--bundle",
-    "--platform=node",
-    "--format=cjs",
-    "--external:better-sqlite3",
-    `--outfile=${outfile}`,
-  ], {
-    cwd: root,
-    stdio: "inherit",
-    env: process.env,
-    shell: false,
-  });
+  const result = esbuildCliPath
+    ? spawnSync(process.execPath, [
+        esbuildCliPath,
+        entry,
+        "--bundle",
+        "--platform=node",
+        "--format=cjs",
+        "--external:better-sqlite3",
+        `--outfile=${outfile}`,
+      ], {
+        cwd: root,
+        stdio: "inherit",
+        env: process.env,
+        shell: false,
+      })
+    : spawnSync("npm", [
+        "exec",
+        "--no",
+        "--",
+        "esbuild",
+        entry,
+        "--bundle",
+        "--platform=node",
+        "--format=cjs",
+        "--external:better-sqlite3",
+        `--outfile=${outfile}`,
+      ], {
+        cwd: root,
+        stdio: "inherit",
+        env: process.env,
+        shell: false,
+      });
   if (result.error) {
     throw result.error;
   }
   if (result.status !== 0) {
     const code = typeof result.status === "number" ? result.status : 1;
-    throw new Error(`Command failed with status ${code}: npx esbuild ${entry}`);
+    if (!esbuildCliPath) {
+      throw new Error(
+        `Command failed with status ${code}: npm exec --no -- esbuild ${entry}. Root frontend dependencies may be missing; run \`npm ci\` first.`
+      );
+    }
+    throw new Error(`Command failed with status ${code}: esbuild ${entry}`);
   }
 }
 

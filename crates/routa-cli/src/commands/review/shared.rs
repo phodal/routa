@@ -382,7 +382,7 @@ pub(crate) fn build_review_input_payload(
 }
 
 fn load_graph_review_context(repo_root: &Path, base: &str) -> Option<Value> {
-    let output = Command::new("entrix")
+    let output = entrix_command(repo_root)
         .args(["graph", "review-context", "--base", base, "--json"])
         .current_dir(repo_root)
         .output()
@@ -392,6 +392,24 @@ fn load_graph_review_context(repo_root: &Path, base: &str) -> Option<Value> {
     }
 
     serde_json::from_str(String::from_utf8_lossy(&output.stdout).trim()).ok()
+}
+
+fn entrix_command(repo_root: &Path) -> Command {
+    let debug_binary = repo_root
+        .join("target")
+        .join("debug")
+        .join(if cfg!(windows) {
+            "entrix.exe"
+        } else {
+            "entrix"
+        });
+    if debug_binary.exists() {
+        Command::new(debug_binary)
+    } else {
+        let mut command = Command::new("cargo");
+        command.args(["run", "-q", "-p", "entrix", "--"]);
+        command
+    }
 }
 
 pub(crate) fn load_specialist_by_id(

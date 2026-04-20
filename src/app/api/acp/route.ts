@@ -31,6 +31,9 @@ import { isOpencodeServerConfigured } from "@/core/acp/opencode-sdk-adapter";
 import { AcpError } from "@/core/acp/acp-process";
 import {
   loadHistorySinceEventIdFromDb,
+  loadSessionFromDb,
+  loadSessionFromLocalStorage,
+  persistSessionToDb,
   renameSessionInDb,
   updateSessionExecutionBindingInDb,
 } from "@/core/acp/session-db-persister";
@@ -56,6 +59,13 @@ import { getSessionWriteBuffer } from "./acp-session-history";
 import { handleSessionPrompt } from "./acp-session-prompt";
 
 export const dynamic = "force-dynamic";
+
+function isAcpErrorLike(error: unknown): error is AcpError {
+  if (error instanceof AcpError) return true;
+  if (!error || typeof error !== "object") return false;
+  const candidate = error as Record<string, unknown>;
+  return candidate.name === "AcpError" && typeof candidate.message === "string";
+}
 
 function encodeSsePayload(payload: unknown): string {
   const params = typeof payload === "object" && payload !== null
@@ -107,6 +117,26 @@ function pushAndPersistForwardedNotification(
   if (shouldFlushForwardedSessionUpdate(notification)) {
     void buffer.flush(sessionId);
   }
+}
+
+function markMissingInteractiveRequestAsFailed(
+  sessionId: string,
+  toolCallId: string,
+  response: Record<string, unknown>,
+): void {
+  const store = getHttpSessionStore();
+  pushAndPersistForwardedNotification(store, sessionId, {
+    update: {
+      sessionUpdate: "tool_call_update",
+      toolCallId,
+      title: "UserInputResponse",
+      status: "failed",
+      rawInput: response,
+      rawOutput: {
+        message: "No pending interactive request found for this session",
+      },
+    },
+  });
 }
 
 function requireWorkspaceId(value: unknown): string | null {
@@ -286,6 +316,8 @@ export async function GET(request: NextRequest) {
 // ─── POST: JSON-RPC request handler ────────────────────────────────────
 
 export async function POST(request: NextRequest) {
+  let requestId: string | number | null = null;
+  let requestMethod = "unknown";
   try {
     const body = await request.json();
     const { method, params, id } = body as {
@@ -294,6 +326,8 @@ export async function POST(request: NextRequest) {
       method: string;
       params?: Record<string, unknown>;
     };
+    requestId = id ?? null;
+    requestMethod = method;
 
     // ── initialize ─────────────────────────────────────────────────────
     // No agent process yet; return our own capabilities.
@@ -301,7 +335,7 @@ export async function POST(request: NextRequest) {
       return jsonrpcResponse(id ?? null, {
         protocolVersion: (params as { protocolVersion?: number })?.protocolVersion ?? 1,
         agentCapabilities: {
-          loadSession: false,
+          loadSession: true,
         },
         agentInfo: {
           name: "routa-acp",
@@ -381,6 +415,7 @@ export async function POST(request: NextRequest) {
       }
 
       const sessionMethods = new Set([
+        "session/load",
         "session/prompt",
         "session/respond_user_input",
         "session/cancel",
@@ -456,6 +491,184 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    // ── session/load ──────────────────────────────────────────────────
+    if (method === "session/load") {
+      const p = (params ?? {}) as Record<string, unknown>;
+      const sessionId = typeof p.sessionId === "string" ? p.sessionId : undefined;
+      const manager = getAcpProcessManager();
+      const store = getHttpSessionStore();
+
+      if (!sessionId) {
+        return jsonrpcResponse(id ?? null, null, {
+          code: -32602,
+          message: "Missing sessionId",
+        });
+      }
+
+      const existingSession = manager.hasActiveSession(sessionId);
+
+      const storedSession = store.getSession(sessionId);
+      const persistedSession = storedSession
+        ? null
+        : (await loadSessionFromDb(sessionId)) ?? (await loadSessionFromLocalStorage(sessionId));
+      const recoveredSession = storedSession ?? persistedSession ?? undefined;
+
+      if (!recoveredSession) {
+        return jsonrpcResponse(id ?? null, null, {
+          code: -32004,
+          message: `Persisted session not found: ${sessionId}`,
+        });
+      }
+
+      const ownershipIssue = getEmbeddedOwnershipIssue(recoveredSession);
+      if (ownershipIssue) {
+        return jsonrpcResponse(id ?? null, null, {
+          code: -32010,
+          message: ownershipIssue,
+        });
+      }
+
+      const provider = recoveredSession.provider ?? (isServerlessEnvironment() ? "claude-code-sdk" : "opencode");
+      const cwd = (typeof p.cwd === "string" ? p.cwd : recoveredSession.cwd) ?? process.cwd();
+      const workspaceId = recoveredSession.workspaceId;
+      const role = recoveredSession.role ?? "CRAFTER";
+      const providerSessionId = recoveredSession.routaAgentId ?? sessionId;
+
+      if (existingSession) {
+        store.upsertSession({
+          sessionId,
+          name: recoveredSession.name,
+          cwd,
+          branch: recoveredSession.branch,
+          workspaceId,
+          routaAgentId: manager.getAcpSessionId(sessionId) ?? recoveredSession.routaAgentId,
+          provider,
+          role,
+          modeId: recoveredSession.modeId,
+          model: recoveredSession.model,
+          parentSessionId: recoveredSession.parentSessionId,
+          specialistId: recoveredSession.specialistId,
+          executionMode: recoveredSession.executionMode,
+          ownerInstanceId: recoveredSession.ownerInstanceId,
+          leaseExpiresAt: recoveredSession.leaseExpiresAt,
+          createdAt: recoveredSession.createdAt instanceof Date
+            ? recoveredSession.createdAt.toISOString()
+            : (recoveredSession.createdAt ?? new Date().toISOString()),
+          acpStatus: "ready",
+        });
+        return jsonrpcResponse(id ?? null, {
+          sessionId,
+          provider,
+          role,
+          acpStatus: "ready",
+          resumeMode: "attached",
+        });
+      }
+
+      const forwardSessionUpdate = createSessionUpdateForwarder(store, sessionId);
+      let acpSessionId: string;
+      let resumeMode: "native" | "recreated" = "recreated";
+      let nativeResumeError: string | undefined;
+
+      // Determine whether native resume should be attempted based on provider capabilities
+      const preset = getPresetById(provider);
+      const supportsNativeResume = preset?.resume?.supported && (preset.resume.mode === "native" || preset.resume.mode === "both");
+
+      try {
+        if (supportsNativeResume) {
+          acpSessionId = await manager.loadSession(
+            sessionId,
+            cwd,
+            forwardSessionUpdate,
+            provider,
+            workspaceId,
+            storedSession?.toolMode,
+            storedSession?.mcpProfile,
+            {
+              provider,
+              role,
+            },
+            providerSessionId,
+          );
+          resumeMode = "native";
+        } else {
+          throw new Error(`Native resume not supported for provider: ${provider} (mode: replay)`);
+        }
+      } catch (error) {
+        nativeResumeError = error instanceof Error ? error.message : "Native resume failed";
+        console.warn(`[ACP Route] Native resume failed for ${sessionId} (provider: ${provider}), falling back to recreate:`, error);
+        acpSessionId = await manager.createSession(
+          sessionId,
+          cwd,
+          forwardSessionUpdate,
+          provider,
+          storedSession?.modeId,
+          undefined,
+          undefined,
+          workspaceId,
+          storedSession?.toolMode,
+          storedSession?.mcpProfile,
+          {
+            provider,
+            role,
+          },
+        );
+      }
+
+      const executionBinding = buildExecutionBinding("embedded");
+      const now = new Date().toISOString();
+      const sessionRecord = {
+        sessionId,
+        name: recoveredSession.name,
+        cwd,
+        branch: recoveredSession.branch,
+        workspaceId,
+        routaAgentId: acpSessionId,
+        provider,
+        role,
+        modeId: recoveredSession.modeId,
+        model: recoveredSession.model,
+        parentSessionId: recoveredSession.parentSessionId,
+        specialistId: recoveredSession.specialistId,
+        createdAt: now,
+        acpStatus: "ready" as const,
+        ...refreshExecutionBinding(executionBinding),
+      };
+      store.upsertSession(sessionRecord);
+      void persistSessionToDb({
+        id: sessionId,
+        name: recoveredSession.name,
+        cwd,
+        branch: recoveredSession.branch,
+        workspaceId,
+        routaAgentId: acpSessionId,
+        provider,
+        role,
+        parentSessionId: recoveredSession.parentSessionId,
+        modeId: recoveredSession.modeId,
+        model: recoveredSession.model,
+        specialistId: recoveredSession.specialistId,
+        executionMode: sessionRecord.executionMode,
+        ownerInstanceId: sessionRecord.ownerInstanceId,
+        leaseExpiresAt: sessionRecord.leaseExpiresAt,
+      });
+      void updateSessionExecutionBindingInDb(sessionId, {
+        executionMode: sessionRecord.executionMode,
+        ownerInstanceId: sessionRecord.ownerInstanceId,
+        leaseExpiresAt: sessionRecord.leaseExpiresAt,
+      });
+
+      return jsonrpcResponse(id ?? null, {
+        sessionId,
+        provider,
+        role,
+        acpStatus: "ready",
+        resumeMode,
+        resumeCapabilities: preset?.resume ?? { supported: false, mode: "replay" },
+        ...(nativeResumeError ? { nativeResumeError } : {}),
+      });
+    }
+
     // ── session/cancel ─────────────────────────────────────────────────
     if (method === "session/respond_user_input") {
       const p = (params ?? {}) as Record<string, unknown>;
@@ -473,11 +686,12 @@ export async function POST(request: NextRequest) {
       }
 
       const manager = getAcpProcessManager();
-      const handled = manager.respondToClaudeCodeSdkUserInput(sessionId, toolCallId, response);
+      const handled = manager.respondToUserInput(sessionId, toolCallId, response);
       if (!handled) {
+        markMissingInteractiveRequestAsFailed(sessionId, toolCallId, response);
         return jsonrpcResponse(id ?? null, null, {
           code: -32000,
-          message: "No pending AskUserQuestion request found for this session",
+          message: "No pending interactive request found for this session",
         });
       }
 
@@ -534,14 +748,6 @@ export async function POST(request: NextRequest) {
       }
 
       return jsonrpcResponse(id ?? null, {});
-    }
-
-    // ── session/load ───────────────────────────────────────────────────
-    if (method === "session/load") {
-      return jsonrpcResponse(id ?? null, null, {
-        code: -32601,
-        message: "session/load not supported - create a new session instead",
-      });
     }
 
     // ── terminal/write ────────────────────────────────────────────────
@@ -766,18 +972,37 @@ export async function POST(request: NextRequest) {
     console.error("[ACP Route] Error:", error);
 
     // Handle AcpError with auth information
-    if (error instanceof AcpError) {
+    if (isAcpErrorLike(error)) {
       return jsonrpcResponse(null, null, {
         code: error.code,
         message: error.message,
         authMethods: error.authMethods,
         agentInfo: error.agentInfo,
+        data: {
+          method: requestMethod,
+          requestId,
+          errorName: error.name,
+          errorMessage: error.message,
+          errorData: error.data,
+        },
       });
     }
 
     return jsonrpcResponse(null, null, {
       code: -32603,
       message: error instanceof Error ? error.message : "Internal error",
+      data: error instanceof Error
+        ? {
+          method: requestMethod,
+          requestId,
+          errorName: error.name,
+          errorMessage: error.message,
+        }
+        : {
+          method: requestMethod,
+          requestId,
+          errorMessage: "Internal error",
+        },
     });
   }
 }
@@ -787,8 +1012,11 @@ export async function POST(request: NextRequest) {
 interface JsonRpcError {
   code: number;
   message: string;
+  data?: Record<string, unknown>;
   authMethods?: Array<{ id: string; name: string; description: string }>;
   agentInfo?: { name: string; version: string };
+  /** Optional flag indicating the session may continue processing despite this error */
+  sessionMayContinue?: boolean;
 }
 
 function createSessionUpdateForwarder(

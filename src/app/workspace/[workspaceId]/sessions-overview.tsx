@@ -5,6 +5,7 @@ import { useTranslation } from "@/i18n";
 import { formatRelativeTime } from "./ui-components";
 import type { SessionInfo } from "./types";
 import { ChevronDown, ChevronRight, PieChart, RefreshCw, SquareArrowOutUpRight, MessageCircleMore, SquarePen, Trash2 } from "lucide-react";
+import { desktopAwareFetch } from "@/client/utils/diagnostics";
 
 
 interface SessionsOverviewProps {
@@ -12,9 +13,10 @@ interface SessionsOverviewProps {
   workspaceId: string;
   onNavigate: (sessionId: string) => void;
   onRefresh: () => void;
+  filterSession?: (session: SessionInfo & { parentSessionId?: string }) => boolean;
 }
 
-export function SessionsOverview({ sessions, workspaceId, onNavigate, onRefresh }: SessionsOverviewProps) {
+export function SessionsOverview({ sessions, workspaceId, onNavigate, onRefresh, filterSession }: SessionsOverviewProps) {
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   const [sessionTree, setSessionTree] = useState<Map<string, SessionInfo[]>>(new Map());
@@ -29,10 +31,12 @@ export function SessionsOverview({ sessions, workspaceId, onNavigate, onRefresh 
 
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
-    fetch(`/api/sessions?workspaceId=${encodeURIComponent(workspaceId)}&limit=100`, { cache: "no-store" })
+    desktopAwareFetch(`/api/sessions?workspaceId=${encodeURIComponent(workspaceId)}&limit=100`, { cache: "no-store" })
       .then(res => res.json())
       .then(data => {
-        const allSessions = Array.isArray(data?.sessions) ? data.sessions : [];
+        const allSessions = Array.isArray(data?.sessions)
+          ? (filterSession ? data.sessions.filter(filterSession) : data.sessions)
+          : [];
         const tree = new Map<string, SessionInfo[]>();
 
         allSessions.forEach((session: SessionInfo & { parentSessionId?: string }) => {
@@ -48,7 +52,7 @@ export function SessionsOverview({ sessions, workspaceId, onNavigate, onRefresh 
       })
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, [expanded, workspaceId]);
+  }, [expanded, filterSession, workspaceId]);
 
   // Close context menu on click outside
   useEffect(() => {
@@ -67,7 +71,7 @@ export function SessionsOverview({ sessions, workspaceId, onNavigate, onRefresh 
   const handleDeleteSession = async (sessionId: string) => {
     if (!confirm(t.sessions.deleteConfirm)) return;
     try {
-      await fetch(`/api/sessions/${sessionId}`, { method: "DELETE" });
+      await desktopAwareFetch(`/api/sessions/${sessionId}`, { method: "DELETE" });
       onRefresh();
     } catch (error) {
       console.error(t.sessions.deleteFailed, error);
@@ -84,7 +88,7 @@ export function SessionsOverview({ sessions, workspaceId, onNavigate, onRefresh 
   const handleSaveRename = async (sessionId: string) => {
     if (!renameValue.trim()) return;
     try {
-      await fetch(`/api/sessions/${sessionId}`, {
+      await desktopAwareFetch(`/api/sessions/${sessionId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: renameValue.trim() }),
@@ -194,7 +198,7 @@ export function SessionsOverview({ sessions, workspaceId, onNavigate, onRefresh 
           </button>
         </div>
       </div>
-      <div className={`${expanded ? "max-h-[600px] overflow-y-auto" : ""}`}>
+      <div className={`${expanded ? "max-h-150 overflow-y-auto" : ""}`}>
         {loading ? (
           <div className="flex items-center justify-center py-8 text-slate-400 dark:text-slate-500">
             <PieChart className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24"/>
@@ -213,7 +217,7 @@ export function SessionsOverview({ sessions, workspaceId, onNavigate, onRefresh 
       {/* Context Menu */}
       {contextMenu && (
         <div
-          className="fixed z-50 bg-white dark:bg-[#1a1d2e] border border-slate-200 dark:border-[#2a2d3e] rounded-lg shadow-lg py-1 min-w-[160px]"
+          className="fixed z-50 min-w-40 rounded-lg border border-slate-200 bg-white py-1 shadow-lg dark:border-[#2a2d3e] dark:bg-[#1a1d2e]"
           style={{ left: contextMenu.x, top: contextMenu.y }}
           onClick={(e) => e.stopPropagation()}
         >

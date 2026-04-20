@@ -1,267 +1,114 @@
 ---
 slug: /
-title: Routa Docs
+title: Routa
+displayed_sidebar: docsSidebar
+hide_table_of_contents: true
+hide_title: true
 ---
 
 <div className="routa-home">
-  <section className="routa-hero">
-    <div className="routa-hero__eyebrow">Workspace-first agent coordination</div>
-    <img
-      className="routa-hero__media"
-      src="/routa/logo-animated.svg"
-      alt="Routa orchestration logo"
-    />
-    <h1 className="routa-hero__title">Turn a Kanban board into an execution surface for AI teams.</h1>
-    <p className="routa-hero__lead">
-      Routa is a multi-agent coordination platform for software delivery. It combines a
-      workspace-first UI, Kanban automation, and protocol bridges across ACP, MCP, A2A, and
-      AG-UI so you can route real implementation work through specialized agents instead of a
-      single monolithic assistant.
-    </p>
-    <div className="routa-pills">
-      <div className="routa-pill">Next.js web runtime</div>
-      <div className="routa-pill">Tauri desktop shell</div>
-      <div className="routa-pill">Rust Axum backend</div>
-      <div className="routa-pill">Kanban-first automation</div>
-    </div>
-  </section>
+
+<div className="routa-hero">
+  <span className="routa-hero__eyebrow">Multi-Agent Coordination Platform</span>
+  <h1 className="routa-hero__title">Routa</h1>
+  <p className="routa-hero__lead">
+    Workspace-first multi-agent coordination for real software delivery.
+    Keep work attached to explicit product objects such as sessions, boards,
+    specialists, and codebases instead of hiding everything inside one long-running chat.
+  </p>
+  <div className="routa-pills">
+    <a className="routa-pill" href="/routa/quick-start">Quick Start</a>
+    <a className="routa-pill" href="/routa/platforms/desktop">Desktop</a>
+    <a className="routa-pill" href="/routa/platforms/cli">CLI</a>
+    <a className="routa-pill" href="/routa/use-routa/common-workflows">Common Workflows</a>
+  </div>
 </div>
 
-## What Routa Is For
+## Start In 5 Minutes
 
-Routa is built for teams that want agent workflows to stay inspectable, testable, and operable.
-Instead of letting one long-running chat own everything, Routa makes work explicit:
+If you are evaluating Routa, do not start by reading everything. Pick one path and aim for one
+real result:
 
-- a workspace holds codebases, memory, sessions, and automation state
-- a Kanban board becomes the control surface for decomposition and handoff
-- specialists are attached to stages like backlog refinement, implementation, review, and reporting
-- protocol adapters let external agent runtimes join the flow without changing the product model
-
-## Documentation Map
-
-<div className="routa-doc-map">
-  <a href="./ARCHITECTURE">
-    <strong>Architecture</strong>
-    System boundaries, runtime surfaces, domain model, and cross-backend invariants.
-  </a>
-  <a href="./design-docs">
-    <strong>Design Docs</strong>
-    Durable design intent, migration rules, and repository-level constraints.
-  </a>
-  <a href="./product-specs/FEATURE_TREE">
-    <strong>Product Specs</strong>
-    Generated route and API surface index for the current product.
-  </a>
-  <a href="./specialists">
-    <strong>Specialists</strong>
-    Built-in agent roles, responsibilities, and generated specialist reference pages.
-  </a>
-  <a href="./exec-plans">
-    <strong>Execution Plans</strong>
-    Active implementation plans, completed work, and cross-cutting tech debt tracking.
-  </a>
-  <a href="./releases/v0.2.5-release-notes">
-    <strong>Releases</strong>
-    Version notes for shipped milestones and notable platform changes.
-  </a>
+<div className="routa-start-grid">
+  <div className="routa-start-card">
+    <span className="routa-start-card__badge">Recommended</span>
+    <h3>Desktop</h3>
+    <p>Best for most users who want the full Routa product surface with the least setup work.</p>
+    <code>Download from GitHub Releases</code>
+    <p>Create a workspace, attach a repo, then start with a Session.</p>
+    <a className="routa-inline-link" href="/routa/platforms/desktop">Open Desktop Guide</a>
+  </div>
+  <div className="routa-start-card">
+    <span className="routa-start-card__badge">Terminal First</span>
+    <h3>CLI</h3>
+    <p>Best when your repository is already open in a terminal and you want the shortest path.</p>
+    <code>npm install -g routa-cli</code>
+    <p>Then run <code>routa -p "Explain this repository"</code>.</p>
+    <a className="routa-inline-link" href="/routa/platforms/cli">Open CLI Guide</a>
+  </div>
+  <div className="routa-start-card">
+    <span className="routa-start-card__badge">Self-Hosted</span>
+    <h3>Web</h3>
+    <p>Best for browser-based access in your own environment or internal deployment.</p>
+    <code>npm run dev</code>
+    <p>Use this path when you want the browser surface rather than the packaged app.</p>
+    <a className="routa-inline-link" href="/routa/platforms/web">Open Web Guide</a>
+  </div>
 </div>
 
-## Platform Surface
+## What You Can Do
 
 <div className="routa-grid">
   <div className="routa-card routa-card--blue">
-    <h3>Coordinator</h3>
+    <h3>Understand Codebases</h3>
     <p>
-      Routa plans, routes, and observes work. The coordinator owns intent decomposition and
-      keeps the board, sessions, and tooling aligned.
+      Use Sessions to understand a new repository, inspect architecture, and recover work later
+      from one main thread.
     </p>
   </div>
   <div className="routa-card routa-card--orange">
-    <h3>Execution Lanes</h3>
+    <h3>Run Delivery Flow</h3>
     <p>
-      Backlog, Todo, Dev, Review, and Done can each bind to a specialist so lane transitions
-      become operational triggers rather than passive status changes.
+      Use Kanban when work needs explicit stages, specialist-by-lane automation, and review or
+      done gates that actually enforce quality.
     </p>
   </div>
   <div className="routa-card routa-card--green">
-    <h3>Protocol Bridges</h3>
+    <h3>Coordinate Specialists</h3>
     <p>
-      ACP manages agent processes, MCP exposes coordination tools, A2A covers federation, and
-      AG-UI supports richer agent-generated interface patterns.
+      Use Team when the coordination problem is itself first-class and the work benefits from a
+      lead dispatching child sessions across specialties.
     </p>
   </div>
 </div>
 
-## Quickstart
+## Documentation
 
-```bash
-npm install --legacy-peer-deps
-npm run dev
-```
+<div className="routa-doc-map">
+  <a href="/routa/getting-started">
+    <strong>Getting Started</strong>
+    Read this only after you know whether you want Desktop, CLI, or Web.
+  </a>
+  <a href="/routa/use-routa">
+    <strong>Use Routa</strong>
+    Learn what to do after setup: Sessions, Kanban, Team, and common workflows.
+  </a>
+  <a href="/routa/developer-guide">
+    <strong>Developer Guide</strong>
+    Use this when you need configuration, hosting, testing, or deeper technical context.
+  </a>
+  <a href="/routa/design-docs">
+    <strong>Design Docs</strong>
+    Read this only when you need design intent, invariants, or implementation reasoning.
+  </a>
+  <a href="/routa/reference">
+    <strong>Reference</strong>
+    Lookup material for specialists, product specs, release process, and stable references.
+  </a>
+  <a href="/routa/whats-new">
+    <strong>What's New</strong>
+    Recent release notes, changelog entry points, and current product updates.
+  </a>
+</div>
 
-Open [http://localhost:3000](http://localhost:3000).
-
-To run the desktop shell as well:
-
-```bash
-npm --prefix apps/desktop install
-npm run tauri:dev
-```
-
-To run the Rust backend directly:
-
-```bash
-cargo run -p routa-server
-```
-
-If you are running against a custom backend endpoint, set:
-
-```bash
-ROUTA_RUST_BACKEND_URL="http://127.0.0.1:3210"
-npm run dev
-```
-
-### CLI
-
-The Rust CLI binary is `routa`. Install it from crates.io, from the current
-checkout, or build it without installing:
-
-```bash
-cargo install routa-cli
-cargo install --path crates/routa-cli
-cargo build --release --manifest-path crates/routa-cli/Cargo.toml
-```
-
-Run a quick one-off `DEVELOPER` session from a single requirement:
-
-```bash
-routa -p "Add OAuth login with Google and GitHub providers"
-routa -p "Refactor the auth module" --workspace-id my-project
-routa -p "Investigate flaky tests" --provider claude
-```
-
-Prompt mode uses:
-
-- `--workspace-id <ID>`: target workspace, default `default`
-- `--provider <PROVIDER>`: ACP provider for the developer session, default `opencode`
-- `--db <PATH>`: SQLite database path, default `routa.db`
-
-Start the local Routa backend server:
-
-```bash
-routa server --host 127.0.0.1 --port 3210
-routa server --static-dir ../../out
-```
-
-Run Routa itself as an ACP server over stdio:
-
-```bash
-routa acp serve --workspace-id my-project --provider opencode
-```
-
-Useful ACP runtime commands:
-
-```bash
-routa acp list
-routa acp installed
-routa acp install opencode
-routa acp runtime-status
-routa acp ensure-node
-routa acp ensure-uv
-```
-
-Execute a specialist directly or run a coordinated team session:
-
-```bash
-routa specialist run crafter -p "Implement a calculator CLI"
-routa specialist run ui-journey-evaluator -p "scenario: core-home-session"
-routa team run -t "Design and implement Kanban automation" --workspace-id default
-routa team status --workspace-id default
-```
-
-## Validation Basics
-
-```bash
-npm run lint
-npm run test:run
-```
-
-## Core Usage
-
-### Web
-
-Use the home page to create or enter a workspace, connect a repository, and route a new
-requirement into the board-driven workflow.
-
-### CLI
-
-Top-level commands from `routa --help`:
-
-```text
-server      Start the Routa HTTP backend server
-acp         ACP server and runtime management
-agent       Agent lifecycle and specialist execution helpers
-specialist  Run specialist definitions directly
-task        Task CRUD and artifact operations
-kanban      Board, card, and column management
-workspace   Workspace management
-skill       Skill discovery and reload
-session     Persisted ACP session inspection and picking
-rpc         Send raw JSON-RPC requests
-delegate    Delegate a task to a specialist agent
-chat        Interactive chat with an agent
-scan        Repository static/security scans
-workflow    YAML-defined workflow execution and validation
-review      Read-only code review analysis against git changes
-team        Team coordination with an agent lead
-```
-
-Common CLI workflows:
-
-```bash
-routa workspace list
-routa workspace create --name my-project
-
-routa agent list --workspace-id default
-routa agent create --name dev-agent --role DEVELOPER --workspace-id default
-routa agent run --specialist crafter -p "Add auth middleware" --workspace-id default
-
-routa task list --workspace-id default
-routa task create --title "Add feature" --objective "Implement user authentication" --workspace-id default
-routa task update-status --id <task-id> --status COMPLETED --agent-id <agent-id>
-routa task artifact-provide --task-id <task-id> --agent-id <agent-id> --type logs --content "build ok"
-routa task artifact-list --task-id <task-id>
-
-routa session list --workspace-id default
-routa session get --id <session-id>
-routa session pick --workspace-id default
-
-routa kanban card create --title "Investigate release flow" --workspace-id default --board-id <board-id> --column-id <column-id>
-routa kanban card move --card-id <card-id> --target-column-id todo
-
-routa workflow validate .routa/workflows/release.yaml
-routa workflow run .routa/workflows/release.yaml --verbose
-
-routa chat --workspace-id default --provider opencode --role DEVELOPER
-routa scan --project-dir . --output-dir artifacts/security
-routa review --help
-routa delegate --task-id <task-id> --caller-agent-id <parent-agent-id> --caller-session-id <session-id> --specialist CRAFTER --provider opencode
-```
-
-## Recommended Reading Order
-
-- Architecture: [ARCHITECTURE](./ARCHITECTURE)
-- Design docs: [Design Docs Index](./design-docs)
-- Product spec: [Feature tree](./product-specs/FEATURE_TREE)
-- Specialists: [Specialist reference](./specialists)
-- Release notes: [v0.2.5 notes](./releases/v0.2.5-release-notes)
-
-## FAQ
-
-- If a provider command is missing, install provider CLI first (`opencode`, `claude`, etc.).
-- If Tauri dependencies are missing, install desktop dependencies with `npm --prefix apps/desktop install`.
-- If static build fails, check Node version and run from repo root.
-
-## Demo
-
-- Video walkthrough: https://www.bilibili.com/video/BV16CwyzUED5/
+</div>

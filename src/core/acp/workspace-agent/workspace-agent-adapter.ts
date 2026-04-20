@@ -21,6 +21,7 @@ import {
   type WorkspaceAgentConfig,
 } from "./workspace-agent-config";
 import { LifecycleNotifier } from "../lifecycle-notifier";
+import { AgentEventType } from "@/core/events/event-bus";
 
 function createNotification(method: string, params: Record<string, unknown>): JsonRpcMessage {
   return { jsonrpc: "2.0", method, params };
@@ -127,8 +128,28 @@ export class WorkspaceAgentAdapter {
     );
     stateMachine.transition("ACTING");
 
-    // Build tools
-    const codingTools = createCodingTools(this.cwd);
+    // Build tools with file change callback
+    const codingTools = createCodingTools(this.cwd, {
+      workspaceId: this.workspaceId,
+      taskId: undefined, // TODO: Extract from context if available
+      agentId: this.agentId,
+      onFileChange: (params) => {
+        // Emit FILE_CHANGES event to EventBus
+        if (this.agentTools && params.workspaceId && params.agentId) {
+          this.agentTools.getEventBus().emit({
+            type: AgentEventType.FILE_CHANGES,
+            agentId: params.agentId,
+            workspaceId: params.workspaceId,
+            data: {
+              filePath: params.filePath,
+              operation: params.operation,
+              taskId: params.taskId,
+            },
+            timestamp: new Date(),
+          });
+        }
+      },
+    });
     const mgmtTools =
       this.agentTools && this.workspaceId && this.agentId
         ? createAgentManagementTools(this.agentTools, this.workspaceId, this.agentId, {

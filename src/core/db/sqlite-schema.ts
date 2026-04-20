@@ -18,8 +18,9 @@ import {
   primaryKey,
   uniqueIndex,
 } from "drizzle-orm/sqlite-core";
+import type { TaskCreationSource } from "../kanban/task-creation-policy";
 import type { KanbanColumn } from "../models/kanban";
-import type { TaskLaneHandoff, TaskLaneSession } from "../models/task";
+import type { FallbackAgent, TaskCommentEntry, TaskDeliverySnapshot, TaskLaneHandoff, TaskLaneSession } from "../models/task";
 
 // ─── Workspaces ─────────────────────────────────────────────────────
 
@@ -69,6 +70,7 @@ export const tasks = sqliteTable("tasks", {
   title: text("title").notNull(),
   objective: text("objective").notNull(),
   comment: text("comment"),
+  comments: text("comments", { mode: "json" }).$type<TaskCommentEntry[]>().default([]),
   scope: text("scope"),
   acceptanceCriteria: text("acceptance_criteria", { mode: "json" }).$type<string[]>(),
   verificationCommands: text("verification_commands", { mode: "json" }).$type<string[]>(),
@@ -85,6 +87,9 @@ export const tasks = sqliteTable("tasks", {
   assignedRole: text("assigned_role"),
   assignedSpecialistId: text("assigned_specialist_id"),
   assignedSpecialistName: text("assigned_specialist_name"),
+  fallbackAgentChain: text("fallback_agent_chain", { mode: "json" }).$type<FallbackAgent[]>(),
+  enableAutomaticFallback: integer("enable_automatic_fallback", { mode: "boolean" }),
+  maxFallbackAttempts: integer("max_fallback_attempts"),
   triggerSessionId: text("trigger_session_id"),
   /** All session IDs that have been associated with this task (history) */
   sessionIds: text("session_ids", { mode: "json" }).$type<string[]>().default([]),
@@ -103,10 +108,12 @@ export const tasks = sqliteTable("tasks", {
   workspaceId: text("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
   /** Session ID that created this task (for session-scoped filtering) */
   sessionId: text("session_id"),
+  creationSource: text("creation_source").$type<TaskCreationSource>(),
   /** Associated codebase IDs for this task */
   codebaseIds: text("codebase_ids", { mode: "json" }).$type<string[]>().default([]),
   /** Git worktree ID created for this task when it enters the dev column */
   worktreeId: text("worktree_id"),
+  deliverySnapshot: text("delivery_snapshot", { mode: "json" }).$type<TaskDeliverySnapshot>(),
   completionSummary: text("completion_summary"),
   verificationVerdict: text("verification_verdict"),
   verificationReport: text("verification_report"),
@@ -120,6 +127,7 @@ export const kanbanBoards = sqliteTable("kanban_boards", {
   workspaceId: text("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
   isDefault: integer("is_default", { mode: "boolean" }).notNull().default(false),
+  githubToken: text("github_token"),
   columns: text("columns", { mode: "json" }).$type<KanbanColumn[]>().notNull().default([]),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),

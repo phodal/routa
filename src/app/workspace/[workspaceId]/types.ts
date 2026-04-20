@@ -3,6 +3,7 @@
 import type { McpServerProfile } from "@/core/mcp/mcp-server-profiles";
 import type { KanbanRequiredTaskField } from "@/core/models/kanban";
 import type { TaskAnalysisStatus } from "@/core/models/task";
+import type { TaskDeliveryReadiness } from "@/core/kanban/task-delivery-readiness";
 
 export interface SessionInfo {
   sessionId: string;
@@ -73,7 +74,7 @@ export interface KanbanDevSessionSupervisionInfo {
 
 export interface ArtifactInfo {
   id: string;
-  type: "screenshot" | "test_results" | "code_diff" | "logs";
+  type: "screenshot" | "test_results" | "code_diff" | "logs" | "canvas";
   taskId: string;
   providedByAgentId?: string;
   requestedByAgentId?: string;
@@ -116,6 +117,14 @@ export interface TaskInfo {
   title: string;
   objective?: string;
   comment?: string;
+  comments?: Array<{
+    id: string;
+    body: string;
+    createdAt: string;
+    source?: "legacy_import" | "update_card";
+    agentId?: string;
+    sessionId?: string;
+  }>;
   scope?: string;
   acceptanceCriteria?: string[];
   verificationCommands?: string[];
@@ -138,6 +147,7 @@ export interface TaskInfo {
   laneSessions?: Array<{
     sessionId: string;
     routaAgentId?: string;
+    cwd?: string;
     columnId?: string;
     columnName?: string;
     stepId?: string;
@@ -185,6 +195,7 @@ export interface TaskInfo {
   sessionId?: string;
   dependencies?: string[];
   parallelGroup?: string;
+  creationSource?: "manual" | "agent" | "api" | "session";
   /** Associated codebase IDs for this task */
   codebaseIds?: string[];
   /** Git worktree ID for this task */
@@ -194,6 +205,7 @@ export interface TaskInfo {
   verificationReport?: string;
   artifactSummary?: ArtifactSummaryInfo;
   evidenceSummary?: TaskEvidenceSummaryInfo;
+  deliveryReadiness?: TaskDeliveryReadiness;
   storyReadiness?: {
     ready: boolean;
     missing: KanbanRequiredTaskField[];
@@ -278,6 +290,10 @@ export interface KanbanColumnAutomationInfo {
   transitionType?: "entry" | "exit" | "both";
   requiredArtifacts?: ("screenshot" | "test_results" | "code_diff")[];
   requiredTaskFields?: KanbanRequiredTaskField[];
+  contractRules?: {
+    requireCanonicalStory?: boolean;
+    loopBreakerThreshold?: number;
+  };
   autoAdvanceOnSuccess?: boolean;
 }
 
@@ -306,6 +322,7 @@ export interface KanbanBoardInfo {
   workspaceId: string;
   name: string;
   isDefault: boolean;
+  githubTokenConfigured?: boolean;
   autoProviderId?: string;
   sessionConcurrencyLimit?: number;
   devSessionSupervision?: KanbanDevSessionSupervisionInfo;

@@ -2,7 +2,7 @@
 
 import type { RepoSelection } from "@/client/components/repo-picker";
 
-type RepoSelectionStorageScope = "harness" | "fluency";
+type RepoSelectionStorageScope = "harness" | "fluency" | "featureExplorer";
 
 function storageKey(scope: RepoSelectionStorageScope, workspaceId: string) {
   return `routa.repoSelection.${scope}.${workspaceId}`;

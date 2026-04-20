@@ -4,6 +4,18 @@ export interface TailTranslationDictionarySections {
     input: string;
     task: string;
     plan: string;
+    requestPermissions: string;
+    permissionReason: string;
+    permissionCommand: string;
+    permissionSuggestedAccess: string;
+    permissionTechnicalDetails: string;
+    permissionAllow: string;
+    permissionDeny: string;
+    permissionApproved: string;
+    permissionDenied: string;
+    permissionScopeTurn: string;
+    permissionScopeSession: string;
+    permissionScopeHint: string;
     submit: string;
     priority: string;
     tokens: string;
@@ -304,5 +316,30 @@ export interface TailTranslationDictionarySections {
     workspaceIdOptional: string;
     describeWhatYouNeed: string;
   };
-}
 
+  // Git Log Panel
+  gitLog: {
+    title: string;
+    refs: string;
+    head: string;
+    local: string;
+    remote: string;
+    tags: string;
+    commits: string;
+    message: string;
+    author: string;
+    date: string;
+    hash: string;
+    changedFiles: string;
+    noCommits: string;
+    selectCommit: string;
+    loadingCommits: string;
+    loadingMore: string;
+    filterPlaceholder: string;
+    clearFilters: string;
+    showRefs: string;
+    hideRefs: string;
+    parents: string;
+    files: string;
+  };
+}

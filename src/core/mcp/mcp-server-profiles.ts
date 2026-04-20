@@ -5,6 +5,7 @@ const KANBAN_PLANNING_TOOL_NAMES = [
   "decompose_tasks",
   "search_cards",
   "list_cards_by_column",
+  "update_task",
   "update_card",
   "move_card",
 ] as const;
@@ -23,6 +24,7 @@ const TEAM_COORDINATION_TOOL_NAMES = [
   "list_notes",
   "set_note_content",
   "convert_task_blocks",
+  "update_task",
   "update_card",
   "move_card",
   "request_previous_lane_handoff",

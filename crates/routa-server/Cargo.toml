@@ -1,6 +1,6 @@
 [package]
 name = "routa-server"
-version = "0.12.1"
+version = "0.17.2"
 description = "Routa.js HTTP Server — axum adapter on top of routa-core"
 authors = ["phodal"]
 edition = "2021"
@@ -14,7 +14,11 @@ path = "src/lib.rs"
 
 [dependencies]
 # Core domain (with axum IntoResponse support)
-routa-core = { version = "0.12.1", path = "../routa-core", features = ["axum"] }
+routa-core = { version = "0.17.2", path = "../routa-core", features = ["axum"] }
+
+# Feature trace & session analysis
+feature-trace = { path = "../feature-trace" }
+trace-parser = { path = "../trace-parser" }
 
 # Web framework
 axum = { version = "0.8", features = ["macros"] }
@@ -37,6 +41,7 @@ serde_yaml = "0.9"
 # Utilities used in API handlers
 uuid = { version = "1", features = ["v4"] }
 chrono = { version = "0.4", features = ["serde"] }
+rmcp = { version = "0.15", features = ["server", "transport-streamable-http-server"] }
 
 # HTTP client (used directly in some API handlers)
 reqwest = { version = "0.12", features = ["json", "stream"] }
@@ -47,7 +52,7 @@ zip = "2"
 tempfile = "3"
 
 # Home directory
-dirs = "5"
+dirs = "6"
 
 # URL encoding
 urlencoding = "2"
@@ -60,6 +65,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 sysinfo = "0.32"
 notify-rust = "4.12.0"
 lazy_static = "1.5.0"
+sha2 = "0.10"
 
 [dev-dependencies]
 reqwest = { version = "0.12", features = ["json"] }

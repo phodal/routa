@@ -33,6 +33,17 @@ import type {
   UnlistenFn,
 } from "./interfaces";
 
+/**
+ * Quote a value for safe interpolation into a shell command.
+ * Uses double-quotes on Windows (cmd.exe) and single-quotes on Unix.
+ */
+function platformQuote(value: string): string {
+  if (process.platform === "win32") {
+    return `"${value.replace(/"/g, '\\"')}"`;
+  }
+  return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
 // ─── Web Process (Node.js child_process) ──────────────────────────────────
 
 class WebProcess implements IPlatformProcess {
@@ -51,10 +62,16 @@ class WebProcess implements IPlatformProcess {
       throw new Error("Process spawning is not available in serverless environments");
     }
     const { spawn } = require("child_process");
+    // Normalize backslashes to forward slashes on Windows.
+    // When shell:true, cmd.exe cannot handle backslash cwd paths and exits
+    // with ENOENT. Forward slashes work correctly in all Node.js APIs on Windows.
+    const cwd = options?.cwd
+      ? (process.platform === "win32" ? options.cwd.replace(/\\/g, "/") : options.cwd)
+      : undefined;
     // nosemgrep: javascript.lang.security.detect-child-process.detect-child-process
     return spawn(command, args, { // Platform abstraction layer intentionally exposes spawn with shell disabled by default.
       stdio: options?.stdio ?? ["pipe", "pipe", "pipe"],
-      cwd: options?.cwd,
+      cwd,
       env: options?.env ? { ...process.env, ...options.env } : process.env,
       shell: options?.shell ?? false,
       detached: options?.detached ?? false,
@@ -333,12 +350,13 @@ class WebGit implements IPlatformGit {
   }
 
   async pull(repoPath: string, branch?: string): Promise<void> {
-    const cmd = branch ? `git pull origin ${branch}` : "git pull";
+    const quoted = branch ? platformQuote(branch) : undefined;
+    const cmd = quoted ? `git pull origin ${quoted}` : "git pull";
     await this.processAdapter.exec(cmd, { cwd: repoPath });
   }
 
   async checkout(repoPath: string, branch: string): Promise<void> {
-    await this.processAdapter.exec(`git checkout ${branch}`, { cwd: repoPath });
+    await this.processAdapter.exec(`git checkout ${platformQuote(branch)}`, { cwd: repoPath });
   }
 }
 

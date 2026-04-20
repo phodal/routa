@@ -155,9 +155,7 @@ describe("createClaudeCodeSdkAdapterIfAvailable", () => {
   });
 });
 
-// TODO: This test suite is flaky - skipping temporarily
-// See: WorkflowOrchestrator failures and timing issues
-describe.skip("ClaudeCodeSdkAdapter", () => {
+describe("ClaudeCodeSdkAdapter", () => {
   beforeEach(() => {
     process.env.ANTHROPIC_API_KEY = "sk-test-1234abcd";
     mockQuery.mockReset();

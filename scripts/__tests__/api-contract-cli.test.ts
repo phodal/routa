@@ -12,6 +12,14 @@ function runScript(relativePath: string, args: string[] = []) {
 }
 
 describe("api contract cli", () => {
+  it("does not fail the human parity check for backend-extra warning routes", () => {
+    const result = runScript("scripts/fitness/check-api-parity.ts");
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("All contract endpoints are implemented by both backends");
+    expect(result.stdout).toContain("Extra in Next.js");
+  });
+
   it("emits parity summary JSON", () => {
     const result = runScript("scripts/fitness/check-api-parity.ts", ["--json"]);
 

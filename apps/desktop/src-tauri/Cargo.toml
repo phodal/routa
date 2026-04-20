@@ -1,6 +1,6 @@
 [package]
 name = "routa-desktop"
-version = "0.12.1"
+version = "0.17.2"
 description = "Routa.js Desktop - Multi-agent coordination platform"
 authors = ["phodal"]
 edition = "2021"
@@ -14,7 +14,7 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 # Tauri plugins
-tauri = { version = "2", features = ["tray-icon", "devtools"] }
+tauri = { version = "2", features = ["tray-icon", "devtools", "image-png"] }
 tauri-plugin-shell = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-fs = "2"
@@ -27,10 +27,10 @@ tauri-plugin-opener = "2"
 # Core dependencies
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-dirs = "5"
+dirs = "6"
 
 # PTY support for interactive terminals
-portable-pty = "0.8"
+portable-pty = "0.9"
 
 # Routa Server (extracted crate)
 routa-server = { path = "../../../crates/routa-server" }

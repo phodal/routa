@@ -61,8 +61,9 @@ describe("buildTaskPrompt", () => {
     const prompt = buildTaskPrompt(task);
 
     expect(prompt).toContain("Complete the work assigned to this column stage");
-    expect(prompt).toContain("Start with direct task-scoped tools such as `list_artifacts`, `update_card`, `create_note`, and `move_card`");
+    expect(prompt).toContain("Start with direct task-scoped tools such as `list_artifacts`, `update_task`, `update_card`, `create_note`, and `move_card`");
     expect(prompt).toContain("move_card");
+    expect(prompt).toContain("update_card is not a story-readiness tool");
     expect(prompt).toContain("targetColumnId: \"review\"");
     expect(prompt).toContain("**Board ID:** board-1");
     expect(prompt).toContain("**Current Column ID:** dev");
@@ -126,6 +127,38 @@ describe("buildTaskPrompt", () => {
     expect(prompt).toContain("capture_screenshot");
     expect(prompt).toContain("update_card is not an artifact tool");
     expect(prompt).toContain("Do not treat `update_card` text as artifact evidence");
+  });
+
+  it("injects canonical contract gates from the next transition into the prompt", () => {
+    const task = createTask({
+      id: "task-contract-prompt",
+      title: "Refine backlog contract",
+      objective: "Clarify the story before todo.",
+      workspaceId: "default",
+      boardId: "board-1",
+      columnId: "backlog",
+    });
+
+    const prompt = buildTaskPrompt(task, [
+      { id: "backlog", name: "Backlog", position: 0, stage: "backlog" },
+      {
+        id: "todo",
+        name: "Todo",
+        position: 1,
+        stage: "todo",
+        automation: {
+          enabled: true,
+          contractRules: {
+            requireCanonicalStory: true,
+            loopBreakerThreshold: 2,
+          },
+        },
+      },
+    ]);
+
+    expect(prompt).toContain("## Contract Gates");
+    expect(prompt).toContain("Moving this card to Todo requires one valid canonical ```yaml``` story contract");
+    expect(prompt).toContain("Todo and downstream lanes will not silently repair malformed canonical YAML");
   });
 
   it("injects normalized readiness, INVEST, and evidence summaries into the prompt", () => {
@@ -193,6 +226,7 @@ describe("buildTaskPrompt", () => {
 
     expect(prompt).toContain("## Story Readiness");
     expect(prompt).toContain("Missing fields: scope, verification_plan");
+    expect(prompt).toContain("call `update_task` to fill the structured task fields before you retry `move_card`");
     expect(prompt).toContain("## INVEST Snapshot");
     expect(prompt).toContain("Overall: WARNING");
     expect(prompt).toContain("## Evidence Bundle");
@@ -233,6 +267,128 @@ describe("buildTaskPrompt", () => {
     expect(prompt).toContain("request_previous_lane_handoff");
     expect(prompt).toContain("Previous lane session");
     expect(prompt).toContain("Dev");
+  });
+
+  it("shows unresolved handoffs when a card returns to the target lane with a new session", () => {
+    const task = createTask({
+      id: "task-4b",
+      title: "Rework review feedback",
+      objective: "Address review feedback in dev",
+      workspaceId: "default",
+      boardId: "board-1",
+      columnId: "dev",
+    });
+    task.laneSessions = [
+      {
+        sessionId: "session-dev-1",
+        columnId: "dev",
+        columnName: "Dev",
+        provider: "opencode",
+        role: "DEVELOPER",
+        status: "completed",
+        startedAt: "2026-03-17T00:00:00.000Z",
+      },
+      {
+        sessionId: "session-review-1",
+        columnId: "review",
+        columnName: "Review",
+        provider: "codex",
+        role: "GATE",
+        status: "completed",
+        startedAt: "2026-03-17T01:00:00.000Z",
+      },
+      {
+        sessionId: "session-dev-2",
+        columnId: "dev",
+        columnName: "Dev",
+        provider: "opencode",
+        role: "DEVELOPER",
+        status: "running",
+        startedAt: "2026-03-17T02:00:00.000Z",
+      },
+    ];
+    task.laneHandoffs = [
+      {
+        id: "handoff-1",
+        fromSessionId: "session-review-1",
+        toSessionId: "session-dev-1",
+        fromColumnId: "review",
+        toColumnId: "dev",
+        requestType: "rerun_command",
+        request: "Please rerun Storybook and attach the failure log.",
+        status: "delivered",
+        requestedAt: "2026-03-17T01:30:00.000Z",
+      },
+    ];
+
+    const prompt = buildTaskPrompt(task, [
+      { id: "backlog", name: "Backlog", position: 0, stage: "backlog" },
+      { id: "dev", name: "Dev", position: 1, stage: "dev" },
+      { id: "review", name: "Review", position: 2, stage: "review" },
+      { id: "done", name: "Done", position: 3, stage: "done" },
+    ], {
+      currentSessionId: "session-dev-2",
+    });
+
+    expect(prompt).toContain("## Lane Handoff Context");
+    expect(prompt).toContain("Pending handoff 1: Rerun command");
+    expect(prompt).toContain("Please rerun Storybook and attach the failure log.");
+    expect(prompt).toContain("submit_lane_handoff");
+  });
+
+  it("shows unresolved handoffs for the current lane even when currentSessionId is unavailable", () => {
+    const task = createTask({
+      id: "task-4c",
+      title: "Recover dev verification context",
+      objective: "Continue dev with review feedback context",
+      workspaceId: "default",
+      boardId: "board-1",
+      columnId: "dev",
+    });
+    task.laneSessions = [
+      {
+        sessionId: "session-dev-1",
+        columnId: "dev",
+        columnName: "Dev",
+        provider: "opencode",
+        role: "DEVELOPER",
+        status: "completed",
+        startedAt: "2026-03-17T00:00:00.000Z",
+      },
+      {
+        sessionId: "session-review-1",
+        columnId: "review",
+        columnName: "Review",
+        provider: "codex",
+        role: "GATE",
+        status: "completed",
+        startedAt: "2026-03-17T01:00:00.000Z",
+      },
+    ];
+    task.laneHandoffs = [
+      {
+        id: "handoff-2",
+        fromSessionId: "session-review-1",
+        toSessionId: "session-dev-1",
+        fromColumnId: "review",
+        toColumnId: "dev",
+        requestType: "runtime_context",
+        request: "Use the same seeded fixture and confirm the visual diff.",
+        status: "delivered",
+        requestedAt: "2026-03-17T01:30:00.000Z",
+      },
+    ];
+
+    const prompt = buildTaskPrompt(task, [
+      { id: "backlog", name: "Backlog", position: 0, stage: "backlog" },
+      { id: "dev", name: "Dev", position: 1, stage: "dev" },
+      { id: "review", name: "Review", position: 2, stage: "review" },
+      { id: "done", name: "Done", position: 3, stage: "done" },
+    ]);
+
+    expect(prompt).toContain("## Lane Handoff Context");
+    expect(prompt).toContain("Pending handoff 1: Runtime context");
+    expect(prompt).toContain("Use the same seeded fixture and confirm the visual diff.");
   });
 
   it("routes review happy-path guidance to done even if blocked is positioned before it", () => {
@@ -545,6 +701,13 @@ describe("triggerAssignedTaskAgent ACP prompt lifecycle", () => {
       transport: "acp",
       displayTarget: "codex",
     });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:3000/api/acp",
+      expect.objectContaining({
+        method: "POST",
+        body: expect.stringContaining("\"name\":\"Run ACP task · DEVELOPER\""),
+      }),
+    );
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(dispatchSessionPromptMock).toHaveBeenCalledWith(expect.objectContaining({
       sessionId: "sess-1",

@@ -25,9 +25,11 @@ export function McpSettingsPageClient() {
 
   return (
     <SettingsRouteShell
+      activeSettingsItem="mcp"
       title="MCP Servers"
       description="Manage Model Context Protocol servers, transports, and local integration points for your workspace."
       badgeLabel="Integration"
+      contentClassName="flex h-full min-h-0 w-full flex-col"
       icon={(
         <Server className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.7}/>
       )}
@@ -36,12 +38,9 @@ export function McpSettingsPageClient() {
         { label: "Scope", value: "Workspace integrations" },
       ]}
     >
-      <div className="space-y-4">
+      <div className="flex min-h-0 flex-1 flex-col">
         <SettingsPageHeader
           title={activeTab === "tools" ? "MCP Tools" : "MCP Servers"}
-          description={activeTab === "tools"
-            ? "Inspect routa-coordination tools, switch essential/full mode, and execute focused MCP checks without leaving settings."
-            : "Manage Model Context Protocol servers, transports, and local integration points for your workspace."}
           metadata={[
             { label: "Transport", value: "stdio / http / sse" },
             { label: "Scope", value: activeTab === "tools" ? "Tool explorer" : "Workspace integrations" },
@@ -67,13 +66,15 @@ export function McpSettingsPageClient() {
             </div>
           )}
         />
-        {activeTab === "tools" ? (
-          <McpToolsExplorer />
-        ) : (
-          <div className="rounded-2xl border border-desktop-border bg-desktop-bg-secondary/70 shadow-sm">
-            <McpServersTab />
-          </div>
-        )}
+        <div className="min-h-0 flex-1 overflow-auto px-4 py-4">
+          {activeTab === "tools" ? (
+            <McpToolsExplorer />
+          ) : (
+            <div className="border border-desktop-border bg-desktop-bg-secondary/70">
+              <McpServersTab />
+            </div>
+          )}
+        </div>
       </div>
     </SettingsRouteShell>
   );

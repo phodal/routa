@@ -57,7 +57,7 @@ async fn test_rust_backend_api() {
         .allow_headers(tower_http::cors::Any);
 
     let app = axum::Router::new()
-        .merge(routa_desktop_lib::server::api::api_router())
+        .merge(routa_desktop_lib::server::api::api_router(state.clone()))
         .route(
             "/api/health",
             axum::routing::get(|| async { axum::Json(serde_json::json!({"status": "ok"})) }),

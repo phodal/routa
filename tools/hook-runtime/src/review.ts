@@ -1,4 +1,4 @@
-import { runCommand } from "./process.js";
+import { resolveEntrixShellCommand, runCommand } from "./process.js";
 import path from "node:path";
 import {
   runReviewTriggerSpecialist,
@@ -26,8 +26,28 @@ const {
 const { loadReviewTriggerRules } = reviewTriggersModule;
 
 const REVIEW_UNAVAILABLE_BYPASS_ENV = "ROUTA_ALLOW_REVIEW_UNAVAILABLE";
+const ANSI_RESET = "\u001B[0m";
+const ANSI_BOLD = "\u001B[1m";
+const ANSI_DIM = "\u001B[2m";
+const ANSI_RED = "\u001B[31m";
+const ANSI_YELLOW = "\u001B[33m";
+const ANSI_GREEN = "\u001B[32m";
+const ANSI_CYAN = "\u001B[36m";
+const LOW_SIGNAL_REVIEW_EXTENSIONS = new Set([".css", ".scss", ".sass", ".less", ".md", ".mdx"]);
 
 type ReviewReport = ReviewReportPayload;
+type ReviewTone = "danger" | "warning" | "success" | "info" | "muted";
+type ReviewTableRow = {
+  key: string;
+  value: string;
+  tone?: ReviewTone;
+};
+type OversizedMetricKey = "file_count" | "added_lines" | "deleted_lines";
+type OversizedMetricSummary = Partial<Record<OversizedMetricKey, {
+  actual: number;
+  threshold: number;
+  severity: string;
+}>>;
 
 export type ReviewPhaseResult = {
   base: string;
@@ -149,19 +169,157 @@ function titleCaseTriggerName(name: string): string {
     .join(" ");
 }
 
-function summarizeReasonValues(values: string[]): string {
-  if (values.length === 0) {
-    return "";
+function shouldUseColor(stream?: NodeJS.WriteStream): boolean {
+  if (!stream?.isTTY) {
+    return false;
   }
-  if (values.length === 1) {
-    return values[0];
+
+  if (process.env.NO_COLOR === "1") {
+    return false;
   }
-  const preview = values.slice(0, 2).join(", ");
-  const remaining = values.length - 2;
-  return remaining > 0 ? `${preview}, +${remaining} more` : preview;
+
+  if (process.env.FORCE_COLOR === "0") {
+    return false;
+  }
+
+  return true;
 }
 
-function summarizeTriggerReasons(reasons: string[]): string[] {
+function styleText(stream: NodeJS.WriteStream | undefined, styleCode: string, text: string): string {
+  if (!shouldUseColor(stream)) {
+    return text;
+  }
+
+  return `${styleCode}${text}${ANSI_RESET}`;
+}
+
+function colorByTone(stream: NodeJS.WriteStream | undefined, tone: ReviewTone | undefined, text: string): string {
+  switch (tone) {
+    case "danger":
+      return styleText(stream, `${ANSI_BOLD}${ANSI_RED}`, text);
+    case "warning":
+      return styleText(stream, `${ANSI_BOLD}${ANSI_YELLOW}`, text);
+    case "success":
+      return styleText(stream, `${ANSI_BOLD}${ANSI_GREEN}`, text);
+    case "info":
+      return styleText(stream, `${ANSI_BOLD}${ANSI_CYAN}`, text);
+    case "muted":
+      return styleText(stream, ANSI_DIM, text);
+    default:
+      return text;
+  }
+}
+
+function severityToTone(severity: string | undefined): ReviewTone {
+  switch ((severity ?? "").toLowerCase()) {
+    case "high":
+      return "danger";
+    case "medium":
+      return "warning";
+    case "low":
+      return "info";
+    default:
+      return "muted";
+  }
+}
+
+function compareSeverity(left: string | undefined, right: string | undefined): number {
+  const order = new Map<string, number>([
+    ["high", 3],
+    ["medium", 2],
+    ["low", 1],
+  ]);
+  return (order.get((left ?? "").toLowerCase()) ?? 0) - (order.get((right ?? "").toLowerCase()) ?? 0);
+}
+
+function highestTriggerSeverity(triggers: ReviewTrigger[]): string | undefined {
+  return triggers.reduce<string | undefined>((current, trigger) => {
+    if (!current || compareSeverity(trigger.severity, current) > 0) {
+      return trigger.severity;
+    }
+    return current;
+  }, undefined);
+}
+
+function isLikelyPathValue(value: string): boolean {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return false;
+  }
+
+  return trimmed.includes("/")
+    || trimmed.includes("\\")
+    || /(?:^|[^0-9])\.[A-Za-z0-9_-]+$/.test(trimmed);
+}
+
+function isLowerSignalPath(value: string): boolean {
+  const normalized = value.trim().toLowerCase();
+  if (!isLikelyPathValue(normalized)) {
+    return false;
+  }
+
+  if (normalized.startsWith("docs/") || normalized.includes("/docs/")) {
+    return true;
+  }
+
+  if (/(^|\/)(readme|changelog)(\.[^.]+)?$/.test(normalized)) {
+    return true;
+  }
+
+  return LOW_SIGNAL_REVIEW_EXTENSIONS.has(path.extname(normalized));
+}
+
+function summarizeReasonValues(values: string[], maxItems = 4): {
+  preview: string[];
+  hiddenCount: number;
+  hiddenLowerSignalCount: number;
+} {
+  if (values.length <= maxItems) {
+    return { preview: values, hiddenCount: 0, hiddenLowerSignalCount: 0 };
+  }
+
+  const important: string[] = [];
+  const deferred: string[] = [];
+  for (const value of values) {
+    if (isLowerSignalPath(value)) {
+      deferred.push(value);
+      continue;
+    }
+    important.push(value);
+  }
+
+  const ordered = important.length > 0 ? important.concat(deferred) : values;
+  const preview = ordered.slice(0, maxItems);
+  const hiddenValues = ordered.slice(maxItems);
+
+  return {
+    preview,
+    hiddenCount: hiddenValues.length,
+    hiddenLowerSignalCount: hiddenValues.filter((value) => isLowerSignalPath(value)).length,
+  };
+}
+
+function formatHiddenReasonCount(hiddenCount: number, hiddenLowerSignalCount: number): string {
+  if (hiddenCount <= 0) {
+    return "";
+  }
+
+  if (hiddenLowerSignalCount === hiddenCount) {
+    return `+${hiddenCount} more lower-signal file${hiddenCount === 1 ? "" : "s"}`;
+  }
+
+  if (hiddenLowerSignalCount > 0) {
+    return `+${hiddenCount} more (${hiddenLowerSignalCount} lower-signal)`;
+  }
+
+  return `+${hiddenCount} more`;
+}
+
+function renderTriggerReasons(
+  reasons: string[],
+  severity: string,
+  stream: NodeJS.WriteStream | undefined,
+): string[] {
   const grouped = new Map<string, string[]>();
   const passthrough: string[] = [];
 
@@ -186,30 +344,57 @@ function summarizeTriggerReasons(reasons: string[]): string[] {
 
   const summary: string[] = [];
   for (const [label, values] of grouped) {
+    const labelText = colorByTone(stream, "muted", label);
+
     if (values.length === 1) {
-      summary.push(`${label}: ${values[0]}`);
+      summary.push(`  - ${labelText}: ${values[0]}`);
       continue;
     }
-    summary.push(`${label}: ${values.length} items. Examples: ${summarizeReasonValues(values)}`);
+
+    if ((severity ?? "").toLowerCase() === "high") {
+      summary.push(`  - ${labelText}:`);
+      for (const value of values) {
+        const renderedValue = isLowerSignalPath(value)
+          ? colorByTone(stream, "muted", value)
+          : value;
+        summary.push(`    - ${renderedValue}`);
+      }
+      continue;
+    }
+
+    const { preview, hiddenCount, hiddenLowerSignalCount } = summarizeReasonValues(values);
+    const suffix = formatHiddenReasonCount(hiddenCount, hiddenLowerSignalCount);
+    const line = `  - ${labelText}: ${values.length} items. Examples: ${preview.join(", ")}${suffix ? `, ${suffix}` : ""}`;
+    summary.push(line);
   }
 
-  return [...summary, ...passthrough];
+  return [
+    ...summary,
+    ...passthrough.map((reason) => `  - ${reason}`),
+  ];
 }
 
-function renderKeyValueTable(rows: Array<[string, string]>): string[] {
-  const normalized = rows.filter(([, value]) => value.trim().length > 0);
+function renderKeyValueTable(
+  rows: ReviewTableRow[],
+  stream: NodeJS.WriteStream | undefined,
+): string[] {
+  const normalized = rows.filter((row) => row.value.trim().length > 0);
   if (normalized.length === 0) {
     return [];
   }
 
-  const keyWidth = Math.max(...normalized.map(([key]) => key.length));
-  const valueWidth = Math.max(...normalized.map(([, value]) => value.length));
+  const keyWidth = Math.max(...normalized.map((row) => row.key.length));
+  const valueWidth = Math.max(...normalized.map((row) => row.value.length));
   const border = `+${"-".repeat(keyWidth + 2)}+${"-".repeat(valueWidth + 2)}+`;
 
   return [
-    border,
-    ...normalized.map(([key, value]) => `| ${key.padEnd(keyWidth)} | ${value.padEnd(valueWidth)} |`),
-    border,
+    colorByTone(stream, "muted", border),
+    ...normalized.map((row) => {
+      const key = colorByTone(stream, "muted", row.key.padEnd(keyWidth));
+      const value = colorByTone(stream, row.tone, row.value.padEnd(valueWidth));
+      return `| ${key} | ${value} |`;
+    }),
+    colorByTone(stream, "muted", border),
   ];
 }
 
@@ -223,10 +408,60 @@ function summarizeValueList(values: string[], maxItems = 3): string {
   return `${values.slice(0, maxItems).join(", ")}, +${values.length - maxItems} more`;
 }
 
+function parseOversizedMetricSummary(triggers: ReviewTrigger[]): OversizedMetricSummary {
+  const summary: OversizedMetricSummary = {};
+  const patterns: Array<{ key: OversizedMetricKey; regex: RegExp }> = [
+    { key: "file_count", regex: /^diff touched (\d+) files \(threshold:\s*(\d+)\)$/i },
+    { key: "added_lines", regex: /^diff added (\d+) lines \(threshold:\s*(\d+)\)$/i },
+    { key: "deleted_lines", regex: /^diff deleted (\d+) lines \(threshold:\s*(\d+)\)$/i },
+  ];
+
+  for (const trigger of triggers) {
+    for (const reason of trigger.reasons ?? []) {
+      for (const { key, regex } of patterns) {
+        const match = reason.match(regex);
+        if (!match) {
+          continue;
+        }
+
+        summary[key] = {
+          actual: Number(match[1]),
+          threshold: Number(match[2]),
+          severity: trigger.severity,
+        };
+      }
+    }
+  }
+
+  return summary;
+}
+
+function formatDiffMetric(
+  actual: number | undefined,
+  metric: { actual: number; threshold: number; severity: string } | undefined,
+): { value: string; tone?: ReviewTone } {
+  if (actual === undefined) {
+    return { value: "" };
+  }
+
+  if (!metric) {
+    return { value: String(actual) };
+  }
+
+  const value = `${actual} (limit ${metric.threshold})`;
+  return {
+    value,
+    tone: severityToTone(metric.severity),
+  };
+}
+
 function printReviewReport(report: ReviewReport, ownershipRouting?: OwnershipRoutingContext | null): void {
+  const stream = process.stdout;
   const committedFiles = report.committed_files ?? report.changed_files ?? [];
   const triggers = report.triggers ?? [];
+  const highestSeverity = highestTriggerSeverity(triggers);
   const diffStats = report.diff_stats;
+  const oversizedMetrics = parseOversizedMetricSummary(triggers);
   const workingTreeFiles = report.working_tree_files ?? [];
   const untrackedFiles = report.untracked_files ?? [];
   const residueSummary = [
@@ -237,41 +472,43 @@ function printReviewReport(report: ReviewReport, ownershipRouting?: OwnershipRou
     .join(", ");
 
   console.log(
-    `Human review required: ${triggers.length} trigger${triggers.length === 1 ? "" : "s"} across ${committedFiles.length} committed file${committedFiles.length === 1 ? "" : "s"}.`,
+    colorByTone(
+      stream,
+      highestSeverity ? severityToTone(highestSeverity) : "warning",
+      `Human review required: ${triggers.length} trigger${triggers.length === 1 ? "" : "s"} across ${committedFiles.length} committed file${committedFiles.length === 1 ? "" : "s"}.`,
+    ),
   );
   for (const line of renderKeyValueTable([
-    ["Base", report.base ?? "unknown"],
-    ["Committed files", String(committedFiles.length)],
-    ["Trigger count", String(triggers.length)],
-    ["Diff files", diffStats?.file_count === undefined ? "" : String(diffStats.file_count)],
-    ["Added lines", diffStats?.added_lines === undefined ? "" : String(diffStats.added_lines)],
-    ["Deleted lines", diffStats?.deleted_lines === undefined ? "" : String(diffStats.deleted_lines)],
-    ["Workspace residue", residueSummary],
-    ["Touched owners", summarizeValueList(ownershipRouting?.touchedOwners ?? [])],
-    ["Unowned changed", summarizeValueList(ownershipRouting?.unownedChangedFiles ?? [])],
-    ["Overlap changed", summarizeValueList(ownershipRouting?.overlappingChangedFiles ?? [])],
-    ["Cross-owner triggers", summarizeValueList(ownershipRouting?.crossOwnerTriggers ?? [])],
-  ])) {
+    { key: "Base", value: report.base ?? "unknown", tone: "info" },
+    { key: "Committed files", value: String(committedFiles.length), tone: triggers.length > 0 ? severityToTone(highestSeverity) : undefined },
+    { key: "Trigger count", value: String(triggers.length), tone: triggers.length > 0 ? severityToTone(highestSeverity) : undefined },
+    { key: "Diff files", ...formatDiffMetric(diffStats?.file_count, oversizedMetrics.file_count) },
+    { key: "Added lines", ...formatDiffMetric(diffStats?.added_lines, oversizedMetrics.added_lines) },
+    { key: "Deleted lines", ...formatDiffMetric(diffStats?.deleted_lines, oversizedMetrics.deleted_lines) },
+    { key: "Workspace residue", value: residueSummary, tone: residueSummary ? "warning" : undefined },
+    { key: "Touched owners", value: summarizeValueList(ownershipRouting?.touchedOwners ?? []), tone: "info" },
+    { key: "Unowned changed", value: summarizeValueList(ownershipRouting?.unownedChangedFiles ?? []), tone: (ownershipRouting?.unownedChangedFiles?.length ?? 0) > 0 ? "danger" : undefined },
+    { key: "Overlap changed", value: summarizeValueList(ownershipRouting?.overlappingChangedFiles ?? []), tone: (ownershipRouting?.overlappingChangedFiles?.length ?? 0) > 0 ? "warning" : undefined },
+    { key: "Cross-owner triggers", value: summarizeValueList(ownershipRouting?.crossOwnerTriggers ?? []), tone: (ownershipRouting?.crossOwnerTriggers?.length ?? 0) > 0 ? "warning" : undefined },
+  ], stream)) {
     console.log(line);
   }
   if (triggers.length > 0) {
-    console.log("Matched triggers:");
+    console.log(colorByTone(stream, "info", "Matched triggers:"));
   }
   for (const trigger of triggers) {
-    const reasons = summarizeTriggerReasons(trigger.reasons ?? []);
+    const reasons = renderTriggerReasons(trigger.reasons ?? [], trigger.severity, stream);
     const title = titleCaseTriggerName(trigger.name);
     const reasonCount = trigger.reasons?.length ?? 0;
-    console.log(`- [${trigger.severity}] ${title}${reasonCount > 0 ? ` (${reasonCount} signal${reasonCount === 1 ? "" : "s"})` : ""}`);
-    for (const reason of reasons.slice(0, 3)) {
-      console.log(`  - ${reason}`);
-    }
-    if (reasons.length > 3) {
-      console.log(`  - ... ${reasons.length - 3} more summarized reason${reasons.length - 3 === 1 ? "" : "s"}`);
+    const severityLabel = colorByTone(stream, severityToTone(trigger.severity), `[${trigger.severity.toUpperCase()}]`);
+    console.log(`- ${severityLabel} ${title}${reasonCount > 0 ? ` (${reasonCount} signal${reasonCount === 1 ? "" : "s"})` : ""}`);
+    for (const reason of reasons) {
+      console.log(reason);
     }
   }
   if (workingTreeFiles.length > 0 || untrackedFiles.length > 0) {
     console.log("");
-    console.log("Local workspace residue excluded from push review:");
+    console.log(colorByTone(stream, "warning", "Local workspace residue excluded from push review:"));
     if (workingTreeFiles.length > 0) {
       console.log(`- tracked but uncommitted: ${workingTreeFiles.length}`);
     }
@@ -472,11 +709,18 @@ export async function runReviewTriggerPhase(outputMode: "human" | "jsonl" = "hum
     }
     return buildResultBase(reviewBase, report, "passed", true, false, null, message);
   }
-  const reviewFilesArg = scopeFiles.committedFiles.map(shellQuote).join(" ");
   const entrixBase = `${reviewBase}...HEAD`;
-  const reviewCommand =
-    `PYTHONPATH=tools/entrix python3 -m entrix.cli review-trigger --base ${shellQuote(entrixBase)} --json --fail-on-trigger`
-    + (reviewFilesArg ? ` ${reviewFilesArg}` : "");
+  const reviewCommand = resolveEntrixShellCommand(
+    [
+      "review-trigger",
+      "--base",
+      entrixBase,
+      "--json",
+      "--fail-on-trigger",
+      ...scopeFiles.committedFiles,
+    ],
+    reviewRoot,
+  );
 
   const review = await runCommand(reviewCommand, { stream: false, cwd: reviewRoot });
 

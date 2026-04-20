@@ -1,12 +1,13 @@
 "use client";
 
 import { useCallback, useRef } from "react";
+import { desktopAwareFetch } from "@/client/utils/diagnostics";
 
 export function useSessionMcpTool(workspaceId: string) {
   const mcpSessionRef = useRef<string | null>(null);
 
   const initMcpSession = useCallback(async (): Promise<string | null> => {
-    const initResponse = await fetch("/api/mcp", {
+    const initResponse = await desktopAwareFetch("/api/mcp", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -37,7 +38,7 @@ export function useSessionMcpTool(workspaceId: string) {
     }
 
     const doCall = async () => {
-      const response = await fetch("/api/mcp", {
+      const response = await desktopAwareFetch("/api/mcp", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

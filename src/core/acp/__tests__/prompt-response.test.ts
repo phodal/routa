@@ -19,6 +19,29 @@ describe("consumeAcpPromptResponse", () => {
     await expect(consumeAcpPromptResponse(response)).rejects.toThrow("Permission denied: HTTP error: 403 Forbidden");
   });
 
+  it("includes nested ACP error data in JSON-RPC prompt failures", async () => {
+    const response = new Response(JSON.stringify({
+      jsonrpc: "2.0",
+      id: "req-2",
+      error: {
+        code: -32000,
+        message: "Internal error",
+        data: {
+          source: "acp",
+          code: -32603,
+          data: "failed to deserialize response",
+        },
+      },
+    }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+
+    await expect(consumeAcpPromptResponse(response)).rejects.toThrow(
+      "Internal error: acp: -32603: failed to deserialize response",
+    );
+  });
+
   it("throws when an SSE prompt stream emits an error event", async () => {
     const response = new Response(
       [

@@ -2,8 +2,15 @@ function extractErrorMessage(value: unknown): string | null {
   if (!value || typeof value !== "object") return null;
   const record = value as Record<string, unknown>;
 
-  if (typeof record.message === "string" && record.message.trim()) {
-    return record.message;
+  const message = typeof record.message === "string" && record.message.trim()
+    ? record.message.trim()
+    : null;
+  const detail = extractErrorDetail(record.data);
+  if (message && detail && detail !== message) {
+    return `${message}: ${detail}`;
+  }
+  if (message) {
+    return message;
   }
 
   const nestedError = record.error;
@@ -15,6 +22,25 @@ function extractErrorMessage(value: unknown): string | null {
   }
 
   return null;
+}
+
+function extractErrorDetail(value: unknown): string | null {
+  if (typeof value === "string" && value.trim()) {
+    return value.trim();
+  }
+
+  if (!value || typeof value !== "object") return null;
+  const record = value as Record<string, unknown>;
+  const parts = [
+    typeof record.source === "string" && record.source.trim() ? record.source.trim() : null,
+    typeof record.code === "number" ? String(record.code) : null,
+    typeof record.data === "string" && record.data.trim() ? record.data.trim() : null,
+    typeof record.errorMessage === "string" && record.errorMessage.trim()
+      ? record.errorMessage.trim()
+      : null,
+  ].filter((part): part is string => Boolean(part));
+
+  return parts.length > 0 ? parts.join(": ") : null;
 }
 
 function extractSsePromptError(payload: unknown): string | null {

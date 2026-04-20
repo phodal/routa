@@ -3,7 +3,18 @@
 import React from "react";
 import { useTranslation } from "@/i18n";
 import type { KanbanRepoChanges, KanbanFileChangeItem, KanbanFileChangeStatus } from "./kanban-file-changes-types";
-import { ChevronRight } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowRightLeft,
+  ChevronRight,
+  Copy,
+  FilePlus2,
+  Pencil,
+  Plus,
+  Trash2,
+  Type,
+  type LucideIcon,
+} from "lucide-react";
 
 
 interface KanbanFileChangesPanelProps {
@@ -25,15 +36,15 @@ const DEFAULT_CHANGE_SUMMARY_COPY: ChangeSummaryCopy = {
   untrackedCount: "{count} untracked",
 };
 
-export const STATUS_BADGE: Record<KanbanFileChangeStatus, { short: string; className: string }> = {
-  modified: { short: "M", className: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300" },
-  added: { short: "A", className: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300" },
-  deleted: { short: "D", className: "bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300" },
-  renamed: { short: "R", className: "bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300" },
-  copied: { short: "C", className: "bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-300" },
-  untracked: { short: "??", className: "bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300" },
-  typechange: { short: "T", className: "bg-fuchsia-100 text-fuchsia-700 dark:bg-fuchsia-900/30 dark:text-fuchsia-300" },
-  conflicted: { short: "U", className: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300" },
+export const STATUS_BADGE: Record<KanbanFileChangeStatus, { short: string; className: string; icon: LucideIcon }> = {
+  modified: { short: "M", className: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300", icon: Pencil },
+  added: { short: "A", className: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300", icon: Plus },
+  deleted: { short: "D", className: "bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300", icon: Trash2 },
+  renamed: { short: "R", className: "bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300", icon: ArrowRightLeft },
+  copied: { short: "C", className: "bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-300", icon: Copy },
+  untracked: { short: "??", className: "bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300", icon: FilePlus2 },
+  typechange: { short: "T", className: "bg-fuchsia-100 text-fuchsia-700 dark:bg-fuchsia-900/30 dark:text-fuchsia-300", icon: Type },
+  conflicted: { short: "U", className: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300", icon: AlertTriangle },
 };
 
 export function formatChangeSummary(
@@ -51,30 +62,147 @@ export function formatChangeSummary(
 export function getKanbanFileChangesSummary(repos: KanbanRepoChanges[]) {
   const changedRepos = repos.filter((repo) => !repo.error && !repo.status.clean).length;
   const changedFiles = repos.reduce((count, repo) => count + repo.files.length, 0);
-  return { changedRepos, changedFiles };
+  const totalAdditions = repos.reduce((sum, repo) => {
+    return sum + repo.files.reduce((fileSum, file) => fileSum + (file.additions ?? 0), 0);
+  }, 0);
+  const totalDeletions = repos.reduce((sum, repo) => {
+    return sum + repo.files.reduce((fileSum, file) => fileSum + (file.deletions ?? 0), 0);
+  }, 0);
+  return { changedRepos, changedFiles, totalAdditions, totalDeletions };
 }
 
-export function FileRow({ file }: { file: KanbanFileChangeItem }) {
+export function splitFilePath(path: string): { name: string; directory: string | null } {
+  const normalized = path.trim();
+  const lastSlash = normalized.lastIndexOf("/");
+  if (lastSlash === -1) {
+    return { name: normalized, directory: null };
+  }
+
+  return {
+    name: normalized.slice(lastSlash + 1) || normalized,
+    directory: normalized.slice(0, lastSlash),
+  };
+}
+
+function formatFileLineDelta(file: KanbanFileChangeItem): { additions: number; deletions: number } | null {
+  if (typeof file.additions !== "number" && typeof file.deletions !== "number") return null;
+  return {
+    additions: file.additions ?? 0,
+    deletions: file.deletions ?? 0,
+  };
+}
+
+interface FileRowProps {
+  file: KanbanFileChangeItem;
+  selected?: boolean;
+  onClick?: (file: KanbanFileChangeItem) => void;
+  onSelect?: (file: KanbanFileChangeItem, selected: boolean) => void;
+  showCheckbox?: boolean;
+}
+
+export function FileRow({
+  file,
+  selected = false,
+  onClick,
+  onSelect,
+  showCheckbox = false,
+}: FileRowProps) {
   const { t } = useTranslation();
   const badge = STATUS_BADGE[file.status];
+  const StatusIcon = badge.icon;
+  const { name, directory } = splitFilePath(file.path);
+  const previous = file.previousPath ? splitFilePath(file.previousPath) : null;
+  const lineDelta = formatFileLineDelta(file);
+  const interactive = typeof onClick === "function";
+  const gridCols = showCheckbox ? "grid-cols-[20px_16px_minmax(0,1fr)_auto]" : "grid-cols-[16px_minmax(0,1fr)_auto]";
+  const containerClassName = `grid w-full ${gridCols} items-start gap-x-2 gap-y-0 rounded-md px-1 py-1 text-left transition-colors ${
+    selected
+      ? "bg-amber-50/80 dark:bg-amber-900/10"
+      : "hover:bg-slate-100/80 dark:hover:bg-[#171b27]"
+  }`;
 
-  return (
-    <div className="flex items-start gap-2 rounded-xl border border-slate-200/70 bg-slate-50/80 px-2.5 py-2 dark:border-[#202433] dark:bg-[#11141d]">
-      <span className={`inline-flex min-w-7 justify-center rounded-md px-1.5 py-0.5 text-[10px] font-semibold ${badge.className}`}>
-        {badge.short}
+  const handleCheckboxChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    e.stopPropagation();
+    onSelect?.(file, e.target.checked);
+  };
+
+  const content = (
+    <>
+      {showCheckbox && (
+        <input
+          type="checkbox"
+          checked={file.selected ?? false}
+          onChange={handleCheckboxChange}
+          onClick={(e) => e.stopPropagation()}
+          className="mt-0.5 h-3.5 w-3.5 rounded border-slate-300 text-amber-600 focus:ring-2 focus:ring-amber-500 dark:border-slate-600 dark:bg-slate-700"
+          aria-label={`Select ${file.path}`}
+        />
+      )}
+      <span
+        className={`inline-flex h-4 w-4 shrink-0 items-center justify-center self-start rounded-sm ${badge.className}`}
+        title={file.status}
+        aria-label={file.status}
+      >
+        <StatusIcon className="h-2.5 w-2.5" />
       </span>
-      <div className="min-w-0 flex-1">
-        <div className="truncate text-[11px] font-medium text-slate-700 dark:text-slate-200" title={file.path}>
-          {file.path}
+      <div className="min-w-0 overflow-hidden">
+        <div className="block truncate text-[11px] font-medium leading-4 text-slate-800 dark:text-slate-100" title={name}>
+          {name}
         </div>
-        {file.previousPath && (
-          <div className="truncate text-[10px] text-slate-400 dark:text-slate-500" title={file.previousPath}>
-            {t.kanban.fromPath} {file.previousPath}
+        {directory && (
+          <div className="block truncate text-[9px] leading-3.5 text-slate-500 dark:text-slate-400" title={directory}>
+            {directory}
+          </div>
+        )}
+        {previous && (
+          <div className="mt-0.5 flex items-center gap-1 text-[9px] leading-3.5 text-slate-400 dark:text-slate-500">
+            <ArrowRightLeft className="h-2.5 w-2.5 shrink-0" />
+            <span className="truncate" title={previous.name}>
+              {previous.name}
+            </span>
+            {previous.directory && (
+              <span className="truncate text-slate-400/90 dark:text-slate-500" title={previous.directory}>
+                {t.kanban.fromPath} {previous.directory}
+              </span>
+            )}
+            {!previous.directory && (
+              <span className="truncate" title={file.previousPath}>
+                {t.kanban.fromPath}
+              </span>
+            )}
           </div>
         )}
       </div>
-    </div>
+      <div className="mt-0.5 flex min-w-[3.25rem] shrink-0 items-center justify-end gap-1 self-start text-[10px] font-mono leading-4">
+        {lineDelta ? (
+          <>
+            <span className="text-emerald-600 dark:text-emerald-300">+{lineDelta.additions}</span>
+            <span className="text-rose-600 dark:text-rose-300">-{lineDelta.deletions}</span>
+          </>
+        ) : (
+          <span className={`rounded-sm px-1 py-0 text-[7px] font-semibold tracking-wide ${badge.className}`}>
+            {badge.short}
+          </span>
+        )}
+      </div>
+    </>
   );
+
+  if (interactive) {
+    return (
+      <button
+        type="button"
+        className={containerClassName}
+        onClick={() => onClick?.(file)}
+        data-testid={`kanban-file-row-${file.path}`}
+        aria-pressed={selected}
+      >
+        {content}
+      </button>
+    );
+  }
+
+  return <div className={containerClassName}>{content}</div>;
 }
 
 export function KanbanFileChangesPanel({

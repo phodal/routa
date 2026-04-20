@@ -4,137 +4,201 @@
 
 # Routa
 
-**Your AI Agent Team, Managed by Kanban**
+**Workspace-first multi-agent coordination platform for software delivery**
 
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue.svg)](https://www.typescriptlang.org/)
-[![Next.js](https://img.shields.io/badge/Next.js-16.1-black.svg)](https://nextjs.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.9-blue.svg)](https://www.typescriptlang.org/)
+[![Next.js](https://img.shields.io/badge/Next.js-16.2-black.svg)](https://nextjs.org/)
 [![Rust](https://img.shields.io/badge/Rust-Axum-orange.svg)](https://github.com/tokio-rs/axum)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Join Slack](https://img.shields.io/badge/Slack-Join%20Community-4A154B?logo=slack&logoColor=white)](https://join.slack.com/t/routa-group/shared_invite/zt-3txzzfxm8-tnRFwNpPvdfjAVoSD6MTJg)
-
 [![npm version](https://img.shields.io/npm/v/routa-cli)](https://www.npmjs.com/package/routa-cli)
 [![crates.io](https://img.shields.io/crates/v/routa-cli)](https://crates.io/crates/routa-cli)
 
-[Why Routa](#why-routa) • [Architecture](#architecture) • [How It Works](#how-it-works) • [Agent Team](#the-agent-team) • [Bring Your Own Agents](#bring-your-own-agents) • [Community](#community) • [Quick Start](#quick-start)
+[Demo](#demo) • [Architecture](#architecture) • [How It Works](#how-it-works) • [Why Routa](#why-routa) • [Quick Start](#quick-start) • [Docs](#docs) • [中文](README.zh-CN.md)
 
 </div>
 
 ---
 
-> **📦 Distribution Notice**
-> This project primarily provides a **Tauri desktop application** (binary distribution).
-> The web version is available for demo purposes only.
+Routa is a workspace-first multi-agent coordination platform for software delivery. It keeps goals, tasks, sessions, traces, evidence, and review state visible on a board instead of burying them inside a single chat thread.
 
-[Releases](https://github.com/phodal/routa/releases) · [Docs](https://phodal.github.io/routa/) · [Community (Slack)](https://join.slack.com/t/routa-group/shared_invite/zt-3txzzfxm8-tnRFwNpPvdfjAVoSD6MTJg) · [Demo (Bilibili)](https://www.bilibili.com/video/BV16CwyzUED5/) · [Demo (YouTube)](https://www.youtube.com/watch?v=spjmr_1AQLM) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md)
+[Releases](https://github.com/phodal/routa/releases) · [Architecture](docs/ARCHITECTURE.md) · [Feature Tree](docs/product-specs/FEATURE_TREE.md) · [Quick Start](docs/quick-start.md) · [Docs Site](https://phodal.github.io/routa/) · [Slack](https://join.slack.com/t/routa-group/shared_invite/zt-3txzzfxm8-tnRFwNpPvdfjAVoSD6MTJg) · [Contributing](CONTRIBUTING.md)
 
-## Why Routa
+## Demo
 
-One agent doing everything sounds great until it doesn't. A single agent context-switches between planning, coding, reviewing, and reporting — the same way a solo developer burns out juggling every role on a project.
-
-Real teams don't work that way. They specialize, hand off, and keep work visible on a board.
-
-Routa applies the same idea to AI agents. A Kanban board becomes the coordination layer: you describe what you want, Routa decomposes it into cards, and specialized agents pick up work as it flows through columns — Backlog → Todo → Dev → Review → Done. Each agent knows its role and passes work forward when ready.
-
-The board is both the project manager and the communication bus.
+- [Bilibili walkthrough](https://www.bilibili.com/video/BV16CwyzUED5/)
+- [YouTube walkthrough](https://www.youtube.com/watch?v=spjmr_1AQLM)
 
 ![Routa Kanban Overview](https://github.com/user-attachments/assets/8fdf7934-f8ba-469f-a8b8-70e215637a45)
 
+## Community
+
+- [Docs Site](https://phodal.github.io/routa/)
+- [Slack Community](https://join.slack.com/t/routa-group/shared_invite/zt-3txzzfxm8-tnRFwNpPvdfjAVoSD6MTJg)
+- [Releases](https://github.com/phodal/routa/releases)
+- [Issues](https://github.com/phodal/routa/issues)
+
+### WeChat Group
+
+<img src="https://github.com/user-attachments/assets/78270d2e-e512-4e6a-8116-a88b13b80fa0" alt="Routa WeChat Group QR Code" width="480" />
+
 ## Architecture
 
-Routa runs on two runtime surfaces that share the same domain model:
-
-- **Web**: Next.js app and API (`src/`)
-- **Desktop**: Tauri + Axum (`apps/desktop/` + `crates/routa-server/`)
-
-Both runtimes feed the same workspace-scoped coordination model — sessions, kanban automation, tasks, tools, and traces. The desktop backend is a full local coordination runtime, not a thin transport shim.
+### System Architecture
 
 ![Routa architecture](docs/architecture.svg)
 
-At the center is the ACP orchestration layer. Provider families are normalized through shared adapters and registry logic, so different agent CLIs and Docker providers converge on the same session lifecycle and streaming model. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full contract.
+The current implementation is intentionally dual-backend, not two separate products.
+
+- Web: Next.js pages and route handlers in `src/`
+- Desktop: Tauri shell in `apps/desktop/` backed by the Axum server in `crates/routa-server/`
+- Shared boundary: both runtimes preserve the same workspace, session, task, trace, codebase, worktree, and review semantics defined by `api-contract.yaml`
+- Integration surfaces: ACP, MCP, A2A, AG-UI, A2UI, REST, and SSE
+
+### Review Gate Architecture
+
+![Routa review gate](docs/review-gate.svg)
+
+The delivery gate is a stacked decision path, not a single reviewer persona.
+
+- Harness Monitor answers what happened by surfacing traces, changed files, commands, git state, and attribution
+- Entrix Fitness answers what should be true by enforcing hard gates, evidence requirements, and file budget or policy checks
+- Gate Specialist answers whether the card can move by verifying acceptance criteria and routing to Done, Dev, or human escalation
 
 ## How It Works
 
-```
+```text
 You: "Build a user auth system with login, registration, and password reset"
-                              ↓
-              ┌───────────────────────────────┐
-              │  📋 Kanban Board (the brain)   │
-              └───────────────────────────────┘
-                              ↓
-   Backlog          Todo          Dev           Review         Done
-  ┌────────┐    ┌────────┐    ┌────────┐    ┌────────┐    ┌────────┐
-  │Refiner │ →  │Orchestr│ →  │Crafter │ →  │ Guard  │ →  │Reporter│
-  │  Agent │    │  Agent │    │  Agent │    │  Agent │    │  Agent │
-  └────────┘    └────────┘    └────────┘    └────────┘    └────────┘
+                                                            ↓
+                                    Workspace + Kanban Board
+                                                            ↓
+ Backlog              Todo              Dev               Review            Done
+ Backlog Refiner  ->  Todo Orchestrator -> Dev Crafter -> Review Guard -> Done Reporter
+                                                            ↘
+                                                                Blocked Resolver
 ```
 
-1. **You speak, Kanban listens** — Describe your goal in natural language. Routa decomposes it into cards on the board.
-2. **Each column has a specialist** — Agents are bound to columns. When a card lands in their column, they pick it up automatically.
-3. **Work flows forward** — Each agent completes its stage and moves the card to the next column. No manual handoff needed.
-4. **Review before done** — The Review Guard agent checks implementation quality and can bounce cards back to Dev if needed.
-5. **Full visibility** — Watch agents work in real-time. Every card shows who's working on it, what changed, and why.
+Routa treats the board as both the planning surface and the coordination bus. The important detail is that each lane is backed by a different specialist prompt, and each downstream lane is deliberately stricter than the previous one.
 
-## The Agent Team
+At a high level, two specialist layers work together:
 
-Routa ships with a set of built-in specialists, each designed for a specific stage of the development workflow:
+- Core roles: ROUTA coordinates, CRAFTER implements, GATE verifies
+- Kanban lane specialists: each column applies a concrete prompt contract and a concrete evidence contract
 
-| Agent | Column | What It Does |
-|-------|--------|-------------|
-| **Backlog Refiner** | Backlog | Turns rough ideas into implementation-ready stories with clear scope and acceptance criteria |
-| **Todo Orchestrator** | Todo | Removes ambiguity, adds execution notes, confirms the card is ready for coding |
-| **Dev Crafter** | Dev | Implements the feature, runs tests, records evidence of what changed |
-| **Review Guard** | Review | Inspects implementation against acceptance criteria, approves or bounces back to Dev |
-| **Done Reporter** | Done | Writes a completion summary — what shipped and what was verified |
-| **Blocked Resolver** | Blocked | Triages stuck cards, clarifies blockers, routes them back into the active flow |
+### End-to-End Example
 
-Above the board sits the **Coordinator (Routa)** — it plans work, writes specs, delegates to specialists, and orchestrates multi-wave execution. It never writes code itself.
+1. You describe a goal in natural language.
+2. ROUTA or the board automation turns that goal into a workspace-scoped card.
+3. Backlog Refiner rewrites the rough request into a canonical YAML story with acceptance criteria, constraints, dependencies, and an INVEST snapshot.
+4. Todo Orchestrator distrusts that upstream card, reparses the YAML, rejects weak stories, and appends an execution-ready brief.
+5. Dev Crafter distrusts the plan again, refuses to code unless the story is executable, implements only the scoped change, runs validation, commits the work, and appends Dev Evidence.
+6. Review Guard distrusts Dev's self-assessment, independently checks each acceptance criterion, requires tests and a clean git state, and either rejects to Dev or approves to Done.
+7. Done Reporter appends a short completion summary that explains what shipped and what evidence justified completion.
+8. If the work is blocked by environment, dependency, or ambiguity, Blocked Resolver writes down the blocker and routes the card back to the correct lane instead of letting the problem stay implicit.
 
-You can also define **Custom Specialists** with their own system prompts, model tiers, and behaviors — via the Web UI, REST API, or Markdown files in `~/.routa/specialists/`.
+### Lane Contracts
 
-## Bring Your Own Agents
+| Lane | Specialist | What the prompt enforces | What gets written to the card | Typical handoff |
+| --- | --- | --- | --- | --- |
+| Backlog | Backlog Refiner | Clarify scope, do not code, and do not move forward until the card contains exactly one canonical YAML story block | Canonical YAML story with problem statement, acceptance criteria, constraints, dependencies, out-of-scope items, and INVEST checks | Move to Todo only when the story parses and is independently executable |
+| Todo | Todo Orchestrator | Re-validate Backlog output, reject malformed or vague cards, and turn a valid story into an execution-ready brief | Execution Plan, Key Files and Entry Points, Dependency Plan, Risk Notes | Move to Dev only when implementation can start within minutes |
+| Dev | Dev Crafter | Re-check that the card is executable, implement only the scoped change, run verification, commit the work, and keep git clean | Dev Evidence with changed files, work summary, tests run, per-AC verification, caveats | Move to Review only after commit exists and the worktree is clean |
+| Review | Review Guard | Independently verify every acceptance criterion, reject missing evidence, reject scope creep, reject dirty git state, reject broken lint or type checks | Review Findings with verdict, per-AC status, issues found, reviewer notes | Move to Done only with APPROVED verdict |
+| Done | Done Reporter | Treat Done as terminal, do not advance further, and leave behind a concise completion record | Completion Summary with what shipped, key evidence, and completion date | Stay in Done |
+| Blocked | Blocked Resolver | Classify the blocker, explain root cause, and route back only when there is a concrete next step | Blocker Analysis with blocker type, root cause, resolution, and routing decision | Return to Backlog, Todo, Dev, Review, or remain Blocked |
 
-Routa doesn't lock you into one AI provider. Pick the backend agent that fits each task:
+### Card Artifacts Grow As The Work Moves Forward
 
-### ACP Providers (Agent Client Protocol)
+The same card becomes stricter over time:
 
-Routa spawns and manages agent processes through ACP. Supported out of the box:
+- Backlog produces the canonical story YAML
+- Todo adds the execution brief
+- Dev adds evidence of implementation and verification
+- Review adds a formal verdict and findings
+- Done adds a completion summary
 
-| Provider | Type | Status |
-|----------|------|--------|
-| **Claude Code** | CLI | ✅ Supported |
-| **OpenCode** | CLI / Docker | ✅ Supported |
-| **Codex** | CLI | ✅ Supported |
-| **Gemini CLI** | CLI | ✅ Supported |
-| **Kimi** | CLI | ✅ Supported |
-| **Augment** | CLI | ✅ Supported |
-| **Copilot** | CLI | ✅ Supported |
+This is why the board is not just visual status. Each column changes what the next specialist is allowed to trust.
 
-### ACP Agent Registry
+### Core Specialist Prompts Under The Board
 
-Discover and install community-contributed agents from the ACP Registry — supports `npx`, `uvx`, and binary distributions. Browse the registry from Settings → Install Agents, or use the API.
+- ROUTA Coordinator: plans first, never edits files directly, writes the spec, waits for approval, delegates work in waves, and calls GATE for verification after implementation.
+- CRAFTER Implementor: stays within task scope, avoids refactors and scope creep, coordinates with other agents when files overlap, runs the verification steps it was given, and commits in small units.
+- GATE Verifier: verifies against acceptance criteria only, treats evidence as mandatory, does not allow partial approval, and reports explicit verdicts instead of vague confidence.
 
-### Multi-Protocol Support
+The built-in lane prompts live under `resources/specialists/workflows/kanban/*.yaml`, and the core role prompts live under `resources/specialists/core/{routa,crafter,gate}.yaml`.
 
-| Protocol | Purpose |
-|----------|---------|
-| **MCP** (Model Context Protocol) | Coordination tools — task delegation, messaging, notes |
-| **ACP** (Agent Client Protocol) | Spawns and manages agent processes |
-| **A2A** (Agent-to-Agent Protocol) | Federation interface for cross-platform agent communication |
-| **AG-UI** | Agent-generated UI protocol for rich dashboard rendering |
+## Why Routa
 
-## More Features
+Single-agent chat works for isolated tasks. It breaks down when the same thread has to do decomposition, implementation, review, evidence collection, and release decisions.
 
-- **🔧 Custom MCP Servers** — Register user-defined MCP servers (stdio/http/sse) alongside the built-in coordination server. When an ACP agent spawns, enabled custom servers are automatically merged into its MCP configuration.
-- **🐙 GitHub Virtual Workspace** — Import GitHub repos as virtual workspaces for browsing and code review — no local `git clone` required. Works on serverless (Vercel) via zipball download.
-- **📡 Scheduled Triggers** — Cron-based agent triggers for recurring tasks.
-- **🔗 GitHub Webhooks** — Trigger agent workflows from GitHub events (push, PR, issues).
-- **🧠 Memory** — Workspace-scoped memory entries that persist context across sessions.
-- **📊 Traces** — Browse agent execution traces, view stats, debug agent behavior.
-- **🎯 Skills System** — OpenCode-compatible skill discovery and dynamic loading from a community catalog.
+Routa makes those responsibilities explicit:
 
-## 🚀 Quick Start
+- Work starts from a workspace, not hidden global repo state
+- Kanban lanes route work between specialists instead of mixing every role into one prompt
+- Sessions, traces, notes, artifacts, codebases, and worktrees are durable objects
+- Provider runtimes are normalized through adapters instead of leaking provider-specific behavior into the product
+- The review boundary is a real gate, not just another opinionated reviewer
 
-### Desktop Application (Recommended)
+## What You Can Do Today
+
+- Create workspace-scoped overviews, Kanban boards, sessions, team views, and codebase views
+- Run agent sessions with create, prompt, cancel, reconnect, streaming, and trace inspection flows
+- Route work across specialist lanes with queueing and per-board automation
+- Manage local repositories, worktrees, file search, Git refs, and commit inspection
+- Import GitHub repositories as virtual workspaces and browse trees, files, issues, PRs, and comments
+- Add MCP tools and custom MCP servers
+- Use schedules, webhooks, background tasks, and workflow runs for automation beyond one-off prompts
+- Review changes with findings, severity, traces, harness signals, and fitness reports
+- Run the product in a local-first desktop mode or a self-hosted web mode
+
+## Quick Start
+
+Choose the shortest path that matches how you want to use Routa.
+
+| Surface | Best for | Start |
+| --- | --- | --- |
+| Desktop | Full product experience, visual workflows, local-first usage | Download from [GitHub Releases](https://github.com/phodal/routa/releases) |
+| CLI | Terminal-first workflows and scripting | `npm install -g routa-cli` |
+| Web | Self-hosting or browser-first access | Run from source |
+
+### Desktop
+
+1. Download Routa Desktop from [GitHub Releases](https://github.com/phodal/routa/releases).
+2. Create a workspace.
+3. Enable one provider.
+4. Attach a repository.
+5. Start from Session for ad hoc work, or Kanban for routed delivery.
+
+### CLI
+
+```bash
+npm install -g routa-cli
+
+routa --help
+routa -p "Explain the architecture of this repository"
+routa acp list
+routa workspace list
+```
+
+### Web
+
+```bash
+npm install --legacy-peer-deps
+npm run dev
+```
+
+Open `http://localhost:3000`.
+
+## Develop From Source
+
+### Web runtime
+
+```bash
+npm install --legacy-peer-deps
+npm run dev
+```
+
+### Desktop runtime
 
 ```bash
 npm install --legacy-peer-deps
@@ -142,70 +206,58 @@ npm --prefix apps/desktop install
 npm run tauri:dev
 ```
 
-### Web Demo (For Testing Only)
-
-```bash
-npm install --legacy-peer-deps
-npm run dev
-```
-
-Visit `http://localhost:3000` to access the web interface.
-
 ### Docker
 
 ```bash
-# SQLite (default, no external database required)
 docker compose up --build
-
-# PostgreSQL
 docker compose --profile postgres up --build
 ```
 
-### CLI (Rust)
+The Tauri smoke path uses `http://127.0.0.1:3210/` behind the desktop shell.
 
-Install the CLI directly from NPM for terminal-first workflows:
+## Validation
 
-```bash
-npm install -g routa-cli
-```
-
-The desktop distribution also includes a `routa` CLI:
+Use [docs/fitness/README.md](docs/fitness/README.md) as the canonical validation rulebook.
 
 ```bash
-npx -p routa-cli routa --help     # one-off usage
-routa -p "Implement feature X"    # Full coordinator flow
-routa agent list|create|status    # Agent management
-routa task list|create|get        # Task management
-routa chat                        # Interactive chat
+cargo build -p entrix
+entrix run --dry-run
+entrix run --tier fast
+entrix run --tier normal
+npm run test
+npm run test:e2e
+npm run api:test
+npm run lint
 ```
 
-## Community
+## Repository Map
 
-- Join the Slack community: https://join.slack.com/t/routa-group/shared_invite/zt-3txzzfxm8-tnRFwNpPvdfjAVoSD6MTJg
-- Bug reports and feature requests: https://github.com/phodal/routa/issues
-- Security reports: [SECURITY.md](SECURITY.md)
-- Contribution guide: [CONTRIBUTING.md](CONTRIBUTING.md)
+| Path | Purpose |
+| --- | --- |
+| `src/app/` | Next.js App Router pages and API routes |
+| `src/client/` | Client components, hooks, view models, and UI protocol helpers |
+| `src/core/` | TypeScript domain services for ACP/MCP, Kanban, workflows, traces, review, harness, and stores |
+| `apps/desktop/` | Tauri shell and desktop packaging |
+| `crates/routa-core/` | Shared Rust runtime foundation |
+| `crates/routa-server/` | Axum backend used by desktop and local server mode |
+| `crates/routa-cli/` | CLI entrypoints and ACP serving commands |
+| `crates/harness-monitor/` | Run observation, evaluation, and operator-facing harness monitor |
+| `docs/ARCHITECTURE.md` | Canonical architecture boundaries and invariants |
+| `docs/adr/` | Architecture decision records |
+| `docs/product-specs/FEATURE_TREE.md` | Generated route and endpoint inventory |
+| `docs/fitness/` | Validation and quality gates |
 
-## Harness Engineering
+## Docs
 
-Routa is a practical case study of [Harness Engineering](https://www.phodal.com/blog/harness-engineering/) — building systems that are readable for AI, constrained by guardrails, and improved through fast automated feedback.
-
-- **Readability** — [AGENTS.md](AGENTS.md) defines standards. Specialist definitions in [`resources/specialists/`](resources/specialists/) reveal role boundaries. Machine-friendly interfaces (MCP, ACP, A2A, REST, CLI) mean agent workflows don't depend on manual UI steps.
-- **Defense** — Pre-commit lint and pre-push `tools/hook-runtime` checks plus fitness functions ([docs/fitness/](docs/fitness/)) define hard gates: tests, API contract checks, and lint.
-- **Feedback Loops** — Issue enrichment, review handoff automation, and backlog hygiene workflows close the loop between agent output and the next iteration.
+- [Architecture](docs/ARCHITECTURE.md)
+- [ADR Index](docs/adr/README.md)
+- [Quick Start](docs/quick-start.md)
+- [Feature Tree](docs/product-specs/FEATURE_TREE.md)
+- [Fitness Rules](docs/fitness/README.md)
+- [Harness Monitor Architecture](docs/harness/harness-monitor-run-centric-operator-model.md)
+- [Contributing](CONTRIBUTING.md)
+- [Security](SECURITY.md)
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
-
-Built with [Model Context Protocol](https://modelcontextprotocol.io/) · [Agent Client Protocol](https://github.com/agentclientprotocol/typescript-sdk) · [A2A Protocol](https://a2aprotocol.ai/) · Inspired by [Intent](https://www.augmentcode.com/product/intent)
-
----
-
-<div align="center">
-
-**[⬆ back to top](#routa)**
-
-Made with ❤️ by the Routa community
-
-</div>
+MIT. See [LICENSE](LICENSE).

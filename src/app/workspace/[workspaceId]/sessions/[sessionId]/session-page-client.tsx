@@ -20,29 +20,127 @@ import {SpecialistManager} from "@/client/components/specialist-manager";
 import {CraftersView} from "@/client/components/task-panel";
 import {AgentInstallPanel} from "@/client/components/agent-install-panel";
 import {LeftSidebar} from "./left-sidebar";
-import {AppHeader} from "@/client/components/app-header";
+import {DesktopAppShell} from "@/client/components/desktop-app-shell";
+import {WorkspaceSwitcher} from "@/client/components/workspace-switcher";
 import {useWorkspaces, useCodebases} from "@/client/hooks/use-workspaces";
 import {useAcp} from "@/client/hooks/use-acp";
 import {useNotes} from "@/client/hooks/use-notes";
 import type {RepoSelection} from "@/client/components/repo-picker";
 import {storePendingPrompt} from "@/client/utils/pending-prompt";
-import {SettingsPanel, DockerConfigModal, loadDefaultProviders, loadProviderConnectionConfig, getModelDefinitionByAlias} from "@/client/components/settings-panel";
-import {DesktopNavRail} from "@/client/components/desktop-nav-rail";
+import {DockerConfigModal, loadDefaultProviders, loadProviderConnectionConfig, getModelDefinitionByAlias} from "@/client/components/settings-panel";
 import { useRealSessionParams } from "./use-real-session-params";
 import { type AgentRole, type SpecialistOption, useSessionPageBootstrap } from "./use-session-page-bootstrap";
 import { useSessionCrafters } from "./use-session-crafters";
 import { RepoSlideSessionPanel } from "./repo-slide-session-panel";
 import { Select } from "@/client/components/select";
 import { useTranslation } from "@/i18n";
-import { ChevronDown, X } from "lucide-react";
+import { ChevronDown, Columns2, ScrollText, X } from "lucide-react";
+import { desktopAwareFetch } from "@/client/utils/diagnostics";
 
 
 interface SessionRecord {
   sessionId: string;
   name?: string;
+  cwd?: string;
+  branch?: string;
   provider?: string;
   role?: string;
+  modeId?: string;
+  mcpProfile?: string;
+  model?: string;
+  specialistId?: string;
+  acpStatus?: "connecting" | "ready" | "error";
   parentSessionId?: string;
+  resumeCapabilities?: {
+    supported: boolean;
+    mode: "native" | "replay" | "both";
+    supportsFork?: boolean;
+    supportsList?: boolean;
+  } | null;
+}
+
+interface TranscriptMessage {
+  role: "user" | "assistant" | "thought" | "tool" | "plan" | "info" | "terminal";
+  content: string;
+  toolName?: string;
+  toolStatus?: string;
+}
+
+const RESTORE_CONTEXT_MESSAGE_LIMIT = 12;
+const RESTORE_CONTEXT_CHAR_LIMIT = 12000;
+
+function isExpiredEmbeddedSessionFailure(message: string | null | undefined): boolean {
+  return Boolean(
+    message && message.includes("embedded ACP processes cannot be resumed on a different instance"),
+  );
+}
+
+function isUnsupportedSessionLoadFailure(message: string | null | undefined): boolean {
+  return Boolean(
+    message && message.includes("session/load not supported"),
+  );
+}
+
+function shouldRecreateSessionAfterResumeError(error: unknown): error is { message: string; code?: number } {
+  if (!error || typeof error !== "object") return false;
+  const candidate = error as { message?: unknown; code?: unknown; name?: unknown };
+  return (
+    typeof candidate.message === "string"
+    && (isExpiredEmbeddedSessionFailure(candidate.message) || isUnsupportedSessionLoadFailure(candidate.message))
+    && (candidate.name === "AcpClientError" || typeof candidate.code === "number")
+  );
+}
+
+function formatTranscriptLine(message: TranscriptMessage): string | null {
+  const content = message.content.trim();
+  if (!content) return null;
+
+  switch (message.role) {
+    case "user":
+      return `User:\n${content}`;
+    case "assistant":
+      return `Assistant:\n${content}`;
+    case "tool":
+      return `Tool${message.toolName ? ` (${message.toolName}${message.toolStatus ? `, ${message.toolStatus}` : ""})` : ""}:\n${content}`;
+    case "plan":
+      return `Plan:\n${content}`;
+    case "info":
+      return `Info:\n${content}`;
+    case "terminal":
+      return `Terminal:\n${content}`;
+    default:
+      return null;
+  }
+}
+
+function buildCrossInstanceRestorePrompt(session: SessionRecord, messages: TranscriptMessage[]): string {
+  const recent = messages
+    .filter((message) => message.role !== "thought")
+    .map(formatTranscriptLine)
+    .filter((value): value is string => Boolean(value))
+    .slice(-RESTORE_CONTEXT_MESSAGE_LIMIT);
+
+  let transcript = recent.join("\n\n");
+  if (transcript.length > RESTORE_CONTEXT_CHAR_LIMIT) {
+    transcript = transcript.slice(transcript.length - RESTORE_CONTEXT_CHAR_LIMIT).trimStart();
+  }
+
+  return [
+    "You are continuing a previous Routa Codex session because the original embedded ACP runtime belongs to another expired instance.",
+    "Treat the transcript below as prior conversation state. Continue from it instead of starting over.",
+    `Previous session ID: ${session.sessionId}`,
+    session.name ? `Previous session name: ${session.name}` : null,
+    session.cwd ? `Working directory: ${session.cwd}` : null,
+    session.branch ? `Branch: ${session.branch}` : null,
+    "",
+    "Transcript excerpt:",
+    transcript || "(No transcript content was available. Ask the user what to continue.)",
+    "",
+    "First turn requirements:",
+    "1. Briefly acknowledge that the prior context was restored.",
+    "2. Identify the latest unfinished task or decision from the transcript.",
+    "3. Continue the work directly without re-summarizing everything.",
+  ].filter(Boolean).join("\n");
 }
 
 /** Built-in roles always available in the selector */
@@ -68,6 +166,8 @@ export function SessionPageClient() {
   const [selectedSpecialistId, setSelectedSpecialistId] = useState<string | null>(null);
   const [showAgentToast, setShowAgentToast] = useState(false);
   const [repoSelection, setRepoSelection] = useState<RepoSelection | null>(null);
+  const [activeSessionRecord, setActiveSessionRecord] = useState<SessionRecord | null>(null);
+  const [isResumingSession, setIsResumingSession] = useState(false);
 
   // ── Workspace state ───────────────────────────────────────────────────
   const workspacesHook = useWorkspaces();
@@ -77,17 +177,16 @@ export function SessionPageClient() {
   useEffect(() => {
     if (codebases.length === 0) return;
     const def = codebases.find((c) => c.isDefault) ?? codebases[0];
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- sync default codebase selection from loaded list
     setRepoSelection({ path: def.repoPath, branch: def.branch ?? "", name: def.label ?? def.repoPath.split("/").pop() ?? "" });
   }, [codebases]);
 
   const handleWorkspaceSelect = useCallback((wsId: string) => {
-    router.push(`/workspace/${wsId}`);
+    router.push(`/workspace/${wsId}/sessions`);
   }, [router]);
 
   const handleWorkspaceCreate = useCallback(async (title: string) => {
     const ws = await workspacesHook.createWorkspace(title);
-    if (ws) router.push(`/workspace/${ws.id}`);
+    if (ws) router.push(`/workspace/${ws.id}/sessions`);
   }, [workspacesHook, router]);
 
   const acp = useAcp();
@@ -100,6 +199,7 @@ export function SessionPageClient() {
     connect: acpConnect,
     selectSession: acpSelectSession,
     setProvider: acpSetProvider,
+    resumeSession: acpResumeSession,
     prompt: acpPrompt,
   } = acp;
   const notesHook = useNotes(workspaceId, sessionId);
@@ -124,7 +224,6 @@ export function SessionPageClient() {
   // ── Mobile sidebar toggle ──────────────────────────────────────────
   const [showMobileSidebar, setShowMobileSidebar] = useState(false);
   const [showAgentInstallPopup, setShowAgentInstallPopup] = useState(false);
-  const [showSettingsPanel, setShowSettingsPanel] = useState(false);
   const [showSpecialistManager, setShowSpecialistManager] = useState(false);
   // Docker error popup state
   const [dockerErrorMessage, setDockerErrorMessage] = useState<string | null>(null);
@@ -135,8 +234,6 @@ export function SessionPageClient() {
 
   const {
     specialists,
-    toolMode,
-    handleToolModeToggle,
   } = useSessionPageBootstrap({
     showSpecialistManager,
     sessionId,
@@ -292,7 +389,6 @@ export function SessionPageClient() {
     });
 
     if (hasRename) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- refresh UI for rename updates
       bumpRefresh();
     }
   }, [acp.updates, bumpRefresh]);
@@ -306,7 +402,7 @@ export function SessionPageClient() {
   // Check if a session is empty (only has session_start event or no messages)
   const isSessionEmpty = useCallback(async (sid: string): Promise<boolean> => {
     try {
-      const res = await fetch(`/api/sessions/${sid}/history`);
+      const res = await desktopAwareFetch(`/api/sessions/${sid}/history`);
       const data = await res.json();
       const history = data?.history ?? [];
 
@@ -332,7 +428,7 @@ export function SessionPageClient() {
     // Never delete child sessions (they belong to a parent orchestration)
     // Also never delete ROUTA-role sessions (they are long-running orchestrators)
     try {
-      const resp = await fetch(`/api/sessions/${sid}`);
+      const resp = await desktopAwareFetch(`/api/sessions/${sid}`);
       if (resp.ok) {
         const sessionData = await resp.json();
         if (sessionData?.session?.parentSessionId) {
@@ -352,7 +448,7 @@ export function SessionPageClient() {
     if (isEmpty) {
       console.log(`[deleteEmptySession] Deleting empty session: ${sid}`);
       try {
-        await fetch(`/api/sessions/${sid}`, { method: "DELETE" });
+        await desktopAwareFetch(`/api/sessions/${sid}`, { method: "DELETE" });
       } catch (e) {
         console.error("Failed to delete empty session", e);
       }
@@ -397,11 +493,44 @@ export function SessionPageClient() {
   }, [searchParams, workspaceId]);
 
   const fetchSessionRecord = useCallback(async (targetSessionId: string): Promise<SessionRecord | null> => {
-    const response = await fetch(`/api/sessions/${targetSessionId}`, { cache: "no-store" });
+    const response = await desktopAwareFetch(`/api/sessions/${targetSessionId}`, { cache: "no-store" });
     if (!response.ok) return null;
     const data = await response.json();
     return (data?.session ?? null) as SessionRecord | null;
   }, []);
+
+  const fetchSessionTranscript = useCallback(async (targetSessionId: string): Promise<TranscriptMessage[]> => {
+    const response = await desktopAwareFetch(`/api/sessions/${targetSessionId}/transcript`, { cache: "no-store" });
+    if (!response.ok) {
+      throw new Error(`Failed to load transcript for session ${targetSessionId}`);
+    }
+    const data = await response.json();
+    return Array.isArray(data?.messages) ? data.messages as TranscriptMessage[] : [];
+  }, []);
+
+  useEffect(() => {
+    if (!displaySessionId || displaySessionId === "__placeholder__") {
+      setActiveSessionRecord(null);
+      return;
+    }
+
+    let cancelled = false;
+    fetchSessionRecord(displaySessionId)
+      .then((record) => {
+        if (!cancelled) {
+          setActiveSessionRecord(record);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setActiveSessionRecord(null);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [displaySessionId, fetchSessionRecord]);
 
   const resolveSessionNavigationTarget = useCallback(async (targetSessionId: string) => {
     const session = await fetchSessionRecord(targetSessionId);
@@ -496,6 +625,62 @@ export function SessionPageClient() {
     },
     [acp, buildSessionHref, deleteEmptySession, ensureConnected, resolveSessionNavigationTarget, router, sessionId]
   );
+
+  const handleResumeCurrentSession = useCallback(async () => {
+    if (!displaySessionId || !activeSessionRecord?.cwd) return;
+    await ensureConnected();
+    setIsResumingSession(true);
+    try {
+      const resumed = await acpResumeSession(
+        displaySessionId,
+        activeSessionRecord.cwd,
+        { throwOnError: true },
+      );
+      if (resumed?.sessionId) {
+        bumpRefresh();
+      }
+    } catch (error) {
+      if (!shouldRecreateSessionAfterResumeError(error)) {
+        throw error;
+      }
+
+      const transcript = await fetchSessionTranscript(displaySessionId);
+      const recreated = await acp.createSession(
+        activeSessionRecord.cwd,
+        "codex",
+        activeSessionRecord.modeId,
+        activeSessionRecord.role,
+        workspaceId,
+        activeSessionRecord.model,
+        undefined,
+        activeSessionRecord.specialistId,
+        undefined,
+        undefined,
+        undefined,
+        activeSessionRecord.branch,
+      );
+
+      if (!recreated?.sessionId) {
+        return;
+      }
+
+      const restorePrompt = buildCrossInstanceRestorePrompt(activeSessionRecord, transcript);
+      storePendingPrompt(recreated.sessionId, restorePrompt);
+      router.push(`/workspace/${workspaceId}/sessions/${recreated.sessionId}`);
+    } finally {
+      setIsResumingSession(false);
+    }
+  }, [
+    activeSessionRecord,
+    acp,
+    acpResumeSession,
+    bumpRefresh,
+    displaySessionId,
+    ensureConnected,
+    fetchSessionTranscript,
+    router,
+    workspaceId,
+  ]);
 
   const ensureSessionForChat = useCallback(async (cwd?: string, provider?: string, modeId?: string, model?: string): Promise<string | null> => {
     await ensureConnected();
@@ -630,76 +815,82 @@ export function SessionPageClient() {
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
+  const isPlanningSession = activeSessionRecord?.mcpProfile === "kanban-planning";
+  const agentSelector = (
+    <div className="relative">
+      <Select
+        value={selectedSpecialistId ? `specialist:${selectedSpecialistId}` : selectedAgent}
+        onChange={(e) => handleAgentChange(e.target.value)}
+        className="appearance-none rounded-xl border border-desktop-border bg-desktop-bg-secondary py-1.5 pl-2.5 pr-7 text-[11px] font-medium text-desktop-text-primary cursor-pointer focus:ring-1 focus:ring-desktop-accent"
+      >
+        {BUILTIN_ROLES.map((r) => (
+          <option key={r.value} value={r.value}>{r.label}</option>
+        ))}
+        {specialists.length > 0 && (
+          <optgroup label={t.common.customSpecialists}>
+            {specialists.map((s) => (
+              <option key={s.id} value={`specialist:${s.id}`}>
+                {s.name}{s.model ? ` (${s.model})` : ""}
+              </option>
+            ))}
+          </optgroup>
+        )}
+      </Select>
+      <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-desktop-text-secondary pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
+    </div>
+  );
+  const sessionTitleBarRight = (
+    <>
+      {agentSelector}
+      {activeSessionRecord?.resumeCapabilities?.supported && activeSessionRecord?.cwd && (
+        <button
+          type="button"
+          onClick={() => void handleResumeCurrentSession()}
+          disabled={isResumingSession || acp.loading}
+          className="inline-flex rounded-xl border border-desktop-border bg-desktop-bg-secondary px-2.5 py-1.5 text-[11px] font-medium text-desktop-text-primary transition-colors hover:bg-desktop-bg-active disabled:cursor-not-allowed disabled:opacity-60"
+          title={t.sessions.resumeHint}
+        >
+          {isResumingSession || acp.loading ? t.sessions.resuming : t.sessions.resume}
+        </button>
+      )}
+    </>
+  );
 
-  return (
-    <div className={`desktop-theme h-screen flex bg-[var(--dt-bg-primary)] ${isEmbedMode ? "embed-mode" : ""}`}>
-      {/* Desktop Navigation Rail */}
-      {!isEmbedMode && (
-        <DesktopNavRail workspaceId={workspaceId} />
-      )}
-      <div className="flex-1 flex flex-col min-w-0 bg-[var(--dt-bg-primary)]">
-      {/* ─── Top Bar ──────────────────────────────────────────────── */}
-      {!isEmbedMode && (
-        <AppHeader
-          workspaceId={workspaceId}
-          workspaces={workspacesHook.workspaces}
-          workspacesLoading={workspacesHook.loading}
-          onWorkspaceSelect={handleWorkspaceSelect}
-          onWorkspaceCreate={handleWorkspaceCreate}
-          variant="session"
-          showMobileSidebar={showMobileSidebar}
-          onToggleMobileSidebar={() => setShowMobileSidebar(!showMobileSidebar)}
-        leftSlot={
-          /* Agent selector */
-            <div className="relative">
-            <Select
-              value={selectedSpecialistId ? `specialist:${selectedSpecialistId}` : selectedAgent}
-              onChange={(e) => handleAgentChange(e.target.value)}
-              className="appearance-none pl-2.5 pr-6 py-0.5 text-xs font-medium rounded-md border border-[var(--dt-border)] bg-[var(--dt-bg-primary)] text-[var(--dt-text-primary)] cursor-pointer focus:ring-1 focus:ring-[var(--dt-accent)]"
-            >
-              {BUILTIN_ROLES.map((r) => (
-                <option key={r.value} value={r.value}>{r.label}</option>
-              ))}
-              {specialists.length > 0 && (
-                <optgroup label={t.common.customSpecialists}>
-                  {specialists.map((s) => (
-                    <option key={s.id} value={`specialist:${s.id}`}>
-                      {s.name}{s.model ? ` (${s.model})` : ""}
-                    </option>
-                  ))}
-                </optgroup>
-              )}
-            </Select>
-            <ChevronDown className="absolute right-1.5 top-1/2 -translate-y-1/2 w-3 h-3 text-[var(--dt-text-secondary)] pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
-          </div>
-        }
-        rightSlot={
-          <>
-            {/* Tool Mode Toggle */}
-            <label className="hidden md:flex items-center gap-1.5 cursor-pointer select-none" title={t.sessions.toolModeTitle.replace('{mode}', toolMode === "essential" ? "Essential (7 tools)" : "Full (34 tools)")}>
-              <span className="text-[10px] text-[var(--dt-text-secondary)]">{t.common.full}</span>
-              <div className="relative">
-                <input
-                  type="checkbox"
-                  checked={toolMode === "essential"}
-                  onChange={(e) => handleToolModeToggle(e.target.checked)}
-                  className="sr-only peer"
-                />
-                <div className="w-7 h-3.5 bg-[var(--dt-bg-active)] rounded-full peer peer-checked:bg-[var(--dt-accent)] transition-colors" />
-                <div className="absolute left-0.5 top-0.5 w-2.5 h-2.5 bg-[var(--dt-accent-text)] rounded-full transition-transform peer-checked:translate-x-3.5" />
+  const sessionPageContent = (
+    <div className={`desktop-theme flex min-w-0 flex-col bg-[var(--dt-bg-primary)] ${isEmbedMode ? "h-screen embed-mode" : "h-full"}`}>
+
+      {isPlanningSession && !isEmbedMode ? (
+        <div className="border-b border-black/6 bg-[#f7f3ea] px-5 py-4 dark:border-white/8 dark:bg-[#10161d]">
+          <div className="mx-auto flex w-full max-w-6xl flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="min-w-0">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-500">
+                {t.workspace.planningSessionTitle}
               </div>
-              <span className="text-[10px] text-[var(--dt-accent)] font-medium">{t.common.essential}</span>
-            </label>
-            <a href="/mcp-tools" className="hidden md:inline-flex px-2.5 py-1 rounded-md bg-[var(--dt-bg-secondary)] text-[11px] font-medium text-[var(--dt-text-primary)] hover:bg-[var(--dt-bg-active)] transition-colors">
-              {t.sessions.mcpTools}
-            </a>
-            <a href="/traces" className="hidden md:inline-flex px-2.5 py-1 rounded-md bg-[var(--dt-bg-secondary)] text-[11px] font-medium text-[var(--dt-text-primary)] hover:bg-[var(--dt-bg-active)] transition-colors">
-              {t.sessions.tracesLabel}
-            </a>
-          </>
-        }
-        />
-      )}
+              <div className="mt-1 text-sm text-slate-700 dark:text-slate-200">
+                {t.workspace.planningSessionDescription}
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => router.push(`/workspace/${workspaceId}/sessions`)}
+                className="inline-flex items-center gap-1.5 rounded-full border border-black/8 bg-white px-3 py-1.5 text-[11px] font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-white/10 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-white/10"
+              >
+                <ScrollText className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.7} />
+                {t.nav.sessions}
+              </button>
+              <button
+                type="button"
+                onClick={() => router.push(`/workspace/${workspaceId}/kanban`)}
+                className="inline-flex items-center gap-1.5 rounded-full bg-slate-900 px-3 py-1.5 text-[11px] font-medium text-white transition-colors hover:bg-slate-800 dark:bg-amber-500 dark:text-slate-950 dark:hover:bg-amber-400"
+              >
+                <Columns2 className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.7} />
+                {t.workspace.goToBoard}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {/* ─── Main Area ────────────────────────────────────────────── */}
       <div className="flex-1 flex min-h-0 relative">
@@ -752,7 +943,7 @@ export function SessionPageClient() {
         )}
 
         {/* ─── Chat Area ──────────────────────────────────────────── */}
-        <main className="flex flex-1 min-w-0 flex-col">
+        <div className="flex flex-1 min-w-0 flex-col">
           {repoSlideSource && (
             <RepoSlideSessionPanel
               workspaceId={workspaceId}
@@ -779,7 +970,7 @@ export function SessionPageClient() {
             inputPrefill={dockerRetryText}
             onInputPrefillConsumed={() => setDockerRetryText(null)}
           />
-        </main>
+        </div>
 
         {/* ─── Right Sidebar: CRAFTERs running status ─────────────── */}
         {!isEmbedMode && crafterAgents.length > 0 && (
@@ -900,13 +1091,6 @@ export function SessionPageClient() {
         </div>
       )}
 
-      {/* ─── Settings Panel ──────────────────────────────────────── */}
-      <SettingsPanel
-        open={showSettingsPanel}
-        onClose={() => setShowSettingsPanel(false)}
-        providers={acp.providers}
-      />
-
       {/* ─── Docker Config Modal ─────────────────────────────────── */}
       <DockerConfigModal
         open={!!dockerErrorMessage}
@@ -929,6 +1113,28 @@ export function SessionPageClient() {
         onClose={() => setShowSpecialistManager(false)}
       />
     </div>
-  </div>
+  );
+
+  if (isEmbedMode) {
+    return sessionPageContent;
+  }
+
+  return (
+    <DesktopAppShell
+      workspaceId={workspaceId}
+      workspaceSwitcher={
+        <WorkspaceSwitcher
+          workspaces={workspacesHook.workspaces}
+          activeWorkspaceId={workspaceId}
+          onSelect={handleWorkspaceSelect}
+          onCreate={handleWorkspaceCreate}
+          loading={workspacesHook.loading}
+          compact
+        />
+      }
+      titleBarRight={sessionTitleBarRight}
+    >
+      {sessionPageContent}
+    </DesktopAppShell>
   );
 }

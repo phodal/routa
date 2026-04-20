@@ -50,13 +50,13 @@ async fn clone_skills(
     let target_path = target_dir.clone();
     tokio::task::spawn_blocking(move || {
         if target_path.exists() {
-            let _ = std::process::Command::new("git")
+            let _ = git::git_command()
                 .args(["pull", "--ff-only"])
                 .current_dir(&target_path)
                 .output();
         } else {
             let clone_url = format!("https://github.com/{}/{}.git", parsed.owner, parsed.repo);
-            let _ = std::process::Command::new("git")
+            let _ = git::git_command()
                 .args([
                     "clone",
                     "--depth",

@@ -66,6 +66,23 @@ export interface AcpAgentPreset {
   supportedRoles?: AgentRole[];
   /** Preferred model tier for this provider (SMART, BALANCED, FAST) */
   preferredTier?: ModelTier;
+  /** Provider-aware session resume/fork capabilities */
+  resume?: ResumeCapability;
+}
+
+/**
+ * Resume/fork capability metadata for a provider.
+ * Allows Routa to determine whether native resume, replay, or fork is available.
+ */
+export interface ResumeCapability {
+  /** Whether the provider supports any form of session resume */
+  supported: boolean;
+  /** Resume mode: native (provider handles restore), replay (Routa replays context), or both */
+  mode: "native" | "replay" | "both";
+  /** Whether the provider supports forking a session into a child session */
+  supportsFork?: boolean;
+  /** Whether the provider supports listing past sessions natively */
+  supportsList?: boolean;
 }
 
 /**
@@ -82,6 +99,7 @@ export const ACP_AGENT_PRESETS: readonly AcpAgentPreset[] = [
     capabilities: ["mcp_tool", "code_generation", "file_operations", "web_search"],
     supportedRoles: [AgentRole.CRAFTER, AgentRole.GATE, AgentRole.DEVELOPER],
     preferredTier: ModelTier.BALANCED,
+    resume: { supported: true, mode: "replay", supportsFork: false, supportsList: false },
   },
   {
     id: "docker-opencode",
@@ -115,6 +133,7 @@ export const ACP_AGENT_PRESETS: readonly AcpAgentPreset[] = [
     capabilities: ["code_generation", "file_operations"],
     supportedRoles: [AgentRole.CRAFTER, AgentRole.DEVELOPER],
     preferredTier: ModelTier.SMART,
+    resume: { supported: true, mode: "both", supportsFork: false, supportsList: false },
   },
   {
     id: "copilot",
@@ -167,8 +186,9 @@ export const ACP_AGENT_PRESETS: readonly AcpAgentPreset[] = [
     id: "qoder",
     name: "Qoder",
     command: "qodercli",
-    // Official ACP docs show qodercli starting in ACP mode with --acp only.
-    args: ["--acp"],
+    // Qoder CLI currently requires experimental MCP loading to discover
+    // project-scoped servers added via `qodercli mcp add`.
+    args: ["--acp", "--experimental-mcp-load"],
     description: "Qoder AI coding agent",
     envBinOverride: "QODER_BIN",
     capabilities: ["mcp_tool", "code_generation", "file_operations"],
@@ -186,6 +206,7 @@ export const ACP_AGENT_PRESETS: readonly AcpAgentPreset[] = [
     capabilities: ["mcp_tool", "code_generation", "file_operations", "web_search", "image_analysis"],
     supportedRoles: [AgentRole.ROUTA, AgentRole.CRAFTER, AgentRole.GATE, AgentRole.DEVELOPER],
     preferredTier: ModelTier.SMART,
+    resume: { supported: true, mode: "replay", supportsFork: true, supportsList: false },
   },
   // Workspace Agent runs natively via Vercel AI SDK (no external CLI)
   {

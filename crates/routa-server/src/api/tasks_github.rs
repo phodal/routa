@@ -49,7 +49,7 @@ pub struct GitHubPullListItem {
 
 pub fn resolve_github_repo(repo_path: Option<&str>) -> Option<String> {
     let repo_path = repo_path?;
-    let output = Command::new("git")
+    let output = crate::git::git_command()
         .args(["config", "--get", "remote.origin.url"])
         .current_dir(repo_path)
         .output()
@@ -74,15 +74,76 @@ pub fn resolve_github_repo_for_codebase(
         .or_else(|| resolve_github_repo(repo_path))
 }
 
-fn github_token() -> Option<String> {
-    std::env::var("GITHUB_TOKEN")
-        .ok()
+pub fn resolve_github_token(board_token: Option<&str>) -> Option<String> {
+    board_token
+        .map(str::trim)
         .filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .or_else(|| {
+            std::env::var("GITHUB_TOKEN")
+                .ok()
+                .filter(|value| !value.is_empty())
+        })
         .or_else(|| {
             std::env::var("GH_TOKEN")
                 .ok()
                 .filter(|value| !value.is_empty())
         })
+        .or_else(|| {
+            let output = Command::new("gh").args(["auth", "token"]).output().ok()?;
+            if !output.status.success() {
+                return None;
+            }
+
+            let token = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if token.is_empty() {
+                None
+            } else {
+                Some(token)
+            }
+        })
+}
+
+fn github_token() -> Option<String> {
+    resolve_github_token(None)
+}
+
+pub fn github_access_status(board_token: Option<&str>) -> (&'static str, bool) {
+    if board_token
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .is_some()
+    {
+        return ("board", true);
+    }
+
+    if std::env::var("GITHUB_TOKEN")
+        .ok()
+        .filter(|value| !value.is_empty())
+        .is_some()
+        || std::env::var("GH_TOKEN")
+            .ok()
+            .filter(|value| !value.is_empty())
+            .is_some()
+    {
+        return ("env", true);
+    }
+
+    let output = match Command::new("gh").args(["auth", "token"]).output() {
+        Ok(output) => output,
+        Err(_) => return ("none", false),
+    };
+
+    if !output.status.success() {
+        return ("none", false);
+    }
+
+    let token = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if token.is_empty() {
+        ("none", false)
+    } else {
+        ("gh", true)
+    }
 }
 
 fn github_request(
@@ -105,9 +166,10 @@ pub async fn list_github_issues(
     repo: &str,
     state: Option<&str>,
     per_page: Option<usize>,
+    board_token: Option<&str>,
 ) -> Result<Vec<GitHubIssueListItem>, String> {
     let client = reqwest::Client::new();
-    let token = github_token();
+    let token = resolve_github_token(board_token);
     let per_page = per_page.unwrap_or(50).clamp(1, 100);
     let state = state.unwrap_or("open");
     let url = format!(
@@ -208,9 +270,10 @@ pub async fn list_github_pulls(
     repo: &str,
     state: Option<&str>,
     per_page: Option<usize>,
+    board_token: Option<&str>,
 ) -> Result<Vec<GitHubPullListItem>, String> {
     let client = reqwest::Client::new();
-    let token = github_token();
+    let token = resolve_github_token(board_token);
     let per_page = per_page.unwrap_or(50).clamp(1, 100);
     let state = state.unwrap_or("open");
     let url = format!(
@@ -456,4 +519,78 @@ pub fn build_task_issue_body(objective: &str, test_cases: Option<&Vec<String>>) 
             .join("\n")
     ));
     sections.join("\n\n")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{github_access_status, resolve_github_token};
+    use std::env;
+    use std::sync::{Mutex, OnceLock};
+
+    fn env_lock() -> &'static Mutex<()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+    }
+
+    struct EnvGuard {
+        key: &'static str,
+        previous: Option<String>,
+    }
+
+    impl EnvGuard {
+        fn set(key: &'static str, value: &str) -> Self {
+            let previous = env::var(key).ok();
+            // SAFETY: tests serialize env mutations with env_lock().
+            unsafe { env::set_var(key, value) };
+            Self { key, previous }
+        }
+
+        fn remove(key: &'static str) -> Self {
+            let previous = env::var(key).ok();
+            // SAFETY: tests serialize env mutations with env_lock().
+            unsafe { env::remove_var(key) };
+            Self { key, previous }
+        }
+    }
+
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            // SAFETY: tests serialize env mutations with env_lock().
+            unsafe {
+                match &self.previous {
+                    Some(previous) => env::set_var(self.key, previous),
+                    None => env::remove_var(self.key),
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn github_access_status_prefers_board_token_over_environment() {
+        let _env_guard = env_lock().lock().expect("env lock");
+        let _github_token = EnvGuard::set("GITHUB_TOKEN", "github_pat_env");
+        let _gh_token = EnvGuard::remove("GH_TOKEN");
+
+        assert_eq!(
+            github_access_status(Some(" github_pat_board ")),
+            ("board", true)
+        );
+        assert_eq!(
+            resolve_github_token(Some(" github_pat_board ")),
+            Some("github_pat_board".to_string())
+        );
+    }
+
+    #[test]
+    fn github_access_status_falls_back_to_environment_without_board_token() {
+        let _env_guard = env_lock().lock().expect("env lock");
+        let _github_token = EnvGuard::set("GITHUB_TOKEN", "github_pat_env");
+        let _gh_token = EnvGuard::remove("GH_TOKEN");
+
+        assert_eq!(github_access_status(Some("   ")), ("env", true));
+        assert_eq!(
+            resolve_github_token(Some("   ")),
+            Some("github_pat_env".to_string())
+        );
+    }
 }

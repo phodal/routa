@@ -8,7 +8,7 @@ import { marked } from "marked";
 import { MarkdownViewer } from "@/client/components/markdown/markdown-viewer";
 import { useTranslation } from "@/i18n";
 
-function markdownToHtml(markdown: string): string {
+export function markdownToHtml(markdown: string): string {
   if (!markdown.trim()) return "";
   try {
     return marked.parse(markdown, { async: false, breaks: true, gfm: true }) as string;
@@ -127,7 +127,7 @@ function serializeNode(node: Node): string {
   }
 }
 
-function htmlToMarkdown(html: string): string {
+export function htmlToMarkdown(html: string): string {
   if (!html.trim()) return "";
   const document = new DOMParser().parseFromString(html, "text/html");
   return collapseBlankLines(serializeChildren(document.body));
@@ -205,10 +205,10 @@ export function KanbanDescriptionEditor({
   };
 
   return (
-    <div className={`border-b border-slate-200/70 dark:border-slate-700 ${compact ? "" : ""}`}>
-      <div className={`flex items-center justify-between border-b border-slate-200/70 dark:border-slate-700 ${compact ? "px-3 py-2" : "px-4 py-2.5"}`}>
-        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[11px] font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">
-          <span className="font-semibold">{t.kanbanDetail.description}</span>
+    <div className="border-b border-slate-200/70 dark:border-slate-700">
+      <div className={`flex items-center justify-between border-b border-slate-200/70 dark:border-slate-700 ${compact ? "px-3 py-1.5" : "px-4 py-2"}`}>
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400 dark:text-slate-500">
+          <span>{t.kanbanDetail.description}</span>
           <span className="text-slate-300 dark:text-slate-600">/</span>
           <span>{isEditing ? t.kanban.editingMarkdown : t.kanban.renderedMarkdown}</span>
         </div>
@@ -246,7 +246,7 @@ export function KanbanDescriptionEditor({
 
       {isEditing ? (
         <>
-          <div className={`flex items-center gap-1 border-b border-slate-200/70 dark:border-slate-700 ${compact ? "px-2 py-1.5" : "px-3 py-2"}`}>
+          <div className={`flex items-center gap-1 border-b border-slate-200/70 dark:border-slate-700 ${compact ? "px-2 py-1" : "px-3 py-1.5"}`}>
             {[
               { label: "B", active: editor?.isActive("bold"), action: () => editor?.chain().focus().toggleBold().run() },
               { label: "I", active: editor?.isActive("italic"), action: () => editor?.chain().focus().toggleItalic().run() },
@@ -272,12 +272,14 @@ export function KanbanDescriptionEditor({
           <EditorContent editor={editor} />
         </>
       ) : (
-        <div className={compact ? "px-3 py-2.5" : "px-4 py-3"}>
+        <div className={compact ? "px-3 py-2" : "px-4 py-2.5"}>
           {value.trim() ? (
             <MarkdownViewer
               content={value}
               className="text-slate-700 dark:text-slate-300"
-              hideCanonicalStory
+              compactCanonicalStory
+              hideCanonicalStoryTitle
+              hideCanonicalStoryInvestSummary
             />
           ) : (
             <div className="text-sm text-slate-400 dark:text-slate-500">{t.kanban.noDescriptionYet}</div>

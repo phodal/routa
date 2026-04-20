@@ -30,6 +30,7 @@ interface ManagedTerminal {
   process: IProcessHandle;
   output: string;
   exitCode: number | null;
+  signal: string | null;
   exited: boolean;
   exitPromise: Promise<number>;
   createdAt: Date;
@@ -134,7 +135,7 @@ export class TerminalManager {
     const command = (params.command as string) ?? "/bin/bash";
     const args = (params.args as string[]) ?? [];
     const cwd = (params.cwd as string) ?? process.cwd();
-    const env = (params.env as Record<string, string>) ?? {};
+    const env = this.normalizeEnv(params.env);
 
     console.log(
       `[TerminalManager] Creating terminal ${terminalId}: ${command} ${args.join(" ")} (cwd: ${cwd})`
@@ -182,7 +183,7 @@ export class TerminalManager {
       : bridge.process.spawn(command, args, {
           stdio: ["pipe", "pipe", "pipe"],
           cwd,
-          env: mergedEnv,
+          env: { ...process.env, ...mergedEnv },
           shell: true,
         });
     const backend: ManagedTerminal["backend"] = nodePty ? "node-pty" : "spawn";
@@ -199,6 +200,7 @@ export class TerminalManager {
       process: proc,
       output,
       exitCode: null,
+      signal: null,
       exited: false,
       exitPromise,
       createdAt: new Date(),
@@ -226,7 +228,7 @@ export class TerminalManager {
       console.log(
         `[TerminalManager] Terminal ${terminalId} exited: code=${code}, signal=${signal}`
       );
-      this.markExited(managed, code ?? (signal ? 128 : 0), emitNotification);
+      this.markExited(managed, code, signal == null ? null : String(signal), emitNotification);
       exitResolve!(managed.exitCode ?? 0);
     });
 
@@ -248,12 +250,30 @@ export class TerminalManager {
   /**
    * Get accumulated output for a terminal.
    */
-  getOutput(terminalId: string): { output: string } {
+  getOutput(terminalId: string): {
+    output: string;
+    truncated: boolean;
+    exitStatus?: {
+      exitCode: number | null;
+      signal: string | null;
+    };
+  } {
     const terminal = this.terminals.get(terminalId);
     if (!terminal) {
-      return { output: "" };
+      return { output: "", truncated: false };
     }
-    return { output: terminal.output };
+    return {
+      output: terminal.output,
+      truncated: false,
+      ...(terminal.exited
+        ? {
+            exitStatus: {
+              exitCode: terminal.exitCode,
+              signal: terminal.signal,
+            },
+          }
+        : {}),
+    };
   }
 
   hasTerminal(sessionId: string, terminalId: string): boolean {
@@ -284,6 +304,33 @@ export class TerminalManager {
     }
   }
 
+  private normalizeEnv(envValue: unknown): Record<string, string> {
+    if (Array.isArray(envValue)) {
+      return Object.fromEntries(
+        envValue.flatMap((entry) => {
+          if (!entry || typeof entry !== "object") return [];
+          const name = typeof (entry as { name?: unknown }).name === "string"
+            ? (entry as { name: string }).name
+            : undefined;
+          const value = typeof (entry as { value?: unknown }).value === "string"
+            ? (entry as { value: string }).value
+            : undefined;
+          return name && value !== undefined ? [[name, value]] : [];
+        }),
+      );
+    }
+
+    if (envValue && typeof envValue === "object") {
+      return Object.fromEntries(
+        Object.entries(envValue).flatMap(([key, value]) => (
+          typeof value === "string" ? [[key, value]] : []
+        )),
+      );
+    }
+
+    return {};
+  }
+
   private appendOutput(
     terminal: ManagedTerminal,
     data: string,
@@ -306,11 +353,13 @@ export class TerminalManager {
 
   private markExited(
     terminal: ManagedTerminal,
-    exitCode: number,
+    exitCode: number | null,
+    signal: string | null,
     emitNotification: TerminalNotificationEmitter,
   ): void {
     if (terminal.exitNotified) return;
     terminal.exitCode = exitCode;
+    terminal.signal = signal;
     terminal.exited = true;
     terminal.exitNotified = true;
     emitNotification({
@@ -321,7 +370,7 @@ export class TerminalManager {
         update: {
           sessionUpdate: "terminal_exited",
           terminalId: terminal.terminalId,
-          exitCode,
+          exitCode: exitCode ?? 0,
         },
       },
     });
@@ -376,18 +425,18 @@ export class TerminalManager {
   /**
    * Wait for a terminal process to exit.
    */
-  async waitForExit(terminalId: string): Promise<{ exitCode: number }> {
+  async waitForExit(terminalId: string): Promise<{ exitCode: number | null; signal: string | null }> {
     const terminal = this.terminals.get(terminalId);
     if (!terminal) {
-      return { exitCode: -1 };
+      return { exitCode: null, signal: null };
     }
 
     if (terminal.exited) {
-      return { exitCode: terminal.exitCode ?? 0 };
+      return { exitCode: terminal.exitCode, signal: terminal.signal };
     }
 
-    const exitCode = await terminal.exitPromise;
-    return { exitCode };
+    await terminal.exitPromise;
+    return { exitCode: terminal.exitCode, signal: terminal.signal };
   }
 
   /**

@@ -18,6 +18,7 @@ import {
   shouldSuppressTeardownError,
   toErrorMessage,
 } from "../utils/diagnostics";
+import { resolveApiPath } from "../config/backend";
 
 export interface NoteData {
   id: string;
@@ -249,7 +250,7 @@ export function useNotes(workspaceId: string, sessionId?: string): UseNotesRetur
     const base = getDesktopApiBaseUrl();
     // SSE subscribes at workspace level; filtering happens client-side
     const es = new EventSource(
-      `${base}/api/notes/events?workspaceId=${encodeURIComponent(workspaceId)}`
+      resolveApiPath(`api/notes/events?workspaceId=${encodeURIComponent(workspaceId)}`, base),
     );
     eventSourceRef.current = es;
 

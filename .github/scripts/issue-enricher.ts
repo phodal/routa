@@ -23,9 +23,10 @@ import {
   findExistingSyncedGitHubIssueFile,
   syncGitHubIssuesToDirectory,
 } from "@/core/github/github-issue-sync";
-import { fetchGitHubIssueViaGh, fetchGitHubIssuesViaGh } from "@/core/github/github-issue-gh";
+import { fetchGitHubIssueViaGh, fetchGitHubIssuesViaGh, resolveGitHubRepo } from "@/core/github/github-issue-gh";
 import { readFileSync, existsSync } from "fs";
 import { join, relative } from "path";
+import { buildIssueAnalysisPrompt } from "./issue-enricher-prompt";
 
 // ─── Configuration ─────────────────────────────────────────────────────────
 
@@ -162,7 +163,12 @@ function syncLocalIssueContext(issueNumber: number, dryRun: boolean): SyncContex
 
 // ─── Run Claude Analysis ───────────────────────────────────────────────────
 
-async function analyzeIssue(issue: IssueData, dryRun: boolean, syncContext: SyncContext): Promise<void> {
+async function analyzeIssue(
+  issue: IssueData,
+  dryRun: boolean,
+  syncContext: SyncContext,
+  repo: string,
+): Promise<void> {
   const apiKey = process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN;
 
   if (!apiKey && !dryRun) {
@@ -175,76 +181,13 @@ async function analyzeIssue(issue: IssueData, dryRun: boolean, syncContext: Sync
   // Load skill content
   const skillContent = existsSync(SKILL_PATH) ? readFileSync(SKILL_PATH, "utf-8") : "";
 
-  const hasBody = issue.body.trim().length > 0;
-
-  // Build label taxonomy strings for prompt
-  const typeLabels = LABEL_TAXONOMY.type.map((l) => `\`${l.name}\``).join(", ");
-  const areaLabels = LABEL_TAXONOMY.area.map((l) => `\`${l.name}\``).join(", ");
-  const complexityLabels = LABEL_TAXONOMY.complexity.map((l) => `\`${l.name}\``).join(", ");
-  const localIssueContext = syncContext.currentIssueFile
-    ? `- Current issue mirror: \`${syncContext.currentIssueFile}\`\n- Synced GitHub issue mirrors available under \`docs/issues/\` (${syncContext.syncedCount} files in this run)`
-    : `- Synced GitHub issue mirrors available under \`docs/issues/\` (${syncContext.syncedCount} files in this run)`;
-
-  const prompt = `Analyze GitHub issue #${issue.number} and provide a detailed analysis.
-
-## Issue Title
-${issue.title}
-
-## Issue Body
-${hasBody ? issue.body : "(empty - user did not write a body)"}
-
-## Current Labels
-${issue.labels.length > 0 ? issue.labels.join(", ") : "(none)"}
-
-## Local Issue Context
-GitHub issues have already been synced into the local \`docs/issues/\` directory before this analysis. Treat those files as your local issue knowledge base.
-
-${localIssueContext}
-
-Start by reading the mirrored issue file if it exists, then search \`docs/issues/\` for related historical issues, overlapping requirements, duplicate proposals, or prior implementation notes.
-
-## CRITICAL: External Repository References
-If the issue title or body contains a GitHub repository URL (e.g. https://github.com/user/repo):
-- You MUST actually clone the repository using \`git clone <url> /tmp/<repo-name> --depth 1\` via Bash.
-- Do NOT just try to fetch the URL via a web reader or guess the repo contents.
-- After cloning, explore the repo structure: read its README, key source files, package.json, etc.
-- Analyze the cloned repo's architecture, patterns, and features in detail.
-- Compare with the current codebase and identify what can be learned or integrated.
-- Clean up after: \`rm -rf /tmp/<repo-name>\`
-
-This is essential — if the user says "clone" or references an external repo, the whole point of the issue is to inspect that repo's actual code. Skipping the clone defeats the purpose.
-
-## Instructions
-1. Analyze the codebase to understand the context and find relevant files
-2. If external repos are referenced, clone and explore them first (see above)
-3. Research potential solution approaches (2-3 approaches with trade-offs)
-4. If the issue title is vague or can be improved, ${dryRun ? "output a better title suggestion" : `update it with a clear, action-oriented title that describes what needs to be done: gh issue edit ${issue.number} --title "ACTION: clear description"`}
-5. ${!hasBody
-    ? (dryRun
-        ? "Output the body content you would set (the user wrote no body, so update it directly)"
-        : `Since the issue body is empty, update it directly with a detailed description: gh issue edit ${issue.number} --body "CONTENT"`)
-    : (dryRun
-        ? "Output what you would comment (do NOT actually run gh commands)"
-        : `Add a comment to the issue using: gh issue comment ${issue.number} --body "CONTENT"`
-      )
-  }
-6. The ${!hasBody ? "body" : "comment"} should include:
-   - Problem analysis
-   - Relevant files in the codebase (and external repo if cloned)
-   - Related issues or prior context from \`docs/issues/\` and GitHub history
-   - 2-3 proposed approaches with trade-offs
-   - Recommended approach
-   - Effort estimate (Small/Medium/Large)
-7. Automatically apply labels based on your analysis using these categories:
-   - **Type** (pick ONE): ${typeLabels}
-   - **Area** (pick ONE or MORE that apply): ${areaLabels}
-   - **Complexity** (pick ONE): ${complexityLabels}
-   ${dryRun
-     ? "Output the labels you would apply and why, but do NOT run any gh commands."
-     : `Apply the labels with: gh issue edit ${issue.number} --add-label "bug,area:frontend,complexity:small" (replace with the labels you chose)
-   Use only labels from the taxonomy above. Do NOT invent new label names.`}
-
-Do NOT create a new issue - only analyze and update issue #${issue.number}.`;
+  const prompt = buildIssueAnalysisPrompt({
+    dryRun,
+    issue,
+    labelTaxonomy: LABEL_TAXONOMY,
+    repo,
+    syncContext,
+  });
 
   if (dryRun) {
     console.log("   [DRY RUN] Would analyze with prompt:\n");
@@ -347,6 +290,7 @@ async function main(): Promise<void> {
     process.exit(1);
   }
   const issueNumber = parseInt(args[issueIndex + 1], 10);
+  const repo = resolveGitHubRepo();
 
   console.log("═".repeat(80));
   console.log("🔍 Issue Enricher");
@@ -396,7 +340,7 @@ async function main(): Promise<void> {
     console.log(`\n   ⚠️ Skipping Copilot assignment: author "${issue.author}" is not in allowed list`);
   }
 
-  await analyzeIssue(issue, dryRun, syncContext);
+  await analyzeIssue(issue, dryRun, syncContext, repo);
 
   // Assign Copilot if requested and author is allowed (after analysis)
   if (shouldAssignCopilot && isAllowedAuthor && !dryRun) {

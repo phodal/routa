@@ -5,7 +5,11 @@ import { BrowserAcpClient } from "@/client/acp-client";
 import { type CrafterAgent, type CrafterMessage } from "@/client/components/task-panel";
 import { getToolEventLabel } from "@/client/components/chat-panel/tool-call-name";
 import { type NoteData } from "@/client/hooks/use-notes";
-import { getDesktopApiBaseUrl, shouldSuppressTeardownError } from "@/client/utils/diagnostics";
+import {
+  desktopAwareFetch,
+  getDesktopApiBaseUrl,
+  shouldSuppressTeardownError,
+} from "@/client/utils/diagnostics";
 import type { ParsedTask } from "@/client/utils/task-block-parser";
 import {
   type NoteTaskQueueItem,
@@ -63,7 +67,7 @@ export function useSessionCrafters(params: UseSessionCraftersParams): UseSession
     if (crafterAgentsRestoredRef.current.has(sessionId)) return;
     crafterAgentsRestoredRef.current.add(sessionId);
 
-    fetch(`/api/sessions?parentSessionId=${sessionId}`)
+    desktopAwareFetch(`/api/sessions?parentSessionId=${sessionId}`)
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (!data?.sessions?.length) return;
@@ -358,6 +362,7 @@ export function useSessionCrafters(params: UseSessionCraftersParams): UseSession
       const createResult = await callMcpTool("create_task", {
         title: task.title,
         objective: task.objective,
+        creationSource: "session",
         scope: task.scope || undefined,
         sessionId,
         acceptanceCriteria: task.definitionOfDone
@@ -605,6 +610,7 @@ export function useSessionCrafters(params: UseSessionCraftersParams): UseSession
       const createResult = await callMcpTool("create_task", {
         title: note.title,
         objective: note.content || note.title,
+        creationSource: "session",
         workspaceId,
         sessionId,
       });

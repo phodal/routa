@@ -28,7 +28,7 @@ export function DesktopShellHeader({
 
   return (
     <header
-      className="h-10 shrink-0 flex items-center border-b border-desktop-border bg-desktop-bg-tertiary backdrop-blur-md select-none"
+      className="relative z-30 flex h-10 shrink-0 items-center overflow-visible border-b border-desktop-border bg-desktop-bg-tertiary backdrop-blur-md select-none"
       data-testid="desktop-shell-header"
     >
       <div className="w-20 h-full app-drag-region" />
@@ -60,7 +60,7 @@ export function DesktopShellHeader({
         </div>
       ) : null}
 
-      <ShellHeaderControls className="px-2" showProtocolBadges={false} showSettingsMenu={false} compactStatus />
+      <ShellHeaderControls className="px-2" showPreferencesMenu compactStatus />
     </header>
   );
 }

@@ -95,6 +95,7 @@ export function createInMemorySystem(): RoutaSystem {
 
   // Wire artifact store for artifact-related tools
   tools.setArtifactStore(artifactStore);
+  tools.setKanbanBoardStore(kanbanBoardStore);
   tools.setPermissionStore(permissionStore);
 
   return {
@@ -171,6 +172,7 @@ export function createPgSystem(): RoutaSystem {
 
   // Wire artifact store for artifact-related tools
   tools.setArtifactStore(artifactStore);
+  tools.setKanbanBoardStore(kanbanBoardStore);
   tools.setPermissionStore(permissionStore);
 
   return {
@@ -293,6 +295,7 @@ export function createSqliteSystem(): RoutaSystem {
 
   // Wire artifact store for artifact-related tools
   tools.setArtifactStore(artifactStore);
+  tools.setKanbanBoardStore(kanbanBoardStore);
   tools.setPermissionStore(permissionStore);
 
   return {
@@ -349,6 +352,32 @@ export function getRoutaSystem(): RoutaSystem {
     const system = g[GLOBAL_KEY] as RoutaSystem;
     const { startWorkflowOrchestrator } = require("./kanban/workflow-orchestrator-singleton") as typeof import("./kanban/workflow-orchestrator-singleton");
     startWorkflowOrchestrator(system);
+
+    // Set up EventBus → KanbanEventBroadcaster bridge for file changes
+    setupFileChangeBridge(system);
   }
   return g[GLOBAL_KEY] as RoutaSystem;
+}
+
+// ─── File Change Bridge ────────────────────────────────────────────────
+
+/**
+ * Bridge EventBus FILE_CHANGES events to KanbanEventBroadcaster
+ * so that the Kanban UI can refresh the Changes column in real-time.
+ */
+function setupFileChangeBridge(system: RoutaSystem): void {
+  const kanbanBroadcaster = getKanbanEventBroadcaster();
+
+  system.eventBus.on("file-change-bridge", (event) => {
+    if (event.type === AgentEventType.FILE_CHANGES && event.workspaceId) {
+      // Notify the Kanban SSE clients that files have changed
+      kanbanBroadcaster.notify({
+        workspaceId: event.workspaceId,
+        entity: "task",
+        action: "updated",
+        resourceId: typeof event.data?.taskId === "string" ? event.data.taskId : undefined,
+        source: "agent",
+      });
+    }
+  });
 }

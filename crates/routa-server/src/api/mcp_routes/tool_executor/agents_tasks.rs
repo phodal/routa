@@ -1,6 +1,6 @@
 use crate::state::AppState;
 
-use super::{tool_result_error, tool_result_json, tool_result_text};
+use super::{rpc_tool_result, tool_result_error, tool_result_json, tool_result_text};
 
 pub(super) async fn execute(
     state: &AppState,
@@ -143,9 +143,8 @@ pub(super) async fn execute(
                 .get("sessionId")
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string());
-            let task_id = uuid::Uuid::new_v4().to_string();
-            let task = crate::models::task::Task::new(
-                task_id.clone(),
+            let mut task = crate::models::task::Task::new(
+                uuid::Uuid::new_v4().to_string(),
                 title.to_string(),
                 objective.to_string(),
                 workspace_id.to_string(),
@@ -159,11 +158,20 @@ pub(super) async fn execute(
                 None,
                 None,
             );
+            if let Some(source) = args
+                .get("creationSource")
+                .and_then(|v| v.as_str())
+                .and_then(crate::models::task::TaskCreationSource::from_str)
+            {
+                task.creation_source = Some(source);
+            }
+            let task_id = task.id.clone();
             match state.task_store.save(&task).await {
                 Ok(_) => tool_result_json(&serde_json::json!({
                     "success": true,
                     "taskId": task_id,
-                    "title": title
+                    "title": title,
+                    "creationSource": task.creation_source
                 })),
                 Err(e) => tool_result_error(&e.to_string()),
             }
@@ -208,8 +216,103 @@ pub(super) async fn execute(
                 Err(e) => tool_result_error(&e.to_string()),
             }
         }
+        "provide_artifact" => match rpc_tool_result(
+            state,
+            "tasks.provideArtifact",
+            serde_json::json!({
+                "taskId": args.get("taskId").and_then(|v| v.as_str()).unwrap_or(""),
+                "agentId": args.get("agentId").and_then(|v| v.as_str()).unwrap_or(""),
+                "type": args.get("type").and_then(|v| v.as_str()).unwrap_or(""),
+                "content": args.get("content").and_then(|v| v.as_str()).unwrap_or(""),
+                "context": args.get("context").cloned(),
+                "requestId": args.get("requestId").cloned(),
+                "metadata": args.get("metadata").cloned(),
+            }),
+        )
+        .await
+        {
+            Ok(result) => {
+                let artifact = result
+                    .get("artifact")
+                    .and_then(|value| value.as_object())
+                    .cloned()
+                    .unwrap_or_default();
+                tool_result_json(&serde_json::json!({
+                    "artifactId": artifact.get("id").cloned().unwrap_or_default(),
+                    "type": artifact.get("type").cloned().unwrap_or_default(),
+                    "taskId": artifact.get("taskId").cloned().unwrap_or_default(),
+                    "status": artifact.get("status").cloned().unwrap_or_default(),
+                }))
+            }
+            Err(error) => tool_result_error(&error),
+        },
+        "list_artifacts" => match rpc_tool_result(
+            state,
+            "tasks.listArtifacts",
+            serde_json::json!({
+                "taskId": args.get("taskId").and_then(|v| v.as_str()).unwrap_or(""),
+                "type": args.get("type").cloned(),
+            }),
+        )
+        .await
+        {
+            Ok(result) => {
+                let artifacts = result
+                    .get("artifacts")
+                    .and_then(|value| value.as_array())
+                    .cloned()
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|artifact| {
+                        let content_length = artifact
+                            .get("content")
+                            .and_then(|value| value.as_str())
+                            .map(|value| value.len())
+                            .unwrap_or(0);
+                        serde_json::json!({
+                            "id": artifact.get("id").cloned().unwrap_or_default(),
+                            "type": artifact.get("type").cloned().unwrap_or_default(),
+                            "taskId": artifact.get("taskId").cloned().unwrap_or_default(),
+                            "providedByAgentId": artifact.get("providedByAgentId").cloned().unwrap_or_default(),
+                            "status": artifact.get("status").cloned().unwrap_or_default(),
+                            "context": artifact.get("context").cloned().unwrap_or_default(),
+                            "contentLength": content_length,
+                            "createdAt": artifact.get("createdAt").cloned().unwrap_or_default(),
+                        })
+                    })
+                    .collect::<Vec<_>>();
+                tool_result_json(&serde_json::json!({ "artifacts": artifacts }))
+            }
+            Err(error) => tool_result_error(&error),
+        },
         _ => return None,
     };
 
     Some(result)
+}
+
+fn parse_string_array_arg(args: &serde_json::Value, key: &str) -> Option<Vec<String>> {
+    args.get(key).and_then(|value| {
+        value.as_array().map(|values| {
+            values
+                .iter()
+                .filter_map(|item| item.as_str().map(|value| value.to_string()))
+                .collect()
+        })
+    })
+}
+
+fn updated_task_fields(args: &serde_json::Value) -> Vec<&'static str> {
+    [
+        ("title", "title"),
+        ("objective", "objective"),
+        ("scope", "scope"),
+        ("acceptanceCriteria", "acceptanceCriteria"),
+        ("verificationCommands", "verificationCommands"),
+        ("testCases", "testCases"),
+        ("status", "status"),
+    ]
+    .into_iter()
+    .filter_map(|(arg_key, field_name)| args.get(arg_key).map(|_| field_name))
+    .collect()
 }

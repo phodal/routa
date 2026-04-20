@@ -65,10 +65,26 @@ const listDirectoryParams = z.object({
 
 // ─── Coding Tools ─────────────────────────────────────────────────────────────
 
+type FileChangeCallback = (params: {
+  filePath: string;
+  operation: "write" | "edit" | "delete";
+  workspaceId?: string;
+  taskId?: string;
+  agentId?: string;
+}) => void;
+
+interface CodingToolsOptions {
+  onFileChange?: FileChangeCallback;
+  workspaceId?: string;
+  taskId?: string;
+  agentId?: string;
+}
+
 /**
  * Create the 7 core coding tools for the workspace agent.
  */
-export function createCodingTools(cwd: string) {
+export function createCodingTools(cwd: string, options?: CodingToolsOptions) {
+  const { onFileChange, workspaceId, taskId, agentId } = options ?? {};
   return {
     read_file: tool({
       description: "Read the contents of a file. Returns the file content as a string.",
@@ -91,6 +107,18 @@ export function createCodingTools(cwd: string) {
         const fullPath = safePath(cwd, filePath);
         await mkdir(resolve(fullPath, ".."), { recursive: true });
         await writeFile(fullPath, content, "utf-8");
+
+        // Emit file change event if callback provided
+        if (onFileChange) {
+          onFileChange({
+            filePath: fullPath,
+            operation: "write",
+            workspaceId,
+            taskId,
+            agentId,
+          });
+        }
+
         return { path: fullPath, bytesWritten: Buffer.byteLength(content, "utf-8") };
       },
     }),
@@ -110,6 +138,18 @@ export function createCodingTools(cwd: string) {
         }
         const newContent = content.replace(old_string, new_string);
         await writeFile(fullPath, newContent, "utf-8");
+
+        // Emit file change event if callback provided
+        if (onFileChange) {
+          onFileChange({
+            filePath: fullPath,
+            operation: "edit",
+            workspaceId,
+            taskId,
+            agentId,
+          });
+        }
+
         return { path: fullPath, replaced: true };
       },
     }),

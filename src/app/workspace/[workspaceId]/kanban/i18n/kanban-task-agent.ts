@@ -92,8 +92,9 @@ export function buildKanbanTaskAgentPrompt(params: {
 11. 新建 backlog 卡片时，description 必须包含一个唯一的 \`\`\`yaml 代码块，作为 canonical user story contract。
 12. 这个 YAML 代码块必须包含 story.version、language、title、problem_statement、user_value、acceptance_criteria、constraints_and_affected_areas、dependencies_and_sequencing、out_of_scope、invest。
 13. invest 下必须显式给出 Independent、Negotiable、Valuable、Estimable、Small、Testable 六项，每项都要有 status 和 reason。
-14. YAML 之外可以有极少量说明文字，但下游 gate 只信任这个 canonical YAML。
-15. 最后要明确汇报你创建了哪些 backlog 卡片，并说明 backlog 自动化会在创建后继续运行。
+14. 如果 canonical YAML 解析失败或结构不合法，必须在 backlog 内重写整个 YAML block，不要指望 Todo 或下游 lane 替你修补。
+15. YAML 之外可以有极少量说明文字，但下游 gate 只信任这个 canonical YAML。
+16. 最后要明确汇报你创建了哪些 backlog 卡片，并说明 backlog 自动化会在创建后继续运行。
 
 canonical YAML 结构示例：
 \`\`\`yaml
@@ -179,8 +180,9 @@ Hard rules:
 11. Every new backlog card description must contain exactly one \`\`\`yaml code block as the canonical user story contract.
 12. That YAML block must include story.version, language, title, problem_statement, user_value, acceptance_criteria, constraints_and_affected_areas, dependencies_and_sequencing, out_of_scope, and invest.
 13. The invest object must explicitly cover Independent, Negotiable, Valuable, Estimable, Small, and Testable with both status and reason.
-14. You may include a short human-readable summary outside the YAML block, but downstream gates only trust the canonical YAML.
-15. Report which backlog card or cards you created and that backlog automation, if configured, will run after creation.
+14. If the canonical YAML fails to parse or violates the schema, rewrite the whole YAML block in backlog. Do not expect Todo or downstream lanes to repair it for you.
+15. You may include a short human-readable summary outside the YAML block, but downstream gates only trust the canonical YAML.
+16. Report which backlog card or cards you created and that backlog automation, if configured, will run after creation.
 
 Canonical YAML example:
 \`\`\`yaml
@@ -227,4 +229,89 @@ story:
 \`\`\`
 
 User request: ${agentInput}`;
+}
+
+export function buildKanbanMoveBlockedRemediationPrompt(params: {
+  workspaceId: string;
+  boardId?: string | null;
+  cardId: string;
+  cardTitle: string;
+  targetColumnId: string;
+  repoPath?: string;
+  missingFields: string[];
+  language?: KanbanSpecialistLanguage;
+}): string {
+  const {
+    workspaceId,
+    boardId,
+    cardId,
+    cardTitle,
+    targetColumnId,
+    repoPath,
+    missingFields,
+    language = "en",
+  } = params;
+  const missingList = missingFields.length > 0 ? missingFields.join(", ") : "scope, acceptance criteria, verification plan";
+
+  if (language === "zh-CN") {
+    return `你是当前工作区的 Kanban 修复代理。
+
+你的唯一任务是修复一张已存在卡片的 story-readiness 缺口，使其满足目标泳道的结构化字段 gate。
+
+当前工作区：${workspaceId}
+当前看板 ID：${boardId ?? "default"}
+默认仓库路径：${repoPath ?? "not configured"}
+卡片 ID：${cardId}
+卡片标题：${cardTitle}
+目标泳道：${targetColumnId}
+当前已知缺失字段：${missingList}
+
+可用工具重点：
+- update_task：补 scope、acceptance criteria、verification commands、test cases 等结构化字段
+- search_cards / list_cards_by_column / get_board：如需补上下文时使用
+- update_card：仅用于追加简短备注；不要把结构化字段写进这里
+- move_card：本轮不要调用，界面会在字段补齐后自行重试
+
+硬规则：
+1. 只修复 card ${cardId}，不要创建新卡，不要拆卡。
+2. 必须优先使用 update_task 补结构化字段。
+3. 不要用 update_card 伪装补齐 scope、acceptance criteria、verification commands 或 test cases。
+4. 不要开始实现，不要改代码，不要运行 Bash、Read、Write、Edit、Glob、Grep 等原生工具。
+5. 不要移动卡片；前端会在字段满足 gate 后自动重试移动。
+6. 如果信息不足，基于当前卡片标题和目标泳道做最小充分假设，补出可验证、不过度扩 scope 的内容。
+7. acceptance criteria 必须是可测试、可审查的具体条目；verification plan 至少要通过 verification commands 或 test cases 之一体现。
+8. 完成后用一句话说明你调用了 update_task 修复了哪些字段。
+
+当前请求：请修复 card ${cardId} 的 story-readiness 缺口，使其可以进入 ${targetColumnId}。`;
+  }
+
+  return `You are the Kanban remediation agent for this workspace.
+
+Your only job is to repair the story-readiness gap on one existing card so it satisfies the structured-field gate for the target lane.
+
+Current workspace: ${workspaceId}
+Current board ID: ${boardId ?? "default"}
+Default repo path: ${repoPath ?? "not configured"}
+Card ID: ${cardId}
+Card title: ${cardTitle}
+Target lane: ${targetColumnId}
+Currently missing fields: ${missingList}
+
+Relevant tools:
+- update_task: fill structured fields such as scope, acceptance criteria, verification commands, and test cases
+- search_cards / list_cards_by_column / get_board: use only if you need lightweight card context
+- update_card: only for a brief note if needed; do not use it for structured fields
+- move_card: do not call it in this run; the UI will retry the move after the fields are fixed
+
+Hard rules:
+1. Only repair card ${cardId}; do not create new cards and do not decompose the work.
+2. Use update_task for all structured-field fixes.
+3. Do not fake scope, acceptance criteria, verification commands, or test cases through update_card.
+4. Do not start implementation work and do not use native tools such as Bash, Read, Write, Edit, Glob, or Grep.
+5. Do not move the card; the frontend will retry automatically after the gate is satisfied.
+6. If the card lacks detail, make the narrowest reasonable assumption from the title and target lane and keep scope tight.
+7. Acceptance criteria must be concrete and reviewable; the verification plan must be represented through verification commands or test cases.
+8. When done, report briefly which fields you repaired through update_task.
+
+Current request: repair the story-readiness gap on card ${cardId} so it can move to ${targetColumnId}.`;
 }

@@ -2,7 +2,13 @@ import {AcpProcess} from "@/core/acp/acp-process";
 import {buildConfigFromPreset, buildConfigFromInline} from "@/core/acp/process-config";
 import type { NotificationHandler } from "@/core/acp/protocol-types";
 import {ClaudeCodeProcess, buildClaudeCodeConfig, mapClaudeModeToPermissionMode} from "@/core/acp/claude-code-process";
-import {ensureMcpForProvider, parseMcpServersFromConfigs, providerSupportsMcp} from "@/core/acp/mcp-setup";
+import {
+    cleanupMcpForProvider,
+    ensureMcpForProvider,
+    type McpSetupCleanup,
+    parseMcpServersFromConfigs,
+    providerSupportsMcp,
+} from "@/core/acp/mcp-setup";
 import {getDefaultRoutaMcpConfig} from "@/core/acp/mcp-config-generator";
 import type { McpServerProfile } from "@/core/mcp/mcp-server-profiles";
 import {OpencodeSdkAdapter, OpencodeSdkDirectAdapter, shouldUseOpencodeAdapter, getOpencodeServerUrl, isOpencodeServerConfigured, isOpencodeDirectApiConfigured} from "@/core/acp/opencode-sdk-adapter";
@@ -85,6 +91,66 @@ export class AcpProcessManager {
     private dockerAdapters = new Map<string, ManagedDockerAdapter>();
     private claudeCodeSdkAdapters = new Map<string, ManagedClaudeCodeSdkAdapter>();
     private workspaceAgents = new Map<string, ManagedWorkspaceAgent>();
+    private mcpSessionCleanups = new Map<string, McpSetupCleanup>();
+
+    private combineProviderArgs(
+        providerArgs?: string[],
+        extraArgs?: string[],
+    ): string[] | undefined {
+        const combined = [...(providerArgs ?? []), ...(extraArgs ?? [])];
+        return combined.length > 0 ? combined : undefined;
+    }
+
+    private async prepareMcpForSession(
+        sessionId: string,
+        presetId: string,
+        cwd?: string,
+        workspaceId?: string,
+        toolMode?: "essential" | "full",
+        mcpProfile?: McpServerProfile,
+    ): Promise<{ mcpConfigs?: string[]; providerArgs?: string[] } | undefined> {
+        if (!providerSupportsMcp(presetId)) {
+            return undefined;
+        }
+
+        const baseConfig = getDefaultRoutaMcpConfig(workspaceId, sessionId, toolMode, mcpProfile);
+        const mcpConfig = cwd ? { ...baseConfig, cwd } : baseConfig;
+        const mcpResult = await ensureMcpForProvider(presetId, mcpConfig);
+        if (mcpResult.cleanup) {
+            this.mcpSessionCleanups.set(sessionId, mcpResult.cleanup);
+        } else {
+            this.mcpSessionCleanups.delete(sessionId);
+        }
+        logAcpDebug(`[AcpProcessManager] MCP setup for ${presetId}: ${mcpResult.summary}`);
+        return {
+            mcpConfigs: mcpResult.mcpConfigs.length > 0 ? mcpResult.mcpConfigs : undefined,
+            providerArgs: mcpResult.providerArgs && mcpResult.providerArgs.length > 0
+                ? mcpResult.providerArgs
+                : undefined,
+        };
+    }
+
+    private async cleanupSessionMcp(sessionId: string): Promise<void> {
+        const cleanup = this.mcpSessionCleanups.get(sessionId);
+        if (!cleanup) {
+            return;
+        }
+
+        this.mcpSessionCleanups.delete(sessionId);
+        const summary = await cleanupMcpForProvider(cleanup);
+        logAcpDebug(`[AcpProcessManager] MCP cleanup for ${sessionId}: ${summary}`);
+    }
+
+    hasActiveSession(sessionId: string): boolean {
+        return Boolean(
+            this.processes.get(sessionId)?.process.alive ||
+            this.claudeProcesses.get(sessionId)?.process.alive ||
+            this.opencodeAdapters.get(sessionId)?.adapter.alive ||
+            this.dockerAdapters.get(sessionId)?.adapter.alive ||
+            this.claudeCodeSdkAdapters.get(sessionId)?.adapter.alive ||
+            this.workspaceAgents.get(sessionId)?.adapter.alive
+        );
+    }
 
     async createSession(
         sessionId: string,
@@ -97,6 +163,7 @@ export class AcpProcessManager {
         workspaceId?: string,
         toolMode?: "essential" | "full",
         mcpProfile?: McpServerProfile,
+        sessionContext?: Omit<AcpSessionContext, "sessionId">,
     ): Promise<string> {
         if (presetId === "opencode" && shouldUseOpencodeAdapter()) {
             return this.createOpencodeSdkSession(sessionId, onNotification);
@@ -106,37 +173,111 @@ export class AcpProcessManager {
         if (providerSupportsMcp(presetId)) {
             const mcpResult = await ensureMcpForProvider(
                 presetId,
-                getDefaultRoutaMcpConfig(workspaceId, sessionId, toolMode, mcpProfile),
+                cwd,
+                workspaceId,
+                toolMode,
+                mcpProfile,
             );
-            mcpConfigs = mcpResult.mcpConfigs.length > 0 ? mcpResult.mcpConfigs : undefined;
-            logAcpDebug(`[AcpProcessManager] MCP setup for ${presetId}: ${mcpResult.summary}`);
-        }
+            const config = await buildConfigFromPreset(
+                presetId,
+                cwd,
+                this.combineProviderArgs(mcpSetup?.providerArgs, extraArgs),
+                extraEnv,
+                mcpSetup?.mcpConfigs,
+            );
+            const proc = new AcpProcess(config, onNotification);
 
-        const config = await buildConfigFromPreset(presetId, cwd, extraArgs, extraEnv, mcpConfigs);
-        const proc = new AcpProcess(config, onNotification);
-
-        await proc.start();
-        await proc.initialize();
-        const acpSessionId = await proc.newSession(cwd);
-        if (initialModeId) {
-            try {
-                await proc.sendRequest("session/set_mode", {
-                    sessionId: acpSessionId,
-                    modeId: initialModeId,
-                });
-            } catch {
-                // Some providers do not support set_mode; ignore.
+            await proc.start();
+            await proc.initialize();
+            const acpSessionId = await proc.newSession(cwd);
+            proc.setSessionContext({
+                sessionId,
+                provider: sessionContext?.provider ?? presetId,
+                role: sessionContext?.role,
+                autoApprovePermissions: sessionContext?.autoApprovePermissions,
+            });
+            if (initialModeId) {
+                try {
+                    await proc.sendRequest("session/set_mode", {
+                        sessionId: acpSessionId,
+                        modeId: initialModeId,
+                    });
+                } catch {
+                    // Some providers do not support set_mode; ignore.
+                }
             }
+
+            this.processes.set(sessionId, {
+                process: proc,
+                acpSessionId,
+                presetId,
+                createdAt: new Date(),
+            });
+
+            return acpSessionId;
+        } catch (error) {
+            await this.cleanupSessionMcp(sessionId);
+            throw error;
         }
+    }
 
-        this.processes.set(sessionId, {
-            process: proc,
-            acpSessionId,
-            presetId,
-            createdAt: new Date(),
-        });
+    /**
+     * Resume a persisted ACP session using the provider's native session/load path.
+     * Currently used for process-based Codex sessions via codex-acp.
+     */
+    async loadSession(
+        sessionId: string,
+        cwd: string,
+        onNotification: NotificationHandler,
+        presetId: string = "codex",
+        workspaceId?: string,
+        toolMode?: "essential" | "full",
+        mcpProfile?: McpServerProfile,
+        sessionContext?: Omit<AcpSessionContext, "sessionId">,
+        providerSessionId?: string,
+    ): Promise<string> {
+        try {
+            const mcpSetup = await this.prepareMcpForSession(
+                sessionId,
+                presetId,
+                cwd,
+                workspaceId,
+                toolMode,
+                mcpProfile,
+            );
+            const config = await buildConfigFromPreset(
+                presetId,
+                cwd,
+                this.combineProviderArgs(mcpSetup?.providerArgs),
+                undefined,
+                mcpSetup?.mcpConfigs,
+            );
+            const proc = new AcpProcess(config, onNotification);
 
-        return acpSessionId;
+            await proc.start();
+            await proc.initialize();
+            const resolvedProviderSessionId = providerSessionId ?? sessionId;
+            await proc.loadSession(resolvedProviderSessionId, cwd);
+            proc.setSessionContext({
+                sessionId,
+                provider: sessionContext?.provider ?? presetId,
+                role: sessionContext?.role,
+                autoApprovePermissions: sessionContext?.autoApprovePermissions,
+            });
+
+            const acpSessionId = proc.sessionId ?? resolvedProviderSessionId;
+            this.processes.set(sessionId, {
+                process: proc,
+                acpSessionId,
+                presetId,
+                createdAt: new Date(),
+            });
+
+            return acpSessionId;
+        } catch (error) {
+            await this.cleanupSessionMcp(sessionId);
+            throw error;
+        }
     }
 
     /**
@@ -158,6 +299,7 @@ export class AcpProcessManager {
         cwd: string,
         displayName: string,
         onNotification: NotificationHandler,
+        sessionContext?: Omit<AcpSessionContext, "sessionId">,
     ): Promise<string> {
         const config = buildConfigFromInline(command, args, cwd, displayName);
         const proc = new AcpProcess(config, onNotification);
@@ -165,6 +307,12 @@ export class AcpProcessManager {
         await proc.start();
         await proc.initialize();
         const acpSessionId = await proc.newSession(cwd);
+        proc.setSessionContext({
+            sessionId,
+            provider: sessionContext?.provider ?? displayName,
+            role: sessionContext?.role,
+            autoApprovePermissions: sessionContext?.autoApprovePermissions,
+        });
 
         this.processes.set(sessionId, {
             process: proc,
@@ -503,6 +651,24 @@ export class AcpProcessManager {
             return false;
         }
         return adapter.respondToUserInput(toolUseId, updatedInput);
+    }
+
+    respondToUserInput(
+        sessionId: string,
+        toolCallId: string,
+        response: Record<string, unknown>,
+    ): boolean {
+        const adapter = this.claudeCodeSdkAdapters.get(sessionId)?.adapter;
+        if (adapter?.respondToUserInput(toolCallId, response)) {
+            return true;
+        }
+
+        const proc = this.processes.get(sessionId)?.process;
+        if (proc?.respondToUserInput(toolCallId, response)) {
+            return true;
+        }
+
+        return false;
     }
 
     /**
@@ -902,11 +1068,12 @@ export class AcpProcessManager {
     /**
      * Kill a session's agent process or adapter.
      */
-    killSession(sessionId: string): void {
+    async killSession(sessionId: string): Promise<void> {
         const managed = this.processes.get(sessionId);
         if (managed) {
             managed.process.kill();
             this.processes.delete(sessionId);
+            await this.cleanupSessionMcp(sessionId);
             return;
         }
 
@@ -914,6 +1081,7 @@ export class AcpProcessManager {
         if (claudeManaged) {
             claudeManaged.process.kill();
             this.claudeProcesses.delete(sessionId);
+            await this.cleanupSessionMcp(sessionId);
             return;
         }
 
@@ -921,6 +1089,7 @@ export class AcpProcessManager {
         if (adapterManaged) {
             adapterManaged.adapter.kill();
             this.opencodeAdapters.delete(sessionId);
+            await this.cleanupSessionMcp(sessionId);
             return;
         }
 
@@ -929,6 +1098,7 @@ export class AcpProcessManager {
             dockerManaged.adapter.kill();
             this.dockerAdapters.delete(sessionId);
             getDockerProcessManager().stopContainer(sessionId).catch(() => {});
+            await this.cleanupSessionMcp(sessionId);
             return;
         }
 
@@ -936,6 +1106,7 @@ export class AcpProcessManager {
         if (claudeCodeSdkManaged) {
             claudeCodeSdkManaged.adapter.kill();
             this.claudeCodeSdkAdapters.delete(sessionId);
+            await this.cleanupSessionMcp(sessionId);
             return;
         }
 
@@ -944,12 +1115,13 @@ export class AcpProcessManager {
             workspaceManaged.adapter.kill();
             this.workspaceAgents.delete(sessionId);
         }
+        await this.cleanupSessionMcp(sessionId);
     }
 
     /**
      * Kill all processes and adapters.
      */
-    killAll(): void {
+    async killAll(): Promise<void> {
         for (const [, managed] of this.processes) {
             managed.process.kill();
         }
@@ -980,5 +1152,8 @@ export class AcpProcessManager {
             managed.adapter.kill();
         }
         this.workspaceAgents.clear();
+
+        const sessionIds = Array.from(this.mcpSessionCleanups.keys());
+        await Promise.all(sessionIds.map((sessionId) => this.cleanupSessionMcp(sessionId)));
     }
 }

@@ -3,6 +3,8 @@
 import { FormEvent, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useTranslation } from "@/i18n";
+import { desktopAwareFetch } from "@/client/utils/diagnostics";
+import { resolveApiPath } from "@/client/config/backend";
 
 type ReplayEvent = {
   sessionId?: string;
@@ -37,7 +39,7 @@ export function AcpReplayDebugPageClient() {
       query.set("lastEventId", lastEventId);
     }
 
-    void fetch(`/api/sessions/${encodeURIComponent(sessionId)}/history`, {
+    void desktopAwareFetch(`/api/sessions/${encodeURIComponent(sessionId)}/history`, {
       cache: "no-store",
       signal: controller.signal,
     })
@@ -53,7 +55,7 @@ export function AcpReplayDebugPageClient() {
         }
       });
 
-    const source = new EventSource(`/api/acp?${query.toString()}`);
+    const source = new EventSource(resolveApiPath(`/api/acp?${query.toString()}`));
     source.onmessage = (event) => {
       try {
         const payload = JSON.parse(event.data) as { params?: ReplayEvent };

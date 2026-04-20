@@ -36,6 +36,7 @@ const system = {
   artifactStore,
   kanbanBoardStore: { get: vi.fn() },
   codebaseStore: { listByWorkspace: vi.fn(), get: vi.fn(), getDefault: vi.fn(), findByRepoPath: vi.fn() },
+  worktreeStore: { listByWorkspace: vi.fn(), get: vi.fn() },
 };
 
 vi.mock("@/core/routa-system", () => ({
@@ -75,6 +76,7 @@ describe("/api/tasks GET", () => {
         id: "task-1",
         title: "Artifact summary",
         objective: "Return artifact counts with task list data.",
+        comment: "Backlog refinement note from update_card.",
         workspaceId: "workspace-1",
         boardId: "board-1",
         columnId: "dev",
@@ -105,6 +107,8 @@ describe("/api/tasks GET", () => {
     system.codebaseStore.get.mockResolvedValue(undefined);
     system.codebaseStore.getDefault.mockResolvedValue(undefined);
     system.codebaseStore.findByRepoPath.mockResolvedValue(undefined);
+    system.worktreeStore.listByWorkspace.mockResolvedValue([]);
+    system.worktreeStore.get.mockResolvedValue(undefined);
     processKanbanColumnTransition.mockResolvedValue(undefined);
     await artifactStore.deleteByTask("task-1");
   });
@@ -133,6 +137,10 @@ describe("/api/tasks GET", () => {
     expect(data.tasks).toHaveLength(1);
     expect(data.tasks[0]).toMatchObject({
       id: "task-1",
+      comment: "Backlog refinement note from update_card.",
+      comments: [
+        { body: "Backlog refinement note from update_card." },
+      ],
       artifactSummary: {
         total: 2,
         byType: {
@@ -170,6 +178,22 @@ describe("/api/tasks GET", () => {
       investValidation: {
         source: "heuristic",
       },
+    });
+  });
+
+  it("degrades gracefully when the sqlite worktrees table is missing", async () => {
+    system.worktreeStore.listByWorkspace.mockRejectedValueOnce(
+      new Error("SqliteError: no such table: worktrees"),
+    );
+
+    const response = await GET(new NextRequest("http://localhost/api/tasks?workspaceId=workspace-1"));
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.tasks).toHaveLength(1);
+    expect(data.tasks[0]).toMatchObject({
+      id: "task-1",
+      title: "Artifact summary",
     });
   });
 

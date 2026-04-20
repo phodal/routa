@@ -146,7 +146,7 @@ async fn clone_with_progress(
             )))
             .await;
 
-        let child = tokio::process::Command::new("git")
+        let child = git::git_tokio_command()
             .args(["clone", "--progress", &clone_url, &target_str])
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::piped())
@@ -212,7 +212,7 @@ async fn clone_with_progress(
         let status = child.wait().await;
         match status {
             Ok(s) if s.success() => {
-                let _ = std::process::Command::new("git")
+                let _ = git::git_command()
                     .args(["fetch", "--all"])
                     .current_dir(&target_str)
                     .output();

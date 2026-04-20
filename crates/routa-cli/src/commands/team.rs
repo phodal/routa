@@ -14,9 +14,11 @@ use routa_core::orchestration::{OrchestratorConfig, RoutaOrchestrator, Specialis
 use routa_core::rpc::RpcRouter;
 use routa_core::state::AppState;
 use routa_core::store::acp_session_store::CreateAcpSessionParams;
+use tokio::sync::broadcast;
 
 use super::prompt::{print_session_summary, truncate_path, update_agent_status};
-use super::tui::TuiRenderer;
+use super::review::stream_parser::update_contains_turn_complete;
+use super::tui::{update_has_visible_terminal_activity, IdleExitPolicy, TuiRenderer};
 
 /// Run the team coordination flow with an agent lead.
 pub async fn run(
@@ -187,10 +189,9 @@ pub async fn run(
     println!("🚀 Sending requirement to team lead...");
     println!();
 
-    if let Err(err) = state
-        .acp_manager
-        .prompt(&session_id, &coordinator_prompt)
-        .await
+    let final_status = "COMPLETED";
+    if let Err(err) =
+        prompt_and_stream_until_idle(&mut rx, state, &session_id, &coordinator_prompt).await
     {
         if let Err(status_err) = update_agent_status(&router, &agent_id, "ERROR").await {
             eprintln!("Failed to mark agent {agent_id} ERROR: {status_err}");
@@ -250,7 +251,6 @@ pub async fn run(
 
     // ── 11. Enter interactive REPL if requested ──────────────────────────
     if interactive && state.acp_manager.is_alive(&session_id).await {
-        renderer.finish();
         if let Err(err) = run_interactive_repl(
             state,
             &agent_id,
@@ -275,11 +275,11 @@ pub async fn run(
         eprintln!("Failed to mark agent {agent_id} {final_status}: {err}");
     }
 
-    // ── 12. Print summary ────────────────────────────────────────────────
+    // ── 11. Print summary ────────────────────────────────────────────────
     println!();
     print_session_summary(&router, &workspace_id, Some(&agent_id), Some(&session_id)).await;
 
-    // ── 13. Cleanup ──────────────────────────────────────────────────────
+    // ── 12. Cleanup ──────────────────────────────────────────────────────
     state.acp_manager.kill_session(&session_id).await;
     orchestrator.cleanup(&session_id).await;
 
@@ -362,11 +362,8 @@ async fn run_interactive_repl(
             }
             _ => {
                 // Send message to team lead
-                match state.acp_manager.prompt(session_id, trimmed).await {
-                    Ok(_) => {
-                        // Stream response
-                        stream_until_idle(session_rx, state, session_id).await;
-                    }
+                match prompt_and_stream_until_idle(session_rx, state, session_id, trimmed).await {
+                    Ok(_) => {}
                     Err(e) => {
                         println!("Failed to send message: {e}");
                     }
@@ -382,39 +379,70 @@ async fn run_interactive_repl(
 }
 
 /// Stream updates until idle or turn_complete.
-async fn stream_until_idle(
-    rx: &mut tokio::sync::broadcast::Receiver<serde_json::Value>,
+async fn prompt_and_stream_until_idle(
+    rx: &mut broadcast::Receiver<serde_json::Value>,
     state: &AppState,
     session_id: &str,
-) {
+    prompt: &str,
+) -> Result<(), String> {
     let mut renderer = TuiRenderer::new();
-    let mut idle_ticks = 0u32;
+    let mut idle_policy = IdleExitPolicy::new(30, 5);
+    let mut prompt_finished = false;
+    let prompt_future = state.acp_manager.prompt(session_id, prompt);
+    tokio::pin!(prompt_future);
 
     loop {
-        match tokio::time::timeout(std::time::Duration::from_secs(1), rx.recv()).await {
-            Ok(Ok(update)) => {
-                idle_ticks = 0;
-                let is_done = update
-                    .get("params")
-                    .and_then(|p| p.get("update"))
-                    .and_then(|u| u.get("sessionUpdate"))
-                    .and_then(|v| v.as_str())
-                    == Some("turn_complete");
-                renderer.handle_update(&update);
-                if is_done {
-                    break;
+        let tick = tokio::time::sleep(std::time::Duration::from_secs(1));
+        tokio::pin!(tick);
+
+        tokio::select! {
+            prompt_result = &mut prompt_future, if !prompt_finished => {
+                prompt_finished = true;
+                if let Err(error) = prompt_result {
+                    renderer.finish();
+                    return Err(error);
                 }
             }
-            Ok(Err(_)) => break,
-            Err(_) => {
-                idle_ticks += 1;
-                if idle_ticks >= 5 || !state.acp_manager.is_alive(session_id).await {
+            recv_result = rx.recv() => {
+                match recv_result {
+                    Ok(update) => {
+                        if update_has_visible_terminal_activity(&update) {
+                            idle_policy.record_update();
+                        }
+
+                        let is_done = update
+                            .get("params")
+                            .and_then(|p| p.get("update"))
+                            .and_then(|u| u.get("sessionUpdate"))
+                            .and_then(|v| v.as_str())
+                            == Some("turn_complete");
+                        renderer.handle_update(&update);
+                        if is_done {
+                            break;
+                        }
+                    }
+                    Err(_) => break,
+                }
+            }
+            _ = &mut tick => {
+                if let Some(history) = state.acp_manager.get_session_history(session_id).await {
+                    if update_contains_turn_complete(&history) {
+                        break;
+                    }
+                }
+
+                if prompt_finished && idle_policy.should_exit_on_idle_tick() {
+                    break;
+                }
+
+                if !state.acp_manager.is_alive(session_id).await {
                     break;
                 }
             }
         }
     }
     renderer.finish();
+    Ok(())
 }
 
 /// Discover available team-* specialists (excluding team-agent-lead).
@@ -468,7 +496,9 @@ fn build_team_prompt(
          **Workspace ID:** {}\n\n\
          ## User Requirement\n\n{}\n\n\
          ---\n**Reminder:** {}\n",
-        specialist.system_prompt,
+        specialist
+            .system_prompt_body()
+            .unwrap_or_else(|| specialist.system_prompt.clone()),
         team_roster,
         agent_id,
         workspace_id,
@@ -488,7 +518,11 @@ fn build_team_user_prompt(agent_id: &str, workspace_id: &str, user_requirement: 
 fn build_team_system_prompt(specialist: &SpecialistConfig, team_roster: &str) -> String {
     format!(
         "{}\n\n---\n\n{}\n\n---\n**Reminder:** {}\n",
-        specialist.system_prompt, team_roster, specialist.role_reminder
+        specialist
+            .system_prompt_body()
+            .unwrap_or_else(|| specialist.system_prompt.clone()),
+        team_roster,
+        specialist.role_reminder
     )
 }
 

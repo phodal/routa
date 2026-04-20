@@ -2,11 +2,44 @@
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "Bash|Write|Edit|MultiEdit",
+        "matcher": "Bash",
         "hooks": [
           {
             "type": "command",
             "command": "node scripts/check-tool-permission.js"
+          },
+          {
+            "type": "command",
+            "command": "bash ./crates/harness-monitor/scripts/run-codex-hook.sh PreToolUse"
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write|MultiEdit|Read|Grep|Glob|Search|LS",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ./crates/harness-monitor/scripts/run-codex-hook.sh PreToolUse"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ./crates/harness-monitor/scripts/run-codex-hook.sh PostToolUse"
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write|MultiEdit|Read|Grep|Glob|Search|LS",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ./crates/harness-monitor/scripts/run-codex-hook.sh PostToolUse"
           }
         ]
       }
@@ -18,6 +51,10 @@
           {
             "type": "command",
             "command": "node scripts/check-git-control-plane.js"
+          },
+          {
+            "type": "command",
+            "command": "bash ./crates/harness-monitor/scripts/run-codex-hook.sh SessionStart"
           }
         ]
       }
@@ -28,6 +65,20 @@
           {
             "type": "command",
             "command": "node scripts/check-prompt-policy.js"
+          },
+          {
+            "type": "command",
+            "command": "bash ./crates/harness-monitor/scripts/run-codex-hook.sh UserPromptSubmit"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ./crates/harness-monitor/scripts/run-codex-hook.sh Stop"
           }
         ]
       }

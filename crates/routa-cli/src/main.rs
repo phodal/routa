@@ -4,11 +4,13 @@
 //! (routa-server) that power the Next.js web UI and Tauri desktop app.
 
 mod commands;
+mod kanban_cli;
 
 use crate::commands::acp::AcpAction;
 use crate::commands::fitness::FitnessAction;
 use crate::commands::graph::GraphAction;
 use crate::commands::harness::HarnessAction;
+use crate::kanban_cli::{handle_kanban_action, KanbanAction};
 use clap::{Parser, Subcommand};
 
 /// Routa.js CLI — Multi-agent coordination platform
@@ -87,6 +89,16 @@ enum Commands {
 
     /// Manage Kanban boards, cards, and columns
     Kanban {
+        /// Prefer this Routa server for Kanban RPC calls.
+        #[arg(
+            long,
+            env = "ROUTA_SERVER_URL",
+            default_value = "http://127.0.0.1:3210"
+        )]
+        server_url: String,
+        /// Emit JSON results without the JSON-RPC transport envelope.
+        #[arg(long, default_value_t = false)]
+        json: bool,
         #[command(subcommand)]
         action: KanbanAction,
     },
@@ -210,6 +222,12 @@ enum Commands {
     Team {
         #[command(subcommand)]
         action: TeamAction,
+    },
+
+    /// Generate and inspect feature tree surface index
+    FeatureTree {
+        #[command(subcommand)]
+        action: FeatureTreeAction,
     },
 }
 
@@ -382,25 +400,6 @@ enum TaskAction {
 }
 
 #[derive(Subcommand)]
-enum KanbanAction {
-    /// Manage boards
-    Board {
-        #[command(subcommand)]
-        action: KanbanBoardAction,
-    },
-    /// Manage cards
-    Card {
-        #[command(subcommand)]
-        action: KanbanCardAction,
-    },
-    /// Manage columns
-    Column {
-        #[command(subcommand)]
-        action: KanbanColumnAction,
-    },
-}
-
-#[derive(Subcommand)]
 enum SessionAction {
     /// List persisted ACP sessions
     List {
@@ -431,171 +430,6 @@ enum SessionAction {
         /// Maximum sessions to show
         #[arg(long, default_value_t = 20)]
         limit: usize,
-    },
-}
-
-#[derive(Subcommand)]
-enum KanbanBoardAction {
-    /// List boards in a workspace
-    List {
-        #[arg(long, default_value = "default")]
-        workspace_id: String,
-    },
-    /// Create a board
-    Create {
-        #[arg(long)]
-        name: String,
-        #[arg(long, default_value = "default")]
-        workspace_id: String,
-        #[arg(long, value_delimiter = ',')]
-        columns: Option<Vec<String>>,
-        #[arg(long, default_value_t = false)]
-        is_default: bool,
-    },
-    /// Get a board with its cards
-    Get {
-        #[arg(long)]
-        board_id: String,
-    },
-    /// Update a board
-    Update {
-        #[arg(long)]
-        board_id: String,
-        #[arg(long)]
-        name: Option<String>,
-        #[arg(long)]
-        columns_json: Option<String>,
-        #[arg(long, default_value_t = false)]
-        set_default: bool,
-    },
-    /// Validate a Kanban YAML config file
-    Validate {
-        /// Path to the YAML config file
-        #[arg(long)]
-        file: String,
-    },
-    /// Apply a Kanban YAML config (upsert boards and columns)
-    Apply {
-        /// Path to the YAML config file
-        #[arg(long)]
-        file: String,
-        /// Workspace ID override (overrides value in YAML)
-        #[arg(long)]
-        workspace_id: Option<String>,
-        /// Preview changes without writing
-        #[arg(long, default_value_t = false)]
-        dry_run: bool,
-        /// Continue applying remaining boards on error
-        #[arg(long, default_value_t = false)]
-        continue_on_error: bool,
-    },
-    /// Export workspace boards to a YAML config file
-    Export {
-        /// Workspace ID to export
-        #[arg(long, default_value = "default")]
-        workspace_id: String,
-        /// Output file path (prints to stdout if omitted)
-        #[arg(long)]
-        output: Option<String>,
-    },
-}
-
-#[derive(Subcommand)]
-enum KanbanCardAction {
-    /// Create a card
-    Create {
-        #[arg(long)]
-        title: String,
-        #[arg(long)]
-        description: Option<String>,
-        #[arg(long, default_value = "default")]
-        workspace_id: String,
-        #[arg(long)]
-        board_id: Option<String>,
-        #[arg(long)]
-        column_id: Option<String>,
-        #[arg(long)]
-        priority: Option<String>,
-        #[arg(long, value_delimiter = ',')]
-        labels: Option<Vec<String>>,
-    },
-    /// Move a card
-    Move {
-        #[arg(long)]
-        card_id: String,
-        #[arg(long)]
-        target_column_id: String,
-        #[arg(long)]
-        position: Option<i64>,
-    },
-    /// Update a card
-    Update {
-        #[arg(long)]
-        card_id: String,
-        #[arg(long)]
-        title: Option<String>,
-        #[arg(long)]
-        description: Option<String>,
-        #[arg(long)]
-        priority: Option<String>,
-        #[arg(long, value_delimiter = ',')]
-        labels: Option<Vec<String>>,
-    },
-    /// Delete a card
-    Delete {
-        #[arg(long)]
-        card_id: String,
-    },
-    /// Search cards
-    Search {
-        #[arg(long)]
-        query: String,
-        #[arg(long, default_value = "default")]
-        workspace_id: String,
-        #[arg(long)]
-        board_id: Option<String>,
-    },
-    /// List cards in a column
-    ListByColumn {
-        #[arg(long)]
-        column_id: String,
-        #[arg(long, default_value = "default")]
-        workspace_id: String,
-        #[arg(long)]
-        board_id: Option<String>,
-    },
-    /// Bulk-create cards from a JSON task array
-    Decompose {
-        #[arg(long)]
-        tasks_json: String,
-        #[arg(long, default_value = "default")]
-        workspace_id: String,
-        #[arg(long)]
-        board_id: Option<String>,
-        #[arg(long)]
-        column_id: Option<String>,
-    },
-}
-
-#[derive(Subcommand)]
-enum KanbanColumnAction {
-    /// Create a column
-    Create {
-        #[arg(long)]
-        board_id: String,
-        #[arg(long)]
-        name: String,
-        #[arg(long)]
-        color: Option<String>,
-    },
-    /// Delete a column
-    Delete {
-        #[arg(long)]
-        board_id: String,
-        #[arg(long)]
-        column_id: String,
-        #[arg(long, default_value_t = false)]
-        delete_cards: bool,
     },
 }
 
@@ -738,9 +572,59 @@ enum ReviewAction {
     },
 }
 
+#[derive(Subcommand)]
+enum FeatureTreeAction {
+    /// Run feature-tree preflight and print the selected scan root
+    Preflight {
+        /// Repository path to analyze
+        #[arg(long)]
+        repo_path: Option<String>,
+        /// Print the preflight payload as JSON
+        #[arg(long, default_value_t = false)]
+        json_output: bool,
+    },
+    /// Scan the repository and generate FEATURE_TREE.md + feature-tree.index.json
+    Generate {
+        /// Repository path (defaults to current working directory)
+        #[arg(long)]
+        repo_path: Option<String>,
+        /// Optional scan root within the repository
+        #[arg(long)]
+        scan_root: Option<String>,
+        /// Preview what would be generated without writing files
+        #[arg(long, default_value_t = false)]
+        dry_run: bool,
+        /// Print the generation result as JSON
+        #[arg(long, default_value_t = false)]
+        json_output: bool,
+    },
+    /// Commit FEATURE_TREE artifacts with optional metadata enrichment
+    Commit {
+        /// Repository path (defaults to current working directory)
+        #[arg(long)]
+        repo_path: Option<String>,
+        /// Optional scan root within the repository
+        #[arg(long)]
+        scan_root: Option<String>,
+        /// Optional JSON file containing feature metadata
+        #[arg(long)]
+        metadata_file: Option<String>,
+        /// Print the commit result as JSON
+        #[arg(long, default_value_t = false)]
+        json_output: bool,
+    },
+    /// Display a summary of the current feature tree index
+    Inspect {
+        /// Repository path (defaults to current working directory)
+        #[arg(long)]
+        repo_path: Option<String>,
+    },
+}
+
 #[tokio::main]
 async fn main() {
     let cli = Cli::parse();
+    std::env::set_var("ROUTA_DB_PATH", &cli.db);
 
     // Initialize tracing
     tracing_subscriber::fmt()
@@ -863,6 +747,7 @@ async fn main() {
                                 workspace_id: &workspace_id,
                                 provider: provider.as_deref(),
                                 output_json: false,
+                                cwd_override: None,
                                 specialist_dir: specialist_dir.as_deref(),
                                 provider_timeout_ms: None,
                                 provider_retries: 0,
@@ -897,6 +782,7 @@ async fn main() {
                                 workspace_id: &workspace_id,
                                 provider: provider.as_deref(),
                                 output_json: json,
+                                cwd_override: None,
                                 provider_timeout_ms,
                                 provider_retries,
                                 repeat_count: repeat,
@@ -1000,204 +886,19 @@ async fn main() {
                 }
             }
 
-            Commands::Kanban { action } => {
-                let state = commands::init_state(&cli.db).await;
-                match action {
-                    KanbanAction::Board { action } => match action {
-                        KanbanBoardAction::List { workspace_id } => {
-                            commands::kanban::list_boards(&state, &workspace_id).await
-                        }
-                        KanbanBoardAction::Create {
-                            name,
-                            workspace_id,
-                            columns,
-                            is_default,
-                        } => {
-                            commands::kanban::create_board(
-                                &state,
-                                &workspace_id,
-                                &name,
-                                columns,
-                                is_default,
-                            )
-                            .await
-                        }
-                        KanbanBoardAction::Get { board_id } => {
-                            commands::kanban::get_board(&state, &board_id).await
-                        }
-                        KanbanBoardAction::Update {
-                            board_id,
-                            name,
-                            columns_json,
-                            set_default,
-                        } => {
-                            commands::kanban::update_board(
-                                &state,
-                                &board_id,
-                                name.as_deref(),
-                                columns_json.as_deref(),
-                                set_default,
-                            )
-                            .await
-                        }
-                        KanbanBoardAction::Validate { file } => {
-                            commands::kanban::validate_config(&file).await
-                        }
-                        KanbanBoardAction::Apply {
-                            file,
-                            workspace_id,
-                            dry_run,
-                            continue_on_error,
-                        } => {
-                            commands::kanban::apply_config(
-                                &state,
-                                &file,
-                                workspace_id.as_deref(),
-                                dry_run,
-                                continue_on_error,
-                            )
-                            .await
-                        }
-                        KanbanBoardAction::Export {
-                            workspace_id,
-                            output,
-                        } => {
-                            commands::kanban::export_config(
-                                &state,
-                                &workspace_id,
-                                output.as_deref(),
-                            )
-                            .await
-                        }
-                    },
-                    KanbanAction::Card { action } => match action {
-                        KanbanCardAction::Create {
-                            title,
-                            description,
-                            workspace_id,
-                            board_id,
-                            column_id,
-                            priority,
-                            labels,
-                        } => {
-                            commands::kanban::create_card(
-                                &state,
-                                commands::kanban::CreateCardOptions {
-                                    workspace_id: &workspace_id,
-                                    board_id: board_id.as_deref(),
-                                    column_id: column_id.as_deref(),
-                                    title: &title,
-                                    description: description.as_deref(),
-                                    priority: priority.as_deref(),
-                                    labels,
-                                },
-                            )
-                            .await
-                        }
-                        KanbanCardAction::Move {
-                            card_id,
-                            target_column_id,
-                            position,
-                        } => {
-                            commands::kanban::move_card(
-                                &state,
-                                &card_id,
-                                &target_column_id,
-                                position,
-                            )
-                            .await
-                        }
-                        KanbanCardAction::Update {
-                            card_id,
-                            title,
-                            description,
-                            priority,
-                            labels,
-                        } => {
-                            commands::kanban::update_card(
-                                &state,
-                                &card_id,
-                                title.as_deref(),
-                                description.as_deref(),
-                                priority.as_deref(),
-                                labels,
-                            )
-                            .await
-                        }
-                        KanbanCardAction::Delete { card_id } => {
-                            commands::kanban::delete_card(&state, &card_id).await
-                        }
-                        KanbanCardAction::Search {
-                            query,
-                            workspace_id,
-                            board_id,
-                        } => {
-                            commands::kanban::search_cards(
-                                &state,
-                                &workspace_id,
-                                &query,
-                                board_id.as_deref(),
-                            )
-                            .await
-                        }
-                        KanbanCardAction::ListByColumn {
-                            column_id,
-                            workspace_id,
-                            board_id,
-                        } => {
-                            commands::kanban::list_cards_by_column(
-                                &state,
-                                &workspace_id,
-                                &column_id,
-                                board_id.as_deref(),
-                            )
-                            .await
-                        }
-                        KanbanCardAction::Decompose {
-                            tasks_json,
-                            workspace_id,
-                            board_id,
-                            column_id,
-                        } => {
-                            commands::kanban::decompose_tasks(
-                                &state,
-                                &workspace_id,
-                                board_id.as_deref(),
-                                column_id.as_deref(),
-                                &tasks_json,
-                            )
-                            .await
-                        }
-                    },
-                    KanbanAction::Column { action } => match action {
-                        KanbanColumnAction::Create {
-                            board_id,
-                            name,
-                            color,
-                        } => {
-                            commands::kanban::create_column(
-                                &state,
-                                &board_id,
-                                &name,
-                                color.as_deref(),
-                            )
-                            .await
-                        }
-                        KanbanColumnAction::Delete {
-                            board_id,
-                            column_id,
-                            delete_cards,
-                        } => {
-                            commands::kanban::delete_column(
-                                &state,
-                                &board_id,
-                                &column_id,
-                                delete_cards,
-                            )
-                            .await
-                        }
-                    },
+            Commands::Kanban {
+                server_url,
+                json,
+                action,
+            } => {
+                std::env::set_var("ROUTA_SERVER_URL", &server_url);
+                if json {
+                    std::env::set_var("ROUTA_KANBAN_JSON", "1");
+                } else {
+                    std::env::remove_var("ROUTA_KANBAN_JSON");
                 }
+                let state = commands::init_state(&cli.db).await;
+                handle_kanban_action(&state, action).await
             }
 
             Commands::Workspace { action } => {
@@ -1276,7 +977,7 @@ async fn main() {
             Commands::Graph { action } => commands::graph::run(action),
 
             Commands::Fitness { action } => commands::fitness::run(action),
-            Commands::Harness { action } => commands::harness::run(action),
+            Commands::Harness { action } => commands::harness::run(&cli.db, action).await,
 
             Commands::Workflow { action } => {
                 let state = commands::init_state(&cli.db).await;
@@ -1400,6 +1101,38 @@ async fn main() {
                     }
                 }
             }
+
+            Commands::FeatureTree { action } => match action {
+                FeatureTreeAction::Preflight {
+                    repo_path,
+                    json_output,
+                } => commands::feature_tree::preflight(repo_path.as_deref(), json_output),
+                FeatureTreeAction::Generate {
+                    repo_path,
+                    scan_root,
+                    dry_run,
+                    json_output,
+                } => commands::feature_tree::generate(
+                    repo_path.as_deref(),
+                    scan_root.as_deref(),
+                    dry_run,
+                    json_output,
+                ),
+                FeatureTreeAction::Commit {
+                    repo_path,
+                    scan_root,
+                    metadata_file,
+                    json_output,
+                } => commands::feature_tree::commit(
+                    repo_path.as_deref(),
+                    scan_root.as_deref(),
+                    metadata_file.as_deref(),
+                    json_output,
+                ),
+                FeatureTreeAction::Inspect { repo_path } => {
+                    commands::feature_tree::inspect(repo_path.as_deref())
+                }
+            },
         }
     } else {
         // No prompt and no subcommand — show help

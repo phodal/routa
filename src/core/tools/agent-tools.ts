@@ -30,6 +30,7 @@ import {
   createAgent as createAgentModel,
 } from "../models/agent";
 import { Task, TaskStatus, createTask as createTaskModel } from "../models/task";
+import type { KanbanBoardStore } from "../store/kanban-board-store";
 import { MessageRole, createMessage, CompletionReport } from "../models/message";
 import {
   ArtifactType,
@@ -42,14 +43,18 @@ import { TaskStore } from "../store/task-store";
 import { ArtifactStore } from "../store/artifact-store";
 import { EventBus, AgentEventType } from "../events/event-bus";
 import { getKanbanEventBroadcaster } from "../kanban/kanban-event-broadcaster";
+import type { TaskCreationSource } from "../kanban/task-creation-policy";
 import { ToolResult, successResult, errorResult } from './tool-result';
 import { applySandboxPermissionConstraints, SandboxPermissionConstraints } from "../sandbox";
+import { resolveTaskStatusForBoardColumn } from "../models/kanban";
+import { resolveReviewLaneConvergenceTarget } from "../kanban/review-lane-convergence";
 import {
   PermissionStore,
   PermissionRequest,
   PermissionRequestOptions,
   PermissionUrgency,
 } from './permission-store';
+import { getTaskLaneSession } from "../kanban/task-lane-history";
 
 function extractSandboxId(options?: PermissionRequestOptions): string | undefined {
   const sandboxId = options?.sandboxId;
@@ -95,9 +100,87 @@ function notifyKanbanArtifactChanged(workspaceId: string, taskId: string): void 
   });
 }
 
+function resolveSyntheticCompletionLaneSession(
+  task: Task,
+  agentId: string,
+  targetColumnId: string | undefined,
+) {
+  const sessionCandidates = [agentId, task.triggerSessionId].filter(
+    (value): value is string => typeof value === "string" && value.trim().length > 0
+  );
+
+  for (const candidate of sessionCandidates) {
+    const session = getTaskLaneSession(task, candidate);
+    if (session && session.columnId === targetColumnId && session.status === "running") {
+      return session;
+    }
+  }
+
+  for (const candidate of sessionCandidates) {
+    const session = getTaskLaneSession(task, candidate);
+    if (session?.status === "running") {
+      return session;
+    }
+  }
+
+  const runningSessions = [...(task.laneSessions ?? [])]
+    .reverse()
+    .filter((session) => session.status === "running");
+
+  return runningSessions.find((session) => session.columnId === targetColumnId)
+    ?? runningSessions[0];
+}
+
+function shouldEmitSyntheticCompletion(params: {
+  task: Task;
+  agentId: string;
+  targetColumnId: string | undefined;
+}) {
+  const { task, agentId, targetColumnId } = params;
+  const laneSession = resolveSyntheticCompletionLaneSession(task, agentId, targetColumnId);
+  if (!laneSession) {
+    return undefined;
+  }
+
+  if (
+    laneSession.completionRequirement === "completion_summary"
+    && task.completionSummary?.trim()
+  ) {
+    return {
+      sessionId: laneSession.sessionId,
+      trigger: "completion_summary" as const,
+    };
+  }
+
+  if (
+    laneSession.columnId === "review"
+    && laneSession.role === "GATE"
+    && task.verificationVerdict
+    && task.verificationReport?.trim()
+  ) {
+    return {
+      sessionId: laneSession.sessionId,
+      trigger: "verification_report" as const,
+    };
+  }
+
+  if (
+    laneSession.completionRequirement === "verification_report"
+    && task.verificationReport?.trim()
+  ) {
+    return {
+      sessionId: laneSession.sessionId,
+      trigger: "verification_report" as const,
+    };
+  }
+
+  return undefined;
+}
+
 export class AgentTools {
   private artifactStore?: ArtifactStore;
   private permissionStore?: PermissionStore;
+  private kanbanBoardStore?: Pick<KanbanBoardStore, "get">;
 
   constructor(
     private agentStore: AgentStore,
@@ -118,6 +201,16 @@ export class AgentTools {
     this.permissionStore = store;
   }
 
+  setKanbanBoardStore(store: Pick<KanbanBoardStore, "get">): void {
+    this.kanbanBoardStore = store;
+  }
+
+  // ─── EventBus Access ─────────────────────────────────────────────────
+
+  getEventBus() {
+    return this.eventBus;
+  }
+
   // ─── Tool 0: Create Task ────────────────────────────────────────────
 
   async createTask(params: {
@@ -130,6 +223,7 @@ export class AgentTools {
     testCases?: string[];
     dependencies?: string[];
     parallelGroup?: string;
+    creationSource?: TaskCreationSource;
   }): Promise<ToolResult> {
     const task = createTaskModel({
       id: uuidv4(),
@@ -142,6 +236,7 @@ export class AgentTools {
       testCases: params.testCases,
       dependencies: params.dependencies,
       parallelGroup: params.parallelGroup,
+      creationSource: params.creationSource,
     });
 
     await this.taskStore.save(task);
@@ -756,6 +851,7 @@ export class AgentTools {
       verificationReport?: string;
       assignedTo?: string;
       acceptanceCriteria?: string[];
+      verificationCommands?: string[];
       testCases?: string[];
     };
     agentId: string;
@@ -777,8 +873,8 @@ export class AgentTools {
       );
     }
 
-    // Apply updates
     const oldStatus = task.status;
+    const originalColumnId = task.columnId;
     if (updates.title) task.title = updates.title;
     if (updates.objective) task.objective = updates.objective;
     if (updates.scope !== undefined) task.scope = updates.scope;
@@ -793,13 +889,56 @@ export class AgentTools {
     if (updates.verificationReport !== undefined) task.verificationReport = updates.verificationReport;
     if (updates.assignedTo !== undefined) task.assignedTo = updates.assignedTo;
     if (updates.acceptanceCriteria !== undefined) task.acceptanceCriteria = updates.acceptanceCriteria;
+    if (updates.verificationCommands !== undefined) task.verificationCommands = updates.verificationCommands;
     if (updates.testCases !== undefined) task.testCases = updates.testCases;
+
+    // Always check review lane convergence when verification verdict is updated
+    // This ensures cards move out of review lane even when status is explicitly set
+    if (updates.verificationVerdict !== undefined || updates.status === undefined) {
+      const board = task.boardId && this.kanbanBoardStore
+        ? await this.kanbanBoardStore.get(task.boardId)
+        : undefined;
+      const convergenceColumnId = resolveReviewLaneConvergenceTarget(task, board?.columns ?? []);
+      if (convergenceColumnId && convergenceColumnId !== task.columnId) {
+        task.columnId = convergenceColumnId;
+        task.status = resolveTaskStatusForBoardColumn(board?.columns ?? [], convergenceColumnId);
+      }
+    }
+
     task.updatedAt = new Date();
 
     await this.taskStore.save(task);
 
-    // Emit events if status changed
-    if (updates.status && oldStatus !== task.status) {
+    getKanbanEventBroadcaster().notify({
+      workspaceId: task.workspaceId,
+      entity: "task",
+      action: "updated",
+      resourceId: taskId,
+      source: "agent",
+    });
+
+    const syntheticCompletion = shouldEmitSyntheticCompletion({
+      task,
+      agentId,
+      targetColumnId: originalColumnId,
+    });
+    if (syntheticCompletion) {
+      this.eventBus.emit({
+        type: AgentEventType.AGENT_COMPLETED,
+        agentId: syntheticCompletion.sessionId,
+        workspaceId: task.workspaceId,
+        data: {
+          sessionId: syntheticCompletion.sessionId,
+          success: true,
+          synthesizedBy: "updateTask",
+          trigger: syntheticCompletion.trigger,
+          taskId,
+        },
+        timestamp: new Date(),
+      });
+    }
+
+    if (oldStatus !== task.status) {
       this.eventBus.emit({
         type: AgentEventType.TASK_STATUS_CHANGED,
         agentId,

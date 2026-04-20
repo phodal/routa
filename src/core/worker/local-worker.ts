@@ -193,7 +193,7 @@ export class LocalWorker implements Worker {
     try {
       const { getAcpProcessManager } = await import("@/core/acp/processer");
       const manager = getAcpProcessManager();
-      manager.killSession(sessionId);
+      await manager.killSession(sessionId);
 
       this.activeTasks.delete(taskId);
       this.currentLoad = this.activeTasks.size;

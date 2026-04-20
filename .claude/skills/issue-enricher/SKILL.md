@@ -18,6 +18,7 @@ If the task is enriching an existing GitHub issue rather than creating a new one
 - Treat `docs/issues/` as the local issue knowledge base when it is available
 - Search for mirrored GitHub issues and prior local issue reports before proposing a new direction
 - Call out duplicate or related issues explicitly in the output
+- For related GitHub issues, inspect associated pull requests and summarize the changed files / diff themes when that context is available
 
 ### 2. Codebase Analysis
 
@@ -28,7 +29,20 @@ Search the codebase to understand context:
 - Relevant configuration files
 - Test patterns used in the project
 - Existing local issue files under docs/issues/ that provide historical context
+- Linked PR file changes for related GitHub issues (fetch via gh when needed)
 ```
+
+When related historical GitHub issues are found, fetch their linked PR context before finalizing the analysis:
+```bash
+gh issue view <issue-number> --json number,title,url,closedByPullRequestsReferences
+gh api repos/<owner>/<repo>/pulls/<pr-number>/files --paginate
+```
+
+Summarize:
+- changed modules / directories
+- key files touched
+- test coverage added or updated
+- patch themes from the returned `patch` hunks
 
 ### 3. Solution Exploration
 
@@ -120,6 +134,7 @@ EOF
 
 Each issue draft must include:
 - A `Related History` section citing concrete prior issues or `None found after searching docs/issues/`
+- A `Related PR File Context` section when related issues have associated PRs
 - A `Recommendation` section choosing one approach
 - An `Out of Scope` section
 - Final drafts only, no chain-of-thought or search transcript

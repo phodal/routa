@@ -1,0 +1,571 @@
+{
+  "generatedAt": "2026-04-17T03:19:12.625Z",
+  "moduleSpecifier": "@canvas-sdk",
+  "sourceBarrel": "src/client/canvas-sdk/index.ts",
+  "definitionsDir": "resources/canvas/sdk",
+  "indexDefinitionPath": "resources/canvas/sdk/index.d.ts",
+  "importExamples": [
+    "import { Stack, H1, Text, Card, CardBody, Table, Stat } from '@canvas-sdk';",
+    "import { useHostTheme } from '@canvas-sdk';",
+    "import { BarChart, PieChart } from '@canvas-sdk';"
+  ],
+  "promptRules": [
+    "Import only from @canvas-sdk or react.",
+    "Prefer SDK primitives over raw div/span markup when possible.",
+    "Use useHostTheme() tokens instead of hardcoded colors.",
+    "If a symbol is not present in the generated SDK surface below, do not invent it."
+  ],
+  "groups": [
+    {
+      "title": "Theme",
+      "source": "./tokens",
+      "symbols": [
+        {
+          "name": "CanvasTheme",
+          "kind": "type"
+        },
+        {
+          "name": "CanvasTokens",
+          "kind": "type"
+        },
+        {
+          "name": "CanvasPalette",
+          "kind": "type"
+        },
+        {
+          "name": "darkTheme",
+          "kind": "value"
+        },
+        {
+          "name": "lightTheme",
+          "kind": "value"
+        },
+        {
+          "name": "canvasSpacing",
+          "kind": "value"
+        },
+        {
+          "name": "canvasRadius",
+          "kind": "value"
+        },
+        {
+          "name": "canvasTypography",
+          "kind": "value"
+        }
+      ]
+    },
+    {
+      "title": "General",
+      "source": "./theme-context",
+      "symbols": [
+        {
+          "name": "CanvasThemeProvider",
+          "kind": "value"
+        },
+        {
+          "name": "useHostTheme",
+          "kind": "value"
+        },
+        {
+          "name": "CanvasHostTheme",
+          "kind": "type"
+        }
+      ]
+    },
+    {
+      "title": "Primitives (layout + typography)",
+      "source": "./primitives",
+      "symbols": [
+        {
+          "name": "mergeStyle",
+          "kind": "value"
+        },
+        {
+          "name": "Stack",
+          "kind": "value"
+        },
+        {
+          "name": "Row",
+          "kind": "value"
+        },
+        {
+          "name": "Grid",
+          "kind": "value"
+        },
+        {
+          "name": "Divider",
+          "kind": "value"
+        },
+        {
+          "name": "Spacer",
+          "kind": "value"
+        },
+        {
+          "name": "Text",
+          "kind": "value"
+        },
+        {
+          "name": "H1",
+          "kind": "value"
+        },
+        {
+          "name": "H2",
+          "kind": "value"
+        },
+        {
+          "name": "H3",
+          "kind": "value"
+        },
+        {
+          "name": "Code",
+          "kind": "value"
+        },
+        {
+          "name": "Link",
+          "kind": "value"
+        },
+        {
+          "name": "StackProps",
+          "kind": "type"
+        },
+        {
+          "name": "RowProps",
+          "kind": "type"
+        },
+        {
+          "name": "GridProps",
+          "kind": "type"
+        },
+        {
+          "name": "DividerProps",
+          "kind": "type"
+        },
+        {
+          "name": "TextWeight",
+          "kind": "type"
+        },
+        {
+          "name": "TextProps",
+          "kind": "type"
+        },
+        {
+          "name": "H1Props",
+          "kind": "type"
+        },
+        {
+          "name": "H2Props",
+          "kind": "type"
+        },
+        {
+          "name": "H3Props",
+          "kind": "type"
+        },
+        {
+          "name": "CodeProps",
+          "kind": "type"
+        },
+        {
+          "name": "LinkProps",
+          "kind": "type"
+        }
+      ]
+    },
+    {
+      "title": "Data display",
+      "source": "./data-display",
+      "symbols": [
+        {
+          "name": "Table",
+          "kind": "value"
+        },
+        {
+          "name": "Stat",
+          "kind": "value"
+        },
+        {
+          "name": "Pill",
+          "kind": "value"
+        },
+        {
+          "name": "TableProps",
+          "kind": "type"
+        },
+        {
+          "name": "TableColumnAlign",
+          "kind": "type"
+        },
+        {
+          "name": "TableRowTone",
+          "kind": "type"
+        },
+        {
+          "name": "StatProps",
+          "kind": "type"
+        },
+        {
+          "name": "StatTone",
+          "kind": "type"
+        },
+        {
+          "name": "PillProps",
+          "kind": "type"
+        },
+        {
+          "name": "PillTone",
+          "kind": "type"
+        }
+      ]
+    },
+    {
+      "title": "Containers",
+      "source": "./containers",
+      "symbols": [
+        {
+          "name": "Card",
+          "kind": "value"
+        },
+        {
+          "name": "CardHeader",
+          "kind": "value"
+        },
+        {
+          "name": "CardBody",
+          "kind": "value"
+        },
+        {
+          "name": "CardProps",
+          "kind": "type"
+        },
+        {
+          "name": "CardHeaderProps",
+          "kind": "type"
+        },
+        {
+          "name": "CardBodyProps",
+          "kind": "type"
+        }
+      ]
+    },
+    {
+      "title": "Controls",
+      "source": "./controls",
+      "symbols": [
+        {
+          "name": "Button",
+          "kind": "value"
+        },
+        {
+          "name": "ButtonProps",
+          "kind": "type"
+        },
+        {
+          "name": "ButtonVariant",
+          "kind": "type"
+        }
+      ]
+    },
+    {
+      "title": "Charts",
+      "source": "./charts",
+      "symbols": [
+        {
+          "name": "BarChart",
+          "kind": "value"
+        },
+        {
+          "name": "PieChart",
+          "kind": "value"
+        },
+        {
+          "name": "BarChartProps",
+          "kind": "type"
+        },
+        {
+          "name": "BarChartEntry",
+          "kind": "type"
+        },
+        {
+          "name": "PieChartProps",
+          "kind": "type"
+        },
+        {
+          "name": "PieChartEntry",
+          "kind": "type"
+        }
+      ]
+    }
+  ],
+  "allExports": [
+    {
+      "name": "CanvasTheme",
+      "kind": "type"
+    },
+    {
+      "name": "CanvasTokens",
+      "kind": "type"
+    },
+    {
+      "name": "CanvasPalette",
+      "kind": "type"
+    },
+    {
+      "name": "darkTheme",
+      "kind": "value"
+    },
+    {
+      "name": "lightTheme",
+      "kind": "value"
+    },
+    {
+      "name": "canvasSpacing",
+      "kind": "value"
+    },
+    {
+      "name": "canvasRadius",
+      "kind": "value"
+    },
+    {
+      "name": "canvasTypography",
+      "kind": "value"
+    },
+    {
+      "name": "CanvasThemeProvider",
+      "kind": "value"
+    },
+    {
+      "name": "useHostTheme",
+      "kind": "value"
+    },
+    {
+      "name": "CanvasHostTheme",
+      "kind": "type"
+    },
+    {
+      "name": "mergeStyle",
+      "kind": "value"
+    },
+    {
+      "name": "Stack",
+      "kind": "value"
+    },
+    {
+      "name": "Row",
+      "kind": "value"
+    },
+    {
+      "name": "Grid",
+      "kind": "value"
+    },
+    {
+      "name": "Divider",
+      "kind": "value"
+    },
+    {
+      "name": "Spacer",
+      "kind": "value"
+    },
+    {
+      "name": "Text",
+      "kind": "value"
+    },
+    {
+      "name": "H1",
+      "kind": "value"
+    },
+    {
+      "name": "H2",
+      "kind": "value"
+    },
+    {
+      "name": "H3",
+      "kind": "value"
+    },
+    {
+      "name": "Code",
+      "kind": "value"
+    },
+    {
+      "name": "Link",
+      "kind": "value"
+    },
+    {
+      "name": "StackProps",
+      "kind": "type"
+    },
+    {
+      "name": "RowProps",
+      "kind": "type"
+    },
+    {
+      "name": "GridProps",
+      "kind": "type"
+    },
+    {
+      "name": "DividerProps",
+      "kind": "type"
+    },
+    {
+      "name": "TextWeight",
+      "kind": "type"
+    },
+    {
+      "name": "TextProps",
+      "kind": "type"
+    },
+    {
+      "name": "H1Props",
+      "kind": "type"
+    },
+    {
+      "name": "H2Props",
+      "kind": "type"
+    },
+    {
+      "name": "H3Props",
+      "kind": "type"
+    },
+    {
+      "name": "CodeProps",
+      "kind": "type"
+    },
+    {
+      "name": "LinkProps",
+      "kind": "type"
+    },
+    {
+      "name": "Table",
+      "kind": "value"
+    },
+    {
+      "name": "Stat",
+      "kind": "value"
+    },
+    {
+      "name": "Pill",
+      "kind": "value"
+    },
+    {
+      "name": "TableProps",
+      "kind": "type"
+    },
+    {
+      "name": "TableColumnAlign",
+      "kind": "type"
+    },
+    {
+      "name": "TableRowTone",
+      "kind": "type"
+    },
+    {
+      "name": "StatProps",
+      "kind": "type"
+    },
+    {
+      "name": "StatTone",
+      "kind": "type"
+    },
+    {
+      "name": "PillProps",
+      "kind": "type"
+    },
+    {
+      "name": "PillTone",
+      "kind": "type"
+    },
+    {
+      "name": "Card",
+      "kind": "value"
+    },
+    {
+      "name": "CardHeader",
+      "kind": "value"
+    },
+    {
+      "name": "CardBody",
+      "kind": "value"
+    },
+    {
+      "name": "CardProps",
+      "kind": "type"
+    },
+    {
+      "name": "CardHeaderProps",
+      "kind": "type"
+    },
+    {
+      "name": "CardBodyProps",
+      "kind": "type"
+    },
+    {
+      "name": "Button",
+      "kind": "value"
+    },
+    {
+      "name": "ButtonProps",
+      "kind": "type"
+    },
+    {
+      "name": "ButtonVariant",
+      "kind": "type"
+    },
+    {
+      "name": "BarChart",
+      "kind": "value"
+    },
+    {
+      "name": "PieChart",
+      "kind": "value"
+    },
+    {
+      "name": "BarChartProps",
+      "kind": "type"
+    },
+    {
+      "name": "BarChartEntry",
+      "kind": "type"
+    },
+    {
+      "name": "PieChartProps",
+      "kind": "type"
+    },
+    {
+      "name": "PieChartEntry",
+      "kind": "type"
+    }
+  ],
+  "definitionFiles": [
+    {
+      "path": "resources/canvas/sdk/charts.d.ts",
+      "source": "import type { CSSProperties, JSX } from \"react\";\nexport type BarChartEntry = {\n    label: string;\n    value: number;\n    color?: string;\n};\nexport type BarChartProps = {\n    data: BarChartEntry[];\n    /** Chart height in px. Default 360. */\n    height?: number;\n    style?: CSSProperties;\n};\nexport declare function BarChart({ data, height, style, }: BarChartProps): JSX.Element;\nexport type PieChartEntry = {\n    label: string;\n    value: number;\n    color?: string;\n};\nexport type PieChartProps = {\n    data: PieChartEntry[];\n    /** Diameter in px. Default 260. */\n    size?: number;\n    style?: CSSProperties;\n};\nexport declare function PieChart({ data, size, style, }: PieChartProps): JSX.Element;\n"
+    },
+    {
+      "path": "resources/canvas/sdk/containers.d.ts",
+      "source": "import { type CSSProperties, type ReactNode, type JSX } from \"react\";\nexport type CardProps = {\n    children?: ReactNode;\n    collapsible?: boolean;\n    defaultOpen?: boolean;\n    style?: CSSProperties;\n};\nexport declare function Card({ children, collapsible, defaultOpen, style, }: CardProps): JSX.Element;\nexport type CardHeaderProps = {\n    children?: ReactNode;\n    trailing?: ReactNode;\n    style?: CSSProperties;\n};\nexport declare function CardHeader({ children, trailing, style, }: CardHeaderProps): JSX.Element;\nexport type CardBodyProps = {\n    children?: ReactNode;\n    style?: CSSProperties;\n};\nexport declare function CardBody({ children, style }: CardBodyProps): JSX.Element;\n"
+    },
+    {
+      "path": "resources/canvas/sdk/controls.d.ts",
+      "source": "import type { CSSProperties, ReactNode, JSX } from \"react\";\nexport type ButtonVariant = \"primary\" | \"secondary\" | \"ghost\";\nexport type ButtonProps = {\n    children?: ReactNode;\n    variant?: ButtonVariant;\n    disabled?: boolean;\n    style?: CSSProperties;\n    onClick?: () => void;\n};\nexport declare function Button({ children, variant, disabled, style, onClick, }: ButtonProps): JSX.Element;\n"
+    },
+    {
+      "path": "resources/canvas/sdk/data-display.d.ts",
+      "source": "import type { CSSProperties, ReactNode, JSX } from \"react\";\nexport type TableColumnAlign = \"left\" | \"center\" | \"right\";\nexport type TableRowTone = \"success\" | \"danger\" | \"warning\" | \"info\" | \"neutral\";\nexport type TableProps = {\n    headers: ReactNode[];\n    rows: ReactNode[][];\n    columnAlign?: Array<TableColumnAlign | undefined>;\n    rowTone?: Array<TableRowTone | undefined>;\n    framed?: boolean;\n    striped?: boolean;\n    style?: CSSProperties;\n    emptyMessage?: ReactNode;\n};\nexport declare function Table({ headers, rows, columnAlign, rowTone, framed, striped, style, emptyMessage, }: TableProps): JSX.Element;\nexport type StatTone = \"success\" | \"danger\" | \"warning\" | \"info\";\nexport type StatProps = {\n    value: ReactNode;\n    label: string;\n    tone?: StatTone;\n    style?: CSSProperties;\n};\nexport declare function Stat({ value, label, tone, style }: StatProps): JSX.Element;\nexport type PillTone = \"neutral\" | \"added\" | \"deleted\" | \"renamed\" | \"success\" | \"warning\" | \"info\";\nexport type PillProps = {\n    children?: ReactNode;\n    active?: boolean;\n    tone?: PillTone;\n    style?: CSSProperties;\n    onClick?: () => void;\n};\nexport declare function Pill({ children, active, tone, style, onClick, }: PillProps): JSX.Element;\n"
+    },
+    {
+      "path": "resources/canvas/sdk/index.d.ts",
+      "source": "/**\n * Canvas SDK — constrained React component library for canvas artifacts.\n *\n * Components use inline styles with theme tokens. Import only from this barrel.\n */\nexport { type CanvasTheme, type CanvasTokens, type CanvasPalette, darkTheme, lightTheme, canvasSpacing, canvasRadius, canvasTypography, } from \"./tokens\";\nexport { CanvasThemeProvider, useHostTheme, type CanvasHostTheme, } from \"./theme-context\";\nexport { mergeStyle, Stack, Row, Grid, Divider, Spacer, Text, H1, H2, H3, Code, Link, type StackProps, type RowProps, type GridProps, type DividerProps, type TextWeight, type TextProps, type H1Props, type H2Props, type H3Props, type CodeProps, type LinkProps, } from \"./primitives\";\nexport { Table, Stat, Pill, type TableProps, type TableColumnAlign, type TableRowTone, type StatProps, type StatTone, type PillProps, type PillTone, } from \"./data-display\";\nexport { Card, CardHeader, CardBody, type CardProps, type CardHeaderProps, type CardBodyProps, } from \"./containers\";\nexport { Button, type ButtonProps, type ButtonVariant, } from \"./controls\";\nexport { BarChart, PieChart, type BarChartProps, type BarChartEntry, type PieChartProps, type PieChartEntry, } from \"./charts\";\n"
+    },
+    {
+      "path": "resources/canvas/sdk/primitives.d.ts",
+      "source": "import type { CSSProperties, ReactNode, JSX } from \"react\";\nexport declare function mergeStyle(base: CSSProperties, override?: CSSProperties): CSSProperties;\nexport type StackProps = {\n    children?: ReactNode;\n    gap?: number;\n    style?: CSSProperties;\n};\nexport declare function Stack({ children, gap, style }: StackProps): JSX.Element;\nexport type RowProps = {\n    children?: ReactNode;\n    gap?: number;\n    align?: \"start\" | \"center\" | \"end\" | \"stretch\";\n    justify?: \"start\" | \"center\" | \"end\" | \"space-between\";\n    wrap?: boolean;\n    style?: CSSProperties;\n};\nexport declare function Row({ children, gap, align, justify, wrap, style, }: RowProps): JSX.Element;\nexport type GridProps = {\n    children?: ReactNode;\n    columns: number | string;\n    gap?: number;\n    align?: \"start\" | \"center\" | \"end\" | \"stretch\";\n    style?: CSSProperties;\n};\nexport declare function Grid({ children, columns, gap, align, style, }: GridProps): JSX.Element;\nexport type DividerProps = {\n    style?: CSSProperties;\n};\nexport declare function Divider({ style }: DividerProps): JSX.Element;\nexport declare function Spacer(): JSX.Element;\nexport type TextWeight = \"normal\" | \"medium\" | \"semibold\" | \"bold\";\nexport type TextProps = {\n    children?: ReactNode;\n    tone?: \"primary\" | \"secondary\" | \"tertiary\" | \"quaternary\";\n    size?: \"body\" | \"small\";\n    as?: \"p\" | \"span\";\n    weight?: TextWeight;\n    italic?: boolean;\n    style?: CSSProperties;\n};\nexport declare function Text({ children, tone, size, as, weight, italic, style, }: TextProps): JSX.Element;\nexport type H1Props = {\n    children?: ReactNode;\n    style?: CSSProperties;\n};\nexport declare function H1({ children, style }: H1Props): JSX.Element;\nexport type H2Props = {\n    children?: ReactNode;\n    style?: CSSProperties;\n};\nexport declare function H2({ children, style }: H2Props): JSX.Element;\nexport type H3Props = {\n    children?: ReactNode;\n    style?: CSSProperties;\n};\nexport declare function H3({ children, style }: H3Props): JSX.Element;\nexport type CodeProps = {\n    children?: ReactNode;\n    style?: CSSProperties;\n};\nexport declare function Code({ children, style }: CodeProps): JSX.Element;\nexport type LinkProps = {\n    children?: ReactNode;\n    href: string;\n    style?: CSSProperties;\n};\nexport declare function Link({ children, href, style }: LinkProps): JSX.Element;\n"
+    },
+    {
+      "path": "resources/canvas/sdk/theme-context.d.ts",
+      "source": "import { type ReactNode } from \"react\";\nimport { type CanvasTheme, type CanvasTokens, type CanvasPalette } from \"./tokens\";\nexport interface CanvasHostTheme {\n    readonly kind: string;\n    readonly tokens: CanvasTokens;\n    readonly palette: CanvasPalette;\n}\nexport declare function CanvasThemeProvider({ theme, children, }: {\n    theme: CanvasTheme;\n    children: ReactNode;\n}): import(\"react/jsx-runtime\").JSX.Element;\n/**\n * Returns the current canvas host theme with semantic tokens and palette.\n * Falls back to dark theme when used outside a provider.\n */\nexport declare function useHostTheme(): CanvasHostTheme;\n"
+    },
+    {
+      "path": "resources/canvas/sdk/tokens.d.ts",
+      "source": "/**\n * Canvas theme tokens — semantic color and spacing tokens for canvas components.\n *\n * Mirrors the Cursor Canvas token structure to maintain SDK compatibility.\n * Canvas components use inline styles with these tokens, not Tailwind classes.\n */\nexport interface CanvasTokens {\n    text: {\n        primary: string;\n        secondary: string;\n        tertiary: string;\n        quaternary: string;\n        link: string;\n        onAccent: string;\n    };\n    bg: {\n        editor: string;\n        chrome: string;\n        elevated: string;\n    };\n    fill: {\n        primary: string;\n        secondary: string;\n        tertiary: string;\n        quaternary: string;\n    };\n    stroke: {\n        primary: string;\n        secondary: string;\n        tertiary: string;\n    };\n    accent: {\n        primary: string;\n        control: string;\n    };\n    diff: {\n        insertedLine: string;\n        removedLine: string;\n        stripAdded: string;\n        stripRemoved: string;\n    };\n}\nexport interface CanvasPalette {\n    foreground: string;\n    background: string;\n    accent: string;\n    success: string;\n    warning: string;\n    danger: string;\n    info: string;\n}\nexport interface CanvasTheme {\n    kind: \"dark\" | \"light\";\n    tokens: CanvasTokens;\n    palette: CanvasPalette;\n}\nexport declare const darkTokens: CanvasTokens;\nexport declare const lightTokens: CanvasTokens;\nexport declare const darkPalette: CanvasPalette;\nexport declare const lightPalette: CanvasPalette;\nexport declare const darkTheme: CanvasTheme;\nexport declare const lightTheme: CanvasTheme;\n/** Spacing scale (px) matching canvas design language. */\nexport declare const canvasSpacing: Record<number, number>;\n/** Border radius scale (px). */\nexport declare const canvasRadius: {\n    readonly sm: 4;\n    readonly md: 6;\n    readonly lg: 8;\n    readonly full: 9999;\n};\n/** Typography presets. */\nexport declare const canvasTypography: {\n    readonly h1: {\n        readonly fontSize: \"24px\";\n        readonly lineHeight: \"30px\";\n        readonly fontWeight: 590;\n    };\n    readonly h2: {\n        readonly fontSize: \"18px\";\n        readonly lineHeight: \"24px\";\n        readonly fontWeight: 590;\n    };\n    readonly h3: {\n        readonly fontSize: \"15px\";\n        readonly lineHeight: \"20px\";\n        readonly fontWeight: 590;\n    };\n    readonly body: {\n        readonly fontSize: \"14px\";\n        readonly lineHeight: \"20px\";\n        readonly fontWeight: 400;\n    };\n    readonly small: {\n        readonly fontSize: \"12px\";\n        readonly lineHeight: \"16px\";\n        readonly fontWeight: 400;\n    };\n    readonly stat: {\n        readonly fontSize: \"24px\";\n        readonly lineHeight: \"28px\";\n        readonly fontWeight: 600;\n    };\n};\n"
+    }
+  ],
+  "indexDtsSource": "/**\n * Canvas SDK — constrained React component library for canvas artifacts.\n *\n * Components use inline styles with theme tokens. Import only from this barrel.\n */\nexport { type CanvasTheme, type CanvasTokens, type CanvasPalette, darkTheme, lightTheme, canvasSpacing, canvasRadius, canvasTypography, } from \"./tokens\";\nexport { CanvasThemeProvider, useHostTheme, type CanvasHostTheme, } from \"./theme-context\";\nexport { mergeStyle, Stack, Row, Grid, Divider, Spacer, Text, H1, H2, H3, Code, Link, type StackProps, type RowProps, type GridProps, type DividerProps, type TextWeight, type TextProps, type H1Props, type H2Props, type H3Props, type CodeProps, type LinkProps, } from \"./primitives\";\nexport { Table, Stat, Pill, type TableProps, type TableColumnAlign, type TableRowTone, type StatProps, type StatTone, type PillProps, type PillTone, } from \"./data-display\";\nexport { Card, CardHeader, CardBody, type CardProps, type CardHeaderProps, type CardBodyProps, } from \"./containers\";\nexport { Button, type ButtonProps, type ButtonVariant, } from \"./controls\";\nexport { BarChart, PieChart, type BarChartProps, type BarChartEntry, type PieChartProps, type PieChartEntry, } from \"./charts\";\n"
+}

@@ -36,12 +36,12 @@ test.describe("Homepage Open Kanban Flow (Tauri/Rust)", () => {
     });
 
     // Step 2: Verify homepage elements
-    await expect(page.locator("text=Routa")).toBeVisible({ timeout: 10_000 });
-    await expect(page.locator("text=Kanban-First Control Surface")).toBeVisible();
+    await expect(page.getByRole("button", { name: /Continue without checklist/i })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole("link", { name: /Mode Kanban/i })).toBeVisible();
     results.push("2. Homepage elements visible");
 
     // Step 3: Find and click the Kanban CTA
-    const openBoardLink = page.locator('a:has-text("Open board"), a:has-text("Open Kanban")').first();
+    const openBoardLink = page.getByRole("link", { name: /Mode Kanban/i }).first();
     await expect(openBoardLink).toBeVisible({ timeout: 10_000 });
     results.push("3. 'Open Kanban' button found");
 
@@ -93,21 +93,18 @@ test.describe("Homepage Open Kanban Flow (Tauri/Rust)", () => {
     }
 
     // Step 7: Navigate back to homepage
-    const routaLink = page.locator('a:has-text("Routa")').first();
-    if (await routaLink.isVisible()) {
-      await routaLink.click();
-      await page.waitForLoadState("domcontentloaded");
-      results.push("9. Clicked Routa logo to go back");
+    await page.goto(baseUrl);
+    await page.waitForLoadState("domcontentloaded");
+    results.push("9. Navigated back to homepage");
 
-      await page.screenshot({
-        path: "test-results/tauri-homepage-05-back-to-home.png",
-        fullPage: true,
-      });
+    await page.screenshot({
+      path: "test-results/tauri-homepage-05-back-to-home.png",
+      fullPage: true,
+    });
 
-      // Verify we're back on homepage
-      await expect(page.locator("text=Kanban-First Control Surface")).toBeVisible({ timeout: 10_000 });
-      results.push("10. Back on homepage");
-    }
+    // Verify we're back on homepage
+    await expect(page.getByRole("link", { name: /Mode Kanban/i })).toBeVisible({ timeout: 10_000 });
+    results.push("10. Back on homepage");
 
     // Print results
     console.log("\n=== Test Results ===");
@@ -125,7 +122,7 @@ test.describe("Homepage Open Kanban Flow (Tauri/Rust)", () => {
     await page.waitForLoadState("domcontentloaded");
 
     // Find the main Kanban link
-    const openBoardLink = page.locator('a:has-text("Open board"), a:has-text("Open Kanban")').first();
+    const openBoardLink = page.getByRole("link", { name: /Mode Kanban/i }).first();
     await expect(openBoardLink).toBeVisible({ timeout: 10_000 });
 
     // Get the href attribute

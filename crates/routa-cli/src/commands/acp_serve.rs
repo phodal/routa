@@ -309,7 +309,9 @@ async fn handle_session_prompt(
          **Workspace ID:** {}\n\n\
          ## User Request\n\n{}\n\n\
          ---\n**Reminder:** {}\n",
-        specialist.system_prompt,
+        specialist
+            .system_prompt_body()
+            .unwrap_or_else(|| specialist.system_prompt.clone()),
         record.agent_id,
         record.workspace_id,
         text,

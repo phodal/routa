@@ -33,6 +33,9 @@ import { getKanbanSessionConcurrencyLimit as getBoardSessionConcurrencyLimit } f
 import { getKanbanDevSessionSupervision } from "./board-session-supervision";
 import { getKanbanAutoProvider } from "./board-auto-provider";
 import { upsertTaskLaneSession } from "./task-lane-history";
+import { completeRunningSessionsOutsideColumn } from "./task-session-transition";
+import { analyzeFlowForTasks } from "./flow-ledger";
+import { resolveTaskWorktreeTruth } from "./task-worktree-truth";
 import { getHttpSessionStore } from "../acp/http-session-store";
 import { getSpecialistById } from "../orchestration/specialist-prompts";
 import { dispatchSessionPrompt } from "@/core/acp/session-prompt";
@@ -94,6 +97,7 @@ export async function enqueueKanbanTaskSession(
     task: Awaited<ReturnType<RoutaSystem["taskStore"]["get"]>>;
     expectedColumnId?: string;
     ignoreExistingTrigger?: boolean;
+    bypassQueue?: boolean;
     mutateTask?: (task: NonNullable<Awaited<ReturnType<RoutaSystem["taskStore"]["get"]>>>) => void;
     providerOverride?: string;
     step?: KanbanAutomationStep;
@@ -107,6 +111,15 @@ export async function enqueueKanbanTaskSession(
   }
   if (task.triggerSessionId && !params.ignoreExistingTrigger) {
     return { sessionId: task.triggerSessionId, queued: false };
+  }
+
+  if (params.bypassQueue) {
+    const result = await startKanbanTaskSession(system, task.id, params);
+    return {
+      sessionId: result.sessionId ?? undefined,
+      queued: false,
+      error: result.error,
+    };
   }
 
   const queue = getKanbanSessionQueue(system);
@@ -151,15 +164,13 @@ async function startKanbanTaskSession(
   const workspace = await system.workspaceStore.get(nextTask.workspaceId);
   const autoProviderId = getKanbanAutoProvider(workspace?.metadata, nextTask.boardId!);
 
-  let preferredCodebase = (nextTask.codebaseIds?.length ?? 0) > 0
-    ? await system.codebaseStore.get(nextTask.codebaseIds[0])
-    : undefined;
-  if (!preferredCodebase) {
-    preferredCodebase = await system.codebaseStore.getDefault(nextTask.workspaceId);
+  const initialWorktreeTruth = await resolveTaskWorktreeTruth(nextTask, system);
+  if (nextTask.worktreeId && initialWorktreeTruth?.source !== "task.worktreeId") {
+    nextTask.worktreeId = undefined;
   }
-
-  let worktreeCwd = preferredCodebase?.repoPath ?? process.cwd();
-  let worktreeBranch = preferredCodebase?.branch;
+  const preferredCodebase = initialWorktreeTruth?.codebase;
+  let worktreeCwd = initialWorktreeTruth?.cwd ?? process.cwd();
+  let worktreeBranch = initialWorktreeTruth?.branch;
   if (params.expectedColumnId === "dev" && preferredCodebase && !nextTask.worktreeId) {
     try {
       const worktreeService = new GitWorktreeService(
@@ -177,8 +188,6 @@ async function startKanbanTaskSession(
         worktreeRoot,
       });
       nextTask.worktreeId = worktree.id;
-      worktreeCwd = worktree.worktreePath;
-      worktreeBranch = worktree.branch;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       nextTask.status = TaskStatus.BLOCKED;
@@ -187,13 +196,10 @@ async function startKanbanTaskSession(
       await system.taskStore.save(nextTask);
       return { error: nextTask.lastSyncError };
     }
-  } else if (nextTask.worktreeId) {
-    const existingWorktree = await system.worktreeStore.get(nextTask.worktreeId);
-    if (existingWorktree?.worktreePath) {
-      worktreeCwd = existingWorktree.worktreePath;
-      worktreeBranch = existingWorktree.branch ?? worktreeBranch;
-    }
   }
+  const resolvedWorktreeTruth = await resolveTaskWorktreeTruth(nextTask, system);
+  worktreeCwd = resolvedWorktreeTruth?.cwd ?? worktreeCwd;
+  worktreeBranch = resolvedWorktreeTruth?.branch ?? worktreeBranch;
 
   const effectiveAutomation = resolveEffectiveTaskAutomation(
     nextTask,
@@ -223,6 +229,21 @@ async function startKanbanTaskSession(
     investValidation: buildTaskInvestValidation(taskForSession),
   };
 
+  // Compute board-level flow guidance for the agent
+  const allBoardTasks = await system.taskStore.listByWorkspace(nextTask.workspaceId);
+  const boardTasks = nextTask.boardId
+    ? allBoardTasks.filter((t) => t.boardId === nextTask.boardId)
+    : allBoardTasks;
+  const tasksWithFlow = boardTasks.filter(
+    (t) => (t.laneSessions?.length ?? 0) > 0 || (t.laneHandoffs?.length ?? 0) > 0,
+  );
+  const flowReport = tasksWithFlow.length >= 3
+    ? analyzeFlowForTasks(tasksWithFlow, {
+        workspaceId: nextTask.workspaceId,
+        boardId: nextTask.boardId,
+      })
+    : undefined;
+
   const triggerResult = await triggerAssignedTaskAgent({
     origin: getInternalApiOrigin(),
     workspaceId: nextTask.workspaceId,
@@ -233,10 +254,14 @@ async function startKanbanTaskSession(
     specialistLocale: sessionStep?.specialistLocale ?? effectiveAutomation.step?.specialistLocale,
     boardColumns: board?.columns ?? [],
     summaryContext,
+    flowReport,
     eventBus: system.eventBus,
   });
 
   if (triggerResult.sessionId) {
+    completeRunningSessionsOutsideColumn(nextTask, nextTask.columnId, {
+      excludeSessionId: triggerResult.sessionId,
+    });
     nextTask.triggerSessionId = triggerResult.sessionId;
     // Track session in history
     if (!nextTask.sessionIds) nextTask.sessionIds = [];
@@ -246,6 +271,8 @@ async function startKanbanTaskSession(
     const currentColumn = board?.columns.find((column) => column.id === nextTask.columnId);
     upsertTaskLaneSession(nextTask, {
       sessionId: triggerResult.sessionId,
+      worktreeId: nextTask.worktreeId,
+      cwd: worktreeCwd,
       columnId: nextTask.columnId,
       columnName: currentColumn?.name,
       stepId: sessionStep?.id,

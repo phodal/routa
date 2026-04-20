@@ -4,6 +4,7 @@ import fs from "node:fs";
 import { spawnSync } from "node:child_process";
 
 import { fromRoot } from "../lib/paths";
+import { sanitizedNodeEnv } from "../lib/node-env";
 
 function resolveCargoBinary(): string {
   const rustupCargo = spawnSync("rustup", ["which", "cargo"], {
@@ -63,17 +64,52 @@ function main(): void {
 
   const result = spawnSync(cargoBin, args, {
     cwd: fromRoot(),
+    env: sanitizedNodeEnv(),
     stdio: "inherit",
   });
   if (result.status !== 0) {
     process.exit(result.status ?? 1);
   }
 
+  refreshCoverageArtifacts(cargoBin, crate);
+
   if (format === "lcov") {
     console.log(`LCOV written to target/coverage/${crate}.lcov`);
   }
   if (format === "html") {
     console.log("HTML report written to target/llvm-cov/html/index.html");
+  }
+}
+
+function refreshCoverageArtifacts(cargoBin: string, crate: string): void {
+  fs.mkdirSync(fromRoot("target", "coverage"), { recursive: true });
+
+  const rustSummaryPath = fromRoot("target", "coverage", `${crate}.summary.json`);
+  const summaryResult = spawnSync(
+    cargoBin,
+    ["llvm-cov", "report", "-p", crate, "--json", "--summary-only", "--output-path", rustSummaryPath],
+    {
+      cwd: fromRoot(),
+      env: sanitizedNodeEnv(),
+      stdio: "inherit",
+    },
+  );
+  if (summaryResult.status !== 0) {
+    console.warn("warning: failed to refresh Rust coverage summary artifact");
+    return;
+  }
+
+  const aggregateResult = spawnSync(
+    process.execPath,
+    ["--import", "tsx", fromRoot("scripts", "fitness", "write-coverage-summary.ts")],
+    {
+      cwd: fromRoot(),
+      env: sanitizedNodeEnv(),
+      stdio: "inherit",
+    },
+  );
+  if (aggregateResult.status !== 0) {
+    console.warn("warning: failed to refresh combined coverage summary artifact");
   }
 }
 

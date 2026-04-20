@@ -5,8 +5,40 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::collections::{BTreeSet, HashMap};
-use std::path::{Path, PathBuf};
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
+use std::path::{Component, Path, PathBuf};
 use std::process::Command;
+
+const GIT_LOG_SEARCH_SCAN_LIMIT: usize = 2000;
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+pub fn git_command() -> Command {
+    #[cfg(windows)]
+    {
+        let mut command = Command::new("git");
+        command.creation_flags(CREATE_NO_WINDOW);
+        command
+    }
+    #[cfg(not(windows))]
+    {
+        Command::new("git")
+    }
+}
+
+pub fn git_tokio_command() -> tokio::process::Command {
+    #[cfg(windows)]
+    {
+        let mut command = tokio::process::Command::new("git");
+        command.creation_flags(CREATE_NO_WINDOW);
+        command
+    }
+    #[cfg(not(windows))]
+    {
+        tokio::process::Command::new("git")
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ParsedGitHubUrl {
@@ -72,7 +104,7 @@ pub fn dir_name_to_repo(dir_name: &str) -> String {
 }
 
 pub fn is_git_repository(repo_path: &str) -> bool {
-    Command::new("git")
+    git_command()
         .args(["rev-parse", "--git-dir"])
         .current_dir(repo_path)
         .output()
@@ -80,8 +112,18 @@ pub fn is_git_repository(repo_path: &str) -> bool {
         .unwrap_or(false)
 }
 
+pub fn is_bare_git_repository(repo_path: &str) -> bool {
+    git_command()
+        .args(["rev-parse", "--is-bare-repository"])
+        .current_dir(repo_path)
+        .output()
+        .ok()
+        .filter(|output| output.status.success())
+        .is_some_and(|output| String::from_utf8_lossy(&output.stdout).trim() == "true")
+}
+
 pub fn get_current_branch(repo_path: &str) -> Option<String> {
-    let output = Command::new("git")
+    let output = git_command()
         .args(["rev-parse", "--abbrev-ref", "HEAD"])
         .current_dir(repo_path)
         .output()
@@ -99,7 +141,7 @@ pub fn get_current_branch(repo_path: &str) -> Option<String> {
 }
 
 pub fn list_local_branches(repo_path: &str) -> Vec<String> {
-    Command::new("git")
+    git_command()
         .args(["branch", "--format=%(refname:short)"])
         .current_dir(repo_path)
         .output()
@@ -116,7 +158,7 @@ pub fn list_local_branches(repo_path: &str) -> Vec<String> {
 }
 
 pub fn list_remote_branches(repo_path: &str) -> Vec<String> {
-    Command::new("git")
+    git_command()
         .args(["branch", "-r", "--format=%(refname:short)"])
         .current_dir(repo_path)
         .output()
@@ -147,7 +189,7 @@ pub fn get_branch_info(repo_path: &str) -> RepoBranchInfo {
 }
 
 pub fn checkout_branch(repo_path: &str, branch: &str) -> bool {
-    let ok = Command::new("git")
+    let ok = git_command()
         .args(["checkout", branch])
         .current_dir(repo_path)
         .output()
@@ -156,7 +198,7 @@ pub fn checkout_branch(repo_path: &str, branch: &str) -> bool {
     if ok {
         return true;
     }
-    Command::new("git")
+    git_command()
         .args(["checkout", "-b", branch])
         .current_dir(repo_path)
         .output()
@@ -177,7 +219,7 @@ pub fn delete_branch(repo_path: &str, branch: &str) -> Result<(), String> {
         return Err(format!("Branch '{branch}' not found"));
     }
 
-    let output = Command::new("git")
+    let output = git_command()
         .args(["branch", "-D", branch])
         .current_dir(repo_path)
         .output()
@@ -191,7 +233,7 @@ pub fn delete_branch(repo_path: &str, branch: &str) -> Result<(), String> {
 }
 
 pub fn fetch_remote(repo_path: &str) -> bool {
-    Command::new("git")
+    git_command()
         .args(["fetch", "--all", "--prune"])
         .current_dir(repo_path)
         .output()
@@ -200,7 +242,7 @@ pub fn fetch_remote(repo_path: &str) -> bool {
 }
 
 pub fn pull_branch(repo_path: &str) -> Result<(), String> {
-    let output = Command::new("git")
+    let output = git_command()
         .args(["pull", "--ff-only"])
         .current_dir(repo_path)
         .output()
@@ -245,9 +287,10 @@ pub fn get_branch_status(repo_path: &str, branch: &str) -> BranchStatus {
                 result.behind = parts[1].parse().unwrap_or(0);
             }
         }
+        // Silently ignore errors - upstream may not exist or branch may not be on remote
     }
 
-    if let Ok(o) = Command::new("git")
+    if let Ok(o) = git_command()
         .args(["status", "--porcelain", "-uall"])
         .current_dir(repo_path)
         .output()
@@ -261,7 +304,7 @@ pub fn get_branch_status(repo_path: &str, branch: &str) -> BranchStatus {
 }
 
 pub fn reset_local_changes(repo_path: &str) -> Result<(), String> {
-    let reset_output = Command::new("git")
+    let reset_output = git_command()
         .args(["reset", "--hard", "HEAD"])
         .current_dir(repo_path)
         .output()
@@ -272,7 +315,7 @@ pub fn reset_local_changes(repo_path: &str) -> Result<(), String> {
             .to_string());
     }
 
-    let clean_output = Command::new("git")
+    let clean_output = git_command()
         .args(["clean", "-fd"])
         .current_dir(repo_path)
         .output()
@@ -284,6 +327,1028 @@ pub fn reset_local_changes(repo_path: &str) -> Result<(), String> {
     }
 
     Ok(())
+}
+
+fn validate_git_paths(files: &[String]) -> Result<(), String> {
+    for file in files {
+        if file.trim().is_empty() {
+            return Err("File path cannot be empty".to_string());
+        }
+
+        let path = Path::new(file);
+        if path.is_absolute() {
+            return Err(format!("Absolute file paths are not allowed: {file}"));
+        }
+
+        if path.components().any(|component| {
+            matches!(
+                component,
+                Component::ParentDir | Component::RootDir | Component::Prefix(_)
+            )
+        }) {
+            return Err(format!(
+                "File paths must stay within the repository root: {file}"
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+// ============================================================================
+// Git Workflow Operations (for enhanced kanban file changes UI)
+// ============================================================================
+
+/// Stage files in the Git index
+pub fn stage_files(repo_path: &str, files: &[String]) -> Result<(), String> {
+    if files.is_empty() {
+        return Ok(());
+    }
+    validate_git_paths(files)?;
+
+    let mut args = vec!["add", "--"];
+    args.extend(files.iter().map(|s| s.as_str()));
+
+    let output = git_command()
+        .args(&args)
+        .current_dir(repo_path)
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    if !output.status.success() {
+        return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
+    }
+
+    Ok(())
+}
+
+/// Unstage files from the Git index (keep working directory changes)
+pub fn unstage_files(repo_path: &str, files: &[String]) -> Result<(), String> {
+    if files.is_empty() {
+        return Ok(());
+    }
+    validate_git_paths(files)?;
+
+    let mut args = vec!["restore", "--staged", "--"];
+    args.extend(files.iter().map(|s| s.as_str()));
+
+    let output = git_command()
+        .args(&args)
+        .current_dir(repo_path)
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    if !output.status.success() {
+        return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
+    }
+
+    Ok(())
+}
+
+/// Discard changes to files in working directory
+/// WARNING: This is destructive and cannot be undone
+pub fn discard_changes(repo_path: &str, files: &[String]) -> Result<(), String> {
+    if files.is_empty() {
+        return Ok(());
+    }
+    validate_git_paths(files)?;
+
+    let mut tracked_files: Vec<&str> = Vec::new();
+    let mut untracked_files: Vec<&str> = Vec::new();
+
+    for file in files {
+        let output = git_command()
+            .args(["ls-files", "--error-unmatch", "--", file.as_str()])
+            .current_dir(repo_path)
+            .output()
+            .map_err(|e| e.to_string())?;
+
+        if output.status.success() {
+            tracked_files.push(file.as_str());
+        } else {
+            untracked_files.push(file.as_str());
+        }
+    }
+
+    if !tracked_files.is_empty() {
+        let mut restore_args = vec!["restore", "--"];
+        restore_args.extend(tracked_files);
+
+        let restore_output = git_command()
+            .args(&restore_args)
+            .current_dir(repo_path)
+            .output()
+            .map_err(|e| e.to_string())?;
+
+        if !restore_output.status.success() {
+            return Err(String::from_utf8_lossy(&restore_output.stderr)
+                .trim()
+                .to_string());
+        }
+    }
+
+    if !untracked_files.is_empty() {
+        let mut clean_args = vec!["clean", "-f", "--"];
+        clean_args.extend(untracked_files);
+
+        let clean_output = git_command()
+            .args(&clean_args)
+            .current_dir(repo_path)
+            .output()
+            .map_err(|e| e.to_string())?;
+
+        if !clean_output.status.success() {
+            return Err(String::from_utf8_lossy(&clean_output.stderr)
+                .trim()
+                .to_string());
+        }
+    }
+
+    Ok(())
+}
+
+/// Create a commit with the given message
+/// If files are provided, stages them first
+/// Returns the SHA of the created commit
+pub fn create_commit(
+    repo_path: &str,
+    message: &str,
+    files: Option<&[String]>,
+) -> Result<String, String> {
+    if message.trim().is_empty() {
+        return Err("Commit message cannot be empty".to_string());
+    }
+
+    // Stage specific files if provided
+    if let Some(file_list) = files {
+        validate_git_paths(file_list)?;
+        stage_files(repo_path, file_list)?;
+    }
+
+    // Check if there are staged changes
+    let check_output = git_command()
+        .args(["diff", "--cached", "--name-only"])
+        .current_dir(repo_path)
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    if check_output.stdout.is_empty() {
+        return Err("No staged changes to commit".to_string());
+    }
+
+    // Create the commit
+    let commit_output = git_command()
+        .args(["commit", "-m", message])
+        .current_dir(repo_path)
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    if !commit_output.status.success() {
+        return Err(String::from_utf8_lossy(&commit_output.stderr)
+            .trim()
+            .to_string());
+    }
+
+    // Get the commit SHA
+    let sha_output = git_command()
+        .args(["rev-parse", "HEAD"])
+        .current_dir(repo_path)
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    Ok(String::from_utf8_lossy(&sha_output.stdout)
+        .trim()
+        .to_string())
+}
+
+/// Pull commits from remote
+pub fn pull_commits(
+    repo_path: &str,
+    remote: Option<&str>,
+    branch: Option<&str>,
+) -> Result<(), String> {
+    let remote_name = remote.unwrap_or("origin");
+    let mut args = vec!["pull", remote_name];
+
+    if let Some(branch_name) = branch {
+        args.push(branch_name);
+    }
+
+    let output = git_command()
+        .args(&args)
+        .current_dir(repo_path)
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    if !output.status.success() {
+        return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
+    }
+
+    Ok(())
+}
+
+/// Rebase current branch onto target branch
+pub fn rebase_branch(repo_path: &str, onto: &str) -> Result<(), String> {
+    let output = git_command()
+        .args(["rebase", onto])
+        .current_dir(repo_path)
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    if !output.status.success() {
+        return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
+    }
+
+    Ok(())
+}
+
+/// Reset branch to a specific commit or branch
+/// mode: "soft" keeps changes staged, "hard" discards all changes
+pub fn reset_branch(
+    repo_path: &str,
+    to: &str,
+    mode: &str,
+    confirm_destructive: bool,
+) -> Result<(), String> {
+    let reset_mode = match mode {
+        "hard" => "--hard",
+        "soft" => "--soft",
+        other => {
+            return Err(format!(
+                "Invalid reset mode '{other}'. Expected 'soft' or 'hard'"
+            ))
+        }
+    };
+
+    if mode == "hard" && !confirm_destructive {
+        return Err("Hard reset requires explicit destructive confirmation".to_string());
+    }
+
+    let output = git_command()
+        .args(["reset", reset_mode, to])
+        .current_dir(repo_path)
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    if !output.status.success() {
+        return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
+    }
+
+    Ok(())
+}
+
+pub fn has_local_branch(repo_path: &str, branch: &str) -> bool {
+    git_command()
+        .args(["rev-parse", "--verify", &format!("refs/heads/{branch}")])
+        .current_dir(repo_path)
+        .output()
+        .map(|output| output.status.success())
+        .unwrap_or(false)
+}
+
+pub fn checkout_existing_branch(repo_path: &str, branch: &str) -> Result<(), String> {
+    let output = git_command()
+        .args(["checkout", branch])
+        .current_dir(repo_path)
+        .output()
+        .map_err(|error| error.to_string())?;
+
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err(String::from_utf8_lossy(&output.stderr).trim().to_string())
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CommitInfo {
+    pub sha: String,
+    pub short_sha: String,
+    pub message: String,
+    pub summary: String,
+    pub author_name: String,
+    pub author_email: String,
+    pub authored_at: String,
+    pub additions: i32,
+    pub deletions: i32,
+    pub parents: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum GitRefKind {
+    Head,
+    Local,
+    Remote,
+    Tag,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct GitLogRef {
+    pub name: String,
+    pub remote: Option<String>,
+    pub kind: GitRefKind,
+    pub commit_sha: String,
+    pub is_current: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct GitGraphEdge {
+    pub from_lane: i32,
+    pub to_lane: i32,
+    pub is_merge: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitLogCommit {
+    pub sha: String,
+    pub short_sha: String,
+    pub message: String,
+    pub summary: String,
+    pub author_name: String,
+    pub author_email: String,
+    pub authored_at: String,
+    pub parents: Vec<String>,
+    pub refs: Vec<GitLogRef>,
+    pub lane: Option<i32>,
+    pub graph_edges: Option<Vec<GitGraphEdge>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitLogPage {
+    pub commits: Vec<GitLogCommit>,
+    pub total: usize,
+    pub has_more: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitRefsResult {
+    pub head: Option<GitLogRef>,
+    pub local: Vec<GitLogRef>,
+    pub remote: Vec<GitLogRef>,
+    pub tags: Vec<GitLogRef>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum CommitFileChangeKind {
+    Added,
+    Modified,
+    Deleted,
+    Renamed,
+    Copied,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct GitCommitFileChange {
+    pub path: String,
+    pub previous_path: Option<String>,
+    pub status: CommitFileChangeKind,
+    pub additions: i32,
+    pub deletions: i32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitCommitDetail {
+    pub commit: GitLogCommit,
+    pub files: Vec<GitCommitFileChange>,
+    pub patch: Option<String>,
+}
+
+fn git_refs_map(refs: &GitRefsResult) -> HashMap<String, Vec<GitLogRef>> {
+    let mut map: HashMap<String, Vec<GitLogRef>> = HashMap::new();
+
+    for git_ref in refs
+        .head
+        .iter()
+        .cloned()
+        .chain(refs.local.iter().cloned())
+        .chain(refs.remote.iter().cloned())
+        .chain(refs.tags.iter().cloned())
+    {
+        map.entry(git_ref.commit_sha.clone())
+            .or_default()
+            .push(git_ref);
+    }
+
+    map
+}
+
+fn parse_git_log_records(
+    output: &str,
+    ref_map: &HashMap<String, Vec<GitLogRef>>,
+) -> Vec<GitLogCommit> {
+    output
+        .split('\0')
+        .map(str::trim)
+        .filter(|record| !record.is_empty())
+        .filter_map(|record| {
+            let parts: Vec<&str> = record.split('\u{001f}').collect();
+            if parts.len() < 7 {
+                return None;
+            }
+
+            let sha = parts[0].trim();
+            let short_sha = parts[1].trim();
+            let summary = parts[2].trim();
+            let author_name = parts[3].trim();
+            let author_email = parts[4].trim();
+            let authored_at = parts[5].trim();
+            let parents: Vec<String> = parts[6].split_whitespace().map(str::to_string).collect();
+
+            if sha.is_empty()
+                || short_sha.is_empty()
+                || summary.is_empty()
+                || author_name.is_empty()
+                || authored_at.is_empty()
+            {
+                return None;
+            }
+
+            let lane = if parents.len() > 1 { 1 } else { 0 };
+            let graph_edges = if parents.len() > 1 {
+                vec![
+                    GitGraphEdge {
+                        from_lane: 1,
+                        to_lane: 0,
+                        is_merge: Some(true),
+                    },
+                    GitGraphEdge {
+                        from_lane: 1,
+                        to_lane: 1,
+                        is_merge: None,
+                    },
+                ]
+            } else {
+                vec![GitGraphEdge {
+                    from_lane: 0,
+                    to_lane: 0,
+                    is_merge: None,
+                }]
+            };
+
+            Some(GitLogCommit {
+                sha: sha.to_string(),
+                short_sha: short_sha.to_string(),
+                message: summary.to_string(),
+                summary: summary.to_string(),
+                author_name: author_name.to_string(),
+                author_email: author_email.to_string(),
+                authored_at: authored_at.to_string(),
+                parents,
+                refs: ref_map.get(sha).cloned().unwrap_or_default(),
+                lane: Some(lane),
+                graph_edges: Some(graph_edges),
+            })
+        })
+        .collect()
+}
+
+fn git_log_matches_search(commit: &GitLogCommit, query: &str) -> bool {
+    let query = query.trim().to_lowercase();
+    if query.is_empty() {
+        return true;
+    }
+
+    [
+        commit.sha.as_str(),
+        commit.short_sha.as_str(),
+        commit.summary.as_str(),
+        commit.author_name.as_str(),
+        commit.author_email.as_str(),
+    ]
+    .iter()
+    .any(|value| value.to_lowercase().contains(&query))
+}
+
+fn git_commit_file_status(code: &str) -> CommitFileChangeKind {
+    match code.chars().next().unwrap_or('M') {
+        'A' => CommitFileChangeKind::Added,
+        'D' => CommitFileChangeKind::Deleted,
+        'R' => CommitFileChangeKind::Renamed,
+        'C' => CommitFileChangeKind::Copied,
+        _ => CommitFileChangeKind::Modified,
+    }
+}
+
+pub fn list_git_refs(repo_path: &str) -> Result<GitRefsResult, String> {
+    let current_branch = get_current_branch(repo_path);
+
+    let local_output = git_command()
+        .args([
+            "for-each-ref",
+            "--format=%(refname:short)%09%(objectname)",
+            "refs/heads/",
+        ])
+        .current_dir(repo_path)
+        .output()
+        .map_err(|error| error.to_string())?;
+
+    if !local_output.status.success() {
+        return Err(String::from_utf8_lossy(&local_output.stderr)
+            .trim()
+            .to_string());
+    }
+
+    let local: Vec<GitLogRef> = String::from_utf8_lossy(&local_output.stdout)
+        .lines()
+        .filter_map(|line| {
+            let (name, sha) = line.split_once('\t')?;
+            let name = name.trim();
+            let sha = sha.trim();
+            if name.is_empty() || sha.is_empty() {
+                return None;
+            }
+
+            Some(GitLogRef {
+                name: name.to_string(),
+                remote: None,
+                kind: GitRefKind::Local,
+                commit_sha: sha.to_string(),
+                is_current: Some(current_branch.as_deref() == Some(name)),
+            })
+        })
+        .collect();
+
+    let head = local
+        .iter()
+        .find(|git_ref| git_ref.is_current == Some(true))
+        .map(|git_ref| {
+            let mut head_ref = git_ref.clone();
+            head_ref.kind = GitRefKind::Head;
+            head_ref.is_current = Some(true);
+            head_ref
+        });
+
+    let remote_output = git_command()
+        .args([
+            "for-each-ref",
+            "--format=%(refname:short)%09%(objectname)",
+            "refs/remotes/",
+        ])
+        .current_dir(repo_path)
+        .output()
+        .map_err(|error| error.to_string())?;
+
+    let remote = if remote_output.status.success() {
+        String::from_utf8_lossy(&remote_output.stdout)
+            .lines()
+            .filter_map(|line| {
+                let (full_name, sha) = line.split_once('\t')?;
+                let full_name = full_name.trim();
+                let sha = sha.trim();
+                if full_name.is_empty()
+                    || sha.is_empty()
+                    || full_name.ends_with("/HEAD")
+                    || !full_name.contains('/')
+                {
+                    return None;
+                }
+
+                let (remote, name) = full_name.split_once('/')?;
+                if remote.is_empty() || name.is_empty() {
+                    return None;
+                }
+
+                Some(GitLogRef {
+                    name: name.to_string(),
+                    remote: Some(remote.to_string()),
+                    kind: GitRefKind::Remote,
+                    commit_sha: sha.to_string(),
+                    is_current: None,
+                })
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
+
+    let tag_output = git_command()
+        .args([
+            "for-each-ref",
+            "--format=%(refname:short)%09%(*objectname)%09%(objectname)",
+            "refs/tags/",
+        ])
+        .current_dir(repo_path)
+        .output()
+        .map_err(|error| error.to_string())?;
+
+    let tags = if tag_output.status.success() {
+        String::from_utf8_lossy(&tag_output.stdout)
+            .lines()
+            .filter_map(|line| {
+                let mut parts = line.split('\t');
+                let name = parts.next()?.trim();
+                let deref_sha = parts.next().unwrap_or_default().trim();
+                let sha = if deref_sha.is_empty() {
+                    parts.next().unwrap_or_default().trim()
+                } else {
+                    deref_sha
+                };
+                if name.is_empty() || sha.is_empty() {
+                    return None;
+                }
+
+                Some(GitLogRef {
+                    name: name.to_string(),
+                    remote: None,
+                    kind: GitRefKind::Tag,
+                    commit_sha: sha.to_string(),
+                    is_current: None,
+                })
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
+
+    Ok(GitRefsResult {
+        head,
+        local,
+        remote,
+        tags,
+    })
+}
+
+pub fn get_git_log_page(
+    repo_path: &str,
+    branches: Option<&[String]>,
+    search: Option<&str>,
+    limit: Option<usize>,
+    skip: Option<usize>,
+) -> Result<GitLogPage, String> {
+    let refs = list_git_refs(repo_path)?;
+    let ref_map = git_refs_map(&refs);
+    let limit = limit.unwrap_or(40).min(200);
+    let skip = skip.unwrap_or(0);
+    let search = search.unwrap_or("").trim().to_string();
+    let branch_filters: Vec<String> = branches
+        .unwrap_or(&[])
+        .iter()
+        .map(|branch| branch.trim())
+        .filter(|branch| !branch.is_empty())
+        .map(str::to_string)
+        .collect();
+    let has_branch_filters = !branch_filters.is_empty();
+    let should_scan_for_search = !search.is_empty();
+
+    let mut command = git_command();
+    command.args([
+        "--no-pager",
+        "log",
+        "--date-order",
+        "--format=%H%x1f%h%x1f%s%x1f%an%x1f%ae%x1f%aI%x1f%P%x00",
+    ]);
+
+    if should_scan_for_search {
+        command.arg(format!("--max-count={GIT_LOG_SEARCH_SCAN_LIMIT}"));
+    } else {
+        command.arg(format!("--skip={skip}"));
+        command.arg(format!("--max-count={}", limit + 1));
+    }
+
+    if has_branch_filters {
+        for branch in &branch_filters {
+            command.arg(branch);
+        }
+    } else {
+        command.arg("--all");
+    }
+
+    let output = command
+        .current_dir(repo_path)
+        .output()
+        .map_err(|error| error.to_string())?;
+
+    if !output.status.success() {
+        return Ok(GitLogPage {
+            commits: Vec::new(),
+            total: 0,
+            has_more: false,
+        });
+    }
+
+    let parsed_commits = parse_git_log_records(&String::from_utf8_lossy(&output.stdout), &ref_map);
+
+    if should_scan_for_search {
+        let filtered_commits: Vec<GitLogCommit> = parsed_commits
+            .into_iter()
+            .filter(|commit| git_log_matches_search(commit, &search))
+            .collect();
+        let commits = filtered_commits
+            .iter()
+            .skip(skip)
+            .take(limit)
+            .cloned()
+            .collect::<Vec<_>>();
+        let total = filtered_commits.len();
+
+        return Ok(GitLogPage {
+            commits,
+            total,
+            has_more: skip + limit < total,
+        });
+    }
+
+    let total = {
+        let mut count_command = git_command();
+        count_command.args(["rev-list", "--count"]);
+        if has_branch_filters {
+            for branch in &branch_filters {
+                count_command.arg(branch);
+            }
+        } else {
+            count_command.arg("--all");
+        }
+
+        match count_command.current_dir(repo_path).output() {
+            Ok(count_output) if count_output.status.success() => {
+                String::from_utf8_lossy(&count_output.stdout)
+                    .trim()
+                    .parse::<usize>()
+                    .unwrap_or(parsed_commits.len())
+            }
+            _ => parsed_commits.len(),
+        }
+    };
+
+    let has_more = parsed_commits.len() > limit;
+    let commits = parsed_commits.into_iter().take(limit).collect();
+
+    Ok(GitLogPage {
+        commits,
+        total,
+        has_more,
+    })
+}
+
+pub fn get_git_commit_detail(repo_path: &str, sha: &str) -> Result<GitCommitDetail, String> {
+    let refs = list_git_refs(repo_path)?;
+    let ref_map = git_refs_map(&refs);
+
+    let metadata_output = git_command()
+        .args([
+            "--no-pager",
+            "show",
+            "-s",
+            "--format=%H%x00%h%x00%s%x00%B%x00%an%x00%ae%x00%aI%x00%P",
+            sha,
+        ])
+        .current_dir(repo_path)
+        .output()
+        .map_err(|error| error.to_string())?;
+
+    if !metadata_output.status.success() {
+        return Err(String::from_utf8_lossy(&metadata_output.stderr)
+            .trim()
+            .to_string());
+    }
+
+    let metadata = String::from_utf8_lossy(&metadata_output.stdout);
+    let parts: Vec<&str> = metadata.split('\0').collect();
+    if parts.len() < 8 {
+        return Err("Failed to parse commit metadata".to_string());
+    }
+
+    let sha = parts[0].trim().to_string();
+    let short_sha = parts[1].trim().to_string();
+    let summary = parts[2].trim().to_string();
+    let message = parts[3].trim().to_string();
+    let author_name = parts[4].trim().to_string();
+    let author_email = parts[5].trim().to_string();
+    let authored_at = parts[6].trim().to_string();
+    let parents = parts[7]
+        .split_whitespace()
+        .map(str::to_string)
+        .collect::<Vec<_>>();
+
+    let name_status_output = git_command()
+        .args(["show", "--format=", "--name-status", sha.as_str()])
+        .current_dir(repo_path)
+        .output()
+        .map_err(|error| error.to_string())?;
+
+    if !name_status_output.status.success() {
+        return Err(String::from_utf8_lossy(&name_status_output.stderr)
+            .trim()
+            .to_string());
+    }
+
+    let numstat_output = git_command()
+        .args(["show", "--format=", "--numstat", sha.as_str()])
+        .current_dir(repo_path)
+        .output()
+        .map_err(|error| error.to_string())?;
+
+    if !numstat_output.status.success() {
+        return Err(String::from_utf8_lossy(&numstat_output.stderr)
+            .trim()
+            .to_string());
+    }
+
+    let mut file_stats = HashMap::new();
+    for line in String::from_utf8_lossy(&numstat_output.stdout).lines() {
+        let parts: Vec<&str> = line.split('\t').collect();
+        if parts.len() < 3 {
+            continue;
+        }
+
+        let additions = if parts[0] == "-" {
+            0
+        } else {
+            parts[0].parse::<i32>().unwrap_or(0)
+        };
+        let deletions = if parts[1] == "-" {
+            0
+        } else {
+            parts[1].parse::<i32>().unwrap_or(0)
+        };
+        file_stats.insert(parts[2].to_string(), (additions, deletions));
+    }
+
+    let files = String::from_utf8_lossy(&name_status_output.stdout)
+        .lines()
+        .filter_map(|line| {
+            let parts: Vec<&str> = line.split('\t').collect();
+            if parts.len() < 2 {
+                return None;
+            }
+
+            let status = git_commit_file_status(parts[0]);
+            let (path, previous_path) = if matches!(
+                status,
+                CommitFileChangeKind::Renamed | CommitFileChangeKind::Copied
+            ) && parts.len() >= 3
+            {
+                (parts[2].to_string(), Some(parts[1].to_string()))
+            } else {
+                (parts[1].to_string(), None)
+            };
+
+            let key = previous_path.clone().unwrap_or_else(|| path.clone());
+            let (additions, deletions) = file_stats.get(&key).copied().unwrap_or_default();
+
+            Some(GitCommitFileChange {
+                path,
+                previous_path,
+                status,
+                additions,
+                deletions,
+            })
+        })
+        .collect();
+
+    let commit = GitLogCommit {
+        sha: sha.clone(),
+        short_sha,
+        message,
+        summary,
+        author_name,
+        author_email,
+        authored_at,
+        parents: parents.clone(),
+        refs: ref_map.get(&sha).cloned().unwrap_or_default(),
+        lane: Some(if parents.len() > 1 { 1 } else { 0 }),
+        graph_edges: Some(if parents.len() > 1 {
+            vec![
+                GitGraphEdge {
+                    from_lane: 1,
+                    to_lane: 0,
+                    is_merge: Some(true),
+                },
+                GitGraphEdge {
+                    from_lane: 1,
+                    to_lane: 1,
+                    is_merge: None,
+                },
+            ]
+        } else {
+            vec![GitGraphEdge {
+                from_lane: 0,
+                to_lane: 0,
+                is_merge: None,
+            }]
+        }),
+    };
+
+    Ok(GitCommitDetail {
+        commit,
+        files,
+        patch: None,
+    })
+}
+
+/// Get commit history from current branch
+pub fn get_commit_list(
+    repo_path: &str,
+    limit: Option<usize>,
+    since: Option<&str>,
+) -> Result<Vec<CommitInfo>, String> {
+    let limit_str = limit.unwrap_or(20).to_string();
+    let mut args = vec![
+        "log",
+        "--format=%x1e%H%x1f%h%x1f%an%x1f%ae%x1f%aI%x1f%s%x1f%b%x1f%P%x1d",
+        "--numstat",
+        "-n",
+        &limit_str,
+    ];
+
+    let since_str;
+    if let Some(since_value) = since {
+        since_str = format!("--since={since_value}");
+        args.push(&since_str);
+    }
+
+    let output = git_command()
+        .args(&args)
+        .current_dir(repo_path)
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    if !output.status.success() {
+        return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
+    }
+
+    let mut commits = Vec::new();
+    for record in String::from_utf8_lossy(&output.stdout)
+        .split('\u{001e}')
+        .map(str::trim)
+        .filter(|record| !record.is_empty())
+    {
+        let Some((header, stats_section)) = record.split_once('\u{001d}') else {
+            continue;
+        };
+
+        let parts: Vec<&str> = header.split('\u{001f}').collect();
+        if parts.len() < 8 {
+            continue;
+        }
+
+        let sha = parts[0].trim().to_string();
+        let short_sha = parts[1].trim().to_string();
+        let author_name = parts[2].trim().to_string();
+        let author_email = parts[3].trim().to_string();
+        let authored_at = parts[4].trim().to_string();
+        let subject = parts[5].trim().to_string();
+        let body = parts[6].trim().to_string();
+        let parents_str = parts[7].trim();
+        let parents: Vec<String> = if parents_str.is_empty() {
+            Vec::new()
+        } else {
+            parents_str
+                .split_whitespace()
+                .map(|value| value.to_string())
+                .collect()
+        };
+
+        let message = if body.is_empty() {
+            subject.clone()
+        } else {
+            format!("{subject}\n\n{body}")
+        };
+
+        let mut additions = 0;
+        let mut deletions = 0;
+
+        for stat_line in stats_section
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty())
+        {
+            let stat_parts: Vec<&str> = stat_line.split('\t').collect();
+            if stat_parts.len() >= 2 {
+                if stat_parts[0] != "-" {
+                    additions += stat_parts[0].parse::<i32>().unwrap_or(0);
+                }
+                if stat_parts[1] != "-" {
+                    deletions += stat_parts[1].parse::<i32>().unwrap_or(0);
+                }
+            }
+        }
+
+        commits.push(CommitInfo {
+            sha,
+            short_sha,
+            message,
+            summary: subject,
+            author_name,
+            author_email,
+            authored_at,
+            additions,
+            deletions,
+            parents,
+        });
+    }
+
+    Ok(commits)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -328,6 +1393,43 @@ pub struct RepoChanges {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct RepoCommitChange {
+    pub sha: String,
+    pub short_sha: String,
+    pub summary: String,
+    pub author_name: String,
+    pub authored_at: String,
+    pub additions: i32,
+    pub deletions: i32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RepoFileDiff {
+    pub path: String,
+    pub status: FileChangeStatus,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub previous_path: Option<String>,
+    pub patch: String,
+    pub additions: i32,
+    pub deletions: i32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RepoCommitDiff {
+    pub sha: String,
+    pub short_sha: String,
+    pub summary: String,
+    pub author_name: String,
+    pub authored_at: String,
+    pub patch: String,
+    pub additions: i32,
+    pub deletions: i32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct HistoricalRelatedFile {
     pub path: String,
     pub score: f64,
@@ -358,7 +1460,7 @@ pub fn get_repo_status(repo_path: &str) -> RepoStatus {
         untracked: 0,
     };
 
-    if let Ok(o) = Command::new("git")
+    if let Ok(o) = git_command()
         .args(["status", "--porcelain", "-uall"])
         .current_dir(repo_path)
         .output()
@@ -372,7 +1474,7 @@ pub fn get_repo_status(repo_path: &str) -> RepoStatus {
         }
     }
 
-    if let Ok(o) = Command::new("git")
+    if let Ok(o) = git_command()
         .args(["rev-list", "--left-right", "--count", "HEAD...@{upstream}"])
         .current_dir(repo_path)
         .output()
@@ -462,7 +1564,7 @@ pub fn parse_git_status_porcelain(output: &str) -> Vec<GitFileChange> {
 pub fn get_repo_changes(repo_path: &str) -> RepoChanges {
     let branch = get_current_branch(repo_path).unwrap_or_else(|| "unknown".into());
     let status = get_repo_status(repo_path);
-    let files = Command::new("git")
+    let files = git_command()
         .args(["status", "--porcelain", "-uall"])
         .current_dir(repo_path)
         .output()
@@ -478,8 +1580,301 @@ pub fn get_repo_changes(repo_path: &str) -> RepoChanges {
     }
 }
 
+fn has_git_ref(repo_path: &str, git_ref: &str) -> bool {
+    git_command()
+        .args(["rev-parse", "--verify", git_ref])
+        .current_dir(repo_path)
+        .output()
+        .map(|output| output.status.success())
+        .unwrap_or(false)
+}
+
+pub fn resolve_base_ref(repo_path: &str, base_branch: Option<&str>) -> Option<String> {
+    let normalized_base_branch = base_branch.map(str::trim).filter(|value| !value.is_empty());
+    let candidates = [
+        normalized_base_branch.map(|branch| format!("origin/{branch}")),
+        normalized_base_branch.map(str::to_string),
+        Some("origin/main".to_string()),
+        Some("main".to_string()),
+        Some("origin/master".to_string()),
+        Some("master".to_string()),
+    ];
+
+    candidates
+        .into_iter()
+        .flatten()
+        .find(|candidate| has_git_ref(repo_path, candidate))
+}
+
+fn git_output_in_repo(repo_path: &str, args: &[&str]) -> Option<String> {
+    git_command()
+        .args(args)
+        .current_dir(repo_path)
+        .output()
+        .ok()
+        .filter(|output| output.status.success())
+        .map(|output| String::from_utf8_lossy(&output.stdout).to_string())
+}
+
+pub fn get_remote_url(repo_path: &str) -> Option<String> {
+    git_output_in_repo(repo_path, &["config", "--get", "remote.origin.url"]).and_then(|output| {
+        let trimmed = output.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_string())
+        }
+    })
+}
+
+pub fn count_commits_since_ref(repo_path: &str, base_ref: &str) -> usize {
+    let range = format!("{base_ref}..HEAD");
+    git_output_in_repo(repo_path, &["rev-list", "--count", range.as_str()])
+        .and_then(|output| output.trim().parse::<usize>().ok())
+        .unwrap_or(0)
+}
+
+fn count_numstat_totals(numstat: &str) -> (i32, i32) {
+    numstat
+        .lines()
+        .fold((0, 0), |(additions, deletions), line| {
+            let parts: Vec<&str> = line.split('\t').collect();
+            if parts.len() < 3 {
+                return (additions, deletions);
+            }
+
+            let next_additions = if parts[0] == "-" {
+                additions
+            } else {
+                additions + parts[0].parse::<i32>().unwrap_or(0)
+            };
+            let next_deletions = if parts[1] == "-" {
+                deletions
+            } else {
+                deletions + parts[1].parse::<i32>().unwrap_or(0)
+            };
+
+            (next_additions, next_deletions)
+        })
+}
+
+pub fn get_repo_commit_changes(
+    repo_path: &str,
+    base_ref: &str,
+    max_count: Option<usize>,
+) -> Vec<RepoCommitChange> {
+    let max_count = std::cmp::max(max_count.unwrap_or(20), 1);
+    let range = format!("{base_ref}..HEAD");
+    let max_count_str = max_count.to_string();
+    let output = match git_output_in_repo(
+        repo_path,
+        &[
+            "log",
+            "--format=%H%x1f%h%x1f%s%x1f%an%x1f%aI",
+            range.as_str(),
+            "-n",
+            max_count_str.as_str(),
+        ],
+    ) {
+        Some(output) => output,
+        None => return Vec::new(),
+    };
+
+    output
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .filter_map(|line| {
+            let parts: Vec<&str> = line.split('\u{001f}').collect();
+            if parts.len() < 5 {
+                return None;
+            }
+
+            let sha = parts[0].trim();
+            let short_sha = parts[1].trim();
+            let summary = parts[2].trim();
+            let author_name = parts[3].trim();
+            let authored_at = parts[4].trim();
+
+            if sha.is_empty()
+                || short_sha.is_empty()
+                || summary.is_empty()
+                || author_name.is_empty()
+                || authored_at.is_empty()
+            {
+                return None;
+            }
+
+            let numstat = git_output_in_repo(
+                repo_path,
+                &[
+                    "--no-pager",
+                    "show",
+                    "--format=",
+                    "--numstat",
+                    "--find-renames",
+                    "--find-copies",
+                    sha,
+                ],
+            )
+            .unwrap_or_default();
+            let (additions, deletions) = count_numstat_totals(&numstat);
+
+            Some(RepoCommitChange {
+                sha: sha.to_string(),
+                short_sha: short_sha.to_string(),
+                summary: summary.to_string(),
+                author_name: author_name.to_string(),
+                authored_at: authored_at.to_string(),
+                additions,
+                deletions,
+            })
+        })
+        .collect()
+}
+
+fn count_diff_patch_lines(patch: &str) -> (i32, i32) {
+    let mut additions = 0;
+    let mut deletions = 0;
+
+    for line in patch.lines() {
+        if line.starts_with("+++ ") || line.starts_with("--- ") {
+            continue;
+        }
+        if line.starts_with('+') {
+            additions += 1;
+        } else if line.starts_with('-') {
+            deletions += 1;
+        }
+    }
+
+    (additions, deletions)
+}
+
+fn build_synthetic_added_diff(repo_path: &str, file: &GitFileChange) -> String {
+    let file_path = Path::new(repo_path).join(&file.path);
+    let content = std::fs::read_to_string(&file_path).unwrap_or_default();
+    let additions = content
+        .lines()
+        .map(|line| format!("+{line}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    format!(
+        "diff --git a/{path} b/{path}\nnew file mode 100644\n--- /dev/null\n+++ b/{path}\n@@ -0,0 +1,{count} @@\n{body}",
+        path = file.path,
+        count = content.lines().count(),
+        body = additions
+    )
+}
+
+fn build_synthetic_rename_diff(file: &GitFileChange) -> String {
+    let previous_path = file.previous_path.clone().unwrap_or_default();
+    format!(
+        "diff --git a/{previous_path} b/{path}\nsimilarity index 100%\nrename from {previous_path}\nrename to {path}\n",
+        previous_path = previous_path,
+        path = file.path
+    )
+}
+
+pub fn get_repo_file_diff(repo_path: &str, file: &GitFileChange) -> RepoFileDiff {
+    let patch = [
+        vec![
+            "--no-pager",
+            "diff",
+            "--no-ext-diff",
+            "--find-renames",
+            "--find-copies",
+            "--",
+            file.path.as_str(),
+        ],
+        vec![
+            "--no-pager",
+            "diff",
+            "--no-ext-diff",
+            "--find-renames",
+            "--find-copies",
+            "--cached",
+            "--",
+            file.path.as_str(),
+        ],
+        vec![
+            "--no-pager",
+            "diff",
+            "--no-ext-diff",
+            "--find-renames",
+            "--find-copies",
+            "HEAD",
+            "--",
+            file.path.as_str(),
+        ],
+    ]
+    .iter()
+    .filter_map(|args| git_output_in_repo(repo_path, args))
+    .find(|candidate| !candidate.trim().is_empty())
+    .unwrap_or_else(|| {
+        if matches!(
+            file.status,
+            FileChangeStatus::Untracked | FileChangeStatus::Added
+        ) {
+            build_synthetic_added_diff(repo_path, file)
+        } else if matches!(file.status, FileChangeStatus::Renamed) && file.previous_path.is_some() {
+            build_synthetic_rename_diff(file)
+        } else {
+            String::new()
+        }
+    });
+
+    let (additions, deletions) = count_diff_patch_lines(&patch);
+    RepoFileDiff {
+        path: file.path.clone(),
+        status: file.status.clone(),
+        previous_path: file.previous_path.clone(),
+        patch,
+        additions,
+        deletions,
+    }
+}
+
+pub fn get_repo_commit_diff(repo_path: &str, sha: &str) -> RepoCommitDiff {
+    let summary =
+        git_output_in_repo(repo_path, &["show", "-s", "--format=%s", sha]).unwrap_or_default();
+    let short_sha =
+        git_output_in_repo(repo_path, &["rev-parse", "--short", sha]).unwrap_or_default();
+    let author_name =
+        git_output_in_repo(repo_path, &["show", "-s", "--format=%an", sha]).unwrap_or_default();
+    let authored_at =
+        git_output_in_repo(repo_path, &["show", "-s", "--format=%aI", sha]).unwrap_or_default();
+    let patch = git_output_in_repo(
+        repo_path,
+        &[
+            "--no-pager",
+            "show",
+            "--no-ext-diff",
+            "--find-renames",
+            "--find-copies",
+            "--format=medium",
+            "--unified=3",
+            sha,
+        ],
+    )
+    .unwrap_or_default();
+    let (additions, deletions) = count_diff_patch_lines(&patch);
+
+    RepoCommitDiff {
+        sha: sha.to_string(),
+        short_sha: short_sha.trim().to_string(),
+        summary: summary.trim().to_string(),
+        author_name: author_name.trim().to_string(),
+        authored_at: authored_at.trim().to_string(),
+        patch,
+        additions,
+        deletions,
+    }
+}
+
 fn git_output_at_path(repo_root: &Path, args: &[&str]) -> Result<String, String> {
-    let output = Command::new("git")
+    let output = git_command()
         .args(args)
         .current_dir(repo_root)
         .output()
@@ -1011,7 +2406,7 @@ pub fn branch_to_safe_dir_name(branch: &str) -> String {
 
 /// Prune stale worktree references.
 pub fn worktree_prune(repo_path: &str) -> Result<(), String> {
-    let output = Command::new("git")
+    let output = git_command()
         .args(["worktree", "prune"])
         .current_dir(repo_path)
         .output()
@@ -1054,7 +2449,7 @@ pub fn worktree_add(
         ]
     };
 
-    let output = Command::new("git")
+    let output = git_command()
         .args(&args)
         .current_dir(repo_path)
         .output()
@@ -1075,7 +2470,7 @@ pub fn worktree_remove(repo_path: &str, worktree_path: &str, force: bool) -> Res
     }
     args.push(worktree_path);
 
-    let output = Command::new("git")
+    let output = git_command()
         .args(&args)
         .current_dir(repo_path)
         .output()
@@ -1098,7 +2493,7 @@ pub struct WorktreeListEntry {
 
 /// List all worktrees for a repository.
 pub fn worktree_list(repo_path: &str) -> Vec<WorktreeListEntry> {
-    let output = match Command::new("git")
+    let output = match git_command()
         .args(["worktree", "list", "--porcelain"])
         .current_dir(repo_path)
         .output()
@@ -1145,7 +2540,7 @@ pub fn worktree_list(repo_path: &str) -> Vec<WorktreeListEntry> {
 
 /// Check if a local branch exists.
 pub fn branch_exists(repo_path: &str, branch: &str) -> bool {
-    Command::new("git")
+    git_command()
         .args(["branch", "--list", branch])
         .current_dir(repo_path)
         .output()
@@ -1182,26 +2577,8 @@ pub fn copy_dir_recursive(src: &Path, dest: &Path) -> std::io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::HashSet;
     use std::fs;
-    use std::path::Path;
-    use std::process::Command;
     use tempfile::tempdir;
-
-    fn git(cwd: &Path, args: &[&str]) -> String {
-        let output = Command::new("git")
-            .args(args)
-            .current_dir(cwd)
-            .output()
-            .expect("git command should run");
-        assert!(
-            output.status.success(),
-            "git {:?} failed: {}",
-            args,
-            String::from_utf8_lossy(&output.stderr)
-        );
-        String::from_utf8_lossy(&output.stdout).trim().to_string()
-    }
 
     #[test]
     fn parse_github_url_supports_multiple_formats() {
@@ -1353,106 +2730,6 @@ mod tests {
     }
 
     #[test]
-    fn compute_historical_related_files_collects_cochange_context() {
-        let temp = tempdir().unwrap();
-        let repo = temp.path();
-
-        git(repo, &["init", "-b", "main"]);
-        git(repo, &["config", "user.name", "Routa Test"]);
-        git(repo, &["config", "user.email", "test@example.com"]);
-
-        fs::write(
-            repo.join("example.ts"),
-            "import { helper } from './helper';\nexport const value = helper(1);\nexport const trailing = 'stable';\n",
-        )
-        .unwrap();
-        fs::write(
-            repo.join("helper.ts"),
-            "export function helper(input: number): number {\n  return input + 1;\n}\n",
-        )
-        .unwrap();
-        git(repo, &["add", "."]);
-        git(
-            repo,
-            &[
-                "-c",
-                "commit.gpgSign=false",
-                "commit",
-                "-m",
-                "initial shared context",
-            ],
-        );
-
-        fs::write(
-            repo.join("example.ts"),
-            "import { helper } from './helper';\nexport const value = helper(2);\nexport const trailing = 'stable';\n",
-        )
-        .unwrap();
-        git(repo, &["add", "example.ts"]);
-        git(
-            repo,
-            &[
-                "-c",
-                "commit.gpgSign=false",
-                "commit",
-                "-m",
-                "update example only",
-            ],
-        );
-
-        let related = compute_historical_related_files(repo, "HEAD~1..HEAD", "HEAD", 20).unwrap();
-        assert!(!related.is_empty());
-
-        let mut unique_paths = HashSet::new();
-        for item in &related {
-            assert!(unique_paths.insert(item.path.clone()));
-            assert!(item.score > 0.0);
-            assert!(!item.source_files.is_empty());
-            assert!(!item.related_commits.is_empty());
-        }
-
-        let helper = related
-            .iter()
-            .find(|item| item.path == "helper.ts")
-            .expect("helper.ts should be suggested");
-        assert_eq!(helper.source_files, vec!["example.ts".to_string()]);
-        assert_eq!(helper.related_commits.len(), 1);
-    }
-
-    #[test]
-    fn compute_historical_related_files_handles_deleted_files_without_failing() {
-        let temp = tempdir().unwrap();
-        let repo = temp.path();
-
-        git(repo, &["init", "-b", "main"]);
-        git(repo, &["config", "user.name", "Routa Test"]);
-        git(repo, &["config", "user.email", "test@example.com"]);
-
-        fs::write(repo.join("keep.rs"), "pub fn keep() {}\n").unwrap();
-        fs::write(repo.join("drop.rs"), "pub fn drop() {}\n").unwrap();
-        git(repo, &["add", "."]);
-        git(
-            repo,
-            &["-c", "commit.gpgSign=false", "commit", "-m", "initial"],
-        );
-
-        fs::write(
-            repo.join("keep.rs"),
-            "pub fn keep() { println!(\"keep\"); }\n",
-        )
-        .unwrap();
-        fs::remove_file(repo.join("drop.rs")).unwrap();
-        git(repo, &["add", "-A"]);
-        git(
-            repo,
-            &["-c", "commit.gpgSign=false", "commit", "-m", "delete drop"],
-        );
-
-        let related = compute_historical_related_files(repo, "HEAD~1..HEAD", "HEAD", 20).unwrap();
-        assert!(related.is_empty());
-    }
-
-    #[test]
     fn copy_dir_recursive_skips_git_and_node_modules() {
         let temp = tempdir().unwrap();
         let src = temp.path().join("src");
@@ -1473,5 +2750,65 @@ mod tests {
         assert!(dest.join("nested/kept.txt").is_file());
         assert!(!dest.join(".git").exists());
         assert!(!dest.join("node_modules").exists());
+    }
+
+    #[test]
+    fn detects_and_checks_out_existing_local_branches() {
+        let temp = tempdir().unwrap();
+        let repo = temp.path();
+
+        let init = git_command()
+            .args(["init", "-b", "main"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        assert!(init.status.success());
+
+        let config_name = git_command()
+            .args(["config", "user.name", "Test User"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        assert!(config_name.status.success());
+
+        let config_email = git_command()
+            .args(["config", "user.email", "test@example.com"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        assert!(config_email.status.success());
+
+        fs::write(repo.join("README.md"), "hello\n").unwrap();
+        let add = git_command()
+            .args(["add", "README.md"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        assert!(add.status.success());
+
+        let commit = git_command()
+            .args(["commit", "-m", "init"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        assert!(commit.status.success());
+
+        let branch = git_command()
+            .args(["branch", "feature/test"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        assert!(branch.status.success());
+
+        let repo_path = repo.to_str().unwrap();
+        assert!(has_local_branch(repo_path, "main"));
+        assert!(has_local_branch(repo_path, "feature/test"));
+        assert!(!has_local_branch(repo_path, "missing"));
+
+        checkout_existing_branch(repo_path, "feature/test").unwrap();
+        assert_eq!(
+            get_current_branch(repo_path).as_deref(),
+            Some("feature/test")
+        );
     }
 }

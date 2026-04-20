@@ -72,7 +72,8 @@ export function RepoSlidePageClient() {
   useEffect(() => {
     if (acp.connected || acp.loading) return;
     void acp.connect();
-  }, [acp]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [acp.connected, acp.loading]);
 
   useEffect(() => {
     if (!workspaceId || !codebaseId) return;

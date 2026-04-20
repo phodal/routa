@@ -29,6 +29,7 @@ pub struct AcpSessionRow {
     pub branch: Option<String>,
     pub workspace_id: String,
     pub routa_agent_id: Option<String>,
+    pub provider_session_id: Option<String>,
     pub provider: Option<String>,
     pub role: Option<String>,
     pub mode_id: Option<String>,
@@ -68,7 +69,7 @@ impl AcpSessionStore {
         self.db
             .with_conn_async(move |conn| {
                 let mut stmt = conn.prepare(
-                    "SELECT id, name, cwd, branch, workspace_id, routa_agent_id, provider, role, mode_id,
+                    "SELECT id, name, cwd, branch, workspace_id, routa_agent_id, provider_session_id, provider, role, mode_id,
                             custom_command, custom_args, first_prompt_sent, message_history,
                             created_at, updated_at, parent_session_id
                      FROM acp_sessions WHERE id = ?1",
@@ -76,10 +77,10 @@ impl AcpSessionStore {
 
                 let row = stmt
                     .query_row([&id], |row| {
-                        let custom_args_json: String = row.get(10)?;
+                        let custom_args_json: String = row.get(11)?;
                         let custom_args: Vec<String> =
                             serde_json::from_str(&custom_args_json).unwrap_or_default();
-                        let history_json: String = row.get(12)?;
+                        let history_json: String = row.get(13)?;
                         let history: Vec<serde_json::Value> =
                             serde_json::from_str(&history_json).unwrap_or_default();
 
@@ -90,16 +91,17 @@ impl AcpSessionStore {
                             branch: row.get(3)?,
                             workspace_id: row.get(4)?,
                             routa_agent_id: row.get(5)?,
-                            provider: row.get(6)?,
-                            role: row.get(7)?,
-                            mode_id: row.get(8)?,
-                            custom_command: row.get(9)?,
+                            provider_session_id: row.get(6)?,
+                            provider: row.get(7)?,
+                            role: row.get(8)?,
+                            mode_id: row.get(9)?,
+                            custom_command: row.get(10)?,
                             custom_args,
-                            first_prompt_sent: row.get::<_, i32>(11)? != 0,
+                            first_prompt_sent: row.get::<_, i32>(12)? != 0,
                             message_history: history,
-                            created_at: row.get(13)?,
-                            updated_at: row.get(14)?,
-                            parent_session_id: row.get(15)?,
+                            created_at: row.get(14)?,
+                            updated_at: row.get(15)?,
+                            parent_session_id: row.get(16)?,
                         })
                     })
                     .optional()?;
@@ -147,14 +149,14 @@ impl AcpSessionStore {
             .with_conn_async(move |conn| {
                 let (sql, params): (&str, Vec<Box<dyn rusqlite::ToSql>>) = match &workspace_filter {
                     Some(ws) => (
-                        "SELECT id, name, cwd, branch, workspace_id, routa_agent_id, provider, role, mode_id,
+                        "SELECT id, name, cwd, branch, workspace_id, routa_agent_id, provider_session_id, provider, role, mode_id,
                                 custom_command, custom_args, first_prompt_sent, message_history,
                                 created_at, updated_at, parent_session_id
                          FROM acp_sessions WHERE workspace_id = ?1 ORDER BY updated_at DESC LIMIT ?2",
                         vec![Box::new(ws.clone()) as Box<dyn rusqlite::ToSql>, Box::new(limit as i64)],
                     ),
                     None => (
-                        "SELECT id, name, cwd, branch, workspace_id, routa_agent_id, provider, role, mode_id,
+                        "SELECT id, name, cwd, branch, workspace_id, routa_agent_id, provider_session_id, provider, role, mode_id,
                                 custom_command, custom_args, first_prompt_sent, message_history,
                                 created_at, updated_at, parent_session_id
                          FROM acp_sessions ORDER BY updated_at DESC LIMIT ?1",
@@ -165,10 +167,10 @@ impl AcpSessionStore {
                 let mut stmt = conn.prepare(sql)?;
                 let param_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
                 let rows = stmt.query_map(param_refs.as_slice(), |row| {
-                    let custom_args_json: String = row.get(10)?;
+                    let custom_args_json: String = row.get(11)?;
                     let custom_args: Vec<String> =
                         serde_json::from_str(&custom_args_json).unwrap_or_default();
-                    let history_json: String = row.get(12)?;
+                    let history_json: String = row.get(13)?;
                     let history: Vec<serde_json::Value> =
                         serde_json::from_str(&history_json).unwrap_or_default();
 
@@ -179,16 +181,17 @@ impl AcpSessionStore {
                         branch: row.get(3)?,
                         workspace_id: row.get(4)?,
                         routa_agent_id: row.get(5)?,
-                        provider: row.get(6)?,
-                        role: row.get(7)?,
-                        mode_id: row.get(8)?,
-                        custom_command: row.get(9)?,
+                        provider_session_id: row.get(6)?,
+                        provider: row.get(7)?,
+                        role: row.get(8)?,
+                        mode_id: row.get(9)?,
+                        custom_command: row.get(10)?,
                         custom_args,
-                        first_prompt_sent: row.get::<_, i32>(11)? != 0,
+                        first_prompt_sent: row.get::<_, i32>(12)? != 0,
                         message_history: history,
-                        created_at: row.get(13)?,
-                        updated_at: row.get(14)?,
-                        parent_session_id: row.get(15)?,
+                        created_at: row.get(14)?,
+                        updated_at: row.get(15)?,
+                        parent_session_id: row.get(16)?,
                     })
                 })?;
 
@@ -320,6 +323,26 @@ impl AcpSessionStore {
                 conn.execute(
                     "UPDATE acp_sessions SET routa_agent_id = ?1, updated_at = ?2 WHERE id = ?3",
                     rusqlite::params![routa_agent_id, now, id],
+                )?;
+                Ok(())
+            })
+            .await
+    }
+
+    /// Persist or update the provider-native session id for a session.
+    pub async fn set_provider_session_id(
+        &self,
+        session_id: &str,
+        provider_session_id: Option<&str>,
+    ) -> Result<(), ServerError> {
+        let id = session_id.to_string();
+        let provider_session_id = provider_session_id.map(|value| value.to_string());
+        self.db
+            .with_conn_async(move |conn| {
+                let now = chrono::Utc::now().timestamp_millis();
+                conn.execute(
+                    "UPDATE acp_sessions SET provider_session_id = ?1, updated_at = ?2 WHERE id = ?3",
+                    rusqlite::params![provider_session_id, now, id],
                 )?;
                 Ok(())
             })
@@ -626,6 +649,41 @@ mod tests {
             .expect("get failed")
             .expect("exists");
         assert_eq!(session.routa_agent_id.as_deref(), Some("agent-routa-1"));
+    }
+
+    #[tokio::test]
+    async fn test_set_provider_session_id() {
+        let (store, session_id) = setup().await;
+
+        store
+            .create(CreateAcpSessionParams {
+                id: &session_id,
+                cwd: "/tmp",
+                branch: None,
+                workspace_id: "default",
+                provider: Some("codex"),
+                role: Some("CRAFTER"),
+                custom_command: None,
+                custom_args: None,
+                parent_session_id: None,
+            })
+            .await
+            .expect("create failed");
+
+        store
+            .set_provider_session_id(&session_id, Some("provider-session-1"))
+            .await
+            .expect("set_provider_session_id failed");
+
+        let session = store
+            .get(&session_id)
+            .await
+            .expect("get failed")
+            .expect("exists");
+        assert_eq!(
+            session.provider_session_id.as_deref(),
+            Some("provider-session-1")
+        );
     }
 
     #[tokio::test]

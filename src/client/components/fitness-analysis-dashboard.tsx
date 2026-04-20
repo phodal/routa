@@ -68,7 +68,7 @@ function MetricCard({
   status: DashboardGateState;
 }) {
   return (
-    <div className={`rounded-2xl border px-4 py-3 ${statusTone(status)}`}>
+    <div className={`rounded-sm border px-4 py-3 ${statusTone(status)}`}>
       <div className="text-[10px] font-semibold uppercase tracking-[0.14em]">{label}</div>
       <div className="mt-2 text-2xl font-semibold tracking-tight">{value}</div>
       <div className="mt-1 text-[11px] leading-5 opacity-80">{hint}</div>
@@ -86,7 +86,7 @@ function Section({
   children: ReactNode;
 }) {
   return (
-    <section className="rounded-[28px] border border-desktop-border bg-white/80 p-4 shadow-sm dark:bg-white/6">
+    <section className="rounded-sm border border-desktop-border bg-desktop-bg-secondary/60 p-4">
       <div className="flex items-start justify-between gap-3">
         <div>
           <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-desktop-text-secondary">{title}</div>
@@ -111,7 +111,7 @@ function TargetRadar({
 }) {
   if (data.length === 0) {
     return (
-      <div className="rounded-2xl border border-dashed border-desktop-border px-4 py-8 text-sm text-desktop-text-secondary">
+      <div className="rounded-sm border border-dashed border-desktop-border px-4 py-8 text-sm text-desktop-text-secondary">
         {emptyText}
       </div>
     );
@@ -298,7 +298,7 @@ function BlockerHotspots({
 }) {
   if (items.length === 0) {
     return (
-      <div className="rounded-2xl border border-dashed border-desktop-border px-4 py-6 text-sm text-desktop-text-secondary">
+      <div className="rounded-sm border border-dashed border-desktop-border px-4 py-6 text-sm text-desktop-text-secondary">
         {emptyText}
       </div>
     );
@@ -309,7 +309,7 @@ function BlockerHotspots({
   return (
     <div className="space-y-3">
       {items.map((item) => (
-        <div key={item.dimension} className="rounded-2xl border border-desktop-border bg-desktop-bg-primary/70 px-3 py-3">
+        <div key={item.dimension} className="rounded-sm border border-desktop-border bg-desktop-bg-primary/70 px-3 py-3">
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
               <div className="text-sm font-semibold text-desktop-text-primary">{item.label}</div>
@@ -357,7 +357,7 @@ function Heatmap({
 
   if (orderedLevels.length === 0 || orderedDimensions.length === 0) {
     return (
-      <div className="rounded-2xl border border-dashed border-desktop-border px-4 py-8 text-sm text-desktop-text-secondary">
+      <div className="rounded-sm border border-dashed border-desktop-border px-4 py-8 text-sm text-desktop-text-secondary">
         {emptyText}
       </div>
     );
@@ -378,7 +378,7 @@ function Heatmap({
           {orderedDimensions.map(({ key, translationKey }) => (
             <div
               key={key}
-              className="rounded-2xl border border-desktop-border bg-desktop-bg-primary/80 px-3 py-3 text-center"
+              className="rounded-sm border border-desktop-border bg-desktop-bg-primary/80 px-3 py-3 text-center"
               role="columnheader"
             >
               <div className="text-[11px] font-semibold leading-4 text-desktop-text-primary">
@@ -395,7 +395,7 @@ function Heatmap({
           {orderedLevels.flatMap(({ key, translationKey }) => [
             <div
               key={`${key}-label`}
-              className="flex flex-col justify-center rounded-2xl border border-desktop-border bg-desktop-bg-primary/70 px-3 py-3"
+              className="flex flex-col justify-center rounded-sm border border-desktop-border bg-desktop-bg-primary/70 px-3 py-3"
               role="rowheader"
             >
               <div className="text-[11px] font-semibold leading-4 text-desktop-text-primary">
@@ -412,7 +412,7 @@ function Heatmap({
               return (
                 <div
                   key={`${dimensionKey}:${key}`}
-                  className={`rounded-2xl border px-3 py-3 text-center ${cell ? "border-desktop-border" : "border-dashed border-desktop-border/80"}`}
+                  className={`rounded-sm border px-3 py-3 text-center ${cell ? "border-desktop-border" : "border-dashed border-desktop-border/80"}`}
                   style={{ backgroundColor: cell ? gridTone(cell.score) : "rgba(148, 163, 184, 0.08)" }}
                   role="cell"
                 >
@@ -441,7 +441,7 @@ export function FitnessAnalysisDashboard({ report }: FitnessAnalysisDashboardPro
     return (
       <section
         data-testid="fitness-dashboard-empty"
-        className="rounded-[28px] border border-dashed border-desktop-border px-4 py-8 text-sm text-desktop-text-secondary"
+        className="rounded-sm border border-dashed border-desktop-border px-4 py-8 text-sm text-desktop-text-secondary"
       >
         {dashboard.noReport}
       </section>
@@ -503,7 +503,7 @@ export function FitnessAnalysisDashboard({ report }: FitnessAnalysisDashboardPro
                 noNextLevel={dashboard.noNextLevel}
               />
               <div className="grid gap-3 sm:grid-cols-3">
-                <div className="rounded-2xl border border-desktop-border bg-desktop-bg-primary/70 px-3 py-3">
+                <div className="rounded-sm border border-desktop-border bg-desktop-bg-primary/70 px-3 py-3">
                   <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-desktop-text-secondary">
                     {dashboard.fromLastRun}
                   </div>
@@ -511,13 +511,13 @@ export function FitnessAnalysisDashboard({ report }: FitnessAnalysisDashboardPro
                     {model.metrics.previousGeneratedAt ? formatTime(model.metrics.previousGeneratedAt) : dashboard.noHistory}
                   </div>
                 </div>
-                <div className="rounded-2xl border border-desktop-border bg-desktop-bg-primary/70 px-3 py-3">
+                <div className="rounded-sm border border-desktop-border bg-desktop-bg-primary/70 px-3 py-3">
                   <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-desktop-text-secondary">
                     {dashboard.changedDimensions}
                   </div>
                   <div className="mt-2 text-2xl font-semibold text-desktop-text-primary">{model.metrics.changedDimensions}</div>
                 </div>
-                <div className="rounded-2xl border border-desktop-border bg-desktop-bg-primary/70 px-3 py-3">
+                <div className="rounded-sm border border-desktop-border bg-desktop-bg-primary/70 px-3 py-3">
                   <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-desktop-text-secondary">
                     {dashboard.changedCriteria}
                   </div>

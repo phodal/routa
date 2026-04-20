@@ -47,9 +47,18 @@ describe("onboarding helpers", () => {
     ).toBe(true);
   });
 
+  it("treats runtime-detected providers as explicit provider setup", () => {
+    expect(
+      hasSavedProviderConfiguration({}, {}, { runtimeProviderCount: 2 }),
+    ).toBe(true);
+  });
+
   it("parses only supported onboarding modes", () => {
-    expect(parseOnboardingMode("ROUTA")).toBe("ROUTA");
-    expect(parseOnboardingMode("CRAFTER")).toBe("CRAFTER");
+    expect(parseOnboardingMode("SESSION")).toBe("SESSION");
+    expect(parseOnboardingMode("KANBAN")).toBe("KANBAN");
+    expect(parseOnboardingMode("TEAM")).toBe("TEAM");
+    expect(parseOnboardingMode("ROUTA")).toBe("KANBAN");
+    expect(parseOnboardingMode("CRAFTER")).toBe("SESSION");
     expect(parseOnboardingMode("DEVELOPER")).toBeNull();
     expect(parseOnboardingMode(null)).toBeNull();
   });
@@ -57,7 +66,7 @@ describe("onboarding helpers", () => {
   it("clears persisted onboarding state", () => {
     const storage = new Map<string, string>([
       [ONBOARDING_COMPLETED_KEY, "true"],
-      [ONBOARDING_MODE_KEY, "CRAFTER"],
+      [ONBOARDING_MODE_KEY, "SESSION"],
     ]);
 
     clearOnboardingState({

@@ -10,7 +10,9 @@ mod types;
 
 pub use engine::evaluate_harness_fluency;
 pub use report::format_text_report;
-pub use types::{EvaluateOptions, FluencyMode, ReportFraming};
+pub use types::{
+    CriterionStatus, EvaluateOptions, FluencyMode, HarnessFluencyReport, LevelChange, ReportFraming,
+};
 
 #[cfg(test)]
 mod tests;

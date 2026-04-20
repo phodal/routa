@@ -2,7 +2,7 @@
 
 - Status: accepted
 - Date: 2026-02-16
-- Derived from: [issue #1](../issues/2026-02-16-gh-1-feat-specialist-markdown-yaml-frontmatter-specialist.md)
+- Derived from: [issue #1](https://github.com/phodal/routa/issues/1)
 
 ## Context
 

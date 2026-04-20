@@ -40,6 +40,7 @@ pub use runtime_manager::{current_platform, AcpRuntimeManager, RuntimeInfo, Runt
 pub use warmup::{AcpWarmupService, WarmupState, WarmupStatus};
 
 use std::collections::HashMap;
+use std::path::Path;
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
@@ -47,6 +48,24 @@ use tokio::sync::{broadcast, RwLock};
 
 use crate::trace::{Contributor, TraceConversation, TraceEventType, TraceRecord, TraceWriter};
 use process::AcpProcess;
+
+#[cfg(windows)]
+pub(crate) const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+fn validate_session_cwd(cwd: &str) -> Result<(), String> {
+    let path = Path::new(cwd);
+    if !path.exists() {
+        return Err(format!(
+            "Invalid session cwd '{cwd}': directory does not exist"
+        ));
+    }
+    if !path.is_dir() {
+        return Err(format!(
+            "Invalid session cwd '{cwd}': path is not a directory"
+        ));
+    }
+    Ok(())
+}
 
 // ─── Session Record ─────────────────────────────────────────────────────
 
@@ -84,6 +103,8 @@ pub struct SessionLaunchOptions {
     pub specialist_system_prompt: Option<String>,
     pub allowed_native_tools: Option<Vec<String>>,
     pub initialize_timeout_ms: Option<u64>,
+    pub provider_args: Option<Vec<String>>,
+    pub acp_mcp_servers: Option<Vec<serde_json::Value>>,
 }
 
 // ─── Managed Process ────────────────────────────────────────────────────
@@ -120,6 +141,8 @@ struct ManagedProcess {
     /// Working directory (for contributor context)
     #[allow(dead_code)]
     cwd: String,
+    /// Provider-specific MCP teardown to run when the session exits.
+    mcp_cleanup: Option<mcp_setup::McpCleanupAction>,
 }
 
 // ─── ACP Manager ────────────────────────────────────────────────────────
@@ -241,9 +264,7 @@ impl AcpManager {
             return;
         }
         let mut history = self.history.write().await;
-        let entries = history
-            .entry(session_id.to_string())
-            .or_insert_with(Vec::new);
+        let entries = history.entry(session_id.to_string()).or_default();
         entries.push(notification);
         // Cap at 500 entries (same limit as Next.js backend)
         if entries.len() > 500 {
@@ -376,6 +397,7 @@ impl AcpManager {
         process_type: AgentProcessType,
         acp_session_id: String,
         ntx: broadcast::Sender<serde_json::Value>,
+        mcp_cleanup: Option<mcp_setup::McpCleanupAction>,
     ) {
         let created_at = chrono::Utc::now().to_rfc3339();
         let trace_writer = TraceWriter::new(&cwd);
@@ -409,6 +431,7 @@ impl AcpManager {
                 created_at,
                 trace_writer: trace_writer.clone(),
                 cwd: cwd.clone(),
+                mcp_cleanup,
             },
         );
         self.notification_channels
@@ -446,6 +469,7 @@ impl AcpManager {
         args: Vec<String>,
         options: SessionLaunchOptions,
     ) -> Result<(String, String), String> {
+        validate_session_cwd(&cwd)?;
         let (ntx, _) = broadcast::channel::<serde_json::Value>(256);
 
         let process = AcpProcess::spawn(
@@ -462,7 +486,9 @@ impl AcpManager {
             .initialize_with_timeout(options.initialize_timeout_ms)
             .await?;
 
-        let acp_session_id = process.new_session(&cwd).await?;
+        let acp_session_id = process
+            .new_session(&cwd, options.acp_mcp_servers.as_deref().unwrap_or(&[]))
+            .await?;
         self.register_managed_session(
             session_id.clone(),
             cwd.clone(),
@@ -475,11 +501,80 @@ impl AcpManager {
             AgentProcessType::Acp(Arc::new(process)),
             acp_session_id.clone(),
             ntx.clone(),
+            None,
         )
         .await;
 
         tracing::info!(
             "[AcpManager] Session {} created from inline command (provider: {}, agent session: {})",
+            session_id,
+            provider_name,
+            acp_session_id,
+        );
+
+        Ok((session_id, acp_session_id))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub async fn load_session_from_inline(
+        &self,
+        session_id: String,
+        cwd: String,
+        workspace_id: String,
+        provider_name: String,
+        role: Option<String>,
+        model: Option<String>,
+        parent_session_id: Option<String>,
+        command: String,
+        args: Vec<String>,
+        provider_session_id: Option<String>,
+        options: SessionLaunchOptions,
+    ) -> Result<(String, String), String> {
+        validate_session_cwd(&cwd)?;
+        let (ntx, _) = broadcast::channel::<serde_json::Value>(256);
+
+        let process = AcpProcess::spawn(
+            &command,
+            &args.iter().map(|s| s.as_str()).collect::<Vec<_>>(),
+            &cwd,
+            ntx.clone(),
+            &provider_name,
+            &session_id,
+        )
+        .await?;
+
+        process
+            .initialize_with_timeout(options.initialize_timeout_ms)
+            .await?;
+
+        let resolved_provider_session_id =
+            provider_session_id.unwrap_or_else(|| session_id.clone());
+        let acp_session_id = process
+            .load_session(
+                &resolved_provider_session_id,
+                &cwd,
+                options.acp_mcp_servers.as_deref().unwrap_or(&[]),
+            )
+            .await?;
+
+        self.register_managed_session(
+            session_id.clone(),
+            cwd.clone(),
+            workspace_id.clone(),
+            provider_name.clone(),
+            role.clone(),
+            model.clone(),
+            parent_session_id.clone(),
+            &options,
+            AgentProcessType::Acp(Arc::new(process)),
+            acp_session_id.clone(),
+            ntx.clone(),
+            None,
+        )
+        .await;
+
+        tracing::info!(
+            "[AcpManager] Session {} loaded from inline command (provider: {}, agent session: {})",
             session_id,
             provider_name,
             acp_session_id,
@@ -502,7 +597,20 @@ impl AcpManager {
         mcp_profile: Option<String>,
         options: SessionLaunchOptions,
     ) -> Result<(String, String), String> {
+        validate_session_cwd(&cwd)?;
         let provider_name = provider.as_deref().unwrap_or("opencode");
+        let acp_mcp_servers = if matches!(provider_name, "codex" | "codex-acp") {
+            options.acp_mcp_servers.clone().unwrap_or_else(|| {
+                mcp_setup::build_acp_http_mcp_servers(
+                    &workspace_id,
+                    &session_id,
+                    tool_mode.as_deref(),
+                    mcp_profile.as_deref(),
+                )
+            })
+        } else {
+            Vec::new()
+        };
 
         // Create the notification broadcast channel for this session
         let (ntx, _) = broadcast::channel::<serde_json::Value>(256);
@@ -518,7 +626,7 @@ impl AcpManager {
         };
 
         // Check if this is Claude (uses stream-json protocol, not ACP)
-        let (process_type, acp_session_id) = if provider_name == "claude" {
+        let (process_type, acp_session_id, mcp_cleanup) = if provider_name == "claude" {
             // Use Claude Code stream-json protocol
             let config = ClaudeCodeConfig {
                 command: "claude".to_string(),
@@ -539,25 +647,37 @@ impl AcpManager {
             (
                 AgentProcessType::Claude(Arc::new(claude_process)),
                 claude_session_id,
+                None,
             )
         } else {
             // Use standard ACP protocol
             let preset = get_preset_by_id_with_registry(provider_name).await?;
 
-            if let Some(summary) = mcp_setup::ensure_mcp_for_provider(
+            let mcp_setup = mcp_setup::ensure_mcp_for_provider(
                 provider_name,
+                &cwd,
                 &workspace_id,
                 &session_id,
                 tool_mode.as_deref(),
                 mcp_profile.as_deref(),
             )
-            .await?
-            {
+            .await?;
+            if let Some(summary) = mcp_setup.summary.as_deref() {
                 tracing::info!("[AcpManager] {}", summary);
             }
+            let mcp_cleanup = mcp_setup.cleanup.clone();
 
             // Build args: preset args + optional model flag
             let mut extra_args: Vec<String> = preset.args.clone();
+            if matches!(provider_name, "codex" | "codex-acp") {
+                for override_arg in mcp_setup::codex_cli_overrides(&cwd)? {
+                    extra_args.push("-c".to_string());
+                    extra_args.push(override_arg);
+                }
+            }
+            if let Some(provider_args) = options.provider_args.clone() {
+                extra_args.extend(provider_args);
+            }
             if let Some(ref m) = model {
                 if !m.is_empty() {
                     // opencode (and future providers) accept -m <model>
@@ -567,25 +687,43 @@ impl AcpManager {
             }
 
             let preset_command = resolve_preset_command(&preset);
-            let process = AcpProcess::spawn(
-                &preset_command,
-                &extra_args.iter().map(|s| s.as_str()).collect::<Vec<_>>(),
-                &cwd,
-                ntx.clone(),
-                &preset.name,
-                &session_id,
-            )
-            .await?;
-
-            // Initialize the protocol
-            process
-                .initialize_with_timeout(options.initialize_timeout_ms)
+            let launch_result = async {
+                let process = AcpProcess::spawn(
+                    &preset_command,
+                    &extra_args.iter().map(|s| s.as_str()).collect::<Vec<_>>(),
+                    &cwd,
+                    ntx.clone(),
+                    &preset.name,
+                    &session_id,
+                )
                 .await?;
 
-            // Create the agent session
-            let agent_session_id = process.new_session(&cwd).await?;
+                // Initialize the protocol
+                process
+                    .initialize_with_timeout(options.initialize_timeout_ms)
+                    .await?;
 
-            (AgentProcessType::Acp(Arc::new(process)), agent_session_id)
+                // Create the agent session
+                let agent_session_id = process.new_session(&cwd, &acp_mcp_servers).await?;
+
+                Ok::<_, String>((process, agent_session_id))
+            }
+            .await;
+
+            match launch_result {
+                Ok((process, agent_session_id)) => (
+                    AgentProcessType::Acp(Arc::new(process)),
+                    agent_session_id,
+                    mcp_cleanup,
+                ),
+                Err(error) => {
+                    if let Some(cleanup) = mcp_cleanup.as_ref() {
+                        let summary = mcp_setup::cleanup_mcp_for_provider(cleanup).await;
+                        tracing::warn!("[AcpManager] {}", summary);
+                    }
+                    return Err(error);
+                }
+            }
         };
 
         self.register_managed_session(
@@ -600,6 +738,7 @@ impl AcpManager {
             process_type,
             acp_session_id.clone(),
             ntx.clone(),
+            mcp_cleanup,
         )
         .await;
 
@@ -717,6 +856,11 @@ impl AcpManager {
                 AgentProcessType::Acp(p) => p.kill().await,
                 AgentProcessType::Claude(p) => p.kill().await,
             }
+
+            if let Some(cleanup) = managed.mcp_cleanup.as_ref() {
+                let summary = mcp_setup::cleanup_mcp_for_provider(cleanup).await;
+                tracing::info!("[AcpManager] {}", summary);
+            }
         }
         // Remove session record
         self.sessions.write().await.remove(session_id);
@@ -744,6 +888,14 @@ impl AcpManager {
                 AgentProcessType::Claude(p) => p.is_alive(),
             })
             .unwrap_or(false)
+    }
+
+    /// Get the managed ACP session id for a live session.
+    pub async fn get_acp_session_id(&self, session_id: &str) -> Option<String> {
+        let processes = self.processes.read().await;
+        processes
+            .get(session_id)
+            .map(|managed| managed.acp_session_id.clone())
     }
 
     /// Get the preset ID for a session.
@@ -779,7 +931,7 @@ impl AcpManager {
         .with_conversation(TraceConversation {
             turn: None,
             role: Some("user".to_string()),
-            content_preview: Some(text[..text.len().min(200)].to_string()),
+            content_preview: Some(truncate_content(text, 500)),
             full_content: Some(text.to_string()),
         });
 
@@ -804,6 +956,21 @@ impl AcpManager {
 
 // ─── ACP Presets ────────────────────────────────────────────────────────
 
+/// Resume/continuation capability metadata for a provider.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResumeCapability {
+    pub supported: bool,
+    /// "native" | "replay" | "both"
+    pub mode: String,
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub supports_fork: Option<bool>,
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub supports_list: Option<bool>,
+}
+
 /// ACP provider presets for known coding agents.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AcpPreset {
@@ -817,6 +984,10 @@ pub struct AcpPreset {
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub env_bin_override: Option<String>,
+    /// Resume/continuation capabilities for this provider.
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resume: Option<ResumeCapability>,
 }
 
 /// Get the list of known ACP agent presets (static/builtin only).
@@ -829,6 +1000,12 @@ pub fn get_presets() -> Vec<AcpPreset> {
             args: vec!["acp".to_string()],
             description: "OpenCode AI coding agent".to_string(),
             env_bin_override: Some("OPENCODE_BIN".to_string()),
+            resume: Some(ResumeCapability {
+                supported: true,
+                mode: "replay".to_string(),
+                supports_fork: None,
+                supports_list: None,
+            }),
         },
         AcpPreset {
             id: "gemini".to_string(),
@@ -837,6 +1014,7 @@ pub fn get_presets() -> Vec<AcpPreset> {
             args: vec!["--experimental-acp".to_string()],
             description: "Google Gemini CLI".to_string(),
             env_bin_override: None,
+            resume: None,
         },
         AcpPreset {
             id: "codex-acp".to_string(),
@@ -845,6 +1023,12 @@ pub fn get_presets() -> Vec<AcpPreset> {
             args: vec![],
             description: "OpenAI Codex CLI (codex-acp wrapper)".to_string(),
             env_bin_override: Some("CODEX_ACP_BIN".to_string()),
+            resume: Some(ResumeCapability {
+                supported: true,
+                mode: "both".to_string(),
+                supports_fork: None,
+                supports_list: Some(true),
+            }),
         },
         AcpPreset {
             id: "copilot".to_string(),
@@ -857,6 +1041,7 @@ pub fn get_presets() -> Vec<AcpPreset> {
             ],
             description: "GitHub Copilot CLI".to_string(),
             env_bin_override: Some("COPILOT_BIN".to_string()),
+            resume: None,
         },
         AcpPreset {
             id: "auggie".to_string(),
@@ -865,6 +1050,7 @@ pub fn get_presets() -> Vec<AcpPreset> {
             args: vec!["--acp".to_string()],
             description: "Augment Code's AI agent".to_string(),
             env_bin_override: None,
+            resume: None,
         },
         AcpPreset {
             id: "kimi".to_string(),
@@ -873,6 +1059,7 @@ pub fn get_presets() -> Vec<AcpPreset> {
             args: vec!["acp".to_string()],
             description: "Moonshot AI's Kimi CLI".to_string(),
             env_bin_override: None,
+            resume: None,
         },
         AcpPreset {
             id: "kiro".to_string(),
@@ -881,14 +1068,16 @@ pub fn get_presets() -> Vec<AcpPreset> {
             args: vec!["acp".to_string()],
             description: "Amazon Kiro AI coding agent".to_string(),
             env_bin_override: Some("KIRO_BIN".to_string()),
+            resume: None,
         },
         AcpPreset {
             id: "qoder".to_string(),
             name: "Qoder".to_string(),
             command: "qodercli".to_string(),
-            args: vec!["--acp".to_string()],
+            args: vec!["--acp".to_string(), "--experimental-mcp-load".to_string()],
             description: "Qoder AI coding agent".to_string(),
             env_bin_override: Some("QODER_BIN".to_string()),
+            resume: None,
         },
         AcpPreset {
             id: "claude".to_string(),
@@ -899,8 +1088,29 @@ pub fn get_presets() -> Vec<AcpPreset> {
             args: vec![],
             description: "Anthropic Claude Code (stream-json protocol)".to_string(),
             env_bin_override: Some("CLAUDE_BIN".to_string()),
+            resume: Some(ResumeCapability {
+                supported: true,
+                mode: "replay".to_string(),
+                supports_fork: Some(true),
+                supports_list: None,
+            }),
         },
     ]
+}
+
+/// Get a static preset by ID (synchronous, no registry lookup).
+pub fn get_preset_by_id(id: &str) -> Option<AcpPreset> {
+    let normalized_id = match id {
+        "codex" => "codex-acp",
+        "qodercli" => "qoder",
+        other => other,
+    };
+    get_presets().into_iter().find(|p| p.id == normalized_id)
+}
+
+/// Get the resume capability for a provider ID (synchronous).
+pub fn get_resume_capability(provider: &str) -> Option<ResumeCapability> {
+    get_preset_by_id(provider).and_then(|p| p.resume)
 }
 
 /// Get a preset by ID, checking both static presets and registry.
@@ -974,6 +1184,7 @@ async fn get_registry_preset(id: &str) -> Result<AcpPreset, String> {
         args,
         description: agent.description,
         env_bin_override: None,
+        resume: None,
     })
 }
 
@@ -1007,9 +1218,11 @@ fn truncate_content(text: &str, max_len: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        get_preset_by_id_with_registry, get_presets, truncate_content, AcpManager, AcpSessionRecord,
+        get_preset_by_id_with_registry, get_presets, truncate_content, validate_session_cwd,
+        AcpManager, AcpSessionRecord,
     };
     use std::collections::HashMap;
+    use std::fs;
     use std::sync::Arc;
     use tokio::sync::RwLock;
 
@@ -1022,7 +1235,14 @@ mod tests {
     #[test]
     fn static_presets_include_qoder() {
         let presets = get_presets();
-        assert!(presets.iter().any(|preset| preset.id == "qoder"));
+        let qoder = presets
+            .iter()
+            .find(|preset| preset.id == "qoder")
+            .expect("qoder preset");
+        assert_eq!(
+            qoder.args,
+            vec!["--acp".to_string(), "--experimental-mcp-load".to_string()]
+        );
     }
 
     #[tokio::test]
@@ -1032,7 +1252,29 @@ mod tests {
             .expect("qodercli alias should resolve");
         assert_eq!(preset.id, "qodercli");
         assert_eq!(preset.command, "qodercli");
-        assert_eq!(preset.args, vec!["--acp".to_string()]);
+        assert_eq!(
+            preset.args,
+            vec!["--acp".to_string(), "--experimental-mcp-load".to_string()]
+        );
+    }
+
+    #[test]
+    fn validate_session_cwd_rejects_missing_or_non_directory_paths() {
+        let temp = tempfile::tempdir().expect("tempdir should create");
+        let missing = temp.path().join("missing-dir");
+        let file_path = temp.path().join("not-a-dir.txt");
+        fs::write(&file_path, "content").expect("file should write");
+
+        let missing_error = validate_session_cwd(missing.to_string_lossy().as_ref())
+            .expect_err("missing directory should fail");
+        assert!(missing_error.contains("directory does not exist"));
+
+        let file_error = validate_session_cwd(file_path.to_string_lossy().as_ref())
+            .expect_err("file path should fail");
+        assert!(file_error.contains("path is not a directory"));
+
+        validate_session_cwd(temp.path().to_string_lossy().as_ref())
+            .expect("existing directory should pass");
     }
 
     #[tokio::test]

@@ -19,7 +19,21 @@ import {
   listActiveWorkspaces,
   workspaceKey,
   GitHubWorkspaceError,
+  importGitHubRepo,
 } from "../github-workspace";
+
+vi.mock("adm-zip", () => ({
+  default: class MockAdmZip {
+    constructor(_buffer: Buffer) {}
+
+    extractAllTo(targetDir: string) {
+      const repoRoot = path.join(targetDir, "demo-main");
+      fs.mkdirSync(path.join(repoRoot, "src"), { recursive: true });
+      fs.writeFileSync(path.join(repoRoot, "README.md"), "# Imported Repo\n");
+      fs.writeFileSync(path.join(repoRoot, "src", "index.ts"), "export const imported = true;\n");
+    }
+  },
+}));
 
 // ─── Helpers: create a synthetic repo dir ─────────────────────────────────
 
@@ -380,5 +394,79 @@ describe("download error mapping", () => {
   it("should map size exceeded to TOO_LARGE", () => {
     const err = new GitHubWorkspaceError("Too large", "TOO_LARGE");
     expect(err.code).toBe("TOO_LARGE");
+  });
+});
+
+describe("importGitHubRepo", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("imports, caches, searches, and disposes a GitHub workspace", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      headers: new Headers({ "content-length": "128" }),
+      arrayBuffer: async () => new Uint8Array([1, 2, 3]).buffer,
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const workspace = await importGitHubRepo({
+      owner: "demo-owner",
+      repo: "demo-repo",
+      ref: "main",
+    });
+
+    expect(workspace.fileCount).toBe(2);
+    expect(workspace.readFile("README.md")).toContain("Imported Repo");
+    expect(workspace.search("index")[0]).toEqual(
+      expect.objectContaining({
+        path: "src/index.ts",
+      }),
+    );
+    expect(getCachedWorkspace("demo-owner", "demo-repo", "main")).toBe(workspace);
+    expect(listActiveWorkspaces()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: "demo-owner/demo-repo@main",
+          fileCount: 2,
+        }),
+      ]),
+    );
+
+    const cached = await importGitHubRepo({
+      owner: "demo-owner",
+      repo: "demo-repo",
+      ref: "main",
+    });
+    expect(cached).toBe(workspace);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    workspace.dispose();
+  });
+
+  it("maps HTTP and size errors into GitHubWorkspaceError", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => ({
+      ok: false,
+      status: 404,
+      headers: new Headers(),
+    })));
+
+    await expect(
+      importGitHubRepo({ owner: "missing", repo: "repo" }),
+    ).rejects.toMatchObject({
+      code: "NOT_FOUND",
+    });
+
+    vi.stubGlobal("fetch", vi.fn(async () => ({
+      ok: true,
+      headers: new Headers({ "content-length": String(10 * 1024 * 1024) }),
+      arrayBuffer: async () => new Uint8Array([1, 2, 3]).buffer,
+    })));
+
+    await expect(
+      importGitHubRepo({ owner: "big", repo: "repo", maxSizeMB: 1 }),
+    ).rejects.toMatchObject({
+      code: "TOO_LARGE",
+    });
   });
 });

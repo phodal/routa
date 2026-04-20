@@ -1,4 +1,5 @@
 const BACKEND_KEY = "routa.backendBaseUrl";
+const API_PREFIX = "/api";
 
 function normalizeBaseUrl(raw: string | null | undefined): string {
   const value = (raw ?? "").trim();
@@ -64,8 +65,16 @@ export function setConfiguredBackendBaseUrl(baseUrl: string | null): void {
 }
 
 export function resolveApiPath(path: string, explicitBaseUrl?: string): string {
-  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  const value = path.trim();
+  if (value.startsWith("http://") || value.startsWith("https://")) {
+    return value;
+  }
+
+  const normalizedPath = value.startsWith("/") ? value : `/${value}`;
+  const apiPath = normalizedPath.startsWith(`${API_PREFIX}/`) || normalizedPath === API_PREFIX
+    ? normalizedPath
+    : `${API_PREFIX}${normalizedPath}`;
   const baseUrl = normalizeBaseUrl(explicitBaseUrl) || getConfiguredBackendBaseUrl();
-  if (!baseUrl) return normalizedPath;
-  return `${baseUrl}${normalizedPath}`;
+  if (!baseUrl) return apiPath;
+  return `${baseUrl}${apiPath}`;
 }

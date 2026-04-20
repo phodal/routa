@@ -19,8 +19,17 @@ import { DesktopSidebar } from "./desktop-sidebar";
 const DESKTOP_SIDEBAR_COLLAPSED_KEY = "routa.desktop.sidebar-collapsed";
 const DESKTOP_SIDEBAR_CHANGE_EVENT = "routa:desktop-sidebar-collapsed";
 
+function hasDesktopSidebarLocalStorageAccess(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    window.localStorage != null &&
+    typeof window.localStorage.getItem === "function" &&
+    typeof window.localStorage.setItem === "function"
+  );
+}
+
 function getDesktopSidebarCollapsedSnapshot(): boolean {
-  if (typeof window === "undefined") {
+  if (!hasDesktopSidebarLocalStorageAccess()) {
     return false;
   }
 
@@ -78,7 +87,7 @@ export function DesktopAppShell({
   );
 
   const setSidebarCollapsed = useCallback((collapsed: boolean) => {
-    if (typeof window === "undefined") {
+    if (!hasDesktopSidebarLocalStorageAccess()) {
       return;
     }
 

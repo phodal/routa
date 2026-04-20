@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getTraceReader } from "@/core/trace";
+import { queryTracesWithSessionFallback } from "@/core/trace";
 import { loadSessionHistory } from "@/core/session-history";
 import {
   buildPreferredTranscriptPayload,
@@ -17,7 +17,7 @@ export async function GET(
   const history = await loadSessionHistory(sessionId, { consolidated: true });
   const historyMessages = historyNotificationsToMessages(history, sessionId);
   const traces = shouldFetchTranscriptTraces(historyMessages)
-    ? await getTraceReader(process.cwd()).query({ sessionId })
+    ? await queryTracesWithSessionFallback({ sessionId })
     : [];
 
   return NextResponse.json(

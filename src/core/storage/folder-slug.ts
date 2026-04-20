@@ -78,3 +78,13 @@ export function getTracesDir(absolutePath: string): string {
 export function getToolCallsDir(absolutePath: string, sessionId: string): string {
   return path.join(getSessionsDir(absolutePath), sessionId, "tool-calls");
 }
+
+/**
+ * Get the canvases directory for a project.
+ *
+ * @param absolutePath - The project's absolute path
+ * @returns Path like ~/.routa/projects/{folder-slug}/canvases
+ */
+export function getCanvasesDir(absolutePath: string): string {
+  return path.join(getProjectStorageDir(absolutePath), "canvases");
+}

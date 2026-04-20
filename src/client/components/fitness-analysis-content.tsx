@@ -126,7 +126,7 @@ function RecommendationCard({
   startFromLabel: string;
 }) {
   return (
-    <article className="rounded-xl border border-desktop-border bg-white/80 p-3 dark:bg-white/6">
+    <article className="rounded-sm border border-desktop-border bg-desktop-bg-secondary/60 p-3">
         <div className="flex items-start justify-between gap-2">
           <div className="text-sm font-semibold text-desktop-text-primary">{action}</div>
         {critical ? (
@@ -136,7 +136,7 @@ function RecommendationCard({
         ) : null}
       </div>
       <div className="mt-2 text-[11px] leading-5 text-desktop-text-secondary">{whyItMatters}</div>
-      <div className="mt-2 rounded-xl border border-desktop-border bg-desktop-bg-primary/80 px-3 py-2 text-[11px] text-desktop-text-secondary">
+      <div className="mt-2 rounded-sm border border-desktop-border bg-desktop-bg-primary/80 px-3 py-2 text-[11px] text-desktop-text-secondary">
         {startFromLabel}{evidenceHint}
       </div>
     </article>
@@ -235,7 +235,7 @@ function CapabilityCellCard({ cell }: { cell: CellResult }) {
   const criticalFailures = failedCriteria.filter((criterion) => criterion.critical);
 
   return (
-    <article className="rounded-2xl border border-desktop-border bg-white/85 p-4 shadow-sm dark:bg-white/6">
+    <article className="rounded-sm border border-desktop-border bg-desktop-bg-secondary/60 p-4">
       <div className="flex items-start justify-between gap-3">
         <div>
           <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-desktop-text-secondary">
@@ -278,7 +278,7 @@ function CapabilityCellCard({ cell }: { cell: CellResult }) {
           ) : null}
         </div>
       ) : (
-        <div className="mt-3 rounded-xl border border-dashed border-desktop-border px-3 py-3 text-[11px] text-desktop-text-secondary">
+        <div className="mt-3 rounded-sm border border-dashed border-desktop-border px-3 py-3 text-[11px] text-desktop-text-secondary">
           {t.fitness.overview.noFailures}
         </div>
       )}
@@ -300,39 +300,39 @@ function OverviewView({
 
   if (!activeMeasure) {
     return (
-      <div className="rounded-2xl border border-dashed border-desktop-border px-4 py-8 text-sm text-desktop-text-secondary">
+      <div className="rounded-sm border border-dashed border-desktop-border px-4 py-8 text-sm text-desktop-text-secondary">
         {t.fitness.overview.noDimensionData}
       </div>
     );
   }
 
   return (
-    <section className="border border-desktop-border bg-desktop-bg-secondary/60 my-2 overflow-hidden rounded-2xl">
+    <section className="my-2 overflow-hidden rounded-sm border border-desktop-border bg-desktop-bg-secondary/60">
       {baselineModel ? (
-        <div className="border-b border-desktop-border/70 bg-white/70 px-4 py-4 dark:bg-white/6">
+        <div className="border-b border-desktop-border/70 bg-desktop-bg-primary/60 px-4 py-4">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="rounded-full border border-desktop-border bg-white/90 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-desktop-text-secondary dark:bg-white/10">
+            <span className="rounded-sm border border-desktop-border bg-desktop-bg-primary/80 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-desktop-text-secondary">
               {baselineModel.framing}
             </span>
             <span className="text-[13px] font-semibold text-desktop-text-primary">{baselineModel.summary}</span>
           </div>
 
           <div className="mt-3 flex flex-wrap gap-2">
-            <span className="rounded-full border border-desktop-border bg-white/90 px-3 py-1.5 text-[11px] text-desktop-text-secondary dark:bg-white/10">
+            <span className="rounded-sm border border-desktop-border bg-desktop-bg-primary/80 px-3 py-1.5 text-[11px] text-desktop-text-secondary">
               {t.fitness.overview.levelLabel}
               <span className="ml-1 font-semibold text-desktop-text-primary">{baselineModel.overallLevelName}</span>
             </span>
-            <span className="rounded-full border border-desktop-border bg-white/90 px-3 py-1.5 text-[11px] text-desktop-text-secondary dark:bg-white/10">
+            <span className="rounded-sm border border-desktop-border bg-desktop-bg-primary/80 px-3 py-1.5 text-[11px] text-desktop-text-secondary">
               {t.fitness.overview.scoreLabel}
               <span className="ml-1 font-semibold text-desktop-text-primary">{baselineModel.scoreLabel}</span>
             </span>
             {baselineModel.autonomyBand ? (
-              <span className="rounded-full border border-desktop-border bg-white/90 px-3 py-1.5 text-[11px] text-desktop-text-secondary dark:bg-white/10">
+              <span className="rounded-sm border border-desktop-border bg-desktop-bg-primary/80 px-3 py-1.5 text-[11px] text-desktop-text-secondary">
                 {baselineModel.autonomyBand}
               </span>
             ) : null}
             {baselineModel.nextLevelName ? (
-              <span className="rounded-full border border-desktop-border bg-white/90 px-3 py-1.5 text-[11px] text-desktop-text-secondary dark:bg-white/10">
+              <span className="rounded-sm border border-desktop-border bg-desktop-bg-primary/80 px-3 py-1.5 text-[11px] text-desktop-text-secondary">
                 {baselineModel.nextLevelName}
               </span>
             ) : null}
@@ -343,7 +343,7 @@ function OverviewView({
           ) : null}
 
           <div className="mt-4 grid gap-3 lg:grid-cols-2">
-            <div className="rounded-xl border border-desktop-border bg-white/80 p-3 dark:bg-white/6">
+            <div className="rounded-sm border border-desktop-border bg-desktop-bg-primary/80 p-3">
               <div className="text-[11px] font-semibold uppercase tracking-[0.1em] text-desktop-text-secondary">
                 {t.fitness.overview.currentFindings}
               </div>
@@ -362,7 +362,7 @@ function OverviewView({
                 )}
               </div>
             </div>
-            <div className="rounded-xl border border-desktop-border bg-white/80 p-3 dark:bg-white/6">
+            <div className="rounded-sm border border-desktop-border bg-desktop-bg-primary/80 p-3">
               <div className="text-[11px] font-semibold uppercase tracking-[0.1em] text-desktop-text-secondary">
                 {t.fitness.overview.recommendedActions}
               </div>
@@ -416,15 +416,15 @@ function OverviewView({
           <p className="text-[13px] leading-6 text-desktop-text-secondary">{activeMeasure.body}</p>
 
           <div className="mt-4 flex flex-wrap gap-2">
-            <div className="rounded-full border border-desktop-border bg-white/80 px-3 py-2 text-[11px] text-desktop-text-secondary dark:bg-white/6">
+            <div className="rounded-sm border border-desktop-border bg-desktop-bg-primary/80 px-3 py-2 text-[11px] text-desktop-text-secondary">
               {t.fitness.overview.levelLabel}
               <span className="ml-1 font-semibold text-desktop-text-primary">{activeMeasure.levelName}</span>
             </div>
-            <div className="rounded-full border border-desktop-border bg-white/80 px-3 py-2 text-[11px] text-desktop-text-secondary dark:bg-white/6">
+            <div className="rounded-sm border border-desktop-border bg-desktop-bg-primary/80 px-3 py-2 text-[11px] text-desktop-text-secondary">
               {t.fitness.overview.scoreLabel}
               <span className="ml-1 font-semibold text-desktop-text-primary">{clampPercent(activeMeasure.score)}%</span>
             </div>
-            <div className="rounded-full border border-desktop-border bg-white/80 px-3 py-2 text-[11px] text-desktop-text-secondary dark:bg-white/6">
+            <div className="rounded-sm border border-desktop-border bg-desktop-bg-primary/80 px-3 py-2 text-[11px] text-desktop-text-secondary">
               {t.fitness.overview.failsLabel}
               <span className="ml-1 font-semibold text-desktop-text-primary">{activeMeasure.failedCriteria.length}</span>
             </div>
@@ -448,7 +448,7 @@ function OverviewView({
               <div className="mt-3 space-y-3">
                 {activeMeasure.failedCriteria.length > 0 ? (
                   activeMeasure.failedCriteria.slice(0, 4).map((criterion) => (
-                    <article key={criterion.id} className="rounded-xl border border-desktop-border bg-white/80 p-3 dark:bg-white/6">
+                    <article key={criterion.id} className="rounded-sm border border-desktop-border bg-desktop-bg-primary/80 p-3">
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
                           <div className="text-sm font-semibold text-desktop-text-primary">{criterionShortLabel(criterion.id)}</div>
@@ -467,7 +467,7 @@ function OverviewView({
                     </article>
                   ))
                 ) : (
-                  <div className="rounded-xl border border-dashed border-desktop-border px-4 py-6 text-sm text-desktop-text-secondary">
+                  <div className="rounded-sm border border-dashed border-desktop-border px-4 py-6 text-sm text-desktop-text-secondary">
                     {t.fitness.overview.noActiveBlockers}
                   </div>
                 )}
@@ -475,25 +475,25 @@ function OverviewView({
             </div>
 
             <div className="space-y-4">
-              <div className="rounded-xl border border-desktop-border bg-white/80 p-4 dark:bg-white/6">
+              <div className="rounded-sm border border-desktop-border bg-desktop-bg-primary/80 p-4">
                 <div className="text-[12px] font-semibold text-desktop-text-primary">{t.fitness.overview.recommendedActions}</div>
                 <div className="mt-3 space-y-2">
                   {activeMeasure.recommendations.length > 0 ? (
                     activeMeasure.recommendations.slice(0, 3).map((item) => (
-                      <article key={item.criterionId} className="rounded-xl border border-desktop-border bg-desktop-bg-primary/80 p-3">
+                      <article key={item.criterionId} className="rounded-sm border border-desktop-border bg-desktop-bg-primary/80 p-3">
                         <div className="text-sm font-semibold text-desktop-text-primary">{item.action}</div>
                         <div className="mt-2 text-[11px] leading-5 text-desktop-text-secondary">{item.evidenceHint}</div>
                       </article>
                     ))
                   ) : (
-                    <div className="rounded-xl border border-dashed border-desktop-border px-3 py-4 text-[11px] text-desktop-text-secondary">
+                    <div className="rounded-sm border border-dashed border-desktop-border px-3 py-4 text-[11px] text-desktop-text-secondary">
                       {t.fitness.overview.noActions}
                     </div>
                   )}
                 </div>
               </div>
 
-              <div className="rounded-xl border border-desktop-border bg-white/80 p-4 dark:bg-white/6">
+              <div className="rounded-sm border border-desktop-border bg-desktop-bg-primary/80 p-4">
                 <div className="text-[12px] font-semibold text-desktop-text-primary">{t.fitness.overview.withoutThis}</div>
                 <p className="mt-2 text-[12px] leading-6 text-desktop-text-secondary">{activeMeasure.without}</p>
               </div>
@@ -511,7 +511,7 @@ function CapabilitiesView({ report, t }: { report: FitnessReport; t: FitnessTran
   return (
     <div className="space-y-4">
       {groups.map((group) => (
-        <section key={group.key} className="rounded-2xl border border-desktop-border bg-desktop-bg-secondary/60 p-4">
+        <section key={group.key} className="rounded-sm border border-desktop-border bg-desktop-bg-secondary/60 p-4">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <div className="text-xs font-semibold uppercase tracking-[0.14em] text-desktop-text-secondary">
@@ -539,7 +539,7 @@ function CapabilitiesView({ report, t }: { report: FitnessReport; t: FitnessTran
 function RecommendationsView({ report, t }: { report: FitnessReport; t: FitnessTranslation }) {
   if (report.recommendations.length === 0) {
     return (
-      <div className="rounded-2xl border border-dashed border-desktop-border px-4 py-6 text-sm text-desktop-text-secondary">
+      <div className="rounded-sm border border-dashed border-desktop-border px-4 py-6 text-sm text-desktop-text-secondary">
         {t.fitness.overview.noProfileRecommendations}
       </div>
     );
@@ -565,7 +565,7 @@ function RecommendationsView({ report, t }: { report: FitnessReport; t: FitnessT
 function ChangesView({ report, t }: { report: FitnessReport; t: FitnessTranslation }) {
   if (!report.comparison) {
     return (
-      <div className="rounded-2xl border border-dashed border-desktop-border p-4 text-sm text-desktop-text-secondary">
+      <div className="rounded-sm border border-dashed border-desktop-border p-4 text-sm text-desktop-text-secondary">
         {t.fitness.overview.noComparisonHint}
       </div>
     );
@@ -575,7 +575,7 @@ function ChangesView({ report, t }: { report: FitnessReport; t: FitnessTranslati
 
   return (
     <div className="space-y-4">
-      <article className="rounded-2xl border border-desktop-border bg-desktop-bg-secondary/60 p-4">
+      <article className="rounded-sm border border-desktop-border bg-desktop-bg-secondary/60 p-4">
         <div className="text-sm text-desktop-text-primary">
           {t.fitness.overview.fromLast}: {formatTime(comp.previousGeneratedAt)}
         </div>
@@ -588,7 +588,7 @@ function ChangesView({ report, t }: { report: FitnessReport; t: FitnessTranslati
       </article>
 
       <section className="grid gap-4 xl:grid-cols-2">
-        <div className="rounded-2xl border border-desktop-border bg-desktop-bg-secondary/60 p-4">
+        <div className="rounded-sm border border-desktop-border bg-desktop-bg-secondary/60 p-4">
           <div className="text-xs font-semibold uppercase tracking-[0.14em] text-desktop-text-secondary">
             {t.fitness.overview.dimensionChangesTitle}
           </div>
@@ -609,14 +609,14 @@ function ChangesView({ report, t }: { report: FitnessReport; t: FitnessTranslati
             <p className="mt-3 text-xs text-desktop-text-secondary">{t.fitness.overview.noDimensionChanges}</p>
           )}
         </div>
-        <div className="rounded-2xl border border-desktop-border bg-desktop-bg-secondary/60 p-4">
+        <div className="rounded-sm border border-desktop-border bg-desktop-bg-secondary/60 p-4">
           <div className="text-xs font-semibold uppercase tracking-[0.14em] text-desktop-text-secondary">
             {t.fitness.overview.criteriaChangesTitle}
           </div>
           {comp.criteriaChanges.length > 0 ? (
             <ul className="mt-3 space-y-2 text-sm">
               {comp.criteriaChanges.slice(0, 8).map((item) => (
-                <li key={item.id} className="rounded-xl border border-desktop-border bg-white/85 p-3 dark:bg-white/6">
+                <li key={item.id} className="rounded-sm border border-desktop-border bg-desktop-bg-primary/80 p-3">
                   <div className="font-mono text-[11px] text-desktop-text-secondary">{item.id}</div>
                     <div className="mt-1 text-xs text-desktop-text-secondary">
                     {item.previousStatus ?? t.fitness.status.noData} {t.fitness.panel.to} {item.currentStatus ?? t.fitness.status.noData}
@@ -645,7 +645,7 @@ export function FitnessAnalysisContent({
 
   if (!report) {
     return (
-      <div className="rounded-2xl border border-dashed border-desktop-border px-4 py-8 text-sm text-desktop-text-secondary">
+      <div className="rounded-sm border border-dashed border-desktop-border px-4 py-8 text-sm text-desktop-text-secondary">
         {profileState.state === "loading"
           ? t.fitness.overview.noReportTextLoading
           : profileState.error ?? profileMissingText}

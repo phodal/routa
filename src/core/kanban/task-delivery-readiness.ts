@@ -1,7 +1,14 @@
-import { getRepoDeliveryStatus, isGitRepository, type RepoDeliveryStatus } from "@/core/git";
+import {
+  getRepoDeliveryStatus,
+  isBareGitRepository,
+  isGitRepository,
+  type RepoDeliveryStatus,
+} from "@/core/git";
+import type { KanbanDeliveryRules } from "@/core/models/kanban";
 import type { Codebase } from "@/core/models/codebase";
 import type { Task } from "@/core/models/task";
 import type { Worktree } from "@/core/models/worktree";
+import { resolveTaskWorktreeTruth } from "./task-worktree-truth";
 
 interface DeliverySystemLike {
   codebaseStore: {
@@ -35,36 +42,23 @@ interface TaskRepoContext {
   repoPath: string;
   baseBranch?: string;
   codebase?: Codebase;
+  requiresWorktree?: boolean;
 }
 
 async function resolveTaskRepoContext(
   task: Task,
   system: DeliverySystemLike,
 ): Promise<TaskRepoContext | null> {
-  if (task.worktreeId) {
-    const worktree = await system.worktreeStore.get(task.worktreeId);
-    if (worktree?.worktreePath) {
-      const codebase = await system.codebaseStore.get(worktree.codebaseId);
-      return {
-        repoPath: worktree.worktreePath,
-        baseBranch: worktree.baseBranch || codebase?.branch,
-        codebase,
-      };
-    }
-  }
-
-  const primaryCodebaseId = task.codebaseIds[0];
-  const codebase = primaryCodebaseId
-    ? await system.codebaseStore.get(primaryCodebaseId)
-    : await system.codebaseStore.getDefault(task.workspaceId);
-  if (!codebase?.repoPath) {
+  const truth = await resolveTaskWorktreeTruth(task, system);
+  if (!truth) {
     return null;
   }
 
   return {
-    repoPath: codebase.repoPath,
-    baseBranch: codebase.branch,
-    codebase,
+    repoPath: truth.repoPath,
+    baseBranch: truth.baseBranch,
+    codebase: truth.codebase,
+    requiresWorktree: truth.source !== "task.worktreeId",
   };
 }
 
@@ -128,6 +122,23 @@ export async function buildTaskDeliveryReadiness(
     };
   }
 
+  if (context.requiresWorktree && isBareGitRepository(context.repoPath)) {
+    return {
+      checked: false,
+      repoPath: context.repoPath,
+      modified: 0,
+      untracked: 0,
+      ahead: 0,
+      behind: 0,
+      commitsSinceBase: 0,
+      hasCommitsSinceBase: false,
+      hasUncommittedChanges: false,
+      isGitHubRepo: false,
+      canCreatePullRequest: false,
+      reason: "Linked repository is a bare git repo. Attach a task worktree before checking delivery readiness.",
+    };
+  }
+
   return mapReadiness(
     context,
     getRepoDeliveryStatus(context.repoPath, {
@@ -142,11 +153,26 @@ function formatBaseReference(readiness: TaskDeliveryReadiness): string {
   return readiness.baseRef ?? readiness.baseBranch ?? "the base branch";
 }
 
-export function buildTaskDeliveryTransitionError(
+export function hasDeliveryRules(
+  rules: KanbanDeliveryRules | undefined,
+): rules is KanbanDeliveryRules {
+  return Boolean(
+    rules
+    && (rules.requireCommittedChanges
+      || rules.requireCleanWorktree
+      || rules.requirePullRequestReady),
+  );
+}
+
+export function buildTaskDeliveryTransitionErrorFromRules(
   readiness: TaskDeliveryReadiness,
   targetColumnName: string,
-  targetColumnId: string,
+  rules: KanbanDeliveryRules | undefined,
 ): string | null {
+  if (!hasDeliveryRules(rules)) {
+    return null;
+  }
+
   if (!readiness.checked) {
     if (!readiness.reason || readiness.reason === "Task has no linked repository or worktree.") {
       return null;
@@ -155,22 +181,42 @@ export function buildTaskDeliveryTransitionError(
     return `Cannot move task to "${targetColumnName}": ${readiness.reason}`;
   }
 
-  if (!readiness.hasCommitsSinceBase) {
+  if (rules.requireCommittedChanges && !readiness.hasCommitsSinceBase) {
     return `Cannot move task to "${targetColumnName}": no committed changes detected on branch "${readiness.branch ?? "unknown"}" relative to "${formatBaseReference(readiness)}". Commit your implementation before requesting review.`;
   }
 
-  if (targetColumnId !== "done") {
-    return null;
+  if (rules.requireCleanWorktree && readiness.hasUncommittedChanges) {
+    const transitionAction = rules.requirePullRequestReady
+      ? "marking the task done"
+      : "requesting review";
+    return `Cannot move task to "${targetColumnName}": branch "${readiness.branch ?? "unknown"}" still has uncommitted changes (${readiness.modified} modified, ${readiness.untracked} untracked). Commit, stash, or discard them before ${transitionAction}.`;
   }
 
-  if (readiness.hasUncommittedChanges) {
-    return `Cannot move task to "${targetColumnName}": branch "${readiness.branch ?? "unknown"}" still has uncommitted changes (${readiness.modified} modified, ${readiness.untracked} untracked). Commit, stash, or discard them before marking the task done.`;
-  }
-
-  if (readiness.isGitHubRepo && !readiness.canCreatePullRequest) {
+  if (rules.requirePullRequestReady && readiness.isGitHubRepo && !readiness.canCreatePullRequest) {
     const baseBranch = readiness.baseBranch ?? "the base branch";
     return `Cannot move task to "${targetColumnName}": GitHub repo is not PR-ready yet. Use a feature branch instead of "${baseBranch}" so this task can open a pull request cleanly.`;
   }
 
   return null;
+}
+
+export function buildTaskDeliveryTransitionError(
+  readiness: TaskDeliveryReadiness,
+  targetColumnName: string,
+  targetColumnId: string,
+): string | null {
+  const rules: KanbanDeliveryRules | undefined = targetColumnId === "review"
+    ? {
+        requireCommittedChanges: true,
+        requireCleanWorktree: true,
+      }
+    : targetColumnId === "done"
+    ? {
+        requireCommittedChanges: true,
+        requireCleanWorktree: true,
+        requirePullRequestReady: true,
+      }
+    : undefined;
+
+  return buildTaskDeliveryTransitionErrorFromRules(readiness, targetColumnName, rules);
 }

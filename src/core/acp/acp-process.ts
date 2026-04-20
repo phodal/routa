@@ -4,6 +4,7 @@ import {needsShell} from "@/core/acp/utils";
 import {getTerminalManager} from "@/core/acp/terminal-manager";
 import type {IProcessHandle} from "@/core/platform/interfaces";
 import {getServerBridge} from "@/core/platform";
+import {AgentRole} from "@/core/models/agent";
 
 /**
  * Manages a single ACP agent process and its JSON-RPC communication.
@@ -43,18 +44,21 @@ export class AcpError extends Error {
     code: number;
     authMethods?: AcpAuthMethod[];
     agentInfo?: { name: string; version: string };
+    data?: unknown;
 
     constructor(
         message: string,
         code: number,
         authMethods?: AcpAuthMethod[],
-        agentInfo?: { name: string; version: string }
+        agentInfo?: { name: string; version: string },
+        data?: unknown,
     ) {
         super(message);
         this.name = "AcpError";
         this.code = code;
         this.authMethods = authMethods;
         this.agentInfo = agentInfo;
+        this.data = data;
     }
 }
 
@@ -62,12 +66,18 @@ export class AcpProcess {
     private process: IProcessHandle | null = null;
     private buffer = "";
     private pendingRequests = new Map<number | string, PendingRequest>();
+    private pendingInteractiveRequests = new Map<string, {
+        requestId: number | string;
+        method: string;
+        params: Record<string, unknown>;
+    }>();
     private requestId = 0;
     private onNotification: NotificationHandler;
     private _sessionId: string | null = null;
     private _alive = false;
     private _config: AcpProcessConfig;
     private _initResult: AcpInitResult | null = null;
+    private _sessionContext: AcpSessionContext | null = null;
 
     constructor(config: AcpProcessConfig, onNotification: NotificationHandler) {
         this._config = config;
@@ -92,6 +102,10 @@ export class AcpProcess {
 
     get presetId(): string | undefined {
         return this._config.preset?.id;
+    }
+
+    setSessionContext(context: AcpSessionContext): void {
+        this._sessionContext = context;
     }
 
     /**
@@ -132,6 +146,7 @@ export class AcpProcess {
             stdio: ["pipe", "pipe", "pipe"],
             cwd,
             env: {
+                ...process.env,
                 ...env,
                 NODE_NO_READLINE: "1",
             },
@@ -141,22 +156,10 @@ export class AcpProcess {
             shell: needsShell(command),
         });
 
-        if (!this.process || !this.process.pid) {
-            throw new Error(
-                `Failed to spawn ${displayName} - is "${command}" installed and in PATH?`
-            );
-        }
-
-        if (!this.process.stdin || !this.process.stdout) {
-            throw new Error(
-                `${displayName} spawned without required stdio streams`
-            );
-        }
-
-        this._alive = true;
-
-        // Parse stdout as NDJSON
-        this.process.stdout.on("data", (chunk: Buffer) => {
+        // Wire up stdout/stderr/exit listeners BEFORE awaiting ready.
+        // Tauri's shell plugin forwards events immediately after cmd.spawn(),
+        // so binding after the await would miss early output frames.
+        this.process.stdout?.on("data", (chunk: Buffer) => {
             this.buffer += chunk.toString("utf-8");
             this.processBuffer();
         });
@@ -200,6 +203,23 @@ export class AcpProcess {
             console.error(`[AcpProcess:${displayName}] Process error:`, err);
             this._alive = false;
         });
+
+        await awaitProcessReady(this.process);
+
+        if (!this.process || !this.process.pid) {
+            throw new Error(
+                `Failed to spawn ${displayName} - is "${command}" installed and in PATH?`
+            );
+        }
+
+        if (!this.process.stdin || !this.process.stdout) {
+            throw new Error(
+                `${displayName} spawned without required stdio streams`
+            );
+        }
+
+        this._alive = true;
+
 
         // Wait for process to stabilize
         await new Promise((resolve) => setTimeout(resolve, 500));
@@ -254,6 +274,15 @@ export class AcpProcess {
             return this._sessionId;
         } catch (error) {
             // If authentication is required, throw AcpError with auth info
+            if (error instanceof AcpError) {
+                throw new AcpError(
+                    error.message,
+                    error.code,
+                    this._initResult?.authMethods ?? error.authMethods,
+                    this._initResult?.agentInfo ?? error.agentInfo,
+                    error.data,
+                );
+            }
             if (error instanceof Error) {
                 const authMatch = error.message.match(/ACP Error \[(-?\d+)\]:\s*(.+)/);
                 if (authMatch) {
@@ -268,6 +297,35 @@ export class AcpProcess {
                         this._initResult?.agentInfo
                     );
                 }
+            }
+            throw error;
+        }
+    }
+
+    /**
+     * Load an existing ACP session.
+     * Used by providers such as codex-acp that can resume persisted threads.
+     */
+    async loadSession(sessionId: string, cwd?: string): Promise<void> {
+        try {
+            await this.sendRequest("session/load", {
+                sessionId,
+                cwd: cwd || this._config.cwd,
+                mcpServers: [],
+            });
+            this._sessionId = sessionId;
+            console.log(
+                `[AcpProcess:${this._config.displayName}] Session loaded: ${this._sessionId}`
+            );
+        } catch (error) {
+            if (error instanceof AcpError) {
+                throw new AcpError(
+                    error.message,
+                    error.code,
+                    this._initResult?.authMethods ?? error.authMethods,
+                    this._initResult?.agentInfo ?? error.agentInfo,
+                    error.data,
+                );
             }
             throw error;
         }
@@ -322,14 +380,21 @@ export class AcpProcess {
             // Determine timeout based on method and distribution type
             // npx/uvx agents may need longer timeout for first-time package download
             const isNpxOrUvx = this._config.command === "npx" || this._config.command === "uvx";
-            const isInitRequest = method === "initialize" || method === "session/new";
+            const isInitRequest = method === "initialize" || method === "session/new" || method === "session/load";
+            const isPromptRequest = method === "session/prompt";
 
             let defaultTimeout: number;
             if (isInitRequest) {
                 // npx/uvx may need to download packages on first run
-                defaultTimeout = isNpxOrUvx ? 120000 : 10000; // 2 min for npx/uvx, 10s for others
+                // OpenCode may need longer on Windows due to shell initialization overhead
+                const isOpencode = this._config.displayName?.toLowerCase().includes("opencode");
+                defaultTimeout = isNpxOrUvx ? 120000 : (isOpencode ? 30000 : 15000); // 30s for opencode, 15s for others
+            } else if (isPromptRequest) {
+                // session/prompt can take a long time for complex tasks
+                // Match Rust implementation: 5 minutes for prompt requests
+                defaultTimeout = 300000; // 5 min
             } else {
-                defaultTimeout = 30000; // 30s for normal requests
+                defaultTimeout = 30000; // 30s for other requests
             }
 
             const timeout = setTimeout(() => {
@@ -366,6 +431,71 @@ export class AcpProcess {
             }, 5000);
         }
         this._alive = false;
+        this.pendingInteractiveRequests.clear();
+    }
+
+    respondToUserInput(toolCallId: string, response: Record<string, unknown>): boolean {
+        const pending = this.pendingInteractiveRequests.get(toolCallId);
+        if (!pending) {
+            return false;
+        }
+
+        this.pendingInteractiveRequests.delete(toolCallId);
+
+        let result: Record<string, unknown>;
+        let notificationRawInput: Record<string, unknown> = response;
+        if (pending.method === "session/request_permission") {
+            const explicitOptionId = typeof response.optionId === "string" && response.optionId.trim().length > 0
+                ? response.optionId.trim()
+                : undefined;
+            const decision = typeof response.decision === "string" ? response.decision : "approve";
+            const scope = response.scope === "session" ? "session" : "turn";
+            result = explicitOptionId
+                ? {
+                    outcome: {
+                        outcome: "selected",
+                        optionId: explicitOptionId,
+                    },
+                }
+                : this.buildPermissionResponseResult(pending.params, decision, scope);
+            const selectedOptionId = explicitOptionId ?? this.extractSelectedPermissionOptionId(result);
+            notificationRawInput = {
+                ...pending.params,
+                decision,
+                scope,
+                outcome: typeof selectedOptionId === "string" ? "selected" : "cancelled",
+                ...(selectedOptionId ? { optionId: selectedOptionId } : {}),
+            };
+        } else {
+            result = response;
+        }
+
+        console.log(
+            `[AcpProcess:${this._config.displayName}] Responding to interactive agent request ${pending.method} (id=${String(pending.requestId)}): ${JSON.stringify(result)}`
+        );
+        this.writeMessage({
+            jsonrpc: "2.0",
+            id: pending.requestId,
+            result,
+        });
+
+        this.onNotification({
+            jsonrpc: "2.0",
+            method: "session/update",
+            params: {
+                sessionId: this._sessionId ?? "pending",
+                update: {
+                    sessionUpdate: "tool_call_update",
+                    toolCallId,
+                    title: pending.method === "session/request_permission" ? "RequestPermissions" : "UserInputResponse",
+                    status: "completed",
+                    rawInput: notificationRawInput,
+                    rawOutput: pending.method === "session/request_permission" ? result : undefined,
+                },
+            },
+        });
+
+        return true;
     }
 
     // ─── Private ────────────────────────────────────────────────────────────
@@ -425,7 +555,13 @@ export class AcpProcess {
                 this.pendingRequests.delete(msg.id);
                 if (msg.error) {
                     pending.reject(
-                        new Error(`ACP Error [${msg.error.code}]: ${msg.error.message}`)
+                        new AcpError(
+                            msg.error.message,
+                            msg.error.code,
+                            undefined,
+                            undefined,
+                            msg.error.data,
+                        )
                     );
                 } else {
                     pending.resolve(msg.result);
@@ -472,13 +608,55 @@ export class AcpProcess {
 
         switch (method) {
             case "session/request_permission": {
-                // Auto-approve all permissions
-                this.writeMessage({
+                const toolCallId = `request-permission-${String(id)}`;
+                const rawInput = (params && typeof params === "object")
+                    ? params as Record<string, unknown>
+                    : {};
+                if (this.shouldAutoApprovePermissionRequest(rawInput)) {
+                    const result = this.buildPermissionApprovalResult(rawInput);
+                    console.log(
+                        `[AcpProcess:${this._config.displayName}] Auto-responding to agent request ${method} (id=${String(id)}): ${JSON.stringify(result)}`
+                    );
+                    this.writeMessage({
+                        jsonrpc: "2.0",
+                        id,
+                        result,
+                    });
+                    this.onNotification({
+                        jsonrpc: "2.0",
+                        method: "session/update",
+                        params: {
+                            sessionId: this._sessionId ?? "pending",
+                            update: {
+                                sessionUpdate: "tool_call_update",
+                                title: "RequestPermissions",
+                                toolCallId,
+                                kind: "request-permissions",
+                                status: "completed",
+                                rawInput: result,
+                            },
+                        },
+                    });
+                    break;
+                }
+                this.pendingInteractiveRequests.set(toolCallId, {
+                    requestId: id!,
+                    method,
+                    params: rawInput,
+                });
+
+                this.onNotification({
                     jsonrpc: "2.0",
-                    id,
-                    result: {
-                        outcome: {
-                            outcome: "approved",
+                    method: "session/update",
+                    params: {
+                        sessionId: this._sessionId ?? "pending",
+                        update: {
+                            sessionUpdate: "tool_call",
+                            title: "RequestPermissions",
+                            toolCallId,
+                            kind: "request-permissions",
+                            rawInput,
+                            status: "waiting",
                         },
                     },
                 });
@@ -490,6 +668,9 @@ export class AcpProcess {
                 if (filePath) {
                     const fsBridge = getServerBridge().fs;
                     fsBridge.readTextFile(filePath).then((content) => {
+                        console.log(
+                            `[AcpProcess:${this._config.displayName}] Responding to agent request ${method} (id=${String(id)}): ${JSON.stringify({content})}`
+                        );
                         this.writeMessage({
                             jsonrpc: "2.0",
                             id,
@@ -517,6 +698,9 @@ export class AcpProcess {
                 if (writePath && content !== undefined) {
                     const fsBridge = getServerBridge().fs;
                     fsBridge.writeTextFile(writePath, content).then(() => {
+                        console.log(
+                            `[AcpProcess:${this._config.displayName}] Responding to agent request ${method} (id=${String(id)}): {}`
+                        );
                         this.writeMessage({
                             jsonrpc: "2.0",
                             id,
@@ -547,6 +731,9 @@ export class AcpProcess {
                         this.onNotification(notification as unknown as JsonRpcMessage);
                     }
                 );
+                console.log(
+                    `[AcpProcess:${this._config.displayName}] Responding to agent request ${method} (id=${String(id)}): ${JSON.stringify(result)}`
+                );
                 this.writeMessage({
                     jsonrpc: "2.0",
                     id,
@@ -560,7 +747,10 @@ export class AcpProcess {
                 const termId = (params as { terminalId?: string })?.terminalId;
                 const output = termId
                     ? terminalManager.getOutput(termId)
-                    : { output: "" };
+                    : { output: "", truncated: false };
+                console.log(
+                    `[AcpProcess:${this._config.displayName}] Responding to agent request ${method} (id=${String(id)}): ${JSON.stringify(output)}`
+                );
                 this.writeMessage({
                     jsonrpc: "2.0",
                     id,
@@ -574,6 +764,9 @@ export class AcpProcess {
                 const termId = (params as { terminalId?: string })?.terminalId;
                 if (termId) {
                     terminalManager.waitForExit(termId).then((result) => {
+                        console.log(
+                            `[AcpProcess:${this._config.displayName}] Responding to agent request ${method} (id=${String(id)}): ${JSON.stringify(result)}`
+                        );
                         this.writeMessage({
                             jsonrpc: "2.0",
                             id,
@@ -581,10 +774,13 @@ export class AcpProcess {
                         });
                     });
                 } else {
+                    console.log(
+                        `[AcpProcess:${this._config.displayName}] Responding to agent request ${method} (id=${String(id)}): ${JSON.stringify({ exitCode: null, signal: null })}`
+                    );
                     this.writeMessage({
                         jsonrpc: "2.0",
                         id,
-                        result: { exitCode: -1 },
+                        result: { exitCode: null, signal: null },
                     });
                 }
                 break;
@@ -596,6 +792,9 @@ export class AcpProcess {
                 if (termId) {
                     terminalManager.kill(termId);
                 }
+                console.log(
+                    `[AcpProcess:${this._config.displayName}] Responding to agent request ${method} (id=${String(id)}): {}`
+                );
                 this.writeMessage({
                     jsonrpc: "2.0",
                     id,
@@ -610,6 +809,9 @@ export class AcpProcess {
                 if (termId) {
                     terminalManager.release(termId);
                 }
+                console.log(
+                    `[AcpProcess:${this._config.displayName}] Responding to agent request ${method} (id=${String(id)}): {}`
+                );
                 this.writeMessage({
                     jsonrpc: "2.0",
                     id,
@@ -632,6 +834,144 @@ export class AcpProcess {
                 });
             }
         }
+    }
+
+    private shouldAutoApprovePermissionRequest(params: Record<string, unknown>): boolean {
+        const provider = (this._sessionContext?.provider ?? this.presetId ?? "").toLowerCase();
+        const isCodex = provider === "codex" || provider === "codex-acp";
+        if (isCodex) return typeof params === "object" && params !== null;
+
+        if (!this._sessionContext?.autoApprovePermissions) return false;
+
+        return typeof params === "object" && params !== null;
+    }
+
+    private buildPermissionApprovalResult(params: Record<string, unknown>): Record<string, unknown> {
+        const scope = this.getDefaultPermissionScope();
+        return this.buildPermissionResponseResult(params, "approve", scope);
+    }
+
+    private getDefaultPermissionScope(): "session" | "turn" {
+        const role = (this._sessionContext?.role ?? "").toUpperCase();
+        return role === AgentRole.ROUTA ? "session" : "turn";
+    }
+
+    private resolvePermissionOptionId(
+        params: Record<string, unknown>,
+        decision: string,
+        scope: "session" | "turn",
+    ): string | undefined {
+        const options = Array.isArray(params.options)
+            ? params.options.filter((option): option is Record<string, unknown> => typeof option === "object" && option !== null)
+            : [];
+        if (options.length === 0) {
+            return undefined;
+        }
+
+        const normalizedOptions = options.map((option) => ({
+            optionId: typeof option.optionId === "string" ? option.optionId : undefined,
+            kind: typeof option.kind === "string" ? option.kind : undefined,
+        })).flatMap((option) => (
+            typeof option.optionId === "string"
+                ? [{ optionId: option.optionId, kind: option.kind }]
+                : []
+        ));
+
+        if (decision === "deny") {
+            return this.findPermissionOptionId(normalizedOptions, [
+                "abort",
+                "denied",
+                "decline",
+                "cancel",
+                "rejected",
+                "reject",
+            ], [
+                "reject_once",
+                "reject_always",
+            ]);
+        }
+
+        if (scope === "session") {
+            return this.findPermissionOptionId(normalizedOptions, [
+                "approved-for-session",
+                "approved-always",
+                "approved-execpolicy-amendment",
+                "approved",
+            ], [
+                "allow_always",
+                "allow_once",
+            ]);
+        }
+
+        return this.findPermissionOptionId(normalizedOptions, [
+            "approved",
+            "approved-once",
+            "approved-for-session",
+            "approved-always",
+            "approved-execpolicy-amendment",
+        ], [
+            "allow_once",
+            "allow_always",
+        ]);
+    }
+
+    private buildPermissionResponseResult(
+        params: Record<string, unknown>,
+        decision: string,
+        scope: "session" | "turn",
+    ): Record<string, unknown> {
+        const optionId = this.resolvePermissionOptionId(params, decision, scope)
+            ?? this.getFallbackPermissionOptionId(decision, scope);
+
+        if (optionId) {
+            return {
+                outcome: {
+                    outcome: "selected",
+                    optionId,
+                },
+            };
+        }
+
+        return {
+            outcome: {
+                outcome: "cancelled",
+            },
+        };
+    }
+
+    private getFallbackPermissionOptionId(
+        decision: string,
+        scope: "session" | "turn",
+    ): string | undefined {
+        if (decision === "deny") {
+            return "abort";
+        }
+        return scope === "session" ? "approved-for-session" : "approved";
+    }
+
+    private extractSelectedPermissionOptionId(result: Record<string, unknown>): string | undefined {
+        const outcome = typeof result.outcome === "object" && result.outcome !== null
+            ? result.outcome as Record<string, unknown>
+            : undefined;
+        return typeof outcome?.optionId === "string" ? outcome.optionId : undefined;
+    }
+
+    private findPermissionOptionId(
+        options: Array<{ optionId: string; kind?: string }>,
+        preferredIds: string[],
+        preferredKinds: string[],
+    ): string | undefined {
+        for (const optionId of preferredIds) {
+            const match = options.find((option) => option.optionId === optionId);
+            if (match) return match.optionId;
+        }
+
+        for (const kind of preferredKinds) {
+            const match = options.find((option) => option.kind === kind);
+            if (match) return match.optionId;
+        }
+
+        return options[0]?.optionId;
     }
 
     private writeMessage(msg: Record<string, unknown>): void {

@@ -1,10 +1,13 @@
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::path::Path;
-use std::process::Command;
 
+use crate::git::git_command;
 use glob::Pattern;
 use serde::Serialize;
 use serde_yaml::Value;
+
+#[cfg(test)]
+use std::process::Command;
 
 const CODEOWNERS_CANDIDATES: &[&str] = &[".github/CODEOWNERS", "CODEOWNERS", "docs/CODEOWNERS"];
 
@@ -517,7 +520,7 @@ fn build_codeowners_correlation_report(
 }
 
 fn collect_tracked_files(repo_root: &Path, warnings: &mut Vec<String>) -> Vec<String> {
-    let output = Command::new("git")
+    let output = git_command()
         .args(["ls-files"])
         .current_dir(repo_root)
         .output();
@@ -756,7 +759,7 @@ mod tests {
         std::fs::write(github_dir.join("CODEOWNERS"), "src/** @dev-team\n").unwrap();
 
         Command::new("git")
-            .args(["init"])
+            .args(["init", "--no-bare"])
             .current_dir(temp.path())
             .output()
             .unwrap();
@@ -830,7 +833,7 @@ mod tests {
         .unwrap();
 
         Command::new("git")
-            .args(["init"])
+            .args(["init", "--no-bare"])
             .current_dir(temp.path())
             .output()
             .unwrap();

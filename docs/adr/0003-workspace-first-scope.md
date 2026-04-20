@@ -2,7 +2,7 @@
 
 - Status: accepted
 - Date: 2026-02-25
-- Derived from: [design-doc](../design-docs/workspace-centric-redesign.md), [issue #20](../issues/2026-02-25-gh-20-feat-workspace.md)
+- Derived from: [design-doc](../design-docs/workspace-centric-redesign.md), [issue #20](https://github.com/phodal/routa/issues/20)
 
 ## Context
 

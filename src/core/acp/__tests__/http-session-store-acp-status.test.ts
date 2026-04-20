@@ -4,7 +4,7 @@
  * @vitest-environment node
  */
 
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -227,6 +227,31 @@ describe("HttpSessionStore — ACP status", () => {
     expect((statusNotification?.update as Record<string, unknown>)?.status).toBe("error");
   });
 
+  it("recovers a timeout-marked ACP session when later activity arrives", () => {
+    const store = getHttpSessionStore();
+    store.upsertSession({
+      sessionId: "test-timeout-recovery",
+      cwd: "/tmp",
+      workspaceId: "ws-1",
+      provider: "codex",
+      acpStatus: "error",
+      acpError: "Timeout waiting for session/prompt (id=3)",
+      createdAt: new Date().toISOString(),
+    });
+
+    store.pushNotification({
+      sessionId: "test-timeout-recovery",
+      update: {
+        sessionUpdate: "agent_message",
+        content: { type: "text", text: "still working" },
+      },
+    });
+
+    const session = store.getSession("test-timeout-recovery");
+    expect(session?.acpStatus).toBe("ready");
+    expect(session?.acpError).toBeUndefined();
+  });
+
   it("appends pushed notifications to the local event log", async () => {
     const store = getHttpSessionStore();
     const projectPath = path.join(process.env.HOME!, "project");
@@ -285,6 +310,81 @@ describe("HttpSessionStore — ACP status", () => {
     const replay = store.getHistorySinceEventId("test-replay", history[0].eventId!);
     expect(replay).toHaveLength(1);
     expect(replay[0].eventId).toBe(history[1].eventId);
+  });
+
+  it("suppresses duplicate SSE delivery while prompt streaming is active", () => {
+    const store = getHttpSessionStore();
+    const enqueue = vi.fn();
+    store.upsertSession({
+      sessionId: "test-streaming",
+      cwd: "/tmp",
+      workspaceId: "ws-1",
+      provider: "opencode",
+      createdAt: new Date().toISOString(),
+    });
+
+    store.attachSse("test-streaming", {
+      enqueue,
+    } as unknown as ReadableStreamDefaultController<Uint8Array>);
+    store.enterStreamingMode("test-streaming");
+
+    store.pushNotification({
+      sessionId: "test-streaming",
+      update: {
+        sessionUpdate: "agent_message",
+        content: { type: "text", text: "stream response owns this delivery" },
+      },
+    });
+
+    expect(enqueue).not.toHaveBeenCalled();
+    expect(store.getHistory("test-streaming")).toHaveLength(1);
+
+    store.exitStreamingMode("test-streaming");
+    store.pushNotification({
+      sessionId: "test-streaming",
+      update: {
+        sessionUpdate: "agent_message",
+        content: { type: "text", text: "deliver over SSE now" },
+      },
+    });
+
+    expect(enqueue).toHaveBeenCalledOnce();
+  });
+
+  it("invokes and removes notification interceptors safely", () => {
+    const store = getHttpSessionStore();
+    const seen: SessionUpdateNotification[] = [];
+    const interceptor = (notification: SessionUpdateNotification) => {
+      seen.push(notification);
+    };
+
+    store.upsertSession({
+      sessionId: "test-interceptor",
+      cwd: "/tmp",
+      workspaceId: "ws-1",
+      provider: "opencode",
+      createdAt: new Date().toISOString(),
+    });
+
+    store.addNotificationInterceptor("test-interceptor", interceptor);
+    store.pushNotification({
+      sessionId: "test-interceptor",
+      update: {
+        sessionUpdate: "agent_message",
+        content: { type: "text", text: "hello interceptor" },
+      },
+    });
+    store.removeNotificationInterceptor("test-interceptor", interceptor);
+    store.pushNotification({
+      sessionId: "test-interceptor",
+      update: {
+        sessionUpdate: "agent_message",
+        content: { type: "text", text: "not intercepted" },
+      },
+    });
+
+    expect(seen).toHaveLength(1);
+    expect((seen[0].update as Record<string, unknown>)?.sessionUpdate).toBe("agent_message");
   });
 });
 

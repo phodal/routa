@@ -63,4 +63,5 @@ entrypointGroups:
     label: Coverage
     category: coverage
     scriptNamePatterns:
+      - "^test:cov:ts$"
       - "^rust:cov($|:.*)"

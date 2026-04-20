@@ -109,11 +109,11 @@ test.describe("Tauri/Rust Backend Verification", () => {
     });
 
     // Check that the page loads - look for Routa branding
-    await expect(page.getByText(/kanban-first control surface/i)).toBeVisible({ timeout: 15_000 });
-    console.log("✓ Routa header visible");
+    await expect(page.getByRole("link", { name: /Mode Kanban/i })).toBeVisible({ timeout: 15_000 });
+    console.log("✓ Homepage mode links visible");
 
     // Check main content is present
-    await expect(page.locator("main")).toBeVisible();
+    await expect(page.getByTestId("desktop-shell-main")).toBeVisible();
     console.log("✓ Main content visible");
 
     // Check top navigation is present
@@ -164,17 +164,17 @@ test.describe("Tauri/Rust Backend Verification", () => {
     await page.goto(`${baseUrl}/workspace/default/team`);
     await page.waitForLoadState("networkidle");
 
-    await expect(page.getByText("Run a lead session and keep the list in the same surface.")).toBeVisible();
-    await expect(page.getByTitle(/team coordinator/i)).toBeVisible();
-    await expect(page.getByText("Research Analyst")).toBeVisible();
-    await expect(page.getByText("Frontend Dev")).toBeVisible();
-    await expect(page.getByText("Backend Developer")).toBeVisible();
-    await expect(page.getByText("QA Specialist")).toBeVisible();
-    await expect(page.getByText("Code Reviewer")).toBeVisible();
-    await expect(page.getByText("UX Designer")).toBeVisible();
-    await expect(page.getByText("Operations Engineer")).toBeVisible();
-    await expect(page.getByText("General Engineer")).toBeVisible();
-    await expect(page.getByText("8 members")).toBeVisible();
+    await expect(page.getByText("Launch the Team lead with the shared input.")).toBeVisible();
+    await expect(page.getByText("Agent Lead").first()).toBeVisible();
+    await expect(page.getByText("Research Analyst").first()).toBeVisible();
+    await expect(page.getByText("Frontend Dev").first()).toBeVisible();
+    await expect(page.getByText("Backend Developer").first()).toBeVisible();
+    await expect(page.getByText("QA Specialist").first()).toBeVisible();
+    await expect(page.getByText("Code Reviewer").first()).toBeVisible();
+    await expect(page.getByText("UX Designer").first()).toBeVisible();
+    await expect(page.getByText("Operations Engineer").first()).toBeVisible();
+    await expect(page.getByText("General Engineer").first()).toBeVisible();
+    await expect(page.getByText(/members/i).locator("..").getByText("8")).toBeVisible();
 
     const emptyState = page.getByText("No Team runs yet.");
     if (await emptyState.isVisible().catch(() => false)) {

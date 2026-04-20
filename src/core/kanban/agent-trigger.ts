@@ -1,6 +1,11 @@
 import { v4 as uuidv4 } from "uuid";
 import type { Task, TaskEvidenceSummary, TaskInvestValidation, TaskStoryReadiness } from "../models/task";
-import { getNextHappyPathColumnId, type KanbanColumn } from "../models/kanban";
+import {
+  getNextHappyPathColumnId,
+  type KanbanColumn,
+  type KanbanContractRules,
+  type KanbanDeliveryRules,
+} from "../models/kanban";
 import { AgentEventType, type EventBus } from "../events/event-bus";
 import { isClaudeCodeSdkConfigured } from "../acp/claude-code-sdk-adapter";
 import { dispatchSessionPrompt } from "@/core/acp/session-prompt";
@@ -11,6 +16,8 @@ import type { TaskLaneSession } from "../models/task";
 import { resolveCurrentLaneAutomationState } from "./lane-automation-state";
 import { getLatestLaneSessionForColumn, getPreviousLaneRun } from "./task-lane-history";
 import type { KanbanAutomationStep, KanbanTransport } from "../models/kanban";
+import type { FlowDiagnosisReport } from "./flow-ledger-types";
+import { formatFlowGuidanceForPrompt } from "./flow-ledger";
 
 export interface TaskPromptSummaryContext {
   evidenceSummary?: TaskEvidenceSummary;
@@ -47,6 +54,26 @@ function formatLaneSessionDescriptor(session: TaskLaneSession): string {
   ].filter(Boolean).join(" · ");
 }
 
+function formatDeliveryRules(rules: KanbanDeliveryRules | undefined): string {
+  if (!rules) {
+    return "none";
+  }
+
+  const labels: string[] = [];
+  if (rules.requireCommittedChanges) labels.push("committed changes");
+  if (rules.requireCleanWorktree) labels.push("clean worktree");
+  if (rules.requirePullRequestReady) labels.push("PR-ready branch");
+  return labels.length > 0 ? labels.join(", ") : "none";
+}
+
+function formatContractRules(rules: KanbanContractRules | undefined): string {
+  if (!rules?.requireCanonicalStory) {
+    return "none";
+  }
+
+  return "one valid canonical ```yaml``` story contract";
+}
+
 export function getInternalApiOrigin(): string {
   const configuredOrigin = process.env.ROUTA_INTERNAL_API_ORIGIN
     ?? process.env.ROUTA_BASE_URL
@@ -64,7 +91,7 @@ export function getInternalApiOrigin(): string {
 export function buildTaskPrompt(
   task: Task,
   boardColumns: KanbanColumn[] = [],
-  options?: { currentSessionId?: string; summaryContext?: TaskPromptSummaryContext },
+  options?: { currentSessionId?: string; summaryContext?: TaskPromptSummaryContext; flowReport?: FlowDiagnosisReport },
 ): string {
   const labels = task.labels.length > 0 ? `Labels: ${task.labels.join(", ")}` : "Labels: none";
   const currentColumnId = task.columnId ?? "backlog";
@@ -76,12 +103,24 @@ export function buildTaskPrompt(
   const previousLaneSession = previousColumn
     ? [...(task.laneSessions ?? [])].reverse().find((entry) => entry.columnId === previousColumn.id)
     : undefined;
+  const currentLaneSession = options?.currentSessionId
+    ? (task.laneSessions ?? []).find((entry) => entry.sessionId === options.currentSessionId)
+    : undefined;
   const previousLaneRun = !isBacklogPlanning
     ? getPreviousLaneRun(task, options?.currentSessionId) ?? getLatestLaneSessionForColumn(task, currentColumnId)
     : undefined;
-  const pendingLaneHandoffs = options?.currentSessionId
-    ? (task.laneHandoffs ?? []).filter((handoff) => handoff.toSessionId === options.currentSessionId && !handoff.respondedAt)
-    : [];
+  const pendingLaneHandoffs = (task.laneHandoffs ?? []).filter((handoff) => {
+    if (handoff.respondedAt) {
+      return false;
+    }
+
+    if (options?.currentSessionId && handoff.toSessionId === options.currentSessionId) {
+      return true;
+    }
+
+    const targetColumnId = currentLaneSession?.columnId ?? currentColumnId;
+    return Boolean(targetColumnId) && handoff.toColumnId === targetColumnId;
+  });
   const laneAutomationState = resolveCurrentLaneAutomationState(task, boardColumns, options);
   const canAdvanceToNextColumn = !isBacklogPlanning && !laneAutomationState.hasRemainingSteps;
   const summaryContext = options?.summaryContext;
@@ -93,6 +132,7 @@ export function buildTaskPrompt(
 
   const availableTools = isBacklogPlanning
     ? [
+        `- **update_task**: Update structured task fields such as scope, acceptanceCriteria, verificationCommands, and testCases. Use taskId: "${task.id}" when the next move is blocked on story readiness.`,
         `- **update_card**: Update this card's title, description, priority, or labels. Use cardId: "${task.id}"`,
         "- **search_cards**: Search the board for duplicates or related work before creating more tasks",
         "- **create_card**: Create exactly one follow-up backlog card if the current card must be refined into a single user story",
@@ -102,15 +142,18 @@ export function buildTaskPrompt(
         "- **provide_artifact**: Save test results, code diffs, or other evidence as structured Kanban artifacts",
         "- **capture_screenshot**: Capture and store a screenshot artifact when visual proof is required",
         "- **update_card is not an artifact tool**: Use it for card metadata only, never as a substitute for evidence upload",
+        "- **update_card is not a story-readiness tool**: Description or comment text does not satisfy move gates for scope, acceptance criteria, verification commands, or test cases. Use `update_task` for those fields.",
         `- **move_card**: Move this card to the next column when your work is complete. Use cardId: "${task.id}", targetColumnId: "${nextColumnId ?? "todo"}"`,
       ]
     : [
+        `- **update_task**: Update structured task fields such as scope, acceptanceCriteria, verificationCommands, and testCases. Use taskId: "${task.id}" when the next move is blocked on story readiness.`,
         `- **update_card**: Update this card's title, description, priority, or labels. Use cardId: "${task.id}"`,
         "- **create_note**: Create notes for documentation or progress tracking",
         "- **list_artifacts**: Check whether the required artifacts already exist for this card",
         "- **provide_artifact**: Save test results, code diffs, or other evidence as structured Kanban artifacts",
         "- **capture_screenshot**: Capture and store a screenshot artifact when visual proof is required",
         "- **update_card is not an artifact tool**: Use it for card metadata only, never as a substitute for evidence upload",
+        "- **update_card is not a story-readiness tool**: Description or comment text does not satisfy move gates for scope, acceptance criteria, verification commands, or test cases. Use `update_task` for those fields.",
         "- **request_previous_lane_handoff**: Ask the immediately previous lane to prepare environment, rerun a command, or clarify setup for this card",
         "- **submit_lane_handoff**: Finish a lane handoff request after you complete the requested support work",
         ...(canAdvanceToNextColumn
@@ -137,8 +180,8 @@ export function buildTaskPrompt(
     : [
         "1. Complete the work assigned to this column stage",
         canAdvanceToNextColumn
-          ? "2. Start with direct task-scoped tools such as `list_artifacts`, `update_card`, `create_note`, and `move_card` before reaching for broader board queries."
-          : "2. Start with direct task-scoped tools such as `list_artifacts`, `update_card`, and `create_note` before reaching for broader board queries.",
+          ? "2. Start with direct task-scoped tools such as `list_artifacts`, `update_task`, `update_card`, `create_note`, and `move_card` before reaching for broader board queries."
+          : "2. Start with direct task-scoped tools such as `list_artifacts`, `update_task`, `update_card`, and `create_note` before reaching for broader board queries.",
         "3. Keep changes focused on this task",
         `4. ${moveInstruction}`,
         canAdvanceToNextColumn
@@ -170,6 +213,27 @@ export function buildTaskPrompt(
     "",
   ];
 
+  const deliveryGateSection = transitionArtifacts.nextColumn?.automation?.deliveryRules
+    ? [
+        "## Delivery Gates",
+        "",
+        `Moving this card to ${transitionArtifacts.nextColumn.name ?? nextColumnId ?? "the next column"} also requires: ${formatDeliveryRules(transitionArtifacts.nextColumn.automation.deliveryRules)}.`,
+        "Do not call `move_card` until those delivery conditions are satisfied. If the move is rejected, record the blocker clearly in `update_card` and resolve it before retrying.",
+        "",
+      ]
+    : [];
+
+  const contractGateSection = transitionArtifacts.nextColumn?.automation?.contractRules?.requireCanonicalStory
+    ? [
+        "## Contract Gates",
+        "",
+        `Moving this card to ${transitionArtifacts.nextColumn.name ?? nextColumnId ?? "the next column"} requires ${formatContractRules(transitionArtifacts.nextColumn.automation.contractRules)} in the description.`,
+        "Do not call `move_card` until the canonical YAML parses cleanly and satisfies the required schema.",
+        "Todo and downstream lanes will not silently repair malformed canonical YAML. Regenerate it in Backlog before retrying.",
+        "",
+      ]
+    : [];
+
   const laneRunHistorySection = !isBacklogPlanning && previousLaneRun
     ? [
         "## Current Lane History",
@@ -197,6 +261,8 @@ export function buildTaskPrompt(
               "",
               `Pending handoff ${index + 1}: ${formatHandoffRequestType(handoff.requestType)}`,
               handoff.request,
+              ...(handoff.worktreeId ? [`Task worktreeId: ${handoff.worktreeId}`] : []),
+              ...(handoff.cwd ? [`Task cwd: ${handoff.cwd}`] : []),
               `Respond with \`submit_lane_handoff\` using handoffId: "${handoff.id}".`,
             ]))
           : []),
@@ -229,6 +295,9 @@ export function buildTaskPrompt(
         summaryContext.storyReadiness.missing.length > 0
           ? `Missing fields: ${summaryContext.storyReadiness.missing.join(", ")}`
           : "Missing fields: none",
+        summaryContext.storyReadiness.missing.length > 0
+          ? "If fields are missing, call `update_task` to fill the structured task fields before you retry `move_card`. Do not rely on `update_card` description/comment text to satisfy this gate."
+          : "Structured story fields already satisfy the current move gate.",
         `Checks: scope=${summaryContext.storyReadiness.checks.scope ? "present" : "missing"}, `
           + `acceptanceCriteria=${summaryContext.storyReadiness.checks.acceptanceCriteria ? "present" : "missing"}, `
           + `verificationCommands=${summaryContext.storyReadiness.checks.verificationCommands ? "present" : "missing"}, `
@@ -302,10 +371,13 @@ export function buildTaskPrompt(
     ...storyReadinessSection,
     ...investSection,
     ...artifactGateSection,
+    ...contractGateSection,
+    ...deliveryGateSection,
     ...evidenceBundleSection,
     ...laneRunHistorySection,
     ...laneHandoffSection,
     ...devVerificationSection,
+    ...(options?.flowReport ? [formatFlowGuidanceForPrompt(options.flowReport)] : []),
     "## Available MCP Tools",
     "",
     "You have access to the following MCP tools for task management:",
@@ -393,10 +465,14 @@ async function triggerAcpTaskAgent(params: {
   specialistLocale?: string;
   boardColumns: KanbanColumn[];
   summaryContext?: TaskPromptSummaryContext;
+  flowReport?: FlowDiagnosisReport;
   eventBus?: EventBus;
 }): Promise<AutomationRunHandle | { error: string }> {
   const provider = resolveKanbanAutomationProvider(params.task.assignedProvider);
   const role = params.task.assignedRole ?? "CRAFTER";
+  const sessionLabel = params.task.assignedSpecialistName
+    ?? params.task.assignedSpecialistId
+    ?? role;
 
   const newSessionResponse = await fetch(`${params.origin}/api/acp`, {
     method: "POST",
@@ -414,7 +490,7 @@ async function triggerAcpTaskAgent(params: {
         workspaceId: params.workspaceId,
         specialistId: params.task.assignedSpecialistId,
         specialistLocale: params.specialistLocale,
-        name: `${params.task.title} · ${provider}`,
+        name: `${params.task.title} · ${sessionLabel}`,
       },
     }),
   });
@@ -436,6 +512,7 @@ async function triggerAcpTaskAgent(params: {
         text: buildTaskPrompt(params.task, params.boardColumns, {
           currentSessionId: sessionId,
           summaryContext: params.summaryContext,
+          flowReport: params.flowReport,
         }),
       }],
     });
@@ -472,6 +549,7 @@ async function triggerA2ATaskAgent(params: {
   boardColumns: KanbanColumn[];
   step?: KanbanAutomationStep;
   summaryContext?: TaskPromptSummaryContext;
+  flowReport?: FlowDiagnosisReport;
   eventBus?: EventBus;
 }): Promise<AutomationRunHandle | { error: string }> {
   const agentCardUrl = params.step?.agentCardUrl?.trim();
@@ -513,6 +591,7 @@ async function triggerA2ATaskAgent(params: {
     buildTaskPrompt(params.task, params.boardColumns, {
       currentSessionId: localSessionId,
       summaryContext: params.summaryContext,
+      flowReport: params.flowReport,
     }),
     metadata,
   );
@@ -568,6 +647,7 @@ export async function triggerAssignedTaskAgent(params: {
   specialistLocale?: string;
   boardColumns?: KanbanColumn[];
   summaryContext?: TaskPromptSummaryContext;
+  flowReport?: FlowDiagnosisReport;
   eventBus?: EventBus;
 }): Promise<{ sessionId?: string; error?: string; transport?: KanbanTransport; externalTaskId?: string; contextId?: string; displayTarget?: string }> {
   const {
@@ -580,6 +660,7 @@ export async function triggerAssignedTaskAgent(params: {
     specialistLocale,
     boardColumns = [],
     summaryContext,
+    flowReport,
     eventBus,
   } = params;
   const transport = getStepTransport(step);
@@ -590,6 +671,7 @@ export async function triggerAssignedTaskAgent(params: {
         boardColumns,
         step,
         summaryContext,
+        flowReport,
         eventBus,
       })
     : await triggerAcpTaskAgent({
@@ -601,6 +683,7 @@ export async function triggerAssignedTaskAgent(params: {
         specialistLocale,
         boardColumns,
         summaryContext,
+        flowReport,
         eventBus,
       });
 

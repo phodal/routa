@@ -1,55 +1,49 @@
+/**
+ * Settings / Agents - /settings/agents
+ * Settings page for installing, discovering, and managing ACP-compatible agent runtimes.
+ */
 "use client";
 
-/**
- * Agent Installation Settings Page - /settings/agents
- *
- * Provides a full-page UI for managing ACP agent installations.
- * Accessible from the Tauri menu "Install Agents".
- */
+import { Bot } from "lucide-react";
 
-import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
 import { AgentInstallPanel } from "@/client/components/agent-install-panel";
+import { SettingsPageHeader } from "@/client/components/settings-page-header";
+import { SettingsRouteShell } from "@/client/components/settings-route-shell";
 import { useTranslation } from "@/i18n";
 
 export default function AgentSettingsPage() {
   const { t } = useTranslation();
 
   return (
-    <div className="h-screen flex flex-col bg-gray-50 dark:bg-[#0f1117]">
-      {/* Header */}
-      <header className="shrink-0 px-5 py-4 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-[#13151d] flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Link
-            href="/"
-            className="p-1.5 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
-            title={t.settings.backToHome}
-          >
-            <ArrowLeft className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
-          </Link>
-          <div>
-            <h1 className="text-base font-semibold text-gray-900 dark:text-gray-100">
-              {t.agents.agentInstallation}
-            </h1>
-            <p className="text-xs text-gray-500 dark:text-gray-400">
-              {t.agents.installAndManage}
-            </p>
+    <SettingsRouteShell
+      title={t.agents.agentInstallation}
+      description={t.agents.installAndManage}
+      badgeLabel="ACP"
+      icon={(
+        <Bot className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.7}/>
+      )}
+      contentClassName="flex h-full min-h-0 w-full flex-col"
+    >
+      <div className="flex min-h-0 flex-1 flex-col">
+        <SettingsPageHeader
+          title={t.agents.agentInstallation}
+          extra={(
+            <a
+              href="https://agentclientprotocol.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center rounded-full border border-desktop-border bg-desktop-bg-primary/50 px-2.5 py-1 text-[10px] font-medium text-desktop-text-secondary transition hover:bg-desktop-bg-active hover:text-desktop-text-primary"
+            >
+              {t.agents.learnAboutACP}
+            </a>
+          )}
+        />
+        <div className="min-h-0 flex-1 overflow-hidden px-4 py-4">
+          <div className="h-full border border-desktop-border bg-desktop-bg-primary">
+            <AgentInstallPanel embedded />
           </div>
         </div>
-        <a
-          href="https://agentclientprotocol.com"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
-        >
-          {t.agents.learnAboutACP} →
-        </a>
-      </header>
-
-      {/* Main Content */}
-      <main className="flex-1 min-h-0 overflow-hidden">
-        <AgentInstallPanel />
-      </main>
-    </div>
+      </div>
+    </SettingsRouteShell>
   );
 }

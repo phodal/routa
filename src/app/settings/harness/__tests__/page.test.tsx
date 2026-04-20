@@ -344,6 +344,12 @@ vi.mock("@/client/components/harness-spec-sources-panel", () => ({
   ),
 }));
 
+vi.mock("@/app/workspace/[workspaceId]/spec/spec-page-client", () => ({
+  SpecBoardPanel: ({ workspaceId }: { workspaceId: string }) => (
+    <div data-testid="spec-board-panel" data-workspace-id={workspaceId}>Spec board panel</div>
+  ),
+}));
+
 vi.mock("@/client/components/harness-support-state", () => ({
   HarnessUnsupportedState: ({ className }: { className?: string }) => <div className={className} data-testid="unsupported-state" />,
   getHarnessUnsupportedRepoMessage: () => null,
@@ -477,11 +483,33 @@ describe("HarnessSettingsPage", () => {
   });
 
   it("updates the section query parameter when opening another section", () => {
+    currentSearchParams = new URLSearchParams("workspaceId=default");
+
     render(<HarnessSettingsPage />);
 
     fireEvent.click(screen.getByRole("button", { name: /Spec Sources/i }));
 
-    expect(routerReplaceMock).toHaveBeenCalledWith("/settings/harness?section=spec-sources");
+    expect(routerReplaceMock).toHaveBeenCalledWith("/settings/harness?workspaceId=default&section=spec-sources");
+  });
+
+  it("renders the spec board from the section query parameter", () => {
+    currentSearchParams = new URLSearchParams("workspaceId=default&section=spec");
+
+    render(<HarnessSettingsPage />);
+
+    const panel = screen.getByTestId("spec-board-panel");
+    expect(panel).not.toBeNull();
+    expect(panel.getAttribute("data-workspace-id")).toBe("default");
+  });
+
+  it("opens the spec section and preserves workspace id in the url", () => {
+    currentSearchParams = new URLSearchParams("workspaceId=default");
+
+    render(<HarnessSettingsPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: /^Spec$/i }));
+
+    expect(routerReplaceMock).toHaveBeenCalledWith("/settings/harness?workspaceId=default&section=spec");
   });
 
   it("persists an explicit repo override from the picker", () => {

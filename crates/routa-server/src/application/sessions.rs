@@ -6,7 +6,7 @@ use serde_json::{json, Value};
 
 use crate::error::ServerError;
 use crate::state::AppState;
-use routa_core::acp::AcpSessionRecord;
+use routa_core::acp::{get_resume_capability, AcpSessionRecord};
 use routa_core::store::acp_session_store::AcpSessionRow;
 
 #[derive(Clone)]
@@ -57,6 +57,7 @@ impl SessionApplicationService {
         session_id: &str,
         consolidated: bool,
     ) -> Result<Vec<Value>, ServerError> {
+        let provider = self.resolve_session_provider(session_id).await;
         let mut history = self
             .state
             .acp_manager
@@ -81,6 +82,8 @@ impl SessionApplicationService {
                 }
             }
         }
+
+        history = normalize_provider_history(provider.as_deref(), history);
 
         if consolidated {
             Ok(consolidate_message_history(history))
@@ -109,6 +112,22 @@ impl SessionApplicationService {
             ),
             session_id,
         )
+    }
+
+    async fn resolve_session_provider(&self, session_id: &str) -> Option<String> {
+        if let Some(session) = self.state.acp_manager.get_session(session_id).await {
+            if session.provider.is_some() {
+                return session.provider;
+            }
+        }
+
+        self.state
+            .acp_session_store
+            .get(session_id)
+            .await
+            .ok()
+            .flatten()
+            .and_then(|session| session.provider)
     }
 }
 
@@ -146,6 +165,8 @@ struct SessionEntry {
     updated_at: Option<Value>,
     parent_session_id: Option<String>,
     first_prompt_sent: bool,
+    /// Whether there is an active in-memory process for this session.
+    is_active: bool,
 }
 
 impl SessionEntry {
@@ -166,6 +187,7 @@ impl SessionEntry {
             updated_at: None,
             parent_session_id: session.parent_session_id,
             first_prompt_sent: session.first_prompt_sent,
+            is_active: true,
         }
     }
 
@@ -186,6 +208,7 @@ impl SessionEntry {
             updated_at: Some(Value::Number(session.updated_at.into())),
             parent_session_id: session.parent_session_id,
             first_prompt_sent: session.first_prompt_sent,
+            is_active: false,
         }
     }
 
@@ -224,7 +247,47 @@ impl SessionEntry {
         self.first_prompt_sent
     }
 
+    /// Derive session continuity status: active / interrupted / restorable / stale.
+    fn continuity_status(&self) -> &'static str {
+        if self.is_active {
+            return "active";
+        }
+        let has_resume = self
+            .provider
+            .as_deref()
+            .and_then(get_resume_capability)
+            .map(|c| c.supported)
+            .unwrap_or(false);
+        if has_resume {
+            // Check age — sessions older than 7 days are stale
+            let age_days = match &self.created_at {
+                Value::Number(n) => {
+                    let ts = n.as_i64().unwrap_or(0);
+                    let now = chrono::Utc::now().timestamp();
+                    (now - ts) / 86400
+                }
+                Value::String(s) => {
+                    if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(s) {
+                        let now = chrono::Utc::now().timestamp();
+                        (now - dt.timestamp()) / 86400
+                    } else {
+                        0
+                    }
+                }
+                _ => 0,
+            };
+            if age_days > 7 {
+                "stale"
+            } else {
+                "restorable"
+            }
+        } else {
+            "interrupted"
+        }
+    }
+
     fn to_list_value(&self) -> Value {
+        let resume_cap = self.provider.as_deref().and_then(get_resume_capability);
         json!({
             "sessionId": self.session_id,
             "name": self.name,
@@ -241,10 +304,13 @@ impl SessionEntry {
             "updatedAt": self.updated_at,
             "firstPromptSent": self.first_prompt_sent,
             "parentSessionId": self.parent_session_id,
+            "continuityStatus": self.continuity_status(),
+            "resumeCapabilities": resume_cap.and_then(|c| serde_json::to_value(c).ok()),
         })
     }
 
     fn to_detail_value(&self) -> Value {
+        let resume_cap = self.provider.as_deref().and_then(get_resume_capability);
         json!({
             "sessionId": self.session_id,
             "name": self.name,
@@ -261,6 +327,8 @@ impl SessionEntry {
             "updatedAt": self.updated_at,
             "parentSessionId": self.parent_session_id,
             "firstPromptSent": self.first_prompt_sent,
+            "continuityStatus": self.continuity_status(),
+            "resumeCapabilities": resume_cap.and_then(|c| serde_json::to_value(c).ok()),
         })
     }
 
@@ -507,6 +575,154 @@ pub fn consolidate_message_history(notifications: Vec<Value>) -> Vec<Value> {
     result
 }
 
+fn normalize_provider_history(provider: Option<&str>, history: Vec<Value>) -> Vec<Value> {
+    if !provider_is_codex(provider) {
+        return history;
+    }
+
+    let has_real_agent_messages = history.iter().any(|notification| {
+        notification
+            .get("update")
+            .and_then(|update| update.get("sessionUpdate"))
+            .and_then(Value::as_str)
+            .is_some_and(|kind| kind == "agent_message" || kind == "agent_message_chunk")
+    });
+
+    history
+        .into_iter()
+        .filter_map(|notification| {
+            normalize_codex_history_entry(notification, has_real_agent_messages)
+        })
+        .collect()
+}
+
+fn provider_is_codex(provider: Option<&str>) -> bool {
+    matches!(provider, Some("codex" | "codex-acp"))
+}
+
+fn normalize_codex_history_entry(
+    notification: Value,
+    has_real_agent_messages: bool,
+) -> Option<Value> {
+    let Some(update) = notification.get("update") else {
+        return Some(notification);
+    };
+    let Some(kind) = update.get("sessionUpdate").and_then(Value::as_str) else {
+        return Some(notification);
+    };
+
+    if kind != "process_output" {
+        return Some(notification);
+    }
+
+    let data = update
+        .get("data")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+
+    if has_real_agent_messages {
+        return (!is_codex_process_output_noise(data)).then_some(notification);
+    }
+
+    match classify_codex_process_output(data) {
+        CodexProcessOutputEvent::AgentMessage(text) => {
+            Some(synthetic_agent_update(&notification, "agent_message", text))
+        }
+        CodexProcessOutputEvent::AgentMessageChunk(text) => Some(synthetic_agent_update(
+            &notification,
+            "agent_message_chunk",
+            text,
+        )),
+        CodexProcessOutputEvent::Ignore => {
+            (!is_codex_process_output_noise(data)).then_some(notification)
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum CodexProcessOutputEvent {
+    AgentMessage(String),
+    AgentMessageChunk(String),
+    Ignore,
+}
+
+fn classify_codex_process_output(data: &str) -> CodexProcessOutputEvent {
+    if data.trim().is_empty() {
+        return CodexProcessOutputEvent::Ignore;
+    }
+
+    if data.contains("Agent message (non-delta) received: \"") {
+        return extract_quoted_log_text(data)
+            .map(CodexProcessOutputEvent::AgentMessage)
+            .unwrap_or(CodexProcessOutputEvent::Ignore);
+    }
+
+    if data.contains("Agent message content delta received:") {
+        return extract_delta_log_text(data)
+            .map(CodexProcessOutputEvent::AgentMessageChunk)
+            .unwrap_or(CodexProcessOutputEvent::Ignore);
+    }
+
+    CodexProcessOutputEvent::Ignore
+}
+
+fn is_codex_process_output_noise(data: &str) -> bool {
+    let trimmed = data.trim();
+    trimmed.contains("codex_otel.log_only:")
+        || trimmed.contains("codex_otel.trace_safe:")
+        || trimmed.contains("Agent message (non-delta) received:")
+        || trimmed.contains("Agent message content delta received:")
+        || trimmed.contains("Agent reasoning content delta received:")
+}
+
+fn synthetic_agent_update(
+    original_notification: &Value,
+    session_update: &str,
+    text: String,
+) -> Value {
+    let session_id = original_notification
+        .get("sessionId")
+        .cloned()
+        .unwrap_or(Value::Null);
+
+    json!({
+        "sessionId": session_id,
+        "update": {
+            "sessionUpdate": session_update,
+            "content": {
+                "type": "text",
+                "text": text,
+            }
+        }
+    })
+}
+
+fn decode_log_escaped_text(raw: &str) -> String {
+    let quoted = format!("\"{raw}\"");
+    serde_json::from_str::<String>(&quoted).unwrap_or_else(|_| {
+        raw.replace("\\n", "\n")
+            .replace("\\r", "\r")
+            .replace("\\t", "\t")
+            .replace("\\\"", "\"")
+    })
+}
+
+fn extract_quoted_log_text(data: &str) -> Option<String> {
+    let marker = "Agent message (non-delta) received: \"";
+    let start = data.find(marker)?;
+    let tail = &data[start + marker.len()..];
+    let end = tail.rfind('"')?;
+    Some(decode_log_escaped_text(&tail[..end]))
+}
+
+fn extract_delta_log_text(data: &str) -> Option<String> {
+    let marker = "delta: \"";
+    let start = data.find(marker)?;
+    let tail = &data[start + marker.len()..];
+    let end = tail.rfind('"')?;
+    Some(decode_log_escaped_text(&tail[..end]))
+}
+
 #[cfg(test)]
 mod tests {
     use std::fs;
@@ -514,7 +730,7 @@ mod tests {
 
     use super::{
         build_session_context, consolidate_message_history, merge_session_entries,
-        ListSessionsQuery, SessionApplicationService,
+        normalize_provider_history, ListSessionsQuery, SessionApplicationService,
     };
     use crate::create_app_state;
     use routa_core::acp::AcpSessionRecord;
@@ -563,6 +779,7 @@ mod tests {
             branch: Some("main".to_string()),
             workspace_id: workspace_id.to_string(),
             routa_agent_id: Some(format!("agent-{session_id}")),
+            provider_session_id: Some(format!("provider-{session_id}")),
             provider: Some("codex".to_string()),
             role: Some("CRAFTER".to_string()),
             mode_id: Some("default".to_string()),
@@ -768,6 +985,109 @@ mod tests {
         assert_eq!(merged[0]["update"]["content"]["text"].as_str(), Some("A"));
         assert_eq!(merged[1]["update"]["content"]["text"].as_str(), Some("B"));
         assert_eq!(merged[2]["update"]["content"]["text"].as_str(), Some("C"));
+    }
+
+    #[test]
+    fn normalize_provider_history_rewrites_codex_agent_message_logs() {
+        let history = vec![
+            json!({
+                "sessionId": "s1",
+                "update": {
+                    "sessionUpdate": "process_output",
+                    "data": "INFO codex_acp::thread: Agent message content delta received: thread_id: x, delta: \"hel\""
+                }
+            }),
+            json!({
+                "sessionId": "s1",
+                "update": {
+                    "sessionUpdate": "process_output",
+                    "data": "INFO codex_acp::thread: Agent message content delta received: thread_id: x, delta: \"lo\""
+                }
+            }),
+            json!({
+                "sessionId": "s1",
+                "update": {
+                    "sessionUpdate": "process_output",
+                    "data": "INFO codex_acp::thread: Agent message (non-delta) received: \"hello\""
+                }
+            }),
+        ];
+
+        let normalized = normalize_provider_history(Some("codex-acp"), history);
+
+        assert_eq!(normalized.len(), 3);
+        assert_eq!(
+            normalized[0]["update"]["sessionUpdate"].as_str(),
+            Some("agent_message_chunk")
+        );
+        assert_eq!(
+            normalized[0]["update"]["content"]["text"].as_str(),
+            Some("hel")
+        );
+        assert_eq!(
+            normalized[2]["update"]["sessionUpdate"].as_str(),
+            Some("agent_message")
+        );
+        assert_eq!(
+            normalized[2]["update"]["content"]["text"].as_str(),
+            Some("hello")
+        );
+    }
+
+    #[test]
+    fn normalize_provider_history_drops_codex_otel_noise() {
+        let history = vec![
+            json!({
+                "sessionId": "s1",
+                "update": {
+                    "sessionUpdate": "process_output",
+                    "data": "INFO ... codex_otel.log_only: event.kind=response.output_text.delta"
+                }
+            }),
+            json!({
+                "sessionId": "s1",
+                "update": {
+                    "sessionUpdate": "agent_message_chunk",
+                    "content": { "text": "hi" }
+                }
+            }),
+        ];
+
+        let normalized = normalize_provider_history(Some("codex"), history);
+
+        assert_eq!(normalized.len(), 1);
+        assert_eq!(
+            normalized[0]["update"]["sessionUpdate"].as_str(),
+            Some("agent_message_chunk")
+        );
+    }
+
+    #[test]
+    fn normalize_provider_history_prefers_real_codex_agent_updates() {
+        let history = vec![
+            json!({
+                "sessionId": "s1",
+                "update": {
+                    "sessionUpdate": "agent_message_chunk",
+                    "content": { "text": "real" }
+                }
+            }),
+            json!({
+                "sessionId": "s1",
+                "update": {
+                    "sessionUpdate": "process_output",
+                    "data": "INFO codex_acp::thread: Agent message content delta received: thread_id: x, delta: \"duplicate\""
+                }
+            }),
+        ];
+
+        let normalized = normalize_provider_history(Some("codex-acp"), history);
+
+        assert_eq!(normalized.len(), 1);
+        assert_eq!(
+            normalized[0]["update"]["content"]["text"].as_str(),
+            Some("real")
+        );
     }
 
     #[test]

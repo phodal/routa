@@ -22,6 +22,8 @@ import {
   isAskUserQuestionMessage,
   AskUserQuestionBubble,
   hasAskUserQuestionAnswers,
+  isPermissionRequestMessage,
+  PermissionRequestBubble,
 } from "@/client/components/message-bubble";
 import {TracePanel} from "@/client/components/trace-panel";
 import type {WorkspaceData, CodebaseData} from "../hooks/use-workspaces";
@@ -73,6 +75,8 @@ export interface PlanEntry {
   status?: "pending" | "in_progress" | "completed";
 }
 
+const MISSING_PENDING_INTERACTIVE_REQUEST_MESSAGE = "No pending interactive request found for this session";
+
 interface ChatPanelProps {
   acp: UseAcpState & UseAcpActions;
   activeSessionId: string | null;
@@ -91,11 +95,14 @@ interface ChatPanelProps {
   workspaces?: WorkspaceData[];
   activeWorkspaceId?: string | null;
   onWorkspaceChange?: (id: string) => void;
+  onWorkspaceCreate?: (title: string) => Promise<void> | void;
   codebases?: CodebaseData[];
   /** When set, pre-fills the chat input (e.g. to restore text after a session error) */
   inputPrefill?: string | null;
   /** Called after inputPrefill has been consumed */
   onInputPrefillConsumed?: () => void;
+  /** Optional recovery action for a selected historical session. */
+  onResumeActiveSession?: () => Promise<void>;
 }
 
 // ─── Main Component ────────────────────────────────────────────────────
@@ -118,9 +125,11 @@ export function ChatPanel({
   workspaces = [],
   activeWorkspaceId,
   onWorkspaceChange,
+  onWorkspaceCreate,
   codebases: _codebases = [],
   inputPrefill,
   onInputPrefillConsumed,
+  onResumeActiveSession,
 }: ChatPanelProps) {
   const { t } = useTranslation();
   const { connected, loading, error, authError, updates, promptSession, clearAuthError } = acp;
@@ -128,6 +137,7 @@ export function ChatPanel({
   const [copiedRepoPath, setCopiedRepoPath] = useState(false);
   // View mode: 'chat' or 'trace'
   const [viewMode, setViewMode] = useState<"chat" | "trace">("chat");
+  const [isResumingActiveSession, setIsResumingActiveSession] = useState(false);
 
   // Use the extracted chat messages hook
   const {
@@ -222,6 +232,16 @@ export function ChatPanel({
     );
   }, [visibleMessages]);
 
+  const pendingPermissionRequests = useMemo(() => {
+    return visibleMessages.filter(
+      (msg) =>
+        msg.role === "tool" &&
+        isPermissionRequestMessage(msg) &&
+        msg.toolStatus !== "failed" &&
+        msg.toolStatus !== "completed",
+    );
+  }, [visibleMessages]);
+
   // File changes summary for TaskProgressBar
   const fileChangesSummary = useMemo<FileChangesSummary | undefined>(() => {
     const summary = getFileChangesSummary(fileChangesState);
@@ -241,35 +261,70 @@ export function ChatPanel({
 
   // ── Actions ──────────────────────────────────────────────────────────
 
+  const updateInteractiveRequestMessage = useCallback((
+    toolCallId: string,
+    status: "completed" | "failed",
+    response: Record<string, unknown>,
+    errorMessage?: string,
+  ) => {
+    if (!activeSessionId) return;
+
+    setMessagesBySession((prev) => {
+      const msgs = prev[activeSessionId] ?? [];
+      return {
+        ...prev,
+        [activeSessionId]: msgs.map((msg) =>
+          msg.toolCallId === toolCallId
+            ? {
+                ...msg,
+                toolStatus: status,
+                toolRawInput: {
+                  ...((msg.toolRawInput as Record<string, unknown>) ?? {}),
+                  ...response,
+                },
+                toolRawOutput: errorMessage
+                  ? { message: errorMessage }
+                  : msg.toolRawOutput,
+              }
+            : msg,
+        ),
+      };
+    });
+  }, [activeSessionId, setMessagesBySession]);
+
   const handleRepoChange = onRepoChange;
 
   const handleSubmitAskUserQuestion = useCallback(async (
     toolCallId: string,
     response: Record<string, unknown>,
   ) => {
-    await acp.respondToUserInput(toolCallId, response);
-    // Optimistically mark as completed so the sticky card disappears immediately
-    if (activeSessionId) {
-      setMessagesBySession((prev) => {
-        const msgs = prev[activeSessionId] ?? [];
-        return {
-          ...prev,
-          [activeSessionId]: msgs.map((msg) =>
-            msg.toolCallId === toolCallId
-              ? {
-                  ...msg,
-                  toolStatus: "completed",
-                  toolRawInput: {
-                    ...((msg.toolRawInput as Record<string, unknown>) ?? {}),
-                    ...response,
-                  },
-                }
-              : msg,
-          ),
-        };
-      });
+    try {
+      await acp.respondToUserInput(toolCallId, response);
+      updateInteractiveRequestMessage(toolCallId, "completed", response);
+    } catch (error) {
+      if (error instanceof Error && error.message.includes(MISSING_PENDING_INTERACTIVE_REQUEST_MESSAGE)) {
+        updateInteractiveRequestMessage(toolCallId, "failed", response, MISSING_PENDING_INTERACTIVE_REQUEST_MESSAGE);
+        return;
+      }
+      throw error;
     }
-  }, [acp, activeSessionId, setMessagesBySession]);
+  }, [acp, updateInteractiveRequestMessage]);
+
+  const handleSubmitPermissionRequest = useCallback(async (
+    toolCallId: string,
+    response: Record<string, unknown>,
+  ) => {
+    try {
+      await acp.respondToUserInput(toolCallId, response);
+      updateInteractiveRequestMessage(toolCallId, "completed", response);
+    } catch (error) {
+      if (error instanceof Error && error.message.includes(MISSING_PENDING_INTERACTIVE_REQUEST_MESSAGE)) {
+        updateInteractiveRequestMessage(toolCallId, "failed", response, MISSING_PENDING_INTERACTIVE_REQUEST_MESSAGE);
+        return;
+      }
+      throw error;
+    }
+  }, [acp, updateInteractiveRequestMessage]);
 
   const handleTerminalInput = useCallback(async (terminalId: string, data: string) => {
     await acp.writeTerminal(terminalId, data);
@@ -362,6 +417,16 @@ export function ChatPanel({
     setSetupInput("");
   }, [setupInput, handleSend]);
 
+  const handleResumeActiveSession = useCallback(async () => {
+    if (!onResumeActiveSession || isResumingActiveSession) return;
+    setIsResumingActiveSession(true);
+    try {
+      await onResumeActiveSession();
+    } finally {
+      setIsResumingActiveSession(false);
+    }
+  }, [isResumingActiveSession, onResumeActiveSession]);
+
   // ── Render ───────────────────────────────────────────────────────────
 
   return (
@@ -369,14 +434,26 @@ export function ChatPanel({
       {/* Session info bar with view toggle */}
       {activeSessionId && (
         <div className="px-5 py-2 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
-          <div className="flex items-center gap-2">
+          <div className="flex min-w-0 items-center gap-2">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-            <span className="text-[11px] text-slate-500 dark:text-slate-400 font-mono">
-              {t.sessions.sessionInfo} {activeSessionId.slice(0, 12)}...
+            <span
+              className="max-w-[36rem] overflow-x-auto whitespace-nowrap text-[11px] text-slate-500 dark:text-slate-400 font-mono"
+              title={activeSessionId}
+            >
+              {t.sessions.sessionInfo} {activeSessionId}
             </span>
           </div>
           {/* View toggle: Chat | Trace */}
-          <div className="flex items-center bg-slate-100 dark:bg-slate-800 rounded-md p-0.5">
+          <div className="flex items-center gap-2">
+            <a
+              href={`/traces?sessionId=${encodeURIComponent(traceSessionId ?? activeSessionId)}${activeWorkspaceId ? `&workspaceId=${encodeURIComponent(activeWorkspaceId)}` : ""}`}
+              target="_blank"
+              rel="noreferrer"
+              className="rounded-md border border-slate-200 px-3 py-1 text-[11px] font-medium text-slate-600 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+            >
+              Debug
+            </a>
+            <div className="flex items-center bg-slate-100 dark:bg-slate-800 rounded-md p-0.5">
             <button
               onClick={() => setViewMode("chat")}
               className={`px-3 py-1 text-[11px] font-medium rounded-md transition-colors ${
@@ -397,13 +474,25 @@ export function ChatPanel({
             >
               {t.chat.viewToggle.trace}
             </button>
+            </div>
           </div>
         </div>
       )}
 
       {error && (
-        <div className="px-5 py-2 bg-red-50 dark:bg-red-900/10 text-red-600 dark:text-red-400 text-xs border-b border-red-100 dark:border-red-900/20">
-          {error}
+        <div className="flex items-start justify-between gap-3 border-b border-red-100 bg-red-50 px-5 py-2 text-xs text-red-600 dark:border-red-900/20 dark:bg-red-900/10 dark:text-red-400">
+          <div className="min-w-0 flex-1">{error}</div>
+          {activeSessionId && onResumeActiveSession && (
+            <button
+              type="button"
+              onClick={() => void handleResumeActiveSession()}
+              disabled={isResumingActiveSession || loading}
+              className="shrink-0 rounded-md border border-red-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-red-700 transition-colors hover:border-red-300 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-red-800 dark:bg-red-950/40 dark:text-red-200 dark:hover:bg-red-900/40"
+              title={t.sessions.resumeHint}
+            >
+              {isResumingActiveSession ? t.sessions.resuming : t.sessions.resume}
+            </button>
+          )}
         </div>
       )}
 
@@ -483,6 +572,7 @@ export function ChatPanel({
           workspaces={workspaces}
           activeWorkspaceId={activeWorkspaceId ?? null}
           onWorkspaceChange={(id) => onWorkspaceChange?.(id)}
+          onWorkspaceCreate={onWorkspaceCreate}
           repoSelection={repoSelection}
           onRepoChange={onRepoChange}
           agentRole={agentRole}
@@ -511,11 +601,23 @@ export function ChatPanel({
                   if (msg.role === "tool" && msg.toolKind === "task") {
                     return false;
                   }
+                  // Hide non-interactive provider stderr/process output from the main chat stream.
+                  if (msg.role === "terminal" && msg.terminalInteractive === false) {
+                    return false;
+                  }
                   // Hide pending AskUserQuestion from chat stream — shown sticky above input
                   if (
                     msg.role === "tool"
                     && isAskUserQuestionMessage(msg)
                     && !hasAskUserQuestionAnswers(msg)
+                    && msg.toolStatus !== "failed"
+                    && msg.toolStatus !== "completed"
+                  ) {
+                    return false;
+                  }
+                  if (
+                    msg.role === "tool"
+                    && isPermissionRequestMessage(msg)
                     && msg.toolStatus !== "failed"
                     && msg.toolStatus !== "completed"
                   ) {
@@ -528,6 +630,7 @@ export function ChatPanel({
                     key={`${msg.id}-${index}`}
                     message={msg}
                     onSubmitAskUserQuestion={handleSubmitAskUserQuestion}
+                    onSubmitPermissionRequest={handleSubmitPermissionRequest}
                     onTerminalInput={activeSessionId ? handleTerminalInput : undefined}
                     onTerminalResize={activeSessionId ? handleTerminalResize : undefined}
                   />
@@ -539,8 +642,8 @@ export function ChatPanel({
           {/* Input */}
           <div className="border-t border-slate-100 dark:border-slate-800 bg-white dark:bg-[#0f1117]">
             <div className="max-w-3xl mx-auto px-5 py-3 space-y-2">
-              {/* AskUserQuestion sticky cards — displayed above input until user submits */}
-              {pendingAskUserQuestions.length > 0 && (
+              {/* Interactive request sticky cards — displayed above input until user submits */}
+              {(pendingAskUserQuestions.length > 0 || pendingPermissionRequests.length > 0) && (
                 <div className="space-y-2">
                   {pendingAskUserQuestions
                     .filter((msg) => msg.toolStatus !== "completed")
@@ -549,6 +652,15 @@ export function ChatPanel({
                       key={msg.id}
                       message={msg}
                       onSubmit={handleSubmitAskUserQuestion}
+                    />
+                  ))}
+                  {pendingPermissionRequests
+                    .filter((msg) => msg.toolStatus !== "completed")
+                    .map((msg) => (
+                    <PermissionRequestBubble
+                      key={msg.id}
+                      message={msg}
+                      onSubmit={handleSubmitPermissionRequest}
                     />
                   ))}
                 </div>

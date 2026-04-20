@@ -40,7 +40,7 @@ export async function POST(
     console.error(`[SessionDisconnect] Failed to persist history for ${sessionId}:`, error);
   }
 
-  getAcpProcessManager().killSession(sessionId);
+  await getAcpProcessManager().killSession(sessionId);
 
   return NextResponse.json({ ok: true });
 }

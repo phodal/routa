@@ -1,7 +1,17 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { UseAcpActions, UseAcpState } from "@/client/hooks/use-acp";
 import { ChatPanel } from "../chat-panel";
+
+const {
+  mockVisibleMessages,
+  mockSetMessagesBySession,
+  mockFetchSessions,
+} = vi.hoisted(() => ({
+  mockVisibleMessages: [] as Array<Record<string, unknown>>,
+  mockSetMessagesBySession: vi.fn(),
+  mockFetchSessions: vi.fn(),
+}));
 
 vi.mock("@/i18n", () => ({
   useTranslation: () => ({
@@ -26,6 +36,23 @@ vi.mock("@/i18n", () => ({
         tasks: "Tasks",
         dismiss: "Dismiss",
         copyToClipboard: "Copy to clipboard",
+        save: "Save",
+        cancel: "Cancel",
+      },
+      messageBubble: {
+        requestPermissions: "Request permissions",
+        permissionReason: "Reason",
+        permissionCommand: "Command",
+        permissionSuggestedAccess: "Suggested access",
+        permissionTechnicalDetails: "Technical details",
+        permissionAllow: "Allow",
+        permissionDeny: "Deny",
+        permissionScopeSession: "Entire session",
+        permissionScopeTurn: "This turn only",
+        permissionApproved: "Approved",
+        permissionDenied: "Denied",
+        permissionScopeHint: "Scope hint",
+        failedToSubmit: "Failed to submit",
       },
     },
   }),
@@ -41,21 +68,103 @@ vi.mock("../tiptap-input", () => ({
 
 vi.mock("../chat-panel/hooks", () => ({
   useChatMessages: () => ({
-    visibleMessages: [],
+    visibleMessages: mockVisibleMessages,
     sessions: [],
     sessionModeById: {},
     isSessionRunning: false,
     checklistItems: [],
     fileChangesState: { files: new Map(), totalAdded: 0, totalRemoved: 0 },
     usageInfo: null,
-    setMessagesBySession: vi.fn(),
+    setMessagesBySession: mockSetMessagesBySession,
     setIsSessionRunning: vi.fn(),
-    fetchSessions: vi.fn(),
+    fetchSessions: mockFetchSessions,
     resetStreamingRefs: vi.fn(),
   }),
 }));
 
 describe("ChatPanel session targeting", () => {
+  beforeEach(() => {
+    mockVisibleMessages.splice(0, mockVisibleMessages.length);
+    mockSetMessagesBySession.mockReset();
+    mockFetchSessions.mockReset();
+  });
+
+  it("dismisses stale permission cards when the server reports no pending interactive request", async () => {
+    window.HTMLElement.prototype.scrollIntoView = vi.fn();
+    mockVisibleMessages.splice(0, mockVisibleMessages.length, {
+      id: "tool-1",
+      role: "tool",
+      content: "RequestPermissions",
+      timestamp: new Date(),
+      toolCallId: "request-permission-1",
+      toolKind: "request-permissions",
+      toolStatus: "running",
+      toolRawInput: {
+        permissions: { "fs.read": true },
+        reason: "Need repo read access",
+      },
+    });
+    const acp = {
+      connected: true,
+      sessionId: "session-123",
+      updates: [],
+      providers: [],
+      selectedProvider: "codex",
+      loading: false,
+      error: null,
+      authError: null,
+      dockerConfigError: null,
+      connect: vi.fn(),
+      createSession: vi.fn(),
+      resumeSession: vi.fn(),
+      forkSession: vi.fn(),
+      selectSession: vi.fn(),
+      setProvider: vi.fn(),
+      setMode: vi.fn(),
+      prompt: vi.fn(),
+      promptSession: vi.fn(async () => {}),
+      respondToUserInput: vi.fn(async () => {
+        throw new Error("No pending interactive request found for this session");
+      }),
+      respondToUserInputForSession: vi.fn(),
+      writeTerminal: vi.fn(),
+      resizeTerminal: vi.fn(),
+      cancel: vi.fn(),
+      disconnect: vi.fn(),
+      clearAuthError: vi.fn(),
+      clearDockerConfigError: vi.fn(),
+      listProviderModels: vi.fn(),
+    } satisfies Partial<UseAcpState & UseAcpActions> as UseAcpState & UseAcpActions;
+
+    render(
+      <ChatPanel
+        acp={acp}
+        activeSessionId="session-123"
+        onEnsureSession={vi.fn(async () => "session-123")}
+        onSelectSession={vi.fn(async () => {})}
+        repoSelection={null}
+        onRepoChange={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Deny" }));
+
+    await waitFor(() => {
+      expect(mockSetMessagesBySession).toHaveBeenCalledTimes(1);
+    });
+
+    const updateMessages = mockSetMessagesBySession.mock.calls[0][0] as (prev: Record<string, Array<Record<string, unknown>>>) => Record<string, Array<Record<string, unknown>>>;
+    const nextState = updateMessages({
+      "session-123": mockVisibleMessages,
+    });
+    expect(nextState["session-123"][0]).toMatchObject({
+      toolStatus: "failed",
+      toolRawOutput: {
+        message: "No pending interactive request found for this session",
+      },
+    });
+  });
+
   it("sends prompts to the ensured active session even when ACP has not selected it yet", async () => {
     window.HTMLElement.prototype.scrollIntoView = vi.fn();
     const onSelectSession = vi.fn(async () => {});
@@ -72,6 +181,8 @@ describe("ChatPanel session targeting", () => {
       dockerConfigError: null,
       connect: vi.fn(),
       createSession: vi.fn(),
+      resumeSession: vi.fn(),
+      forkSession: vi.fn(),
       selectSession: vi.fn(),
       setProvider: vi.fn(),
       setMode: vi.fn(),
@@ -105,5 +216,70 @@ describe("ChatPanel session targeting", () => {
       expect(onSelectSession).toHaveBeenCalledWith("session-123");
       expect(acp.promptSession).toHaveBeenCalledWith("session-123", "continue", undefined);
     });
+  });
+
+  it("hides non-interactive process output cards from the chat stream", () => {
+    window.HTMLElement.prototype.scrollIntoView = vi.fn();
+    mockVisibleMessages.splice(0, mockVisibleMessages.length, {
+      id: "process-1",
+      role: "terminal",
+      content: "stderr line",
+      timestamp: new Date(),
+      terminalId: "process-session-123",
+      terminalCommand: "Codex",
+      terminalArgs: ["stderr"],
+      terminalInteractive: false,
+      terminalExited: false,
+      terminalExitCode: null,
+    }, {
+      id: "assistant-1",
+      role: "assistant",
+      content: "Done",
+      timestamp: new Date(),
+    });
+
+    const acp = {
+      connected: true,
+      sessionId: "session-123",
+      updates: [],
+      providers: [],
+      selectedProvider: "codex",
+      loading: false,
+      error: null,
+      authError: null,
+      dockerConfigError: null,
+      connect: vi.fn(),
+      createSession: vi.fn(),
+      resumeSession: vi.fn(),
+      forkSession: vi.fn(),
+      selectSession: vi.fn(),
+      setProvider: vi.fn(),
+      setMode: vi.fn(),
+      prompt: vi.fn(),
+      promptSession: vi.fn(async () => {}),
+      respondToUserInput: vi.fn(),
+      respondToUserInputForSession: vi.fn(),
+      writeTerminal: vi.fn(),
+      resizeTerminal: vi.fn(),
+      cancel: vi.fn(),
+      disconnect: vi.fn(),
+      clearAuthError: vi.fn(),
+      clearDockerConfigError: vi.fn(),
+      listProviderModels: vi.fn(),
+    } satisfies Partial<UseAcpState & UseAcpActions> as UseAcpState & UseAcpActions;
+
+    render(
+      <ChatPanel
+        acp={acp}
+        activeSessionId="session-123"
+        onEnsureSession={vi.fn(async () => "session-123")}
+        onSelectSession={vi.fn(async () => {})}
+        repoSelection={null}
+        onRepoChange={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByText("stderr line")).toBeNull();
+    expect(screen.getByText("Done")).toBeTruthy();
   });
 });

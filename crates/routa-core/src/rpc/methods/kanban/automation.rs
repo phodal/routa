@@ -1,11 +1,8 @@
-use chrono::Utc;
-use reqwest::header::{HeaderName, HeaderValue, ACCEPT, CONTENT_TYPE};
-use serde_json::{json, Value};
-use std::collections::HashMap;
-use std::time::{Duration, Instant};
+mod a2a;
 
-use crate::events::{AgentEvent, AgentEventType};
-use crate::models::kanban::{KanbanAutomationStep, KanbanBoard, KanbanColumn, KanbanTransport};
+use chrono::Utc;
+
+use crate::models::kanban::{KanbanAutomationStep, KanbanBoard, KanbanColumn};
 use crate::models::task::{
     build_task_evidence_summary, build_task_invest_validation, build_task_story_readiness, Task,
     TaskEvidenceSummary, TaskInvestValidation, TaskLaneSession, TaskLaneSessionStatus,
@@ -15,9 +12,7 @@ use crate::rpc::error::RpcError;
 use crate::state::AppState;
 use crate::store::acp_session_store::CreateAcpSessionParams;
 
-const A2A_POLL_INTERVAL: Duration = Duration::from_secs(1);
-const A2A_MAX_WAIT: Duration = Duration::from_secs(300);
-const A2A_AUTH_CONFIGS_ENV: &str = "ROUTA_A2A_AUTH_CONFIGS";
+use self::a2a::{is_a2a_step, trigger_assigned_task_a2a_agent};
 
 #[derive(Debug)]
 pub(super) struct AgentTriggerResult {
@@ -518,7 +513,10 @@ pub(super) fn build_task_prompt(
     .join("\n")
 }
 
-async fn trigger_assigned_task_agent(state: &AppState, task: &mut Task) -> Result<(), String> {
+pub(super) async fn trigger_assigned_task_agent(
+    state: &AppState,
+    task: &mut Task,
+) -> Result<(), String> {
     let board = load_task_board(state, task).await?;
     let step = resolve_task_automation_step(board.as_ref(), task);
     if is_a2a_step(step.as_ref()) {
@@ -544,7 +542,7 @@ async fn trigger_assigned_task_acp_agent(
         .unwrap_or_else(|| "CRAFTER".to_string())
         .to_uppercase();
     let session_id = uuid::Uuid::new_v4().to_string();
-    let cwd = resolve_task_session_cwd(state, &task.workspace_id).await?;
+    let cwd = resolve_task_session_cwd(state, task).await?;
 
     state
         .acp_manager
@@ -732,10 +730,36 @@ async fn trigger_assigned_task_acp_agent(
     Ok(())
 }
 
-async fn resolve_task_session_cwd(state: &AppState, workspace_id: &str) -> Result<String, String> {
+async fn resolve_task_session_cwd(state: &AppState, task: &Task) -> Result<String, String> {
+    if let Some(worktree_id) = task.worktree_id.as_deref() {
+        if let Some(worktree) = state
+            .worktree_store
+            .get(worktree_id)
+            .await
+            .map_err(|error| format!("Failed to resolve task worktree: {error}"))?
+        {
+            if !worktree.worktree_path.trim().is_empty() {
+                return Ok(worktree.worktree_path);
+            }
+        }
+    }
+
+    for codebase_id in &task.codebase_ids {
+        if let Some(codebase) = state
+            .codebase_store
+            .get(codebase_id)
+            .await
+            .map_err(|error| format!("Failed to resolve task codebase: {error}"))?
+        {
+            if !codebase.repo_path.trim().is_empty() {
+                return Ok(codebase.repo_path);
+            }
+        }
+    }
+
     if let Some(codebase) = state
         .codebase_store
-        .get_default(workspace_id)
+        .get_default(&task.workspace_id)
         .await
         .map_err(|error| format!("Failed to resolve default codebase: {error}"))?
     {
@@ -746,7 +770,7 @@ async fn resolve_task_session_cwd(state: &AppState, workspace_id: &str) -> Resul
 
     let codebases = state
         .codebase_store
-        .list_by_workspace(workspace_id)
+        .list_by_workspace(&task.workspace_id)
         .await
         .map_err(|error| format!("Failed to list workspace codebases: {error}"))?;
     if let Some(codebase) = codebases
@@ -928,6 +952,23 @@ pub(super) fn apply_trigger_result(
     step: Option<&KanbanAutomationStep>,
     result: AgentTriggerResult,
 ) {
+    let now = Utc::now().to_rfc3339();
+    for session in &mut task.lane_sessions {
+        if session.session_id == result.session_id
+            || session.status != TaskLaneSessionStatus::Running
+        {
+            continue;
+        }
+        if session.column_id.as_deref() == task.column_id.as_deref() {
+            continue;
+        }
+
+        session.status = TaskLaneSessionStatus::Completed;
+        if session.completed_at.is_none() {
+            session.completed_at = Some(now.clone());
+        }
+    }
+
     task.trigger_session_id = Some(result.session_id.clone());
     if !task.session_ids.iter().any(|id| id == &result.session_id) {
         task.session_ids.push(result.session_id.clone());
@@ -938,7 +979,6 @@ pub(super) fn apply_trigger_result(
             (Some(column.id.as_str()) == task.column_id.as_deref()).then(|| column.name.clone())
         })
     });
-    let now = Utc::now().to_rfc3339();
     let lane_session = TaskLaneSession {
         session_id: result.session_id.clone(),
         routa_agent_id: None,
@@ -979,7 +1019,10 @@ pub(super) fn apply_trigger_result(
     }
 }
 
-async fn load_task_board(state: &AppState, task: &Task) -> Result<Option<KanbanBoard>, String> {
+pub(super) async fn load_task_board(
+    state: &AppState,
+    task: &Task,
+) -> Result<Option<KanbanBoard>, String> {
     if let Some(board_id) = task.board_id.as_deref() {
         state
             .kanban_store
@@ -1440,20 +1483,10 @@ mod tests {
             .await
             .expect("codebase save should succeed");
 
-        let cwd = resolve_task_session_cwd(&state, "default")
-            .await
-            .expect("cwd resolution should succeed");
-
-        assert_eq!(cwd, "/Users/phodal/.routa/repos/phodal--routa");
-    }
-
-    #[tokio::test]
-    async fn reconcile_a2a_lane_session_marks_terminal_state() {
-        let state = setup_state().await;
-        let mut task = Task::new(
+        let task = Task::new(
             "task-1".to_string(),
-            "A2A completion".to_string(),
-            "Track remote completion".to_string(),
+            "Resolve cwd".to_string(),
+            "Use the workspace codebase".to_string(),
             "default".to_string(),
             None,
             None,
@@ -1463,16 +1496,65 @@ mod tests {
             None,
             None,
         );
-        task.board_id = Some("board-1".to_string());
+
+        let cwd = resolve_task_session_cwd(&state, &task)
+            .await
+            .expect("cwd resolution should succeed");
+
+        assert_eq!(cwd, "/Users/phodal/.routa/repos/phodal--routa");
+    }
+
+    #[test]
+    fn apply_trigger_result_completes_running_sessions_from_previous_lanes() {
+        let mut task = Task::new(
+            "task-2".to_string(),
+            "Advance to todo".to_string(),
+            "Finish backlog before todo starts".to_string(),
+            "default".to_string(),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        );
         task.column_id = Some("todo".to_string());
-        task.assigned_role = Some("CRAFTER".to_string());
-        task.assigned_specialist_name = Some("Todo Remote Worker".to_string());
+        task.assigned_role = Some("ROUTA".to_string());
+        task.assigned_specialist_name = Some("Todo Orchestrator".to_string());
+        task.lane_sessions.push(TaskLaneSession {
+            session_id: "session-backlog-1".to_string(),
+            routa_agent_id: None,
+            column_id: Some("backlog".to_string()),
+            column_name: Some("Backlog".to_string()),
+            step_id: None,
+            step_index: None,
+            step_name: Some("Backlog Refiner".to_string()),
+            provider: Some("claude".to_string()),
+            role: Some("ROUTA".to_string()),
+            specialist_id: None,
+            specialist_name: Some("Backlog Refiner".to_string()),
+            transport: Some("acp".to_string()),
+            external_task_id: None,
+            context_id: None,
+            attempt: Some(1),
+            loop_mode: None,
+            completion_requirement: None,
+            objective: Some(task.objective.clone()),
+            last_activity_at: None,
+            recovered_from_session_id: None,
+            recovery_reason: None,
+            status: TaskLaneSessionStatus::Running,
+            started_at: Utc::now().to_rfc3339(),
+            completed_at: None,
+        });
 
         let board = KanbanBoard {
-            id: "board-1".to_string(),
+            id: "board-2".to_string(),
             workspace_id: "default".to_string(),
             name: "Board".to_string(),
             is_default: true,
+            github_token: None,
             columns: vec![KanbanColumn {
                 id: "todo".to_string(),
                 name: "Todo".to_string(),
@@ -1487,8 +1569,8 @@ mod tests {
             updated_at: Utc::now(),
         };
         let step = KanbanAutomationStep {
-            id: "todo-a2a".to_string(),
-            specialist_name: Some("Todo Remote Worker".to_string()),
+            id: "todo-step".to_string(),
+            specialist_name: Some("Todo Orchestrator".to_string()),
             ..Default::default()
         };
 
@@ -1497,49 +1579,21 @@ mod tests {
             Some(&board),
             Some(&step),
             AgentTriggerResult {
-                session_id: "a2a-session-1".to_string(),
-                transport: "a2a".to_string(),
-                external_task_id: Some("remote-task-1".to_string()),
-                context_id: Some("ctx-1".to_string()),
+                session_id: "session-todo-1".to_string(),
+                transport: "acp".to_string(),
+                external_task_id: None,
+                context_id: None,
             },
         );
-        state
-            .task_store
-            .save(&task)
-            .await
-            .expect("task save should succeed");
 
-        reconcile_a2a_lane_session(
-            &state,
-            &task.id,
-            "a2a-session-1",
-            "remote-task-1",
-            A2ATaskTerminalUpdate {
-                status: TaskLaneSessionStatus::Completed,
-                completed_at: "2026-03-21T00:00:05Z".to_string(),
-                last_activity_at: "2026-03-21T00:00:05Z".to_string(),
-                context_id: Some("ctx-1".to_string()),
-                error: None,
-            },
-        )
-        .await
-        .expect("reconciliation should succeed");
-
-        let updated = state
-            .task_store
-            .get(&task.id)
-            .await
-            .expect("task lookup should succeed")
-            .expect("task should exist");
-        assert_eq!(updated.trigger_session_id, None);
-        assert_eq!(updated.last_sync_error, None);
-        assert_eq!(updated.lane_sessions.len(), 1);
-        let lane_session = &updated.lane_sessions[0];
-        assert_eq!(lane_session.status, TaskLaneSessionStatus::Completed);
+        assert_eq!(task.trigger_session_id.as_deref(), Some("session-todo-1"));
+        assert_eq!(task.lane_sessions.len(), 2);
         assert_eq!(
-            lane_session.completed_at.as_deref(),
-            Some("2026-03-21T00:00:05Z")
+            task.lane_sessions[0].status,
+            TaskLaneSessionStatus::Completed
         );
-        assert_eq!(lane_session.context_id.as_deref(), Some("ctx-1"));
+        assert!(task.lane_sessions[0].completed_at.is_some());
+        assert_eq!(task.lane_sessions[1].status, TaskLaneSessionStatus::Running);
+        assert_eq!(task.lane_sessions[1].column_id.as_deref(), Some("todo"));
     }
 }

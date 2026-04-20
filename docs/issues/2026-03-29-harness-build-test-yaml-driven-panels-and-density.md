@@ -1,7 +1,7 @@
 ---
 title: "Harness build/test feedback loops should be YAML-driven and visually compressed"
 date: "2026-03-29"
-status: open
+status: resolved
 severity: medium
 area: "ui"
 tags: ["harness", "build", "test", "yaml", "density", "governance-loop"]
@@ -11,6 +11,11 @@ related_issues: [
   "docs/issues/2026-03-29-harness-governance-loop-panel-orchestration-gap.md",
   "docs/issues/2026-03-28-harness-governance-loop-semantic-drift.md"
 ]
+github_issue: 250
+github_state: "closed"
+github_url: "https://github.com/phodal/routa/issues/250"
+resolved_at: "2026-03-30"
+resolution: "Resolved by adding checked-in build/test harness surface contracts and wiring compact repo-signal panels into the Harness governance experience."
 ---
 
 # Harness 的 build / test 反馈环仍然缺少稳定配置源，而且 UI 密度过高
@@ -78,6 +83,15 @@ related_issues: [
 ## Observations
 
 - 当前页面截图已记录在本地会话产物：`/tmp/harness-settings.png`
+
+## Deduplication Note
+
+`2026-03-29-harness-governance-loop-missing-build-metadata.md` is now treated
+as a narrower symptom of this broader build/test harness issue rather than a
+separate active tracker.
+- `2026-03-28-harness-governance-loop-semantic-drift.md` is also treated as a
+  narrower governance-loop presentation symptom inside the same broader harness
+  surface family.
 - 当前屏幕首屏已经同时呈现 governance graph 与 instruction file 的大块内容，首屏以下还会继续堆叠 Hook system、Review triggers、Fitness files 等区块。
 - `build` 与 `test` 比 `review` 更需要“摘要化”，因为它们天然会带来 scripts、config、artifact、coverage、reports 等多组内容。
 - 如果后续直接把 repo heuristics 暴露给 UI，很容易把 `package.json`、`Cargo.toml`、`vitest.config.ts`、`playwright.config.ts`、`coverage/` 等全部平铺出来，进一步放大页面长度问题。

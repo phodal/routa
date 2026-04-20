@@ -13,6 +13,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Select } from "./select";
 import { useTranslation } from "@/i18n";
+import { desktopAwareFetch } from "@/client/utils/diagnostics";
 import { Check, Clock, Plus, SquarePen, Trash2, Play } from "lucide-react";
 
 
@@ -151,7 +152,7 @@ export function SchedulePanel({ workspaceId }: { workspaceId?: string }) {
     }
     try {
       setLoading(true);
-      const res = await fetch(`/api/schedules?workspaceId=${workspaceId}`);
+      const res = await desktopAwareFetch(`/api/schedules?workspaceId=${workspaceId}`);
       if (res.ok) {
         const data = await res.json();
         setSchedules(data.schedules ?? []);
@@ -169,7 +170,7 @@ export function SchedulePanel({ workspaceId }: { workspaceId?: string }) {
 
   // Load specialists from API
   useEffect(() => {
-    fetch("/api/specialists")
+    desktopAwareFetch("/api/specialists")
       .then((r) => r.ok ? r.json() : null)
       .then((data) => {
         if (data?.specialists) {
@@ -228,12 +229,12 @@ export function SchedulePanel({ workspaceId }: { workspaceId?: string }) {
       };
 
       const res = editId
-        ? await fetch(`/api/schedules/${editId}`, {
+        ? await desktopAwareFetch(`/api/schedules/${editId}`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload),
           })
-        : await fetch("/api/schedules", {
+        : await desktopAwareFetch("/api/schedules", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload),
@@ -258,7 +259,7 @@ export function SchedulePanel({ workspaceId }: { workspaceId?: string }) {
   async function handleDelete(id: string) {
     if (!window.confirm(`${t.schedules.deleteConfirm}?`)) return;
     try {
-      const res = await fetch(`/api/schedules/${id}`, { method: "DELETE" });
+      const res = await desktopAwareFetch(`/api/schedules/${id}`, { method: "DELETE" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setSuccess(t.schedules.deleted);
       await loadSchedules();
@@ -269,7 +270,7 @@ export function SchedulePanel({ workspaceId }: { workspaceId?: string }) {
 
   async function handleToggleEnabled(s: Schedule) {
     try {
-      const res = await fetch(`/api/schedules/${s.id}`, {
+      const res = await desktopAwareFetch(`/api/schedules/${s.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ enabled: !s.enabled }),
@@ -285,7 +286,7 @@ export function SchedulePanel({ workspaceId }: { workspaceId?: string }) {
     setRunning(s.id);
     setError(null);
     try {
-      const res = await fetch(`/api/schedules/${s.id}/run`, { method: "POST" });
+      const res = await desktopAwareFetch(`/api/schedules/${s.id}/run`, { method: "POST" });
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
         throw new Error(d.error ?? `HTTP ${res.status}`);

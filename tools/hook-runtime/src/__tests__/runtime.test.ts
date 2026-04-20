@@ -4,10 +4,22 @@ import {
   resolveFailureRoute,
   runRuntime,
   runHookRuntime,
+  splitMetricsByExecutionMode,
   type HookRuntimeOptions,
   type HookRuntimeProfile,
   type ReviewPhaseResult,
 } from "../runtime.js";
+import type { HookMetric } from "../metrics.js";
+
+function buildMetric(name: string, serial = false): HookMetric {
+  return {
+    command: `echo ${name}`,
+    hardGate: true,
+    name,
+    serial,
+    sourceFile: "docs/fitness/unit-test.md",
+  };
+}
 
 describe("runHookRuntime", () => {
   it("executes phases strictly by profile order through adapters", async () => {
@@ -218,5 +230,21 @@ describe("runHookRuntime", () => {
     );
 
     expect(route.name).toBe("auto-fix");
+  });
+
+  it("splits serial metrics out of the parallel execution pool", () => {
+    const result = splitMetricsByExecutionMode([
+      buildMetric("eslint_pass"),
+      buildMetric("rust_test_pass", true),
+      buildMetric("ts_test_pass_full"),
+    ]);
+
+    expect(result.parallelMetrics.map((metric) => metric.name)).toEqual([
+      "eslint_pass",
+      "ts_test_pass_full",
+    ]);
+    expect(result.serialMetrics.map((metric) => metric.name)).toEqual([
+      "rust_test_pass",
+    ]);
   });
 });

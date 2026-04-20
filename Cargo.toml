@@ -1,17 +1,20 @@
 [workspace]
 resolver = "2"
 members = [
+    "crates/feature-trace",
     "crates/routa-core",
     "crates/routa-server",
     "crates/routa-cli",
     "crates/routa-rpc",
     "crates/routa-scanner",
-    "crates/routa-entrix",
+    "crates/trace-parser",
+    "crates/entrix",
     "apps/desktop/src-tauri",
+    "crates/harness-monitor",
 ]
 
 [workspace.package]
-version = "0.2.4"
+version = "0.17.2"
 edition = "2021"
 license = "MIT"
 authors = ["phodal"]
@@ -21,4 +24,3 @@ opt-level = 3
 lto = true
 codegen-units = 1
 strip = true
-

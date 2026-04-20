@@ -1,3 +1,0 @@
-[submodule "tools/entrix"]
-	path = tools/entrix
-	url = git@github.com:phodal/entrix.git

@@ -55,6 +55,11 @@ export class PgArtifactStore implements ArtifactStore {
     return rows.map((row) => this.toArtifactModel(row));
   }
 
+  async listByWorkspace(workspaceId: string): Promise<Artifact[]> {
+    const rows = await this.db.select().from(artifacts).where(eq(artifacts.workspaceId, workspaceId));
+    return rows.map((row) => this.toArtifactModel(row));
+  }
+
   async listByTaskAndType(taskId: string, type: ArtifactType): Promise<Artifact[]> {
     const rows = await this.db
       .select()

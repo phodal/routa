@@ -5,6 +5,7 @@ import type { AcpProviderInfo } from "@/client/acp-client";
 const {
   initializeMock,
   listProvidersMock,
+  loadRegistryProvidersMock,
   onUpdateMock,
   onConnectionIssueMock,
   disconnectMock,
@@ -19,6 +20,7 @@ const {
     source?: "static" | "registry";
     unavailableReason?: string;
   }[]>>(async () => []),
+  loadRegistryProvidersMock: vi.fn(async () => []),
   onUpdateMock: vi.fn(),
   onConnectionIssueMock: vi.fn(),
   disconnectMock: vi.fn(),
@@ -28,6 +30,7 @@ vi.mock("../../acp-client", () => ({
   BrowserAcpClient: class MockBrowserAcpClient {
     initialize = initializeMock;
     listProviders = listProvidersMock;
+    loadRegistryProviders = loadRegistryProvidersMock;
     onUpdate = onUpdateMock;
     onConnectionIssue = onConnectionIssueMock;
     disconnect = disconnectMock;
@@ -103,5 +106,40 @@ describe("useAcp selected provider persistence", () => {
       expect(result.current.connected).toBe(true);
       expect(result.current.selectedProvider).toBe("codex");
     });
+  });
+
+  it("falls back to the first available provider when the stored provider is unavailable", async () => {
+    window.localStorage.setItem("routa.acp.selectedProvider", "claude");
+    listProvidersMock.mockResolvedValue([
+      { id: "claude", name: "Claude", command: "claude", description: "Claude provider", status: "unavailable", source: "static" },
+      { id: "opencode", name: "OpenCode", command: "opencode", description: "OpenCode provider", status: "available", source: "static" },
+      { id: "codex", name: "Codex", command: "codex-acp", description: "Codex provider", status: "unavailable", source: "static" },
+    ]);
+
+    const { result } = renderHook(() => useAcp());
+
+    await act(async () => {
+      await result.current.connect();
+    });
+
+    await waitFor(() => {
+      expect(result.current.connected).toBe(true);
+      expect(result.current.selectedProvider).toBe("opencode");
+    });
+
+    expect(window.localStorage.getItem("routa.acp.selectedProvider")).toBe("opencode");
+  });
+
+  it("ignores duplicate connect calls while the client is already connected", async () => {
+    const { result } = renderHook(() => useAcp());
+
+    await act(async () => {
+      await result.current.connect();
+      await result.current.connect();
+    });
+
+    expect(initializeMock).toHaveBeenCalledTimes(1);
+    expect(onUpdateMock).toHaveBeenCalledTimes(1);
+    expect(onConnectionIssueMock).toHaveBeenCalledTimes(1);
   });
 });

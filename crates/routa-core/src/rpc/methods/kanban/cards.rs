@@ -2,7 +2,7 @@ use chrono::Utc;
 use serde::{Deserialize, Serialize};
 
 use crate::kanban::{set_task_column, sync_task_status_from_column, task_to_card, KanbanCard};
-use crate::models::task::Task;
+use crate::models::task::{Task, TaskLaneSessionStatus};
 use crate::rpc::error::RpcError;
 use crate::state::AppState;
 
@@ -32,6 +32,24 @@ pub struct CreateCardParams {
 #[derive(Debug, Serialize)]
 pub struct CreateCardResult {
     pub card: KanbanCard,
+}
+
+fn complete_running_lane_sessions_for_handoff(task: &mut Task, next_column_id: Option<&str>) {
+    let now = Utc::now().to_rfc3339();
+
+    for session in &mut task.lane_sessions {
+        if session.status != TaskLaneSessionStatus::Running {
+            continue;
+        }
+        if session.column_id.as_deref() == next_column_id {
+            continue;
+        }
+
+        session.status = TaskLaneSessionStatus::Completed;
+        if session.completed_at.is_none() {
+            session.completed_at = Some(now.clone());
+        }
+    }
 }
 
 pub async fn create_card(
@@ -170,7 +188,10 @@ pub async fn move_card(
         let transition_column =
             resolve_transition_automation_column(source_column.as_ref(), Some(&target_column));
         maybe_apply_lane_automation_defaults(&mut task, transition_column);
+        let next_column_id = task.column_id.clone();
+        complete_running_lane_sessions_for_handoff(&mut task, next_column_id.as_deref());
         task.trigger_session_id = None;
+        task.last_sync_error = None;
     }
     task.updated_at = Utc::now();
 

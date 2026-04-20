@@ -48,6 +48,7 @@ fn normalize_tool_name(name: &str) -> &str {
 
 pub(super) fn tool_result_text(text: &str) -> serde_json::Value {
     serde_json::json!({
+        "isError": false,
         "content": [{ "type": "text", "text": text }]
     })
 }
@@ -81,6 +82,7 @@ pub(super) async fn rpc_tool_result(
 
 pub(super) fn tool_result_json(value: &serde_json::Value) -> serde_json::Value {
     serde_json::json!({
+        "isError": false,
         "content": [{ "type": "text", "text": serde_json::to_string_pretty(value).unwrap_or_default() }]
     })
 }

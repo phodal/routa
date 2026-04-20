@@ -15,5 +15,6 @@ if [ "$(uname -s 2>/dev/null | cut -c1-5)" = "MINGW" ] || [ "$(uname -s 2>/dev/n
   export TMP="$win_temp"
 fi
 
+# ─── Run Standard Checks ───────────────────────────────────────────
 # Run hook runtime directly for full pre-push checks.
 node --import tsx tools/hook-runtime/src/cli.ts --profile pre-push "$@"

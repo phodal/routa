@@ -1,3 +1,5 @@
+mod engineering;
+
 use clap::{Args, Subcommand, ValueEnum};
 use routa_core::harness::detect_repo_signals;
 use routa_core::harness_template;
@@ -81,6 +83,73 @@ pub struct HarnessDetectArgs {
     pub json: bool,
 }
 
+#[derive(Args, Debug, Clone)]
+pub struct HarnessEvolveArgs {
+    /// Repository root to inspect. Defaults to the current git toplevel.
+    #[arg(long)]
+    pub repo_root: Option<String>,
+
+    /// Explicit no-op flag kept for dry-run-first evolution workflows.
+    #[arg(long, default_value_t = false)]
+    pub dry_run: bool,
+
+    /// Bootstrap mode: synthesize initial harness surfaces for weak repositories.
+    #[arg(long, default_value_t = false)]
+    pub bootstrap: bool,
+
+    /// Apply low-risk patches automatically (requires confirmation for medium/high risk).
+    #[arg(long, default_value_t = false)]
+    pub apply: bool,
+
+    /// Skip confirmation prompts for medium/high-risk patches (dangerous, use with caution).
+    #[arg(long, default_value_t = false)]
+    pub force: bool,
+
+    /// Generate playbooks from evolution history (trace learning mode).
+    #[arg(long, default_value_t = false)]
+    pub learn: bool,
+
+    /// Run a single dry-run fitness speed experiment with native entrix metrics (experimental).
+    #[arg(long, default_value_t = false)]
+    pub speed_profile: bool,
+
+    /// Use AI specialist for contextual recommendations (experimental).
+    #[arg(long, default_value_t = false)]
+    pub ai: bool,
+
+    /// Workspace ID used when invoking the AI specialist.
+    #[arg(long, default_value = "default")]
+    pub workspace_id: String,
+
+    /// ACP provider override for the AI specialist.
+    #[arg(long)]
+    pub provider: Option<String>,
+
+    /// Timeout in milliseconds for AI specialist provider initialization.
+    #[arg(long)]
+    pub provider_timeout_ms: Option<u64>,
+
+    /// Extra retries for AI specialist provider session initialization.
+    #[arg(long, default_value_t = 0)]
+    pub provider_retries: u8,
+
+    /// Override the persisted report path.
+    #[arg(long)]
+    pub output: Option<String>,
+
+    /// Do not persist the structured report snapshot.
+    #[arg(long, default_value_t = false)]
+    pub no_save: bool,
+
+    /// Output format.
+    #[arg(long, value_enum, default_value_t = HarnessOutputFormat::Json)]
+    pub format: HarnessOutputFormat,
+
+    /// Shortcut for `--format json`.
+    #[arg(long, default_value_t = false)]
+    pub json: bool,
+}
+
 #[derive(Copy, Clone, Debug, Eq, PartialEq, ValueEnum)]
 pub enum HarnessSurfaceSelector {
     All,
@@ -94,7 +163,7 @@ pub enum HarnessOutputFormat {
     Json,
 }
 
-pub fn run(action: HarnessAction) -> Result<(), String> {
+pub async fn run(db_path: &str, action: HarnessAction) -> Result<(), String> {
     match action {
         HarnessAction::Detect(args) => run_detect(&args),
         HarnessAction::Budget(args) => {
@@ -354,7 +423,71 @@ fn run_detect(args: &HarnessDetectArgs) -> Result<(), String> {
     Ok(())
 }
 
+async fn run_evolve(db_path: &str, args: &HarnessEvolveArgs) -> Result<(), String> {
+    let repo_root = resolve_any_repo_root(args.repo_root.as_deref())?;
+    let output_format = resolved_evolve_output_format(args);
+    let apply = args.apply && !args.dry_run;
+    let output_path = resolve_requested_path(
+        args.output
+            .as_deref()
+            .unwrap_or(DEFAULT_REPORT_RELATIVE_PATH),
+        &repo_root,
+    );
+    let state = if args.ai {
+        Some(crate::commands::init_state(db_path).await)
+    } else {
+        None
+    };
+
+    let report = evaluate_harness_engineering(
+        &repo_root,
+        &HarnessEngineeringOptions {
+            output_path: output_path.clone(),
+            dry_run: args.dry_run || !apply,
+            bootstrap: args.bootstrap,
+            apply,
+            force: args.force,
+            json_output: matches!(output_format, HarnessOutputFormat::Json),
+            use_ai_specialist: args.ai,
+            ai_workspace_id: args.workspace_id.clone(),
+            ai_provider: args.provider.clone(),
+            ai_provider_timeout_ms: args.provider_timeout_ms,
+            ai_provider_retries: args.provider_retries,
+            learn: args.learn,
+            speed_profile: args.speed_profile,
+        },
+        state.as_ref(),
+    )
+    .await?;
+
+    if !args.no_save {
+        persist_harness_engineering_report(&report, &output_path)?;
+    }
+
+    match output_format {
+        HarnessOutputFormat::Json => {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&report).map_err(|error| {
+                    format!("failed to serialize harness engineering report: {error}")
+                })?
+            );
+        }
+        HarnessOutputFormat::Text => println!("{}", format_harness_engineering_report(&report)),
+    }
+
+    Ok(())
+}
+
 fn resolved_output_format(args: &HarnessDetectArgs) -> HarnessOutputFormat {
+    if args.json {
+        HarnessOutputFormat::Json
+    } else {
+        args.format
+    }
+}
+
+fn resolved_evolve_output_format(args: &HarnessEvolveArgs) -> HarnessOutputFormat {
     if args.json {
         HarnessOutputFormat::Json
     } else {
@@ -419,6 +552,25 @@ fn resolve_repo_root(requested: Option<&str>) -> Result<PathBuf, String> {
     };
 
     validate_repo_root(repo_root)
+}
+
+fn resolve_any_repo_root(requested: Option<&str>) -> Result<PathBuf, String> {
+    let cwd =
+        std::env::current_dir().map_err(|error| format!("failed to determine cwd: {error}"))?;
+
+    let repo_root = match requested {
+        Some(path) => resolve_requested_path(path, &cwd),
+        None => discover_git_toplevel(&cwd).unwrap_or(cwd),
+    };
+
+    if !repo_root.exists() || !repo_root.is_dir() {
+        return Err(format!(
+            "repository root does not exist or is not a directory: {}",
+            repo_root.display()
+        ));
+    }
+
+    Ok(repo_root)
 }
 
 fn resolve_requested_path(requested: &str, cwd: &Path) -> PathBuf {

@@ -4,7 +4,7 @@ use std::collections::HashSet;
 use crate::error::ServerError;
 use crate::events::{AgentEvent, AgentEventType};
 use crate::models::kanban::{KanbanBoard, KanbanColumn};
-use crate::models::task::{Task, TaskPriority};
+use crate::models::task::{Task, TaskCreationSource, TaskPriority};
 use crate::rpc::error::RpcError;
 use crate::state::AppState;
 
@@ -61,6 +61,8 @@ pub(super) async fn resolve_board(
     workspace_id: &str,
     board_id: Option<&str>,
 ) -> Result<KanbanBoard, RpcError> {
+    ensure_workspace_exists(state, workspace_id).await?;
+
     if let Some(board_id) = board_id {
         return state
             .kanban_store
@@ -69,7 +71,6 @@ pub(super) async fn resolve_board(
             .ok_or_else(|| RpcError::NotFound(format!("Board {board_id} not found")));
     }
 
-    ensure_workspace_exists(state, workspace_id).await?;
     state
         .kanban_store
         .ensure_default_board(workspace_id)
@@ -86,7 +87,10 @@ pub(super) async fn tasks_for_board(
         .list_by_workspace(&board.workspace_id)
         .await?
         .into_iter()
-        .filter(|task| task.board_id.as_deref() == Some(board.id.as_str()))
+        .filter(|task| {
+            task.board_id.as_deref() == Some(board.id.as_str())
+                && task.creation_source != Some(TaskCreationSource::Session)
+        })
         .collect())
 }
 
@@ -197,4 +201,90 @@ pub(super) fn slugify(value: &str) -> String {
         .map(|segment| segment.to_ascii_lowercase())
         .collect::<Vec<_>>()
         .join("-")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::tasks_for_board;
+    use crate::db::Database;
+    use crate::models::kanban::default_kanban_board;
+    use crate::models::task::{Task, TaskCreationSource};
+    use crate::models::workspace::Workspace;
+    use crate::state::{AppState, AppStateInner};
+    use std::sync::Arc;
+
+    async fn setup_state() -> AppState {
+        let db = Database::open_in_memory().expect("in-memory db should open");
+        let state = Arc::new(AppStateInner::new(db));
+        state
+            .workspace_store
+            .save(&Workspace::new(
+                "default".to_string(),
+                "Default".to_string(),
+                None,
+            ))
+            .await
+            .expect("workspace save should succeed");
+        state
+    }
+
+    #[tokio::test]
+    async fn tasks_for_board_hides_session_created_tasks() {
+        let state = setup_state().await;
+        let board = default_kanban_board("default".to_string());
+        state
+            .kanban_store
+            .create(&board)
+            .await
+            .expect("board create should succeed");
+
+        let mut visible_task = Task::new(
+            "task-visible".to_string(),
+            "Visible".to_string(),
+            "Visible objective".to_string(),
+            "default".to_string(),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        );
+        visible_task.board_id = Some(board.id.clone());
+
+        let mut session_task = Task::new(
+            "task-session".to_string(),
+            "Session".to_string(),
+            "Session objective".to_string(),
+            "default".to_string(),
+            Some("session-1".to_string()),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        );
+        session_task.board_id = Some(board.id.clone());
+        session_task.creation_source = Some(TaskCreationSource::Session);
+
+        state
+            .task_store
+            .save(&visible_task)
+            .await
+            .expect("visible task save should succeed");
+        state
+            .task_store
+            .save(&session_task)
+            .await
+            .expect("session task save should succeed");
+
+        let tasks = tasks_for_board(&state, &board)
+            .await
+            .expect("tasks for board should succeed");
+
+        assert_eq!(tasks.len(), 1);
+        assert_eq!(tasks[0].id, "task-visible");
+    }
 }

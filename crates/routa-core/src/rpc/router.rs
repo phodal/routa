@@ -265,6 +265,36 @@ impl RpcRouter {
                 let r = methods::kanban::submit_lane_handoff(&self.state, p).await?;
                 Ok(serde_json::to_value(r).unwrap())
             }
+            "kanban.listCards" => {
+                let p = parse_params(params)?;
+                let r = methods::kanban::list_cards(&self.state, p).await?;
+                Ok(serde_json::to_value(r).unwrap())
+            }
+            "kanban.boardStatus" => {
+                let p = parse_params(params)?;
+                let r = methods::kanban::board_status(&self.state, p).await?;
+                Ok(serde_json::to_value(r).unwrap())
+            }
+            "kanban.listAutomations" => {
+                let p = parse_params(params)?;
+                let r = methods::kanban::list_automations(&self.state, p).await?;
+                Ok(serde_json::to_value(r).unwrap())
+            }
+            "kanban.triggerAutomation" => {
+                let p = parse_params(params)?;
+                let r = methods::kanban::trigger_automation(&self.state, p).await?;
+                Ok(serde_json::to_value(r).unwrap())
+            }
+            "kanban.createIssueFromCard" => {
+                let p = parse_params(params)?;
+                let r = methods::kanban::create_issue_from_card(&self.state, p).await?;
+                Ok(serde_json::to_value(r).unwrap())
+            }
+            "kanban.syncGitHubIssues" => {
+                let p = parse_params(params)?;
+                let r = methods::kanban::sync_github_issues(&self.state, p).await?;
+                Ok(serde_json::to_value(r).unwrap())
+            }
 
             // ----- Notes -----
             "notes.list" => {
@@ -360,7 +390,13 @@ impl RpcRouter {
             "kanban.deleteColumn",
             "kanban.searchCards",
             "kanban.listCardsByColumn",
+            "kanban.listCards",
+            "kanban.boardStatus",
             "kanban.decomposeTasks",
+            "kanban.listAutomations",
+            "kanban.triggerAutomation",
+            "kanban.createIssueFromCard",
+            "kanban.syncGitHubIssues",
             "notes.list",
             "notes.get",
             "notes.create",

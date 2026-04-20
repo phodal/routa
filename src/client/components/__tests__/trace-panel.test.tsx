@@ -19,7 +19,7 @@ describe("TracePanel", () => {
         } as Response;
       }
 
-      if (url === "/api/traces/stats") {
+      if (url === "/api/traces/stats?sessionId=session-review-1") {
         return {
           ok: true,
           json: async () => ({
@@ -121,5 +121,6 @@ describe("TracePanel", () => {
     expect(screen.getByText(/Previous run in lane: Review • Review Step 1/i)).toBeTruthy();
     expect(screen.getByText("Start the app and share the URL.")).toBeTruthy();
     expect(screen.getByText("Running at http://127.0.0.1:3000/login")).toBeTruthy();
+    expect(screen.getAllByText("session-review-1").length).toBeGreaterThan(0);
   });
 });

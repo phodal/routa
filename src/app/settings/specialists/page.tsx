@@ -1,3 +1,7 @@
+/**
+ * Settings / Specialists - /settings/specialists
+ * Settings page for configuring specialist personas, bindings, and model-aware specialist behavior.
+ */
 "use client";
 
 import { useState } from "react";
@@ -15,6 +19,7 @@ export default function SpecialistsSettingsPage() {
 
   return (
     <SettingsRouteShell
+      activeSettingsItem="specialists"
       title={t.nav.specialists}
       description={t.settingsExtended.specialistsDesc}
       badgeLabel={t.settingsExtended.specialistsBadge}
@@ -25,7 +30,7 @@ export default function SpecialistsSettingsPage() {
         { label: t.settingsExtended.specialistsPurposeLabel, value: t.settingsExtended.specialistsPurposeValue },
         { label: t.settingsExtended.specialistsBindingLabel, value: t.settingsExtended.specialistsBindingValue },
       ]}
-      contentClassName="flex h-full min-h-0 w-full flex-col px-4 py-4"
+      contentClassName="flex h-full min-h-0 w-full flex-col"
     >
       <SpecialistsTab modelDefs={modelDefs} />
     </SettingsRouteShell>

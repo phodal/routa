@@ -13,7 +13,8 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useWorkspaces } from "@/client/hooks/use-workspaces";
-import { Select } from "@/client/components/select";
+import { WorkspaceSwitcher } from "@/client/components/workspace-switcher";
+import { desktopAwareFetch } from "@/client/utils/diagnostics";
 
 
 interface BackgroundTask {
@@ -40,7 +41,7 @@ interface TriggerLog {
 }
 
 export default function MessagesPage() {
-  const { workspaces, loading: workspacesLoading } = useWorkspaces();
+  const { workspaces, loading: workspacesLoading, createWorkspace } = useWorkspaces();
   const [tab, setTab] = useState<"tasks" | "logs">("tasks");
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState("");
   const [tasks, setTasks] = useState<BackgroundTask[]>([]);
@@ -57,8 +58,8 @@ export default function MessagesPage() {
       setLoading(true);
       try {
         const [tasksRes, logsRes] = await Promise.all([
-          fetch(`/api/background-tasks?workspaceId=${encodeURIComponent(effectiveWorkspaceId)}&limit=50`),
-          fetch("/api/webhooks/logs?limit=50"),
+          desktopAwareFetch(`/api/background-tasks?workspaceId=${encodeURIComponent(effectiveWorkspaceId)}&limit=50`),
+          desktopAwareFetch("/api/webhooks/logs?limit=50"),
         ]);
         if (tasksRes.ok) setTasks((await tasksRes.json()).tasks ?? []);
         if (logsRes.ok) setLogs((await logsRes.json()).logs ?? []);
@@ -99,22 +100,18 @@ export default function MessagesPage() {
           <span className="text-[13px] font-semibold text-slate-800 dark:text-slate-200">Messages</span>
         </Link>
         <div className="flex gap-1">
-          <Select
-            value={effectiveWorkspaceId}
-            onChange={(e) => setSelectedWorkspaceId(e.target.value)}
-            disabled={workspacesLoading || workspaces.length === 0}
-            className="mr-2 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-slate-600 dark:border-[#1c1f2e] dark:bg-[#12141c] dark:text-slate-300"
-          >
-            {workspaces.length === 0 ? (
-              <option value="">No workspace</option>
-            ) : (
-              workspaces.map((workspace) => (
-                <option key={workspace.id} value={workspace.id}>
-                  {workspace.title}
-                </option>
-              ))
-            )}
-          </Select>
+          <WorkspaceSwitcher
+            workspaces={workspaces}
+            activeWorkspaceId={effectiveWorkspaceId || null}
+            onSelect={setSelectedWorkspaceId}
+            onCreate={async (title) => {
+              const workspace = await createWorkspace(title);
+              if (workspace?.id) {
+                setSelectedWorkspaceId(workspace.id);
+              }
+            }}
+            loading={workspacesLoading}
+          />
           <button
             onClick={() => setTab("tasks")}
             className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${tab === "tasks" ? "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400" : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"}`}

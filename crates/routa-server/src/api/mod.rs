@@ -6,14 +6,17 @@ pub mod acp_routes;
 pub mod ag_ui;
 pub mod agents;
 pub mod background_tasks;
+pub mod canvas;
 pub mod clone;
 pub mod clone_branches;
 pub mod clone_local;
 pub mod clone_progress;
 pub mod codebases;
 pub mod debug;
+pub mod feature_explorer;
 pub mod files;
 pub mod fitness;
+pub mod git;
 pub mod github;
 pub mod graph;
 pub mod harness;
@@ -43,6 +46,7 @@ pub mod skills;
 pub mod skills_catalog;
 pub mod skills_clone;
 pub mod skills_upload;
+pub mod spec;
 pub mod specialists;
 pub mod tasks;
 pub mod tasks_automation;
@@ -59,10 +63,11 @@ use axum::Router;
 use crate::state::AppState;
 
 /// Build the complete API router with all sub-routes.
-pub fn api_router() -> Router<AppState> {
+pub fn api_router(state: AppState) -> Router<AppState> {
     Router::new()
         .nest("/api/agents", agents::router())
         .nest("/api/notes", notes::router())
+        .nest("/api/git", git::read_router())
         .nest("/api/kanban", kanban::router())
         .nest("/api/tasks", tasks::router())
         .nest("/api/workspaces", workspaces::router())
@@ -79,7 +84,7 @@ pub fn api_router() -> Router<AppState> {
         .nest("/api/acp", acp_routes::router())
         .nest("/api/acp", acp_registry::router())
         .nest("/api/acp/docker", acp_docker::router())
-        .nest("/api/mcp", mcp_routes::router())
+        .nest("/api/mcp", mcp_routes::router(state))
         .nest("/api/mcp/tools", mcp_tools::router())
         .nest("/api/mcp-server", mcp_server_mgmt::router())
         .nest("/api/mcp-servers", mcp_servers::router())
@@ -87,8 +92,10 @@ pub fn api_router() -> Router<AppState> {
         .nest("/api/graph", graph::router())
         .nest("/api/harness", harness::router())
         .nest("/api/harness/templates", harness_templates::router())
+        .nest("/api/feature-explorer", feature_explorer::router())
         .nest("/api/webhooks", webhooks::router())
         .nest("/api/background-tasks", background_tasks::router())
+        .nest("/api/canvas", canvas::router())
         .nest("/api/test-mcp", test_mcp::router())
         .nest("/api/clone", clone::router())
         .nest("/api/clone/local", clone_local::router())
@@ -104,6 +111,7 @@ pub fn api_router() -> Router<AppState> {
         .nest("/api/schedules", schedules::router())
         .nest("/api/sandboxes", sandbox::router())
         .nest("/api/specialists", specialists::router())
+        .nest("/api/spec", spec::router())
         .nest("/api/memory", memory::router())
         .nest("/api/debug", debug::router())
         .nest("/api/polling", polling::router())

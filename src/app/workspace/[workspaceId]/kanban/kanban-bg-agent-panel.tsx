@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "@/i18n";
 import { formatRelativeTime } from "../ui-components";
+import { desktopAwareFetch } from "@/client/utils/diagnostics";
 import type { BackgroundTaskInfo } from "../types";
 import { X } from "lucide-react";
 
@@ -137,11 +138,11 @@ export function KanbanBgAgentPanel({ workspaceId }: KanbanBgAgentPanelProps) {
     setError(null);
     try {
       const [agentsResponse, bgTasksResponse] = await Promise.all([
-        fetch(`/api/agents?workspaceId=${encodeURIComponent(workspaceId)}`, {
+        desktopAwareFetch(`/api/agents?workspaceId=${encodeURIComponent(workspaceId)}`, {
           cache: "no-store",
           signal,
         }),
-        fetch(`/api/background-tasks?workspaceId=${encodeURIComponent(workspaceId)}`, {
+        desktopAwareFetch(`/api/background-tasks?workspaceId=${encodeURIComponent(workspaceId)}`, {
           cache: "no-store",
           signal,
         }),
@@ -314,7 +315,7 @@ export function KanbanBgAgentPanel({ workspaceId }: KanbanBgAgentPanelProps) {
     setCreating(true);
     setCreateError(null);
     try {
-      const response = await fetch("/api/agents", {
+      const response = await desktopAwareFetch("/api/agents", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

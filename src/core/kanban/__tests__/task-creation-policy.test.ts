@@ -13,6 +13,11 @@ describe("task creation policy", () => {
   it("preserves supported creation sources", () => {
     expect(normalizeTaskCreationSource("manual")).toBe("manual");
     expect(normalizeTaskCreationSource("agent")).toBe("agent");
+    expect(normalizeTaskCreationSource("session")).toBe("session");
+  });
+
+  it("infers session for legacy rows when sessionId exists", () => {
+    expect(normalizeTaskCreationSource(undefined, { sessionId: "session-1" })).toBe("session");
   });
 
   it("only allows GitHub issue creation for manual task creation", () => {

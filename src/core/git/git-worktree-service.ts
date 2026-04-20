@@ -16,8 +16,14 @@ import { createWorktree } from "../models/worktree";
 
 /**
  * Shell-escape a single argument for safe interpolation.
+ *
+ * Uses POSIX single-quotes on Unix and double-quotes on Windows (cmd.exe
+ * does not recognise single-quote quoting).
  */
 function shellEscape(arg: string): string {
+  if (process.platform === "win32") {
+    return `"${arg.replace(/"/g, '\\"')}"`;
+  }
   return `'${arg.replace(/'/g, "'\\''")}'`;
 }
 

@@ -25,8 +25,47 @@ except ImportError:
 REPO_ROOT = Path(__file__).resolve().parents[2]
 ISSUES_DIR = REPO_ROOT / "docs" / "issues"
 REQUIRED_FIELDS = ["title", "date", "status", "area"]
-VALID_STATUS = ["open", "investigating", "resolved", "wontfix", "duplicate"]
-VALID_SEVERITY = ["low", "medium", "high", "critical"]
+VALID_STATUS = ["open", "investigating", "resolved", "wontfix"]
+VALID_SEVERITY = ["info", "low", "medium", "high", "critical"]
+VALID_KIND = ["issue", "analysis", "progress_note", "verification_report", "github_mirror"]
+ACTIVE_ISSUE_KIND = "issue"
+OPEN_REVIEW_AGE_DAYS = 7
+OPEN_STALE_AGE_DAYS = 30
+INVESTIGATING_STALE_AGE_DAYS = 14
+
+
+def normalize_string(value):
+    return str(value or "").strip()
+
+
+def normalize_string_list(value):
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return [normalize_string(item) for item in value if normalize_string(item)]
+    if isinstance(value, str):
+        stripped = normalize_string(value)
+        return [stripped] if stripped else []
+    return [normalize_string(value)]
+
+
+def infer_issue_kind(filename, data):
+    explicit = normalize_string(data.get("kind"))
+    if explicit:
+        return explicit, False
+
+    title = normalize_string(data.get("title")).lower()
+
+    if re.match(r"^\d{4}-\d{2}-\d{2}-gh-\d+-", filename):
+        return "github_mirror", True
+    if title.startswith("[github #"):
+        return "github_mirror", True
+    if "verification report" in title or "验证报告" in title:
+        return "verification_report", True
+    if "fixes complete" in title or "fix batch completed" in title or "修复完成报告" in title:
+        return "progress_note", True
+
+    return ACTIVE_ISSUE_KIND, True
 
 
 def parse_frontmatter(content):
@@ -57,6 +96,9 @@ def validate_issue(filename, data):
     for field in REQUIRED_FIELDS:
         if field not in data or not data[field]:
             errors.append(f"Missing required field: {field}")
+    kind = normalize_string(data.get("kind"))
+    if kind and kind not in VALID_KIND:
+        errors.append(f"Invalid kind: {kind}")
     if "status" in data and data["status"] not in VALID_STATUS:
         errors.append(f"Invalid status: {data['status']}")
     if "severity" in data and data["severity"] not in VALID_SEVERITY:
@@ -97,6 +139,10 @@ def scan_issues():
         validation_errors = validate_issue(filepath.name, data)
         if validation_errors:
             errors.append({"file": filepath.name, "errors": validation_errors})
+        kind, kind_inferred = infer_issue_kind(filepath.name, data)
+        related_issues = normalize_string_list(data.get("related_issues"))
+        github_issue = data.get("github_issue")
+        github_issue = None if github_issue in ("", "null", None) else github_issue
         issues.append({
             "file": filepath.name, "title": data.get("title", ""),
             "date": str(data.get("date", "")), "status": data.get("status", ""),
@@ -104,16 +150,29 @@ def scan_issues():
             "tags": data.get("tags", []), "reported_by": data.get("reported_by", ""),
             "age_days": calculate_age(data.get("date", "")),
             "keywords": extract_keywords(filepath.name),
+            "kind": kind,
+            "kind_inferred": kind_inferred,
+            "related_issues": related_issues,
+            "github_issue": github_issue,
+            "github_state": normalize_string(data.get("github_state")).lower(),
+            "github_url": normalize_string(data.get("github_url")),
         })
     return issues, errors
 
 
 def find_suspects(issues):
     suspects = []
+    active_issues = [
+        issue for issue in issues
+        if issue["kind"] == ACTIVE_ISSUE_KIND and issue["status"] in ("open", "investigating")
+    ]
     by_area = defaultdict(list)
-    for issue in issues:
+    by_github_issue = defaultdict(list)
+    for issue in active_issues:
         if issue["area"]:
             by_area[issue["area"]].append(issue)
+        if issue["github_issue"] is not None:
+            by_github_issue[str(issue["github_issue"])].append(issue)
     for area, area_issues in by_area.items():
         for i, a in enumerate(area_issues):
             for b in area_issues[i+1:]:
@@ -123,32 +182,72 @@ def find_suspects(issues):
                         "file_a": a["file"], "file_b": b["file"],
                         "reason": f"Same area '{area}', keywords: {overlap}", "type": "duplicate"
                     })
-    # Open issues: need completion check
+    for github_issue, grouped_issues in by_github_issue.items():
+        if len(grouped_issues) > 1:
+            files = sorted(issue["file"] for issue in grouped_issues)
+            for index, file_a in enumerate(files):
+                for file_b in files[index + 1:]:
+                    suspects.append({
+                        "file_a": file_a,
+                        "file_b": file_b,
+                        "reason": f"Multiple active local trackers reference GitHub issue #{github_issue}",
+                        "type": "same_github_issue",
+                    })
     for issue in issues:
-        if issue["status"] == "open":
-            if issue["age_days"] > 30:
+        if issue["kind"] != ACTIVE_ISSUE_KIND:
+            continue
+        if issue["github_issue"] is not None:
+            if not issue["github_state"] or not issue["github_url"]:
                 suspects.append({
                     "file_a": issue["file"], "file_b": None,
-                    "reason": f"Open for {issue['age_days']} days (>30), likely stale",
+                    "reason": "GitHub-linked issue is missing github_state or github_url metadata",
+                    "type": "metadata",
+                })
+            elif issue["github_state"] == "closed" and issue["status"] in ("open", "investigating"):
+                suspects.append({
+                    "file_a": issue["file"], "file_b": None,
+                    "reason": "Local issue is still active while linked GitHub issue is closed",
+                    "type": "state_drift",
+                })
+            elif issue["github_state"] == "open" and issue["status"] in ("resolved", "wontfix"):
+                suspects.append({
+                    "file_a": issue["file"], "file_b": None,
+                    "reason": "Local issue is closed while linked GitHub issue is still open",
+                    "type": "state_drift",
+                })
+    # Open issues: need completion check
+    for issue in active_issues:
+        if issue["status"] == "open":
+            if issue["age_days"] > OPEN_STALE_AGE_DAYS:
+                suspects.append({
+                    "file_a": issue["file"], "file_b": None,
+                    "reason": f"Open for {issue['age_days']} days (>{OPEN_STALE_AGE_DAYS}), likely stale",
                     "type": "stale"
                 })
-            else:
+            elif issue["age_days"] >= OPEN_REVIEW_AGE_DAYS:
                 suspects.append({
                     "file_a": issue["file"], "file_b": None,
-                    "reason": f"Open for {issue['age_days']} days, verify if resolved",
+                    "reason": f"Open for {issue['age_days']} days (≥{OPEN_REVIEW_AGE_DAYS}), verify if resolved",
                     "type": "open_check"
                 })
-        elif issue["status"] == "investigating" and issue["age_days"] > 14:
+        elif issue["status"] == "investigating" and issue["age_days"] > INVESTIGATING_STALE_AGE_DAYS:
             suspects.append({
                 "file_a": issue["file"], "file_b": None,
-                "reason": f"Investigating for {issue['age_days']} days (>14)", "type": "stale"
+                "reason": f"Investigating for {issue['age_days']} days (>{INVESTIGATING_STALE_AGE_DAYS})", "type": "stale"
             })
     return suspects
 
 
 def print_table(issues, errors, suspects):
     status_emoji = {"open": "🔴", "investigating": "🔍", "resolved": "✅", "wontfix": "⏭️", "duplicate": "🔗"}
-    severity_emoji = {"critical": "🔥", "high": "🟠", "medium": "🟡", "low": "🟢"}
+    severity_emoji = {"critical": "🔥", "high": "🟠", "medium": "🟡", "low": "🟢", "info": "🔹"}
+    kind_emoji = {
+        "issue": "🧩",
+        "analysis": "📐",
+        "progress_note": "📝",
+        "verification_report": "🧪",
+        "github_mirror": "🪞",
+    }
 
     print("\n" + "=" * 100)
     print("📋 ISSUE SCANNER REPORT")
@@ -164,15 +263,16 @@ def print_table(issues, errors, suspects):
 
     print("\n📊 ISSUE TABLE:")
     print("-" * 100)
-    print(f"{'Status':<12} {'Sev':<4} {'Date':<12} {'Area':<18} {'Title':<48}")
+    print(f"{'Status':<12} {'Kind':<10} {'Sev':<4} {'Date':<12} {'Area':<18} {'Title':<36}")
     print("-" * 100)
 
     for issue in issues:
         status = status_emoji.get(issue["status"], "❓") + " " + issue["status"][:6]
+        kind = kind_emoji.get(issue["kind"], "❓") + " " + issue["kind"][:8]
         severity = severity_emoji.get(issue["severity"], "❓")
-        title = issue["title"][:46] + ".." if len(issue["title"]) > 48 else issue["title"]
+        title = issue["title"][:34] + ".." if len(issue["title"]) > 36 else issue["title"]
         area = issue["area"][:16] + ".." if len(issue["area"]) > 18 else issue["area"]
-        print(f"{status:<12} {severity:<4} {issue['date']:<12} {area:<18} {title:<48}")
+        print(f"{status:<12} {kind:<10} {severity:<4} {issue['date']:<12} {area:<18} {title:<36}")
 
     print("-" * 100)
     print(f"Total: {len(issues)} issues")
@@ -184,10 +284,25 @@ def print_table(issues, errors, suspects):
     for status, count in sorted(status_counts.items()):
         print(f"  {status_emoji.get(status, '❓')} {status}: {count}")
 
+    print("\n📚 SUMMARY BY KIND:")
+    kind_counts = defaultdict(int)
+    for issue in issues:
+        kind_counts[issue["kind"]] += 1
+    for kind, count in sorted(kind_counts.items()):
+        print(f"  {kind_emoji.get(kind, '❓')} {kind}: {count}")
+
+    active_local_count = sum(
+        1 for issue in issues if issue["kind"] == ACTIVE_ISSUE_KIND and issue["status"] in ("open", "investigating")
+    )
+    print(f"\n🎯 Active Local Trackers: {active_local_count}")
+
     if suspects:
         print("\n⚠️  SUSPECTS (need Phase 2 deep analysis):")
         print("-" * 60)
         duplicates = [s for s in suspects if s["type"] == "duplicate"]
+        same_github_issue = [s for s in suspects if s["type"] == "same_github_issue"]
+        metadata = [s for s in suspects if s["type"] == "metadata"]
+        state_drifts = [s for s in suspects if s["type"] == "state_drift"]
         open_checks = [s for s in suspects if s["type"] == "open_check"]
         stales = [s for s in suspects if s["type"] == "stale"]
 
@@ -197,6 +312,23 @@ def print_table(issues, errors, suspects):
                 print(f"    - {s['file_a']}")
                 print(f"      ↔ {s['file_b']}")
                 print(f"      Reason: {s['reason']}")
+
+        if same_github_issue:
+            print("\n  🪢 Same GitHub Issue Referenced By Multiple Active Trackers:")
+            for s in same_github_issue:
+                print(f"    - {s['file_a']}")
+                print(f"      ↔ {s['file_b']}")
+                print(f"      Reason: {s['reason']}")
+
+        if metadata:
+            print("\n  🏷️  Metadata Gaps:")
+            for s in metadata:
+                print(f"    - {s['file_a']}: {s['reason']}")
+
+        if state_drifts:
+            print("\n  🔄 GitHub / Local State Drift:")
+            for s in state_drifts:
+                print(f"    - {s['file_a']}: {s['reason']}")
 
         if open_checks:
             print("\n  🔴 Open Issues (verify if resolved):")
@@ -303,7 +435,14 @@ def main():
         output = {
             "issues": [{k: list(v) if k == "keywords" else v for k, v in i.items()} for i in issues],
             "errors": errors, "suspects": suspects,
-            "summary": {"total": len(issues), "errors": len(errors), "suspects": len(suspects)}
+            "summary": {
+                "total": len(issues),
+                "active_local_trackers": sum(
+                    1 for issue in issues if issue["kind"] == ACTIVE_ISSUE_KIND and issue["status"] in ("open", "investigating")
+                ),
+                "errors": len(errors),
+                "suspects": len(suspects),
+            }
         }
         print(json.dumps(output, indent=2, ensure_ascii=False))
     elif args.suspects_only:
@@ -317,4 +456,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

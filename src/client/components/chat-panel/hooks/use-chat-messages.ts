@@ -27,7 +27,7 @@ export interface UseChatMessagesResult {
   usageInfo: UsageInfo | null;
   setMessagesBySession: React.Dispatch<React.SetStateAction<Record<string, ChatMessage[]>>>;
   setIsSessionRunning: React.Dispatch<React.SetStateAction<boolean>>;
-  fetchSessionHistory: (sessionId: string) => Promise<void>;
+  fetchSessionHistory: (sessionId: string, options?: { force?: boolean }) => Promise<void>;
   fetchSessions: () => Promise<void>;
   resetStreamingRefs: (sessionId: string) => void;
 }
@@ -83,8 +83,12 @@ export function useChatMessages({
   }, []);
 
   // Fetch session history
-  const fetchSessionHistory = useCallback(async (sessionId: string) => {
-    if (loadedHistoryRef.current.has(sessionId)) return;
+  const fetchSessionHistory = useCallback(async (
+    sessionId: string,
+    options?: { force?: boolean },
+  ) => {
+    const force = options?.force === true;
+    if (!force && loadedHistoryRef.current.has(sessionId)) return;
     if (sessionId === "__placeholder__") return;
 
     try {
@@ -175,6 +179,8 @@ export function useChatMessages({
 
     setMessagesBySession((prev) => {
       const next = { ...prev };
+      const completedSessionIds = new Set<string>();
+
       const getSessionMessages = (sid: string): ChatMessage[] => {
         if (!next[sid]) {
           next[sid] = [];
@@ -202,7 +208,15 @@ export function useChatMessages({
 
         // Track session running state for the active session
         if (sid === activeSessionId) {
-          if (kind === "agent_message_chunk" || kind === "tool_call" || kind === "agent_reasoning_chunk") {
+          if (
+            kind === "agent_message_chunk"
+            || kind === "agent_reasoning_chunk"
+            || kind === "agent_thought_chunk"
+            || kind === "tool_call"
+            || kind === "tool_call_start"
+            || kind === "tool_call_params_delta"
+            || kind === "tool_call_update"
+          ) {
             setIsSessionRunning(true);
           } else if (kind === "turn_complete") {
             setIsSessionRunning(false);
@@ -226,6 +240,16 @@ export function useChatMessages({
 
         // Track last update kind for streaming message grouping
         lastUpdateKindRef.current[sid] = kind;
+        if (kind === "turn_complete") {
+          completedSessionIds.add(sid);
+        }
+      }
+
+      if (completedSessionIds.size > 0) {
+        for (const sid of completedSessionIds) {
+          loadedHistoryRef.current.delete(sid);
+          transcriptRetryCountRef.current[sid] = 0;
+        }
       }
 
       return next;
@@ -234,7 +258,16 @@ export function useChatMessages({
     if (Object.keys(modeUpdates).length > 0) {
       setSessionModeById((prev) => ({ ...prev, ...modeUpdates }));
     }
-  }, [updates, activeSessionId]);
+
+    for (const notification of pending) {
+      const sid = notification.sessionId;
+      const update = (notification.update ?? notification) as Record<string, unknown>;
+      if (!sid || update.sessionUpdate !== "turn_complete") continue;
+      resetStreamingRefs(sid);
+      lastUpdateKindRef.current[sid] = "turn_complete";
+      void fetchSessionHistory(sid, { force: true });
+    }
+  }, [updates, activeSessionId, fetchSessionHistory, resetStreamingRefs]);
 
   // Extract tasks from messages after SSE updates
   useEffect(() => {

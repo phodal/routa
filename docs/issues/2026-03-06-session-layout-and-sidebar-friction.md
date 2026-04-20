@@ -1,12 +1,14 @@
 ---
 title: "Session page layout and sidebar interactions create navigation friction"
 date: "2026-03-06"
-status: open
+status: resolved
 severity: medium
 area: ui
 tags: [session-page, layout, sidebar, tasks, mobile]
 reported_by: "copilot"
 related_issues: ["https://github.com/phodal/routa/issues/69", "https://github.com/phodal/routa/issues/225", "2026-03-22-gh-225-refactor-session-page-client-pattern-extraction.md"]
+resolved_at: "2026-04-05"
+resolution: "Session layout has been refactored and stabilized. The layout concerns described in this issue have been addressed through iterative improvements and the current implementation is acceptable."
 ---
 
 # Session page layout and sidebar interactions create navigation friction

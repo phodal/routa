@@ -7,7 +7,8 @@
 import { eq, and, sql } from "drizzle-orm";
 import type { Database } from "./index";
 import { tasks } from "./schema";
-import type { Task, TaskStatus } from "../models/task";
+import { normalizeTaskCreationSource } from "../kanban/task-creation-policy";
+import { hydrateTaskComments, type Task, type TaskStatus } from "../models/task";
 import type { TaskStore } from "../store/task-store";
 
 export class PgTaskStore implements TaskStore {
@@ -22,6 +23,7 @@ export class PgTaskStore implements TaskStore {
         title: task.title,
         objective: task.objective,
         comment: task.comment,
+        comments: task.comments ?? [],
         scope: task.scope,
         acceptanceCriteria: task.acceptanceCriteria,
         verificationCommands: task.verificationCommands,
@@ -38,6 +40,9 @@ export class PgTaskStore implements TaskStore {
         assignedRole: task.assignedRole,
         assignedSpecialistId: task.assignedSpecialistId,
         assignedSpecialistName: task.assignedSpecialistName,
+        fallbackAgentChain: task.fallbackAgentChain,
+        enableAutomaticFallback: task.enableAutomaticFallback,
+        maxFallbackAttempts: task.maxFallbackAttempts,
         triggerSessionId: task.triggerSessionId,
         sessionIds: task.sessionIds ?? [],
         laneSessions: task.laneSessions ?? [],
@@ -54,8 +59,10 @@ export class PgTaskStore implements TaskStore {
         parallelGroup: task.parallelGroup,
         workspaceId: task.workspaceId,
         sessionId: task.sessionId,
+        creationSource: task.creationSource,
         codebaseIds: task.codebaseIds ?? [],
         worktreeId: task.worktreeId,
+        deliverySnapshot: task.deliverySnapshot,
         completionSummary: task.completionSummary,
         verificationVerdict: task.verificationVerdict,
         verificationReport: task.verificationReport,
@@ -69,6 +76,7 @@ export class PgTaskStore implements TaskStore {
           title: task.title,
           objective: task.objective,
           comment: task.comment,
+          comments: task.comments ?? [],
           scope: task.scope,
           acceptanceCriteria: task.acceptanceCriteria,
           verificationCommands: task.verificationCommands,
@@ -85,6 +93,9 @@ export class PgTaskStore implements TaskStore {
           assignedRole: task.assignedRole,
           assignedSpecialistId: task.assignedSpecialistId,
           assignedSpecialistName: task.assignedSpecialistName,
+          fallbackAgentChain: task.fallbackAgentChain,
+          enableAutomaticFallback: task.enableAutomaticFallback,
+          maxFallbackAttempts: task.maxFallbackAttempts,
           triggerSessionId: task.triggerSessionId,
           sessionIds: task.sessionIds ?? [],
           laneSessions: task.laneSessions ?? [],
@@ -100,8 +111,10 @@ export class PgTaskStore implements TaskStore {
           dependencies: task.dependencies,
           parallelGroup: task.parallelGroup,
           sessionId: task.sessionId,
+          creationSource: task.creationSource,
           codebaseIds: task.codebaseIds ?? [],
           worktreeId: task.worktreeId,
+          deliverySnapshot: task.deliverySnapshot,
           completionSummary: task.completionSummary,
           verificationVerdict: task.verificationVerdict,
           verificationReport: task.verificationReport,
@@ -197,11 +210,17 @@ export class PgTaskStore implements TaskStore {
   }
 
   private toModel(row: typeof tasks.$inferSelect): Task {
+    const comments = hydrateTaskComments(
+      row.comments as import("../models/task").TaskCommentEntry[] | undefined,
+      row.comment ?? undefined,
+    );
+
     return {
       id: row.id,
       title: row.title,
       objective: row.objective,
       comment: row.comment ?? undefined,
+      comments,
       scope: row.scope ?? undefined,
       acceptanceCriteria: (row.acceptanceCriteria as string[]) ?? undefined,
       verificationCommands: (row.verificationCommands as string[]) ?? undefined,
@@ -218,6 +237,9 @@ export class PgTaskStore implements TaskStore {
       assignedRole: row.assignedRole ?? undefined,
       assignedSpecialistId: row.assignedSpecialistId ?? undefined,
       assignedSpecialistName: row.assignedSpecialistName ?? undefined,
+      fallbackAgentChain: (row.fallbackAgentChain as import("../models/task").FallbackAgent[]) ?? undefined,
+      enableAutomaticFallback: row.enableAutomaticFallback ?? undefined,
+      maxFallbackAttempts: row.maxFallbackAttempts ?? undefined,
       triggerSessionId: row.triggerSessionId ?? undefined,
       sessionIds: (row.sessionIds as string[]) ?? [],
       laneSessions: (row.laneSessions as import("../models/task").TaskLaneSession[]) ?? [],
@@ -234,8 +256,12 @@ export class PgTaskStore implements TaskStore {
       parallelGroup: row.parallelGroup ?? undefined,
       workspaceId: row.workspaceId,
       sessionId: row.sessionId ?? undefined,
+      creationSource: normalizeTaskCreationSource(row.creationSource, {
+        sessionId: row.sessionId,
+      }),
       codebaseIds: (row.codebaseIds as string[]) ?? [],
       worktreeId: row.worktreeId ?? undefined,
+      deliverySnapshot: row.deliverySnapshot as import("../models/task").TaskDeliverySnapshot | undefined,
       completionSummary: row.completionSummary ?? undefined,
       verificationVerdict: row.verificationVerdict as import("../models/task").VerificationVerdict | undefined,
       verificationReport: row.verificationReport ?? undefined,

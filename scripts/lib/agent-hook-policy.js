@@ -21,12 +21,12 @@ const PROTECTED_PATH_RULES = [
   { label: "tools/hook-runtime/src/install.ts", pattern: /^tools\/hook-runtime\/src\/install\.ts$/ },
 ];
 
-const PROTECTED_GIT_KEYS = ["core.hooksPath", "user.name", "user.email"];
+const PROTECTED_GIT_KEYS = ["core.hooksPath", "core.worktree", "user.name", "user.email"];
 
 const SHELL_MUTATION_PATTERNS = [
   {
     reason:
-      "Direct git config mutations for core.hooksPath or commit identity are blocked. Use `npm run hooks:sync` for hook repair, or set ROUTA_ALLOW_CONTROL_PLANE_MUTATION=1 for an intentional override.",
+      "Direct git config mutations for core.hooksPath, core.worktree, or commit identity are blocked. Use `npm run hooks:sync` for hook repair, or set ROUTA_ALLOW_CONTROL_PLANE_MUTATION=1 for an intentional override.",
     test(command) {
       return detectGitConfigMutation(command);
     },
@@ -41,7 +41,7 @@ const SHELL_MUTATION_PATTERNS = [
 ];
 
 const PROMPT_MUTATION_PATTERNS = [
-  /\bgit\s+config\b[^\n\r]*(?:core\.hooksPath|user\.(?:name|email))/i,
+  /\bgit\s+config\b[^\n\r]*(?:core\.(?:hooksPath|worktree)|user\.(?:name|email))/i,
   /(?:^|[\s`])(?:echo|printf|tee|cp|mv|rm|touch|chmod|chown|install)\b[^\n\r]*(?:\.git\/config|\.git\/hooks(?:\/|$)|\.husky(?:\/|$)|\.codex\/hooks\.json|\.claude\/settings(?:\.local)?\.json|\.qoder\/settings\.json)/i,
   /\b(?:sed|perl)\b[^\n\r]*\s-i(?:\S*)?[^\n\r]*(?:\.git\/config|\.git\/hooks(?:\/|$)|\.husky(?:\/|$)|\.codex\/hooks\.json|\.claude\/settings(?:\.local)?\.json|\.qoder\/settings\.json)/i,
 ];

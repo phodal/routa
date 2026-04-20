@@ -2,7 +2,7 @@
 
 - Status: accepted
 - Date: 2026-03-08
-- Derived from: [issue #96](../issues/2026-03-08-gh-96-feat-kanban-implement-generic-local-first-kanban-data-model.md), [issue #148](../issues/2026-03-14-gh-148-feat-add-session-queueing-and-concurrency-limits-for-kanban-acp-automati.md)
+- Derived from: [issue #96](https://github.com/phodal/routa/issues/96), [issue #148](https://github.com/phodal/routa/issues/148)
 
 ## Context
 

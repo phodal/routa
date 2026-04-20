@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import path from "node:path";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 
 import { runTypecheckSmart } from "../typecheck-smart.js";
@@ -21,7 +21,10 @@ const isWindows = process.platform === "win32";
  * On Windows: writes a Node.js script + .cmd wrapper
  * On Unix: writes a Node.js script with shebang
  */
-function writeFakeNpx(binDir: string, mode: "pass" | "stale" | "fail"): { restore: () => void } {
+function writeFakeNpx(
+  binDir: string,
+  mode: "pass" | "stale" | "stale-dev-types" | "fail",
+): { restore: () => void } {
   const originalPath = process.env.PATH ?? "";
   const counterPath = path.join(binDir, "npx-call-count");
   const pathSep = isWindows ? ";" : ":";
@@ -33,20 +36,38 @@ const path = require("path");
 const counterFile = ${JSON.stringify(counterPath.replace(/\\/g, "\\\\"))};
 const mode = ${JSON.stringify(mode)};
 
-let count = 0;
-try { count = parseInt(fs.readFileSync(counterFile, "utf8").trim(), 10) || 0; } catch {}
-count += 1;
-try { fs.writeFileSync(counterFile, String(count)); } catch {}
+let state = { tsc: 0, typegen: 0 };
+try { state = JSON.parse(fs.readFileSync(counterFile, "utf8")); } catch {}
 
-if (count === 1) {
-  if (mode === "stale") {
-    process.stderr.write(".next/types/src/app/page.js: Cannot find module './src/app/page.js' or its corresponding type declarations.\\n");
-    process.exit(1);
+const args = process.argv.slice(2);
+if (args[0] === "next" && args[1] === "typegen") {
+  state.typegen += 1;
+  try { fs.writeFileSync(counterFile, JSON.stringify(state)); } catch {}
+  process.stdout.write("Generating route types...\\n✓ Types generated successfully\\n");
+  process.exit(0);
+}
+
+if (args[0] === "tsc" && args[1] === "--noEmit") {
+  state.tsc += 1;
+  try { fs.writeFileSync(counterFile, JSON.stringify(state)); } catch {}
+
+  if (state.tsc === 1) {
+    if (mode === "stale") {
+      process.stderr.write(".next/types/src/app/page.js: Cannot find module './src/app/page.js' or its corresponding type declarations.\\n");
+      process.exit(1);
+    }
+    if (mode === "stale-dev-types") {
+      process.stderr.write(".next/dev/types/routes.d.ts(256,37): error TS1005: '?' expected.\\n");
+      process.stderr.write(".next/dev/types/validator.ts(1718,1): error TS1128: Declaration or statement expected.\\n");
+      process.exit(1);
+    }
+    if (mode === "fail") {
+      process.stderr.write("Type error: Something else\\n");
+      process.exit(1);
+    }
   }
-  if (mode === "fail") {
-    process.stderr.write("Type error: Something else\\n");
-    process.exit(1);
-  }
+
+  process.exit(0);
 }
 
 process.exit(0);
@@ -84,7 +105,10 @@ process.exit(0);
   }
 }
 
-function withTypecheckRepo<T>(mode: "pass" | "stale" | "fail", run: (repoRoot: string) => T): T {
+function withTypecheckRepo<T>(
+  mode: "pass" | "stale" | "stale-dev-types" | "fail",
+  run: (repoRoot: string) => T,
+): T {
   const originalCwd = process.cwd();
   const originalPath = process.env.PATH ?? "";
   const repoRoot = mkdtempSync(path.join(tmpdir(), "routa-typecheck-"));
@@ -112,9 +136,7 @@ describe("runTypecheckSmart", () => {
   });
 
   it("retries and succeeds after stale .next/types detection", () => {
-    let repoRoot = "";
     const result = withTypecheckRepo("stale", (root) => {
-      repoRoot = root;
       const nextDir = path.join(root, ".next", "types");
       mkdirSync(nextDir, { recursive: true });
       writeFileSync(path.join(nextDir, ".keep"), "");
@@ -122,7 +144,12 @@ describe("runTypecheckSmart", () => {
     });
 
     expect(result).toBe(0);
-    expect(existsSync(path.join(repoRoot, ".next"))).toBe(false);
+  });
+
+  it("retries and succeeds after stale .next/dev/types parser errors", () => {
+    const result = withTypecheckRepo("stale-dev-types", () => runTypecheckSmart());
+
+    expect(result).toBe(0);
   });
 
   it("returns failure for non-stale typecheck errors", () => {

@@ -228,7 +228,13 @@ export function AcpProviderDropdown({
         data-testid={dataTestId}
       >
         {showStatusDot && (
-          <span className={`w-1.5 h-1.5 rounded-full ${selectedProviderInfo?.status === "available" ? "bg-emerald-500" : "bg-slate-400"}`} />
+          <span className={`w-1.5 h-1.5 rounded-full ${
+            selectedProviderInfo?.status === "available"
+              ? "bg-emerald-500"
+              : selectedProviderInfo?.status === "checking"
+                ? "bg-amber-400 animate-pulse"
+                : "bg-slate-400"
+          }`} />
         )}
         <span className={labelClassName ?? defaultLabelClassName}>
           {selectedProviderInfo?.name ?? (allowAuto ? autoLabel : t.providerDropdown.selectProvider)}
@@ -286,7 +292,13 @@ export function AcpProviderDropdown({
                               : "text-slate-500 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800/50"
                         }`}
                       >
-                        <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${provider.status === "available" ? "bg-emerald-500" : "bg-slate-300 dark:bg-slate-600"}`} />
+                        <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+                          provider.status === "available"
+                            ? "bg-emerald-500"
+                            : provider.status === "checking"
+                              ? "bg-amber-400 animate-pulse"
+                              : "bg-slate-300 dark:bg-slate-600"
+                        }`} />
                         <span className="min-w-0 flex-1 truncate font-medium">{provider.name}</span>
                         <span className="max-w-[120px] truncate font-mono text-[10px] text-slate-400 dark:text-slate-500">
                           {provider.command}
@@ -351,7 +363,13 @@ export function AcpProviderDropdown({
                           onChange={(event) => handleVisibleToggle(provider.id, event.target.checked)}
                           className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 focus:ring-offset-0 dark:border-slate-600"
                         />
-                        <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${provider.status === "available" ? "bg-emerald-500" : "bg-slate-300 dark:bg-slate-600"}`} />
+                        <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+                          provider.status === "available"
+                            ? "bg-emerald-500"
+                            : provider.status === "checking"
+                              ? "bg-amber-400 animate-pulse"
+                              : "bg-slate-300 dark:bg-slate-600"
+                        }`} />
                         <div className="min-w-0 flex-1">
                           <p className="truncate font-medium text-slate-900 dark:text-slate-100">{provider.name}</p>
                           <p className="truncate font-mono text-[10px] text-slate-400 dark:text-slate-500">{provider.id}</p>

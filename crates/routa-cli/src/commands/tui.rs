@@ -22,6 +22,14 @@ pub struct TuiRenderer {
     active_tool: Option<ActiveTool>,
 }
 
+/// Tracks how long an interactive command should wait before concluding a turn is idle.
+pub(crate) struct IdleExitPolicy {
+    initial_idle_threshold: u32,
+    steady_idle_threshold: u32,
+    idle_ticks: u32,
+    has_seen_update: bool,
+}
+
 struct ActiveTool {
     id: Option<String>,
     label: String,
@@ -31,6 +39,32 @@ struct ActiveTool {
 impl Default for TuiRenderer {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl IdleExitPolicy {
+    pub(crate) fn new(initial_idle_threshold: u32, steady_idle_threshold: u32) -> Self {
+        Self {
+            initial_idle_threshold,
+            steady_idle_threshold,
+            idle_ticks: 0,
+            has_seen_update: false,
+        }
+    }
+
+    pub(crate) fn record_update(&mut self) {
+        self.idle_ticks = 0;
+        self.has_seen_update = true;
+    }
+
+    pub(crate) fn should_exit_on_idle_tick(&mut self) -> bool {
+        self.idle_ticks += 1;
+        let threshold = if self.has_seen_update {
+            self.steady_idle_threshold
+        } else {
+            self.initial_idle_threshold
+        };
+        self.idle_ticks >= threshold
     }
 }
 
@@ -249,12 +283,7 @@ impl TuiRenderer {
     }
 
     fn render_process_output(&mut self, data: &str) {
-        let show_all = std::env::var_os("ROUTA_CLI_SHOW_PROCESS_OUTPUT").is_some();
-        let lines: Vec<&str> = data
-            .lines()
-            .map(str::trim_end)
-            .filter(|line| !line.trim().is_empty() && (show_all || !looks_like_provider_log(line)))
-            .collect();
+        let lines = visible_process_output_lines(data);
 
         if lines.is_empty() {
             return;
@@ -266,6 +295,34 @@ impl TuiRenderer {
             eprintln!("{}", style(line).color256(240));
         }
         self.at_line_start = true;
+    }
+}
+
+pub(crate) fn update_has_visible_terminal_activity(update: &serde_json::Value) -> bool {
+    let Some(inner) = update.get("params").and_then(|params| params.get("update")) else {
+        return false;
+    };
+
+    let kind = inner
+        .get("sessionUpdate")
+        .and_then(|value| value.as_str())
+        .unwrap_or("");
+
+    match kind {
+        "agent_message_chunk"
+        | "agent_message"
+        | "agent_thought_chunk"
+        | "tool_call"
+        | "tool_call_start"
+        | "tool_call_update"
+        | "turn_complete"
+        | "usage_update" => true,
+        "process_output" => inner
+            .get("data")
+            .and_then(|value| value.as_str())
+            .map(|data| !visible_process_output_lines(data).is_empty())
+            .unwrap_or(false),
+        _ => false,
     }
 }
 
@@ -407,4 +464,97 @@ fn looks_like_provider_log(line: &str) -> bool {
         || trimmed.contains("codex_rmcp_client::")
         || trimmed.contains("session_loop{")
         || trimmed.contains("MCP server stderr")
+}
+
+fn visible_process_output_lines(data: &str) -> Vec<&str> {
+    let show_all = std::env::var_os("ROUTA_CLI_SHOW_PROCESS_OUTPUT").is_some();
+    data.lines()
+        .map(str::trim_end)
+        .filter(|line| !line.trim().is_empty() && (show_all || !looks_like_provider_log(line)))
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{update_has_visible_terminal_activity, IdleExitPolicy};
+
+    #[test]
+    fn waits_longer_before_first_update_than_after_streaming_starts() {
+        let mut policy = IdleExitPolicy::new(30, 5);
+
+        for _ in 0..29 {
+            assert!(
+                !policy.should_exit_on_idle_tick(),
+                "should keep waiting before the first update arrives"
+            );
+        }
+        assert!(
+            policy.should_exit_on_idle_tick(),
+            "should stop once the initial idle budget is exhausted"
+        );
+
+        let mut policy = IdleExitPolicy::new(30, 5);
+        policy.record_update();
+
+        for _ in 0..4 {
+            assert!(
+                !policy.should_exit_on_idle_tick(),
+                "should tolerate a short idle gap after streaming has started"
+            );
+        }
+        assert!(
+            policy.should_exit_on_idle_tick(),
+            "should stop once the steady-state idle budget is exhausted"
+        );
+    }
+
+    #[test]
+    fn receiving_an_update_resets_idle_counter() {
+        let mut policy = IdleExitPolicy::new(30, 5);
+
+        for _ in 0..10 {
+            assert!(!policy.should_exit_on_idle_tick());
+        }
+
+        policy.record_update();
+
+        for _ in 0..4 {
+            assert!(
+                !policy.should_exit_on_idle_tick(),
+                "a streamed update should reset the idle budget"
+            );
+        }
+        assert!(policy.should_exit_on_idle_tick());
+    }
+
+    #[test]
+    fn codex_provider_logs_do_not_count_as_visible_terminal_activity() {
+        let update = serde_json::json!({
+            "params": {
+                "update": {
+                    "sessionUpdate": "process_output",
+                    "data": "2026-04-06T13:30:02.891928Z  INFO codex_acp::thread: Submitted prompt with submission_id: 123\n"
+                }
+            }
+        });
+
+        assert!(!update_has_visible_terminal_activity(&update));
+    }
+
+    #[test]
+    fn agent_message_chunks_count_as_visible_terminal_activity() {
+        let update = serde_json::json!({
+            "params": {
+                "update": {
+                    "sessionUpdate": "agent_message_chunk",
+                    "content": {
+                        "type": "text",
+                        "text": "hello"
+                    }
+                }
+            }
+        });
+
+        assert!(update_has_visible_terminal_activity(&update));
+    }
 }

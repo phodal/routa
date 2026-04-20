@@ -36,8 +36,8 @@ function createHooksResponse(): HooksResponse {
       {
         name: "post-commit",
         relativePath: ".husky/post-commit",
-        source: "python3 -m entrix hook file-length",
-        triggerCommand: "python3 -m entrix hook file-length",
+        source: "entrix hook file-length",
+        triggerCommand: "entrix hook file-length",
         kind: "shell-command",
         skipEnvVar: "SKIP_HOOKS",
       },

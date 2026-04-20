@@ -52,6 +52,31 @@ describe("runMetric", () => {
 
     expect(result.passed).toBe(true);
   });
+
+  it("forwards env overrides to the process runner", async () => {
+    runCommandMock.mockResolvedValueOnce({
+      command: "fake-command",
+      durationMs: 10,
+      exitCode: 0,
+      output: "test result: ok",
+    });
+
+    await runMetric(buildMetric(), {
+      env: {
+        NODE_ENV: process.env.NODE_ENV ?? "test",
+        ROUTA_FITNESS_CHANGED_BASE: "origin/main",
+      },
+    });
+
+    expect(runCommandMock).toHaveBeenCalledWith(
+      "fake-command",
+      expect.objectContaining({
+        env: expect.objectContaining({
+          ROUTA_FITNESS_CHANGED_BASE: "origin/main",
+        }),
+      }),
+    );
+  });
 });
 
 describe("summarizeFailures", () => {

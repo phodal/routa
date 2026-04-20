@@ -310,8 +310,9 @@ export class ClaudeCodeSdkAdapter {
     // Ensure CLAUDE_CONFIG_DIR points to /tmp/.claude in the current process
     // so the SDK's trace writer resolves to a writable path — this is the
     // primary fix for the ENOENT crash on Vercel (the serverless-fs-patch
-    // import above acts as a safety net).
-    if (!process.env.CLAUDE_CONFIG_DIR) {
+    // import above acts as a safety net). Only override in serverless envs;
+    // local (SDK mode via ROUTA_USE_SDK_MODE) should use the default ~/.claude.
+    if (!process.env.CLAUDE_CONFIG_DIR && isServerlessEnvironment()) {
       process.env.CLAUDE_CONFIG_DIR = "/tmp/.claude";
     }
 
@@ -409,7 +410,7 @@ export class ClaudeCodeSdkAdapter {
         ...(systemPromptOption ?? {}),
         env: {
           ...process.env,
-          CLAUDE_CONFIG_DIR: process.env.CLAUDE_CONFIG_DIR ?? "/tmp/.claude",
+          ...(isServerlessEnvironment() && { CLAUDE_CONFIG_DIR: process.env.CLAUDE_CONFIG_DIR ?? "/tmp/.claude" }),
         },
         ...(this._mcpServers ? { mcpServers: this._mcpServers } : {}),
         ...(shouldContinue && { continue: true }),
@@ -639,12 +640,12 @@ export class ClaudeCodeSdkAdapter {
           return this.canUseConfiguredTool(sessionId, toolName, input, options.toolUseID, options.signal);
         },
         ...(systemPromptOption ?? {}),
-        // Set CLAUDE_CONFIG_DIR to /tmp so the child process can write its
-        // config/cache files in serverless environments (like Vercel Lambda)
-        // where HOME or the default config directory is read-only.
+        // Set CLAUDE_CONFIG_DIR to /tmp in serverless environments so the child
+        // process can write config/cache files (HOME may be read-only on Vercel).
+        // In local SDK mode, leave it unset to use the default ~/.claude.
         env: {
           ...process.env,
-          CLAUDE_CONFIG_DIR: process.env.CLAUDE_CONFIG_DIR ?? "/tmp/.claude",
+          ...(isServerlessEnvironment() && { CLAUDE_CONFIG_DIR: process.env.CLAUDE_CONFIG_DIR ?? "/tmp/.claude" }),
         },
         ...(this._mcpServers ? { mcpServers: this._mcpServers } : {}),
         // Session continuity: use `continue: true` for follow-up prompts
@@ -1146,7 +1147,11 @@ export class ClaudeCodeSdkAdapter {
  * Check if we should use the Claude Code SDK adapter
  */
 export function shouldUseClaudeCodeSdkAdapter(): boolean {
-  return isServerlessEnvironment() && isClaudeCodeSdkConfigured();
+  if (!isClaudeCodeSdkConfigured()) return false;
+  // Enable SDK mode in serverless environments, or when explicitly opted-in
+  // (e.g. for third-party API providers like Zhipu GLM Coding Plan that
+  // require SDK mode to bypass TTY-based usage detection).
+  return isServerlessEnvironment() || process.env.ROUTA_USE_SDK_MODE === "1";
 }
 
 /**

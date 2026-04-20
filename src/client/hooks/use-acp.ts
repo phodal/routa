@@ -13,6 +13,8 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import {
   BrowserAcpClient,
+  AcpForkSessionResult,
+  AcpLoadSessionResult,
   AcpNewSessionResult,
   AcpProviderInfo,
   AcpClientError,
@@ -63,6 +65,26 @@ const BUILTIN_PROVIDER_FALLBACKS: AcpProviderInfo[] = [
     source: "static",
   },
 ];
+
+export function formatAcpErrorForLog(err: unknown): unknown {
+  if (err instanceof AcpClientError) {
+    const data = err.data && typeof err.data === "object"
+      ? err.data as Record<string, unknown>
+      : undefined;
+    const nestedErrorData = data?.errorData;
+    return {
+      name: err.name,
+      message: err.message,
+      code: err.code,
+      authMethods: err.authMethods,
+      agentInfo: err.agentInfo,
+      sessionMayContinue: err.sessionMayContinue,
+      data,
+      errorData: nestedErrorData,
+    };
+  }
+  return err;
+}
 
 /** Convert a custom ACP provider to AcpProviderInfo for the provider list. */
 function toAcpProviderInfo(cp: CustomAcpProvider): AcpProviderInfo {
@@ -183,7 +205,18 @@ export interface UseAcpActions {
       mcpProfile?: McpServerProfile,
       /** Optional session-scoped system prompt injected before the first user turn */
       systemPrompt?: string,
+      /** Allow unattended permission approvals for automation sessions. */
+      autoApprovePermissions?: boolean,
     ) => Promise<AcpNewSessionResult | null>;
+  resumeSession: (
+    sessionId: string,
+    cwd?: string,
+    options?: { throwOnError?: boolean },
+  ) => Promise<AcpLoadSessionResult | null>;
+  forkSession: (
+    sessionId: string,
+    name?: string,
+  ) => Promise<AcpForkSessionResult | null>;
   selectSession: (sessionId: string) => void;
   setProvider: (provider: string) => void;
   setMode: (modeId: string) => Promise<void>;
@@ -217,21 +250,30 @@ export function useAcp(baseUrl: string = ""): UseAcpState & UseAcpActions {
   const clientRef = useRef<BrowserAcpClient | null>(null);
   const sessionIdRef = useRef<string | null>(null);
   const tearingDownRef = useRef(false);
+  const connectingRef = useRef(false);
   // Track if user manually cancelled the session (to suppress "process exited" errors)
   const userCancelledRef = useRef(false);
 
-  const [state, setState] = useState<UseAcpState>({
+  const [state, setState] = useState<UseAcpState>(() => ({
     connected: false,
     sessionId: null,
     updates: [],
     providers: getInitialProviderFallbacks(),
-    selectedProvider: loadSelectedAcpProvider(),
+    // Always use SSR-safe default; useEffect below hydrates from localStorage
+    selectedProvider: "opencode",
     loading: false,
     error: null,
     authError: null,
     dockerConfigError: null,
-  });
+  }));
 
+  // Hydrate selectedProvider from localStorage after mount to avoid SSR mismatch
+  useEffect(() => {
+    const persisted = loadSelectedAcpProvider();
+    if (persisted !== "opencode") {
+      setState((s) => ({ ...s, selectedProvider: persisted }));
+    }
+  }, []);
   // Clean up on unmount
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -272,7 +314,12 @@ export function useAcp(baseUrl: string = ""): UseAcpState & UseAcpActions {
 
   /** Connect (initialize only). Session creation is explicit. */
   const connect = useCallback(async () => {
+    if (clientRef.current || connectingRef.current) {
+      return;
+    }
+
     try {
+      connectingRef.current = true;
       setState((s) => ({ ...s, loading: true, error: null }));
 
       // In Tauri desktop static mode, use the embedded Rust server URL
@@ -281,15 +328,16 @@ export function useAcp(baseUrl: string = ""): UseAcpState & UseAcpActions {
 
       await client.initialize();
 
-      // Fast path: Load only local providers (instant, < 10ms)
-      const localProviders = await client.listProviders(false, false);
+      // Check local providers immediately for accurate status display
+      // This ensures status indicators show correct colors on first render
+      const localProviders = await client.listProviders(true, false);
 
       // Merge in user-defined custom ACP providers
       const customProviders = loadCustomAcpProviders().map(toAcpProviderInfo);
 
       // Filter out disabled providers
       const disabledProviders = loadHiddenProviders();
-      const allLocalProviders = sortProvidersByPreference(
+      const providers = sortProvidersByPreference(
         [...localProviders, ...customProviders].filter(
           (p) => !disabledProviders.includes(p.id)
         )
@@ -299,26 +347,26 @@ export function useAcp(baseUrl: string = ""): UseAcpState & UseAcpActions {
         setState((s) => ({
           ...s,
           updates: [...s.updates, update],
+          error: null,
         }));
       });
       client.onConnectionIssue((issue) => {
         if (tearingDownRef.current) return;
         logRuntime("warn", "useAcp.sse", "Session stream issue", issue);
+        const isRecoverableOwnershipConflict = issue.status === 409 && issue.retryable;
         setState((s) => ({
           ...s,
-          error: formatConnectionIssue(issue),
+          error: isRecoverableOwnershipConflict ? null : formatConnectionIssue(issue),
         }));
       });
 
       clientRef.current = client;
 
-      // Auto-select first available provider (claude-code-sdk in serverless, or first available)
-      const firstAvailable = allLocalProviders.find((p) => p.status === "available");
-
+      const firstAvailable = providers.find((p) => p.status === "available");
       setState((s) => ({
         ...(function () {
           const persistedProvider = loadSelectedAcpProvider();
-          const preferredProvider = allLocalProviders.find((provider) =>
+          const preferredProvider = providers.find((provider) =>
             provider.id === persistedProvider && provider.status !== "unavailable"
           )?.id;
           const nextSelectedProvider = preferredProvider ?? firstAvailable?.id ?? s.selectedProvider;
@@ -326,45 +374,15 @@ export function useAcp(baseUrl: string = ""): UseAcpState & UseAcpActions {
           return {
             ...s,
             connected: true,
-            providers: allLocalProviders,
+            providers,
             selectedProvider: nextSelectedProvider,
             loading: false,
           };
         })(),
       }));
 
-      // Background task 1: Check local provider status
-      client.listProviders(true, false).then((checkedLocalProviders) => {
-        if (tearingDownRef.current) return;
-        // Only update local providers (source === 'static'), keep existing registry providers
-        // Re-merge custom providers (they are always "available")
-        const customProvs = loadCustomAcpProviders().map(toAcpProviderInfo);
-
-        // Filter out disabled providers
-        const disabledProvs = loadHiddenProviders();
-        const filteredLocalProviders = sortProvidersByPreference(
-          [...checkedLocalProviders, ...customProvs].filter(
-            (p) => !disabledProvs.includes(p.id)
-          )
-        );
-
-        setState((s) => {
-          const existingRegistry = s.providers.filter((p) => p.source === "registry");
-          return {
-            ...s,
-            providers: sortProvidersByPreference([...filteredLocalProviders, ...existingRegistry]),
-          };
-        });
-      }).catch((err) => {
-        if (tearingDownRef.current || shouldSuppressTeardownError(err)) {
-          return;
-        }
-        logRuntime("warn", "useAcp.connect", "Failed to check local provider status", err);
-      });
-
-      // Background task 2: Load registry providers (with timeout protection)
+      // Background task: Load registry providers (with timeout protection)
       // This runs in parallel and adds registry providers when ready
-      // First, quickly load registry providers (without checking status)
       client.loadRegistryProviders().then((allProviders) => {
         if (tearingDownRef.current) return;
         // loadRegistryProviders returns ALL providers (local + registry)
@@ -429,6 +447,8 @@ export function useAcp(baseUrl: string = ""): UseAcpState & UseAcpActions {
         loading: false,
         error: toErrorMessage(err) || "Connection failed",
       }));
+    } finally {
+      connectingRef.current = false;
     }
   }, [baseUrl]);
 
@@ -459,6 +479,7 @@ export function useAcp(baseUrl: string = ""): UseAcpState & UseAcpActions {
       allowedNativeTools?: string[],
       mcpProfile?: McpServerProfile,
       systemPrompt?: string,
+      autoApprovePermissions?: boolean,
     ): Promise<AcpNewSessionResult | null> => {
       const client = clientRef.current;
       if (!client) return null;
@@ -493,6 +514,7 @@ export function useAcp(baseUrl: string = ""): UseAcpState & UseAcpActions {
           customCommand: customProvider?.command,
           customArgs: customProvider?.args,
           authJson,
+          autoApprovePermissions,
         });
         sessionIdRef.current = result.sessionId;
         setState((s) => ({
@@ -541,6 +563,66 @@ export function useAcp(baseUrl: string = ""): UseAcpState & UseAcpActions {
     [state.selectedProvider]
   );
 
+  const resumeSession = useCallback(async (
+    targetSessionId: string,
+    cwd?: string,
+    options?: { throwOnError?: boolean },
+  ): Promise<AcpLoadSessionResult | null> => {
+    const client = clientRef.current;
+    if (!client || !targetSessionId) return null;
+
+    try {
+      setState((s) => ({ ...s, loading: true, error: null, authError: null, updates: [] }));
+      const result = await client.loadSession({
+        sessionId: targetSessionId,
+        cwd,
+      });
+      sessionIdRef.current = targetSessionId;
+      setState((s) => ({
+        ...s,
+        sessionId: targetSessionId,
+        selectedProvider: result.provider ?? s.selectedProvider,
+        loading: false,
+      }));
+      return result;
+    } catch (err) {
+      logRuntime("error", "useAcp.resumeSession", "Failed to resume ACP session", formatAcpErrorForLog(err));
+      setState((s) => ({
+        ...s,
+        loading: false,
+        error: options?.throwOnError
+          ? null
+          : toErrorMessage(err) || "Session resume failed",
+      }));
+      if (options?.throwOnError) {
+        throw err;
+      }
+      return null;
+    }
+  }, []);
+
+  const forkSession = useCallback(async (
+    targetSessionId: string,
+    name?: string,
+  ): Promise<AcpForkSessionResult | null> => {
+    const client = clientRef.current;
+    if (!client || !targetSessionId) return null;
+
+    try {
+      return await client.forkSession({
+        sessionId: targetSessionId,
+        name,
+      });
+    } catch (err) {
+      logRuntime("error", "useAcp.forkSession", "Failed to fork session", formatAcpErrorForLog(err));
+      setState((s) => ({
+        ...s,
+        error: toErrorMessage(err) || "Session fork failed",
+      }));
+      return null;
+    }
+  }, []);
+
   const setProvider = useCallback((provider: string) => {
     saveSelectedAcpProvider(provider);
     setState((s) => ({ ...s, selectedProvider: provider }));
@@ -567,13 +649,17 @@ export function useAcp(baseUrl: string = ""): UseAcpState & UseAcpActions {
     if (!client) return;
     // Skip if sessionId is a placeholder (static export mode)
     if (sessionId === "__placeholder__") return;
+    if (sessionIdRef.current === sessionId) {
+      setState((s) => ({ ...s, sessionId, error: null }));
+      return;
+    }
 
     sessionIdRef.current = sessionId;
     client.attachSession(sessionId);
     // Reset live updates when switching sessions.
     // Historical transcript hydration is owned by ChatPanel to avoid loading
     // the same history both into `updates` and into the chat transcript state.
-    setState((s) => ({ ...s, sessionId, updates: [] }));
+    setState((s) => ({ ...s, sessionId, updates: [], error: null }));
   }, []);
 
   /** Send a prompt to current session (content streams over SSE). */
@@ -595,7 +681,7 @@ export function useAcp(baseUrl: string = ""): UseAcpState & UseAcpActions {
         setState((s) => ({ ...s, loading: false }));
         return;
       }
-      logRuntime("error", "useAcp.prompt", "Failed to send prompt", err);
+      logRuntime("error", "useAcp.prompt", "Failed to send prompt", formatAcpErrorForLog(err));
       setState((s) => ({
         ...s,
         loading: false,
@@ -623,7 +709,7 @@ export function useAcp(baseUrl: string = ""): UseAcpState & UseAcpActions {
         setState((s) => ({ ...s, loading: false }));
         return;
       }
-      logRuntime("error", "useAcp.promptSession", "Failed to send prompt", err);
+      logRuntime("error", "useAcp.promptSession", "Failed to send prompt", formatAcpErrorForLog(err));
       setState((s) => ({
         ...s,
         loading: false,
@@ -726,6 +812,8 @@ export function useAcp(baseUrl: string = ""): UseAcpState & UseAcpActions {
     ...state,
     connect,
     createSession,
+    resumeSession,
+    forkSession,
     selectSession,
     setProvider,
     setMode,

@@ -1,7 +1,8 @@
 ---
 title: "Issue #286 Docusaurus Documentation Checklist"
 date: "2026-04-04"
-status: completed
+kind: verification_report
+status: resolved
 severity: info
 area: "documentation"
 tags:
@@ -13,6 +14,9 @@ reported_by: "agent"
 related_issues:
   - "https://github.com/phodal/routa/issues/286"
 github_issue: 286
+github_state: "closed"
+github_url: "https://github.com/phodal/routa/issues/286"
+resolved_at: "2026-04-04"
 ---
 
 # Issue #286 Docusaurus 文档发布检查清单

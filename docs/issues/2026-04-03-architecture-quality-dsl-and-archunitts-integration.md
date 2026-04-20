@@ -1,7 +1,7 @@
 ---
 title: "Architecture Quality DSL and ArchUnitTS backend-core integration"
 date: "2026-04-03"
-status: open
+status: resolved
 severity: medium
 area: "fitness"
 tags:
@@ -16,8 +16,9 @@ reported_by: "human"
 related_issues:
   - "https://github.com/phodal/routa/issues/286"
 github_issue: 286
-github_state: "open"
+github_state: "closed"
 github_url: "https://github.com/phodal/routa/issues/286"
+resolved_at: "2026-04-05"
 ---
 
 # Architecture Quality DSL and ArchUnitTS backend-core integration

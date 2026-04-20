@@ -7,16 +7,23 @@ if [ -n "$SKIP_HOOKS" ]; then
   exit 0
 fi
 
-changed_files="$(git diff-tree --root --no-commit-id --name-only -r HEAD)"
+changed_files="$(git diff-tree --root --no-commit-id --name-only -r HEAD | tr '\n' ' ')"
 if [ -z "$changed_files" ]; then
   exit 0
 fi
 
 echo "📏 Checking file budgets for the latest commit..."
-if ! PYTHONPATH=tools/entrix python3 -m entrix hook file-length \
-  --config tools/entrix/file_budgets.pre_commit.json \
+ENTRIX_BIN="./target/debug/entrix"
+if [ -x "$ENTRIX_BIN" ]; then
+  ENTRIX_CMD="$ENTRIX_BIN"
+else
+  ENTRIX_CMD="cargo run -q -p entrix --"
+fi
+
+if ! sh -c "$ENTRIX_CMD hook file-length \
+  --config docs/fitness/file_budgets.pre_commit.json \
   --strict-limit \
-  $changed_files; then
+  $changed_files"; then
   echo "⚠️  File budget warning: this commit includes oversized staged files."
   echo "    Continue refactoring before push."
 fi

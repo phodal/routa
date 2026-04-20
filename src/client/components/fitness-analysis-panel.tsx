@@ -334,7 +334,7 @@ function StatusBadge({
   };
 
   return (
-    <span className={`inline-flex items-center rounded-full border px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] ${profileStateTone(state)}`}>
+    <span className={`inline-flex items-center rounded-sm border px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] ${profileStateTone(state)}`}>
       {labels[state]}
     </span>
   );
@@ -576,7 +576,7 @@ export function FitnessAnalysisPanel({
 
   return (
     <div className="space-y-3">
-      <section className="rounded-[28px] border border-desktop-border bg-desktop-bg-secondary/60 p-3 shadow-sm">
+      <section className="rounded-sm border border-desktop-border bg-desktop-bg-secondary/60 p-3">
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div className="min-w-0">
             <div className="truncate text-[11px] uppercase tracking-[0.14em] text-desktop-text-secondary">
@@ -601,7 +601,7 @@ export function FitnessAnalysisPanel({
             type="button"
             onClick={onRunSelectedProfile}
             disabled={!hasContext || selectedState.state === "loading"}
-            className="h-7 rounded-full bg-desktop-accent px-3 text-[12px] font-semibold leading-none text-desktop-text-on-accent disabled:opacity-60"
+            className="h-7 rounded-sm bg-desktop-accent px-3 text-[12px] font-semibold leading-none text-desktop-text-on-accent disabled:opacity-60"
           >
             {primaryActionLabel}
           </button>
@@ -609,11 +609,11 @@ export function FitnessAnalysisPanel({
             type="button"
             onClick={() => void syncProfiles()}
             disabled={!hasContext}
-            className="h-7 rounded-full border border-desktop-border px-3 text-[12px] font-semibold leading-none text-desktop-text-primary hover:bg-desktop-bg-primary/80 disabled:opacity-60"
+            className="h-7 rounded-sm border border-desktop-border px-3 text-[12px] font-semibold leading-none text-desktop-text-primary hover:bg-desktop-bg-primary/80 disabled:opacity-60"
           >
             {fitness.panel.refresh}
           </button>
-          <span className="ml-auto inline-flex items-center rounded-full border border-desktop-border px-2 py-0.5 text-[11px] text-desktop-text-secondary">
+          <span className="ml-auto inline-flex items-center rounded-sm border border-desktop-border px-2 py-0.5 text-[11px] text-desktop-text-secondary">
             {fitness.panel.fit} {reportReadiness}
           </span>
         </div>
@@ -637,7 +637,7 @@ export function FitnessAnalysisPanel({
 
       <FitnessAnalysisDashboard report={selectedReport} />
 
-      <section className="rounded-3xl border border-desktop-border bg-desktop-bg-secondary/60 p-4 shadow-sm">
+      <section className="rounded-sm border border-desktop-border bg-desktop-bg-secondary/60 p-4">
         <FitnessAnalysisContent
           selectedProfile={selectedProfile}
           viewMode="overview"

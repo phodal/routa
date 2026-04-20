@@ -6,7 +6,9 @@ use axum::{
 use serde::Deserialize;
 use std::collections::HashMap;
 
+use crate::api::repo_context::canonical_repo_path_for_response;
 use crate::error::ServerError;
+use crate::models::codebase::Codebase;
 use crate::models::workspace::{Workspace, WorkspaceStatus};
 use crate::state::AppState;
 
@@ -25,6 +27,11 @@ pub fn router() -> Router<AppState> {
 #[derive(Debug, Deserialize)]
 struct ListWorkspacesQuery {
     status: Option<WorkspaceStatus>,
+}
+
+fn normalize_codebase_for_response(mut codebase: Codebase) -> Codebase {
+    codebase.repo_path = canonical_repo_path_for_response(&codebase.repo_path);
+    codebase
 }
 
 async fn list_workspaces(
@@ -52,7 +59,10 @@ async fn get_workspace(
         .codebase_store
         .list_by_workspace(&id)
         .await
-        .unwrap_or_default();
+        .unwrap_or_default()
+        .into_iter()
+        .map(normalize_codebase_for_response)
+        .collect::<Vec<_>>();
     Ok(Json(
         serde_json::json!({ "workspace": workspace, "codebases": codebases }),
     ))

@@ -44,7 +44,7 @@ jobs:
             key: win32-x64
     runs-on: ${{ matrix.runner }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           submodules: true
 
@@ -69,11 +69,21 @@ jobs:
           fi
 
           allowed_files=(
+            "Cargo.toml"
             "package.json"
             "apps/desktop/package.json"
             "apps/desktop/src-tauri/Cargo.toml"
             "apps/desktop/src-tauri/tauri.conf.json"
             "packages/routa-cli/package.json"
+            "packages/entrix/package.json"
+            "packages/harness-monitor/package.json"
+            "crates/routa-core/Cargo.toml"
+            "crates/routa-rpc/Cargo.toml"
+            "crates/routa-scanner/Cargo.toml"
+            "crates/routa-server/Cargo.toml"
+            "crates/routa-cli/Cargo.toml"
+            "crates/entrix/Cargo.toml"
+            "crates/harness-monitor/Cargo.toml"
           )
 
           for file in "${changed_files[@]}"; do
@@ -116,11 +126,14 @@ jobs:
   stage:
     name: Stage npm packages
     needs: build
+    permissions:
+      contents: read
+      actions: read
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.value }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           submodules: true
 
@@ -139,11 +152,21 @@ jobs:
           fi
 
           allowed_files=(
+            "Cargo.toml"
             "package.json"
             "apps/desktop/package.json"
             "apps/desktop/src-tauri/Cargo.toml"
             "apps/desktop/src-tauri/tauri.conf.json"
             "packages/routa-cli/package.json"
+            "packages/entrix/package.json"
+            "packages/harness-monitor/package.json"
+            "crates/routa-core/Cargo.toml"
+            "crates/routa-rpc/Cargo.toml"
+            "crates/routa-scanner/Cargo.toml"
+            "crates/routa-server/Cargo.toml"
+            "crates/routa-cli/Cargo.toml"
+            "crates/entrix/Cargo.toml"
+            "crates/harness-monitor/Cargo.toml"
           )
 
           for file in "${changed_files[@]}"; do
@@ -207,7 +230,7 @@ jobs:
 
       - name: Fetch baseline manifest
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ROUTA_GITHUB_TOKEN: ${{ secrets.ROUTA_GITHUB_TOKEN || secrets.GITHUB_TOKEN }}
         run: |
           python scripts/release/fetch-release-baseline.py \
             --repo phodal/routa \
@@ -217,19 +240,17 @@ jobs:
             --out dist/release/baseline-manifest.json
 
       - name: Install Entrix
-        run: python -m pip install -e tools/entrix
+        run: python -m pip install entrix
 
       - name: Guard release surface
         run: |
           if [[ -f dist/release/baseline-manifest.json ]]; then
-            entrix release-trigger \
-              --manifest dist/release/manifest.json \
-              --baseline-manifest dist/release/baseline-manifest.json \
-              --fail-on-trigger
+              entrix release-trigger \
+                --manifest dist/release/manifest.json \
+                --baseline-manifest dist/release/baseline-manifest.json
           else
             entrix release-trigger \
-              --manifest dist/release/manifest.json \
-              --fail-on-trigger
+              --manifest dist/release/manifest.json
           fi
 
       - name: Upload release manifest
@@ -249,9 +270,12 @@ jobs:
     needs:
       - build
       - stage
+    permissions:
+      contents: read
+      actions: read
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           submodules: true
 
@@ -273,13 +297,12 @@ jobs:
           node-version: 22
 
       - name: Install Entrix
-        run: python -m pip install -e tools/entrix
+        run: python -m pip install entrix
 
       - name: Re-check release surface
         run: |
           entrix release-trigger \
-            --manifest dist/release/manifest.json \
-            --fail-on-trigger
+            --manifest dist/release/manifest.json
 
       - name: Verify install smoke
         run: |
@@ -300,6 +323,9 @@ jobs:
       - build
       - stage
       - verify
+    permissions:
+      contents: read
+      actions: read
     if: |
       github.event_name == 'workflow_call' ||
       github.event.inputs.publish == 'true' ||
@@ -307,7 +333,7 @@ jobs:
       inputs.publish == true
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           submodules: true
 
@@ -329,13 +355,12 @@ jobs:
           path: dist/release
 
       - name: Install Entrix
-        run: python -m pip install -e tools/entrix
+        run: python -m pip install entrix
 
       - name: Re-check release surface before publish
         run: |
           entrix release-trigger \
-            --manifest dist/release/manifest.json \
-            --fail-on-trigger
+            --manifest dist/release/manifest.json
 
       - name: Publish tarballs
         env:

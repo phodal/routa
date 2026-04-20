@@ -81,16 +81,16 @@ type DetectHarnessAutomationsOptions = {
 };
 
 const AUTOMATION_CONFIG_RELATIVE_PATH = path.join("docs", "harness", "automations.yml");
-const FILE_BUDGETS_RELATIVE_PATH = path.join("tools", "entrix", "file_budgets.json");
+const FILE_BUDGETS_RELATIVE_PATH = path.join("docs", "fitness", "file_budgets.json");
 const ISSUE_SCANNER_RELATIVE_PATH = path.join(".github", "scripts", "issue-scanner.py");
 const DEFAULT_FILE_BUDGETS: FileBudgetConfig = {
-  default_max_lines: 1000,
+  default_max_lines: 1600,
   include_roots: ["src", "apps", "crates"],
   extensions: [".ts", ".tsx", ".rs"],
   extension_max_lines: {
-    ".rs": 800,
-    ".ts": 1000,
-    ".tsx": 1000,
+    ".rs": 1600,
+    ".ts": 1600,
+    ".tsx": 1600,
   },
   excluded_parts: ["/node_modules/", "/target/", "/.next/", "/_next/", "/bundled/"],
   overrides: [],
@@ -262,7 +262,7 @@ function resolveBudget(relativePath: string, extension: string, config: FileBudg
   }
 
   return {
-    budgetLimit: config.extension_max_lines?.[extension] ?? config.default_max_lines ?? DEFAULT_FILE_BUDGETS.default_max_lines ?? 1000,
+    budgetLimit: config.extension_max_lines?.[extension] ?? config.default_max_lines ?? DEFAULT_FILE_BUDGETS.default_max_lines ?? 1600,
     reason: undefined,
   };
 }

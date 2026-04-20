@@ -133,6 +133,7 @@ impl Database {
                     branch          TEXT,
                     workspace_id    TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
                     routa_agent_id  TEXT,
+                    provider_session_id TEXT,
                     provider        TEXT,
                     role            TEXT,
                     mode_id         TEXT,
@@ -212,6 +213,7 @@ impl Database {
                     parallel_group          TEXT,
                     workspace_id            TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
                     session_id              TEXT,
+                    creation_source         TEXT,
                     session_ids             TEXT NOT NULL DEFAULT '[]',
                     lane_sessions           TEXT NOT NULL DEFAULT '[]',
                     lane_handoffs           TEXT NOT NULL DEFAULT '[]',
@@ -245,6 +247,7 @@ impl Database {
                     workspace_id    TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
                     name            TEXT NOT NULL,
                     is_default      INTEGER NOT NULL DEFAULT 0,
+                    github_token    TEXT,
                     columns         TEXT NOT NULL DEFAULT '[]',
                     created_at      INTEGER NOT NULL,
                     updated_at      INTEGER NOT NULL
@@ -379,6 +382,7 @@ impl Database {
             Self::ignore_duplicate_column(conn.execute("ALTER TABLE tasks ADD COLUMN test_cases TEXT", []))?;
             Self::ignore_duplicate_column(conn.execute("ALTER TABLE tasks ADD COLUMN codebase_ids TEXT NOT NULL DEFAULT '[]'", []))?;
             Self::ignore_duplicate_column(conn.execute("ALTER TABLE tasks ADD COLUMN worktree_id TEXT", []))?;
+            Self::ignore_duplicate_column(conn.execute("ALTER TABLE tasks ADD COLUMN creation_source TEXT", []))?;
             Self::ignore_duplicate_column(conn.execute("ALTER TABLE tasks ADD COLUMN session_ids TEXT NOT NULL DEFAULT '[]'", []))?;
             Self::ignore_duplicate_column(conn.execute("ALTER TABLE tasks ADD COLUMN lane_sessions TEXT NOT NULL DEFAULT '[]'", []))?;
             Self::ignore_duplicate_column(conn.execute("ALTER TABLE tasks ADD COLUMN lane_handoffs TEXT NOT NULL DEFAULT '[]'", []))?;
@@ -387,6 +391,7 @@ impl Database {
             Self::ignore_duplicate_column(conn.execute("ALTER TABLE acp_sessions ADD COLUMN branch TEXT", []))?;
             // Add parent_session_id to acp_sessions for CRAFTER child session tracking
             Self::ignore_duplicate_column(conn.execute("ALTER TABLE acp_sessions ADD COLUMN parent_session_id TEXT", []))?;
+            Self::ignore_duplicate_column(conn.execute("ALTER TABLE acp_sessions ADD COLUMN provider_session_id TEXT", []))?;
             Self::ignore_duplicate_column(conn.execute("ALTER TABLE acp_sessions ADD COLUMN custom_command TEXT", []))?;
             Self::ignore_duplicate_column(conn.execute("ALTER TABLE acp_sessions ADD COLUMN custom_args TEXT NOT NULL DEFAULT '[]'", []))?;
             Self::ignore_duplicate_column(conn.execute("ALTER TABLE codebases ADD COLUMN source_type TEXT", []))?;
@@ -397,6 +402,7 @@ impl Database {
                     workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
                     name TEXT NOT NULL,
                     is_default INTEGER NOT NULL DEFAULT 0,
+                    github_token TEXT,
                     columns TEXT NOT NULL DEFAULT '[]',
                     created_at INTEGER NOT NULL,
                     updated_at INTEGER NOT NULL
@@ -423,6 +429,9 @@ impl Database {
                 );
                 CREATE INDEX IF NOT EXISTS idx_artifacts_task ON artifacts(task_id);
                 CREATE INDEX IF NOT EXISTS idx_artifacts_workspace ON artifacts(workspace_id);"
+            )?;
+            Self::ignore_duplicate_column(
+                conn.execute("ALTER TABLE kanban_boards ADD COLUMN github_token TEXT", []),
             )?;
             Self::ignore_duplicate_column(conn.execute("ALTER TABLE kanban_boards ADD COLUMN columns TEXT NOT NULL DEFAULT '[]'", []))?;
             let _ = conn.execute("UPDATE kanban_boards SET columns = columns_json WHERE (columns IS NULL OR columns = '[]') AND columns_json IS NOT NULL", []);

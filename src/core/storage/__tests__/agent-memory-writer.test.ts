@@ -137,12 +137,14 @@ describe("AgentMemoryWriter", () => {
       summary: "Verified",
       verificationVerdict: "pass",
       verificationReport: "All checks green",
+      snapshotSource: "reported",
       timestamp: "2026-04-05T00:00:02.000Z",
     });
 
     const gateDir = path.join(tmpDir, ".routa/projects/test-project/sessions/lead-sess-2/agent-memory/GATE-gateagen");
     const status = JSON.parse(await fs.readFile(path.join(gateDir, "verification-status.json"), "utf-8"));
     expect(status.verdict).toBe("pass");
+    expect(status.snapshotSource).toBe("reported");
 
     const log = await fs.readFile(path.join(gateDir, "activity-log.jsonl"), "utf-8");
     expect(log).toContain('"session_completed"');

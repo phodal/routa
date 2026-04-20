@@ -16,8 +16,9 @@ import {
   primaryKey,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
+import type { TaskCreationSource } from "../kanban/task-creation-policy";
 import type { KanbanColumn } from "../models/kanban";
-import type { TaskLaneHandoff, TaskLaneSession } from "../models/task";
+import type { FallbackAgent, TaskCommentEntry, TaskDeliverySnapshot, TaskLaneHandoff, TaskLaneSession } from "../models/task";
 
 // ─── Workspaces ─────────────────────────────────────────────────────
 
@@ -67,6 +68,7 @@ export const tasks = pgTable("tasks", {
   title: text("title").notNull(),
   objective: text("objective").notNull(),
   comment: text("comment"),
+  comments: jsonb("comments").$type<TaskCommentEntry[]>().default([]),
   scope: text("scope"),
   acceptanceCriteria: jsonb("acceptance_criteria").$type<string[]>(),
   verificationCommands: jsonb("verification_commands").$type<string[]>(),
@@ -83,6 +85,9 @@ export const tasks = pgTable("tasks", {
   assignedRole: text("assigned_role"),
   assignedSpecialistId: text("assigned_specialist_id"),
   assignedSpecialistName: text("assigned_specialist_name"),
+  fallbackAgentChain: jsonb("fallback_agent_chain").$type<FallbackAgent[]>(),
+  enableAutomaticFallback: boolean("enable_automatic_fallback"),
+  maxFallbackAttempts: integer("max_fallback_attempts"),
   triggerSessionId: text("trigger_session_id"),
   /** All session IDs that have been associated with this task (history) */
   sessionIds: jsonb("session_ids").$type<string[]>().default([]),
@@ -101,10 +106,12 @@ export const tasks = pgTable("tasks", {
   workspaceId: text("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
   /** Session ID that created this task (for session-scoped filtering) */
   sessionId: text("session_id"),
+  creationSource: text("creation_source").$type<TaskCreationSource>(),
   /** Associated codebase IDs for this task */
   codebaseIds: jsonb("codebase_ids").$type<string[]>().default([]),
   /** Git worktree ID created for this task when it enters the dev column */
   worktreeId: text("worktree_id"),
+  deliverySnapshot: jsonb("delivery_snapshot").$type<TaskDeliverySnapshot>(),
   completionSummary: text("completion_summary"),
   verificationVerdict: text("verification_verdict"),
   verificationReport: text("verification_report"),
@@ -119,6 +126,7 @@ export const kanbanBoards = pgTable("kanban_boards", {
   workspaceId: text("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
   isDefault: boolean("is_default").notNull().default(false),
+  githubToken: text("github_token"),
   columns: jsonb("columns").$type<KanbanColumn[]>().notNull().default([]),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

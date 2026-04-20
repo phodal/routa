@@ -1,4 +1,6 @@
 import { spawn } from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
 
 export type CommandResult = {
   command: string;
@@ -17,6 +19,7 @@ type RunCommandOptions = {
   env?: NodeJS.ProcessEnv;
   onOutput?: (event: CommandOutputEvent) => void;
   stream?: boolean;
+  timeoutMs?: number;
 };
 
 export function tailOutput(output: string, maxChars = 6000): string {
@@ -41,6 +44,21 @@ export function runCommand(command: string, options: RunCommandOptions = {}): Pr
     env: { ...process.env, ...options.env },
     stdio: ["inherit", "pipe", "pipe"],
   });
+  let timeoutId: NodeJS.Timeout | undefined;
+  let timedOut = false;
+
+  if (options.timeoutMs && options.timeoutMs > 0) {
+    timeoutId = setTimeout(() => {
+      timedOut = true;
+      child.kill("SIGTERM");
+      setTimeout(() => {
+        if (!child.killed) {
+          child.kill("SIGKILL");
+        }
+      }, 1_000).unref();
+    }, options.timeoutMs);
+    timeoutId.unref();
+  }
 
   let output = "";
 
@@ -65,12 +83,58 @@ export function runCommand(command: string, options: RunCommandOptions = {}): Pr
   return new Promise((resolve, reject) => {
     child.on("error", reject);
     child.on("close", (exitCode) => {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+      if (timedOut) {
+        output += `\n[hook-runtime] Command timed out after ${options.timeoutMs}ms\n`;
+      }
       resolve({
         command,
         durationMs: Date.now() - startedAt,
-        exitCode: exitCode ?? 1,
+        exitCode: timedOut ? 124 : (exitCode ?? 1),
         output,
       });
     });
   });
+}
+
+function repoRootFromCwd(cwd: string): string {
+  return cwd;
+}
+
+export function resolveEntrixShellCommand(args: string[], cwd = process.cwd()): string {
+  const repoRoot = repoRootFromCwd(cwd);
+  const debugBinary = path.join(repoRoot, "target", "debug", process.platform === "win32" ? "entrix.exe" : "entrix");
+  if (fs.existsSync(debugBinary)) {
+    return [shellQuote(debugBinary), ...args.map(shellQuote)].join(" ");
+  }
+  return [
+    "cargo",
+    "run",
+    "-q",
+    "-p",
+    "entrix",
+    "--",
+    ...args.map(shellQuote),
+  ].join(" ");
+}
+
+export function resolveEntrixExec(cwd = process.cwd()): { command: string; args: string[] } {
+  const repoRoot = repoRootFromCwd(cwd);
+  const debugBinary = path.join(repoRoot, "target", "debug", process.platform === "win32" ? "entrix.exe" : "entrix");
+  if (fs.existsSync(debugBinary)) {
+    return {
+      command: debugBinary,
+      args: [],
+    };
+  }
+  return {
+    command: "cargo",
+    args: ["run", "-q", "-p", "entrix", "--"],
+  };
+}
+
+function shellQuote(value: string): string {
+  return `'${value.replace(/'/g, `'\\''`)}'`;
 }

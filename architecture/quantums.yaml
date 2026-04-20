@@ -17,6 +17,6 @@ quantums:
       - crates/routa-rpc/**
 
   - id: tools_fitness
-    description: Python fitness engine, loaders, presets, and reporters
+    description: Rust fitness engine, loaders, policies, and CLI surface
     roots:
-      - tools/entrix/**
+      - crates/entrix/**

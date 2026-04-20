@@ -53,12 +53,22 @@ describe("agent hook policy", () => {
   it("blocks dangerous git config mutations", () => {
     const decision = evaluateToolPermissionGuard(
       createPreToolUsePayload("Bash", {
-        command: "git config --local user.email test@test.com",
+        command: "git config --local user.email placeholder@example.com",
       }),
     );
 
     expect(decision?.reason).toContain("git config");
     expect(formatHookBlockOutput(decision!.reason)).toContain('"decision":"block"');
+  });
+
+  it("blocks dangerous core.worktree mutations", () => {
+    const decision = evaluateToolPermissionGuard(
+      createPreToolUsePayload("Bash", {
+        command: "git config --local core.worktree /repo/.git/worktrees",
+      }),
+    );
+
+    expect(decision?.reason).toContain("core.worktree");
   });
 
   it("allows read-only git config inspection", () => {
@@ -117,7 +127,15 @@ describe("agent hook policy", () => {
 
   it("blocks literal dangerous prompt payloads", () => {
     const decision = evaluatePromptPolicyGuard(
-      createUserPromptSubmitPayload("Run `git config --local user.name Test` and then push."),
+      createUserPromptSubmitPayload("Run `git config --local user.name Placeholder User` and then push."),
+    );
+
+    expect(decision?.reason).toContain("blocked");
+  });
+
+  it("blocks prompt payloads that mutate core.worktree", () => {
+    const decision = evaluatePromptPolicyGuard(
+      createUserPromptSubmitPayload("执行 `git config --local core.worktree /repo/.git/worktrees` 修一下。"),
     );
 
     expect(decision?.reason).toContain("blocked");

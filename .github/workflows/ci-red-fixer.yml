@@ -45,7 +45,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
           ref: ${{ env.TARGET_BRANCH }}
@@ -73,7 +73,7 @@ jobs:
           cache: 'npm'
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.11'
 
@@ -89,7 +89,7 @@ jobs:
         run: npm ci
 
       - name: Install entrix
-        run: pip install -e tools/entrix
+        run: pip install entrix
 
       - name: Configure Git
         run: |

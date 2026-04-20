@@ -82,6 +82,21 @@ export interface RoutaSessionActivity {
   terminalAt?: string;
 }
 
+function isRecoverablePromptTimeoutStatus(
+  session: RoutaSessionRecord | undefined,
+): boolean {
+  return session?.acpStatus === "error"
+    && typeof session.acpError === "string"
+    && session.acpError.includes("Timeout waiting for session/prompt");
+}
+
+function isExplicitErrorNotification(notification: SessionUpdateNotification): boolean {
+  const update = notification.update as Record<string, unknown> | undefined;
+  return update?.sessionUpdate === "error"
+    || update?.sessionUpdate === "acp_status"
+    || (notification as Record<string, unknown>).type === "error";
+}
+
 /**
  * Consolidates consecutive agent_message_chunk notifications into a single message.
  * This reduces storage overhead from hundreds of small chunks to a single entry.
@@ -461,6 +476,11 @@ class HttpSessionStore {
     const enriched = ensureNotificationEventId(notification);
     const sessionId = enriched.sessionId;
     this.updateAccessTime(sessionId);
+
+    const currentSession = this.sessions.get(sessionId);
+    if (isRecoverablePromptTimeoutStatus(currentSession) && !isExplicitErrorNotification(enriched)) {
+      this.updateSessionAcpStatus(sessionId, "ready");
+    }
 
     // Child agent notifications (with childAgentId) are forwarded to the parent
     // session's SSE for real-time CRAFTER progress but should NOT be stored in

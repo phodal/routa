@@ -1,11 +1,9 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { DesktopAppShell } from "@/client/components/desktop-app-shell";
 import { WorkspaceSwitcher } from "@/client/components/workspace-switcher";
-import { ChatPanel } from "@/client/components/chat-panel";
 import type { ChatMessage } from "@/client/components/chat-panel/types";
 import { getToolEventLabel } from "@/client/components/chat-panel/tool-call-name";
 import { TiptapInput } from "@/client/components/tiptap-input";
@@ -22,7 +20,7 @@ import {
   type SessionTranscriptPayload,
 } from "@/core/session-transcript";
 import { filterSpecialistsByCategory } from "@/client/utils/specialist-categories";
-import { formatRelativeTime, OverlayModal } from "../../ui-components";
+import { formatRelativeTime } from "../../ui-components";
 import type { SessionInfo } from "../../types";
 import {
   avatarInitials,
@@ -63,9 +61,10 @@ import {
   SessionTimelineSection,
   TeamMembersSection,
 } from "./team-run-page-sections";
+import { TeamRunSessionModal } from "./team-run-session-modal";
+import { TeamRunPageHeader } from "./team-run-page-header";
 import { useRealTeamRunParams } from "./use-real-team-run-params";
 import { useTranslation } from "@/i18n";
-import { ChevronLeft, Sparkles } from "lucide-react";
 
 
 function buildFallbackLeadMessages(
@@ -169,6 +168,7 @@ export function TeamRunPageClient() {
   const notesHook = useNotes(workspaceId, sessionId);
   const [session, setSession] = useState<SessionInfo | null>(null);
   const [workspaceSessions, setWorkspaceSessions] = useState<SessionInfo[]>([]);
+  const [teamRuns, setTeamRuns] = useState<SessionInfo[]>([]);
   const [specialists, setSpecialists] = useState<SpecialistSummary[]>([]);
   const [agents, setAgents] = useState<AgentSummary[]>([]);
   const [historiesBySessionId, setHistoriesBySessionId] = useState<Record<string, SessionHistoryEntry[]>>({});
@@ -177,6 +177,7 @@ export function TeamRunPageClient() {
   const [selectedSessionForModal, setSelectedSessionForModal] = useState<string | null>(null);
   const [timelineInputKey, setTimelineInputKey] = useState(0);
   const [repoSelection, setRepoSelection] = useState<RepoSelection | null>(null);
+  const [isSwitchingTeamRun, setIsSwitchingTeamRun] = useState(false);
   const sessionBlockRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const lastUpdateIndexRef = useRef(0);
   const pendingPromptSentRef = useRef<Set<string>>(new Set());
@@ -190,6 +191,7 @@ export function TeamRunPageClient() {
   const pendingTranscriptSessionIdsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
+    setIsSwitchingTeamRun(true);
     contextKeyRef.current = `${workspaceId}:${sessionId}`;
   }, [sessionId, workspaceId]);
 
@@ -200,9 +202,12 @@ export function TeamRunPageClient() {
   }, [acpConnected, acpLoading, connectAcp]);
 
   useEffect(() => {
-    if (!isResolved || !acpConnected || sessionId === "__placeholder__") return;
+    if (!isResolved || !acpConnected || !session || session.sessionId !== sessionId || sessionId === "__placeholder__") {
+      return;
+    }
+    if (acp.sessionId === sessionId) return;
     selectSession(sessionId);
-  }, [acpConnected, isResolved, selectSession, sessionId]);
+  }, [acp.sessionId, acpConnected, isResolved, selectSession, session, sessionId]);
 
   useEffect(() => {
     if (!selectedSessionForModal) return;
@@ -266,7 +271,11 @@ export function TeamRunPageClient() {
 
       return nextSelection;
     });
-  }, [codebases, repoSelection, session?.branch, session?.cwd]);
+  // NOTE: `repoSelection` is intentionally excluded from deps.
+  // This effect syncs repoSelection FROM session/codebases data on mount or
+  // when session metadata changes — it must NOT re-fire when the user switches
+  // branches locally, or it would overwrite the new branch with session.branch.
+  }, [codebases, session?.branch, session?.cwd]);
 
   const fetchSpecialists = useCallback(async () => {
     const response = await desktopAwareFetch("/api/specialists", { cache: "no-store" });
@@ -277,21 +286,32 @@ export function TeamRunPageClient() {
 
   const fetchRunMetadata = useCallback(async () => {
     const contextKey = `${workspaceId}:${sessionId}`;
-    const [sessionRes, sessionsRes, agentsRes] = await Promise.all([
+    const [sessionRes, sessionsRes, teamRunsRes, agentsRes] = await Promise.all([
       desktopAwareFetch(`/api/sessions/${encodeURIComponent(sessionId)}`, { cache: "no-store" }),
-      desktopAwareFetch(`/api/sessions?workspaceId=${encodeURIComponent(workspaceId)}&limit=100`, { cache: "no-store" }),
+      desktopAwareFetch(`/api/sessions?workspaceId=${encodeURIComponent(workspaceId)}`, { cache: "no-store" }),
+      desktopAwareFetch(`/api/sessions?workspaceId=${encodeURIComponent(workspaceId)}&surface=team`, { cache: "no-store" }),
       desktopAwareFetch(`/api/agents?workspaceId=${encodeURIComponent(workspaceId)}`, { cache: "no-store" }),
     ]);
 
     const sessionData = await sessionRes.json().catch(() => ({}));
     const sessionsData = await sessionsRes.json().catch(() => ({}));
+    const teamRunsData = await teamRunsRes.json().catch(() => ({}));
     const agentsData = await agentsRes.json().catch(() => ({}));
 
     if (contextKeyRef.current !== contextKey) return;
-
-    setSession((sessionData?.session ?? null) as SessionInfo | null);
-    setWorkspaceSessions(Array.isArray(sessionsData?.sessions) ? sessionsData.sessions : []);
-    setAgents(Array.isArray(agentsData?.agents) ? agentsData.agents : []);
+    if (sessionData?.session) {
+      setSession(sessionData.session as SessionInfo);
+    }
+    if (Array.isArray(sessionsData?.sessions)) {
+      setWorkspaceSessions(sessionsData.sessions);
+    }
+    if (Array.isArray(teamRunsData?.sessions)) {
+      setTeamRuns(teamRunsData.sessions);
+    }
+    if (Array.isArray(agentsData?.agents)) {
+      setAgents(agentsData.agents);
+    }
+    setIsSwitchingTeamRun(false);
   }, [sessionId, workspaceId]);
 
   const fetchSessionTranscripts = useCallback(async (targetSessionIds: string[]) => {
@@ -338,19 +358,18 @@ export function TeamRunPageClient() {
     try {
       await fetchRunMetadata();
     } catch {
-      if (contextKeyRef.current === `${workspaceId}:${sessionId}`) {
-        setSession(null);
-        setWorkspaceSessions([]);
-        setAgents([]);
-      }
+      // keep existing session view while attempting to refresh metadata.
+      // If this load is still for the current context, we only surface loading state naturally
+      // when no session has ever been resolved.
     } finally {
       metadataRefreshInFlightRef.current = false;
+      setIsSwitchingTeamRun(false);
       if (metadataRefreshQueuedRef.current) {
         metadataRefreshQueuedRef.current = false;
         void flushMetadataRefresh();
       }
     }
-  }, [fetchRunMetadata, sessionId, workspaceId]);
+  }, [fetchRunMetadata]);
 
   const requestMetadataRefresh = useCallback((delayMs = 250) => {
     if (metadataRefreshTimerRef.current) {
@@ -491,7 +510,7 @@ export function TeamRunPageClient() {
       }
       pendingTranscriptSessionIds.clear();
     };
-  }, [fetchSpecialists, flushMetadataRefresh]);
+  }, [fetchSpecialists, flushMetadataRefresh, sessionId, workspaceId]);
 
   const workspace = workspacesHook.workspaces.find((item) => item.id === workspaceId);
   const specialistsById = useMemo(
@@ -1035,15 +1054,6 @@ export function TeamRunPageClient() {
     });
   }, [agentsById, createdAgents, delegatedRosterIdsBySessionId, historiesBySessionId, latestSessionBySpecialistId, session, sessionId, sessionStreams, sessionStreamByAgentId, specialists, specialistsById]);
 
-  const memberCounts = useMemo(
-    () => ({
-      done: teamMembers.filter((member) => member.status === "done").length,
-      active: teamMembers.filter((member) => member.status === "working" || member.status === "reviewing").length,
-      blocked: teamMembers.filter((member) => member.status === "blocked").length,
-    }),
-    [teamMembers],
-  );
-
   const pendingQuestionsBySessionId = useMemo(() => {
     const result = new Map<string, PendingSessionQuestion>();
 
@@ -1311,13 +1321,30 @@ export function TeamRunPageClient() {
     return fallbackMap;
   }, [memberLaneByToolCallId, sessionLanes]);
 
-  if (!session) {
-    return (
-      <div className="desktop-theme flex h-screen items-center justify-center bg-desktop-bg-primary">
-        <div className="text-sm text-desktop-text-secondary">{t.team.loadingTeamRun}</div>
-      </div>
-    );
-  }
+  const selectedTeamRun = useMemo(
+    () => teamRuns.find((run) => run.sessionId === sessionId) ?? teamRuns[0],
+    [teamRuns, sessionId],
+  );
+  const isActiveSessionReady = session?.sessionId === sessionId;
+  const selectedTeamRunName = isActiveSessionReady
+    ? (session?.name ?? sessionId)
+    : (selectedTeamRun?.name ?? sessionId);
+  const showRunLoadingState = !isActiveSessionReady;
+
+  const handleSwitchTeamRun = useCallback((nextSessionId: string) => {
+    if (nextSessionId === sessionId) return;
+    router.push(`/workspace/${workspaceId}/team/${nextSessionId}`);
+  }, [router, sessionId, workspaceId]);
+
+  const handleRefreshTeamRun = useCallback(() => {
+    requestMetadataRefresh(0);
+    requestTranscriptRefresh([sessionId, ...descendantSessions.map((entry) => entry.sessionId)], 0);
+  }, [descendantSessions, requestMetadataRefresh, requestTranscriptRefresh, sessionId]);
+
+  const handleSelectSessionForModal = useCallback((nextSessionId: string) => {
+    setSelectedSessionForModal(nextSessionId);
+    void selectModalSession(nextSessionId);
+  }, [selectModalSession]);
 
   return (
     <DesktopAppShell
@@ -1341,70 +1368,24 @@ export function TeamRunPageClient() {
       )}
     >
       <div className="flex h-full flex-col overflow-hidden bg-desktop-bg-primary">
-        <header className="shrink-0 border-b border-desktop-border px-4 py-3" data-testid="team-run-page-header">
-          <div className="mx-auto flex w-full max-w-[1760px] items-center justify-between gap-3">
-            <div className="flex min-w-0 items-center gap-2">
-              <Link
-                href={`/workspace/${workspaceId}/team`}
-                className="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-desktop-bg-secondary px-2.5 py-1.5 text-[11px] text-desktop-text-secondary transition-colors hover:bg-desktop-bg-active/70 hover:text-desktop-text-primary"
-              >
-                <ChevronLeft className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
-                Team
-              </Link>
-              <Sparkles className="h-4 w-4 shrink-0 text-desktop-text-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}/>
-              <div className="min-w-0">
-                <h1 className="truncate text-[13px] font-semibold text-desktop-text-primary">
-                  {session.name ?? "Team run"}
-                </h1>
-                <p className="text-[11px] text-desktop-text-secondary">
-                  Follow the lead session, spawned member sessions, and inline reports back to lead
-                </p>
-              </div>
-              <div className="inline-flex items-center gap-1.5 rounded border border-desktop-border px-2 py-1 text-[10px] text-desktop-text-secondary">
-                <span>Session:</span>
-                <code className="font-mono text-desktop-text-primary">{sessionId.slice(0, 8)}…</code>
-              </div>
-              <div className="inline-flex items-center gap-1.5 rounded border border-desktop-border px-2 py-1 text-[10px] text-desktop-text-secondary">
-                <span>{formatRelativeTime(session.createdAt)}</span>
-                <span className="opacity-40">/</span>
-                <span>{session.provider ?? "auto"}</span>
-                <span className="opacity-40">/</span>
-                <span>{acpConnected ? "live" : "reconnecting"}</span>
-              </div>
-            </div>
+        <TeamRunPageHeader
+          workspaceId={workspaceId}
+          selectedSessionId={sessionId}
+          selectedSessionName={selectedTeamRunName}
+          teamRuns={teamRuns}
+          isSwitchingTeamRun={isSwitchingTeamRun}
+          backLabel={t.common.back}
+          refreshLabel={t.common.refresh || "Refresh"}
+          openLabel={t.team.openSession}
+          activeLabel={t.team.active}
+          waitingLabel={t.team.waitingForDelegation}
+          onRefresh={handleRefreshTeamRun}
+          onSwitchTeamRun={handleSwitchTeamRun}
+        />
 
-            <div className="flex items-center gap-2">
-              <Link
-                href={`/workspace/${workspaceId}/team`}
-                className="inline-flex items-center gap-1.5 rounded-md bg-desktop-bg-secondary px-2.5 py-1.5 text-[11px] text-desktop-text-secondary transition-colors hover:bg-desktop-bg-active/70 hover:text-desktop-text-primary"
-              >
-                <ChevronLeft className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
-                Team
-              </Link>
-              <button
-                type="button"
-                onClick={() => {
-                  requestMetadataRefresh(0);
-                  requestTranscriptRefresh([sessionId, ...descendantSessions.map((entry) => entry.sessionId)], 0);
-                }}
-                className="rounded-md bg-desktop-bg-secondary px-2.5 py-1.5 text-[11px] font-medium text-desktop-text-secondary transition-colors hover:bg-desktop-bg-active/70 hover:text-desktop-text-primary"
-              >
-                Refresh
-              </button>
-              <Link
-                href={`/workspace/${workspaceId}/sessions/${sessionId}`}
-                className="rounded-md bg-desktop-accent px-2.5 py-1.5 text-[11px] font-medium text-desktop-accent-text transition-colors hover:opacity-90"
-              >
-                Open raw session
-              </Link>
-            </div>
-          </div>
-        </header>
-
-        <div className="grid min-h-0 flex-1 lg:grid-cols-[280px_minmax(0,1fr)_320px] xl:grid-cols-[300px_minmax(0,1fr)_340px]">
+        <div className="grid min-h-0 flex-1 lg:grid-cols-[248px_minmax(0,1fr)_280px] xl:grid-cols-[260px_minmax(0,1fr)_300px]">
           <ObjectiveSidebarSection
             objective={objective}
-            memberCounts={memberCounts}
             taskTree={taskTree}
             deliverables={deliverables}
             onFocusSession={focusSessionBlock}
@@ -1424,11 +1405,11 @@ export function TeamRunPageClient() {
               }}
             />
 
-            <div className="border-t border-desktop-border bg-desktop-bg-primary px-3 py-2">
+            <div className="shrink-0 border-t border-desktop-border bg-desktop-bg-primary px-3 py-2">
               <TiptapInput
                 key={timelineInputKey}
                 onSend={(text) => handleTimelinePrompt(text)}
-                disabled={!acpConnected}
+                disabled={!acpConnected || showRunLoadingState}
                 loading={acpLoading}
                 skills={[]}
                 repoSkills={[]}
@@ -1436,7 +1417,7 @@ export function TeamRunPageClient() {
                 selectedProvider={acpSelectedProvider}
                 onProviderChange={acpSetProvider}
                 sessions={[]}
-                activeSessionMode={session.modeId}
+                activeSessionMode={session?.modeId}
                 repoSelection={repoSelection}
                 onRepoChange={setRepoSelection}
                 additionalRepos={codebases.map((codebase) => ({
@@ -1445,7 +1426,8 @@ export function TeamRunPageClient() {
                   branch: codebase.branch,
                 }))}
                 onFetchModels={acp.listProviderModels}
-                agentRole={session.role}
+                agentRole={session?.role}
+                placeholder={showRunLoadingState ? t.team.loadingTeamRun : undefined}
               />
             </div>
           </div>
@@ -1459,84 +1441,19 @@ export function TeamRunPageClient() {
       </div>
 
       {selectedSessionForModal && selectedSessionStream && (
-        <OverlayModal
+        <TeamRunSessionModal
+          workspaceId={workspaceId}
+          selectedSessionForModal={selectedSessionForModal}
+          selectedSessionStream={selectedSessionStream}
+          sessionStreams={sessionStreams}
+          modalAcp={modalAcp}
+          title={selectedSessionStream.actor}
+          sessionStreamsLabel={t.team.teamRuns}
+          openLabel={t.team.openSession}
+          noTranscriptLabel={t.team.noTranscriptYet}
           onClose={() => setSelectedSessionForModal(null)}
-          title={`${selectedSessionStream.actor} Session`}
-        >
-          <div className="flex h-full min-h-0 bg-desktop-bg-primary">
-            <div className="flex w-80 shrink-0 flex-col border-r border-desktop-border bg-desktop-bg-secondary">
-              <div className="border-b border-desktop-border px-4 py-3">
-                <div className="text-sm font-semibold text-desktop-text-primary">Run Sessions</div>
-                <div className="mt-1 text-xs text-desktop-text-secondary">Shared session viewer reused from kanban/chat.</div>
-              </div>
-              <div className="min-h-0 flex-1 overflow-y-auto p-3">
-                <div className="space-y-2">
-                  {sessionStreams.map((stream) => {
-                    const active = stream.session.sessionId === selectedSessionForModal;
-                    return (
-                      <button
-                        key={stream.session.sessionId}
-                        type="button"
-                        onClick={() => setSelectedSessionForModal(stream.session.sessionId)}
-                        className={`w-full rounded-2xl border p-3 text-left transition ${
-                          active
-                            ? "border-cyan-300 bg-cyan-50/80 dark:border-cyan-800 dark:bg-cyan-950/20"
-                            : "border-desktop-border bg-desktop-bg-primary hover:border-cyan-300 hover:bg-desktop-bg-active/80"
-                        }`}
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <div className="truncate text-sm font-semibold text-desktop-text-primary">{stream.actor}</div>
-                            <div className="mt-1 truncate text-[11px] text-desktop-text-secondary">{stream.session.name ?? stream.session.sessionId}</div>
-                          </div>
-                          <span className="shrink-0 rounded-full border border-desktop-border px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] text-desktop-text-secondary">
-                            {stream.badge}
-                          </span>
-                        </div>
-                        <div className="mt-3 line-clamp-3 text-xs leading-5 text-desktop-text-secondary">
-                          {stream.preview ?? "No transcript content yet."}
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-            <div className="min-h-0 flex-1">
-              <div className="border-b border-desktop-border px-4 py-3">
-                <div className="flex flex-wrap items-center gap-2 text-[11px] text-desktop-text-secondary">
-                  <span>{selectedSessionStream.session.name ?? selectedSessionStream.session.sessionId}</span>
-                  <span className="opacity-40">/</span>
-                  <span>{selectedSessionStream.badge}</span>
-                  <span className="opacity-40">/</span>
-                  <span>{selectedSessionStream.lastUpdatedLabel}</span>
-                  <span className="opacity-40">/</span>
-                  <Link
-                    href={`/workspace/${workspaceId}/sessions/${selectedSessionStream.session.sessionId}`}
-                    className="text-cyan-600 transition hover:text-cyan-500"
-                  >
-                    Open raw session
-                  </Link>
-                </div>
-              </div>
-              <div className="h-[calc(80vh-89px)]">
-                <ChatPanel
-                  acp={modalAcp}
-                  activeSessionId={selectedSessionForModal}
-                  onEnsureSession={async () => selectedSessionForModal}
-                  onSelectSession={async (nextSessionId) => {
-                    setSelectedSessionForModal(nextSessionId);
-                    selectModalSession(nextSessionId);
-                  }}
-                  repoSelection={null}
-                  onRepoChange={() => {}}
-                  activeWorkspaceId={workspaceId}
-                  agentRole={selectedSessionStream.session.role}
-                />
-              </div>
-            </div>
-          </div>
-        </OverlayModal>
+          onSelectSession={handleSelectSessionForModal}
+        />
       )}
     </DesktopAppShell>
   );

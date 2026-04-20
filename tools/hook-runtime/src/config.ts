@@ -8,9 +8,10 @@ export type RuntimePhase = "submodule" | "fitness" | "fitness-fast" | "review";
 export const DEFAULT_PRE_PUSH_METRICS = [
   "eslint_pass",
   "ts_typecheck_pass",
-  "ts_test_pass",
+  "ts_test_pass_full",
   "clippy_pass",
   "rust_test_pass",
+  "graph_test_mapping_probe",
 ] as const;
 
 export const DEFAULT_PRE_COMMIT_METRICS = ["eslint_pass"] as const;

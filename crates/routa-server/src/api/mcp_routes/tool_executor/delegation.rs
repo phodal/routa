@@ -32,7 +32,7 @@ pub(super) async fn execute(
                 .and_then(|v| v.as_str())
                 .filter(|s| !s.is_empty())
                 .map(str::to_string);
-            let cwd = args
+            let mut cwd = args
                 .get("cwd")
                 .and_then(|v| v.as_str())
                 .filter(|s| !s.is_empty())
@@ -95,6 +95,20 @@ pub(super) async fn execute(
                         );
                     }
                 }
+            }
+
+            if cwd.is_none() && !resolved_caller_session_id.is_empty() {
+                cwd = state
+                    .acp_session_store
+                    .get(&resolved_caller_session_id)
+                    .await
+                    .ok()
+                    .flatten()
+                    .map(|session| session.cwd)
+                    .filter(|value| !value.trim().is_empty());
+            }
+            if cwd.is_none() {
+                cwd = resolve_task_or_workspace_cwd(state, task_id, workspace_id).await;
             }
 
             let orchestrator = RoutaOrchestrator::new(
@@ -213,4 +227,46 @@ pub(super) async fn execute(
     };
 
     Some(result)
+}
+
+async fn resolve_task_or_workspace_cwd(
+    state: &AppState,
+    task_id: &str,
+    workspace_id: &str,
+) -> Option<String> {
+    if let Ok(Some(task)) = state.task_store.get(task_id).await {
+        if let Some(worktree_id) = task.worktree_id.as_deref() {
+            if let Ok(Some(worktree)) = state.worktree_store.get(worktree_id).await {
+                if !worktree.worktree_path.trim().is_empty() {
+                    return Some(worktree.worktree_path);
+                }
+            }
+        }
+
+        for codebase_id in &task.codebase_ids {
+            if let Ok(Some(codebase)) = state.codebase_store.get(codebase_id).await {
+                if !codebase.repo_path.trim().is_empty() {
+                    return Some(codebase.repo_path);
+                }
+            }
+        }
+    }
+
+    if let Ok(Some(codebase)) = state.codebase_store.get_default(workspace_id).await {
+        if !codebase.repo_path.trim().is_empty() {
+            return Some(codebase.repo_path);
+        }
+    }
+
+    state
+        .codebase_store
+        .list_by_workspace(workspace_id)
+        .await
+        .ok()
+        .and_then(|codebases| {
+            codebases
+                .into_iter()
+                .find(|codebase| !codebase.repo_path.trim().is_empty())
+                .map(|codebase| codebase.repo_path)
+        })
 }

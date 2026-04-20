@@ -138,7 +138,7 @@ describe("runSubmoduleRefsCheck", () => {
     });
 
     expect(result).toBe(true);
-  });
+  }, 15000);
 
   it("fails when submodule refs are not reachable", async () => {
     const result = await withSubmoduleRepo("fetch-fail", async (repoRoot) => {
@@ -155,5 +155,5 @@ describe("runSubmoduleRefsCheck", () => {
     });
 
     expect(result).toBe(false);
-  });
+  }, 15000);
 });

@@ -4,9 +4,9 @@ import { useCallback, useState } from "react";
 import { ProviderDropdown } from "./provider-dropdown";
 import { ModelDropdown } from "./model-dropdown";
 import { RepoPicker } from "../../repo-picker";
-import { Select } from "../../select";
 import type { SetupViewProps } from "../types";
 import { Sparkles, ArrowRight } from "lucide-react";
+import { WorkspaceSwitcher } from "../../workspace-switcher";
 
 
 export function SetupView({
@@ -21,6 +21,7 @@ export function SetupView({
   workspaces,
   activeWorkspaceId,
   onWorkspaceChange,
+  onWorkspaceCreate,
   repoSelection,
   onRepoChange,
   agentRole,
@@ -99,19 +100,13 @@ export function SetupView({
             <label className="block text-[11px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-1">
               Workspace
             </label>
-            <Select
-              value={activeWorkspaceId ?? ""}
-              onChange={(e) => onWorkspaceChange(e.target.value)}
-              className="w-full px-3 py-1.5 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#1e2130] text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            >
-              {workspaces.length > 0 ? (
-                workspaces.map((ws) => (
-                  <option key={ws.id} value={ws.id}>{ws.title}</option>
-                ))
-              ) : (
-                <option value="">No workspaces</option>
-              )}
-            </Select>
+            <WorkspaceSwitcher
+              workspaces={workspaces}
+              activeWorkspaceId={activeWorkspaceId}
+              onSelect={onWorkspaceChange}
+              onCreate={onWorkspaceCreate}
+              compact
+            />
           </div>
           <div>
             <label className="block text-[11px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-1">

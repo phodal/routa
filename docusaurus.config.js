@@ -16,6 +16,22 @@ module.exports = {
       onBrokenMarkdownLinks: "warn",
     },
   },
+  plugins: [
+    [
+      require.resolve("@easyops-cn/docusaurus-search-local"),
+      {
+        hashed: true,
+        language: ["en"],
+        docsRouteBasePath: "/",
+        docsDir: "docs",
+        blogDir: "docs/blog",
+        blogRouteBasePath: "/blog",
+        indexBlog: true,
+        searchBarShortcutHint: false,
+        searchResultLimits: 8,
+      },
+    ],
+  ],
   presets: [
     [
       "@docusaurus/preset-classic",
@@ -24,7 +40,21 @@ module.exports = {
           path: "docs",
           routeBasePath: "/",
           sidebarPath: "./sidebars.js",
-          exclude: ["**/issues/**", "**/blog/**", "**/fitness/**", "**/bdd/**"],
+          exclude: [
+            "**/issues/**",
+            "**/blog/**",
+            "**/fitness/**",
+            "**/bdd/**",
+            "**/exec-plans/**",
+            "**/harness/**",
+            "**/operational/**",
+            "**/copilot-fs-base-agent/**",
+            "**/references/**",
+            "**/RELEASE_CHECKLIST.md",
+            "**/RELEASE_SETUP.md",
+            "**/ARCHITECTURE_QUALITY_GUIDE.md",
+            "**/REFACTOR.md",
+          ],
         },
         blog: {
           path: "./docs/blog",
@@ -47,7 +77,7 @@ module.exports = {
     announcementBar: {
       id: "routa-docs",
       content:
-        'Routa turns a Kanban board into an execution surface for AI specialists across ACP, MCP, A2A, and AG-UI.',
+        'Routa — workspace-first AI agent coordination across ACP, MCP, A2A &amp; AG-UI.',
       isCloseable: true,
     },
     navbar: {
@@ -60,15 +90,62 @@ module.exports = {
       items: [
         {
           type: "doc",
-          docId: "quickstart",
-          label: "Overview",
+          docId: "quick-start",
+          label: "Quick Start",
           position: "left",
         },
         {
           type: "doc",
-          docId: "ARCHITECTURE",
-          label: "Architecture",
+          docId: "use-routa/index",
+          label: "Use Routa",
           position: "left",
+        },
+        {
+          type: "dropdown",
+          label: "Developer Guide",
+          position: "left",
+          items: [
+            {
+              type: "doc",
+              docId: "developer-guide/index",
+              label: "Overview",
+            },
+            {
+              type: "doc",
+              docId: "configuration/index",
+              label: "Configuration",
+            },
+            {
+              type: "doc",
+              docId: "administration/index",
+              label: "Administration",
+            },
+            {
+              type: "doc",
+              docId: "developer-guide/project-structure",
+              label: "Project Structure",
+            },
+            {
+              type: "doc",
+              docId: "ARCHITECTURE",
+              label: "Architecture",
+            },
+            {
+              type: "doc",
+              docId: "developer-guide/testing",
+              label: "Testing",
+            },
+            {
+              type: "doc",
+              docId: "developer-guide/contributing",
+              label: "Contributing",
+            },
+            {
+              type: "doc",
+              docId: "deployment/index",
+              label: "Deployment",
+            },
+          ],
         },
         {
           type: "doc",
@@ -77,14 +154,15 @@ module.exports = {
           position: "left",
         },
         {
-          label: "Blog",
-          to: "/blog",
+          type: "doc",
+          docId: "whats-new/index",
+          label: "What's New",
           position: "left",
         },
         {
-          href: "https://github.com/phodal/routa",
-          label: "GitHub",
-          position: "right",
+          to: "/blog",
+          label: "Blog",
+          position: "left",
         },
       ],
     },
@@ -92,36 +170,93 @@ module.exports = {
       style: "dark",
       links: [
         {
-          title: "Docs",
+          title: "Getting Started",
           items: [
             {
               label: "Overview",
               to: "/",
             },
             {
-              label: "Quickstart",
-              to: "/#quickstart",
+              label: "Quick Start",
+              to: "/quick-start",
             },
             {
-              label: "Architecture",
-              to: "/ARCHITECTURE",
+              label: "Desktop Releases",
+              href: "https://github.com/phodal/routa/releases",
+            },
+            {
+              label: "CLI Package",
+              href: "https://www.npmjs.com/package/routa-cli",
+            },
+            {
+              label: "Platforms",
+              to: "/platforms",
+            },
+            {
+              label: "Core Concepts",
+              to: "/core-concepts",
+            },
+            {
+              label: "Configuration",
+              to: "/configuration",
+            },
+            {
+              label: "What's New",
+              to: "/whats-new",
             },
           ],
         },
         {
-          title: "System",
+          title: "Use Routa",
           items: [
             {
-              label: "Product Specs",
-              to: "/product-specs/FEATURE_TREE",
+              label: "Overview",
+              to: "/use-routa",
             },
             {
-              label: "Specialists",
-              to: "/specialists",
+              label: "Sessions",
+              to: "/use-routa/sessions",
             },
             {
-              label: "Releases",
-              to: "/releases/v0.2.5-release-notes",
+              label: "Kanban",
+              to: "/use-routa/kanban",
+            },
+            {
+              label: "Team",
+              to: "/use-routa/team",
+            },
+            {
+              label: "Common Workflows",
+              to: "/use-routa/common-workflows",
+            },
+          ],
+        },
+        {
+          title: "Build And Run",
+          items: [
+            {
+              label: "Developer Guide",
+              to: "/developer-guide",
+            },
+            {
+              label: "Configuration",
+              to: "/configuration",
+            },
+            {
+              label: "Administration",
+              to: "/administration",
+            },
+            {
+              label: "Design Docs",
+              to: "/design-docs",
+            },
+            {
+              label: "Reference",
+              to: "/reference",
+            },
+            {
+              label: "Guides",
+              to: "/guides/harness-trace-learning-guide",
             },
           ],
         },
@@ -129,12 +264,12 @@ module.exports = {
           title: "Project",
           items: [
             {
-              label: "GitHub",
-              href: "https://github.com/phodal/routa",
+              label: "Blog",
+              to: "/blog",
             },
             {
-              label: "Issues",
-              href: "https://github.com/phodal/routa/issues",
+              label: "GitHub",
+              href: "https://github.com/phodal/routa",
             },
           ],
         },

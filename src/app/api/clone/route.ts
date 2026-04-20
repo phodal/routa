@@ -24,6 +24,7 @@ import {
   listClonedRepos,
   getBranchInfo,
   checkoutBranch,
+  isBareGitRepository,
 } from "@/core/git";
 import { importGitHubRepo } from "@/core/github";
 
@@ -206,6 +207,15 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json(
         { error: "Repository not found" },
         { status: 404 }
+      );
+    }
+    if (isBareGitRepository(repoPath)) {
+      return NextResponse.json(
+        {
+          error: "This repository is a bare git repository (no working directory)",
+          suggestion: "Bare repos can't be checked out or synced. Use them as worktree sources instead, or clone a regular working copy."
+        },
+        { status: 400 }
       );
     }
 

@@ -6,17 +6,30 @@ import { useTranslation } from "@/i18n";
 import type { SettingsTab } from "./settings-panel-shared";
 
 interface SettingsCenterNavProps {
-  activeConfigTab?: SettingsTab;
+  activeItem?: SettingsNavItem;
 }
 
-export function SettingsCenterNav({ activeConfigTab }: SettingsCenterNavProps) {
+export type SettingsNavItem =
+  | SettingsTab
+  | "specialists"
+  | "mcp"
+  | "workflows"
+  | "schedules";
+
+export function SettingsCenterNav({ activeItem }: SettingsCenterNavProps) {
   const { t } = useTranslation();
-  const configItems: Array<{ key: SettingsTab; label: string; href: string }> = [
+  const configItems: Array<{ key: SettingsNavItem; label: string; href: string }> = [
     { key: "providers", label: t.settings.providers, href: "/settings?tab=providers" },
     { key: "registry", label: t.settings.registry, href: "/settings?tab=registry" },
     { key: "roles", label: t.settings.roleDefaults, href: "/settings?tab=roles" },
     { key: "models", label: t.settings.models, href: "/settings?tab=models" },
     { key: "webhooks", label: t.settings.webhooks, href: "/settings?tab=webhooks" },
+  ];
+  const workspaceToolItems: Array<{ key: SettingsNavItem; label: string; href: string }> = [
+    { key: "specialists", label: t.nav.specialists, href: "/settings/specialists" },
+    { key: "mcp", label: t.nav.mcpServers, href: "/settings/mcp" },
+    { key: "workflows", label: t.nav.workflows, href: "/settings/workflows" },
+    { key: "schedules", label: t.nav.schedules, href: "/settings/schedules" },
   ];
 
   return (
@@ -26,7 +39,14 @@ export function SettingsCenterNav({ activeConfigTab }: SettingsCenterNavProps) {
           label={t.settings.config}
           items={configItems.map((item) => ({
             ...item,
-            active: activeConfigTab === item.key,
+            active: activeItem === item.key,
+          }))}
+        />
+        <NavGroup
+          label={t.settings.workspaceTools}
+          items={workspaceToolItems.map((item) => ({
+            ...item,
+            active: activeItem === item.key,
           }))}
         />
       </div>

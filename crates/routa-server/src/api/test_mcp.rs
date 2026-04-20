@@ -12,7 +12,7 @@ pub fn router() -> Router<AppState> {
 
 async fn test_mcp() -> Json<serde_json::Value> {
     let providers = [
-        "auggie", "opencode", "claude", "codex", "gemini", "kimi", "copilot",
+        "auggie", "opencode", "claude", "codex", "gemini", "kimi", "copilot", "qoder",
     ];
 
     let mcp_endpoint = "/api/mcp";
@@ -30,6 +30,7 @@ async fn test_mcp() -> Json<serde_json::Value> {
             "gemini" => "gemini",
             "kimi" => "kimi",
             "copilot" => "copilot",
+            "qoder" => "qodercli",
             _ => continue,
         };
 

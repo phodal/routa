@@ -27,7 +27,20 @@ describe("applyRecommendedAutomationToColumns", () => {
     ]);
     expect(columns[0].automation?.autoAdvanceOnSuccess).toBe(true);
     expect(columns.slice(1).every((column) => column.automation?.autoAdvanceOnSuccess === false)).toBe(true);
+    expect(columns[1]?.automation?.contractRules).toEqual({
+      requireCanonicalStory: true,
+      loopBreakerThreshold: 2,
+    });
     expect(columns[3]?.automation?.requiredArtifacts).toEqual(["screenshot", "test_results"]);
+    expect(columns[3]?.automation?.deliveryRules).toEqual({
+      requireCommittedChanges: true,
+      requireCleanWorktree: true,
+    });
+    expect(columns[4]?.automation?.deliveryRules).toEqual({
+      requireCommittedChanges: true,
+      requireCleanWorktree: true,
+      requirePullRequestReady: true,
+    });
     expect(columns[3]?.automation?.steps?.map((step) => step.specialistId)).toEqual([
       "kanban-qa-frontend",
       "kanban-review-guard",

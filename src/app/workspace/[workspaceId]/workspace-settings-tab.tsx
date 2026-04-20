@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import { useTranslation } from "@/i18n";
 import { RepoPicker } from "@/client/components/repo-picker";
 import type { RepoSelection } from "@/client/components/repo-picker";
+import { desktopAwareFetch } from "@/client/utils/diagnostics";
 
 interface CodebaseInfo {
   id: string;
@@ -48,7 +49,7 @@ export function WorkspaceSettingsTab({
     if (!selection) return;
     setAddError(null);
     try {
-      const res = await fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/codebases`, {
+      const res = await desktopAwareFetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/codebases`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ repoPath: selection.path, branch: selection.branch, label: selection.name }),
@@ -65,7 +66,7 @@ export function WorkspaceSettingsTab({
 
   const handleRemove = async (codebaseId: string) => {
     try {
-      await fetch(
+      await desktopAwareFetch(
         `/api/workspaces/${encodeURIComponent(workspaceId)}/codebases/${encodeURIComponent(codebaseId)}`,
         { method: "DELETE" }
       );
@@ -92,7 +93,7 @@ export function WorkspaceSettingsTab({
     setEditSaving(true);
     setEditError(null);
     try {
-      const res = await fetch(`/api/codebases/${encodeURIComponent(editingCodebase.id)}`, {
+      const res = await desktopAwareFetch(`/api/codebases/${encodeURIComponent(editingCodebase.id)}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ label: selection.name, repoPath: selection.path, branch: selection.branch }),

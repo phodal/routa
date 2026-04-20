@@ -1,9 +1,9 @@
 # page-id: traces
 # route: /traces?view=trace
 # source-page: src/app/traces/page.tsx
-# url: http://127.0.0.1:60043/traces?view=trace
+# url: http://127.0.0.1:50777/traces?view=trace
 # title: Routa - Multi-Agent Coordinator
-# generated-at: 2026-04-02T15:04:17.006Z
+# generated-at: 2026-04-11T06:28:28.704Z
 # generator: playwright
 # playwright-version: 1.58.2
 - banner:
@@ -13,6 +13,10 @@
   - 'button "Docker {version}" [disabled]'
   - link "MCP ready":
     - /url: /settings/mcp?tab=tools
+  - button "EN"
+  - button "中文"
+  - button "Light" [pressed]
+  - button "Dark"
 - complementary:
   - img "Routa"
   - text: Routa
@@ -21,27 +25,18 @@
   - navigation:
     - link "Home":
       - /url: /
+    - link "Sessions":
+      - /url: /workspace/default/sessions
     - link "Kanban":
       - /url: /workspace/default/kanban
-    - link "Overview":
-      - /url: /workspace/default/overview
     - link "Team":
       - /url: /workspace/default/team
-    - link "MCP Servers":
-      - /url: /settings/mcp
-    - link "Schedules":
-      - /url: /settings/schedules
-    - link "Harness":
-      - /url: /settings/harness?workspaceId=default
-    - link "Fluency":
-      - /url: /settings/fluency?workspaceId=default
-    - link "Workflows":
-      - /url: /settings/workflows
-    - link "Specialists":
-      - /url: /settings/specialists
-  - button "Settings"
-  - link "Debug":
-    - /url: /traces
+  - link "Harness":
+    - /url: /settings/harness?workspaceId=default
+  - link "Fluency":
+    - /url: /settings/fluency?workspaceId=default
+  - link "Settings":
+    - /url: /settings
 - main:
   - heading "Agent Trace Viewer" [level=1]
   - paragraph: Browse and analyze agent execution traces
@@ -54,7 +49,8 @@
   - button "Trace"
   - complementary:
     - heading "sessions" [level=2]
-    - paragraph: 6 sessions found
+    - paragraph: 7 sessions found
+    - button "Stabilize Page Snapshot Fixtures · Backlog Refiner 2 <localized-datetime> CRAFTER opencode"
     - button "Snapshot Fixture Session 6 <localized-datetime> CRAFTER opencode"
     - button "<id>… 423 <localized-datetime>":
       - code: <id>…
@@ -72,14 +68,10 @@
       - code: <id>…
       - text: 3 <localized-datetime>
   - region "Trace content":
-    - text: 🔗 EventBridge View 5 events
+    - text: 🔗 EventBridge View 1 events
     - button "All"
-    - button "Messages"
+    - button "Chat"
     - button "Tools"
-    - button "Thoughts"
-    - text: ▶ Session Started opencode <time> 🤖 Agent <time> → <time>
-    - button "🔧 codebase-retrieval ⏳"
-    - button "🔧 codebase-retrieval ✓"
-    - paragraph: Prepared a stable snapshot runtime with seeded workspace, Kanban, session, and trace data.
-    - text: ✓ Completed end_turn <time>
+    - button "thoughts"
+    - text: ▶ Session Started opencode <time>
 - alert

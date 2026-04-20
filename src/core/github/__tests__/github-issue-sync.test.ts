@@ -44,6 +44,7 @@ describe("github issue sync helpers", () => {
     const content = buildSyncedGitHubIssueDocument(createIssue());
 
     expect(content).toContain('title: "[GitHub #128] Sync GitHub issues to local docs/issues for duplicate detection by Agent"');
+    expect(content).toContain("kind: github_mirror");
     expect(content).toContain('status: open');
     expect(content).toContain('area: "devops"');
     expect(content).toContain('related_issues: ["https://github.com/phodal/routa/issues/128"]');

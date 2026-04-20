@@ -102,6 +102,7 @@ export class RoutaMcpToolManager {
       register("get_artifact", () => this.registerGetArtifact(server));
       register("list_pending_artifact_requests", () => this.registerListPendingArtifactRequests(server));
       register("capture_screenshot", () => this.registerCaptureScreenshot(server));
+      register("read_specialist_spec_resource", () => this.registerReadSpecialistSpecResource(server));
       return;
     }
 
@@ -159,6 +160,8 @@ export class RoutaMcpToolManager {
     register("get_artifact", () => this.registerGetArtifact(server));
     register("list_pending_artifact_requests", () => this.registerListPendingArtifactRequests(server));
     register("capture_screenshot", () => this.registerCaptureScreenshot(server));
+    register("read_canvas_sdk_resource", () => this.registerReadCanvasSdkResource(server));
+    register("read_specialist_spec_resource", () => this.registerReadSpecialistSpecResource(server));
   }
 
   private shouldRegisterTool(toolName: string): boolean {
@@ -181,6 +184,7 @@ export class RoutaMcpToolManager {
         verificationCommands: z.array(z.string()).optional().describe("Commands to run for verification"),
         dependencies: z.array(z.string()).optional().describe("Task IDs that must complete first"),
         parallelGroup: z.string().optional().describe("Group ID for parallel execution"),
+        creationSource: z.enum(["manual", "agent", "api", "session"]).optional().describe("How the task was created"),
       },
       async (params) => {
         const result = await this.tools.createTask({
@@ -227,11 +231,11 @@ export class RoutaMcpToolManager {
   private registerUpdateTask(server: McpServer) {
     server.tool(
       "update_task",
-      "Atomically update task fields with optimistic locking. Provide expectedVersion from a prior read to detect conflicts.",
+      "Atomically update structured task fields with optimistic locking. Use this for story-readiness fields such as scope, acceptance criteria, verification commands, and test cases. agentId is optional for Kanban sessions.",
       {
         taskId: z.string().describe("ID of the task to update"),
         expectedVersion: z.number().optional().describe("Expected version for optimistic locking (from prior task read)"),
-        agentId: z.string().describe("ID of the agent performing the update"),
+        agentId: z.string().optional().describe("ID of the agent performing the update (optional in Kanban sessions)"),
         title: z.string().optional().describe("Update the task title"),
         objective: z.string().optional().describe("Update the task objective"),
         scope: z.string().optional().describe("Update the task scope"),
@@ -241,6 +245,7 @@ export class RoutaMcpToolManager {
         verificationReport: z.string().optional().describe("Set verification report"),
         assignedTo: z.string().optional().describe("Assign to agent ID"),
         acceptanceCriteria: z.array(z.string()).optional().describe("Update acceptance criteria"),
+        verificationCommands: z.array(z.string()).optional().describe("Update verification commands"),
         testCases: z.array(z.string()).optional().describe("Update test cases"),
       },
       async (params) => {
@@ -249,7 +254,7 @@ export class RoutaMcpToolManager {
           taskId,
           expectedVersion,
           updates,
-          agentId,
+          agentId: agentId ?? "system",
         });
         return this.toMcpResult(result);
       }
@@ -991,12 +996,14 @@ Note: taskId must be a UUID from create_task, not a task name.`,
   private registerUpdateCard(server: McpServer) {
     server.tool(
       "update_card",
-      "Update card fields (title, description, comment, priority, labels). From dev onward, prefer comment because description is frozen.",
+      "Update card fields (title, description, comment, priority, labels). From dev onward, prefer comment because description is frozen. For story-readiness fields such as scope, acceptance criteria, verification commands, or test cases, use update_task instead.",
       {
         cardId: z.string().describe("Card ID"),
         title: z.string().optional().describe("New title"),
         description: z.string().optional().describe("New description"),
         comment: z.string().optional().describe("Comment or progress note to append"),
+        agentId: z.string().optional().describe("Agent ID adding the progress note"),
+        sessionId: z.string().optional().describe("Session ID adding the progress note"),
         priority: z.enum(["low", "medium", "high", "urgent"]).optional().describe("New priority"),
         labels: z.array(z.string()).optional().describe("New labels"),
       },
@@ -1009,6 +1016,8 @@ Note: taskId must be a UUID from create_task, not a task name.`,
           title: params.title,
           description: params.description,
           comment: params.comment,
+          agentId: params.agentId,
+          sessionId: params.sessionId,
           priority: params.priority,
           labels: params.labels,
         });
@@ -1334,6 +1343,52 @@ Can be in response to a request or proactively provided.`,
           outputPath: params.outputPath,
         });
         return this.toMcpResult(result);
+      }
+    );
+  }
+
+  private registerReadCanvasSdkResource(server: McpServer) {
+    server.tool(
+      "read_canvas_sdk_resource",
+      "Read the Routa Canvas SDK manifest or a generated definition resource by resource URI. Use this when your provider cannot call MCP resources/read directly.",
+      {
+        uri: z.string().describe("Canvas SDK resource URI, e.g. resource://routa/canvas-sdk/manifest"),
+      },
+      async (params) => {
+        const resource = readCanvasSdkResource(params.uri);
+        if (!resource) {
+          return this.toMcpResult({
+            success: false,
+            error: `Unknown Canvas SDK resource URI: ${params.uri}`,
+          });
+        }
+        return this.toMcpResult({
+          success: true,
+          data: resource,
+        });
+      }
+    );
+  }
+
+  private registerReadSpecialistSpecResource(server: McpServer) {
+    server.tool(
+      "read_specialist_spec_resource",
+      "Read a bundled specialist framework spec resource by URI. Use this when your provider cannot call MCP resources/read directly.",
+      {
+        uri: z.string().describe("Specialist spec resource URI, e.g. resource://routa/specialists/feature-tree/manifest"),
+      },
+      async (params) => {
+        const resource = readFeatureTreeSpecResource(params.uri);
+        if (!resource) {
+          return this.toMcpResult({
+            success: false,
+            error: `Unknown specialist spec resource URI: ${params.uri}`,
+          });
+        }
+        return this.toMcpResult({
+          success: true,
+          data: resource,
+        });
       }
     );
   }

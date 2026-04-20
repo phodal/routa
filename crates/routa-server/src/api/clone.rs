@@ -117,7 +117,7 @@ async fn clone_repo(
         tokio::task::spawn_blocking({
             let target_str = target_str.clone();
             move || {
-                let _ = std::process::Command::new("git")
+                let _ = git::git_command()
                     .args(["pull", "--ff-only"])
                     .current_dir(&target_str)
                     .output();
@@ -151,7 +151,7 @@ async fn clone_repo(
         let clone_url = clone_url.clone();
         let target = target_dir_str.clone();
         move || {
-            std::process::Command::new("git")
+            git::git_command()
                 .args(["clone", "--depth", "1", &clone_url, &target])
                 .output()
         }
@@ -171,7 +171,7 @@ async fn clone_repo(
     let _ = tokio::task::spawn_blocking({
         let ts = target_str.clone();
         move || {
-            let _ = std::process::Command::new("git")
+            let _ = git::git_command()
                 .args(["fetch", "--all"])
                 .current_dir(&ts)
                 .output();

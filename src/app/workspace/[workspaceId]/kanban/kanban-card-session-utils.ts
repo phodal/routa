@@ -1,7 +1,7 @@
 "use client";
 
 import type { AutomationSpecialistResolver } from "@/core/kanban/effective-task-automation";
-import type { SessionInfo, TaskInfo } from "../types";
+import type { SessionInfo, TaskInfo, TaskRunInfo } from "../types";
 import { findSpecialistById, getSpecialistDisplayName } from "./kanban-specialist-language";
 
 export interface KanbanSpecialistOption {
@@ -50,6 +50,30 @@ export function getOrderedSessionIds(task: TaskInfo): string[] {
         ...(task.sessionIds ?? []),
         ...(task.triggerSessionId ? [task.triggerSessionId] : []),
       ]));
+}
+
+export function getStableOrderedSessionIds(
+  task: TaskInfo,
+  runs?: TaskRunInfo[] | null,
+): string[] {
+  const orderedTaskIds = getOrderedSessionIds(task);
+  if (!runs || runs.length === 0) {
+    return orderedTaskIds;
+  }
+
+  const runIds = runs.map((run) => run.sessionId ?? run.id);
+  if (orderedTaskIds.length === 0) {
+    return Array.from(new Set(runIds));
+  }
+
+  const seen = new Set(orderedTaskIds);
+  const extraRunIds = runIds.filter((sessionId) => {
+    if (seen.has(sessionId)) return false;
+    seen.add(sessionId);
+    return true;
+  });
+
+  return [...orderedTaskIds, ...extraRunIds];
 }
 
 export function buildSessionDisplayLabel(

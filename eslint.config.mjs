@@ -78,6 +78,7 @@ const eslintConfig = [
       "docs-site/**",
       ".vercel/**",
       ".routa/**",
+      ".agents/**",
       "apps/desktop/src-tauri/target/**",
       "apps/desktop/src-tauri/bundled/**",
       "apps/desktop/src-tauri/frontend/**",

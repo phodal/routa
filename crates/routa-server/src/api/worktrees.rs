@@ -243,7 +243,7 @@ async fn delete_worktree(
 
         // Optionally delete the branch
         if query.delete_branch.unwrap_or(false) {
-            let _ = std::process::Command::new("git")
+            let _ = crate::git::git_command()
                 .args(["branch", "-D", &worktree.branch])
                 .current_dir(repo_path)
                 .output();

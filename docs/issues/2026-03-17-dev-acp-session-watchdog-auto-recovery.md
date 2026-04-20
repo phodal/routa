@@ -11,7 +11,9 @@ related_issues:
   - "docs/issues/2026-03-14-gh-148-feat-add-session-queueing-and-concurrency-limits-for-kanban-acp-automati.md"
   - "docs/issues/2026-03-14-kanban-story-lane-automation-stalls-after-first-session.md"
   - "https://github.com/phodal/routa/issues/185"
-github_issue: "https://github.com/phodal/routa/issues/190"
+github_issue: 190
+github_state: "closed"
+github_url: "https://github.com/phodal/routa/issues/190"
 ---
 
 # Dev lane ACP sessions can silently go idle or fail without watchdog detection or automatic recovery

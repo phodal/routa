@@ -9,6 +9,7 @@ const loadReviewTriggerRulesMock = vi.hoisted(() => vi.fn());
 
 vi.mock("../process.js", () => ({
   runCommand: runCommandMock,
+  resolveEntrixShellCommand: (args: string[]) => args.join(" "),
 }));
 
 vi.mock("../specialist-review.js", () => ({
@@ -301,15 +302,92 @@ describe("runReviewTriggerPhase", () => {
     const output = consoleLogSpy.mock.calls.map((call: unknown[]) => String(call[0])).join("\n");
     expect(output).toContain("Human review required: 2 triggers across 3 committed files.");
     expect(output).toMatch(/\|\s+Base\s+\|\s+origin\/main\s+\|/);
-    expect(output).toMatch(/\|\s+Added lines\s+\|\s+942\s+\|/);
+    expect(output).toMatch(/\|\s+Added lines\s+\|\s+942 \(limit 600\)\s+\|/);
     expect(output).toMatch(/\|\s+Workspace residue\s+\|\s+1 tracked, 1 untracked\s+\|/);
     expect(output).toContain("@arch-team, @platform-team");
     expect(output).toContain("api-contract.yaml");
     expect(output).toContain("cross_boundary_change_web_rust");
     expect(output).toContain("Matched triggers:");
-    expect(output).toContain("[high] High Risk Directory Change");
-    expect(output).toContain("changed path: 3 items. Examples:");
+    expect(output).toContain("[HIGH] High Risk Directory Change");
+    expect(output).toContain("changed path:");
+    expect(output).toContain("crates/routa-server/src/api/clone_local.rs");
+    expect(output).toContain("crates/routa-server/src/api/codebases.rs");
+    expect(output).toContain("crates/routa-server/src/api/mod.rs");
     expect(output).not.toContain("- Base: origin/main");
+  });
+
+  it("deprioritizes lower-signal files in medium-severity examples", async () => {
+    delete process.env.ROUTA_ALLOW_REVIEW_TRIGGER_PUSH;
+    runCommandMock
+      .mockResolvedValueOnce({
+        command: "git rev-parse",
+        durationMs: 5,
+        exitCode: 0,
+        output: "origin/main\n",
+      })
+      .mockResolvedValueOnce({
+        command: "git rev-parse --show-toplevel",
+        durationMs: 5,
+        exitCode: 0,
+        output: `${process.cwd()}\n`,
+      })
+      .mockResolvedValueOnce({
+        command: "git diff --name-only --diff-filter=ACMR origin/main",
+        durationMs: 5,
+        exitCode: 0,
+        output: "src/app/globals.css\nsrc/app/page.tsx\ndocs/fitness/README.md\nsrc/core/review.ts\n",
+      })
+      .mockResolvedValueOnce({
+        command: "git diff --name-only --diff-filter=ACMR",
+        durationMs: 5,
+        exitCode: 0,
+        output: "",
+      })
+      .mockResolvedValueOnce({
+        command: "git ls-files --others --exclude-standard",
+        durationMs: 5,
+        exitCode: 0,
+        output: "",
+      })
+      .mockResolvedValueOnce({
+        command: "entrix review-trigger",
+        durationMs: 10,
+        exitCode: 3,
+        output: JSON.stringify({
+          base: "origin/main",
+          triggers: [
+            {
+              action: "review",
+              name: "cross_boundary_change_web_rust",
+              severity: "medium",
+              reasons: [
+                "changed boundary 'web': src/app/globals.css, src/app/page.tsx, docs/fitness/README.md, src/core/review.ts, src/app/layout.tsx",
+              ],
+            },
+          ],
+          committed_files: [
+            "src/app/globals.css",
+            "src/app/page.tsx",
+            "docs/fitness/README.md",
+            "src/core/review.ts",
+          ],
+          diff_stats: { file_count: 4, added_lines: 42, deleted_lines: 7 },
+        }),
+      });
+    runReviewTriggerSpecialistMock.mockResolvedValueOnce({
+      allowed: false,
+      summary: "Automatic review specialist found a regression risk.",
+      findings: [],
+      raw: "{\"verdict\":\"fail\"}",
+    });
+
+    const result = await runReviewTriggerPhase("human");
+
+    expect(result.allowed).toBe(false);
+    const output = consoleLogSpy.mock.calls.map((call: unknown[]) => String(call[0])).join("\n");
+    expect(output).toContain("[MEDIUM] Cross Boundary Change Web Rust");
+    expect(output).toContain("Examples: src/app/page.tsx, src/core/review.ts, src/app/layout.tsx, src/app/globals.css");
+    expect(output).toContain("+1 more lower-signal file");
   });
 
   it("allows matched review trigger when bypass env var is set", async () => {

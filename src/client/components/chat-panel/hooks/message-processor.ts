@@ -24,6 +24,51 @@ type StreamingRole = "assistant" | "thought";
 type StreamingIds = Record<string, string | null>;
 type ToolContentBlock = Array<{ type: string; text?: string }> | null | undefined;
 
+function canContinueStreamingChunk(
+  lastKind: string | null,
+  expectedKind: string,
+): boolean {
+  if (!lastKind) return false;
+  if (lastKind === expectedKind) return true;
+
+  if (expectedKind === "agent_message_chunk") {
+    return [
+      "agent_thought_chunk",
+      "process_output",
+      "terminal_created",
+      "terminal_output",
+      "terminal_exited",
+      "thinking_start",
+      "thinking_stop",
+      "thinking_signature",
+      "usage_update",
+    ].includes(lastKind);
+  }
+
+  if (expectedKind === "agent_thought_chunk") {
+    return [
+      "process_output",
+      "terminal_created",
+      "terminal_output",
+      "terminal_exited",
+      "thinking_start",
+      "thinking_signature",
+      "usage_update",
+    ].includes(lastKind);
+  }
+
+  return false;
+}
+
+function resetStreamingStateForSession(
+  sessionId: string,
+  streamingMsgIdRef: React.MutableRefObject<Record<string, string | null>>,
+  streamingThoughtIdRef: React.MutableRefObject<Record<string, string | null>>,
+): void {
+  streamingMsgIdRef.current[sessionId] = null;
+  streamingThoughtIdRef.current[sessionId] = null;
+}
+
 function appendStreamingChunk(
   messages: ChatMessage[],
   streamingIds: StreamingIds,
@@ -33,7 +78,7 @@ function appendStreamingChunk(
   role: StreamingRole,
   text: string,
 ): string {
-  if (lastKind !== expectedKind) {
+  if (!canContinueStreamingChunk(lastKind, expectedKind)) {
     streamingIds[sessionId] = null;
   }
 
@@ -171,13 +216,20 @@ function applyToolCallUpdate(
   const index = messages.findIndex((message) => message.toolCallId === payload.toolCallId);
   if (index >= 0) {
     const existing = messages[index];
+    const nextToolKind = payload.toolKind ?? existing.toolKind;
+    const mergedRawInput = nextToolKind === "request-permissions" && existing.toolRawInput
+      ? {
+          ...existing.toolRawInput,
+          ...(payload.rawInput ?? {}),
+        }
+      : payload.rawInput ?? existing.toolRawInput;
     messages[index] = {
       ...existing,
       toolStatus: payload.status ?? existing.toolStatus,
       toolName: payload.toolName ?? existing.toolName,
-      toolKind: payload.toolKind ?? existing.toolKind,
+      toolKind: nextToolKind,
       delegatedTaskId: payload.delegatedTaskId ?? existing.delegatedTaskId,
-      toolRawInput: payload.rawInput ?? existing.toolRawInput,
+      toolRawInput: mergedRawInput,
       toolRawOutput: payload.rawOutput ?? existing.toolRawOutput,
       content: payload.outputParts.length
         ? `${payload.toolName ?? existing.toolName ?? "tool"}\n\nOutput:\n${payload.outputParts.join("\n")}`
@@ -263,11 +315,13 @@ export function processUpdate(
     }
 
     case "tool_call": {
+      resetStreamingStateForSession(sid, streamingMsgIdRef, streamingThoughtIdRef);
       appendToolCallMessage(arr, update);
       break;
     }
 
     case "tool_call_update": {
+      resetStreamingStateForSession(sid, streamingMsgIdRef, streamingThoughtIdRef);
       processToolCallUpdate(update, arr, setFileChangesState);
       break;
     }
@@ -401,6 +455,7 @@ export function processUpdate(
     }
 
     case "tool_call_start": {
+      resetStreamingStateForSession(sid, streamingMsgIdRef, streamingThoughtIdRef);
       const toolCallId = update.toolCallId as string | undefined;
       const toolName = getToolEventName(update);
       const toolKind = normalizeToolKind(update.kind as string | undefined);
@@ -420,6 +475,7 @@ export function processUpdate(
     }
 
     case "tool_call_params_delta": {
+      resetStreamingStateForSession(sid, streamingMsgIdRef, streamingThoughtIdRef);
       const toolCallId = update.toolCallId as string | undefined;
       const parsedInput = update.parsedInput as Record<string, unknown> | null;
       const toolName = getToolEventName(update);
@@ -492,7 +548,10 @@ export function processUpdate(
     case "available_commands_update":
     case "config_option_update":
     case "session_info_update":
+      break;
+
     case "acp_status":
+      processAcpStatus(update, arr);
       break;
 
     default:
@@ -551,6 +610,31 @@ function processTaskCompletion(
       };
     }
   }
+}
+
+function processAcpStatus(update: Record<string, unknown>, arr: ChatMessage[]): void {
+  const status = typeof update.status === "string" ? update.status : undefined;
+  const error = typeof update.error === "string" ? update.error : undefined;
+  if (status !== "error" || !error) {
+    return;
+  }
+
+  const lastMessage = arr.at(-1);
+  if (lastMessage?.role === "info" && lastMessage.content === error) {
+    return;
+  }
+
+  arr.push({
+    id: uuidv4(),
+    role: "info",
+    content: error,
+    timestamp: new Date(),
+    rawData: {
+      sessionUpdate: "acp_status",
+      status,
+      error,
+    },
+  });
 }
 
 /**
