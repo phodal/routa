@@ -16,6 +16,9 @@ const ACTIVE_WINDOW_MS: i64 = 30 * 60 * 1000;
 const FAST_RECENT_TRANSCRIPTS: usize = 12;
 const MAX_TRANSCRIPTS: usize = 48;
 const MAX_BROAD_TRANSCRIPTS: usize = 200;
+const MAX_TRANSCRIPT_FILE_SIZE: u64 = 10 * 1024 * 1024;
+const IGNORED_TRANSCRIPT_PATHS: &[&str] =
+    &[".git", "node_modules", ".next", "dist", "out", "target"];
 
 #[derive(Clone, Debug)]
 pub struct TranscriptSessionBackfill {
@@ -255,55 +258,9 @@ pub fn collect_recent_transcripts_from_dirs(
     dirs: &mut Vec<PathBuf>,
     allowed_extensions: &[&str],
 ) -> Result<Vec<(PathBuf, i64)>, TraceLearningError> {
-    if let Some(files) = collect_recent_transcripts_with_rg(dirs, allowed_extensions) {
-        return Ok(files);
-    }
-
+    // Keep transcript discovery behavior aligned with the Next.js implementation.
+    // The shell-based fast path can drift on hidden/ignored paths and file filters.
     collect_recent_transcripts_from_dirs_fallback(dirs, allowed_extensions)
-}
-
-fn collect_recent_transcripts_with_rg(
-    dirs: &[PathBuf],
-    allowed_extensions: &[&str],
-) -> Option<Vec<(PathBuf, i64)>> {
-    let globs = transcript_globs(allowed_extensions);
-    if globs.is_empty() {
-        return None;
-    }
-
-    let mut files = Vec::new();
-    for dir in dirs {
-        let output = Command::new("rg")
-            .arg("--files")
-            .arg(dir)
-            .args(globs.iter().flat_map(|glob| ["-g", glob]))
-            .output()
-            .ok()?;
-        if !output.status.success() {
-            return None;
-        }
-
-        let stdout = String::from_utf8(output.stdout).ok()?;
-        for raw_line in stdout.lines() {
-            let candidate = raw_line.trim();
-            if candidate.is_empty() {
-                continue;
-            }
-            let path = PathBuf::from(candidate);
-            if !should_keep_transcript_candidate(&path, allowed_extensions) {
-                continue;
-            }
-            let modified_ms = std::fs::metadata(&path)
-                .ok()
-                .and_then(|meta| meta.modified().ok())
-                .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
-                .map(|dur| dur.as_millis() as i64)
-                .unwrap_or_default();
-            files.push((path, modified_ms));
-        }
-    }
-
-    Some(files)
 }
 
 fn collect_recent_transcripts_from_dirs_fallback(
@@ -322,6 +279,13 @@ fn collect_recent_transcripts_from_dirs_fallback(
                 continue;
             };
             if file_type.is_dir() {
+                if path
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .is_some_and(|name| IGNORED_TRANSCRIPT_PATHS.contains(&name))
+                {
+                    continue;
+                }
                 dirs.push(path);
                 continue;
             }
@@ -344,22 +308,17 @@ fn collect_recent_transcripts_from_dirs_fallback(
     Ok(files)
 }
 
-fn transcript_globs<'a>(allowed_extensions: &'a [&'a str]) -> Vec<&'a str> {
-    let mut globs = Vec::new();
-    if allowed_extensions.contains(&"jsonl") {
-        globs.push("*.jsonl");
-    }
-    if allowed_extensions.contains(&"json") {
-        globs.push("*.json");
-    }
-    globs
-}
-
 fn should_keep_transcript_candidate(path: &Path, allowed_extensions: &[&str]) -> bool {
     let Some(extension) = path.extension().and_then(|ext| ext.to_str()) else {
         return false;
     };
     if !allowed_extensions.contains(&extension) {
+        return false;
+    }
+    let Ok(metadata) = std::fs::metadata(path) else {
+        return false;
+    };
+    if metadata.len() > MAX_TRANSCRIPT_FILE_SIZE {
         return false;
     }
     if extension == "jsonl"
@@ -1488,13 +1447,38 @@ mod tests {
     }
 
     #[test]
-    fn transcript_globs_follow_allowed_extensions() {
-        assert_eq!(transcript_globs(&["jsonl"]), vec!["*.jsonl"]);
-        assert_eq!(transcript_globs(&["json"]), vec!["*.json"]);
-        assert_eq!(
-            transcript_globs(&["jsonl", "json"]),
-            vec!["*.jsonl", "*.json"]
-        );
+    fn skips_oversized_transcript_candidates() {
+        let dir = tempdir().expect("tempdir");
+        let transcript = dir.path().join("oversized.jsonl");
+        std::fs::write(
+            &transcript,
+            vec![b'a'; (MAX_TRANSCRIPT_FILE_SIZE as usize) + 1],
+        )
+        .expect("write oversized transcript");
+
+        assert!(!should_keep_transcript_candidate(&transcript, &["jsonl"]));
+    }
+
+    #[test]
+    fn collect_recent_transcripts_from_dirs_skips_ignored_directories() {
+        let dir = tempdir().expect("tempdir");
+        let ignored_root = dir.path().join("target");
+        let kept_root = dir.path().join("sessions");
+        std::fs::create_dir_all(&ignored_root).expect("ignored dir");
+        std::fs::create_dir_all(&kept_root).expect("kept dir");
+
+        let ignored = ignored_root.join("ignored.jsonl");
+        let kept = kept_root.join("kept.jsonl");
+        std::fs::write(&ignored, "{}\n").expect("write ignored transcript");
+        std::fs::write(&kept, "{}\n").expect("write kept transcript");
+
+        let mut dirs = vec![dir.path().to_path_buf()];
+        let files = collect_recent_transcripts_from_dirs(&mut dirs, &["jsonl"])
+            .expect("collect transcripts");
+        let paths = files.into_iter().map(|(path, _)| path).collect::<Vec<_>>();
+
+        assert!(paths.contains(&kept));
+        assert!(!paths.contains(&ignored));
     }
 
     #[test]

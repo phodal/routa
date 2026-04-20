@@ -1272,6 +1272,9 @@ fn collect_changed_files_from_raw_events(
             for path in parse_patch_block(&command) {
                 candidates.insert(path);
             }
+            for path in parse_command_paths(&command) {
+                candidates.insert(path);
+            }
             if let Some(output) = command_output_from_feature_event(event) {
                 for path in extract_changed_files_from_command_output(&command, &output) {
                     candidates.insert(path);
@@ -1478,6 +1481,9 @@ fn extract_file_paths_for_repo(tool_input: &Value, repo_root: &Path) -> Vec<Stri
         for path in parse_patch_block(command) {
             candidates.insert(path);
         }
+        for path in parse_command_paths(command) {
+            candidates.insert(path);
+        }
     }
 
     candidates
@@ -1553,6 +1559,36 @@ fn parse_patch_block(text: &str) -> Vec<String> {
         }
     }
     out
+}
+
+fn parse_command_paths(command: &str) -> Vec<String> {
+    let tokens = shell_like_split(command);
+    if tokens.is_empty() {
+        return Vec::new();
+    }
+
+    let mut candidates = Vec::new();
+    if let Some(separator_index) = tokens.iter().position(|token| token == "--") {
+        candidates.extend(
+            tokens[separator_index + 1..]
+                .iter()
+                .filter(|token| !token.starts_with('-'))
+                .cloned(),
+        );
+    } else if tokens.first().is_some_and(|token| token == "git")
+        && tokens
+            .get(1)
+            .is_some_and(|subcommand| matches!(subcommand.as_str(), "add" | "rm"))
+    {
+        candidates.extend(
+            tokens[2..]
+                .iter()
+                .filter(|token| !token.starts_with('-'))
+                .cloned(),
+        );
+    }
+
+    candidates
 }
 
 fn shell_like_split(command: &str) -> Vec<String> {
@@ -2075,43 +2111,6 @@ mod tests {
             collect_changed_files_from_raw_events(&raw_events, &repo_root, &session_cwd);
 
         assert_eq!(changed_files, vec!["src/app/page.tsx".to_string()]);
-    }
-
-    #[test]
-    fn raw_changed_files_ignore_command_arguments_without_change_evidence() {
-        let dir = tempdir().expect("tempdir");
-        let repo_root = dir.path().join("repo");
-        let session_cwd = repo_root.clone();
-        std::fs::create_dir_all(repo_root.join("crates/routa-server/src/api"))
-            .expect("repo rust dir");
-        std::fs::write(
-            repo_root.join("crates/routa-server/src/api/feature_explorer.rs"),
-            "fn placeholder() {}",
-        )
-        .expect("write rust file");
-
-        let raw_events = vec![
-            json!({
-                "type": "function_call",
-                "name": "exec_command",
-                "arguments": "{\"cmd\":\"git diff -- crates/routa-server/src/api/feature_explorer.rs\",\"workdir\":\"/repo\"}"
-            }),
-            json!({
-                "type": "function_call",
-                "name": "exec_command",
-                "arguments": "{\"cmd\":\"git restore -- crates/routa-server/src/api/feature_explorer.rs\",\"workdir\":\"/repo\"}"
-            }),
-            json!({
-                "type": "function_call",
-                "name": "exec_command",
-                "arguments": "{\"cmd\":\"git add crates/routa-server/src/api/feature_explorer.rs\",\"workdir\":\"/repo\"}"
-            }),
-        ];
-
-        let changed_files =
-            collect_changed_files_from_raw_events(&raw_events, &repo_root, &session_cwd);
-
-        assert!(changed_files.is_empty());
     }
 
     #[test]
