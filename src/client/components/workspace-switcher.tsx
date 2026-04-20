@@ -83,12 +83,19 @@ export function WorkspaceSwitcher({
   }, [closeDropdown, open]);
 
   useEffect(() => {
-    const normalizedWorkspaceId = normalizeWorkspaceQueryId(activeWorkspaceId);
-    if (!hasWorkspaceStorageAccess() || !normalizedWorkspaceId) {
+    if (!hasWorkspaceStorageAccess()) {
       return;
     }
-
-    window.localStorage.setItem(DESKTOP_LAST_WORKSPACE_ID_STORAGE_KEY, normalizedWorkspaceId);
+    const normalizedWorkspaceId = normalizeWorkspaceQueryId(activeWorkspaceId);
+    try {
+      if (normalizedWorkspaceId) {
+        window.localStorage.setItem(DESKTOP_LAST_WORKSPACE_ID_STORAGE_KEY, normalizedWorkspaceId);
+      } else {
+        window.localStorage.removeItem(DESKTOP_LAST_WORKSPACE_ID_STORAGE_KEY);
+      }
+    } catch {
+      // localStorage may throw in restricted environments (quota, blocked storage)
+    }
   }, [activeWorkspaceId]);
 
   const handleCreate = async () => {

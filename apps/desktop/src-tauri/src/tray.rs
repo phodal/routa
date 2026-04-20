@@ -390,9 +390,9 @@ fn toggle_main_window(app: &AppHandle) {
 /// It is interpolated directly into JavaScript and must never contain user-controlled data.
 fn navigate_to_absolute_route(app: &AppHandle, path: &str) {
     if let Some(window) = app.get_webview_window("main") {
-        let port = crate::api_port();
-        let url = format!("http://127.0.0.1:{port}{path}");
-        let js = format!("window.location.href = '{url}';");
+        let js = format!(
+            "window.location.href = `${{window.location.origin}}{path}`;"
+        );
         let _ = window.eval(&js);
         show_main_window(app);
     }

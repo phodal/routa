@@ -408,7 +408,8 @@ pub(crate) fn desktop_workspace_navigation_js(_port: u16, route_suffix: &str) ->
                 const query = (() => {{
                     try {{
                         const params = new URLSearchParams(window.location.search);
-                        return params.get('workspaceId') || params.get('workspace') || '';
+                        const raw = params.get('workspaceId') || params.get('workspace') || '';
+                        return /^[A-Za-z0-9_-]+$/.test(raw) ? raw : '';
                     }} catch {{
                         return '';
                     }}
@@ -430,6 +431,9 @@ pub(crate) fn desktop_workspace_navigation_js(_port: u16, route_suffix: &str) ->
 
 #[cfg(target_os = "macos")]
 fn configure_macos_menu_bar_mode(app: &tauri::AppHandle) {
+    if std::env::var("ROUTA_DESKTOP_MENU_BAR_MODE").as_deref() != Ok("1") {
+        return;
+    }
     if let Err(error) = app.set_activation_policy(tauri::ActivationPolicy::Accessory) {
         eprintln!("[macos] Failed to set activation policy to Accessory: {error}");
     }
@@ -1086,8 +1090,9 @@ pub fn run() {
             // `update_tray_github_repos` after loading webhook configs.
             if let Err(e) = tray::setup_tray(app.handle(), &[]) {
                 eprintln!("[tray] Failed to set up system tray: {e}");
+            } else {
+                configure_macos_menu_bar_mode(app.handle());
             }
-            configure_macos_menu_bar_mode(app.handle());
 
             // Only auto-open devtools in debug builds; use View menu in release builds
             #[cfg(debug_assertions)]
