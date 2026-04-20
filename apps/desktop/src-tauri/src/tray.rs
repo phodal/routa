@@ -105,21 +105,21 @@ pub fn build_tray_menu(app: &AppHandle, repos: &[GitHubRepo]) -> tauri::Result<M
 
             let pulls = MenuItem::with_id(
                 app,
-                format!("tray:gh:pulls:{}", owner_repo),
+                format!("tray:gh:pulls:{owner_repo}"),
                 "Pull Requests",
                 true,
                 None::<&str>,
             )?;
             let issues = MenuItem::with_id(
                 app,
-                format!("tray:gh:issues:{}", owner_repo),
+                format!("tray:gh:issues:{owner_repo}"),
                 "Issues",
                 true,
                 None::<&str>,
             )?;
             let repo_link = MenuItem::with_id(
                 app,
-                format!("tray:gh:repo:{}", owner_repo),
+                format!("tray:gh:repo:{owner_repo}"),
                 "Repository",
                 true,
                 None::<&str>,
@@ -242,9 +242,9 @@ pub fn parse_github_menu_id_to_url(id: &str) -> Option<String> {
     let owner_repo = &rest[colon_pos + 1..];
 
     let url = match link_type {
-        "pulls" => format!("https://github.com/{}/pulls", owner_repo),
-        "issues" => format!("https://github.com/{}/issues", owner_repo),
-        "repo" => format!("https://github.com/{}", owner_repo),
+        "pulls" => format!("https://github.com/{owner_repo}/pulls"),
+        "issues" => format!("https://github.com/{owner_repo}/issues"),
+        "repo" => format!("https://github.com/{owner_repo}"),
         _ => return None,
     };
 
@@ -270,8 +270,8 @@ fn toggle_main_window(app: &AppHandle) {
 fn navigate_to(app: &AppHandle, path: &str) {
     if let Some(window) = app.get_webview_window("main") {
         let port = crate::api_port();
-        let url = format!("http://127.0.0.1:{}{}", port, path);
-        let js = format!("window.location.href = '{}';", url);
+        let url = format!("http://127.0.0.1:{port}{path}");
+        let js = format!("window.location.href = '{url}';");
         let _ = window.eval(&js);
         let _ = window.show();
         let _ = window.set_focus();
@@ -282,7 +282,7 @@ fn navigate_to(app: &AppHandle, path: &str) {
 fn open_url_in_browser(app: &AppHandle, url: &str) {
     use tauri_plugin_opener::OpenerExt;
     if let Err(e) = app.opener().open_url(url, None::<&str>) {
-        eprintln!("[tray] Failed to open URL {}: {}", url, e);
+        eprintln!("[tray] Failed to open URL {url}: {e}");
     }
 }
 

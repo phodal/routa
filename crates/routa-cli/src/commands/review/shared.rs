@@ -235,8 +235,7 @@ pub(crate) fn resolve_repo_root(repo_path: Option<&str>) -> Result<PathBuf, Stri
     let root = if let Some(path) = repo_path {
         PathBuf::from(path)
     } else {
-        std::env::current_dir()
-            .map_err(|err| format!("Failed to read current directory: {}", err))?
+        std::env::current_dir().map_err(|err| format!("Failed to read current directory: {err}"))?
     };
 
     let resolved = git_output(&root, &["rev-parse", "--show-toplevel"])?;
@@ -343,7 +342,7 @@ fn truncate_like_review(content: &str, max_chars: usize) -> String {
         content.to_string()
     } else {
         let truncated: String = content.chars().take(max_chars).collect();
-        format!("{}\n\n[truncated]", truncated)
+        format!("{truncated}\n\n[truncated]")
     }
 }
 
@@ -353,7 +352,7 @@ pub(crate) fn build_review_input_payload(
     head: &str,
     rules_file: Option<&str>,
 ) -> Result<ReviewInputPayload, String> {
-    let diff_range = format!("{}..{}", base, head);
+    let diff_range = format!("{base}..{head}");
     let changed_files = git_lines(repo_root, &["diff", "--name-only", &diff_range])?;
     let diff_stat = git_output(repo_root, &["diff", "--stat", &diff_range])?;
     let diff = truncate_like_review(
@@ -414,5 +413,5 @@ pub(crate) fn load_specialist_by_id(
                 .into_iter()
                 .find(|specialist| specialist.id == specialist_id)
         })
-        .ok_or_else(|| format!("Missing specialist definition: {}", specialist_id))
+        .ok_or_else(|| format!("Missing specialist definition: {specialist_id}"))
 }

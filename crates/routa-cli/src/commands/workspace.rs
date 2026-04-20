@@ -22,7 +22,7 @@ pub async fn list(state: &AppState, limit: usize) -> Result<(), String> {
     {
         let shown = workspaces.len().min(limit);
         let hidden = workspaces.len().saturating_sub(shown);
-        println!("Workspaces ({} shown, {} hidden):", shown, hidden);
+        println!("Workspaces ({shown} shown, {hidden} hidden):");
         for workspace in workspaces.iter().take(limit) {
             let status = workspace
                 .get("status")

@@ -330,11 +330,7 @@ impl AcpManager {
         .await
     }
 
-    fn spawn_history_mirror(
-        &self,
-        session_id: &str,
-        ntx: &broadcast::Sender<serde_json::Value>,
-    ) {
+    fn spawn_history_mirror(&self, session_id: &str, ntx: &broadcast::Sender<serde_json::Value>) {
         let history_manager = self.clone();
         let history_session_id = session_id.to_string();
         let mut history_rx = ntx.subscribe();
@@ -400,7 +396,10 @@ impl AcpManager {
             specialist_system_prompt: options.specialist_system_prompt.clone(),
         };
 
-        self.sessions.write().await.insert(session_id.clone(), record);
+        self.sessions
+            .write()
+            .await
+            .insert(session_id.clone(), record);
         self.processes.write().await.insert(
             session_id.clone(),
             ManagedProcess {
@@ -622,7 +621,7 @@ impl AcpManager {
             let processes = self.processes.read().await;
             let managed = processes
                 .get(session_id)
-                .ok_or_else(|| format!("No agent process for session: {}", session_id))?;
+                .ok_or_else(|| format!("No agent process for session: {session_id}"))?;
             (
                 managed.process.clone(),
                 managed.acp_session_id.clone(),
@@ -637,7 +636,7 @@ impl AcpManager {
         };
 
         if !is_alive {
-            return Err(format!("Agent ({}) process is not running", preset_id));
+            return Err(format!("Agent ({preset_id}) process is not running"));
         }
 
         // Record UserMessage trace
@@ -769,7 +768,7 @@ impl AcpManager {
         let processes = self.processes.read().await;
         let managed = processes
             .get(session_id)
-            .ok_or_else(|| format!("No agent process for session: {}", session_id))?;
+            .ok_or_else(|| format!("No agent process for session: {session_id}"))?;
 
         // Record trace
         let trace = TraceRecord::new(
@@ -951,7 +950,7 @@ async fn get_registry_preset(id: &str) -> Result<AcpPreset, String> {
         .agents
         .into_iter()
         .find(|a| a.id == id)
-        .ok_or_else(|| format!("Agent '{}' not found in registry", id))?;
+        .ok_or_else(|| format!("Agent '{id}' not found in registry"))?;
 
     // Build command from distribution
     let (command, args) = if let Some(ref npx) = agent.distribution.npx {
@@ -964,8 +963,7 @@ async fn get_registry_preset(id: &str) -> Result<AcpPreset, String> {
         ("uvx".to_string(), args)
     } else {
         return Err(format!(
-            "Agent '{}' has no supported distribution (npx/uvx)",
-            id
+            "Agent '{id}' has no supported distribution (npx/uvx)"
         ));
     };
 

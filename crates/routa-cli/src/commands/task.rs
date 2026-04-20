@@ -23,10 +23,7 @@ pub async fn list(state: &AppState, workspace_id: &str, limit: usize) -> Result<
     {
         let shown = tasks.len().min(limit);
         let hidden = tasks.len().saturating_sub(shown);
-        println!(
-            "Tasks ({} shown, {} hidden) in workspace {}:",
-            shown, hidden, workspace_id
-        );
+        println!("Tasks ({shown} shown, {hidden} hidden) in workspace {workspace_id}:");
         for task in tasks.iter().take(limit) {
             let status = task
                 .get("status")

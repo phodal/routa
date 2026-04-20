@@ -8,7 +8,7 @@
 import { eq, and } from "drizzle-orm";
 import type { PostgresDatabase } from "../db";
 import { specialists } from "../db/schema";
-import type { SpecialistConfig } from "../orchestration/specialist-prompts";
+import type { SpecialistConfig } from "../specialists/specialist-types";
 import { AgentRole, ModelTier } from "../models/agent";
 
 // ─── Types ─────────────────────────────────────────────────────────────────

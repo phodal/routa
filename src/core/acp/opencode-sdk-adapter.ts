@@ -1,45 +1,13 @@
 /**
- * OpenCode SDK Adapter for Serverless Environments (Vercel)
- *
- * Supports two modes:
- *
- * **Mode 1: Remote Server** — connects to a running OpenCode server
- * via the official @opencode-ai/sdk (REST API + SSE).
- *
- * **Mode 2: Direct API** — calls an OpenAI-compatible chat completions
- * endpoint directly (e.g. BigModel's Coding API). This mode is used when
- * OPENCODE_SERVER_URL is not set but OPENCODE_API_KEY (or ANTHROPIC_AUTH_TOKEN)
- * is available. It provides a lightweight chat experience without requiring
- * a running OpenCode server.
- *
- * Configuration via environment variables:
- *
- * Remote Server mode:
- * - OPENCODE_SERVER_URL: Remote server endpoint (required for this mode)
- * - OPENCODE_MODEL: Model in "providerID/modelID" format (optional)
- * - OPENCODE_DIRECTORY: Project working directory on the server (optional)
- *
- * Direct API mode:
- * - OPENCODE_API_KEY: API key (falls back to ANTHROPIC_AUTH_TOKEN)
- * - OPENCODE_BASE_URL: Chat completions base URL
- *     (default: https://open.bigmodel.cn/api/coding/paas/v4)
- * - OPENCODE_MODEL_ID: Model ID for completions (default: GLM-4.7)
- *
- * Common:
- * - API_TIMEOUT_MS: Request timeout in milliseconds (default: 55000)
+ * OpenCode adapters for serverless runtimes.
+ * Supports both the remote SDK client and the direct OpenAI-compatible fallback.
  */
 
-import type { NotificationHandler, JsonRpcMessage } from "@/core/acp/processer";
+import type { NotificationHandler, JsonRpcMessage } from "@/core/acp/protocol-types";
 import { isServerlessEnvironment } from "@/core/acp/api-based-providers";
-import { getMcpToolDefinitions, executeMcpTool } from "@/core/mcp/mcp-tool-executor";
-import { createRoutaMcpServer } from "@/core/mcp/routa-mcp-server";
-import { KanbanTools } from "@/core/tools/kanban-tools";
 import { getHttpSessionStore } from "@/core/acp/http-session-store";
 import { renameSessionInDb } from "@/core/acp/session-db-persister";
 
-/**
- * Helper to create a JSON-RPC notification message
- */
 function createNotification(method: string, params: Record<string, unknown>): JsonRpcMessage {
   return {
     jsonrpc: "2.0",
@@ -130,32 +98,18 @@ interface OpencodeEvent {
   properties: Record<string, unknown>;
 }
 
-/**
- * Check if OpenCode SDK mode is available.
- * Returns true when either a remote server URL OR a direct API key is configured.
- */
 export function isOpencodeServerConfigured(): boolean {
   return !!process.env.OPENCODE_SERVER_URL || isOpencodeDirectApiConfigured();
 }
 
-/**
- * Check if Direct API mode is available (no server needed).
- * Requires OPENCODE_API_KEY or falls back to ANTHROPIC_AUTH_TOKEN.
- */
 export function isOpencodeDirectApiConfigured(): boolean {
   return !!(process.env.OPENCODE_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN);
 }
 
-/**
- * Get the OpenCode server URL from environment
- */
 export function getOpencodeServerUrl(): string | null {
   return process.env.OPENCODE_SERVER_URL || null;
 }
 
-/**
- * Get OpenCode SDK configuration from environment
- */
 export function getOpencodeConfig(): {
   serverUrl: string | undefined;
   model: { providerID: string; modelID: string } | undefined;
@@ -188,15 +142,6 @@ export function getOpencodeConfig(): {
   };
 }
 
-/**
- * OpenCode SDK Adapter — wraps the official OpenCode SDK to provide an
- * ACP-compatible streaming interface for serverless environments.
- *
- * Session Continuity:
- * - Maintains OpenCode session ID for multi-turn conversations
- * - Uses promptAsync + SSE events for non-blocking streaming
- * - Maps OpenCode events to ACP agent_message_chunk / tool_call notifications
- */
 export class OpencodeSdkAdapter {
   private client: OpencodeClient | null = null;
   /** Our ACP session ID (for notifications) */
@@ -928,6 +873,7 @@ export class OpencodeSdkDirectAdapter {
     };
 
     // Build OpenAI-compatible tool definitions for function calling
+    const { getMcpToolDefinitions } = await import("@/core/mcp/mcp-tool-executor");
     const toolDefs = getMcpToolDefinitions("essential").map((t) => ({
       type: "function" as const,
       function: { name: t.name, description: t.description, parameters: t.inputSchema },
@@ -1109,6 +1055,15 @@ export class OpencodeSdkDirectAdapter {
             let toolResult: unknown;
             try {
               if (workspaceId) {
+                const [
+                  { createRoutaMcpServer },
+                  { executeMcpTool },
+                  { KanbanTools },
+                ] = await Promise.all([
+                  import("@/core/mcp/routa-mcp-server"),
+                  import("@/core/mcp/mcp-tool-executor"),
+                  import("@/core/tools/kanban-tools"),
+                ]);
                 const { system } = createRoutaMcpServer({ workspaceId, toolMode: "essential" });
                 const kanbanTools = new KanbanTools(system.kanbanBoardStore, system.taskStore);
                 kanbanTools.setEventBus(system.eventBus);

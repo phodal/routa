@@ -59,7 +59,7 @@ pub fn get_clone_base_dir() -> PathBuf {
 }
 
 pub fn repo_to_dir_name(owner: &str, repo: &str) -> String {
-    format!("{}--{}", owner, repo)
+    format!("{owner}--{repo}")
 }
 
 pub fn dir_name_to_repo(dir_name: &str) -> String {
@@ -167,14 +167,14 @@ pub fn checkout_branch(repo_path: &str, branch: &str) -> bool {
 pub fn delete_branch(repo_path: &str, branch: &str) -> Result<(), String> {
     let current_branch = get_current_branch(repo_path).unwrap_or_default();
     if current_branch == branch {
-        return Err(format!("Cannot delete the current branch '{}'", branch));
+        return Err(format!("Cannot delete the current branch '{branch}'"));
     }
 
     if !list_local_branches(repo_path)
         .iter()
         .any(|candidate| candidate == branch)
     {
-        return Err(format!("Branch '{}' not found", branch));
+        return Err(format!("Branch '{branch}' not found"));
     }
 
     let output = Command::new("git")
@@ -232,7 +232,7 @@ pub fn get_branch_status(repo_path: &str, branch: &str) -> BranchStatus {
             "rev-list",
             "--left-right",
             "--count",
-            &format!("{}...origin/{}", branch, branch),
+            &format!("{branch}...origin/{branch}"),
         ])
         .current_dir(repo_path)
         .output()
@@ -598,7 +598,7 @@ pub fn compute_historical_related_files(
 
 fn file_exists_at_revision(repo_root: &Path, revision: &str, file_path: &str) -> bool {
     Command::new("git")
-        .args(["cat-file", "-e", &format!("{}:{}", revision, file_path)])
+        .args(["cat-file", "-e", &format!("{revision}:{file_path}")])
         .current_dir(repo_root)
         .output()
         .map(|output| output.status.success())
@@ -619,7 +619,7 @@ fn collect_interesting_lines(
     }
 
     let hunk_pattern = Regex::new(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@")
-        .map_err(|err| format!("Failed to compile diff hunk regex: {}", err))?;
+        .map_err(|err| format!("Failed to compile diff hunk regex: {err}"))?;
     let mut interesting_lines = BTreeSet::new();
 
     for line in raw_diff.lines() {
@@ -654,7 +654,7 @@ fn load_blame_chunks(
     file_path: &str,
     cache: &mut HashMap<String, Vec<BlameChunk>>,
 ) -> Result<Vec<BlameChunk>, String> {
-    let cache_key = format!("{}:{}", revision, file_path);
+    let cache_key = format!("{revision}:{file_path}");
     if let Some(chunks) = cache.get(&cache_key) {
         return Ok(chunks.clone());
     }
@@ -671,7 +671,7 @@ fn load_blame_chunks(
     };
 
     let header_pattern = Regex::new(r"^([0-9a-f]{40}) \d+ (\d+) (\d+)$")
-        .map_err(|err| format!("Failed to compile blame regex: {}", err))?;
+        .map_err(|err| format!("Failed to compile blame regex: {err}"))?;
     let mut chunks = Vec::new();
     let mut current_chunk: Option<BlameChunk> = None;
 

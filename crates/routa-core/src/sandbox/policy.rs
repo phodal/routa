@@ -591,8 +591,7 @@ fn resolve_user_path(raw_path: &str, base_dir: Option<&Path>) -> Result<PathBuf,
         canonicalize_existing_path(&base_dir.join(candidate))
     } else {
         Err(format!(
-            "Relative sandbox path '{}' requires a workspace/codebase root or explicit workdir base.",
-            raw_path
+            "Relative sandbox path '{raw_path}' requires a workspace/codebase root or explicit workdir base."
         ))
     }
 }
@@ -827,10 +826,7 @@ fn capability_reason(
         }
         SandboxCapability::NetworkAccess => {
             if capabilities.contains(&SandboxCapability::NetworkAccess) {
-                format!(
-                    "Allow-listed with effective network mode {:?}.",
-                    network_mode
-                )
+                format!("Allow-listed with effective network mode {network_mode:?}.")
             } else {
                 "Not allow-listed; network defaults to none.".to_string()
             }
@@ -871,7 +867,7 @@ fn to_container_path(scope_root: &Path, host_path: &Path) -> String {
         .collect::<Vec<_>>()
         .join("/");
 
-    format!("{}/{}", SANDBOX_SCOPE_CONTAINER_ROOT, suffix)
+    format!("{SANDBOX_SCOPE_CONTAINER_ROOT}/{suffix}")
 }
 
 fn collect_override_mounts(

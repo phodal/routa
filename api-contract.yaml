@@ -3193,6 +3193,46 @@ paths:
         "400":
           description: Invalid fitness context
 
+  /api/graph/analyze:
+    get:
+      operationId: analyzeGraph
+      summary: Analyze repository dependency graph and return graph data
+      parameters:
+        - name: repoRoot
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: lang
+          in: query
+          schema:
+            type: string
+            enum: [auto, rust, typescript, java]
+        - name: depth
+          in: query
+          schema:
+            type: string
+            enum: [fast, normal]
+      responses:
+        "200":
+          description: Dependency graph analysis result
+          content:
+            application/json:
+              schema:
+                type: object
+        "400":
+          description: Invalid graph analysis input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Graph analysis failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /api/tasks/{taskId}/changes:
     get:
       operationId: getTaskChanges

@@ -73,7 +73,7 @@ rules:
     relation: must_not_depend_on
     to: client_ts
     engine_hints:
-      - archunitts
+      - graph
 
   - id: ts_backend_core_no_api_to_client
     title: src/app/api must not depend on src/client
@@ -85,7 +85,7 @@ rules:
     relation: must_not_depend_on
     to: client_ts
     engine_hints:
-      - archunitts
+      - graph
 
   - id: ts_backend_core_no_cycles
     title: src/core should be cycle free
@@ -96,4 +96,4 @@ rules:
     scope: core_ts
     relation: must_be_acyclic
     engine_hints:
-      - archunitts
+      - graph

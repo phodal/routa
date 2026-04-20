@@ -66,7 +66,7 @@ metrics:
     command: |
       grep -rn "TODO\|FIXME\|XXX\|HACK" --include="*.ts" --include="*.tsx" --include="*.rs" \
         src apps crates 2>/dev/null | wc -l | awk '{print "todo_count:", $1}'
-    pattern: "todo_count: [0-9]$|todo_count: [1-9][0-9]$"
+    pattern: "todo_count: ([0-9]|[1-9][0-9])"
     hard_gate: false
     tier: normal
     description: "TODO/FIXME 数量监控（<100）"

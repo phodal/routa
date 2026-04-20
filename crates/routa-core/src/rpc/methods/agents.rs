@@ -42,14 +42,14 @@ pub async fn list(state: &AppState, params: ListParams) -> Result<ListResult, Rp
         state.agent_store.list_by_parent(parent_id).await?
     } else if let Some(role_str) = &params.role {
         let role = AgentRole::from_str(role_str)
-            .ok_or_else(|| RpcError::BadRequest(format!("Invalid role: {}", role_str)))?;
+            .ok_or_else(|| RpcError::BadRequest(format!("Invalid role: {role_str}")))?;
         state
             .agent_store
             .list_by_role(&params.workspace_id, &role)
             .await?
     } else if let Some(status_str) = &params.status {
         let status = AgentStatus::from_str(status_str)
-            .ok_or_else(|| RpcError::BadRequest(format!("Invalid status: {}", status_str)))?;
+            .ok_or_else(|| RpcError::BadRequest(format!("Invalid status: {status_str}")))?;
         state
             .agent_store
             .list_by_status(&params.workspace_id, &status)

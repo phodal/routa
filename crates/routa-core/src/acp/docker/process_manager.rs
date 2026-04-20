@@ -167,8 +167,7 @@ impl DockerProcessManager {
         // Set Routa MCP URL
         let routa_port = std::env::var("PORT").unwrap_or_else(|_| "3000".to_string());
         run_parts.push(format!(
-            "-e=ROUTA_MCP_URL=http://host.docker.internal:{}/api/mcp",
-            routa_port
+            "-e=ROUTA_MCP_URL=http://host.docker.internal:{routa_port}/api/mcp"
         ));
 
         // Forward provider API keys
@@ -176,7 +175,7 @@ impl DockerProcessManager {
 
         // Add labels
         for (key, value) in &labels {
-            run_parts.push(format!("--label={}={}", key, value));
+            run_parts.push(format!("--label={key}={value}"));
         }
 
         // Add additional volumes
@@ -266,7 +265,7 @@ impl DockerProcessManager {
         let info = self
             .get_container(session_id)
             .await
-            .ok_or_else(|| format!("No managed Docker container for session {}", session_id))?;
+            .ok_or_else(|| format!("No managed Docker container for session {session_id}"))?;
 
         let timeout = Duration::from_millis(timeout_ms.unwrap_or(DEFAULT_HEALTH_TIMEOUT_MS));
         let health_url = format!("http://127.0.0.1:{}/health", info.host_port);
@@ -428,9 +427,9 @@ impl DockerProcessManager {
             }
             Ok(Ok(output)) => {
                 let stderr = String::from_utf8_lossy(&output.stderr);
-                Err(format!("Docker command failed: {}", stderr))
+                Err(format!("Docker command failed: {stderr}"))
             }
-            Ok(Err(e)) => Err(format!("Failed to run docker: {}", e)),
+            Ok(Err(e)) => Err(format!("Failed to run docker: {e}")),
             Err(_) => Err("Docker command timed out".to_string()),
         }
     }
@@ -442,7 +441,7 @@ impl DockerProcessManager {
             .await
         {
             Ok(logs) => logs,
-            Err(e) => format!("Failed to read logs: {}", e),
+            Err(e) => format!("Failed to read logs: {e}"),
         }
     }
 
@@ -478,12 +477,12 @@ impl DockerProcessManager {
         let temp_dir = std::env::temp_dir().join("routa-opencode-auth");
         tokio::fs::create_dir_all(&temp_dir)
             .await
-            .map_err(|e| format!("Failed to create temp directory: {}", e))?;
+            .map_err(|e| format!("Failed to create temp directory: {e}"))?;
 
-        let temp_file = temp_dir.join(format!("auth-{}.json", session_id));
+        let temp_file = temp_dir.join(format!("auth-{session_id}.json"));
         tokio::fs::write(&temp_file, auth_json)
             .await
-            .map_err(|e| format!("Failed to write auth.json: {}", e))?;
+            .map_err(|e| format!("Failed to write auth.json: {e}"))?;
 
         tracing::info!(
             "[DockerProcessManager] Mounted auth.json from {:?}",

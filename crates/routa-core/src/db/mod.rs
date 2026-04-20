@@ -42,10 +42,10 @@ impl Database {
         }
 
         let conn = Connection::open(db_path)
-            .map_err(|e| ServerError::Database(format!("Failed to open database: {}", e)))?;
+            .map_err(|e| ServerError::Database(format!("Failed to open database: {e}")))?;
 
         conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;")
-            .map_err(|e| ServerError::Database(format!("Failed to set pragmas: {}", e)))?;
+            .map_err(|e| ServerError::Database(format!("Failed to set pragmas: {e}")))?;
 
         let db = Self {
             conn: Arc::new(Mutex::new(conn)),
@@ -60,10 +60,10 @@ impl Database {
     /// Open an in-memory database (for testing).
     pub fn open_in_memory() -> Result<Self, ServerError> {
         let conn = Connection::open_in_memory()
-            .map_err(|e| ServerError::Database(format!("Failed to open in-memory db: {}", e)))?;
+            .map_err(|e| ServerError::Database(format!("Failed to open in-memory db: {e}")))?;
 
         conn.execute_batch("PRAGMA foreign_keys=ON;")
-            .map_err(|e| ServerError::Database(format!("Failed to set pragmas: {}", e)))?;
+            .map_err(|e| ServerError::Database(format!("Failed to set pragmas: {e}")))?;
 
         let db = Self {
             conn: Arc::new(Mutex::new(conn)),
@@ -82,7 +82,7 @@ impl Database {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| ServerError::Database(format!("Lock poisoned: {}", e)))?;
+            .map_err(|e| ServerError::Database(format!("Lock poisoned: {e}")))?;
         f(&conn).map_err(|e| ServerError::Database(e.to_string()))
     }
 
@@ -95,7 +95,7 @@ impl Database {
         let db = self.clone();
         tokio::task::spawn_blocking(move || db.with_conn(f))
             .await
-            .map_err(|e| ServerError::Database(format!("Task join error: {}", e)))?
+            .map_err(|e| ServerError::Database(format!("Task join error: {e}")))?
     }
 
     /// Create all tables if they don't exist.

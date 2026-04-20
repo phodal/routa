@@ -75,7 +75,7 @@ impl DockerOpenCodeAdapter {
             .get(&url)
             .send()
             .await
-            .map_err(|e| format!("Health check failed: {}", e))?;
+            .map_err(|e| format!("Health check failed: {e}"))?;
 
         if !resp.status().is_success() {
             return Err(format!(
@@ -106,7 +106,7 @@ impl DockerOpenCodeAdapter {
             .json(&body)
             .send()
             .await
-            .map_err(|e| format!("Failed to create session: {}", e))?;
+            .map_err(|e| format!("Failed to create session: {e}"))?;
 
         if !resp.status().is_success() {
             let status = resp.status();
@@ -118,7 +118,7 @@ impl DockerOpenCodeAdapter {
                 if body.is_empty() {
                     "".to_string()
                 } else {
-                    format!(": {}", body)
+                    format!(": {body}")
                 }
             ));
         }
@@ -126,7 +126,7 @@ impl DockerOpenCodeAdapter {
         let response: NewSessionResponse = resp
             .json()
             .await
-            .map_err(|e| format!("Failed to parse session response: {}", e))?;
+            .map_err(|e| format!("Failed to parse session response: {e}"))?;
 
         *self.remote_session_id.write().await = Some(response.session_id.clone());
 
@@ -193,7 +193,7 @@ impl DockerOpenCodeAdapter {
             .json(&body)
             .send()
             .await
-            .map_err(|e| format!("Docker OpenCode prompt failed: {}", e))?;
+            .map_err(|e| format!("Docker OpenCode prompt failed: {e}"))?;
 
         if !resp.status().is_success() {
             return Err(format!(
@@ -215,7 +215,7 @@ impl DockerOpenCodeAdapter {
             let bytes = resp
                 .bytes()
                 .await
-                .map_err(|e| format!("Failed to read SSE stream: {}", e))?;
+                .map_err(|e| format!("Failed to read SSE stream: {e}"))?;
             let text = String::from_utf8_lossy(&bytes);
 
             self.parse_sse_stream(&text, &session_id).await;

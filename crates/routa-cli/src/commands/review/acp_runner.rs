@@ -66,7 +66,7 @@ pub(crate) async fn call_security_specialist_via_acp(
             None,
         )
         .await
-        .map_err(|error| format!("Failed to create ACP session: {}", error))?;
+        .map_err(|error| format!("Failed to create ACP session: {error}"))?;
 
     let mut maybe_rx = state.acp_manager.subscribe(&session_id).await;
     let prompt = build_security_final_prompt(specialist, user_request);
@@ -75,7 +75,7 @@ pub(crate) async fn call_security_specialist_via_acp(
         .acp_manager
         .prompt(&session_id, &prompt)
         .await
-        .map_err(|error| format!("Failed to send prompt: {}", error))?;
+        .map_err(|error| format!("Failed to send prompt: {error}"))?;
 
     let streamed_output = if let Some(mut rx) = maybe_rx.take() {
         wait_for_turn_complete_with_updates(state, &session_id, &mut rx, verbose).await?
@@ -123,10 +123,10 @@ fn build_security_final_prompt(specialist: &SpecialistDef, user_request: &str) -
     let mut prompt = specialist.system_prompt.clone();
     if let Some(reminder) = &specialist.role_reminder {
         if !reminder.trim().is_empty() {
-            prompt.push_str(&format!("\n\n---\n**Reminder:** {}", reminder));
+            prompt.push_str(&format!("\n\n---\n**Reminder:** {reminder}"));
         }
     }
-    prompt.push_str(&format!("\n\n---\n\n## User Request\n\n{}", user_request));
+    prompt.push_str(&format!("\n\n---\n\n## User Request\n\n{user_request}"));
     prompt
 }
 

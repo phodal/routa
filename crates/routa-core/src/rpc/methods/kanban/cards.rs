@@ -127,7 +127,7 @@ pub async fn move_card(
         .kanban_store
         .get(&board_id)
         .await?
-        .ok_or_else(|| RpcError::NotFound(format!("Board {} not found", board_id)))?;
+        .ok_or_else(|| RpcError::NotFound(format!("Board {board_id} not found")))?;
     ensure_column_exists(&board, &params.target_column_id)?;
     let target_column = board
         .columns

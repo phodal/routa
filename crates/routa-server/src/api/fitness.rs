@@ -22,6 +22,9 @@ use crate::state::AppState;
 
 const FITNESS_PROFILES: [&str; 2] = ["generic", "agent_orchestrator"];
 const ARCHITECTURE_SUITES: [&str; 2] = ["boundaries", "cycles"];
+const PREFER_CURRENT_REPO_OPTIONS: ResolveRepoRootOptions = ResolveRepoRootOptions {
+    prefer_current_repo_for_default_workspace: true,
+};
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -65,9 +68,7 @@ async fn analyze_fitness(
         body.codebase_id.as_deref(),
         body.repo_path.as_deref(),
         "缺少 fitness 分析上下文，请提供 workspaceId / codebaseId / repoPath 之一",
-        ResolveRepoRootOptions {
-            prefer_current_repo_for_default_workspace: true,
-        },
+        PREFER_CURRENT_REPO_OPTIONS,
     )
     .await
     .map_err(map_context_error(
@@ -101,9 +102,7 @@ async fn get_fitness_report(
         query.codebase_id.as_deref(),
         query.repo_path.as_deref(),
         "缺少 fitness 上下文，请提供 workspaceId / codebaseId / repoPath 之一",
-        ResolveRepoRootOptions {
-            prefer_current_repo_for_default_workspace: true,
-        },
+        PREFER_CURRENT_REPO_OPTIONS,
     )
     .await
     .map_err(map_context_error(
@@ -163,9 +162,7 @@ async fn get_fitness_architecture(
         query.codebase_id.as_deref(),
         query.repo_path.as_deref(),
         "缺少 fitness 上下文，请提供 workspaceId / codebaseId / repoPath 之一",
-        ResolveRepoRootOptions {
-            prefer_current_repo_for_default_workspace: true,
-        },
+        PREFER_CURRENT_REPO_OPTIONS,
     )
     .await
     .map_err(map_context_error(
@@ -312,7 +309,6 @@ async fn get_fitness_plan(
     let scope = parse_scope(query.scope.as_deref());
     let fitness_dir = repo_root.join("docs/fitness");
 
-    // Return empty plan if fitness directory doesn't exist (generic repos may not have it)
     if !fitness_dir.exists() {
         return Ok(Json(json!({
             "generatedAt": chrono::Utc::now().to_rfc3339(),
@@ -448,7 +444,6 @@ async fn get_fitness_specs(
 
     let fitness_dir = repo_root.join("docs/fitness");
 
-    // Return empty result if fitness directory doesn't exist (generic repos may not have it)
     if !fitness_dir.exists() {
         return Ok(Json(json!({
             "generatedAt": chrono::Utc::now().to_rfc3339(),
@@ -638,11 +633,16 @@ async fn run_fitness_profile(
 
 async fn run_architecture_suite(repo_root: &Path, suite: &str) -> Result<Value, String> {
     let app_root = std::env::current_dir().map_err(|error| error.to_string())?;
-    let script_path = app_root.join("scripts/fitness/check-backend-architecture.ts");
     let args = vec![
-        "--import".to_string(),
-        "tsx".to_string(),
-        script_path.to_string_lossy().to_string(),
+        "run".to_string(),
+        "-q".to_string(),
+        "-p".to_string(),
+        "routa-cli".to_string(),
+        "--".to_string(),
+        "fitness".to_string(),
+        "arch-dsl".to_string(),
+        "--report".to_string(),
+        "backend-core-suite".to_string(),
         "--repo-root".to_string(),
         repo_root.to_string_lossy().to_string(),
         "--suite".to_string(),
@@ -650,7 +650,7 @@ async fn run_architecture_suite(repo_root: &Path, suite: &str) -> Result<Value, 
         "--json".to_string(),
     ];
 
-    let output = Command::new("node")
+    let output = Command::new("cargo")
         .args(&args)
         .current_dir(&app_root)
         .stdout(Stdio::piped())

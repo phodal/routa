@@ -33,7 +33,7 @@ async fn query_traces(
 ) -> Result<Json<serde_json::Value>, ServerError> {
     // Get current working directory for trace base path
     let cwd = std::env::current_dir()
-        .map_err(|e| ServerError::Internal(format!("Failed to get cwd: {}", e)))?;
+        .map_err(|e| ServerError::Internal(format!("Failed to get cwd: {e}")))?;
 
     let reader = TraceReader::new(&cwd);
     let query = params.to_trace_query();
@@ -41,7 +41,7 @@ async fn query_traces(
     let traces = reader
         .query(&query)
         .await
-        .map_err(|e| ServerError::Internal(format!("Failed to query traces: {}", e)))?;
+        .map_err(|e| ServerError::Internal(format!("Failed to query traces: {e}")))?;
 
     Ok(Json(serde_json::json!({
         "traces": traces,
@@ -54,13 +54,13 @@ async fn get_trace_stats(
     State(_state): State<AppState>,
 ) -> Result<Json<serde_json::Value>, ServerError> {
     let cwd = std::env::current_dir()
-        .map_err(|e| ServerError::Internal(format!("Failed to get cwd: {}", e)))?;
+        .map_err(|e| ServerError::Internal(format!("Failed to get cwd: {e}")))?;
 
     let reader = TraceReader::new(&cwd);
     let stats = reader
         .stats()
         .await
-        .map_err(|e| ServerError::Internal(format!("Failed to get trace stats: {}", e)))?;
+        .map_err(|e| ServerError::Internal(format!("Failed to get trace stats: {e}")))?;
 
     Ok(Json(serde_json::json!({ "stats": stats })))
 }
@@ -71,17 +71,17 @@ async fn get_trace_by_id(
     axum::extract::Path(id): axum::extract::Path<String>,
 ) -> Result<Json<serde_json::Value>, ServerError> {
     let cwd = std::env::current_dir()
-        .map_err(|e| ServerError::Internal(format!("Failed to get cwd: {}", e)))?;
+        .map_err(|e| ServerError::Internal(format!("Failed to get cwd: {e}")))?;
 
     let reader = TraceReader::new(&cwd);
     let trace = reader
         .get_by_id(&id)
         .await
-        .map_err(|e| ServerError::Internal(format!("Failed to get trace: {}", e)))?;
+        .map_err(|e| ServerError::Internal(format!("Failed to get trace: {e}")))?;
 
     match trace {
         Some(trace) => Ok(Json(serde_json::json!({ "trace": trace }))),
-        None => Err(ServerError::NotFound(format!("Trace {} not found", id))),
+        None => Err(ServerError::NotFound(format!("Trace {id} not found"))),
     }
 }
 
@@ -91,7 +91,7 @@ async fn export_traces(
     QueryParams(params): QueryParams<TraceQueryParams>,
 ) -> Result<Json<serde_json::Value>, ServerError> {
     let cwd = std::env::current_dir()
-        .map_err(|e| ServerError::Internal(format!("Failed to get cwd: {}", e)))?;
+        .map_err(|e| ServerError::Internal(format!("Failed to get cwd: {e}")))?;
 
     let reader = TraceReader::new(&cwd);
     let query = params.to_trace_query();
@@ -99,7 +99,7 @@ async fn export_traces(
     let traces_json = reader
         .export(&query)
         .await
-        .map_err(|e| ServerError::Internal(format!("Failed to export traces: {}", e)))?;
+        .map_err(|e| ServerError::Internal(format!("Failed to export traces: {e}")))?;
 
     Ok(Json(serde_json::json!({
         "export": traces_json,

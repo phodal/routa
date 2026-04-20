@@ -46,11 +46,11 @@ async fn list_agents(
         state.agent_store.list_by_parent(parent_id).await?
     } else if let Some(role_str) = &query.role {
         let role = AgentRole::from_str(role_str)
-            .ok_or_else(|| ServerError::BadRequest(format!("Invalid role: {}", role_str)))?;
+            .ok_or_else(|| ServerError::BadRequest(format!("Invalid role: {role_str}")))?;
         state.agent_store.list_by_role(workspace_id, &role).await?
     } else if let Some(status_str) = &query.status {
         let status = AgentStatus::from_str(status_str)
-            .ok_or_else(|| ServerError::BadRequest(format!("Invalid status: {}", status_str)))?;
+            .ok_or_else(|| ServerError::BadRequest(format!("Invalid status: {status_str}")))?;
         state
             .agent_store
             .list_by_status(workspace_id, &status)
@@ -72,7 +72,7 @@ async fn get_agent_by_path(
         .get(&id)
         .await?
         .map(Json)
-        .ok_or_else(|| ServerError::NotFound(format!("Agent {} not found", id)))
+        .ok_or_else(|| ServerError::NotFound(format!("Agent {id} not found")))
 }
 
 #[derive(Debug, Deserialize)]

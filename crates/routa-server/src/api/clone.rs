@@ -77,7 +77,7 @@ fn parse_git_clone_error(stderr: &str, exit_code: Option<i32>) -> String {
     if !stderr.trim().is_empty() {
         let first_line = stderr.lines().next().unwrap_or("").trim();
         if !first_line.is_empty() {
-            return format!("Clone failed: {}", first_line);
+            return format!("Clone failed: {first_line}");
         }
     }
 
@@ -107,7 +107,7 @@ async fn clone_repo(
     let repo_name = git::repo_to_dir_name(&parsed.owner, &parsed.repo);
     let base_dir = git::get_clone_base_dir();
     std::fs::create_dir_all(&base_dir)
-        .map_err(|e| ServerError::Internal(format!("Failed to create base dir: {}", e)))?;
+        .map_err(|e| ServerError::Internal(format!("Failed to create base dir: {e}")))?;
 
     let target_dir = base_dir.join(&repo_name);
     let target_str = target_dir.to_string_lossy().to_string();
@@ -158,7 +158,7 @@ async fn clone_repo(
     })
     .await
     .map_err(|e| ServerError::Internal(e.to_string()))?
-    .map_err(|e| ServerError::Internal(format!("Clone failed: {}", e)))?;
+    .map_err(|e| ServerError::Internal(format!("Clone failed: {e}")))?;
 
     // Check if clone succeeded
     if !output.status.success() {
@@ -266,8 +266,7 @@ async fn switch_branch(
 
     if !success {
         return Err(ServerError::Internal(format!(
-            "Failed to checkout branch '{}'",
-            branch
+            "Failed to checkout branch '{branch}'"
         )));
     }
 

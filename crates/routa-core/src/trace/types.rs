@@ -95,7 +95,7 @@ impl Contributor {
     /// Create a new contributor with provider and optional model.
     pub fn new(provider: impl Into<String>, model: Option<String>) -> Self {
         let provider = provider.into();
-        let normalized_id = model.as_ref().map(|m| format!("{}/{}", provider, m));
+        let normalized_id = model.as_ref().map(|m| format!("{provider}/{m}"));
         Self {
             provider,
             model,

@@ -44,7 +44,7 @@ async fn main() {
     println!("Starting standalone Routa Rust backend on 127.0.0.1:3210...");
     println!("Database: /tmp/routa-test.db");
     if let Some(ref dir) = static_dir {
-        println!("Frontend: {}", dir);
+        println!("Frontend: {dir}");
     } else {
         println!("Frontend: (none - API only)");
     }
@@ -52,7 +52,7 @@ async fn main() {
 
     match routa_server::start_server(config).await {
         Ok(addr) => {
-            println!("Server listening on http://{}", addr);
+            println!("Server listening on http://{addr}");
             println!("\nAvailable endpoints:");
             println!("  GET  /api/health");
             println!("  GET  /api/agents");
@@ -72,7 +72,7 @@ async fn main() {
             println!("\nShutting down...");
         }
         Err(e) => {
-            eprintln!("Failed to start server: {}", e);
+            eprintln!("Failed to start server: {e}");
             std::process::exit(1);
         }
     }

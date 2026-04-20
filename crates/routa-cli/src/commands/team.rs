@@ -73,7 +73,7 @@ pub async fn run(
                 .and_then(|e| e.get("message"))
                 .and_then(|m| m.as_str())
                 .unwrap_or("Unknown error");
-            format!("Failed to create team lead agent: {}", error_msg)
+            format!("Failed to create team lead agent: {error_msg}")
         })?
         .to_string();
 
@@ -90,11 +90,11 @@ pub async fn run(
         format!("{} specialists available", team_count)
     );
     println!("║  Workspace  : {:<43} ║", &workspace_id);
-    println!("║  Provider   : {:<43} ║", provider);
+    println!("║  Provider   : {provider:<43} ║");
     println!("║  CWD        : {:<43} ║", truncate_path(&cwd, 43));
     println!("╚══════════════════════════════════════════════════════════╝");
     println!();
-    println!("📋 Requirement: {}", task_prompt);
+    println!("📋 Requirement: {task_prompt}");
     println!();
 
     // ── 6. Create ACP session for the team lead ──────────────────────────
@@ -120,7 +120,7 @@ pub async fn run(
         Ok((sid, _)) => {
             tracing::info!("Team lead session created: {}", sid);
             if let Err(err) = update_agent_status(&router, &agent_id, "ACTIVE").await {
-                eprintln!("Failed to mark agent {} ACTIVE: {}", agent_id, err);
+                eprintln!("Failed to mark agent {agent_id} ACTIVE: {err}");
             }
             if let Err(e) = state
                 .acp_session_store
@@ -137,14 +137,14 @@ pub async fn run(
                 })
                 .await
             {
-                eprintln!("Failed to persist team lead session {}: {}", session_id, e);
+                eprintln!("Failed to persist team lead session {session_id}: {e}");
             }
         }
         Err(e) => {
             if let Err(err) = update_agent_status(&router, &agent_id, "ERROR").await {
-                eprintln!("Failed to mark agent {} ERROR: {}", agent_id, err);
+                eprintln!("Failed to mark agent {agent_id} ERROR: {err}");
             }
-            return Err(format!("Failed to create ACP session: {}", e));
+            return Err(format!("Failed to create ACP session: {e}"));
         }
     }
 
@@ -166,7 +166,7 @@ pub async fn run(
         Some(rx) => rx,
         None => {
             if let Err(err) = update_agent_status(&router, &agent_id, "ERROR").await {
-                eprintln!("Failed to mark agent {} ERROR: {}", agent_id, err);
+                eprintln!("Failed to mark agent {agent_id} ERROR: {err}");
             }
             state.acp_manager.kill_session(&session_id).await;
             orchestrator.cleanup(&session_id).await;
@@ -193,11 +193,11 @@ pub async fn run(
         .await
     {
         if let Err(status_err) = update_agent_status(&router, &agent_id, "ERROR").await {
-            eprintln!("Failed to mark agent {} ERROR: {}", agent_id, status_err);
+            eprintln!("Failed to mark agent {agent_id} ERROR: {status_err}");
         }
         state.acp_manager.kill_session(&session_id).await;
         orchestrator.cleanup(&session_id).await;
-        return Err(format!("Failed to send prompt: {}", err));
+        return Err(format!("Failed to send prompt: {err}"));
     }
 
     // ── 10. Stream updates until completion ──────────────────────────────
@@ -235,7 +235,7 @@ pub async fn run(
                 if idle_count >= max_idle {
                     renderer.finish();
                     final_status = "ERROR";
-                    println!("⏰ Timeout: no activity for {} seconds", max_idle);
+                    println!("⏰ Timeout: no activity for {max_idle} seconds");
                     break;
                 }
                 if !state.acp_manager.is_alive(&session_id).await {
@@ -263,7 +263,7 @@ pub async fn run(
         .await
         {
             if let Err(status_err) = update_agent_status(&router, &agent_id, "ERROR").await {
-                eprintln!("Failed to mark agent {} ERROR: {}", agent_id, status_err);
+                eprintln!("Failed to mark agent {agent_id} ERROR: {status_err}");
             }
             state.acp_manager.kill_session(&session_id).await;
             orchestrator.cleanup(&session_id).await;
@@ -272,10 +272,7 @@ pub async fn run(
     }
 
     if let Err(err) = update_agent_status(&router, &agent_id, final_status).await {
-        eprintln!(
-            "Failed to mark agent {} {}: {}",
-            agent_id, final_status, err
-        );
+        eprintln!("Failed to mark agent {agent_id} {final_status}: {err}");
     }
 
     // ── 12. Print summary ────────────────────────────────────────────────
@@ -321,7 +318,7 @@ async fn run_interactive_repl(
     io::stdout().flush().ok();
 
     for line in reader.lines() {
-        let line = line.map_err(|e| format!("Failed to read input: {}", e))?;
+        let line = line.map_err(|e| format!("Failed to read input: {e}"))?;
         let trimmed = line.trim();
 
         if trimmed.is_empty() {
@@ -371,7 +368,7 @@ async fn run_interactive_repl(
                         stream_until_idle(session_rx, state, session_id).await;
                     }
                     Err(e) => {
-                        println!("Failed to send message: {}", e);
+                        println!("Failed to send message: {e}");
                     }
                 }
             }
@@ -482,10 +479,9 @@ fn build_team_prompt(
 
 fn build_team_user_prompt(agent_id: &str, workspace_id: &str, user_requirement: &str) -> String {
     format!(
-        "**Your Agent ID:** {}\n\
-         **Workspace ID:** {}\n\n\
-         ## User Requirement\n\n{}\n",
-        agent_id, workspace_id, user_requirement
+        "**Your Agent ID:** {agent_id}\n\
+         **Workspace ID:** {workspace_id}\n\n\
+         ## User Requirement\n\n{user_requirement}\n"
     )
 }
 
@@ -525,7 +521,7 @@ pub fn prompt_for_task() -> Result<String, String> {
     Input::with_theme(&theme)
         .with_prompt("Enter team task requirement")
         .interact_text()
-        .map_err(|e| format!("Failed to read task: {}", e))
+        .map_err(|e| format!("Failed to read task: {e}"))
 }
 
 /// Ensure workspace exists, creating if necessary.
@@ -559,7 +555,7 @@ async fn ensure_workspace(router: &RpcRouter, workspace_id: &str) -> Result<Stri
             .get("message")
             .and_then(|m| m.as_str())
             .unwrap_or("Unknown error");
-        return Err(format!("Failed to create workspace: {}", err_msg));
+        return Err(format!("Failed to create workspace: {err_msg}"));
     }
 
     let created_ws_id = create_resp
@@ -570,6 +566,6 @@ async fn ensure_workspace(router: &RpcRouter, workspace_id: &str) -> Result<Stri
         .ok_or("Failed to get created workspace ID")?
         .to_string();
 
-    println!("Created workspace: {}", created_ws_id);
+    println!("Created workspace: {created_ws_id}");
     Ok(created_ws_id)
 }

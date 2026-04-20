@@ -24,7 +24,7 @@ pub(super) async fn emit_kanban_workspace_event(
         .event_bus
         .emit(AgentEvent {
             event_type: AgentEventType::WorkspaceUpdated,
-            agent_id: format!("kanban-{}", source),
+            agent_id: format!("kanban-{source}"),
             workspace_id: workspace_id.to_string(),
             data: serde_json::json!({
                 "scope": "kanban",
@@ -51,8 +51,7 @@ pub(super) async fn ensure_workspace_exists(
         Ok(())
     } else {
         Err(ServerError::NotFound(format!(
-            "Workspace {} not found",
-            workspace_id
+            "Workspace {workspace_id} not found"
         )))
     }
 }
@@ -67,7 +66,7 @@ pub(super) async fn resolve_board(
             .kanban_store
             .get(board_id)
             .await?
-            .ok_or_else(|| RpcError::NotFound(format!("Board {} not found", board_id)));
+            .ok_or_else(|| RpcError::NotFound(format!("Board {board_id} not found")));
     }
 
     ensure_workspace_exists(state, workspace_id).await?;
@@ -114,10 +113,7 @@ pub(super) fn ensure_column_exists(board: &KanbanBoard, column_id: &str) -> Resu
     if board.columns.iter().any(|column| column.id == column_id) {
         Ok(())
     } else {
-        Err(RpcError::NotFound(format!(
-            "Column {} not found",
-            column_id
-        )))
+        Err(RpcError::NotFound(format!("Column {column_id} not found")))
     }
 }
 
@@ -140,8 +136,7 @@ pub(super) fn build_columns_from_names(names: &[String]) -> Result<Vec<KanbanCol
         let id = slugify(trimmed);
         if !seen.insert(id.clone()) {
             return Err(RpcError::BadRequest(format!(
-                "duplicate column id generated from name: {}",
-                trimmed
+                "duplicate column id generated from name: {trimmed}"
             )));
         }
         columns.push(KanbanColumn {
@@ -191,7 +186,7 @@ pub(super) fn parse_priority(priority: Option<&str>) -> Result<Option<TaskPriori
     match priority {
         Some(priority) => TaskPriority::from_str(priority)
             .map(Some)
-            .ok_or_else(|| RpcError::BadRequest(format!("Invalid priority: {}", priority))),
+            .ok_or_else(|| RpcError::BadRequest(format!("Invalid priority: {priority}"))),
         None => Ok(None),
     }
 }

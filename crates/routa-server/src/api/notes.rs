@@ -68,7 +68,7 @@ async fn get_note(
         .note_store
         .get(&note_id, &workspace_id)
         .await?
-        .ok_or_else(|| ServerError::NotFound(format!("Note {} not found", note_id)))?;
+        .ok_or_else(|| ServerError::NotFound(format!("Note {note_id} not found")))?;
     Ok(Json(serde_json::json!({ "note": note })))
 }
 

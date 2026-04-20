@@ -54,11 +54,10 @@ async fn list_worktrees(
         .codebase_store
         .get(&codebase_id)
         .await?
-        .ok_or_else(|| ServerError::NotFound(format!("Codebase {} not found", codebase_id)))?;
+        .ok_or_else(|| ServerError::NotFound(format!("Codebase {codebase_id} not found")))?;
     if codebase.workspace_id != workspace_id {
         return Err(ServerError::NotFound(format!(
-            "Codebase {} not found",
-            codebase_id
+            "Codebase {codebase_id} not found"
         )));
     }
 
@@ -85,13 +84,12 @@ async fn create_worktree(
         .codebase_store
         .get(&codebase_id)
         .await?
-        .ok_or_else(|| ServerError::NotFound(format!("Codebase {} not found", codebase_id)))?;
+        .ok_or_else(|| ServerError::NotFound(format!("Codebase {codebase_id} not found")))?;
 
     // Validate codebase belongs to the workspace
     if codebase.workspace_id != workspace_id {
         return Err(ServerError::NotFound(format!(
-            "Codebase {} not found",
-            codebase_id
+            "Codebase {codebase_id} not found"
         )));
     }
 
@@ -111,7 +109,7 @@ async fn create_worktree(
             .as_ref()
             .map(|l| git::branch_to_safe_dir_name(l))
             .unwrap_or_else(|| short_id.to_string());
-        format!("wt/{}", suffix)
+        format!("wt/{suffix}")
     });
 
     // Acquire repo lock BEFORE branch check + DB insert to prevent races
@@ -139,7 +137,7 @@ async fn create_worktree(
     // Ensure parent directory exists
     if let Some(parent) = worktree_path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| {
-            ServerError::Internal(format!("Failed to create worktree parent dir: {}", e))
+            ServerError::Internal(format!("Failed to create worktree parent dir: {e}"))
         })?;
     }
 
@@ -188,8 +186,7 @@ async fn create_worktree(
                 .update_status(&worktree.id, "error", Some(&err))
                 .await?;
             Err(ServerError::Internal(format!(
-                "Failed to create worktree: {}",
-                err
+                "Failed to create worktree: {err}"
             )))
         }
     }
@@ -205,7 +202,7 @@ async fn get_worktree(
         .worktree_store
         .get(&id)
         .await?
-        .ok_or_else(|| ServerError::NotFound(format!("Worktree {} not found", id)))?;
+        .ok_or_else(|| ServerError::NotFound(format!("Worktree {id} not found")))?;
     Ok(Json(serde_json::json!({ "worktree": worktree })))
 }
 
@@ -226,7 +223,7 @@ async fn delete_worktree(
         .worktree_store
         .get(&id)
         .await?
-        .ok_or_else(|| ServerError::NotFound(format!("Worktree {} not found", id)))?;
+        .ok_or_else(|| ServerError::NotFound(format!("Worktree {id} not found")))?;
 
     let codebase = state.codebase_store.get(&worktree.codebase_id).await?;
 
@@ -267,7 +264,7 @@ async fn validate_worktree(
         .worktree_store
         .get(&id)
         .await?
-        .ok_or_else(|| ServerError::NotFound(format!("Worktree {} not found", id)))?;
+        .ok_or_else(|| ServerError::NotFound(format!("Worktree {id} not found")))?;
 
     let path = std::path::Path::new(&worktree.worktree_path);
     if !path.exists() {

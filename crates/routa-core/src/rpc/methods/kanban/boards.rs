@@ -264,8 +264,7 @@ pub async fn create_column(
     let column_id = super::shared::slugify(name);
     if board.columns.iter().any(|column| column.id == column_id) {
         return Err(RpcError::BadRequest(format!(
-            "Column already exists: {}",
-            column_id
+            "Column already exists: {column_id}"
         )));
     }
 

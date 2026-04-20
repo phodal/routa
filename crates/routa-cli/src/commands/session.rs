@@ -15,13 +15,13 @@ pub async fn list(
         .acp_session_store
         .list(workspace_id, Some(limit))
         .await
-        .map_err(|e| format!("Failed to list sessions: {}", e))?;
+        .map_err(|e| format!("Failed to list sessions: {e}"))?;
 
     println!(
         "Sessions ({}){}:",
         sessions.len(),
         workspace_id
-            .map(|id| format!(" in workspace {}", id))
+            .map(|id| format!(" in workspace {id}"))
             .unwrap_or_default()
     );
     for session in &sessions {
@@ -36,8 +36,8 @@ pub async fn get(state: &AppState, session_id: &str) -> Result<(), String> {
         .acp_session_store
         .get(session_id)
         .await
-        .map_err(|e| format!("Failed to load session {}: {}", session_id, e))?
-        .ok_or_else(|| format!("Session not found: {}", session_id))?;
+        .map_err(|e| format!("Failed to load session {session_id}: {e}"))?
+        .ok_or_else(|| format!("Session not found: {session_id}"))?;
     let response = serde_json::json!({ "session": session });
     print_json(&response);
     Ok(())
@@ -54,7 +54,7 @@ pub async fn pick(
         .acp_session_store
         .list(workspace_id, Some(limit))
         .await
-        .map_err(|e| format!("Failed to list sessions: {}", e))?;
+        .map_err(|e| format!("Failed to list sessions: {e}"))?;
 
     if sessions.is_empty() {
         return Err("No persisted sessions found".to_string());
@@ -66,7 +66,7 @@ pub async fn pick(
         .items(&items)
         .default(0)
         .interact_opt()
-        .map_err(|e| format!("Failed to choose session: {}", e))?;
+        .map_err(|e| format!("Failed to choose session: {e}"))?;
 
     let Some(index) = selection else {
         return Ok(());

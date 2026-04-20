@@ -114,11 +114,9 @@ fn custom_provider_launch_from_row(session: &AcpSessionRow) -> Option<CustomProv
     })
 }
 
-/// Type alias for the SSE stream used in ACP responses.
 type AcpSseStream =
     std::pin::Pin<Box<dyn tokio_stream::Stream<Item = Result<Event, Infallible>> + Send>>;
 
-/// Response type that can be either JSON or SSE stream.
 enum AcpResponse {
     Json(Json<serde_json::Value>),
     Sse(Sse<AcpSseStream>),
@@ -130,8 +128,7 @@ fn build_coordinator_context_prompt(
     user_request: &str,
 ) -> String {
     format!(
-        "**Your Agent ID:** {}\n**Workspace ID:** {}\n\n## User Request\n\n{}\n",
-        agent_id, workspace_id, user_request
+        "**Your Agent ID:** {agent_id}\n**Workspace ID:** {workspace_id}\n\n## User Request\n\n{user_request}\n"
     )
 }
 
@@ -314,14 +311,14 @@ async fn acp_rpc(
                                         .and_then(|v| v.get("package"))
                                         .and_then(|v| v.as_str())
                                         .unwrap_or(agent_id);
-                                    (format!("npx {}", pkg), "available")
+                                    (format!("npx {pkg}"), "available")
                                 } else if dist.get("uvx").is_some() && uvx_available {
                                     let pkg = dist
                                         .get("uvx")
                                         .and_then(|v| v.get("package"))
                                         .and_then(|v| v.as_str())
                                         .unwrap_or(agent_id);
-                                    (format!("uvx {}", pkg), "available")
+                                    (format!("uvx {pkg}"), "available")
                                 } else if dist.get("binary").is_some() {
                                     (agent_id.to_string(), "unavailable")
                                 } else if dist.get("npx").is_some() {
@@ -330,7 +327,7 @@ async fn acp_rpc(
                                         .and_then(|v| v.get("package"))
                                         .and_then(|v| v.as_str())
                                         .unwrap_or(agent_id);
-                                    (format!("npx {}", pkg), "unavailable")
+                                    (format!("npx {pkg}"), "unavailable")
                                 } else {
                                     (agent_id.to_string(), "unavailable")
                                 }
@@ -341,10 +338,7 @@ async fn acp_rpc(
                             // If this agent ID conflicts with a built-in preset, use a suffixed ID
                             // to allow both versions to coexist in the UI
                             let (provider_id, provider_name) = if static_ids.contains(agent_id) {
-                                (
-                                    format!("{}-registry", agent_id),
-                                    format!("{} (Registry)", name),
-                                )
+                                (format!("{agent_id}-registry"), format!("{name} (Registry)"))
                             } else {
                                 (agent_id.to_string(), name.to_string())
                             };
@@ -513,9 +507,11 @@ async fn acp_rpc(
                 ..SessionLaunchOptions::default()
             };
             let persisted_custom_provider_launch = custom_provider_launch.clone();
-            let effective_provider = provider
-                .clone()
-                .or_else(|| custom_provider_launch.as_ref().map(|custom| custom.command.clone()));
+            let effective_provider = provider.clone().or_else(|| {
+                custom_provider_launch
+                    .as_ref()
+                    .map(|custom| custom.command.clone())
+            });
 
             // Spawn agent process, initialize protocol, create agent session
             let create_result = if let Some(custom) = custom_provider_launch {
@@ -783,9 +779,11 @@ async fn acp_rpc(
                     })
                     .or_else(|| specialist.as_ref().map(|s| s.role.as_str().to_string()))
                     .or(Some("CRAFTER".to_string()));
-                let custom_provider_launch = request_custom_provider_launch
-                    .clone()
-                    .or_else(|| persisted_session.as_ref().and_then(custom_provider_launch_from_row));
+                let custom_provider_launch = request_custom_provider_launch.clone().or_else(|| {
+                    persisted_session
+                        .as_ref()
+                        .and_then(custom_provider_launch_from_row)
+                });
                 let effective_provider = provider.clone().or_else(|| {
                     custom_provider_launch
                         .as_ref()
@@ -1041,8 +1039,7 @@ async fn acp_rpc(
                 if !first_prompt_sent {
                     if let Some(specialist_prompt) = &session.specialist_system_prompt {
                         if session.provider.as_deref() != Some("claude") {
-                            prompt_text =
-                                format!("{}\n\n---\n\n{}", specialist_prompt, prompt_text);
+                            prompt_text = format!("{specialist_prompt}\n\n---\n\n{prompt_text}");
                         }
                     }
                 }
@@ -1440,10 +1437,6 @@ fn derive_allowed_native_tools(specialist_id: Option<&str>) -> Option<Vec<String
     None
 }
 
-/// GET /api/acp?sessionId=xxx — SSE stream for session/update notifications.
-///
-/// Subscribes to the agent process's broadcast channel so the frontend
-/// receives real-time `session/update` events (thought chunks, tool calls, etc.).
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct AcpSseQuery {
@@ -1550,8 +1543,8 @@ mod tests {
     use tokio::sync::broadcast;
 
     use super::{
-        acp_rpc, custom_provider_launch_from_row, extract_custom_provider_launch,
-        has_explicit_cwd, resolve_session_cwd, AcpResponse, CustomProviderLaunch,
+        acp_rpc, custom_provider_launch_from_row, extract_custom_provider_launch, has_explicit_cwd,
+        resolve_session_cwd, AcpResponse, CustomProviderLaunch,
     };
     use routa_core::acp::terminal_manager::TerminalManager;
 
@@ -1623,7 +1616,10 @@ mod tests {
 
         let launch = custom_provider_launch_from_row(&session).expect("launch should exist");
         assert_eq!(launch.command, "uvx");
-        assert_eq!(launch.args, vec!["codex-acp".to_string(), "--stdio".to_string()]);
+        assert_eq!(
+            launch.args,
+            vec!["codex-acp".to_string(), "--stdio".to_string()]
+        );
     }
 
     #[tokio::test]

@@ -84,7 +84,7 @@ fn parse_git_error(stderr: &str, exit_code: Option<i32>) -> String {
     if !stderr.trim().is_empty() {
         let first_line = stderr.lines().next().unwrap_or("").trim();
         if !first_line.is_empty() {
-            return format!("Clone failed: {}", first_line);
+            return format!("Clone failed: {first_line}");
         }
     }
 

@@ -11,7 +11,7 @@
  */
 
 import { generateText, stepCountIs } from "ai";
-import type { NotificationHandler, JsonRpcMessage } from "@/core/acp/processer";
+import type { NotificationHandler, JsonRpcMessage } from "@/core/acp/protocol-types";
 import type { AgentTools } from "@/core/tools/agent-tools";
 import { WorkspaceAgentStateMachine } from "./workspace-agent-state";
 import { createCodingTools, createAgentManagementTools } from "./workspace-agent-tools";

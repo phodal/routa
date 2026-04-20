@@ -194,13 +194,13 @@ impl AcpWarmupService {
         // Fetch agent from registry
         let registry = fetch_registry()
             .await
-            .map_err(|e| format!("Registry fetch failed: {}", e))?;
+            .map_err(|e| format!("Registry fetch failed: {e}"))?;
 
         let agent = registry
             .agents
             .iter()
             .find(|a| a.id == agent_id)
-            .ok_or_else(|| format!("Agent '{}' not found in registry", agent_id))?
+            .ok_or_else(|| format!("Agent '{agent_id}' not found in registry"))?
             .clone();
 
         let dist = &agent.distribution;
@@ -272,10 +272,10 @@ impl AcpWarmupService {
         // Prepend runtime dir to PATH
         if let Ok(path_env) = std::env::var("PATH") {
             let sep = if cfg!(windows) { ";" } else { ":" };
-            cmd.env("PATH", format!("{}{}{}", runtime_dir, sep, path_env));
+            cmd.env("PATH", format!("{runtime_dir}{sep}{path_env}"));
         }
 
-        let child = cmd.spawn().map_err(|e| format!("spawn failed: {}", e))?;
+        let child = cmd.spawn().map_err(|e| format!("spawn failed: {e}"))?;
 
         match tokio::time::timeout(
             std::time::Duration::from_secs(PREWARM_TIMEOUT_SECS),

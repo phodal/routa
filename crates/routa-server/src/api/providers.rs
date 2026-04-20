@@ -135,14 +135,14 @@ fn get_agent_command(agent: &super::acp_registry::RegistryAgent, platform: &str)
     // Try npx first
     if let Some(npx_val) = agent.distribution.get("npx") {
         if let Some(package) = npx_val.get("package").and_then(|v| v.as_str()) {
-            return format!("npx {}", package);
+            return format!("npx {package}");
         }
     }
 
     // Try uvx
     if let Some(uvx_val) = agent.distribution.get("uvx") {
         if let Some(package) = uvx_val.get("package").and_then(|v| v.as_str()) {
-            return format!("uvx {}", package);
+            return format!("uvx {package}");
         }
     }
 

@@ -63,7 +63,7 @@ pub async fn run(state: &AppState, workspace_id: &str, provider: &str) -> Result
         let msg: Value = match serde_json::from_str(&line) {
             Ok(v) => v,
             Err(e) => {
-                let err_resp = make_error_response(None, -32700, &format!("Parse error: {}", e));
+                let err_resp = make_error_response(None, -32700, &format!("Parse error: {e}"));
                 write_response(&mut stdout, &err_resp).await;
                 continue;
             }
@@ -86,7 +86,7 @@ pub async fn run(state: &AppState, workspace_id: &str, provider: &str) -> Result
             }
             "session/cancel" => handle_session_cancel(&mut server, id.clone(), &params).await,
             "session/list" => handle_session_list(&server, id.clone()),
-            _ => make_error_response(id.clone(), -32601, &format!("Method not found: {}", method)),
+            _ => make_error_response(id.clone(), -32601, &format!("Method not found: {method}")),
         };
 
         write_response(&mut stdout, &response).await;
@@ -221,7 +221,7 @@ async fn handle_session_new(
         return make_error_response(
             id.clone(),
             -32000,
-            &format!("Failed to create ACP session: {}", e),
+            &format!("Failed to create ACP session: {e}"),
         );
     }
 
@@ -294,7 +294,7 @@ async fn handle_session_prompt(
             return make_error_response(
                 id.clone(),
                 -32000,
-                &format!("Unknown session: {}", session_id),
+                &format!("Unknown session: {session_id}"),
             );
         }
     };
@@ -336,7 +336,7 @@ async fn handle_session_prompt(
         .prompt(&record.routa_session_id, &full_prompt)
         .await
     {
-        return make_error_response(id.clone(), -32000, &format!("Failed to send prompt: {}", e));
+        return make_error_response(id.clone(), -32000, &format!("Failed to send prompt: {e}"));
     }
 
     // Stream updates as session/update notifications to the ACP client

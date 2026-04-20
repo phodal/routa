@@ -225,7 +225,7 @@ fn build_specialist_prompt(
     let mut prompt = specialist.system_prompt.clone();
     if let Some(reminder) = &specialist.role_reminder {
         if !reminder.trim().is_empty() {
-            prompt.push_str(&format!("\n\n---\n**Reminder:** {}", reminder));
+            prompt.push_str(&format!("\n\n---\n**Reminder:** {reminder}"));
         }
     }
     prompt.push_str(&format!(
@@ -260,7 +260,7 @@ fn build_worker_prompt(
     candidates_output: Option<&str>,
 ) -> Result<String, ServerError> {
     let payload_json = serde_json::to_string_pretty(payload).map_err(|err| {
-        ServerError::Internal(format!("Failed to serialize review payload: {}", err))
+        ServerError::Internal(format!("Failed to serialize review payload: {err}"))
     })?;
 
     let prompt = match worker_type {
@@ -304,7 +304,7 @@ fn build_review_payload(
     head: &str,
     rules_file: Option<&str>,
 ) -> Result<ReviewAnalysisPayload, ServerError> {
-    let diff_range = format!("{}..{}", base, head);
+    let diff_range = format!("{base}..{head}");
     let historical_related_files =
         compute_historical_related_files(repo_root, &diff_range, head, 20)
             .ok()
@@ -343,7 +343,7 @@ fn resolve_repo_root(repo_path: Option<&str>) -> Result<PathBuf, ServerError> {
         .args(["rev-parse", "--show-toplevel"])
         .current_dir(&cwd)
         .output()
-        .map_err(|err| ServerError::Internal(format!("Failed to run git rev-parse: {}", err)))?;
+        .map_err(|err| ServerError::Internal(format!("Failed to run git rev-parse: {err}")))?;
 
     if !output.status.success() {
         return Err(ServerError::BadRequest(
@@ -397,7 +397,7 @@ fn git_exec<const N: usize>(cwd: &Path, args: [&str; N]) -> Result<String, Serve
         .args(args)
         .current_dir(cwd)
         .output()
-        .map_err(|err| ServerError::Internal(format!("Failed to run git: {}", err)))?;
+        .map_err(|err| ServerError::Internal(format!("Failed to run git: {err}")))?;
 
     if !output.status.success() {
         return Err(ServerError::Internal(

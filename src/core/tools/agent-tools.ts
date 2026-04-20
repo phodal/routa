@@ -440,7 +440,7 @@ export class AgentTools {
       type: AgentEventType.REPORT_SUBMITTED,
       agentId,
       workspaceId: agent.workspaceId,
-      data: { parentId: agent.parentId, taskId: report.taskId, success: report.success },
+      data: { parentId: agent.parentId, taskId: report.taskId, success: report.success, summary: report.summary, filesModified: report.filesModified, verificationResults: report.verificationResults },
       timestamp: new Date(),
     });
 

@@ -442,15 +442,15 @@ impl ClaudeCodeProcess {
         // Write to stdin
         let mut stdin_guard = self.stdin_tx.lock().await;
         if let Some(ref mut stdin) = *stdin_guard {
-            let msg = format!("{}\n", user_input);
+            let msg = format!("{user_input}\n");
             stdin
                 .write_all(msg.as_bytes())
                 .await
-                .map_err(|e| format!("Failed to write to stdin: {}", e))?;
+                .map_err(|e| format!("Failed to write to stdin: {e}"))?;
             stdin
                 .flush()
                 .await
-                .map_err(|e| format!("Failed to flush stdin: {}", e))?;
+                .map_err(|e| format!("Failed to flush stdin: {e}"))?;
         } else {
             return Err("stdin not available".to_string());
         }
@@ -769,12 +769,12 @@ fn format_tool_title(tool_name: &str, params: &serde_json::Value) -> String {
                 .or_else(|| params.get("path"))
                 .and_then(|v| v.as_str())
                 .unwrap_or("");
-            format!("{}: {}", display_name, path)
+            format!("{display_name}: {path}")
         }
         "Bash" => {
             let cmd = params.get("command").and_then(|v| v.as_str()).unwrap_or("");
             let truncated: String = cmd.chars().take(80).collect();
-            format!("Bash: {}", truncated)
+            format!("Bash: {truncated}")
         }
         "Task" => {
             let desc = params
@@ -787,9 +787,9 @@ fn format_tool_title(tool_name: &str, params: &serde_json::Value) -> String {
                 .unwrap_or("");
             if !desc.is_empty() {
                 if !sub_type.is_empty() {
-                    format!("Task [{}]: {}", sub_type, desc)
+                    format!("Task [{sub_type}]: {desc}")
                 } else {
-                    format!("Task: {}", desc)
+                    format!("Task: {desc}")
                 }
             } else {
                 "Task".to_string()

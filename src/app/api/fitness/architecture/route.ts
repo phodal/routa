@@ -368,12 +368,17 @@ async function persistArchitectureSnapshot(
 
 async function executeSuite(repoRoot: string, suite: SuiteName): Promise<ArchitectureSuiteReport> {
   const appRoot = process.cwd();
-  const scriptPath = path.join(appRoot, "scripts", "fitness", "check-backend-architecture.ts");
-  const command = process.execPath;
+  const command = "cargo";
   const args = [
-    "--import",
-    "tsx",
-    scriptPath,
+    "run",
+    "-q",
+    "-p",
+    "routa-cli",
+    "--",
+    "fitness",
+    "arch-dsl",
+    "--report",
+    "backend-core-suite",
     "--repo-root",
     repoRoot,
     "--suite",

@@ -70,7 +70,7 @@ async fn test_rust_backend_api() {
     let (status, body) = request_json(&app, Method::GET, "/api/health", None).await;
     assert_eq!(status, 200);
     assert_eq!(body["status"], "ok");
-    println!("  PASS: {}", body);
+    println!("  PASS: {body}");
 
     // ── Test 2: List Workspaces ────────────────────────────────────
     println!("=== Test 2: List Workspaces ===");
@@ -103,7 +103,7 @@ async fn test_rust_backend_api() {
     assert_eq!(status, 200);
     let agent_id = body["agentId"].as_str().unwrap().to_string();
     assert!(!agent_id.is_empty());
-    println!("  PASS: created agent {}", agent_id);
+    println!("  PASS: created agent {agent_id}");
 
     // ── Test 5: List Agents (should have 1) ─────────────────────────
     println!("=== Test 5: List Agents (should have 1) ===");
@@ -123,7 +123,7 @@ async fn test_rust_backend_api() {
     let (status, body) = request_json(
         &app,
         Method::GET,
-        &format!("/api/agents?id={}", agent_id),
+        &format!("/api/agents?id={agent_id}"),
         None,
     )
     .await;
@@ -677,8 +677,7 @@ async fn test_rust_backend_api() {
             error.contains("Failed to delegate task")
                 || error.contains("Task not found")
                 || error.contains("Failed to spawn agent process"),
-            "unexpected delegate_task_to_agent error: {}",
-            error
+            "unexpected delegate_task_to_agent error: {error}"
         );
     }
     println!("  PASS: delegate_task_to_agent tool works");

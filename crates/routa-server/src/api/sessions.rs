@@ -216,8 +216,7 @@ async fn disconnect_session(
     let session = state.acp_manager.get_session(&session_id).await;
     if session.is_none() {
         return Err(ServerError::NotFound(format!(
-            "Session {} not found",
-            session_id
+            "Session {session_id} not found"
         )));
     }
 
@@ -270,18 +269,18 @@ async fn get_session_transcript(
     let service = SessionApplicationService::new(state);
     let history = service.get_session_history(&session_id, true).await?;
     let cwd = std::env::current_dir()
-        .map_err(|error| ServerError::Internal(format!("Failed to get cwd: {}", error)))?;
+        .map_err(|error| ServerError::Internal(format!("Failed to get cwd: {error}")))?;
     let traces = TraceReader::new(&cwd)
         .query(&TraceQuery {
             session_id: Some(session_id.clone()),
             ..TraceQuery::default()
         })
         .await
-        .map_err(|error| ServerError::Internal(format!("Failed to query traces: {}", error)))?;
+        .map_err(|error| ServerError::Internal(format!("Failed to query traces: {error}")))?;
 
     let payload = build_transcript_payload(&session_id, history, traces);
     Ok(Json(serde_json::to_value(payload).map_err(|error| {
-        ServerError::Internal(format!("Failed to serialize transcript payload: {}", error))
+        ServerError::Internal(format!("Failed to serialize transcript payload: {error}"))
     })?))
 }
 
@@ -306,8 +305,7 @@ async fn get_reposlide_result(
         })
         .map_err(|error| {
             ServerError::Internal(format!(
-                "Failed to serialize RepoSlide result payload: {}",
-                error
+                "Failed to serialize RepoSlide result payload: {error}"
             ))
         })?,
     ))
@@ -326,7 +324,7 @@ async fn download_reposlide_result(
                 ServerError::NotFound("RepoSlide deck is not available for download".to_string())
             })?;
     let bytes = std::fs::read(&artifact.path).map_err(|error| {
-        ServerError::NotFound(format!("Failed to read RepoSlide deck: {}", error))
+        ServerError::NotFound(format!("Failed to read RepoSlide deck: {error}"))
     })?;
 
     let mut headers = HeaderMap::new();
@@ -413,14 +411,14 @@ async fn load_session_transcript(
     let service = SessionApplicationService::new(state.clone());
     let history = service.get_session_history(session_id, true).await?;
     let cwd = std::env::current_dir()
-        .map_err(|error| ServerError::Internal(format!("Failed to get cwd: {}", error)))?;
+        .map_err(|error| ServerError::Internal(format!("Failed to get cwd: {error}")))?;
     let traces = TraceReader::new(&cwd)
         .query(&TraceQuery {
             session_id: Some(session_id.to_string()),
             ..TraceQuery::default()
         })
         .await
-        .map_err(|error| ServerError::Internal(format!("Failed to query traces: {}", error)))?;
+        .map_err(|error| ServerError::Internal(format!("Failed to query traces: {error}")))?;
 
     Ok(build_transcript_payload(session_id, history, traces))
 }
@@ -573,7 +571,7 @@ fn history_to_transcript_messages(history: &[Value]) -> Vec<TranscriptMessage> {
             .get("eventId")
             .and_then(Value::as_str)
             .map(str::to_string)
-            .unwrap_or_else(|| format!("history-{}-{}", kind, index));
+            .unwrap_or_else(|| format!("history-{kind}-{index}"));
 
         match kind {
             "user_message" => {
@@ -772,7 +770,7 @@ fn history_to_transcript_messages(history: &[Value]) -> Vec<TranscriptMessage> {
                                             .get("content")
                                             .and_then(Value::as_str)
                                             .unwrap_or_default();
-                                        format!("[{}] {}", status, body)
+                                        format!("[{status}] {body}")
                                     })
                                     .collect::<Vec<_>>()
                                     .join("\n")

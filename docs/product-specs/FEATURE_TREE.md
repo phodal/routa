@@ -118,7 +118,7 @@ Multi-agent coordination platform. This document is auto-generated from:
 | DELETE | `/api/background-tasks/{id}` | Cancel a background task |
 | POST | `/api/background-tasks/{id}/retry` | Retry a failed background task |
 
-### Clone (8)
+### Clone (9)
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
@@ -130,6 +130,7 @@ Multi-agent coordination platform. This document is auto-generated from:
 | GET | `/api/clone/branches` | Get branch info |
 | POST | `/api/clone/branches` | Fetch remote branches |
 | PATCH | `/api/clone/branches` | Checkout branch |
+| DELETE | `/api/clone/branches` | Delete local branch |
 
 ### Codebases (3)
 
@@ -151,31 +152,42 @@ Multi-agent coordination platform. This document is auto-generated from:
 |--------|----------|-------------|
 | GET | `/api/files/search` | Search files in a codebase |
 
-### Fitness (4)
+### Fitness (5)
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
+| GET | `/api/fitness/architecture` | Get backend architecture quality report for a repo context |
 | POST | `/api/fitness/analyze` | Run harness fluency analysis and return the additive harnessability baseline for one or more profiles |
 | GET | `/api/fitness/plan` | Build the executable fitness plan for a repository context |
 | GET | `/api/fitness/report` | Read persisted harness fluency snapshots and their additive harnessability baseline payloads |
 | GET | `/api/fitness/specs` | Inspect docs/fitness source files and parsed metric metadata |
 
-### GitHub (7)
+### GitHub (8)
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/api/github` | List active GitHub virtual workspaces |
 | POST | `/api/github/import` | Import a GitHub repo as a virtual workspace (zipball download) |
 | GET | `/api/github/issues` | List GitHub issues for a workspace codebase |
+| GET | `/api/github/pulls` | List GitHub pull requests for a workspace codebase |
 | GET | `/api/github/tree` | Get file tree for an imported GitHub repo |
 | GET | `/api/github/file` | Read a file from an imported GitHub repo |
 | GET | `/api/github/search` | Search files in an imported GitHub repo |
 | POST | `/api/github/pr-comment` | Post a comment on a GitHub pull request |
 
-### Harness (10)
+### Graph (1)
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
+| GET | `/api/graph/analyze` | Analyze repository dependency graph and return graph data |
+
+### Harness (13)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/harness/templates` | List harness templates for a repo context |
+| GET | `/api/harness/templates/validate` | Validate a harness template for a repo context |
+| GET | `/api/harness/templates/doctor` | Run harness template diagnostics for a repo context |
 | GET | `/api/harness/github-actions` | Inspect repository GitHub Actions workflow files |
 | GET | `/api/harness/agent-hooks` | Read and validate agent hook lifecycle configuration |
 | GET | `/api/harness/hooks` | Inspect hook runtime profiles, bound hook files, and resolved metrics |
@@ -361,7 +373,7 @@ Multi-agent coordination platform. This document is auto-generated from:
 | PUT | `/api/specialists` | Update an existing specialist |
 | DELETE | `/api/specialists` | Delete a specialist |
 
-### Tasks (11)
+### Tasks (12)
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
@@ -376,6 +388,7 @@ Multi-agent coordination platform. This document is auto-generated from:
 | GET | `/api/tasks/{id}/artifacts` | List all artifacts for a task |
 | POST | `/api/tasks/{id}/artifacts` | Attach an artifact to a task |
 | GET | `/api/tasks/{id}/runs` | List normalized execution runs for a task |
+| GET | `/api/tasks/{taskId}/changes` | Get repository or worktree changes associated with a task |
 
 ### Test-Mcp (1)
 
@@ -418,7 +431,7 @@ Multi-agent coordination platform. This document is auto-generated from:
 | DELETE | `/api/workflows/{id}` | Delete a workflow YAML file |
 | POST | `/api/workflows/{id}/trigger` | Trigger a workflow run inside a workspace |
 
-### Workspaces (12)
+### Workspaces (13)
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
@@ -432,6 +445,7 @@ Multi-agent coordination platform. This document is auto-generated from:
 | POST | `/api/workspaces/{id}/codebases` | Add a codebase to a workspace |
 | GET | `/api/workspaces/{id}/codebases/changes` | List git change summaries for workspace codebases |
 | GET | `/api/workspaces/{workspaceId}/codebases/{codebaseId}/reposlide` | Get RepoSlide launch context for an agent-driven deck generation session |
+| GET | `/api/workspaces/{workspaceId}/codebases/{codebaseId}/wiki` | Generate an architecture-aware RepoWiki summary payload for a codebase |
 | GET | `/api/workspaces/{workspace_id}/codebases/{codebase_id}/worktrees` | List worktrees for a codebase |
 | POST | `/api/workspaces/{workspace_id}/codebases/{codebase_id}/worktrees` | Create a new git worktree |
 
@@ -442,3 +456,4 @@ Multi-agent coordination platform. This document is auto-generated from:
 | GET | `/api/worktrees/{id}` | Get a single worktree |
 | DELETE | `/api/worktrees/{id}` | Remove a worktree |
 | POST | `/api/worktrees/{id}/validate` | Validate worktree health on disk |
+

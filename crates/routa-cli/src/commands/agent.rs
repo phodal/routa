@@ -98,10 +98,7 @@ pub async fn list(state: &AppState, workspace_id: &str, limit: usize) -> Result<
     {
         let shown = agents.len().min(limit);
         let hidden = agents.len().saturating_sub(shown);
-        println!(
-            "Agents ({} shown, {} hidden) in workspace {}:",
-            shown, hidden, workspace_id
-        );
+        println!("Agents ({shown} shown, {hidden} hidden) in workspace {workspace_id}:");
         for agent in agents.iter().take(limit) {
             let status = agent
                 .get("status")
@@ -225,8 +222,7 @@ pub async fn run(state: &AppState, args: RunArgs<'_>) -> Result<(), String> {
 
         let (prompt_specialist, prompt_remainder) = parse_prompt_mention(prompt);
         let selected = if let Some(id) = specialist.or(prompt_specialist.as_deref()) {
-            find_specialist(&specialists, id)
-                .ok_or_else(|| format!("Unknown specialist: {}", id))?
+            find_specialist(&specialists, id).ok_or_else(|| format!("Unknown specialist: {id}"))?
         } else {
             select_specialist(&specialists)?
         };
@@ -297,8 +293,7 @@ async fn run_selected_specialist(
 
     if repeat_count > 1 && selected_specialist.id != JOURNEY_EVALUATOR_ID {
         return Err(format!(
-            "--repeat is only supported for specialist '{}'",
-            JOURNEY_EVALUATOR_ID
+            "--repeat is only supported for specialist '{JOURNEY_EVALUATOR_ID}'"
         ));
     }
 
@@ -325,10 +320,7 @@ async fn run_selected_specialist(
     let mut failed_runs = 0usize;
 
     for iteration in 1..=repeat_count {
-        println!(
-            "═══ UI Journey Baseline Run {}/{} ({}) ═══",
-            iteration, repeat_count, batch_run_id
-        );
+        println!("═══ UI Journey Baseline Run {iteration}/{repeat_count} ({batch_run_id}) ═══");
         let context =
             build_ui_journey_context(&selected_specialist.id, &user_prompt, &effective_provider)
                 .ok_or_else(|| "Failed to build UI journey context".to_string())?;
@@ -438,7 +430,7 @@ async fn execute_specialist_run(
             metrics.elapsed_ms = run_start.elapsed().as_millis();
             write_ui_journey_failure_artifacts(context, "provider_readiness", &error, &metrics);
         }
-        return Err(format!("Failed to verify provider: {}", error));
+        return Err(format!("Failed to verify provider: {error}"));
     }
 
     let workspace_id = ensure_workspace(router, workspace_id).await?;
@@ -467,7 +459,7 @@ async fn execute_specialist_run(
                 .and_then(|e| e.get("message"))
                 .and_then(|m| m.as_str())
                 .unwrap_or("Unknown error");
-            let err = format!("Failed to create agent: {}", error_msg);
+            let err = format!("Failed to create agent: {error_msg}");
             if let Some(context) = journey_context.as_ref() {
                 metrics.elapsed_ms = run_start.elapsed().as_millis();
                 write_ui_journey_failure_artifacts(context, "agent_creation", &err, &metrics);
@@ -485,16 +477,16 @@ async fn execute_specialist_run(
         println!("║  Routa CLI — Specialist Run                            ║");
         println!("╠══════════════════════════════════════════════════════════╣");
         println!("║  Specialist: {:<42} ║", selected_specialist.id);
-        println!("║  Role      : {:<42} ║", agent_role);
+        println!("║  Role      : {agent_role:<42} ║");
         println!("║  Workspace : {:<42} ║", &workspace_id);
-        println!("║  Provider  : {:<42} ║", effective_provider);
+        println!("║  Provider  : {effective_provider:<42} ║");
         println!(
             "║  CWD       : {:<42} ║",
             super::prompt::truncate_path(&cwd, 42)
         );
         println!("╚══════════════════════════════════════════════════════════╝");
         println!();
-        println!("📋 Prompt: {}", user_prompt);
+        println!("📋 Prompt: {user_prompt}");
         println!();
     }
 
@@ -535,18 +527,18 @@ async fn execute_specialist_run(
                 break;
             }
             Err(err) => {
-                let reason = format!("Attempt {} failed: {}", attempt, err);
+                let reason = format!("Attempt {attempt} failed: {err}");
                 last_session_error = reason.clone();
 
                 if attempt < max_attempts {
                     if !output_json {
-                        println!("⚠️  {}. Retrying in 1 second...", reason);
+                        println!("⚠️  {reason}. Retrying in 1 second...");
                     }
                     tokio::time::sleep(Duration::from_secs(1)).await;
                     continue;
                 }
 
-                let error = format!("Failed to create ACP session: {}", err);
+                let error = format!("Failed to create ACP session: {err}");
                 if let Some(context) = journey_context.as_ref() {
                     metrics.elapsed_ms = run_start.elapsed().as_millis();
                     write_ui_journey_failure_artifacts(
@@ -557,7 +549,7 @@ async fn execute_specialist_run(
                     );
                 }
                 if let Err(status_err) = update_agent_status(router, &agent_id, "ERROR").await {
-                    eprintln!("Failed to mark agent {} ERROR: {}", agent_id, status_err);
+                    eprintln!("Failed to mark agent {agent_id} ERROR: {status_err}");
                 }
                 return Err(error);
             }
@@ -565,14 +557,11 @@ async fn execute_specialist_run(
     }
 
     let session_id = final_session_id.ok_or_else(|| {
-        format!(
-            "Failed to create ACP session after {} attempts: {}",
-            max_attempts, last_session_error
-        )
+        format!("Failed to create ACP session after {max_attempts} attempts: {last_session_error}")
     })?;
     metrics.session_id = Some(session_id.clone());
     if let Err(err) = update_agent_status(router, &agent_id, "ACTIVE").await {
-        eprintln!("Failed to mark agent {} ACTIVE: {}", agent_id, err);
+        eprintln!("Failed to mark agent {agent_id} ACTIVE: {err}");
     }
 
     let acp = Arc::new(state.acp_manager.clone());
@@ -591,7 +580,7 @@ async fn execute_specialist_run(
         Some(rx) => rx,
         None => {
             if let Err(status_err) = update_agent_status(router, &agent_id, "ERROR").await {
-                eprintln!("Failed to mark agent {} ERROR: {}", agent_id, status_err);
+                eprintln!("Failed to mark agent {agent_id} ERROR: {status_err}");
             }
             state.acp_manager.kill_session(&session_id).await;
             orchestrator.cleanup(&session_id).await;
@@ -626,7 +615,7 @@ async fn execute_specialist_run(
                 write_ui_journey_failure_artifacts(context, "execution_timeout", &error, &metrics);
             }
             if let Err(status_err) = update_agent_status(router, &agent_id, "ERROR").await {
-                eprintln!("Failed to mark agent {} ERROR: {}", agent_id, status_err);
+                eprintln!("Failed to mark agent {agent_id} ERROR: {status_err}");
             }
             state.acp_manager.kill_session(&session_id).await;
             orchestrator.cleanup(&session_id).await;
@@ -693,7 +682,7 @@ async fn execute_specialist_run(
                     }
                     Err(err) => {
                         metrics.prompt_status = Some("error".to_string());
-                        prompt_error = Some(format!("Failed to send prompt: {}", err));
+                        prompt_error = Some(format!("Failed to send prompt: {err}"));
                     }
                 }
             }
@@ -763,7 +752,7 @@ async fn execute_specialist_run(
                         renderer.finish();
                     }
                     if !output_json {
-                        println!("⏰ Timeout: no activity for {} seconds", max_idle);
+                        println!("⏰ Timeout: no activity for {max_idle} seconds");
                     }
                     failure_reason = Some("session_idle_timeout".to_string());
                     break;
@@ -842,7 +831,7 @@ async fn execute_specialist_run(
         }
         if journey_context.is_none() && !output_json {
             if let Err(status_err) = update_agent_status(router, &agent_id, "ERROR").await {
-                eprintln!("Failed to mark agent {} ERROR: {}", agent_id, status_err);
+                eprintln!("Failed to mark agent {agent_id} ERROR: {status_err}");
             }
             println!();
             super::prompt::print_session_summary(
@@ -864,10 +853,7 @@ async fn execute_specialist_run(
         "COMPLETED"
     };
     if let Err(err) = update_agent_status(router, &agent_id, terminal_status).await {
-        eprintln!(
-            "Failed to mark agent {} {}: {}",
-            agent_id, terminal_status, err
-        );
+        eprintln!("Failed to mark agent {agent_id} {terminal_status}: {err}");
     }
 
     if journey_context.is_none() && !output_json {
@@ -917,8 +903,7 @@ async fn execute_specialist_run(
             );
             write_ui_journey_failure_artifacts(context, failure_stage, &failure_summary, &metrics);
             return Err(format!(
-                "Failed to complete specialist run: {}",
-                failure_summary
+                "Failed to complete specialist run: {failure_summary}"
             ));
         }
     }
@@ -942,7 +927,7 @@ async fn execute_specialist_run(
         println!(
             "{}",
             serde_json::to_string_pretty(&parsed)
-                .map_err(|err| format!("Failed to format specialist JSON output: {}", err))?
+                .map_err(|err| format!("Failed to format specialist JSON output: {err}"))?
         );
     }
 
@@ -1009,7 +994,7 @@ fn extract_last_process_output_line(history: &[serde_json::Value]) -> Option<Str
 fn load_specialist_from_file(path: &str) -> Result<SpecialistConfig, String> {
     let specialist = SpecialistDef::from_path(path)?;
     SpecialistConfig::from_specialist_def(specialist)
-        .ok_or_else(|| format!("Failed to resolve specialist from file: {}", path))
+        .ok_or_else(|| format!("Failed to resolve specialist from file: {path}"))
 }
 
 fn load_specialists(specialist_dir: Option<&str>) -> Vec<SpecialistConfig> {
@@ -1069,7 +1054,7 @@ fn prompt_for_user_request(specialist: &SpecialistConfig) -> Result<String, Stri
     let prompt = Input::with_theme(&theme)
         .with_prompt(format!("Prompt for {}", specialist.name))
         .interact_text()
-        .map_err(|e| format!("Failed to read prompt: {}", e))?;
+        .map_err(|e| format!("Failed to read prompt: {e}"))?;
 
     Ok(prompt)
 }
@@ -1086,7 +1071,7 @@ fn select_specialist(specialists: &[SpecialistConfig]) -> Result<SpecialistConfi
                 specialist
                     .description
                     .as_ref()
-                    .map(|description| format!(" - {}", description))
+                    .map(|description| format!(" - {description}"))
                     .unwrap_or_default()
             )
         })
@@ -1097,7 +1082,7 @@ fn select_specialist(specialists: &[SpecialistConfig]) -> Result<SpecialistConfi
         .items(&items)
         .default(0)
         .interact()
-        .map_err(|e| format!("Failed to select specialist: {}", e))?;
+        .map_err(|e| format!("Failed to select specialist: {e}"))?;
 
     Ok(specialists[index].clone())
 }
@@ -1158,7 +1143,7 @@ async fn ensure_workspace(router: &RpcRouter, workspace_id: &str) -> Result<Stri
             .get("message")
             .and_then(|m| m.as_str())
             .unwrap_or("Unknown error");
-        return Err(format!("Failed to create workspace: {}", err_msg));
+        return Err(format!("Failed to create workspace: {err_msg}"));
     }
 
     let created_ws_id = create_resp
@@ -1169,7 +1154,7 @@ async fn ensure_workspace(router: &RpcRouter, workspace_id: &str) -> Result<Stri
         .ok_or("Failed to get created workspace ID")?
         .to_string();
 
-    println!("Created workspace: {}", created_ws_id);
+    println!("Created workspace: {created_ws_id}");
     Ok(created_ws_id)
 }
 

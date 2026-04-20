@@ -61,7 +61,7 @@ pub(super) async fn execute(
                 Ok(Some(note)) => {
                     tool_result_text(&serde_json::to_string_pretty(&note).unwrap_or_default())
                 }
-                Ok(None) => tool_result_error(&format!("Note not found: {}", note_id)),
+                Ok(None) => tool_result_error(&format!("Note not found: {note_id}")),
                 Err(e) => tool_result_error(&e.to_string()),
             }
         }
@@ -115,7 +115,7 @@ pub(super) async fn execute(
                             Err(e) => tool_result_error(&e.to_string()),
                         }
                     } else {
-                        tool_result_error(&format!("Note not found: {}", note_id))
+                        tool_result_error(&format!("Note not found: {note_id}"))
                     }
                 }
                 Err(e) => tool_result_error(&e.to_string()),
@@ -136,7 +136,7 @@ pub(super) async fn execute(
                         Err(e) => tool_result_error(&e.to_string()),
                     }
                 }
-                Ok(None) => tool_result_error(&format!("Note not found: {}", note_id)),
+                Ok(None) => tool_result_error(&format!("Note not found: {note_id}")),
                 Err(e) => tool_result_error(&e.to_string()),
             }
         }
@@ -174,7 +174,7 @@ pub(super) async fn execute(
                     })).collect::<Vec<_>>()
                 }))
             }
-            Ok(None) => tool_result_error(&format!("Workspace not found: {}", workspace_id)),
+            Ok(None) => tool_result_error(&format!("Workspace not found: {workspace_id}")),
             Err(e) => tool_result_error(&e.to_string()),
         },
         "list_skills" => {

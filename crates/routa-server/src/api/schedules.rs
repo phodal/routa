@@ -51,7 +51,7 @@ async fn get_schedule(
 ) -> Result<Json<serde_json::Value>, ServerError> {
     match state.schedule_store.get(&id).await? {
         Some(s) => Ok(Json(serde_json::json!({ "schedule": s }))),
-        None => Err(ServerError::NotFound(format!("Schedule {} not found", id))),
+        None => Err(ServerError::NotFound(format!("Schedule {id} not found"))),
     }
 }
 
@@ -62,7 +62,7 @@ async fn update_schedule(
 ) -> Result<Json<serde_json::Value>, ServerError> {
     match state.schedule_store.update(&id, body).await? {
         Some(s) => Ok(Json(serde_json::json!({ "schedule": s }))),
-        None => Err(ServerError::NotFound(format!("Schedule {} not found", id))),
+        None => Err(ServerError::NotFound(format!("Schedule {id} not found"))),
     }
 }
 
@@ -85,7 +85,7 @@ async fn run_schedule_now(
             "scheduleId": s.id,
             "message": "Schedule triggered manually",
         }))),
-        None => Err(ServerError::NotFound(format!("Schedule {} not found", id))),
+        None => Err(ServerError::NotFound(format!("Schedule {id} not found"))),
     }
 }
 

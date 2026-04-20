@@ -37,7 +37,7 @@ async fn execute_tool(state: &AppState, name: &str, args: &serde_json::Value) ->
         return result;
     }
 
-    tool_result_error(&format!("Unknown tool: {}", name))
+    tool_result_error(&format!("Unknown tool: {name}"))
 }
 
 fn normalize_tool_name(name: &str) -> &str {

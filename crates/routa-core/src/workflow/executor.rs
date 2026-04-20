@@ -179,7 +179,7 @@ impl WorkflowExecutor {
             while attempt < max_attempts {
                 attempt += 1;
                 if attempt > 1 {
-                    println!("   🔄 Retry attempt {}/{}", attempt, max_attempts);
+                    println!("   🔄 Retry attempt {attempt}/{max_attempts}");
                 }
 
                 match self.execute_step(step).await {
@@ -189,7 +189,7 @@ impl WorkflowExecutor {
                             if let (Some(inp), Some(out)) =
                                 (result.input_tokens, result.output_tokens)
                             {
-                                println!("   📊 Tokens: {} in / {} out", inp, out);
+                                println!("   📊 Tokens: {inp} in / {out} out");
                             }
 
                             // Store output for downstream steps
@@ -221,7 +221,7 @@ impl WorkflowExecutor {
                     Err(e) => {
                         last_error = Some(e.clone());
                         if attempt < max_attempts {
-                            println!("   ⚠️  Error: {} (will retry)", e);
+                            println!("   ⚠️  Error: {e} (will retry)");
                             // Brief delay before retry
                             tokio::time::sleep(std::time::Duration::from_millis(500)).await;
                         }
@@ -292,7 +292,7 @@ impl WorkflowExecutor {
             results.len()
         );
         if total_input > 0 || total_output > 0 {
-            println!("  Total tokens: {} in / {} out", total_input, total_output);
+            println!("  Total tokens: {total_input} in / {total_output} out");
         }
         println!("═══════════════════════════════════════════════════════════");
 
@@ -461,10 +461,10 @@ impl WorkflowExecutor {
             for action in &step.actions {
                 match action {
                     StepAction::Simple(name) => {
-                        prompt.push_str(&format!("- {}\n", name));
+                        prompt.push_str(&format!("- {name}\n"));
                     }
                     StepAction::Detailed { name, params } => {
-                        prompt.push_str(&format!("- {} (params: {:?})\n", name, params));
+                        prompt.push_str(&format!("- {name} (params: {params:?})\n"));
                     }
                 }
             }
@@ -475,7 +475,7 @@ impl WorkflowExecutor {
             if !prompt.is_empty() {
                 prompt.push_str("\n\n");
             }
-            prompt.push_str(&format!("**Reminder:** {}", reminder));
+            prompt.push_str(&format!("**Reminder:** {reminder}"));
         }
 
         if prompt.is_empty() {
@@ -511,7 +511,7 @@ impl WorkflowExecutor {
                 self.step_outputs
                     .get(step_name)
                     .cloned()
-                    .unwrap_or_else(|| format!("${{steps.{}.output}}", step_name))
+                    .unwrap_or_else(|| format!("${{steps.{step_name}.output}}"))
             })
             .to_string();
 
@@ -523,7 +523,7 @@ impl WorkflowExecutor {
                 self.variables
                     .get(key)
                     .cloned()
-                    .unwrap_or_else(|| format!("${{variables.{}}}", key))
+                    .unwrap_or_else(|| format!("${{variables.{key}}}"))
             })
             .to_string();
 
@@ -537,7 +537,7 @@ impl WorkflowExecutor {
                     .cloned()
                     .or_else(|| self.step_outputs.get(key).cloned())
                     .or_else(|| std::env::var(key).ok())
-                    .unwrap_or_else(|| format!("${{{}}}", key))
+                    .unwrap_or_else(|| format!("${{{key}}}"))
             })
             .to_string();
 
@@ -550,7 +550,7 @@ fn truncate(s: &str, max: usize) -> String {
         s.to_string()
     } else {
         let truncated: String = s.chars().take(max.saturating_sub(3)).collect();
-        format!("{}...", truncated)
+        format!("{truncated}...")
     }
 }
 

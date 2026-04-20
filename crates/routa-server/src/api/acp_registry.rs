@@ -125,8 +125,7 @@ async fn get_registry(
             })));
         } else {
             return Err(ServerError::NotFound(format!(
-                "Agent '{}' not found",
-                agent_id
+                "Agent '{agent_id}' not found"
             )));
         }
     }
@@ -246,7 +245,7 @@ async fn install_agent(
                     .ensure_runtime(&RuntimeType::Npx)
                     .await
                     .map_err(|e| {
-                        ServerError::Internal(format!("Failed to ensure npx runtime: {}", e))
+                        ServerError::Internal(format!("Failed to ensure npx runtime: {e}"))
                     })?;
             }
 
@@ -268,7 +267,7 @@ async fn install_agent(
                     package,
                 )
                 .await
-                .map_err(|e| ServerError::Internal(format!("Failed to save state: {}", e)))?;
+                .map_err(|e| ServerError::Internal(format!("Failed to save state: {e}")))?;
 
             // Trigger background warmup to pre-cache the npm package
             state
@@ -293,7 +292,7 @@ async fn install_agent(
                     .ensure_runtime(&RuntimeType::Uvx)
                     .await
                     .map_err(|e| {
-                        ServerError::Internal(format!("Failed to ensure uvx runtime: {}", e))
+                        ServerError::Internal(format!("Failed to ensure uvx runtime: {e}"))
                     })?;
             }
 
@@ -315,7 +314,7 @@ async fn install_agent(
                     package,
                 )
                 .await
-                .map_err(|e| ServerError::Internal(format!("Failed to save state: {}", e)))?;
+                .map_err(|e| ServerError::Internal(format!("Failed to save state: {e}")))?;
 
             // Trigger background warmup to pre-cache the Python package
             state
@@ -338,22 +337,17 @@ async fn install_agent(
                 .get("binary")
                 .and_then(|v| v.get(&platform))
                 .ok_or_else(|| {
-                    ServerError::BadRequest(format!(
-                        "No binary available for platform: {}",
-                        platform
-                    ))
+                    ServerError::BadRequest(format!("No binary available for platform: {platform}"))
                 })?;
 
             let binary_info: crate::acp::BinaryInfo = serde_json::from_value(binary_config.clone())
-                .map_err(|e| {
-                    ServerError::Internal(format!("Failed to parse binary info: {}", e))
-                })?;
+                .map_err(|e| ServerError::Internal(format!("Failed to parse binary info: {e}")))?;
 
             let exe_path = state
                 .acp_binary_manager
                 .install_binary(&req.agent_id, &version, &binary_info)
                 .await
-                .map_err(|e| ServerError::Internal(format!("Binary installation failed: {}", e)))?;
+                .map_err(|e| ServerError::Internal(format!("Binary installation failed: {e}")))?;
 
             let exe_path_str = exe_path.to_string_lossy().to_string();
             state
@@ -366,7 +360,7 @@ async fn install_agent(
                     None,
                 )
                 .await
-                .map_err(|e| ServerError::Internal(format!("Failed to save state: {}", e)))?;
+                .map_err(|e| ServerError::Internal(format!("Failed to save state: {e}")))?;
 
             Ok(Json(serde_json::json!({
                 "success": true,
@@ -377,8 +371,7 @@ async fn install_agent(
             })))
         }
         _ => Err(ServerError::BadRequest(format!(
-            "Unknown distribution type: {}",
-            dist_type
+            "Unknown distribution type: {dist_type}"
         ))),
     }
 }
@@ -402,7 +395,7 @@ async fn uninstall_agent(
                 .acp_binary_manager
                 .uninstall(&req.agent_id)
                 .await
-                .map_err(|e| ServerError::Internal(format!("Failed to remove binary: {}", e)))?;
+                .map_err(|e| ServerError::Internal(format!("Failed to remove binary: {e}")))?;
         }
     }
 
@@ -411,7 +404,7 @@ async fn uninstall_agent(
         .acp_installation_state
         .uninstall(&req.agent_id)
         .await
-        .map_err(|e| ServerError::Internal(format!("Failed to update state: {}", e)))?;
+        .map_err(|e| ServerError::Internal(format!("Failed to update state: {e}")))?;
 
     Ok(Json(serde_json::json!({
         "success": true,
@@ -426,7 +419,7 @@ async fn uninstall_agent(
 pub async fn fetch_registry() -> Result<AcpRegistry, ServerError> {
     let response = reqwest::get(ACP_REGISTRY_URL)
         .await
-        .map_err(|e| ServerError::Internal(format!("Failed to fetch registry: {}", e)))?;
+        .map_err(|e| ServerError::Internal(format!("Failed to fetch registry: {e}")))?;
 
     if !response.status().is_success() {
         return Err(ServerError::Internal(format!(
@@ -438,7 +431,7 @@ pub async fn fetch_registry() -> Result<AcpRegistry, ServerError> {
     let registry: AcpRegistry = response
         .json()
         .await
-        .map_err(|e| ServerError::Internal(format!("Failed to parse registry: {}", e)))?;
+        .map_err(|e| ServerError::Internal(format!("Failed to parse registry: {e}")))?;
 
     Ok(registry)
 }
@@ -626,8 +619,7 @@ async fn ensure_runtime(
         "uvx" => RuntimeType::Uvx,
         other => {
             return Err(ServerError::BadRequest(format!(
-                "Unknown runtime '{}'. Use node, npx, uv, or uvx.",
-                other
+                "Unknown runtime '{other}'. Use node, npx, uv, or uvx."
             )));
         }
     };
@@ -637,7 +629,7 @@ async fn ensure_runtime(
         .acp_runtime_manager
         .ensure_runtime(&rt)
         .await
-        .map_err(|e| ServerError::Internal(format!("Failed to ensure runtime: {}", e)))?;
+        .map_err(|e| ServerError::Internal(format!("Failed to ensure runtime: {e}")))?;
 
     // Get actual version string
     let version = state.acp_runtime_manager.get_version(&rt).await;

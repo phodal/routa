@@ -23,13 +23,13 @@ fn build_mcp_endpoint(
     ];
 
     if let Some(mode) = tool_mode.filter(|value| *value == "essential" || *value == "full") {
-        params.push(format!("toolMode={}", mode));
+        params.push(format!("toolMode={mode}"));
     }
 
     if let Some(profile) =
         mcp_profile.filter(|value| *value == "kanban-planning" || *value == "team-coordination")
     {
-        params.push(format!("mcpProfile={}", profile));
+        params.push(format!("mcpProfile={profile}"));
     }
 
     format!("{}/api/mcp?{}", base_url, params.join("&"))
@@ -94,7 +94,7 @@ async fn ensure_mcp_for_opencode(
         .await
         .map_err(|err| format!("mkdir {}: {}", config_dir.display(), err))?;
     let encoded = serde_json::to_vec_pretty(&Value::Object(existing))
-        .map_err(|err| format!("encode OpenCode MCP config: {}", err))?;
+        .map_err(|err| format!("encode OpenCode MCP config: {err}"))?;
     tokio::fs::write(&config_file, encoded)
         .await
         .map_err(|err| format!("write {}: {}", config_file.display(), err))?;

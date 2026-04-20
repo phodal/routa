@@ -23,7 +23,7 @@ import {
   getSpecialistByRole,
   type SpecialistConfig,
 } from "../orchestration/specialist-prompts";
-import type { NotificationHandler } from "./processer";
+import type { NotificationHandler } from "./protocol-types";
 import { type AgentRole } from "../models/agent";
 import type { LifecycleNotifier } from "./lifecycle-notifier";
 import type { McpServerConfig } from "@anthropic-ai/claude-agent-sdk";

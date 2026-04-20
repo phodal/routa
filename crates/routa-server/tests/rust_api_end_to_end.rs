@@ -91,7 +91,7 @@ fn run_git(repo_path: &std::path::Path, args: &[&str]) {
         .current_dir(repo_path)
         .status()
         .expect("run git command");
-    assert!(status.success(), "git {:?} should succeed", args);
+    assert!(status.success(), "git {args:?} should succeed");
 }
 
 fn init_git_repo(repo_path: &std::path::Path) {
@@ -309,7 +309,7 @@ async fn api_workspace_and_note_flow() {
         .expect("decode deleted workspace response");
     assert!(json_has_error(
         &deleted_workspace_json,
-        &format!("Workspace {} not found", workspace_id),
+        &format!("Workspace {workspace_id} not found"),
     ));
 }
 
@@ -1069,8 +1069,7 @@ async fn api_mcp_tools_delegate_task_to_agent_contract() {
             error.contains("Failed to delegate task")
                 || error.contains("Task not found")
                 || error.contains("Failed to spawn agent process"),
-            "unexpected delegate error: {}",
-            error
+            "unexpected delegate error: {error}"
         );
         return;
     } else {
@@ -1101,8 +1100,7 @@ async fn api_mcp_tools_delegate_task_to_agent_contract() {
             error.contains("Failed to delegate task")
                 || error.contains("Task not found")
                 || error.contains("Failed to spawn agent process"),
-            "unexpected delegate error: {}",
-            error
+            "unexpected delegate error: {error}"
         );
     }
 }

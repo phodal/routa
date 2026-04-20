@@ -154,7 +154,7 @@ impl SandboxManager {
 
         // Unique container name with timestamp.
         let short_id = &uuid::Uuid::new_v4().to_string()[..8];
-        let container_name = format!("routa-sandbox-{}", short_id);
+        let container_name = format!("routa-sandbox-{short_id}");
 
         // Build `docker run` command.
         let docker_args =
@@ -222,7 +222,7 @@ impl SandboxManager {
             .port
             .ok_or_else(|| "Sandbox has no exposed port".to_string())?;
 
-        let sandbox_url = format!("http://127.0.0.1:{}/execute", port);
+        let sandbox_url = format!("http://127.0.0.1:{port}/execute");
 
         let response = self
             .http_client
@@ -343,15 +343,11 @@ fn build_docker_run_args(
     if let Some(policy) = policy {
         if let Some(workspace_id) = &policy.workspace_id {
             args.push(format!(
-                "--label={}.workspace_id={}",
-                SANDBOX_LABEL, workspace_id
+                "--label={SANDBOX_LABEL}.workspace_id={workspace_id}"
             ));
         }
         if let Some(codebase_id) = &policy.codebase_id {
-            args.push(format!(
-                "--label={}.codebase_id={}",
-                SANDBOX_LABEL, codebase_id
-            ));
+            args.push(format!("--label={SANDBOX_LABEL}.codebase_id={codebase_id}"));
         }
         args.push(format!(
             "--label={}.network_mode={}",
@@ -377,7 +373,7 @@ fn build_docker_run_args(
 
         for (key, value) in collect_policy_env(policy)? {
             args.push("-e".to_string());
-            args.push(format!("{}={}", key, value));
+            args.push(format!("{key}={value}"));
         }
 
         args.push("--network".to_string());
@@ -443,7 +439,7 @@ async fn get_container_port(container_id: &str, container_port: u16) -> Option<u
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let ports: Value = serde_json::from_str(stdout.trim()).ok()?;
-    let key = format!("{}/tcp", container_port);
+    let key = format!("{container_port}/tcp");
     let mappings = ports.get(&key)?.as_array()?;
     let host_port = mappings.first()?.get("HostPort")?.as_str()?;
     host_port.parse().ok()

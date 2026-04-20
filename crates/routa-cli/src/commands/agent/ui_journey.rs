@@ -175,8 +175,7 @@ pub(crate) fn validate_scenario_resource(context: &UiJourneyRunContext) -> Resul
 
     resolve_scenario_path(scenario_id).ok_or_else(|| {
         format!(
-            "Scenario file not found for '{}'. Expected under resources/ui-journeys/<scenario>.yaml",
-            scenario_id
+            "Scenario file not found for '{scenario_id}'. Expected under resources/ui-journeys/<scenario>.yaml"
         )
     })?;
 
@@ -199,7 +198,7 @@ fn resolve_scenario_path(scenario_id: &str) -> Option<PathBuf> {
 
     for dir in search_dirs {
         for extension in ["yaml", "yml"] {
-            let candidate = dir.join(format!("{}.{}", scenario_id, extension));
+            let candidate = dir.join(format!("{scenario_id}.{extension}"));
             if candidate.is_file() {
                 return Some(candidate);
             }
@@ -222,7 +221,7 @@ pub(crate) fn write_failure_artifacts(
         "incomplete",
         metrics,
     ) {
-        eprintln!("⚠️  Failed to write failure artifacts: {}", err);
+        eprintln!("⚠️  Failed to write failure artifacts: {err}");
     }
 }
 
@@ -310,7 +309,7 @@ pub(crate) fn write_artifact_set(
     let evaluation_path = artifact_dir.join("evaluation.json");
     let summary_path = artifact_dir.join("summary.md");
     let evaluation_json = serde_json::to_string_pretty(&evaluation)
-        .map_err(|err| format!("Failed to serialize evaluation JSON: {}", err))?;
+        .map_err(|err| format!("Failed to serialize evaluation JSON: {err}"))?;
 
     std::fs::write(&evaluation_path, evaluation_json)
         .map_err(|err| format!("Failed to write {}: {}", evaluation_path.display(), err))?;
@@ -463,8 +462,7 @@ pub(crate) fn validate_success_artifacts(
         .ok_or_else(|| "Evaluation artifact missing string field: scenario_id".to_string())?;
     if actual_scenario != expected_scenario {
         return Err(format!(
-            "Evaluation artifact scenario_id mismatch: expected '{}', got '{}'",
-            expected_scenario, actual_scenario
+            "Evaluation artifact scenario_id mismatch: expected '{expected_scenario}', got '{actual_scenario}'"
         ));
     }
 
@@ -485,8 +483,7 @@ pub(crate) fn validate_success_artifacts(
         .ok_or_else(|| "Evaluation artifact missing integer field: task_fit_score".to_string())?;
     if !(0..=100).contains(&task_fit_score) {
         return Err(format!(
-            "Evaluation artifact task_fit_score out of range 0-100: {}",
-            task_fit_score
+            "Evaluation artifact task_fit_score out of range 0-100: {task_fit_score}"
         ));
     }
 
@@ -500,8 +497,7 @@ pub(crate) fn validate_success_artifacts(
     let expected_verdict = expected_verdict_for_score(task_fit_score);
     if verdict != expected_verdict {
         return Err(format!(
-            "Evaluation artifact verdict/score mismatch: score {} requires '{}', got '{}'",
-            task_fit_score, expected_verdict, verdict
+            "Evaluation artifact verdict/score mismatch: score {task_fit_score} requires '{expected_verdict}', got '{verdict}'"
         ));
     }
 
@@ -512,18 +508,15 @@ pub(crate) fn validate_success_artifacts(
     for (index, finding) in findings.iter().enumerate() {
         let object = finding
             .as_object()
-            .ok_or_else(|| format!("Finding at index {} must be an object", index))?;
+            .ok_or_else(|| format!("Finding at index {index} must be an object"))?;
         for field in ["type", "description", "severity"] {
             let value = object
                 .get(field)
                 .and_then(|value| value.as_str())
-                .ok_or_else(|| {
-                    format!("Finding at index {} missing string field: {}", index, field)
-                })?;
+                .ok_or_else(|| format!("Finding at index {index} missing string field: {field}"))?;
             if value.trim().is_empty() {
                 return Err(format!(
-                    "Finding at index {} has empty string field: {}",
-                    index, field
+                    "Finding at index {index} has empty string field: {field}"
                 ));
             }
         }
@@ -533,8 +526,7 @@ pub(crate) fn validate_success_artifacts(
             .unwrap_or("");
         if !matches!(finding_type, "issue" | "observation") {
             return Err(format!(
-                "Finding at index {} has unsupported type '{}'; expected 'issue' or 'observation'",
-                index, finding_type
+                "Finding at index {index} has unsupported type '{finding_type}'; expected 'issue' or 'observation'"
             ));
         }
         let severity = object
@@ -543,8 +535,7 @@ pub(crate) fn validate_success_artifacts(
             .unwrap_or("");
         if !matches!(severity, "low" | "medium" | "high") {
             return Err(format!(
-                "Finding at index {} has unsupported severity '{}'; expected low|medium|high",
-                index, severity
+                "Finding at index {index} has unsupported severity '{severity}'; expected low|medium|high"
             ));
         }
     }
@@ -664,10 +655,7 @@ fn parse_artifact_payload_candidate(
         extract_json_object_slice(&stripped_controls).unwrap_or(stripped_controls.as_str());
 
     serde_json::from_str::<UiJourneyArtifactPayload>(candidate).map_err(|err| {
-        format!(
-            "Failed to parse ui-journey artifact payload from specialist output: {}",
-            err
-        )
+        format!("Failed to parse ui-journey artifact payload from specialist output: {err}")
     })
 }
 
@@ -765,8 +753,8 @@ pub(crate) fn write_baseline_artifacts(
     } else {
         score_sum as f64 / run_count as f64
     };
-    let baseline_json_path = scenario_dir.join(format!("baseline-{}.json", batch_run_id));
-    let baseline_md_path = scenario_dir.join(format!("baseline-{}.md", batch_run_id));
+    let baseline_json_path = scenario_dir.join(format!("baseline-{batch_run_id}.json"));
+    let baseline_md_path = scenario_dir.join(format!("baseline-{batch_run_id}.md"));
     let runs_json = aggregate_runs
         .iter()
         .map(|run| {

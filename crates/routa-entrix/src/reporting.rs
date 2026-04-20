@@ -44,11 +44,11 @@ pub fn write_report_output(path: Option<&str>, payload: &Value) -> std::io::Resu
     let serialized = serde_json::to_string_pretty(payload).map_err(std::io::Error::other)?;
 
     if path == "-" {
-        println!("{}", serialized);
+        println!("{serialized}");
         return Ok(());
     }
 
-    std::fs::write(path, format!("{}\n", serialized))
+    std::fs::write(path, format!("{serialized}\n"))
 }
 
 #[cfg(test)]

@@ -4,10 +4,14 @@ use routa_core::harness_template;
 use serde_json::json;
 use std::path::{Path, PathBuf};
 
+use crate::commands::harness_budget::{run_budget, FileBudgetArgs};
+
 #[derive(Subcommand, Debug, Clone)]
 pub enum HarnessAction {
     /// Detect build/test harness surfaces from docs/harness/*.yml
     Detect(HarnessDetectArgs),
+    /// Enforce long-file budgets and frozen hotspot ceilings.
+    Budget(FileBudgetArgs),
     /// Manage harness templates
     Template {
         #[command(subcommand)]
@@ -93,6 +97,10 @@ pub enum HarnessOutputFormat {
 pub fn run(action: HarnessAction) -> Result<(), String> {
     match action {
         HarnessAction::Detect(args) => run_detect(&args),
+        HarnessAction::Budget(args) => {
+            let repo_root = resolve_repo_root(args.repo_root.as_deref())?;
+            run_budget(&args, &repo_root)
+        }
         HarnessAction::Template { action } => run_template(action),
     }
 }

@@ -268,13 +268,12 @@ async fn resolve_policy_context(
             .codebase_store
             .get(&codebase_id)
             .await?
-            .ok_or_else(|| ServerError::NotFound(format!("Codebase {} not found", codebase_id)))?;
+            .ok_or_else(|| ServerError::NotFound(format!("Codebase {codebase_id} not found")))?;
 
         if let Some(workspace_id) = &context.workspace_id {
             if workspace_id != &codebase.workspace_id {
                 return Err(ServerError::BadRequest(format!(
-                    "Codebase {} does not belong to workspace {}",
-                    codebase_id, workspace_id
+                    "Codebase {codebase_id} does not belong to workspace {workspace_id}"
                 )));
             }
         }
@@ -302,9 +301,7 @@ async fn resolve_policy_context(
             .workspace_store
             .get(&workspace_id)
             .await?
-            .ok_or_else(|| {
-                ServerError::NotFound(format!("Workspace {} not found", workspace_id))
-            })?;
+            .ok_or_else(|| ServerError::NotFound(format!("Workspace {workspace_id} not found")))?;
 
         if let Some(codebase) = state.codebase_store.get_default(&workspace_id).await? {
             context.codebase_id = Some(codebase.id);

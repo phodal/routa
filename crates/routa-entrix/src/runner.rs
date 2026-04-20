@@ -93,15 +93,15 @@ impl ShellRunner {
                     let CommandRunOutput { output, timed_out } = command_result;
                     let stdout = String::from_utf8_lossy(&output.stdout);
                     let stderr = String::from_utf8_lossy(&output.stderr);
-                    let combined = format!("{}{}", stdout, stderr);
+                    let combined = format!("{stdout}{stderr}");
                     let output_truncated = truncate_utf8(&combined, 2000);
                     let elapsed = start.elapsed().as_secs_f64() * 1000.0;
 
                     if timed_out {
                         let timed_out_output = if output_truncated.trim().is_empty() {
-                            format!("TIMEOUT ({}s)", timeout)
+                            format!("TIMEOUT ({timeout}s)")
                         } else {
-                            format!("TIMEOUT ({}s)\n{}", timeout, output_truncated)
+                            format!("TIMEOUT ({timeout}s)\n{output_truncated}")
                         };
 
                         MetricResult::new(metric.name.clone(), false, timed_out_output, metric.tier)
@@ -322,16 +322,15 @@ fn send_signal_to_group(pid: i32, signal: i32) -> io::Result<()> {
     };
 
     let status = Command::new("kill")
-        .arg(format!("-{}", signal_name))
-        .arg(format!("-{}", pid))
+        .arg(format!("-{signal_name}"))
+        .arg(format!("-{pid}"))
         .status()?;
 
     if status.success() {
         Ok(())
     } else {
         let err = io::Error::other(format!(
-            "failed to send {} to process group {}",
-            signal_name, pid
+            "failed to send {signal_name} to process group {pid}"
         ));
         if child_process_group_missing(pid) {
             Ok(())
@@ -345,7 +344,7 @@ fn send_signal_to_group(pid: i32, signal: i32) -> io::Result<()> {
 fn child_process_group_missing(pid: i32) -> bool {
     Command::new("kill")
         .arg("-0")
-        .arg(format!("-{}", pid))
+        .arg(format!("-{pid}"))
         .status()
         .map(|status| !status.success())
         .unwrap_or(false)
@@ -458,7 +457,7 @@ mod tests {
         let _ = std::fs::remove_file(&leak_path);
 
         let runner = ShellRunner::new(Path::new("/tmp")).with_timeout(1);
-        let command = format!("sh -c 'sleep 2; echo leaked > {}' & wait", leak_path);
+        let command = format!("sh -c 'sleep 2; echo leaked > {leak_path}' & wait");
         let result = runner.run(&Metric::new("slow", command), false);
 
         assert!(!result.passed);

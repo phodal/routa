@@ -47,7 +47,7 @@ async fn execute_tool(
         .any(|tool_name| tool_name == normalized_name);
 
     if !known_tool {
-        return Err(ServerError::BadRequest(format!("Unknown tool: {}", name)));
+        return Err(ServerError::BadRequest(format!("Unknown tool: {name}")));
     }
 
     let result = super::mcp_routes::execute_tool_public(&state, normalized_name, &args).await;

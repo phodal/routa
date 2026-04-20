@@ -32,7 +32,6 @@ import { WorkflowRunStore, InMemoryWorkflowRunStore } from "./workflows/workflow
 import { InMemoryKanbanBoardStore, KanbanBoardStore } from "./store/kanban-board-store";
 import { InMemoryArtifactStore, ArtifactStore } from "./store/artifact-store";
 import { PermissionStore } from "./tools/permission-store";
-import { startWorkflowOrchestrator } from "./kanban/workflow-orchestrator-singleton";
 
 export interface RoutaSystem {
   agentStore: AgentStore;
@@ -348,6 +347,7 @@ export function getRoutaSystem(): RoutaSystem {
 
     // Start the workflow orchestrator to listen for column transitions
     const system = g[GLOBAL_KEY] as RoutaSystem;
+    const { startWorkflowOrchestrator } = require("./kanban/workflow-orchestrator-singleton") as typeof import("./kanban/workflow-orchestrator-singleton");
     startWorkflowOrchestrator(system);
   }
   return g[GLOBAL_KEY] as RoutaSystem;

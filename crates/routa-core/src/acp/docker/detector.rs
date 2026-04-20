@@ -139,7 +139,7 @@ impl DockerDetector {
             Ok(Err(e)) => DockerStatus {
                 available: false,
                 daemon_running: false,
-                error: Some(format!("Failed to run docker: {}", e)),
+                error: Some(format!("Failed to run docker: {e}")),
                 checked_at: checked_at.to_string(),
                 ..Default::default()
             },
@@ -217,7 +217,7 @@ impl DockerDetector {
                     if stderr.is_empty() {
                         "".to_string()
                     } else {
-                        format!("\n{}", stderr)
+                        format!("\n{stderr}")
                     }
                 );
 
@@ -241,7 +241,7 @@ impl DockerDetector {
                 ok: false,
                 image: image.to_string(),
                 output: None,
-                error: Some(format!("Failed to run docker pull: {}", e)),
+                error: Some(format!("Failed to run docker pull: {e}")),
             },
             Err(_) => DockerPullResult {
                 ok: false,

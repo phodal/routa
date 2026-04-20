@@ -1,13 +1,16 @@
 import {AcpProcess} from "@/core/acp/acp-process";
-import {buildConfigFromPreset, buildConfigFromInline, ManagedProcess, NotificationHandler} from "@/core/acp/processer";
+import {buildConfigFromPreset, buildConfigFromInline} from "@/core/acp/process-config";
+import type { NotificationHandler } from "@/core/acp/protocol-types";
 import {ClaudeCodeProcess, buildClaudeCodeConfig, mapClaudeModeToPermissionMode} from "@/core/acp/claude-code-process";
 import {ensureMcpForProvider, parseMcpServersFromConfigs, providerSupportsMcp} from "@/core/acp/mcp-setup";
 import {getDefaultRoutaMcpConfig} from "@/core/acp/mcp-config-generator";
 import type { McpServerProfile } from "@/core/mcp/mcp-server-profiles";
 import {OpencodeSdkAdapter, OpencodeSdkDirectAdapter, shouldUseOpencodeAdapter, getOpencodeServerUrl, isOpencodeServerConfigured, isOpencodeDirectApiConfigured} from "@/core/acp/opencode-sdk-adapter";
 import {ClaudeCodeSdkAdapter, shouldUseClaudeCodeSdkAdapter} from "@/core/acp/claude-code-sdk-adapter";
-import {WorkspaceAgentAdapter, type WorkspaceAgentAdapterOptions} from "@/core/acp/workspace-agent";
-import { DockerOpenCodeAdapter, getDockerProcessManager, DEFAULT_DOCKER_AGENT_IMAGE } from "@/core/acp/docker";
+import {WorkspaceAgentAdapter, type WorkspaceAgentAdapterOptions} from "@/core/acp/workspace-agent/workspace-agent-adapter";
+import { DockerOpenCodeAdapter } from "@/core/acp/docker/docker-opencode-adapter";
+import { getDockerProcessManager } from "@/core/acp/docker/process-manager";
+import { DEFAULT_DOCKER_AGENT_IMAGE } from "@/core/acp/docker/utils";
 import {isServerlessEnvironment} from "@/core/acp/api-based-providers";
 import {getHttpSessionStore} from "@/core/acp/http-session-store";
 import {AgentInstanceFactory, getAgentInstanceManager, type AgentInstanceConfig} from "@/core/acp/agent-instance-factory";
@@ -17,6 +20,13 @@ import type { LifecycleNotifier } from "@/core/acp/lifecycle-notifier";
 import type { McpServerConfig } from "@anthropic-ai/claude-agent-sdk";
 
 const ACP_DEBUG = process.env.ROUTA_DEBUG_ACP === "1";
+
+interface ManagedProcess {
+    process: AcpProcess;
+    acpSessionId: string;
+    presetId: string;
+    createdAt: Date;
+}
 
 function logAcpDebug(message: string): void {
     if (ACP_DEBUG) {
@@ -34,9 +44,6 @@ export interface ManagedClaudeProcess {
     createdAt: Date;
 }
 
-/**
- * A managed OpenCode SDK adapter (for serverless environments).
- */
 export interface ManagedOpencodeAdapter {
     adapter: OpencodeSdkAdapter | OpencodeSdkDirectAdapter;
     acpSessionId: string;
@@ -44,9 +51,6 @@ export interface ManagedOpencodeAdapter {
     createdAt: Date;
 }
 
-/**
- * A managed Claude Code SDK adapter (for serverless environments).
- */
 export interface ManagedClaudeCodeSdkAdapter {
     adapter: ClaudeCodeSdkAdapter;
     acpSessionId: string;
@@ -54,9 +58,6 @@ export interface ManagedClaudeCodeSdkAdapter {
     createdAt: Date;
 }
 
-/**
- * A managed Workspace Agent adapter (native Vercel AI SDK agent).
- */
 export interface ManagedWorkspaceAgent {
     adapter: WorkspaceAgentAdapter;
     acpSessionId: string;
@@ -64,9 +65,6 @@ export interface ManagedWorkspaceAgent {
     createdAt: Date;
 }
 
-/**
- * A managed Docker OpenCode adapter.
- */
 export interface ManagedDockerAdapter {
     adapter: DockerOpenCodeAdapter;
     acpSessionId: string;
@@ -88,18 +86,6 @@ export class AcpProcessManager {
     private claudeCodeSdkAdapters = new Map<string, ManagedClaudeCodeSdkAdapter>();
     private workspaceAgents = new Map<string, ManagedWorkspaceAgent>();
 
-    /**
-     * Spawn a new ACP agent process, initialize the protocol, and create a session.
-     * In serverless environments with OPENCODE_SERVER_URL configured, uses SDK adapter instead.
-     *
-     * @param sessionId - Our internal session ID
-     * @param cwd - Working directory for the agent
-     * @param onNotification - Handler for session/update notifications
-     * @param presetId - Which ACP agent to use (default: "opencode")
-     * @param extraArgs - Additional command-line arguments
-     * @param extraEnv - Additional environment variables
-     * @returns The agent's ACP session ID
-     */
     async createSession(
         sessionId: string,
         cwd: string,
@@ -112,14 +98,10 @@ export class AcpProcessManager {
         toolMode?: "essential" | "full",
         mcpProfile?: McpServerProfile,
     ): Promise<string> {
-        // Check if we should use OpenCode SDK adapter (serverless + configured)
         if (presetId === "opencode" && shouldUseOpencodeAdapter()) {
             return this.createOpencodeSdkSession(sessionId, onNotification);
         }
 
-        // Setup MCP: writes config files and/or returns CLI args
-        // Pass workspaceId and sessionId so the MCP endpoint URL has ?wsId= and ?sid= params
-        // This ensures notes created by the agent are scoped to the current session.
         let mcpConfigs: string[] | undefined;
         if (providerSupportsMcp(presetId)) {
             const mcpResult = await ensureMcpForProvider(

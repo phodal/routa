@@ -93,7 +93,7 @@ pub async fn update_board(
     }
     if let Some(columns_json) = columns_json {
         let columns: serde_json::Value = serde_json::from_str(columns_json)
-            .map_err(|error| format!("Invalid --columns-json value: {}", error))?;
+            .map_err(|error| format!("Invalid --columns-json value: {error}"))?;
         params["columns"] = columns;
     }
     if set_default {
@@ -335,7 +335,7 @@ pub async fn decompose_tasks(
 ) -> Result<(), String> {
     let router = RpcRouter::new(state.clone());
     let tasks: serde_json::Value = serde_json::from_str(tasks_json)
-        .map_err(|error| format!("Invalid --tasks-json value: {}", error))?;
+        .map_err(|error| format!("Invalid --tasks-json value: {error}"))?;
     let mut params = serde_json::json!({
         "workspaceId": workspace_id,
         "tasks": tasks,
@@ -652,7 +652,7 @@ pub async fn export_config(
 
     let config = KanbanConfig {
         version: 1,
-        name: Some(format!("kanban-{}", workspace_id)),
+        name: Some(format!("kanban-{workspace_id}")),
         workspace_id: workspace_id.to_string(),
         boards,
     };
@@ -660,9 +660,9 @@ pub async fn export_config(
     let yaml = config.to_yaml()?;
     if let Some(path) = output {
         std::fs::write(path, yaml).map_err(|error| format!("Failed to write '{path}': {error}"))?;
-        println!("Exported Kanban config to {}", path);
+        println!("Exported Kanban config to {path}");
     } else {
-        println!("{}", yaml);
+        println!("{yaml}");
     }
 
     Ok(())

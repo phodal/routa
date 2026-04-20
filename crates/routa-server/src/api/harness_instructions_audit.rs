@@ -347,12 +347,7 @@ async fn execute_auditor_command(
         command.output(),
     )
     .await
-    .map_err(|_| {
-        format!(
-            "Instruction audit command timed out after {}ms",
-            AUDIT_COMMAND_TIMEOUT_MS
-        )
-    })?
+    .map_err(|_| format!("Instruction audit command timed out after {AUDIT_COMMAND_TIMEOUT_MS}ms"))?
     .map_err(|error| format!("Instruction audit command failed to execute: {error}"))?;
 
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
@@ -398,8 +393,7 @@ pub(crate) async fn run_instruction_audit(
                 to_duration_ms(),
                 provider,
                 Some(&format!(
-                    "Provider '{}' API key not configured, using heuristic fallback",
-                    provider
+                    "Provider '{provider}' API key not configured, using heuristic fallback"
                 )),
             );
         }

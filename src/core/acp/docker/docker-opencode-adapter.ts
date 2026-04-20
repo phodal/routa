@@ -1,4 +1,4 @@
-import type { NotificationHandler, JsonRpcMessage } from "@/core/acp/processer";
+import type { NotificationHandler, JsonRpcMessage } from "@/core/acp/protocol-types";
 
 interface DockerCreateSessionResponse {
   sessionId?: string;

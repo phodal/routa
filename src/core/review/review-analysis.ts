@@ -5,8 +5,8 @@ import { getSpecialistById, buildSpecialistFirstPrompt } from "../orchestration/
 import { gitExec, safeExecSync } from "../utils/safe-exec";
 import {
   buildHistoricalRelatedFiles,
-  type HistoricalRelatedFile,
 } from "./historical-related-files";
+import type { ReviewAnalysisPayload } from "./review-analysis-types";
 import { buildReviewWorkerPrompt, type ReviewWorkerType } from "./review-worker-prompts";
 
 const CONFIG_CANDIDATES = [
@@ -26,20 +26,6 @@ export interface ReviewAnalyzeOptions {
   rulesFile?: string;
   model?: string;
   validatorModel?: string;
-}
-
-export interface ReviewAnalysisPayload {
-  repoPath: string;
-  repoRoot: string;
-  base: string;
-  head: string;
-  changedFiles: string[];
-  diffStat: string;
-  diff: string;
-  configSnippets: Array<{ path: string; content: string }>;
-  reviewRules?: string;
-  graphReviewContext?: unknown;
-  historicalRelatedFiles?: HistoricalRelatedFile[];
 }
 
 export interface ReviewAnalysisResult {

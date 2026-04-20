@@ -252,8 +252,7 @@ async fn test_agent_roles() {
 
         assert!(
             response.get("result").is_some(),
-            "Failed to create agent with role {}",
-            role
+            "Failed to create agent with role {role}"
         );
         assert_eq!(response["result"]["agent"]["role"], *role);
     }

@@ -60,7 +60,7 @@ impl RpcRouter {
                 return serde_json::to_string(&JsonRpcResponse::error(
                     None,
                     PARSE_ERROR,
-                    format!("Parse error: {}", e),
+                    format!("Parse error: {e}"),
                 ))
                 .unwrap_or_default();
             }
@@ -81,7 +81,7 @@ impl RpcRouter {
                 return serde_json::to_value(JsonRpcResponse::error(
                     None,
                     PARSE_ERROR,
-                    format!("Invalid request: {}", e),
+                    format!("Invalid request: {e}"),
                 ))
                 .unwrap_or_default();
             }
@@ -326,8 +326,7 @@ impl RpcRouter {
 
             // ----- Unknown method -----
             _ => Err(RpcError::MethodNotFound(format!(
-                "Method not found: {}",
-                method
+                "Method not found: {method}"
             ))),
         }
     }
@@ -380,5 +379,5 @@ impl RpcRouter {
 /// Helper: deserialize `serde_json::Value` into a typed params struct.
 fn parse_params<T: serde::de::DeserializeOwned>(value: serde_json::Value) -> Result<T, RpcError> {
     serde_json::from_value(value)
-        .map_err(|e| RpcError::InvalidParams(format!("Invalid params: {}", e)))
+        .map_err(|e| RpcError::InvalidParams(format!("Invalid params: {e}")))
 }

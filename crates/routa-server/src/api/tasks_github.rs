@@ -96,7 +96,7 @@ fn github_request(
         .header("X-GitHub-Api-Version", "2022-11-28");
 
     match token {
-        Some(token) => builder.header(AUTHORIZATION, format!("token {}", token)),
+        Some(token) => builder.header(AUTHORIZATION, format!("token {token}")),
         None => builder,
     }
 }
@@ -117,18 +117,18 @@ pub async fn list_github_issues(
     let response = github_request(client.get(url), token)
         .send()
         .await
-        .map_err(|error| format!("GitHub issue list failed: {}", error))?;
+        .map_err(|error| format!("GitHub issue list failed: {error}"))?;
 
     if !response.status().is_success() {
         let status = response.status();
         let text = response.text().await.unwrap_or_default();
-        return Err(format!("GitHub issue list failed: {} {}", status, text));
+        return Err(format!("GitHub issue list failed: {status} {text}"));
     }
 
     let data = response
         .json::<Vec<serde_json::Value>>()
         .await
-        .map_err(|error| format!("GitHub issue list failed: {}", error))?;
+        .map_err(|error| format!("GitHub issue list failed: {error}"))?;
 
     Ok(data
         .into_iter()
@@ -220,21 +220,18 @@ pub async fn list_github_pulls(
     let response = github_request(client.get(url), token)
         .send()
         .await
-        .map_err(|error| format!("GitHub pull request list failed: {}", error))?;
+        .map_err(|error| format!("GitHub pull request list failed: {error}"))?;
 
     if !response.status().is_success() {
         let status = response.status();
         let text = response.text().await.unwrap_or_default();
-        return Err(format!(
-            "GitHub pull request list failed: {} {}",
-            status, text
-        ));
+        return Err(format!("GitHub pull request list failed: {status} {text}"));
     }
 
     let data = response
         .json::<Vec<serde_json::Value>>()
         .await
-        .map_err(|error| format!("GitHub pull request list failed: {}", error))?;
+        .map_err(|error| format!("GitHub pull request list failed: {error}"))?;
 
     Ok(data
         .into_iter()
@@ -349,24 +346,24 @@ pub async fn create_github_issue(
     }
 
     let response = github_request(
-        client.post(format!("https://api.github.com/repos/{}/issues", repo)),
+        client.post(format!("https://api.github.com/repos/{repo}/issues")),
         Some(token),
     )
     .json(&payload)
     .send()
     .await
-    .map_err(|error| format!("GitHub issue create failed: {}", error))?;
+    .map_err(|error| format!("GitHub issue create failed: {error}"))?;
 
     if !response.status().is_success() {
         let status = response.status();
         let text = response.text().await.unwrap_or_default();
-        return Err(format!("GitHub issue create failed: {} {}", status, text));
+        return Err(format!("GitHub issue create failed: {status} {text}"));
     }
 
     let data = response
         .json::<serde_json::Value>()
         .await
-        .map_err(|error| format!("GitHub issue create failed: {}", error))?;
+        .map_err(|error| format!("GitHub issue create failed: {error}"))?;
 
     Ok(GitHubIssueRef {
         id: data
@@ -416,22 +413,21 @@ pub async fn update_github_issue(
 
     let response = github_request(
         client.patch(format!(
-            "https://api.github.com/repos/{}/issues/{}",
-            repo, issue_number
+            "https://api.github.com/repos/{repo}/issues/{issue_number}"
         )),
         Some(token),
     )
     .json(&payload)
     .send()
     .await
-    .map_err(|error| format!("GitHub issue update failed: {}", error))?;
+    .map_err(|error| format!("GitHub issue update failed: {error}"))?;
 
     if response.status().is_success() {
         Ok(())
     } else {
         let status = response.status();
         let text = response.text().await.unwrap_or_default();
-        Err(format!("GitHub issue update failed: {} {}", status, text))
+        Err(format!("GitHub issue update failed: {status} {text}"))
     }
 }
 
@@ -455,7 +451,7 @@ pub fn build_task_issue_body(objective: &str, test_cases: Option<&Vec<String>>) 
         "## Test Cases\n{}",
         normalized_test_cases
             .into_iter()
-            .map(|value| format!("- {}", value))
+            .map(|value| format!("- {value}"))
             .collect::<Vec<_>>()
             .join("\n")
     ));

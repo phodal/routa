@@ -108,10 +108,7 @@ pub async fn install(
         choose_dist_type(&dist)
     };
 
-    println!(
-        "[acp install] Installing '{}' v{} via {}",
-        name, version, dist_type
-    );
+    println!("[acp install] Installing '{name}' v{version} via {dist_type}");
 
     match dist_type.as_str() {
         "npx" => {
@@ -125,8 +122,7 @@ pub async fn install(
         }
         other => {
             return Err(format!(
-                "Unknown distribution type '{}'. Use npx, uvx, or binary.",
-                other
+                "Unknown distribution type '{other}'. Use npx, uvx, or binary."
             ));
         }
     }
@@ -142,7 +138,7 @@ pub async fn install(
 }
 
 pub async fn uninstall(state: &AppState, agent_id: &str) -> Result<(), String> {
-    println!("[acp uninstall] Removing '{}'…", agent_id);
+    println!("[acp uninstall] Removing '{agent_id}'…");
 
     if let Some(info) = state
         .acp_installation_state
@@ -154,7 +150,7 @@ pub async fn uninstall(state: &AppState, agent_id: &str) -> Result<(), String> {
                 .acp_binary_manager
                 .uninstall(agent_id)
                 .await
-                .map_err(|e| format!("Binary removal failed: {}", e))?;
+                .map_err(|e| format!("Binary removal failed: {e}"))?;
         }
     }
 
@@ -162,7 +158,7 @@ pub async fn uninstall(state: &AppState, agent_id: &str) -> Result<(), String> {
         .acp_installation_state
         .uninstall(agent_id)
         .await
-        .map_err(|e| format!("State update failed: {}", e))?;
+        .map_err(|e| format!("State update failed: {e}"))?;
 
     print_json(&serde_json::json!({
         "success": true,
@@ -181,7 +177,7 @@ pub async fn install_top_level(
     let selected = match agent_id {
         Some(id) => find_inventory_entry(&inventory, id)
             .cloned()
-            .ok_or_else(|| format!("Provider '{}' not found in presets or ACP registry", id))?,
+            .ok_or_else(|| format!("Provider '{id}' not found in presets or ACP registry"))?,
         None => pick_provider_to_install(&inventory)?,
     };
 
@@ -209,7 +205,7 @@ pub async fn uninstall_top_level(state: &AppState, agent_id: Option<&str>) -> Re
     let selected = match agent_id {
         Some(id) => find_inventory_entry(&installed, id)
             .cloned()
-            .ok_or_else(|| format!("Installed provider '{}' not found", id))?,
+            .ok_or_else(|| format!("Installed provider '{id}' not found"))?,
         None => pick_provider_to_uninstall(&installed)?,
     };
 
@@ -345,7 +341,7 @@ fn find_agent<'a>(
             arr.iter()
                 .find(|a| a.get("id").and_then(|v| v.as_str()) == Some(agent_id))
         })
-        .ok_or_else(|| format!("Agent '{}' not found in registry", agent_id))
+        .ok_or_else(|| format!("Agent '{agent_id}' not found in registry"))
 }
 
 /// Pick the best distribution type given availability.
@@ -385,7 +381,7 @@ async fn install_npx(
         .acp_runtime_manager
         .ensure_runtime(&RuntimeType::Npx)
         .await
-        .map_err(|e| format!("Failed to ensure npx runtime: {}", e))?;
+        .map_err(|e| format!("Failed to ensure npx runtime: {e}"))?;
     println!("[acp install] npx ready: {:?}", _npx_info.path);
 
     let package = dist
@@ -398,12 +394,9 @@ async fn install_npx(
         .acp_installation_state
         .mark_installed(agent_id, version, DistributionType::Npx, None, package)
         .await
-        .map_err(|e| format!("Failed to save state: {}", e))?;
+        .map_err(|e| format!("Failed to save state: {e}"))?;
 
-    println!(
-        "[acp install] '{}' installed (npx will fetch on first run)",
-        name
-    );
+    println!("[acp install] '{name}' installed (npx will fetch on first run)");
     Ok(())
 }
 
@@ -419,7 +412,7 @@ async fn install_uvx(
         .acp_runtime_manager
         .ensure_runtime(&RuntimeType::Uvx)
         .await
-        .map_err(|e| format!("Failed to ensure uvx runtime: {}", e))?;
+        .map_err(|e| format!("Failed to ensure uvx runtime: {e}"))?;
     println!("[acp install] uvx ready: {:?}", _uv_info.path);
 
     let package = dist
@@ -432,12 +425,9 @@ async fn install_uvx(
         .acp_installation_state
         .mark_installed(agent_id, version, DistributionType::Uvx, None, package)
         .await
-        .map_err(|e| format!("Failed to save state: {}", e))?;
+        .map_err(|e| format!("Failed to save state: {e}"))?;
 
-    println!(
-        "[acp install] '{}' installed (uvx will fetch on first run)",
-        name
-    );
+    println!("[acp install] '{name}' installed (uvx will fetch on first run)");
     Ok(())
 }
 
@@ -452,17 +442,17 @@ async fn install_binary(
     let binary_config = dist
         .get("binary")
         .and_then(|b| b.get(&platform))
-        .ok_or_else(|| format!("No binary for platform '{}'", platform))?;
+        .ok_or_else(|| format!("No binary for platform '{platform}'"))?;
 
     let binary_info: routa_core::acp::BinaryInfo = serde_json::from_value(binary_config.clone())
-        .map_err(|e| format!("Invalid binary config: {}", e))?;
+        .map_err(|e| format!("Invalid binary config: {e}"))?;
 
-    println!("[acp install] Downloading binary for '{}'…", name);
+    println!("[acp install] Downloading binary for '{name}'…");
     let exe = state
         .acp_binary_manager
         .install_binary(agent_id, version, &binary_info)
         .await
-        .map_err(|e| format!("Binary install failed: {}", e))?;
+        .map_err(|e| format!("Binary install failed: {e}"))?;
 
     let exe_str = exe.to_string_lossy().to_string();
     state
@@ -475,9 +465,9 @@ async fn install_binary(
             None,
         )
         .await
-        .map_err(|e| format!("State update failed: {}", e))?;
+        .map_err(|e| format!("State update failed: {e}"))?;
 
-    println!("[acp install] '{}' binary installed → {}", name, exe_str);
+    println!("[acp install] '{name}' binary installed → {exe_str}");
     Ok(())
 }
 
@@ -644,7 +634,7 @@ fn pick_provider_to_install(
         .items(&items)
         .default(0)
         .interact_opt()
-        .map_err(|e| format!("Interactive selection failed: {}", e))?;
+        .map_err(|e| format!("Interactive selection failed: {e}"))?;
 
     index
         .map(|idx| installable[idx].to_owned())
@@ -664,7 +654,7 @@ fn pick_provider_to_uninstall(
         .items(&items)
         .default(0)
         .interact_opt()
-        .map_err(|e| format!("Interactive selection failed: {}", e))?;
+        .map_err(|e| format!("Interactive selection failed: {e}"))?;
 
     index
         .map(|idx| entries[idx].clone())
@@ -686,7 +676,7 @@ fn format_provider_install_label(entry: &ProviderInventoryEntry) -> String {
     format!(
         "{} ({}) [{}] v{}{}",
         entry.display_name, entry.canonical_id, entry.source, version, installed
-    ) + &format!(" · {}", dist)
+    ) + &format!(" · {dist}")
 }
 
 fn format_provider_uninstall_label(entry: &ProviderInventoryEntry) -> String {

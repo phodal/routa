@@ -36,13 +36,12 @@ pub(crate) async fn verify_provider_readiness(provider: &str) -> Result<(), Stri
 
     let preset = get_preset_by_id_with_registry(&normalized_provider)
         .await
-        .map_err(|err| format!("Unsupported provider '{}': {}", normalized_provider, err))?;
+        .map_err(|err| format!("Unsupported provider '{normalized_provider}': {err}"))?;
     let command = resolve_preset_command(&preset);
 
     if !command_exists(&command) {
         return Err(format!(
-            "Provider '{}' requires '{}' but command not found. Is it installed and in PATH?",
-            normalized_provider, command
+            "Provider '{normalized_provider}' requires '{command}' but command not found. Is it installed and in PATH?"
         ));
     }
 
@@ -157,7 +156,7 @@ pub(crate) fn augment_runtime_failure_message(
     let Some(hint) = diagnostic.hint else {
         return failure_message.to_string();
     };
-    format!("{}; hint: {}", failure_message, hint)
+    format!("{failure_message}; hint: {hint}")
 }
 
 pub(crate) fn diagnose_runtime_failure(
@@ -308,7 +307,7 @@ fn synthetic_agent_update(
 }
 
 fn decode_log_escaped_text(raw: &str) -> String {
-    let quoted = format!("\"{}\"", raw);
+    let quoted = format!("\"{raw}\"");
     serde_json::from_str::<String>(&quoted).unwrap_or_else(|_| {
         raw.replace("\\n", "\n")
             .replace("\\r", "\r")
@@ -467,8 +466,7 @@ fn extract_opencode_failure_hint(path: &Path) -> Option<ProviderRuntimeDiagnosti
         return Some(ProviderRuntimeDiagnostic {
             failure_stage_override: Some("provider_rate_limited"),
             hint: Some(format!(
-                "latest OpenCode log {} reports rate limiting from opencode.ai/zen (FreeUsageLimitError)",
-                file_name
+                "latest OpenCode log {file_name} reports rate limiting from opencode.ai/zen (FreeUsageLimitError)"
             )),
         });
     }
@@ -477,8 +475,7 @@ fn extract_opencode_failure_hint(path: &Path) -> Option<ProviderRuntimeDiagnosti
         return Some(ProviderRuntimeDiagnostic {
             failure_stage_override: Some("provider_storage"),
             hint: Some(format!(
-                "latest OpenCode log {} reports a readonly database in the OpenCode data directory",
-                file_name
+                "latest OpenCode log {file_name} reports a readonly database in the OpenCode data directory"
             )),
         });
     }
@@ -487,8 +484,7 @@ fn extract_opencode_failure_hint(path: &Path) -> Option<ProviderRuntimeDiagnosti
         return Some(ProviderRuntimeDiagnostic {
             failure_stage_override: Some("provider_runtime"),
             hint: Some(format!(
-                "latest OpenCode log {} started an LLM stream but produced no assistant output before shutdown",
-                file_name
+                "latest OpenCode log {file_name} started an LLM stream but produced no assistant output before shutdown"
             )),
         });
     }
@@ -510,7 +506,7 @@ fn extract_opencode_failure_hint(path: &Path) -> Option<ProviderRuntimeDiagnosti
 fn truncate(value: &str, max_chars: usize) -> String {
     let truncated = value.chars().take(max_chars).collect::<String>();
     if value.chars().count() > max_chars {
-        format!("{}...", truncated)
+        format!("{truncated}...")
     } else {
         truncated
     }

@@ -147,7 +147,7 @@ async fn emit_kanban_workspace_event(
         .event_bus
         .emit(AgentEvent {
             event_type: AgentEventType::WorkspaceUpdated,
-            agent_id: format!("kanban-{}", source),
+            agent_id: format!("kanban-{source}"),
             workspace_id: workspace_id.to_string(),
             data: serde_json::json!({
                 "scope": "kanban",
@@ -181,7 +181,7 @@ async fn list_task_artifacts(
         .task_store
         .get(&id)
         .await?
-        .ok_or_else(|| ServerError::NotFound(format!("Task {} not found", id)))?;
+        .ok_or_else(|| ServerError::NotFound(format!("Task {id} not found")))?;
 
     let artifacts = state.artifact_store.list_by_task(&task.id).await?;
 
@@ -198,7 +198,7 @@ async fn list_task_runs(
         .task_store
         .get(&id)
         .await?
-        .ok_or_else(|| ServerError::NotFound(format!("Task {} not found", id)))?;
+        .ok_or_else(|| ServerError::NotFound(format!("Task {id} not found")))?;
 
     Ok(Json(serde_json::json!({
         "runs": build_task_run_ledger(&state, &task).await?
@@ -213,7 +213,7 @@ async fn get_task_changes(
         .task_store
         .get(&id)
         .await?
-        .ok_or_else(|| ServerError::NotFound(format!("Task {} not found", id)))?;
+        .ok_or_else(|| ServerError::NotFound(format!("Task {id} not found")))?;
 
     let worktree = match task.worktree_id.as_ref() {
         Some(worktree_id) => state.worktree_store.get(worktree_id).await?,
@@ -313,7 +313,7 @@ async fn create_task_artifact(
         .task_store
         .get(&id)
         .await?
-        .ok_or_else(|| ServerError::NotFound(format!("Task {} not found", id)))?;
+        .ok_or_else(|| ServerError::NotFound(format!("Task {id} not found")))?;
 
     let artifact_type = body
         .artifact_type
@@ -406,7 +406,7 @@ async fn list_tasks(
         state.task_store.list_by_assignee(assignee).await?
     } else if let Some(status_str) = &query.status {
         let status = TaskStatus::from_str(status_str)
-            .ok_or_else(|| ServerError::BadRequest(format!("Invalid status: {}", status_str)))?;
+            .ok_or_else(|| ServerError::BadRequest(format!("Invalid status: {status_str}")))?;
         state
             .task_store
             .list_by_status(workspace_id, &status)
@@ -431,7 +431,7 @@ async fn get_task(
         .task_store
         .get(&id)
         .await?
-        .ok_or_else(|| ServerError::NotFound(format!("Task {} not found", id)))?;
+        .ok_or_else(|| ServerError::NotFound(format!("Task {id} not found")))?;
 
     Ok(Json(serde_json::json!({
         "task": serialize_task_with_evidence(&state, &task).await?
@@ -546,7 +546,7 @@ async fn create_task(
                     }
                     Err(err) => {
                         set_task_column(&mut task, "blocked");
-                        task.last_sync_error = Some(format!("Worktree creation failed: {}", err));
+                        task.last_sync_error = Some(format!("Worktree creation failed: {err}"));
                     }
                 }
             }
@@ -773,7 +773,7 @@ async fn update_task(
                     }
                     Err(err) => {
                         set_task_column(&mut task, "blocked");
-                        task.last_sync_error = Some(format!("Worktree creation failed: {}", err));
+                        task.last_sync_error = Some(format!("Worktree creation failed: {err}"));
                         state.task_store.save(&task).await?;
                         emit_kanban_workspace_event(
                             &state,
@@ -1078,7 +1078,7 @@ async fn ensure_transition_artifacts(
         .task_store
         .get(task_id)
         .await?
-        .ok_or_else(|| ServerError::NotFound(format!("Task {} not found", task_id)))?;
+        .ok_or_else(|| ServerError::NotFound(format!("Task {task_id} not found")))?;
     if existing.column_id.as_deref() == Some(target_column_id) {
         return Ok(());
     }
@@ -1194,7 +1194,7 @@ async fn delete_task(
         .task_store
         .get(&id)
         .await?
-        .ok_or_else(|| ServerError::NotFound(format!("Task {} not found", id)))?;
+        .ok_or_else(|| ServerError::NotFound(format!("Task {id} not found")))?;
     state.task_store.delete(&id).await?;
     emit_kanban_workspace_event(
         &state,
@@ -1224,7 +1224,7 @@ async fn update_task_status(
         .task_store
         .get(&id)
         .await?
-        .ok_or_else(|| ServerError::NotFound(format!("Task {} not found", id)))?;
+        .ok_or_else(|| ServerError::NotFound(format!("Task {id} not found")))?;
     state.task_store.update_status(&id, &status).await?;
     emit_kanban_workspace_event(
         &state,

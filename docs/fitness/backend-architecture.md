@@ -18,10 +18,13 @@ metrics:
       - src/core/**
       - src/app/api/**
       - architecture/rules/backend-core.archdsl.yaml
+      - crates/routa-cli/src/commands/fitness/arch_dsl.rs
+      - crates/routa-server/src/api/fitness.rs
       - scripts/fitness/architecture-rule-dsl.ts
       - scripts/fitness/check-backend-architecture.ts
+      - src/app/api/fitness/architecture/route.ts
       - docs/fitness/backend-architecture.md
-    description: "TypeScript backend core 边界约束（src/core / src/app/api）通过 ArchUnitTS 做本地 advisory 检查。"
+    description: "TypeScript backend core 边界约束（src/core / src/app/api）通过 Rust graph 执行器做本地 advisory 检查。"
 
   - name: ts_backend_core_arch_cycles
     command: npm run test:arch:backend-core -- --suite cycles --json 2>&1
@@ -33,10 +36,13 @@ metrics:
     run_when_changed:
       - src/core/**
       - architecture/rules/backend-core.archdsl.yaml
+      - crates/routa-cli/src/commands/fitness/arch_dsl.rs
+      - crates/routa-server/src/api/fitness.rs
       - scripts/fitness/architecture-rule-dsl.ts
       - scripts/fitness/check-backend-architecture.ts
+      - src/app/api/fitness/architecture/route.ts
       - docs/fitness/backend-architecture.md
-    description: "TypeScript backend core 循环依赖通过 ArchUnitTS 做本地 advisory 检查。"
+    description: "TypeScript backend core 循环依赖通过 Rust graph 执行器做本地 advisory 检查。"
 ---
 
 # Backend Architecture
@@ -48,7 +54,7 @@ metrics:
 ## Why This Exists
 
 - `code_quality` 中的 `dependency-cruiser` 适合做 repo 级依赖健康检查，但不适合作为 backend core 规则的唯一承载层。
-- `ArchUnitTS` 更适合表达 `src/core` 与 `src/app/api` 的定向边界规则，以及 core 内部 cycle 检测。
+- Routa CLI 的 graph 执行器已经能直接表达 `src/core` 与 `src/app/api` 的定向边界规则，以及 core 内部 cycle 检测。
 - Routa 的多语言 UI 不应依赖外部 HTML report；第一阶段先产出结构化结果，再由 Harness/Fitness 页面消费。
 
 ## Current Scope
@@ -66,9 +72,8 @@ metrics:
 ## Runtime Contract
 
 - 规则模型默认从 `architecture/rules/backend-core.archdsl.yaml` 读取
-- 默认从 `~/test/ArchUnitTS` 加载本地 ArchUnitTS checkout
-- 可通过 `ROUTA_ARCHUNITTS_PATH` 覆盖加载路径
-- 若本地源码不存在，或存在但依赖未安装，则 metric 记为 `skipped`
+- `npm run test:arch:backend-core` 通过兼容壳调用 `routa-cli fitness arch-dsl --report backend-core-suite`
+- Next.js 与 Rust server 的 architecture endpoint 也复用同一份 Rust CLI 输出契约
 
 ## Local Commands
 
@@ -84,4 +89,4 @@ cargo run -p routa-cli -- fitness arch-dsl --json
 
 - 当前只覆盖 TypeScript backend core，不覆盖 Rust backend
 - 结果还未进入专用 UI 面板，第一阶段主要用于 entrix advisory evidence
-- Rust CLI 已经支持同 DSL 的 graph 执行，但当前 backend-core fitness metric 仍以 TypeScript `ArchUnitTS` 路径为主
+- 包管理器脚本 `scripts/fitness/check-backend-architecture.ts` 仅保留为兼容入口壳，权威执行器是 Rust CLI

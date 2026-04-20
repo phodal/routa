@@ -4,7 +4,7 @@
  * Represents a unit of work within the multi-agent system.
  */
 
-import type { KanbanRequiredTaskField } from "./kanban";
+import type { KanbanRequiredTaskField } from "./task-requirements";
 
 export enum TaskStatus {
   PENDING = "PENDING",

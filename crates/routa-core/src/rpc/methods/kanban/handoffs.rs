@@ -73,7 +73,7 @@ pub async fn request_previous_lane_handoff(
         .kanban_store
         .get(&board_id)
         .await?
-        .ok_or_else(|| RpcError::NotFound(format!("Board not found: {}", board_id)))?;
+        .ok_or_else(|| RpcError::NotFound(format!("Board not found: {board_id}")))?;
 
     let previous_lane_session = get_previous_lane_session(&task, &board, task.column_id.as_deref())
         .ok_or_else(|| {
@@ -237,8 +237,7 @@ fn parse_request_type(value: &str) -> Result<TaskLaneHandoffRequestType, RpcErro
         "clarification" => Ok(TaskLaneHandoffRequestType::Clarification),
         "rerun_command" => Ok(TaskLaneHandoffRequestType::RerunCommand),
         _ => Err(RpcError::BadRequest(format!(
-            "Invalid requestType: {}",
-            value
+            "Invalid requestType: {value}"
         ))),
     }
 }
@@ -249,10 +248,9 @@ fn parse_submit_status(value: &str) -> Result<TaskLaneHandoffStatus, RpcError> {
         "blocked" => Ok(TaskLaneHandoffStatus::Blocked),
         "failed" => Ok(TaskLaneHandoffStatus::Failed),
         "requested" | "delivered" => Err(RpcError::BadRequest(format!(
-            "status {} is not valid for submitLaneHandoff",
-            value
+            "status {value} is not valid for submitLaneHandoff"
         ))),
-        _ => Err(RpcError::BadRequest(format!("Invalid status: {}", value))),
+        _ => Err(RpcError::BadRequest(format!("Invalid status: {value}"))),
     }
 }
 

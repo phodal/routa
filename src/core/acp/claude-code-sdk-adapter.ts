@@ -22,7 +22,7 @@
 // to /tmp/.claude/ (prevents ENOENT crashes in Vercel Lambda).
 import "@/core/platform/serverless-fs-patch";
 
-import type { NotificationHandler, JsonRpcMessage } from "@/core/acp/processer";
+import type { NotificationHandler, JsonRpcMessage } from "@/core/acp/protocol-types";
 import { isServerlessEnvironment } from "@/core/acp/api-based-providers";
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import type { McpServerConfig, SDKMessage } from "@anthropic-ai/claude-agent-sdk";

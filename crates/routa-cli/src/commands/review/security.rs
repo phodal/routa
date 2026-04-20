@@ -204,7 +204,7 @@ fn prepare_isolated_acp_runtime(
             }
             let rel = source
                 .strip_prefix(home_dir)
-                .map_err(|err| format!("Failed to normalize ACP source path: {}", err))?;
+                .map_err(|err| format!("Failed to normalize ACP source path: {err}"))?;
             let destination = acp_home.join(rel);
             if source.is_dir() {
                 copy_dir_recursive(&source, &destination)?;
@@ -289,7 +289,7 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), String> {
 
 fn build_security_specialist_prompt(payload: &SecurityReviewPayload) -> Result<String, String> {
     let payload_json = serde_json::to_string_pretty(payload)
-        .map_err(|err| format!("Failed to serialize security review payload: {}", err))?;
+        .map_err(|err| format!("Failed to serialize security review payload: {err}"))?;
 
     Ok([
         "You are running a tool-driven security review.",

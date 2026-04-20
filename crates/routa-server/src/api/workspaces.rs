@@ -47,7 +47,7 @@ async fn get_workspace(
         .workspace_store
         .get(&id)
         .await?
-        .ok_or_else(|| ServerError::NotFound(format!("Workspace {} not found", id)))?;
+        .ok_or_else(|| ServerError::NotFound(format!("Workspace {id} not found")))?;
     let codebases = state
         .codebase_store
         .list_by_workspace(&id)
@@ -96,7 +96,7 @@ async fn update_workspace(
         .workspace_store
         .get(&id)
         .await?
-        .ok_or_else(|| ServerError::NotFound(format!("Workspace {} not found", id)))?;
+        .ok_or_else(|| ServerError::NotFound(format!("Workspace {id} not found")))?;
 
     if let Some(title) = &body.title {
         state.workspace_store.update_title(&id, title).await?;
@@ -111,7 +111,7 @@ async fn update_workspace(
         .workspace_store
         .get(&id)
         .await?
-        .ok_or_else(|| ServerError::NotFound(format!("Workspace {} not found", id)))?;
+        .ok_or_else(|| ServerError::NotFound(format!("Workspace {id} not found")))?;
 
     Ok(Json(serde_json::json!({ "workspace": ws })))
 }
@@ -125,7 +125,7 @@ async fn archive_workspace(
         .workspace_store
         .get(&id)
         .await?
-        .ok_or_else(|| ServerError::NotFound(format!("Workspace {} not found", id)))?;
+        .ok_or_else(|| ServerError::NotFound(format!("Workspace {id} not found")))?;
 
     state.workspace_store.update_status(&id, "archived").await?;
 
@@ -133,7 +133,7 @@ async fn archive_workspace(
         .workspace_store
         .get(&id)
         .await?
-        .ok_or_else(|| ServerError::NotFound(format!("Workspace {} not found", id)))?;
+        .ok_or_else(|| ServerError::NotFound(format!("Workspace {id} not found")))?;
 
     Ok(Json(serde_json::json!({ "workspace": ws })))
 }

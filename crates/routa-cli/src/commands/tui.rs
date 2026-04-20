@@ -63,7 +63,7 @@ impl TuiRenderer {
                 let text = extract_text(inner);
                 if !text.is_empty() {
                     self.ensure_agent_prefix();
-                    print!("{}", text);
+                    print!("{text}");
                     std::io::stdout().flush().ok();
                     self.at_line_start = text.ends_with('\n');
                 }
@@ -145,7 +145,7 @@ impl TuiRenderer {
                                 "\r  {} {} {}",
                                 icon,
                                 style(&label).dim(),
-                                style(format!("({} ms)", elapsed)).dim()
+                                style(format!("({elapsed} ms)")).dim()
                             );
                             self.active_tool = None;
                             self.at_line_start = true;
@@ -183,7 +183,7 @@ impl TuiRenderer {
                     self.ensure_newline();
                     println!(
                         "{}",
-                        style(format!("  tokens: {} in / {} out", input, output)).dim()
+                        style(format!("  tokens: {input} in / {output} out")).dim()
                     );
                     self.at_line_start = true;
                 }
@@ -303,7 +303,7 @@ fn tool_label(inner: &serde_json::Value) -> Option<Cow<'_, str>> {
                     raw_input
                         .get("command")
                         .and_then(|v| v.as_str())
-                        .map(|command| Cow::Owned(format!("exec {}", command)))
+                        .map(|command| Cow::Owned(format!("exec {command}")))
                 })
         })
         .or_else(|| {

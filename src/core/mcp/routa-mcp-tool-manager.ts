@@ -1,10 +1,3 @@
-/**
- * RoutaMcpToolManager - port of routa-core RoutaMcpToolManager.kt
- *
- * Registers all 12 AgentTools as MCP tools on an McpServer instance.
- * Each tool maps directly to an AgentTools method.
- */
-
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { AgentTools } from "../tools/agent-tools";
@@ -12,17 +5,26 @@ import { KanbanTools } from "../tools/kanban-tools";
 import { NoteTools } from "../tools/note-tools";
 import { WorkspaceTools } from "../tools/workspace-tools";
 import { ToolResult } from "../tools/tool-result";
-import type { RoutaOrchestrator } from "../orchestration/orchestrator";
 
-/**
- * Tool registration mode for MCP server.
- * - "essential": 12 core coordination tools (Agent + Note) for Routa workflow
- * - "full": All 34 tools (Task, Agent, Note, Workspace, Git)
- */
 export type ToolMode = "essential" | "full";
 
+type DelegationOrchestrator = {
+  getSessionForAgent(agentId: string): string | undefined;
+  delegateTaskWithSpawn(params: {
+    taskId: string;
+    callerAgentId: string;
+    callerSessionId: string;
+    workspaceId: string;
+    specialist: string;
+    provider?: string;
+    cwd?: string;
+    additionalInstructions?: string;
+    waitMode?: "immediate" | "after_all";
+  }): Promise<ToolResult>;
+};
+
 export class RoutaMcpToolManager {
-  private orchestrator?: RoutaOrchestrator;
+  private orchestrator?: DelegationOrchestrator;
   private noteTools?: NoteTools;
   private workspaceTools?: WorkspaceTools;
   private kanbanTools?: KanbanTools;
@@ -35,18 +37,10 @@ export class RoutaMcpToolManager {
     private workspaceId: string
   ) {}
 
-  /**
-   * Set the tool registration mode.
-   * - "essential": 12 core coordination tools (Agent + Note)
-   * - "full": All tools
-   */
   setToolMode(mode: ToolMode): void {
     this.toolMode = mode;
   }
 
-  /**
-   * Get the current tool mode.
-   */
   getToolMode(): ToolMode {
     return this.toolMode;
   }
@@ -55,46 +49,26 @@ export class RoutaMcpToolManager {
     this.allowedTools = allowedTools;
   }
 
-  /**
-   * Set the orchestrator for process-spawning delegation.
-   */
-  setOrchestrator(orchestrator: RoutaOrchestrator): void {
+  setOrchestrator(orchestrator: DelegationOrchestrator): void {
     this.orchestrator = orchestrator;
   }
 
-  /**
-   * Set the note tools for note management.
-   */
   setNoteTools(noteTools: NoteTools): void {
     this.noteTools = noteTools;
   }
 
-  /**
-   * Set the workspace tools for git and workspace management.
-   */
   setWorkspaceTools(workspaceTools: WorkspaceTools): void {
     this.workspaceTools = workspaceTools;
   }
 
-  /**
-   * Set the kanban tools for board and card management.
-   */
   setKanbanTools(kanbanTools: KanbanTools): void {
     this.kanbanTools = kanbanTools;
   }
 
-  /**
-   * Set the session ID for scoping notes to a specific session.
-   */
   setSessionId(sessionId: string): void {
     this.sessionId = sessionId;
   }
 
-  /**
-   * Register coordination tools with the MCP server.
-   * In "essential" mode, 12 core coordination tools are registered (Agent + Note).
-   * In "full" mode, all 34 tools are registered.
-   */
   registerTools(server: McpServer): void {
     const register = (toolName: string, callback: () => void) => {
       if (!this.shouldRegisterTool(toolName)) {
@@ -104,10 +78,7 @@ export class RoutaMcpToolManager {
     };
 
     if (this.toolMode === "essential") {
-      // Essential mode: 14 core coordination tools
-      // Task tools (1) - needed so delegate_task_to_agent has a taskId to work with
       register("create_task", () => this.registerCreateTask(server));
-      // Agent tools (7)
       register("list_agents", () => this.registerListAgents(server));
       register("read_agent_conversation", () => this.registerReadAgentConversation(server));
       register("create_agent", () => this.registerCreateAgent(server));
@@ -116,18 +87,15 @@ export class RoutaMcpToolManager {
       register("delegate_task_to_agent", () => this.registerDelegateTaskToNewAgent(server));
       register("send_message_to_agent", () => this.registerSendMessageToAgent(server));
       register("report_to_parent", () => this.registerReportToParent(server));
-      // Note tools (5) - critical for Spec workflow and @@@task blocks
       register("create_note", () => this.registerCreateNote(server));
       register("read_note", () => this.registerReadNote(server));
       register("list_notes", () => this.registerListNotes(server));
       register("set_note_content", () => this.registerSetNoteContent(server));
       register("convert_task_blocks", () => this.registerConvertTaskBlocks(server));
-      // Kanban tools (2) - needed for card-assigned agents to update their cards
       register("update_card", () => this.registerUpdateCard(server));
       register("move_card", () => this.registerMoveCard(server));
       register("request_previous_lane_handoff", () => this.registerRequestPreviousLaneHandoff(server));
       register("submit_lane_handoff", () => this.registerSubmitLaneHandoff(server));
-      // Artifact tools (6) - critical for multi-agent coordination and desk check workflow
       register("request_artifact", () => this.registerRequestArtifact(server));
       register("provide_artifact", () => this.registerProvideArtifact(server));
       register("list_artifacts", () => this.registerListArtifacts(server));
@@ -137,13 +105,10 @@ export class RoutaMcpToolManager {
       return;
     }
 
-    // Full mode: All tools
-    // Task tools
     register("create_task", () => this.registerCreateTask(server));
     register("list_tasks", () => this.registerListTasks(server));
     register("update_task_status", () => this.registerUpdateTaskStatus(server));
     register("update_task", () => this.registerUpdateTask(server));
-    // Agent tools
     register("list_agents", () => this.registerListAgents(server));
     register("read_agent_conversation", () => this.registerReadAgentConversation(server));
     register("create_agent", () => this.registerCreateAgent(server));
@@ -158,7 +123,6 @@ export class RoutaMcpToolManager {
     register("get_agent_summary", () => this.registerGetAgentSummary(server));
     register("subscribe_to_events", () => this.registerSubscribeToEvents(server));
     register("unsubscribe_from_events", () => this.registerUnsubscribeFromEvents(server));
-    // Note tools
     register("create_note", () => this.registerCreateNote(server));
     register("read_note", () => this.registerReadNote(server));
     register("list_notes", () => this.registerListNotes(server));
@@ -166,7 +130,6 @@ export class RoutaMcpToolManager {
     register("append_to_note", () => this.registerAppendToNote(server));
     register("get_my_task", () => this.registerGetMyTask(server));
     register("convert_task_blocks", () => this.registerConvertTaskBlocks(server));
-    // Workspace tools
     register("git_status", () => this.registerGitStatus(server));
     register("git_diff", () => this.registerGitDiff(server));
     register("git_commit", () => this.registerGitCommit(server));
@@ -176,7 +139,6 @@ export class RoutaMcpToolManager {
     register("list_workspaces", () => this.registerListWorkspaces(server));
     register("create_workspace", () => this.registerCreateWorkspace(server));
     register("list_specialists", () => this.registerListSpecialists(server));
-    // Kanban tools
     register("create_board", () => this.registerCreateBoard(server));
     register("list_boards", () => this.registerListBoards(server));
     register("get_board", () => this.registerGetBoard(server));
@@ -191,7 +153,6 @@ export class RoutaMcpToolManager {
     register("decompose_tasks", () => this.registerDecomposeTasks(server));
     register("request_previous_lane_handoff", () => this.registerRequestPreviousLaneHandoff(server));
     register("submit_lane_handoff", () => this.registerSubmitLaneHandoff(server));
-    // Artifact tools
     register("request_artifact", () => this.registerRequestArtifact(server));
     register("provide_artifact", () => this.registerProvideArtifact(server));
     register("list_artifacts", () => this.registerListArtifacts(server));

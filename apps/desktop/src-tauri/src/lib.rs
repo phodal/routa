@@ -105,7 +105,7 @@ fn is_git_repo(path: String) -> bool {
 /// Log a frontend diagnostic message on the Rust side.
 #[tauri::command]
 fn log_frontend(level: String, scope: String, message: String) {
-    println!("[frontend:{}][{}] {}", level, scope, message);
+    println!("[frontend:{level}][{scope}] {message}");
 }
 
 /// Update the system tray menu with the current list of GitHub repos.
@@ -159,12 +159,12 @@ async fn fetch_acp_registry(state: State<'_, AcpState>) -> Result<AcpRegistry, S
     // Fetch from CDN
     let response = reqwest::get(ACP_REGISTRY_URL)
         .await
-        .map_err(|e| format!("Failed to fetch registry: {}", e))?;
+        .map_err(|e| format!("Failed to fetch registry: {e}"))?;
 
     let registry: AcpRegistry = response
         .json()
         .await
-        .map_err(|e| format!("Failed to parse registry: {}", e))?;
+        .map_err(|e| format!("Failed to parse registry: {e}"))?;
 
     // Update cache
     {
@@ -203,11 +203,11 @@ async fn install_acp_agent(
             // Fetch if not cached
             let response = reqwest::get(ACP_REGISTRY_URL)
                 .await
-                .map_err(|e| format!("Failed to fetch registry: {}", e))?;
+                .map_err(|e| format!("Failed to fetch registry: {e}"))?;
             response
                 .json::<AcpRegistry>()
                 .await
-                .map_err(|e| format!("Failed to parse registry: {}", e))?
+                .map_err(|e| format!("Failed to parse registry: {e}"))?
         }
     };
 
@@ -215,7 +215,7 @@ async fn install_acp_agent(
         .agents
         .iter()
         .find(|a| a.id == agent_id)
-        .ok_or_else(|| format!("Agent '{}' not found in registry", agent_id))?;
+        .ok_or_else(|| format!("Agent '{agent_id}' not found in registry"))?;
 
     // Version is now on the agent entry itself
     let version = if agent.version.is_empty() {
@@ -251,7 +251,7 @@ async fn install_acp_agent(
             let platform = AcpPaths::current_platform();
             let binary_info = agent
                 .get_binary_info(&platform)
-                .ok_or_else(|| format!("No binary available for platform: {}", platform))?;
+                .ok_or_else(|| format!("No binary available for platform: {platform}"))?;
 
             let exe_path = state
                 .binary_manager
@@ -363,7 +363,7 @@ fn pipe_child_logs(prefix: &'static str, child: &mut Child) {
         thread::spawn(move || {
             let reader = BufReader::new(stdout);
             for line in reader.lines().map_while(Result::ok) {
-                println!("[{}][stdout] {}", prefix, line);
+                println!("[{prefix}][stdout] {line}");
             }
         });
     }
@@ -371,7 +371,7 @@ fn pipe_child_logs(prefix: &'static str, child: &mut Child) {
         thread::spawn(move || {
             let reader = BufReader::new(stderr);
             for line in reader.lines().map_while(Result::ok) {
-                eprintln!("[{}][stderr] {}", prefix, line);
+                eprintln!("[{prefix}][stderr] {line}");
             }
         });
     }
@@ -404,13 +404,10 @@ fn desktop_workspace_navigation_js(port: u16, route_suffix: &str) -> String {
         r#"
             (function() {{
                 const match = window.location.pathname.match(/\/workspace\/([^\/]+)/);
-                const workspaceId = match ? match[1] : '{default_workspace_id}';
+                const workspaceId = match ? match[1] : '{DEFAULT_WORKSPACE_ID}';
                 window.location.href = `http://127.0.0.1:{port}/workspace/${{workspaceId}}{route_suffix}`;
             }})();
         "#,
-        default_workspace_id = DEFAULT_WORKSPACE_ID,
-        port = port,
-        route_suffix = route_suffix,
     )
 }
 
@@ -556,7 +553,7 @@ fn start_local_next_server(host: &str, port: u16) -> Result<Child, String> {
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .map_err(|e| format!("Failed to spawn desktop API server: {}", e))?;
+        .map_err(|e| format!("Failed to spawn desktop API server: {e}"))?;
 
     pipe_child_logs("desktop-server", &mut child);
     Ok(child)
@@ -570,7 +567,7 @@ fn start_embedded_next_server(
     let resource_dir = app
         .path()
         .resource_dir()
-        .map_err(|e| format!("Cannot resolve Tauri resource dir: {}", e))?;
+        .map_err(|e| format!("Cannot resolve Tauri resource dir: {e}"))?;
     let server_root = resource_dir.join("bundled").join("desktop-server");
     let server_js = server_root.join("server.js");
     if !server_js.exists() {
@@ -595,7 +592,7 @@ fn start_embedded_next_server(
         node_bin,
         server_js.to_string_lossy()
     );
-    println!("[desktop-server] Database path: {}", db_path);
+    println!("[desktop-server] Database path: {db_path}");
 
     let mut child = Command::new(node_bin)
         .arg("server.js")
@@ -610,8 +607,7 @@ fn start_embedded_next_server(
         .spawn()
         .map_err(|e| {
             format!(
-                "Failed to spawn embedded desktop API server. Install Node.js or set ROUTA_NODE_BIN. {}",
-                e
+                "Failed to spawn embedded desktop API server. Install Node.js or set ROUTA_NODE_BIN. {e}"
             )
         })?;
 
@@ -719,12 +715,12 @@ fn start_rust_server(
     let host = host.to_string();
 
     println!("[rust-server] Starting embedded Rust backend server");
-    println!("[rust-server] Database path: {}", db_path);
+    println!("[rust-server] Database path: {db_path}");
     println!(
         "[rust-server] Static dir: {}",
         static_dir.as_deref().unwrap_or("(none)")
     );
-    println!("[rust-server] Listening on {}:{}", host, port);
+    println!("[rust-server] Listening on {host}:{port}");
 
     let rpc_state: RpcState = app.state::<RpcState>().inner().clone();
 
@@ -738,14 +734,14 @@ fn start_rust_server(
     // Block startup until the backend is definitely ready so we don't
     // redirect the webview to a stale process that merely happens to own 3210.
     let app_state = tauri::async_runtime::block_on(server::create_app_state(&config.db_path))
-        .map_err(|e| format!("Failed to create app state: {}", e))?;
+        .map_err(|e| format!("Failed to create app state: {e}"))?;
 
     tauri::async_runtime::block_on(rpc_state.set(app_state.clone()));
     println!("[rust-server] AppState shared with JSON-RPC handler");
 
     let addr = tauri::async_runtime::block_on(server::start_server_with_state(config, app_state))
-        .map_err(|e| format!("Failed to start server: {}", e))?;
-    println!("[rust-server] Server started on {}", addr);
+        .map_err(|e| format!("Failed to start server: {e}"))?;
+    println!("[rust-server] Server started on {addr}");
 
     Ok(addr)
 }
@@ -920,20 +916,20 @@ pub fn run() {
                         // Navigate to the agent installation page
                         if let Some(window) = app_handle.get_webview_window("main") {
                             let port = api_port();
-                            let url = format!("http://127.0.0.1:{}/settings/agents", port);
-                            let js = format!("window.location.href = '{}';", url);
+                            let url = format!("http://127.0.0.1:{port}/settings/agents");
+                            let js = format!("window.location.href = '{url}';");
                             let _ = window.eval(&js);
-                            println!("[menu] Navigating to Install Agents: {}", url);
+                            println!("[menu] Navigating to Install Agents: {url}");
                         }
                     }
                     "mcp_tools" => {
                         // Navigate to MCP tools page
                         if let Some(window) = app_handle.get_webview_window("main") {
                             let port = api_port();
-                            let url = format!("http://127.0.0.1:{}/mcp-tools", port);
-                            let js = format!("window.location.href = '{}';", url);
+                            let url = format!("http://127.0.0.1:{port}/mcp-tools");
+                            let js = format!("window.location.href = '{url}';");
                             let _ = window.eval(&js);
-                            println!("[menu] Navigating to MCP Tools: {}", url);
+                            println!("[menu] Navigating to MCP Tools: {url}");
                         }
                     }
                     "reload" => {
@@ -1007,20 +1003,20 @@ pub fn run() {
                         // Navigate to Agent Traces
                         if let Some(window) = app_handle.get_webview_window("main") {
                             let port = api_port();
-                            let url = format!("http://127.0.0.1:{}/traces", port);
-                            let js = format!("window.location.href = '{}';", url);
+                            let url = format!("http://127.0.0.1:{port}/traces");
+                            let js = format!("window.location.href = '{url}';");
                             let _ = window.eval(&js);
-                            println!("[menu] Navigating to Traces: {}", url);
+                            println!("[menu] Navigating to Traces: {url}");
                         }
                     }
                     "nav_settings" => {
                         // Navigate to Settings
                         if let Some(window) = app_handle.get_webview_window("main") {
                             let port = api_port();
-                            let url = format!("http://127.0.0.1:{}/settings", port);
-                            let js = format!("window.location.href = '{}';", url);
+                            let url = format!("http://127.0.0.1:{port}/settings");
+                            let js = format!("window.location.href = '{url}';");
                             let _ = window.eval(&js);
-                            println!("[menu] Navigating to Settings: {}", url);
+                            println!("[menu] Navigating to Settings: {url}");
                         }
                     }
                     _ => {}
@@ -1030,7 +1026,7 @@ pub fn run() {
             // Initialise with an empty repo list; the frontend calls
             // `update_tray_github_repos` after loading webhook configs.
             if let Err(e) = tray::setup_tray(app.handle(), &[]) {
-                eprintln!("[tray] Failed to set up system tray: {}", e);
+                eprintln!("[tray] Failed to set up system tray: {e}");
             }
 
             // Only auto-open devtools in debug builds; use View menu in release builds
@@ -1048,7 +1044,7 @@ pub fn run() {
             let api_host = env_or_default("ROUTA_DESKTOP_API_HOST", "127.0.0.1");
             let port = api_port();
             let api_url = std::env::var("ROUTA_DESKTOP_API_URL")
-                .unwrap_or_else(|_| format!("http://{}:{}", api_host, port));
+                .unwrap_or_else(|_| format!("http://{api_host}:{port}"));
 
             match api_mode.as_str() {
                 "off" => {
@@ -1066,13 +1062,13 @@ pub fn run() {
                     match start_rust_server(app.handle(), &api_host, port) {
                         Ok(_) => {
                             if let Some(window) = app.get_webview_window("main") {
-                                let js = format!("window.location.replace('{}');", api_url);
+                                let js = format!("window.location.replace('{api_url}');");
                                 let _ = window.eval(&js);
-                                println!("[rust-server] Webview navigated to {}", api_url);
+                                println!("[rust-server] Webview navigated to {api_url}");
                             }
                         }
                         Err(e) => {
-                            eprintln!("[rust-server] {}", e);
+                            eprintln!("[rust-server] {e}");
                             if let Some(window) = app.get_webview_window("main") {
                                 let db_path = resolve_db_path(app.handle());
                                 show_startup_error(&window, &api_url, &db_path, &e);
@@ -1087,11 +1083,11 @@ pub fn run() {
                         match start_embedded_next_server(app.handle(), &api_host, port) {
                             Ok(_child) => {}
                             Err(err) => {
-                                eprintln!("[desktop-server] {}", err);
+                                eprintln!("[desktop-server] {err}");
                                 match start_local_next_server(&api_host, port) {
                                     Ok(_child) => {}
                                     Err(dev_err) => {
-                                        eprintln!("[desktop-server] {}", dev_err);
+                                        eprintln!("[desktop-server] {dev_err}");
                                     }
                                 }
                             }
@@ -1099,45 +1095,40 @@ pub fn run() {
                         ready = wait_for_port(&api_host, port, 25);
                     } else {
                         println!(
-                            "[desktop-server] Reusing existing local server on {}",
-                            api_url
+                            "[desktop-server] Reusing existing local server on {api_url}"
                         );
                     }
 
                     if ready {
                         if let Some(window) = app.get_webview_window("main") {
-                            let js = format!("window.location.replace('{}');", api_url);
+                            let js = format!("window.location.replace('{api_url}');");
                             let _ = window.eval(&js);
-                            println!("[desktop-server] Webview navigated to {}", api_url);
+                            println!("[desktop-server] Webview navigated to {api_url}");
                         }
                     } else {
                         eprintln!(
-                            "[desktop-server] Timed out waiting for {}. Falling back to embedded static UI.",
-                            api_url
+                            "[desktop-server] Timed out waiting for {api_url}. Falling back to embedded static UI."
                         );
                     }
                 }
                 "external" => {
                     if wait_for_port(&api_host, port, 5) {
                         if let Some(window) = app.get_webview_window("main") {
-                            let js = format!("window.location.replace('{}');", api_url);
+                            let js = format!("window.location.replace('{api_url}');");
                             let _ = window.eval(&js);
                             println!(
-                                "[desktop-server] Webview navigated to external {}",
-                                api_url
+                                "[desktop-server] Webview navigated to external {api_url}"
                             );
                         }
                     } else {
                         eprintln!(
-                            "[desktop-server] External server not reachable at {}",
-                            api_url
+                            "[desktop-server] External server not reachable at {api_url}"
                         );
                     }
                 }
                 _ => {
                     eprintln!(
-                        "[desktop-server] Unknown API mode '{}', falling back to static UI",
-                        api_mode
+                        "[desktop-server] Unknown API mode '{api_mode}', falling back to static UI"
                     );
                 }
             }

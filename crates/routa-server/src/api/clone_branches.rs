@@ -168,8 +168,7 @@ async fn checkout(Json(body): Json<CheckoutBody>) -> Result<Json<serde_json::Val
 
     if !success {
         return Err(ServerError::Internal(format!(
-            "Failed to checkout branch '{}'",
-            branch
+            "Failed to checkout branch '{branch}'"
         )));
     }
 

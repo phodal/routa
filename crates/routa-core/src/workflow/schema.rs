@@ -228,8 +228,8 @@ pub enum StepAction {
 impl std::fmt::Display for StepAction {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            StepAction::Simple(s) => write!(f, "{}", s),
-            StepAction::Detailed { name, .. } => write!(f, "{}", name),
+            StepAction::Simple(s) => write!(f, "{s}"),
+            StepAction::Detailed { name, .. } => write!(f, "{name}"),
         }
     }
 }
@@ -237,13 +237,13 @@ impl std::fmt::Display for StepAction {
 impl WorkflowDefinition {
     /// Parse a workflow definition from a YAML string.
     pub fn from_yaml(yaml: &str) -> Result<Self, String> {
-        serde_yaml::from_str(yaml).map_err(|e| format!("Failed to parse workflow YAML: {}", e))
+        serde_yaml::from_str(yaml).map_err(|e| format!("Failed to parse workflow YAML: {e}"))
     }
 
     /// Load a workflow definition from a file path.
     pub fn from_file(path: &str) -> Result<Self, String> {
         let content = std::fs::read_to_string(path)
-            .map_err(|e| format!("Failed to read workflow file '{}': {}", path, e))?;
+            .map_err(|e| format!("Failed to read workflow file '{path}': {e}"))?;
         Self::from_yaml(&content)
     }
 }

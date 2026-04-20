@@ -29,7 +29,7 @@ import * as fs from "fs";
 import * as path from "path";
 import * as yaml from "js-yaml";
 import { AgentRole, ModelTier } from "../models/agent";
-import type { SpecialistConfig } from "../orchestration/specialist-prompts";
+import type { SpecialistConfig } from "./specialist-types";
 
 export interface SpecialistFileMeta {
   id?: string;

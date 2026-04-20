@@ -30,7 +30,7 @@ import {
 } from "./specialist-prompts";
 import type { RoutaSystem } from "../routa-system";
 import type { AcpProcessManager } from "../acp/acp-process-manager";
-import type { NotificationHandler } from "../acp/processer";
+import type { NotificationHandler } from "../acp/protocol-types";
 import {
   checkDelegationDepth,
   calculateChildDepth,
@@ -93,6 +93,7 @@ interface ChildAgentRecord {
   role: AgentRole;
   provider: string;
   cwd: string;
+  latestReport?: { success?: boolean; summary?: string; filesModified?: string[]; verificationResults?: string };
   /** Tool call ID from the parent session's delegate_task_to_agent call (if available) */
   delegationToolCallId?: string;
 }
@@ -563,23 +564,21 @@ export class RoutaOrchestrator {
 
     try {
       await this.getMemoryWriter(cwd).recordDelegation({
-        sessionId: callerSessionId,
+        orchestrationSessionId: callerSessionId,
         parentAgentId: callerAgentId,
         childAgentId: agentId,
+        childSessionId,
         childRole: specialistConfig.role,
         taskId,
         taskTitle: task.title,
+        taskObjective: task.objective, taskScope: task.scope, acceptanceCriteria: task.acceptanceCriteria,
+        verificationCommands: task.verificationCommands, testCases: task.testCases,
         provider,
         waitMode,
       });
       await this.getMemoryWriter(cwd).recordChildSessionStart({
-        sessionId: childSessionId,
-        role: specialistConfig.role,
-        agentId,
-        taskId,
-        taskTitle: task.title,
-        parentAgentId: callerAgentId,
-        provider,
+        orchestrationSessionId: callerSessionId,
+        childSessionId, role: specialistConfig.role, agentId, taskId, taskTitle: task.title, parentAgentId: callerAgentId, provider,
         initialPrompt: delegationPrompt,
       });
     } catch (err) {
@@ -1023,10 +1022,7 @@ export class RoutaOrchestrator {
    * Handle a report_submitted event from a child agent.
    * This is triggered when the child calls report_to_parent via MCP.
    */
-  private async handleReportSubmitted(
-    childAgentId: string,
-    _data: Record<string, unknown>
-  ): Promise<void> {
+  private async handleReportSubmitted(childAgentId: string, data: Record<string, unknown>): Promise<void> {
     const record = this.childAgents.get(childAgentId);
     if (!record) {
       console.log(
@@ -1034,6 +1030,12 @@ export class RoutaOrchestrator {
       );
       return;
     }
+    record.latestReport = {
+      success: typeof data.success === "boolean" ? data.success : undefined,
+      summary: typeof data.summary === "string" ? data.summary : undefined,
+      filesModified: Array.isArray(data.filesModified) ? data.filesModified.filter((value): value is string => typeof value === "string") : undefined,
+      verificationResults: typeof data.verificationResults === "string" ? data.verificationResults : undefined,
+    };
 
     await this.handleChildCompletion(childAgentId, record);
   }
@@ -1048,15 +1050,12 @@ export class RoutaOrchestrator {
     const task = await this.system.taskStore.get(record.taskId);
     try {
       await this.getMemoryWriter(record.cwd).recordChildCompletion({
-        sessionId: record.sessionId,
-        role: record.role,
-        agentId: childAgentId,
-        taskId: record.taskId,
-        taskTitle: task?.title ?? record.taskId,
-        status: task?.status ?? "unknown",
-        summary: task?.completionSummary,
-        verificationVerdict: task?.verificationVerdict,
-        verificationReport: task?.verificationReport,
+        orchestrationSessionId: record.parentSessionId, childSessionId: record.sessionId, role: record.role,
+        agentId: childAgentId, taskId: record.taskId, taskTitle: task?.title ?? record.taskId, status: task?.status ?? "unknown",
+        summary: task?.completionSummary, verificationVerdict: task?.verificationVerdict, verificationReport: task?.verificationReport,
+        verificationResults: record.latestReport?.verificationResults,
+        filesModified: record.latestReport?.filesModified,
+        reportedSuccess: record.latestReport?.success,
       });
     } catch (err) {
       console.warn("[Orchestrator] Failed to write completion memory:", err);

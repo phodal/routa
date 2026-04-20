@@ -467,11 +467,11 @@ pub(super) fn build_task_prompt(
                 .unwrap_or("medium")
         ),
         board_id
-            .map(|value| format!("**Board ID:** {}", value))
+            .map(|value| format!("**Board ID:** {value}"))
             .unwrap_or_else(|| "**Board ID:** unavailable".to_string()),
-        format!("**Current Lane:** {}", lane_id),
+        format!("**Current Lane:** {lane_id}"),
         next_column_id
-            .map(|value| format!("**Next Column ID:** {}", value))
+            .map(|value| format!("**Next Column ID:** {value}"))
             .unwrap_or_else(|| "**Next Column ID:** unavailable".to_string()),
         labels,
         String::new(),
@@ -560,7 +560,7 @@ async fn trigger_assigned_task_acp_agent(
             Some("kanban-planning".to_string()),
         )
         .await
-        .map_err(|error| format!("Failed to create ACP session: {}", error))?;
+        .map_err(|error| format!("Failed to create ACP session: {error}"))?;
 
     state
         .acp_session_store
@@ -576,7 +576,7 @@ async fn trigger_assigned_task_acp_agent(
             parent_session_id: None,
         })
         .await
-        .map_err(|error| format!("Failed to persist ACP session: {}", error))?;
+        .map_err(|error| format!("Failed to persist ACP session: {error}"))?;
 
     let mut ordered_columns = board.map(|value| value.columns.clone()).unwrap_or_default();
     ordered_columns.sort_by_key(|column| column.position);
@@ -617,7 +617,7 @@ async fn trigger_assigned_task_acp_agent(
                 .artifact_store
                 .list_by_task(&task.id)
                 .await
-                .map_err(|error| format!("Failed to load task artifacts: {}", error))?,
+                .map_err(|error| format!("Failed to load task artifacts: {error}"))?,
             &resolve_next_required_artifacts(board, task.column_id.as_deref()),
         )),
     );
@@ -737,7 +737,7 @@ async fn resolve_task_session_cwd(state: &AppState, workspace_id: &str) -> Resul
         .codebase_store
         .get_default(workspace_id)
         .await
-        .map_err(|error| format!("Failed to resolve default codebase: {}", error))?
+        .map_err(|error| format!("Failed to resolve default codebase: {error}"))?
     {
         if !codebase.repo_path.trim().is_empty() {
             return Ok(codebase.repo_path);
@@ -748,7 +748,7 @@ async fn resolve_task_session_cwd(state: &AppState, workspace_id: &str) -> Resul
         .codebase_store
         .list_by_workspace(workspace_id)
         .await
-        .map_err(|error| format!("Failed to list workspace codebases: {}", error))?;
+        .map_err(|error| format!("Failed to list workspace codebases: {error}"))?;
     if let Some(codebase) = codebases
         .into_iter()
         .find(|codebase| !codebase.repo_path.trim().is_empty())
@@ -814,7 +814,7 @@ async fn trigger_assigned_task_a2a_agent(
                 .artifact_store
                 .list_by_task(&task.id)
                 .await
-                .map_err(|error| format!("Failed to load task artifacts: {}", error))?,
+                .map_err(|error| format!("Failed to load task artifacts: {error}"))?,
             &resolve_next_required_artifacts(board, task.column_id.as_deref()),
         )),
     );
@@ -855,7 +855,7 @@ async fn trigger_assigned_task_a2a_agent(
     )?
     .send()
     .await
-    .map_err(|error| format!("Failed to send A2A request: {}", error))?;
+    .map_err(|error| format!("Failed to send A2A request: {error}"))?;
 
     if !response.status().is_success() {
         return Err(format!(
@@ -867,13 +867,13 @@ async fn trigger_assigned_task_a2a_agent(
     let payload: Value = response
         .json()
         .await
-        .map_err(|error| format!("Failed to decode A2A response: {}", error))?;
+        .map_err(|error| format!("Failed to decode A2A response: {error}"))?;
     if let Some(error) = payload.get("error") {
         let message = error
             .get("message")
             .and_then(Value::as_str)
             .unwrap_or("unknown A2A error");
-        return Err(format!("A2A JSON-RPC error: {}", message));
+        return Err(format!("A2A JSON-RPC error: {message}"));
     }
 
     let task_result = payload
@@ -985,7 +985,7 @@ async fn load_task_board(state: &AppState, task: &Task) -> Result<Option<KanbanB
             .kanban_store
             .get(board_id)
             .await
-            .map_err(|error| format!("Failed to load Kanban board for automation: {}", error))
+            .map_err(|error| format!("Failed to load Kanban board for automation: {error}"))
     } else {
         Ok(None)
     }
@@ -1121,7 +1121,7 @@ async fn get_a2a_task_update(
     )?
     .send()
     .await
-    .map_err(|error| format!("Failed to poll A2A task: {}", error))?;
+    .map_err(|error| format!("Failed to poll A2A task: {error}"))?;
 
     if !response.status().is_success() {
         return Err(format!(
@@ -1133,13 +1133,13 @@ async fn get_a2a_task_update(
     let payload: Value = response
         .json()
         .await
-        .map_err(|error| format!("Failed to decode A2A task payload: {}", error))?;
+        .map_err(|error| format!("Failed to decode A2A task payload: {error}"))?;
     if let Some(error) = payload.get("error") {
         let message = error
             .get("message")
             .and_then(Value::as_str)
             .unwrap_or("unknown A2A error");
-        return Err(format!("A2A JSON-RPC error: {}", message));
+        return Err(format!("A2A JSON-RPC error: {message}"));
     }
 
     let task = payload
@@ -1247,7 +1247,7 @@ async fn reconcile_a2a_lane_session(
         .task_store
         .save(&task)
         .await
-        .map_err(|error| format!("Failed to save A2A task reconciliation: {}", error))
+        .map_err(|error| format!("Failed to save A2A task reconciliation: {error}"))
 }
 
 async fn wait_for_task_persistence(
@@ -1260,7 +1260,7 @@ async fn wait_for_task_persistence(
             .task_store
             .get(task_id)
             .await
-            .map_err(|error| format!("Failed to load task {task_id}: {}", error))?
+            .map_err(|error| format!("Failed to load task {task_id}: {error}"))?
         {
             if task
                 .lane_sessions
@@ -1309,34 +1309,26 @@ fn resolve_a2a_auth_headers(
     let raw = std::env::var(A2A_AUTH_CONFIGS_ENV).unwrap_or_default();
     if raw.trim().is_empty() {
         return Err(format!(
-            "A2A auth config \"{}\" was not found in {}.",
-            auth_config_id, A2A_AUTH_CONFIGS_ENV
+            "A2A auth config \"{auth_config_id}\" was not found in {A2A_AUTH_CONFIGS_ENV}."
         ));
     }
 
     let parsed: Value = serde_json::from_str(&raw)
-        .map_err(|error| format!("Invalid {} JSON: {}", A2A_AUTH_CONFIGS_ENV, error))?;
+        .map_err(|error| format!("Invalid {A2A_AUTH_CONFIGS_ENV} JSON: {error}"))?;
     let config = parsed.get(auth_config_id).ok_or_else(|| {
-        format!(
-            "A2A auth config \"{}\" was not found in {}.",
-            auth_config_id, A2A_AUTH_CONFIGS_ENV
-        )
+        format!("A2A auth config \"{auth_config_id}\" was not found in {A2A_AUTH_CONFIGS_ENV}.")
     })?;
     let headers = config.get("headers").unwrap_or(config);
     let headers_obj = headers.as_object().ok_or_else(|| {
         format!(
-            "{}.{} must be a header map or contain a string header map in \"headers\".",
-            A2A_AUTH_CONFIGS_ENV, auth_config_id
+            "{A2A_AUTH_CONFIGS_ENV}.{auth_config_id} must be a header map or contain a string header map in \"headers\"."
         )
     })?;
 
     let mut resolved = HashMap::new();
     for (name, value) in headers_obj {
         let value = value.as_str().ok_or_else(|| {
-            format!(
-                "{}.{} header {} must be a string.",
-                A2A_AUTH_CONFIGS_ENV, auth_config_id, name
-            )
+            format!("{A2A_AUTH_CONFIGS_ENV}.{auth_config_id} header {name} must be a string.")
         })?;
         resolved.insert(name.clone(), value.to_string());
     }
@@ -1351,7 +1343,7 @@ fn apply_a2a_auth_headers(
     if let Some(auth_headers) = auth_headers {
         for (name, value) in auth_headers {
             let header_name = HeaderName::try_from(name.as_str())
-                .map_err(|error| format!("Invalid A2A auth header name {}: {}", name, error))?;
+                .map_err(|error| format!("Invalid A2A auth header name {name}: {error}"))?;
             let header_value = HeaderValue::from_str(value).map_err(|error| {
                 format!(
                     "Invalid A2A auth header value for {}: {}",
@@ -1375,7 +1367,7 @@ async fn resolve_a2a_rpc_endpoint(
         let response = apply_a2a_auth_headers(client.get(url), auth_headers)?
             .send()
             .await
-            .map_err(|error| format!("Failed to fetch A2A agent card: {}", error))?;
+            .map_err(|error| format!("Failed to fetch A2A agent card: {error}"))?;
         if !response.status().is_success() {
             return Err(format!(
                 "A2A agent card fetch failed with HTTP {}",
@@ -1385,7 +1377,7 @@ async fn resolve_a2a_rpc_endpoint(
         let card: Value = response
             .json()
             .await
-            .map_err(|error| format!("Failed to decode A2A agent card: {}", error))?;
+            .map_err(|error| format!("Failed to decode A2A agent card: {error}"))?;
         let rpc_url = card
             .get("url")
             .and_then(Value::as_str)
@@ -1402,10 +1394,10 @@ pub(super) fn absolutize_url(base_url: &str, maybe_relative: &str) -> Result<Str
     }
 
     let base = reqwest::Url::parse(base_url)
-        .map_err(|error| format!("Invalid base A2A URL {}: {}", base_url, error))?;
+        .map_err(|error| format!("Invalid base A2A URL {base_url}: {error}"))?;
     base.join(maybe_relative)
         .map(|url| url.to_string())
-        .map_err(|error| format!("Invalid relative A2A URL {}: {}", maybe_relative, error))
+        .map_err(|error| format!("Invalid relative A2A URL {maybe_relative}: {error}"))
 }
 
 #[cfg(test)]

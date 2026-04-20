@@ -4,7 +4,7 @@ import { getNextHappyPathColumnId, type KanbanColumn } from "../models/kanban";
 import { AgentEventType, type EventBus } from "../events/event-bus";
 import { isClaudeCodeSdkConfigured } from "../acp/claude-code-sdk-adapter";
 import { dispatchSessionPrompt } from "@/core/acp/session-prompt";
-import { getA2AOutboundClient } from "../a2a";
+import { getA2AOutboundClient } from "../a2a/a2a-outbound-client";
 import { resolveA2AAuthConfig } from "../a2a/a2a-auth-config";
 import { formatArtifactSummary, resolveKanbanTransitionArtifacts } from "./transition-artifacts";
 import type { TaskLaneSession } from "../models/task";

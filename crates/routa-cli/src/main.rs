@@ -1381,7 +1381,7 @@ async fn main() {
                             None => match commands::team::prompt_for_task() {
                                 Ok(t) => t,
                                 Err(e) => {
-                                    eprintln!("Error: {}", e);
+                                    eprintln!("Error: {e}");
                                     std::process::exit(1);
                                 }
                             },
@@ -1410,7 +1410,7 @@ async fn main() {
     };
 
     if let Err(e) = result {
-        eprintln!("Error: {}", e);
+        eprintln!("Error: {e}");
         std::process::exit(1);
     }
 }

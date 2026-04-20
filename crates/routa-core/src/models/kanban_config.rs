@@ -85,7 +85,7 @@ impl KanbanConfig {
 
         let mut seen_board_ids = std::collections::HashSet::new();
         for (bi, board) in self.boards.iter().enumerate() {
-            let prefix = format!("boards[{}]", bi);
+            let prefix = format!("boards[{bi}]");
 
             if board.id.trim().is_empty() {
                 errors.push(format!("{prefix}.id is blank"));

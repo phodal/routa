@@ -175,7 +175,7 @@ fn read_text_file(context: &mut EvaluationContext, relative_path: &str) -> Resul
     }
 
     let content = fs::read_to_string(&absolute_path)
-        .map_err(|error| format!("unable to read {}: {error}", relative_path))?;
+        .map_err(|error| format!("unable to read {relative_path}: {error}"))?;
     context.text_cache.insert(absolute_path, content.clone());
     Ok(content)
 }
@@ -190,9 +190,9 @@ fn read_json_file(
     }
 
     let content = fs::read_to_string(&absolute_path)
-        .map_err(|error| format!("unable to read {}: {error}", relative_path))?;
+        .map_err(|error| format!("unable to read {relative_path}: {error}"))?;
     let document = serde_json::from_str::<JsonValue>(&content)
-        .map_err(|error| format!("unable to parse {}: {error}", relative_path))?;
+        .map_err(|error| format!("unable to parse {relative_path}: {error}"))?;
     context.json_cache.insert(absolute_path, document.clone());
     Ok(document)
 }
@@ -207,9 +207,9 @@ fn read_yaml_file(
     }
 
     let content = fs::read_to_string(&absolute_path)
-        .map_err(|error| format!("unable to read {}: {error}", relative_path))?;
+        .map_err(|error| format!("unable to read {relative_path}: {error}"))?;
     let document = serde_yaml::from_str::<JsonValue>(&content)
-        .map_err(|error| format!("unable to parse {}: {error}", relative_path))?;
+        .map_err(|error| format!("unable to parse {relative_path}: {error}"))?;
     context.yaml_cache.insert(absolute_path, document.clone());
     Ok(document)
 }
