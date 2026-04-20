@@ -752,6 +752,121 @@ describe("FeatureExplorerPageClient", () => {
     });
   });
 
+  it("commits feature tree metadata when the specialist result only appears in tool output", async () => {
+    analysisAcpState.createSession.mockResolvedValue({ sessionId: "feature-tree-session-1" });
+    sessionLaunchState.desktopAwareFetch
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            repoRoot: "/repo/default",
+            selectedScanRoot: "/repo/default/packages/app",
+            frameworksDetected: ["nextjs"],
+            adapters: [{ id: "nextjs-app-router", confidence: "high", signals: ["src/app"] }],
+            candidateRoots: [],
+            warnings: [],
+          }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            sessionId: "feature-tree-session-1",
+            history: [
+              {
+                update: {
+                  sessionUpdate: "tool_call_update",
+                  toolCallId: "call_123",
+                  kind: "shell",
+                  status: "completed",
+                  rawOutput: {
+                    schemaVersion: 1,
+                    capabilityGroups: [{ id: "workspace", name: "Workspace" }],
+                    features: [{ id: "workspace-overview", name: "Workspace Overview", group: "workspace", status: "draft" }],
+                  },
+                },
+              },
+            ],
+            messages: [
+              {
+                role: "tool",
+                content: "{\n  \"schemaVersion\": 1,\n  \"capabilityGroups\": [{\"id\": \"workspace\", \"name\": \"Workspace\"}],\n  \"features\": [{\"id\": \"workspace-overview\", \"name\": \"Workspace Overview\", \"group\": \"workspace\", \"status\": \"draft\"}]\n}",
+              },
+            ],
+            latestEventKind: "turn_complete",
+          }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            generatedAt: "2026-04-19T12:00:00.000Z",
+            frameworksDetected: ["nextjs"],
+            wroteFiles: [
+              "docs/product-specs/FEATURE_TREE.md",
+              "docs/product-specs/feature-tree.index.json",
+            ],
+            warnings: [],
+            pagesCount: 16,
+            apisCount: 4,
+          }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          },
+        ),
+      );
+
+    const view = render(<FeatureExplorerPageClient workspaceId="default" />);
+
+    fireEvent.click(screen.getByTestId("generate-feature-tree-button"));
+    await screen.findByText("Agent");
+    fireEvent.click(screen.getByRole("button", { name: "Generate with agent" }));
+
+    await waitFor(() => {
+      expect(analysisAcpState.promptSession).toHaveBeenCalledWith(
+        "feature-tree-session-1",
+        expect.stringContaining("Preferred scan root: /repo/default/packages/app"),
+      );
+    });
+
+    analysisAcpState.updates = [
+      {
+        sessionId: "feature-tree-session-1",
+        update: { sessionUpdate: "turn_complete" },
+      },
+    ];
+
+    view.rerender(<FeatureExplorerPageClient workspaceId="default" />);
+
+    await waitFor(() => {
+      expect(sessionLaunchState.desktopAwareFetch).toHaveBeenCalledWith(
+        "/spec/feature-tree/commit",
+        expect.objectContaining({
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+    });
+
+    const commitCall = sessionLaunchState.desktopAwareFetch.mock.calls.find(
+      ([input]) => input === "/spec/feature-tree/commit",
+    );
+    const commitBody = JSON.parse((commitCall?.[1] as RequestInit)?.body as string);
+    expect(commitBody.metadata).toEqual({
+      schemaVersion: 1,
+      capabilityGroups: [{ id: "workspace", name: "Workspace" }],
+      features: [{ id: "workspace-overview", name: "Workspace Overview", group: "workspace", status: "draft" }],
+    });
+  });
+
   it("renders a feature-first structure view from the feature tree index", async () => {
     useFeatureExplorerData.mockReturnValue({
       loading: false,

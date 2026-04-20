@@ -48,6 +48,9 @@ type FeatureTreePreflightResult = {
 
 type SessionTranscriptPayload = {
   latestEventKind?: string;
+  history?: Array<{
+    update?: Record<string, unknown>;
+  }>;
   messages: Array<{
     role: string;
     content: string;
@@ -70,24 +73,87 @@ function summarizeCandidateRoot(repoRoot: string, rootPath: string): string {
   return relative || ".";
 }
 
-function extractAssistantJson(messages: SessionTranscriptPayload["messages"]): unknown {
-  const assistantMessages = messages.filter((message) => message.role === "assistant").reverse();
-  for (const message of assistantMessages) {
-    const trimmed = message.content.trim();
-    if (!trimmed) continue;
+function tryParseJsonCandidate(candidate: string): unknown | null {
+  const trimmed = candidate.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const directCandidates = [trimmed];
+  const fencedBlocks = [...trimmed.matchAll(/```(?:json)?\s*([\s\S]*?)```/gi)].map((match) => match[1]?.trim() ?? "");
+  const objectMatches = [...trimmed.matchAll(/\{[\s\S]*?\}/g)].map((match) => match[0]);
+  const candidates = [...directCandidates, ...fencedBlocks, ...objectMatches];
+
+  for (const entry of candidates) {
+    if (!entry) continue;
     try {
-      return JSON.parse(trimmed);
+      return JSON.parse(entry);
     } catch {
-      const objectMatch = trimmed.match(/\{[\s\S]*\}/);
-      if (!objectMatch) continue;
-      try {
-        return JSON.parse(objectMatch[0]);
-      } catch {
-        continue;
+      continue;
+    }
+  }
+
+  return null;
+}
+
+function extractTranscriptMetadata(transcript: SessionTranscriptPayload): unknown {
+  const preferredRoles = ["assistant", "tool", "plan", "thought"];
+  const prioritizedMessages = preferredRoles.flatMap((role) =>
+    transcript.messages
+      .filter((message) => message.role === role)
+      .reverse(),
+  );
+
+  for (const message of prioritizedMessages) {
+    const parsed = tryParseJsonCandidate(message.content);
+    if (parsed != null) {
+      return parsed;
+    }
+  }
+
+  const history = Array.isArray(transcript.history) ? [...transcript.history].reverse() : [];
+  for (const entry of history) {
+    const update = entry?.update;
+    if (!update || typeof update !== "object") {
+      continue;
+    }
+
+    const rawOutput = update.rawOutput;
+    if (rawOutput && typeof rawOutput === "object") {
+      return rawOutput;
+    }
+    if (typeof rawOutput === "string") {
+      const parsed = tryParseJsonCandidate(rawOutput);
+      if (parsed != null) {
+        return parsed;
+      }
+    }
+
+    const content = update.content;
+    if (Array.isArray(content)) {
+      for (const part of content) {
+        if (typeof part?.text !== "string") continue;
+        const parsed = tryParseJsonCandidate(part.text);
+        if (parsed != null) {
+          return parsed;
+        }
+      }
+    } else if (content && typeof content === "object" && typeof (content as { text?: unknown }).text === "string") {
+      const parsed = tryParseJsonCandidate((content as { text: string }).text);
+      if (parsed != null) {
+        return parsed;
+      }
+    }
+
+    if (typeof update.text === "string") {
+      const parsed = tryParseJsonCandidate(update.text);
+      if (parsed != null) {
+        return parsed;
       }
     }
   }
-  throw new Error("No strict JSON metadata found in the generation transcript.");
+
+  throw new Error("No feature metadata JSON found in the generation transcript.");
 }
 
 function hasPotentialCommitTrigger(
@@ -297,7 +363,7 @@ export function GenerateFeatureTreeDrawer({
 
         let metadata: unknown;
         try {
-          metadata = extractAssistantJson(transcript.messages);
+          metadata = extractTranscriptMetadata(transcript);
         } catch {
           if (attempt >= maxAttempts) {
             throw new Error(t.featureExplorer.generateFailed);
