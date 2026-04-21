@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import type { HooksResponse, ReviewTriggerRuleSummary } from "@/client/hooks/use-harness-settings-data";
+import type { HooksResponse, ReviewTriggerLayerSummary, ReviewTriggerRuleSummary } from "@/client/hooks/use-harness-settings-data";
 import { HarnessReviewTriggersPanel } from "../harness-review-triggers-panel";
 
 function createReviewTriggerRule(
@@ -25,6 +25,22 @@ function createReviewTriggerRule(
     maxDeletedLines: null,
     confidenceThreshold: null,
     fallbackAction: null,
+    specialistId: null,
+    provider: null,
+    model: null,
+    context: [],
+    contextCount: 0,
+    reviewLayers: [],
+    reviewLayerCount: 0,
+    ...overrides,
+  };
+}
+
+function createReviewTriggerLayer(
+  overrides: Partial<ReviewTriggerLayerSummary>,
+): ReviewTriggerLayerSummary {
+  return {
+    confidenceThreshold: null,
     specialistId: null,
     provider: null,
     model: null,
@@ -70,6 +86,26 @@ function createHooksResponse(): HooksResponse {
           maxFiles: null,
           maxAddedLines: null,
           maxDeletedLines: null,
+          confidenceThreshold: 8,
+          fallbackAction: "require_human_review",
+          provider: "codex",
+          model: "gpt-5.4-mini",
+          specialistId: "security-reviewer",
+          context: ["graph_review_context"],
+          contextCount: 1,
+          reviewLayers: [
+            createReviewTriggerLayer({
+              provider: "codex",
+              model: "gpt-5.4-mini",
+              confidenceThreshold: 7,
+            }),
+            createReviewTriggerLayer({
+              provider: "claude",
+              model: "claude-sonnet",
+              confidenceThreshold: 9,
+            }),
+          ],
+          reviewLayerCount: 2,
         }),
         createReviewTriggerRule({
           name: "sensitive_contract_or_governance_change",
@@ -280,11 +316,36 @@ describe("HarnessReviewTriggersPanel", () => {
       />,
     );
 
-    expect(screen.getByText("Require Human Review")).not.toBeNull();
+    expect(screen.getAllByText("Require Human Review").length).toBeGreaterThan(0);
     expect(screen.getByText(".husky/pre-push")).not.toBeNull();
     expect(
       screen.getByText('node --import tsx tools/hook-runtime/src/cli.ts --profile pre-push "$@"'),
     ).not.toBeNull();
+  });
+
+  it("shows advanced routing fields and layered reviewer overrides", () => {
+    render(
+      <HarnessReviewTriggersPanel
+        repoLabel="routa-js"
+        data={createHooksResponse()}
+      />,
+    );
+
+    expect(screen.getByText("Fallback action")).not.toBeNull();
+    expect(screen.getAllByText("Require Human Review").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Provider").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("codex").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Model").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("gpt-5.4-mini").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Specialist").length).toBeGreaterThan(0);
+    expect(screen.getByText("security-reviewer")).not.toBeNull();
+    expect(screen.getAllByText("Context").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("graph_review_context").length).toBeGreaterThan(0);
+    expect(screen.getByText("Review layers")).not.toBeNull();
+    expect(screen.getByText("Layer 1")).not.toBeNull();
+    expect(screen.getByText("Layer 2")).not.toBeNull();
+    expect(screen.getByText("claude-sonnet")).not.toBeNull();
+    expect(screen.getByText("confidence 9/10")).not.toBeNull();
   });
 
   it("keeps loop sidebar compact until details are requested", () => {

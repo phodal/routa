@@ -9,6 +9,14 @@ export type ReviewTriggerBoundary = {
   paths: string[];
 };
 
+export type ReviewTriggerReviewLayer = {
+  confidenceThreshold: number | null;
+  specialistId: string | null;
+  provider: string | null;
+  model: string | null;
+  context: string[];
+};
+
 export type ReviewTriggerAction =
   | "advisory"
   | "block"
@@ -34,6 +42,7 @@ export type ReviewTriggerRule = {
   provider: string | null;
   model: string | null;
   context: string[];
+  reviewLayers: ReviewTriggerReviewLayer[];
 };
 
 export type ReviewTriggerDiffStats = {
@@ -52,6 +61,7 @@ export type ReviewTriggerMatch = {
   provider: string | null;
   model: string | null;
   context: string[];
+  reviewLayers: ReviewTriggerReviewLayer[];
   reasons: string[];
 };
 
@@ -98,6 +108,22 @@ function normalizeConfidenceThreshold(value: unknown): number | null {
   }
 
   return Math.min(10, Math.max(1, parsed));
+}
+
+function normalizeReviewTriggerReviewLayers(value: unknown): ReviewTriggerReviewLayer[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .filter((entry): entry is Record<string, unknown> => typeof entry === "object" && entry !== null && !Array.isArray(entry))
+    .map((entry) => ({
+      confidenceThreshold: normalizeConfidenceThreshold(entry.confidence_threshold),
+      specialistId: normalizeOptionalString(entry.specialist_id),
+      provider: normalizeOptionalString(entry.provider),
+      model: normalizeOptionalString(entry.model),
+      context: normalizeStringList(entry.context),
+    }));
 }
 
 export function normalizeReviewTriggerAction(
@@ -176,6 +202,7 @@ export function parseReviewTriggerConfig(source: string): ReviewTriggerRule[] {
       provider: normalizeOptionalString(rule.provider),
       model: normalizeOptionalString(rule.model),
       context: normalizeStringList(rule.context),
+      reviewLayers: normalizeReviewTriggerReviewLayers(rule.review_layers),
     };
   });
 }
@@ -237,6 +264,13 @@ function pushTriggerIfAny(
     provider: rule.provider,
     model: rule.model,
     context: [...rule.context],
+    reviewLayers: rule.reviewLayers.map((layer) => ({
+      confidenceThreshold: layer.confidenceThreshold,
+      specialistId: layer.specialistId,
+      provider: layer.provider,
+      model: layer.model,
+      context: [...layer.context],
+    })),
     reasons,
   });
 }

@@ -224,6 +224,13 @@ describe("resolveOwnership", () => {
       "    model: gpt-5.4",
       "    context:",
       "      - graph_review_context",
+      "    review_layers:",
+      "      - provider: codex",
+      "        model: gpt-5.4-mini",
+      "        confidence_threshold: 7",
+      "      - provider: claude",
+      "        model: claude-sonnet",
+      "        confidence_threshold: 9",
       "    paths:",
       "      - src/core/acp/**",
     ].join("\n"));
@@ -235,6 +242,22 @@ describe("resolveOwnership", () => {
     expect(rule?.provider).toBe("codex");
     expect(rule?.model).toBe("gpt-5.4");
     expect(rule?.context).toEqual(["graph_review_context"]);
+    expect(rule?.reviewLayers).toEqual([
+      {
+        confidenceThreshold: 7,
+        specialistId: null,
+        provider: "codex",
+        model: "gpt-5.4-mini",
+        context: [],
+      },
+      {
+        confidenceThreshold: 9,
+        specialistId: null,
+        provider: "claude",
+        model: "claude-sonnet",
+        context: [],
+      },
+    ]);
   });
 
   it("evaluates staged review trigger reports with diff-size and path matches", () => {

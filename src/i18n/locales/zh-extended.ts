@@ -259,6 +259,16 @@ export const zhExtended: ExtendedTranslationDictionarySections = {
       compactDirectories: "目录",
       detailFallbackMetrics: "回退指标",
       detailTriggerCommand: "触发命令",
+      detailReviewActions: "审查动作",
+      detailPhases: "阶段",
+      detailAction: "动作",
+      detailFallbackAction: "回退动作",
+      detailProvider: "提供方",
+      detailModel: "模型",
+      detailSpecialist: "专家",
+      detailContext: "上下文",
+      detailReviewLayers: "审查层",
+      detailReviewLayer: "层",
     },
     governanceLoop: {
       graph: {

@@ -70,6 +70,15 @@ export type ReviewTriggerBoundarySummary = {
   paths: string[];
 };
 
+export type ReviewTriggerLayerSummary = {
+  confidenceThreshold?: number | null;
+  specialistId?: string | null;
+  provider?: string | null;
+  model?: string | null;
+  context?: string[];
+  contextCount?: number;
+};
+
 export type ReviewTriggerRuleSummary = {
   name: string;
   type: string;
@@ -94,6 +103,8 @@ export type ReviewTriggerRuleSummary = {
   model?: string | null;
   context?: string[];
   contextCount?: number;
+  reviewLayers?: ReviewTriggerLayerSummary[];
+  reviewLayerCount?: number;
 };
 
 export type ReleaseTriggerRuleSummary = {

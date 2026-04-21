@@ -258,6 +258,16 @@ export interface ExtendedTranslationDictionarySections extends TailTranslationDi
       compactDirectories: string;
       detailFallbackMetrics: string;
       detailTriggerCommand: string;
+      detailReviewActions: string;
+      detailPhases: string;
+      detailAction: string;
+      detailFallbackAction: string;
+      detailProvider: string;
+      detailModel: string;
+      detailSpecialist: string;
+      detailContext: string;
+      detailReviewLayers: string;
+      detailReviewLayer: string;
     };
     governanceLoop: {
       graph: {

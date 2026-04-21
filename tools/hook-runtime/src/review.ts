@@ -4,6 +4,7 @@ import {
   runReviewTriggerSpecialist,
   type ReviewReportPayload,
   type ReviewTrigger,
+  type ReviewTriggerLayer,
 } from "./specialist-review.js";
 import type { OwnershipRoutingContext } from "../../../src/core/harness/codeowners-types";
 import * as codeownersImport from "../../../src/core/harness/codeowners";
@@ -56,7 +57,16 @@ type StagedReviewGroup = {
   model: string | null;
   provider: string | null;
   specialistId: string | null;
+  reviewLayers: ReviewTriggerLayer[];
   triggers: ReviewTrigger[];
+};
+
+type ResolvedStagedReviewLayer = {
+  confidenceThreshold: number;
+  context: string[];
+  model: string | null;
+  provider: string | null;
+  specialistId: string | null;
 };
 
 const DEFAULT_STAGED_CONFIDENCE_THRESHOLD = 8;
@@ -314,6 +324,18 @@ function buildStagedReviewGroups(triggers: ReviewTrigger[]): StagedReviewGroup[]
       model: trigger.model?.trim() || null,
       provider: trigger.provider?.trim() || null,
       specialistId: trigger.specialist_id?.trim() || null,
+      reviewLayers: (trigger.review_layers ?? []).map((layer) => ({
+        confidence_threshold: typeof layer.confidence_threshold === "number" && Number.isFinite(layer.confidence_threshold)
+          ? normalizeTriggerConfidenceThreshold(layer.confidence_threshold)
+          : null,
+        specialist_id: layer.specialist_id?.trim() || null,
+        provider: layer.provider?.trim() || null,
+        model: layer.model?.trim() || null,
+        context: [...(layer.context ?? [])]
+          .map((value) => value.trim())
+          .filter(Boolean)
+          .sort(),
+      })),
     };
     const key = JSON.stringify(group);
     const existing = groups.get(key);
@@ -329,6 +351,35 @@ function buildStagedReviewGroups(triggers: ReviewTrigger[]): StagedReviewGroup[]
   }
 
   return [...groups.values()];
+}
+
+function buildResolvedStagedReviewLayers(group: StagedReviewGroup): ResolvedStagedReviewLayer[] {
+  if (group.reviewLayers.length === 0) {
+    return [{
+      confidenceThreshold: group.confidenceThreshold,
+      context: [...group.context],
+      model: group.model,
+      provider: group.provider,
+      specialistId: group.specialistId,
+    }];
+  }
+
+  return group.reviewLayers.map((layer) => ({
+    confidenceThreshold: normalizeTriggerConfidenceThreshold(layer.confidence_threshold ?? group.confidenceThreshold),
+    context: [...new Set([
+      ...group.context,
+      ...((layer.context ?? [])
+        .map((value) => value.trim())
+        .filter(Boolean)),
+    ])].sort(),
+    model: layer.model?.trim() || group.model,
+    provider: layer.provider?.trim() || group.provider,
+    specialistId: layer.specialist_id?.trim() || group.specialistId,
+  }));
+}
+
+function formatReviewLayerLabel(index: number, total: number): string {
+  return total <= 1 ? "Automatic review" : `Review layer ${index + 1}/${total}`;
 }
 
 function printDecisionFindings(findings: Array<{
@@ -755,80 +806,105 @@ async function parseDecision(
     const advisoryNotes = advisoryTriggers.length > 0
       ? [buildActionMessage("Review advisory", advisoryTriggers, "Push allowed.")]
       : [];
+    const routingNotes: string[] = [];
     const stagedGroups = buildStagedReviewGroups(stagedTriggers);
     const passNotes: string[] = [];
 
     for (const group of stagedGroups) {
-      const decision = await runReviewTriggerSpecialist({
-        reviewRoot,
-        base,
-        report: {
-          ...report,
-          triggers: group.triggers,
-          ownership_routing: ownershipRouting,
-        },
-        overrides: {
-          context: group.context,
-          model: group.model,
-          provider: group.provider,
-          specialistId: group.specialistId,
-        },
-      });
-      const decisionOutcome = decision.outcome ?? (decision.allowed ? "pass" : "block");
-      const decisionConfidence = decision.confidence ?? null;
+      const reviewLayers = buildResolvedStagedReviewLayers(group);
+      const layeredReview = reviewLayers.length > 1;
 
-      const lowConfidence =
-        decisionConfidence === null || decisionConfidence < group.confidenceThreshold;
-      const shouldFallback = decisionOutcome === "escalate" || lowConfidence;
-      const triggerSummary = summarizeTriggerTitles(group.triggers);
-
-      if (outputMode === "human") {
-        console.log(decision.summary);
-        printDecisionFindings(decision.findings);
-        console.log("");
-      }
-
-      if (decisionOutcome === "block") {
-        return buildResultBase(
+      for (const [layerIndex, layer] of reviewLayers.entries()) {
+        const layerLabel = formatReviewLayerLabel(layerIndex, reviewLayers.length);
+        const decision = await runReviewTriggerSpecialist({
+          reviewRoot,
           base,
-          report,
-          "blocked",
-          false,
-          false,
-          ownershipRouting,
-          decision.summary,
-        );
-      }
+          report: {
+            ...report,
+            triggers: group.triggers,
+            ownership_routing: ownershipRouting,
+          },
+          overrides: {
+            context: layer.context,
+            model: layer.model,
+            provider: layer.provider,
+            specialistId: layer.specialistId,
+          },
+        });
+        const decisionOutcome = decision.outcome ?? (decision.allowed ? "pass" : "block");
+        const decisionConfidence = decision.confidence ?? null;
+        const lowConfidence =
+          decisionConfidence === null || decisionConfidence < layer.confidenceThreshold;
+        const shouldFallback = decisionOutcome === "escalate" || lowConfidence;
+        const triggerSummary = summarizeTriggerTitles(group.triggers);
+        const decisionSummary = layeredReview ? `${layerLabel}: ${decision.summary}` : decision.summary;
 
-      if (shouldFallback) {
-        const fallbackAction = group.fallbackAction;
-        const suffix = decisionConfidence === null
-          ? `Automatic review did not return usable confidence for ${triggerSummary}.`
-          : `Automatic review confidence ${decisionConfidence}/10 was below the required ${group.confidenceThreshold}/10 for ${triggerSummary}.`;
+        if (outputMode === "human") {
+          console.log(decisionSummary);
+          printDecisionFindings(decision.findings);
+          console.log("");
+        }
 
-        if (fallbackAction === "advisory") {
-          advisoryNotes.push(`${decision.summary} ${suffix} Advisory fallback applied.`);
+        if (decisionOutcome === "block") {
+          return buildResultBase(
+            base,
+            report,
+            "blocked",
+            false,
+            false,
+            ownershipRouting,
+            decisionSummary,
+          );
+        }
+
+        if (shouldFallback && layerIndex < reviewLayers.length - 1) {
+          if (decisionOutcome === "escalate") {
+            routingNotes.push(`${decisionSummary} ${layerLabel} requested escalation for ${triggerSummary}. Moving to the next review layer.`);
+            continue;
+          }
+
+          if (decisionConfidence === null) {
+            routingNotes.push(`${decisionSummary} ${layerLabel} did not return usable confidence for ${triggerSummary}. Moving to the next review layer.`);
+            continue;
+          }
+
+          routingNotes.push(`${decisionSummary} ${layerLabel} confidence ${decisionConfidence}/10 was below the required ${layer.confidenceThreshold}/10 for ${triggerSummary}. Moving to the next review layer.`);
           continue;
         }
 
-        if (fallbackAction === "block") {
-          const message = `${decision.summary} ${suffix} Blocking fallback applied.`;
+        if (shouldFallback) {
+          const fallbackAction = group.fallbackAction;
+          const suffix = decisionOutcome === "escalate"
+            ? `${layerLabel} requested escalation for ${triggerSummary}.`
+            : decisionConfidence === null
+              ? `${layerLabel} did not return usable confidence for ${triggerSummary}.`
+              : `${layerLabel} confidence ${decisionConfidence}/10 was below the required ${layer.confidenceThreshold}/10 for ${triggerSummary}.`;
+
+          if (fallbackAction === "advisory") {
+            advisoryNotes.push(`${decisionSummary} ${suffix} Advisory fallback applied.`);
+            break;
+          }
+
+          if (fallbackAction === "block") {
+            const message = `${decisionSummary} ${suffix} Blocking fallback applied.`;
+            return buildResultBase(base, report, "blocked", false, false, ownershipRouting, message);
+          }
+
+          const message = `${decisionSummary} ${suffix} Human review fallback required.`;
           return buildResultBase(base, report, "blocked", false, false, ownershipRouting, message);
         }
 
-        const message = `${decision.summary} ${suffix} Human review fallback required.`;
-        return buildResultBase(base, report, "blocked", false, false, ownershipRouting, message);
-      }
+        if (decisionOutcome === "advisory") {
+          advisoryNotes.push(decisionSummary);
+          break;
+        }
 
-      if (decisionOutcome === "advisory") {
-        advisoryNotes.push(decision.summary);
-        continue;
+        passNotes.push(decisionSummary);
+        break;
       }
-
-      passNotes.push(decision.summary);
     }
 
-    const message = [...advisoryNotes, ...passNotes].filter(Boolean).join(" ").trim()
+    const message = [...advisoryNotes, ...routingNotes, ...passNotes].filter(Boolean).join(" ").trim()
       || "Automatic review specialist approved the push.";
     return buildResultBase(base, report, "passed", true, false, ownershipRouting, message);
   } catch (error) {

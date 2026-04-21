@@ -8,6 +8,7 @@ import type {
   HookFileSummary,
   HooksResponse,
   ReviewTriggerBoundarySummary,
+  ReviewTriggerLayerSummary,
   ReviewTriggerRuleSummary,
 } from "@/client/hooks/use-harness-settings-data";
 
@@ -177,6 +178,7 @@ function isComplexityRule(rule: ReviewTriggerRuleSummary): boolean {
 
 function buildThresholdTokens(rule: ReviewTriggerRuleSummary): string[] {
   return [
+    rule.confidenceThreshold ? `confidence ${rule.confidenceThreshold}/10` : "",
     rule.minBoundaries ? `min ${rule.minBoundaries} boundaries` : "",
     rule.maxFiles ? `max ${rule.maxFiles} files` : "",
     rule.maxAddedLines ? `+${rule.maxAddedLines} lines` : "",
@@ -420,6 +422,51 @@ function BoundaryGroup({
   );
 }
 
+function ReviewLayerGroup({
+  layers,
+  tone,
+  labels,
+}: {
+  layers: ReviewTriggerLayerSummary[];
+  tone: ReviewDimensionTone;
+  labels: {
+    thresholds: string;
+    provider: string;
+    model: string;
+    specialist: string;
+    context: string;
+    reviewLayers: string;
+    reviewLayer: string;
+  };
+}) {
+  if (!layers.length) {
+    return null;
+  }
+
+  return (
+    <div className="mt-2">
+      <DetailLabel>{labels.reviewLayers}</DetailLabel>
+      <div className="mt-1.5 grid gap-1.5">
+        {layers.map((layer, index) => {
+          const thresholdTokens = layer.confidenceThreshold ? [`confidence ${layer.confidenceThreshold}/10`] : [];
+          return (
+            <div key={`${labels.reviewLayer}-${index + 1}`} className="rounded-sm border border-desktop-border bg-desktop-bg-primary/80 px-2.5 py-2">
+              <div className="text-[10px] font-medium text-desktop-text-primary">
+                {`${labels.reviewLayer} ${index + 1}`}
+              </div>
+              <DetailGroup label={labels.thresholds} items={thresholdTokens} tone={tone} />
+              <DetailGroup label={labels.provider} items={layer.provider ? [layer.provider] : []} tone={tone} />
+              <DetailGroup label={labels.model} items={layer.model ? [layer.model] : []} tone={tone} />
+              <DetailGroup label={labels.specialist} items={layer.specialistId ? [layer.specialistId] : []} tone={tone} />
+              <DetailGroup label={labels.context} items={layer.context ?? []} tone={tone} />
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function RuleDetailCard({
   rule,
   tone,
@@ -427,10 +474,32 @@ function RuleDetailCard({
 }: {
   rule: ReviewTriggerRuleSummary;
   tone: ReviewDimensionTone;
-  labels: { watchPaths: string; evidencePaths: string; boundaries: string; directories: string; thresholds: string };
+  labels: {
+    watchPaths: string;
+    evidencePaths: string;
+    boundaries: string;
+    directories: string;
+    thresholds: string;
+    action: string;
+    fallbackAction: string;
+    provider: string;
+    model: string;
+    specialist: string;
+    context: string;
+    reviewLayers: string;
+    reviewLayer: string;
+  };
 }) {
   const styles = TONE_STYLES[tone];
   const thresholdTokens = buildThresholdTokens(rule);
+  const routingTokens = {
+    action: [formatTokenLabel(rule.action)],
+    fallbackAction: rule.fallbackAction ? [formatTokenLabel(rule.fallbackAction)] : [],
+    provider: rule.provider ? [rule.provider] : [],
+    model: rule.model ? [rule.model] : [],
+    specialist: rule.specialistId ? [rule.specialistId] : [],
+    context: rule.context ?? [],
+  };
 
   return (
     <div className={`rounded-sm border px-3 py-2.5 ${styles.detailSurface}`}>
@@ -443,6 +512,14 @@ function RuleDetailCard({
           <span className="rounded-full border border-desktop-border bg-desktop-bg-primary px-2 py-0.5 text-[9px] text-desktop-text-secondary">
             {formatTokenLabel(rule.type)}
           </span>
+          <span className="rounded-full border border-desktop-border bg-desktop-bg-primary px-2 py-0.5 text-[9px] text-desktop-text-secondary">
+            {formatTokenLabel(rule.action)}
+          </span>
+          {rule.reviewLayerCount ? (
+            <span className="rounded-full border border-desktop-border bg-desktop-bg-primary px-2 py-0.5 text-[9px] text-desktop-text-secondary">
+              {`${rule.reviewLayerCount} ${labels.reviewLayers.toLowerCase()}`}
+            </span>
+          ) : null}
         </div>
       </div>
 
@@ -451,6 +528,13 @@ function RuleDetailCard({
       <BoundaryGroup boundaries={rule.boundaries} tone={tone} label={labels.boundaries} />
       <DetailGroup label={labels.directories} items={rule.directories} tone={tone} />
       <DetailGroup label={labels.thresholds} items={thresholdTokens} tone={tone} />
+      <DetailGroup label={labels.action} items={routingTokens.action} tone={tone} />
+      <DetailGroup label={labels.fallbackAction} items={routingTokens.fallbackAction} tone={tone} />
+      <DetailGroup label={labels.provider} items={routingTokens.provider} tone={tone} />
+      <DetailGroup label={labels.model} items={routingTokens.model} tone={tone} />
+      <DetailGroup label={labels.specialist} items={routingTokens.specialist} tone={tone} />
+      <DetailGroup label={labels.context} items={routingTokens.context} tone={tone} />
+      <ReviewLayerGroup layers={rule.reviewLayers ?? []} tone={tone} labels={labels} />
     </div>
   );
 }
@@ -462,11 +546,11 @@ function RoutingDetailCard({
 }: {
   details: ReviewRoutingDetails;
   tone: ReviewDimensionTone;
-  labels: { hooks: string; fallbackMetrics: string; triggerCommand: string };
+  labels: { hooks: string; fallbackMetrics: string; triggerCommand: string; reviewActions: string; phases: string };
 }) {
   return (
     <div className="grid gap-2">
-      <DetailGroup label="Review actions" items={details.actions} tone={tone} />
+      <DetailGroup label={labels.reviewActions} items={details.actions} tone={tone} />
 
       {details.profiles.length ? (
         <div className="grid gap-2">
@@ -475,7 +559,7 @@ function RoutingDetailCard({
               <div className="text-[11px] font-semibold text-desktop-text-primary">
                 {formatTokenLabel(profile.name)}
               </div>
-              <DetailGroup label="Phases" items={profile.phases.map(formatTokenLabel)} tone={tone} />
+              <DetailGroup label={labels.phases} items={profile.phases.map(formatTokenLabel)} tone={tone} />
               <DetailGroup label={labels.hooks} items={profile.hooks} tone={tone} />
               <DetailGroup
                 label={labels.fallbackMetrics}
@@ -625,6 +709,8 @@ export function HarnessReviewTriggersPanel({
                         hooks: t.harness.reviewTriggers.compactHooks,
                         fallbackMetrics: t.harness.reviewTriggers.detailFallbackMetrics,
                         triggerCommand: t.harness.reviewTriggers.detailTriggerCommand,
+                        reviewActions: t.harness.reviewTriggers.detailReviewActions,
+                        phases: t.harness.reviewTriggers.detailPhases,
                       }} />
                     ) : (
                       <div className="grid gap-2">
@@ -635,6 +721,14 @@ export function HarnessReviewTriggersPanel({
                             boundaries: t.harness.reviewTriggers.compactBoundaries,
                             directories: t.harness.reviewTriggers.compactDirectories,
                             thresholds: t.harness.reviewTriggers.compactThresholds,
+                            action: t.harness.reviewTriggers.detailAction,
+                            fallbackAction: t.harness.reviewTriggers.detailFallbackAction,
+                            provider: t.harness.reviewTriggers.detailProvider,
+                            model: t.harness.reviewTriggers.detailModel,
+                            specialist: t.harness.reviewTriggers.detailSpecialist,
+                            context: t.harness.reviewTriggers.detailContext,
+                            reviewLayers: t.harness.reviewTriggers.detailReviewLayers,
+                            reviewLayer: t.harness.reviewTriggers.detailReviewLayer,
                           }} />
                         ))}
                       </div>

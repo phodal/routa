@@ -34,6 +34,15 @@ type ReviewTriggerBoundarySummary = {
   paths: string[];
 };
 
+type ReviewTriggerLayerSummary = {
+  confidenceThreshold?: number | null;
+  specialistId?: string | null;
+  provider?: string | null;
+  model?: string | null;
+  context?: string[];
+  contextCount?: number;
+};
+
 type ReviewTriggerRuleSummary = {
   name: string;
   type: string;
@@ -58,6 +67,8 @@ type ReviewTriggerRuleSummary = {
   model?: string | null;
   context?: string[];
   contextCount?: number;
+  reviewLayers?: ReviewTriggerLayerSummary[];
+  reviewLayerCount?: number;
 };
 
 type ReviewTriggerConfigSummary = {
@@ -217,6 +228,26 @@ function normalizeConfidenceThreshold(value: unknown): number | null {
   return Math.min(10, Math.max(1, parsed));
 }
 
+function normalizeReviewTriggerLayers(value: unknown): ReviewTriggerLayerSummary[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .filter((entry): entry is Record<string, unknown> => typeof entry === "object" && entry !== null && !Array.isArray(entry))
+    .map((entry) => {
+      const context = normalizeStringList(entry.context);
+      return {
+        confidenceThreshold: normalizeConfidenceThreshold(entry.confidence_threshold),
+        specialistId: normalizeOptionalString(entry.specialist_id),
+        provider: normalizeOptionalString(entry.provider),
+        model: normalizeOptionalString(entry.model),
+        context,
+        contextCount: context.length,
+      };
+    });
+}
+
 function normalizeReviewTriggerAction(value: unknown, fallback = "require_human_review"): string {
   const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
   switch (normalized) {
@@ -335,6 +366,7 @@ async function loadReviewTriggerConfigSource(repoRoot: string): Promise<HooksRes
     const evidencePaths = normalizeStringList(rule.evidence_paths);
     const directories = normalizeStringList(rule.directories);
     const context = normalizeStringList(rule.context);
+    const reviewLayers = normalizeReviewTriggerLayers(rule.review_layers);
     const fallbackAction = normalizeOptionalString(rule.fallback_action)
       ? normalizeReviewTriggerAction(rule.fallback_action, "require_human_review")
       : null;
@@ -363,6 +395,8 @@ async function loadReviewTriggerConfigSource(repoRoot: string): Promise<HooksRes
       model: normalizeOptionalString(rule.model),
       context,
       contextCount: context.length,
+      reviewLayers,
+      reviewLayerCount: reviewLayers.length,
     } satisfies ReviewTriggerRuleSummary;
   });
 

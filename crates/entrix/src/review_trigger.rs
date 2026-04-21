@@ -17,6 +17,20 @@ pub struct ReviewTriggerBoundary {
     pub paths: Vec<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct ReviewTriggerLayer {
+    #[serde(default)]
+    pub confidence_threshold: Option<u8>,
+    #[serde(default)]
+    pub specialist_id: Option<String>,
+    #[serde(default)]
+    pub provider: Option<String>,
+    #[serde(default)]
+    pub model: Option<String>,
+    #[serde(default)]
+    pub context: Vec<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ReviewTriggerRule {
     pub name: String,
@@ -44,6 +58,8 @@ pub struct ReviewTriggerRule {
     pub model: Option<String>,
     #[serde(default)]
     pub context: Vec<String>,
+    #[serde(default)]
+    pub review_layers: Vec<ReviewTriggerLayer>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -63,6 +79,8 @@ pub struct TriggerMatch {
     pub model: Option<String>,
     #[serde(default)]
     pub context: Vec<String>,
+    #[serde(default)]
+    pub review_layers: Vec<ReviewTriggerLayer>,
     #[serde(default)]
     pub reasons: Vec<String>,
 }
@@ -111,6 +129,18 @@ struct ReviewTriggerRuleEntry {
     model: Option<String>,
     #[serde(default)]
     context: Vec<String>,
+    #[serde(default)]
+    review_layers: Vec<ReviewTriggerLayerEntry>,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+struct ReviewTriggerLayerEntry {
+    confidence_threshold: Option<u8>,
+    specialist_id: Option<String>,
+    provider: Option<String>,
+    model: Option<String>,
+    #[serde(default)]
+    context: Vec<String>,
 }
 
 pub fn load_review_triggers(config_path: &Path) -> Result<Vec<ReviewTriggerRule>, String> {
@@ -151,6 +181,17 @@ pub fn load_review_triggers(config_path: &Path) -> Result<Vec<ReviewTriggerRule>
             provider: normalize_string(entry.provider),
             model: normalize_string(entry.model),
             context: sanitize_strings(entry.context),
+            review_layers: entry
+                .review_layers
+                .into_iter()
+                .map(|layer| ReviewTriggerLayer {
+                    confidence_threshold: normalize_confidence_threshold(layer.confidence_threshold),
+                    specialist_id: normalize_string(layer.specialist_id),
+                    provider: normalize_string(layer.provider),
+                    model: normalize_string(layer.model),
+                    context: sanitize_strings(layer.context),
+                })
+                .collect(),
         })
         .map(|mut rule| {
             if rule.action == "staged" && rule.fallback_action.is_none() {
@@ -506,6 +547,7 @@ fn push_trigger_if_any(
         provider: rule.provider.clone(),
         model: rule.model.clone(),
         context: rule.context.clone(),
+        review_layers: rule.review_layers.clone(),
         reasons,
     });
 }
@@ -535,6 +577,7 @@ mod tests {
             provider: None,
             model: None,
             context: Vec::new(),
+            review_layers: Vec::new(),
         };
 
         let report = evaluate_review_triggers(
@@ -586,6 +629,7 @@ mod tests {
             provider: None,
             model: None,
             context: Vec::new(),
+            review_layers: Vec::new(),
         };
 
         let report = evaluate_review_triggers(
@@ -624,6 +668,13 @@ review_triggers:
     model: gpt-5.4
     context:
       - graph_review_context
+    review_layers:
+      - provider: codex
+        model: gpt-5.4-mini
+        confidence_threshold: 7
+      - provider: claude
+        model: claude-sonnet
+        confidence_threshold: 9
     paths:
       - src/core/acp/**
 "#,
@@ -643,6 +694,13 @@ review_triggers:
         assert_eq!(rules[0].provider.as_deref(), Some("codex"));
         assert_eq!(rules[0].model.as_deref(), Some("gpt-5.4"));
         assert_eq!(rules[0].context, vec!["graph_review_context".to_string()]);
+        assert_eq!(rules[0].review_layers.len(), 2);
+        assert_eq!(rules[0].review_layers[0].provider.as_deref(), Some("codex"));
+        assert_eq!(rules[0].review_layers[0].model.as_deref(), Some("gpt-5.4-mini"));
+        assert_eq!(rules[0].review_layers[0].confidence_threshold, Some(7));
+        assert_eq!(rules[0].review_layers[1].provider.as_deref(), Some("claude"));
+        assert_eq!(rules[0].review_layers[1].model.as_deref(), Some("claude-sonnet"));
+        assert_eq!(rules[0].review_layers[1].confidence_threshold, Some(9));
     }
 
     #[test]
@@ -666,6 +724,7 @@ review_triggers:
             provider: None,
             model: None,
             context: Vec::new(),
+            review_layers: Vec::new(),
         };
 
         let report = evaluate_review_triggers(

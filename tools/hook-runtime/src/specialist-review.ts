@@ -19,6 +19,14 @@ type SpecialistFile = {
   default_adapter?: string;
 };
 
+export type ReviewTriggerLayer = {
+  confidence_threshold?: number | null;
+  specialist_id?: string | null;
+  provider?: string | null;
+  model?: string | null;
+  context?: string[];
+};
+
 export type ReviewTrigger = {
   action: string;
   name: string;
@@ -30,6 +38,7 @@ export type ReviewTrigger = {
   provider?: string | null;
   model?: string | null;
   context?: string[];
+  review_layers?: ReviewTriggerLayer[];
 };
 
 export type ReviewReportPayload = {

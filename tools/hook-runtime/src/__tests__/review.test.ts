@@ -436,6 +436,98 @@ describe("runReviewTriggerPhase", () => {
     expect(result.message).toContain("Human review fallback required");
   });
 
+  it("passes staged review after escalating to a later review layer", async () => {
+    runCommandMock
+      .mockResolvedValueOnce({
+        command: "git rev-parse",
+        durationMs: 5,
+        exitCode: 0,
+        output: "origin/main\n",
+      })
+      .mockResolvedValueOnce({
+        command: "git rev-parse --show-toplevel",
+        durationMs: 5,
+        exitCode: 0,
+        output: `${process.cwd()}\n`,
+      })
+      .mockResolvedValueOnce({
+        command: "git diff --name-only --diff-filter=ACMR origin/main",
+        durationMs: 5,
+        exitCode: 0,
+        output: "src/core/acp/process.ts\n",
+      })
+      .mockResolvedValueOnce({
+        command: "git diff --name-only --diff-filter=ACMR",
+        durationMs: 5,
+        exitCode: 0,
+        output: "",
+      })
+      .mockResolvedValueOnce({
+        command: "git ls-files --others --exclude-standard",
+        durationMs: 5,
+        exitCode: 0,
+        output: "",
+      })
+      .mockResolvedValueOnce({
+        command: "entrix review-trigger",
+        durationMs: 10,
+        exitCode: 3,
+        output: JSON.stringify({
+          base: "origin/main",
+          triggers: [{
+            action: "staged",
+            confidence_threshold: 8,
+            fallback_action: "require_human_review",
+            provider: "codex",
+            model: "gpt-5.4-mini",
+            context: ["graph_review_context"],
+            review_layers: [
+              {
+                provider: "codex",
+                model: "gpt-5.4-mini",
+                confidence_threshold: 7,
+              },
+              {
+                provider: "claude",
+                model: "claude-sonnet",
+                confidence_threshold: 9,
+              },
+            ],
+            name: "high_risk_directory_change",
+            severity: "high",
+          }],
+          committed_files: ["src/core/acp/process.ts"],
+          diff_stats: { file_count: 1, added_lines: 20, deleted_lines: 6 },
+        }),
+      });
+    runReviewTriggerSpecialistMock
+      .mockResolvedValueOnce({
+        allowed: true,
+        outcome: "escalate",
+        summary: "Fast review wants a deeper pass.",
+        confidence: 7,
+        findings: [],
+        raw: "{\"decision\":\"escalate\",\"confidence\":7}",
+      })
+      .mockResolvedValueOnce({
+        allowed: true,
+        outcome: "pass",
+        summary: "Deep review approved the push.",
+        confidence: 9,
+        findings: [],
+        raw: "{\"decision\":\"pass\",\"confidence\":9}",
+      });
+
+    const result = await runReviewTriggerPhase("jsonl");
+
+    expect(result.allowed).toBe(true);
+    expect(result.status).toBe("passed");
+    expect(runReviewTriggerSpecialistMock).toHaveBeenCalledTimes(2);
+    expect(result.message).toContain("Review layer 1/2");
+    expect(result.message).toContain("Moving to the next review layer");
+    expect(result.message).toContain("Review layer 2/2: Deep review approved the push.");
+  });
+
   it("prints a compact human summary table for matched triggers", async () => {
     delete process.env.ROUTA_ALLOW_REVIEW_TRIGGER_PUSH;
     runCommandMock

@@ -259,6 +259,16 @@ export const enExtended: ExtendedTranslationDictionarySections = {
       compactDirectories: "Directories",
       detailFallbackMetrics: "Fallback metrics",
       detailTriggerCommand: "Trigger command",
+      detailReviewActions: "Review actions",
+      detailPhases: "Phases",
+      detailAction: "Action",
+      detailFallbackAction: "Fallback action",
+      detailProvider: "Provider",
+      detailModel: "Model",
+      detailSpecialist: "Specialist",
+      detailContext: "Context",
+      detailReviewLayers: "Review layers",
+      detailReviewLayer: "Layer",
     },
     governanceLoop: {
       graph: {

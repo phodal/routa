@@ -71,6 +71,7 @@ describe("review-trigger-pr-review", () => {
           provider: null,
           model: null,
           context: ["graph_review_context"],
+          reviewLayers: [],
           reasons: [
             "changed boundary 'web': src/app/api/review/route.ts",
             "changed boundary 'rust': crates/routa-server/src/api/review.rs",
