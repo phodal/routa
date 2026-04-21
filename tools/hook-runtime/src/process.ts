@@ -42,18 +42,32 @@ export function runCommand(command: string, options: RunCommandOptions = {}): Pr
   const child = spawn(shell, ["-lc", finalCommand], {
     cwd: options.cwd ?? process.cwd(),
     env: { ...process.env, ...options.env },
+    detached: process.platform !== "win32",
     stdio: ["inherit", "pipe", "pipe"],
   });
   let timeoutId: NodeJS.Timeout | undefined;
   let timedOut = false;
 
+  const killCommand = (signal: NodeJS.Signals) => {
+    if (process.platform !== "win32" && typeof child.pid === "number") {
+      try {
+        process.kill(-child.pid, signal);
+        return;
+      } catch {
+        // Fall back to the shell child when the process group is already gone.
+      }
+    }
+
+    child.kill(signal);
+  };
+
   if (options.timeoutMs && options.timeoutMs > 0) {
     timeoutId = setTimeout(() => {
       timedOut = true;
-      child.kill("SIGTERM");
+      killCommand("SIGTERM");
       setTimeout(() => {
-        if (!child.killed) {
-          child.kill("SIGKILL");
+        if (child.exitCode === null && child.signalCode === null) {
+          killCommand("SIGKILL");
         }
       }, 1_000).unref();
     }, options.timeoutMs);
