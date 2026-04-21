@@ -132,6 +132,82 @@ export interface TaskAdaptiveFrictionProfileSnapshot {
   featureProfiles: Record<string, TaskAdaptiveFrictionProfile>;
 }
 
+export interface FileSessionContextSessionSummary {
+  provider: string;
+  sessionId: string;
+  updatedAt: string;
+  promptSnippet: string;
+  openingPrompt?: string;
+  promptHistory: string[];
+  matchedFiles: string[];
+  matchedChangedFiles: string[];
+  matchedReadFiles: string[];
+  matchedWrittenFiles: string[];
+  relatedFiles: string[];
+  repeatedReadFiles: string[];
+  repeatedCommands: string[];
+  toolNames: string[];
+  failedReadSignals: TaskAdaptiveHarnessFailureSignal[];
+  failedTools: FileSessionToolFailure[];
+  resumeCommand?: string;
+}
+
+export interface FileSessionContextPromptSignal {
+  provider: string;
+  sessionId: string;
+  updatedAt: string;
+  openingPrompt: string;
+  followUpPrompts: string[];
+}
+
+export interface FileSessionContextScopeDriftSignal {
+  provider: string;
+  sessionId: string;
+  updatedAt: string;
+  reason: string;
+  openingPrompt: string;
+  laterPrompts: string[];
+}
+
+export interface FileSessionContextFrictionSignal {
+  provider: string;
+  sessionId: string;
+  updatedAt: string;
+  category: string;
+  detail: string;
+  evidence: string;
+  toolName?: string;
+  command?: string;
+}
+
+export interface FileSessionContextHotspot {
+  value: string;
+  count: number;
+  sessions: string[];
+}
+
+export interface FileSessionContextSummary {
+  featureId?: string;
+  featureName?: string;
+  matchConfidence: TaskAdaptiveMatchConfidence;
+  matchReasons: string[];
+  selectedFiles: string[];
+  focusFiles: string[];
+  matchedFileDetails: TaskAdaptiveMatchedFileDetail[];
+  matchedSessionIds: string[];
+  directSessions: FileSessionContextSessionSummary[];
+  adjacentSessions: FileSessionContextSessionSummary[];
+  weakSessions: FileSessionContextSessionSummary[];
+  openingPrompts: FileSessionContextPromptSignal[];
+  scopeDriftSignals: FileSessionContextScopeDriftSignal[];
+  inputFrictions: FileSessionContextFrictionSignal[];
+  environmentFrictions: FileSessionContextFrictionSignal[];
+  repeatedFileHotspots: FileSessionContextHotspot[];
+  repeatedCommandHotspots: FileSessionContextHotspot[];
+  transcriptHints: string[];
+  warnings: string[];
+}
+
 export interface RefreshTaskAdaptiveFrictionProfilesOptions {
   minFileSessions?: number;
   minFeatureSessions?: number;
@@ -1764,6 +1840,163 @@ type CompiledSessionAccumulator = {
   frictionScore: number;
 };
 
+type DetailedSessionAccumulator = {
+  provider: string;
+  sessionId: string;
+  updatedAt: string;
+  promptSnippet: string;
+  promptHistory: Set<string>;
+  matchedFiles: Set<string>;
+  matchedChangedFiles: Set<string>;
+  matchedReadFiles: Set<string>;
+  matchedWrittenFiles: Set<string>;
+  relatedFiles: Set<string>;
+  repeatedReadFiles: Set<string>;
+  repeatedCommands: Set<string>;
+  toolNames: Set<string>;
+  failedReadSignals: TaskAdaptiveHarnessFailureSignal[];
+  failedTools: FileSessionToolFailure[];
+  resumeCommand?: string;
+};
+
+function normalizeWhitespace(value: string): string {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+function dedupeFileSessionToolFailures(
+  failures: FileSessionToolFailure[],
+  limit = MAX_FAILURE_SIGNALS,
+): FileSessionToolFailure[] {
+  const seen = new Set<string>();
+  const deduped: FileSessionToolFailure[] = [];
+
+  for (const failure of failures) {
+    const key = [
+      failure.toolName,
+      failure.command ?? "",
+      failure.message,
+    ].join("|");
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    deduped.push(failure);
+    if (deduped.length >= limit) {
+      break;
+    }
+  }
+
+  return deduped;
+}
+
+function normalizeRepeatedCommandHotspot(value: string): string | null {
+  const normalized = normalizeWhitespace(value);
+  if (!normalized) {
+    return null;
+  }
+
+  if (
+    normalized.startsWith("git status --short")
+    || normalized.startsWith("git status --short --branch")
+    || normalized.includes("\"session_id\"")
+    || normalized.includes("write_stdin")
+  ) {
+    return null;
+  }
+
+  return normalized;
+}
+
+function repoLikePathsFromPrompt(value: string): string[] {
+  const matches = value.match(/(?:src|docs|crates|apps|resources|tools)\/[^\s"'`]+/g) ?? [];
+  return uniqueSorted(matches.map((match) => match.replace(/[),.;]+$/u, "")));
+}
+
+function promptFeatureParam(value: string): string | undefined {
+  const match = value.match(/[?&]feature=([^&\s]+)/u);
+  return match?.[1] ? decodeURIComponent(match[1]) : undefined;
+}
+
+function promptHasLocalUrl(value: string): boolean {
+  return /https?:\/\/(?:localhost|127\.0\.0\.1)/iu.test(value);
+}
+
+function promptHasIssueUrl(value: string): boolean {
+  return /https?:\/\/github\.com\/[^/\s]+\/[^/\s]+\/issues\/\d+/iu.test(value);
+}
+
+function promptHasImageMarker(value: string): boolean {
+  return /<image|\[Image/iu.test(value);
+}
+
+function promptLooksLikeBriefFollowUp(value: string): boolean {
+  const normalized = normalizeWhitespace(value).toLowerCase();
+  if (normalized.length === 0) {
+    return false;
+  }
+
+  const exactMatches = new Set([
+    "提交一下？",
+    "提交一下",
+    "commit 吧",
+    "commit吧",
+    "提交吧",
+    "先提交一下吧",
+    "然后继续实现，然后搞个 pr 吧",
+    "然后再继续？",
+    "行啊，开始实现吧",
+    "行啊，试试",
+    "继续实现",
+    "then continue",
+    "commit it",
+    "push it",
+    "start implementing",
+  ]);
+
+  return exactMatches.has(normalized)
+    || normalized === "继续"
+    || normalized === "continue"
+    || normalized === "继续吧";
+}
+
+function classifyEnvironmentFailureCategory(failure: FileSessionToolFailure): string {
+  const combined = `${failure.message} ${failure.command ?? ""}`.toLowerCase();
+
+  if (combined.includes("no matches found")) {
+    return "shell_glob_path";
+  }
+  if (
+    combined.includes("command not found")
+    || combined.includes("cannot find package")
+    || combined.includes("unresolved_import")
+    || combined.includes("could not resolve")
+  ) {
+    return "missing_dependency";
+  }
+  if (combined.includes("node_modules") && combined.includes("no such file")) {
+    return "missing_installation";
+  }
+  if (combined.includes("operation not permitted") || combined.includes("permission denied")) {
+    return "permission_or_worktree";
+  }
+  if (
+    combined.includes("no such file or directory")
+    || combined.includes("not found")
+    || combined.includes("enoent")
+  ) {
+    return "missing_file_or_path";
+  }
+  if (combined.includes("connection refused") || combined.includes("econnrefused")) {
+    return "service_unavailable";
+  }
+
+  return "tooling_failure";
+}
+
+function detailSessionKey(provider: string, sessionId: string): string {
+  return `${provider}:${sessionId}`;
+}
+
 function ensureAccumulator(
   map: Map<string, CompiledSessionAccumulator>,
   signal: FileSessionSignal,
@@ -1953,6 +2186,169 @@ function buildMatchedFileDetails(
       updatedAt,
     };
   });
+}
+
+function ensureDetailedAccumulator(
+  map: Map<string, DetailedSessionAccumulator>,
+  signal: FileSessionSignal,
+): DetailedSessionAccumulator {
+  const key = detailSessionKey(signal.provider, signal.sessionId);
+  const existing = map.get(key);
+  if (existing) {
+    if (signal.updatedAt > existing.updatedAt) {
+      existing.updatedAt = signal.updatedAt;
+    }
+    if (!existing.promptSnippet && signal.promptSnippet) {
+      existing.promptSnippet = truncateSnippet(signal.promptSnippet);
+    }
+    if (!existing.resumeCommand && signal.resumeCommand) {
+      existing.resumeCommand = signal.resumeCommand;
+    }
+    return existing;
+  }
+
+  const created: DetailedSessionAccumulator = {
+    provider: signal.provider,
+    sessionId: signal.sessionId,
+    updatedAt: signal.updatedAt,
+    promptSnippet: truncateSnippet(signal.promptSnippet),
+    promptHistory: new Set(signal.promptHistory),
+    matchedFiles: new Set<string>(),
+    matchedChangedFiles: new Set<string>(),
+    matchedReadFiles: new Set<string>(),
+    matchedWrittenFiles: new Set<string>(),
+    relatedFiles: new Set<string>(),
+    repeatedReadFiles: new Set<string>(),
+    repeatedCommands: new Set<string>(),
+    toolNames: new Set(signal.toolNames),
+    failedReadSignals: [],
+    failedTools: [],
+    resumeCommand: signal.resumeCommand,
+  };
+  map.set(key, created);
+  return created;
+}
+
+function compileDetailedSessionContext(
+  selectedFiles: string[],
+  fileSignals: Record<string, TaskAdaptiveFileSignal>,
+  matchedSessionIds?: string[],
+): Map<string, DetailedSessionAccumulator> {
+  const selectedSet = new Set(selectedFiles);
+  const wantedSessions = matchedSessionIds ? new Set(matchedSessionIds) : undefined;
+  const compiled = new Map<string, DetailedSessionAccumulator>();
+
+  for (const filePath of selectedFiles) {
+    const signal = fileSignals[filePath];
+    if (!signal) {
+      continue;
+    }
+
+    for (const session of signal.sessions) {
+      if (wantedSessions && !wantedSessions.has(session.sessionId)) {
+        continue;
+      }
+
+      const detail = ensureDetailedAccumulator(compiled, session);
+      detail.matchedFiles.add(filePath);
+
+      for (const prompt of session.promptHistory) {
+        detail.promptHistory.add(prompt);
+      }
+      for (const toolName of session.toolNames) {
+        detail.toolNames.add(toolName);
+      }
+      for (const changedFile of session.changedFiles ?? []) {
+        if (selectedSet.has(changedFile)) {
+          detail.matchedChangedFiles.add(changedFile);
+        } else {
+          detail.relatedFiles.add(changedFile);
+        }
+      }
+
+      const diagnostics = session.diagnostics;
+      if (!diagnostics) {
+        continue;
+      }
+
+      for (const readFile of diagnostics.readFiles) {
+        if (selectedSet.has(readFile)) {
+          detail.matchedReadFiles.add(readFile);
+        } else {
+          detail.relatedFiles.add(readFile);
+        }
+      }
+      for (const writtenFile of diagnostics.writtenFiles) {
+        if (selectedSet.has(writtenFile)) {
+          detail.matchedWrittenFiles.add(writtenFile);
+        } else {
+          detail.relatedFiles.add(writtenFile);
+        }
+      }
+      for (const repeatedRead of diagnostics.repeatedReadFiles) {
+        const normalizedRepeatedRead = normalizeRepeatedReadFile(repeatedRead);
+        if (selectedSet.has(normalizedRepeatedRead)) {
+          detail.repeatedReadFiles.add(normalizedRepeatedRead);
+        } else {
+          detail.relatedFiles.add(normalizedRepeatedRead);
+        }
+      }
+      for (const repeatedCommand of diagnostics.repeatedCommands) {
+        const normalizedCommand = normalizeRepeatedCommandHotspot(repeatedCommand);
+        if (normalizedCommand) {
+          detail.repeatedCommands.add(normalizedCommand);
+        }
+      }
+      for (const failure of diagnostics.failedTools) {
+        detail.failedTools.push(failure);
+        if (!isHighSignalReadFailure(failure)) {
+          continue;
+        }
+        detail.failedReadSignals.push({
+          provider: session.provider,
+          sessionId: session.sessionId,
+          message: failure.message,
+          toolName: failure.toolName,
+          command: failure.command,
+        });
+      }
+    }
+  }
+
+  for (const detail of compiled.values()) {
+    detail.failedReadSignals = dedupeFailureSignals(detail.failedReadSignals, MAX_FAILURE_SIGNALS);
+    detail.failedTools = dedupeFileSessionToolFailures(detail.failedTools, MAX_FAILURE_SIGNALS);
+  }
+
+  return compiled;
+}
+
+function mapDetailedSessionSummary(
+  summary: TaskAdaptiveHarnessSessionSummary,
+  detail: DetailedSessionAccumulator | undefined,
+): FileSessionContextSessionSummary {
+  const promptHistory = detail ? [...detail.promptHistory] : [];
+  const openingPrompt = promptHistory[0];
+
+  return {
+    provider: summary.provider,
+    sessionId: summary.sessionId,
+    updatedAt: summary.updatedAt,
+    promptSnippet: summary.promptSnippet,
+    ...(openingPrompt ? { openingPrompt } : {}),
+    promptHistory,
+    matchedFiles: detail ? uniqueSorted([...detail.matchedFiles]) : [...summary.matchedFiles],
+    matchedChangedFiles: detail ? uniqueSorted([...detail.matchedChangedFiles]) : [...summary.matchedChangedFiles],
+    matchedReadFiles: detail ? uniqueSorted([...detail.matchedReadFiles]) : [...summary.matchedReadFiles],
+    matchedWrittenFiles: detail ? uniqueSorted([...detail.matchedWrittenFiles]) : [...summary.matchedWrittenFiles],
+    relatedFiles: detail ? trimTo(uniqueSorted([...detail.relatedFiles]), DEFAULT_MAX_FILES) : [],
+    repeatedReadFiles: detail ? uniqueSorted([...detail.repeatedReadFiles]) : [...summary.repeatedReadFiles],
+    repeatedCommands: detail ? trimTo(uniqueSorted([...detail.repeatedCommands]), MAX_FILE_SIGNAL_REPEATED_COMMANDS) : [],
+    toolNames: detail ? trimTo(uniqueSorted([...detail.toolNames]), MAX_TOOLS_PER_SESSION) : [...summary.toolNames],
+    failedReadSignals: detail ? [...detail.failedReadSignals] : [...summary.failedReadSignals],
+    failedTools: detail ? [...detail.failedTools] : [],
+    ...(summary.resumeCommand ? { resumeCommand: summary.resumeCommand } : {}),
+  };
 }
 
 function mergeMatchedFileDetails(
@@ -2579,4 +2975,330 @@ export async function assembleTaskAdaptiveHarness(
     recommendedMcpProfile: pack.recommendedMcpProfile,
     recommendedAllowedNativeTools: pack.recommendedAllowedNativeTools,
   }, options, fileSignals);
+}
+
+function sessionHasDirectFocusEvidence(
+  session: FileSessionContextSessionSummary,
+  focusFiles: ReadonlySet<string>,
+): boolean {
+  const directCandidates = [
+    ...session.matchedChangedFiles,
+    ...session.matchedReadFiles,
+    ...session.matchedWrittenFiles,
+  ];
+  return directCandidates.some((filePath) => focusFiles.has(filePath));
+}
+
+function classifyFileSessionContextBuckets(
+  sessions: FileSessionContextSessionSummary[],
+  focusFiles: string[],
+): Pick<FileSessionContextSummary, "directSessions" | "adjacentSessions" | "weakSessions"> {
+  const focusSet = new Set(focusFiles);
+  const directSessions: FileSessionContextSessionSummary[] = [];
+  const adjacentSessions: FileSessionContextSessionSummary[] = [];
+  const weakSessions: FileSessionContextSessionSummary[] = [];
+
+  for (const session of sessions) {
+    if (sessionHasDirectFocusEvidence(session, focusSet)) {
+      directSessions.push(session);
+      continue;
+    }
+
+    if (
+      session.matchedChangedFiles.length > 0
+      || session.matchedReadFiles.length > 0
+      || session.matchedWrittenFiles.length > 0
+      || session.relatedFiles.length > 0
+    ) {
+      adjacentSessions.push(session);
+      continue;
+    }
+
+    weakSessions.push(session);
+  }
+
+  return {
+    directSessions,
+    adjacentSessions,
+    weakSessions,
+  };
+}
+
+function buildFileSessionContextPromptSignals(
+  sessions: FileSessionContextSessionSummary[],
+): FileSessionContextPromptSignal[] {
+  return sessions
+    .filter((session) => session.promptHistory.length > 0)
+    .map((session) => ({
+      provider: session.provider,
+      sessionId: session.sessionId,
+      updatedAt: session.updatedAt,
+      openingPrompt: session.promptHistory[0] ?? session.promptSnippet,
+      followUpPrompts: session.promptHistory.slice(1),
+    }));
+}
+
+function buildFileSessionContextScopeDriftSignals(
+  sessions: FileSessionContextSessionSummary[],
+  featureId: string | undefined,
+  focusFiles: string[],
+  selectedFiles: string[],
+): FileSessionContextScopeDriftSignal[] {
+  const focusSet = new Set(focusFiles);
+  const selectedSet = new Set(selectedFiles);
+  const signals: FileSessionContextScopeDriftSignal[] = [];
+
+  for (const session of sessions) {
+    if (session.promptHistory.length < 2) {
+      continue;
+    }
+
+    const openingPrompt = session.promptHistory[0] ?? session.promptSnippet;
+    for (const laterPrompt of session.promptHistory.slice(1)) {
+      const laterFeatureParam = promptFeatureParam(laterPrompt);
+      if (featureId && laterFeatureParam && laterFeatureParam !== featureId) {
+        signals.push({
+          provider: session.provider,
+          sessionId: session.sessionId,
+          updatedAt: session.updatedAt,
+          reason: `Later prompt switched feature anchor from ${featureId} to ${laterFeatureParam}.`,
+          openingPrompt,
+          laterPrompts: [laterPrompt],
+        });
+        break;
+      }
+
+      const laterPaths = repoLikePathsFromPrompt(laterPrompt);
+      if (
+        laterPaths.length > 0
+        && (
+          (focusSet.size > 0 && laterPaths.every((filePath) => !focusSet.has(filePath)))
+          || laterPaths.every((filePath) => !focusSet.has(filePath) && !selectedSet.has(filePath))
+        )
+      ) {
+        signals.push({
+          provider: session.provider,
+          sessionId: session.sessionId,
+          updatedAt: session.updatedAt,
+          reason: "Later prompt shifted to different repository files than the current focus.",
+          openingPrompt,
+          laterPrompts: [laterPrompt],
+        });
+        break;
+      }
+    }
+  }
+
+  return signals;
+}
+
+function buildFileSessionContextInputFrictions(
+  sessions: FileSessionContextSessionSummary[],
+  featureId: string | undefined,
+): FileSessionContextFrictionSignal[] {
+  const frictions: FileSessionContextFrictionSignal[] = [];
+  const seen = new Set<string>();
+
+  for (const session of sessions) {
+    const openingPrompt = session.promptHistory[0] ?? session.promptSnippet;
+    if (!openingPrompt) {
+      continue;
+    }
+
+    const openingPaths = repoLikePathsFromPrompt(openingPrompt);
+    const openingFeatureParam = promptFeatureParam(openingPrompt);
+    const candidates: Array<{ category: string; detail: string; evidence: string }> = [];
+
+    if (promptHasLocalUrl(openingPrompt) && openingPaths.length === 0) {
+      candidates.push({
+        category: "ui_url_without_entry_file",
+        detail: "The request started from a local UI URL without naming a concrete repository file.",
+        evidence: openingPrompt,
+      });
+    }
+
+    if (promptHasIssueUrl(openingPrompt) && openingPaths.length === 0) {
+      candidates.push({
+        category: "issue_reference_only",
+        detail: "The request referenced an issue URL but did not provide a concrete entry file.",
+        evidence: openingPrompt,
+      });
+    }
+
+    if (promptHasImageMarker(openingPrompt) && openingPaths.length === 0) {
+      candidates.push({
+        category: "image_led_context",
+        detail: "The request relied on screenshots or images without grounding the task in a file path.",
+        evidence: openingPrompt,
+      });
+    }
+
+    if (featureId && openingFeatureParam && openingFeatureParam !== featureId) {
+      candidates.push({
+        category: "feature_anchor_mismatch",
+        detail: `The opening prompt anchored on feature=${openingFeatureParam} while the recovered file context points to ${featureId}.`,
+        evidence: openingPrompt,
+      });
+    }
+
+    const followUpWithoutScope = session.promptHistory
+      .slice(1)
+      .find((prompt) => promptLooksLikeBriefFollowUp(prompt) && repoLikePathsFromPrompt(prompt).length === 0);
+    if (followUpWithoutScope) {
+      candidates.push({
+        category: "follow_up_without_scope",
+        detail: "A later prompt asked to continue or commit without restating scope.",
+        evidence: followUpWithoutScope,
+      });
+    }
+
+    for (const candidate of candidates) {
+      const key = [
+        session.provider,
+        session.sessionId,
+        candidate.category,
+        candidate.evidence,
+      ].join("|");
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      frictions.push({
+        provider: session.provider,
+        sessionId: session.sessionId,
+        updatedAt: session.updatedAt,
+        category: candidate.category,
+        detail: candidate.detail,
+        evidence: candidate.evidence,
+      });
+    }
+  }
+
+  return frictions;
+}
+
+function buildFileSessionContextEnvironmentFrictions(
+  sessions: FileSessionContextSessionSummary[],
+): FileSessionContextFrictionSignal[] {
+  const frictions: FileSessionContextFrictionSignal[] = [];
+  const seen = new Set<string>();
+
+  for (const session of sessions) {
+    for (const failure of session.failedTools) {
+      const category = classifyEnvironmentFailureCategory(failure);
+      const evidence = `${failure.toolName}${failure.command ? ` | ${failure.command}` : ""} | ${failure.message}`;
+      const key = [
+        session.provider,
+        session.sessionId,
+        category,
+        evidence,
+      ].join("|");
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      frictions.push({
+        provider: session.provider,
+        sessionId: session.sessionId,
+        updatedAt: session.updatedAt,
+        category,
+        detail: failure.message,
+        evidence,
+        toolName: failure.toolName,
+        command: failure.command,
+      });
+    }
+  }
+
+  return frictions;
+}
+
+function buildFileSessionContextHotspots(
+  sessions: FileSessionContextSessionSummary[],
+): Pick<FileSessionContextSummary, "repeatedFileHotspots" | "repeatedCommandHotspots"> {
+  const repeatedFileCounts = new Map<string, { count: number; sessions: Set<string> }>();
+  const repeatedCommandCounts = new Map<string, { count: number; sessions: Set<string> }>();
+
+  for (const session of sessions) {
+    const sessionKey = detailSessionKey(session.provider, session.sessionId);
+    for (const filePath of session.repeatedReadFiles) {
+      const existing = repeatedFileCounts.get(filePath) ?? { count: 0, sessions: new Set<string>() };
+      existing.count += 1;
+      existing.sessions.add(sessionKey);
+      repeatedFileCounts.set(filePath, existing);
+    }
+    for (const command of session.repeatedCommands) {
+      const existing = repeatedCommandCounts.get(command) ?? { count: 0, sessions: new Set<string>() };
+      existing.count += 1;
+      existing.sessions.add(sessionKey);
+      repeatedCommandCounts.set(command, existing);
+    }
+  }
+
+  const toHotspots = (
+    source: Map<string, { count: number; sessions: Set<string> }>,
+  ): FileSessionContextHotspot[] =>
+    [...source.entries()]
+      .map(([value, stats]) => ({
+        value,
+        count: stats.count,
+        sessions: uniqueSorted([...stats.sessions]),
+      }))
+      .sort((left, right) => right.count - left.count || left.value.localeCompare(right.value));
+
+  return {
+    repeatedFileHotspots: toHotspots(repeatedFileCounts),
+    repeatedCommandHotspots: toHotspots(repeatedCommandCounts),
+  };
+}
+
+export async function summarizeFileSessionContext(
+  repoRoot: string,
+  options: TaskAdaptiveHarnessOptions = {},
+): Promise<FileSessionContextSummary> {
+  const pack = await assembleTaskAdaptiveHarness(repoRoot, options);
+  const fileSignals = collectTaskAdaptiveFileSignals(repoRoot);
+  const focusFiles = uniqueSorted(options.filePaths?.length ? options.filePaths : pack.selectedFiles);
+  const detailedSessions = compileDetailedSessionContext(
+    pack.selectedFiles,
+    fileSignals,
+    pack.matchedSessionIds,
+  );
+  const sessionSummaries = pack.sessions.map((session) =>
+    mapDetailedSessionSummary(session, detailedSessions.get(detailSessionKey(session.provider, session.sessionId))));
+  const buckets = classifyFileSessionContextBuckets(sessionSummaries, focusFiles);
+  const openingPrompts = buildFileSessionContextPromptSignals(sessionSummaries);
+  const scopeDriftSignals = buildFileSessionContextScopeDriftSignals(
+    sessionSummaries,
+    pack.featureId,
+    focusFiles,
+    pack.selectedFiles,
+  );
+  const inputFrictions = buildFileSessionContextInputFrictions(sessionSummaries, pack.featureId);
+  const environmentFrictions = buildFileSessionContextEnvironmentFrictions(sessionSummaries);
+  const hotspots = buildFileSessionContextHotspots(sessionSummaries);
+
+  return {
+    featureId: pack.featureId,
+    featureName: pack.featureName,
+    matchConfidence: pack.matchConfidence,
+    matchReasons: [...pack.matchReasons],
+    selectedFiles: [...pack.selectedFiles],
+    focusFiles,
+    matchedFileDetails: pack.matchedFileDetails.map((detail) => ({ ...detail })),
+    matchedSessionIds: [...pack.matchedSessionIds],
+    directSessions: buckets.directSessions,
+    adjacentSessions: buckets.adjacentSessions,
+    weakSessions: buckets.weakSessions,
+    openingPrompts,
+    scopeDriftSignals,
+    inputFrictions,
+    environmentFrictions,
+    repeatedFileHotspots: hotspots.repeatedFileHotspots,
+    repeatedCommandHotspots: hotspots.repeatedCommandHotspots,
+    transcriptHints: uniqueSorted(
+      pack.sessions.map((session) => `~/.codex/sessions/**/${session.sessionId}*.jsonl`),
+    ),
+    warnings: [...pack.warnings],
+  };
 }

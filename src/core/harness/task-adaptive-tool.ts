@@ -6,12 +6,15 @@ import {
 import {
   assembleTaskAdaptiveHarness,
   parseTaskAdaptiveHarnessOptions,
+  summarizeFileSessionContext,
+  type FileSessionContextSummary,
   type TaskAdaptiveHistorySummary,
   type TaskAdaptiveHarnessPack,
 } from "@/core/harness/task-adaptive";
 
 export const TASK_ADAPTIVE_HARNESS_TOOL_NAME = "assemble_task_adaptive_harness";
 export const TASK_HISTORY_SUMMARY_TOOL_NAME = "summarize_task_history_context";
+export const FILE_SESSION_CONTEXT_TOOL_NAME = "summarize_file_session_context";
 
 export async function assembleTaskAdaptiveHarnessFromToolArgs(
   args: Record<string, unknown>,
@@ -49,4 +52,18 @@ export async function summarizeTaskHistoryContextFromToolArgs(
     matchedSessionIds: [...pack.matchedSessionIds],
     warnings: [...pack.warnings],
   };
+}
+
+export async function summarizeFileSessionContextFromToolArgs(
+  args: Record<string, unknown>,
+  fallbackWorkspaceId?: string,
+): Promise<FileSessionContextSummary> {
+  const context: HarnessContext = {
+    workspaceId: normalizeContextValue(args.workspaceId) ?? fallbackWorkspaceId,
+    codebaseId: normalizeContextValue(args.codebaseId),
+    repoPath: normalizeContextValue(args.repoPath),
+  };
+  const repoRoot = await resolveRepoRoot(context);
+  const options = parseTaskAdaptiveHarnessOptions(args) ?? {};
+  return summarizeFileSessionContext(repoRoot, options);
 }

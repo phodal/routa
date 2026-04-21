@@ -11,6 +11,7 @@ import {
   assembleTaskAdaptiveHarness,
   loadTaskAdaptiveFrictionProfiles,
   refreshTaskAdaptiveFrictionProfiles,
+  summarizeFileSessionContext,
 } from "../shared";
 
 function ensureFile(filePath: string, content = ""): void {
@@ -649,5 +650,202 @@ describe("assembleTaskAdaptiveHarness", () => {
     expect(pack.summary).toContain("Reusable Friction Profiles");
     expect(pack.summary).toContain("Loaded 2 reusable friction profiles");
     expect(pack.matchedSessionIds).toContain("session-e");
+  });
+
+  it("builds file-session context summaries with direct vs adjacent evidence and friction buckets", async () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "task-adaptive-file-session-context-"));
+    process.env.HOME = tempRoot;
+    process.env.CLAUDE_CONFIG_DIR = "";
+
+    const repoRoot = path.join(tempRoot, "repo");
+    const focusFile = "src/app/workspace/[workspaceId]/feature-explorer/feature-explorer-page-client.tsx";
+    const adjacentFile = "src/app/api/feature-explorer/route.ts";
+    ensureFile(path.join(repoRoot, focusFile), "export function FeatureExplorerPageClient() { return null; }\n");
+    ensureFile(path.join(repoRoot, adjacentFile), "export async function GET() { return Response.json({ ok: true }); }\n");
+    writeFeatureTreeIndex(repoRoot, [
+      {
+        id: "feature-explorer",
+        name: "Feature Explorer",
+        sourceFiles: [focusFile, adjacentFile],
+      },
+    ]);
+
+    writeTranscript(
+      path.join(tempRoot, ".codex", "sessions", "session-direct.jsonl"),
+      repoRoot,
+      "session-direct",
+      [
+        {
+          timestamp: "2026-04-21T05:01:00.000Z",
+          type: "event_msg",
+          payload: {
+            type: "user_message",
+            message: "http://localhost:3000/workspace/default/feature-explorer?feature=workspace-overview 这个页面帮我看一下",
+          },
+        },
+        {
+          timestamp: "2026-04-21T05:02:00.000Z",
+          type: "response_item",
+          payload: {
+            type: "function_call",
+            name: "exec_command",
+            arguments: JSON.stringify({ cmd: `sed -n '1,200p' '${focusFile}'` }),
+          },
+        },
+        {
+          timestamp: "2026-04-21T05:02:04.000Z",
+          type: "event_msg",
+          payload: {
+            type: "exec_command_end",
+            command: ["/bin/zsh", "-lc", `sed -n '1,200p' '${focusFile}'`],
+            aggregated_output: "export function FeatureExplorerPageClient() { return null; }\n",
+            exit_code: 0,
+          },
+        },
+        {
+          timestamp: "2026-04-21T05:03:00.000Z",
+          type: "response_item",
+          payload: {
+            type: "function_call",
+            name: "exec_command",
+            arguments: JSON.stringify({ cmd: `sed -n '1,200p' '${focusFile}'` }),
+          },
+        },
+        {
+          timestamp: "2026-04-21T05:03:05.000Z",
+          type: "event_msg",
+          payload: {
+            type: "exec_command_end",
+            command: ["/bin/zsh", "-lc", `sed -n '1,200p' '${focusFile}'`],
+            aggregated_output: "export function FeatureExplorerPageClient() { return null; }\n",
+            exit_code: 0,
+          },
+        },
+        {
+          timestamp: "2026-04-21T05:04:00.000Z",
+          type: "response_item",
+          payload: {
+            type: "function_call",
+            name: "exec_command",
+            arguments: JSON.stringify({ cmd: `pnpm vitest run '${focusFile}'` }),
+          },
+        },
+        {
+          timestamp: "2026-04-21T05:04:04.000Z",
+          type: "event_msg",
+          payload: {
+            type: "exec_command_end",
+            command: ["/bin/zsh", "-lc", `pnpm vitest run '${focusFile}'`],
+            stderr: "zsh:1: command not found: pnpm",
+            exit_code: 1,
+            status: "failed",
+          },
+        },
+        {
+          timestamp: "2026-04-21T05:05:00.000Z",
+          type: "event_msg",
+          payload: {
+            type: "user_message",
+            message: "提交一下？",
+          },
+        },
+        {
+          timestamp: "2026-04-21T05:06:00.000Z",
+          type: "event_msg",
+          payload: {
+            type: "user_message",
+            message: `顺便看看 ${adjacentFile}`,
+          },
+        },
+        {
+          timestamp: "2026-04-21T05:07:00.000Z",
+          type: "event_msg",
+          payload: {
+            type: "exec_command_end",
+            command: ["/bin/zsh", "-lc", "git status --short"],
+            aggregated_output: ` M ${focusFile}\n`,
+            exit_code: 0,
+          },
+        },
+      ],
+    );
+
+    writeTranscript(
+      path.join(tempRoot, ".codex", "sessions", "session-adjacent.jsonl"),
+      repoRoot,
+      "session-adjacent",
+      [
+        {
+          timestamp: "2026-04-21T06:01:00.000Z",
+          type: "event_msg",
+          payload: {
+            type: "user_message",
+            message: "分析 https://github.com/phodal/routa/issues/485 的实现情况",
+          },
+        },
+        {
+          timestamp: "2026-04-21T06:02:00.000Z",
+          type: "response_item",
+          payload: {
+            type: "function_call",
+            name: "exec_command",
+            arguments: JSON.stringify({ cmd: `sed -n '1,200p' '${adjacentFile}'` }),
+          },
+        },
+        {
+          timestamp: "2026-04-21T06:02:04.000Z",
+          type: "event_msg",
+          payload: {
+            type: "exec_command_end",
+            command: ["/bin/zsh", "-lc", `sed -n '1,200p' '${adjacentFile}'`],
+            aggregated_output: "export async function GET() { return Response.json({ ok: true }); }\n",
+            exit_code: 0,
+          },
+        },
+        {
+          timestamp: "2026-04-21T06:03:00.000Z",
+          type: "event_msg",
+          payload: {
+            type: "exec_command_end",
+            command: ["/bin/zsh", "-lc", "git status --short"],
+            aggregated_output: ` M ${adjacentFile}\n`,
+            exit_code: 0,
+          },
+        },
+      ],
+    );
+
+    const summary = await summarizeFileSessionContext(repoRoot, {
+      filePaths: [focusFile],
+      featureId: "feature-explorer",
+      taskType: "analysis",
+      maxFiles: 4,
+      maxSessions: 4,
+    });
+
+    expect(summary.focusFiles).toEqual([focusFile]);
+    expect(summary.directSessions.map((session) => session.sessionId)).toContain("session-direct");
+    expect(summary.adjacentSessions.map((session) => session.sessionId)).toContain("session-adjacent");
+    expect(summary.inputFrictions).toEqual(expect.arrayContaining([
+      expect.objectContaining({ category: "ui_url_without_entry_file", sessionId: "session-direct" }),
+      expect.objectContaining({ category: "feature_anchor_mismatch", sessionId: "session-direct" }),
+      expect.objectContaining({ category: "follow_up_without_scope", sessionId: "session-direct" }),
+      expect.objectContaining({ category: "issue_reference_only", sessionId: "session-adjacent" }),
+    ]));
+    expect(summary.environmentFrictions).toEqual(expect.arrayContaining([
+      expect.objectContaining({ category: "missing_dependency", sessionId: "session-direct" }),
+    ]));
+    expect(summary.scopeDriftSignals).toEqual(expect.arrayContaining([
+      expect.objectContaining({ sessionId: "session-direct" }),
+    ]));
+    expect(summary.repeatedFileHotspots).toEqual(expect.arrayContaining([
+      expect.objectContaining({ value: focusFile }),
+    ]));
+    expect(summary.repeatedCommandHotspots.length).toBeGreaterThan(0);
+    expect(summary.openingPrompts).toEqual(expect.arrayContaining([
+      expect.objectContaining({ sessionId: "session-direct" }),
+      expect.objectContaining({ sessionId: "session-adjacent" }),
+    ]));
+    expect(summary.transcriptHints).toContain("~/.codex/sessions/**/session-direct*.jsonl");
   });
 });
