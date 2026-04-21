@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import type { AgentRole } from "../models/agent";
+import { AgentRole } from "../models/agent";
 import {
   TaskStatus,
   type Task,
@@ -85,6 +85,7 @@ export interface BuildRunOutcomeParams {
   cwd: string;
   task?: Task;
   taskId: string;
+  fingerprint?: string;
   sessionId: string;
   workspaceId: string;
   role: AgentRole;
@@ -96,6 +97,7 @@ export interface BuildRunOutcomeParams {
 }
 
 const LEDGER_FILE = "trace-ledger.jsonl";
+const ledgerWriteQueues = new Map<string, Promise<void>>();
 
 const TEST_KEYWORDS = ["test", "vitest", "jest", "pytest", "cargo test", "npm test", "pnpm test", "bun test"];
 const LINT_KEYWORDS = ["lint", "eslint", "stylelint", "ruff check"];
@@ -181,7 +183,7 @@ export function buildRunOutcome(params: BuildRunOutcomeParams): RunOutcome {
 
   return {
     id: createOutcomeId(),
-    fingerprint: buildTaskFingerprint(fingerprintSource, params.workspaceId),
+    fingerprint: params.fingerprint ?? buildTaskFingerprint(fingerprintSource, params.workspaceId),
     sessionId: params.sessionId,
     taskId: params.taskId,
     taskTitle: params.task?.title ?? params.taskId,
@@ -214,19 +216,49 @@ export function buildRunOutcome(params: BuildRunOutcomeParams): RunOutcome {
 
 export async function saveRunOutcome(cwd: string, outcome: RunOutcome): Promise<void> {
   const ledgerDir = path.join(getTracesDir(cwd), "ledger");
-  await fs.mkdir(ledgerDir, { recursive: true });
   const ledgerPath = path.join(ledgerDir, LEDGER_FILE);
-  await fs.appendFile(ledgerPath, `${JSON.stringify(outcome)}\n`, "utf-8");
+  const previousWrite = ledgerWriteQueues.get(ledgerPath) ?? Promise.resolve();
+  const nextWrite = previousWrite
+    .catch(() => undefined)
+    .then(async () => {
+      await fs.mkdir(ledgerDir, { recursive: true });
+      await fs.appendFile(ledgerPath, `${JSON.stringify(outcome)}\n`, "utf-8");
+    });
+
+  ledgerWriteQueues.set(ledgerPath, nextWrite);
+
+  try {
+    await nextWrite;
+  } finally {
+    if (ledgerWriteQueues.get(ledgerPath) === nextWrite) {
+      ledgerWriteQueues.delete(ledgerPath);
+    }
+  }
 }
 
 export async function readRunOutcomes(cwd: string): Promise<RunOutcome[]> {
   const ledgerPath = path.join(getTracesDir(cwd), "ledger", LEDGER_FILE);
   try {
     const content = await fs.readFile(ledgerPath, "utf-8");
-    return content
-      .split("\n")
-      .filter((line) => line.trim().length > 0)
-      .map((line) => JSON.parse(line) as RunOutcome);
+    const outcomes: RunOutcome[] = [];
+
+    for (const [index, line] of content.split("\n").entries()) {
+      if (line.trim().length === 0) {
+        continue;
+      }
+
+      try {
+        outcomes.push(JSON.parse(line) as RunOutcome);
+      } catch (err) {
+        console.warn(
+          `[trace-ledger] Skipping malformed outcome line ${index + 1} in ${ledgerPath}:`,
+          err,
+          line.slice(0, 200),
+        );
+      }
+    }
+
+    return outcomes;
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === "ENOENT") {
       return [];
@@ -259,11 +291,11 @@ function inferTaskType(task: Task | undefined, role: AgentRole): TaskType {
     return "review_flow";
   }
 
-  if (role) {
-    return "specialist_delegation";
+  if (role === AgentRole.ROUTA) {
+    return "general_session";
   }
 
-  return "general_session";
+  return "specialist_delegation";
 }
 
 function buildCardFingerprint(task?: Task): CardFingerprint | undefined {

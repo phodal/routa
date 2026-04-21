@@ -14,7 +14,7 @@ import { getHttpSessionStore } from "@/core/acp/http-session-store";
 import { getRoutaSystem } from "@/core/routa-system";
 import { buildSessionKanbanContext, findTaskForSession } from "@/core/kanban/session-kanban-context";
 import { buildTaskFingerprint } from "@/core/trace/run-outcome";
-import { syncLearnedPlaybookArtifact } from "@/core/trace/trace-playbook";
+import { loadLearnedPlaybook } from "@/core/trace/trace-playbook";
 
 export const dynamic = "force-dynamic";
 
@@ -95,9 +95,9 @@ export async function GET(
     : null;
 
   if (kanbanContext && relatedTask) {
+    const fingerprint = buildTaskFingerprint(relatedTask, current.workspaceId);
     try {
-      const fingerprint = buildTaskFingerprint(relatedTask, current.workspaceId);
-      const learnedPlaybook = await syncLearnedPlaybookArtifact(
+      const learnedPlaybook = await loadLearnedPlaybook(
         current.cwd,
         fingerprint,
         relatedTask.title,
@@ -109,8 +109,15 @@ export async function GET(
           learnedPlaybook,
         };
       }
-    } catch {
-      // Learned playbook lookup is best-effort for the session context API.
+    } catch (err) {
+      console.warn("[session-context] Learned playbook lookup failed", {
+        sessionId,
+        fingerprint,
+        taskId: relatedTask.id,
+        taskTitle: relatedTask.title,
+        workspaceId: current.workspaceId,
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
   }
 

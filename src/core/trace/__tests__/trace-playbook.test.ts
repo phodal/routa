@@ -22,6 +22,7 @@ import {
   readRunOutcomes,
   saveRunOutcome,
 } from "../run-outcome";
+import { getTracesDir } from "../../storage/folder-slug";
 import { loadLearnedPlaybook, syncLearnedPlaybookArtifact } from "../trace-playbook";
 
 function makeRecord(
@@ -195,7 +196,7 @@ describe("trace playbook runtime ledger", () => {
     ]);
   });
 
-  it("loads learned playbooks only after multiple related outcomes exist", async () => {
+  it("loads learned playbooks only after enough successful related outcomes exist", async () => {
     const successTask = makeTask(TaskStatus.COMPLETED, VerificationVerdict.APPROVED);
     const successTraces = makeTraces("sess-success", true);
     const successOutcome = buildRunOutcome({
@@ -231,6 +232,25 @@ describe("trace playbook runtime ledger", () => {
     });
     await saveRunOutcome(tmpDir, failureOutcome);
 
+    expect(
+      await loadLearnedPlaybook(tmpDir, successOutcome.fingerprint, successTask.title, successTask.workspaceId),
+    ).toBeNull();
+
+    const secondSuccessTask = makeTask(TaskStatus.COMPLETED, VerificationVerdict.APPROVED);
+    const secondSuccessTraces = makeTraces("sess-success-2", true);
+    const secondSuccessOutcome = buildRunOutcome({
+      cwd: tmpDir,
+      task: secondSuccessTask,
+      taskId: secondSuccessTask.id,
+      sessionId: "sess-success-2",
+      workspaceId: secondSuccessTask.workspaceId,
+      role: AgentRole.CRAFTER,
+      provider: "copilot",
+      traces: secondSuccessTraces,
+      digest: buildTraceRunDigest("sess-success-2", secondSuccessTraces),
+    });
+    await saveRunOutcome(tmpDir, secondSuccessOutcome);
+
     const playbook = await loadLearnedPlaybook(
       tmpDir,
       successOutcome.fingerprint,
@@ -239,12 +259,58 @@ describe("trace playbook runtime ledger", () => {
     );
 
     expect(playbook).not.toBeNull();
-    expect(playbook?.sampleSize).toBe(2);
+    expect(playbook?.sampleSize).toBe(3);
     expect(playbook?.preferredTools).toContain("write_file");
     expect(playbook?.keyFiles).toContain("src/index.ts");
     expect(playbook?.verificationCommands.some((command) => command.includes("npm test"))).toBe(true);
     expect(playbook?.antiPatterns.some((entry) => entry.includes("review not approved"))).toBe(true);
     expect(playbook?.antiPatterns.some((entry) => entry.includes("Loop detected"))).toBe(true);
+  });
+
+  it("classifies coordinator-only outcomes as general sessions", () => {
+    const traces = makeTraces("sess-general", true);
+    const digest = buildTraceRunDigest("sess-general", traces);
+
+    const outcome = buildRunOutcome({
+      cwd: tmpDir,
+      taskId: "general-session",
+      sessionId: "sess-general",
+      workspaceId: "ws-agg",
+      role: AgentRole.ROUTA,
+      provider: "copilot",
+      traces,
+      digest,
+    });
+
+    expect(outcome.taskType).toBe("general_session");
+  });
+
+  it("skips malformed ledger lines while reading stored outcomes", async () => {
+    const successTask = makeTask(TaskStatus.COMPLETED, VerificationVerdict.APPROVED);
+    const successTraces = makeTraces("sess-malformed", true);
+    const successOutcome = buildRunOutcome({
+      cwd: tmpDir,
+      task: successTask,
+      taskId: successTask.id,
+      sessionId: "sess-malformed",
+      workspaceId: successTask.workspaceId,
+      role: AgentRole.CRAFTER,
+      provider: "copilot",
+      traces: successTraces,
+      digest: buildTraceRunDigest("sess-malformed", successTraces),
+    });
+
+    await saveRunOutcome(tmpDir, successOutcome);
+    await fs.appendFile(
+      path.join(getTracesDir(tmpDir), "ledger", "trace-ledger.jsonl"),
+      "{malformed-json}\n",
+      "utf8",
+    );
+
+    const stored = await readRunOutcomes(tmpDir);
+
+    expect(stored).toHaveLength(1);
+    expect(stored[0]?.id).toBe(successOutcome.id);
   });
 
   it("materializes learned playbook artifacts into docs/fitness/playbooks", async () => {
@@ -278,6 +344,21 @@ describe("trace playbook runtime ledger", () => {
     });
     await saveRunOutcome(tmpDir, failureOutcome);
 
+    const secondSuccessTask = makeTask(TaskStatus.COMPLETED, VerificationVerdict.APPROVED);
+    const secondSuccessTraces = makeTraces("sess-success-2", true);
+    const secondSuccessOutcome = buildRunOutcome({
+      cwd: tmpDir,
+      task: secondSuccessTask,
+      taskId: secondSuccessTask.id,
+      sessionId: "sess-success-2",
+      workspaceId: secondSuccessTask.workspaceId,
+      role: AgentRole.CRAFTER,
+      provider: "copilot",
+      traces: secondSuccessTraces,
+      digest: buildTraceRunDigest("sess-success-2", secondSuccessTraces),
+    });
+    await saveRunOutcome(tmpDir, secondSuccessOutcome);
+
     const playbook = await syncLearnedPlaybookArtifact(
       tmpDir,
       successOutcome.fingerprint,
@@ -285,7 +366,7 @@ describe("trace playbook runtime ledger", () => {
       successTask.workspaceId,
     );
 
-    expect(playbook?.sampleSize).toBe(2);
+    expect(playbook?.sampleSize).toBe(3);
 
     const artifactPath = path.join(
       tmpDir,
@@ -299,14 +380,14 @@ describe("trace playbook runtime ledger", () => {
     expect(artifact).toMatchObject({
       id: `trace-learning-kanban_card-${successOutcome.fingerprint}`,
       taskType: "kanban_card",
-      confidence: 0.5,
+      confidence: 0.67,
       strategy: {
         preferredToolOrder: expect.arrayContaining(["write_file", "run_command"]),
         keyFiles: expect.arrayContaining(["src/index.ts"]),
       },
       provenance: {
-        evidenceCount: 2,
-        successRate: 0.5,
+        evidenceCount: 3,
+        successRate: 0.67,
       },
     });
   });

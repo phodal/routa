@@ -95,6 +95,7 @@ interface ChildAgentRecord {
   parentAgentId: string;
   parentSessionId: string;
   taskId: string;
+  taskFingerprint: string;
   role: AgentRole;
   provider: string;
   cwd: string;
@@ -533,7 +534,7 @@ export class RoutaOrchestrator {
         const formatted = formatPlaybookForRole(learned, specialistConfig.role as AgentRole);
         if (formatted) {
           enrichedAdditionalContext = enrichedAdditionalContext
-            ? `${formatted}\n\n${enrichedAdditionalContext}`
+            ? `${enrichedAdditionalContext}\n\n${formatted}`
             : formatted;
           console.log(
             `[Orchestrator] Learned playbook injected for ${specialistConfig.role} ` +
@@ -606,6 +607,7 @@ export class RoutaOrchestrator {
       parentAgentId: callerAgentId,
       parentSessionId: callerSessionId,
       taskId,
+      taskFingerprint,
       role: specialistConfig.role,
       provider,
       cwd,
@@ -1205,6 +1207,7 @@ export class RoutaOrchestrator {
           cwd: record.cwd,
           task,
           taskId: record.taskId,
+          fingerprint: record.taskFingerprint,
           sessionId: record.sessionId,
           workspaceId: record.workspaceId,
           role: record.role,

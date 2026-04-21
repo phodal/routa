@@ -1,6 +1,7 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { AgentRole } from "../models/agent";
+import { getTracesDir } from "../storage/folder-slug";
 import type { RunOutcome } from "./run-outcome";
 import { readRunOutcomesByFingerprint } from "./run-outcome";
 import { getVcsContextSync } from "./vcs-context";
@@ -47,7 +48,18 @@ interface LearnedPlaybookArtifact {
 }
 
 const MAX_ITEMS = 8;
-const MIN_PLAYBOOK_SAMPLES = 2;
+const MIN_PLAYBOOK_SAMPLES = 3;
+const MIN_PLAYBOOK_SUCCESSES = 2;
+const MIN_PLAYBOOK_SUCCESS_RATE = 0.6;
+const PLAYBOOK_CACHE_TTL_MS = 15_000;
+
+interface CachedPlaybookEntry {
+  playbook: LearnedPlaybook | null;
+  expiresAt: number;
+  ledgerMtimeMs: number;
+}
+
+const learnedPlaybookCache = new Map<string, CachedPlaybookEntry>();
 
 export async function loadLearnedPlaybook(
   cwd: string,
@@ -55,11 +67,21 @@ export async function loadLearnedPlaybook(
   taskTitle?: string,
   workspaceId?: string,
 ): Promise<LearnedPlaybook | null> {
-  const outcomes = await readRunOutcomesByFingerprint(cwd, fingerprint);
-  if (outcomes.length < MIN_PLAYBOOK_SAMPLES) {
-    return null;
+  const cacheKey = buildPlaybookCacheKey(cwd, fingerprint);
+  const cached = learnedPlaybookCache.get(cacheKey);
+  const ledgerMtimeMs = await getLedgerMtimeMs(cwd);
+  if (
+    cached
+    && cached.expiresAt > Date.now()
+    && cached.ledgerMtimeMs === ledgerMtimeMs
+  ) {
+    return cached.playbook;
   }
-  return buildPlaybookFromOutcomes(outcomes, taskTitle, workspaceId);
+
+  const outcomes = await readRunOutcomesByFingerprint(cwd, fingerprint);
+  const playbook = buildPlaybookFromOutcomes(outcomes, taskTitle, workspaceId);
+  setCachedPlaybook(cwd, fingerprint, playbook, ledgerMtimeMs);
+  return playbook;
 }
 
 export async function syncLearnedPlaybookArtifact(
@@ -70,6 +92,7 @@ export async function syncLearnedPlaybookArtifact(
 ): Promise<LearnedPlaybook | null> {
   const outcomes = await readRunOutcomesByFingerprint(cwd, fingerprint);
   const playbook = buildPlaybookFromOutcomes(outcomes, taskTitle, workspaceId);
+  setCachedPlaybook(cwd, fingerprint, playbook, await getLedgerMtimeMs(cwd));
   if (!playbook) {
     return null;
   }
@@ -101,16 +124,19 @@ export function buildPlaybookFromOutcomes(
 
   const sampleSize = outcomes.length;
   const successCount = outcomes.filter((outcome) => outcome.outcome === "success").length;
-  const successRate = sampleSize === 0 ? 0 : successCount / sampleSize;
+  const successRate = successCount / sampleSize;
+  if (!hasRequiredConfidence(sampleSize, successCount, successRate)) {
+    return null;
+  }
   const toolFrequency = new Map<string, number>();
   const fileFrequency = new Map<string, number>();
   const verificationFrequency = new Map<string, { passes: number; total: number }>();
   const antiPatterns = new Set<string>();
-  const sourceSessions: string[] = [];
+  const sourceSessions = new Set<string>();
 
   for (const outcome of outcomes) {
-    if (sourceSessions.length < MAX_ITEMS) {
-      sourceSessions.push(outcome.sessionId);
+    if (sourceSessions.size < MAX_ITEMS) {
+      sourceSessions.add(outcome.sessionId);
     }
 
     const toolSequence = outcome.toolSequence.length > 0
@@ -182,7 +208,7 @@ export function buildPlaybookFromOutcomes(
         return `${command} (${passRate}% pass over ${stats.total} run${stats.total > 1 ? "s" : ""})`;
       }),
     antiPatterns: Array.from(antiPatterns).slice(0, MAX_ITEMS),
-    sourceSessions,
+    sourceSessions: Array.from(sourceSessions),
   };
 }
 
@@ -231,6 +257,44 @@ function topRanked(values: Map<string, number>): string[] {
     .sort((left, right) => right[1] - left[1])
     .slice(0, MAX_ITEMS)
     .map(([name]) => name);
+}
+
+function buildPlaybookCacheKey(cwd: string, fingerprint: string): string {
+  return `${cwd}::${fingerprint}`;
+}
+
+function setCachedPlaybook(
+  cwd: string,
+  fingerprint: string,
+  playbook: LearnedPlaybook | null,
+  ledgerMtimeMs: number,
+): void {
+  learnedPlaybookCache.set(buildPlaybookCacheKey(cwd, fingerprint), {
+    playbook,
+    expiresAt: Date.now() + PLAYBOOK_CACHE_TTL_MS,
+    ledgerMtimeMs,
+  });
+}
+
+function hasRequiredConfidence(
+  sampleSize: number,
+  successCount: number,
+  successRate: number,
+): boolean {
+  return (
+    sampleSize >= MIN_PLAYBOOK_SAMPLES
+    && successCount >= MIN_PLAYBOOK_SUCCESSES
+    && successRate >= MIN_PLAYBOOK_SUCCESS_RATE
+  );
+}
+
+async function getLedgerMtimeMs(cwd: string): Promise<number> {
+  try {
+    const stats = await fs.stat(path.join(getTracesDir(cwd), "ledger", "trace-ledger.jsonl"));
+    return stats.mtimeMs;
+  } catch {
+    return 0;
+  }
 }
 
 function buildPlaybookArtifact(
