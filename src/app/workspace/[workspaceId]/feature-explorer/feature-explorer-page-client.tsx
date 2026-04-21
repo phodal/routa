@@ -21,6 +21,7 @@ import { useTranslation } from "@/i18n";
 import type {
   AggregatedSelectionSession,
   FeatureDetail,
+  FrictionProfileSnapshot,
 } from "./types";
 import {
   buildSessionAnalysisSessionName,
@@ -40,6 +41,18 @@ import {
 } from "./surface-navigation";
 import { useFeatureExplorerData } from "./use-feature-explorer-data";
 import { useFeatureExplorerViewModel } from "./use-feature-explorer-view-model";
+
+function emptyFrictionProfileSnapshot(): FrictionProfileSnapshot {
+  return {
+    generatedAt: "",
+    thresholds: {
+      minFileSessions: 2,
+      minFeatureSessions: 2,
+    },
+    fileProfiles: {},
+    featureProfiles: {},
+  };
+}
 
 export function FeatureExplorerPageClient({
   workspaceId,
@@ -74,6 +87,9 @@ export function FeatureExplorerPageClient({
   const [repoSelectionOverrides, setRepoSelectionOverrides] = useState<Record<string, RepoSelection | null>>({});
   const [generateRefreshCounter, setGenerateRefreshCounter] = useState(0);
   const [isRefreshingFeatureTree, setIsRefreshingFeatureTree] = useState(false);
+  const [frictionProfileSnapshot, setFrictionProfileSnapshot] = useState<FrictionProfileSnapshot>(emptyFrictionProfileSnapshot);
+  const [isRefreshingFrictionProfiles, setIsRefreshingFrictionProfiles] = useState(false);
+  const [frictionProfilesError, setFrictionProfilesError] = useState<string | null>(null);
   const hasRepoSelectionOverride = Object.prototype.hasOwnProperty.call(repoSelectionOverrides, workspaceId);
   const manualRepoSelection = hasRepoSelectionOverride
     ? (repoSelectionOverrides[workspaceId] ?? null)
@@ -116,6 +132,88 @@ export function FeatureExplorerPageClient({
     repoPath: effectiveRepoSelection?.path,
     refreshKey: repoRefreshKey,
   });
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function fetchFrictionProfiles() {
+      if (!effectiveRepoSelection?.path) {
+        setFrictionProfileSnapshot(emptyFrictionProfileSnapshot());
+        setFrictionProfilesError(null);
+        return;
+      }
+
+      try {
+        const params = new URLSearchParams({
+          workspaceId,
+          repoPath: effectiveRepoSelection.path,
+        });
+        const response = await desktopAwareFetch(`/feature-explorer/friction-profiles?${params.toString()}`);
+        const payload = await response.json().catch(() => null) as FrictionProfileSnapshot | { error?: string; details?: string } | null;
+
+        if (!response.ok) {
+          throw new Error(
+            (payload && "details" in payload && payload.details)
+            || (payload && "error" in payload && payload.error)
+            || t.featureExplorer.frictionProfilesError,
+          );
+        }
+
+        if (!cancelled) {
+          setFrictionProfileSnapshot(payload && "fileProfiles" in payload ? payload : emptyFrictionProfileSnapshot());
+          setFrictionProfilesError(null);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setFrictionProfileSnapshot(emptyFrictionProfileSnapshot());
+          setFrictionProfilesError(err instanceof Error ? err.message : t.featureExplorer.frictionProfilesError);
+        }
+      }
+    }
+
+    void fetchFrictionProfiles();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [effectiveRepoSelection?.path, repoRefreshKey, t.featureExplorer.frictionProfilesError, workspaceId]);
+
+  const handleRefreshFrictionProfiles = async () => {
+    if (!effectiveRepoSelection?.path) {
+      return;
+    }
+
+    setIsRefreshingFrictionProfiles(true);
+    setFrictionProfilesError(null);
+
+    try {
+      const params = new URLSearchParams({
+        workspaceId,
+        repoPath: effectiveRepoSelection.path,
+      });
+      const response = await desktopAwareFetch(`/feature-explorer/friction-profiles?${params.toString()}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const payload = await response.json().catch(() => null) as FrictionProfileSnapshot | { error?: string; details?: string } | null;
+
+      if (!response.ok) {
+        throw new Error(
+          (payload && "details" in payload && payload.details)
+          || (payload && "error" in payload && payload.error)
+          || t.featureExplorer.frictionProfilesError,
+        );
+      }
+
+      setFrictionProfileSnapshot(payload && "fileProfiles" in payload ? payload : emptyFrictionProfileSnapshot());
+      setFrictionProfilesError(null);
+    } catch (err) {
+      setFrictionProfilesError(err instanceof Error ? err.message : t.featureExplorer.frictionProfilesError);
+    } finally {
+      setIsRefreshingFrictionProfiles(false);
+    }
+  };
 
   useEffect(() => {
     if (!loading) {
@@ -589,6 +687,12 @@ export function FeatureExplorerPageClient({
     : repositoryStatusTone === "inferred"
       ? "border-sky-300/60 bg-sky-50/70 text-sky-800 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-200"
       : "border-amber-300/60 bg-amber-50/70 text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200";
+  const fileProfileCount = Object.keys(frictionProfileSnapshot.fileProfiles).length;
+  const featureProfileCount = Object.keys(frictionProfileSnapshot.featureProfiles).length;
+  const activeFeatureFrictionProfile = activeFeature ? frictionProfileSnapshot.featureProfiles[activeFeature.id] : undefined;
+  const frictionProfileStatusChipClassName = activeFeatureFrictionProfile
+    ? "border-emerald-300/60 bg-emerald-50/70 text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200"
+    : "border-desktop-border bg-desktop-bg-primary text-desktop-text-secondary";
 
   return (
     <DesktopAppShell
@@ -640,6 +744,22 @@ export function FeatureExplorerPageClient({
                     <RefreshCw className="h-3 w-3" />
                     <span className="hidden xl:inline">{t.featureExplorer.generateFeatureTree}</span>
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleRefreshFrictionProfiles()}
+                    disabled={!effectiveRepoSelection?.path || isRefreshingFrictionProfiles}
+                    className="inline-flex shrink-0 items-center gap-1 rounded-sm border border-desktop-border bg-desktop-bg-primary px-2 py-1.5 text-[10px] font-medium text-desktop-text-secondary hover:text-desktop-text-primary disabled:cursor-not-allowed disabled:opacity-60"
+                    data-testid="refresh-friction-profiles-button"
+                    title={t.featureExplorer.refreshFrictionProfiles}
+                    aria-label={t.featureExplorer.refreshFrictionProfiles}
+                  >
+                    <RefreshCw className={`h-3 w-3 ${isRefreshingFrictionProfiles ? "animate-spin" : ""}`} />
+                    <span className="hidden xl:inline">
+                      {isRefreshingFrictionProfiles
+                        ? t.featureExplorer.refreshingFrictionProfiles
+                        : t.featureExplorer.refreshFrictionProfiles}
+                    </span>
+                  </button>
                 </div>
                 <div className="mt-1.5 flex items-center gap-1.5">
                   <label className="flex min-w-0 flex-1 items-center gap-2 rounded-sm border border-desktop-border bg-desktop-bg-primary px-2.5 py-1.5 text-xs text-desktop-text-secondary">
@@ -678,6 +798,11 @@ export function FeatureExplorerPageClient({
                       {t.featureExplorer.refreshingFeatureTree}
                     </span>
                   ) : null}
+                  {isRefreshingFrictionProfiles ? (
+                    <span className="rounded-sm border border-desktop-accent/40 bg-desktop-accent/10 px-1.5 py-0.5 text-desktop-accent">
+                      {t.featureExplorer.refreshingFrictionProfiles}
+                    </span>
+                  ) : null}
                   <span className="rounded-sm border border-desktop-border bg-desktop-bg-primary px-1.5 py-0.5">
                     {curatedFeatureCount} {t.featureExplorer.curatedFeaturesLabel}
                   </span>
@@ -685,14 +810,30 @@ export function FeatureExplorerPageClient({
                     {inferredFeatureCount} {t.featureExplorer.inferredFeaturesLabel}
                   </span>
                   <span className="rounded-sm border border-desktop-border bg-desktop-bg-primary px-1.5 py-0.5">
+                    {fileProfileCount} {t.featureExplorer.fileProfilesLabel}
+                  </span>
+                  <span className="rounded-sm border border-desktop-border bg-desktop-bg-primary px-1.5 py-0.5">
+                    {featureProfileCount} {t.featureExplorer.featureProfilesLabel}
+                  </span>
+                  <span className="rounded-sm border border-desktop-border bg-desktop-bg-primary px-1.5 py-0.5">
                     {surfaceIndex.pages.length} {t.featureExplorer.pageSection}
                   </span>
                   <span className="rounded-sm border border-desktop-border bg-desktop-bg-primary px-1.5 py-0.5">
                     {surfaceIndex.contractApis.length} {t.featureExplorer.contractApiSection}
                   </span>
+                  {frictionProfilesError ? (
+                    <span className="rounded-sm border border-red-300/60 bg-red-50/70 px-1.5 py-0.5 text-red-600">
+                      {t.featureExplorer.frictionProfilesError}
+                    </span>
+                  ) : null}
                   {surfaceIndex.generatedAt ? (
                     <span className="rounded-sm border border-desktop-border bg-desktop-bg-primary px-1.5 py-0.5">
                       {formatShortDate(surfaceIndex.generatedAt)}
+                    </span>
+                  ) : null}
+                  {frictionProfileSnapshot.generatedAt ? (
+                    <span className="rounded-sm border border-desktop-border bg-desktop-bg-primary px-1.5 py-0.5">
+                      {formatShortDate(frictionProfileSnapshot.generatedAt)}
                     </span>
                   ) : null}
                 </div>
@@ -846,6 +987,11 @@ export function FeatureExplorerPageClient({
                       <InlineStatPill label={t.featureExplorer.apiSurfacesLabel} value={String(featureApiDetails.length)} />
                       <InlineStatPill label={t.featureExplorer.sourceFilesLabel} value={String(featureSourceFiles.length)} />
                       <InlineStatPill label={t.featureExplorer.sessionsLabel} value={String(activeFeature.sessionCount)} />
+                      <span className={`rounded-sm border px-1.5 py-1 text-[10px] font-medium ${frictionProfileStatusChipClassName}`}>
+                        {activeFeatureFrictionProfile
+                          ? t.featureExplorer.frictionProfilesReady
+                          : t.featureExplorer.frictionProfilesMissing}
+                      </span>
                     </div>
                   ) : null}
                 </div>

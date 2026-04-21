@@ -195,4 +195,34 @@ export interface FeatureListResponse {
   features: FeatureSummary[];
 }
 
+export interface FrictionProfileSummary {
+  scope: "file" | "feature";
+  targetId: string;
+  targetLabel: string;
+  generatedAt: string;
+  updatedAt: string;
+  featureId?: string;
+  featureName?: string;
+  selectedFiles: string[];
+  matchedSessionIds: string[];
+  failures: Array<{
+    provider: string;
+    sessionId: string;
+    message: string;
+    toolName: string;
+    command?: string;
+  }>;
+  repeatedReadFiles: string[];
+}
+
+export interface FrictionProfileSnapshot {
+  generatedAt: string;
+  thresholds: {
+    minFileSessions: number;
+    minFeatureSessions: number;
+  };
+  fileProfiles: Record<string, FrictionProfileSummary>;
+  featureProfiles: Record<string, FrictionProfileSummary>;
+}
+
 export type InspectorTab = "context" | "screenshot" | "api";

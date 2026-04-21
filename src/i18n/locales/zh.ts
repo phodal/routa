@@ -377,6 +377,13 @@ const zh: TranslationDictionary = {
     surfacesTooltip: "按 URL 路径浏览前端页面",
     apisTooltip: "按路径浏览 API 端点",
     pathsTooltip: "按源文件路径浏览",
+    refreshFrictionProfiles: "刷新摩擦画像",
+    refreshingFrictionProfiles: "正在刷新摩擦画像",
+    fileProfilesLabel: "文件画像",
+    featureProfilesLabel: "Feature 画像",
+    frictionProfilesReady: "摩擦画像已就绪",
+    frictionProfilesMissing: "尚无摩擦画像",
+    frictionProfilesError: "刷新摩擦画像失败",
   },
 
   settings: {
