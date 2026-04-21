@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AgentRole, AgentStatus, ModelTier, createAgent } from "@/core/models/agent";
-import { TaskStatus, createTask } from "@/core/models/task";
+import { TaskStatus, VerificationVerdict, createTask } from "@/core/models/task";
 
 const specialistByRoleMock = vi.hoisted(() => vi.fn());
 const specialistByIdMock = vi.hoisted(() => vi.fn());
@@ -439,6 +439,132 @@ describe("RoutaOrchestrator", () => {
     ]);
 
     expect(recordChildCompletionMock).toHaveBeenCalledTimes(1);
+    expect(sendPromptToSessionMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("serializes overlapping completion memory writes for the same child", async () => {
+    const { orchestrator, task } = createOrchestratorFixture();
+    (orchestrator as unknown as { spawnChildAgent: () => Promise<{ sandboxId?: string }> }).spawnChildAgent =
+      vi.fn(async () => ({ sandboxId: "sandbox-1" }));
+
+    await orchestrator.delegateTaskWithSpawn({
+      taskId: task.id,
+      callerAgentId: "caller-agent",
+      callerSessionId: "caller-session",
+      workspaceId: task.workspaceId,
+      specialist: "crafter",
+    });
+
+    task.status = TaskStatus.COMPLETED;
+    recordChildCompletionMock.mockClear();
+
+    let releaseWrite: (() => void) | undefined;
+    recordChildCompletionMock.mockImplementationOnce(
+      () => new Promise<void>((resolve) => {
+        releaseWrite = resolve;
+      }),
+    );
+
+    const record = orchestrator.getChildAgents("caller-agent")[0];
+    const firstWrite = (
+      orchestrator as unknown as {
+        recordChildCompletionMemory: (
+          childAgentId: string,
+          record: unknown,
+          source: "session_end",
+        ) => Promise<void>;
+      }
+    ).recordChildCompletionMemory("child-agent-1", record, "session_end");
+
+    await vi.waitFor(() => {
+      expect(recordChildCompletionMock).toHaveBeenCalledTimes(1);
+    });
+
+    const secondWrite = (
+      orchestrator as unknown as {
+        recordChildCompletionMemory: (
+          childAgentId: string,
+          record: unknown,
+          source: "session_end",
+        ) => Promise<void>;
+      }
+    ).recordChildCompletionMemory("child-agent-1", record, "session_end");
+
+    await Promise.resolve();
+    expect(recordChildCompletionMock).toHaveBeenCalledTimes(1);
+
+    releaseWrite?.();
+    await Promise.all([firstWrite, secondWrite]);
+
+    expect(recordChildCompletionMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("updates completion memory when a later reported snapshot adds completion details", async () => {
+    const { orchestrator, task } = createOrchestratorFixture();
+    (orchestrator as unknown as { spawnChildAgent: () => Promise<{ sandboxId?: string }> }).spawnChildAgent =
+      vi.fn(async () => ({ sandboxId: "sandbox-1" }));
+    const sendPromptToSessionMock = vi.fn(async () => {});
+    (orchestrator as unknown as { sendPromptToSession: typeof sendPromptToSessionMock }).sendPromptToSession =
+      sendPromptToSessionMock;
+
+    await orchestrator.delegateTaskWithSpawn({
+      taskId: task.id,
+      callerAgentId: "caller-agent",
+      callerSessionId: "caller-session",
+      workspaceId: task.workspaceId,
+      specialist: "gate",
+    });
+
+    task.status = TaskStatus.COMPLETED;
+    recordChildCompletionMock.mockClear();
+    const record = orchestrator.getChildAgents("caller-agent")[0];
+
+    await expect(
+      (
+        orchestrator as unknown as {
+          finalizeChildCompletion: (
+            childAgentId: string,
+            record: unknown,
+            source: "session_end",
+          ) => Promise<void>;
+        }
+      ).finalizeChildCompletion("child-agent-1", record, "session_end"),
+    ).resolves.toBeUndefined();
+
+    task.completionSummary = "Implemented and verified";
+    task.verificationVerdict = VerificationVerdict.APPROVED;
+    task.verificationReport = "Smoke checks passed";
+
+    await expect(
+      (
+        orchestrator as unknown as {
+          finalizeChildCompletion: (
+            childAgentId: string,
+            record: unknown,
+            source: "reported",
+          ) => Promise<void>;
+        }
+      ).finalizeChildCompletion("child-agent-1", record, "reported"),
+    ).resolves.toBeUndefined();
+
+    expect(recordChildCompletionMock).toHaveBeenCalledTimes(2);
+    expect(recordChildCompletionMock).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        snapshotSource: "session_end",
+        status: TaskStatus.COMPLETED,
+      }),
+    );
+    expect(recordChildCompletionMock).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        snapshotSource: "reported",
+        status: TaskStatus.COMPLETED,
+        summary: "Implemented and verified",
+        verificationVerdict: VerificationVerdict.APPROVED,
+        verificationReport: "Smoke checks passed",
+      }),
+    );
     expect(sendPromptToSessionMock).toHaveBeenCalledTimes(1);
   });
 

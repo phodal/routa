@@ -47,6 +47,13 @@ import { TraceReader } from "../trace/reader";
 import { buildTraceRunDigest, formatDigestForRole } from "../trace/trace-run-digest";
 import { buildRunOutcome, buildTaskFingerprint, saveRunOutcome } from "../trace/run-outcome";
 import { formatPlaybookForRole, loadLearnedPlaybook, syncLearnedPlaybookArtifact } from "../trace/trace-playbook";
+import {
+  completionSnapshotsEqual,
+  mergeCompletionSnapshot,
+  normalizeNullableText,
+  normalizeOptionalText,
+  type ChildCompletionMemorySnapshot,
+} from "./completion-memory";
 
 export interface DelegateWithSpawnParams {
   /** Task ID to delegate */
@@ -99,7 +106,6 @@ interface ChildAgentRecord {
   provider: string;
   cwd: string;
   workspaceId: string;
-  completionMemoryRecorded?: boolean;
   completionHandled?: boolean;
   /** Tool call ID from the parent session's delegate_task_to_agent call (if available) */
   delegationToolCallId?: string;
@@ -249,6 +255,10 @@ export class RoutaOrchestrator {
   private childAgentEventSubscribers = new Map<string, Set<(event: WorkspaceAgentEvent) => void>>();
   /** Map: cwd → AgentMemoryWriter for durable, file-backed agent memory */
   private memoryWriters = new Map<string, AgentMemoryWriter>();
+  /** Map: agentId → last completion snapshot written to agent memory */
+  private childCompletionSnapshots = new Map<string, ChildCompletionMemorySnapshot>();
+  /** Map: agentId → serialized completion memory write pipeline */
+  private childCompletionMemoryPromises = new Map<string, Promise<void>>();
   /** Map: agentId → in-flight completion finalizer to dedupe concurrent wake-ups */
   private childCompletionPromises = new Map<string, Promise<void>>();
 
@@ -307,11 +317,85 @@ export class RoutaOrchestrator {
     return sessionId.trim().length > 0 && sessionId !== "unknown";
   }
 
+  private buildCompletionMemorySnapshot(
+    childAgentId: string,
+    record: ChildAgentRecord,
+    source: CompletionSnapshotSource,
+    task?: Task,
+  ): ChildCompletionMemorySnapshot {
+    return {
+      sessionId: record.sessionId,
+      role: record.role,
+      agentId: childAgentId,
+      taskId: record.taskId,
+      taskTitle: task?.title ?? record.taskId,
+      status: task?.status ?? "unknown",
+      summary: normalizeOptionalText(task?.completionSummary),
+      verificationVerdict: normalizeNullableText(task?.verificationVerdict),
+      verificationReport: normalizeNullableText(task?.verificationReport),
+      snapshotSource: source,
+    };
+  }
+
+  private async recordChildCompletionMemory(
+    childAgentId: string,
+    record: ChildAgentRecord,
+    source: CompletionSnapshotSource,
+  ): Promise<void> {
+    let task: Task | undefined;
+    try {
+      task = await this.system.taskStore.get(record.taskId);
+    } catch (err) {
+      console.warn("[Orchestrator] Failed to load task for completion memory:", err);
+    }
+
+    const incomingSnapshot = this.buildCompletionMemorySnapshot(childAgentId, record, source, task);
+    const pendingWrite = this.childCompletionMemoryPromises.get(childAgentId) ?? Promise.resolve();
+
+    const writePromise = pendingWrite
+      .catch(() => undefined)
+      .then(async () => {
+        const currentSnapshot = this.childCompletionSnapshots.get(childAgentId);
+        const nextSnapshot = mergeCompletionSnapshot(currentSnapshot, incomingSnapshot);
+        if (completionSnapshotsEqual(currentSnapshot, nextSnapshot)) {
+          return;
+        }
+
+        try {
+          await this.getMemoryWriter(record.cwd).recordChildCompletion({
+            sessionId: nextSnapshot.sessionId,
+            role: nextSnapshot.role,
+            agentId: nextSnapshot.agentId,
+            taskId: nextSnapshot.taskId,
+            taskTitle: nextSnapshot.taskTitle,
+            status: nextSnapshot.status,
+            summary: nextSnapshot.summary,
+            verificationVerdict: nextSnapshot.verificationVerdict,
+            verificationReport: nextSnapshot.verificationReport,
+            snapshotSource: nextSnapshot.snapshotSource,
+          });
+          this.childCompletionSnapshots.set(childAgentId, nextSnapshot);
+        } catch (err) {
+          console.warn("[Orchestrator] Failed to write completion memory:", err);
+        }
+      })
+      .finally(() => {
+        if (this.childCompletionMemoryPromises.get(childAgentId) === writePromise) {
+          this.childCompletionMemoryPromises.delete(childAgentId);
+        }
+      });
+
+    this.childCompletionMemoryPromises.set(childAgentId, writePromise);
+    await writePromise;
+  }
+
   private async finalizeChildCompletion(
     childAgentId: string,
     record: ChildAgentRecord,
     source: CompletionSnapshotSource,
   ): Promise<void> {
+    await this.recordChildCompletionMemory(childAgentId, record, source);
+
     if (record.completionHandled) {
       return;
     }
@@ -322,7 +406,7 @@ export class RoutaOrchestrator {
       return;
     }
 
-    const completionPromise = this.handleChildCompletion(childAgentId, record, source)
+    const completionPromise = this.handleChildCompletion(childAgentId, record)
       .then(() => {
         record.completionHandled = true;
       })
@@ -1167,33 +1251,12 @@ export class RoutaOrchestrator {
   private async handleChildCompletion(
     childAgentId: string,
     record: ChildAgentRecord,
-    source: CompletionSnapshotSource,
   ): Promise<void> {
     let task: Task | undefined;
     try {
       task = await this.system.taskStore.get(record.taskId);
     } catch (err) {
-      console.warn("[Orchestrator] Failed to load task for completion memory:", err);
-    }
-
-    if (!record.completionMemoryRecorded) {
-      try {
-        await this.getMemoryWriter(record.cwd).recordChildCompletion({
-          sessionId: record.sessionId,
-          role: record.role,
-          agentId: childAgentId,
-          taskId: record.taskId,
-          taskTitle: task?.title ?? record.taskId,
-          status: task?.status ?? "unknown",
-          summary: task?.completionSummary,
-          verificationVerdict: task?.verificationVerdict ?? null,
-          verificationReport: task?.verificationReport ?? null,
-          snapshotSource: source,
-        });
-        record.completionMemoryRecorded = true;
-      } catch (err) {
-        console.warn("[Orchestrator] Failed to write completion memory:", err);
-      }
+      console.warn("[Orchestrator] Failed to load task for completion outcome:", err);
     }
 
     try {
