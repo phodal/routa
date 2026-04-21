@@ -70,6 +70,7 @@ pub fn handle_hook(
         task_prompt.as_deref(),
     );
     if task_identity.is_none()
+        && should_attempt_prompt_recovery(&hook_event_name, &client, tool_name.as_deref())
         && db
             .resolve_task_id(&repo_root, Some(&session_id), turn_id.as_deref())?
             .is_none()
@@ -303,7 +304,9 @@ pub fn build_hook_runtime_message(
         turn_id.as_deref(),
         task_prompt.as_deref(),
     );
-    if task_identity.is_none() {
+    if task_identity.is_none()
+        && should_attempt_prompt_recovery(&hook_event_name, &client, tool_name.as_deref())
+    {
         if let Some(recovered_prompt) =
             recover_prompt_from_transcript(turn_id.as_deref(), transcript_path.as_deref())
         {
@@ -528,8 +531,22 @@ fn event_is_file_mutating(event: &str, client: &HookClient, tool_name: Option<&s
 }
 
 fn is_edit_like_tool(tool_name: Option<&str>) -> bool {
-    tool_name
-        .is_some_and(|name| name.eq_ignore_ascii_case("edit") || name.eq_ignore_ascii_case("write"))
+    tool_name.is_some_and(|name| {
+        name.eq_ignore_ascii_case("edit")
+            || name.eq_ignore_ascii_case("write")
+            || name.eq_ignore_ascii_case("multiedit")
+    })
+}
+
+fn should_attempt_prompt_recovery(
+    event: &str,
+    client: &HookClient,
+    tool_name: Option<&str>,
+) -> bool {
+    matches!(
+        event,
+        "UserPromptSubmit" | "user-prompt-submit" | "prompt-submit" | "promptsubmit"
+    ) || event_is_file_mutating(event, client, tool_name)
 }
 
 fn normalized_is_stop(event: &str) -> bool {
@@ -871,6 +888,11 @@ mod tests {
             &HookClient::Claude,
             Some("Write")
         ));
+        assert!(event_is_file_mutating(
+            "PostToolUse",
+            &HookClient::Claude,
+            Some("MultiEdit")
+        ));
         assert!(!event_is_file_mutating(
             "PreToolUse",
             &HookClient::Claude,
@@ -904,6 +926,30 @@ mod tests {
             "PostToolUse",
             &HookClient::Codex,
             Some("Grep")
+        ));
+    }
+
+    #[test]
+    fn prompt_recovery_only_runs_for_prompt_or_write_like_events() {
+        assert!(should_attempt_prompt_recovery(
+            "UserPromptSubmit",
+            &HookClient::Codex,
+            None
+        ));
+        assert!(should_attempt_prompt_recovery(
+            "PostToolUse",
+            &HookClient::Codex,
+            Some("MultiEdit")
+        ));
+        assert!(!should_attempt_prompt_recovery(
+            "PostToolUse",
+            &HookClient::Codex,
+            Some("Read")
+        ));
+        assert!(!should_attempt_prompt_recovery(
+            "PreToolUse",
+            &HookClient::Codex,
+            Some("Bash")
         ));
     }
 

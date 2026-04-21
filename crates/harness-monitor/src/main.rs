@@ -71,7 +71,7 @@ enum Command {
     /// Poll filesystem and git status continuously.
     Watch {
         /// Poll interval in milliseconds.
-        #[arg(long, default_value_t = 800)]
+        #[arg(long, default_value_t = shared::models::DEFAULT_WATCH_POLL_MS)]
         interval_ms: u64,
     },
     /// Run a local runtime service that receives hook events and appends them to the repo feed.
@@ -291,7 +291,9 @@ fn run_watch(
         let snapshot = observe::poll_repo(&ctx, &db, "watch", infer_window_ms)?;
         print_watch_once(&db, &repo_root, &snapshot, last_poll)?;
         last_poll = chrono::Utc::now().timestamp_millis();
-        sleep(Duration::from_millis(interval_ms.max(200)));
+        sleep(Duration::from_millis(
+            interval_ms.max(shared::models::MIN_WATCH_POLL_MS),
+        ));
     }
 }
 

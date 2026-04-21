@@ -100,15 +100,49 @@ pub fn detect_git_dir(start_dir: &Path) -> Result<PathBuf> {
     Ok(git_dir)
 }
 
+fn resolve_repo_root_fast(start_dir: &Path) -> Option<(PathBuf, PathBuf)> {
+    let git_marker = start_dir.join(".git");
+    if !git_marker.exists() {
+        return None;
+    }
+
+    let git_dir = resolve_git_dir_from_marker(start_dir, &git_marker)?;
+    Some((start_dir.to_path_buf(), git_dir))
+}
+
+fn resolve_git_dir_from_marker(repo_root: &Path, git_marker: &Path) -> Option<PathBuf> {
+    if git_marker.is_dir() {
+        return Some(git_marker.to_path_buf());
+    }
+    if !git_marker.is_file() {
+        return None;
+    }
+
+    let contents = std::fs::read_to_string(git_marker).ok()?;
+    let git_dir = contents
+        .lines()
+        .find_map(|line| line.trim().strip_prefix("gitdir:").map(str::trim))?;
+    let git_dir = PathBuf::from(git_dir);
+    Some(if git_dir.is_absolute() {
+        git_dir
+    } else {
+        repo_root.join(git_dir)
+    })
+}
+
 pub fn resolve(path_opt: Option<&str>, db_path_opt: Option<&str>) -> Result<RepoContext> {
-    git_capability()?;
     let start_dir = path_opt
         .map(PathBuf::from)
         .or_else(|| std::env::current_dir().ok())
         .context("determine working directory")?;
 
-    let repo_root = detect_repo_root(&start_dir)?;
-    let git_dir = detect_git_dir(&start_dir)?;
+    let (repo_root, git_dir) =
+        if let Some((repo_root, git_dir)) = resolve_repo_root_fast(&start_dir) {
+            (repo_root, git_dir)
+        } else {
+            git_capability()?;
+            (detect_repo_root(&start_dir)?, detect_git_dir(&start_dir)?)
+        };
     let db_path = if let Some(db_path) = db_path_opt {
         PathBuf::from(db_path)
     } else {
@@ -127,13 +161,17 @@ pub fn resolve(path_opt: Option<&str>, db_path_opt: Option<&str>) -> Result<Repo
 }
 
 pub fn resolve_runtime(path_opt: Option<&str>) -> Result<RepoContext> {
-    git_capability()?;
     let start_dir = path_opt
         .map(PathBuf::from)
         .or_else(|| std::env::current_dir().ok())
         .context("determine working directory")?;
-    let repo_root = detect_repo_root(&start_dir)?;
-    let git_dir = detect_git_dir(&start_dir)?;
+    let (repo_root, git_dir) =
+        if let Some((repo_root, git_dir)) = resolve_repo_root_fast(&start_dir) {
+            (repo_root, git_dir)
+        } else {
+            git_capability()?;
+            (detect_repo_root(&start_dir)?, detect_git_dir(&start_dir)?)
+        };
     Ok(RepoContext {
         runtime_event_path: runtime_event_path(&repo_root),
         runtime_socket_path: runtime_socket_path(&repo_root),
@@ -283,6 +321,7 @@ fn ensure_writable_db_path(path: &Path) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tempfile::tempdir;
 
     #[test]
     fn scoped_db_path_uses_repo_scoped_safe_directory() {
@@ -293,5 +332,34 @@ mod tests {
             PathBuf::from("/safe-base/harness-monitor/repos/repo-marker/harness-monitor.db")
         );
         assert!(!path.to_string_lossy().contains("/.git/"));
+    }
+
+    #[test]
+    fn resolve_repo_root_fast_uses_dot_git_directory() {
+        let dir = tempdir().expect("tempdir");
+        std::fs::create_dir(dir.path().join(".git")).expect("create .git directory");
+
+        let (repo_root, git_dir) = resolve_repo_root_fast(dir.path()).expect("fast repo resolve");
+
+        assert_eq!(repo_root, dir.path());
+        assert_eq!(git_dir, dir.path().join(".git"));
+    }
+
+    #[test]
+    fn resolve_repo_root_fast_reads_worktree_git_file() {
+        let dir = tempdir().expect("tempdir");
+        let git_dir = dir.path().join("actual-git-dir");
+        std::fs::create_dir(&git_dir).expect("create git dir");
+        std::fs::write(
+            dir.path().join(".git"),
+            format!("gitdir: {}\n", git_dir.display()),
+        )
+        .expect("write .git file");
+
+        let (repo_root, resolved_git_dir) =
+            resolve_repo_root_fast(dir.path()).expect("fast repo resolve");
+
+        assert_eq!(repo_root, dir.path());
+        assert_eq!(resolved_git_dir, git_dir);
     }
 }

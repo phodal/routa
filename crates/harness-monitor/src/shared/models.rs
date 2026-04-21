@@ -173,6 +173,8 @@ pub struct FileStateRow {
 
 pub const DEFAULT_INFERENCE_WINDOW_MS: i64 = 15 * 60 * 1000;
 pub const DEFAULT_TUI_POLL_MS: u64 = 300;
+pub const DEFAULT_WATCH_POLL_MS: u64 = 3_000;
+pub const MIN_WATCH_POLL_MS: u64 = 1_000;
 pub const EVENT_LOG_LIMIT: usize = 200;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
