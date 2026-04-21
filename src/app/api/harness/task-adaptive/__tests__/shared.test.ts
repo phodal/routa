@@ -848,4 +848,160 @@ describe("assembleTaskAdaptiveHarness", () => {
     ]));
     expect(summary.transcriptHints).toContain("~/.codex/sessions/**/session-direct*.jsonl");
   });
+
+  it("demotes meta-analysis and off-target sessions when ranking file context", async () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "task-adaptive-file-session-ranking-"));
+    process.env.HOME = tempRoot;
+    process.env.CLAUDE_CONFIG_DIR = "";
+
+    const repoRoot = path.join(tempRoot, "repo");
+    const focusFile = "src/app/workspace/[workspaceId]/feature-explorer/__tests__/feature-explorer-page-client.test.tsx";
+    const siblingFile = "src/app/workspace/[workspaceId]/feature-explorer/feature-explorer-page-client.tsx";
+    const adjacentFile = "src/app/api/feature-explorer/route.ts";
+    ensureFile(path.join(repoRoot, focusFile), "export const testFile = true;\n");
+    ensureFile(path.join(repoRoot, siblingFile), "export function FeatureExplorerPageClient() { return null; }\n");
+    ensureFile(path.join(repoRoot, adjacentFile), "export async function GET() { return Response.json({ ok: true }); }\n");
+    writeFeatureTreeIndex(repoRoot, [
+      {
+        id: "feature-explorer",
+        name: "Feature Explorer",
+        sourceFiles: [focusFile, siblingFile, adjacentFile],
+      },
+    ]);
+
+    writeTranscript(
+      path.join(tempRoot, ".codex", "sessions", "session-focused.jsonl"),
+      repoRoot,
+      "session-focused",
+      [
+        {
+          timestamp: "2026-04-21T07:01:00.000Z",
+          type: "event_msg",
+          payload: {
+            type: "user_message",
+            message: "修一下 feature-explorer 里的会话分析测试",
+          },
+        },
+        {
+          timestamp: "2026-04-21T07:02:00.000Z",
+          type: "response_item",
+          payload: {
+            type: "function_call",
+            name: "exec_command",
+            arguments: JSON.stringify({ cmd: `sed -n '1,200p' '${focusFile}'` }),
+          },
+        },
+        {
+          timestamp: "2026-04-21T07:02:04.000Z",
+          type: "event_msg",
+          payload: {
+            type: "exec_command_end",
+            command: ["/bin/zsh", "-lc", `sed -n '1,200p' '${focusFile}'`],
+            aggregated_output: "export const testFile = true;\n",
+            exit_code: 0,
+          },
+        },
+        {
+          timestamp: "2026-04-21T07:03:00.000Z",
+          type: "event_msg",
+          payload: {
+            type: "exec_command_end",
+            command: ["/bin/zsh", "-lc", "git status --short"],
+            aggregated_output: ` M ${focusFile}\n`,
+            exit_code: 0,
+          },
+        },
+      ],
+    );
+
+    writeTranscript(
+      path.join(tempRoot, ".codex", "sessions", "session-kanban-adjacent.jsonl"),
+      repoRoot,
+      "session-kanban-adjacent",
+      [
+        {
+          timestamp: "2026-04-21T08:01:00.000Z",
+          type: "event_msg",
+          payload: {
+            type: "user_message",
+            message: "当前的看板页面会出现这个问题：[Image #1] 有没有可能在这个时候把这些信息发给 Kanban Agent？",
+          },
+        },
+        {
+          timestamp: "2026-04-21T08:02:00.000Z",
+          type: "event_msg",
+          payload: {
+            type: "exec_command_end",
+            command: ["/bin/zsh", "-lc", "git status --short"],
+            aggregated_output: ` M ${adjacentFile}\n`,
+            exit_code: 0,
+          },
+        },
+      ],
+    );
+
+    writeTranscript(
+      path.join(tempRoot, ".codex", "sessions", "session-meta-analyst.jsonl"),
+      repoRoot,
+      "session-meta-analyst",
+      [
+        {
+          timestamp: "2026-04-21T09:01:00.000Z",
+          type: "event_msg",
+          payload: {
+            type: "user_message",
+            message: "You analyze historical coding sessions for one or more specific files. Your mission: review the provided session evidence first.",
+          },
+        },
+        {
+          timestamp: "2026-04-21T09:02:00.000Z",
+          type: "response_item",
+          payload: {
+            type: "function_call",
+            name: "exec_command",
+            arguments: JSON.stringify({ cmd: `sed -n '1,200p' '${focusFile}'` }),
+          },
+        },
+        {
+          timestamp: "2026-04-21T09:02:04.000Z",
+          type: "event_msg",
+          payload: {
+            type: "exec_command_end",
+            command: ["/bin/zsh", "-lc", `sed -n '1,200p' '${focusFile}'`],
+            aggregated_output: "export const testFile = true;\n",
+            exit_code: 0,
+          },
+        },
+        {
+          timestamp: "2026-04-21T09:03:00.000Z",
+          type: "event_msg",
+          payload: {
+            type: "exec_command_end",
+            command: ["/bin/zsh", "-lc", "git status --short"],
+            aggregated_output: ` M ${adjacentFile}\n`,
+            exit_code: 0,
+          },
+        },
+      ],
+    );
+
+    const summary = await summarizeFileSessionContext(repoRoot, {
+      filePaths: [focusFile],
+      featureId: "feature-explorer",
+      taskType: "analysis",
+      maxFiles: 4,
+      maxSessions: 6,
+    });
+
+    expect(summary.directSessions.map((session) => session.sessionId)).toContain("session-focused");
+    expect(summary.directSessions.map((session) => session.sessionId)).not.toContain("session-kanban-adjacent");
+    expect(summary.directSessions.map((session) => session.sessionId)).not.toContain("session-meta-analyst");
+    expect(summary.adjacentSessions.map((session) => session.sessionId)).toContain("session-kanban-adjacent");
+    expect(summary.weakSessions.map((session) => session.sessionId)).toContain("session-meta-analyst");
+    expect(summary.matchedSessionIds).toEqual(expect.arrayContaining([
+      "session-focused",
+      "session-kanban-adjacent",
+      "session-meta-analyst",
+    ]));
+  });
 });

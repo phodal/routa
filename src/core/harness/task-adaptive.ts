@@ -1959,6 +1959,18 @@ function promptLooksLikeBriefFollowUp(value: string): boolean {
     || normalized === "继续吧";
 }
 
+function promptLooksLikeMetaFileAnalysis(value: string): boolean {
+  const normalized = normalizeWhitespace(value).toLowerCase();
+  if (normalized.length === 0) {
+    return false;
+  }
+
+  return normalized.includes("you analyze historical coding sessions for one or more specific files")
+    || normalized.includes("run a read-only retrospective on these file-linked coding sessions")
+    || normalized.includes("请对这些与文件相关的历史编码会话做一次只读复盘")
+    || normalized.includes("你是一个只读的文件会话分析师");
+}
+
 function classifyEnvironmentFailureCategory(failure: FileSessionToolFailure): string {
   const combined = `${failure.message} ${failure.command ?? ""}`.toLowerCase();
 
@@ -2989,17 +3001,125 @@ function sessionHasDirectFocusEvidence(
   return directCandidates.some((filePath) => focusFiles.has(filePath));
 }
 
+function sessionHasFocusMutationEvidence(
+  session: FileSessionContextSessionSummary,
+  focusFiles: ReadonlySet<string>,
+): boolean {
+  return [...session.matchedChangedFiles, ...session.matchedWrittenFiles]
+    .some((filePath) => focusFiles.has(filePath));
+}
+
+function sessionHasSelectedMutationEvidence(
+  session: FileSessionContextSessionSummary,
+  selectedFiles: ReadonlySet<string>,
+): boolean {
+  return [...session.matchedChangedFiles, ...session.matchedWrittenFiles]
+    .some((filePath) => selectedFiles.has(filePath));
+}
+
+function sessionPromptMentionsFocusContext(
+  session: FileSessionContextSessionSummary,
+  focusFiles: string[],
+  featureId: string | undefined,
+): boolean {
+  const focusSet = new Set(focusFiles);
+  const focusBasenames = focusFiles
+    .map((filePath) => filePath.split("/").pop()?.toLowerCase())
+    .filter((value): value is string => Boolean(value));
+  const normalizedFeatureId = featureId?.toLowerCase();
+
+  return session.promptHistory.some((prompt) => {
+    const normalizedPrompt = normalizeWhitespace(prompt).toLowerCase();
+    if (normalizedFeatureId && normalizedPrompt.includes(normalizedFeatureId)) {
+      return true;
+    }
+
+    if (repoLikePathsFromPrompt(prompt).some((filePath) => focusSet.has(filePath))) {
+      return true;
+    }
+
+    return focusBasenames.some((basename) => normalizedPrompt.includes(basename));
+  });
+}
+
+function scoreFileSessionContextSession(
+  session: FileSessionContextSessionSummary,
+  focusFiles: string[],
+  selectedFiles: string[],
+  featureId: string | undefined,
+): number {
+  const focusSet = new Set(focusFiles);
+  const selectedSet = new Set(selectedFiles);
+  const focusChanges = session.matchedChangedFiles.filter((filePath) => focusSet.has(filePath)).length;
+  const focusWrites = session.matchedWrittenFiles.filter((filePath) => focusSet.has(filePath)).length;
+  const focusReads = session.matchedReadFiles.filter((filePath) => focusSet.has(filePath)).length;
+  const focusRepeatedReads = session.repeatedReadFiles.filter((filePath) => focusSet.has(filePath)).length;
+  const selectedMutations = [...session.matchedChangedFiles, ...session.matchedWrittenFiles]
+    .filter((filePath) => selectedSet.has(filePath)).length;
+  const promptAligned = sessionPromptMentionsFocusContext(session, focusFiles, featureId);
+  const openingPrompt = session.promptHistory[0] ?? session.promptSnippet;
+
+  let score = (focusChanges * 12)
+    + (focusWrites * 12)
+    + (focusReads * 5)
+    + (focusRepeatedReads * 2)
+    + (selectedMutations * 4)
+    + (session.failedReadSignals.length * 2);
+
+  if (promptAligned) {
+    score += 4;
+  }
+
+  if (
+    focusReads > 0
+    && focusChanges === 0
+    && focusWrites === 0
+    && selectedMutations === 0
+    && !promptAligned
+  ) {
+    score -= 3;
+  }
+
+  if (openingPrompt && promptLooksLikeMetaFileAnalysis(openingPrompt)) {
+    score -= 20;
+  }
+
+  return score;
+}
+
 function classifyFileSessionContextBuckets(
   sessions: FileSessionContextSessionSummary[],
   focusFiles: string[],
+  selectedFiles: string[],
+  featureId: string | undefined,
 ): Pick<FileSessionContextSummary, "directSessions" | "adjacentSessions" | "weakSessions"> {
   const focusSet = new Set(focusFiles);
+  const selectedSet = new Set(selectedFiles);
   const directSessions: FileSessionContextSessionSummary[] = [];
   const adjacentSessions: FileSessionContextSessionSummary[] = [];
   const weakSessions: FileSessionContextSessionSummary[] = [];
 
   for (const session of sessions) {
-    if (sessionHasDirectFocusEvidence(session, focusSet)) {
+    const openingPrompt = session.promptHistory[0] ?? session.promptSnippet;
+    const relevanceScore = scoreFileSessionContextSession(session, focusFiles, selectedFiles, featureId);
+
+    if (openingPrompt && promptLooksLikeMetaFileAnalysis(openingPrompt)) {
+      weakSessions.push(session);
+      continue;
+    }
+
+    if (sessionHasFocusMutationEvidence(session, focusSet)) {
+      directSessions.push(session);
+      continue;
+    }
+
+    if (
+      sessionHasDirectFocusEvidence(session, focusSet)
+      && (
+        relevanceScore >= 8
+        || sessionHasSelectedMutationEvidence(session, selectedSet)
+      )
+    ) {
       directSessions.push(session);
       continue;
     }
@@ -3022,6 +3142,52 @@ function classifyFileSessionContextBuckets(
     adjacentSessions,
     weakSessions,
   };
+}
+
+function summarizeTaskAdaptiveSessionFromDetail(
+  detail: DetailedSessionAccumulator,
+): TaskAdaptiveHarnessSessionSummary {
+  return {
+    provider: detail.provider,
+    sessionId: detail.sessionId,
+    updatedAt: detail.updatedAt,
+    promptSnippet: detail.promptSnippet || truncateSnippet([...detail.promptHistory][0]),
+    matchedFiles: uniqueSorted([...detail.matchedFiles]),
+    matchedChangedFiles: uniqueSorted([...detail.matchedChangedFiles]),
+    matchedReadFiles: uniqueSorted([...detail.matchedReadFiles]),
+    matchedWrittenFiles: uniqueSorted([...detail.matchedWrittenFiles]),
+    repeatedReadFiles: uniqueSorted([...detail.repeatedReadFiles]),
+    toolNames: trimTo(uniqueSorted([...detail.toolNames]), MAX_TOOLS_PER_SESSION),
+    failedReadSignals: [...detail.failedReadSignals],
+    ...(detail.resumeCommand ? { resumeCommand: detail.resumeCommand } : {}),
+  };
+}
+
+function buildRankedFileSessionContextSummaries(params: {
+  pack: TaskAdaptiveHarnessPack;
+  fileSignals: Record<string, TaskAdaptiveFileSignal>;
+  focusFiles: string[];
+  maxSessions: number;
+}): FileSessionContextSessionSummary[] {
+  const detailedSessions = compileDetailedSessionContext(params.pack.selectedFiles, params.fileSignals);
+  const baseSummaries = new Map(
+    params.pack.sessions.map((session) => [detailSessionKey(session.provider, session.sessionId), session]),
+  );
+
+  const sessions = [...detailedSessions.values()]
+    .map((detail) => {
+      const key = detailSessionKey(detail.provider, detail.sessionId);
+      const baseSummary = baseSummaries.get(key) ?? summarizeTaskAdaptiveSessionFromDetail(detail);
+      return mapDetailedSessionSummary(baseSummary, detail);
+    })
+    .sort((left, right) =>
+      scoreFileSessionContextSession(right, params.focusFiles, params.pack.selectedFiles, params.pack.featureId)
+        - scoreFileSessionContextSession(left, params.focusFiles, params.pack.selectedFiles, params.pack.featureId)
+      || right.updatedAt.localeCompare(left.updatedAt)
+      || left.sessionId.localeCompare(right.sessionId),
+    );
+
+  return trimTo(sessions, params.maxSessions);
 }
 
 function buildFileSessionContextPromptSignals(
@@ -3259,14 +3425,18 @@ export async function summarizeFileSessionContext(
   const pack = await assembleTaskAdaptiveHarness(repoRoot, options);
   const fileSignals = collectTaskAdaptiveFileSignals(repoRoot);
   const focusFiles = uniqueSorted(options.filePaths?.length ? options.filePaths : pack.selectedFiles);
-  const detailedSessions = compileDetailedSessionContext(
-    pack.selectedFiles,
+  const sessionSummaries = buildRankedFileSessionContextSummaries({
+    pack,
     fileSignals,
-    pack.matchedSessionIds,
+    focusFiles,
+    maxSessions: options.maxSessions ?? DEFAULT_MAX_SESSIONS,
+  });
+  const buckets = classifyFileSessionContextBuckets(
+    sessionSummaries,
+    focusFiles,
+    pack.selectedFiles,
+    pack.featureId,
   );
-  const sessionSummaries = pack.sessions.map((session) =>
-    mapDetailedSessionSummary(session, detailedSessions.get(detailSessionKey(session.provider, session.sessionId))));
-  const buckets = classifyFileSessionContextBuckets(sessionSummaries, focusFiles);
   const openingPrompts = buildFileSessionContextPromptSignals(sessionSummaries);
   const scopeDriftSignals = buildFileSessionContextScopeDriftSignals(
     sessionSummaries,
@@ -3286,7 +3456,7 @@ export async function summarizeFileSessionContext(
     selectedFiles: [...pack.selectedFiles],
     focusFiles,
     matchedFileDetails: pack.matchedFileDetails.map((detail) => ({ ...detail })),
-    matchedSessionIds: [...pack.matchedSessionIds],
+    matchedSessionIds: sessionSummaries.map((session) => session.sessionId),
     directSessions: buckets.directSessions,
     adjacentSessions: buckets.adjacentSessions,
     weakSessions: buckets.weakSessions,
