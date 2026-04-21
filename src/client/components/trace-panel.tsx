@@ -868,6 +868,86 @@ export function TracePanel({ sessionId }: TracePanelProps) {
               {t.trace.previousLaneRun}: {formatLaneSessionSummary(kanbanContext.previousLaneRun, t)}
             </div>
           )}
+          {kanbanContext.learnedPlaybook && (
+            <div className="mt-3 rounded-lg border border-indigo-200 bg-white/90 px-3 py-3 dark:border-indigo-900/40 dark:bg-[#13151d]">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <div className="text-[10px] font-semibold uppercase tracking-wide text-indigo-600 dark:text-indigo-300">
+                    {t.trace.learnedPlaybook}
+                  </div>
+                  <div className="mt-1 text-[11px] text-slate-600 dark:text-slate-300">
+                    {t.trace.playbookConfidence}: {Math.round(kanbanContext.learnedPlaybook.successRate * 100)}%
+                    {" · "}
+                    {t.trace.playbookSampleSize}: {kanbanContext.learnedPlaybook.sampleSize}
+                  </div>
+                </div>
+                <div className="rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-indigo-700 dark:bg-indigo-900/20 dark:text-indigo-300">
+                  {kanbanContext.learnedPlaybook.taskType}
+                </div>
+              </div>
+              {kanbanContext.learnedPlaybook.preferredTools.length > 0 && (
+                <div className="mt-3">
+                  <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                    {t.trace.playbookToolFlow}
+                  </div>
+                  <div className="mt-1 flex flex-wrap gap-1.5">
+                    {kanbanContext.learnedPlaybook.preferredTools.slice(0, 4).map((tool) => (
+                      <span
+                        key={tool}
+                        className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                      >
+                        {tool}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {kanbanContext.learnedPlaybook.keyFiles.length > 0 && (
+                <div className="mt-3">
+                  <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                    {t.trace.playbookKeyFiles}
+                  </div>
+                  <div className="mt-1 flex flex-wrap gap-1.5">
+                    {kanbanContext.learnedPlaybook.keyFiles.slice(0, 3).map((file) => (
+                      <span
+                        key={file}
+                        className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-mono text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300"
+                      >
+                        {file}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {kanbanContext.learnedPlaybook.verificationCommands.length > 0 && (
+                <div className="mt-3 text-[11px] text-slate-600 dark:text-slate-300">
+                  <span className="font-semibold text-slate-700 dark:text-slate-200">
+                    {t.trace.playbookVerification}:
+                  </span>
+                  {" "}
+                  {kanbanContext.learnedPlaybook.verificationCommands.slice(0, 2).join("; ")}
+                </div>
+              )}
+              {kanbanContext.learnedPlaybook.antiPatterns.length > 0 && (
+                <div className="mt-2 text-[11px] text-slate-600 dark:text-slate-300">
+                  <span className="font-semibold text-slate-700 dark:text-slate-200">
+                    {t.trace.playbookRisks}:
+                  </span>
+                  {" "}
+                  {kanbanContext.learnedPlaybook.antiPatterns.slice(0, 2).join("; ")}
+                </div>
+              )}
+              {kanbanContext.learnedPlaybook.sourceSessions.length > 0 && (
+                <div className="mt-2 text-[11px] text-slate-500 dark:text-slate-400">
+                  <span className="font-semibold text-slate-600 dark:text-slate-300">
+                    {t.trace.playbookSourceSessions}:
+                  </span>
+                  {" "}
+                  {kanbanContext.learnedPlaybook.sourceSessions.slice(0, 3).join(", ")}
+                </div>
+              )}
+            </div>
+          )}
           {kanbanContext.relatedHandoffs.length > 0 && (
             <div className="mt-3 space-y-2">
               {kanbanContext.relatedHandoffs.slice(0, 3).map((handoff) => (

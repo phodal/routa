@@ -1,5 +1,6 @@
 import type { KanbanBoard } from "../models/kanban";
 import type { Task, TaskLaneHandoff, TaskLaneSession } from "../models/task";
+import type { LearnedPlaybook } from "../trace/trace-playbook";
 import { getPreviousLaneRun, getPreviousLaneSession, getTaskLaneSession } from "./task-lane-history";
 
 export interface SessionRelatedLaneHandoff extends TaskLaneHandoff {
@@ -13,6 +14,7 @@ export interface SessionKanbanContext {
   taskTitle: string;
   boardId?: string;
   columnId?: string;
+  learnedPlaybook?: LearnedPlaybook;
   triggerSessionId?: string;
   currentLaneSession?: TaskLaneSession;
   previousLaneSession?: TaskLaneSession;

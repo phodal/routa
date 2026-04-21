@@ -1443,6 +1443,14 @@ export interface ExtendedTranslationDictionarySections extends TailTranslationDi
     thoughtsCount: string;
     thoughtsLabel: string;
     kanbanStory: string;
+    learnedPlaybook: string;
+    playbookConfidence: string;
+    playbookSampleSize: string;
+    playbookToolFlow: string;
+    playbookKeyFiles: string;
+    playbookVerification: string;
+    playbookRisks: string;
+    playbookSourceSessions: string;
     all: string;
     tools: string;
     input: string;

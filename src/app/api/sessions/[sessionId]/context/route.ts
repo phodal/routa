@@ -13,6 +13,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getHttpSessionStore } from "@/core/acp/http-session-store";
 import { getRoutaSystem } from "@/core/routa-system";
 import { buildSessionKanbanContext, findTaskForSession } from "@/core/kanban/session-kanban-context";
+import { buildTaskFingerprint } from "@/core/trace/run-outcome";
+import { syncLearnedPlaybookArtifact } from "@/core/trace/trace-playbook";
 
 export const dynamic = "force-dynamic";
 
@@ -88,9 +90,29 @@ export async function GET(
   const relatedBoard = relatedTask?.boardId
     ? await system.kanbanBoardStore.get(relatedTask.boardId)
     : undefined;
-  const kanbanContext = relatedTask
+  let kanbanContext = relatedTask
     ? buildSessionKanbanContext(relatedTask, sessionId, relatedBoard ?? undefined)
     : null;
+
+  if (kanbanContext && relatedTask) {
+    try {
+      const fingerprint = buildTaskFingerprint(relatedTask, current.workspaceId);
+      const learnedPlaybook = await syncLearnedPlaybookArtifact(
+        current.cwd,
+        fingerprint,
+        relatedTask.title,
+        current.workspaceId,
+      );
+      if (learnedPlaybook) {
+        kanbanContext = {
+          ...kanbanContext,
+          learnedPlaybook,
+        };
+      }
+    } catch {
+      // Learned playbook lookup is best-effort for the session context API.
+    }
+  }
 
   return NextResponse.json(
     {

@@ -82,6 +82,19 @@ describe("TracePanel", () => {
                 status: "completed",
                 startedAt: "2026-03-17T00:05:00.000Z",
               },
+              learnedPlaybook: {
+                fingerprint: "fingerprint-123",
+                taskType: "kanban_card",
+                workspaceId: "default",
+                taskTitle: "Desk check login flow",
+                sampleSize: 3,
+                successRate: 2 / 3,
+                preferredTools: ["write_file", "run_command"],
+                keyFiles: ["src/index.ts", "src/app/login.tsx"],
+                verificationCommands: ["npm test (67% pass over 3 runs)"],
+                antiPatterns: ["Failure mode: review not approved"],
+                sourceSessions: ["session-review-1", "session-review-0", "session-dev-1"],
+              },
               relatedHandoffs: [
                 {
                   id: "handoff-1",
@@ -119,6 +132,10 @@ describe("TracePanel", () => {
     expect(screen.getByText(/Current lane session: Review • Review Step 2/i)).toBeTruthy();
     expect(screen.getByText(/Previous lane session: Dev/i)).toBeTruthy();
     expect(screen.getByText(/Previous run in lane: Review • Review Step 1/i)).toBeTruthy();
+    expect(screen.getByText("Learned Playbook")).toBeTruthy();
+    expect(screen.getByText(/Confidence: 67%/i)).toBeTruthy();
+    expect(screen.getByText(/write_file/i)).toBeTruthy();
+    expect(screen.getByText(/npm test \(67% pass over 3 runs\)/i)).toBeTruthy();
     expect(screen.getByText("Start the app and share the URL.")).toBeTruthy();
     expect(screen.getByText("Running at http://127.0.0.1:3000/login")).toBeTruthy();
     expect(screen.getAllByText("session-review-1").length).toBeGreaterThan(0);
