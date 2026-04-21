@@ -13,6 +13,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { desktopAwareFetch } from "../utils/diagnostics";
 import { createPortal } from "react-dom";
 import { BranchSelector } from "./branch-selector";
+import { dangerGhostButtonClassName, dangerSurfaceClassName } from "./color-system";
 import { useTranslation } from "@/i18n";
 import { Check, ChevronDown, Copy, Download, PieChart, Search, X, GitBranch, Book, Folder, RefreshCcw } from "lucide-react";
 
@@ -558,7 +559,7 @@ export function RepoPicker({
             maxHeight: dropdownPos.maxHeight,
             zIndex: 9999,
           }}
-          className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#1e2130] shadow-xl overflow-hidden flex max-h-[80vh] flex-col"
+          className="flex max-h-[80vh] flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-xl dark:border-slate-700 dark:bg-slate-800"
         >
           {/* ── Tabs ── */}
           <div className="flex border-b border-slate-100 dark:border-slate-800">
@@ -595,7 +596,7 @@ export function RepoPicker({
             <>
               {/* Search */}
               <div className="p-2 border-b border-slate-100 dark:border-slate-800">
-                <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-md bg-slate-50 dark:bg-[#161922] border border-slate-200 dark:border-slate-700">
+                <div className="flex items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1.5 dark:border-slate-700 dark:bg-slate-900">
                   <SearchIcon />
                   <input
                     ref={inputRef}
@@ -650,7 +651,7 @@ export function RepoPicker({
                   {t.repoPicker.repositoryUrl}
                 </label>
                 <div className="flex items-center gap-1.5">
-                  <div className="flex-1 flex items-center rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#161922] overflow-hidden">
+                  <div className="flex flex-1 items-center overflow-hidden rounded-md border border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-900">
                     <span className="pl-2.5 text-[10px] text-slate-400 dark:text-slate-500 font-mono whitespace-nowrap">
                       github.com/
                     </span>
@@ -706,8 +707,8 @@ export function RepoPicker({
 
               {/* Clone error */}
               {cloneError && (
-                <div className="rounded-md bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-800/50 px-3 py-2">
-                  <div className="text-xs text-red-700 dark:text-red-400">
+                <div className={`rounded-md px-3 py-2 ${dangerSurfaceClassName}`}>
+                  <div className="text-xs">
                     {cloneError}
                   </div>
                 </div>
@@ -759,15 +760,15 @@ export function RepoPicker({
                     setLocalRepoError(null);
                   }}
                   placeholder={t.repoPicker.localPathPlaceholder}
-                  className="w-full rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#161922] px-3 py-2 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 outline-none"
+                  className="w-full rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-900 placeholder:text-slate-400 outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
                   onKeyDown={handleLocalPathKeyDown}
                   autoFocus
                 />
               </div>
 
               {localRepoError && (
-                <div className="rounded-md bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-800/50 px-3 py-2">
-                  <div className="text-xs text-red-700 dark:text-red-400">
+                <div className={`rounded-md px-3 py-2 ${dangerSurfaceClassName}`}>
+                  <div className="text-xs">
                     {localRepoError}
                   </div>
                 </div>
@@ -1025,7 +1026,7 @@ function RepoListItem({
             type="button"
             onClick={handleReset}
             disabled={resetting}
-            className="inline-flex items-center gap-1 rounded px-1.5 py-1 text-[10px] font-medium text-rose-600 hover:bg-rose-50 disabled:opacity-50 dark:text-rose-400 dark:hover:bg-rose-900/20"
+            className={`inline-flex items-center gap-1 rounded px-1.5 py-1 text-[10px] font-medium disabled:opacity-50 ${dangerGhostButtonClassName}`}
             title={t.repoPicker.discardChanges}
           >
             <ResetIcon />

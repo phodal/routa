@@ -14,6 +14,12 @@ import { useState, useEffect, useCallback } from "react";
 import { Select } from "./select";
 import { useTranslation } from "@/i18n";
 import { desktopAwareFetch } from "@/client/utils/diagnostics";
+import {
+  dangerGhostButtonClassName,
+  dangerRequiredMarkClassName,
+  dangerTextClassName,
+  dangerSurfaceClassName,
+} from "./color-system";
 import { Check, Clock, Plus, SquarePen, Trash2, Play } from "lucide-react";
 
 
@@ -316,16 +322,16 @@ export function SchedulePanel({ workspaceId }: { workspaceId?: string }) {
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {!workspaceId && (
-        <div className="mx-4 mt-3 rounded-lg border border-dashed border-slate-200 px-4 py-6 text-sm text-slate-500 dark:border-[#1c1f2e] dark:text-slate-400">
+        <div className="mx-4 mt-3 rounded-lg border border-dashed border-slate-200 px-4 py-6 text-sm text-slate-500 dark:border-slate-700 dark:text-slate-400">
           {t.schedules.selectWorkspace}
         </div>
       )}
       {/* Alerts */}
       {error && (
-        <div className="mx-4 mt-3 px-4 py-2 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 text-red-700 dark:text-red-400 text-sm flex items-start gap-2">
+        <div className={`mx-4 mt-3 flex items-start gap-2 rounded-lg px-4 py-2 text-sm ${dangerSurfaceClassName}`}>
           <span className="shrink-0 mt-0.5">⚠</span>
           <span>{error}</span>
-          <button onClick={() => setError(null)} className="ml-auto shrink-0 text-red-400 hover:text-red-600">✕</button>
+          <button onClick={() => setError(null)} className={`ml-auto shrink-0 ${dangerTextClassName}`}>✕</button>
         </div>
       )}
       {success && (
@@ -448,7 +454,7 @@ function ScheduleForm({
       {/* Name */}
       <div>
         <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
-          Name <span className="text-red-500">*</span>
+          Name <span className={dangerRequiredMarkClassName}>*</span>
         </label>
         <input
           type="text"
@@ -463,7 +469,7 @@ function ScheduleForm({
       {/* Cron Expression */}
       <div>
         <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
-          Schedule <span className="text-red-500">*</span>
+          Schedule <span className={dangerRequiredMarkClassName}>*</span>
         </label>
         <div className="space-y-2">
           {/* Preset selector */}
@@ -505,7 +511,7 @@ function ScheduleForm({
       {/* Agent */}
       <div>
         <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
-          Agent <span className="text-red-500">*</span>
+          Agent <span className={dangerRequiredMarkClassName}>*</span>
         </label>
         <Select
           value={form.agentId}
@@ -531,7 +537,7 @@ function ScheduleForm({
       {/* Task Prompt */}
       <div>
         <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
-          Task Prompt <span className="text-red-500">*</span>
+          Task Prompt <span className={dangerRequiredMarkClassName}>*</span>
         </label>
         <textarea
           value={form.taskPrompt}
@@ -716,7 +722,7 @@ function ScheduleCard({ schedule, onEdit, onDelete, onToggle, onRunNow, isRunnin
 
         <button
           onClick={onDelete}
-          className="flex items-center gap-1 px-2.5 py-1 text-xs text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-md transition-colors ml-auto"
+          className={`ml-auto flex items-center gap-1 rounded-md px-2.5 py-1 text-xs ${dangerGhostButtonClassName}`}
         >
           <Trash2 className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
           {t.common.delete}

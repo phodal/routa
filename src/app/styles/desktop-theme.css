@@ -21,6 +21,11 @@
   --color-desktop-brand-purple: var(--dt-brand-purple);
   --color-desktop-brand-gray: var(--dt-brand-gray);
   --color-desktop-brand-route: var(--dt-brand-route);
+  --color-desktop-danger-subtle: var(--dt-danger-subtle);
+  --color-desktop-danger-border: var(--dt-danger-border);
+  --color-desktop-danger-text: var(--dt-danger-text);
+  --color-desktop-danger-solid: var(--dt-danger-solid);
+  --color-desktop-danger-on-solid: var(--dt-danger-on-solid);
 }
 
 /* Desktop App Styles (Tauri) */
@@ -49,6 +54,15 @@
   --dt-brand-purple: var(--brand-orchid-500);
   --dt-brand-gray: var(--brand-slate-500);
   --dt-brand-route: var(--brand-slate-400);
+  --dt-danger-subtle: var(--danger-subtle);
+  --dt-danger-subtle-hover: var(--danger-subtle-hover);
+  --dt-danger-border: var(--danger-border);
+  --dt-danger-border-strong: var(--danger-border-strong);
+  --dt-danger-text: var(--danger-fg);
+  --dt-danger-text-strong: var(--danger-fg-strong);
+  --dt-danger-solid: var(--danger-solid);
+  --dt-danger-solid-hover: var(--danger-solid-hover);
+  --dt-danger-on-solid: var(--danger-on-solid);
   --dt-bg-primary: var(--brand-slate-50);
   --dt-bg-secondary: var(--brand-slate-100);
   --dt-bg-tertiary: var(--brand-slate-200);

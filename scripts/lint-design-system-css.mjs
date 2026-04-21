@@ -72,6 +72,16 @@ const allowedSemanticColorVariables = new Set([
   "var(--secondary-foreground)",
   "var(--destructive)",
   "var(--destructive-foreground)",
+  "var(--danger-subtle)",
+  "var(--danger-subtle-hover)",
+  "var(--danger-border)",
+  "var(--danger-border-strong)",
+  "var(--danger-fg)",
+  "var(--danger-fg-strong)",
+  "var(--danger-solid)",
+  "var(--danger-solid-hover)",
+  "var(--danger-on-solid)",
+  "var(--danger-ring)",
 ]);
 
 const allowedTokenVariablePattern = /^var\(--(?:dt|brand|color-desktop)-[a-zA-Z0-9-]+\)$/;

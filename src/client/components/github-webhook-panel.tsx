@@ -12,6 +12,12 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { Select } from "./select";
+import {
+  dangerGhostButtonClassName,
+  dangerRequiredMarkClassName,
+  dangerTextClassName,
+  dangerSurfaceClassName,
+} from "./color-system";
 import { useTranslation } from "@/i18n";
 import type { TranslationDictionary } from "@/i18n/types";
 import { desktopAwareFetch, getDesktopApiBaseUrl } from "@/client/utils/diagnostics";
@@ -364,10 +370,10 @@ export function GitHubWebhookPanel() {
     <div className="flex flex-col h-full overflow-hidden">
       {/* Alerts */}
       {error && (
-        <div className="mx-4 mt-3 px-4 py-2 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 text-red-700 dark:text-red-400 text-sm flex items-start gap-2">
+        <div className={`mx-4 mt-3 flex items-start gap-2 rounded-lg px-4 py-2 text-sm ${dangerSurfaceClassName}`}>
           <span className="shrink-0 mt-0.5">⚠</span>
           <span>{error}</span>
-          <button onClick={() => setError(null)} className="ml-auto shrink-0 text-red-400 hover:text-red-600">✕</button>
+          <button onClick={() => setError(null)} className={`ml-auto shrink-0 ${dangerTextClassName}`}>✕</button>
         </div>
       )}
       {success && (
@@ -571,7 +577,7 @@ function WebhookConfigForm({ form, setForm, editId, saving, specialists, onSubmi
       {/* Name */}
       <div>
         <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
-          {t.webhook.nameLabel} <span className="text-red-500">*</span>
+          {t.webhook.nameLabel} <span className={dangerRequiredMarkClassName}>*</span>
         </label>
         <input
           data-testid="webhook-name"
@@ -587,7 +593,7 @@ function WebhookConfigForm({ form, setForm, editId, saving, specialists, onSubmi
       {/* Repository */}
       <div>
         <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
-          {t.webhook.githubRepository} <span className="text-red-500">*</span>
+          {t.webhook.githubRepository} <span className={dangerRequiredMarkClassName}>*</span>
           <span className="ml-1 text-slate-400 font-normal">{t.webhook.repoFormatHint}</span>
         </label>
         <input
@@ -604,7 +610,7 @@ function WebhookConfigForm({ form, setForm, editId, saving, specialists, onSubmi
       {/* GitHub Token */}
       <div>
         <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
-          {t.webhook.githubToken} <span className="text-red-500">{editId ? "" : "*"}</span>
+          {t.webhook.githubToken} <span className={dangerRequiredMarkClassName}>{editId ? "" : "*"}</span>
           {editId && <span className="ml-1 text-slate-400 font-normal">{t.webhook.tokenKeepHint}</span>}
         </label>
         <input
@@ -637,7 +643,7 @@ function WebhookConfigForm({ form, setForm, editId, saving, specialists, onSubmi
       {/* Events */}
       <div>
         <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-2">
-          {t.webhook.eventsToSubscribe} <span className="text-red-500">*</span>
+          {t.webhook.eventsToSubscribe} <span className={dangerRequiredMarkClassName}>*</span>
         </label>
         <div className="grid grid-cols-2 gap-2">
           {SUPPORTED_EVENTS.map((ev) => (
@@ -684,7 +690,7 @@ function WebhookConfigForm({ form, setForm, editId, saving, specialists, onSubmi
       {/* Trigger Agent */}
       <div>
         <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
-          {t.webhook.triggerAgent} <span className="text-red-500">*</span>
+          {t.webhook.triggerAgent} <span className={dangerRequiredMarkClassName}>*</span>
         </label>
         <Select
           data-testid="webhook-agent"
@@ -844,7 +850,7 @@ function WebhookConfigCard({ config, onEdit, onDelete, onRegister, onToggle, reg
 
         <button
           onClick={onDelete}
-          className="flex items-center gap-1 px-2.5 py-1 text-xs text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-md transition-colors ml-auto"
+          className={`ml-auto flex items-center gap-1 rounded-md px-2.5 py-1 text-xs ${dangerGhostButtonClassName}`}
         >
           <Trash2 className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
           {t.webhook.delete}

@@ -25,7 +25,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       ghost:
         "bg-transparent text-slate-600 hover:bg-blue-50 hover:text-blue-700 dark:text-slate-300 dark:hover:bg-blue-950/20 dark:hover:text-blue-300 focus:ring-blue-500",
       danger:
-        "bg-red-600 text-white hover:bg-red-700 focus:ring-red-500 dark:bg-red-500 dark:hover:bg-red-600",
+        "border border-transparent bg-[var(--danger-solid)] text-[var(--danger-on-solid)] hover:bg-[var(--danger-solid-hover)] focus:ring-[var(--danger-ring)]",
       "desktop-secondary":
         "border border-transparent bg-desktop-bg-secondary text-desktop-text-secondary hover:bg-desktop-bg-active/70 hover:text-desktop-text-primary focus:ring-[var(--dt-accent)]",
       "desktop-accent":

@@ -11,6 +11,7 @@ import {
   labelCls,
   sectionHeadCls,
 } from "./settings-panel-shared";
+import { dangerGhostIconButtonClassName, dangerSurfaceClassName } from "./color-system";
 import { Plus, SquarePen, Trash2, ChevronLeft } from "lucide-react";
 
 
@@ -218,7 +219,7 @@ export function McpServersTab() {
           </button>
           <p className={sectionHeadCls}>{editingId ? t.mcp.editServer : t.mcp.newServer}</p>
         </div>
-        {error && <div className="p-2 text-xs bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded text-red-600 dark:text-red-400">{error}</div>}
+        {error && <div className={`rounded p-2 text-xs ${dangerSurfaceClassName}`}>{error}</div>}
         <div className="space-y-3">
           <div className="grid grid-cols-2 gap-2">
             <div className="space-y-1">
@@ -325,7 +326,7 @@ export function McpServersTab() {
           {tab.newButton}
         </button>
       </div>
-      {error && <div className="p-2 text-xs bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded text-red-600 dark:text-red-400">{error}</div>}
+      {error && <div className={`rounded p-2 text-xs ${dangerSurfaceClassName}`}>{error}</div>}
 
       <div className="rounded-lg border border-emerald-200 dark:border-emerald-800 bg-emerald-50/50 dark:bg-emerald-900/10 p-3">
         <div className="flex items-center gap-2">
@@ -363,7 +364,7 @@ export function McpServersTab() {
                 <SquarePen className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
               </button>
               <button onClick={() => handleDelete(server.id, server.name)}
-                className="p-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-slate-400 hover:text-red-500 transition-colors" title={tab.deleteTitle}>
+                className={`rounded p-1 ${dangerGhostIconButtonClassName}`} title={tab.deleteTitle}>
                 <Trash2 className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}/>
               </button>
             </div>

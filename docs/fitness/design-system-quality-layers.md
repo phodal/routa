@@ -93,6 +93,7 @@ metrics:
   - shell 共享组件不得出现 palette class / hex / rgb 硬编码
   - `desktop-theme.css` 变量前缀只允许 `--dt-*` 与 `--color-desktop-*`
   - brand semantic 文件不得重新出现 `violet` / `indigo` / `purple` 语义名
+  - 共享 destructive UI 一旦存在语义 token，应优先消费 `--danger-*` 别名，而不是继续直接散落 `red-*` / `rose-*` palette utility
   - advisory scan 会按单文件 warning 数排序，优先标出颜色债务最重的文件，但不会阻断
 
 ### 2. 设计层

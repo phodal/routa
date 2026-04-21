@@ -88,6 +88,16 @@
   --brand-route-soft: var(--brand-slate-300);
   --brand-gray: var(--brand-slate-500);
   --brand-gray-soft: var(--brand-slate-300);
+  --danger-subtle: var(--brand-red-50);
+  --danger-subtle-hover: var(--brand-red-100);
+  --danger-border: var(--brand-red-200);
+  --danger-border-strong: var(--brand-red-300);
+  --danger-fg: var(--brand-red-700);
+  --danger-fg-strong: var(--brand-red-800);
+  --danger-solid: var(--brand-red-600);
+  --danger-solid-hover: var(--brand-red-700);
+  --danger-on-solid: #ffffff;
+  --danger-ring: var(--brand-red-500);
   --accent: var(--brand-amber-500);
   --accent-hover: var(--brand-amber-600);
 }
@@ -111,6 +121,15 @@ html.dark {
   --border: #1c1f2e;
   --brand-route-soft: var(--brand-slate-600);
   --brand-gray-soft: var(--brand-slate-700);
+  --danger-subtle: color-mix(in srgb, var(--brand-red-500) 16%, transparent);
+  --danger-subtle-hover: color-mix(in srgb, var(--brand-red-500) 24%, transparent);
+  --danger-border: color-mix(in srgb, var(--brand-red-400) 32%, transparent);
+  --danger-border-strong: color-mix(in srgb, var(--brand-red-400) 44%, transparent);
+  --danger-fg: var(--brand-red-300);
+  --danger-fg-strong: var(--brand-red-200);
+  --danger-solid: var(--brand-red-500);
+  --danger-solid-hover: var(--brand-red-600);
+  --danger-ring: var(--brand-red-400);
   --accent: var(--brand-amber-500);
   --accent-hover: var(--brand-amber-400);
 }
