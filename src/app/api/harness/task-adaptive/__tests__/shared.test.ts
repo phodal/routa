@@ -251,6 +251,15 @@ describe("assembleTaskAdaptiveHarness", () => {
       updatedAt: expect.stringContaining("2026-04-21T02:03:00"),
     })]);
     expect(pack.matchedSessionIds).toContain("session-b");
+    expect(pack.historySummary).toMatchObject({
+      seedSessionCount: 1,
+      recoveredSessionCount: 1,
+      matchedFileCount: 1,
+      seedSessions: [expect.objectContaining({
+        sessionId: "session-b",
+        touchedFiles: ["src/app/layout.tsx"],
+      })],
+    });
     expect(pack.recommendedMcpProfile).toBe("kanban-planning");
     expect(pack.recommendedAllowedNativeTools).toEqual(["Read", "Grep", "Glob"]);
   });

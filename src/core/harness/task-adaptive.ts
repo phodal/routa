@@ -65,8 +65,28 @@ export interface TaskAdaptiveHarnessSessionSummary {
   resumeCommand?: string;
 }
 
+export interface TaskAdaptiveHistorySeedSessionSummary {
+  provider: string;
+  sessionId: string;
+  updatedAt: string;
+  promptSnippet: string;
+  touchedFiles: string[];
+  repeatedReadFiles: string[];
+  toolNames: string[];
+  failedReadSignals: TaskAdaptiveHarnessFailureSignal[];
+}
+
+export interface TaskAdaptiveHistorySummary {
+  overview: string;
+  seedSessionCount: number;
+  recoveredSessionCount: number;
+  matchedFileCount: number;
+  seedSessions: TaskAdaptiveHistorySeedSessionSummary[];
+}
+
 export interface TaskAdaptiveHarnessPack {
   summary: string;
+  historySummary?: TaskAdaptiveHistorySummary;
   warnings: string[];
   featureId?: string;
   featureName?: string;
@@ -1810,6 +1830,94 @@ function inferFilesFromSessionIds(
   return trimTo(uniqueSorted(inferred), maxFiles);
 }
 
+function buildHistorySeedSessionSummaries(
+  historySessionIds: string[] | undefined,
+  fileSignals: Record<string, TaskAdaptiveFileSignal>,
+  maxSessions: number,
+): TaskAdaptiveHistorySeedSessionSummary[] {
+  if (!historySessionIds || historySessionIds.length === 0) {
+    return [];
+  }
+
+  const wanted = new Set(historySessionIds);
+  const sessionsByKey = new Map<string, CompiledSessionAccumulator>();
+
+  for (const [filePath, signal] of Object.entries(fileSignals)) {
+    for (const session of signal.sessions) {
+      if (!wanted.has(session.sessionId)) {
+        continue;
+      }
+
+      const compiled = ensureAccumulator(sessionsByKey, session);
+      compiled.matchedFiles.add(filePath);
+
+      for (const prompt of session.promptHistory) {
+        compiled.promptHistory.add(prompt);
+      }
+      for (const toolName of session.toolNames) {
+        compiled.toolNames.add(toolName);
+      }
+      for (const changedFile of session.changedFiles ?? []) {
+        compiled.matchedChangedFiles.add(changedFile);
+      }
+
+      const diagnostics = session.diagnostics;
+      if (!diagnostics) {
+        continue;
+      }
+
+      for (const readFile of diagnostics.readFiles) {
+        compiled.matchedReadFiles.add(readFile);
+      }
+      for (const writtenFile of diagnostics.writtenFiles) {
+        compiled.matchedWrittenFiles.add(writtenFile);
+      }
+      for (const repeatedRead of diagnostics.repeatedReadFiles) {
+        compiled.repeatedReadFiles.add(normalizeRepeatedReadFile(repeatedRead));
+      }
+      for (const failure of diagnostics.failedTools) {
+        if (!isHighSignalReadFailure(failure)) {
+          continue;
+        }
+        compiled.failedReadSignals.push({
+          provider: session.provider,
+          sessionId: session.sessionId,
+          message: failure.message,
+          toolName: failure.toolName,
+          command: failure.command,
+        });
+      }
+    }
+  }
+
+  return trimTo(
+    [...sessionsByKey.values()]
+      .map((session) => {
+        session.frictionScore = (session.failedReadSignals.length * 10)
+          + (session.repeatedReadFiles.size * 4)
+          + (session.matchedReadFiles.size * 2)
+          + session.matchedChangedFiles.size;
+        return session;
+      })
+      .sort((left, right) =>
+        right.frictionScore - left.frictionScore
+        || right.updatedAt.localeCompare(left.updatedAt)
+        || left.sessionId.localeCompare(right.sessionId),
+      )
+      .map<TaskAdaptiveHistorySeedSessionSummary>((session) => ({
+        provider: session.provider,
+        sessionId: session.sessionId,
+        updatedAt: session.updatedAt,
+        promptSnippet: session.promptSnippet || truncateSnippet([...session.promptHistory][0]),
+        touchedFiles: trimTo(uniqueSorted(session.matchedFiles), DEFAULT_MAX_FILES),
+        repeatedReadFiles: trimTo(uniqueSorted(session.repeatedReadFiles), MAX_REPEATED_READS),
+        toolNames: trimTo(uniqueSorted(session.toolNames), MAX_TOOLS_PER_SESSION),
+        failedReadSignals: trimTo(session.failedReadSignals, MAX_FAILURE_SIGNALS),
+      })),
+    maxSessions,
+  );
+}
+
 function buildMatchedFileDetails(
   selectedFiles: string[],
   fileSignals: Record<string, TaskAdaptiveFileSignal>,
@@ -2012,6 +2120,99 @@ function buildHarnessSummary(input: {
         ]
       : []),
   ].join("\n");
+}
+
+function buildTaskAdaptiveHistorySummary(input: {
+  locale: string;
+  historySessionIds?: string[];
+  seedSessions: TaskAdaptiveHistorySeedSessionSummary[];
+  matchedSessionIds: string[];
+  selectedFiles: string[];
+  failures: TaskAdaptiveHarnessFailureSignal[];
+  repeatedReadFiles: string[];
+}): TaskAdaptiveHistorySummary | undefined {
+  const seedSessionCount = input.historySessionIds?.length ?? 0;
+  if (seedSessionCount === 0) {
+    return undefined;
+  }
+
+  const isZh = input.locale.startsWith("zh");
+  const repeatedHotspots = trimTo(uniqueSorted([
+    ...input.repeatedReadFiles,
+    ...input.seedSessions.flatMap((session) => session.repeatedReadFiles),
+  ]), 3);
+  const priorityFailures = trimTo(dedupeFailureSignals([
+    ...input.failures,
+    ...input.seedSessions.flatMap((session) => session.failedReadSignals),
+  ], MAX_FAILURE_SIGNALS), 2);
+
+  const overviewParts = isZh
+    ? [
+        `先从 ${seedSessionCount} 个已关联 history session 里抽取上下文种子，当前收敛到 ${input.matchedSessionIds.length} 个最终命中会话和 ${input.selectedFiles.length} 个候选文件。`,
+        input.matchedSessionIds.length === 0
+          ? "这些种子会话已经帮助定位文件范围，但还没有形成文件级直接命中会话。"
+          : "这些种子会话已经被进一步压缩成可复用的文件级命中会话。",
+        repeatedHotspots.length > 0
+          ? `优先关注的重复读取热点：${repeatedHotspots.join("，")}。`
+          : null,
+        priorityFailures.length > 0
+          ? `优先关注的历史读取问题：${priorityFailures.map((failure) => failure.message).join("；")}。`
+          : null,
+        "如果要继续深挖，优先看下面列出的种子会话，而不是一次性回读全部 transcript。",
+      ]
+    : [
+        `Started from ${seedSessionCount} linked history sessions and narrowed the search to ${input.matchedSessionIds.length} recovered sessions plus ${input.selectedFiles.length} candidate files.`,
+        input.matchedSessionIds.length === 0
+          ? "These seed sessions already helped localize files, but none of them have turned into file-grounded recovered sessions yet."
+          : "These seed sessions have already been compressed into reusable file-grounded recovered sessions.",
+        repeatedHotspots.length > 0
+          ? `Repeated-read hotspots to inspect first: ${repeatedHotspots.join(", ")}.`
+          : null,
+        priorityFailures.length > 0
+          ? `Priority historical read failures: ${priorityFailures.map((failure) => failure.message).join("; ")}.`
+          : null,
+        "If you need deeper analysis, start from the seed sessions below instead of rereading every transcript.",
+      ];
+
+  return {
+    overview: overviewParts.filter((part): part is string => Boolean(part)).join(" "),
+    seedSessionCount,
+    recoveredSessionCount: input.matchedSessionIds.length,
+    matchedFileCount: input.selectedFiles.length,
+    seedSessions: input.seedSessions,
+  };
+}
+
+function attachTaskAdaptiveHistorySummary(
+  pack: TaskAdaptiveHarnessPack,
+  options: TaskAdaptiveHarnessOptions,
+  fileSignals: Record<string, TaskAdaptiveFileSignal>,
+): TaskAdaptiveHarnessPack {
+  const historySessionIds = normalizeUniqueStringArray(options.historySessionIds);
+  if (historySessionIds.length === 0) {
+    return pack;
+  }
+
+  const historySummary = buildTaskAdaptiveHistorySummary({
+    locale: options.locale ?? "en",
+    historySessionIds,
+    seedSessions: buildHistorySeedSessionSummaries(
+      historySessionIds,
+      fileSignals,
+      options.maxSessions ?? DEFAULT_MAX_SESSIONS,
+    ),
+    matchedSessionIds: pack.matchedSessionIds,
+    selectedFiles: pack.selectedFiles,
+    failures: pack.failures,
+    repeatedReadFiles: pack.repeatedReadFiles,
+  });
+
+  return historySummary
+    ? {
+        ...pack,
+        historySummary,
+      }
+    : pack;
 }
 
 async function assembleTaskAdaptiveHarnessRaw(
@@ -2317,10 +2518,11 @@ export async function assembleTaskAdaptiveHarness(
     historySessionIds: options.historySessionIds,
     snapshot,
   }) && matchedProfiles.length > 0) {
-    return mergeProfilesIntoTaskAdaptiveHarnessPack(
-      locale,
-      options.taskLabel,
-      features[0],
+    return attachTaskAdaptiveHistorySummary(
+      mergeProfilesIntoTaskAdaptiveHarnessPack(
+        locale,
+        options.taskLabel,
+        features[0],
       requestedFeatureIds,
       inferredSeed,
       options.filePaths?.length ?? 0,
@@ -2337,22 +2539,25 @@ export async function assembleTaskAdaptiveHarness(
       ],
       options.taskType,
       options.role,
-      matchedProfiles,
-      options.maxSessions ?? DEFAULT_MAX_SESSIONS,
+        matchedProfiles,
+        options.maxSessions ?? DEFAULT_MAX_SESSIONS,
+      ),
+      options,
+      fileSignals,
     );
   }
 
-  const pack = await assembleTaskAdaptiveHarnessRaw(repoRoot, options, {
+  const pack = attachTaskAdaptiveHistorySummary(await assembleTaskAdaptiveHarnessRaw(repoRoot, options, {
     featureTree: mergedFeatureTree,
     fileSignals,
     surfaceIndex,
-  });
+  }), options, fileSignals);
 
   if (matchedProfiles.length === 0) {
     return pack;
   }
 
-  return {
+  return attachTaskAdaptiveHistorySummary({
     ...mergeProfilesIntoTaskAdaptiveHarnessPack(
       locale,
       options.taskLabel,
@@ -2373,5 +2578,5 @@ export async function assembleTaskAdaptiveHarness(
     recommendedToolMode: pack.recommendedToolMode,
     recommendedMcpProfile: pack.recommendedMcpProfile,
     recommendedAllowedNativeTools: pack.recommendedAllowedNativeTools,
-  };
+  }, options, fileSignals);
 }

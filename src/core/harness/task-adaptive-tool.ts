@@ -6,10 +6,12 @@ import {
 import {
   assembleTaskAdaptiveHarness,
   parseTaskAdaptiveHarnessOptions,
+  type TaskAdaptiveHistorySummary,
   type TaskAdaptiveHarnessPack,
 } from "@/core/harness/task-adaptive";
 
 export const TASK_ADAPTIVE_HARNESS_TOOL_NAME = "assemble_task_adaptive_harness";
+export const TASK_HISTORY_SUMMARY_TOOL_NAME = "summarize_task_history_context";
 
 export async function assembleTaskAdaptiveHarnessFromToolArgs(
   args: Record<string, unknown>,
@@ -23,4 +25,28 @@ export async function assembleTaskAdaptiveHarnessFromToolArgs(
   const repoRoot = await resolveRepoRoot(context);
   const options = parseTaskAdaptiveHarnessOptions(args) ?? {};
   return assembleTaskAdaptiveHarness(repoRoot, options);
+}
+
+export async function summarizeTaskHistoryContextFromToolArgs(
+  args: Record<string, unknown>,
+  fallbackWorkspaceId?: string,
+): Promise<{
+  historySummary: TaskAdaptiveHistorySummary | null;
+  featureId?: string;
+  featureName?: string;
+  selectedFiles: string[];
+  matchedFileDetails: TaskAdaptiveHarnessPack["matchedFileDetails"];
+  matchedSessionIds: string[];
+  warnings: string[];
+}> {
+  const pack = await assembleTaskAdaptiveHarnessFromToolArgs(args, fallbackWorkspaceId);
+  return {
+    historySummary: pack.historySummary ?? null,
+    featureId: pack.featureId,
+    featureName: pack.featureName,
+    selectedFiles: [...pack.selectedFiles],
+    matchedFileDetails: pack.matchedFileDetails.map((detail) => ({ ...detail })),
+    matchedSessionIds: [...pack.matchedSessionIds],
+    warnings: [...pack.warnings],
+  };
 }
