@@ -144,7 +144,7 @@ export class AcpProcessManager {
                 ? mcpResult.providerArgs
                 : undefined,
             acpMcpServers: presetId === "codex"
-                ? buildAcpHttpMcpServers(baseConfig) as Array<Record<string, unknown>>
+                ? buildAcpHttpMcpServers(baseConfig) as unknown as Array<Record<string, unknown>>
                 : undefined,
         };
     }
