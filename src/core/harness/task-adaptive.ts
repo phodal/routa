@@ -373,6 +373,40 @@ function mergePreferredStringGroups(
   return merged;
 }
 
+function mergeRequestedFeatureIds(
+  options: TaskAdaptiveHarnessOptions,
+  inferredFeatureIds: readonly string[],
+): string[] {
+  return mergePreferredStringGroups(
+    options.featureId ? [options.featureId] : undefined,
+    options.featureIds,
+    inferredFeatureIds,
+  );
+}
+
+function collectExplicitFeatureIds(options: TaskAdaptiveHarnessOptions): string[] {
+  return mergePreferredStringGroups(
+    options.featureId ? [options.featureId] : undefined,
+    options.featureIds,
+  );
+}
+
+function collectPreferredFeatureFiles(
+  options: TaskAdaptiveHarnessOptions,
+  features: readonly FeatureTreeFeature[],
+  maxFiles: number,
+): string[] {
+  const explicitFeatureIds = new Set(collectExplicitFeatureIds(options));
+  const explicitFeatureFiles = features
+    .filter((feature) => explicitFeatureIds.has(feature.id))
+    .flatMap((feature) => collectFeatureFiles(feature, maxFiles));
+  const inferredFeatureFiles = features
+    .filter((feature) => !explicitFeatureIds.has(feature.id))
+    .flatMap((feature) => collectFeatureFiles(feature, maxFiles));
+
+  return mergePreferredStringGroups(explicitFeatureFiles, inferredFeatureFiles);
+}
+
 function toPosix(value: string): string {
   return value.replace(/\\/g, "/");
 }
@@ -2687,11 +2721,7 @@ async function assembleTaskAdaptiveHarnessRaw(
     fileSignals,
     maxFiles,
   });
-  const requestedFeatureIds = uniqueSorted([
-    ...(options.featureId ? [options.featureId] : []),
-    ...(options.featureIds ?? []),
-    ...inferredSeed.featureIds,
-  ]);
+  const requestedFeatureIds = mergeRequestedFeatureIds(options, inferredSeed.featureIds);
   const features = requestedFeatureIds
     .map((featureId) => featureTree.features.find((item) => item.id === featureId))
     .filter((feature): feature is FeatureTreeFeature => Boolean(feature));
@@ -2706,8 +2736,8 @@ async function assembleTaskAdaptiveHarnessRaw(
   const selectedFiles = trimTo(
     mergePreferredStringGroups(
       options.filePaths,
+      collectPreferredFeatureFiles(options, features, maxFiles),
       inferredSeed.filePaths,
-      features.flatMap((feature) => collectFeatureFiles(feature, maxFiles)),
       inferFilesFromSessionIds(options.historySessionIds, fileSignals, maxFiles),
     ),
     maxFiles,
@@ -2938,19 +2968,15 @@ export async function assembleTaskAdaptiveHarness(
     fileSignals,
     maxFiles,
   });
-  const requestedFeatureIds = uniqueSorted([
-    ...(options.featureId ? [options.featureId] : []),
-    ...(options.featureIds ?? []),
-    ...inferredSeed.featureIds,
-  ]);
+  const requestedFeatureIds = mergeRequestedFeatureIds(options, inferredSeed.featureIds);
   const features = requestedFeatureIds
     .map((featureId) => mergedFeatureTree.find((item) => item.id === featureId))
     .filter((feature): feature is FeatureTreeFeature => Boolean(feature));
   const selectedFiles = trimTo(
     mergePreferredStringGroups(
       options.filePaths,
+      collectPreferredFeatureFiles(options, features, maxFiles),
       inferredSeed.filePaths,
-      features.flatMap((feature) => collectFeatureFiles(feature, maxFiles)),
     ),
     maxFiles,
   );

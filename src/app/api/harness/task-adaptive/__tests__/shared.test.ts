@@ -774,6 +774,72 @@ describe("assembleTaskAdaptiveHarness", () => {
     expect(pack.matchedSessionIds).toContain("session-e");
   });
 
+  it("keeps explicit feature candidates ahead of inferred fallback features", async () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "task-adaptive-feature-order-"));
+    process.env.HOME = tempRoot;
+    process.env.CLAUDE_CONFIG_DIR = "";
+
+    const repoRoot = path.join(tempRoot, "repo");
+    ensureFile(path.join(repoRoot, "src/a2a.ts"), "export const a2a = true;\n");
+    ensureFile(path.join(repoRoot, "src/feature-explorer.ts"), "export const featureExplorer = true;\n");
+
+    writeFeatureSurfaceIndex(repoRoot, {
+      metadata: {
+        features: [
+          {
+            id: "feature-explorer",
+            name: "Feature Explorer",
+            group: "test",
+            summary: "Feature Explorer session analysis",
+            status: "active",
+            pages: ["/workspace/:workspaceId/feature-explorer"],
+            apis: [],
+            sourceFiles: ["src/feature-explorer.ts"],
+            relatedFeatures: [],
+            domainObjects: [],
+          },
+          {
+            id: "a2a",
+            name: "A2A",
+            group: "test",
+            summary: "A2A session analysis bridge",
+            status: "active",
+            pages: [],
+            apis: [],
+            sourceFiles: ["src/a2a.ts"],
+            relatedFeatures: [],
+            domainObjects: [],
+          },
+        ],
+      },
+      pages: [
+        {
+          route: "/workspace/:workspaceId/feature-explorer",
+          title: "Feature Explorer",
+          description: "Session analysis page",
+          sourceFile: "src/feature-explorer.ts",
+        },
+      ],
+      implementationApis: [],
+      warnings: [],
+    });
+
+    const pack = await assembleTaskAdaptiveHarness(repoRoot, {
+      taskLabel: "梳理 Feature Explorer 的 session analysis 上下文",
+      taskType: "analysis",
+      locale: "zh-CN",
+      query: "feature explorer session analysis",
+      featureIds: ["feature-explorer"],
+      routeCandidates: ["/workspace/:workspaceId/feature-explorer"],
+      moduleHints: ["feature-explorer", "session-analysis"],
+    });
+
+    expect(pack.featureId).toBe("feature-explorer");
+    expect(pack.featureName).toBe("Feature Explorer");
+    expect(pack.selectedFiles[0]).toBe("src/feature-explorer.ts");
+    expect(pack.matchReasons).toContain("使用了 1 个显式 feature 候选来扩展源码范围。");
+  });
+
   it("builds file-session context summaries with direct vs adjacent evidence and friction buckets", async () => {
     const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "task-adaptive-file-session-context-"));
     process.env.HOME = tempRoot;
