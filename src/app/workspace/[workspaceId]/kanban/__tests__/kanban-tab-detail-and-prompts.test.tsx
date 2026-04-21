@@ -399,7 +399,7 @@ describe("KanbanCardDetail repository health", () => {
     expect(await screen.findByText("Historical issues")).toBeTruthy();
     expect(screen.getByText("Operation not permitted")).toBeTruthy();
     expect(screen.getByText("Repeated read hotspots")).toBeTruthy();
-    expect(screen.getByText("src/app/page.tsx")).toBeTruthy();
+    expect(screen.getAllByText("src/app/page.tsx").length).toBeGreaterThan(0);
     expect(screen.getByText("session-history")).toBeTruthy();
     expect(screen.getByText(/Matched files: src\/app\/page\.tsx/)).toBeTruthy();
 
@@ -416,6 +416,90 @@ describe("KanbanCardDetail repository health", () => {
       taskLabel: "Recover JIT context",
       query: "Recover JIT context",
       historySessionIds: ["session-trigger", "session-history", "session-lane"],
+      taskType: "planning",
+      locale: "en",
+      role: "CRAFTER",
+    });
+  });
+
+  it("loads JIT Context from search hints even when no history sessions are linked", async () => {
+    desktopAwareFetch.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : String(input);
+      if (url === "/api/harness/task-adaptive") {
+        return new Response(JSON.stringify({
+          summary: "Recovered relevant files from feature search hints.",
+          warnings: [],
+          featureId: "kanban-workflow",
+          featureName: "Kanban Workflow",
+          selectedFiles: [
+            "src/app/workspace/[workspaceId]/kanban/kanban-card-detail.tsx",
+            "src/app/api/tasks/route.ts",
+          ],
+          matchedSessionIds: [],
+          failures: [],
+          repeatedReadFiles: [],
+          sessions: [],
+        }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+
+      throw new Error(`Unexpected desktopAwareFetch: ${url}`);
+    });
+
+    render(
+      <KanbanCardDetail
+        task={{
+          ...createTask("task-jit-hints", "Recover JIT context"),
+          assignedRole: "CRAFTER",
+          codebaseIds: ["repo-a"],
+          contextSearchSpec: {
+            query: "kanban card detail jit context",
+            routeCandidates: ["/workspace/:workspaceId/kanban"],
+            apiCandidates: ["POST /api/tasks"],
+            moduleHints: ["kanban-card-detail"],
+          },
+        }}
+        boardColumns={board.columns}
+        availableProviders={[]}
+        specialists={[]}
+        specialistLanguage="en"
+        codebases={[{
+          id: "repo-a",
+          workspaceId: "workspace-1",
+          repoPath: "/tmp/repo-a",
+          label: "Repo A",
+          isDefault: true,
+          sourceType: "local",
+          createdAt: "2025-01-01T00:00:00.000Z",
+          updatedAt: "2025-01-01T00:00:00.000Z",
+        }]}
+        allCodebaseIds={["repo-a"]}
+        worktreeCache={{}}
+        sessions={[]}
+        fullWidth
+        onPatchTask={vi.fn(async () => createTask("task-jit-hints", "Recover JIT context"))}
+        onRetryTrigger={vi.fn()}
+        onDelete={vi.fn()}
+        onRefresh={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "JIT Context" }));
+    fireEvent.click(screen.getByRole("button", { name: "Show JIT Context" }));
+
+    expect(await screen.findByText("Matched files")).toBeTruthy();
+    expect(screen.getByText("src/app/workspace/[workspaceId]/kanban/kanban-card-detail.tsx")).toBeTruthy();
+    expect(screen.getByText("src/app/api/tasks/route.ts")).toBeTruthy();
+
+    const requestBody = JSON.parse(String(desktopAwareFetch.mock.calls[0]?.[1]?.body));
+    expect(requestBody.taskAdaptiveHarness).toEqual({
+      taskLabel: "Recover JIT context",
+      query: "kanban card detail jit context",
+      routeCandidates: ["/workspace/:workspaceId/kanban"],
+      apiCandidates: ["POST /api/tasks"],
+      moduleHints: ["kanban-card-detail"],
       taskType: "planning",
       locale: "en",
       role: "CRAFTER",

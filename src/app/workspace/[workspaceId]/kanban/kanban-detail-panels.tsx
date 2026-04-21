@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import type { AcpTaskAdaptiveHarnessOptions } from "@/client/acp-client";
 import { MarkdownViewer } from "@/client/components/markdown/markdown-viewer";
 import { desktopAwareFetch, toErrorMessage } from "@/client/utils/diagnostics";
 import { useTranslation } from "@/i18n";
@@ -72,6 +73,20 @@ function formatVerificationVerdictLabel(
     default:
       return t.kanbanDetail.reviewFeedback;
   }
+}
+
+function hasTaskAdaptiveSearchHints(options: AcpTaskAdaptiveHarnessOptions): boolean {
+  return Boolean(
+    options.query?.trim()
+    || options.featureId?.trim()
+    || (options.featureIds?.length ?? 0) > 0
+    || (options.filePaths?.length ?? 0) > 0
+    || (options.routeCandidates?.length ?? 0) > 0
+    || (options.apiCandidates?.length ?? 0) > 0
+    || (options.historySessionIds?.length ?? 0) > 0
+    || (options.moduleHints?.length ?? 0) > 0
+    || (options.symptomHints?.length ?? 0) > 0
+  );
 }
 
 function SummaryGridItem({
@@ -403,9 +418,10 @@ export function JitContextPanel({
     }),
     [specialistLanguage, task],
   );
-  const hasHistorySessions = (harnessOptions.historySessionIds?.length ?? 0) > 0;
+  const canLoadContext = hasTaskAdaptiveSearchHints(harnessOptions);
   const historicalIssueCount = (pack?.failures.length ?? 0) + (pack?.repeatedReadFiles.length ?? 0);
   const relatedSessionCount = pack?.sessions.length ?? 0;
+  const matchedFileCount = pack?.selectedFiles.length ?? 0;
   const historySessionKey = (harnessOptions.historySessionIds ?? []).join("|");
 
   useEffect(() => {
@@ -428,7 +444,7 @@ export function JitContextPanel({
       return;
     }
 
-    if (!hasHistorySessions) {
+    if (!canLoadContext) {
       setPack(null);
       setLoaded(true);
       setError(null);
@@ -488,14 +504,15 @@ export function JitContextPanel({
               <>
                 <span>{t.kanbanDetail.historicalIssues}: {historicalIssueCount}</span>
                 <span>{t.kanbanDetail.relatedSessions}: {relatedSessionCount}</span>
+                <span>{t.kanbanDetail.matchedFiles}: {matchedFileCount}</span>
               </>
             ) : (
-              <span>{hasHistorySessions ? t.kanbanDetail.jitContextHint : t.kanbanDetail.jitContextNoHistorySessions}</span>
+              <span>{canLoadContext ? t.kanbanDetail.jitContextHint : t.kanbanDetail.jitContextNoHistorySessions}</span>
             )}
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {expanded && hasHistorySessions && loaded ? (
+          {expanded && canLoadContext && loaded ? (
             <button
               type="button"
               onClick={() => {
@@ -527,11 +544,11 @@ export function JitContextPanel({
             <div className="rounded-xl border border-rose-200/80 bg-rose-50/80 px-3 py-2.5 text-sm text-rose-700 dark:border-rose-900/50 dark:bg-rose-900/10 dark:text-rose-200">
               {error}
             </div>
-          ) : !hasHistorySessions ? (
+          ) : !canLoadContext ? (
             <div className="border-b border-slate-200/70 px-1 pb-2 text-sm text-slate-500 dark:border-slate-700/70 dark:text-slate-400">
               {t.kanbanDetail.jitContextNoHistorySessions}
             </div>
-          ) : !pack || (pack.failures.length === 0 && pack.repeatedReadFiles.length === 0 && pack.sessions.length === 0) ? (
+          ) : !pack || (pack.failures.length === 0 && pack.repeatedReadFiles.length === 0 && pack.sessions.length === 0 && pack.selectedFiles.length === 0) ? (
             <div className="border-b border-slate-200/70 px-1 pb-2 text-sm text-slate-500 dark:border-slate-700/70 dark:text-slate-400">
               {t.kanbanDetail.noJitContext}
             </div>
@@ -586,6 +603,24 @@ export function JitContextPanel({
                   </div>
                 ) : null}
               </div>
+
+              {pack.selectedFiles.length > 0 ? (
+                <div className="rounded-xl border border-slate-200/80 bg-slate-50/70 px-3 py-2.5 dark:border-slate-700/70 dark:bg-slate-900/20">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">
+                    {t.kanbanDetail.matchedFiles}
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {pack.selectedFiles.map((filePath) => (
+                      <span
+                        key={filePath}
+                        className="rounded-full border border-slate-200 bg-white px-2 py-0.5 font-mono text-[11px] text-slate-600 dark:border-slate-700 dark:bg-slate-950/60 dark:text-slate-300"
+                      >
+                        {filePath}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
 
               {pack.sessions.length > 0 ? (
                 <div className="space-y-2">
