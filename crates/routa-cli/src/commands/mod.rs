@@ -12,6 +12,7 @@ pub mod feature_tree;
 pub mod fitness;
 pub mod graph;
 pub mod harness;
+pub mod harness_budget;
 pub mod kanban;
 pub mod prompt;
 pub mod review;

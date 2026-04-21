@@ -6,6 +6,8 @@ use routa_core::harness_template;
 use serde_json::json;
 use std::path::{Path, PathBuf};
 
+use crate::commands::harness_budget::{run_budget, FileBudgetArgs};
+
 use self::engineering::{
     evaluate_harness_engineering, format_harness_engineering_report,
     persist_harness_engineering_report, HarnessEngineeringOptions, DEFAULT_REPORT_RELATIVE_PATH,
@@ -17,6 +19,8 @@ pub enum HarnessAction {
     Detect(HarnessDetectArgs),
     /// Evaluate harness engineering readiness and emit dry-run evolution guidance
     Evolve(HarnessEvolveArgs),
+    /// Enforce long-file budgets and frozen hotspot ceilings
+    Budget(FileBudgetArgs),
     /// Manage harness templates
     Template {
         #[command(subcommand)]
@@ -170,6 +174,10 @@ pub async fn run(db_path: &str, action: HarnessAction) -> Result<(), String> {
     match action {
         HarnessAction::Detect(args) => run_detect(&args),
         HarnessAction::Evolve(args) => run_evolve(db_path, &args).await,
+        HarnessAction::Budget(args) => {
+            let repo_root = resolve_repo_root(args.repo_root.as_deref())?;
+            run_budget(&args, &repo_root)
+        }
         HarnessAction::Template { action } => run_template(action),
     }
 }

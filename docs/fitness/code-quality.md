@@ -12,14 +12,14 @@ metrics:
   # ══════════════════════════════════════════════════════════════
   
   - name: legacy_hotspot_budget_guard
-    command: entrix hook file-length --config docs/fitness/file_budgets.json --changed-only --base "${ROUTA_FITNESS_CHANGED_BASE:-HEAD}" --overrides-only
+    command: cargo run -q -p routa-cli -- harness budget --config docs/fitness/file_budgets.json --changed-only --base "${ROUTA_FITNESS_CHANGED_BASE:-HEAD}" --overrides-only
     pattern: "file_budget_violations: 0"
     hard_gate: true
     tier: fast
     description: "已登记的历史热点文件必须满足冻结预算，只允许缩小不允许继续膨胀"
 
   - name: file_line_limit
-    command: entrix hook file-length --config docs/fitness/file_budgets.json --changed-only --base "${ROUTA_FITNESS_CHANGED_BASE:-HEAD}"
+    command: cargo run -q -p routa-cli -- harness budget --config docs/fitness/file_budgets.json --changed-only --base "${ROUTA_FITNESS_CHANGED_BASE:-HEAD}"
     pattern: "file_budget_violations: 0"
     hard_gate: false
     tier: fast
@@ -244,8 +244,8 @@ metrics:
 
 | 检测项 | 阈值 | Hard Gate | 工具 |
 |--------|------|-----------|------|
-| 文件行数 | 新文件 ≤1600 行，历史超标文件按 HEAD 基线冻结 | ❌ | `python -m entrix.file_budgets` |
-| 历史热点守护 | 已登记热点只允许缩小不允许继续膨胀 | ✅ | `python -m entrix.file_budgets --overrides-only` |
+| 文件行数 | 新文件 ≤1600 行，历史超标文件按 HEAD 基线冻结 | ❌ | `cargo run -q -p routa-cli -- harness budget` |
+| 历史热点守护 | 已登记热点只允许缩小不允许继续膨胀 | ✅ | `cargo run -q -p routa-cli -- harness budget --overrides-only` |
 | 函数行数 | ≤100 行 | ❌ | grep + 人工 |
 | 重复代码 | 变更文件不新增大块 clone | ❌ | jscpd |
 | 结构坏味道 | 变更文件中结构型包装重复 = 0 | ❌ | ast-grep |

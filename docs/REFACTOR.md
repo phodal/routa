@@ -17,8 +17,8 @@ Run these before changing code:
 
 ```bash
 entrix analyze long-file --json
-entrix hook file-length --config docs/fitness/file_budgets.json --changed-only --base "${ROUTA_FITNESS_CHANGED_BASE:-HEAD}"
-entrix hook file-length --config docs/fitness/file_budgets.json --changed-only --base "${ROUTA_FITNESS_CHANGED_BASE:-HEAD}" --overrides-only
+cargo run -q -p routa-cli -- harness budget --config docs/fitness/file_budgets.json --changed-only --base "${ROUTA_FITNESS_CHANGED_BASE:-HEAD}"
+cargo run -q -p routa-cli -- harness budget --config docs/fitness/file_budgets.json --changed-only --base "${ROUTA_FITNESS_CHANGED_BASE:-HEAD}" --overrides-only
 ```
 
 Triage order:
