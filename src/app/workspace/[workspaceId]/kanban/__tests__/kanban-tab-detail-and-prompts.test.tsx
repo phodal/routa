@@ -5,6 +5,7 @@ import { KanbanCardDetail } from "../kanban-card-detail";
 import { KanbanCardActivityPanel } from "../kanban-card-activity";
 import { KanbanMoveBlockedModal } from "../kanban-tab-modals";
 import { buildKanbanSessionRestorePrompt } from "../kanban-tab-panels";
+import { buildKanbanMoveBlockedRemediationPrompt } from "../i18n/kanban-task-agent";
 import type { KanbanBoardInfo, TaskInfo } from "../../types";
 import type { UseAcpActions, UseAcpState } from "@/client/hooks/use-acp";
 import { resetDesktopAwareFetchToGlobalFetch } from "./test-utils";
@@ -117,6 +118,39 @@ describe("kanban session restore prompt", () => {
     expect(prompt).not.toContain("Starting Routa backend server");
     expect(prompt).not.toContain("test result: ok");
     expect(prompt).not.toContain("running 100 tests");
+  });
+});
+
+describe("kanban move-blocked remediation prompt", () => {
+  it("requires moving the card after repairing story-readiness fields", () => {
+    const prompt = buildKanbanMoveBlockedRemediationPrompt({
+      workspaceId: "workspace-1",
+      boardId: "board-1",
+      cardId: "card-1",
+      cardTitle: "Repair story readiness",
+      targetColumnId: "review",
+      repoPath: "/tmp/repo",
+      missingFields: ["scope", "verification plan"],
+    });
+
+    expect(prompt).toContain("you must call move_card to move card card-1 into review");
+    expect(prompt).not.toContain("Do not move the card");
+  });
+
+  it("requires the Chinese remediation agent to move the card after repair", () => {
+    const prompt = buildKanbanMoveBlockedRemediationPrompt({
+      workspaceId: "workspace-1",
+      boardId: "board-1",
+      cardId: "card-1",
+      cardTitle: "修复 story-readiness",
+      targetColumnId: "review",
+      repoPath: "/tmp/repo",
+      missingFields: ["scope", "verification plan"],
+      language: "zh-CN",
+    });
+
+    expect(prompt).toContain("必须调用 move_card，把 card card-1 移动到 review");
+    expect(prompt).not.toContain("不要移动卡片");
   });
 });
 
@@ -380,6 +414,7 @@ describe("KanbanCardDetail repository health", () => {
     const requestBody = JSON.parse(String(desktopAwareFetch.mock.calls[0]?.[1]?.body));
     expect(requestBody.taskAdaptiveHarness).toEqual({
       taskLabel: "Recover JIT context",
+      query: "Recover JIT context",
       historySessionIds: ["session-trigger", "session-history", "session-lane"],
       taskType: "planning",
       locale: "en",
