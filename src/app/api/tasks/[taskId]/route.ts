@@ -3,7 +3,10 @@ import { monitorApiRoute } from "@/core/http/api-route-observability";
 import { getRoutaSystem } from "@/core/routa-system";
 import {
   hydrateTaskComments,
+  mergeTaskJitContextAnalysis,
   parseTaskContextSearchSpec,
+  parseTaskJitContextAnalysis,
+  parseTaskJitContextSnapshot,
   TaskPriority,
   TaskStatus,
   VerificationVerdict,
@@ -206,6 +209,7 @@ export async function PATCH(
     retryProviderId?: string;
     codebaseIds?: string[];
     worktreeId?: string | null;
+    jitContextAnalysis?: unknown;
   };
   try {
     body = await request.json() as Partial<Task> & {
@@ -247,6 +251,19 @@ export async function PATCH(
     nextTask.contextSearchSpec = body.contextSearchSpec === null
       ? undefined
       : parseTaskContextSearchSpec(body.contextSearchSpec);
+  }
+  if ("jitContextSnapshot" in body) {
+    nextTask.jitContextSnapshot = body.jitContextSnapshot === null
+      ? undefined
+      : parseTaskJitContextSnapshot(body.jitContextSnapshot);
+  }
+  if ("jitContextAnalysis" in body) {
+    nextTask.jitContextSnapshot = body.jitContextAnalysis === null
+      ? mergeTaskJitContextAnalysis(nextTask.jitContextSnapshot, null)
+      : mergeTaskJitContextAnalysis(
+          nextTask.jitContextSnapshot,
+          parseTaskJitContextAnalysis(body.jitContextAnalysis),
+        );
   }
   if (body.worktreeId === null) nextTask.worktreeId = undefined;
   if (typeof body.worktreeId === "string") nextTask.worktreeId = body.worktreeId;

@@ -14,6 +14,7 @@ import {
   createTask,
   hydrateTaskComments,
   parseTaskContextSearchSpec,
+  parseTaskJitContextSnapshot,
   Task,
   TaskStatus,
   TaskPriority,
@@ -264,6 +265,7 @@ export async function POST(request: NextRequest) {
     repoPath,
     codebaseIds,
     contextSearchSpec,
+    jitContextSnapshot,
     githubId,
     githubNumber,
     githubUrl,
@@ -309,6 +311,9 @@ export async function POST(request: NextRequest) {
   const normalizedContextSearchSpec = contextSearchSpec === null
     ? undefined
     : parseTaskContextSearchSpec(contextSearchSpec);
+  const normalizedJitContextSnapshot = jitContextSnapshot === null
+    ? undefined
+    : parseTaskJitContextSnapshot(jitContextSnapshot);
   const normalizedGitHubId = typeof githubId === "string" && githubId.trim()
     ? githubId.trim()
     : undefined;
@@ -436,6 +441,7 @@ export async function POST(request: NextRequest) {
     creationSource: normalizedCreationSource,
     codebaseIds: normalizedCodebaseIds,
     contextSearchSpec: normalizedContextSearchSpec,
+    jitContextSnapshot: normalizedJitContextSnapshot,
   });
 
   await system.taskStore.save(task);
@@ -557,6 +563,7 @@ async function serializeTask(
     creationSource: task.creationSource,
     codebaseIds: task.codebaseIds ?? [],
     contextSearchSpec: task.contextSearchSpec,
+    jitContextSnapshot: task.jitContextSnapshot,
     worktreeId: task.worktreeId,
     completionSummary: task.completionSummary,
     ...(task.verificationVerdict != null && { verificationVerdict: task.verificationVerdict }),

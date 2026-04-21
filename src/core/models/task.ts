@@ -217,6 +217,107 @@ export interface TaskContextSearchSpec {
   symptomHints?: string[];
 }
 
+export type TaskJitContextMatchConfidence = "high" | "medium" | "low";
+
+export interface TaskJitContextFailureSignal {
+  provider?: string;
+  sessionId: string;
+  message: string;
+  toolName: string;
+  command?: string;
+}
+
+export interface TaskJitContextMatchedFileDetail {
+  filePath: string;
+  changes: number;
+  sessions: number;
+  updatedAt: string;
+}
+
+export interface TaskJitContextSessionSummary {
+  provider: string;
+  sessionId: string;
+  updatedAt: string;
+  promptSnippet: string;
+  matchedFiles: string[];
+  matchedChangedFiles: string[];
+  matchedReadFiles: string[];
+  matchedWrittenFiles: string[];
+  repeatedReadFiles: string[];
+  toolNames: string[];
+  failedReadSignals: TaskJitContextFailureSignal[];
+  resumeCommand?: string;
+}
+
+export interface TaskJitContextSeedSessionSummary {
+  provider: string;
+  sessionId: string;
+  updatedAt: string;
+  promptSnippet: string;
+  touchedFiles: string[];
+  repeatedReadFiles: string[];
+  toolNames: string[];
+  failedReadSignals: TaskJitContextFailureSignal[];
+}
+
+export interface TaskJitContextHistorySummary {
+  overview: string;
+  seedSessionCount: number;
+  recoveredSessionCount: number;
+  matchedFileCount: number;
+  seedSessions: TaskJitContextSeedSessionSummary[];
+}
+
+export interface TaskJitContextAnalysisSessionLead {
+  sessionId: string;
+  provider?: string;
+  reason: string;
+}
+
+export interface TaskJitContextAnalysisIssues {
+  input: string[];
+  location: string[];
+  tooling: string[];
+}
+
+export interface TaskJitContextAnalysis {
+  updatedAt?: string;
+  summary: string;
+  sessionLayers?: {
+    seedSessions: string[];
+    matchedSessions: string[];
+    explanation?: string;
+  };
+  issues: TaskJitContextAnalysisIssues;
+  topFiles: string[];
+  topSessions: TaskJitContextAnalysisSessionLead[];
+  topLeads: string[];
+  contextToInject: string[];
+  reusablePrompts: string[];
+  recommendedContextSearchSpec?: TaskContextSearchSpec;
+  evidence: string[];
+  inference: string[];
+}
+
+export interface TaskJitContextSnapshot {
+  generatedAt: string;
+  repoPath?: string;
+  featureId?: string;
+  featureName?: string;
+  summary: string;
+  matchConfidence: TaskJitContextMatchConfidence;
+  matchReasons: string[];
+  warnings: string[];
+  matchedFileDetails: TaskJitContextMatchedFileDetail[];
+  matchedSessionIds: string[];
+  failures: TaskJitContextFailureSignal[];
+  repeatedReadFiles: string[];
+  sessions: TaskJitContextSessionSummary[];
+  historySummary?: TaskJitContextHistorySummary;
+  recommendedContextSearchSpec?: TaskContextSearchSpec;
+  analysis?: TaskJitContextAnalysis;
+}
+
 function normalizeTaskContextSearchText(value: string | undefined | null): string | undefined {
   if (typeof value !== "string") {
     return undefined;
@@ -294,6 +395,399 @@ export function parseTaskContextSearchSpec(value: unknown): TaskContextSearchSpe
   });
 }
 
+function normalizeTaskJitContextFailureSignal(
+  value: TaskJitContextFailureSignal | null | undefined,
+): TaskJitContextFailureSignal | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  const sessionId = normalizeTaskContextSearchText(value.sessionId);
+  const message = normalizeTaskContextSearchText(value.message);
+  const toolName = normalizeTaskContextSearchText(value.toolName);
+  if (!sessionId || !message || !toolName) {
+    return undefined;
+  }
+
+  return {
+    provider: normalizeTaskContextSearchText(value.provider),
+    sessionId,
+    message,
+    toolName,
+    command: normalizeTaskContextSearchText(value.command),
+  };
+}
+
+function normalizeTaskJitContextMatchedFileDetail(
+  value: TaskJitContextMatchedFileDetail | null | undefined,
+): TaskJitContextMatchedFileDetail | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  const filePath = normalizeTaskContextSearchText(value.filePath);
+  const updatedAt = normalizeTaskContextSearchText(value.updatedAt);
+  if (!filePath) {
+    return undefined;
+  }
+
+  return {
+    filePath,
+    changes: typeof value.changes === "number" && Number.isFinite(value.changes) ? value.changes : 0,
+    sessions: typeof value.sessions === "number" && Number.isFinite(value.sessions) ? value.sessions : 0,
+    updatedAt: updatedAt ?? "",
+  };
+}
+
+function normalizeTaskJitContextSessionSummary(
+  value: TaskJitContextSessionSummary | null | undefined,
+): TaskJitContextSessionSummary | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  const provider = normalizeTaskContextSearchText(value.provider);
+  const sessionId = normalizeTaskContextSearchText(value.sessionId);
+  const updatedAt = normalizeTaskContextSearchText(value.updatedAt);
+  const promptSnippet = normalizeTaskContextSearchText(value.promptSnippet);
+  if (!provider || !sessionId || !updatedAt || !promptSnippet) {
+    return undefined;
+  }
+
+  return {
+    provider,
+    sessionId,
+    updatedAt,
+    promptSnippet,
+    matchedFiles: normalizeTaskContextSearchItems(value.matchedFiles) ?? [],
+    matchedChangedFiles: normalizeTaskContextSearchItems(value.matchedChangedFiles) ?? [],
+    matchedReadFiles: normalizeTaskContextSearchItems(value.matchedReadFiles) ?? [],
+    matchedWrittenFiles: normalizeTaskContextSearchItems(value.matchedWrittenFiles) ?? [],
+    repeatedReadFiles: normalizeTaskContextSearchItems(value.repeatedReadFiles) ?? [],
+    toolNames: normalizeTaskContextSearchItems(value.toolNames) ?? [],
+    failedReadSignals: (value.failedReadSignals ?? [])
+      .map((entry) => normalizeTaskJitContextFailureSignal(entry))
+      .filter((entry): entry is TaskJitContextFailureSignal => Boolean(entry)),
+    resumeCommand: normalizeTaskContextSearchText(value.resumeCommand),
+  };
+}
+
+function normalizeTaskJitContextSeedSessionSummary(
+  value: TaskJitContextSeedSessionSummary | null | undefined,
+): TaskJitContextSeedSessionSummary | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  const provider = normalizeTaskContextSearchText(value.provider);
+  const sessionId = normalizeTaskContextSearchText(value.sessionId);
+  const updatedAt = normalizeTaskContextSearchText(value.updatedAt);
+  const promptSnippet = normalizeTaskContextSearchText(value.promptSnippet);
+  if (!provider || !sessionId || !updatedAt || !promptSnippet) {
+    return undefined;
+  }
+
+  return {
+    provider,
+    sessionId,
+    updatedAt,
+    promptSnippet,
+    touchedFiles: normalizeTaskContextSearchItems(value.touchedFiles) ?? [],
+    repeatedReadFiles: normalizeTaskContextSearchItems(value.repeatedReadFiles) ?? [],
+    toolNames: normalizeTaskContextSearchItems(value.toolNames) ?? [],
+    failedReadSignals: (value.failedReadSignals ?? [])
+      .map((entry) => normalizeTaskJitContextFailureSignal(entry))
+      .filter((entry): entry is TaskJitContextFailureSignal => Boolean(entry)),
+  };
+}
+
+function normalizeTaskJitContextHistorySummary(
+  value: TaskJitContextHistorySummary | null | undefined,
+): TaskJitContextHistorySummary | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  const overview = normalizeTaskContextSearchText(value.overview);
+  if (!overview) {
+    return undefined;
+  }
+
+  return {
+    overview,
+    seedSessionCount: typeof value.seedSessionCount === "number" && Number.isFinite(value.seedSessionCount)
+      ? value.seedSessionCount
+      : 0,
+    recoveredSessionCount: typeof value.recoveredSessionCount === "number" && Number.isFinite(value.recoveredSessionCount)
+      ? value.recoveredSessionCount
+      : 0,
+    matchedFileCount: typeof value.matchedFileCount === "number" && Number.isFinite(value.matchedFileCount)
+      ? value.matchedFileCount
+      : 0,
+    seedSessions: (value.seedSessions ?? [])
+      .map((entry) => normalizeTaskJitContextSeedSessionSummary(entry))
+      .filter((entry): entry is TaskJitContextSeedSessionSummary => Boolean(entry)),
+  };
+}
+
+function normalizeTaskJitContextAnalysisSessionLead(
+  value: TaskJitContextAnalysisSessionLead | null | undefined,
+): TaskJitContextAnalysisSessionLead | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  const sessionId = normalizeTaskContextSearchText(value.sessionId);
+  const reason = normalizeTaskContextSearchText(value.reason);
+  if (!sessionId || !reason) {
+    return undefined;
+  }
+
+  return {
+    sessionId,
+    provider: normalizeTaskContextSearchText(value.provider),
+    reason,
+  };
+}
+
+function normalizeTaskJitContextAnalysisIssues(
+  value: TaskJitContextAnalysisIssues | null | undefined,
+): TaskJitContextAnalysisIssues {
+  return {
+    input: normalizeTaskContextSearchItems(value?.input) ?? [],
+    location: normalizeTaskContextSearchItems(value?.location) ?? [],
+    tooling: normalizeTaskContextSearchItems(value?.tooling) ?? [],
+  };
+}
+
+export function normalizeTaskJitContextAnalysis(
+  value: TaskJitContextAnalysis | null | undefined,
+): TaskJitContextAnalysis | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  const summary = normalizeTaskContextSearchText(value.summary);
+  if (!summary) {
+    return undefined;
+  }
+
+  const updatedAt = normalizeTaskContextSearchText(value.updatedAt) ?? new Date().toISOString();
+  const sessionLayerExplanation = normalizeTaskContextSearchText(value.sessionLayers?.explanation);
+  const sessionLayers = (
+    (value.sessionLayers?.seedSessions?.length ?? 0) > 0
+      || (value.sessionLayers?.matchedSessions?.length ?? 0) > 0
+      || Boolean(sessionLayerExplanation)
+  )
+    ? {
+        seedSessions: normalizeTaskContextSearchItems(value.sessionLayers?.seedSessions) ?? [],
+        matchedSessions: normalizeTaskContextSearchItems(value.sessionLayers?.matchedSessions) ?? [],
+        explanation: sessionLayerExplanation,
+      }
+    : undefined;
+
+  return {
+    updatedAt,
+    summary,
+    sessionLayers,
+    issues: normalizeTaskJitContextAnalysisIssues(value.issues),
+    topFiles: normalizeTaskContextSearchItems(value.topFiles) ?? [],
+    topSessions: (value.topSessions ?? [])
+      .map((entry) => normalizeTaskJitContextAnalysisSessionLead(entry))
+      .filter((entry): entry is TaskJitContextAnalysisSessionLead => Boolean(entry)),
+    topLeads: normalizeTaskContextSearchItems(value.topLeads) ?? [],
+    contextToInject: normalizeTaskContextSearchItems(value.contextToInject) ?? [],
+    reusablePrompts: normalizeTaskContextSearchItems(value.reusablePrompts) ?? [],
+    recommendedContextSearchSpec: normalizeTaskContextSearchSpec(value.recommendedContextSearchSpec),
+    evidence: normalizeTaskContextSearchItems(value.evidence) ?? [],
+    inference: normalizeTaskContextSearchItems(value.inference) ?? [],
+  };
+}
+
+export function normalizeTaskJitContextSnapshot(
+  value: TaskJitContextSnapshot | null | undefined,
+): TaskJitContextSnapshot | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  const generatedAt = normalizeTaskContextSearchText(value.generatedAt);
+  const summary = normalizeTaskContextSearchText(value.summary);
+  if (!generatedAt || !summary) {
+    return undefined;
+  }
+
+  const matchConfidence: TaskJitContextMatchConfidence = value.matchConfidence === "low"
+    || value.matchConfidence === "medium"
+    || value.matchConfidence === "high"
+    ? value.matchConfidence
+    : "low";
+
+  const normalized: TaskJitContextSnapshot = {
+    generatedAt,
+    repoPath: normalizeTaskContextSearchText(value.repoPath),
+    featureId: normalizeTaskContextSearchText(value.featureId),
+    featureName: normalizeTaskContextSearchText(value.featureName),
+    summary,
+    matchConfidence,
+    matchReasons: normalizeTaskContextSearchItems(value.matchReasons) ?? [],
+    warnings: normalizeTaskContextSearchItems(value.warnings) ?? [],
+    matchedFileDetails: (value.matchedFileDetails ?? [])
+      .map((entry) => normalizeTaskJitContextMatchedFileDetail(entry))
+      .filter((entry): entry is TaskJitContextMatchedFileDetail => Boolean(entry)),
+    matchedSessionIds: normalizeTaskContextSearchItems(value.matchedSessionIds) ?? [],
+    failures: (value.failures ?? [])
+      .map((entry) => normalizeTaskJitContextFailureSignal(entry))
+      .filter((entry): entry is TaskJitContextFailureSignal => Boolean(entry)),
+    repeatedReadFiles: normalizeTaskContextSearchItems(value.repeatedReadFiles) ?? [],
+    sessions: (value.sessions ?? [])
+      .map((entry) => normalizeTaskJitContextSessionSummary(entry))
+      .filter((entry): entry is TaskJitContextSessionSummary => Boolean(entry)),
+    historySummary: normalizeTaskJitContextHistorySummary(value.historySummary),
+    recommendedContextSearchSpec: normalizeTaskContextSearchSpec(value.recommendedContextSearchSpec),
+    analysis: normalizeTaskJitContextAnalysis(value.analysis),
+  };
+
+  return normalized;
+}
+
+export function parseTaskJitContextAnalysis(value: unknown): TaskJitContextAnalysis | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+
+  const candidate = value as Record<string, unknown>;
+  return normalizeTaskJitContextAnalysis({
+    updatedAt: typeof candidate.updatedAt === "string" ? candidate.updatedAt : "",
+    summary: typeof candidate.summary === "string" ? candidate.summary : "",
+    sessionLayers: candidate.sessionLayers && typeof candidate.sessionLayers === "object" && !Array.isArray(candidate.sessionLayers)
+      ? {
+          seedSessions: Array.isArray((candidate.sessionLayers as Record<string, unknown>).seedSessions)
+            ? ((candidate.sessionLayers as Record<string, unknown>).seedSessions as unknown[]).filter((item): item is string => typeof item === "string")
+            : [],
+          matchedSessions: Array.isArray((candidate.sessionLayers as Record<string, unknown>).matchedSessions)
+            ? ((candidate.sessionLayers as Record<string, unknown>).matchedSessions as unknown[]).filter((item): item is string => typeof item === "string")
+            : [],
+          explanation: typeof (candidate.sessionLayers as Record<string, unknown>).explanation === "string"
+            ? (candidate.sessionLayers as Record<string, unknown>).explanation as string
+            : undefined,
+        }
+      : undefined,
+    issues: candidate.issues && typeof candidate.issues === "object" && !Array.isArray(candidate.issues)
+      ? {
+          input: Array.isArray((candidate.issues as Record<string, unknown>).input)
+            ? ((candidate.issues as Record<string, unknown>).input as unknown[]).filter((item): item is string => typeof item === "string")
+            : [],
+          location: Array.isArray((candidate.issues as Record<string, unknown>).location)
+            ? ((candidate.issues as Record<string, unknown>).location as unknown[]).filter((item): item is string => typeof item === "string")
+            : [],
+          tooling: Array.isArray((candidate.issues as Record<string, unknown>).tooling)
+            ? ((candidate.issues as Record<string, unknown>).tooling as unknown[]).filter((item): item is string => typeof item === "string")
+            : [],
+        }
+      : { input: [], location: [], tooling: [] },
+    topFiles: Array.isArray(candidate.topFiles)
+      ? candidate.topFiles.filter((item): item is string => typeof item === "string")
+      : [],
+    topSessions: Array.isArray(candidate.topSessions)
+      ? candidate.topSessions as TaskJitContextAnalysisSessionLead[]
+      : [],
+    topLeads: Array.isArray(candidate.topLeads)
+      ? candidate.topLeads.filter((item): item is string => typeof item === "string")
+      : [],
+    contextToInject: Array.isArray(candidate.contextToInject)
+      ? candidate.contextToInject.filter((item): item is string => typeof item === "string")
+      : [],
+    reusablePrompts: Array.isArray(candidate.reusablePrompts)
+      ? candidate.reusablePrompts.filter((item): item is string => typeof item === "string")
+      : [],
+    recommendedContextSearchSpec: parseTaskContextSearchSpec(candidate.recommendedContextSearchSpec),
+    evidence: Array.isArray(candidate.evidence)
+      ? candidate.evidence.filter((item): item is string => typeof item === "string")
+      : [],
+    inference: Array.isArray(candidate.inference)
+      ? candidate.inference.filter((item): item is string => typeof item === "string")
+      : [],
+  });
+}
+
+export function parseTaskJitContextSnapshot(value: unknown): TaskJitContextSnapshot | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+
+  const candidate = value as Record<string, unknown>;
+  return normalizeTaskJitContextSnapshot({
+    generatedAt: typeof candidate.generatedAt === "string" ? candidate.generatedAt : "",
+    repoPath: typeof candidate.repoPath === "string" ? candidate.repoPath : undefined,
+    featureId: typeof candidate.featureId === "string" ? candidate.featureId : undefined,
+    featureName: typeof candidate.featureName === "string" ? candidate.featureName : undefined,
+    summary: typeof candidate.summary === "string" ? candidate.summary : "",
+    matchConfidence: candidate.matchConfidence as TaskJitContextMatchConfidence,
+    matchReasons: Array.isArray(candidate.matchReasons)
+      ? candidate.matchReasons.filter((item): item is string => typeof item === "string")
+      : [],
+    warnings: Array.isArray(candidate.warnings)
+      ? candidate.warnings.filter((item): item is string => typeof item === "string")
+      : [],
+    matchedFileDetails: Array.isArray(candidate.matchedFileDetails)
+      ? candidate.matchedFileDetails as TaskJitContextMatchedFileDetail[]
+      : [],
+    matchedSessionIds: Array.isArray(candidate.matchedSessionIds)
+      ? candidate.matchedSessionIds.filter((item): item is string => typeof item === "string")
+      : [],
+    failures: Array.isArray(candidate.failures)
+      ? candidate.failures as TaskJitContextFailureSignal[]
+      : [],
+    repeatedReadFiles: Array.isArray(candidate.repeatedReadFiles)
+      ? candidate.repeatedReadFiles.filter((item): item is string => typeof item === "string")
+      : [],
+    sessions: Array.isArray(candidate.sessions)
+      ? candidate.sessions as TaskJitContextSessionSummary[]
+      : [],
+    historySummary: candidate.historySummary as TaskJitContextHistorySummary | undefined,
+    recommendedContextSearchSpec: parseTaskContextSearchSpec(candidate.recommendedContextSearchSpec),
+    analysis: parseTaskJitContextAnalysis(candidate.analysis),
+  });
+}
+
+export function mergeTaskJitContextAnalysis(
+  snapshot: TaskJitContextSnapshot | null | undefined,
+  analysis: TaskJitContextAnalysis | null | undefined,
+): TaskJitContextSnapshot | undefined {
+  const normalizedAnalysis = normalizeTaskJitContextAnalysis(analysis);
+  const normalizedSnapshot = normalizeTaskJitContextSnapshot(snapshot);
+
+  if (!normalizedSnapshot) {
+    if (!normalizedAnalysis) {
+      return undefined;
+    }
+
+    return normalizeTaskJitContextSnapshot({
+      generatedAt: normalizedAnalysis.updatedAt ?? new Date().toISOString(),
+      summary: normalizedAnalysis.summary,
+      matchConfidence: "low",
+      matchReasons: [],
+      warnings: [],
+      matchedFileDetails: [],
+      matchedSessionIds: [],
+      failures: [],
+      repeatedReadFiles: [],
+      sessions: [],
+      recommendedContextSearchSpec: normalizedAnalysis.recommendedContextSearchSpec,
+      analysis: normalizedAnalysis,
+    });
+  }
+
+  return normalizeTaskJitContextSnapshot({
+    ...normalizedSnapshot,
+    recommendedContextSearchSpec:
+      normalizedAnalysis?.recommendedContextSearchSpec
+      ?? normalizedSnapshot.recommendedContextSearchSpec,
+    analysis: normalizedAnalysis,
+  });
+}
+
 export interface Task {
   id: string;
   title: string;
@@ -347,6 +841,8 @@ export interface Task {
   codebaseIds: string[];
   /** Structured retrieval hints used to hydrate JIT Context and history search. */
   contextSearchSpec?: TaskContextSearchSpec;
+  /** Persisted JIT retrieval snapshot and recommended follow-up context for this card. */
+  jitContextSnapshot?: TaskJitContextSnapshot;
   /** Git worktree ID created for this task when it enters the dev column */
   worktreeId?: string;
   /** Frozen delivery evidence captured before PR / merge / base sync can erase base..HEAD */
@@ -398,6 +894,7 @@ export function createTask(params: {
   status?: TaskStatus;
   codebaseIds?: string[];
   contextSearchSpec?: TaskContextSearchSpec;
+  jitContextSnapshot?: TaskJitContextSnapshot;
   worktreeId?: string;
 }): Task {
   const now = new Date();
@@ -444,6 +941,7 @@ export function createTask(params: {
     creationSource: params.creationSource,
     codebaseIds: params.codebaseIds ?? [],
     contextSearchSpec: normalizeTaskContextSearchSpec(params.contextSearchSpec),
+    jitContextSnapshot: normalizeTaskJitContextSnapshot(params.jitContextSnapshot),
     worktreeId: params.worktreeId,
     triggerSessionId: params.triggerSessionId,
     createdAt: now,

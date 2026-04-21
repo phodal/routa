@@ -265,6 +265,7 @@ function initializeSqliteTables(db: SqliteDatabase): void {
   runAddColumn(sql`ALTER TABLE tasks ADD COLUMN creation_source TEXT`);
   runAddColumn(sql`ALTER TABLE tasks ADD COLUMN codebase_ids TEXT DEFAULT '[]'`);
   runAddColumn(sql`ALTER TABLE tasks ADD COLUMN context_search_spec TEXT`);
+  runAddColumn(sql`ALTER TABLE tasks ADD COLUMN jit_context_snapshot TEXT`);
   runAddColumn(sql`ALTER TABLE tasks ADD COLUMN worktree_id TEXT`);
   runAddColumn(sql`ALTER TABLE tasks ADD COLUMN delivery_snapshot TEXT`);
   runAddColumn(sql`ALTER TABLE tasks ADD COLUMN session_ids TEXT DEFAULT '[]'`);

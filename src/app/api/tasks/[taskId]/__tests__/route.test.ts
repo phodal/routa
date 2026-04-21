@@ -233,6 +233,97 @@ describe("/api/tasks/[taskId]", () => {
     });
   });
 
+  it("merges structured jitContextAnalysis through PATCH", async () => {
+    taskStore.get.mockResolvedValueOnce(createTask({
+      id: "task-jit-analysis",
+      title: "Analyze JIT history",
+      objective: "Persist analysis results",
+      workspaceId: "workspace-1",
+      boardId: "board-1",
+      columnId: "todo",
+      status: TaskStatus.PENDING,
+      jitContextSnapshot: {
+        generatedAt: "2026-04-21T08:00:00.000Z",
+        summary: "Recovered history context for Kanban workflow.",
+        matchConfidence: "high",
+        matchReasons: ["Matched the kanban-workflow feature."],
+        warnings: [],
+        matchedFileDetails: [{
+          filePath: "src/app/workspace/[workspaceId]/kanban/kanban-card-detail.tsx",
+          changes: 2,
+          sessions: 3,
+          updatedAt: "2026-04-21T08:00:00.000Z",
+        }],
+        matchedSessionIds: ["session-codex"],
+        failures: [],
+        repeatedReadFiles: [],
+        sessions: [],
+      },
+    }));
+
+    const response = await PATCH(new NextRequest("http://localhost/api/tasks/task-jit-analysis", {
+      method: "PATCH",
+      body: JSON.stringify({
+        jitContextAnalysis: {
+          summary: "Focus next on the Kanban API and blocked interval read model.",
+          issues: {
+            input: ["The story title alone was too broad on the first pass."],
+            location: ["The API entry point is in crates/routa-server/src/api/kanban.rs."],
+            tooling: ["A stale tasks.rs path caused read failures."],
+          },
+          topFiles: ["crates/routa-server/src/api/kanban.rs"],
+          topSessions: [
+            {
+              sessionId: "019daf46-1a5b-7001-8a17-df4a7053ace0",
+              provider: "codex",
+              reason: "This session touched the durable flow-event implementation directly.",
+            },
+          ],
+          topLeads: ["Verify blocked/unblocked pairing before extending dashboard reads."],
+          contextToInject: ["Inject the flow-event model and blocked interval read-model context."],
+          reusablePrompts: ["Check Rust and TS flow-event parity first."],
+          recommendedContextSearchSpec: {
+            query: "kanban flow event persistence",
+            featureCandidates: ["kanban-workflow"],
+            relatedFiles: ["crates/routa-server/src/api/kanban.rs"],
+          },
+          evidence: ["Recovered session-codex plus kanban-card-detail.tsx as the matched surface."],
+          inference: ["The next implementation session should start from the API layer rather than the UI shell."],
+        },
+      }),
+      headers: { "Content-Type": "application/json" },
+    }), {
+      params: Promise.resolve({ taskId: "task-jit-analysis" }),
+    });
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(taskStore.save).toHaveBeenCalledWith(expect.objectContaining({
+      jitContextSnapshot: expect.objectContaining({
+        summary: "Recovered history context for Kanban workflow.",
+        analysis: expect.objectContaining({
+          summary: "Focus next on the Kanban API and blocked interval read model.",
+          topFiles: ["crates/routa-server/src/api/kanban.rs"],
+          recommendedContextSearchSpec: expect.objectContaining({
+            query: "kanban flow event persistence",
+            featureCandidates: ["kanban-workflow"],
+          }),
+        }),
+      }),
+    }));
+    expect(data.task.jitContextSnapshot).toEqual(expect.objectContaining({
+      analysis: expect.objectContaining({
+        summary: "Focus next on the Kanban API and blocked interval read model.",
+        topSessions: [
+          expect.objectContaining({
+            sessionId: "019daf46-1a5b-7001-8a17-df4a7053ace0",
+            provider: "codex",
+          }),
+        ],
+      }),
+    }));
+  });
+
   it("keeps legacy appended comments as a single migrated note", async () => {
     taskStore.get.mockResolvedValueOnce(createTask({
       id: "task-legacy-comments",
