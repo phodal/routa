@@ -16,6 +16,7 @@ import {
   AcpForkSessionResult,
   AcpLoadSessionResult,
   AcpNewSessionResult,
+  type AcpTaskAdaptiveHarnessOptions,
   AcpProviderInfo,
   AcpClientError,
   AcpAuthMethod,
@@ -480,6 +481,7 @@ export function useAcp(baseUrl: string = ""): UseAcpState & UseAcpActions {
       mcpProfile?: McpServerProfile,
       systemPrompt?: string,
       autoApprovePermissions?: boolean,
+      taskAdaptiveHarness?: AcpTaskAdaptiveHarnessOptions,
     ): Promise<AcpNewSessionResult | null> => {
       const client = clientRef.current;
       if (!client) return null;
@@ -515,6 +517,7 @@ export function useAcp(baseUrl: string = ""): UseAcpState & UseAcpActions {
           customArgs: customProvider?.args,
           authJson,
           autoApprovePermissions,
+          taskAdaptiveHarness,
         });
         sessionIdRef.current = result.sessionId;
         setState((s) => ({

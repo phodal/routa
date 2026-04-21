@@ -35,6 +35,18 @@ export interface AcpNewSessionResult {
   acpStatus?: "connecting" | "ready" | "error";
 }
 
+export interface AcpTaskAdaptiveHarnessOptions {
+  taskLabel?: string;
+  locale?: string;
+  featureId?: string;
+  filePaths?: string[];
+  historySessionIds?: string[];
+  taskType?: "implementation" | "planning" | "analysis" | "review";
+  maxFiles?: number;
+  maxSessions?: number;
+  role?: string;
+}
+
 export interface AcpLoadSessionResult {
   sessionId: string;
   provider?: string;
@@ -232,6 +244,8 @@ export class BrowserAcpClient {
     authJson?: string;
     /** Allow unattended permission approvals for automation sessions. */
     autoApprovePermissions?: boolean;
+    /** Optional task-scoped history-session context hydration for session startup. */
+    taskAdaptiveHarness?: AcpTaskAdaptiveHarnessOptions;
   }): Promise<AcpNewSessionResult> {
     const result = await this.rpc<AcpNewSessionResult>("session/new", {
       cwd: params.cwd,
@@ -260,6 +274,7 @@ export class BrowserAcpClient {
       customArgs: params.customArgs,
       authJson: params.authJson,
       autoApprovePermissions: params.autoApprovePermissions,
+      taskAdaptiveHarness: params.taskAdaptiveHarness,
     });
     this._sessionId = result.sessionId;
 

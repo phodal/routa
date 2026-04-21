@@ -28,6 +28,10 @@ import {
 import type { McpServerProfile } from "@/core/mcp/mcp-server-profiles";
 import { pendingAcpCreations } from "@/core/acp/pending-acp-creations";
 import { buildFeatureTreeSpecPromptSection } from "@/core/spec/feature-tree-spec-resource-contract";
+import {
+  assembleTaskAdaptiveHarness,
+  parseTaskAdaptiveHarnessOptions,
+} from "@/app/api/harness/task-adaptive/shared";
 
 export interface IdempotencyEntry {
   sessionId: string;
@@ -188,8 +192,9 @@ export async function handleSessionNew({
     : p.toolMode === "essential"
       ? "essential"
       : undefined;
-  const mcpProfile = typeof p.mcpProfile === "string" ? p.mcpProfile as McpServerProfile : undefined;
-  const allowedNativeTools = deriveAllowedNativeTools(
+  let resolvedToolMode: "essential" | "full" | undefined = toolMode;
+  let resolvedMcpProfile = typeof p.mcpProfile === "string" ? p.mcpProfile as McpServerProfile : undefined;
+  let resolvedAllowedNativeTools = deriveAllowedNativeTools(
     p.allowedNativeTools,
     specialistId,
   );
@@ -201,6 +206,7 @@ export async function handleSessionNew({
   const customArgs = Array.isArray(p.customArgs) ? (p.customArgs as string[]) : undefined;
   const authJson = (p.authJson as string | undefined);
   const autoApprovePermissions = p.autoApprovePermissions === true;
+  const taskAdaptiveHarnessOptions = parseTaskAdaptiveHarnessOptions(p.taskAdaptiveHarness);
 
   if (customCommand !== undefined && (typeof customCommand !== "string" || !customCommand.trim())) {
     return jsonrpcResponse(id ?? null, null, {
@@ -281,8 +287,6 @@ export async function handleSessionNew({
     }
   }
 
-  const specialistSystemPrompt = customSystemPrompt ?? buildSpecialistSystemPrompt(specialist);
-
   let validatedWorktreeId: string | undefined;
   if (worktreeId) {
     const system = getRoutaSystem();
@@ -312,6 +316,32 @@ export async function handleSessionNew({
     }))?.id;
   }
 
+  let taskAdaptiveHarnessSummary: string | undefined;
+  if (taskAdaptiveHarnessOptions) {
+    try {
+      const taskAdaptiveHarness = await assembleTaskAdaptiveHarness(cwd, {
+        ...taskAdaptiveHarnessOptions,
+        role: taskAdaptiveHarnessOptions.role ?? role ?? specialist?.role,
+        locale: taskAdaptiveHarnessOptions.locale ?? specialistLocale,
+      });
+      taskAdaptiveHarnessSummary = taskAdaptiveHarness.summary;
+      resolvedToolMode = resolvedToolMode ?? taskAdaptiveHarness.recommendedToolMode;
+      resolvedMcpProfile = resolvedMcpProfile ?? taskAdaptiveHarness.recommendedMcpProfile;
+      resolvedAllowedNativeTools = resolvedAllowedNativeTools ?? taskAdaptiveHarness.recommendedAllowedNativeTools;
+    } catch (error) {
+      console.warn("[ACP Route] Task-Adaptive Harness assembly failed:", error);
+    }
+  }
+
+  const specialistPromptSections = [
+    customSystemPrompt,
+    buildSpecialistSystemPrompt(specialist),
+    taskAdaptiveHarnessSummary,
+  ].filter((section): section is string => typeof section === "string" && section.trim().length > 0);
+  const specialistSystemPrompt = specialistPromptSections.length > 0
+    ? specialistPromptSections.join("\n\n---\n\n")
+    : undefined;
+
   const now = new Date();
   const executionBinding = buildExecutionBinding("embedded");
   store.upsertSession({
@@ -322,9 +352,9 @@ export async function handleSessionNew({
     workspaceId,
     provider,
     role: role ?? "CRAFTER",
-    toolMode,
-    mcpProfile,
-    allowedNativeTools,
+    toolMode: resolvedToolMode,
+    mcpProfile: resolvedMcpProfile,
+    allowedNativeTools: resolvedAllowedNativeTools,
     parentSessionId,
     modeId,
     model,
@@ -441,7 +471,7 @@ export async function handleSessionNew({
           authJson,
         );
       } else if (isClaudeCodeSdk) {
-        const mcpConfigs = await buildMcpConfigForClaude(workspaceId, sessionId, toolMode, mcpProfile);
+        const mcpConfigs = await buildMcpConfigForClaude(workspaceId, sessionId, resolvedToolMode, resolvedMcpProfile);
         const instanceConfig: AgentInstanceConfig = {
           model,
           provider: "claude-code-sdk",
@@ -449,7 +479,7 @@ export async function handleSessionNew({
           role,
           baseUrl,
           apiKey,
-          allowedNativeTools,
+          allowedNativeTools: resolvedAllowedNativeTools,
           mcpServers: {},
           systemPromptAppend: specialistSystemPrompt,
         };
@@ -464,7 +494,7 @@ export async function handleSessionNew({
           instanceConfig,
         );
       } else if (isClaudeCode) {
-        const mcpConfigs = await buildMcpConfigForClaude(workspaceId, sessionId, toolMode, mcpProfile);
+        const mcpConfigs = await buildMcpConfigForClaude(workspaceId, sessionId, resolvedToolMode, resolvedMcpProfile);
         acpSessionId = await manager.createClaudeSession(
           sessionId,
           cwd,
@@ -473,7 +503,7 @@ export async function handleSessionNew({
           modeId,
           role,
           undefined,
-          allowedNativeTools,
+          resolvedAllowedNativeTools,
         );
       } else if (customCommand) {
         console.log(`[ACP Route] Using custom provider: ${provider}`);
@@ -504,8 +534,8 @@ export async function handleSessionNew({
           extraArgs.length > 0 ? extraArgs : undefined,
           undefined,
           workspaceId,
-          toolMode,
-          mcpProfile,
+          resolvedToolMode,
+          resolvedMcpProfile,
           {
             provider,
             role,
@@ -601,9 +631,9 @@ export async function handleSessionNew({
         workspaceId,
         provider,
         role: role ?? "CRAFTER",
-        toolMode,
-        mcpProfile,
-        allowedNativeTools,
+        toolMode: resolvedToolMode,
+        mcpProfile: resolvedMcpProfile,
+        allowedNativeTools: resolvedAllowedNativeTools,
         parentSessionId,
         modeId,
         model,

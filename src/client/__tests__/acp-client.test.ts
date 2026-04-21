@@ -199,4 +199,47 @@ describe("BrowserAcpClient", () => {
       sessionMayContinue: true,
     });
   });
+
+  it("passes taskAdaptiveHarness options through session/new", async () => {
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const body = init?.body ? JSON.parse(String(init.body)) : null;
+      return new Response(JSON.stringify({
+        jsonrpc: "2.0",
+        id: body?.id ?? 1,
+        result: {
+          sessionId: "session-task-adaptive-1",
+          provider: "codex",
+          role: "DEVELOPER",
+        },
+      }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = new BrowserAcpClient("");
+    const result = await client.newSession({
+      workspaceId: "default",
+      provider: "codex",
+      cwd: "/repo/default",
+      taskAdaptiveHarness: {
+        taskLabel: "Implement task-adaptive harness",
+        filePaths: ["src/app/page.tsx"],
+        historySessionIds: ["session-a"],
+        taskType: "implementation",
+      },
+    });
+
+    expect(result.sessionId).toBe("session-task-adaptive-1");
+    const [, init] = fetchMock.mock.calls[0] as [RequestInfo | URL, RequestInit];
+    const body = JSON.parse(String(init.body));
+    expect(body.method).toBe("session/new");
+    expect(body.params.taskAdaptiveHarness).toMatchObject({
+      taskLabel: "Implement task-adaptive harness",
+      filePaths: ["src/app/page.tsx"],
+      historySessionIds: ["session-a"],
+      taskType: "implementation",
+    });
+  });
 });
