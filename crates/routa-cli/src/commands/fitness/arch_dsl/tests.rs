@@ -80,8 +80,10 @@ fn builds_legacy_backend_core_suite_reports() {
             BackendCoreSummaryStatus::Pass
         }
     );
-    assert!(!should_fail_backend_core_suite_command(&boundaries)
-        || boundaries.summary_status == BackendCoreSummaryStatus::Fail);
+    assert!(
+        !should_fail_backend_core_suite_command(&boundaries)
+            || boundaries.summary_status == BackendCoreSummaryStatus::Fail
+    );
     assert_eq!(
         boundaries.arch_unit_source.as_deref(),
         Some("routa-cli fitness arch-dsl")

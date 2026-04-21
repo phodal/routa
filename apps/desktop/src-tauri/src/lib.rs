@@ -1,12 +1,12 @@
 use std::io::{BufRead, BufReader};
 use std::net::TcpStream;
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
-#[cfg(windows)]
-use std::os::windows::process::CommandExt;
 use tauri::menu::{Menu, MenuItem, Submenu};
 use tauri::{Manager, State};
 use tokio::sync::RwLock;

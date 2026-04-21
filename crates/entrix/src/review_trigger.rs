@@ -185,7 +185,9 @@ pub fn load_review_triggers(config_path: &Path) -> Result<Vec<ReviewTriggerRule>
                 .review_layers
                 .into_iter()
                 .map(|layer| ReviewTriggerLayer {
-                    confidence_threshold: normalize_confidence_threshold(layer.confidence_threshold),
+                    confidence_threshold: normalize_confidence_threshold(
+                        layer.confidence_threshold,
+                    ),
                     specialist_id: normalize_string(layer.specialist_id),
                     provider: normalize_string(layer.provider),
                     model: normalize_string(layer.model),
@@ -696,10 +698,19 @@ review_triggers:
         assert_eq!(rules[0].context, vec!["graph_review_context".to_string()]);
         assert_eq!(rules[0].review_layers.len(), 2);
         assert_eq!(rules[0].review_layers[0].provider.as_deref(), Some("codex"));
-        assert_eq!(rules[0].review_layers[0].model.as_deref(), Some("gpt-5.4-mini"));
+        assert_eq!(
+            rules[0].review_layers[0].model.as_deref(),
+            Some("gpt-5.4-mini")
+        );
         assert_eq!(rules[0].review_layers[0].confidence_threshold, Some(7));
-        assert_eq!(rules[0].review_layers[1].provider.as_deref(), Some("claude"));
-        assert_eq!(rules[0].review_layers[1].model.as_deref(), Some("claude-sonnet"));
+        assert_eq!(
+            rules[0].review_layers[1].provider.as_deref(),
+            Some("claude")
+        );
+        assert_eq!(
+            rules[0].review_layers[1].model.as_deref(),
+            Some("claude-sonnet")
+        );
         assert_eq!(rules[0].review_layers[1].confidence_threshold, Some(9));
     }
 
