@@ -378,6 +378,13 @@ const en: TranslationDictionary = {
     surfacesTooltip: "Browse frontend pages by URL path",
     apisTooltip: "Browse API endpoints by path",
     pathsTooltip: "Browse by source file path",
+    refreshFrictionProfiles: "Refresh friction profiles",
+    refreshingFrictionProfiles: "Refreshing friction profiles",
+    fileProfilesLabel: "file profiles",
+    featureProfilesLabel: "feature profiles",
+    frictionProfilesReady: "Friction profile ready",
+    frictionProfilesMissing: "No friction profile yet",
+    frictionProfilesError: "Friction profile refresh failed",
   },
 
   settings: {

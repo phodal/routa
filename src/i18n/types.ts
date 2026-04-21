@@ -384,6 +384,13 @@ export interface TranslationDictionary extends ExtendedTranslationDictionarySect
     surfacesTooltip: string;
     apisTooltip: string;
     pathsTooltip: string;
+    refreshFrictionProfiles: string;
+    refreshingFrictionProfiles: string;
+    fileProfilesLabel: string;
+    featureProfilesLabel: string;
+    frictionProfilesReady: string;
+    frictionProfilesMissing: string;
+    frictionProfilesError: string;
   };
 
   // Settings panel
