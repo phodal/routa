@@ -12,7 +12,6 @@ import { KanbanTools } from "../tools/kanban-tools";
 import { NoteTools } from "../tools/note-tools";
 import { WorkspaceTools } from "../tools/workspace-tools";
 import { ToolResult } from "../tools/tool-result";
-import type { RoutaOrchestrator } from "../orchestration/orchestrator";
 import { readCanvasSdkResource } from "../canvas/sdk-resource-contract";
 import { readFeatureTreeSpecResource } from "../spec/feature-tree-spec-resource-contract";
 
@@ -23,8 +22,23 @@ import { readFeatureTreeSpecResource } from "../spec/feature-tree-spec-resource-
  */
 export type ToolMode = "essential" | "full";
 
+type DelegationOrchestrator = {
+  getSessionForAgent(agentId: string): string | undefined;
+  delegateTaskWithSpawn(params: {
+    taskId: string;
+    callerAgentId: string;
+    callerSessionId: string;
+    workspaceId: string;
+    specialist: string;
+    provider?: string;
+    cwd?: string;
+    additionalInstructions?: string;
+    waitMode?: "immediate" | "after_all";
+  }): Promise<ToolResult>;
+};
+
 export class RoutaMcpToolManager {
-  private orchestrator?: RoutaOrchestrator;
+  private orchestrator?: DelegationOrchestrator;
   private noteTools?: NoteTools;
   private workspaceTools?: WorkspaceTools;
   private kanbanTools?: KanbanTools;
@@ -60,7 +74,7 @@ export class RoutaMcpToolManager {
   /**
    * Set the orchestrator for process-spawning delegation.
    */
-  setOrchestrator(orchestrator: RoutaOrchestrator): void {
+  setOrchestrator(orchestrator: DelegationOrchestrator): void {
     this.orchestrator = orchestrator;
   }
 

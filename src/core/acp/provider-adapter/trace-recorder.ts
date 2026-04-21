@@ -12,10 +12,10 @@ import {
   withMetadata,
   withTool,
   withVcs,
-  recordTrace,
-  extractFilesFromToolCall,
-  getVcsContextLight,
-} from "@/core/trace";
+} from "@/core/trace/types";
+import { recordTrace } from "@/core/trace/writer";
+import { extractFilesFromToolCall } from "@/core/trace/file-range-extractor";
+import { getVcsContextLight } from "@/core/trace/vcs-context";
 import { ToolCallContextWriter } from "@/core/storage/tool-call-context-writer";
 import type { NormalizedSessionUpdate, NormalizedToolCall } from "./types";
 

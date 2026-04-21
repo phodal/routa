@@ -16,8 +16,7 @@ function pathContains(path: string, segments: string): boolean {
   return normalizedPath.includes(segments);
 }
 
-// Mock the trace module
-vi.mock("@/core/trace", () => ({
+vi.mock("@/core/trace/types", () => ({
   createTraceRecord: vi.fn((sessionId, eventType, meta) => ({
     sessionId,
     eventType,
@@ -33,12 +32,21 @@ vi.mock("@/core/trace", () => ({
     ...trace,
     metadata: { ...(trace.metadata ?? {}), [key]: value },
   })),
+}));
+
+vi.mock("@/core/trace/writer", () => ({
   recordTrace: vi.fn(),
+}));
+
+vi.mock("@/core/trace/file-range-extractor", () => ({
   extractFilesFromToolCall: vi.fn(() => []),
+}));
+
+vi.mock("@/core/trace/vcs-context", () => ({
   getVcsContextLight: vi.fn(() => null),
 }));
 
-import { recordTrace } from "@/core/trace";
+import { recordTrace } from "@/core/trace/writer";
 
 describe("TraceRecorder", () => {
   let recorder: TraceRecorder;

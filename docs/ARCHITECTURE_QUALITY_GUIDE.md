@@ -127,8 +127,8 @@ Translations are in `src/i18n/locales/{en,zh}.ts` under `settings.harness.archit
 ### Source Code
 - `src/client/components/harness-architecture-quality-panel.tsx` - UI panel
 - `src/app/api/fitness/architecture/route.ts` - API endpoint
-- `scripts/fitness/check-backend-architecture.ts` - TypeScript executor
-- `crates/routa-cli/src/commands/fitness/arch_dsl.rs` - Rust CLI
+- `scripts/fitness/check-backend-architecture.ts` - Compatibility wrapper for the Rust CLI
+- `crates/routa-cli/src/commands/fitness/arch_dsl.rs` - Primary graph executor
 
 ### Configuration
 - `architecture/rules/backend-core.archdsl.yaml` - Rule definitions
@@ -150,29 +150,7 @@ To add new architecture rules:
 ## ⚠️ Known Limitations
 
 - **Advisory mode**: Currently weight: 0, not enforced in CI
-- **Local ArchUnitTS**: Requires source at `~/test/ArchUnitTS` (or set `ROUTA_ARCHUNITTS_PATH`)
-- **Cycle detection**: May hit stack overflow on very large codebases
 - **TypeScript only**: Rust backend rules defined but not fully integrated
-
-## 🆘 Troubleshooting
-
-### "ArchUnitTS not found"
-
-Set the environment variable:
-```bash
-export ROUTA_ARCHUNITTS_PATH=/path/to/ArchUnitTS
-```
-
-Or clone ArchUnitTS to the default location:
-```bash
-git clone https://github.com/LukasNiessen/ArchUnitTS.git ~/test/ArchUnitTS
-cd ~/test/ArchUnitTS
-npm install
-```
-
-### Scan fails with stack overflow
-
-This is a known issue with ArchUnitTS cycle detection on large codebases. The scan will report as "skipped" and won't block your workflow.
 
 ---
 

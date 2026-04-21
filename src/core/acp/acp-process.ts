@@ -1,10 +1,5 @@
-import {
-    AcpProcessConfig,
-    AcpSessionContext,
-    JsonRpcMessage,
-    NotificationHandler,
-    PendingRequest,
-} from "@/core/acp/processer";
+import type { AcpProcessConfig, AcpSessionContext } from "@/core/acp/process-config";
+import type { JsonRpcMessage, NotificationHandler, PendingRequest } from "@/core/acp/protocol-types";
 import { awaitProcessReady, needsShell } from "@/core/acp/utils";
 import {getTerminalManager} from "@/core/acp/terminal-manager";
 import type {IProcessHandle} from "@/core/platform/interfaces";

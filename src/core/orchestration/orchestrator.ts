@@ -30,7 +30,7 @@ import {
 } from "./specialist-prompts";
 import type { RoutaSystem } from "../routa-system";
 import type { AcpProcessManager } from "../acp/acp-process-manager";
-import type { NotificationHandler } from "../acp/processer";
+import type { NotificationHandler } from "../acp/protocol-types";
 import {
   checkDelegationDepth,
   calculateChildDepth,

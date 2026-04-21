@@ -1,4 +1,4 @@
-import { NotificationHandler, JsonRpcMessage } from "@/core/acp/processer";
+import type { NotificationHandler, JsonRpcMessage } from "@/core/acp/protocol-types";
 import { AcpAgentPreset, resolveCommand } from "@/core/acp/acp-presets";
 import { awaitProcessReady, needsShell } from "@/core/acp/utils";
 import type { IProcessHandle } from "@/core/platform/interfaces";

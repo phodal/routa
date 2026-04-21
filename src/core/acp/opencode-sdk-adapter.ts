@@ -29,11 +29,8 @@
  * - API_TIMEOUT_MS: Request timeout in milliseconds (default: 55000)
  */
 
-import type { NotificationHandler, JsonRpcMessage } from "@/core/acp/processer";
+import type { NotificationHandler, JsonRpcMessage } from "@/core/acp/protocol-types";
 import { isServerlessEnvironment } from "@/core/acp/api-based-providers";
-import { getMcpToolDefinitions, executeMcpTool } from "@/core/mcp/mcp-tool-executor";
-import { createRoutaMcpServer } from "@/core/mcp/routa-mcp-server";
-import { KanbanTools } from "@/core/tools/kanban-tools";
 import { getHttpSessionStore } from "@/core/acp/http-session-store";
 import { renameSessionInDb } from "@/core/acp/session-db-persister";
 
@@ -928,6 +925,7 @@ export class OpencodeSdkDirectAdapter {
     };
 
     // Build OpenAI-compatible tool definitions for function calling
+    const { getMcpToolDefinitions } = await import("@/core/mcp/mcp-tool-executor");
     const toolDefs = getMcpToolDefinitions("essential").map((t) => ({
       type: "function" as const,
       function: { name: t.name, description: t.description, parameters: t.inputSchema },
@@ -1109,6 +1107,15 @@ export class OpencodeSdkDirectAdapter {
             let toolResult: unknown;
             try {
               if (workspaceId) {
+                const [
+                  { createRoutaMcpServer },
+                  { executeMcpTool },
+                  { KanbanTools },
+                ] = await Promise.all([
+                  import("@/core/mcp/routa-mcp-server"),
+                  import("@/core/mcp/mcp-tool-executor"),
+                  import("@/core/tools/kanban-tools"),
+                ]);
                 const { system } = createRoutaMcpServer({ workspaceId, toolMode: "essential" });
                 const kanbanTools = new KanbanTools(system.kanbanBoardStore, system.taskStore);
                 kanbanTools.setEventBus(system.eventBus);

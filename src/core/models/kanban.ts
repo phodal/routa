@@ -1,4 +1,12 @@
 import { TaskStatus } from "./task";
+import {
+  DEFAULT_DEV_REQUIRED_TASK_FIELDS,
+  KANBAN_REQUIRED_TASK_FIELDS,
+  type KanbanRequiredTaskField,
+} from "./task-requirements";
+
+export { DEFAULT_DEV_REQUIRED_TASK_FIELDS, KANBAN_REQUIRED_TASK_FIELDS };
+export type { KanbanRequiredTaskField } from "./task-requirements";
 
 export type KanbanColumnStage = "backlog" | "todo" | "dev" | "review" | "blocked" | "done";
 export type KanbanDevSessionSupervisionMode = "disabled" | "watchdog_retry" | "ralph_loop";
@@ -6,20 +14,6 @@ export type KanbanDevSessionCompletionRequirement =
   | "turn_complete"
   | "completion_summary"
   | "verification_report";
-export const KANBAN_REQUIRED_TASK_FIELDS = [
-  "scope",
-  "acceptance_criteria",
-  "verification_commands",
-  "test_cases",
-  "verification_plan",
-  "dependencies_declared",
-] as const;
-export type KanbanRequiredTaskField = typeof KANBAN_REQUIRED_TASK_FIELDS[number];
-export const DEFAULT_DEV_REQUIRED_TASK_FIELDS = [
-  "scope",
-  "acceptance_criteria",
-  "verification_plan",
-] as const satisfies KanbanRequiredTaskField[];
 
 export type KanbanTransport = "acp" | "a2a";
 

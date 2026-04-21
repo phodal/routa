@@ -11,8 +11,7 @@ import { TraceRecorder } from "../trace-recorder";
 import { AgentEventBridge } from "../../agent-event-bridge/agent-event-bridge";
 import type { NormalizedSessionUpdate } from "../types";
 
-// Mock the trace module
-vi.mock("@/core/trace", () => ({
+vi.mock("@/core/trace/types", () => ({
   createTraceRecord: vi.fn((sessionId, eventType, meta) => ({
     sessionId,
     eventType,
@@ -25,12 +24,21 @@ vi.mock("@/core/trace", () => ({
   withTool: vi.fn((trace, tool) => ({ ...trace, tool })),
   withVcs: vi.fn((trace, vcs) => ({ ...trace, vcs })),
   withMetadata: vi.fn((trace, key, value) => ({ ...trace, metadata: { ...trace.metadata, [key]: value } })),
+}));
+
+vi.mock("@/core/trace/writer", () => ({
   recordTrace: vi.fn(),
+}));
+
+vi.mock("@/core/trace/file-range-extractor", () => ({
   extractFilesFromToolCall: vi.fn(() => []),
+}));
+
+vi.mock("@/core/trace/vcs-context", () => ({
   getVcsContextLight: vi.fn(() => null),
 }));
 
-import { recordTrace } from "@/core/trace";
+import { recordTrace } from "@/core/trace/writer";
 
 describe("Integration Scenarios", () => {
   let recorder: TraceRecorder;
@@ -438,4 +446,3 @@ describe("Integration Scenarios", () => {
     });
   });
 });
-

@@ -3,9 +3,8 @@ import {
     buildConfigFromPreset,
     buildConfigFromInline,
     type AcpSessionContext,
-    ManagedProcess,
-    NotificationHandler,
-} from "@/core/acp/processer";
+} from "@/core/acp/process-config";
+import type { NotificationHandler } from "@/core/acp/protocol-types";
 import {ClaudeCodeProcess, buildClaudeCodeConfig, mapClaudeModeToPermissionMode} from "@/core/acp/claude-code-process";
 import {
     cleanupMcpForProvider,
@@ -18,8 +17,10 @@ import {getDefaultRoutaMcpConfig} from "@/core/acp/mcp-config-generator";
 import type { McpServerProfile } from "@/core/mcp/mcp-server-profiles";
 import {OpencodeSdkAdapter, OpencodeSdkDirectAdapter, shouldUseOpencodeAdapter, getOpencodeServerUrl, isOpencodeServerConfigured, isOpencodeDirectApiConfigured} from "@/core/acp/opencode-sdk-adapter";
 import {ClaudeCodeSdkAdapter, shouldUseClaudeCodeSdkAdapter} from "@/core/acp/claude-code-sdk-adapter";
-import {WorkspaceAgentAdapter, type WorkspaceAgentAdapterOptions} from "@/core/acp/workspace-agent";
-import { DockerOpenCodeAdapter, getDockerProcessManager, DEFAULT_DOCKER_AGENT_IMAGE } from "@/core/acp/docker";
+import {WorkspaceAgentAdapter, type WorkspaceAgentAdapterOptions} from "@/core/acp/workspace-agent/workspace-agent-adapter";
+import { DockerOpenCodeAdapter } from "@/core/acp/docker/docker-opencode-adapter";
+import { getDockerProcessManager } from "@/core/acp/docker/process-manager";
+import { DEFAULT_DOCKER_AGENT_IMAGE } from "@/core/acp/docker/utils";
 import {isServerlessEnvironment} from "@/core/acp/api-based-providers";
 import {getHttpSessionStore} from "@/core/acp/http-session-store";
 import {AgentInstanceFactory, getAgentInstanceManager, type AgentInstanceConfig} from "@/core/acp/agent-instance-factory";
@@ -29,6 +30,13 @@ import type { LifecycleNotifier } from "@/core/acp/lifecycle-notifier";
 import type { McpServerConfig } from "@anthropic-ai/claude-agent-sdk";
 
 const ACP_DEBUG = process.env.ROUTA_DEBUG_ACP === "1";
+
+interface ManagedProcess {
+    process: AcpProcess;
+    acpSessionId: string;
+    presetId: string;
+    createdAt: Date;
+}
 
 function logAcpDebug(message: string): void {
     if (ACP_DEBUG) {

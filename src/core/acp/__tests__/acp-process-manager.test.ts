@@ -35,7 +35,7 @@ const directInstances: Array<Record<string, unknown>> = [];
 const claudeSdkInstances: Array<Record<string, unknown>> = [];
 const workspaceInstances: Array<Record<string, unknown>> = [];
 
-vi.mock("@/core/acp/processer", () => ({
+vi.mock("@/core/acp/process-config", () => ({
   buildConfigFromPreset: buildConfigFromPresetMock,
   buildConfigFromInline: vi.fn(),
 }));
@@ -145,7 +145,7 @@ vi.mock("@/core/acp/claude-code-sdk-adapter", () => ({
   shouldUseClaudeCodeSdkAdapter: shouldUseClaudeCodeSdkAdapterMock,
 }));
 
-vi.mock("@/core/acp/workspace-agent", () => ({
+vi.mock("@/core/acp/workspace-agent/workspace-agent-adapter", () => ({
   WorkspaceAgentAdapter: class WorkspaceAgentAdapter {
     alive = true;
     connect = workspaceConnectMock;
@@ -161,7 +161,7 @@ vi.mock("@/core/acp/workspace-agent", () => ({
   },
 }));
 
-vi.mock("@/core/acp/docker", () => ({
+vi.mock("@/core/acp/docker/docker-opencode-adapter", () => ({
   DockerOpenCodeAdapter: class DockerOpenCodeAdapter {
     alive = true;
     connect = vi.fn();
@@ -170,7 +170,13 @@ vi.mock("@/core/acp/docker", () => ({
       this.alive = false;
     });
   },
+}));
+
+vi.mock("@/core/acp/docker/process-manager", () => ({
   getDockerProcessManager: getDockerProcessManagerMock,
+}));
+
+vi.mock("@/core/acp/docker/utils", () => ({
   DEFAULT_DOCKER_AGENT_IMAGE: "docker-image",
 }));
 

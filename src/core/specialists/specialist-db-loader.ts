@@ -11,7 +11,7 @@
  */
 
 import { AgentRole, ModelTier } from "../models/agent";
-import type { SpecialistConfig } from "../orchestration/specialist-prompts";
+import type { SpecialistConfig } from "./specialist-types";
 import {
   loadBundledSpecialists,
   loadUserSpecialists,

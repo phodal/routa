@@ -9,8 +9,9 @@
  * to providers via --mcp-config flags.
  */
 
-import type { ToolMode } from "../mcp/routa-mcp-tool-manager";
 import type { McpServerProfile } from "../mcp/mcp-server-profiles";
+
+type ToolMode = "essential" | "full";
 
 export interface RoutaMcpConfig {
   /** Base URL of the routa-js server (e.g., http://localhost:3000) */

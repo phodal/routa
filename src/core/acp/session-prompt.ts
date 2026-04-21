@@ -1,16 +1,9 @@
-import { getAcpProcessManager } from "@/core/acp/processer";
-import { AcpError } from "@/core/acp/acp-process";
 import { getHttpSessionStore, type SessionUpdateNotification } from "@/core/acp/http-session-store";
 import { getPresetById } from "@/core/acp/acp-presets";
 import { isServerlessEnvironment } from "@/core/acp/api-based-providers";
-import { isOpencodeServerConfigured } from "@/core/acp/opencode-sdk-adapter";
-import { getDockerDetector, DEFAULT_DOCKER_AGENT_IMAGE } from "@/core/acp/docker";
-import { isClaudeCodeSdkConfigured } from "@/core/acp/claude-code-sdk-adapter";
-import { getRoutaOrchestrator } from "@/core/orchestration/orchestrator-singleton";
-import { getRoutaSystem } from "@/core/routa-system";
+import { getDockerDetector } from "@/core/acp/docker/detector";
+import { DEFAULT_DOCKER_AGENT_IMAGE } from "@/core/acp/docker/utils";
 import { AgentRole } from "@/core/models/agent";
-import { ensureMcpForProvider } from "@/core/acp/mcp-setup";
-import { getDefaultRoutaMcpConfig } from "@/core/acp/mcp-config-generator";
 import { consumeAcpPromptResponse } from "@/core/acp/prompt-response";
 import { buildCoordinatorPrompt } from "@/core/orchestration/specialist-prompts";
 import {
@@ -66,6 +59,13 @@ interface DispatchSessionPromptParams {
   skillContent?: string;
 }
 
+type AcpErrorLike = Error & {
+  code: number;
+  authMethods?: unknown;
+  agentInfo?: unknown;
+  data?: unknown;
+};
+
 function inlineJsonrpcResponse(
   id: string | number | null,
   result: unknown,
@@ -112,6 +112,13 @@ async function inlineBuildMcpConfigForClaude(
   toolMode?: "essential" | "full",
   mcpProfile?: McpServerProfile,
 ): Promise<string[]> {
+  const [
+    { getDefaultRoutaMcpConfig },
+    { ensureMcpForProvider },
+  ] = await Promise.all([
+    import("@/core/acp/mcp-config-generator"),
+    import("@/core/acp/mcp-setup"),
+  ]);
   const config = workspaceId
     ? getDefaultRoutaMcpConfig(workspaceId, sessionId, toolMode, mcpProfile)
     : undefined;
@@ -157,11 +164,12 @@ function getPromptErrorData(error: unknown): Record<string, unknown> | undefined
   return undefined;
 }
 
-function isAcpErrorLike(error: unknown): error is AcpError {
-  if (error instanceof AcpError) return true;
+function isAcpErrorLike(error: unknown): error is AcpErrorLike {
   if (!error || typeof error !== "object") return false;
   const candidate = error as Record<string, unknown>;
-  return candidate.name === "AcpError" && typeof candidate.message === "string";
+  return candidate.name === "AcpError"
+    && typeof candidate.message === "string"
+    && typeof candidate.code === "number";
 }
 
 function buildCoordinatorContextPrompt(input: {
@@ -244,6 +252,7 @@ async function ensurePromptSessionExists(args: {
     buildMcpConfigForClaude,
     requireWorkspaceId,
   } = args;
+  const { getAcpProcessManager } = await import("@/core/acp/processer");
   const manager = getAcpProcessManager();
   const store = getHttpSessionStore();
   const forwardSessionUpdate = createSessionUpdateForwarder(store, sessionId);
@@ -304,6 +313,7 @@ async function ensurePromptSessionExists(args: {
     let acpSessionId: string;
 
     if (isOpencodeSdk) {
+      const { isOpencodeServerConfigured } = await import("@/core/acp/opencode-sdk-adapter");
       if (!isOpencodeServerConfigured()) {
         return jsonrpcResponse(id ?? null, null, {
           code: -32002,
@@ -336,6 +346,7 @@ async function ensurePromptSessionExists(args: {
         authJson,
       );
     } else if (isClaudeCodeSdk) {
+      const { isClaudeCodeSdkConfigured } = await import("@/core/acp/claude-code-sdk-adapter");
       if (!isClaudeCodeSdkConfigured()) {
         return jsonrpcResponse(id ?? null, null, {
           code: -32002,
@@ -542,6 +553,7 @@ export async function handleSessionPrompt({
     });
   }
 
+  const { getAcpProcessManager } = await import("@/core/acp/processer");
   const manager = getAcpProcessManager();
   const store = getHttpSessionStore();
   const forwardSessionUpdate = createSessionUpdateForwarder(store, sessionId);
@@ -601,10 +613,12 @@ export async function handleSessionPrompt({
     });
   }
 
+  const { getRoutaOrchestrator } = await import("@/core/orchestration/orchestrator-singleton");
   const orchestrator = getRoutaOrchestrator();
   if (orchestrator) {
     const sessionRecord = store.getSession(sessionId);
     if (sessionRecord?.routaAgentId) {
+      const { getRoutaSystem } = await import("@/core/routa-system");
       const system = getRoutaSystem();
       const agent = await system.agentStore.get(sessionRecord.routaAgentId);
       if (agent?.role === AgentRole.ROUTA) {

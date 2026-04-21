@@ -85,8 +85,11 @@ vi.mock("@/core/acp/opencode-sdk-adapter", () => ({
   isOpencodeServerConfigured: isOpencodeServerConfiguredMock,
 }));
 
-vi.mock("@/core/acp/docker", () => ({
+vi.mock("@/core/acp/docker/detector", () => ({
   getDockerDetector: getDockerDetectorMock,
+}));
+
+vi.mock("@/core/acp/docker/utils", () => ({
   DEFAULT_DOCKER_AGENT_IMAGE: "docker-image",
 }));
 

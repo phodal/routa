@@ -4,7 +4,7 @@ title: Architecture Quality
 
 # Architecture Quality
 
-Routa provides real-time architecture quality monitoring for TypeScript and Rust backend code through a unified Architecture DSL and multiple execution backends.
+Routa provides real-time architecture quality monitoring for TypeScript and Rust backend code through a unified Architecture DSL and graph-backed execution.
 
 ## Overview
 
@@ -13,7 +13,7 @@ The Architecture Quality system helps you:
 - **Enforce boundaries** between core modules, API surface, and client code
 - **Detect cycles** in backend dependency graphs
 - **Track violations** over time with snapshot comparison
-- **Define rules once** and execute across TypeScript (ArchUnitTS) and Rust (graph-based) backends
+- **Define rules once** and execute through the shared Rust graph runner
 
 ## Quick Start
 
@@ -108,7 +108,7 @@ rules:
     from: core_ts
     relation: must_not_depend_on
     to: app_ts
-    engine_hints: [archunitts, graph]
+    engine_hints: [graph]
 ```
 
 ### Key Concepts
@@ -116,7 +116,7 @@ rules:
 - **Selectors**: Reusable file scopes (e.g., `core_ts`, `api_ts`)
 - **Rules**: Constraints on dependencies or cycles
 - **Suites**: Logical grouping (e.g., `boundaries`, `cycles`)
-- **Engine hints**: Which backends support this rule (`archunitts`, `graph`)
+- **Engine hints**: Which executors support this rule (`graph`)
 
 ## UI Features
 
@@ -168,9 +168,8 @@ Translation keys are in `src/i18n/locales/{en,zh}.ts` under `settings.harness.ar
 ## Known Limitations
 
 1. **Advisory mode only**: Currently runs as local check, not enforced in CI
-2. **ArchUnitTS cycle detection**: May hit stack overflow on very large codebases
-3. **TypeScript backend only**: Rust backend rules are defined but not yet fully integrated
-4. **Local ArchUnitTS required**: Expects source at `~/test/ArchUnitTS` (or set `ROUTA_ARCHUNITTS_PATH`)
+2. **TypeScript backend only**: Rust backend rules are defined but not yet fully integrated
+3. **Compatibility wrapper retained**: `npm run test:arch:backend-core` still goes through `scripts/fitness/check-backend-architecture.ts`, but that script now shells into the Rust CLI
 
 ## Next Steps
 

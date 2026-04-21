@@ -1,4 +1,4 @@
-import type { ReviewAnalysisPayload } from "./review-analysis";
+import type { ReviewAnalysisPayload } from "./review-analysis-types";
 
 export type ReviewWorkerType = "context" | "candidates" | "validator";
 

@@ -24,12 +24,26 @@ pub struct ArchDslArgs {
     /// Shortcut for `--format json`.
     #[arg(long, default_value_t = false)]
     pub json: bool,
+
+    /// Restrict compatibility reports to one logical suite.
+    #[arg(long, value_enum)]
+    suite: Option<SuiteName>,
+
+    /// Output report shape.
+    #[arg(long, value_enum, default_value_t = ArchDslReportKind::Full)]
+    report: ArchDslReportKind,
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, ValueEnum)]
 pub enum ArchDslOutputFormat {
     Text,
     Json,
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq, ValueEnum)]
+pub enum ArchDslReportKind {
+    Full,
+    BackendCoreSuite,
 }
 
 #[derive(Debug, Deserialize)]
@@ -125,7 +139,7 @@ enum RuleKind {
     Cycle,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq, ValueEnum)]
 #[serde(rename_all = "snake_case")]
 enum SuiteName {
     Boundaries,
@@ -314,6 +328,64 @@ struct ArchitectureDslIssue {
     message: String,
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BackendCoreSuiteReport {
+    generated_at: String,
+    repo_root: String,
+    suite: SuiteName,
+    summary_status: BackendCoreSummaryStatus,
+    arch_unit_source: Option<String>,
+    tsconfig_path: String,
+    rule_count: usize,
+    failed_rule_count: usize,
+    results: Vec<BackendCoreRuleResult>,
+    notes: Vec<String>,
+}
+
+#[derive(Debug, Serialize, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+enum BackendCoreSummaryStatus {
+    Pass,
+    Fail,
+    Skipped,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BackendCoreRuleResult {
+    id: String,
+    title: String,
+    suite: SuiteName,
+    status: BackendCoreRuleStatus,
+    violation_count: usize,
+    violations: Vec<BackendCoreViolation>,
+}
+
+#[derive(Debug, Serialize, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+enum BackendCoreRuleStatus {
+    Pass,
+    Fail,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+enum BackendCoreViolation {
+    Dependency {
+        source: String,
+        target: String,
+        edge_count: usize,
+    },
+    Cycle {
+        path: Vec<String>,
+        edge_count: usize,
+    },
+    Unknown {
+        summary: String,
+    },
+}
+
 struct SelectorMatcher {
     include: Vec<Pattern>,
     exclude: Vec<Pattern>,
@@ -352,13 +424,41 @@ pub(super) fn run(args: &ArchDslArgs) -> Result<(), String> {
     let dsl_path = resolve_dsl_path(args, &repo_root)?;
     let report = evaluate_architecture_dsl(&repo_root, &dsl_path)?;
 
-    match resolved_output_format(args) {
-        ArchDslOutputFormat::Text => println!("{}", format_text_report(&report)),
-        ArchDslOutputFormat::Json => println!(
-            "{}",
-            serde_json::to_string_pretty(&report)
-                .map_err(|error| format!("failed to serialize architecture DSL report: {error}"))?
-        ),
+    match args.report {
+        ArchDslReportKind::Full => match resolved_output_format(args) {
+            ArchDslOutputFormat::Text => println!("{}", format_text_report(&report)),
+            ArchDslOutputFormat::Json => println!(
+                "{}",
+                serde_json::to_string_pretty(&report).map_err(|error| {
+                    format!("failed to serialize architecture DSL report: {error}")
+                })?
+            ),
+        },
+        ArchDslReportKind::BackendCoreSuite => {
+            let suite = args.suite.ok_or_else(|| {
+                "--report backend-core-suite requires --suite <boundaries|cycles>".to_string()
+            })?;
+            let suite_report = build_backend_core_suite_report(&report, &repo_root, suite);
+            match resolved_output_format(args) {
+                ArchDslOutputFormat::Text => {
+                    println!("{}", format_backend_core_suite_text_report(&suite_report))
+                }
+                ArchDslOutputFormat::Json => println!(
+                    "{}",
+                    serde_json::to_string_pretty(&suite_report).map_err(|error| {
+                        format!("failed to serialize backend core suite report: {error}")
+                    })?
+                ),
+            }
+
+            if should_fail_backend_core_suite_command(&suite_report) {
+                return Err(format!(
+                    "backend core suite '{}' failed",
+                    display_suite_name(suite)
+                ));
+            }
+            return Ok(());
+        }
     }
 
     if should_fail_fitness_command(&report) {
@@ -375,6 +475,10 @@ pub(super) fn run(args: &ArchDslArgs) -> Result<(), String> {
 fn should_fail_fitness_command(report: &ArchitectureDslReport) -> bool {
     report.summary.validation_status == ValidationStatus::Fail
         || report.summary.execution_status == ExecutionStatus::Fail
+}
+
+fn should_fail_backend_core_suite_command(report: &BackendCoreSuiteReport) -> bool {
+    report.summary_status == BackendCoreSummaryStatus::Fail
 }
 
 fn resolved_output_format(args: &ArchDslArgs) -> ArchDslOutputFormat {
@@ -1226,6 +1330,170 @@ fn issue(code: &str, path: &str, message: String) -> ArchitectureDslIssue {
     }
 }
 
+fn build_backend_core_suite_report(
+    report: &ArchitectureDslReport,
+    repo_root: &Path,
+    suite: SuiteName,
+) -> BackendCoreSuiteReport {
+    let mut notes = BTreeSet::new();
+    for warning in &report.warnings {
+        notes.insert(warning.clone());
+    }
+
+    let results = report
+        .rules
+        .iter()
+        .enumerate()
+        .filter(|(_, rule)| rule.suite == suite)
+        .map(|(index, rule)| {
+            let rule_issues = report
+                .issues
+                .iter()
+                .filter(|issue| issue.path.starts_with(&format!("rules[{index}]")))
+                .collect::<Vec<_>>();
+            build_backend_core_rule_result(rule, &rule_issues)
+        })
+        .collect::<Vec<_>>();
+
+    for issue in report
+        .issues
+        .iter()
+        .filter(|issue| issue_applies_to_suite(issue, &report.rules, suite))
+        .filter(|issue| !issue.path.starts_with("rules["))
+    {
+        notes.insert(format!("{}: {}", issue.code, issue.message));
+    }
+
+    let failed_rule_count = results
+        .iter()
+        .filter(|result| result.status == BackendCoreRuleStatus::Fail)
+        .count();
+    let has_validation_failures = report.summary.validation_status == ValidationStatus::Fail;
+    let summary_status = if has_validation_failures {
+        BackendCoreSummaryStatus::Fail
+    } else if results.is_empty() {
+        BackendCoreSummaryStatus::Skipped
+    } else if failed_rule_count > 0 {
+        BackendCoreSummaryStatus::Fail
+    } else {
+        BackendCoreSummaryStatus::Pass
+    };
+
+    BackendCoreSuiteReport {
+        generated_at: chrono::Utc::now().to_rfc3339(),
+        repo_root: repo_root.display().to_string(),
+        suite,
+        summary_status,
+        arch_unit_source: (!results.is_empty()).then(|| "routa-cli fitness arch-dsl".to_string()),
+        tsconfig_path: repo_root.join("tsconfig.json").display().to_string(),
+        rule_count: results.len(),
+        failed_rule_count,
+        results,
+        notes: notes.into_iter().collect(),
+    }
+}
+
+fn build_backend_core_rule_result(
+    rule: &ArchitectureDslRulePlan,
+    rule_issues: &[&ArchitectureDslIssue],
+) -> BackendCoreRuleResult {
+    let violations = if let Some(execution) = &rule.execution {
+        match execution.status {
+            RuleExecutionStatus::Pass => Vec::new(),
+            RuleExecutionStatus::Fail => map_backend_core_violations(&execution.violations),
+            RuleExecutionStatus::Skipped => vec![BackendCoreViolation::Unknown {
+                summary: execution
+                    .note
+                    .clone()
+                    .unwrap_or_else(|| "rule execution was skipped".to_string()),
+            }],
+        }
+    } else if !rule_issues.is_empty() {
+        rule_issues
+            .iter()
+            .map(|issue| BackendCoreViolation::Unknown {
+                summary: format!("{}: {}", issue.code, issue.message),
+            })
+            .collect()
+    } else if let Some(reason) = &rule.unsupported_reason {
+        vec![BackendCoreViolation::Unknown {
+            summary: reason.clone(),
+        }]
+    } else {
+        vec![BackendCoreViolation::Unknown {
+            summary: "rule execution result is missing".to_string(),
+        }]
+    };
+
+    let status = if violations.is_empty() {
+        BackendCoreRuleStatus::Pass
+    } else {
+        BackendCoreRuleStatus::Fail
+    };
+
+    BackendCoreRuleResult {
+        id: rule.id.clone(),
+        title: rule.title.clone(),
+        suite: rule.suite,
+        status,
+        violation_count: violations.len(),
+        violations,
+    }
+}
+
+fn map_backend_core_violations(
+    violations: &[ArchitectureDslViolation],
+) -> Vec<BackendCoreViolation> {
+    let mut dependency_counts = BTreeMap::<(String, String), usize>::new();
+    let mut normalized = Vec::new();
+
+    for violation in violations {
+        match violation {
+            ArchitectureDslViolation::Dependency { source, target, .. } => {
+                *dependency_counts
+                    .entry((source.clone(), target.clone()))
+                    .or_default() += 1;
+            }
+            ArchitectureDslViolation::Cycle { path } => {
+                normalized.push(BackendCoreViolation::Cycle {
+                    edge_count: path.len(),
+                    path: path.clone(),
+                });
+            }
+        }
+    }
+
+    for ((source, target), edge_count) in dependency_counts {
+        normalized.push(BackendCoreViolation::Dependency {
+            source,
+            target,
+            edge_count,
+        });
+    }
+
+    normalized
+}
+
+fn issue_applies_to_suite(
+    issue: &ArchitectureDslIssue,
+    rules: &[ArchitectureDslRulePlan],
+    suite: SuiteName,
+) -> bool {
+    let Some(rest) = issue.path.strip_prefix("rules[") else {
+        return true;
+    };
+    let Some(end_index) = rest.find(']') else {
+        return true;
+    };
+    let Ok(rule_index) = rest[..end_index].parse::<usize>() else {
+        return true;
+    };
+    rules
+        .get(rule_index)
+        .map(|rule| rule.suite == suite)
+        .unwrap_or(true)
+}
+
 fn display_validation_status(value: ValidationStatus) -> &'static str {
     match value {
         ValidationStatus::Pass => "pass",
@@ -1297,6 +1565,14 @@ fn display_rule_execution_status(value: RuleExecutionStatus) -> &'static str {
         RuleExecutionStatus::Pass => "pass",
         RuleExecutionStatus::Fail => "fail",
         RuleExecutionStatus::Skipped => "skipped",
+    }
+}
+
+fn display_backend_core_summary_status(value: BackendCoreSummaryStatus) -> &'static str {
+    match value {
+        BackendCoreSummaryStatus::Pass => "pass",
+        BackendCoreSummaryStatus::Fail => "fail",
+        BackendCoreSummaryStatus::Skipped => "skipped",
     }
 }
 
@@ -1438,399 +1714,62 @@ fn format_text_report(report: &ArchitectureDslReport) -> String {
     out
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::fs::write;
-    use tempfile::tempdir;
-
-    fn workspace_root() -> PathBuf {
-        Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .unwrap()
-            .parent()
-            .unwrap()
-            .to_path_buf()
+fn format_backend_core_suite_text_report(report: &BackendCoreSuiteReport) -> String {
+    let mut out = String::new();
+    writeln!(
+        &mut out,
+        "Architecture suite: {}",
+        display_suite_name(report.suite)
+    )
+    .ok();
+    writeln!(
+        &mut out,
+        "Summary status: {}",
+        display_backend_core_summary_status(report.summary_status)
+    )
+    .ok();
+    if let Some(source) = &report.arch_unit_source {
+        writeln!(&mut out, "Runner source: {source}").ok();
     }
 
-    #[test]
-    fn loads_backend_core_sample_and_reports_partial_execution_in_rust_cli() {
-        let repo_root = workspace_root();
-        let dsl_path = repo_root.join("architecture/rules/backend-core.archdsl.yaml");
-
-        let report = evaluate_architecture_dsl(&repo_root, &dsl_path).expect("report");
-
-        assert_eq!(report.report_type, "architecture_dsl");
-        assert_eq!(report.summary.validation_status, ValidationStatus::Pass);
-        assert_eq!(report.summary.plan_status, PlanStatus::Ready);
-        assert_eq!(report.summary.execution_status, ExecutionStatus::Partial);
-        assert_eq!(report.summary.selector_count, 4);
-        assert_eq!(report.summary.rule_count, 4);
-        assert_eq!(report.summary.executable_rule_count, 4);
-        assert_eq!(report.summary.unsupported_rule_count, 0);
-        assert_eq!(report.summary.executed_rule_count, 1);
-        assert_eq!(report.summary.passed_rule_count, 1);
-        assert_eq!(report.summary.failed_rule_count, 0);
-        assert_eq!(report.summary.skipped_rule_count, 3);
-        assert!(report.issues.is_empty());
-        assert!(report
-            .rules
-            .iter()
-            .any(|rule| rule.id == "ts_backend_core_no_core_to_app"
-                && rule.execution.as_ref().map(|execution| execution.status)
-                    == Some(RuleExecutionStatus::Pass)));
-        assert!(report
-            .rules
-            .iter()
-            .any(|rule| rule.id == "ts_backend_core_no_cycles"
-                && rule.execution.as_ref().map(|execution| execution.status)
-                    == Some(RuleExecutionStatus::Skipped)));
-
-        let text = format_text_report(&report);
-        assert!(text.contains("architecture dsl"));
-        assert!(text.contains("ts_backend_core_no_core_to_app"));
+    for note in &report.notes {
+        writeln!(&mut out, "Note: {note}").ok();
     }
 
-    #[test]
-    fn rejects_missing_selector_references() {
-        let repo = tempdir().expect("temp dir");
-        let dsl_path = repo.path().join("broken.archdsl.yaml");
-        write(
-            &dsl_path,
-            r#"schema: routa.archdsl/v1
-model:
-  id: broken
-  title: Broken
-selectors:
-  core_ts:
-    kind: files
-    language: typescript
-    include: [src/core/**]
-rules:
-  - id: broken_rule
-    title: Broken rule
-    kind: dependency
-    suite: boundaries
-    severity: advisory
-    from: core_ts
-    relation: must_not_depend_on
-    to: missing_selector
-"#,
+    for result in &report.results {
+        writeln!(
+            &mut out,
+            "{} {} ({})",
+            if result.status == BackendCoreRuleStatus::Pass {
+                "PASS"
+            } else {
+                "FAIL"
+            },
+            result.id,
+            result.violation_count
         )
-        .expect("write dsl");
-
-        let report = evaluate_architecture_dsl(repo.path(), &dsl_path).expect("report");
-        assert_eq!(report.summary.validation_status, ValidationStatus::Fail);
-        assert_eq!(report.summary.plan_status, PlanStatus::Blocked);
-        assert!(report
-            .issues
-            .iter()
-            .any(|issue| issue.code == "rule.selector.missing"));
-        assert!(report
-            .rules
-            .iter()
-            .any(|rule| rule.id == "broken_rule" && rule.status == RulePlanStatus::Invalid));
-    }
-
-    #[test]
-    fn executes_graph_backed_rust_boundary_rules() {
-        let repo = tempdir().expect("temp dir");
-        write(
-            repo.path().join("Cargo.toml"),
-            r#"[workspace]
-members = ["crates/*"]
-"#,
-        )
-        .expect("workspace");
-        fs::create_dir_all(repo.path().join("crates/alpha/src")).expect("alpha src");
-        fs::create_dir_all(repo.path().join("crates/beta/src")).expect("beta src");
-        write(
-            repo.path().join("crates/alpha/Cargo.toml"),
-            r#"[package]
-name = "alpha"
-version = "0.1.0"
-edition = "2021"
-"#,
-        )
-        .expect("alpha manifest");
-        write(
-            repo.path().join("crates/alpha/src/lib.rs"),
-            "use beta::service::run;\npub fn call() { run(); }\n",
-        )
-        .expect("alpha lib");
-        write(
-            repo.path().join("crates/beta/Cargo.toml"),
-            r#"[package]
-name = "beta"
-version = "0.1.0"
-edition = "2021"
-"#,
-        )
-        .expect("beta manifest");
-        write(
-            repo.path().join("crates/beta/src/lib.rs"),
-            "pub mod service;\n",
-        )
-        .expect("beta lib");
-        write(
-            repo.path().join("crates/beta/src/service.rs"),
-            "pub fn run() {}\n",
-        )
-        .expect("beta service");
-
-        let dsl_path = repo.path().join("rust.archdsl.yaml");
-        write(
-            &dsl_path,
-            r#"schema: routa.archdsl/v1
-model:
-  id: rust_graph
-  title: Rust Graph
-selectors:
-  alpha:
-    kind: files
-    language: rust
-    include: [crates/alpha/**]
-  beta:
-    kind: files
-    language: rust
-    include: [crates/beta/**]
-rules:
-  - id: alpha_no_beta
-    title: alpha must not depend on beta
-    kind: dependency
-    suite: boundaries
-    severity: advisory
-    from: alpha
-    relation: must_not_depend_on
-    to: beta
-    engine_hints:
-      - graph
-"#,
-        )
-        .expect("dsl");
-
-        let report = evaluate_architecture_dsl(repo.path(), &dsl_path).expect("report");
-        assert_eq!(report.summary.validation_status, ValidationStatus::Pass);
-        assert_eq!(report.summary.execution_status, ExecutionStatus::Fail);
-        assert_eq!(report.summary.executed_rule_count, 1);
-        assert_eq!(report.summary.failed_rule_count, 1);
-        let execution = report.rules[0].execution.as_ref().expect("execution");
-        assert_eq!(execution.status, RuleExecutionStatus::Fail);
-        assert_eq!(execution.violation_count, 1);
-        match &execution.violations[0] {
-            ArchitectureDslViolation::Dependency { source, target, .. } => {
-                assert_eq!(source, "crates/alpha/src/lib.rs");
-                assert_eq!(target, "crates/beta/src/lib.rs");
+        .ok();
+        for violation in result.violations.iter().take(5) {
+            match violation {
+                BackendCoreViolation::Dependency {
+                    source,
+                    target,
+                    edge_count,
+                } => {
+                    writeln!(&mut out, "  - {source} -> {target} ({edge_count})").ok();
+                }
+                BackendCoreViolation::Cycle { path, .. } => {
+                    writeln!(&mut out, "  - cycle: {}", path.join(" | ")).ok();
+                }
+                BackendCoreViolation::Unknown { summary } => {
+                    writeln!(&mut out, "  - {summary}").ok();
+                }
             }
-            violation => panic!("unexpected violation: {violation:?}"),
         }
     }
 
-    #[test]
-    fn executes_graph_backed_rust_rules_from_defaults_root() {
-        let repo = tempdir().expect("temp dir");
-        write(
-            repo.path().join("Cargo.toml"),
-            r#"[workspace]
-members = ["crates/*"]
-"#,
-        )
-        .expect("workspace");
-        fs::create_dir_all(repo.path().join("crates/alpha/src")).expect("alpha src");
-        fs::create_dir_all(repo.path().join("crates/beta/src")).expect("beta src");
-        write(
-            repo.path().join("crates/alpha/Cargo.toml"),
-            r#"[package]
-name = "alpha"
-version = "0.1.0"
-edition = "2021"
-"#,
-        )
-        .expect("alpha manifest");
-        write(
-            repo.path().join("crates/alpha/src/lib.rs"),
-            "use beta::service::run;\npub fn call() { run(); }\n",
-        )
-        .expect("alpha lib");
-        write(
-            repo.path().join("crates/beta/Cargo.toml"),
-            r#"[package]
-name = "beta"
-version = "0.1.0"
-edition = "2021"
-"#,
-        )
-        .expect("beta manifest");
-        write(
-            repo.path().join("crates/beta/src/lib.rs"),
-            "pub mod service;\n",
-        )
-        .expect("beta lib");
-        write(
-            repo.path().join("crates/beta/src/service.rs"),
-            "pub fn run() {}\n",
-        )
-        .expect("beta service");
-
-        let dsl_path = repo.path().join("alpha-core.archdsl.yaml");
-        write(
-            &dsl_path,
-            r#"schema: routa.archdsl/v1
-model:
-  id: alpha_graph
-  title: Alpha Graph
-defaults:
-  root: crates/alpha
-selectors:
-  alpha:
-    kind: files
-    language: rust
-    include: [crates/alpha/src/**]
-  beta:
-    kind: files
-    language: rust
-    include: [crates/beta/src/**]
-rules:
-  - id: alpha_no_beta
-    title: alpha must not depend on beta
-    kind: dependency
-    suite: boundaries
-    severity: advisory
-    from: alpha
-    relation: must_not_depend_on
-    to: beta
-    engine_hints:
-      - graph
-"#,
-        )
-        .expect("dsl");
-
-        let report = evaluate_architecture_dsl(repo.path(), &dsl_path).expect("report");
-        assert_eq!(report.summary.validation_status, ValidationStatus::Pass);
-        assert_eq!(report.summary.execution_status, ExecutionStatus::Pass);
-        assert_eq!(report.summary.executed_rule_count, 1);
-        assert_eq!(report.summary.failed_rule_count, 0);
-        let execution = report.rules[0].execution.as_ref().expect("execution");
-        assert_eq!(execution.status, RuleExecutionStatus::Pass);
-        assert_eq!(execution.violation_count, 0);
-    }
-
-    #[test]
-    fn executes_graph_backed_rust_cycle_rules() {
-        let repo = tempdir().expect("temp dir");
-        write(
-            repo.path().join("Cargo.toml"),
-            r#"[workspace]
-members = ["crates/*"]
-"#,
-        )
-        .expect("workspace");
-        fs::create_dir_all(repo.path().join("crates/alpha/src")).expect("alpha src");
-        write(
-            repo.path().join("crates/alpha/Cargo.toml"),
-            r#"[package]
-name = "alpha"
-version = "0.1.0"
-edition = "2021"
-"#,
-        )
-        .expect("alpha manifest");
-        write(
-            repo.path().join("crates/alpha/src/lib.rs"),
-            "mod a;\nmod b;\npub use a::A;\npub use b::B;\n",
-        )
-        .expect("lib");
-        write(
-            repo.path().join("crates/alpha/src/a.rs"),
-            "use crate::b::B;\npub struct A(pub B);\n",
-        )
-        .expect("a");
-        write(
-            repo.path().join("crates/alpha/src/b.rs"),
-            "use crate::a::A;\npub struct B(pub Box<A>);\n",
-        )
-        .expect("b");
-
-        let dsl_path = repo.path().join("cycle.archdsl.yaml");
-        write(
-            &dsl_path,
-            r#"schema: routa.archdsl/v1
-model:
-  id: rust_cycle
-  title: Rust Cycle
-selectors:
-  alpha:
-    kind: files
-    language: rust
-    include: [crates/alpha/**]
-rules:
-  - id: alpha_acyclic
-    title: alpha must be acyclic
-    kind: cycle
-    suite: cycles
-    severity: advisory
-    scope: alpha
-    relation: must_be_acyclic
-    engine_hints:
-      - graph
-"#,
-        )
-        .expect("dsl");
-
-        let report = evaluate_architecture_dsl(repo.path(), &dsl_path).expect("report");
-        assert_eq!(report.summary.validation_status, ValidationStatus::Pass);
-        assert_eq!(report.summary.execution_status, ExecutionStatus::Fail);
-        let execution = report.rules[0].execution.as_ref().expect("execution");
-        assert_eq!(execution.status, RuleExecutionStatus::Fail);
-        assert_eq!(execution.violation_count, 1);
-        match &execution.violations[0] {
-            ArchitectureDslViolation::Cycle { path } => {
-                assert!(path.contains(&"crates/alpha/src/a.rs".to_string()));
-                assert!(path.contains(&"crates/alpha/src/b.rs".to_string()));
-            }
-            violation => panic!("unexpected violation: {violation:?}"),
-        }
-    }
-
-    #[test]
-    fn rejects_graph_rules_that_mix_languages() {
-        let repo = tempdir().expect("temp dir");
-        let dsl_path = repo.path().join("mixed.archdsl.yaml");
-        write(
-            &dsl_path,
-            r#"schema: routa.archdsl/v1
-model:
-  id: mixed
-  title: Mixed
-selectors:
-  rust_core:
-    kind: files
-    language: rust
-    include: [crates/routa-core/**]
-  ts_app:
-    kind: files
-    language: typescript
-    include: [src/app/**]
-rules:
-  - id: mixed_graph_rule
-    title: mixed graph rule
-    kind: dependency
-    suite: boundaries
-    severity: advisory
-    from: rust_core
-    relation: must_not_depend_on
-    to: ts_app
-    engine_hints:
-      - graph
-"#,
-        )
-        .expect("dsl");
-
-        let report = evaluate_architecture_dsl(repo.path(), &dsl_path).expect("report");
-        assert_eq!(report.summary.validation_status, ValidationStatus::Fail);
-        assert!(report.issues.iter().any(|issue| {
-            issue.code == "rule.engine.graph.language_mismatch"
-                && issue.message.contains("mixed_graph_rule")
-        }));
-    }
+    out
 }
+
+#[cfg(test)]
+mod tests;

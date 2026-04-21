@@ -5,7 +5,7 @@
  */
 
 import type { ArtifactType } from "./artifact";
-import type { KanbanRequiredTaskField } from "./kanban";
+import type { KanbanRequiredTaskField } from "./task-requirements";
 import type { TaskCreationSource } from "../kanban/task-creation-policy";
 
 export enum TaskStatus {

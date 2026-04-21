@@ -1,5 +1,5 @@
 import { getServerBridge } from "@/core/platform";
-import type { NotificationHandler } from "@/core/acp/processer";
+import type { NotificationHandler } from "@/core/acp/protocol-types";
 import os from "os";
 import path from "path";
 import fsSync from "fs";
