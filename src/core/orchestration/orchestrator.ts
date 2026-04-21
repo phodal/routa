@@ -45,6 +45,8 @@ import { createWorkspaceSessionSandbox } from "../sandbox/permissions";
 import { AgentMemoryWriter, type CompletionSnapshotSource } from "../storage/agent-memory-writer";
 import { TraceReader } from "../trace/reader";
 import { buildTraceRunDigest, formatDigestForRole } from "../trace/trace-run-digest";
+import { buildRunOutcome, buildTaskFingerprint, saveRunOutcome } from "../trace/run-outcome";
+import { formatPlaybookForRole, loadLearnedPlaybook, syncLearnedPlaybookArtifact } from "../trace/trace-playbook";
 
 export interface DelegateWithSpawnParams {
   /** Task ID to delegate */
@@ -96,6 +98,7 @@ interface ChildAgentRecord {
   role: AgentRole;
   provider: string;
   cwd: string;
+  workspaceId: string;
   completionMemoryRecorded?: boolean;
   completionHandled?: boolean;
   /** Tool call ID from the parent session's delegate_task_to_agent call (if available) */
@@ -475,6 +478,7 @@ export class RoutaOrchestrator {
       specialistId: specialistConfig.id,
       additionalInstructions,
     });
+    const taskFingerprint = buildTaskFingerprint(task, workspaceId);
 
     // Build metadata including delegation depth
     const agentMetadata = buildAgentMetadata(
@@ -521,6 +525,24 @@ export class RoutaOrchestrator {
       }
     } catch {
       // Trace digest is best-effort; don't block delegation on failure
+    }
+
+    try {
+      const learned = await loadLearnedPlaybook(cwd, taskFingerprint, task.title, workspaceId);
+      if (learned) {
+        const formatted = formatPlaybookForRole(learned, specialistConfig.role as AgentRole);
+        if (formatted) {
+          enrichedAdditionalContext = enrichedAdditionalContext
+            ? `${formatted}\n\n${enrichedAdditionalContext}`
+            : formatted;
+          console.log(
+            `[Orchestrator] Learned playbook injected for ${specialistConfig.role} ` +
+              `(fingerprint=${taskFingerprint}, runs=${learned.sampleSize})`,
+          );
+        }
+      }
+    } catch {
+      // Learned playbook injection is best-effort
     }
 
     // 5. Build the delegation prompt
@@ -587,6 +609,7 @@ export class RoutaOrchestrator {
       role: specialistConfig.role,
       provider,
       cwd,
+      workspaceId,
     };
     this.childAgents.set(agentId, record);
     this.agentSessionMap.set(agentId, childSessionId);
@@ -1146,15 +1169,15 @@ export class RoutaOrchestrator {
     record: ChildAgentRecord,
     source: CompletionSnapshotSource,
   ): Promise<void> {
+    let task: Task | undefined;
+    try {
+      task = await this.system.taskStore.get(record.taskId);
+    } catch (err) {
+      console.warn("[Orchestrator] Failed to load task for completion memory:", err);
+    }
+
     if (!record.completionMemoryRecorded) {
       try {
-        let task: Task | undefined;
-        try {
-          task = await this.system.taskStore.get(record.taskId);
-        } catch (err) {
-          console.warn("[Orchestrator] Failed to load task for completion memory:", err);
-        }
-
         await this.getMemoryWriter(record.cwd).recordChildCompletion({
           sessionId: record.sessionId,
           role: record.role,
@@ -1171,6 +1194,34 @@ export class RoutaOrchestrator {
       } catch (err) {
         console.warn("[Orchestrator] Failed to write completion memory:", err);
       }
+    }
+
+    try {
+      const traceReader = new TraceReader(record.cwd);
+      const traces = await traceReader.query({ sessionId: record.sessionId, limit: 1000 });
+      if (traces.length > 0) {
+        const digest = buildTraceRunDigest(record.sessionId, traces);
+        const outcome = buildRunOutcome({
+          cwd: record.cwd,
+          task,
+          taskId: record.taskId,
+          sessionId: record.sessionId,
+          workspaceId: record.workspaceId,
+          role: record.role,
+          provider: record.provider,
+          traces,
+          digest,
+        });
+        await saveRunOutcome(record.cwd, outcome);
+        await syncLearnedPlaybookArtifact(
+          record.cwd,
+          outcome.fingerprint,
+          outcome.taskTitle,
+          outcome.workspaceId,
+        );
+      }
+    } catch (err) {
+      console.warn("[Orchestrator] Failed to persist trace run outcome:", err);
     }
 
     // Clean up the report file watcher
@@ -1393,7 +1444,7 @@ export class RoutaOrchestrator {
     this.system.eventBus.emit({
       type: AgentEventType.AGENT_ERROR,
       agentId,
-      workspaceId: record.taskId, // Workspace from task
+      workspaceId: record.workspaceId,
       data: {
         parentAgentId: record.parentAgentId,
         error: error instanceof Error ? error.message : String(error),
