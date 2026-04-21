@@ -7,7 +7,11 @@ import * as os from "os";
 import * as path from "path";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { assembleTaskAdaptiveHarness } from "../shared";
+import {
+  assembleTaskAdaptiveHarness,
+  loadTaskAdaptiveFrictionProfiles,
+  refreshTaskAdaptiveFrictionProfiles,
+} from "../shared";
 
 function ensureFile(filePath: string, content = ""): void {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
@@ -37,6 +41,32 @@ function writeTranscript(
       ...events.map((event) => JSON.stringify(event)),
       "",
     ].join("\n"),
+  );
+}
+
+function writeFeatureTreeIndex(repoRoot: string, features: Array<{
+  id: string;
+  name: string;
+  sourceFiles: string[];
+}>): void {
+  ensureFile(
+    path.join(repoRoot, "docs/product-specs/feature-tree.index.json"),
+    JSON.stringify({
+      metadata: {
+        features: features.map((feature) => ({
+          id: feature.id,
+          name: feature.name,
+          group: "test",
+          summary: `${feature.name} summary`,
+          status: "active",
+          pages: [],
+          apis: [],
+          sourceFiles: feature.sourceFiles,
+          relatedFeatures: [],
+          domainObjects: [],
+        })),
+      },
+    }, null, 2),
   );
 }
 
@@ -199,5 +229,184 @@ describe("assembleTaskAdaptiveHarness", () => {
     expect(pack.matchedSessionIds).toContain("session-b");
     expect(pack.recommendedMcpProfile).toBe("kanban-planning");
     expect(pack.recommendedAllowedNativeTools).toEqual(["Read", "Grep", "Glob"]);
+  });
+
+  it("persists reusable friction profiles for hotspot files and features", async () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "task-adaptive-friction-profiles-"));
+    process.env.HOME = tempRoot;
+    process.env.CLAUDE_CONFIG_DIR = "";
+
+    const repoRoot = path.join(tempRoot, "repo");
+    ensureFile(path.join(repoRoot, "src/app/page.tsx"), "export default function Page() { return null; }\n");
+    writeFeatureTreeIndex(repoRoot, [
+      {
+        id: "feature-explorer",
+        name: "Feature Explorer",
+        sourceFiles: ["src/app/page.tsx"],
+      },
+    ]);
+
+    writeTranscript(
+      path.join(tempRoot, ".codex", "sessions", "session-c.jsonl"),
+      repoRoot,
+      "session-c",
+      [
+        {
+          timestamp: "2026-04-21T03:01:00.000Z",
+          type: "response_item",
+          payload: {
+            type: "function_call",
+            name: "exec_command",
+            arguments: "{\"cmd\":\"sed -n '1,200p' src/app/page.tsx\"}",
+          },
+        },
+        {
+          timestamp: "2026-04-21T03:01:05.000Z",
+          type: "event_msg",
+          payload: {
+            type: "exec_command_end",
+            command: ["/bin/zsh", "-lc", "sed -n '1,200p' src/app/page.tsx"],
+            stderr: "No such file or directory",
+            exit_code: 1,
+            status: "failed",
+          },
+        },
+        {
+          timestamp: "2026-04-21T03:02:00.000Z",
+          type: "event_msg",
+          payload: {
+            type: "exec_command_end",
+            command: ["/bin/zsh", "-lc", "git status --short"],
+            aggregated_output: " M src/app/page.tsx\n",
+            exit_code: 0,
+          },
+        },
+      ],
+    );
+
+    writeTranscript(
+      path.join(tempRoot, ".codex", "sessions", "session-d.jsonl"),
+      repoRoot,
+      "session-d",
+      [
+        {
+          timestamp: "2026-04-21T03:03:00.000Z",
+          type: "response_item",
+          payload: {
+            type: "function_call",
+            name: "exec_command",
+            arguments: "{\"cmd\":\"sed -n '1,200p' src/app/page.tsx\"}",
+          },
+        },
+        {
+          timestamp: "2026-04-21T03:03:04.000Z",
+          type: "event_msg",
+          payload: {
+            type: "exec_command_end",
+            command: ["/bin/zsh", "-lc", "sed -n '1,200p' src/app/page.tsx"],
+            aggregated_output: "export default function Page() { return null; }\n",
+            exit_code: 0,
+          },
+        },
+        {
+          timestamp: "2026-04-21T03:04:00.000Z",
+          type: "event_msg",
+          payload: {
+            type: "exec_command_end",
+            command: ["/bin/zsh", "-lc", "git status --short"],
+            aggregated_output: " M src/app/page.tsx\n",
+            exit_code: 0,
+          },
+        },
+      ],
+    );
+
+    const snapshot = await refreshTaskAdaptiveFrictionProfiles(repoRoot, {
+      minFileSessions: 2,
+      minFeatureSessions: 2,
+    });
+
+    expect(Object.keys(snapshot.fileProfiles)).toContain("src/app/page.tsx");
+    expect(Object.keys(snapshot.featureProfiles)).toContain("feature-explorer");
+
+    const loadedSnapshot = loadTaskAdaptiveFrictionProfiles(repoRoot);
+    expect(loadedSnapshot?.fileProfiles["src/app/page.tsx"]).toBeDefined();
+    expect(loadedSnapshot?.featureProfiles["feature-explorer"]).toBeDefined();
+  });
+
+  it("reuses stored friction profiles before transcript fallback", async () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "task-adaptive-friction-profile-reuse-"));
+    process.env.HOME = tempRoot;
+    process.env.CLAUDE_CONFIG_DIR = "";
+
+    const repoRoot = path.join(tempRoot, "repo");
+    ensureFile(path.join(repoRoot, "src/app/page.tsx"), "export default function Page() { return null; }\n");
+    writeFeatureTreeIndex(repoRoot, [
+      {
+        id: "feature-explorer",
+        name: "Feature Explorer",
+        sourceFiles: ["src/app/page.tsx"],
+      },
+    ]);
+
+    const transcriptPath = path.join(tempRoot, ".codex", "sessions", "session-e.jsonl");
+    writeTranscript(
+      transcriptPath,
+      repoRoot,
+      "session-e",
+      [
+        {
+          timestamp: "2026-04-21T04:01:00.000Z",
+          type: "response_item",
+          payload: {
+            type: "function_call",
+            name: "exec_command",
+            arguments: "{\"cmd\":\"sed -n '1,200p' src/app/page.tsx\"}",
+          },
+        },
+        {
+          timestamp: "2026-04-21T04:01:04.000Z",
+          type: "event_msg",
+          payload: {
+            type: "exec_command_end",
+            command: ["/bin/zsh", "-lc", "sed -n '1,200p' src/app/page.tsx"],
+            stderr: "Operation not permitted",
+            exit_code: 1,
+            status: "failed",
+          },
+        },
+        {
+          timestamp: "2026-04-21T04:02:00.000Z",
+          type: "event_msg",
+          payload: {
+            type: "exec_command_end",
+            command: ["/bin/zsh", "-lc", "git status --short"],
+            aggregated_output: " M src/app/page.tsx\n",
+            exit_code: 0,
+          },
+        },
+      ],
+    );
+
+    await refreshTaskAdaptiveFrictionProfiles(repoRoot, {
+      minFileSessions: 1,
+      minFeatureSessions: 1,
+    });
+    fs.rmSync(transcriptPath);
+
+    const pack = await assembleTaskAdaptiveHarness(repoRoot, {
+      filePaths: ["src/app/page.tsx"],
+      featureId: "feature-explorer",
+      taskType: "analysis",
+    });
+
+    expect(pack.frictionProfiles).toHaveLength(2);
+    expect(pack.failures[0]).toMatchObject({
+      sessionId: "session-e",
+      message: "Operation not permitted",
+    });
+    expect(pack.summary).toContain("Reusable Friction Profiles");
+    expect(pack.summary).toContain("Loaded 2 reusable friction profiles");
+    expect(pack.matchedSessionIds).toContain("session-e");
   });
 });

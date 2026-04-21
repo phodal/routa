@@ -56,9 +56,44 @@ export interface TaskAdaptiveHarnessPack {
   failures: TaskAdaptiveHarnessFailureSignal[];
   repeatedReadFiles: string[];
   sessions: TaskAdaptiveHarnessSessionSummary[];
+  frictionProfiles: TaskAdaptiveFrictionProfile[];
   recommendedToolMode?: "essential" | "full";
   recommendedMcpProfile?: McpServerProfile;
   recommendedAllowedNativeTools?: string[];
+}
+
+export type TaskAdaptiveFrictionProfileScope = "file" | "feature";
+
+export interface TaskAdaptiveFrictionProfile {
+  scope: TaskAdaptiveFrictionProfileScope;
+  targetId: string;
+  targetLabel: string;
+  generatedAt: string;
+  updatedAt: string;
+  featureId?: string;
+  featureName?: string;
+  selectedFiles: string[];
+  matchedSessionIds: string[];
+  failures: TaskAdaptiveHarnessFailureSignal[];
+  repeatedReadFiles: string[];
+  sessions: TaskAdaptiveHarnessSessionSummary[];
+}
+
+export interface TaskAdaptiveFrictionProfileSnapshot {
+  generatedAt: string;
+  thresholds: {
+    minFileSessions: number;
+    minFeatureSessions: number;
+  };
+  fileProfiles: Record<string, TaskAdaptiveFrictionProfile>;
+  featureProfiles: Record<string, TaskAdaptiveFrictionProfile>;
+}
+
+export interface RefreshTaskAdaptiveFrictionProfilesOptions {
+  minFileSessions?: number;
+  minFeatureSessions?: number;
+  maxFiles?: number;
+  maxSessions?: number;
 }
 
 export interface FeatureTreeFeature {
@@ -121,6 +156,9 @@ const MAX_FILE_SIGNAL_PROMPTS = 6;
 const MAX_FILE_SIGNAL_CHANGED_FILES = 12;
 const MAX_FILE_SIGNAL_FAILED_TOOLS = 6;
 const MAX_FILE_SIGNAL_REPEATED_COMMANDS = 6;
+const TASK_ADAPTIVE_FRICTION_PROFILES_PATH = ".routa/feature-explorer/friction-profiles.json";
+const DEFAULT_MIN_FILE_PROFILE_SESSIONS = 2;
+const DEFAULT_MIN_FEATURE_PROFILE_SESSIONS = 2;
 const HIGH_SIGNAL_FAILURE_PATTERNS = [
   /operation not permitted/i,
   /permission denied/i,
@@ -785,6 +823,321 @@ function collectTaskAdaptiveFileSignals(repoRoot: string): Record<string, TaskAd
   return fileSignals;
 }
 
+function taskAdaptiveFrictionProfilesPath(repoRoot: string): string {
+  return path.join(repoRoot, TASK_ADAPTIVE_FRICTION_PROFILES_PATH);
+}
+
+function dedupeFailureSignals(
+  failures: TaskAdaptiveHarnessFailureSignal[],
+  limit = MAX_FAILURE_SIGNALS,
+): TaskAdaptiveHarnessFailureSignal[] {
+  const seen = new Set<string>();
+  const deduped: TaskAdaptiveHarnessFailureSignal[] = [];
+
+  for (const failure of failures) {
+    const key = [
+      failure.provider,
+      failure.sessionId,
+      failure.toolName,
+      failure.message,
+      failure.command ?? "",
+    ].join("|");
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    deduped.push(failure);
+    if (deduped.length >= limit) {
+      break;
+    }
+  }
+
+  return deduped;
+}
+
+function mergeSessionSummaries(
+  sessions: TaskAdaptiveHarnessSessionSummary[],
+  maxSessions: number,
+): TaskAdaptiveHarnessSessionSummary[] {
+  const merged = new Map<string, TaskAdaptiveHarnessSessionSummary>();
+
+  for (const session of sessions) {
+    const key = `${session.provider}:${session.sessionId}`;
+    const existing = merged.get(key);
+    if (!existing) {
+      merged.set(key, {
+        ...session,
+        matchedFiles: [...session.matchedFiles],
+        matchedChangedFiles: [...session.matchedChangedFiles],
+        matchedReadFiles: [...session.matchedReadFiles],
+        matchedWrittenFiles: [...session.matchedWrittenFiles],
+        repeatedReadFiles: [...session.repeatedReadFiles],
+        toolNames: [...session.toolNames],
+        failedReadSignals: [...session.failedReadSignals],
+      });
+      continue;
+    }
+
+    existing.updatedAt = existing.updatedAt > session.updatedAt ? existing.updatedAt : session.updatedAt;
+    if (!existing.promptSnippet && session.promptSnippet) {
+      existing.promptSnippet = session.promptSnippet;
+    }
+    if (!existing.resumeCommand && session.resumeCommand) {
+      existing.resumeCommand = session.resumeCommand;
+    }
+    existing.matchedFiles = uniqueSorted([...existing.matchedFiles, ...session.matchedFiles]);
+    existing.matchedChangedFiles = uniqueSorted([...existing.matchedChangedFiles, ...session.matchedChangedFiles]);
+    existing.matchedReadFiles = uniqueSorted([...existing.matchedReadFiles, ...session.matchedReadFiles]);
+    existing.matchedWrittenFiles = uniqueSorted([...existing.matchedWrittenFiles, ...session.matchedWrittenFiles]);
+    existing.repeatedReadFiles = uniqueSorted([...existing.repeatedReadFiles, ...session.repeatedReadFiles]);
+    existing.toolNames = trimTo(uniqueSorted([...existing.toolNames, ...session.toolNames]), MAX_TOOLS_PER_SESSION);
+    existing.failedReadSignals = dedupeFailureSignals(
+      [...existing.failedReadSignals, ...session.failedReadSignals],
+      MAX_FAILURE_SIGNALS,
+    );
+  }
+
+  return trimTo(
+    [...merged.values()].sort((left, right) =>
+      (
+        (right.failedReadSignals.length * 10)
+        + (right.repeatedReadFiles.length * 4)
+        + (right.matchedReadFiles.length * 2)
+        + right.matchedChangedFiles.length
+      ) - (
+        (left.failedReadSignals.length * 10)
+        + (left.repeatedReadFiles.length * 4)
+        + (left.matchedReadFiles.length * 2)
+        + left.matchedChangedFiles.length
+      )
+      || right.updatedAt.localeCompare(left.updatedAt)
+      || left.sessionId.localeCompare(right.sessionId),
+    ),
+    maxSessions,
+  );
+}
+
+function loadTaskAdaptiveFrictionProfilesSnapshot(repoRoot: string): TaskAdaptiveFrictionProfileSnapshot | null {
+  const snapshotPath = taskAdaptiveFrictionProfilesPath(repoRoot);
+  if (!fs.existsSync(snapshotPath)) {
+    return null;
+  }
+
+  try {
+    const raw = fs.readFileSync(snapshotPath, "utf8");
+    const parsed = JSON.parse(raw) as TaskAdaptiveFrictionProfileSnapshot | null;
+    if (!parsed || typeof parsed !== "object") {
+      return null;
+    }
+
+    return {
+      generatedAt: normalizeString(parsed.generatedAt) ?? "",
+      thresholds: {
+        minFileSessions: parsed.thresholds?.minFileSessions ?? DEFAULT_MIN_FILE_PROFILE_SESSIONS,
+        minFeatureSessions: parsed.thresholds?.minFeatureSessions ?? DEFAULT_MIN_FEATURE_PROFILE_SESSIONS,
+      },
+      fileProfiles: parsed.fileProfiles ?? {},
+      featureProfiles: parsed.featureProfiles ?? {},
+    };
+  } catch {
+    return null;
+  }
+}
+
+function persistTaskAdaptiveFrictionProfilesSnapshot(
+  repoRoot: string,
+  snapshot: TaskAdaptiveFrictionProfileSnapshot,
+): void {
+  const snapshotPath = taskAdaptiveFrictionProfilesPath(repoRoot);
+  fs.mkdirSync(path.dirname(snapshotPath), { recursive: true });
+  fs.writeFileSync(snapshotPath, JSON.stringify(snapshot, null, 2), "utf8");
+}
+
+function buildTaskAdaptiveHarnessPack(params: {
+  locale: string;
+  taskLabel?: string;
+  primaryFeature?: FeatureTreeFeature;
+  requestedFeatureIds: string[];
+  selectedFiles: string[];
+  sessions: TaskAdaptiveHarnessSessionSummary[];
+  warnings: string[];
+  taskType?: TaskAdaptiveHarnessTaskType;
+  role?: string;
+  frictionProfiles?: TaskAdaptiveFrictionProfile[];
+}): TaskAdaptiveHarnessPack {
+  const failures = trimTo(
+    dedupeFailureSignals(params.sessions.flatMap((session) => session.failedReadSignals), MAX_FAILURE_SIGNALS),
+    MAX_FAILURE_SIGNALS,
+  );
+  const repeatedReadFiles = trimTo(
+    uniqueSorted(params.sessions.flatMap((session) => session.repeatedReadFiles)),
+    MAX_REPEATED_READS,
+  );
+  const matchedSessionIds = params.sessions.map((session) => session.sessionId);
+  const recommendations = recommendTooling(params.taskType, params.role);
+  const frictionProfiles = params.frictionProfiles ?? [];
+
+  return {
+    summary: buildHarnessSummary({
+      locale: params.locale,
+      taskLabel: params.taskLabel,
+      featureName: params.primaryFeature?.name,
+      featureId: params.primaryFeature?.id ?? params.requestedFeatureIds[0],
+      selectedFiles: params.selectedFiles,
+      matchedSessionIds,
+      failures,
+      repeatedReadFiles,
+      sessions: params.sessions,
+      warnings: params.warnings,
+      frictionProfiles,
+    }),
+    warnings: params.warnings,
+    featureId: params.primaryFeature?.id ?? params.requestedFeatureIds[0],
+    featureName: params.primaryFeature?.name,
+    selectedFiles: params.selectedFiles,
+    matchedSessionIds,
+    failures,
+    repeatedReadFiles,
+    sessions: params.sessions,
+    frictionProfiles,
+    ...recommendations,
+  };
+}
+
+function selectStoredFrictionProfiles(
+  snapshot: TaskAdaptiveFrictionProfileSnapshot | null,
+  selectedFiles: string[],
+  requestedFeatureIds: string[],
+): TaskAdaptiveFrictionProfile[] {
+  if (!snapshot) {
+    return [];
+  }
+
+  const profiles: TaskAdaptiveFrictionProfile[] = [];
+  const seen = new Set<string>();
+
+  for (const filePath of selectedFiles) {
+    const profile = snapshot.fileProfiles[filePath];
+    if (!profile) {
+      continue;
+    }
+    const key = `${profile.scope}:${profile.targetId}`;
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    profiles.push(profile);
+  }
+
+  for (const featureId of requestedFeatureIds) {
+    const profile = snapshot.featureProfiles[featureId];
+    if (!profile) {
+      continue;
+    }
+    const key = `${profile.scope}:${profile.targetId}`;
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    profiles.push(profile);
+  }
+
+  return profiles;
+}
+
+function canHydrateTaskAdaptiveHarnessFromProfiles(params: {
+  selectedFiles: string[];
+  requestedFeatureIds: string[];
+  historySessionIds?: string[];
+  snapshot: TaskAdaptiveFrictionProfileSnapshot | null;
+}): boolean {
+  if (!params.snapshot || (params.historySessionIds?.length ?? 0) > 0) {
+    return false;
+  }
+
+  const { fileProfiles, featureProfiles } = params.snapshot;
+  const hasFiles = params.selectedFiles.length > 0;
+  const hasFeatures = params.requestedFeatureIds.length > 0;
+
+  return (hasFiles && params.selectedFiles.every((filePath) => Boolean(fileProfiles[filePath])))
+    || (hasFeatures && params.requestedFeatureIds.every((featureId) => Boolean(featureProfiles[featureId])));
+}
+
+function mergeProfilesIntoTaskAdaptiveHarnessPack(
+  locale: string,
+  taskLabel: string | undefined,
+  primaryFeature: FeatureTreeFeature | undefined,
+  requestedFeatureIds: string[],
+  selectedFiles: string[],
+  warnings: string[],
+  taskType: TaskAdaptiveHarnessTaskType | undefined,
+  role: string | undefined,
+  profiles: TaskAdaptiveFrictionProfile[],
+  maxSessions: number,
+): TaskAdaptiveHarnessPack {
+  const sessions = mergeSessionSummaries(
+    profiles.flatMap((profile) => profile.sessions),
+    maxSessions,
+  );
+  const mergedSelectedFiles = uniqueSorted([
+    ...selectedFiles,
+    ...profiles.flatMap((profile) => profile.selectedFiles),
+  ]);
+  const mergedWarnings = [
+    ...warnings,
+    `Loaded ${profiles.length} reusable friction profile${profiles.length === 1 ? "" : "s"} before transcript fallback.`,
+  ];
+
+  return buildTaskAdaptiveHarnessPack({
+    locale,
+    taskLabel,
+    primaryFeature,
+    requestedFeatureIds,
+    selectedFiles: mergedSelectedFiles,
+    sessions,
+    warnings: mergedWarnings,
+    taskType,
+    role,
+    frictionProfiles: profiles,
+  });
+}
+
+function toTaskAdaptiveFrictionProfile(
+  scope: TaskAdaptiveFrictionProfileScope,
+  targetId: string,
+  targetLabel: string,
+  generatedAt: string,
+  pack: TaskAdaptiveHarnessPack,
+): TaskAdaptiveFrictionProfile {
+  const updatedAt = pack.sessions[0]?.updatedAt
+    ?? pack.frictionProfiles[0]?.updatedAt
+    ?? generatedAt;
+
+  return {
+    scope,
+    targetId,
+    targetLabel,
+    generatedAt,
+    updatedAt,
+    featureId: pack.featureId,
+    featureName: pack.featureName,
+    selectedFiles: [...pack.selectedFiles],
+    matchedSessionIds: [...pack.matchedSessionIds],
+    failures: [...pack.failures],
+    repeatedReadFiles: [...pack.repeatedReadFiles],
+    sessions: pack.sessions.map((session) => ({
+      ...session,
+      matchedFiles: [...session.matchedFiles],
+      matchedChangedFiles: [...session.matchedChangedFiles],
+      matchedReadFiles: [...session.matchedReadFiles],
+      matchedWrittenFiles: [...session.matchedWrittenFiles],
+      repeatedReadFiles: [...session.repeatedReadFiles],
+      toolNames: [...session.toolNames],
+      failedReadSignals: [...session.failedReadSignals],
+    })),
+  };
+}
+
 export function parseTaskAdaptiveHarnessOptions(value: unknown): TaskAdaptiveHarnessOptions | undefined {
   if (value === true) {
     return {};
@@ -971,6 +1324,7 @@ function buildHarnessSummary(input: {
   repeatedReadFiles: string[];
   sessions: TaskAdaptiveHarnessSessionSummary[];
   warnings: string[];
+  frictionProfiles: TaskAdaptiveFrictionProfile[];
 }): string {
   const isZh = input.locale.startsWith("zh");
   const none = isZh ? "无" : "None";
@@ -994,6 +1348,8 @@ function buildHarnessSummary(input: {
       `  ${isZh ? "Prompt" : "Prompt"}: ${promptSnippet}`,
     ].join("\n");
   });
+  const profileLines = input.frictionProfiles.map((profile) =>
+    `${profile.scope}:${profile.targetLabel} | ${isZh ? "会话" : "sessions"} ${profile.matchedSessionIds.length} | ${isZh ? "失败读取" : "failed reads"} ${profile.failures.length} | ${isZh ? "重复读取" : "repeated reads"} ${profile.repeatedReadFiles.length}`);
 
   const guidance = isZh
     ? [
@@ -1022,6 +1378,9 @@ function buildHarnessSummary(input: {
     isZh ? "### 重复读取文件" : "### Repeated-Read Files",
     formatBulletList(input.repeatedReadFiles, isZh ? "没有高信号重复读取" : "No high-signal repeated reads"),
     "",
+    isZh ? "### 可复用摩擦画像" : "### Reusable Friction Profiles",
+    formatBulletList(profileLines, isZh ? "没有命中的可复用画像" : "No reusable friction profiles matched"),
+    "",
     isZh ? "### 已恢复的相关文件" : "### Recovered Relevant Files",
     formatBulletList(input.selectedFiles, none),
     "",
@@ -1040,16 +1399,20 @@ function buildHarnessSummary(input: {
   ].join("\n");
 }
 
-export async function assembleTaskAdaptiveHarness(
+function assembleTaskAdaptiveHarnessRaw(
   repoRoot: string,
   options: TaskAdaptiveHarnessOptions = {},
-): Promise<TaskAdaptiveHarnessPack> {
+  preloaded?: {
+    featureTree?: FeatureTreeFeature[];
+    fileSignals?: Record<string, TaskAdaptiveFileSignal>;
+  },
+): TaskAdaptiveHarnessPack {
   const locale = options.locale ?? "en";
   const maxFiles = options.maxFiles ?? DEFAULT_MAX_FILES;
   const maxSessions = options.maxSessions ?? DEFAULT_MAX_SESSIONS;
   const warnings: string[] = [];
 
-  const featureTree = { features: readFeatureTreeFeatures(repoRoot) };
+  const featureTree = { features: preloaded?.featureTree ?? readFeatureTreeFeatures(repoRoot) };
   const requestedFeatureIds = uniqueSorted([
     ...(options.featureId ? [options.featureId] : []),
     ...(options.featureIds ?? []),
@@ -1065,7 +1428,7 @@ export async function assembleTaskAdaptiveHarness(
   }
   const primaryFeature = features[0];
 
-  const fileSignals = collectTaskAdaptiveFileSignals(repoRoot);
+  const fileSignals = preloaded?.fileSignals ?? collectTaskAdaptiveFileSignals(repoRoot);
   const selectedFiles = trimTo(
     uniqueSorted([
       ...(options.filePaths ?? []),
@@ -1177,38 +1540,172 @@ export async function assembleTaskAdaptiveHarness(
     ...(session.resumeCommand ? { resumeCommand: session.resumeCommand } : {}),
   }));
 
-  const failures = trimTo(
-    sessions.flatMap((session) => session.failedReadSignals),
-    MAX_FAILURE_SIGNALS,
+  return buildTaskAdaptiveHarnessPack({
+    locale,
+    taskLabel: options.taskLabel,
+    primaryFeature,
+    requestedFeatureIds,
+    selectedFiles,
+    sessions,
+    warnings,
+    taskType: options.taskType,
+    role: options.role,
+  });
+}
+
+export function loadTaskAdaptiveFrictionProfiles(
+  repoRoot: string,
+): TaskAdaptiveFrictionProfileSnapshot | null {
+  return loadTaskAdaptiveFrictionProfilesSnapshot(repoRoot);
+}
+
+export async function refreshTaskAdaptiveFrictionProfiles(
+  repoRoot: string,
+  options: RefreshTaskAdaptiveFrictionProfilesOptions = {},
+): Promise<TaskAdaptiveFrictionProfileSnapshot> {
+  const featureTree = readFeatureTreeFeatures(repoRoot);
+  const fileSignals = collectTaskAdaptiveFileSignals(repoRoot);
+  const maxFiles = options.maxFiles ?? DEFAULT_MAX_FILES;
+  const maxSessions = options.maxSessions ?? DEFAULT_MAX_SESSIONS;
+  const minFileSessions = options.minFileSessions ?? DEFAULT_MIN_FILE_PROFILE_SESSIONS;
+  const minFeatureSessions = options.minFeatureSessions ?? DEFAULT_MIN_FEATURE_PROFILE_SESSIONS;
+  const generatedAt = new Date().toISOString();
+
+  const fileProfiles: Record<string, TaskAdaptiveFrictionProfile> = {};
+  const featureProfiles: Record<string, TaskAdaptiveFrictionProfile> = {};
+
+  for (const [filePath, signal] of Object.entries(fileSignals)) {
+    if (signal.sessions.length < minFileSessions) {
+      continue;
+    }
+
+    const pack = assembleTaskAdaptiveHarnessRaw(repoRoot, {
+      filePaths: [filePath],
+      taskType: "analysis",
+      maxFiles: 1,
+      maxSessions,
+    }, {
+      featureTree,
+      fileSignals,
+    });
+
+    if (pack.matchedSessionIds.length < minFileSessions) {
+      continue;
+    }
+
+    fileProfiles[filePath] = toTaskAdaptiveFrictionProfile("file", filePath, filePath, generatedAt, pack);
+  }
+
+  for (const feature of featureTree) {
+    const touchesSignals = feature.sourceFiles.some((filePath) => Boolean(fileSignals[filePath]));
+    if (!touchesSignals) {
+      continue;
+    }
+
+    const pack = assembleTaskAdaptiveHarnessRaw(repoRoot, {
+      featureId: feature.id,
+      taskType: "analysis",
+      maxFiles,
+      maxSessions,
+    }, {
+      featureTree,
+      fileSignals,
+    });
+
+    if (pack.matchedSessionIds.length < minFeatureSessions) {
+      continue;
+    }
+
+    featureProfiles[feature.id] = toTaskAdaptiveFrictionProfile(
+      "feature",
+      feature.id,
+      feature.name || feature.id,
+      generatedAt,
+      pack,
+    );
+  }
+
+  const snapshot: TaskAdaptiveFrictionProfileSnapshot = {
+    generatedAt,
+    thresholds: {
+      minFileSessions,
+      minFeatureSessions,
+    },
+    fileProfiles,
+    featureProfiles,
+  };
+
+  persistTaskAdaptiveFrictionProfilesSnapshot(repoRoot, snapshot);
+  return snapshot;
+}
+
+export async function assembleTaskAdaptiveHarness(
+  repoRoot: string,
+  options: TaskAdaptiveHarnessOptions = {},
+): Promise<TaskAdaptiveHarnessPack> {
+  const locale = options.locale ?? "en";
+  const maxFiles = options.maxFiles ?? DEFAULT_MAX_FILES;
+  const requestedFeatureIds = uniqueSorted([
+    ...(options.featureId ? [options.featureId] : []),
+    ...(options.featureIds ?? []),
+  ]);
+  const featureTree = readFeatureTreeFeatures(repoRoot);
+  const features = requestedFeatureIds
+    .map((featureId) => featureTree.find((item) => item.id === featureId))
+    .filter((feature): feature is FeatureTreeFeature => Boolean(feature));
+  const selectedFiles = trimTo(
+    uniqueSorted([
+      ...(options.filePaths ?? []),
+      ...features.flatMap((feature) => collectFeatureFiles(feature, maxFiles)),
+    ]),
+    maxFiles,
   );
-  const repeatedReadFiles = trimTo(
-    uniqueSorted(sessions.flatMap((session) => session.repeatedReadFiles)),
-    MAX_REPEATED_READS,
-  );
-  const matchedSessionIds = sessions.map((session) => session.sessionId);
-  const recommendations = recommendTooling(options.taskType, options.role);
+  const snapshot = loadTaskAdaptiveFrictionProfilesSnapshot(repoRoot);
+  const matchedProfiles = selectStoredFrictionProfiles(snapshot, selectedFiles, requestedFeatureIds);
+
+  if (canHydrateTaskAdaptiveHarnessFromProfiles({
+    selectedFiles,
+    requestedFeatureIds,
+    historySessionIds: options.historySessionIds,
+    snapshot,
+  }) && matchedProfiles.length > 0) {
+    return mergeProfilesIntoTaskAdaptiveHarnessPack(
+      locale,
+      options.taskLabel,
+      features[0],
+      requestedFeatureIds,
+      selectedFiles,
+      [],
+      options.taskType,
+      options.role,
+      matchedProfiles,
+      options.maxSessions ?? DEFAULT_MAX_SESSIONS,
+    );
+  }
+
+  const pack = assembleTaskAdaptiveHarnessRaw(repoRoot, options, {
+    featureTree,
+  });
+
+  if (matchedProfiles.length === 0) {
+    return pack;
+  }
 
   return {
-    summary: buildHarnessSummary({
+    ...mergeProfilesIntoTaskAdaptiveHarnessPack(
       locale,
-      taskLabel: options.taskLabel,
-      featureName: primaryFeature?.name,
-      featureId: primaryFeature?.id ?? requestedFeatureIds[0],
-      selectedFiles,
-      matchedSessionIds,
-      failures,
-      repeatedReadFiles,
-      sessions,
-      warnings,
-    }),
-    warnings,
-    featureId: primaryFeature?.id ?? requestedFeatureIds[0],
-    featureName: primaryFeature?.name,
-    selectedFiles,
-    matchedSessionIds,
-    failures,
-    repeatedReadFiles,
-    sessions,
-    ...recommendations,
+      options.taskLabel,
+      features[0],
+      requestedFeatureIds,
+      uniqueSorted([...selectedFiles, ...pack.selectedFiles]),
+      pack.warnings,
+      options.taskType,
+      options.role,
+      matchedProfiles,
+      options.maxSessions ?? DEFAULT_MAX_SESSIONS,
+    ),
+    recommendedToolMode: pack.recommendedToolMode,
+    recommendedMcpProfile: pack.recommendedMcpProfile,
+    recommendedAllowedNativeTools: pack.recommendedAllowedNativeTools,
   };
 }
