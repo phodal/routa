@@ -441,6 +441,7 @@ export function KanbanPageClient() {
       options?.mcpProfile,
       options?.systemPrompt,
       true,
+      options?.taskAdaptiveHarness,
     );
 
     if (!result?.sessionId) {

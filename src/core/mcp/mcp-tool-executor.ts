@@ -10,6 +10,10 @@ import { NoteTools } from "@/core/tools/note-tools";
 import { WorkspaceTools } from "@/core/tools/workspace-tools";
 import { KanbanTools } from "@/core/tools/kanban-tools";
 import { getRoutaOrchestrator } from "@/core/orchestration/orchestrator-singleton";
+import {
+  assembleTaskAdaptiveHarnessFromToolArgs,
+  TASK_ADAPTIVE_HARNESS_TOOL_NAME,
+} from "@/core/harness/task-adaptive-tool";
 import { readFeatureTreeSpecResource } from "@/core/spec/feature-tree-spec-resource-contract";
 import { ToolMode } from "./routa-mcp-tool-manager";
 import { getMcpProfileToolAllowlist, type McpServerProfile } from "./mcp-server-profiles";
@@ -61,6 +65,7 @@ const ESSENTIAL_TOOL_NAMES = new Set([
   "list_pending_artifact_requests",
   "capture_screenshot",
   "read_specialist_spec_resource",
+  TASK_ADAPTIVE_HARNESS_TOOL_NAME,
 ]);
 
 export async function executeMcpTool(
@@ -277,6 +282,11 @@ export async function executeMcpTool(
           modelTier: args.modelTier as string | undefined,
         })
       );
+    case TASK_ADAPTIVE_HARNESS_TOOL_NAME:
+      return formatResult({
+        success: true,
+        data: await assembleTaskAdaptiveHarnessFromToolArgs(args, workspace),
+      });
     case "send_message_to_task_agent":
       return formatResult(await tools.sendMessageToTaskAgent(args as never));
     case "get_agent_status":
@@ -621,6 +631,39 @@ export function getMcpToolDefinitions(
   mcpProfile?: McpServerProfile,
 ) {
   const allTools = [
+    {
+      name: TASK_ADAPTIVE_HARNESS_TOOL_NAME,
+      description: "Compile a Task-Adaptive Harness pack for the current task by retrieving relevant history sessions, file signals, and high-friction failures just in time.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          workspaceId: { type: "string", description: "Workspace ID. Uses the current MCP session workspace when omitted." },
+          codebaseId: { type: "string", description: "Optional codebase ID override for repository resolution." },
+          repoPath: { type: "string", description: "Optional repository path override for repository resolution." },
+          taskLabel: { type: "string", description: "Short label for the current task or request." },
+          locale: { type: "string", description: "Optional locale hint, e.g. en or zh-CN." },
+          featureId: { type: "string", description: "Optional Feature Explorer feature ID to ground retrieval." },
+          filePaths: {
+            type: "array",
+            items: { type: "string" },
+            description: "Optional repository-relative file paths already known to be relevant.",
+          },
+          historySessionIds: {
+            type: "array",
+            items: { type: "string" },
+            description: "Optional history session IDs to prioritize during retrieval.",
+          },
+          taskType: {
+            type: "string",
+            enum: ["implementation", "planning", "analysis", "review"],
+            description: "Task type hint used for tool/profile recommendations.",
+          },
+          maxFiles: { type: "number", minimum: 1, description: "Maximum number of files to include in the selected context slice." },
+          maxSessions: { type: "number", minimum: 1, description: "Maximum number of history sessions to include." },
+          role: { type: "string", description: "Optional agent role hint, e.g. ROUTA or CRAFTER." },
+        },
+      },
+    },
     // ── Web fetch tool ───────────────────────────────────────────────
     {
       name: "fetch_webpage",

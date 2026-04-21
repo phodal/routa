@@ -325,7 +325,11 @@ describe("KanbanTab drag and drop", () => {
       ],
     };
 
-    let currentTask = createTask("task-1", "Story One");
+    let currentTask = createTask("task-1", "Story One", {
+      triggerSessionId: "session-trigger",
+      sessionIds: ["session-trigger", "session-history"],
+      laneSessions: [{ sessionId: "session-lane", status: "running", startedAt: "2025-01-01T00:00:00.000Z" }],
+    });
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (init?.method === "PATCH" && url === "/api/tasks/task-1") {
@@ -411,21 +415,11 @@ describe("KanbanTab drag and drop", () => {
       <KanbanTab
         workspaceId="workspace-1"
         boards={[dragBoard]}
-        tasks={[createTask("task-1", "Story One")]}
+        tasks={[currentTask]}
         sessions={[]}
         providers={[{ id: "claude", name: "Claude Code", description: "Claude Code provider", command: "claude", status: "available" }]}
         specialists={[]}
-        codebases={[{
-          id: "codebase-1",
-          workspaceId: "workspace-1",
-          repoPath: "/tmp/repo",
-          isDefault: true,
-          label: "Repo",
-          branch: "main",
-          sourceType: "local",
-          createdAt: "2025-01-01T00:00:00.000Z",
-          updatedAt: "2025-01-01T00:00:00.000Z",
-        }]}
+        codebases={[{ id: "codebase-1", workspaceId: "workspace-1", repoPath: "/tmp/repo", isDefault: true, label: "Repo", branch: "main", sourceType: "local", createdAt: "2025-01-01T00:00:00.000Z", updatedAt: "2025-01-01T00:00:00.000Z" }]}
         onRefresh={vi.fn()}
         onAgentPrompt={onAgentPrompt}
       />,
@@ -440,7 +434,6 @@ describe("KanbanTab drag and drop", () => {
     });
 
     expect(await screen.findByRole("button", { name: "Ask Kanban Agent to Fix" })).toBeTruthy();
-
     fireEvent.click(screen.getByRole("button", { name: "Ask Kanban Agent to Fix" }));
 
     await waitFor(() => {
@@ -451,6 +444,13 @@ describe("KanbanTab drag and drop", () => {
       mcpProfile: "kanban-planning",
       toolMode: "full",
       allowedNativeTools: [],
+      taskAdaptiveHarness: expect.objectContaining({
+        taskLabel: "Story One",
+        taskType: "planning",
+        locale: "en",
+        role: "CRAFTER",
+        historySessionIds: ["session-trigger", "session-history", "session-lane"],
+      }),
     });
 
     await waitFor(() => {

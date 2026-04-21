@@ -1,5 +1,6 @@
 // Shared types for workspace dashboard components
 
+import type { AcpTaskAdaptiveHarnessOptions } from "@/client/acp-client";
 import type { McpServerProfile } from "@/core/mcp/mcp-server-profiles";
 import type { KanbanRequiredTaskField } from "@/core/models/kanban";
 import type { TaskAnalysisStatus } from "@/core/models/task";
@@ -51,6 +52,7 @@ export interface KanbanAgentPromptOptions {
   allowedNativeTools?: string[];
   mcpProfile?: McpServerProfile;
   systemPrompt?: string;
+  taskAdaptiveHarness?: AcpTaskAdaptiveHarnessOptions;
 }
 
 export type KanbanAgentPromptHandler = (

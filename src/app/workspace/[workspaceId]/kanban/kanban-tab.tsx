@@ -5,9 +5,7 @@ import type { AcpProviderInfo } from "@/client/acp-client";
 import type { CodebaseData } from "@/client/hooks/use-workspaces";
 import type { UseAcpState, UseAcpActions } from "@/client/hooks/use-acp";
 import { desktopAwareFetch } from "@/client/utils/diagnostics";
-import {
-  resolveEffectiveTaskAutomation,
-} from "@/core/kanban/effective-task-automation";
+import { resolveEffectiveTaskAutomation } from "@/core/kanban/effective-task-automation";
 import type {
   GitHubIssueListItemInfo,
   GitHubPRListItemInfo,
@@ -21,14 +19,8 @@ import type {
 import { EMPTY_DRAFT, type TaskDraft } from "../kanban-create-modal";
 import { type ColumnAutomationConfig, type KanbanSettingsModalProps } from "./kanban-settings-modal";
 import { scheduleKanbanRefreshBurst } from "./kanban-agent-input";
-import {
-  type KanbanSpecialistLanguage,
-} from "./kanban-specialist-language";
-import {
-  buildKanbanMoveBlockedRemediationPrompt,
-  buildKanbanTaskAgentPrompt,
-  getKanbanTaskAgentCopy,
-} from "./i18n/kanban-task-agent";
+import { type KanbanSpecialistLanguage } from "./kanban-specialist-language";
+import { buildKanbanMoveBlockedRemediationPrompt, buildKanbanTaskAgentPrompt, getKanbanTaskAgentCopy } from "./i18n/kanban-task-agent";
 import { createKanbanSpecialistResolver } from "./kanban-card-session-utils";
 import { useTranslation } from "@/i18n";
 import { normalizeKanbanAutomation } from "@/core/models/kanban";
@@ -43,9 +35,8 @@ import {
   resolveKanbanBoardAutoProviderId,
   taskOwnsSession,
 } from "./kanban-tab-helpers";
-import {
-  importGitHubItems,
-} from "./kanban-github-import";
+import { buildKanbanTaskAdaptiveHarnessOptions } from "./kanban-task-adaptive";
+import { importGitHubItems } from "./kanban-github-import";
 import { getKanbanFileChangesSummary } from "./kanban-file-changes-panel";
 import { KanbanTabContent } from "./kanban-tab-content";
 import { useRuntimeFitnessStatus } from "./use-runtime-fitness-status";
@@ -420,6 +411,7 @@ export function KanbanTab({
         allowedNativeTools: [],
         mcpProfile: "kanban-planning",
         systemPrompt: planningPrompt,
+        taskAdaptiveHarness: buildKanbanTaskAdaptiveHarnessOptions(agentInput, { locale: specialistLanguage, role: "CRAFTER", taskType: "planning" }),
       });
       if (!sessionId) return;
       openAgentPanel(sessionId);
@@ -1833,6 +1825,7 @@ export function KanbanTab({
         allowedNativeTools: [],
         mcpProfile: "kanban-planning",
         systemPrompt: remediationPrompt,
+        taskAdaptiveHarness: buildKanbanTaskAdaptiveHarnessOptions(task.title, { locale: specialistLanguage, role: "CRAFTER", taskType: "planning", task }),
       });
       if (!sessionId) {
         return;

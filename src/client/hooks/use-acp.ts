@@ -208,6 +208,8 @@ export interface UseAcpActions {
       systemPrompt?: string,
       /** Allow unattended permission approvals for automation sessions. */
       autoApprovePermissions?: boolean,
+      /** Optional Task-Adaptive Harness retrieval inputs for JIT context hydration. */
+      taskAdaptiveHarness?: AcpTaskAdaptiveHarnessOptions,
     ) => Promise<AcpNewSessionResult | null>;
   resumeSession: (
     sessionId: string,

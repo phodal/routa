@@ -21,4 +21,8 @@ describe("kanban page desktop fetch wiring", () => {
     expect(source).not.toContain("const res = await fetch(\n          `/api/specialists?workspaceId=${encodeURIComponent(workspaceId)}&locale=${encodeURIComponent(specialistLanguage)}`");
     expect(source).not.toContain("void fetch(\"/api/acp/warmup\", {");
   });
+
+  it("forwards Kanban task-adaptive harness options into ACP session creation", () => {
+    expect(source).toContain("options?.taskAdaptiveHarness,");
+  });
 });

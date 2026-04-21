@@ -1,5 +1,22 @@
 import { describe, expect, it, vi } from "vitest";
 
+const { assembleTaskAdaptiveHarnessFromToolArgs } = vi.hoisted(() => ({
+  assembleTaskAdaptiveHarnessFromToolArgs: vi.fn(async () => ({
+    summary: "Recovered history-session context for the current task.",
+    warnings: [],
+    selectedFiles: ["src/core/mcp/routa-mcp-tool-manager.ts"],
+    matchedSessionIds: ["session-123"],
+    failures: [],
+    repeatedReadFiles: [],
+    sessions: [],
+  })),
+}));
+
+vi.mock("@/core/harness/task-adaptive-tool", () => ({
+  TASK_ADAPTIVE_HARNESS_TOOL_NAME: "assemble_task_adaptive_harness",
+  assembleTaskAdaptiveHarnessFromToolArgs,
+}));
+
 import { RoutaMcpToolManager } from "../routa-mcp-tool-manager";
 
 function createServerRecorder() {
@@ -107,17 +124,20 @@ describe("RoutaMcpToolManager", () => {
     expect(registrations.some((entry) => entry.name === "create_note")).toBe(true);
     expect(registrations.some((entry) => entry.name === "read_canvas_sdk_resource")).toBe(true);
     expect(registrations.some((entry) => entry.name === "read_specialist_spec_resource")).toBe(true);
+    expect(registrations.some((entry) => entry.name === "assemble_task_adaptive_harness")).toBe(true);
 
     const createTaskTool = registrations.find((entry) => entry.name === "create_task");
     const noteTool = registrations.find((entry) => entry.name === "create_note");
     const delegateTool = registrations.find((entry) => entry.name === "delegate_task_to_agent");
     const canvasSdkTool = registrations.find((entry) => entry.name === "read_canvas_sdk_resource");
     const specialistSpecTool = registrations.find((entry) => entry.name === "read_specialist_spec_resource");
+    const taskAdaptiveHarnessTool = registrations.find((entry) => entry.name === "assemble_task_adaptive_harness");
     expect(createTaskTool).toBeDefined();
     expect(noteTool).toBeDefined();
     expect(delegateTool).toBeDefined();
     expect(canvasSdkTool).toBeDefined();
     expect(specialistSpecTool).toBeDefined();
+    expect(taskAdaptiveHarnessTool).toBeDefined();
 
     await createTaskTool!.handler({
       title: "Task",
@@ -190,6 +210,19 @@ describe("RoutaMcpToolManager", () => {
       (specialistSpecResult as { content: Array<{ text: string }> }).content[0]?.text ?? "{}",
     ) as { text?: string };
     expect(specialistSpecPayload.text).toContain('"baseRulesInPrompt"');
+
+    const taskAdaptiveHarnessResult = await taskAdaptiveHarnessTool!.handler({
+      taskLabel: "Investigate history-session loading",
+      historySessionIds: ["session-123"],
+    });
+    expect(assembleTaskAdaptiveHarnessFromToolArgs).toHaveBeenCalledWith({
+      taskLabel: "Investigate history-session loading",
+      historySessionIds: ["session-123"],
+    }, "ws-1");
+    expect(taskAdaptiveHarnessResult).toMatchObject({
+      content: [{ type: "text" }],
+      isError: false,
+    });
   });
 
   it("returns MCP errors when orchestrator or note tools are unavailable", async () => {

@@ -972,6 +972,12 @@ describe("KanbanTab agent prompt flow", () => {
         allowedNativeTools: [],
         mcpProfile: "kanban-planning",
         systemPrompt: expect.stringContaining("You are the KanbanTask Agent"),
+        taskAdaptiveHarness: {
+          taskLabel: "Investigate lane issue",
+          taskType: "planning",
+          locale: "en",
+          role: "CRAFTER",
+        },
       }),
     );
     await waitFor(() => {
@@ -1022,6 +1028,12 @@ describe("KanbanTab agent prompt flow", () => {
         allowedNativeTools: [],
         mcpProfile: "kanban-planning",
         systemPrompt: expect.stringContaining("你是当前工作区的看板任务代理"),
+        taskAdaptiveHarness: {
+          taskLabel: "调查 lane 问题",
+          taskType: "planning",
+          locale: "zh-CN",
+          role: "CRAFTER",
+        },
       }),
     );
     expect(screen.getByDisplayValue("调查 lane 问题")).toBeTruthy();
