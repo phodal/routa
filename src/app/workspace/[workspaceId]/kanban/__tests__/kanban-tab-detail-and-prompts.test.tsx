@@ -359,8 +359,7 @@ describe("KanbanCardDetail repository health", () => {
     );
 
     expect(desktopAwareFetch).not.toHaveBeenCalled();
-
-    fireEvent.click(screen.getByRole("button", { name: "Execution" }));
+    expect(screen.getByText("JIT Context")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Show JIT Context" }));
 
     expect(await screen.findByText("Historical issues")).toBeTruthy();

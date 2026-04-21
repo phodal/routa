@@ -472,6 +472,16 @@ export function KanbanCardDetail({
           </div>
         </section>
 
+        <section className={compactMode ? "space-y-1.5 border-b border-slate-200/80 py-1.5 dark:border-[#232736]" : "space-y-2 border-b border-slate-200/70 py-2 dark:border-[#232736]"}>
+          <JitContextPanel
+            task={task}
+            workspaceId={resolvedWorkspaceId || undefined}
+            repoPath={getTaskRepositoryPath()}
+            specialistLanguage={specialistLanguage}
+            compact={compactMode}
+          />
+        </section>
+
         <div className="border-b border-slate-200/80 dark:border-[#232736]">
           <div className="flex min-w-0 gap-1 overflow-x-auto">
             {detailTabs.map((tab) => {
@@ -719,20 +729,6 @@ export function KanbanCardDetail({
                 onProviderChange={onProviderChange}
                 compact={compactMode}
               />
-
-              <DetailSection
-                title={t.kanbanDetail.jitContext}
-                description={compactMode ? undefined : t.kanbanDetail.jitContextHint}
-                compact={compactMode}
-              >
-                <JitContextPanel
-                  task={task}
-                  workspaceId={resolvedWorkspaceId || undefined}
-                  repoPath={getTaskRepositoryPath()}
-                  specialistLanguage={specialistLanguage}
-                  compact={compactMode}
-                />
-              </DetailSection>
 
               <RepositoriesWorktreeRow
                 task={task}

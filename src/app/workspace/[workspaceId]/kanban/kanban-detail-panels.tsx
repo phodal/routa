@@ -473,6 +473,9 @@ export function JitContextPanel({
     <div className="space-y-3">
       <div className={`flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200/80 bg-slate-50/80 ${compact ? "px-3 py-2" : "px-3.5 py-2.5"} dark:border-slate-700/70 dark:bg-slate-900/20`}>
         <div className="space-y-1">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">
+            {t.kanbanDetail.jitContext}
+          </div>
           <div className="text-sm font-medium text-slate-900 dark:text-slate-100">
             {t.kanbanDetail.jitContextHint}
           </div>
