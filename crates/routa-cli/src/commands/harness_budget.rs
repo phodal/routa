@@ -17,6 +17,7 @@ const DEFAULT_EXCLUDED_PARTS: &[&str] = &[
     "/bundled/",
 ];
 
+/// Evaluate repository files against the configured long-file budgets.
 #[derive(Args, Debug, Clone)]
 pub struct FileBudgetArgs {
     /// Repository root to inspect. Defaults to the current git toplevel.
@@ -81,6 +82,7 @@ enum ViolationKind {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+/// Structured detail for one file that exceeded its allowed budget.
 pub struct FileBudgetViolation {
     relative_path: String,
     line_count: usize,
@@ -93,6 +95,7 @@ pub struct FileBudgetViolation {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+/// Structured output for a complete budget run.
 pub struct FileBudgetReport {
     repo_root: String,
     config_path: String,
@@ -104,6 +107,7 @@ pub struct FileBudgetReport {
     warnings: Vec<String>,
 }
 
+/// Run the long-file budget checker and emit either text or JSON output.
 pub fn run_budget(args: &FileBudgetArgs, repo_root: &Path) -> Result<(), String> {
     let report = build_budget_report(args, repo_root)?;
 
@@ -117,6 +121,13 @@ pub fn run_budget(args: &FileBudgetArgs, repo_root: &Path) -> Result<(), String>
         print_text_report(&report);
     }
 
+    if !report.violations.is_empty() {
+        return Err(format!(
+            "found {} file budget violation(s)",
+            report.violations.len()
+        ));
+    }
+
     Ok(())
 }
 
@@ -124,12 +135,14 @@ fn build_budget_report(
     args: &FileBudgetArgs,
     repo_root: &Path,
 ) -> Result<FileBudgetReport, String> {
-    let mut warnings = Vec::new();
     let config_path = resolve_config_path(repo_root, &args.config);
-    let config = load_config(&config_path, &mut warnings);
+    let config = load_config(&config_path)?;
 
     let mut candidates = if args.changed_only {
         list_changed_files(repo_root, &args.base)?
+            .into_iter()
+            .filter(|path| should_include_file(path, &config))
+            .collect()
     } else {
         list_all_budgeted_files(repo_root, &config)
     };
@@ -153,7 +166,7 @@ fn build_budget_report(
         overrides_only: args.overrides_only,
         candidate_count: candidates.len(),
         violations,
-        warnings,
+        warnings: Vec::new(),
     })
 }
 
@@ -197,28 +210,16 @@ fn resolve_config_path(repo_root: &Path, config: &str) -> PathBuf {
     }
 }
 
-fn load_config(config_path: &Path, warnings: &mut Vec<String>) -> NormalizedFileBudgetConfig {
-    if !config_path.exists() {
-        warnings.push(format!(
-            "Missing {}; using default long-file budget thresholds.",
+fn load_config(config_path: &Path) -> Result<NormalizedFileBudgetConfig, String> {
+    let raw = fs::read_to_string(config_path)
+        .map_err(|error| format!("failed to read {}: {error}", config_path.display()))?;
+    let config = serde_json::from_str::<FileBudgetConfig>(&raw).map_err(|error| {
+        format!(
+            "invalid file budget config {}: {error}",
             config_path.display()
-        ));
-        return default_config();
-    }
-
-    match fs::read_to_string(config_path)
-        .ok()
-        .and_then(|raw| serde_json::from_str::<FileBudgetConfig>(&raw).ok())
-    {
-        Some(config) => normalize_config(config),
-        None => {
-            warnings.push(format!(
-                "Failed to parse {}; using default long-file budget thresholds.",
-                config_path.display()
-            ));
-            default_config()
-        }
-    }
+        )
+    })?;
+    Ok(normalize_config(config))
 }
 
 fn default_config() -> NormalizedFileBudgetConfig {
@@ -252,16 +253,33 @@ fn normalize_config(config: FileBudgetConfig) -> NormalizedFileBudgetConfig {
         normalized.default_max_lines = default_max_lines;
     }
     if let Some(include_roots) = config.include_roots {
-        normalized.include_roots = include_roots;
+        normalized.include_roots = include_roots
+            .into_iter()
+            .map(|value| normalize_root_path(&value))
+            .filter(|value| !value.is_empty())
+            .collect();
     }
     if let Some(extensions) = config.extensions {
-        normalized.extensions = extensions;
+        normalized.extensions = extensions
+            .into_iter()
+            .map(|value| normalize_extension(&value))
+            .filter(|value| !value.is_empty())
+            .collect();
     }
     if let Some(extension_max_lines) = config.extension_max_lines {
-        normalized.extension_max_lines.extend(extension_max_lines);
+        normalized.extension_max_lines.extend(
+            extension_max_lines
+                .into_iter()
+                .map(|(key, value)| (normalize_extension(&key), value))
+                .filter(|(key, _)| !key.is_empty()),
+        );
     }
     if let Some(excluded_parts) = config.excluded_parts {
-        normalized.excluded_parts = excluded_parts;
+        normalized.excluded_parts = excluded_parts
+            .into_iter()
+            .map(|value| normalize_path_sequence(&value))
+            .filter(|value| !value.is_empty())
+            .collect();
     }
     if let Some(overrides) = config.overrides {
         normalized.overrides = overrides;
@@ -272,13 +290,20 @@ fn normalize_config(config: FileBudgetConfig) -> NormalizedFileBudgetConfig {
 fn list_changed_files(repo_root: &Path, base_ref: &str) -> Result<Vec<String>, String> {
     let output = git_output(
         repo_root,
-        ["diff", "--name-only", "--diff-filter=ACMR", base_ref, "--"],
+        [
+            "diff",
+            "--name-only",
+            "--diff-filter=ACMR",
+            "--end-of-options",
+            base_ref,
+            "--",
+        ],
     )?;
     Ok(output
         .lines()
         .map(str::trim)
         .filter(|line| !line.is_empty())
-        .map(|line| line.replace('\\', "/"))
+        .map(normalize_relative_path)
         .collect())
 }
 
@@ -287,39 +312,44 @@ fn list_all_budgeted_files(repo_root: &Path, config: &NormalizedFileBudgetConfig
     for root in &config.include_roots {
         let absolute_root = repo_root.join(root);
         if absolute_root.is_dir() {
-            walk_files(&absolute_root, &mut collected);
+            walk_files(repo_root, &absolute_root, config, &mut collected);
         }
     }
 
     collected
-        .into_iter()
-        .filter_map(|absolute_path| {
-            absolute_path
-                .strip_prefix(repo_root)
-                .ok()
-                .map(|relative| relative.to_string_lossy().replace('\\', "/"))
-        })
-        .filter(|relative_path| should_include_file(relative_path, config))
-        .collect()
 }
 
-fn walk_files(dir: &Path, collected: &mut Vec<PathBuf>) {
+fn walk_files(
+    repo_root: &Path,
+    dir: &Path,
+    config: &NormalizedFileBudgetConfig,
+    collected: &mut Vec<String>,
+) {
     let Ok(entries) = fs::read_dir(dir) else {
         return;
     };
 
     for entry in entries.flatten() {
         let path = entry.path();
+        let Ok(relative_path) = path.strip_prefix(repo_root) else {
+            continue;
+        };
+        let normalized_relative_path =
+            normalize_relative_path(relative_path.to_string_lossy().as_ref());
+        if is_excluded_path(&normalized_relative_path, config) {
+            continue;
+        }
+
         if path.is_dir() {
-            walk_files(&path, collected);
-        } else if path.is_file() {
-            collected.push(path);
+            walk_files(repo_root, &path, config, collected);
+        } else if path.is_file() && should_include_file(&normalized_relative_path, config) {
+            collected.push(normalized_relative_path);
         }
     }
 }
 
 fn should_include_file(relative_path: &str, config: &NormalizedFileBudgetConfig) -> bool {
-    let normalized_path = relative_path.replace('\\', "/");
+    let normalized_path = normalize_relative_path(relative_path);
     let extension = Path::new(&normalized_path)
         .extension()
         .map(|value| format!(".{}", value.to_string_lossy().to_lowercase()))
@@ -341,10 +371,7 @@ fn should_include_file(relative_path: &str, config: &NormalizedFileBudgetConfig)
         return false;
     }
 
-    config
-        .excluded_parts
-        .iter()
-        .all(|excluded| !normalized_path.contains(excluded))
+    !is_excluded_path(&normalized_path, config)
 }
 
 fn evaluate_file(
@@ -424,7 +451,8 @@ fn find_override<'a>(
 }
 
 fn read_tracked_file(repo_root: &Path, base_ref: &str, relative_path: &str) -> Option<String> {
-    git_output(repo_root, ["show", &format!("{base_ref}:{relative_path}")]).ok()
+    let revision = format!("{base_ref}:{relative_path}");
+    git_output(repo_root, ["show", "--end-of-options", &revision]).ok()
 }
 
 fn git_output<const N: usize>(repo_root: &Path, args: [&str; N]) -> Result<String, String> {
@@ -450,9 +478,67 @@ fn count_lines(source: &str) -> usize {
     }
 }
 
+fn normalize_extension(value: &str) -> String {
+    let trimmed = value.trim().to_lowercase();
+    if trimmed.is_empty() {
+        return String::new();
+    }
+
+    if trimmed.starts_with('.') {
+        trimmed
+    } else {
+        format!(".{trimmed}")
+    }
+}
+
+fn normalize_root_path(value: &str) -> String {
+    normalize_path_sequence(value)
+}
+
+fn normalize_relative_path(value: &str) -> String {
+    normalize_path_sequence(value)
+}
+
+fn normalize_path_sequence(value: &str) -> String {
+    value
+        .replace('\\', "/")
+        .split('/')
+        .filter(|segment| !segment.is_empty() && *segment != ".")
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
+fn is_excluded_path(relative_path: &str, config: &NormalizedFileBudgetConfig) -> bool {
+    config
+        .excluded_parts
+        .iter()
+        .any(|excluded| path_contains_sequence(relative_path, excluded))
+}
+
+fn path_contains_sequence(path: &str, needle: &str) -> bool {
+    let path_parts = path_segments(path);
+    let needle_segments = path_segments(needle);
+
+    if needle_segments.is_empty() || needle_segments.len() > path_parts.len() {
+        return false;
+    }
+
+    path_parts
+        .windows(needle_segments.len())
+        .any(|window| window == needle_segments.as_slice())
+}
+
+fn path_segments(path: &str) -> Vec<&str> {
+    path.split('/')
+        .filter(|segment| !segment.is_empty() && *segment != ".")
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{build_budget_report, FileBudgetArgs, ViolationKind, DEFAULT_CONFIG_PATH};
+    use super::{
+        build_budget_report, run_budget, FileBudgetArgs, ViolationKind, DEFAULT_CONFIG_PATH,
+    };
     use serde_json::json;
     use std::fs;
     use std::path::Path;
@@ -504,6 +590,43 @@ mod tests {
     }
 
     #[test]
+    fn changed_only_candidate_count_ignores_non_budget_files() {
+        let repo = init_git_repo();
+        write_budget_config(
+            repo.path(),
+            json!({
+                "default_max_lines": 10,
+                "include_roots": ["src"],
+                "extensions": [".ts"],
+                "extension_max_lines": { ".ts": 10 },
+                "overrides": []
+            }),
+        );
+        write_file(repo.path(), "README.md", 1);
+        write_file(repo.path(), "src/app.ts", 1);
+        commit_all(repo.path(), "baseline");
+
+        write_file(repo.path(), "README.md", 2);
+        write_file(repo.path(), "src/app.ts", 2);
+
+        let report = build_budget_report(
+            &FileBudgetArgs {
+                repo_root: None,
+                config: DEFAULT_CONFIG_PATH.to_string(),
+                changed_only: true,
+                base: "HEAD".to_string(),
+                overrides_only: false,
+                json: false,
+            },
+            repo.path(),
+        )
+        .expect("budget report should build");
+
+        assert_eq!(report.candidate_count, 1);
+        assert!(report.violations.is_empty());
+    }
+
+    #[test]
     fn overrides_only_reports_only_configured_hotspots() {
         let repo = init_git_repo();
         write_budget_config(
@@ -547,6 +670,102 @@ mod tests {
             violation.violation_kind,
             ViolationKind::OverrideBudgetExceeded
         );
+    }
+
+    #[test]
+    fn invalid_budget_config_fails_fast() {
+        let repo = init_git_repo();
+        let config_path = repo.path().join(DEFAULT_CONFIG_PATH);
+        fs::create_dir_all(
+            config_path
+                .parent()
+                .expect("budget config should have a parent directory"),
+        )
+        .expect("create config dir");
+        fs::write(&config_path, "{ not-valid-json").expect("write invalid config");
+
+        let error = build_budget_report(
+            &FileBudgetArgs {
+                repo_root: None,
+                config: DEFAULT_CONFIG_PATH.to_string(),
+                changed_only: false,
+                base: "HEAD".to_string(),
+                overrides_only: false,
+                json: false,
+            },
+            repo.path(),
+        )
+        .expect_err("invalid config should fail");
+
+        assert!(error.contains("invalid file budget config"));
+        assert!(error.contains("docs/fitness/file_budgets.json"));
+    }
+
+    #[test]
+    fn run_budget_returns_error_when_violations_exist() {
+        let repo = init_git_repo();
+        write_budget_config(
+            repo.path(),
+            json!({
+                "default_max_lines": 1,
+                "include_roots": ["src"],
+                "extensions": [".ts"],
+                "extension_max_lines": { ".ts": 1 },
+                "overrides": []
+            }),
+        );
+        write_file(repo.path(), "src/app.ts", 2);
+
+        let error = run_budget(
+            &FileBudgetArgs {
+                repo_root: None,
+                config: DEFAULT_CONFIG_PATH.to_string(),
+                changed_only: false,
+                base: "HEAD".to_string(),
+                overrides_only: false,
+                json: false,
+            },
+            repo.path(),
+        )
+        .expect_err("violations should fail the command");
+
+        assert_eq!(error, "found 1 file budget violation(s)");
+    }
+
+    #[test]
+    fn normalize_config_accepts_common_extension_and_path_variants() {
+        let repo = init_git_repo();
+        write_budget_config(
+            repo.path(),
+            json!({
+                "default_max_lines": 10,
+                "include_roots": ["src/"],
+                "extensions": ["TS"],
+                "extension_max_lines": { "ts": 1 },
+                "excluded_parts": ["/generated/"],
+                "overrides": []
+            }),
+        );
+        write_file(repo.path(), "src/Mixed.TS", 2);
+        write_file(repo.path(), "src/generated/skip.TS", 4);
+
+        let report = build_budget_report(
+            &FileBudgetArgs {
+                repo_root: None,
+                config: DEFAULT_CONFIG_PATH.to_string(),
+                changed_only: false,
+                base: "HEAD".to_string(),
+                overrides_only: false,
+                json: false,
+            },
+            repo.path(),
+        )
+        .expect("budget report should build");
+
+        assert_eq!(report.candidate_count, 1);
+        assert_eq!(report.violations.len(), 1);
+        assert_eq!(report.violations[0].relative_path, "src/Mixed.TS");
+        assert_eq!(report.violations[0].budget_limit, 1);
     }
 
     fn init_git_repo() -> TempDir {
