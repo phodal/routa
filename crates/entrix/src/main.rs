@@ -457,9 +457,7 @@ fn maybe_spawn_parent_watchdog() {
     std::thread::spawn(move || loop {
         std::thread::sleep(Duration::from_secs(1));
         if parent_pid_missing(parent_pid) {
-            eprintln!(
-                "PARENT EXITED (pid {parent_pid}); terminating entrix child process"
-            );
+            eprintln!("PARENT EXITED (pid {parent_pid}); terminating entrix child process");
             std::process::exit(2);
         }
     });
@@ -477,8 +475,7 @@ fn maybe_spawn_process_watchdog_from_env() {
     std::thread::spawn(move || {
         std::thread::sleep(Duration::from_secs(max_runtime_seconds) + Duration::from_secs(2));
         eprintln!(
-            "GLOBAL TIMEOUT (entrix process exceeded {}s max runtime); forcing process exit",
-            max_runtime_seconds
+            "GLOBAL TIMEOUT (entrix process exceeded {max_runtime_seconds}s max runtime); forcing process exit"
         );
         std::process::exit(2);
     });
