@@ -3,6 +3,7 @@ export type McpServerProfile = "coordination" | "kanban-planning" | "team-coordi
 const KANBAN_PLANNING_TOOL_NAMES = [
   "assemble_task_adaptive_harness",
   "summarize_task_history_context",
+  "summarize_file_session_context",
   "create_card",
   "decompose_tasks",
   "search_cards",
@@ -15,6 +16,7 @@ const KANBAN_PLANNING_TOOL_NAMES = [
 const TEAM_COORDINATION_TOOL_NAMES = [
   "assemble_task_adaptive_harness",
   "summarize_task_history_context",
+  "summarize_file_session_context",
   "create_task",
   "list_agents",
   "read_agent_conversation",

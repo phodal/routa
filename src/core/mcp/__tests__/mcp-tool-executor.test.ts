@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 
-const { assembleTaskAdaptiveHarnessFromToolArgs, summarizeTaskHistoryContextFromToolArgs } = vi.hoisted(() => ({
+const {
+  assembleTaskAdaptiveHarnessFromToolArgs,
+  summarizeFileSessionContextFromToolArgs,
+  summarizeTaskHistoryContextFromToolArgs,
+} = vi.hoisted(() => ({
   assembleTaskAdaptiveHarnessFromToolArgs: vi.fn(async () => ({
     summary: "Recovered read failures and repeated path lookups from history.",
     warnings: [],
@@ -29,12 +33,33 @@ const { assembleTaskAdaptiveHarnessFromToolArgs, summarizeTaskHistoryContextFrom
     matchedSessionIds: ["session-123"],
     warnings: [],
   })),
+  summarizeFileSessionContextFromToolArgs: vi.fn(async () => ({
+    selectedFiles: ["src/app/workspace/[workspaceId]/kanban/kanban-tab.tsx"],
+    focusFiles: ["src/app/workspace/[workspaceId]/kanban/kanban-tab.tsx"],
+    matchedFileDetails: [],
+    matchedSessionIds: ["session-123"],
+    directSessions: [],
+    adjacentSessions: [],
+    weakSessions: [],
+    openingPrompts: [],
+    scopeDriftSignals: [],
+    inputFrictions: [],
+    environmentFrictions: [],
+    repeatedFileHotspots: [],
+    repeatedCommandHotspots: [],
+    transcriptHints: ["~/.codex/sessions/**/session-123*.jsonl"],
+    warnings: [],
+    matchConfidence: "high",
+    matchReasons: ["Started from 1 explicit related files on the card."],
+  })),
 }));
 
 vi.mock("@/core/harness/task-adaptive-tool", () => ({
   TASK_ADAPTIVE_HARNESS_TOOL_NAME: "assemble_task_adaptive_harness",
   TASK_HISTORY_SUMMARY_TOOL_NAME: "summarize_task_history_context",
+  FILE_SESSION_CONTEXT_TOOL_NAME: "summarize_file_session_context",
   assembleTaskAdaptiveHarnessFromToolArgs,
+  summarizeFileSessionContextFromToolArgs,
   summarizeTaskHistoryContextFromToolArgs,
 }));
 
@@ -97,6 +122,9 @@ describe("executeMcpTool", () => {
     expect(
       getMcpToolDefinitions("essential", "kanban-planning").some((tool) => tool.name === "summarize_task_history_context"),
     ).toBe(true);
+    expect(
+      getMcpToolDefinitions("essential", "kanban-planning").some((tool) => tool.name === "summarize_file_session_context"),
+    ).toBe(true);
   });
 
   it("builds compressed history summaries from MCP args", async () => {
@@ -121,6 +149,31 @@ describe("executeMcpTool", () => {
     });
     expect((result as { content: Array<{ text: string }> }).content[0]?.text).toContain(
       '"historySummary": {',
+    );
+  });
+
+  it("builds file-session context summaries from MCP args", async () => {
+    const result = await executeMcpTool(
+      {} as never,
+      "summarize_file_session_context",
+      {
+        workspaceId: "workspace-1",
+        filePaths: ["src/app/workspace/[workspaceId]/kanban/kanban-tab.tsx"],
+        historySessionIds: ["session-123"],
+      },
+    );
+
+    expect(summarizeFileSessionContextFromToolArgs).toHaveBeenCalledWith({
+      workspaceId: "workspace-1",
+      filePaths: ["src/app/workspace/[workspaceId]/kanban/kanban-tab.tsx"],
+      historySessionIds: ["session-123"],
+    }, "workspace-1");
+    expect(result).toMatchObject({
+      content: [{ type: "text" }],
+      isError: false,
+    });
+    expect((result as { content: Array<{ text: string }> }).content[0]?.text).toContain(
+      '"focusFiles": [',
     );
   });
 });

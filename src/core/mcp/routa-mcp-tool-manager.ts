@@ -14,6 +14,8 @@ import { WorkspaceTools } from "../tools/workspace-tools";
 import { ToolResult } from "../tools/tool-result";
 import {
   assembleTaskAdaptiveHarnessFromToolArgs,
+  FILE_SESSION_CONTEXT_TOOL_NAME,
+  summarizeFileSessionContextFromToolArgs,
   summarizeTaskHistoryContextFromToolArgs,
   TASK_ADAPTIVE_HARNESS_TOOL_NAME,
   TASK_HISTORY_SUMMARY_TOOL_NAME,
@@ -169,6 +171,7 @@ export class RoutaMcpToolManager {
       register("read_specialist_spec_resource", () => this.registerReadSpecialistSpecResource(server));
       register(TASK_ADAPTIVE_HARNESS_TOOL_NAME, () => this.registerAssembleTaskAdaptiveHarness(server));
       register(TASK_HISTORY_SUMMARY_TOOL_NAME, () => this.registerSummarizeTaskHistoryContext(server));
+      register(FILE_SESSION_CONTEXT_TOOL_NAME, () => this.registerSummarizeFileSessionContext(server));
       return;
     }
 
@@ -237,6 +240,7 @@ export class RoutaMcpToolManager {
     register("read_specialist_spec_resource", () => this.registerReadSpecialistSpecResource(server));
     register(TASK_ADAPTIVE_HARNESS_TOOL_NAME, () => this.registerAssembleTaskAdaptiveHarness(server));
     register(TASK_HISTORY_SUMMARY_TOOL_NAME, () => this.registerSummarizeTaskHistoryContext(server));
+    register(FILE_SESSION_CONTEXT_TOOL_NAME, () => this.registerSummarizeFileSessionContext(server));
   }
 
   private shouldRegisterTool(toolName: string): boolean {
@@ -1540,6 +1544,47 @@ Can be in response to a request or proactively provided.`,
       async (params) => {
         try {
           const result = await summarizeTaskHistoryContextFromToolArgs(params, this.workspaceId);
+          return this.toMcpResult({
+            success: true,
+            data: result,
+          });
+        } catch (error) {
+          return this.toMcpResult({
+            success: false,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
+    );
+  }
+
+  private registerSummarizeFileSessionContext(server: McpServer) {
+    server.tool(
+      FILE_SESSION_CONTEXT_TOOL_NAME,
+      "Build a file-session context summary that separates direct file evidence, adjacent evidence, scope drift, input friction, and environment friction for specialist analysis.",
+      {
+        workspaceId: z.string().optional().describe("Workspace ID override. Uses the current MCP session workspace when omitted."),
+        codebaseId: z.string().optional().describe("Optional codebase ID override."),
+        repoPath: z.string().optional().describe("Optional repository path override."),
+        taskLabel: z.string().optional().describe("Short label for the current task or request."),
+        locale: z.string().optional().describe("Optional locale hint, e.g. en or zh-CN."),
+        featureId: z.string().optional().describe("Optional Feature Explorer feature ID."),
+        featureIds: z.array(z.string()).optional().describe("Optional ordered candidate Feature Tree IDs."),
+        filePaths: z.array(z.string()).optional().describe("Optional repository-relative file paths already known to be relevant."),
+        routeCandidates: z.array(z.string()).optional().describe("Optional route hints for file inference."),
+        apiCandidates: z.array(z.string()).optional().describe("Optional API hints for file inference."),
+        historySessionIds: z.array(z.string()).optional().describe("Optional linked history session IDs to prioritize."),
+        moduleHints: z.array(z.string()).optional().describe("Optional module or subsystem hints."),
+        symptomHints: z.array(z.string()).optional().describe("Optional user-visible symptom hints."),
+        taskType: z.enum(["implementation", "planning", "analysis", "review"]).optional()
+          .describe("Task type hint used for retrieval heuristics."),
+        maxFiles: z.number().int().positive().optional().describe("Maximum number of files to include."),
+        maxSessions: z.number().int().positive().optional().describe("Maximum number of history sessions to include."),
+        role: z.string().optional().describe("Optional agent role hint, e.g. ROUTA or CRAFTER."),
+      },
+      async (params) => {
+        try {
+          const result = await summarizeFileSessionContextFromToolArgs(params, this.workspaceId);
           return this.toMcpResult({
             success: true,
             data: result,

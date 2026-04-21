@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 
-const { assembleTaskAdaptiveHarnessFromToolArgs, summarizeTaskHistoryContextFromToolArgs } = vi.hoisted(() => ({
+const {
+  assembleTaskAdaptiveHarnessFromToolArgs,
+  summarizeFileSessionContextFromToolArgs,
+  summarizeTaskHistoryContextFromToolArgs,
+} = vi.hoisted(() => ({
   assembleTaskAdaptiveHarnessFromToolArgs: vi.fn(async () => ({
     summary: "Recovered history-session context for the current task.",
     warnings: [],
@@ -29,12 +33,33 @@ const { assembleTaskAdaptiveHarnessFromToolArgs, summarizeTaskHistoryContextFrom
     matchedSessionIds: ["session-123"],
     warnings: [],
   })),
+  summarizeFileSessionContextFromToolArgs: vi.fn(async () => ({
+    selectedFiles: ["src/core/mcp/routa-mcp-tool-manager.ts"],
+    focusFiles: ["src/core/mcp/routa-mcp-tool-manager.ts"],
+    matchedFileDetails: [],
+    matchedSessionIds: ["session-123"],
+    directSessions: [],
+    adjacentSessions: [],
+    weakSessions: [],
+    openingPrompts: [],
+    scopeDriftSignals: [],
+    inputFrictions: [],
+    environmentFrictions: [],
+    repeatedFileHotspots: [],
+    repeatedCommandHotspots: [],
+    transcriptHints: ["~/.codex/sessions/**/session-123*.jsonl"],
+    warnings: [],
+    matchConfidence: "high",
+    matchReasons: ["Started from 1 explicit related files on the card."],
+  })),
 }));
 
 vi.mock("@/core/harness/task-adaptive-tool", () => ({
   TASK_ADAPTIVE_HARNESS_TOOL_NAME: "assemble_task_adaptive_harness",
   TASK_HISTORY_SUMMARY_TOOL_NAME: "summarize_task_history_context",
+  FILE_SESSION_CONTEXT_TOOL_NAME: "summarize_file_session_context",
   assembleTaskAdaptiveHarnessFromToolArgs,
+  summarizeFileSessionContextFromToolArgs,
   summarizeTaskHistoryContextFromToolArgs,
 }));
 
@@ -147,6 +172,7 @@ describe("RoutaMcpToolManager", () => {
     expect(registrations.some((entry) => entry.name === "read_specialist_spec_resource")).toBe(true);
     expect(registrations.some((entry) => entry.name === "assemble_task_adaptive_harness")).toBe(true);
     expect(registrations.some((entry) => entry.name === "summarize_task_history_context")).toBe(true);
+    expect(registrations.some((entry) => entry.name === "summarize_file_session_context")).toBe(true);
 
     const createTaskTool = registrations.find((entry) => entry.name === "create_task");
     const noteTool = registrations.find((entry) => entry.name === "create_note");
@@ -155,6 +181,7 @@ describe("RoutaMcpToolManager", () => {
     const specialistSpecTool = registrations.find((entry) => entry.name === "read_specialist_spec_resource");
     const taskAdaptiveHarnessTool = registrations.find((entry) => entry.name === "assemble_task_adaptive_harness");
     const historySummaryTool = registrations.find((entry) => entry.name === "summarize_task_history_context");
+    const fileSessionContextTool = registrations.find((entry) => entry.name === "summarize_file_session_context");
     expect(createTaskTool).toBeDefined();
     expect(noteTool).toBeDefined();
     expect(delegateTool).toBeDefined();
@@ -162,6 +189,7 @@ describe("RoutaMcpToolManager", () => {
     expect(specialistSpecTool).toBeDefined();
     expect(taskAdaptiveHarnessTool).toBeDefined();
     expect(historySummaryTool).toBeDefined();
+    expect(fileSessionContextTool).toBeDefined();
 
     await createTaskTool!.handler({
       title: "Task",
@@ -257,6 +285,19 @@ describe("RoutaMcpToolManager", () => {
       historySessionIds: ["session-1", "session-2"],
     }, "ws-1");
     expect(historySummaryResult).toMatchObject({
+      content: [{ type: "text" }],
+      isError: false,
+    });
+
+    const fileSessionContextResult = await fileSessionContextTool!.handler({
+      filePaths: ["src/core/mcp/routa-mcp-tool-manager.ts"],
+      historySessionIds: ["session-123"],
+    });
+    expect(summarizeFileSessionContextFromToolArgs).toHaveBeenCalledWith({
+      filePaths: ["src/core/mcp/routa-mcp-tool-manager.ts"],
+      historySessionIds: ["session-123"],
+    }, "ws-1");
+    expect(fileSessionContextResult).toMatchObject({
       content: [{ type: "text" }],
       isError: false,
     });
