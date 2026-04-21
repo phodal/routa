@@ -2,7 +2,7 @@
 title: "Dev server logs a workflow orchestrator startup TypeError during app bootstrap"
 date: "2026-04-21"
 kind: issue
-status: open
+status: resolved
 severity: medium
 area: "kanban"
 tags: ["runtime", "workflow-orchestrator", "scheduler", "validation", "feature-explorer"]
@@ -73,4 +73,13 @@ Observed result:
 - `src/core/routa-system.ts`
 - `src/core/scheduling/scheduler-service.ts`
 - `src/core/kanban/workflow-orchestrator-singleton.ts`
+- `src/core/tools/kanban-tools.ts`
 
+## Resolution
+
+- 2026-04-21: fixed by normalizing `workflow-orchestrator-singleton` module interop in both `src/core/routa-system.ts` and `src/core/tools/kanban-tools.ts`
+- the resolver now tolerates direct named exports as well as `default` / `module.exports` shapes during dev-runtime loading
+- revalidated with:
+  - `GET /api/feature-explorer/friction-profiles?workspaceId=default&repoPath=/Users/phodal/ai/routa-js` -> `200`
+  - `POST /api/feature-explorer/friction-profiles?...` -> `200`
+  - `entrix run --tier fast` -> `PASS`

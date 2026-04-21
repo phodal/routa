@@ -77,6 +77,47 @@ import { resolveTaskWorktreeTruth } from "../kanban/task-worktree-truth";
 
 const DESCRIPTION_FROZEN_STAGES = new Set<KanbanColumnStage>(["dev", "review", "blocked", "done"]);
 
+type WorkflowOrchestratorSingletonModule =
+  typeof import("../kanban/workflow-orchestrator-singleton");
+
+function resolveWorkflowOrchestratorSingletonModule(
+  value: unknown,
+): WorkflowOrchestratorSingletonModule {
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    if (
+      typeof record.startWorkflowOrchestrator === "function"
+      && typeof record.enqueueKanbanTaskSession === "function"
+    ) {
+      return record as WorkflowOrchestratorSingletonModule;
+    }
+
+    const defaultExport = record.default;
+    if (defaultExport && typeof defaultExport === "object") {
+      const defaultRecord = defaultExport as Record<string, unknown>;
+      if (
+        typeof defaultRecord.startWorkflowOrchestrator === "function"
+        && typeof defaultRecord.enqueueKanbanTaskSession === "function"
+      ) {
+        return defaultRecord as WorkflowOrchestratorSingletonModule;
+      }
+    }
+
+    const moduleExports = record["module.exports"];
+    if (moduleExports && typeof moduleExports === "object") {
+      const moduleExportsRecord = moduleExports as Record<string, unknown>;
+      if (
+        typeof moduleExportsRecord.startWorkflowOrchestrator === "function"
+        && typeof moduleExportsRecord.enqueueKanbanTaskSession === "function"
+      ) {
+        return moduleExportsRecord as WorkflowOrchestratorSingletonModule;
+      }
+    }
+  }
+
+  throw new TypeError("workflow-orchestrator-singleton module exports are incompatible");
+}
+
 export class KanbanTools {
   private eventBus?: EventBus;
   private artifactStore?: ArtifactStore;
@@ -983,7 +1024,9 @@ export class KanbanTools {
     }
 
     if (this.automationSystem && this.isAutomationSystemCompatible()) {
-      const orchestratorModule = await import("../kanban/workflow-orchestrator-singleton");
+      const orchestratorModule = resolveWorkflowOrchestratorSingletonModule(
+        await import("../kanban/workflow-orchestrator-singleton"),
+      );
       orchestratorModule.startWorkflowOrchestrator(this.automationSystem);
       const result = await orchestratorModule.enqueueKanbanTaskSession(this.automationSystem, {
         task,
