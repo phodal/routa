@@ -2,14 +2,15 @@
 title: "Desktop tray should expose workspace-first actions and macOS menu bar behavior"
 date: "2026-04-20"
 kind: issue
-status: open
+status: resolved
+resolved_at: "2026-04-21"
 severity: medium
 area: "desktop"
 tags: ["desktop", "tray", "macos", "tauri", "workspace", "ux"]
 reported_by: "codex"
 related_issues: []
 github_issue: 498
-github_state: open
+github_state: closed
 github_url: "https://github.com/phodal/routa/issues/498"
 ---
 
@@ -85,3 +86,15 @@ macOS 上应进一步增强为菜单栏模式：
 
 - 这项工作主要是 Desktop surface 的交互和信息架构调整，不改变 Web/Desktop 的领域语义边界
 - Windows / Linux 继续保留 tray 作为系统托盘入口；macOS 再额外增强为更接近 menu bar app 的形态
+
+## Resolution Update (2026-04-21)
+
+- Verified the GitHub tracker `#498` is already closed; the remaining mismatch was the local tracker state.
+- `apps/desktop/src-tauri/src/tray.rs` already exposes workspace-first top-level tray actions for `Sessions`, `Kanban Board`, `Team Runs`, and `Messages`, with `Settings` and `GitHub Shortcuts` as secondary paths.
+- The tray implementation already routes workspace shortcuts through the current window context, query fallback, and persisted `routa.desktop.last-workspace-id` before falling back to `default`.
+- macOS-specific tray behavior is already wired:
+  - `show_menu_on_left_click(false)`
+  - left-click focuses the main window
+  - template tray icon usage
+  - `ActivationPolicy::Accessory` + hidden Dock when `ROUTA_DESKTOP_MENU_BAR_MODE=1`
+- Existing desktop tray tests in `apps/desktop/src-tauri/src/tray.rs` already cover the workspace routes, left-click open behavior, and macOS template icon decision.
