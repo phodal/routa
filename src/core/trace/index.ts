@@ -17,3 +17,5 @@ export * from "./session-query";
 export * from "./file-range-extractor";
 export * from "./vcs-context";
 export * from "./trace-run-digest";
+export * from "./run-outcome";
+export * from "./trace-playbook";
