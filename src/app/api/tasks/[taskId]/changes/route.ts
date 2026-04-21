@@ -96,7 +96,10 @@ async function getTaskChanges(
     const changes = getRepoChanges(repoPath);
     const remoteUrl = getRemoteUrl(repoPath);
     const deliveryReadiness = await buildTaskDeliveryReadiness(task, system);
-    const liveCommittedChanges = deliveryReadiness.checked
+    const snapshotCommittedChanges = task.deliverySnapshot?.commits ?? [];
+    const shouldPreferSnapshotCommittedChanges = snapshotCommittedChanges.length > 0;
+    const liveCommittedChanges = !shouldPreferSnapshotCommittedChanges
+      && deliveryReadiness.checked
       && deliveryReadiness.hasCommitsSinceBase
       && deliveryReadiness.baseRef
       ? getRepoCommitChanges(repoPath, {
@@ -104,12 +107,12 @@ async function getTaskChanges(
         maxCount: Math.max(deliveryReadiness.commitsSinceBase, 1),
       })
       : [];
-    const committedChanges = liveCommittedChanges.length > 0
-      ? liveCommittedChanges
-      : task.deliverySnapshot?.commits ?? [];
-    const baseRef = liveCommittedChanges.length > 0
-      ? deliveryReadiness.baseRef
-      : task.deliverySnapshot?.baseRef ?? deliveryReadiness.baseRef;
+    const committedChanges = shouldPreferSnapshotCommittedChanges
+      ? snapshotCommittedChanges
+      : liveCommittedChanges;
+    const baseRef = shouldPreferSnapshotCommittedChanges
+      ? task.deliverySnapshot?.baseRef
+      : deliveryReadiness.baseRef;
 
     return NextResponse.json({
       changes: {

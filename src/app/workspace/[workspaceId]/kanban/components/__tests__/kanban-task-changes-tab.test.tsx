@@ -296,4 +296,5 @@ describe("KanbanTaskChangesTab", () => {
     fireEvent.click(screen.getByTestId("kanban-commit-row-abc1234567890"));
     expect(screen.queryByTestId("kanban-commit-files-changed")).toBeNull();
   });
+
 });
