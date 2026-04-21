@@ -354,11 +354,16 @@ async function callCodexCli(prompt: string): Promise<string> {
     const output = fs.existsSync(outputFile)
       ? fs.readFileSync(outputFile, "utf-8")
       : result.output;
+    const trimmedOutput = output.trim();
+    if (trimmedOutput) {
+      return trimmedOutput;
+    }
+
     if (result.exitCode !== 0) {
       throw new Error(`Automatic review specialist failed via codex CLI: ${tailOutput(output) || `exit ${result.exitCode}`}`);
     }
 
-    return output.trim();
+    return trimmedOutput;
   } finally {
     fs.rmSync(tempDir, { force: true, recursive: true });
   }

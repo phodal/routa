@@ -172,6 +172,50 @@ describe("runReviewTriggerSpecialist", () => {
     expect(runCommandMock.mock.calls[2]?.[1]).toMatchObject({ timeoutMs: 45_000 });
   });
 
+  it("accepts Codex CLI verdict output even when the command exits non-zero", async () => {
+    process.env.ROUTA_REVIEW_PROVIDER = "codex";
+
+    runCommandMock
+      .mockResolvedValueOnce({
+        command: "git diff --stat 'origin/main...HEAD'",
+        durationMs: 5,
+        exitCode: 0,
+        output: " tools/hook-runtime/src/specialist-review.ts | 10 +++++-----\n",
+      })
+      .mockResolvedValueOnce({
+        command: "git diff --unified=3 'origin/main...HEAD'",
+        durationMs: 5,
+        exitCode: 0,
+        output: "diff --git a/file b/file\n+change\n",
+      })
+      .mockImplementationOnce(async (command: string) => {
+        const match = command.match(/--output-last-message '([^']+)'/);
+        if (!match?.[1]) {
+          throw new Error(`Missing output file in command: ${command}`);
+        }
+        fs.writeFileSync(match[1], "{\"verdict\":\"pass\",\"summary\":\"codex ok despite exit\",\"findings\":[]}");
+        return {
+          command,
+          durationMs: 5,
+          exitCode: 1,
+          output: "[hook-runtime] Command timed out after 45000ms",
+        };
+      });
+
+    const result = await runReviewTriggerSpecialist({
+      reviewRoot: process.cwd(),
+      base: "origin/main",
+      report: {
+        triggers: [{ action: "review", name: "oversized_change", severity: "high" }],
+        committed_files: ["tools/hook-runtime/src/specialist-review.ts"],
+      },
+    });
+
+    expect(result.allowed).toBe(true);
+    expect(result.outcome).toBe("pass");
+    expect(result.summary).toBe("codex ok despite exit");
+  });
+
   it("falls back to Codex when the default Claude provider is unavailable", async () => {
     delete process.env.ROUTA_REVIEW_PROVIDER;
     delete process.env.ROUTA_REVIEW_FALLBACK_PROVIDER;
