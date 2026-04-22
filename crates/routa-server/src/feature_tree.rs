@@ -86,14 +86,7 @@ fn feature_tree_command_args(script: &Path, args: &[String]) -> Vec<String> {
     command_args
 }
 
-fn feature_tree_execution_dir(script: &Path, requested_dir: &Path) -> PathBuf {
-    if script.extension().and_then(|ext| ext.to_str()) == Some("ts") {
-        return script
-            .parent()
-            .map(Path::to_path_buf)
-            .unwrap_or_else(|| requested_dir.to_path_buf());
-    }
-
+fn feature_tree_execution_dir(_script: &Path, requested_dir: &Path) -> PathBuf {
     requested_dir.to_path_buf()
 }
 
@@ -196,8 +189,9 @@ pub fn commit_feature_tree_json(
 #[cfg(test)]
 mod tests {
     use super::{
-        bundled_feature_tree_script_path, feature_tree_command_args, feature_tree_execution_dir,
-        feature_tree_script_path, workspace_root,
+        bundled_feature_tree_script_path, ensure_feature_tree_success, feature_tree_command_args,
+        feature_tree_execution_dir, feature_tree_script_path, run_feature_tree_script,
+        workspace_root,
     };
     use std::path::Path;
     use tempfile::tempdir;
@@ -258,17 +252,35 @@ mod tests {
     }
 
     #[test]
-    fn typescript_generators_run_from_script_directory() {
+    fn feature_tree_generators_run_from_requested_directory() {
         let execution_dir = feature_tree_execution_dir(
             Path::new("/tmp/workspace/scripts/docs/feature-tree-generator.ts"),
             Path::new("/tmp/target-repo"),
         );
-        assert_eq!(execution_dir, Path::new("/tmp/workspace/scripts/docs"));
+        assert_eq!(execution_dir, Path::new("/tmp/target-repo"));
 
         let bundled_execution_dir = feature_tree_execution_dir(
             Path::new("/tmp/resources/bundled/feature-tree/feature-tree-generator.mjs"),
             Path::new("/tmp/target-repo"),
         );
         assert_eq!(bundled_execution_dir, Path::new("/tmp/target-repo"));
+    }
+
+    #[test]
+    fn relative_scan_root_resolves_from_requested_directory() {
+        let repo_root = workspace_root();
+        let args = vec![
+            "--mode".to_string(),
+            "generate".to_string(),
+            "--repo-root".to_string(),
+            repo_root.to_string_lossy().to_string(),
+            "--scan-root".to_string(),
+            "src".to_string(),
+            "--dry-run".to_string(),
+        ];
+
+        let output = run_feature_tree_script(&args, &repo_root).expect("script should run");
+        ensure_feature_tree_success(&output, "relative scan root should resolve from repo root")
+            .expect("feature tree generation should succeed");
     }
 }
