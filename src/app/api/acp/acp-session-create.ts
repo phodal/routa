@@ -144,7 +144,7 @@ export function parseRequestedAcpMcpServers(
       return [];
     }
 
-    const nextEntry = {
+    const nextEntry: Record<string, unknown> = {
       ...(entry as Record<string, unknown>),
       name,
     };
