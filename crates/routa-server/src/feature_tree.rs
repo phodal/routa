@@ -73,7 +73,8 @@ fn feature_tree_command_args(script: &Path, args: &[String]) -> Vec<String> {
         return command_args;
     }
 
-    let script_literal = format!("{:?}", script.to_string_lossy().to_string());
+    let script_literal = serde_json::to_string(&script.to_string_lossy().to_string())
+        .expect("feature tree script path should serialize as a JSON string");
     command_args.push("--input-type".to_string());
     command_args.push("module".to_string());
     command_args.push("--eval".to_string());

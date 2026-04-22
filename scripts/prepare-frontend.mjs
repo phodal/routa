@@ -9,7 +9,7 @@
  * This replaces the Unix-only `rm -rf ... && cp -r ...` that was previously
  * in tauri.conf.json's beforeBuildCommand (which breaks on Windows).
  */
-import { execSync } from "child_process";
+import { execFileSync, execSync } from "child_process";
 import { cpSync, rmSync, existsSync, mkdirSync } from "fs";
 import { join } from "path";
 import { fileURLToPath } from "url";
@@ -62,8 +62,20 @@ try {
   console.log("[prepare-frontend] Bundling feature-tree generator ...");
   rmSync(featureTreeBundleDir, { recursive: true, force: true });
   mkdirSync(featureTreeBundleDir, { recursive: true });
-  execSync(
-    `npm exec --no -- esbuild scripts/docs/feature-tree-generator.ts --bundle --platform=node --format=esm --outfile="${featureTreeBundleFile}"`,
+  execFileSync(
+    "npm",
+    [
+      "exec",
+      "--no",
+      "--",
+      "esbuild",
+      "scripts/docs/feature-tree-generator.ts",
+      "--bundle",
+      "--platform=node",
+      "--format=esm",
+      "--outfile",
+      featureTreeBundleFile,
+    ],
     {
       cwd: rootDir,
       stdio: "inherit",
