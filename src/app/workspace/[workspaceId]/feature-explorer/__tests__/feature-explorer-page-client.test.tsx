@@ -839,6 +839,118 @@ describe("FeatureExplorerPageClient", () => {
     ).toBe(true);
   });
 
+  it("renders structured saved history summaries as labeled blocks", async () => {
+    window.history.replaceState(
+      {},
+      "",
+      "/workspace/default/feature-explorer?feature=workspace-overview&file=src%2Fapp%2Fworkspace%2F%5BworkspaceId%5D%2Ffeature-explorer%2Fsession-analysis.ts",
+    );
+
+    useFeatureExplorerData.mockReturnValue({
+      loading: false,
+      error: null,
+      capabilityGroups: [],
+      features: [
+        {
+          id: "workspace-overview",
+          name: "Workspace Overview",
+          group: "workflow",
+          summary: "Workspace-scoped navigation",
+          status: "active",
+          sessionCount: 3,
+          changedFiles: 2,
+          updatedAt: "2026-04-22T04:54:46.127Z",
+          sourceFileCount: 1,
+          pageCount: 2,
+          apiCount: 0,
+        },
+      ],
+      surfaceIndex: {
+        generatedAt: "",
+        pages: [],
+        apis: [],
+        contractApis: [],
+        nextjsApis: [],
+        rustApis: [],
+        implementationApis: [],
+        metadata: null,
+        repoRoot: "",
+        warnings: [],
+      },
+      featureDetail: {
+        id: "workspace-overview",
+        name: "Workspace Overview",
+        group: "workflow",
+        summary: "Workspace-scoped navigation",
+        status: "active",
+        pages: ["/workspace/:workspaceId"],
+        apis: [],
+        sourceFiles: ["src/app/workspace/[workspaceId]/feature-explorer/session-analysis.ts"],
+        relatedFeatures: [],
+        domainObjects: [],
+        sessionCount: 3,
+        changedFiles: 2,
+        updatedAt: "2026-04-22T04:54:46.127Z",
+        fileTree: [
+          {
+            id: "file:session-analysis",
+            name: "session-analysis.ts",
+            path: "src/app/workspace/[workspaceId]/feature-explorer/session-analysis.ts",
+            kind: "file",
+            children: [],
+          },
+        ],
+        fileStats: {},
+        fileSignals: {},
+      },
+      featureDetailLoading: false,
+      initialFeatureId: "",
+      fetchFeatureDetail: vi.fn().mockResolvedValue(null),
+    });
+
+    sessionLaunchState.desktopAwareFetch.mockImplementation(async (input: string) => {
+      if (typeof input === "string" && input.startsWith("/feature-explorer/friction-profiles?")) {
+        return buildFrictionProfilesResponse();
+      }
+
+      if (typeof input === "string" && input.startsWith("/feature-explorer/retrospectives?")) {
+        return buildRetrospectivesResponse({
+          matchedMemories: [
+            {
+              scope: "file",
+              targetId: "src/app/workspace/[workspaceId]/feature-explorer/session-analysis.ts",
+              updatedAt: "2026-04-22T04:54:46.127Z",
+              summary: [
+                "Scope: file:src/app/workspace/[workspaceId]/feature-explorer/session-analysis.ts | feature:workspace-overview",
+                "Next ask: Analyze only how session-analysis.ts writes retrospective memory.",
+                "Must include: exact file path, session IDs, acceptance criteria",
+                "Avoid: kanban drift, unquoted bracket paths",
+                "Still need: none",
+              ].join("\n"),
+            },
+          ],
+        });
+      }
+
+      return new Response(JSON.stringify({ error: `Unhandled request: ${input}` }), {
+        status: 404,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+
+    render(<FeatureExplorerPageClient workspaceId="default" />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Scope")).toBeTruthy();
+      expect(screen.getByText("Next ask")).toBeTruthy();
+      expect(screen.getByText("Must include")).toBeTruthy();
+      expect(screen.getByText("Avoid")).toBeTruthy();
+      expect(screen.getByText("Still need")).toBeTruthy();
+      expect(screen.getByText("Analyze only how session-analysis.ts writes retrospective memory.")).toBeTruthy();
+      expect(screen.getByText("none")).toBeTruthy();
+    });
+  });
+
   it("closes the generate drawer after a successful quick-scan write", async () => {
     sessionLaunchState.desktopAwareFetch.mockResolvedValueOnce(buildFrictionProfilesResponse());
     sessionLaunchState.desktopAwareFetch.mockResolvedValueOnce(

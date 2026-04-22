@@ -397,6 +397,11 @@ export interface TranslationDictionary extends ExtendedTranslationDictionarySect
     retrospectiveHistoryError: string;
     retrospectiveHistoryFeature: string;
     retrospectiveHistoryFile: string;
+    retrospectiveHistoryScopeLabel: string;
+    retrospectiveHistoryNextAskLabel: string;
+    retrospectiveHistoryMustIncludeLabel: string;
+    retrospectiveHistoryAvoidLabel: string;
+    retrospectiveHistoryStillNeedLabel: string;
   };
 
   // Settings panel

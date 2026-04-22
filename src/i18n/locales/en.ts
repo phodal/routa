@@ -391,6 +391,11 @@ const en: TranslationDictionary = {
     retrospectiveHistoryError: "Saved history failed to load",
     retrospectiveHistoryFeature: "Feature",
     retrospectiveHistoryFile: "File",
+    retrospectiveHistoryScopeLabel: "Scope",
+    retrospectiveHistoryNextAskLabel: "Next ask",
+    retrospectiveHistoryMustIncludeLabel: "Must include",
+    retrospectiveHistoryAvoidLabel: "Avoid",
+    retrospectiveHistoryStillNeedLabel: "Still need",
   },
 
   settings: {

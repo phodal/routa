@@ -390,6 +390,11 @@ const zh: TranslationDictionary = {
     retrospectiveHistoryError: "加载已保存历史失败",
     retrospectiveHistoryFeature: "Feature",
     retrospectiveHistoryFile: "文件",
+    retrospectiveHistoryScopeLabel: "范围",
+    retrospectiveHistoryNextAskLabel: "下次开场",
+    retrospectiveHistoryMustIncludeLabel: "必须补充",
+    retrospectiveHistoryAvoidLabel: "避免",
+    retrospectiveHistoryStillNeedLabel: "仍需明确",
   },
 
   settings: {
