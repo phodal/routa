@@ -1823,7 +1823,7 @@ async fn api_feature_explorer_detail_includes_file_signals_for_workspace_repo() 
 
     let response = fixture
         .client
-        .get(fixture.endpoint("/api/feature-explorer/workspace-overview"))
+        .get(fixture.endpoint("/api/feature-explorer/feature-explorer"))
         .query(&[("repoPath", repo_root.to_string_lossy().to_string())])
         .send()
         .await
@@ -1841,13 +1841,13 @@ async fn api_feature_explorer_detail_includes_file_signals_for_workspace_repo() 
         .expect("fileSignals object should exist");
     assert!(
         !file_signals.is_empty(),
-        "expected non-empty fileSignals for workspace-overview detail, got {payload:?}"
+        "expected non-empty fileSignals for feature-explorer detail, got {payload:?}"
     );
     assert!(
         file_signals.values().any(|signal| signal["sessions"]
             .as_array()
             .is_some_and(|sessions| !sessions.is_empty())),
-        "expected fileSignals sessions to be populated, got {payload:?}"
+        "expected fileSignals sessions to be populated for feature-explorer detail, got {payload:?}"
     );
 }
 
