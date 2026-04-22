@@ -90,6 +90,14 @@ Process-oriented data such as matched files, warnings, failures, and history sum
 - The missing piece is a reliable result-only save path that survives card reopen and can be reused by later sessions.
 - Existing saved-analysis rendering can be simplified once only the minimal reusable fields remain.
 
+## Verification
+
+- 2026-04-22: verified on `http://localhost:3000/workspace/default/kanban?boardId=4e8e567c-e308-48cd-a4f6-e3d8e1d17839&taskId=bc897ba8-b85f-49ce-9564-81acde182001`
+- `JIT Context -> Open History Analysis` opened a new session page at `/workspace/default/sessions/24bcb54f-bd07-46ec-8509-4f5f42b822bd`
+- session history confirmed a real `save_history_memory_context` MCP tool call
+- `GET /api/tasks/bc897ba8-b85f-49ce-9564-81acde182001` then showed `task.jitContextSnapshot.analysis` persisted with `summary`, `topFiles`, `topSessions`, `reusablePrompts`, and `recommendedContextSearchSpec`
+- reopening the card detail and expanding `JIT Context` showed `Saved History Analysis` in the UI, including the saved summary, top files, top sessions, and reusable prompts
+
 ## References
 
 - `docs/issues/2026-04-21-jit-context-needs-repo-root-context-discovery.md`
