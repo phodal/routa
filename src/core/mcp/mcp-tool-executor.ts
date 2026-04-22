@@ -14,7 +14,9 @@ import {
   assembleTaskAdaptiveHarnessFromToolArgs,
   FILE_SESSION_CONTEXT_TOOL_NAME,
   inspectTranscriptTurnsFromToolArgs,
+  LOAD_FEATURE_TREE_CONTEXT_TOOL_NAME,
   LOAD_RETROSPECTIVE_MEMORY_TOOL_NAME,
+  loadFeatureTreeContextFromToolArgs,
   loadFeatureRetrospectiveMemoryFromToolArgs,
   SAVE_RETROSPECTIVE_MEMORY_TOOL_NAME,
   saveFeatureRetrospectiveMemoryFromToolArgs,
@@ -162,6 +164,7 @@ const ESSENTIAL_TOOL_NAMES = new Set([
   "save_history_memory_context",
   LOAD_RETROSPECTIVE_MEMORY_TOOL_NAME,
   SAVE_RETROSPECTIVE_MEMORY_TOOL_NAME,
+  LOAD_FEATURE_TREE_CONTEXT_TOOL_NAME,
 ]);
 
 export async function executeMcpTool(
@@ -326,6 +329,11 @@ export async function executeMcpTool(
           agentId: (args.agentId as string | undefined) ?? "system",
         })
       );
+    case LOAD_FEATURE_TREE_CONTEXT_TOOL_NAME:
+      return formatResult({
+        success: true,
+        data: await loadFeatureTreeContextFromToolArgs(args, workspace),
+      });
 
     // ── Enhanced delegation with process spawning ─────────────────────
     case "delegate_task_to_agent": {
@@ -1760,6 +1768,50 @@ export function getMcpToolDefinitions(
             items: { type: "string" },
             description: "Optional repository-relative files to load file-level memory for.",
           },
+        },
+      },
+    },
+    {
+      name: LOAD_FEATURE_TREE_CONTEXT_TOOL_NAME,
+      description: "Load prompt-ready feature tree context for likely feature candidates so backlog and task sessions can bind the request to pages, APIs, and source files before broader scanning.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          workspaceId: { type: "string", description: "Workspace ID. Uses the current MCP session workspace when omitted." },
+          codebaseId: { type: "string", description: "Optional codebase ID override for repository resolution." },
+          repoPath: { type: "string", description: "Optional repository path override for repository resolution." },
+          featureIds: {
+            type: "array",
+            items: { type: "string" },
+            description: "Optional ordered candidate Feature Tree IDs to load directly.",
+          },
+          query: { type: "string", description: "Optional story/query text used to rank likely feature matches." },
+          filePaths: {
+            type: "array",
+            items: { type: "string" },
+            description: "Optional repository-relative files already believed to be relevant.",
+          },
+          routeCandidates: {
+            type: "array",
+            items: { type: "string" },
+            description: "Optional routes/pages used to rank likely features.",
+          },
+          apiCandidates: {
+            type: "array",
+            items: { type: "string" },
+            description: "Optional APIs used to rank likely features.",
+          },
+          moduleHints: {
+            type: "array",
+            items: { type: "string" },
+            description: "Optional module or subsystem hints used to rank likely features.",
+          },
+          symptomHints: {
+            type: "array",
+            items: { type: "string" },
+            description: "Optional symptom hints used to rank likely features.",
+          },
+          maxFeatures: { type: "number", minimum: 1, description: "Maximum number of feature candidates to return." },
         },
       },
     },
