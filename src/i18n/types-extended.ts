@@ -534,6 +534,17 @@ export interface ExtendedTranslationDictionarySections extends TailTranslationDi
     storyReadinessDependenciesDeclaredHint: string;
     completionSummary: string;
     verificationReport: string;
+    historyMemoryPolicy: string;
+    historyMemoryPolicyHint: string;
+    autoMode: string;
+    forceMode: string;
+    historyMemoryMinSessions: string;
+    historyMemoryMinFiles: string;
+    historyMemoryMinFeatures: string;
+    historyMemoryMinConfidence: string;
+    matchConfidenceLow: string;
+    matchConfidenceMedium: string;
+    matchConfidenceHigh: string;
     manualLaneOnly: string;
     manualLane: string;
     clearAllCards: string;

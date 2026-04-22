@@ -4,8 +4,16 @@ import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } fro
 import type { AcpProviderInfo } from "@/client/acp-client";
 import { desktopAwareFetch } from "@/client/utils/diagnostics";
 import { getSpecialistCategory, type SpecialistCategory } from "@/client/utils/specialist-categories";
+import {
+  getDefaultKanbanHistoryMemoryPolicy,
+  normalizeKanbanHistoryMemoryPolicy,
+} from "@/core/kanban/board-history-memory-policy";
 import { resolveSpecialistSelection, type KanbanSpecialistLanguage } from "./kanban-specialist-language";
-import type { KanbanBoardInfo, KanbanDevSessionSupervisionInfo } from "../types";
+import type {
+  KanbanBoardInfo,
+  KanbanDevSessionSupervisionInfo,
+  KanbanHistoryMemoryPolicyInfo,
+} from "../types";
 import { useTranslation } from "@/i18n";
 import {
   ColumnAutomationWorkspace,
@@ -46,6 +54,7 @@ export interface KanbanSettingsModalProps {
     columnAutomation: Record<string, ColumnAutomationConfig>,
     sessionConcurrencyLimit: number,
     devSessionSupervision: KanbanDevSessionSupervisionInfo,
+    historyMemoryPolicy: KanbanHistoryMemoryPolicyInfo,
     githubTokenUpdate?: { token?: string; clear?: boolean },
   ) => Promise<void>;
 }
@@ -76,6 +85,9 @@ export function KanbanSettingsModal({
   const [sessionConcurrencyLimit, setSessionConcurrencyLimit] = useState<number>(board.sessionConcurrencyLimit ?? 1);
   const [devSessionSupervision, setDevSessionSupervision] = useState<KanbanDevSessionSupervisionInfo>(
     board.devSessionSupervision ?? DEFAULT_DEV_SESSION_SUPERVISION,
+  );
+  const [historyMemoryPolicy, setHistoryMemoryPolicy] = useState<KanbanHistoryMemoryPolicyInfo>(
+    board.historyMemoryPolicy ?? getDefaultKanbanHistoryMemoryPolicy(),
   );
   const [selectedViewId, setSelectedViewId] = useState<string>(() => board.columns[0]?.id ?? BOARD_VIEW_ID);
   const [saving, setSaving] = useState(false);
@@ -109,14 +121,25 @@ export function KanbanSettingsModal({
     automation: normalizeAutomationForDirtyCheck(initialColumnAutomation, initialEditableColumns),
     sessionConcurrencyLimit: Math.max(1, Math.floor(board.sessionConcurrencyLimit ?? 1)),
     devSessionSupervision: normalizeDevSessionSupervision(board.devSessionSupervision ?? DEFAULT_DEV_SESSION_SUPERVISION),
+    historyMemoryPolicy: normalizeKanbanHistoryMemoryPolicy(
+      board.historyMemoryPolicy ?? getDefaultKanbanHistoryMemoryPolicy(),
+    ),
     githubTokenConfigured: Boolean(board.githubTokenConfigured),
-  }), [board.devSessionSupervision, board.githubTokenConfigured, board.sessionConcurrencyLimit, initialColumnAutomation, initialEditableColumns]);
+  }), [
+    board.devSessionSupervision,
+    board.githubTokenConfigured,
+    board.historyMemoryPolicy,
+    board.sessionConcurrencyLimit,
+    initialColumnAutomation,
+    initialEditableColumns,
+  ]);
 
   const currentSnapshot = useMemo(() => JSON.stringify({
     columns: normalizeColumns(editableColumns),
     automation: normalizeAutomationForDirtyCheck(columnAutomation, editableColumns),
     sessionConcurrencyLimit: Math.max(1, Math.floor(sessionConcurrencyLimit)),
     devSessionSupervision: normalizeDevSessionSupervision(devSessionSupervision),
+    historyMemoryPolicy: normalizeKanbanHistoryMemoryPolicy(historyMemoryPolicy),
     githubTokenConfigured: removeConfiguredGitHubToken ? false : Boolean(board.githubTokenConfigured || githubTokenInput.trim()),
   }), [
     board.githubTokenConfigured,
@@ -124,6 +147,7 @@ export function KanbanSettingsModal({
     devSessionSupervision,
     editableColumns,
     githubTokenInput,
+    historyMemoryPolicy,
     removeConfiguredGitHubToken,
     sessionConcurrencyLimit,
   ]);
@@ -148,6 +172,10 @@ export function KanbanSettingsModal({
     setGitHubTokenInput("");
     setRemoveConfiguredGitHubToken(false);
   }, [board.githubTokenConfigured, board.id]);
+
+  useEffect(() => {
+    setHistoryMemoryPolicy(board.historyMemoryPolicy ?? getDefaultKanbanHistoryMemoryPolicy());
+  }, [board.historyMemoryPolicy, board.id]);
 
   useEffect(() => {
     setKanbanExportWorkspaceId((current) => current || board.workspaceId || "default");
@@ -344,6 +372,7 @@ export function KanbanSettingsModal({
         sanitizedColumnAutomation,
         Math.max(1, Math.floor(sessionConcurrencyLimit)),
         normalizeDevSessionSupervision(devSessionSupervision),
+        normalizeKanbanHistoryMemoryPolicy(historyMemoryPolicy),
         removeConfiguredGitHubToken
           ? { clear: true }
           : githubTokenInput.trim()
@@ -634,6 +663,81 @@ export function KanbanSettingsModal({
                             }))}
                           />
                         </div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500 dark:text-slate-400">
+                          {t.kanban.historyMemoryPolicy}
+                        </div>
+                        <div className="mt-1.5 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+                          <LabeledSelect
+                            label={t.kanban.mode}
+                            ariaLabel="History memory policy mode"
+                            value={historyMemoryPolicy.mode}
+                            options={[
+                              { value: "off", label: t.kanban.off },
+                              { value: "auto", label: t.kanban.autoMode },
+                              { value: "force", label: t.kanban.forceMode },
+                            ]}
+                            onChange={(value) => setHistoryMemoryPolicy((current) => ({
+                              ...current,
+                              mode: value as KanbanHistoryMemoryPolicyInfo["mode"],
+                            }))}
+                          />
+                          <LabeledNumberInput
+                            label={t.kanban.historyMemoryMinSessions}
+                            ariaLabel="History memory minimum matched sessions"
+                            min={0}
+                            max={20}
+                            disabled={historyMemoryPolicy.mode !== "auto"}
+                            value={historyMemoryPolicy.minMatchedSessions}
+                            onChange={(value) => setHistoryMemoryPolicy((current) => ({
+                              ...current,
+                              minMatchedSessions: Math.max(0, value || 0),
+                            }))}
+                          />
+                          <LabeledNumberInput
+                            label={t.kanban.historyMemoryMinFiles}
+                            ariaLabel="History memory minimum matched files"
+                            min={0}
+                            max={50}
+                            disabled={historyMemoryPolicy.mode !== "auto"}
+                            value={historyMemoryPolicy.minMatchedFiles}
+                            onChange={(value) => setHistoryMemoryPolicy((current) => ({
+                              ...current,
+                              minMatchedFiles: Math.max(0, value || 0),
+                            }))}
+                          />
+                          <LabeledNumberInput
+                            label={t.kanban.historyMemoryMinFeatures}
+                            ariaLabel="History memory minimum feature candidates"
+                            min={0}
+                            max={20}
+                            disabled={historyMemoryPolicy.mode !== "auto"}
+                            value={historyMemoryPolicy.minFeatureCandidates}
+                            onChange={(value) => setHistoryMemoryPolicy((current) => ({
+                              ...current,
+                              minFeatureCandidates: Math.max(0, value || 0),
+                            }))}
+                          />
+                          <LabeledSelect
+                            label={t.kanban.historyMemoryMinConfidence}
+                            ariaLabel="History memory minimum confidence"
+                            disabled={historyMemoryPolicy.mode !== "auto"}
+                            value={historyMemoryPolicy.minConfidence}
+                            options={[
+                              { value: "low", label: t.kanban.matchConfidenceLow },
+                              { value: "medium", label: t.kanban.matchConfidenceMedium },
+                              { value: "high", label: t.kanban.matchConfidenceHigh },
+                            ]}
+                            onChange={(value) => setHistoryMemoryPolicy((current) => ({
+                              ...current,
+                              minConfidence: value as KanbanHistoryMemoryPolicyInfo["minConfidence"],
+                            }))}
+                          />
+                        </div>
+                        <p className="mt-1.5 text-xs leading-5 text-slate-500 dark:text-slate-400">
+                          {t.kanban.historyMemoryPolicyHint}
+                        </p>
                       </div>
                     </div>
                   </SectionCard>
@@ -1004,6 +1108,7 @@ function LabeledNumberInput({
   ariaLabel,
   min,
   max,
+  disabled = false,
   value,
   onChange,
 }: {
@@ -1011,6 +1116,7 @@ function LabeledNumberInput({
   ariaLabel: string;
   min: number;
   max: number;
+  disabled?: boolean;
   value: number;
   onChange: (value: number) => void;
 }) {
@@ -1022,9 +1128,10 @@ function LabeledNumberInput({
         type="number"
         min={min}
         max={max}
+        disabled={disabled}
         value={value}
         onChange={(event) => onChange(Number.parseInt(event.target.value || String(min), 10) || min)}
-        className="h-9 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm text-slate-900 outline-none transition focus:border-amber-400 dark:border-slate-700 dark:bg-[#0b1119] dark:text-slate-100"
+        className="h-9 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm text-slate-900 outline-none transition focus:border-amber-400 disabled:cursor-not-allowed dark:border-slate-700 dark:bg-[#0b1119] dark:text-slate-100"
       />
     </label>
   );

@@ -41,6 +41,11 @@ import {
   loadRelevantFeatureTreeContext,
   loadRelevantTaskHistoryMemories,
 } from "@/core/kanban/context-preload";
+import {
+  getDefaultKanbanHistoryMemoryPolicy,
+  getKanbanHistoryMemoryPolicy,
+  shouldInjectKanbanHistoryMemory,
+} from "@/core/kanban/board-history-memory-policy";
 
 export interface IdempotencyEntry {
   sessionId: string;
@@ -212,6 +217,29 @@ interface HandleSessionNewArgs {
   serverUrlOverride?: string;
 }
 
+async function resolveKanbanHistoryMemoryPolicy(params: {
+  workspaceId: string;
+  boardId?: string;
+  taskId?: string;
+}) {
+  const system = getRoutaSystem();
+  let effectiveBoardId = typeof params.boardId === "string" && params.boardId.trim().length > 0
+    ? params.boardId.trim()
+    : undefined;
+
+  if (!effectiveBoardId && params.taskId) {
+    const task = await system.taskStore.get(params.taskId);
+    effectiveBoardId = task?.boardId?.trim() || undefined;
+  }
+
+  if (!effectiveBoardId) {
+    return getDefaultKanbanHistoryMemoryPolicy();
+  }
+
+  const workspace = await system.workspaceStore.get(params.workspaceId);
+  return getKanbanHistoryMemoryPolicy(workspace?.metadata, effectiveBoardId);
+}
+
 export async function handleSessionNew({
   id,
   params,
@@ -231,6 +259,9 @@ export async function handleSessionNew({
   const specialistLocale = (p.specialistLocale as string | undefined) ?? "en";
   const specialist = await loadSpecialistConfig(specialistId, specialistLocale);
   const customSystemPrompt = (p.systemPrompt as string | undefined)?.trim() || undefined;
+  const requestedBoardId = typeof p.boardId === "string" && p.boardId.trim().length > 0
+    ? p.boardId.trim()
+    : undefined;
 
   const defaultProvider = isServerlessEnvironment() ? "claude-code-sdk" : "opencode";
   const requestedProvider = (p.provider as string | undefined);
@@ -386,6 +417,11 @@ export async function handleSessionNew({
   let relevantFeatureTreeContextSection: string | undefined;
   if (taskAdaptiveHarnessOptions) {
     try {
+      const historyMemoryPolicy = await resolveKanbanHistoryMemoryPolicy({
+        workspaceId,
+        boardId: requestedBoardId,
+        taskId: taskAdaptiveHarnessOptions.taskId,
+      });
       const taskAdaptiveHarness = await assembleTaskAdaptiveHarness(cwd, {
         ...taskAdaptiveHarnessOptions,
         role: taskAdaptiveHarnessOptions.role ?? role ?? specialist?.role,
@@ -405,44 +441,62 @@ export async function handleSessionNew({
         ...(taskAdaptiveHarnessOptions.filePaths ?? []),
         ...taskAdaptiveHarness.selectedFiles,
       ];
+      const shouldConsiderCrossTaskPreload = historyMemoryPolicy.mode !== "off";
+      let relevantFeatureTreeContext:
+        | Awaited<ReturnType<typeof loadRelevantFeatureTreeContext>>
+        | undefined;
+      if (shouldConsiderCrossTaskPreload) {
+        relevantFeatureTreeContext = await loadRelevantFeatureTreeContext({
+          repoPath: repoRootForPreload,
+          hints: buildFeatureTreeRetrievalHints({
+            featureIds: mergedFeatureIds,
+            query: taskAdaptiveHarnessOptions.query ?? taskAdaptiveHarnessOptions.taskLabel,
+            filePaths: mergedFilePaths,
+            routeCandidates: taskAdaptiveHarnessOptions.routeCandidates,
+            apiCandidates: taskAdaptiveHarnessOptions.apiCandidates,
+            moduleHints: taskAdaptiveHarnessOptions.moduleHints,
+            symptomHints: taskAdaptiveHarnessOptions.symptomHints,
+          }),
+        });
+      }
 
-      const relevantHistoryMemories = await loadRelevantTaskHistoryMemories({
-        workspaceId,
-        repoPath: repoRootForPreload,
-        hints: buildHistoryMemoryRetrievalHints({
-          taskId: taskAdaptiveHarnessOptions.taskId,
-          taskLabel: taskAdaptiveHarnessOptions.taskLabel,
-          query: taskAdaptiveHarnessOptions.query ?? taskAdaptiveHarnessOptions.taskLabel,
-          featureIds: mergedFeatureIds,
-          filePaths: mergedFilePaths,
-          routeCandidates: taskAdaptiveHarnessOptions.routeCandidates,
-          apiCandidates: taskAdaptiveHarnessOptions.apiCandidates,
-          moduleHints: taskAdaptiveHarnessOptions.moduleHints,
-          symptomHints: taskAdaptiveHarnessOptions.symptomHints,
-        }),
+      const featureCount = new Set([
+        ...mergedFeatureIds,
+        ...(relevantFeatureTreeContext?.features.map((feature) => feature.id) ?? []),
+      ].filter(Boolean)).size;
+      const shouldInjectCrossTaskPreload = shouldInjectKanbanHistoryMemory(historyMemoryPolicy, {
+        featureCount,
+        matchedSessions: taskAdaptiveHarness.matchedSessionIds.length,
+        matchedFiles: taskAdaptiveHarness.selectedFiles.length,
+        confidence: taskAdaptiveHarness.matchConfidence,
       });
-      relevantHistoryMemorySection = buildRelevantHistoryMemoryPromptSection(
-        relevantHistoryMemories,
-        taskAdaptiveHarnessOptions.locale ?? specialistLocale,
-      );
 
-      const relevantFeatureTreeContext = await loadRelevantFeatureTreeContext({
-        repoPath: repoRootForPreload,
-        hints: buildFeatureTreeRetrievalHints({
-          featureIds: mergedFeatureIds,
-          query: taskAdaptiveHarnessOptions.query ?? taskAdaptiveHarnessOptions.taskLabel,
-          filePaths: mergedFilePaths,
-          routeCandidates: taskAdaptiveHarnessOptions.routeCandidates,
-          apiCandidates: taskAdaptiveHarnessOptions.apiCandidates,
-          moduleHints: taskAdaptiveHarnessOptions.moduleHints,
-          symptomHints: taskAdaptiveHarnessOptions.symptomHints,
-        }),
-      });
-      relevantFeatureTreeContextSection = buildRelevantFeatureTreePromptSection(
-        relevantFeatureTreeContext.features,
-        taskAdaptiveHarnessOptions.locale ?? specialistLocale,
-        relevantFeatureTreeContext.warnings,
-      );
+      if (shouldInjectCrossTaskPreload) {
+        const relevantHistoryMemories = await loadRelevantTaskHistoryMemories({
+          workspaceId,
+          repoPath: repoRootForPreload,
+          hints: buildHistoryMemoryRetrievalHints({
+            taskId: taskAdaptiveHarnessOptions.taskId,
+            taskLabel: taskAdaptiveHarnessOptions.taskLabel,
+            query: taskAdaptiveHarnessOptions.query ?? taskAdaptiveHarnessOptions.taskLabel,
+            featureIds: mergedFeatureIds,
+            filePaths: mergedFilePaths,
+            routeCandidates: taskAdaptiveHarnessOptions.routeCandidates,
+            apiCandidates: taskAdaptiveHarnessOptions.apiCandidates,
+            moduleHints: taskAdaptiveHarnessOptions.moduleHints,
+            symptomHints: taskAdaptiveHarnessOptions.symptomHints,
+          }),
+        });
+        relevantHistoryMemorySection = buildRelevantHistoryMemoryPromptSection(
+          relevantHistoryMemories,
+          taskAdaptiveHarnessOptions.locale ?? specialistLocale,
+        );
+        relevantFeatureTreeContextSection = buildRelevantFeatureTreePromptSection(
+          relevantFeatureTreeContext?.features ?? [],
+          taskAdaptiveHarnessOptions.locale ?? specialistLocale,
+          relevantFeatureTreeContext?.warnings,
+        );
+      }
     } catch (error) {
       console.warn("[ACP Route] Task-Adaptive Harness assembly failed:", error);
     }

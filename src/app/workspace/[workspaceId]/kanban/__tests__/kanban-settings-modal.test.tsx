@@ -3,11 +3,20 @@ import { describe, expect, it, vi } from "vitest";
 import { KanbanSettingsModal } from "../kanban-settings-modal";
 import type { KanbanBoardInfo } from "../../types";
 
+const defaultHistoryMemoryPolicy = {
+  mode: "auto" as const,
+  minMatchedSessions: 2,
+  minMatchedFiles: 3,
+  minFeatureCandidates: 1,
+  minConfidence: "medium" as const,
+};
+
 const board: KanbanBoardInfo = {
   id: "board-1",
   workspaceId: "workspace-1",
   name: "Delivery Board",
   isDefault: true,
+  historyMemoryPolicy: defaultHistoryMemoryPolicy,
   sessionConcurrencyLimit: 2,
   devSessionSupervision: {
     mode: "watchdog_retry",
@@ -76,6 +85,7 @@ describe("KanbanSettingsModal", () => {
           maxRecoveryAttempts: 1,
           completionRequirement: "turn_complete",
         },
+        defaultHistoryMemoryPolicy,
         undefined,
       );
     });
@@ -133,7 +143,53 @@ describe("KanbanSettingsModal", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Board" }));
     expect(screen.getByLabelText("Dev supervision mode")).not.toBeNull();
-    expect(screen.getByDisplayValue("2")).not.toBeNull();
+    expect(screen.getByLabelText("History memory policy mode")).not.toBeNull();
+    expect((screen.getByRole("spinbutton", { name: "History memory minimum matched sessions" }) as HTMLInputElement).value).toBe("2");
+  });
+
+  it("saves an updated history memory policy from board runtime settings", async () => {
+    const onSave = vi.fn(async () => {});
+
+    render(
+      <KanbanSettingsModal
+        board={board}
+        columnAutomation={{}}
+        availableProviders={[{ id: "claude", name: "Claude Code", description: "Claude Code provider", command: "claude" }]}
+        specialists={[{ id: "verify", name: "Verifier", role: "GATE" }]}
+        specialistLanguage="en"
+        onClose={vi.fn()}
+        onClearAll={vi.fn(async () => {})}
+        onSave={onSave}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Board" }));
+    fireEvent.change(screen.getByLabelText("History memory policy mode"), {
+      target: { value: "force" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /save board settings/i }));
+
+    await waitFor(() => {
+      expect(onSave).toHaveBeenCalledWith(
+        expect.any(Array),
+        expect.any(Object),
+        2,
+        {
+          mode: "watchdog_retry",
+          inactivityTimeoutMinutes: 10,
+          maxRecoveryAttempts: 1,
+          completionRequirement: "turn_complete",
+        },
+        {
+          mode: "force",
+          minMatchedSessions: 2,
+          minMatchedFiles: 3,
+          minFeatureCandidates: 1,
+          minConfidence: "medium",
+        },
+        undefined,
+      );
+    });
   });
 
   it("shows GitHub import availability in board settings", () => {
@@ -192,6 +248,7 @@ describe("KanbanSettingsModal", () => {
           maxRecoveryAttempts: 1,
           completionRequirement: "turn_complete",
         },
+        defaultHistoryMemoryPolicy,
         { token: "github_pat_test" },
       );
     });
@@ -318,6 +375,7 @@ describe("KanbanSettingsModal", () => {
           maxRecoveryAttempts: 1,
           completionRequirement: "turn_complete",
         },
+        defaultHistoryMemoryPolicy,
         undefined,
       );
     });
@@ -369,6 +427,7 @@ describe("KanbanSettingsModal", () => {
           maxRecoveryAttempts: 1,
           completionRequirement: "turn_complete",
         },
+        defaultHistoryMemoryPolicy,
         undefined,
       );
       const firstCall = onSave.mock.calls[0];
@@ -432,6 +491,7 @@ describe("KanbanSettingsModal", () => {
           maxRecoveryAttempts: 1,
           completionRequirement: "turn_complete",
         },
+        defaultHistoryMemoryPolicy,
         undefined,
       );
     });
@@ -501,6 +561,7 @@ describe("KanbanSettingsModal", () => {
           maxRecoveryAttempts: 1,
           completionRequirement: "turn_complete",
         },
+        defaultHistoryMemoryPolicy,
         undefined,
       );
     });
@@ -541,6 +602,7 @@ describe("KanbanSettingsModal", () => {
           maxRecoveryAttempts: 1,
           completionRequirement: "turn_complete",
         },
+        defaultHistoryMemoryPolicy,
         undefined,
       );
     });
@@ -602,6 +664,7 @@ describe("KanbanSettingsModal", () => {
           maxRecoveryAttempts: 1,
           completionRequirement: "turn_complete",
         },
+        defaultHistoryMemoryPolicy,
         undefined,
       );
     });

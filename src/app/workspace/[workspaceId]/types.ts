@@ -2,7 +2,7 @@
 
 import type { AcpTaskAdaptiveHarnessOptions } from "@/client/acp-client";
 import type { McpServerProfile } from "@/core/mcp/mcp-server-profiles";
-import type { KanbanRequiredTaskField } from "@/core/models/kanban";
+import type { KanbanHistoryMemoryPolicy, KanbanRequiredTaskField } from "@/core/models/kanban";
 import type {
   TaskAnalysisStatus,
   TaskContextSearchSpec,
@@ -50,6 +50,7 @@ export interface TaskRunInfo {
 }
 
 export interface KanbanAgentPromptOptions {
+  boardId?: string;
   provider?: string;
   role?: string;
   toolMode?: "essential" | "full";
@@ -70,6 +71,7 @@ export type KanbanDevSessionCompletionRequirement =
   | "completion_summary"
   | "verification_report";
 export type KanbanTransportInfo = "acp" | "a2a";
+export type KanbanHistoryMemoryPolicyInfo = KanbanHistoryMemoryPolicy;
 
 export interface KanbanDevSessionSupervisionInfo {
   mode: KanbanDevSessionSupervisionMode;
@@ -332,6 +334,7 @@ export interface KanbanBoardInfo {
   isDefault: boolean;
   githubTokenConfigured?: boolean;
   autoProviderId?: string;
+  historyMemoryPolicy?: KanbanHistoryMemoryPolicy;
   sessionConcurrencyLimit?: number;
   devSessionSupervision?: KanbanDevSessionSupervisionInfo;
   queue?: KanbanBoardQueueInfo;

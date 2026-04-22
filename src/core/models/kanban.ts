@@ -14,6 +14,8 @@ export type KanbanDevSessionCompletionRequirement =
   | "turn_complete"
   | "completion_summary"
   | "verification_report";
+export type KanbanHistoryMemoryPolicyMode = "off" | "auto" | "force";
+export type KanbanHistoryMemoryPolicyConfidence = "low" | "medium" | "high";
 
 export type KanbanTransport = "acp" | "a2a";
 
@@ -60,6 +62,27 @@ export interface KanbanDevSessionSupervision {
   /** External completion signal required in Ralph Loop mode. */
   completionRequirement: KanbanDevSessionCompletionRequirement;
 }
+
+export interface KanbanHistoryMemoryPolicy {
+  /** Whether cross-task history memory should be injected automatically into new sessions. */
+  mode: KanbanHistoryMemoryPolicyMode;
+  /** Minimum recovered transcript sessions required for auto injection. */
+  minMatchedSessions: number;
+  /** Minimum matched files required for auto injection. */
+  minMatchedFiles: number;
+  /** Minimum confirmed feature candidates required for auto injection. */
+  minFeatureCandidates: number;
+  /** Minimum retrieval confidence required for auto injection. */
+  minConfidence: KanbanHistoryMemoryPolicyConfidence;
+}
+
+export const DEFAULT_KANBAN_HISTORY_MEMORY_POLICY: KanbanHistoryMemoryPolicy = {
+  mode: "auto",
+  minMatchedSessions: 2,
+  minMatchedFiles: 3,
+  minFeatureCandidates: 1,
+  minConfidence: "medium",
+};
 
 /**
  * Automation configuration for a Kanban column.

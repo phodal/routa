@@ -6,6 +6,10 @@ import {
   setKanbanAutoProvider,
 } from "@/core/kanban/board-auto-provider";
 import {
+  getKanbanHistoryMemoryPolicy,
+  setKanbanHistoryMemoryPolicy,
+} from "@/core/kanban/board-history-memory-policy";
+import {
   getKanbanSessionConcurrencyLimit,
   setKanbanSessionConcurrencyLimit,
 } from "@/core/kanban/board-session-limits";
@@ -16,7 +20,7 @@ import {
 import { getKanbanEventBroadcaster } from "@/core/kanban/kanban-event-broadcaster";
 import { getKanbanSessionQueue } from "@/core/kanban/workflow-orchestrator-singleton";
 import type { KanbanDevSessionSupervision } from "@/core/models/kanban";
-import type { KanbanBoard } from "@/core/models/kanban";
+import type { KanbanBoard, KanbanHistoryMemoryPolicy } from "@/core/models/kanban";
 
 export const dynamic = "force-dynamic";
 
@@ -27,6 +31,7 @@ interface PatchBoardBody {
   githubToken?: string | null;
   clearGitHubToken?: boolean;
   autoProviderId?: string | null;
+  historyMemoryPolicy?: Partial<KanbanHistoryMemoryPolicy>;
   sessionConcurrencyLimit?: number;
   devSessionSupervision?: Partial<KanbanDevSessionSupervision>;
 }
@@ -35,6 +40,7 @@ function sanitizeBoard(
   board: KanbanBoard,
   extras?: {
     autoProviderId?: string | null;
+    historyMemoryPolicy?: KanbanHistoryMemoryPolicy;
     sessionConcurrencyLimit?: number;
     devSessionSupervision?: KanbanDevSessionSupervision;
     queue?: unknown;
@@ -45,6 +51,7 @@ function sanitizeBoard(
     githubToken: undefined,
     githubTokenConfigured: Boolean(board.githubToken?.trim()),
     autoProviderId: extras?.autoProviderId,
+    historyMemoryPolicy: extras?.historyMemoryPolicy,
     sessionConcurrencyLimit: extras?.sessionConcurrencyLimit,
     devSessionSupervision: extras?.devSessionSupervision,
     queue: extras?.queue,
@@ -68,6 +75,7 @@ export async function GET(
   return NextResponse.json({
     board: sanitizeBoard(board, {
       autoProviderId: getKanbanAutoProvider(workspace?.metadata, board.id),
+      historyMemoryPolicy: getKanbanHistoryMemoryPolicy(workspace?.metadata, board.id),
       sessionConcurrencyLimit: getKanbanSessionConcurrencyLimit(workspace?.metadata, board.id),
       devSessionSupervision: getKanbanDevSessionSupervision(workspace?.metadata, board.id),
       queue: await queue.getBoardSnapshot(board.id),
@@ -113,6 +121,7 @@ export async function PATCH(
 
   if (
     body.autoProviderId !== undefined
+    || body.historyMemoryPolicy !== undefined
     || body.sessionConcurrencyLimit !== undefined
     || body.devSessionSupervision !== undefined
   ) {
@@ -130,6 +139,13 @@ export async function PATCH(
         nextMetadata,
         boardId,
         body.sessionConcurrencyLimit,
+      );
+    }
+    if (body.historyMemoryPolicy !== undefined) {
+      nextMetadata = setKanbanHistoryMemoryPolicy(
+        nextMetadata,
+        boardId,
+        body.historyMemoryPolicy,
       );
     }
     if (body.devSessionSupervision !== undefined) {
@@ -159,6 +175,7 @@ export async function PATCH(
   return NextResponse.json({
     board: sanitizeBoard(updated, {
       autoProviderId: getKanbanAutoProvider(workspace?.metadata, boardId),
+      historyMemoryPolicy: getKanbanHistoryMemoryPolicy(workspace?.metadata, boardId),
       sessionConcurrencyLimit: getKanbanSessionConcurrencyLimit(workspace?.metadata, boardId),
       devSessionSupervision: getKanbanDevSessionSupervision(workspace?.metadata, boardId),
       queue: await queue.getBoardSnapshot(boardId),

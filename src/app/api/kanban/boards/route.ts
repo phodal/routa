@@ -4,6 +4,7 @@ import { getRoutaSystem } from "@/core/routa-system";
 import { createKanbanBoard } from "@/core/models/kanban";
 import { ensureDefaultBoard } from "@/core/kanban/boards";
 import { getKanbanAutoProvider } from "@/core/kanban/board-auto-provider";
+import { getKanbanHistoryMemoryPolicy } from "@/core/kanban/board-history-memory-policy";
 import { getKanbanSessionConcurrencyLimit } from "@/core/kanban/board-session-limits";
 import { getKanbanDevSessionSupervision } from "@/core/kanban/board-session-supervision";
 import { getKanbanEventBroadcaster } from "@/core/kanban/kanban-event-broadcaster";
@@ -19,6 +20,7 @@ function sanitizeBoard(
   board: KanbanBoard,
   extras?: {
     autoProviderId?: string | null;
+    historyMemoryPolicy?: unknown;
     sessionConcurrencyLimit?: number;
     devSessionSupervision?: KanbanDevSessionSupervision;
     queue?: unknown;
@@ -29,6 +31,7 @@ function sanitizeBoard(
     githubToken: undefined,
     githubTokenConfigured: Boolean(board.githubToken?.trim()),
     autoProviderId: extras?.autoProviderId,
+    historyMemoryPolicy: extras?.historyMemoryPolicy,
     sessionConcurrencyLimit: extras?.sessionConcurrencyLimit,
     devSessionSupervision: extras?.devSessionSupervision,
     queue: extras?.queue,
@@ -61,6 +64,7 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({
     boards: await Promise.all(boards.map(async (board) => sanitizeBoard(board, {
       autoProviderId: getKanbanAutoProvider(workspace?.metadata, board.id),
+      historyMemoryPolicy: getKanbanHistoryMemoryPolicy(workspace?.metadata, board.id),
       sessionConcurrencyLimit: getKanbanSessionConcurrencyLimit(workspace?.metadata, board.id),
       devSessionSupervision: getKanbanDevSessionSupervision(workspace?.metadata, board.id),
       queue: await queue.getBoardSnapshot(board.id),

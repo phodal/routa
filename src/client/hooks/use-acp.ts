@@ -184,10 +184,10 @@ export interface UseAcpActions {
     provider?: string,
     modeId?: string,
     role?: string,
-      workspaceId?: string,
-      model?: string,
-      /** Idempotency key to prevent duplicate session creation */
-      idempotencyKey?: string,
+    workspaceId?: string,
+    model?: string,
+    /** Idempotency key to prevent duplicate session creation */
+    idempotencyKey?: string,
     /** Specialist ID for per-specialist model configuration */
     specialistId?: string,
     /** Specialist locale for per-specialist resource loading */
@@ -210,6 +210,8 @@ export interface UseAcpActions {
       autoApprovePermissions?: boolean,
       /** Optional Task-Adaptive Harness retrieval inputs for JIT context hydration. */
       taskAdaptiveHarness?: AcpTaskAdaptiveHarnessOptions,
+      /** Board-scoped runtime policy lookup for Kanban sessions. */
+      boardId?: string,
     ) => Promise<AcpNewSessionResult | null>;
   resumeSession: (
     sessionId: string,
@@ -484,6 +486,7 @@ export function useAcp(baseUrl: string = ""): UseAcpState & UseAcpActions {
       systemPrompt?: string,
       autoApprovePermissions?: boolean,
       taskAdaptiveHarness?: AcpTaskAdaptiveHarnessOptions,
+      boardId?: string,
     ): Promise<AcpNewSessionResult | null> => {
       const client = clientRef.current;
       if (!client) return null;
@@ -505,6 +508,7 @@ export function useAcp(baseUrl: string = ""): UseAcpState & UseAcpActions {
           role,
           mcpServers: [],
           workspaceId,
+          boardId,
           toolMode,
           allowedNativeTools,
           mcpProfile,

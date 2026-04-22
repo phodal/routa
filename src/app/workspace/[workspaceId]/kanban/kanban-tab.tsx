@@ -12,6 +12,7 @@ import type {
   KanbanAgentPromptHandler,
   KanbanBoardInfo,
   KanbanDevSessionSupervisionInfo,
+  KanbanHistoryMemoryPolicyInfo,
   SessionInfo,
   TaskInfo,
   WorktreeInfo,
@@ -405,6 +406,7 @@ export function KanbanTab({
       });
 
       const sessionId = await onAgentPrompt(agentInput, {
+        boardId: selectedBoardId ?? defaultBoardId ?? undefined,
         provider: boardAutoProviderId,
         role: "CRAFTER",
         toolMode: "full",
@@ -1819,6 +1821,7 @@ export function KanbanTab({
         language: specialistLanguage,
       });
       const sessionId = await onAgentPrompt(remediationPrompt, {
+        boardId: selectedBoardId ?? defaultBoardId ?? task.boardId ?? undefined,
         provider: boardAutoProviderId,
         role: "CRAFTER",
         toolMode: "full",
@@ -1949,6 +1952,7 @@ export function KanbanTab({
       newColumnAutomation: Record<string, ColumnAutomationConfig>,
       sessionConcurrencyLimit: number,
       devSessionSupervision: KanbanDevSessionSupervisionInfo,
+      historyMemoryPolicy: KanbanHistoryMemoryPolicyInfo,
       githubTokenUpdate?: { token?: string; clear?: boolean },
     ) => {
       const updatedColumns = newColumns.map((col) => ({
@@ -1965,6 +1969,7 @@ export function KanbanTab({
           columns: updatedColumns,
           sessionConcurrencyLimit,
           devSessionSupervision,
+          historyMemoryPolicy,
           ...(githubTokenUpdate?.token ? { githubToken: githubTokenUpdate.token } : {}),
           ...(githubTokenUpdate?.clear ? { clearGitHubToken: true } : {}),
         }),

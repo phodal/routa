@@ -213,6 +213,7 @@ export class BrowserAcpClient {
    */
   async newSession(params: {
     cwd?: string;
+    boardId?: string;
     /** Git branch to scope the session to (optional) */
     branch?: string;
     /** Optional display name for the session */
@@ -274,6 +275,7 @@ export class BrowserAcpClient {
       gateProvider: params.gateProvider,
       mcpServers: params.mcpServers ?? [],
       workspaceId: params.workspaceId,
+      boardId: params.boardId,
       toolMode: params.toolMode,
       allowedNativeTools: params.allowedNativeTools,
       mcpProfile: params.mcpProfile,
