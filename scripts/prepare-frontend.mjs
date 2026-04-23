@@ -64,6 +64,7 @@ try {
   rmSync(featureTreeBundleDir, { recursive: true, force: true });
   mkdirSync(featureTreeBundleDir, { recursive: true });
   await buildWithEsbuild({
+    absWorkingDir: rootDir,
     entryPoints: [join(rootDir, "scripts/docs/feature-tree-generator.ts")],
     bundle: true,
     platform: "node",
