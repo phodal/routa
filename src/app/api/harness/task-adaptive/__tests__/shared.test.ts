@@ -320,6 +320,97 @@ describe("assembleTaskAdaptiveHarness", () => {
     expect(pack.selectedFiles).toEqual(["src/explicit.ts"]);
   });
 
+  it("resolves search-to-read-to-edit file signals relative to nested session cwd", async () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "task-adaptive-harness-nested-cwd-"));
+    process.env.HOME = tempRoot;
+    process.env.CLAUDE_CONFIG_DIR = "";
+
+    const repoRoot = path.join(tempRoot, "repo");
+    const codebaseRoot = path.join(repoRoot, ".routa", "repos", "example-codebase");
+    const sessionRelativeFile = "packages/app/src/page.tsx";
+    const repoRelativeFile = ".routa/repos/example-codebase/packages/app/src/page.tsx";
+    ensureFile(path.join(codebaseRoot, sessionRelativeFile), "export const nestedPage = true;\n");
+    writeFeatureTreeIndex(repoRoot, [
+      {
+        id: "nested-codebase",
+        name: "Nested Codebase",
+        sourceFiles: [repoRelativeFile],
+      },
+    ]);
+
+    writeTranscript(
+      path.join(tempRoot, ".codex", "sessions", "session-nested-cwd.jsonl"),
+      codebaseRoot,
+      "session-nested-cwd",
+      [
+        {
+          timestamp: "2026-04-21T10:01:00.000Z",
+          type: "event_msg",
+          payload: {
+            type: "user_message",
+            message: "Update the nested codebase page after finding it with rg.",
+          },
+        },
+        {
+          timestamp: "2026-04-21T10:02:00.000Z",
+          type: "event_msg",
+          payload: {
+            type: "exec_command_end",
+            command: ["/bin/zsh", "-lc", "rg --files packages/app/src"],
+            aggregated_output: `${sessionRelativeFile}\n`,
+            exit_code: 0,
+          },
+        },
+        {
+          timestamp: "2026-04-21T10:03:00.000Z",
+          type: "response_item",
+          payload: {
+            type: "function_call",
+            name: "exec_command",
+            arguments: JSON.stringify({ cmd: `sed -n '1,120p' ${sessionRelativeFile}` }),
+          },
+        },
+        {
+          timestamp: "2026-04-21T10:03:04.000Z",
+          type: "event_msg",
+          payload: {
+            type: "exec_command_end",
+            command: ["/bin/zsh", "-lc", `sed -n '1,120p' ${sessionRelativeFile}`],
+            aggregated_output: "export const nestedPage = true;\n",
+            exit_code: 0,
+          },
+        },
+        {
+          timestamp: "2026-04-21T10:04:00.000Z",
+          type: "response_item",
+          payload: {
+            type: "function_call",
+            name: "apply_patch",
+            arguments: `*** Begin Patch\n*** Update File: ${sessionRelativeFile}\n*** End Patch\n`,
+          },
+        },
+      ],
+    );
+
+    const pack = await assembleTaskAdaptiveHarness(repoRoot, {
+      filePaths: [repoRelativeFile],
+      taskType: "analysis",
+      maxSessions: 3,
+    });
+
+    expect(pack.selectedFiles).toEqual([repoRelativeFile]);
+    expect(pack.sessions).toEqual([
+      expect.objectContaining({
+        sessionId: "session-nested-cwd",
+        matchedFiles: [repoRelativeFile],
+        matchedChangedFiles: [repoRelativeFile],
+        matchedReadFiles: [repoRelativeFile],
+        matchedWrittenFiles: [repoRelativeFile],
+      }),
+    ]);
+    expect(pack.repeatedReadFiles).toContain(repoRelativeFile);
+  });
+
   it("infers features and files from context search hints when history and files are absent", async () => {
     const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "task-adaptive-harness-hints-"));
     process.env.HOME = tempRoot;
