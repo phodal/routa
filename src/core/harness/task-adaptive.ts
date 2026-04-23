@@ -12,6 +12,15 @@ import {
   commandOutputFromUnknown,
   type TranscriptProvider,
 } from "./transcript-sessions";
+import {
+  collectFileValues,
+  extractReadCandidatesFromCommand,
+  extractSearchOutputPathCandidates,
+  normalizeRepoRelative,
+  parseCommandPaths,
+  parsePatchBlock,
+  unwrapShellCommand,
+} from "./task-adaptive-path-signals";
 
 export type TaskAdaptiveHarnessTaskType = "implementation" | "planning" | "analysis" | "review";
 
@@ -408,10 +417,6 @@ function collectPreferredFeatureFiles(
   return mergePreferredStringGroups(explicitFeatureFiles, inferredFeatureFiles);
 }
 
-function toPosix(value: string): string {
-  return value.replace(/\\/g, "/");
-}
-
 function appendLimitedUnique(target: string[], value: string, limit: number): void {
   if (!value || target.includes(value) || target.length >= limit) {
     return;
@@ -510,136 +515,6 @@ function mergeFeatureTreeFeatures(
   return [...merged.values()];
 }
 
-function shellLikeSplit(command: string): string[] {
-  const tokens: string[] = [];
-  let current = "";
-  let quote: string | null = null;
-
-  for (const ch of command) {
-    if (quote !== null) {
-      if (ch === quote) {
-        quote = null;
-        continue;
-      }
-      current += ch;
-      continue;
-    }
-
-    if (ch === "'" || ch === '"') {
-      quote = ch;
-      continue;
-    }
-
-    if (/\s/.test(ch)) {
-      if (current.length > 0) {
-        tokens.push(current);
-        current = "";
-      }
-      continue;
-    }
-
-    current += ch;
-  }
-
-  if (current.length > 0) {
-    tokens.push(current);
-  }
-
-  return tokens;
-}
-
-function parsePatchBlock(text: string): string[] {
-  const out: string[] = [];
-
-  for (const line of text.split(/\r?\n/)) {
-    const trimmed = line.trim();
-    const [, , value] = trimmed.match(/^(\*{3} (Update|Add|Delete|Move to):)\s*(.*)$/) ?? [];
-    if (value) {
-      out.push(value);
-    }
-  }
-
-  return out;
-}
-
-function parseCommandPaths(command: string): string[] {
-  const tokens = shellLikeSplit(command);
-  if (tokens.length === 0) {
-    return [];
-  }
-
-  const separatorIndex = tokens.indexOf("--");
-  if (separatorIndex >= 0) {
-    return tokens
-      .slice(separatorIndex + 1)
-      .filter((token) => token.length > 0 && !token.startsWith("-"));
-  }
-
-  if (tokens[0] === "git" && (tokens[1] === "add" || tokens[1] === "rm")) {
-    return tokens
-      .slice(2)
-      .filter((token) => token.length > 0 && !token.startsWith("-"));
-  }
-
-  return [];
-}
-
-function collectFileValues(value: unknown, out: Set<string>): void {
-  if (value === null || value === undefined) {
-    return;
-  }
-
-  if (Array.isArray(value)) {
-    for (const item of value) {
-      collectFileValues(item, out);
-    }
-    return;
-  }
-
-  if (typeof value === "string") {
-    for (const candidate of parsePatchBlock(value)) {
-      out.add(candidate);
-    }
-    return;
-  }
-
-  if (typeof value !== "object") {
-    return;
-  }
-
-  const map = value as Record<string, unknown>;
-  const pathKeys = new Set([
-    "path",
-    "paths",
-    "file",
-    "filepath",
-    "file_path",
-    "filename",
-    "target",
-    "source",
-    "target_file",
-    "source_file",
-    "absolute_path",
-    "relative_path",
-  ]);
-
-  for (const [key, child] of Object.entries(map)) {
-    const lower = key.toLowerCase();
-    if (pathKeys.has(lower)) {
-      if (typeof child === "string") {
-        out.add(child);
-      } else if (Array.isArray(child)) {
-        for (const item of child) {
-          if (typeof item === "string") {
-            out.add(item);
-          }
-        }
-      }
-    }
-    collectFileValues(child, out);
-  }
-}
-
 function normalizeCommandSignature(command: string): string {
   return command.replace(/\s+/g, " ").trim();
 }
@@ -650,26 +525,6 @@ function truncateDiagnosticText(text: string, maxLength: number = 220): string {
     return normalized;
   }
   return `${normalized.slice(0, maxLength - 3)}...`;
-}
-
-function unwrapShellCommand(command: string): string {
-  const tokens = shellLikeSplit(command);
-  if (tokens.length < 3) {
-    return command;
-  }
-
-  const executable = path.posix.basename(tokens[0] ?? "");
-  const shellLike = executable === "sh" || executable === "bash" || executable === "zsh";
-  if (!shellLike) {
-    return command;
-  }
-
-  const cFlagIndex = tokens.findIndex((token) => token === "-c" || token === "-lc");
-  if (cFlagIndex >= 0 && tokens[cFlagIndex + 1]) {
-    return tokens.slice(cFlagIndex + 1).join(" ");
-  }
-
-  return command;
 }
 
 function toolNameFromFeatureEvent(event: unknown): string | undefined {
@@ -692,117 +547,6 @@ function toolNameFromFeatureEvent(event: unknown): string | undefined {
   return commandFromUnknown(event) ? "exec_command" : undefined;
 }
 
-function extractReadCandidatesFromCommand(command: string): string[] {
-  const innerCommand = unwrapShellCommand(command);
-  const tokens = shellLikeSplit(innerCommand);
-  if (tokens.length === 0) {
-    return [];
-  }
-
-  const executable = path.posix.basename(tokens[0] ?? "");
-  const readCommands = new Set(["bat", "cat", "head", "less", "more", "nl", "sed", "tail"]);
-  if (!readCommands.has(executable)) {
-    return [];
-  }
-
-  return tokens.slice(1).filter((token) => token !== "--" && !token.startsWith("-"));
-}
-
-function sanitizePathCandidate(candidate: string): string | null {
-  const cleaned = toPosix(candidate)
-    .trim()
-    .replace(/^"+|"+$/g, "")
-    .replace(/^'+|'+$/g, "")
-    .replace(/^`+|`+$/g, "")
-    .replace(/[",;:]+$/g, "");
-
-  if (!cleaned) {
-    return null;
-  }
-
-  const lineQualifiedPath = cleaned.match(/^(.*\.[^:/\s]+):\d+(?::\d+)?$/);
-  if (lineQualifiedPath?.[1]) {
-    return lineQualifiedPath[1];
-  }
-
-  if (!/\s/.test(cleaned)) {
-    return cleaned;
-  }
-
-  const embeddedPath = cleaned.match(
-    /([A-Za-z0-9_@()[\]{}.\-/]+?\.(?:[cm]?[jt]sx?|jsx?|tsx?|rs|md|json|ya?ml|toml|css|scss|html))/,
-  );
-  if (embeddedPath?.[1]) {
-    return embeddedPath[1];
-  }
-
-  return cleaned;
-}
-
-function pathLooksFileLike(candidate: string): boolean {
-  const base = path.posix.basename(candidate);
-  return base.includes(".") || ["Dockerfile", "Makefile", "Cargo.toml"].includes(base);
-}
-
-function isExistingDirectory(filePath: string): boolean {
-  try {
-    return fs.statSync(filePath).isDirectory();
-  } catch {
-    return false;
-  }
-}
-
-function isExistingFile(filePath: string): boolean {
-  try {
-    return fs.statSync(filePath).isFile();
-  } catch {
-    return false;
-  }
-}
-
-function normalizeRepoRelative(repoRoot: string, candidate: string, sessionCwd: string): string | null {
-  const cleaned = sanitizePathCandidate(candidate);
-
-  if (!cleaned || cleaned === "/dev/null") {
-    return null;
-  }
-
-  if (!path.isAbsolute(cleaned)) {
-    const relativeCandidate = toPosix(cleaned).replace(/^\.\//, "");
-    if (!relativeCandidate || relativeCandidate === "." || relativeCandidate.startsWith("../")) {
-      return null;
-    }
-    const repoResolved = path.join(repoRoot, relativeCandidate);
-    const sessionResolved = path.join(sessionCwd, relativeCandidate);
-    if (isExistingDirectory(repoResolved) || isExistingDirectory(sessionResolved)) {
-      return null;
-    }
-    if (!isExistingFile(repoResolved) && !isExistingFile(sessionResolved) && !pathLooksFileLike(relativeCandidate)) {
-      return null;
-    }
-    return relativeCandidate;
-  }
-
-  const candidatePaths = [sessionCwd, repoRoot];
-  for (const basePath of candidatePaths) {
-    if (isExistingDirectory(cleaned)) {
-      return null;
-    }
-    const relative = path.relative(basePath, cleaned);
-    const relativePosix = toPosix(relative);
-    if (
-      relativePosix
-      && !relativePosix.startsWith("../")
-      && !path.isAbsolute(relativePosix)
-      && (isExistingFile(cleaned) || pathLooksFileLike(relativePosix))
-    ) {
-      return relativePosix;
-    }
-  }
-
-  return null;
-}
-
 function collectReadFilesFromToolLike(event: unknown, repoRoot: string, sessionCwd: string): string[] {
   const candidates = new Set<string>();
   const toolName = toolNameFromFeatureEvent(event)?.toLowerCase() ?? "";
@@ -819,6 +563,12 @@ function collectReadFilesFromToolLike(event: unknown, repoRoot: string, sessionC
   if (command) {
     for (const token of extractReadCandidatesFromCommand(command)) {
       candidates.add(token);
+    }
+    const commandOutput = commandOutputFromUnknown(event);
+    if (commandOutput) {
+      for (const token of extractSearchOutputPathCandidates(command, commandOutput)) {
+        candidates.add(token);
+      }
     }
   }
 
