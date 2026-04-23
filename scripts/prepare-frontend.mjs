@@ -9,10 +9,11 @@
  * This replaces the Unix-only `rm -rf ... && cp -r ...` that was previously
  * in tauri.conf.json's beforeBuildCommand (which breaks on Windows).
  */
-import { execFileSync, execSync } from "child_process";
+import { execSync } from "child_process";
 import { cpSync, rmSync, existsSync, mkdirSync } from "fs";
 import { join } from "path";
 import { fileURLToPath } from "url";
+import { build as buildWithEsbuild } from "esbuild";
 
 const __dirname = join(fileURLToPath(import.meta.url), "..");
 const rootDir = join(__dirname, "..");
@@ -62,25 +63,14 @@ try {
   console.log("[prepare-frontend] Bundling feature-tree generator ...");
   rmSync(featureTreeBundleDir, { recursive: true, force: true });
   mkdirSync(featureTreeBundleDir, { recursive: true });
-  execFileSync(
-    "npm",
-    [
-      "exec",
-      "--no",
-      "--",
-      "esbuild",
-      "scripts/docs/feature-tree-generator.ts",
-      "--bundle",
-      "--platform=node",
-      "--format=esm",
-      "--outfile",
-      featureTreeBundleFile,
-    ],
-    {
-      cwd: rootDir,
-      stdio: "inherit",
-    },
-  );
+  await buildWithEsbuild({
+    entryPoints: [join(rootDir, "scripts/docs/feature-tree-generator.ts")],
+    bundle: true,
+    platform: "node",
+    format: "esm",
+    outfile: featureTreeBundleFile,
+    logLevel: "info",
+  });
 
   console.log("[prepare-frontend] Done.");
 } catch (err) {
