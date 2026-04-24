@@ -2,7 +2,7 @@
 title: "Task-Adaptive history relevance should preserve tool-call continuity across nested cwd paths"
 date: "2026-04-23"
 kind: issue
-status: open
+status: resolved
 severity: medium
 area: harness
 tags:
@@ -52,3 +52,7 @@ It should also preserve enough tool-call continuity to count search results as u
 
 - 2026-04-23: added a regression test for a nested `cwd` transcript with `rg --files -> sed -> apply_patch`.
 - 2026-04-23: `npx vitest run src/app/api/harness/task-adaptive/__tests__/shared.test.ts` passed.
+- 2026-04-24: re-verified on `main` that commit `2b52fc46` already covers nested `cwd` path continuity in `src/core/harness/task-adaptive.ts`.
+- 2026-04-24: added direct helper regressions for `parsePatchBlock`, `normalizeRepoRelative`, and search-output discovery in `src/core/harness/__tests__/task-adaptive-path-signals.test.ts`.
+- 2026-04-24: `npx vitest run src/core/harness/__tests__/task-adaptive-path-signals.test.ts src/app/api/harness/task-adaptive/__tests__/shared.test.ts` passed.
+- 2026-04-24: `entrix run --tier fast` passed.
