@@ -9,8 +9,10 @@ export function buildCanvasSdkPromptSection(): string {
   const manifest = getCanvasSdkResourceManifest();
   const preferredUris = [
     "resource://routa/canvas-sdk/defs/primitives",
+    "resource://routa/canvas-sdk/defs/hooks",
     "resource://routa/canvas-sdk/defs/data-display",
     "resource://routa/canvas-sdk/defs/containers",
+    "resource://routa/canvas-sdk/defs/controls",
     "resource://routa/canvas-sdk/defs/charts",
   ];
   const definitionUris = preferredUris
