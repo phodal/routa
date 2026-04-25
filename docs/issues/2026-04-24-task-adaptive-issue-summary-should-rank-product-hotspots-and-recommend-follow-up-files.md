@@ -2,7 +2,8 @@
 title: "Task-Adaptive issue summary should rank product hotspots and recommend follow-up files"
 date: "2026-04-24"
 kind: issue
-status: open
+status: resolved
+resolved_at: "2026-04-25"
 severity: medium
 area: harness
 tags:
@@ -16,7 +17,7 @@ reported_by: "codex"
 related_issues:
   - "docs/issues/2026-04-22-task-adaptive-summary-cli-should-publish-sanitized-hotspot-report-to-github-issue.md"
 github_issue: 534
-github_state: "open"
+github_state: "closed"
 github_url: "https://github.com/phodal/routa/issues/534"
 ---
 
@@ -69,3 +70,14 @@ In practice that means:
 - that summary currently lists `docs/fitness/README.md` and `docs/issues/issue-gc-state.yaml` among the top file hotspots
 - this is acceptable for raw hotspot transparency, but weak as a "inspect these first" recommendation for human follow-up
 - GitHub follow-up issue: `https://github.com/phodal/routa/issues/534`
+
+## Resolution Notes
+
+- Confirmed the issue-facing summary now ranks product and supporting code hotspots ahead of repo docs and issue tracker noise.
+- Confirmed the formatter emits a dedicated `Recommended Follow-Up Files` section derived from ranked product/supporting-code candidates.
+- Confirmed repo-maintenance files such as `docs/issues/issue-gc-state.yaml` stay visible in raw top file hotspots but are excluded from product follow-up recommendations when stronger product candidates exist.
+
+## Verification Notes
+
+- `npx vitest run src/core/harness/__tests__/task-adaptive-issue-summary.test.ts`
+  - PASS (`2 passed`)
