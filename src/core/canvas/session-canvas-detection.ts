@@ -122,6 +122,8 @@ function extractApplyPatchCandidate(
       const line = lines[lineIndex] ?? "";
       if (line.startsWith("*** ")) break;
       if (line.startsWith("@@")) continue;
+      // Update patches only contain the changed hunk, so extraction is best-effort:
+      // it only materializes when the hunk includes enough context to form a full Canvas module.
       if (line.startsWith("+") || (operation === "update" && line.startsWith(" "))) {
         sourceLines.push(line.slice(1));
       }

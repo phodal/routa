@@ -40,19 +40,35 @@ interface CreateCanvasResponse {
   title?: string;
 }
 
+const COMPLETED_TOOL_STATUSES = new Set(["completed", "success", "done"]);
+const SETTLED_TOOL_STATUSES = new Set([
+  ...COMPLETED_TOOL_STATUSES,
+  "canceled",
+  "cancelled",
+  "error",
+  "failed",
+]);
+
 function getNotificationUpdate(notification: AcpSessionNotification): Record<string, unknown> {
   return (notification.update ?? notification) as Record<string, unknown>;
 }
 
-function isTerminalCanvasToolUpdate(update: Record<string, unknown>): boolean {
+function isCompletedCanvasToolUpdate(update: Record<string, unknown>): boolean {
   const kind = typeof update.sessionUpdate === "string" ? update.sessionUpdate : "";
   const status = typeof update.status === "string" ? update.status.toLowerCase() : "";
 
-  if (kind === "tool_call_update") {
-    return status === "completed" || status === "success" || status === "done";
-  }
+  if (kind === "tool_call" || kind === "tool_call_update") return COMPLETED_TOOL_STATUSES.has(status);
 
-  return kind === "tool_call" && status === "completed";
+  return false;
+}
+
+function isSettledCanvasToolUpdate(update: Record<string, unknown>): boolean {
+  const kind = typeof update.sessionUpdate === "string" ? update.sessionUpdate : "";
+  const status = typeof update.status === "string" ? update.status.toLowerCase() : "";
+
+  if (kind === "tool_call" || kind === "tool_call_update") return SETTLED_TOOL_STATUSES.has(status);
+
+  return false;
 }
 
 async function createCanvasArtifactFromCandidate(
@@ -143,13 +159,22 @@ export function useSessionCanvasArtifacts({
         rawInputByToolCallIdRef.current.set(toolCallId, mergedInput);
       }
 
-      if (!isTerminalCanvasToolUpdate(update)) continue;
+      const isSettledUpdate = isSettledCanvasToolUpdate(update);
+      if (!isCompletedCanvasToolUpdate(update)) {
+        if (toolCallId && isSettledUpdate) {
+          rawInputByToolCallIdRef.current.delete(toolCallId);
+        }
+        continue;
+      }
 
       const candidate = extractCanvasToolWriteCandidate({
         previousRawInput: mergedInput,
         sessionId,
         update,
       });
+      if (toolCallId && isSettledUpdate) {
+        rawInputByToolCallIdRef.current.delete(toolCallId);
+      }
       if (!candidate) continue;
 
       const key = getCanvasToolWriteCandidateKey(candidate);

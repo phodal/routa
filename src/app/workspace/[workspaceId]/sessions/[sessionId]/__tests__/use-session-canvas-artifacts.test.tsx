@@ -136,6 +136,62 @@ describe("useSessionCanvasArtifacts", () => {
     });
   });
 
+  it("releases cached raw input after a tool call settles without rendering", async () => {
+    const { rerender } = renderHook(
+      ({ updates }) => useSessionCanvasArtifacts({
+        workspaceId: "default",
+        sessionId: "session-1",
+        updates,
+      }),
+      {
+        initialProps: {
+          updates: [] as AcpSessionNotification[],
+        },
+      },
+    );
+
+    const runningUpdate: AcpSessionNotification = {
+      sessionId: "session-1",
+      update: {
+        sessionUpdate: "tool_call",
+        toolCallId: "tool-1",
+        status: "running",
+        rawInput: {
+          path: "canvases/status.canvas.tsx",
+          content: "export default () => <div>Status</div>;",
+        },
+      },
+    };
+    const failedUpdate: AcpSessionNotification = {
+      sessionId: "session-1",
+      update: {
+        sessionUpdate: "tool_call_update",
+        toolCallId: "tool-1",
+        status: "failed",
+      },
+    };
+
+    rerender({ updates: [runningUpdate, failedUpdate] });
+    rerender({
+      updates: [
+        runningUpdate,
+        failedUpdate,
+        {
+          sessionId: "session-1",
+          update: {
+            sessionUpdate: "tool_call_update",
+            toolCallId: "tool-1",
+            status: "completed",
+          },
+        },
+      ],
+    });
+
+    await waitFor(() => {
+      expect(desktopAwareFetch).not.toHaveBeenCalled();
+    });
+  });
+
   it("keeps an in-flight canvas materialization alive across non-canvas update rerenders", async () => {
     const pending = deferred<Response>();
     vi.mocked(desktopAwareFetch).mockReturnValueOnce(pending.promise);

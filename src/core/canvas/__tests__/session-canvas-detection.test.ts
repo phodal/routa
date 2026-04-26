@@ -99,6 +99,31 @@ describe("session canvas detection", () => {
     expect(candidate?.source).not.toContain("Old");
   });
 
+  it("ignores partial apply_patch update-file hunks without a full canvas module", () => {
+    const candidate = extractCanvasToolWriteCandidate({
+      sessionId: "session-1",
+      update: {
+        sessionUpdate: "tool_call_update",
+        toolCallId: "tool-3",
+        status: "completed",
+        rawInput: {
+          patch: [
+            "*** Begin Patch",
+            "*** Update File: canvases/agent-flow.canvas.tsx",
+            "@@",
+            "   <Card title=\"Flow\">",
+            "-    Old",
+            "+    Ready",
+            "   </Card>",
+            "*** End Patch",
+          ].join("\n"),
+        },
+      },
+    });
+
+    expect(candidate).toBeNull();
+  });
+
   it("ignores non-canvas paths and non-renderable source", () => {
     expect(extractCanvasToolWriteCandidate({
       sessionId: "session-1",
