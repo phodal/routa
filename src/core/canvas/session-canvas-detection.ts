@@ -105,7 +105,7 @@ function buildCandidate(
   };
 }
 
-function extractAddFilePatchCandidate(
+function extractApplyPatchCandidate(
   sessionId: string,
   patch: string,
   toolCallId?: string,
@@ -113,19 +113,21 @@ function extractAddFilePatchCandidate(
   const lines = patch.replace(/\r\n/g, "\n").split("\n");
 
   for (let index = 0; index < lines.length; index += 1) {
-    const match = lines[index]?.match(/^\*\*\* Add File:\s+(.+\.canvas\.tsx)\s*$/i);
+    const match = lines[index]?.match(/^\*\*\* (Add|Update) File:\s+(.+\.canvas\.tsx)\s*$/i);
     if (!match) continue;
 
+    const operation = match[1]?.toLowerCase();
     const sourceLines: string[] = [];
     for (let lineIndex = index + 1; lineIndex < lines.length; lineIndex += 1) {
       const line = lines[lineIndex] ?? "";
       if (line.startsWith("*** ")) break;
-      if (line.startsWith("+")) {
+      if (line.startsWith("@@")) continue;
+      if (line.startsWith("+") || (operation === "update" && line.startsWith(" "))) {
         sourceLines.push(line.slice(1));
       }
     }
 
-    const candidate = buildCandidate(sessionId, match[1].trim(), sourceLines.join("\n"), toolCallId);
+    const candidate = buildCandidate(sessionId, match[2].trim(), sourceLines.join("\n"), toolCallId);
     if (candidate) return candidate;
   }
 
@@ -192,8 +194,8 @@ export function extractCanvasToolWriteCandidate({
 
   const patch = readString(rawInput, ["patch", "diff"]);
   if (patch) {
-    const addFileCandidate = extractAddFilePatchCandidate(sessionId, patch, toolCallId);
-    if (addFileCandidate) return addFileCandidate;
+    const applyPatchCandidate = extractApplyPatchCandidate(sessionId, patch, toolCallId);
+    if (applyPatchCandidate) return applyPatchCandidate;
 
     const gitDiffCandidate = extractGitDiffNewFileCandidate(sessionId, patch, toolCallId);
     if (gitDiffCandidate) return gitDiffCandidate;

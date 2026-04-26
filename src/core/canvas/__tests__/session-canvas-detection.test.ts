@@ -61,6 +61,44 @@ describe("session canvas detection", () => {
     expect(candidate?.source).toContain("export default");
   });
 
+  it("extracts a canvas from an apply_patch update-file overwrite hunk", () => {
+    const candidate = extractCanvasToolWriteCandidate({
+      sessionId: "session-1",
+      update: {
+        sessionUpdate: "tool_call_update",
+        toolCallId: "tool-3",
+        status: "completed",
+        rawInput: {
+          patch: [
+            "*** Begin Patch",
+            "*** Update File: canvases/agent-flow.canvas.tsx",
+            "@@",
+            "-import { Card } from \"routa/canvas\";",
+            "-",
+            "-export default () => (",
+            "-  <Card title=\"Flow\">Old</Card>",
+            "-);",
+            "+import { Card } from \"routa/canvas\";",
+            "+",
+            "+export default () => (",
+            "+  <Card title=\"Flow\">Ready</Card>",
+            "+);",
+            "*** End Patch",
+          ].join("\n"),
+        },
+      },
+    });
+
+    expect(candidate).toMatchObject({
+      fileName: "agent-flow.canvas.tsx",
+      filePath: "canvases/agent-flow.canvas.tsx",
+      title: "Agent Flow",
+      toolCallId: "tool-3",
+    });
+    expect(candidate?.source).toContain("Ready");
+    expect(candidate?.source).not.toContain("Old");
+  });
+
   it("ignores non-canvas paths and non-renderable source", () => {
     expect(extractCanvasToolWriteCandidate({
       sessionId: "session-1",
