@@ -16,7 +16,7 @@ describe("session canvas detection", () => {
         status: "completed",
         rawInput: {
           path: "canvases/status.canvas.tsx",
-          content: "export default function Canvas(){ return <div>Status</div>; }",
+          content: "export default () => <div>Status</div>;",
         },
       },
     });
@@ -28,7 +28,7 @@ describe("session canvas detection", () => {
       title: "Status",
       toolCallId: "tool-1",
     });
-    expect(candidate?.source).toContain("export default function Canvas");
+    expect(candidate?.source).toContain("export default");
   });
 
   it("extracts a canvas from an apply_patch add-file hunk", () => {
@@ -44,9 +44,9 @@ describe("session canvas detection", () => {
             "*** Add File: canvases/agent-flow.canvas.tsx",
             "+import { Card } from \"routa/canvas\";",
             "+",
-            "+export default function Canvas(){",
-            "+  return <Card title=\"Flow\">Ready</Card>;",
-            "+}",
+            "+export default () => (",
+            "+  <Card title=\"Flow\">Ready</Card>",
+            "+);",
             "*** End Patch",
           ].join("\n"),
         },
@@ -58,7 +58,7 @@ describe("session canvas detection", () => {
       filePath: "canvases/agent-flow.canvas.tsx",
       title: "Agent Flow",
     });
-    expect(candidate?.source).toContain("export default function Canvas");
+    expect(candidate?.source).toContain("export default");
   });
 
   it("ignores non-canvas paths and non-renderable source", () => {
@@ -68,7 +68,7 @@ describe("session canvas detection", () => {
         sessionUpdate: "tool_call_update",
         rawInput: {
           path: "src/status.tsx",
-          content: "export default function Canvas(){ return <div />; }",
+          content: "export default () => <div />;",
         },
       },
     })).toBeNull();
@@ -93,14 +93,42 @@ describe("session canvas detection", () => {
         toolCallId: "tool-1",
         rawInput: {
           path: "canvases/status.canvas.tsx",
-          content: "export default function Canvas(){ return <div>Status</div>; }",
+          content: "export default () => <div>Status</div>;",
         },
       },
     });
 
-    expect(candidate ? getCanvasToolWriteCandidateKey(candidate) : "").toBe(
-      "session-1:tool-1:canvases/status.canvas.tsx:61",
-    );
+    const key = candidate ? getCanvasToolWriteCandidateKey(candidate) : "";
+    expect(key).toMatch(/^session-1:tool-1:canvases\/status\.canvas\.tsx:[a-z0-9]+$/);
+    expect(key).not.toBe("session-1:tool-1:canvases/status.canvas.tsx:61");
+  });
+
+  it("does not collide for same-length canvas source without a tool call id", () => {
+    const first = extractCanvasToolWriteCandidate({
+      sessionId: "session-1",
+      update: {
+        sessionUpdate: "tool_call_update",
+        rawInput: {
+          path: "canvases/status.canvas.tsx",
+          content: "export default () => <div>AB</div>;",
+        },
+      },
+    });
+    const second = extractCanvasToolWriteCandidate({
+      sessionId: "session-1",
+      update: {
+        sessionUpdate: "tool_call_update",
+        rawInput: {
+          path: "canvases/status.canvas.tsx",
+          content: "export default () => <div>CD</div>;",
+        },
+      },
+    });
+
+    expect(first?.source).toHaveLength(second?.source.length ?? -1);
+    expect(first && second
+      ? getCanvasToolWriteCandidateKey(first) === getCanvasToolWriteCandidateKey(second)
+      : true).toBe(false);
   });
 });
 

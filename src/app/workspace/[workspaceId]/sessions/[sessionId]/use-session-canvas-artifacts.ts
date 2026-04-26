@@ -99,6 +99,7 @@ export function useSessionCanvasArtifacts({
   const updatesLengthRef = useRef(updates.length);
   const processedCandidateKeysRef = useRef<Set<string>>(new Set());
   const rawInputByToolCallIdRef = useRef<Map<string, Record<string, unknown>>>(new Map());
+  const materializeRequestIdRef = useRef(0);
 
   useEffect(() => {
     updatesLengthRef.current = updates.length;
@@ -108,6 +109,7 @@ export function useSessionCanvasArtifacts({
     lastProcessedUpdateIndexRef.current = updatesLengthRef.current;
     processedCandidateKeysRef.current.clear();
     rawInputByToolCallIdRef.current.clear();
+    materializeRequestIdRef.current += 1;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- session switch must clear stale live Canvas panel state.
     setActiveCanvas(null);
     setError(null);
@@ -158,36 +160,35 @@ export function useSessionCanvasArtifacts({
 
     if (!latestCandidate) return;
 
-    let cancelled = false;
+    materializeRequestIdRef.current += 1;
+    const requestId = materializeRequestIdRef.current;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- external ACP tool completion starts async artifact materialization.
     setIsMaterializing(true);
     setError(null);
 
     void createCanvasArtifactFromCandidate(latestCandidate, workspaceId, repoPath)
       .then((created) => {
-        if (!cancelled) {
+        if (materializeRequestIdRef.current === requestId) {
           setActiveCanvas(created);
         }
       })
       .catch((createError: unknown) => {
-        if (!cancelled) {
+        if (materializeRequestIdRef.current === requestId) {
           setError(createError instanceof Error ? createError.message : "Failed to render canvas");
         }
       })
       .finally(() => {
-        if (!cancelled) {
+        if (materializeRequestIdRef.current === requestId) {
           setIsMaterializing(false);
         }
       });
-
-    return () => {
-      cancelled = true;
-    };
   }, [repoPath, sessionId, updates, workspaceId]);
 
   const clearActiveCanvas = useCallback(() => {
+    materializeRequestIdRef.current += 1;
     setActiveCanvas(null);
     setError(null);
+    setIsMaterializing(false);
   }, []);
 
   return {

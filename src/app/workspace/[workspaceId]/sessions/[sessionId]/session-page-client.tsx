@@ -830,10 +830,18 @@ export function SessionPageClient() {
   const handlePrepareCanvasPrompt = () => {
     setCanvasPromptPrefill(buildLiveCanvasAgentPrompt({ repoPath: repoSelection?.path }));
   };
-  const chatInputPrefill = dockerRetryText ?? canvasPromptPrefill;
+  const activeInputPrefill = dockerRetryText !== null
+    ? { source: "docker" as const, text: dockerRetryText }
+    : canvasPromptPrefill !== null
+      ? { source: "canvas" as const, text: canvasPromptPrefill }
+      : null;
+  const chatInputPrefill = activeInputPrefill?.text ?? null;
   const handleInputPrefillConsumed = () => {
-    if (dockerRetryText) setDockerRetryText(null);
-    if (canvasPromptPrefill) setCanvasPromptPrefill(null);
+    if (activeInputPrefill?.source === "docker") {
+      setDockerRetryText(null);
+      return;
+    }
+    if (activeInputPrefill?.source === "canvas") setCanvasPromptPrefill(null);
   };
   const hasSessionCanvasPanel = Boolean(
     sessionCanvas.activeCanvas || sessionCanvas.isMaterializing || sessionCanvas.error,
@@ -872,7 +880,7 @@ export function SessionPageClient() {
         aria-label={t.canvas.liveEntryLabel}
       >
         <Monitor className="h-3.5 w-3.5" aria-hidden="true" />
-        <span className="hidden lg:inline">{t.canvas.livePanelTitle}</span>
+        <span className="hidden lg:inline">{t.canvas.liveEntryLabel}</span>
       </button>
       {agentSelector}
       {activeSessionRecord?.resumeCapabilities?.supported && activeSessionRecord?.cwd && (
