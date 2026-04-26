@@ -202,6 +202,7 @@ export interface TranslationDictionary extends ExtendedTranslationDictionarySect
     viewerCannotRender: string;
     viewerCompilationError: string;
     liveEntryLabel: string;
+    liveEntryShortLabel: string;
     livePanelTitle: string;
     livePanelPending: string;
     livePanelMaterializing: string;

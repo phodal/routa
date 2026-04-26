@@ -126,7 +126,27 @@ vi.mock("@/client/hooks/use-notes", () => ({
 }));
 
 vi.mock("@/client/components/chat-panel", () => ({
-  ChatPanel: () => <div data-testid="chat-panel">chat</div>,
+  ChatPanel: ({
+    canvasPromptLabel,
+    canvasPromptActive,
+    onDecoratePrompt,
+    onPrepareCanvasPrompt,
+  }: {
+    canvasPromptActive?: boolean;
+    canvasPromptLabel?: string;
+    onDecoratePrompt?: (text: string) => string;
+    onPrepareCanvasPrompt?: () => void;
+  }) => (
+    <div data-testid="chat-panel">
+      chat
+      {onPrepareCanvasPrompt && canvasPromptLabel && (
+        <button type="button" aria-pressed={canvasPromptActive} onClick={onPrepareCanvasPrompt}>
+          {canvasPromptLabel}
+        </button>
+      )}
+      {onDecoratePrompt && <div data-testid="decorated-prompt">{onDecoratePrompt("Draw workflow")}</div>}
+    </div>
+  ),
 }));
 
 vi.mock("../left-sidebar", () => ({
@@ -397,7 +417,7 @@ describe("SessionPageClient", () => {
     });
   });
 
-  it("shows the live Canvas prompt entry in the title bar", async () => {
+  it("shows the live Canvas prompt entry in the composer", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url === "/api/specialists") {
@@ -418,7 +438,10 @@ describe("SessionPageClient", () => {
 
     render(<SessionPageClient />);
 
-    expect(await screen.findByRole("button", { name: "Prepare Canvas prompt" })).toBeTruthy();
+    fireEvent.click(await screen.findByRole("button", { name: "Use Canvas" }));
+
+    expect(await screen.findByRole("button", { name: "Use Canvas", pressed: true })).toBeTruthy();
+    expect((await screen.findByTestId("decorated-prompt")).textContent).toContain("Draw workflow");
   });
 
   it("shows a Resume action for codex sessions and calls ACP resume", async () => {

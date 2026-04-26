@@ -28,7 +28,7 @@ import {
 import {TracePanel} from "@/client/components/trace-panel";
 import type {WorkspaceData, CodebaseData} from "../hooks/use-workspaces";
 import {getFileChangesSummary} from "../utils/file-changes-tracker";
-import { TriangleAlert, X, KeyRound, Copy, Check } from "lucide-react";
+import { TriangleAlert, X, KeyRound, Copy, Check, Monitor } from "lucide-react";
 import { useTranslation } from "@/i18n";
 
 
@@ -101,6 +101,13 @@ interface ChatPanelProps {
   inputPrefill?: string | null;
   /** Called after inputPrefill has been consumed */
   onInputPrefillConsumed?: () => void;
+  /** Optional composer tool action that enables Canvas prompt handling for the next turn. */
+  onPrepareCanvasPrompt?: () => void;
+  canvasPromptActive?: boolean;
+  canvasPromptLabel?: string;
+  canvasPromptShortLabel?: string;
+  onDecoratePrompt?: (text: string) => string;
+  onDecoratedPromptSent?: () => void;
   /** Optional recovery action for a selected historical session. */
   onResumeActiveSession?: () => Promise<void>;
 }
@@ -129,6 +136,12 @@ export function ChatPanel({
   codebases: _codebases = [],
   inputPrefill,
   onInputPrefillConsumed,
+  onPrepareCanvasPrompt,
+  canvasPromptActive,
+  canvasPromptLabel,
+  canvasPromptShortLabel,
+  onDecoratePrompt,
+  onDecoratedPromptSent,
   onResumeActiveSession,
 }: ChatPanelProps) {
   const { t } = useTranslation();
@@ -399,13 +412,28 @@ export function ChatPanel({
       return next;
     });
 
-    await promptSession(sid, finalPrompt, skillContext);
+    const decoratedPrompt = onDecoratePrompt ? onDecoratePrompt(finalPrompt) : finalPrompt;
+
+    await promptSession(sid, decoratedPrompt, skillContext);
+    if (onDecoratePrompt) onDecoratedPromptSent?.();
 
     // Reset streaming refs after sending
     resetStreamingRefs(sid);
 
     // Task extraction is now handled by the useEffect that watches messagesBySession
-  }, [activeSessionId, onEnsureSession, onSelectSession, promptSession, repoSelection, onLoadSkill, acp, resetStreamingRefs, setMessagesBySession]);
+  }, [
+    activeSessionId,
+    onEnsureSession,
+    onSelectSession,
+    promptSession,
+    repoSelection,
+    onLoadSkill,
+    acp,
+    resetStreamingRefs,
+    setMessagesBySession,
+    onDecoratePrompt,
+    onDecoratedPromptSent,
+  ]);
 
   // ── Setup State ──────────────────────────────────────────────────────
 
@@ -670,6 +698,23 @@ export function ChatPanel({
                 <TaskProgressBar tasks={taskInfos} fileChanges={fileChangesSummary} />
               )}
               <div className="flex gap-2 items-end">
+                {onPrepareCanvasPrompt && canvasPromptLabel && canvasPromptShortLabel && (
+                  <button
+                    type="button"
+                    onClick={onPrepareCanvasPrompt}
+                    className={`mb-[1px] flex h-10 shrink-0 items-center gap-2 rounded-xl border px-3 text-xs font-medium transition-colors ${
+                      canvasPromptActive
+                        ? "border-blue-300 bg-blue-50 text-blue-700 dark:border-blue-700 dark:bg-blue-950/40 dark:text-blue-200"
+                        : "border-slate-200 bg-slate-50 text-slate-500 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 dark:border-slate-700 dark:bg-[#161922] dark:text-slate-400 dark:hover:border-blue-800 dark:hover:bg-blue-900/20 dark:hover:text-blue-300"
+                    }`}
+                    title={canvasPromptLabel}
+                    aria-label={canvasPromptLabel}
+                    aria-pressed={canvasPromptActive}
+                  >
+                    <Monitor className="h-4 w-4" aria-hidden="true" />
+                    <span>{canvasPromptShortLabel}</span>
+                  </button>
+                )}
                 <TiptapInput
                   onSend={handleSend}
                   onStop={() => {

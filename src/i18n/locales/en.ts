@@ -196,7 +196,8 @@ const en: TranslationDictionary = {
     viewerCannotRender:
       "Cannot render canvas: missing source for dynamic mode or canvasType for prebuilt mode.",
     viewerCompilationError: "Canvas compilation error:",
-    liveEntryLabel: "Prepare Canvas prompt",
+    liveEntryLabel: "Use Canvas",
+    liveEntryShortLabel: "Canvas",
     livePanelTitle: "Canvas",
     livePanelPending: "Waiting for a canvas file.",
     livePanelMaterializing: "Rendering canvas...",

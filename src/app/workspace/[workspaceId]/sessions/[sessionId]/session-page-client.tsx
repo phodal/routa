@@ -36,7 +36,7 @@ import { useSessionCanvasArtifacts } from "./use-session-canvas-artifacts";
 import { RepoSlideSessionPanel } from "./repo-slide-session-panel";
 import { Select } from "@/client/components/select";
 import { useTranslation } from "@/i18n";
-import { ChevronDown, Columns2, Monitor, ScrollText, X } from "lucide-react";
+import { ChevronDown, Columns2, ScrollText, X } from "lucide-react";
 import { desktopAwareFetch } from "@/client/utils/diagnostics";
 import { buildLiveCanvasAgentPrompt } from "@/core/canvas/session-canvas-prompt";
 
@@ -232,7 +232,7 @@ export function SessionPageClient() {
   const [dockerErrorMessage, setDockerErrorMessage] = useState<string | null>(null);
   // Input text to restore when a docker session fails before prompt was sent
   const [dockerRetryText, setDockerRetryText] = useState<string | null>(null);
-  const [canvasPromptPrefill, setCanvasPromptPrefill] = useState<string | null>(null);
+  const [canvasPromptEnabled, setCanvasPromptEnabled] = useState(false);
   const navigationTargetRef = useRef<string | null>(null);
   const displaySessionId = focusedSessionId ?? sessionId;
 
@@ -828,20 +828,26 @@ export function SessionPageClient() {
   };
   const isPlanningSession = activeSessionRecord?.mcpProfile === "kanban-planning";
   const handlePrepareCanvasPrompt = () => {
-    setCanvasPromptPrefill(buildLiveCanvasAgentPrompt({ repoPath: repoSelection?.path }));
+    setCanvasPromptEnabled((enabled) => !enabled);
+  };
+  const decorateCanvasPrompt = (request: string) => {
+    return buildLiveCanvasAgentPrompt({
+      repoPath: repoSelection?.path,
+      request,
+    });
+  };
+  const handleCanvasPromptSent = () => {
+    setCanvasPromptEnabled(false);
   };
   const activeInputPrefill = dockerRetryText !== null
     ? { source: "docker" as const, text: dockerRetryText }
-    : canvasPromptPrefill !== null
-      ? { source: "canvas" as const, text: canvasPromptPrefill }
-      : null;
+    : null;
   const chatInputPrefill = activeInputPrefill?.text ?? null;
   const handleInputPrefillConsumed = () => {
     if (activeInputPrefill?.source === "docker") {
       setDockerRetryText(null);
       return;
     }
-    if (activeInputPrefill?.source === "canvas") setCanvasPromptPrefill(null);
   };
   const hasSessionCanvasPanel = Boolean(
     sessionCanvas.activeCanvas || sessionCanvas.isMaterializing || sessionCanvas.error,
@@ -872,16 +878,6 @@ export function SessionPageClient() {
   );
   const sessionTitleBarRight = (
     <>
-      <button
-        type="button"
-        onClick={handlePrepareCanvasPrompt}
-        className="inline-flex items-center gap-1.5 rounded-xl border border-desktop-border bg-desktop-bg-secondary px-2.5 py-1.5 text-[11px] font-medium text-desktop-text-primary transition-colors hover:bg-desktop-bg-active"
-        title={t.canvas.liveEntryLabel}
-        aria-label={t.canvas.liveEntryLabel}
-      >
-        <Monitor className="h-3.5 w-3.5" aria-hidden="true" />
-        <span className="hidden lg:inline">{t.canvas.liveEntryLabel}</span>
-      </button>
       {agentSelector}
       {activeSessionRecord?.resumeCapabilities?.supported && activeSessionRecord?.cwd && (
         <button
@@ -1002,6 +998,12 @@ export function SessionPageClient() {
             codebases={codebases}
             inputPrefill={chatInputPrefill}
             onInputPrefillConsumed={handleInputPrefillConsumed}
+            onPrepareCanvasPrompt={handlePrepareCanvasPrompt}
+            canvasPromptActive={canvasPromptEnabled}
+            canvasPromptLabel={t.canvas.liveEntryLabel}
+            canvasPromptShortLabel={t.canvas.liveEntryShortLabel}
+            onDecoratePrompt={canvasPromptEnabled ? decorateCanvasPrompt : undefined}
+            onDecoratedPromptSent={handleCanvasPromptSent}
           />
         </div>
 
