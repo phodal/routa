@@ -357,6 +357,56 @@ describe("AcpProcess codex permission handling", () => {
     vi.useRealTimers();
   });
 
+  it("uses structured stderr details for generic acp_status internal errors", async () => {
+    vi.useFakeTimers();
+    const onNotification = vi.fn();
+    const fakeProcess = new FakeProcess();
+    spawnMock.mockReturnValue(fakeProcess);
+
+    const process = createProcess(onNotification);
+    const startPromise = process.start();
+    await vi.advanceTimersByTimeAsync(500);
+    await startPromise;
+
+    fakeProcess.stderr.emit(
+      "data",
+      Buffer.from(
+        'ERROR codex_acp::thread: Unhandled error during turn: {"type":"error","status":400,"error":{"type":"invalid_request_error","message":"The model requires a newer version of Codex."}} Some(Other)\n',
+        "utf-8",
+      ),
+    );
+    fakeProcess.stdout.emit(
+      "data",
+      Buffer.from(JSON.stringify({
+        jsonrpc: "2.0",
+        method: "session/update",
+        params: {
+          sessionId: "codex-session",
+          update: {
+            sessionUpdate: "acp_status",
+            status: "error",
+            error: "Internal error",
+          },
+        },
+      }) + "\n", "utf-8"),
+    );
+
+    expect(onNotification).toHaveBeenLastCalledWith({
+      jsonrpc: "2.0",
+      method: "session/update",
+      params: {
+        sessionId: "codex-session",
+        update: {
+          sessionUpdate: "acp_status",
+          status: "error",
+          error: "The model requires a newer version of Codex.",
+        },
+      },
+    });
+
+    vi.useRealTimers();
+  });
+
   it("rejects pending requests when the process exits", async () => {
     vi.useFakeTimers();
     const fakeProcess = new FakeProcess();

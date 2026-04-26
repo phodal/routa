@@ -624,6 +624,7 @@ describe("/api/acp POST", () => {
       },
       "codex-thread-1",
       undefined,
+      undefined,
     );
     expect(acpProcessManager.createSession).not.toHaveBeenCalled();
     await expect(response.json()).resolves.toMatchObject({
