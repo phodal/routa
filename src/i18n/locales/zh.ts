@@ -195,6 +195,14 @@ const zh: TranslationDictionary = {
     viewerCannotRender:
       "无法渲染画布：动态模式缺少 source，或预置模式缺少 canvasType。",
     viewerCompilationError: "Canvas 编译错误：",
+    liveEntryLabel: "准备 Canvas 提示词",
+    livePanelTitle: "Canvas",
+    livePanelPending: "等待 Canvas 文件。",
+    livePanelMaterializing: "正在渲染 Canvas...",
+    livePanelOpen: "打开 Canvas",
+    livePanelClose: "关闭 Canvas 面板",
+    livePanelDetectedFile: "检测到文件",
+    livePanelError: "Canvas 渲染准备失败",
   },
 
   featureExplorer: {

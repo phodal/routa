@@ -397,6 +397,30 @@ describe("SessionPageClient", () => {
     });
   });
 
+  it("shows the live Canvas prompt entry in the title bar", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/specialists") {
+        return { ok: true, json: async () => ({ specialists: [] }) } as Response;
+      }
+      if (url === "/api/sessions/session-1") {
+        return { ok: true, json: async () => ({ session: {} }) } as Response;
+      }
+      if (url === "/api/sessions?parentSessionId=session-1") {
+        return { ok: true, json: async () => ({ sessions: [] }) } as Response;
+      }
+      if (url === "/api/mcp/tools") {
+        return { ok: true, json: async () => ({ globalMode: "essential" }) } as Response;
+      }
+      return { ok: true, json: async () => ({}) } as Response;
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<SessionPageClient />);
+
+    expect(await screen.findByRole("button", { name: "Prepare Canvas prompt" })).toBeTruthy();
+  });
+
   it("shows a Resume action for codex sessions and calls ACP resume", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
