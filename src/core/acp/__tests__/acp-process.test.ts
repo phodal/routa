@@ -404,6 +404,35 @@ describe("AcpProcess codex permission handling", () => {
       },
     });
 
+    fakeProcess.stdout.emit(
+      "data",
+      Buffer.from(JSON.stringify({
+        jsonrpc: "2.0",
+        method: "session/update",
+        params: {
+          sessionId: "codex-session",
+          update: {
+            sessionUpdate: "acp_status",
+            status: "error",
+            error: "Internal error",
+          },
+        },
+      }) + "\n", "utf-8"),
+    );
+
+    expect(onNotification).toHaveBeenLastCalledWith({
+      jsonrpc: "2.0",
+      method: "session/update",
+      params: {
+        sessionId: "codex-session",
+        update: {
+          sessionUpdate: "acp_status",
+          status: "error",
+          error: "Internal error",
+        },
+      },
+    });
+
     vi.useRealTimers();
   });
 

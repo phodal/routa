@@ -684,13 +684,16 @@ export class AcpProcess {
             return msg;
         }
 
+        const enrichedError = this.lastStderrErrorMessage;
+        this.lastStderrErrorMessage = null;
+
         return {
             ...msg,
             params: {
                 ...params,
                 update: {
                     ...update,
-                    error: this.lastStderrErrorMessage,
+                    error: enrichedError,
                 },
             },
         };
