@@ -201,6 +201,15 @@ export interface TranslationDictionary extends ExtendedTranslationDictionarySect
     viewerToggleDarkTheme: string;
     viewerCannotRender: string;
     viewerCompilationError: string;
+    liveEntryLabel: string;
+    liveEntryShortLabel: string;
+    livePanelTitle: string;
+    livePanelPending: string;
+    livePanelMaterializing: string;
+    livePanelOpen: string;
+    livePanelClose: string;
+    livePanelDetectedFile: string;
+    livePanelError: string;
   };
 
   featureExplorer: {

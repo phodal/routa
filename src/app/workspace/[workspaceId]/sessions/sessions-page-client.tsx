@@ -187,6 +187,10 @@ export function SessionsPageClient() {
               <HomeInput
                 workspaceId={workspaceId}
                 variant="default"
+                displaySkills={[{
+                  name: "canvas",
+                  description: t.canvas.liveEntryLabel,
+                }]}
                 launchModes={[{
                   id: "session",
                   label: t.home.modeSessionTitle,

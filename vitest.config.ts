@@ -12,6 +12,8 @@ export default defineConfig({
     include: ["**/__tests__/**/*.test.ts", "**/__tests__/**/*.test.tsx"],
     exclude: ["**/node_modules/**", "**/dist/**", "**/.next/**", "src/client/utils/__tests__/**", "**/.routa/**", "**/.worktrees/**"], // Exclude old test files and .routa cache
     css: true,
+    maxWorkers: 2,
+    testTimeout: 30_000,
   },
   resolve: {
     alias: {

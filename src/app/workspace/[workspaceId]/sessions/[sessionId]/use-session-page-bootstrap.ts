@@ -202,8 +202,11 @@ export function useSessionPageBootstrap(params: UseSessionPageBootstrapParams) {
       const skillContext = promptToSend.skillName
         ? await loadSkillContext(promptToSend.skillName, promptToSend.skillRepoPath)
         : undefined;
+      const promptText = promptToSend.skillName && !skillContext
+        ? `/${promptToSend.skillName} ${promptToSend.text}`
+        : promptToSend.text;
 
-      await acpPrompt(promptToSend.text, skillContext);
+      await acpPrompt(promptText, skillContext);
     };
 
     if (acpReady) {

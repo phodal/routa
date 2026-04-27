@@ -54,6 +54,7 @@ import {
   proxyRequestToRunner,
   runnerUnavailableResponse,
 } from "@/core/acp/runner-routing";
+import { buildProviderModelArgs } from "@/core/acp/provider-model-args";
 import { handleSessionNew, parseRequestedAcpMcpServers } from "./acp-session-create";
 import { getSessionWriteBuffer } from "./acp-session-history";
 import { handleSessionPrompt } from "./acp-session-prompt";
@@ -590,6 +591,7 @@ export async function POST(request: NextRequest) {
       let acpSessionId: string;
       let resumeMode: "native" | "recreated" = "recreated";
       let nativeResumeError: string | undefined;
+      const modelArgs = buildProviderModelArgs(provider, recoveredSession.model);
 
       // Determine whether native resume should be attempted based on provider capabilities
       const preset = getPresetById(provider);
@@ -616,6 +618,7 @@ export async function POST(request: NextRequest) {
             },
             providerSessionId,
             requestedAcpMcpServers.servers,
+            modelArgs,
           );
           resumeMode = "native";
         } else {
@@ -630,7 +633,7 @@ export async function POST(request: NextRequest) {
           forwardSessionUpdate,
           provider,
           recoveredSession.modeId,
-          undefined,
+          modelArgs,
           undefined,
           workspaceId,
           "toolMode" in recoveredSession

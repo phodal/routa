@@ -25,6 +25,7 @@ import {
   buildExecutionBinding,
   refreshExecutionBinding,
 } from "@/core/acp/execution-backend";
+import { buildProviderModelArgs } from "@/core/acp/provider-model-args";
 import type { McpServerProfile } from "@/core/mcp/mcp-server-profiles";
 import { pendingAcpCreations } from "@/core/acp/pending-acp-creations";
 import { buildFeatureTreeSpecPromptSection } from "@/core/spec/feature-tree-spec-resource-contract";
@@ -692,17 +693,14 @@ export async function handleSessionNew({
           },
         );
       } else {
-        const extraArgs: string[] = [];
-        if (model && model.trim()) {
-          extraArgs.push("-m", model.trim());
-        }
+        const extraArgs = buildProviderModelArgs(provider, model);
         acpSessionId = await manager.createSession(
           sessionId,
           cwd,
           forwardSessionUpdate,
           provider,
           modeId,
-          extraArgs.length > 0 ? extraArgs : undefined,
+          extraArgs,
           undefined,
           workspaceId,
           resolvedToolMode,

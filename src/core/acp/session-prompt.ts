@@ -27,6 +27,7 @@ import {
 import type { McpServerProfile } from "@/core/mcp/mcp-server-profiles";
 import { pendingAcpCreations } from "@/core/acp/pending-acp-creations";
 import { persistSessionHistorySnapshot } from "@/core/acp/session-history";
+import { buildProviderModelArgs } from "@/core/acp/provider-model-args";
 
 type JsonRpcResponseFactory = (
   id: string | number | null,
@@ -356,6 +357,7 @@ async function ensurePromptSessionExists(args: {
   const specialistId = recoveredSession?.specialistId;
   const specialistSystemPrompt = storedSession?.specialistSystemPrompt;
   const providerSessionId = recoveredSession?.routaAgentId ?? sessionId;
+  const modelArgs = buildProviderModelArgs(provider, recoveredSession?.model ?? storedSession?.model);
 
   try {
     const preset = getPresetById(provider);
@@ -450,6 +452,8 @@ async function ensurePromptSessionExists(args: {
             role,
           },
           providerSessionId,
+          undefined,
+          modelArgs,
         );
         console.log(`[ACP Route] Native Codex resume succeeded for session ${sessionId}`);
       } catch (resumeError) {
@@ -460,7 +464,7 @@ async function ensurePromptSessionExists(args: {
           forwardSessionUpdate,
           provider,
           undefined,
-          undefined,
+          modelArgs,
           undefined,
           workspaceId,
           toolMode,
@@ -470,6 +474,7 @@ async function ensurePromptSessionExists(args: {
             provider,
             role,
           },
+          undefined,
         );
       }
     } else {
@@ -479,7 +484,7 @@ async function ensurePromptSessionExists(args: {
         forwardSessionUpdate,
         provider,
         undefined,
-        undefined,
+        modelArgs,
         undefined,
         workspaceId,
         toolMode,
@@ -489,6 +494,7 @@ async function ensurePromptSessionExists(args: {
           provider,
           role,
         },
+        undefined,
       );
     }
 

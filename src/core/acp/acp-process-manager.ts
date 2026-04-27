@@ -312,6 +312,7 @@ export class AcpProcessManager {
         sessionContext?: Omit<AcpSessionContext, "sessionId">,
         providerSessionId?: string,
         requestedAcpMcpServers?: Array<Record<string, unknown>>,
+        extraArgs?: string[],
     ): Promise<string> {
         try {
             const mcpSetup = await this.prepareMcpForSession(
@@ -326,7 +327,7 @@ export class AcpProcessManager {
             const config = await buildConfigFromPreset(
                 presetId,
                 cwd,
-                this.combineProviderArgs(mcpSetup?.providerArgs),
+                this.combineProviderArgs(mcpSetup?.providerArgs, extraArgs),
                 undefined,
                 mcpSetup?.mcpConfigs,
             );
