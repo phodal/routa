@@ -26,6 +26,9 @@ interface LaneExperienceOptions {
   synthesizedAt?: string;
 }
 
+const LANE_MEMORY_TEXT_LIMIT = 240;
+const FALLBACK_SYNTHESIZED_AT = "1970-01-01T00:00:00.000Z";
+
 function uniqueStrings(values: Array<string | undefined | null>): string[] {
   return [...new Set(values
     .filter((value): value is string => typeof value === "string")
@@ -33,11 +36,60 @@ function uniqueStrings(values: Array<string | undefined | null>): string[] {
     .filter(Boolean))];
 }
 
+function compactLaneMemoryText(value: string | undefined | null, maxLength = LANE_MEMORY_TEXT_LIMIT): string {
+  const compacted = typeof value === "string"
+    ? value.replace(/\s+/g, " ").trim()
+    : "";
+  if (compacted.length <= maxLength) {
+    return compacted;
+  }
+  return `${compacted.slice(0, maxLength - 3).trimEnd()}...`;
+}
+
+function parseStableTimestamp(value: string | undefined | null): number | undefined {
+  if (!value) {
+    return undefined;
+  }
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) ? timestamp : undefined;
+}
+
+function resolveLaneExperienceSynthesizedAt(
+  task: TaskLaneExperienceSource,
+  options: LaneExperienceOptions,
+): string {
+  if (options.synthesizedAt) {
+    return options.synthesizedAt;
+  }
+
+  const timestamps = [
+    ...((task.laneSessions ?? []).flatMap((session) => [
+      session.startedAt,
+      session.completedAt,
+      session.lastActivityAt,
+    ])),
+    ...((task.laneHandoffs ?? []).flatMap((handoff) => [
+      handoff.requestedAt,
+      handoff.respondedAt,
+    ])),
+    task.jitContextSnapshot?.generatedAt,
+  ]
+    .map(parseStableTimestamp)
+    .filter((timestamp): timestamp is number => typeof timestamp === "number");
+
+  if (timestamps.length === 0) {
+    return FALLBACK_SYNTHESIZED_AT;
+  }
+
+  return new Date(Math.max(...timestamps)).toISOString();
+}
+
 function sortSessionsByStart(sessions: TaskLaneSession[]): TaskLaneSession[] {
   return [...sessions].sort((left, right) => {
     const leftTime = Date.parse(left.startedAt);
     const rightTime = Date.parse(right.startedAt);
-    return (Number.isFinite(leftTime) ? leftTime : 0) - (Number.isFinite(rightTime) ? rightTime : 0);
+    return (Number.isFinite(leftTime) ? leftTime : 0) - (Number.isFinite(rightTime) ? rightTime : 0)
+      || left.sessionId.localeCompare(right.sessionId);
   });
 }
 
@@ -100,7 +152,8 @@ function collectLaneHandoffFailures(
     )
     .map((handoff) => {
       const direction = `${handoff.fromColumnId ?? "unknown"} -> ${handoff.toColumnId ?? "unknown"}`;
-      return `Handoff ${handoff.id} ${handoff.status} on ${direction}: ${handoff.responseSummary ?? handoff.request}`;
+      const failureText = compactLaneMemoryText(handoff.responseSummary ?? handoff.request);
+      return `Handoff ${handoff.id} ${handoff.status} on ${direction}: ${failureText}`;
     })
     .slice(0, 3);
 }
@@ -324,6 +377,64 @@ function buildLaneAnalysis(
   };
 }
 
+function mergeLaneAnalysisWithPreviousGuidance(
+  previous: TaskJitContextLaneAnalysis | undefined,
+  next: TaskJitContextLaneAnalysis,
+  preservePreviousGuidance: boolean,
+): TaskJitContextLaneAnalysis {
+  if (!preservePreviousGuidance || next.flowGuidance.length > 0 || !previous?.flowGuidance.length) {
+    return next;
+  }
+
+  const preservedGuidance = previous.flowGuidance;
+  const flowPatterns = preservedGuidance.slice(0, 2).map((guidance) =>
+    `Board-level ${guidance.category}: ${guidance.summary}`
+  );
+  const flowActions = preservedGuidance.map((guidance) => guidance.recommendation);
+  const summary = next.summary.includes("Board flow guidance")
+    ? next.summary
+    : `${next.summary} Board flow guidance has ${preservedGuidance.length} related item(s).`;
+
+  return {
+    ...next,
+    summary,
+    learnedPatterns: uniqueStrings([
+      ...next.learnedPatterns,
+      ...flowPatterns,
+    ]).slice(0, 8),
+    recommendedActions: uniqueStrings([
+      ...next.recommendedActions,
+      ...flowActions,
+    ]).slice(0, 6),
+    flowGuidance: preservedGuidance,
+  };
+}
+
+function mergePerLaneAnalysis(
+  previous: Record<string, TaskJitContextLaneAnalysis> | undefined,
+  next: Record<string, TaskJitContextLaneAnalysis>,
+  options: LaneExperienceOptions,
+): Record<string, TaskJitContextLaneAnalysis> {
+  const previousEntries = previous ?? {};
+  const preservePreviousGuidance = !options.flowReport;
+  const merged = new Map<string, TaskJitContextLaneAnalysis>();
+
+  for (const [columnId, analysis] of Object.entries(previousEntries)) {
+    merged.set(columnId, analysis);
+  }
+  for (const [columnId, analysis] of Object.entries(next)) {
+    merged.set(columnId, mergeLaneAnalysisWithPreviousGuidance(
+      previousEntries[columnId],
+      analysis,
+      preservePreviousGuidance,
+    ));
+  }
+
+  return Object.fromEntries(
+    [...merged.entries()].sort(([left], [right]) => left.localeCompare(right)),
+  );
+}
+
 export function synthesizeTaskLaneJitContextAnalysis(
   task: TaskLaneExperienceSource | null | undefined,
   options: LaneExperienceOptions = {},
@@ -332,8 +443,9 @@ export function synthesizeTaskLaneJitContextAnalysis(
     return undefined;
   }
 
-  const synthesizedAt = options.synthesizedAt ?? new Date().toISOString();
+  const synthesizedAt = resolveLaneExperienceSynthesizedAt(task, options);
   const entries = [...groupSessionsByColumn(task.laneSessions ?? []).entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
     .map(([columnId, sessions]) => [
       columnId,
       buildLaneAnalysis(task, columnId, sessions, {
@@ -349,14 +461,22 @@ export function mergeTaskLaneExperienceIntoJitSnapshot(
   task: TaskLaneExperienceSource,
   options: LaneExperienceOptions = {},
 ): TaskJitContextSnapshot | undefined {
-  const perLaneAnalysis = synthesizeTaskLaneJitContextAnalysis(task, options);
+  const synthesizedAt = resolveLaneExperienceSynthesizedAt(task, options);
+  const perLaneAnalysis = synthesizeTaskLaneJitContextAnalysis(task, {
+    ...options,
+    synthesizedAt,
+  });
   const normalizedSnapshot = normalizeTaskJitContextSnapshot(task.jitContextSnapshot);
 
   if (!perLaneAnalysis) {
     return normalizedSnapshot;
   }
 
-  const synthesizedAt = options.synthesizedAt ?? new Date().toISOString();
+  const mergedPerLaneAnalysis = mergePerLaneAnalysis(
+    normalizedSnapshot?.perLaneAnalysis,
+    perLaneAnalysis,
+    options,
+  );
   return normalizeTaskJitContextSnapshot({
     generatedAt: normalizedSnapshot?.generatedAt ?? synthesizedAt,
     repoPath: normalizedSnapshot?.repoPath,
@@ -375,7 +495,7 @@ export function mergeTaskLaneExperienceIntoJitSnapshot(
     historySummary: normalizedSnapshot?.historySummary,
     recommendedContextSearchSpec: normalizedSnapshot?.recommendedContextSearchSpec,
     analysis: normalizedSnapshot?.analysis,
-    perLaneAnalysis,
+    perLaneAnalysis: mergedPerLaneAnalysis,
   });
 }
 
@@ -398,7 +518,8 @@ export function buildLaneExperiencePromptSection(
     return undefined;
   }
 
-  const analyses = Object.values(perLaneAnalysis);
+  const analyses = Object.values(perLaneAnalysis)
+    .sort((left, right) => left.columnId.localeCompare(right.columnId));
   if (analyses.length === 0) {
     return undefined;
   }

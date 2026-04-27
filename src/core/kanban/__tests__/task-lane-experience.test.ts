@@ -89,6 +89,7 @@ describe("task lane experience memory", () => {
       synthesizedAt: "2026-04-23T11:00:00.000Z",
     });
 
+    expect(Object.keys(perLaneAnalysis ?? {})).toEqual(["dev", "review"]);
     expect(perLaneAnalysis?.review).toEqual(expect.objectContaining({
       columnId: "review",
       columnName: "Review",
@@ -128,9 +129,9 @@ describe("task lane experience memory", () => {
       completedAt: "2026-04-23T08:30:00.000Z",
     }];
 
-    refreshTaskLaneExperienceMemory(task, {
-      synthesizedAt: "2026-04-23T09:00:00.000Z",
-    });
+    refreshTaskLaneExperienceMemory(task);
+    const firstSnapshot = JSON.parse(JSON.stringify(task.jitContextSnapshot));
+    const firstPromptSection = buildLaneExperiencePromptSection(task);
 
     expect(task.jitContextSnapshot?.perLaneAnalysis?.dev).toEqual(expect.objectContaining({
       summary: expect.stringContaining("Dev has 1 lane session"),
@@ -141,5 +142,113 @@ describe("task lane experience memory", () => {
     expect(promptSection).toContain("## Lane Experience Memory");
     expect(promptSection).toContain("Dev has 1 lane session");
     expect(promptSection).toContain("Reuse the latest Dev session context");
+
+    refreshTaskLaneExperienceMemory(task);
+    expect(task.jitContextSnapshot).toEqual(firstSnapshot);
+    expect(buildLaneExperiencePromptSection(task)).toBe(firstPromptSection);
+  });
+
+  it("preserves existing flow guidance when refreshing without a fresh flow report", () => {
+    const task = createTask({
+      id: "task-lane-guidance",
+      title: "Continue guided lane",
+      objective: "Reuse flow guidance",
+      workspaceId: "ws-1",
+      columnId: "review",
+      jitContextSnapshot: {
+        generatedAt: "2026-04-23T08:00:00.000Z",
+        summary: "Existing lane memory",
+        matchConfidence: "low",
+        matchReasons: [],
+        warnings: [],
+        matchedFileDetails: [],
+        matchedSessionIds: [],
+        failures: [],
+        repeatedReadFiles: [],
+        sessions: [],
+        perLaneAnalysis: {
+          review: {
+            columnId: "review",
+            columnName: "Review",
+            synthesizedAt: "2026-04-23T08:00:00.000Z",
+            sessionCount: 1,
+            latestSessionId: "review-1",
+            latestStatus: "completed",
+            completedSessions: 1,
+            failedSessions: 0,
+            recoveredSessions: 0,
+            summary: "Review has 1 lane session. Board flow guidance has 1 related item(s).",
+            learnedPatterns: ["Board-level handoff_friction: Prepare review context first."],
+            topFailures: [],
+            recommendedActions: ["Prepare runtime evidence before review handoff."],
+            flowGuidance: [{
+              category: "handoff_friction",
+              severity: "warning",
+              summary: "Prepare review context first.",
+              recommendation: "Prepare runtime evidence before review handoff.",
+              affectedColumns: ["review"],
+            }],
+          },
+        },
+      },
+    });
+    task.laneSessions = [{
+      sessionId: "review-2",
+      columnId: "review",
+      columnName: "Review",
+      status: "completed",
+      startedAt: "2026-04-23T09:00:00.000Z",
+      completedAt: "2026-04-23T09:10:00.000Z",
+    }];
+
+    refreshTaskLaneExperienceMemory(task);
+
+    const reviewMemory = task.jitContextSnapshot?.perLaneAnalysis?.review;
+    expect(reviewMemory?.flowGuidance).toEqual([expect.objectContaining({
+      category: "handoff_friction",
+    })]);
+    expect(reviewMemory?.summary).toContain("Board flow guidance has 1 related item");
+    expect(reviewMemory?.recommendedActions).toContain("Prepare runtime evidence before review handoff.");
+  });
+
+  it("bounds handoff failure text before storing lane memory", () => {
+    const longFailure = `Failure ${"details ".repeat(80)}`;
+    const task = createTask({
+      id: "task-lane-long-failure",
+      title: "Bound failure memory",
+      objective: "Avoid prompt bloat",
+      workspaceId: "ws-1",
+      columnId: "review",
+    });
+    task.laneSessions = [{
+      sessionId: "review-1",
+      columnId: "review",
+      columnName: "Review",
+      status: "failed",
+      startedAt: "2026-04-23T09:00:00.000Z",
+      completedAt: "2026-04-23T09:10:00.000Z",
+    }];
+    task.laneHandoffs = [{
+      id: "handoff-long",
+      fromSessionId: "review-1",
+      toSessionId: "dev-1",
+      fromColumnId: "review",
+      toColumnId: "dev",
+      requestType: "runtime_context",
+      request: "Inspect failure",
+      status: "blocked",
+      requestedAt: "2026-04-23T09:12:00.000Z",
+      responseSummary: longFailure,
+    }];
+
+    const perLaneAnalysis = synthesizeTaskLaneJitContextAnalysis(task, {
+      synthesizedAt: "2026-04-23T11:00:00.000Z",
+    });
+    const handoffFailure = perLaneAnalysis?.review.topFailures.find((failure) =>
+      failure.includes("handoff-long")
+    );
+
+    expect(handoffFailure).toContain("...");
+    expect(handoffFailure?.length).toBeLessThanOrEqual(320);
   });
 });

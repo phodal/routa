@@ -659,7 +659,7 @@ function normalizeTaskJitContextLaneAnalysis(
     topFailures: normalizeTaskContextSearchItems(value.topFailures) ?? [],
     recommendedActions: normalizeTaskContextSearchItems(value.recommendedActions) ?? [],
     contextHints: normalizeTaskContextSearchSpec(value.contextHints),
-    flowGuidance: (value.flowGuidance ?? [])
+    flowGuidance: (Array.isArray(value.flowGuidance) ? value.flowGuidance : [])
       .map((entry) => normalizeTaskJitContextLaneFlowGuidance(entry))
       .filter((entry): entry is TaskJitContextLaneFlowGuidance => Boolean(entry)),
   };

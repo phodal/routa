@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { normalizeTaskJitContextSnapshot } from "../../models/task";
 import { buildKanbanTaskAdaptiveHarnessOptions, stripSpeculativeKanbanTaskAdaptiveSnapshot } from "../task-adaptive";
 
 describe("buildKanbanTaskAdaptiveHarnessOptions", () => {
@@ -135,5 +136,67 @@ describe("buildKanbanTaskAdaptiveHarnessOptions", () => {
     });
 
     expect(sanitized.jitContextSnapshot?.perLaneAnalysis?.backlog).toBeDefined();
+  });
+
+  it("drops malformed lane flow guidance without rejecting valid lane memory", () => {
+    const sanitized = stripSpeculativeKanbanTaskAdaptiveSnapshot({
+      id: "task-5",
+      title: "Backlog malformed flow guidance",
+      columnId: "backlog",
+      jitContextSnapshot: {
+        generatedAt: "2026-04-22T08:00:00.000Z",
+        summary: "Lane memory",
+        matchConfidence: "low" as const,
+        matchReasons: [],
+        warnings: [],
+        matchedFileDetails: [],
+        matchedSessionIds: [],
+        failures: [],
+        repeatedReadFiles: [],
+        sessions: [],
+        perLaneAnalysis: {
+          backlog: {
+            columnId: "backlog",
+            columnName: "Backlog",
+            synthesizedAt: "2026-04-22T08:05:00.000Z",
+            sessionCount: 1,
+            completedSessions: 1,
+            failedSessions: 0,
+            recoveredSessions: 0,
+            summary: "Backlog has durable lane memory.",
+            learnedPatterns: [],
+            topFailures: [],
+            recommendedActions: [],
+            flowGuidance: {},
+          },
+        },
+      } as never,
+    });
+
+    const normalized = normalizeTaskJitContextSnapshot(sanitized.jitContextSnapshot);
+    expect(normalized?.perLaneAnalysis?.backlog?.flowGuidance).toEqual([]);
+  });
+
+  it("does not treat corrupted lane memory payloads as confirmed backlog context", () => {
+    const sanitized = stripSpeculativeKanbanTaskAdaptiveSnapshot({
+      id: "task-6",
+      title: "Backlog corrupted lane memory",
+      columnId: "backlog",
+      jitContextSnapshot: {
+        generatedAt: "2026-04-22T08:00:00.000Z",
+        summary: "Corrupted lane memory",
+        matchConfidence: "low" as const,
+        matchReasons: [],
+        warnings: [],
+        matchedFileDetails: [],
+        matchedSessionIds: [],
+        failures: [],
+        repeatedReadFiles: [],
+        sessions: [],
+        perLaneAnalysis: "corrupted",
+      } as never,
+    });
+
+    expect(sanitized.jitContextSnapshot).toBeUndefined();
   });
 });
