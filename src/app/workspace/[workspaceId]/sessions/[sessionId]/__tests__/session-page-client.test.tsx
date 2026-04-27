@@ -338,6 +338,38 @@ describe("SessionPageClient", () => {
     });
   });
 
+  it("keeps the slash skill fallback when structured pending skill context cannot load", async () => {
+    storePendingPrompt("session-1", {
+      text: "build repo slides",
+      skillName: "slide-skill",
+      skillRepoPath: "/tmp/routa/tools/ppt-template",
+    });
+    acpState.updates = [
+      { update: { sessionUpdate: "acp_status", status: "ready" } },
+    ];
+
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.startsWith("/api/skills?")) {
+        return {
+          ok: false,
+          json: async () => ({ error: "not found" }),
+        } as Response;
+      }
+      return {
+        ok: true,
+        json: async () => ({ session: {}, sessions: [], specialists: [], globalMode: "essential" }),
+      } as Response;
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<SessionPageClient />);
+
+    await waitFor(() => {
+      expect(mockPrompt).toHaveBeenCalledWith("/slide-skill build repo slides", undefined);
+    });
+  });
+
   it("renders RepoSlide session results when launched from RepoSlide", async () => {
     navState.searchParams = new URLSearchParams("source=reposlide&codebaseId=cb-1");
 

@@ -71,6 +71,30 @@ function isSettledCanvasToolUpdate(update: Record<string, unknown>): boolean {
   return false;
 }
 
+function isFailedCanvasToolUpdate(update: Record<string, unknown>): boolean {
+  const rawOutput = update.rawOutput;
+  const status = typeof update.status === "string" ? update.status.toLowerCase() : "";
+
+  if (status === "failed" || status === "error" || status === "canceled" || status === "cancelled") {
+    return true;
+  }
+
+  if (update.isError === true || update.error) {
+    return true;
+  }
+
+  if (typeof rawOutput === "string") {
+    return rawOutput.toLowerCase().includes("tool execution failed");
+  }
+
+  if (rawOutput && typeof rawOutput === "object") {
+    const output = rawOutput as Record<string, unknown>;
+    return output.isError === true || Boolean(output.error);
+  }
+
+  return false;
+}
+
 async function createCanvasArtifactFromCandidate(
   candidate: CanvasToolWriteCandidate,
   workspaceId: string,
@@ -159,7 +183,15 @@ export function useSessionCanvasArtifacts({
         rawInputByToolCallIdRef.current.set(toolCallId, mergedInput);
       }
 
-      const isSettledUpdate = isSettledCanvasToolUpdate(update);
+      const isFailedUpdate = isFailedCanvasToolUpdate(update);
+      const isSettledUpdate = isSettledCanvasToolUpdate(update) || isFailedUpdate;
+      if (isFailedUpdate) {
+        if (toolCallId && isSettledUpdate) {
+          rawInputByToolCallIdRef.current.delete(toolCallId);
+        }
+        continue;
+      }
+
       if (!isCompletedCanvasToolUpdate(update)) {
         if (toolCallId && isSettledUpdate) {
           rawInputByToolCallIdRef.current.delete(toolCallId);
@@ -185,6 +217,7 @@ export function useSessionCanvasArtifacts({
 
     if (!latestCandidate) return;
 
+    const latestCandidateKey = getCanvasToolWriteCandidateKey(latestCandidate);
     materializeRequestIdRef.current += 1;
     const requestId = materializeRequestIdRef.current;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- external ACP tool completion starts async artifact materialization.
@@ -198,6 +231,7 @@ export function useSessionCanvasArtifacts({
         }
       })
       .catch((createError: unknown) => {
+        processedCandidateKeysRef.current.delete(latestCandidateKey);
         if (materializeRequestIdRef.current === requestId) {
           setError(createError instanceof Error ? createError.message : "Failed to render canvas");
         }

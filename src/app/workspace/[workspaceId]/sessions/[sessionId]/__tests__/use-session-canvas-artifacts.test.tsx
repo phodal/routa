@@ -192,6 +192,112 @@ describe("useSessionCanvasArtifacts", () => {
     });
   });
 
+  it("ignores completed OpenCode tool updates that carry error output", async () => {
+    const { rerender } = renderHook(
+      ({ updates }) => useSessionCanvasArtifacts({
+        workspaceId: "default",
+        sessionId: "session-1",
+        updates,
+      }),
+      {
+        initialProps: {
+          updates: [] as AcpSessionNotification[],
+        },
+      },
+    );
+
+    const runningUpdate: AcpSessionNotification = {
+      sessionId: "session-1",
+      update: {
+        sessionUpdate: "tool_call",
+        toolCallId: "tool-1",
+        status: "running",
+        rawInput: {
+          path: "canvases/status.canvas.tsx",
+          content: "export default () => <div>Status</div>;",
+        },
+      },
+    };
+
+    rerender({
+      updates: [
+        runningUpdate,
+        {
+          sessionId: "session-1",
+          update: {
+            sessionUpdate: "tool_call_update",
+            toolCallId: "tool-1",
+            status: "completed",
+            rawOutput: "Tool execution failed",
+          },
+        },
+      ],
+    });
+
+    await waitFor(() => {
+      expect(desktopAwareFetch).not.toHaveBeenCalled();
+    });
+  });
+
+  it("allows a failed canvas materialization to retry the same candidate", async () => {
+    vi.mocked(desktopAwareFetch)
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 503,
+        json: async () => ({ error: "renderer unavailable" }),
+      } as Response)
+      .mockResolvedValueOnce(createdCanvas("canvas-retry"));
+
+    const { result, rerender } = renderHook(
+      ({ updates }) => useSessionCanvasArtifacts({
+        workspaceId: "default",
+        sessionId: "session-1",
+        updates,
+      }),
+      {
+        initialProps: {
+          updates: [] as AcpSessionNotification[],
+        },
+      },
+    );
+
+    const completedUpdate: AcpSessionNotification = {
+      sessionId: "session-1",
+      update: {
+        sessionUpdate: "tool_call_update",
+        toolCallId: "tool-1",
+        status: "completed",
+        rawInput: {
+          path: "canvases/status.canvas.tsx",
+          content: "export default () => <div>Status</div>;",
+        },
+      },
+    };
+
+    rerender({ updates: [completedUpdate] });
+
+    await waitFor(() => {
+      expect(result.current.error).toBe("renderer unavailable");
+    });
+
+    rerender({
+      updates: [
+        completedUpdate,
+        { ...completedUpdate, update: { ...completedUpdate.update } },
+      ],
+    });
+
+    await waitFor(() => {
+      expect(desktopAwareFetch).toHaveBeenCalledTimes(2);
+    });
+    await waitFor(() => {
+      expect(result.current.activeCanvas).toMatchObject({
+        id: "canvas-retry",
+        filePath: "canvases/status.canvas.tsx",
+      });
+    });
+  });
+
   it("keeps an in-flight canvas materialization alive across non-canvas update rerenders", async () => {
     const pending = deferred<Response>();
     vi.mocked(desktopAwareFetch).mockReturnValueOnce(pending.promise);
