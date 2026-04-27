@@ -189,7 +189,7 @@ export function buildTaskDeliveryTransitionErrorFromRules(
     const transitionAction = rules.requirePullRequestReady
       ? "marking the task done"
       : "requesting review";
-    return `Cannot move task to "${targetColumnName}": branch "${readiness.branch ?? "unknown"}" still has uncommitted changes (${readiness.modified} modified, ${readiness.untracked} untracked). Commit, stash, or discard them before ${transitionAction}.`;
+    return `Cannot move task to "${targetColumnName}": branch "${readiness.branch ?? "unknown"}" still has uncommitted changes (${readiness.modified} modified, ${readiness.untracked} untracked). Commit the current card's work, then stash or restore unrelated leftovers before ${transitionAction}.`;
   }
 
   if (rules.requirePullRequestReady && readiness.isGitHubRepo && !readiness.canCreatePullRequest) {

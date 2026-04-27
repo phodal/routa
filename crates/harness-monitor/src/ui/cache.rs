@@ -22,6 +22,7 @@ const TEST_MAPPING_HISTORY_SCHEMA_VERSION: u32 = 1;
 const TEST_MAPPING_HISTORY_FILE: &str = "test-mapping-history.json";
 const TEST_MAPPING_HISTORY_CAPACITY: usize = 6;
 const TEST_MAPPING_FULL_REFRESH_MAX_FILES: usize = 12;
+const TEST_MAPPING_AUTO_FULL_REFRESH_ENV: &str = "HARNESS_MONITOR_ENABLE_FULL_TEST_MAPPING_REFRESH";
 const FITNESS_TREND_CAPACITY: usize = 12;
 const INITIAL_FILE_PREVIEW_LINE_LIMIT: usize = 100;
 const DIRECTORY_PREVIEW_ENTRY_LIMIT: usize = 200;
@@ -197,6 +198,7 @@ pub(super) struct AppCache {
     pending_test_mapping_fast_key: Option<String>,
     pending_test_mapping_full_key: Option<String>,
     test_mapping_full_refresh_note: Option<String>,
+    test_mapping_auto_full_refresh_enabled: bool,
     test_mapping_not_before_ms: Option<i64>,
     pending_scc: bool,
     queued_fitness_refresh: Option<(String, String, bool, fitness::FitnessRunMode)>,
@@ -322,6 +324,7 @@ impl AppCache {
             pending_test_mapping_fast_key: None,
             pending_test_mapping_full_key: None,
             test_mapping_full_refresh_note: None,
+            test_mapping_auto_full_refresh_enabled: test_mapping_auto_full_refresh_enabled(),
             test_mapping_not_before_ms: Some(
                 chrono::Utc::now().timestamp_millis() + TEST_MAPPING_STARTUP_DELAY_MS,
             ),
@@ -785,6 +788,13 @@ impl AppCache {
         if current_mode == Some(TestMappingAnalysisMode::Fast)
             && self.pending_test_mapping_full_key.as_deref() != Some(cache_key.as_str())
         {
+            if !self.test_mapping_auto_full_refresh_enabled {
+                self.pending_test_mapping_full_key = None;
+                self.test_mapping_full_refresh_note = Some(format!(
+                    "graph refresh skipped: auto Full refresh disabled by default (set {TEST_MAPPING_AUTO_FULL_REFRESH_ENV}=1 to enable)"
+                ));
+                return;
+            }
             if files.len() > TEST_MAPPING_FULL_REFRESH_MAX_FILES {
                 self.pending_test_mapping_full_key = None;
                 self.test_mapping_full_refresh_note = Some(format!(
@@ -1019,6 +1029,11 @@ impl AppCache {
     pub(super) fn set_test_mapping_graph_note_for_tests(&mut self, note: String) {
         self.pending_test_mapping_full_key = None;
         self.test_mapping_full_refresh_note = Some(note);
+    }
+
+    #[cfg(test)]
+    pub(super) fn set_test_mapping_auto_full_refresh_enabled_for_tests(&mut self, enabled: bool) {
+        self.test_mapping_auto_full_refresh_enabled = enabled;
     }
 
     #[cfg(test)]
@@ -2228,4 +2243,11 @@ fn load_file_preview(
             Ok(Some((lines.join("\n"), truncated)))
         }
     }
+}
+
+fn test_mapping_auto_full_refresh_enabled() -> bool {
+    std::env::var(TEST_MAPPING_AUTO_FULL_REFRESH_ENV)
+        .ok()
+        .map(|value| matches!(value.trim(), "1" | "true" | "TRUE" | "True"))
+        .unwrap_or(false)
 }

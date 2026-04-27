@@ -26,6 +26,7 @@ use entrix::review_context::{
 use entrix::review_trigger::{
     collect_changed_files, collect_diff_stats, evaluate_review_triggers, load_review_triggers,
 };
+use entrix::run_deadline::RunDeadline;
 use entrix::run_support::{run_metric_batch, RunMetricBatchOptions};
 use entrix::runner::{OutputCallback, ProgressCallback, ShellRunner};
 use entrix::sarif::SarifRunner;
@@ -39,7 +40,9 @@ use entrix::test_mapping;
 use serde_json::json;
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::time::Duration;
 
 mod cli_output;
 #[cfg(test)]
@@ -106,6 +109,8 @@ struct RunArgs {
     json: bool,
     #[arg(long)]
     output: Option<String>,
+    #[arg(long, default_value_t = 30 * 60)]
+    max_runtime_seconds: u64,
 }
 
 #[derive(Args, Debug)]
@@ -374,7 +379,25 @@ struct GraphReviewContextArgs {
     output: Option<String>,
 }
 
+struct RunCompletionGuard {
+    completed: Arc<AtomicBool>,
+}
+
+impl RunCompletionGuard {
+    fn new(completed: Arc<AtomicBool>) -> Self {
+        Self { completed }
+    }
+}
+
+impl Drop for RunCompletionGuard {
+    fn drop(&mut self) {
+        self.completed.store(true, Ordering::SeqCst);
+    }
+}
+
 fn main() {
+    maybe_spawn_parent_watchdog();
+    maybe_spawn_process_watchdog_from_env();
     let cli = Cli::parse();
     let exit_code = match cli.command {
         None => {
@@ -420,6 +443,57 @@ fn main() {
         },
     };
     std::process::exit(exit_code);
+}
+
+fn maybe_spawn_parent_watchdog() {
+    let parent_pid = std::env::var("ENTRIX_PARENT_PID")
+        .ok()
+        .and_then(|value| value.parse::<u32>().ok())
+        .filter(|pid| *pid > 1);
+    let Some(parent_pid) = parent_pid else {
+        return;
+    };
+
+    std::thread::spawn(move || loop {
+        std::thread::sleep(Duration::from_secs(1));
+        if parent_pid_missing(parent_pid) {
+            eprintln!("PARENT EXITED (pid {parent_pid}); terminating entrix child process");
+            std::process::exit(2);
+        }
+    });
+}
+
+fn maybe_spawn_process_watchdog_from_env() {
+    let max_runtime_seconds = std::env::var("ENTRIX_MAX_RUNTIME_SECONDS")
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .filter(|seconds| *seconds > 0);
+    let Some(max_runtime_seconds) = max_runtime_seconds else {
+        return;
+    };
+
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_secs(max_runtime_seconds) + Duration::from_secs(2));
+        eprintln!(
+            "GLOBAL TIMEOUT (entrix process exceeded {max_runtime_seconds}s max runtime); forcing process exit"
+        );
+        std::process::exit(2);
+    });
+}
+
+#[cfg(unix)]
+fn parent_pid_missing(parent_pid: u32) -> bool {
+    std::process::Command::new("kill")
+        .arg("-0")
+        .arg(parent_pid.to_string())
+        .status()
+        .map(|status| !status.success())
+        .unwrap_or(true)
+}
+
+#[cfg(not(unix))]
+fn parent_pid_missing(_parent_pid: u32) -> bool {
+    false
 }
 
 fn print_subcommand_help(name: &str) {
@@ -576,11 +650,32 @@ fn cmd_run(args: RunArgs) -> i32 {
             }) as OutputCallback)
         });
 
-    let mut shell_runner = ShellRunner::new(&repo_root).with_env_overrides(runner_env.clone());
+    let run_deadline = RunDeadline::new(args.max_runtime_seconds);
+    let run_completed = Arc::new(AtomicBool::new(false));
+    let _run_completion_guard = RunCompletionGuard::new(Arc::clone(&run_completed));
+    if args.max_runtime_seconds > 0 {
+        let run_completed = Arc::clone(&run_completed);
+        let watchdog_sleep = Duration::from_secs(args.max_runtime_seconds) + Duration::from_secs(2);
+        std::thread::spawn(move || {
+            std::thread::sleep(watchdog_sleep);
+            if !run_completed.load(Ordering::SeqCst) {
+                eprintln!(
+                    "GLOBAL TIMEOUT (entrix run exceeded {}s max runtime); forcing process exit",
+                    args.max_runtime_seconds
+                );
+                std::process::exit(2);
+            }
+        });
+    }
+    let mut shell_runner = ShellRunner::new(&repo_root)
+        .with_env_overrides(runner_env.clone())
+        .with_deadline(run_deadline.clone());
     if let Some(callback) = output_callback {
         shell_runner = shell_runner.with_output_callback(callback);
     }
-    let sarif_runner = SarifRunner::new(&repo_root).with_env_overrides(runner_env);
+    let sarif_runner = SarifRunner::new(&repo_root)
+        .with_env_overrides(runner_env)
+        .with_deadline(run_deadline.clone());
     let mut dimension_scores = Vec::new();
     let planned_metric_count = dimensions
         .iter()
@@ -614,13 +709,18 @@ fn cmd_run(args: RunArgs) -> i32 {
                 changed_files: &changed_files,
                 base: &args.base,
                 progress_callback: progress_callback.as_ref(),
+                deadline: run_deadline.as_ref(),
             },
         );
         let scored = score_dimension(&results, &dimension.name, dimension.weight);
         dimension_scores.push(scored);
     }
 
-    let report = score_report(&dimension_scores, policy.min_score);
+    let mut report = score_report(&dimension_scores, policy.min_score);
+    report.runtime_timed_out = run_deadline
+        .as_ref()
+        .map(RunDeadline::was_triggered)
+        .unwrap_or(false);
     let report_json = report_to_dict(&report);
 
     if args.json {
@@ -669,6 +769,7 @@ fn cmd_run(args: RunArgs) -> i32 {
             "final_score": report.final_score,
             "hard_gate_blocked": report.hard_gate_blocked,
             "score_blocked": report.score_blocked,
+            "runtime_timed_out": report.runtime_timed_out,
             "duration_ms": duration_ms,
             "metric_count": report
                 .dimensions

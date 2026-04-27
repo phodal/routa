@@ -78,6 +78,7 @@ vi.mock("@/client/utils/diagnostics", async () => {
 
 vi.mock("@/client/components/repo-picker", () => ({
   RepoPicker: () => <div data-testid="repo-picker-mock" />,
+  shortenRepoPath: (value: string) => value,
 }));
 
 vi.mock("../use-runtime-fitness-status", async () => {
@@ -215,6 +216,78 @@ describe("KanbanTab lane automation labels", () => {
 
     const laneAutomation = screen.getByTestId("kanban-column-automation-backlog");
     expect(laneAutomation.textContent).toBe("Auto · Claude Code · GATE");
+  });
+});
+
+describe("KanbanTab board settings persistence", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("persists explicit disabled lane automation in the board PATCH payload", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (init?.method === "PATCH" && url === "/api/kanban/boards/board-1") {
+        return {
+          ok: true,
+          json: async () => ({
+            board: {
+              ...board,
+              columns: [{
+                ...board.columns[0],
+                automation: { enabled: false },
+              }],
+            },
+          }),
+        } as Response;
+      }
+      throw new Error(`Unexpected fetch: ${init?.method ?? "GET"} ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <KanbanTab
+        workspaceId="workspace-1"
+        boards={[{
+          ...board,
+          columns: [{
+            ...board.columns[0],
+            automation: {
+              enabled: true,
+              transitionType: "entry",
+              steps: [{
+                id: "backlog-refiner",
+                role: "CRAFTER",
+                specialistId: "kanban-backlog-refiner",
+                specialistName: "Backlog Refiner",
+              }],
+            },
+          }],
+        }]}
+        tasks={[]}
+        sessions={[]}
+        providers={[{ id: "claude", name: "Claude Code", description: "Claude Code provider", command: "claude" }]}
+        specialists={[{ id: "kanban-backlog-refiner", name: "Backlog Refiner", role: "CRAFTER" }]}
+        codebases={[]}
+        onRefresh={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    fireEvent.click(await screen.findByRole("checkbox", { name: /toggle automation for backlog/i }));
+    fireEvent.click(screen.getByRole("button", { name: /save board settings/i }));
+
+    await waitFor(() => {
+      const patchCall = fetchMock.mock.calls.find(
+        ([input, init]) => init?.method === "PATCH" && String(input) === "/api/kanban/boards/board-1",
+      );
+      expect(patchCall).toBeDefined();
+      const requestInit = patchCall?.[1] as RequestInit | undefined;
+      const body = JSON.parse(String(requestInit?.body));
+      expect(body.columns[0]?.automation).toEqual(expect.objectContaining({
+        enabled: false,
+      }));
+    });
   });
 });
 
@@ -443,14 +516,8 @@ describe("KanbanTab drag and drop", () => {
     expect(onAgentPrompt.mock.calls[0]?.[1]).toMatchObject({
       mcpProfile: "kanban-planning",
       toolMode: "full",
-      allowedNativeTools: [],
-      taskAdaptiveHarness: expect.objectContaining({
-        taskLabel: "Story One",
-        taskType: "planning",
-        locale: "en",
-        role: "CRAFTER",
-        historySessionIds: ["session-trigger", "session-history", "session-lane"],
-      }),
+      allowedNativeTools: ["Read", "Grep", "Glob"],
+      taskAdaptiveHarness: undefined,
     });
 
     await waitFor(() => {
@@ -971,7 +1038,7 @@ describe("KanbanTab manual run provider selection", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Open Story One" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Execution" }));
+    fireEvent.click(await screen.findByRole("tab", { name: "Execution" }));
 
     const runButton = await screen.findByTestId("kanban-detail-run");
     expect(screen.getByText(/Manual runs use the current ACP provider with this lane's role and specialist/i)).toBeTruthy();
@@ -1082,7 +1149,7 @@ describe("KanbanTab manual run provider selection", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Open Story One" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Execution" }));
+    fireEvent.click(await screen.findByRole("tab", { name: "Execution" }));
 
     const runButton = await screen.findByTestId("kanban-detail-run");
     // The manual run message is only shown when it differs from lane defaults
@@ -1304,7 +1371,7 @@ describe("KanbanCardDetail changes tab", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Changes" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Changes" }));
 
     await waitFor(() => {
       expect(desktopAwareFetch).toHaveBeenCalledWith("/api/tasks/task-1/changes", { cache: "no-store" });
@@ -1417,7 +1484,7 @@ describe("KanbanCardDetail changes tab", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Changes" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Changes" }));
 
     await waitFor(() => {
       expect(desktopAwareFetch).toHaveBeenCalledWith("/api/tasks/task-1/changes", { cache: "no-store" });
@@ -1589,7 +1656,7 @@ describe("KanbanCardDetail changes tab", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Changes" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Changes" }));
 
     expect(await screen.findByText("Upgrade tiptap core")).toBeTruthy();
     expect(screen.getByText("Add regression coverage")).toBeTruthy();
@@ -1705,7 +1772,7 @@ describe("KanbanCardDetail changes tab", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Changes" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Changes" }));
 
     expect(await screen.findByText("Committed Changes")).toBeTruthy();
     expect(screen.getByText("Local Changes")).toBeTruthy();
@@ -2764,6 +2831,141 @@ describe.skip("KanbanTab card detail manual runs", () => {
   });
 });
 
+describe("KanbanTab JIT Context session hydration", () => {
+  it("loads matched file seeds into the active ACP session", async () => {
+    desktopAwareFetch.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/harness/task-adaptive") {
+        return new Response(JSON.stringify({
+          summary: "Use the Kanban workflow history as a seed.",
+          warnings: ["Prefer the API route before the UI shell."],
+          featureId: "kanban-workflow",
+          featureName: "Kanban Workflow",
+          selectedFiles: ["src/app/page.tsx"],
+          matchedFileDetails: [{
+            filePath: "src/app/page.tsx",
+            changes: 2,
+            sessions: 1,
+            updatedAt: "2026-04-21T02:03:00.000Z",
+          }],
+          matchedSessionIds: [],
+          failures: [{
+            provider: "codex",
+            sessionId: "session-history",
+            message: "Operation not permitted",
+            toolName: "exec_command",
+          }],
+          repeatedReadFiles: ["src/app/page.tsx"],
+          sessions: [],
+          frictionProfiles: [],
+        }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+
+      if (url === "/api/sessions/session-123/history?consolidated=true") {
+        return new Response(JSON.stringify({ history: [] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+
+      throw new Error(`Unexpected desktopAwareFetch: ${url}`);
+    });
+
+    const acp = {
+      connected: true,
+      sessionId: "session-123",
+      updates: [],
+      providers: [{ id: "claude", name: "Claude Code", description: "Claude Code provider", command: "claude" }],
+      selectedProvider: "claude",
+      loading: false,
+      error: null,
+      authError: null,
+      dockerConfigError: null,
+      connect: vi.fn(),
+      createSession: vi.fn(),
+      resumeSession: vi.fn(),
+      forkSession: vi.fn(),
+      selectSession: vi.fn(),
+      setProvider: vi.fn(),
+      setMode: vi.fn(),
+      prompt: vi.fn(),
+      promptSession: vi.fn(async () => {}),
+      respondToUserInput: vi.fn(),
+      respondToUserInputForSession: vi.fn(),
+      writeTerminal: vi.fn(),
+      resizeTerminal: vi.fn(),
+      cancel: vi.fn(),
+      disconnect: vi.fn(),
+      clearAuthError: vi.fn(),
+      clearDockerConfigError: vi.fn(),
+      listProviderModels: vi.fn(),
+    } satisfies Partial<UseAcpState & UseAcpActions> as UseAcpState & UseAcpActions;
+
+    render(
+      <KanbanTab
+        workspaceId="workspace-1"
+        boards={[board]}
+        tasks={[createTask("task-1", "Story One", {
+          codebaseIds: ["repo-a"],
+          triggerSessionId: "session-123",
+          assignedRole: "DEVELOPER",
+          contextSearchSpec: {
+            query: "kanban workflow seed",
+            featureCandidates: ["kanban-workflow"],
+            relatedFiles: ["src/app/page.tsx"],
+          },
+        })]}
+        sessions={[{
+          sessionId: "session-123",
+          workspaceId: "workspace-1",
+          cwd: "/tmp/repo-a",
+          provider: "claude",
+          role: "DEVELOPER",
+          createdAt: "2025-01-01T00:00:00.000Z",
+        }]}
+        providers={[{ id: "claude", name: "Claude Code", description: "Claude Code provider", command: "claude" }]}
+        specialists={[]}
+        codebases={[{
+          id: "repo-a",
+          workspaceId: "workspace-1",
+          repoPath: "/tmp/repo-a",
+          label: "Repo A",
+          isDefault: true,
+          sourceType: "local",
+          createdAt: "2025-01-01T00:00:00.000Z",
+          updatedAt: "2025-01-01T00:00:00.000Z",
+        }]}
+        onRefresh={vi.fn()}
+        acp={acp}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Story One" }));
+    await screen.findByText("Card Detail");
+
+    fireEvent.click(screen.getByRole("tab", { name: "History Memory" }));
+    fireEvent.click(screen.getByRole("button", { name: "Show History Memory" }));
+    await screen.findByText("Matched feature");
+
+    fireEvent.click(screen.getByRole("button", { name: "Load into current session" }));
+
+    await waitFor(() => {
+      expect(acp.promptSession).toHaveBeenCalledWith(
+        "session-123",
+        expect.stringContaining("Matched feature: Kanban Workflow"),
+      );
+    });
+    expect(acp.promptSession).toHaveBeenCalledWith(
+      "session-123",
+      expect.stringContaining("src/app/page.tsx (changes 2, sessions 1)"),
+    );
+    expect(screen.getByText("History memory was queued in the current session.")).toBeTruthy();
+  });
+});
+
 describe("KanbanTab quick ACP assignment", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -2828,7 +3030,7 @@ describe("KanbanTab quick ACP assignment", () => {
     expect(screen.queryByTestId("kanban-detail-provider-override")).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Open Story One" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Execution" }));
+    fireEvent.click(await screen.findByRole("tab", { name: "Execution" }));
     fireEvent.click(screen.getByText("Card session override").closest("summary")!);
 
     const providerDropdown = await screen.findByTestId("kanban-detail-provider-override");

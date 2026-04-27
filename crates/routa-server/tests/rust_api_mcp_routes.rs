@@ -381,7 +381,7 @@ async fn api_mcp_default_profile_exposes_canvas_sdk_resource_tool() {
     assert!(
         payload["text"]
             .as_str()
-            .is_some_and(|text| text.contains("\"moduleSpecifier\": \"@canvas-sdk\"")),
+            .is_some_and(|text| text.contains("\"moduleSpecifier\": \"routa/canvas\"")),
         "manifest payload should contain canvas sdk module specifier"
     );
 

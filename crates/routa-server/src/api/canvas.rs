@@ -757,7 +757,7 @@ fn build_canvas_sdk_prompt_section() -> Vec<String> {
         "- If your provider supports native MCP resource reads, you may read that same URI directly instead.".to_string(),
         "- That manifest is the authoritative Canvas SDK index for this session.".to_string(),
         "- Then read only the defs resources you actually need from its `definitionResources` list, preferably through `read_canvas_sdk_resource`.".to_string(),
-        "- Import only from `@canvas-sdk` or `react`.".to_string(),
+        "- Import only from `routa/canvas` or `react`.".to_string(),
         "- If a symbol or prop is not present in those resources, do not invent it.".to_string(),
         "- Example definition resources:".to_string(),
     ];
@@ -1146,7 +1146,7 @@ mod tests {
 
         assert!(prompt.contains("Return only the TSX source."));
         assert!(prompt.contains("fake shell chrome"));
-        assert!(prompt.contains("@canvas-sdk/*"));
+        assert!(prompt.contains("routa/canvas"));
         assert!(prompt.contains("read_canvas_sdk_resource"));
         assert!(prompt.contains(CANVAS_SDK_MANIFEST_RESOURCE_URI));
         assert!(prompt.contains("Create a status card."));

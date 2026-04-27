@@ -1,6 +1,6 @@
 {
   "name": "entrix",
-  "version": "0.17.2",
+  "version": "0.18.1",
   "description": "Entrix fitness function engine — Rust implementation CLI.",
   "type": "module",
   "license": "MIT",
@@ -30,10 +30,10 @@
     "README.md"
   ],
   "optionalDependencies": {
-    "entrix-darwin-arm64": "0.17.2",
-    "entrix-darwin-x64": "0.17.2",
-    "entrix-linux-x64": "0.17.2",
-    "entrix-windows-x64": "0.17.2"
+    "entrix-darwin-arm64": "0.18.1",
+    "entrix-darwin-x64": "0.18.1",
+    "entrix-linux-x64": "0.18.1",
+    "entrix-windows-x64": "0.18.1"
   },
   "publishConfig": {
     "access": "public"

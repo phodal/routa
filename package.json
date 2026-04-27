@@ -1,6 +1,6 @@
 {
   "name": "routa-js",
-  "version": "0.17.2",
+  "version": "0.18.1",
   "private": true,
   "workspaces": [
     "apps/desktop"
@@ -33,6 +33,9 @@
     "build": "cross-env NODE_OPTIONS='--max-old-space-size=8192' next build",
     "tauri:dev": "npm --prefix apps/desktop run dev",
     "tauri:build": "npm --prefix apps/desktop run build",
+    "vscode:compile": "npm --prefix apps/vscode run compile",
+    "vscode:build": "npm --prefix apps/vscode run build",
+    "vscode:prepare-assets": "npm --prefix apps/vscode run prepare-assets",
     "build:desktop:server": "cross-env NODE_OPTIONS='--max-old-space-size=8192' ROUTA_DESKTOP_SERVER_BUILD=1 next build",
     "build:desktop:bundle": "node scripts/build/build-desktop-bundle.mjs",
     "build:static": "node scripts/build/build-static.mjs",
@@ -72,6 +75,8 @@
     "api:test:schema": "node --import tsx tests/api-contract/run.ts --suite=schema-validation",
     "api:test:schema:nextjs": "BASE_URL=http://localhost:3000 node --import tsx tests/api-contract/run.ts --suite=schema-validation",
     "api:test:schema:rust": "BASE_URL=http://localhost:3210 node --import tsx tests/api-contract/run.ts --suite=schema-validation",
+    "harness:inspect-transcript-turns": "node --import tsx scripts/harness/inspect-transcript-turns.ts",
+    "harness:publish-issue-summary": "node --import tsx scripts/harness/publish-task-adaptive-issue-summary.ts",
     "api:schema:validate": "node --import tsx scripts/fitness/validate-openapi-schema.ts",
     "api:schema:validate:json": "node --import tsx scripts/fitness/validate-openapi-schema.ts --json",
     "api:schema:report": "node --import tsx scripts/fitness/validate-openapi-schema.ts --report",

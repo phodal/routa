@@ -1,4 +1,4 @@
-use super::parse_changed_files;
+use super::{collect_repo_files, parse_changed_files};
 use std::fs;
 use tempfile::tempdir;
 
@@ -62,4 +62,34 @@ fn parses_go_types_functions_and_methods() {
         .changed_nodes
         .iter()
         .any(|node| node.qualified_name == "pkg/demo/service.go:Service.Run"));
+}
+
+#[test]
+fn collect_repo_files_respects_gitignore_rules() {
+    let temp = tempdir().unwrap();
+    let root = temp.path();
+    fs::create_dir_all(root.join("src")).unwrap();
+    fs::create_dir_all(root.join(".agents")).unwrap();
+    fs::create_dir_all(root.join(".routa/generated")).unwrap();
+    fs::create_dir_all(root.join("out/_next/static/chunks")).unwrap();
+    fs::write(root.join(".gitignore"), ".routa/\nout/\n").unwrap();
+    fs::write(root.join("src/app.ts"), "export const app = 1;\n").unwrap();
+    fs::write(root.join(".agents/tool.ts"), "export const tool = 1;\n").unwrap();
+    fs::write(
+        root.join(".routa/generated/cache.ts"),
+        "export const ignored = true;\n",
+    )
+    .unwrap();
+    fs::write(
+        root.join("out/_next/static/chunks/app.js"),
+        "export const bundle = true;\n",
+    )
+    .unwrap();
+
+    let files = collect_repo_files(root);
+
+    assert_eq!(
+        files,
+        vec![".agents/tool.ts".to_string(), "src/app.ts".to_string()]
+    );
 }

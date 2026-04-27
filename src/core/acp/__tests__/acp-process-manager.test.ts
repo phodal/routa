@@ -469,6 +469,41 @@ describe("AcpProcessManager", () => {
     ]);
   });
 
+  it("merges auto and explicit ACP mcpServers for codex-acp sessions", async () => {
+    const manager = new AcpProcessManager();
+
+    await manager.createSession(
+      "session-codex-acp",
+      "/repo",
+      vi.fn(),
+      "codex-acp",
+      undefined,
+      undefined,
+      undefined,
+      "ws-1",
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      [
+        { name: "extra-server", type: "http", url: "http://localhost/extra" },
+      ],
+    );
+
+    expect(ensureMcpForProviderMock).not.toHaveBeenCalledWith("codex-acp", expect.anything());
+    expect(buildConfigFromPresetMock).toHaveBeenCalledWith(
+      "codex-acp",
+      "/repo",
+      undefined,
+      undefined,
+      undefined,
+    );
+    expect((acpInstances[0]?.newSession as ReturnType<typeof vi.fn>)?.mock.calls[0]?.[1]).toEqual([
+      { name: "routa-coordination", type: "http", url: "http://localhost/api/mcp", headers: [] },
+      { name: "extra-server", type: "http", url: "http://localhost/extra" },
+    ]);
+  });
+
   it("routes explicit opencode-sdk sessions to the direct api adapter when no server url is set", async () => {
     const manager = new AcpProcessManager();
     getOpencodeServerUrlMock.mockReturnValue(null);

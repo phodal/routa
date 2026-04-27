@@ -208,6 +208,28 @@ function buildFrictionProfilesResponse(): Response {
   );
 }
 
+function buildRetrospectivesResponse(overrides?: {
+  matchedMemories?: Array<{
+    scope: "file" | "feature";
+    targetId: string;
+    updatedAt: string;
+    summary: string;
+    featureId?: string;
+    featureName?: string;
+  }>;
+}): Response {
+  return new Response(
+    JSON.stringify({
+      storageRoot: "/tmp/routa-retrospectives",
+      matchedMemories: overrides?.matchedMemories ?? [],
+    }),
+    {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    },
+  );
+}
+
 describe("FeatureExplorerPageClient", () => {
   beforeEach(() => {
     window.history.replaceState({}, "", "/workspace/default/feature-explorer");
@@ -218,6 +240,10 @@ describe("FeatureExplorerPageClient", () => {
     sessionLaunchState.desktopAwareFetch.mockImplementation(async (input: string) => {
       if (typeof input === "string" && input.startsWith("/feature-explorer/friction-profiles?")) {
         return buildFrictionProfilesResponse();
+      }
+
+      if (typeof input === "string" && input.startsWith("/feature-explorer/retrospectives?")) {
+        return buildRetrospectivesResponse();
       }
 
       return new Response(JSON.stringify({ error: `Unhandled request: ${input}` }), {
@@ -580,6 +606,348 @@ describe("FeatureExplorerPageClient", () => {
           body: "{}",
         }),
       );
+    });
+  });
+
+  it("shows saved retrospective history from top feature candidates on entry", async () => {
+    useFeatureExplorerData.mockReturnValue({
+      loading: false,
+      error: null,
+      capabilityGroups: [],
+      features: [
+        {
+          id: "feature-explorer",
+          name: "Feature Explorer",
+          group: "workflow",
+          summary: "Browse feature context",
+          status: "active",
+          sessionCount: 2,
+          changedFiles: 1,
+          updatedAt: "2026-04-21T10:05:00.000Z",
+          sourceFileCount: 1,
+          pageCount: 1,
+          apiCount: 0,
+        },
+        {
+          id: "workspace-overview",
+          name: "Workspace Overview",
+          group: "workspace",
+          summary: "Review the workspace shell",
+          status: "active",
+          sessionCount: 5,
+          changedFiles: 3,
+          updatedAt: "2026-04-21T11:05:00.000Z",
+          sourceFileCount: 3,
+          pageCount: 2,
+          apiCount: 1,
+        },
+      ],
+      surfaceIndex: {
+        generatedAt: "",
+        pages: [],
+        apis: [],
+        contractApis: [],
+        nextjsApis: [],
+        rustApis: [],
+        implementationApis: [],
+        metadata: null,
+        repoRoot: "",
+        warnings: [],
+      },
+      featureDetail: {
+        id: "feature-explorer",
+        name: "Feature Explorer",
+        group: "workflow",
+        summary: "Browse feature context",
+        status: "active",
+        pages: ["/workspace/:workspaceId/feature-explorer"],
+        apis: [],
+        sourceFiles: ["src/app/workspace/[workspaceId]/feature-explorer/feature-explorer-page-client.tsx"],
+        relatedFeatures: [],
+        domainObjects: [],
+        sessionCount: 2,
+        changedFiles: 1,
+        updatedAt: "2026-04-21T10:05:00.000Z",
+        fileTree: [
+          {
+            id: "file:feature-explorer-page-client",
+            name: "feature-explorer-page-client.tsx",
+            path: "src/app/workspace/[workspaceId]/feature-explorer/feature-explorer-page-client.tsx",
+            kind: "file",
+            children: [],
+          },
+        ],
+        fileStats: {},
+        fileSignals: {},
+      },
+      featureDetailLoading: false,
+      initialFeatureId: "feature-explorer",
+      fetchFeatureDetail: vi.fn().mockResolvedValue(null),
+    });
+
+    sessionLaunchState.desktopAwareFetch.mockImplementation(async (input: string) => {
+      if (typeof input === "string" && input.startsWith("/feature-explorer/friction-profiles?")) {
+        return buildFrictionProfilesResponse();
+      }
+
+      if (typeof input === "string" && input.startsWith("/feature-explorer/retrospectives?")) {
+        return buildRetrospectivesResponse({
+          matchedMemories: [
+            {
+              scope: "feature",
+              targetId: "workspace-overview",
+              featureId: "workspace-overview",
+              featureName: "Workspace Overview",
+              updatedAt: "2026-04-21T11:30:00.000Z",
+              summary: "Start from the workspace shell, then narrow to a single feature file.",
+            },
+          ],
+        });
+      }
+
+      return new Response(JSON.stringify({ error: `Unhandled request: ${input}` }), {
+        status: 404,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+
+    render(<FeatureExplorerPageClient workspaceId="default" />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Saved history")).toBeTruthy();
+      expect(screen.getByText("Start from the workspace shell, then narrow to a single feature file.")).toBeTruthy();
+      expect(screen.getAllByText("Workspace Overview").length).toBeGreaterThan(0);
+      expect(screen.getByText("Feature")).toBeTruthy();
+    });
+
+    expect(
+      sessionLaunchState.desktopAwareFetch.mock.calls.some(([input]) =>
+        typeof input === "string"
+        && input.includes("/feature-explorer/retrospectives?")
+        && input.includes("featureId=feature-explorer")
+        && input.includes("featureId=workspace-overview")
+        && input.includes("filePath=src%2Fapp%2Fworkspace%2F%5BworkspaceId%5D%2Ffeature-explorer%2Ffeature-explorer-page-client.tsx"),
+      ),
+    ).toBe(true);
+  });
+
+  it("loads file-level history for a deep-linked file selection", async () => {
+    window.history.replaceState(
+      {},
+      "",
+      "/workspace/default/feature-explorer?feature=feature-explorer&file=src%2Fapp%2Fworkspace%2F%5BworkspaceId%5D%2Ffeature-explorer%2Ffeature-explorer-page-client.tsx",
+    );
+
+    useFeatureExplorerData.mockReturnValue({
+      loading: false,
+      error: null,
+      capabilityGroups: [],
+      features: [
+        {
+          id: "feature-explorer",
+          name: "Feature Explorer",
+          group: "workflow",
+          summary: "Browse feature context",
+          status: "active",
+          sessionCount: 2,
+          changedFiles: 1,
+          updatedAt: "2026-04-21T10:05:00.000Z",
+          sourceFileCount: 1,
+          pageCount: 1,
+          apiCount: 0,
+        },
+      ],
+      surfaceIndex: {
+        generatedAt: "",
+        pages: [],
+        apis: [],
+        contractApis: [],
+        nextjsApis: [],
+        rustApis: [],
+        implementationApis: [],
+        metadata: null,
+        repoRoot: "",
+        warnings: [],
+      },
+      featureDetail: {
+        id: "feature-explorer",
+        name: "Feature Explorer",
+        group: "workflow",
+        summary: "Browse feature context",
+        status: "active",
+        pages: ["/workspace/:workspaceId/feature-explorer"],
+        apis: [],
+        sourceFiles: ["src/app/workspace/[workspaceId]/feature-explorer/feature-explorer-page-client.tsx"],
+        relatedFeatures: [],
+        domainObjects: [],
+        sessionCount: 2,
+        changedFiles: 1,
+        updatedAt: "2026-04-21T10:05:00.000Z",
+        fileTree: [
+          {
+            id: "file:feature-explorer-page-client",
+            name: "feature-explorer-page-client.tsx",
+            path: "src/app/workspace/[workspaceId]/feature-explorer/feature-explorer-page-client.tsx",
+            kind: "file",
+            children: [],
+          },
+        ],
+        fileStats: {},
+        fileSignals: {},
+      },
+      featureDetailLoading: false,
+      initialFeatureId: "",
+      fetchFeatureDetail: vi.fn().mockResolvedValue(null),
+    });
+
+    sessionLaunchState.desktopAwareFetch.mockImplementation(async (input: string) => {
+      if (typeof input === "string" && input.startsWith("/feature-explorer/friction-profiles?")) {
+        return buildFrictionProfilesResponse();
+      }
+
+      if (typeof input === "string" && input.startsWith("/feature-explorer/retrospectives?")) {
+        return buildRetrospectivesResponse({
+          matchedMemories: [
+            {
+              scope: "file",
+              targetId: "src/app/workspace/[workspaceId]/feature-explorer/feature-explorer-page-client.tsx",
+              updatedAt: "2026-04-21T11:20:00.000Z",
+              summary: "Use the file path up front so the specialist skips feature-wide drift.",
+            },
+          ],
+        });
+      }
+
+      return new Response(JSON.stringify({ error: `Unhandled request: ${input}` }), {
+        status: 404,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+
+    render(<FeatureExplorerPageClient workspaceId="default" />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Use the file path up front so the specialist skips feature-wide drift.")).toBeTruthy();
+    });
+
+    expect(
+      sessionLaunchState.desktopAwareFetch.mock.calls.some(([input]) =>
+        typeof input === "string"
+        && input.includes("/feature-explorer/retrospectives?")
+        && input.includes("filePath=src%2Fapp%2Fworkspace%2F%5BworkspaceId%5D%2Ffeature-explorer%2Ffeature-explorer-page-client.tsx"),
+      ),
+    ).toBe(true);
+  });
+
+  it("renders structured saved history summaries as labeled blocks", async () => {
+    window.history.replaceState(
+      {},
+      "",
+      "/workspace/default/feature-explorer?feature=workspace-overview&file=src%2Fapp%2Fworkspace%2F%5BworkspaceId%5D%2Ffeature-explorer%2Fsession-analysis.ts",
+    );
+
+    useFeatureExplorerData.mockReturnValue({
+      loading: false,
+      error: null,
+      capabilityGroups: [],
+      features: [
+        {
+          id: "workspace-overview",
+          name: "Workspace Overview",
+          group: "workflow",
+          summary: "Workspace-scoped navigation",
+          status: "active",
+          sessionCount: 3,
+          changedFiles: 2,
+          updatedAt: "2026-04-22T04:54:46.127Z",
+          sourceFileCount: 1,
+          pageCount: 2,
+          apiCount: 0,
+        },
+      ],
+      surfaceIndex: {
+        generatedAt: "",
+        pages: [],
+        apis: [],
+        contractApis: [],
+        nextjsApis: [],
+        rustApis: [],
+        implementationApis: [],
+        metadata: null,
+        repoRoot: "",
+        warnings: [],
+      },
+      featureDetail: {
+        id: "workspace-overview",
+        name: "Workspace Overview",
+        group: "workflow",
+        summary: "Workspace-scoped navigation",
+        status: "active",
+        pages: ["/workspace/:workspaceId"],
+        apis: [],
+        sourceFiles: ["src/app/workspace/[workspaceId]/feature-explorer/session-analysis.ts"],
+        relatedFeatures: [],
+        domainObjects: [],
+        sessionCount: 3,
+        changedFiles: 2,
+        updatedAt: "2026-04-22T04:54:46.127Z",
+        fileTree: [
+          {
+            id: "file:session-analysis",
+            name: "session-analysis.ts",
+            path: "src/app/workspace/[workspaceId]/feature-explorer/session-analysis.ts",
+            kind: "file",
+            children: [],
+          },
+        ],
+        fileStats: {},
+        fileSignals: {},
+      },
+      featureDetailLoading: false,
+      initialFeatureId: "",
+      fetchFeatureDetail: vi.fn().mockResolvedValue(null),
+    });
+
+    sessionLaunchState.desktopAwareFetch.mockImplementation(async (input: string) => {
+      if (typeof input === "string" && input.startsWith("/feature-explorer/friction-profiles?")) {
+        return buildFrictionProfilesResponse();
+      }
+
+      if (typeof input === "string" && input.startsWith("/feature-explorer/retrospectives?")) {
+        return buildRetrospectivesResponse({
+          matchedMemories: [
+            {
+              scope: "file",
+              targetId: "src/app/workspace/[workspaceId]/feature-explorer/session-analysis.ts",
+              updatedAt: "2026-04-22T04:54:46.127Z",
+              summary: [
+                "Scope: file:src/app/workspace/[workspaceId]/feature-explorer/session-analysis.ts | feature:workspace-overview",
+                "Next ask: Analyze only how session-analysis.ts writes retrospective memory.",
+                "Must include: exact file path, session IDs, acceptance criteria",
+                "Avoid: kanban drift, unquoted bracket paths",
+                "Still need: none",
+              ].join("\n"),
+            },
+          ],
+        });
+      }
+
+      return new Response(JSON.stringify({ error: `Unhandled request: ${input}` }), {
+        status: 404,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+
+    render(<FeatureExplorerPageClient workspaceId="default" />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Scope")).toBeTruthy();
+      expect(screen.getByText("Next ask")).toBeTruthy();
+      expect(screen.getByText("Must include")).toBeTruthy();
+      expect(screen.getByText("Avoid")).toBeTruthy();
+      expect(screen.getByText("Still need")).toBeTruthy();
+      expect(screen.getByText("Analyze only how session-analysis.ts writes retrospective memory.")).toBeTruthy();
+      expect(screen.getByText("none")).toBeTruthy();
     });
   });
 

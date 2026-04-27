@@ -187,6 +187,25 @@ const zh: TranslationDictionary = {
     spec: "规格",
   },
 
+  canvas: {
+    renderModeDynamic: "动态",
+    renderModePrebuilt: "预置",
+    viewerToggleLightTheme: "切换到浅色主题",
+    viewerToggleDarkTheme: "切换到深色主题",
+    viewerCannotRender:
+      "无法渲染画布：动态模式缺少 source，或预置模式缺少 canvasType。",
+    viewerCompilationError: "Canvas 编译错误：",
+    liveEntryLabel: "使用 Canvas",
+    liveEntryShortLabel: "Canvas",
+    livePanelTitle: "Canvas",
+    livePanelPending: "等待 Canvas 文件。",
+    livePanelMaterializing: "正在渲染 Canvas...",
+    livePanelOpen: "打开 Canvas",
+    livePanelClose: "关闭 Canvas 面板",
+    livePanelDetectedFile: "检测到文件",
+    livePanelError: "Canvas 渲染准备失败",
+  },
+
   featureExplorer: {
     title: "特性浏览",
     subtitle: "按 feature 聚合查看改动文件、上下文说明、截图位与相关 API 探针。",
@@ -384,6 +403,17 @@ const zh: TranslationDictionary = {
     frictionProfilesReady: "摩擦画像已就绪",
     frictionProfilesMissing: "尚无摩擦画像",
     frictionProfilesError: "刷新摩擦画像失败",
+    retrospectiveHistoryTitle: "已保存历史",
+    retrospectiveHistoryLoading: "正在加载已保存历史…",
+    retrospectiveHistoryEmpty: "尚无已保存历史",
+    retrospectiveHistoryError: "加载已保存历史失败",
+    retrospectiveHistoryFeature: "Feature",
+    retrospectiveHistoryFile: "文件",
+    retrospectiveHistoryScopeLabel: "范围",
+    retrospectiveHistoryNextAskLabel: "下次开场",
+    retrospectiveHistoryMustIncludeLabel: "必须补充",
+    retrospectiveHistoryAvoidLabel: "避免",
+    retrospectiveHistoryStillNeedLabel: "仍需明确",
   },
 
   settings: {

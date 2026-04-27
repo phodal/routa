@@ -225,4 +225,18 @@ export interface FrictionProfileSnapshot {
   featureProfiles: Record<string, FrictionProfileSummary>;
 }
 
+export interface RetrospectiveMemoryEntry {
+  scope: "file" | "feature";
+  targetId: string;
+  updatedAt: string;
+  summary: string;
+  featureId?: string;
+  featureName?: string;
+}
+
+export interface RetrospectiveMemoryResponse {
+  storageRoot: string;
+  matchedMemories: RetrospectiveMemoryEntry[];
+}
+
 export type InspectorTab = "context" | "screenshot" | "api";

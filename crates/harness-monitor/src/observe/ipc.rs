@@ -53,13 +53,16 @@ impl RuntimeFeed {
             if bytes == 0 {
                 break;
             }
+            if !line.ends_with('\n') {
+                break;
+            }
             self.offset += bytes as u64;
             if line.trim().is_empty() {
                 continue;
             }
-            let message: RuntimeMessage =
-                serde_json::from_str(line.trim_end()).context("decode runtime feed line")?;
-            messages.push(message);
+            if let Some(message) = decode_feed_line(line.trim_end()) {
+                messages.push(message);
+            }
         }
         Ok(messages)
     }
@@ -76,8 +79,9 @@ impl RuntimeFeed {
             if line.trim().is_empty() {
                 continue;
             }
-            let message: RuntimeMessage =
-                serde_json::from_str(line.trim_end()).context("decode runtime feed history")?;
+            let Some(message) = decode_feed_line(line.trim_end()) else {
+                continue;
+            };
             if message.observed_at_ms() >= cutoff_ms {
                 messages.push(message);
             }
@@ -168,11 +172,15 @@ pub fn send_message(event_path: &Path, message: &RuntimeMessage) -> Result<()> {
         .append(true)
         .open(event_path)
         .with_context(|| format!("open runtime event file {event_path:?}"))?;
-    serde_json::to_writer(&mut file, message).context("write runtime event json")?;
-    file.write_all(b"\n")
-        .context("write runtime event newline")?;
+    let mut payload = serde_json::to_vec(message).context("encode runtime event json")?;
+    payload.push(b'\n');
+    file.write_all(&payload).context("write runtime event")?;
     file.flush().context("flush runtime event")?;
     Ok(())
+}
+
+fn decode_feed_line(line: &str) -> Option<RuntimeMessage> {
+    serde_json::from_str(line).ok()
 }
 
 #[cfg(unix)]
@@ -266,4 +274,101 @@ fn read_tcp_message(stream: TcpStream) -> Result<Option<RuntimeMessage>> {
     }
     let message = serde_json::from_str(line.trim_end()).context("decode runtime tcp payload")?;
     Ok(Some(message))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::shared::models::{HookEvent, RuntimeMessage};
+
+    fn hook_message(observed_at_ms: i64, tool_command: Option<String>) -> RuntimeMessage {
+        RuntimeMessage::Hook(HookEvent {
+            repo_root: "/tmp/repo".to_string(),
+            observed_at_ms,
+            status: None,
+            client: "codex".to_string(),
+            session_id: "session-1".to_string(),
+            session_display_name: None,
+            turn_id: Some("turn-1".to_string()),
+            cwd: "/tmp/repo".to_string(),
+            model: Some("gpt-test".to_string()),
+            transcript_path: None,
+            session_source: None,
+            event_name: "PostToolUse".to_string(),
+            tool_name: Some("apply_patch".to_string()),
+            tool_command,
+            file_paths: Vec::new(),
+            task_id: None,
+            task_title: None,
+            prompt_preview: None,
+            recovered_from_transcript: false,
+            tmux_session: None,
+            tmux_window: None,
+            tmux_pane: None,
+        })
+    }
+
+    #[test]
+    fn read_recent_since_skips_corrupt_history_lines() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let event_path = dir.path().join("events.jsonl");
+        let valid = serde_json::to_string(&hook_message(200, None)).expect("encode message");
+        std::fs::write(
+            &event_path,
+            format!("{valid}\n{{\"type\"\n:null}}\nnot json\n"),
+        )
+        .expect("write feed");
+
+        let feed = RuntimeFeed::open(&event_path).expect("open feed");
+        let messages = feed.read_recent_since(100).expect("read history");
+
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].observed_at_ms(), 200);
+    }
+
+    #[test]
+    fn send_message_writes_multiline_command_as_one_jsonl_record() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let event_path = dir.path().join("events.jsonl");
+        let message = hook_message(
+            300,
+            Some("*** Begin Patch\n*** Update File: src/app.ts\n*** End Patch".to_string()),
+        );
+
+        send_message(&event_path, &message).expect("send message");
+
+        let contents = std::fs::read_to_string(&event_path).expect("read feed");
+        let lines = contents.lines().collect::<Vec<_>>();
+        assert_eq!(lines.len(), 1);
+        let decoded: RuntimeMessage = serde_json::from_str(lines[0]).expect("decode line");
+        assert_eq!(decoded.observed_at_ms(), 300);
+    }
+
+    #[test]
+    fn read_new_leaves_incomplete_final_line_for_later() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let event_path = dir.path().join("events.jsonl");
+        let first = serde_json::to_string(&hook_message(400, None)).expect("encode first");
+        let second = serde_json::to_string(&hook_message(500, None)).expect("encode second");
+        std::fs::write(&event_path, format!("{first}\n{second}")).expect("write feed");
+
+        let mut feed = RuntimeFeed {
+            event_path: event_path.clone(),
+            offset: 0,
+        };
+
+        let messages = feed.read_new().expect("read first pass");
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].observed_at_ms(), 400);
+
+        let mut file = OpenOptions::new()
+            .append(true)
+            .open(&event_path)
+            .expect("open feed");
+        file.write_all(b"\n").expect("finish line");
+
+        let messages = feed.read_new().expect("read second pass");
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].observed_at_ms(), 500);
+    }
 }

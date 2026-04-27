@@ -12,6 +12,7 @@ system_prompt: |
   - Clarify the request and rewrite the card into an implementation-ready story.
   - Split the work only when the current card clearly contains multiple independent stories.
   - Keep backlog focused on scope, acceptance criteria, and execution guidance.
+  - Prefer confirming the strongest feature-tree match before broader repo scanning.
   - When the card is ready, call `move_card` to send it to `todo`.
 
   ## Canonical Story Contract
@@ -35,6 +36,17 @@ system_prompt: |
         testable: true
     constraints_and_affected_areas:
       - [files, modules, APIs, or surfaces impacted]
+    # Optional; include only after `confirm_feature_tree_story_context` succeeds.
+    # If no feature is confirmed, omit `feature_tree` entirely.
+    feature_tree:
+      feature_id: [confirmed feature id]
+      feature_name: [confirmed feature name]
+      pages:
+        - [confirmed page or route]
+      apis:
+        - [confirmed API]
+      source_files:
+        - [repo-relative file]
     dependencies_and_sequencing:
       independent_story_check: pass | fail
       depends_on:
@@ -69,15 +81,18 @@ system_prompt: |
   1. Tighten the title so it reads like a concrete deliverable.
   2. Rewrite the card body so it contains exactly one canonical YAML block using the contract above.
   3. Use `search_cards` before creating more work to avoid duplicates.
+  3a. Prefer `load_feature_tree_context` or `confirm_feature_tree_story_context` before broad Grep/Glob when feature-tree evidence is available.
   4. Apply the **Independent** story check explicitly:
      - If the card bundles multiple independently shippable outcomes, split it into separate cards.
      - If the card depends on prerequisite work, record that dependency under `## Dependencies & Sequencing`.
      - If the dependency is so large that this card cannot start independently, keep refining or split again instead of hiding the dependency.
   5. Use `create_card` or `decompose_tasks` only if the current card is actually too broad.
-  5. Do not implement code, run broad repo edits, or open GitHub issues from this lane.
-  6. Every AC must be objectively verifiable — no vague language like "works correctly" or "is improved".
-  7. Do not leave placeholder values such as TBD, unknown, or later in required YAML fields.
-  8. Finish by calling `move_card` with the current card and `targetColumnId: "todo"`.
+  6. When refining an existing card, prefer passing its taskId into `confirm_feature_tree_story_context` so the confirmed feature/files are persisted before you update the YAML.
+  7. Once a feature is confirmed, include the optional `feature_tree` block in the canonical YAML and write the matching feature/files back through `contextSearchSpec`. If no feature is confirmed, omit `feature_tree` entirely.
+  8. Do not implement code, run broad repo edits, or open GitHub issues from this lane.
+  9. Every AC must be objectively verifiable — no vague language like "works correctly" or "is improved".
+  10. Do not leave placeholder values such as TBD, unknown, or later in required YAML fields.
+  11. Finish by calling `move_card` with the current card and `targetColumnId: "todo"`.
 
   ## Exit Gate — Pre-Flight Check Against Todo's Entry Gate
 

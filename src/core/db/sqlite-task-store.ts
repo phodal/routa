@@ -2,6 +2,7 @@ import { and, eq, sql } from "drizzle-orm";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import * as sqliteSchema from "./sqlite-schema";
 import { normalizeTaskCreationSource } from "../kanban/task-creation-policy";
+import { stripSpeculativeKanbanTaskAdaptiveSnapshot } from "../kanban/task-adaptive";
 import { hydrateTaskComments, type Task, type TaskStatus } from "../models/task";
 import type { TaskStore } from "../store/task-store";
 
@@ -11,6 +12,7 @@ export class SqliteTaskStore implements TaskStore {
   constructor(private db: SqliteDb) {}
 
   async save(task: Task): Promise<void> {
+    task = stripSpeculativeKanbanTaskAdaptiveSnapshot(task);
     const version = (task as Task & { version?: number }).version ?? 1;
     await this.db
       .insert(sqliteSchema.tasks)
@@ -58,6 +60,7 @@ export class SqliteTaskStore implements TaskStore {
         creationSource: task.creationSource,
         codebaseIds: task.codebaseIds ?? [],
         contextSearchSpec: task.contextSearchSpec,
+        jitContextSnapshot: task.jitContextSnapshot,
         worktreeId: task.worktreeId,
         deliverySnapshot: task.deliverySnapshot,
         completionSummary: task.completionSummary,
@@ -111,6 +114,7 @@ export class SqliteTaskStore implements TaskStore {
           creationSource: task.creationSource,
           codebaseIds: task.codebaseIds ?? [],
           contextSearchSpec: task.contextSearchSpec,
+          jitContextSnapshot: task.jitContextSnapshot,
           worktreeId: task.worktreeId,
           deliverySnapshot: task.deliverySnapshot,
           completionSummary: task.completionSummary,
@@ -224,7 +228,7 @@ export class SqliteTaskStore implements TaskStore {
       row.comment ?? undefined,
     );
 
-    return {
+    return stripSpeculativeKanbanTaskAdaptiveSnapshot({
       id: row.id,
       title: row.title,
       objective: row.objective,
@@ -270,6 +274,7 @@ export class SqliteTaskStore implements TaskStore {
       }),
       codebaseIds: (row.codebaseIds as string[]) ?? [],
       contextSearchSpec: row.contextSearchSpec as import("../models/task").TaskContextSearchSpec | undefined,
+      jitContextSnapshot: row.jitContextSnapshot as import("../models/task").TaskJitContextSnapshot | undefined,
       worktreeId: row.worktreeId ?? undefined,
       deliverySnapshot: row.deliverySnapshot as import("../models/task").TaskDeliverySnapshot | undefined,
       completionSummary: row.completionSummary ?? undefined,
@@ -277,6 +282,6 @@ export class SqliteTaskStore implements TaskStore {
       verificationReport: row.verificationReport ?? undefined,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
-    };
+    });
   }
 }

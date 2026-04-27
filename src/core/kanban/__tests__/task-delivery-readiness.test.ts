@@ -201,6 +201,7 @@ describe("task delivery readiness", () => {
     expect(reviewError).toContain("no committed changes detected");
     expect(reviewDirtyError).toContain("uncommitted changes");
     expect(reviewDirtyError).toContain("before requesting review");
+    expect(reviewDirtyError).toContain("stash or restore unrelated leftovers");
     expect(doneError).toContain("uncommitted changes");
   });
 

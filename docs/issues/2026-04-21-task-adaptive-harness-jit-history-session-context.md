@@ -2,7 +2,7 @@
 title: "Task-Adaptive Harness should hydrate history-session context just in time for the current task"
 date: "2026-04-21"
 kind: issue
-status: open
+status: closed
 severity: medium
 area: harness
 tags:
@@ -18,7 +18,7 @@ related_issues:
   - "docs/issues/2026-04-16-global-kanban-flow-learning-via-agent-specialist.md"
   - "docs/issues/2026-04-17-generic-trace-learning-session-analysis-foundation.md"
 github_issue: 515
-github_state: open
+github_state: closed
 github_url: "https://github.com/phodal/routa/issues/515"
 ---
 
@@ -105,3 +105,14 @@ This should work as both:
 
 - Local related issue: `docs/issues/2026-04-16-global-kanban-flow-learning-via-agent-specialist.md`
 - Local related issue: `docs/issues/2026-04-17-generic-trace-learning-session-analysis-foundation.md`
+
+## Resolution
+
+- 2026-04-22: closed after live validation confirmed that `Task-Adaptive Harness` is now a real execution capability rather than analysis-only plumbing.
+- The shipped implementation now covers both intended activation paths:
+  - automatic session-start hydration through `session/new` / `taskAdaptiveHarness`
+  - explicit operator/MCP access through `assemble_task_adaptive_harness`
+- Follow-up UX and retrieval refinements were split out into narrower issues:
+  - `#516` for Kanban surfacing and card-detail usability
+  - `#517` for repo-root fallback discovery quality
+  - `#519` for minimal saved history-memory persistence

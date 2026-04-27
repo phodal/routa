@@ -30,6 +30,10 @@ apps/desktop/src-tauri/frontend/
 apps/desktop/src-tauri/frontend/**
 !apps/desktop/src-tauri/frontend/
 !apps/desktop/src-tauri/frontend/.placeholder
+apps/vscode/bin/
+apps/vscode/dist/
+apps/vscode/out/
+apps/vscode/resources/
 **/gen/**
 
 # Rust

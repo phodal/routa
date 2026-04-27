@@ -8,6 +8,7 @@ import { eq, and, sql } from "drizzle-orm";
 import type { Database } from "./index";
 import { tasks } from "./schema";
 import { normalizeTaskCreationSource } from "../kanban/task-creation-policy";
+import { stripSpeculativeKanbanTaskAdaptiveSnapshot } from "../kanban/task-adaptive";
 import { hydrateTaskComments, type Task, type TaskStatus } from "../models/task";
 import type { TaskStore } from "../store/task-store";
 
@@ -15,6 +16,7 @@ export class PgTaskStore implements TaskStore {
   constructor(private db: Database) {}
 
   async save(task: Task): Promise<void> {
+    task = stripSpeculativeKanbanTaskAdaptiveSnapshot(task);
     const version = (task as Task & { version?: number }).version ?? 1;
     await this.db
       .insert(tasks)
@@ -62,6 +64,7 @@ export class PgTaskStore implements TaskStore {
         creationSource: task.creationSource,
         codebaseIds: task.codebaseIds ?? [],
         contextSearchSpec: task.contextSearchSpec,
+        jitContextSnapshot: task.jitContextSnapshot,
         worktreeId: task.worktreeId,
         deliverySnapshot: task.deliverySnapshot,
         completionSummary: task.completionSummary,
@@ -115,6 +118,7 @@ export class PgTaskStore implements TaskStore {
           creationSource: task.creationSource,
           codebaseIds: task.codebaseIds ?? [],
           contextSearchSpec: task.contextSearchSpec,
+          jitContextSnapshot: task.jitContextSnapshot,
           worktreeId: task.worktreeId,
           deliverySnapshot: task.deliverySnapshot,
           completionSummary: task.completionSummary,
@@ -217,7 +221,7 @@ export class PgTaskStore implements TaskStore {
       row.comment ?? undefined,
     );
 
-    return {
+    return stripSpeculativeKanbanTaskAdaptiveSnapshot({
       id: row.id,
       title: row.title,
       objective: row.objective,
@@ -263,6 +267,7 @@ export class PgTaskStore implements TaskStore {
       }),
       codebaseIds: (row.codebaseIds as string[]) ?? [],
       contextSearchSpec: row.contextSearchSpec as import("../models/task").TaskContextSearchSpec | undefined,
+      jitContextSnapshot: row.jitContextSnapshot as import("../models/task").TaskJitContextSnapshot | undefined,
       worktreeId: row.worktreeId ?? undefined,
       deliverySnapshot: row.deliverySnapshot as import("../models/task").TaskDeliverySnapshot | undefined,
       completionSummary: row.completionSummary ?? undefined,
@@ -270,6 +275,6 @@ export class PgTaskStore implements TaskStore {
       verificationReport: row.verificationReport ?? undefined,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
-    };
+    });
   }
 }

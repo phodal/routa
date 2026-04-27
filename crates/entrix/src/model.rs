@@ -347,6 +347,7 @@ pub struct FitnessReport {
     pub hard_gate_blocked: bool,
     /// final_score < threshold
     pub score_blocked: bool,
+    pub runtime_timed_out: bool,
 }
 
 impl Default for FitnessReport {
@@ -356,6 +357,7 @@ impl Default for FitnessReport {
             final_score: 0.0,
             hard_gate_blocked: false,
             score_blocked: false,
+            runtime_timed_out: false,
         }
     }
 }
@@ -485,5 +487,6 @@ mod tests {
         assert_eq!(r.final_score, 0.0);
         assert!(!r.hard_gate_blocked);
         assert!(!r.score_blocked);
+        assert!(!r.runtime_timed_out);
     }
 }

@@ -14,7 +14,7 @@ use crate::model::Metric;
 
 use super::OutputCallback;
 
-pub(super) fn augment_runner_path(env: &mut HashMap<String, String>) {
+pub(crate) fn augment_runner_path(env: &mut HashMap<String, String>) {
     let Ok(current_exe) = std::env::current_exe() else {
         return;
     };
@@ -44,7 +44,7 @@ pub(super) fn augment_runner_path(env: &mut HashMap<String, String>) {
     env.insert("PATH".to_string(), updated);
 }
 
-pub(super) fn is_infra_failure(
+pub(crate) fn is_infra_failure(
     metric: &Metric,
     output: &str,
     returncode: i32,
@@ -83,7 +83,7 @@ pub(super) fn is_infra_failure(
 }
 
 /// Safely truncate a string to a maximum number of bytes at a valid UTF-8 boundary.
-pub(super) fn smart_truncate(s: &str, head_bytes: usize, tail_bytes: usize) -> String {
+pub(crate) fn smart_truncate(s: &str, head_bytes: usize, tail_bytes: usize) -> String {
     let max_bytes = head_bytes + tail_bytes + 200;
     if s.len() <= max_bytes {
         return s.to_owned();
@@ -108,16 +108,16 @@ pub(super) fn smart_truncate(s: &str, head_bytes: usize, tail_bytes: usize) -> S
     )
 }
 
-pub(super) struct CommandRunOutput {
-    pub(super) output: Output,
-    pub(super) timed_out: bool,
+pub(crate) struct CommandRunOutput {
+    pub(crate) output: Output,
+    pub(crate) timed_out: bool,
 }
 
-pub(super) fn run_command_with_timeout(
+pub(crate) fn run_command_with_timeout(
     command_str: &str,
     project_root: &Path,
     env: &HashMap<String, String>,
-    timeout: u64,
+    timeout: Duration,
     output_callback: Option<&OutputCallback>,
     metric: &Metric,
 ) -> io::Result<CommandRunOutput> {
@@ -154,8 +154,7 @@ pub(super) fn run_command_with_timeout(
         collect_output(stdout_collector, stderr_collector)
     };
 
-    let timeout_duration = Duration::from_secs(timeout);
-    let timed_out = wait_for_child_with_timeout(&mut child, timeout_duration)?;
+    let timed_out = wait_for_child_with_timeout(&mut child, timeout)?;
 
     if timed_out {
         terminate_child(&mut child)?;

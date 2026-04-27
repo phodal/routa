@@ -182,6 +182,7 @@ pub(super) fn should_degrade_to_fast(full_timing_history: &[u64]) -> bool {
 }
 
 fn entrix_command(repo_root: &Path) -> Command {
+    let parent_pid = std::process::id().to_string();
     let debug_binary = repo_root
         .join("target")
         .join("debug")
@@ -190,13 +191,17 @@ fn entrix_command(repo_root: &Path) -> Command {
         } else {
             "entrix"
         });
-    if debug_binary.exists() {
+    let mut command = if debug_binary.exists() {
         Command::new(debug_binary)
     } else {
-        let mut command = Command::new("cargo");
-        command.args(["run", "-q", "-p", "entrix", "--"]);
-        command
-    }
+        let mut fallback = Command::new("cargo");
+        fallback.args(["run", "-q", "-p", "entrix", "--"]);
+        fallback
+    };
+    command
+        .env("ENTRIX_PARENT_PID", &parent_pid)
+        .env("ENTRIX_MAX_RUNTIME_SECONDS", "1800");
+    command
 }
 
 fn test_mapping_cli_args(files: &[String], analysis_mode: TestMappingAnalysisMode) -> Vec<String> {
@@ -223,9 +228,10 @@ pub(super) fn is_test_like_path(path: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        should_degrade_to_fast, test_mapping_cli_args, TestMappingAnalysisMode,
+        entrix_command, should_degrade_to_fast, test_mapping_cli_args, TestMappingAnalysisMode,
         TEST_MAPPING_FULL_DEGRADE_THRESHOLD_MS,
     };
+    use std::path::Path;
 
     #[test]
     fn fast_mode_uses_no_graph_flag() {
@@ -280,5 +286,28 @@ mod tests {
         // Median is the third element (sorted) = 14000, which is below 15000 threshold
         let history = vec![1_000, 14_000, 50_000];
         assert!(!should_degrade_to_fast(&history));
+    }
+
+    #[test]
+    fn entrix_command_sets_parent_and_timeout_env() {
+        let command = entrix_command(Path::new("/tmp/non-existent-routa-repo"));
+        let envs = command
+            .get_envs()
+            .map(|(key, value)| {
+                (
+                    key.to_string_lossy().to_string(),
+                    value.map(|item| item.to_string_lossy().to_string()),
+                )
+            })
+            .collect::<std::collections::BTreeMap<_, _>>();
+
+        assert_eq!(
+            envs.get("ENTRIX_MAX_RUNTIME_SECONDS"),
+            Some(&Some("1800".to_string()))
+        );
+        assert_eq!(
+            envs.get("ENTRIX_PARENT_PID"),
+            Some(&Some(std::process::id().to_string()))
+        );
     }
 }

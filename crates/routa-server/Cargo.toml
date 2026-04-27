@@ -1,6 +1,6 @@
 [package]
 name = "routa-server"
-version = "0.17.2"
+version = "0.18.1"
 description = "Routa.js HTTP Server — axum adapter on top of routa-core"
 authors = ["phodal"]
 edition = "2021"
@@ -14,7 +14,7 @@ path = "src/lib.rs"
 
 [dependencies]
 # Core domain (with axum IntoResponse support)
-routa-core = { version = "0.17.2", path = "../routa-core", features = ["axum"] }
+routa-core = { version = "0.18.1", path = "../routa-core", features = ["axum"] }
 
 # Feature trace & session analysis
 feature-trace = { path = "../feature-trace" }

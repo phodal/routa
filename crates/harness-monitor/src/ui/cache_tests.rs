@@ -760,6 +760,7 @@ fn warm_test_mappings_requests_fast_snapshot_first() {
 fn warm_test_mappings_enqueues_full_refresh_after_fast_snapshot() {
     let state = sample_runtime_state_with_dirty_file();
     let mut cache = AppCache::new(&state.repo_root);
+    cache.set_test_mapping_auto_full_refresh_enabled_for_tests(true);
     let cache_key = test_mapping_cache_key(&state);
     cache.test_mapping_not_before_ms = None;
     cache.set_test_mapping_snapshot_for_tests(
@@ -788,6 +789,38 @@ fn warm_test_mappings_enqueues_full_refresh_after_fast_snapshot() {
 }
 
 #[test]
+fn warm_test_mappings_skips_full_refresh_by_default() {
+    let state = sample_runtime_state_with_dirty_file();
+    let mut cache = AppCache::new(&state.repo_root);
+    cache.test_mapping_not_before_ms = None;
+    cache.set_test_mapping_snapshot_for_tests(
+        test_mapping_cache_key(&state),
+        TestMappingAnalysisMode::Fast,
+        vec![TestMappingEntry {
+            source_file: "src/lib.rs".to_string(),
+            language: "rust".to_string(),
+            status: "changed".to_string(),
+            related_test_files: vec!["tests/lib_test.rs".to_string()],
+            graph_test_files: Vec::new(),
+            resolver_kind: "path_heuristic".to_string(),
+            confidence: "medium".to_string(),
+            has_inline_tests: false,
+        }],
+        Vec::new(),
+    );
+
+    cache.warm_test_mappings(&state);
+
+    assert!(cache.pending_test_mapping_full_key.is_none());
+    assert_eq!(
+        cache.test_mapping_graph_enrichment_note(),
+        Some(
+            "graph refresh skipped: auto Full refresh disabled by default (set HARNESS_MONITOR_ENABLE_FULL_TEST_MAPPING_REFRESH=1 to enable)"
+        )
+    );
+}
+
+#[test]
 fn warm_test_mappings_skips_full_refresh_when_dirty_set_exceeds_budget() {
     let mut state = RuntimeState::new("/tmp/project".to_string(), "main".to_string());
     state.set_branch_oid(Some("budget-head".to_string()));
@@ -813,6 +846,7 @@ fn warm_test_mappings_skips_full_refresh_when_dirty_set_exceeds_budget() {
     state.refresh_views();
 
     let mut cache = AppCache::new(&state.repo_root);
+    cache.set_test_mapping_auto_full_refresh_enabled_for_tests(true);
     cache.test_mapping_not_before_ms = None;
     cache.set_test_mapping_snapshot_for_tests(
         test_mapping_cache_key(&state),

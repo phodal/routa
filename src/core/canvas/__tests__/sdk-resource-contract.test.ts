@@ -17,7 +17,7 @@ describe("canvas sdk resource contract", () => {
     const manifest = getCanvasSdkResourceManifest();
 
     expect(CANVAS_SDK_MANIFEST_RESOURCE_URI).toBe("resource://routa/canvas-sdk/manifest");
-    expect(manifest.moduleSpecifier).toBe("@canvas-sdk");
+    expect(manifest.moduleSpecifier).toBe("routa/canvas");
     expect(manifest.definitionResources).toContainEqual({
       filePath: "resources/canvas/sdk/primitives.d.ts",
       resourceUri: "resource://routa/canvas-sdk/defs/primitives",

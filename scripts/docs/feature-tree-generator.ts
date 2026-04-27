@@ -6,8 +6,40 @@ import yaml from "js-yaml";
 
 import { fromRoot } from "../lib/paths";
 import { loadYamlFile } from "../lib/yaml";
+import * as featureTreeGeneratorModule from "../../src/core/spec/feature-tree-generator";
 import featureSurfaceMetadata from "../../src/core/spec/feature-surface-metadata";
 
+type FeatureTreeGeneratorModuleShape = {
+  default?: {
+    generateFeatureTree: typeof import("../../src/core/spec/feature-tree-generator").generateFeatureTree;
+    preflightFeatureTree: typeof import("../../src/core/spec/feature-tree-generator").preflightFeatureTree;
+  };
+  generateFeatureTree?: typeof import("../../src/core/spec/feature-tree-generator").generateFeatureTree;
+  preflightFeatureTree?: typeof import("../../src/core/spec/feature-tree-generator").preflightFeatureTree;
+};
+
+function resolveFeatureTreeGeneratorRuntime(moduleShape: FeatureTreeGeneratorModuleShape): {
+  generateFeatureTree: typeof import("../../src/core/spec/feature-tree-generator").generateFeatureTree;
+  preflightFeatureTree: typeof import("../../src/core/spec/feature-tree-generator").preflightFeatureTree;
+} {
+  const runtimeModule = moduleShape.default ?? moduleShape;
+  if (
+    typeof runtimeModule.generateFeatureTree !== "function"
+    || typeof runtimeModule.preflightFeatureTree !== "function"
+  ) {
+    throw new Error("Unable to resolve generateFeatureTree/preflightFeatureTree runtime exports.");
+  }
+
+  return {
+    generateFeatureTree: runtimeModule.generateFeatureTree,
+    preflightFeatureTree: runtimeModule.preflightFeatureTree,
+  };
+}
+
+const {
+  generateFeatureTree,
+  preflightFeatureTree,
+} = resolveFeatureTreeGeneratorRuntime(featureTreeGeneratorModule as FeatureTreeGeneratorModuleShape);
 const { INFERRED_GROUP_ID, buildApiLookupKey, normalizeSurfaceMetadata } = featureSurfaceMetadata;
 
 type GenerateFeatureTreeArtifacts = (options: {
@@ -48,40 +80,6 @@ type FeatureTreePreflightResult = {
   }>;
   warnings: string[];
 };
-
-type PreflightFeatureTree = (repoRoot: string) => FeatureTreePreflightResult;
-
-async function loadFeatureTreeGeneratorModule(): Promise<{
-  generateFeatureTree: GenerateFeatureTreeArtifacts;
-  preflightFeatureTree: PreflightFeatureTree;
-}> {
-  const moduleUrl = pathToFileURL(fromRoot("src/core/spec/feature-tree-generator.ts")).href;
-  const featureTreeGeneratorModule = await import(moduleUrl) as {
-    generateFeatureTree?: GenerateFeatureTreeArtifacts;
-    preflightFeatureTree?: PreflightFeatureTree;
-    default?: {
-      generateFeatureTree?: GenerateFeatureTreeArtifacts;
-      preflightFeatureTree?: PreflightFeatureTree;
-    };
-  };
-
-  const generateFeatureTreeArtifacts = featureTreeGeneratorModule.generateFeatureTree
-    ?? featureTreeGeneratorModule.default?.generateFeatureTree;
-  const preflightFeatureTree = featureTreeGeneratorModule.preflightFeatureTree
-    ?? featureTreeGeneratorModule.default?.preflightFeatureTree;
-
-  if (typeof generateFeatureTreeArtifacts !== "function") {
-    throw new Error("Unable to resolve generateFeatureTree from src/core/spec/feature-tree-generator.ts");
-  }
-  if (typeof preflightFeatureTree !== "function") {
-    throw new Error("Unable to resolve preflightFeatureTree from src/core/spec/feature-tree-generator.ts");
-  }
-
-  return {
-    generateFeatureTree: generateFeatureTreeArtifacts,
-    preflightFeatureTree,
-  };
-}
 
 type RouteInfo = {
   route: string;
@@ -1243,10 +1241,8 @@ function getArgValue(argv: string[], flag: string): string | null {
   return argv[index + 1] ?? null;
 }
 
-async function main(): Promise<void> {
-  const argv = process.argv.slice(2);
+export async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
   const args = new Set(argv);
-  const { generateFeatureTree, preflightFeatureTree } = await loadFeatureTreeGeneratorModule();
   const mode = getArgValue(argv, "--mode");
   const repoRoot = path.resolve(getArgValue(argv, "--repo-root") ?? REPO_ROOT);
   const scanRoot = getArgValue(argv, "--scan-root");

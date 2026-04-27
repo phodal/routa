@@ -100,8 +100,12 @@ pub fn filter_dimensions(dimensions: &[Dimension], policy: &GovernancePolicy) ->
 /// Returns:
 ///   0 — pass
 ///   1 — score below minimum threshold
-///   2 — hard gate failure
+///   2 — hard gate failure or runtime timeout
 pub fn enforce(report: &FitnessReport, policy: &GovernancePolicy) -> i32 {
+    if report.runtime_timed_out {
+        return 2;
+    }
+
     if policy.fail_on_hard_gate && report.hard_gate_blocked {
         return 2;
     }
@@ -323,6 +327,7 @@ mod tests {
                 hard_gate_failures: Vec::new(),
                 results: Vec::new(),
             }],
+            ..Default::default()
         };
         assert_eq!(enforce(&report, &GovernancePolicy::default()), 1);
     }
@@ -342,6 +347,7 @@ mod tests {
                 hard_gate_failures: Vec::new(),
                 results: Vec::new(),
             }],
+            ..Default::default()
         };
         assert_eq!(enforce(&report, &GovernancePolicy::default()), 2);
     }
@@ -376,6 +382,7 @@ mod tests {
                 hard_gate_failures: Vec::new(),
                 results: Vec::new(),
             }],
+            ..Default::default()
         };
         let policy = GovernancePolicy {
             min_score: 80.0,
@@ -399,7 +406,21 @@ mod tests {
                 hard_gate_failures: Vec::new(),
                 results: Vec::new(),
             }],
+            ..Default::default()
         };
         assert_eq!(enforce(&report, &GovernancePolicy::default()), 0);
+    }
+
+    #[test]
+    fn test_enforce_runtime_timeout_blocks() {
+        let report = FitnessReport {
+            final_score: 100.0,
+            hard_gate_blocked: false,
+            score_blocked: false,
+            runtime_timed_out: true,
+            ..Default::default()
+        };
+
+        assert_eq!(enforce(&report, &GovernancePolicy::default()), 2);
     }
 }

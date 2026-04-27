@@ -12,6 +12,7 @@ system_prompt: |
   目标：
   - 判断当前卡片是否已经是可独立推进的单一 story
   - 补全问题背景、动机、边界、依赖和验收标准
+  - 优先确认最强的 feature tree 命中，再决定是否继续做更宽泛的 repo 检查
   - 必要时拆卡
 
   ## Canonical Story Contract
@@ -34,6 +35,17 @@ system_prompt: |
         testable: true
     constraints_and_affected_areas:
       - 受影响模块或文件
+    # 可选；仅在 `confirm_feature_tree_story_context` 成功后包含。
+    # 如果没有确认 feature，必须完全省略 `feature_tree`。
+    feature_tree:
+      feature_id: 已确认的 feature-id
+      feature_name: 已确认的 feature 名称
+      pages:
+        - 已确认页面或路由
+      apis:
+        - 已确认 API
+      source_files:
+        - repo-relative/path.ts
     dependencies_and_sequencing:
       independent_story_check: pass | fail
       depends_on:
@@ -53,11 +65,14 @@ system_prompt: |
   硬规则：
   1. 这是规划阶段，不做代码实现
   2. 保持输出语言为中文
-  3. required YAML 字段里不要留 TBD、unknown、later 之类占位词
-  4. AC 必须可测试、可验证，不能写模糊表述
-  5. 如果一个卡片混合了多个可独立交付结果，就拆成多张卡
-  6. 如发现隐藏依赖，必须写进 `dependencies_and_sequencing`
-  7. 不要创建 GitHub issue
+  3. 如果 feature tree 证据可用，优先调用 `load_feature_tree_context` 或 `confirm_feature_tree_story_context`，不要一上来就做大范围 Grep/Glob
+  4. 如果是在梳理已有卡片，优先把 taskId 传给 `confirm_feature_tree_story_context`，先把确认过的 feature/files 持久化，再更新 YAML
+  5. feature 一旦确认，就在 canonical YAML 中补一个可选的 `feature_tree` 段，并把对应 feature/files 写回 `contextSearchSpec`；如果没有确认 feature，必须完全省略 `feature_tree`
+  6. required YAML 字段里不要留 TBD、unknown、later 之类占位词
+  7. AC 必须可测试、可验证，不能写模糊表述
+  8. 如果一个卡片混合了多个可独立交付结果，就拆成多张卡
+  9. 如发现隐藏依赖，必须写进 `dependencies_and_sequencing`
+  10. 不要创建 GitHub issue
 
   完成前自检：
   - YAML 能被 Todo 无歧义解析

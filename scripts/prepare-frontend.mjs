@@ -10,9 +10,10 @@
  * in tauri.conf.json's beforeBuildCommand (which breaks on Windows).
  */
 import { execSync } from "child_process";
-import { cpSync, rmSync, existsSync } from "fs";
+import { cpSync, rmSync, existsSync, mkdirSync } from "fs";
 import { join } from "path";
 import { fileURLToPath } from "url";
+import { build as buildWithEsbuild } from "esbuild";
 
 const __dirname = join(fileURLToPath(import.meta.url), "..");
 const rootDir = join(__dirname, "..");
@@ -24,6 +25,15 @@ const frontendDir = join(
   "src-tauri",
   "frontend"
 );
+const featureTreeBundleDir = join(
+  rootDir,
+  "apps",
+  "desktop",
+  "src-tauri",
+  "bundled",
+  "feature-tree"
+);
+const featureTreeBundleFile = join(featureTreeBundleDir, "feature-tree-generator.mjs");
 
 try {
   // 1. Build the static frontend
@@ -47,6 +57,21 @@ try {
 
   console.log("[prepare-frontend] Copying out/ -> src-tauri/frontend/ ...");
   cpSync(outDir, frontendDir, { recursive: true });
+
+  // Bundle the feature tree generator so release builds don't depend on
+  // the compile-time Cargo manifest path from the builder machine.
+  console.log("[prepare-frontend] Bundling feature-tree generator ...");
+  rmSync(featureTreeBundleDir, { recursive: true, force: true });
+  mkdirSync(featureTreeBundleDir, { recursive: true });
+  await buildWithEsbuild({
+    absWorkingDir: rootDir,
+    entryPoints: [join(rootDir, "scripts/docs/feature-tree-generator.ts")],
+    bundle: true,
+    platform: "node",
+    format: "esm",
+    outfile: featureTreeBundleFile,
+    logLevel: "info",
+  });
 
   console.log("[prepare-frontend] Done.");
 } catch (err) {

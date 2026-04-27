@@ -1,0 +1,13 @@
+{
+  "routa.command.open": "Open Routa",
+  "routa.command.startServer": "Start Routa Server",
+  "routa.command.stopServer": "Stop Routa Server",
+  "routa.command.openInBrowser": "Open Routa in Browser",
+  "routa.command.openWebviewDeveloperTools": "Open Routa Webview Developer Tools",
+  "routa.command.copyMcpEndpoint": "Copy Routa MCP Endpoint",
+  "routa.config.executablePath": "Path to the Routa CLI executable. Leave empty to use the bundled binary, the repository build output, or routa on PATH.",
+  "routa.config.port": "Local Routa server port. Use 0 to choose an available random port.",
+  "routa.config.staticDir": "Path to a Routa static frontend export. Leave empty to use the packaged frontend or the repository out directory.",
+  "routa.config.extraArgs": "Extra arguments appended to the routa server command.",
+  "routa.config.autoRegisterCurrentFolder": "Automatically create a Routa workspace and codebase for the current VS Code workspace folder."
+}

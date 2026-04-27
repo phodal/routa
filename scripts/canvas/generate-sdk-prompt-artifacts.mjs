@@ -93,8 +93,22 @@ async function main() {
   const groups = collectGroups(barrelSource, sourceFile);
   const indexDtsPath = path.join(outputDir, "index.d.ts");
   const indexDtsSource = await fs.readFile(indexDtsPath, "utf8");
-  const definitionEntries = (await fs.readdir(outputDir, { withFileTypes: true }))
-    .filter((entry) => entry.isFile() && entry.name.endsWith(".d.ts"))
+  const publicDefinitionNames = new Set([
+    "index.d.ts",
+    ...groups
+      .map((group) => group.source)
+      .filter(Boolean)
+      .map((source) => `${source.replace(/^\.\//u, "")}.d.ts`),
+  ]);
+  const emittedDefinitionEntries = (await fs.readdir(outputDir, { withFileTypes: true }))
+    .filter((entry) => entry.isFile() && entry.name.endsWith(".d.ts"));
+  await Promise.all(
+    emittedDefinitionEntries
+      .filter((entry) => !publicDefinitionNames.has(entry.name))
+      .map((entry) => fs.rm(path.join(outputDir, entry.name), { force: true })),
+  );
+  const definitionEntries = emittedDefinitionEntries
+    .filter((entry) => publicDefinitionNames.has(entry.name))
     .map((entry) => entry.name)
     .sort((left, right) => left.localeCompare(right));
   const definitionFiles = await Promise.all(
@@ -109,17 +123,17 @@ async function main() {
 
   const manifest = {
     generatedAt: new Date().toISOString(),
-    moduleSpecifier: "@canvas-sdk",
+    moduleSpecifier: "routa/canvas",
     sourceBarrel: "src/client/canvas-sdk/index.ts",
     definitionsDir: "resources/canvas/sdk",
     indexDefinitionPath: "resources/canvas/sdk/index.d.ts",
     importExamples: [
-      "import { Stack, H1, Text, Card, CardBody, Table, Stat } from '@canvas-sdk';",
-      "import { useHostTheme } from '@canvas-sdk';",
-      "import { BarChart, PieChart } from '@canvas-sdk';",
+      "import { Stack, H1, Text, Card, CardBody, Table, Stat } from 'routa/canvas';",
+      "import { useHostTheme, useCanvasState } from 'routa/canvas';",
+      "import { BarChart, LineChart, PieChart } from 'routa/canvas';",
     ],
     promptRules: [
-      "Import only from @canvas-sdk or react.",
+      "Import only from routa/canvas or react. Legacy cursor/canvas and @canvas-sdk imports still compile, but new canvases should use routa/canvas.",
       "Prefer SDK primitives over raw div/span markup when possible.",
       "Use useHostTheme() tokens instead of hardcoded colors.",
       "If a symbol is not present in the generated SDK surface below, do not invent it.",

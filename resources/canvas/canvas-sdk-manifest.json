@@ -1,16 +1,16 @@
 {
-  "generatedAt": "2026-04-17T03:19:12.625Z",
-  "moduleSpecifier": "@canvas-sdk",
+  "generatedAt": "2026-04-26T01:03:09.124Z",
+  "moduleSpecifier": "routa/canvas",
   "sourceBarrel": "src/client/canvas-sdk/index.ts",
   "definitionsDir": "resources/canvas/sdk",
   "indexDefinitionPath": "resources/canvas/sdk/index.d.ts",
   "importExamples": [
-    "import { Stack, H1, Text, Card, CardBody, Table, Stat } from '@canvas-sdk';",
-    "import { useHostTheme } from '@canvas-sdk';",
-    "import { BarChart, PieChart } from '@canvas-sdk';"
+    "import { Stack, H1, Text, Card, CardBody, Table, Stat } from 'routa/canvas';",
+    "import { useHostTheme, useCanvasState } from 'routa/canvas';",
+    "import { BarChart, LineChart, PieChart } from 'routa/canvas';"
   ],
   "promptRules": [
-    "Import only from @canvas-sdk or react.",
+    "Import only from routa/canvas or react. Legacy cursor/canvas and @canvas-sdk imports still compile, but new canvases should use routa/canvas.",
     "Prefer SDK primitives over raw div/span markup when possible.",
     "Use useHostTheme() tokens instead of hardcoded colors.",
     "If a symbol is not present in the generated SDK surface below, do not invent it."
@@ -41,6 +41,22 @@
           "kind": "value"
         },
         {
+          "name": "canvasPaletteDark",
+          "kind": "value"
+        },
+        {
+          "name": "canvasPaletteLight",
+          "kind": "value"
+        },
+        {
+          "name": "canvasTokens",
+          "kind": "value"
+        },
+        {
+          "name": "canvasTokensLight",
+          "kind": "value"
+        },
+        {
           "name": "canvasSpacing",
           "kind": "value"
         },
@@ -68,6 +84,28 @@
         },
         {
           "name": "CanvasHostTheme",
+          "kind": "type"
+        }
+      ]
+    },
+    {
+      "title": "Host state hooks",
+      "source": "./hooks",
+      "symbols": [
+        {
+          "name": "useCanvasState",
+          "kind": "value"
+        },
+        {
+          "name": "useCanvasAction",
+          "kind": "value"
+        },
+        {
+          "name": "CanvasAction",
+          "kind": "type"
+        },
+        {
+          "name": "SetCanvasState",
           "kind": "type"
         }
       ]
@@ -187,6 +225,10 @@
           "kind": "value"
         },
         {
+          "name": "Callout",
+          "kind": "value"
+        },
+        {
           "name": "TableProps",
           "kind": "type"
         },
@@ -213,6 +255,18 @@
         {
           "name": "PillTone",
           "kind": "type"
+        },
+        {
+          "name": "PillSize",
+          "kind": "type"
+        },
+        {
+          "name": "CalloutProps",
+          "kind": "type"
+        },
+        {
+          "name": "CalloutTone",
+          "kind": "type"
         }
       ]
     },
@@ -237,6 +291,14 @@
           "kind": "type"
         },
         {
+          "name": "CardSize",
+          "kind": "type"
+        },
+        {
+          "name": "CardVariant",
+          "kind": "type"
+        },
+        {
           "name": "CardHeaderProps",
           "kind": "type"
         },
@@ -255,11 +317,63 @@
           "kind": "value"
         },
         {
+          "name": "TextInput",
+          "kind": "value"
+        },
+        {
+          "name": "TextArea",
+          "kind": "value"
+        },
+        {
+          "name": "Checkbox",
+          "kind": "value"
+        },
+        {
+          "name": "Toggle",
+          "kind": "value"
+        },
+        {
+          "name": "Select",
+          "kind": "value"
+        },
+        {
+          "name": "IconButton",
+          "kind": "value"
+        },
+        {
           "name": "ButtonProps",
           "kind": "type"
         },
         {
           "name": "ButtonVariant",
+          "kind": "type"
+        },
+        {
+          "name": "TextInputProps",
+          "kind": "type"
+        },
+        {
+          "name": "TextAreaProps",
+          "kind": "type"
+        },
+        {
+          "name": "CheckboxProps",
+          "kind": "type"
+        },
+        {
+          "name": "ToggleProps",
+          "kind": "type"
+        },
+        {
+          "name": "SelectOption",
+          "kind": "type"
+        },
+        {
+          "name": "SelectProps",
+          "kind": "type"
+        },
+        {
+          "name": "IconButtonProps",
           "kind": "type"
         }
       ]
@@ -270,6 +384,10 @@
       "symbols": [
         {
           "name": "BarChart",
+          "kind": "value"
+        },
+        {
+          "name": "LineChart",
           "kind": "value"
         },
         {
@@ -285,11 +403,87 @@
           "kind": "type"
         },
         {
+          "name": "ChartDataPoint",
+          "kind": "type"
+        },
+        {
+          "name": "ChartSeries",
+          "kind": "type"
+        },
+        {
+          "name": "ChartTone",
+          "kind": "type"
+        },
+        {
+          "name": "LineChartProps",
+          "kind": "type"
+        },
+        {
           "name": "PieChartProps",
           "kind": "type"
         },
         {
           "name": "PieChartEntry",
+          "kind": "type"
+        }
+      ]
+    },
+    {
+      "title": "Diff rendering",
+      "source": "./diff-view",
+      "symbols": [
+        {
+          "name": "DiffStats",
+          "kind": "value"
+        },
+        {
+          "name": "DiffView",
+          "kind": "value"
+        },
+        {
+          "name": "DiffStatsProps",
+          "kind": "type"
+        },
+        {
+          "name": "DiffLineType",
+          "kind": "type"
+        },
+        {
+          "name": "DiffLineData",
+          "kind": "type"
+        },
+        {
+          "name": "DiffViewProps",
+          "kind": "type"
+        }
+      ]
+    },
+    {
+      "title": "DAG layout",
+      "source": "./dag-layout",
+      "symbols": [
+        {
+          "name": "computeDAGLayout",
+          "kind": "value"
+        },
+        {
+          "name": "DAGLayoutOptions",
+          "kind": "type"
+        },
+        {
+          "name": "DAGLayoutNode",
+          "kind": "type"
+        },
+        {
+          "name": "DAGLayoutEdge",
+          "kind": "type"
+        },
+        {
+          "name": "DAGLayoutRank",
+          "kind": "type"
+        },
+        {
+          "name": "DAGLayoutResult",
           "kind": "type"
         }
       ]
@@ -317,6 +511,22 @@
       "kind": "value"
     },
     {
+      "name": "canvasPaletteDark",
+      "kind": "value"
+    },
+    {
+      "name": "canvasPaletteLight",
+      "kind": "value"
+    },
+    {
+      "name": "canvasTokens",
+      "kind": "value"
+    },
+    {
+      "name": "canvasTokensLight",
+      "kind": "value"
+    },
+    {
       "name": "canvasSpacing",
       "kind": "value"
     },
@@ -338,6 +548,22 @@
     },
     {
       "name": "CanvasHostTheme",
+      "kind": "type"
+    },
+    {
+      "name": "useCanvasState",
+      "kind": "value"
+    },
+    {
+      "name": "useCanvasAction",
+      "kind": "value"
+    },
+    {
+      "name": "CanvasAction",
+      "kind": "type"
+    },
+    {
+      "name": "SetCanvasState",
       "kind": "type"
     },
     {
@@ -445,6 +671,10 @@
       "kind": "value"
     },
     {
+      "name": "Callout",
+      "kind": "value"
+    },
+    {
       "name": "TableProps",
       "kind": "type"
     },
@@ -473,6 +703,18 @@
       "kind": "type"
     },
     {
+      "name": "PillSize",
+      "kind": "type"
+    },
+    {
+      "name": "CalloutProps",
+      "kind": "type"
+    },
+    {
+      "name": "CalloutTone",
+      "kind": "type"
+    },
+    {
       "name": "Card",
       "kind": "value"
     },
@@ -489,6 +731,14 @@
       "kind": "type"
     },
     {
+      "name": "CardSize",
+      "kind": "type"
+    },
+    {
+      "name": "CardVariant",
+      "kind": "type"
+    },
+    {
       "name": "CardHeaderProps",
       "kind": "type"
     },
@@ -501,6 +751,30 @@
       "kind": "value"
     },
     {
+      "name": "TextInput",
+      "kind": "value"
+    },
+    {
+      "name": "TextArea",
+      "kind": "value"
+    },
+    {
+      "name": "Checkbox",
+      "kind": "value"
+    },
+    {
+      "name": "Toggle",
+      "kind": "value"
+    },
+    {
+      "name": "Select",
+      "kind": "value"
+    },
+    {
+      "name": "IconButton",
+      "kind": "value"
+    },
+    {
       "name": "ButtonProps",
       "kind": "type"
     },
@@ -509,7 +783,39 @@
       "kind": "type"
     },
     {
+      "name": "TextInputProps",
+      "kind": "type"
+    },
+    {
+      "name": "TextAreaProps",
+      "kind": "type"
+    },
+    {
+      "name": "CheckboxProps",
+      "kind": "type"
+    },
+    {
+      "name": "ToggleProps",
+      "kind": "type"
+    },
+    {
+      "name": "SelectOption",
+      "kind": "type"
+    },
+    {
+      "name": "SelectProps",
+      "kind": "type"
+    },
+    {
+      "name": "IconButtonProps",
+      "kind": "type"
+    },
+    {
       "name": "BarChart",
+      "kind": "value"
+    },
+    {
+      "name": "LineChart",
       "kind": "value"
     },
     {
@@ -525,47 +831,123 @@
       "kind": "type"
     },
     {
+      "name": "ChartDataPoint",
+      "kind": "type"
+    },
+    {
+      "name": "ChartSeries",
+      "kind": "type"
+    },
+    {
+      "name": "ChartTone",
+      "kind": "type"
+    },
+    {
+      "name": "LineChartProps",
+      "kind": "type"
+    },
+    {
       "name": "PieChartProps",
       "kind": "type"
     },
     {
       "name": "PieChartEntry",
       "kind": "type"
+    },
+    {
+      "name": "DiffStats",
+      "kind": "value"
+    },
+    {
+      "name": "DiffView",
+      "kind": "value"
+    },
+    {
+      "name": "DiffStatsProps",
+      "kind": "type"
+    },
+    {
+      "name": "DiffLineType",
+      "kind": "type"
+    },
+    {
+      "name": "DiffLineData",
+      "kind": "type"
+    },
+    {
+      "name": "DiffViewProps",
+      "kind": "type"
+    },
+    {
+      "name": "computeDAGLayout",
+      "kind": "value"
+    },
+    {
+      "name": "DAGLayoutOptions",
+      "kind": "type"
+    },
+    {
+      "name": "DAGLayoutNode",
+      "kind": "type"
+    },
+    {
+      "name": "DAGLayoutEdge",
+      "kind": "type"
+    },
+    {
+      "name": "DAGLayoutRank",
+      "kind": "type"
+    },
+    {
+      "name": "DAGLayoutResult",
+      "kind": "type"
     }
   ],
   "definitionFiles": [
     {
       "path": "resources/canvas/sdk/charts.d.ts",
-      "source": "import type { CSSProperties, JSX } from \"react\";\nexport type BarChartEntry = {\n    label: string;\n    value: number;\n    color?: string;\n};\nexport type BarChartProps = {\n    data: BarChartEntry[];\n    /** Chart height in px. Default 360. */\n    height?: number;\n    style?: CSSProperties;\n};\nexport declare function BarChart({ data, height, style, }: BarChartProps): JSX.Element;\nexport type PieChartEntry = {\n    label: string;\n    value: number;\n    color?: string;\n};\nexport type PieChartProps = {\n    data: PieChartEntry[];\n    /** Diameter in px. Default 260. */\n    size?: number;\n    style?: CSSProperties;\n};\nexport declare function PieChart({ data, size, style, }: PieChartProps): JSX.Element;\n"
+      "source": "import type { CSSProperties, JSX } from \"react\";\nexport type ChartTone = \"success\" | \"danger\" | \"warning\" | \"info\" | \"neutral\";\nexport type ChartDataPoint = {\n    label: string;\n    value: number;\n};\nexport type ChartSeries = {\n    name: string;\n    data: number[];\n    tone?: ChartTone;\n};\nexport type BarChartEntry = {\n    label: string;\n    value: number;\n    color?: string;\n};\nexport type BarChartProps = {\n    categories?: string[];\n    series?: ChartSeries[];\n    data?: BarChartEntry[];\n    height?: number;\n    stacked?: boolean;\n    horizontal?: boolean;\n    normalized?: boolean;\n    valueSuffix?: string;\n    style?: CSSProperties;\n};\nexport declare function BarChart(props: BarChartProps): JSX.Element;\nexport type LineChartProps = {\n    categories: string[];\n    series: ChartSeries[];\n    height?: number;\n    fill?: boolean;\n    valueSuffix?: string;\n    style?: CSSProperties;\n};\nexport declare function LineChart({ categories, series, height, fill, valueSuffix, style, }: LineChartProps): JSX.Element;\nexport type PieChartEntry = ChartDataPoint & {\n    color?: string;\n    tone?: ChartTone;\n};\nexport type PieChartProps = {\n    data: PieChartEntry[];\n    size?: number;\n    donut?: boolean;\n    style?: CSSProperties;\n};\nexport declare function PieChart({ data, size, donut, style, }: PieChartProps): JSX.Element;\n"
     },
     {
       "path": "resources/canvas/sdk/containers.d.ts",
-      "source": "import { type CSSProperties, type ReactNode, type JSX } from \"react\";\nexport type CardProps = {\n    children?: ReactNode;\n    collapsible?: boolean;\n    defaultOpen?: boolean;\n    style?: CSSProperties;\n};\nexport declare function Card({ children, collapsible, defaultOpen, style, }: CardProps): JSX.Element;\nexport type CardHeaderProps = {\n    children?: ReactNode;\n    trailing?: ReactNode;\n    style?: CSSProperties;\n};\nexport declare function CardHeader({ children, trailing, style, }: CardHeaderProps): JSX.Element;\nexport type CardBodyProps = {\n    children?: ReactNode;\n    style?: CSSProperties;\n};\nexport declare function CardBody({ children, style }: CardBodyProps): JSX.Element;\n"
+      "source": "import { type CSSProperties, type ReactNode, type JSX } from \"react\";\nexport type CardSize = \"base\" | \"lg\";\nexport type CardVariant = \"default\" | \"borderless\";\nexport type CardProps = {\n    children?: ReactNode;\n    variant?: CardVariant;\n    size?: CardSize;\n    stickyHeader?: boolean;\n    collapsible?: boolean;\n    defaultOpen?: boolean;\n    open?: boolean;\n    onOpenChange?: (open: boolean) => void;\n    style?: CSSProperties;\n};\nexport declare function Card({ children, variant, size, stickyHeader, collapsible, defaultOpen, open: controlledOpen, onOpenChange, style, }: CardProps): JSX.Element;\nexport type CardHeaderProps = {\n    children?: ReactNode;\n    trailing?: ReactNode;\n    style?: CSSProperties;\n};\nexport declare function CardHeader({ children, trailing, style, }: CardHeaderProps): JSX.Element;\nexport type CardBodyProps = {\n    children?: ReactNode;\n    style?: CSSProperties;\n};\nexport declare function CardBody({ children, style }: CardBodyProps): JSX.Element | null;\n"
     },
     {
       "path": "resources/canvas/sdk/controls.d.ts",
-      "source": "import type { CSSProperties, ReactNode, JSX } from \"react\";\nexport type ButtonVariant = \"primary\" | \"secondary\" | \"ghost\";\nexport type ButtonProps = {\n    children?: ReactNode;\n    variant?: ButtonVariant;\n    disabled?: boolean;\n    style?: CSSProperties;\n    onClick?: () => void;\n};\nexport declare function Button({ children, variant, disabled, style, onClick, }: ButtonProps): JSX.Element;\n"
+      "source": "import type { CSSProperties, ReactNode, JSX } from \"react\";\nexport type ButtonVariant = \"primary\" | \"secondary\" | \"ghost\";\nexport type ButtonProps = {\n    children?: ReactNode;\n    variant?: ButtonVariant;\n    disabled?: boolean;\n    type?: \"button\" | \"submit\" | \"reset\";\n    style?: CSSProperties;\n    onClick?: () => void;\n};\nexport declare function Button({ children, variant, disabled, type, style, onClick, }: ButtonProps): JSX.Element;\nexport type TextInputProps = {\n    value?: string;\n    onChange?: (value: string) => void;\n    placeholder?: string;\n    disabled?: boolean;\n    type?: \"text\" | \"email\" | \"password\" | \"number\" | \"url\" | \"search\";\n    style?: CSSProperties;\n};\nexport declare function TextInput({ value, onChange, placeholder, disabled, type, style, }: TextInputProps): JSX.Element;\nexport type TextAreaProps = {\n    value?: string;\n    onChange?: (value: string) => void;\n    placeholder?: string;\n    disabled?: boolean;\n    rows?: number;\n    style?: CSSProperties;\n};\nexport declare function TextArea({ value, onChange, placeholder, disabled, rows, style, }: TextAreaProps): JSX.Element;\nexport type CheckboxProps = {\n    checked?: boolean;\n    onChange?: (checked: boolean) => void;\n    disabled?: boolean;\n    label?: ReactNode;\n    style?: CSSProperties;\n};\nexport declare function Checkbox({ checked, onChange, disabled, label, style, }: CheckboxProps): JSX.Element;\nexport type ToggleProps = {\n    checked?: boolean;\n    onChange?: (checked: boolean) => void;\n    disabled?: boolean;\n    size?: \"sm\" | \"md\";\n    style?: CSSProperties;\n};\nexport declare function Toggle({ checked, onChange, disabled, size, style, }: ToggleProps): JSX.Element;\nexport type SelectOption = {\n    value: string;\n    label: string;\n    disabled?: boolean;\n};\nexport type SelectProps = {\n    value?: string;\n    onChange?: (value: string) => void;\n    options: SelectOption[];\n    placeholder?: string;\n    disabled?: boolean;\n    style?: CSSProperties;\n};\nexport declare function Select({ value, onChange, options, placeholder, disabled, style, }: SelectProps): JSX.Element;\nexport type IconButtonProps = {\n    children: ReactNode;\n    onClick?: () => void;\n    disabled?: boolean;\n    title?: string;\n    variant?: \"default\" | \"circle\";\n    size?: \"sm\" | \"md\";\n    style?: CSSProperties;\n};\nexport declare function IconButton({ children, onClick, disabled, title, variant, size, style, }: IconButtonProps): JSX.Element;\n"
+    },
+    {
+      "path": "resources/canvas/sdk/dag-layout.d.ts",
+      "source": "export type DAGLayoutOptions = {\n    nodes: Array<{\n        id: string;\n    }>;\n    edges: Array<{\n        from: string;\n        to: string;\n    }>;\n    direction?: \"vertical\" | \"horizontal\";\n    nodeWidth?: number;\n    nodeHeight?: number;\n    rankGap?: number;\n    nodeGap?: number;\n    padding?: number;\n};\nexport type DAGLayoutNode = {\n    id: string;\n    x: number;\n    y: number;\n    rank: number;\n    order: number;\n};\nexport type DAGLayoutEdge = {\n    from: string;\n    to: string;\n    sourceX: number;\n    sourceY: number;\n    targetX: number;\n    targetY: number;\n    isBackEdge: boolean;\n};\nexport type DAGLayoutRank = {\n    rank: number;\n    x: number;\n    y: number;\n    width: number;\n    height: number;\n    nodeIds: string[];\n};\nexport type DAGLayoutResult = {\n    nodes: DAGLayoutNode[];\n    edges: DAGLayoutEdge[];\n    ranks: DAGLayoutRank[];\n    direction: \"vertical\" | \"horizontal\";\n    width: number;\n    height: number;\n};\nexport declare function computeDAGLayout(options: DAGLayoutOptions): DAGLayoutResult;\n"
     },
     {
       "path": "resources/canvas/sdk/data-display.d.ts",
-      "source": "import type { CSSProperties, ReactNode, JSX } from \"react\";\nexport type TableColumnAlign = \"left\" | \"center\" | \"right\";\nexport type TableRowTone = \"success\" | \"danger\" | \"warning\" | \"info\" | \"neutral\";\nexport type TableProps = {\n    headers: ReactNode[];\n    rows: ReactNode[][];\n    columnAlign?: Array<TableColumnAlign | undefined>;\n    rowTone?: Array<TableRowTone | undefined>;\n    framed?: boolean;\n    striped?: boolean;\n    style?: CSSProperties;\n    emptyMessage?: ReactNode;\n};\nexport declare function Table({ headers, rows, columnAlign, rowTone, framed, striped, style, emptyMessage, }: TableProps): JSX.Element;\nexport type StatTone = \"success\" | \"danger\" | \"warning\" | \"info\";\nexport type StatProps = {\n    value: ReactNode;\n    label: string;\n    tone?: StatTone;\n    style?: CSSProperties;\n};\nexport declare function Stat({ value, label, tone, style }: StatProps): JSX.Element;\nexport type PillTone = \"neutral\" | \"added\" | \"deleted\" | \"renamed\" | \"success\" | \"warning\" | \"info\";\nexport type PillProps = {\n    children?: ReactNode;\n    active?: boolean;\n    tone?: PillTone;\n    style?: CSSProperties;\n    onClick?: () => void;\n};\nexport declare function Pill({ children, active, tone, style, onClick, }: PillProps): JSX.Element;\n"
+      "source": "import type { CSSProperties, ReactNode, JSX } from \"react\";\nexport type TableColumnAlign = \"left\" | \"center\" | \"right\";\nexport type TableRowTone = \"success\" | \"danger\" | \"warning\" | \"info\" | \"neutral\";\nexport type TableProps = {\n    headers: ReactNode[];\n    rows: ReactNode[][];\n    columnAlign?: Array<TableColumnAlign | undefined>;\n    rowTone?: Array<TableRowTone | undefined>;\n    framed?: boolean;\n    striped?: boolean;\n    stickyHeader?: boolean;\n    style?: CSSProperties;\n    emptyMessage?: ReactNode;\n};\nexport declare function Table({ headers, rows, columnAlign, rowTone, framed, striped, stickyHeader, style, emptyMessage, }: TableProps): JSX.Element;\nexport type StatTone = \"success\" | \"danger\" | \"warning\" | \"info\";\nexport type StatProps = {\n    value: ReactNode;\n    label: string;\n    tone?: StatTone;\n    style?: CSSProperties;\n};\nexport declare function Stat({ value, label, tone, style }: StatProps): JSX.Element;\nexport type PillTone = \"neutral\" | \"added\" | \"deleted\" | \"renamed\" | \"success\" | \"warning\" | \"info\";\nexport type PillSize = \"sm\" | \"md\";\nexport type PillProps = {\n    children?: ReactNode;\n    active?: boolean;\n    tone?: PillTone;\n    size?: PillSize;\n    leadingContent?: ReactNode;\n    keyboardHint?: string;\n    disabled?: boolean;\n    title?: string;\n    style?: CSSProperties;\n    onClick?: () => void;\n};\nexport declare function Pill({ children, active, tone, size, leadingContent, keyboardHint, disabled, title, style, onClick, }: PillProps): JSX.Element;\nexport type CalloutTone = \"info\" | \"success\" | \"warning\" | \"danger\" | \"neutral\";\nexport type CalloutProps = {\n    children?: ReactNode;\n    tone?: CalloutTone;\n    title?: ReactNode;\n    icon?: ReactNode;\n    style?: CSSProperties;\n};\nexport declare function Callout({ children, tone, title, icon, style, }: CalloutProps): JSX.Element;\n"
+    },
+    {
+      "path": "resources/canvas/sdk/diff-view.d.ts",
+      "source": "import type { CSSProperties, JSX } from \"react\";\nexport type DiffStatsProps = {\n    additions?: number;\n    deletions?: number;\n    style?: CSSProperties;\n};\nexport declare function DiffStats({ additions, deletions, style, }: DiffStatsProps): JSX.Element | null;\nexport type DiffLineType = \"added\" | \"removed\" | \"unchanged\";\nexport type DiffLineData = {\n    type: DiffLineType;\n    content: string;\n    lineNumber?: number;\n};\nexport type DiffViewProps = {\n    lines: DiffLineData[];\n    path?: string;\n    language?: string;\n    showLineNumbers?: boolean;\n    coloredLineNumbers?: boolean;\n    showAccentStrip?: boolean;\n    style?: CSSProperties;\n};\nexport declare function DiffView({ lines, path, language, showLineNumbers, coloredLineNumbers, showAccentStrip, style, }: DiffViewProps): JSX.Element;\n"
+    },
+    {
+      "path": "resources/canvas/sdk/hooks.d.ts",
+      "source": "export type CanvasAction = {\n    type: string;\n    [key: string]: unknown;\n};\nexport type SetCanvasState<T> = (action: T | ((prev: T) => T)) => void;\nexport declare function useCanvasState<T>(key: string, defaultValue: T): [T, SetCanvasState<T>];\nexport declare function useCanvasAction(): (action: CanvasAction) => void;\n"
     },
     {
       "path": "resources/canvas/sdk/index.d.ts",
-      "source": "/**\n * Canvas SDK — constrained React component library for canvas artifacts.\n *\n * Components use inline styles with theme tokens. Import only from this barrel.\n */\nexport { type CanvasTheme, type CanvasTokens, type CanvasPalette, darkTheme, lightTheme, canvasSpacing, canvasRadius, canvasTypography, } from \"./tokens\";\nexport { CanvasThemeProvider, useHostTheme, type CanvasHostTheme, } from \"./theme-context\";\nexport { mergeStyle, Stack, Row, Grid, Divider, Spacer, Text, H1, H2, H3, Code, Link, type StackProps, type RowProps, type GridProps, type DividerProps, type TextWeight, type TextProps, type H1Props, type H2Props, type H3Props, type CodeProps, type LinkProps, } from \"./primitives\";\nexport { Table, Stat, Pill, type TableProps, type TableColumnAlign, type TableRowTone, type StatProps, type StatTone, type PillProps, type PillTone, } from \"./data-display\";\nexport { Card, CardHeader, CardBody, type CardProps, type CardHeaderProps, type CardBodyProps, } from \"./containers\";\nexport { Button, type ButtonProps, type ButtonVariant, } from \"./controls\";\nexport { BarChart, PieChart, type BarChartProps, type BarChartEntry, type PieChartProps, type PieChartEntry, } from \"./charts\";\n"
+      "source": "/**\n * Canvas SDK — constrained React component library for canvas artifacts.\n *\n * Components use inline styles with theme tokens. Import only from this barrel.\n */\nexport { type CanvasTheme, type CanvasTokens, type CanvasPalette, darkTheme, lightTheme, canvasPaletteDark, canvasPaletteLight, canvasTokens, canvasTokensLight, canvasSpacing, canvasRadius, canvasTypography, } from \"./tokens\";\nexport { CanvasThemeProvider, useHostTheme, type CanvasHostTheme, } from \"./theme-context\";\nexport { useCanvasState, useCanvasAction, type CanvasAction, type SetCanvasState, } from \"./hooks\";\nexport { mergeStyle, Stack, Row, Grid, Divider, Spacer, Text, H1, H2, H3, Code, Link, type StackProps, type RowProps, type GridProps, type DividerProps, type TextWeight, type TextProps, type H1Props, type H2Props, type H3Props, type CodeProps, type LinkProps, } from \"./primitives\";\nexport { Table, Stat, Pill, Callout, type TableProps, type TableColumnAlign, type TableRowTone, type StatProps, type StatTone, type PillProps, type PillTone, type PillSize, type CalloutProps, type CalloutTone, } from \"./data-display\";\nexport { Card, CardHeader, CardBody, type CardProps, type CardSize, type CardVariant, type CardHeaderProps, type CardBodyProps, } from \"./containers\";\nexport { Button, TextInput, TextArea, Checkbox, Toggle, Select, IconButton, type ButtonProps, type ButtonVariant, type TextInputProps, type TextAreaProps, type CheckboxProps, type ToggleProps, type SelectOption, type SelectProps, type IconButtonProps, } from \"./controls\";\nexport { BarChart, LineChart, PieChart, type BarChartProps, type BarChartEntry, type ChartDataPoint, type ChartSeries, type ChartTone, type LineChartProps, type PieChartProps, type PieChartEntry, } from \"./charts\";\nexport { DiffStats, DiffView, type DiffStatsProps, type DiffLineType, type DiffLineData, type DiffViewProps, } from \"./diff-view\";\nexport { computeDAGLayout, type DAGLayoutOptions, type DAGLayoutNode, type DAGLayoutEdge, type DAGLayoutRank, type DAGLayoutResult, } from \"./dag-layout\";\n"
     },
     {
       "path": "resources/canvas/sdk/primitives.d.ts",
-      "source": "import type { CSSProperties, ReactNode, JSX } from \"react\";\nexport declare function mergeStyle(base: CSSProperties, override?: CSSProperties): CSSProperties;\nexport type StackProps = {\n    children?: ReactNode;\n    gap?: number;\n    style?: CSSProperties;\n};\nexport declare function Stack({ children, gap, style }: StackProps): JSX.Element;\nexport type RowProps = {\n    children?: ReactNode;\n    gap?: number;\n    align?: \"start\" | \"center\" | \"end\" | \"stretch\";\n    justify?: \"start\" | \"center\" | \"end\" | \"space-between\";\n    wrap?: boolean;\n    style?: CSSProperties;\n};\nexport declare function Row({ children, gap, align, justify, wrap, style, }: RowProps): JSX.Element;\nexport type GridProps = {\n    children?: ReactNode;\n    columns: number | string;\n    gap?: number;\n    align?: \"start\" | \"center\" | \"end\" | \"stretch\";\n    style?: CSSProperties;\n};\nexport declare function Grid({ children, columns, gap, align, style, }: GridProps): JSX.Element;\nexport type DividerProps = {\n    style?: CSSProperties;\n};\nexport declare function Divider({ style }: DividerProps): JSX.Element;\nexport declare function Spacer(): JSX.Element;\nexport type TextWeight = \"normal\" | \"medium\" | \"semibold\" | \"bold\";\nexport type TextProps = {\n    children?: ReactNode;\n    tone?: \"primary\" | \"secondary\" | \"tertiary\" | \"quaternary\";\n    size?: \"body\" | \"small\";\n    as?: \"p\" | \"span\";\n    weight?: TextWeight;\n    italic?: boolean;\n    style?: CSSProperties;\n};\nexport declare function Text({ children, tone, size, as, weight, italic, style, }: TextProps): JSX.Element;\nexport type H1Props = {\n    children?: ReactNode;\n    style?: CSSProperties;\n};\nexport declare function H1({ children, style }: H1Props): JSX.Element;\nexport type H2Props = {\n    children?: ReactNode;\n    style?: CSSProperties;\n};\nexport declare function H2({ children, style }: H2Props): JSX.Element;\nexport type H3Props = {\n    children?: ReactNode;\n    style?: CSSProperties;\n};\nexport declare function H3({ children, style }: H3Props): JSX.Element;\nexport type CodeProps = {\n    children?: ReactNode;\n    style?: CSSProperties;\n};\nexport declare function Code({ children, style }: CodeProps): JSX.Element;\nexport type LinkProps = {\n    children?: ReactNode;\n    href: string;\n    style?: CSSProperties;\n};\nexport declare function Link({ children, href, style }: LinkProps): JSX.Element;\n"
+      "source": "import type { CSSProperties, ReactNode, JSX } from \"react\";\nexport declare function mergeStyle(base: CSSProperties, override?: CSSProperties): CSSProperties;\nexport type StackProps = {\n    children?: ReactNode;\n    gap?: number;\n    style?: CSSProperties;\n};\nexport declare function Stack({ children, gap, style }: StackProps): JSX.Element;\nexport type RowProps = {\n    children?: ReactNode;\n    gap?: number;\n    align?: \"start\" | \"center\" | \"end\" | \"stretch\";\n    justify?: \"start\" | \"center\" | \"end\" | \"space-between\";\n    wrap?: boolean;\n    style?: CSSProperties;\n};\nexport declare function Row({ children, gap, align, justify, wrap, style, }: RowProps): JSX.Element;\nexport type GridProps = {\n    children?: ReactNode;\n    columns: number | string;\n    gap?: number;\n    align?: \"start\" | \"center\" | \"end\" | \"stretch\";\n    style?: CSSProperties;\n};\nexport declare function Grid({ children, columns, gap, align, style, }: GridProps): JSX.Element;\nexport type DividerProps = {\n    style?: CSSProperties;\n};\nexport declare function Divider({ style }: DividerProps): JSX.Element;\nexport declare function Spacer(): JSX.Element;\nexport type TextWeight = \"normal\" | \"medium\" | \"semibold\" | \"bold\";\nexport type TextProps = {\n    children?: ReactNode;\n    tone?: \"primary\" | \"secondary\" | \"tertiary\" | \"quaternary\";\n    size?: \"body\" | \"small\";\n    as?: \"p\" | \"span\";\n    weight?: TextWeight;\n    italic?: boolean;\n    truncate?: boolean | \"start\" | \"end\";\n    style?: CSSProperties;\n};\nexport declare function Text({ children, tone, size, as, weight, italic, truncate, style, }: TextProps): JSX.Element;\nexport type H1Props = {\n    children?: ReactNode;\n    style?: CSSProperties;\n};\nexport declare function H1({ children, style }: H1Props): JSX.Element;\nexport type H2Props = {\n    children?: ReactNode;\n    style?: CSSProperties;\n};\nexport declare function H2({ children, style }: H2Props): JSX.Element;\nexport type H3Props = {\n    children?: ReactNode;\n    style?: CSSProperties;\n};\nexport declare function H3({ children, style }: H3Props): JSX.Element;\nexport type CodeProps = {\n    children?: ReactNode;\n    style?: CSSProperties;\n};\nexport declare function Code({ children, style }: CodeProps): JSX.Element;\nexport type LinkProps = {\n    children?: ReactNode;\n    href: string;\n    style?: CSSProperties;\n};\nexport declare function Link({ children, href, style }: LinkProps): JSX.Element;\n"
     },
     {
       "path": "resources/canvas/sdk/theme-context.d.ts",
-      "source": "import { type ReactNode } from \"react\";\nimport { type CanvasTheme, type CanvasTokens, type CanvasPalette } from \"./tokens\";\nexport interface CanvasHostTheme {\n    readonly kind: string;\n    readonly tokens: CanvasTokens;\n    readonly palette: CanvasPalette;\n}\nexport declare function CanvasThemeProvider({ theme, children, }: {\n    theme: CanvasTheme;\n    children: ReactNode;\n}): import(\"react/jsx-runtime\").JSX.Element;\n/**\n * Returns the current canvas host theme with semantic tokens and palette.\n * Falls back to dark theme when used outside a provider.\n */\nexport declare function useHostTheme(): CanvasHostTheme;\n"
+      "source": "import { type ReactNode } from \"react\";\nimport { type CanvasTheme } from \"./tokens\";\nexport type CanvasHostTheme = CanvasTheme;\nexport declare function CanvasThemeProvider({ theme, children, }: {\n    theme: CanvasTheme;\n    children: ReactNode;\n}): import(\"react/jsx-runtime\").JSX.Element;\n/**\n * Returns the current canvas host theme with semantic tokens and palette.\n * Falls back to dark theme when used outside a provider.\n */\nexport declare function useHostTheme(): CanvasHostTheme;\n"
     },
     {
       "path": "resources/canvas/sdk/tokens.d.ts",
-      "source": "/**\n * Canvas theme tokens — semantic color and spacing tokens for canvas components.\n *\n * Mirrors the Cursor Canvas token structure to maintain SDK compatibility.\n * Canvas components use inline styles with these tokens, not Tailwind classes.\n */\nexport interface CanvasTokens {\n    text: {\n        primary: string;\n        secondary: string;\n        tertiary: string;\n        quaternary: string;\n        link: string;\n        onAccent: string;\n    };\n    bg: {\n        editor: string;\n        chrome: string;\n        elevated: string;\n    };\n    fill: {\n        primary: string;\n        secondary: string;\n        tertiary: string;\n        quaternary: string;\n    };\n    stroke: {\n        primary: string;\n        secondary: string;\n        tertiary: string;\n    };\n    accent: {\n        primary: string;\n        control: string;\n    };\n    diff: {\n        insertedLine: string;\n        removedLine: string;\n        stripAdded: string;\n        stripRemoved: string;\n    };\n}\nexport interface CanvasPalette {\n    foreground: string;\n    background: string;\n    accent: string;\n    success: string;\n    warning: string;\n    danger: string;\n    info: string;\n}\nexport interface CanvasTheme {\n    kind: \"dark\" | \"light\";\n    tokens: CanvasTokens;\n    palette: CanvasPalette;\n}\nexport declare const darkTokens: CanvasTokens;\nexport declare const lightTokens: CanvasTokens;\nexport declare const darkPalette: CanvasPalette;\nexport declare const lightPalette: CanvasPalette;\nexport declare const darkTheme: CanvasTheme;\nexport declare const lightTheme: CanvasTheme;\n/** Spacing scale (px) matching canvas design language. */\nexport declare const canvasSpacing: Record<number, number>;\n/** Border radius scale (px). */\nexport declare const canvasRadius: {\n    readonly sm: 4;\n    readonly md: 6;\n    readonly lg: 8;\n    readonly full: 9999;\n};\n/** Typography presets. */\nexport declare const canvasTypography: {\n    readonly h1: {\n        readonly fontSize: \"24px\";\n        readonly lineHeight: \"30px\";\n        readonly fontWeight: 590;\n    };\n    readonly h2: {\n        readonly fontSize: \"18px\";\n        readonly lineHeight: \"24px\";\n        readonly fontWeight: 590;\n    };\n    readonly h3: {\n        readonly fontSize: \"15px\";\n        readonly lineHeight: \"20px\";\n        readonly fontWeight: 590;\n    };\n    readonly body: {\n        readonly fontSize: \"14px\";\n        readonly lineHeight: \"20px\";\n        readonly fontWeight: 400;\n    };\n    readonly small: {\n        readonly fontSize: \"12px\";\n        readonly lineHeight: \"16px\";\n        readonly fontWeight: 400;\n    };\n    readonly stat: {\n        readonly fontSize: \"24px\";\n        readonly lineHeight: \"28px\";\n        readonly fontWeight: 600;\n    };\n};\n"
+      "source": "/**\n * Canvas theme tokens — semantic color and spacing tokens for canvas components.\n *\n * Mirrors the Cursor Canvas token structure to maintain SDK compatibility.\n * Canvas components use inline styles with these tokens, not Tailwind classes.\n */\nexport interface CanvasTokens {\n    text: {\n        primary: string;\n        secondary: string;\n        tertiary: string;\n        quaternary: string;\n        link: string;\n        onAccent: string;\n    };\n    bg: {\n        editor: string;\n        chrome: string;\n        elevated: string;\n    };\n    fill: {\n        primary: string;\n        secondary: string;\n        tertiary: string;\n        quaternary: string;\n    };\n    stroke: {\n        primary: string;\n        secondary: string;\n        tertiary: string;\n    };\n    accent: {\n        primary: string;\n        control: string;\n        controlHover: string;\n    };\n    diff: {\n        insertedLine: string;\n        removedLine: string;\n        stripAdded: string;\n        stripRemoved: string;\n    };\n}\nexport interface CanvasPalette {\n    foreground: string;\n    foregroundSecondary: string;\n    foregroundTertiary: string;\n    foregroundQuaternary: string;\n    editor: string;\n    chrome: string;\n    sidebar: string;\n    elevated: string;\n    fillPrimary: string;\n    fillSecondary: string;\n    fillTertiary: string;\n    fillQuaternary: string;\n    strokePrimary: string;\n    strokeSecondary: string;\n    strokeTertiary: string;\n    background: string;\n    accent: string;\n    buttonBackground: string;\n    buttonForeground: string;\n    buttonHoverBackground: string;\n    link: string;\n    diffInsertedLine: string;\n    diffRemovedLine: string;\n    diffStripAdded: string;\n    diffStripRemoved: string;\n    success: string;\n    warning: string;\n    danger: string;\n    info: string;\n}\nexport interface CanvasTheme extends CanvasTokens {\n    kind: string;\n    tokens: CanvasTokens;\n    palette: CanvasPalette;\n}\nexport declare const darkTokens: CanvasTokens;\nexport declare const lightTokens: CanvasTokens;\nexport declare const darkPalette: CanvasPalette;\nexport declare const lightPalette: CanvasPalette;\nexport declare const darkTheme: CanvasTheme;\nexport declare const lightTheme: CanvasTheme;\nexport declare const canvasPaletteDark: CanvasPalette;\nexport declare const canvasPaletteLight: CanvasPalette;\nexport declare const canvasTokens: CanvasTokens;\nexport declare const canvasTokensLight: CanvasTokens;\n/** Spacing scale (px) matching canvas design language. */\nexport declare const canvasSpacing: Record<number, number>;\n/** Border radius scale (px). */\nexport declare const canvasRadius: {\n    readonly none: 0;\n    readonly xs: 2;\n    readonly sm: 4;\n    readonly md: 6;\n    readonly lg: 8;\n    readonly xl: 12;\n    readonly full: 9999;\n};\n/** Typography presets. */\nexport declare const canvasTypography: {\n    readonly h1: {\n        readonly fontSize: \"24px\";\n        readonly lineHeight: \"30px\";\n        readonly fontWeight: 590;\n    };\n    readonly h2: {\n        readonly fontSize: \"18px\";\n        readonly lineHeight: \"24px\";\n        readonly fontWeight: 590;\n    };\n    readonly h3: {\n        readonly fontSize: \"16px\";\n        readonly lineHeight: \"22px\";\n        readonly fontWeight: 590;\n    };\n    readonly body: {\n        readonly fontSize: \"14px\";\n        readonly lineHeight: \"20px\";\n        readonly fontWeight: 400;\n    };\n    readonly small: {\n        readonly fontSize: \"12px\";\n        readonly lineHeight: \"16px\";\n        readonly fontWeight: 400;\n    };\n    readonly stat: {\n        readonly fontSize: \"24px\";\n        readonly lineHeight: \"28px\";\n        readonly fontWeight: 600;\n    };\n};\n"
     }
   ],
-  "indexDtsSource": "/**\n * Canvas SDK — constrained React component library for canvas artifacts.\n *\n * Components use inline styles with theme tokens. Import only from this barrel.\n */\nexport { type CanvasTheme, type CanvasTokens, type CanvasPalette, darkTheme, lightTheme, canvasSpacing, canvasRadius, canvasTypography, } from \"./tokens\";\nexport { CanvasThemeProvider, useHostTheme, type CanvasHostTheme, } from \"./theme-context\";\nexport { mergeStyle, Stack, Row, Grid, Divider, Spacer, Text, H1, H2, H3, Code, Link, type StackProps, type RowProps, type GridProps, type DividerProps, type TextWeight, type TextProps, type H1Props, type H2Props, type H3Props, type CodeProps, type LinkProps, } from \"./primitives\";\nexport { Table, Stat, Pill, type TableProps, type TableColumnAlign, type TableRowTone, type StatProps, type StatTone, type PillProps, type PillTone, } from \"./data-display\";\nexport { Card, CardHeader, CardBody, type CardProps, type CardHeaderProps, type CardBodyProps, } from \"./containers\";\nexport { Button, type ButtonProps, type ButtonVariant, } from \"./controls\";\nexport { BarChart, PieChart, type BarChartProps, type BarChartEntry, type PieChartProps, type PieChartEntry, } from \"./charts\";\n"
+  "indexDtsSource": "/**\n * Canvas SDK — constrained React component library for canvas artifacts.\n *\n * Components use inline styles with theme tokens. Import only from this barrel.\n */\nexport { type CanvasTheme, type CanvasTokens, type CanvasPalette, darkTheme, lightTheme, canvasPaletteDark, canvasPaletteLight, canvasTokens, canvasTokensLight, canvasSpacing, canvasRadius, canvasTypography, } from \"./tokens\";\nexport { CanvasThemeProvider, useHostTheme, type CanvasHostTheme, } from \"./theme-context\";\nexport { useCanvasState, useCanvasAction, type CanvasAction, type SetCanvasState, } from \"./hooks\";\nexport { mergeStyle, Stack, Row, Grid, Divider, Spacer, Text, H1, H2, H3, Code, Link, type StackProps, type RowProps, type GridProps, type DividerProps, type TextWeight, type TextProps, type H1Props, type H2Props, type H3Props, type CodeProps, type LinkProps, } from \"./primitives\";\nexport { Table, Stat, Pill, Callout, type TableProps, type TableColumnAlign, type TableRowTone, type StatProps, type StatTone, type PillProps, type PillTone, type PillSize, type CalloutProps, type CalloutTone, } from \"./data-display\";\nexport { Card, CardHeader, CardBody, type CardProps, type CardSize, type CardVariant, type CardHeaderProps, type CardBodyProps, } from \"./containers\";\nexport { Button, TextInput, TextArea, Checkbox, Toggle, Select, IconButton, type ButtonProps, type ButtonVariant, type TextInputProps, type TextAreaProps, type CheckboxProps, type ToggleProps, type SelectOption, type SelectProps, type IconButtonProps, } from \"./controls\";\nexport { BarChart, LineChart, PieChart, type BarChartProps, type BarChartEntry, type ChartDataPoint, type ChartSeries, type ChartTone, type LineChartProps, type PieChartProps, type PieChartEntry, } from \"./charts\";\nexport { DiffStats, DiffView, type DiffStatsProps, type DiffLineType, type DiffLineData, type DiffViewProps, } from \"./diff-view\";\nexport { computeDAGLayout, type DAGLayoutOptions, type DAGLayoutNode, type DAGLayoutEdge, type DAGLayoutRank, type DAGLayoutResult, } from \"./dag-layout\";\n"
 }

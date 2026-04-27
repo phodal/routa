@@ -2,6 +2,7 @@ use crate::model::{EvidenceType, Metric, MetricResult, ResultState};
 use crate::review_context::{
     analyze_impact, analyze_test_radius, ImpactOptions, ReviewBuildMode, TestRadiusOptions,
 };
+use crate::run_deadline::RunDeadline;
 use crate::runner::{ProgressCallback, ShellRunner};
 use crate::sarif::SarifRunner;
 use crate::test_mapping;
@@ -18,6 +19,7 @@ pub struct RunMetricBatchOptions<'a> {
     pub changed_files: &'a [String],
     pub base: &'a str,
     pub progress_callback: Option<&'a ProgressCallback>,
+    pub deadline: Option<&'a RunDeadline>,
 }
 
 pub fn run_metric_batch(
@@ -41,6 +43,19 @@ pub fn run_metric_batch(
     let mut sarif_indexes = Vec::new();
 
     for (index, metric) in metrics.iter().enumerate() {
+        if let Some(deadline) = options.deadline {
+            if deadline.is_expired() {
+                if let Some(callback) = options.progress_callback {
+                    callback("start", metric, None);
+                }
+                results[index] = deadline.timeout_result_before_start(metric);
+                if let Some(callback) = options.progress_callback {
+                    callback("end", metric, Some(&results[index]));
+                }
+                continue;
+            }
+        }
+
         match metric.evidence_type {
             EvidenceType::Probe => {
                 if let Some(callback) = options.progress_callback {

@@ -14,6 +14,7 @@ import {
   createTask,
   hydrateTaskComments,
   parseTaskContextSearchSpec,
+  parseTaskJitContextSnapshot,
   Task,
   TaskStatus,
   TaskPriority,
@@ -43,6 +44,7 @@ import {
   buildTaskStoryReadiness,
 } from "./task-evidence-summary";
 import { buildTaskDeliveryReadiness } from "@/core/kanban/task-delivery-readiness";
+import { stripSpeculativeKanbanTaskAdaptiveSnapshot } from "@/core/kanban/task-adaptive";
 
 export const dynamic = "force-dynamic";
 
@@ -264,6 +266,7 @@ export async function POST(request: NextRequest) {
     repoPath,
     codebaseIds,
     contextSearchSpec,
+    jitContextSnapshot,
     githubId,
     githubNumber,
     githubUrl,
@@ -309,6 +312,9 @@ export async function POST(request: NextRequest) {
   const normalizedContextSearchSpec = contextSearchSpec === null
     ? undefined
     : parseTaskContextSearchSpec(contextSearchSpec);
+  const normalizedJitContextSnapshot = jitContextSnapshot === null
+    ? undefined
+    : parseTaskJitContextSnapshot(jitContextSnapshot);
   const normalizedGitHubId = typeof githubId === "string" && githubId.trim()
     ? githubId.trim()
     : undefined;
@@ -402,7 +408,7 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  const task = createTask({
+  const task = stripSpeculativeKanbanTaskAdaptiveSnapshot(createTask({
     id: uuidv4(),
     title: normalizedTitle,
     objective: normalizedObjective,
@@ -436,7 +442,8 @@ export async function POST(request: NextRequest) {
     creationSource: normalizedCreationSource,
     codebaseIds: normalizedCodebaseIds,
     contextSearchSpec: normalizedContextSearchSpec,
-  });
+    jitContextSnapshot: normalizedJitContextSnapshot,
+  }));
 
   await system.taskStore.save(task);
   getKanbanEventBroadcaster().notify({
@@ -508,6 +515,7 @@ async function serializeTask(
   system: TaskSerializationSystem,
   options: SerializeTaskOptions = { includeDeliveryReadiness: true },
 ) {
+  task = stripSpeculativeKanbanTaskAdaptiveSnapshot(task);
   const evidenceSummary = await buildTaskEvidenceSummary(task, system);
   const storyReadiness = await buildTaskStoryReadiness(task, system);
   const investValidation = buildTaskInvestValidation(task);
@@ -557,6 +565,7 @@ async function serializeTask(
     creationSource: task.creationSource,
     codebaseIds: task.codebaseIds ?? [],
     contextSearchSpec: task.contextSearchSpec,
+    jitContextSnapshot: task.jitContextSnapshot,
     worktreeId: task.worktreeId,
     completionSummary: task.completionSummary,
     ...(task.verificationVerdict != null && { verificationVerdict: task.verificationVerdict }),

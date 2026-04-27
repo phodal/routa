@@ -43,7 +43,13 @@ describe("buildTaskPrompt", () => {
     expect(prompt).toContain("Treat backlog as planning and refinement, not implementation");
     expect(prompt).toContain("move_card");
     expect(prompt).toContain("Do NOT create or sync GitHub issues during backlog planning.");
-    expect(prompt).toContain("Do not use native tools such as Bash, Read, Write, Edit, Glob, or Grep in backlog planning");
+    expect(prompt).toContain("Prefer feature-tree confirmation first");
+    expect(prompt).toContain("You may use read-only native tools such as Read, Grep, and Glob for limited repo inspection only after feature-tree evidence is still weak or ambiguous");
+    expect(prompt).toContain("If Relevant History Memory or Relevant Feature Tree Context is provided");
+    expect(prompt).toContain("confirm_feature_tree_story_context");
+    expect(prompt).toContain('taskId: "task-1"');
+    expect(prompt).toContain("Only write contextSearchSpec after feature-tree confirmation or repo inspection confirms the feature/files");
+    expect(prompt).toContain("include an optional `feature_tree` block");
     expect(prompt).toContain("decompose_tasks");
     expect(prompt).not.toContain("Complete the work assigned to this column stage");
   });
@@ -76,6 +82,53 @@ describe("buildTaskPrompt", () => {
     expect(prompt).toContain("Do not use `ps | grep | xargs kill`, `killall`, or broad `pkill` patterns for cleanup");
     expect(prompt).toContain("If the UI depends on env vars or setup");
     expect(prompt).not.toContain("Tool: report_to_parent");
+  });
+
+  it("injects saved per-lane experience memory into automation prompts", () => {
+    const task = createTask({
+      id: "task-lane-memory-prompt",
+      title: "Continue review fix",
+      objective: "Use prior review evidence",
+      workspaceId: "default",
+      boardId: "board-1",
+      columnId: "review",
+    });
+    task.jitContextSnapshot = {
+      generatedAt: "2026-04-23T08:00:00.000Z",
+      summary: "Recovered history context.",
+      matchConfidence: "medium",
+      matchReasons: [],
+      warnings: [],
+      matchedFileDetails: [],
+      matchedSessionIds: [],
+      failures: [],
+      repeatedReadFiles: [],
+      sessions: [],
+      perLaneAnalysis: {
+        review: {
+          columnId: "review",
+          columnName: "Review",
+          synthesizedAt: "2026-04-23T08:10:00.000Z",
+          sessionCount: 2,
+          latestSessionId: "review-2",
+          latestStatus: "running",
+          completedSessions: 1,
+          failedSessions: 1,
+          recoveredSessions: 1,
+          summary: "Review has 2 lane session(s): 1 completed or transitioned, 1 failed or timed out, 1 recovered. Latest session review-2 is running.",
+          learnedPatterns: ["Recovery has been needed 1 time(s), most often for completion_criteria_not_met."],
+          topFailures: ["review-1 ended as failed, recovery reason: completion_criteria_not_met."],
+          recommendedActions: ["Review review-1 before retrying this lane to avoid repeating the same failure."],
+          flowGuidance: [],
+        },
+      },
+    };
+
+    const prompt = buildTaskPrompt(task);
+
+    expect(prompt).toContain("## Lane Experience Memory");
+    expect(prompt).toContain("Review has 2 lane session");
+    expect(prompt).toContain("Review review-1 before retrying this lane");
   });
 
   it("does not invent a placeholder board id when the task has no board", () => {
@@ -231,6 +284,52 @@ describe("buildTaskPrompt", () => {
     expect(prompt).toContain("Overall: WARNING");
     expect(prompt).toContain("## Evidence Bundle");
     expect(prompt).toContain("Missing required artifacts: test_results");
+  });
+
+  it("injects saved history memory into the task prompt when available", () => {
+    const task = createTask({
+      id: "task-history-memory",
+      title: "Reuse Kanban history memory",
+      objective: "Use prior memory before implementation",
+      workspaceId: "default",
+      boardId: "board-1",
+      columnId: "todo",
+      jitContextSnapshot: {
+        generatedAt: "2026-04-22T12:00:00.000Z",
+        summary: "retrieval summary",
+        matchConfidence: "high",
+        matchReasons: ["shared feature"],
+        warnings: [],
+        matchedFileDetails: [],
+        matchedSessionIds: [],
+        failures: [],
+        repeatedReadFiles: [],
+        sessions: [],
+        analysis: {
+          updatedAt: "2026-04-22T12:05:00.000Z",
+          summary: "Start from kanban.rs and the events route before broader MCP scanning.",
+          topFiles: ["crates/routa-server/src/api/kanban.rs"],
+          topSessions: [{
+            sessionId: "019daf46-1a5b-7001-8a17-df4a7053ace0",
+            provider: "codex",
+            reason: "Covers the flow-event write path directly.",
+          }],
+          reusablePrompts: ["Check the persisted flow event path before touching dashboard code."],
+          recommendedContextSearchSpec: {
+            featureCandidates: ["kanban-workflow"],
+            relatedFiles: ["crates/routa-server/src/api/kanban.rs"],
+          },
+        },
+      },
+    });
+
+    const prompt = buildTaskPrompt(task);
+
+    expect(prompt).toContain("## Saved History Memory");
+    expect(prompt).toContain("Start from kanban.rs and the events route before broader MCP scanning.");
+    expect(prompt).toContain("Top files: crates/routa-server/src/api/kanban.rs");
+    expect(prompt).toContain("019daf46-1a5b-7001-8a17-df4a7053ace0 (codex): Covers the flow-event write path directly.");
+    expect(prompt).toContain("Recommended context search spec:");
   });
 
   it("adds previous-lane handoff guidance for review sessions", () => {
@@ -719,7 +818,9 @@ describe("triggerAssignedTaskAgent ACP prompt lifecycle", () => {
     );
     const requestBody = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
     expect(requestBody.params.taskAdaptiveHarness).toEqual({
+      taskId: "task-acp-success",
       taskLabel: "Run ACP task",
+      query: "Run ACP task",
       historySessionIds: ["session-trigger", "session-history", "session-lane"],
       taskType: "implementation",
       role: "DEVELOPER",

@@ -30,6 +30,7 @@ import {
   createAgent as createAgentModel,
 } from "../models/agent";
 import {
+  mergeTaskJitContextAnalysis,
   normalizeTaskContextSearchSpec,
   Task,
   TaskStatus,
@@ -60,6 +61,8 @@ import {
   PermissionUrgency,
 } from './permission-store';
 import { getTaskLaneSession } from "../kanban/task-lane-history";
+import { filterBacklogContextSearchSpec } from "../kanban/backlog-context-confirmation";
+import { hasConfirmedKanbanTaskAdaptiveContext } from "../kanban/task-adaptive";
 
 function extractSandboxId(options?: PermissionRequestOptions): string | undefined {
   const sandboxId = options?.sandboxId;
@@ -859,10 +862,12 @@ export class AgentTools {
       verificationCommands?: string[];
       testCases?: string[];
       contextSearchSpec?: import("../models/task").TaskContextSearchSpec;
+      jitContextAnalysis?: import("../models/task").TaskJitContextAnalysis | null;
     };
     agentId: string;
+    sessionId?: string;
   }): Promise<ToolResult> {
-    const { taskId, expectedVersion, updates, agentId } = params;
+    const { taskId, expectedVersion, updates, agentId, sessionId } = params;
 
     const task = await this.taskStore.get(taskId);
     if (!task) {
@@ -881,6 +886,7 @@ export class AgentTools {
 
     const oldStatus = task.status;
     const originalColumnId = task.columnId;
+    const warnings = new Set<string>();
     if (updates.title) task.title = updates.title;
     if (updates.objective) task.objective = updates.objective;
     if (updates.scope !== undefined) task.scope = updates.scope;
@@ -898,7 +904,22 @@ export class AgentTools {
     if (updates.verificationCommands !== undefined) task.verificationCommands = updates.verificationCommands;
     if (updates.testCases !== undefined) task.testCases = updates.testCases;
     if (updates.contextSearchSpec !== undefined) {
-      task.contextSearchSpec = normalizeTaskContextSearchSpec(updates.contextSearchSpec);
+      const filteredContextSearchSpec = await filterBacklogContextSearchSpec({
+        contextSearchSpec: normalizeTaskContextSearchSpec(updates.contextSearchSpec),
+        columnId: task.columnId,
+        sessionId,
+        hasExistingConfirmedContext: hasConfirmedKanbanTaskAdaptiveContext(task),
+      });
+      task.contextSearchSpec = filteredContextSearchSpec.contextSearchSpec;
+      if (filteredContextSearchSpec.warning) {
+        warnings.add(filteredContextSearchSpec.warning);
+      }
+    }
+    if (updates.jitContextAnalysis !== undefined) {
+      task.jitContextSnapshot = mergeTaskJitContextAnalysis(
+        task.jitContextSnapshot,
+        updates.jitContextAnalysis,
+      );
     }
 
     // Always check review lane convergence when verification verdict is updated
@@ -964,6 +985,45 @@ export class AgentTools {
         (k) => updates[k as keyof typeof updates] !== undefined
       ),
       updatedAt: task.updatedAt.toISOString(),
+      warnings: [...warnings],
+    });
+  }
+
+  async saveJitContext(params: {
+    taskId: string;
+    result: import("../models/task").TaskJitContextAnalysis;
+    agentId: string;
+  }): Promise<ToolResult> {
+    const { taskId, result } = params;
+    const task = await this.taskStore.get(taskId);
+    if (!task) {
+      return errorResult(`Task not found: ${taskId}`);
+    }
+
+    task.jitContextSnapshot = mergeTaskJitContextAnalysis(
+      task.jitContextSnapshot,
+      result,
+    );
+    task.updatedAt = new Date();
+
+    await this.taskStore.save(task);
+
+    getKanbanEventBroadcaster().notify({
+      workspaceId: task.workspaceId,
+      entity: "task",
+      action: "updated",
+      resourceId: taskId,
+      source: "agent",
+    });
+
+    return successResult({
+      taskId,
+      saved: true,
+      updatedAt: task.updatedAt.toISOString(),
+      summary: task.jitContextSnapshot?.analysis?.summary,
+      topFiles: task.jitContextSnapshot?.analysis?.topFiles ?? [],
+      topSessions: task.jitContextSnapshot?.analysis?.topSessions ?? [],
+      reusablePrompts: task.jitContextSnapshot?.analysis?.reusablePrompts ?? [],
     });
   }
 

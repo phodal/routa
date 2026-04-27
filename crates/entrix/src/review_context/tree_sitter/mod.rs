@@ -13,6 +13,7 @@ use super::model::{
     ChangedNode, FileGraphNode, GraphNodePayload, ParsedReviewGraph, SymbolGraphNode,
 };
 use graph_builder::{derive_graph_edges, derive_target_tests};
+use ignore::{DirEntry, WalkBuilder};
 pub(crate) use query::QueryResult;
 use resolver::{
     resolve_go_import as resolve_go_import_impl, resolve_java_import as resolve_java_import_impl,
@@ -628,39 +629,48 @@ fn file_name(path: &str) -> String {
 
 fn collect_repo_files(repo_root: &Path) -> Vec<String> {
     let mut files = Vec::new();
-    collect_repo_files_inner(repo_root, repo_root, &mut files);
-    files.sort();
-    files
-}
+    let mut builder = WalkBuilder::new(repo_root);
+    builder
+        .hidden(false)
+        .parents(false)
+        .ignore(false)
+        .git_ignore(true)
+        .git_exclude(true)
+        .git_global(false)
+        .require_git(false)
+        .filter_entry(|entry| !is_excluded_repo_walk_dir(entry));
 
-fn collect_repo_files_inner(root: &Path, dir: &Path, out: &mut Vec<String>) {
-    let Ok(entries) = fs::read_dir(dir) else {
-        return;
-    };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if path.is_dir() {
-            let name = path
-                .file_name()
-                .and_then(|value| value.to_str())
-                .unwrap_or_default();
-            if matches!(
-                name,
-                ".git" | "target" | "node_modules" | ".next" | "dist" | "build"
-            ) {
-                continue;
-            }
-            collect_repo_files_inner(root, &path, out);
+    for entry in builder.build().flatten() {
+        if !entry
+            .file_type()
+            .is_some_and(|file_type| file_type.is_file())
+        {
             continue;
         }
-        let Ok(relative) = path.strip_prefix(root) else {
+        let Ok(relative) = entry.path().strip_prefix(repo_root) else {
             continue;
         };
         let rel = relative.to_string_lossy().replace('\\', "/");
         if language_config_for_path(&rel).is_some() {
-            out.push(rel);
+            files.push(rel);
         }
     }
+    files.sort();
+    files
+}
+
+fn is_excluded_repo_walk_dir(entry: &DirEntry) -> bool {
+    if !entry
+        .file_type()
+        .is_some_and(|file_type| file_type.is_dir())
+    {
+        return false;
+    }
+
+    matches!(
+        entry.path().file_name().and_then(|value| value.to_str()),
+        Some(".git" | "target" | "node_modules" | ".next" | "dist" | "build")
+    )
 }
 
 struct LanguageConfig {

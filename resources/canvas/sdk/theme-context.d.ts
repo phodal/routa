@@ -1,10 +1,6 @@
 import { type ReactNode } from "react";
-import { type CanvasTheme, type CanvasTokens, type CanvasPalette } from "./tokens";
-export interface CanvasHostTheme {
-    readonly kind: string;
-    readonly tokens: CanvasTokens;
-    readonly palette: CanvasPalette;
-}
+import { type CanvasTheme } from "./tokens";
+export type CanvasHostTheme = CanvasTheme;
 export declare function CanvasThemeProvider({ theme, children, }: {
     theme: CanvasTheme;
     children: ReactNode;

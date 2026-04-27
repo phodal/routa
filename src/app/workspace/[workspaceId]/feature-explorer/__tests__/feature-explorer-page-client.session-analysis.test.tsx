@@ -564,6 +564,8 @@ describe("FeatureExplorerPageClient session analysis", () => {
       (screen.getByTestId("feature-explorer-session-analysis-toggle-019d-kanban-followup") as HTMLInputElement).checked,
     ).toBe(true);
 
+    sessionLaunchState.desktopAwareFetch.mockClear();
+
     fireEvent.click(
       within(screen.getByTestId("feature-explorer-session-analysis-provider")).getByRole("button", { name: "Codex" }),
     );

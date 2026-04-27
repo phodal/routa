@@ -796,6 +796,10 @@ fn start_rust_server(
             "ROUTA_SPECIALISTS_RESOURCE_DIR",
             resource_dir.to_string_lossy().to_string(),
         );
+        std::env::set_var(
+            "ROUTA_FEATURE_TREE_RESOURCE_DIR",
+            resource_dir.to_string_lossy().to_string(),
+        );
     }
     let host = host.to_string();
 

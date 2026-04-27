@@ -12,6 +12,7 @@ import type {
   KanbanAgentPromptHandler,
   KanbanBoardInfo,
   KanbanDevSessionSupervisionInfo,
+  KanbanHistoryMemoryPolicyInfo,
   SessionInfo,
   TaskInfo,
   WorktreeInfo,
@@ -405,10 +406,11 @@ export function KanbanTab({
       });
 
       const sessionId = await onAgentPrompt(agentInput, {
+        boardId: selectedBoardId ?? defaultBoardId ?? undefined,
         provider: boardAutoProviderId,
         role: "CRAFTER",
         toolMode: "full",
-        allowedNativeTools: [],
+        allowedNativeTools: ["Read", "Grep", "Glob"],
         mcpProfile: "kanban-planning",
         systemPrompt: planningPrompt,
         taskAdaptiveHarness: buildKanbanTaskAdaptiveHarnessOptions(agentInput, { locale: specialistLanguage, role: "CRAFTER", taskType: "planning" }),
@@ -1819,10 +1821,11 @@ export function KanbanTab({
         language: specialistLanguage,
       });
       const sessionId = await onAgentPrompt(remediationPrompt, {
+        boardId: selectedBoardId ?? defaultBoardId ?? task.boardId ?? undefined,
         provider: boardAutoProviderId,
         role: "CRAFTER",
         toolMode: "full",
-        allowedNativeTools: [],
+        allowedNativeTools: ["Read", "Grep", "Glob"],
         mcpProfile: "kanban-planning",
         systemPrompt: remediationPrompt,
         taskAdaptiveHarness: buildKanbanTaskAdaptiveHarnessOptions(task.title, { locale: specialistLanguage, role: "CRAFTER", taskType: "planning", task }),
@@ -1949,12 +1952,13 @@ export function KanbanTab({
       newColumnAutomation: Record<string, ColumnAutomationConfig>,
       sessionConcurrencyLimit: number,
       devSessionSupervision: KanbanDevSessionSupervisionInfo,
+      historyMemoryPolicy: KanbanHistoryMemoryPolicyInfo,
       githubTokenUpdate?: { token?: string; clear?: boolean },
     ) => {
       const updatedColumns = newColumns.map((col) => ({
         ...col,
-        automation: newColumnAutomation[col.id]?.enabled
-          ? normalizeKanbanAutomation(newColumnAutomation[col.id])
+        automation: newColumnAutomation[col.id]
+          ? (normalizeKanbanAutomation(newColumnAutomation[col.id]) ?? newColumnAutomation[col.id])
           : undefined,
       }));
 
@@ -1965,6 +1969,7 @@ export function KanbanTab({
           columns: updatedColumns,
           sessionConcurrencyLimit,
           devSessionSupervision,
+          historyMemoryPolicy,
           ...(githubTokenUpdate?.token ? { githubToken: githubTokenUpdate.token } : {}),
           ...(githubTokenUpdate?.clear ? { clearGitHubToken: true } : {}),
         }),

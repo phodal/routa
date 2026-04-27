@@ -25,6 +25,7 @@ import {
   buildExecutionBinding,
   refreshExecutionBinding,
 } from "@/core/acp/execution-backend";
+import { buildProviderModelArgs } from "@/core/acp/provider-model-args";
 import type { McpServerProfile } from "@/core/mcp/mcp-server-profiles";
 import { pendingAcpCreations } from "@/core/acp/pending-acp-creations";
 import { buildFeatureTreeSpecPromptSection } from "@/core/spec/feature-tree-spec-resource-contract";
@@ -32,6 +33,20 @@ import {
   assembleTaskAdaptiveHarness,
   parseTaskAdaptiveHarnessOptions,
 } from "@/app/api/harness/task-adaptive/shared";
+import { resolveRepoRoot } from "@/core/harness/context-resolution";
+import {
+  buildFeatureTreeRetrievalHints,
+  buildRelevantFeatureTreePromptSection,
+  buildRelevantHistoryMemoryPromptSection,
+  buildHistoryMemoryRetrievalHints,
+  loadRelevantFeatureTreeContext,
+  loadRelevantTaskHistoryMemories,
+} from "@/core/kanban/context-preload";
+import {
+  getDefaultKanbanHistoryMemoryPolicy,
+  getKanbanHistoryMemoryPolicy,
+  shouldInjectKanbanHistoryMemory,
+} from "@/core/kanban/board-history-memory-policy";
 
 export interface IdempotencyEntry {
   sessionId: string;
@@ -119,6 +134,53 @@ function deriveAllowedNativeTools(
   return undefined;
 }
 
+export function parseRequestedAcpMcpServers(
+  value: unknown,
+): { servers?: Array<Record<string, unknown>>; error?: string } {
+  if (value === undefined) {
+    return {};
+  }
+
+  if (!Array.isArray(value)) {
+    return {
+      error: "mcpServers must be an array of objects with a non-empty name",
+    };
+  }
+
+  const servers = value.flatMap((entry) => {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+      return [];
+    }
+
+    const name = typeof (entry as { name?: unknown }).name === "string"
+      ? (entry as { name: string }).name.trim()
+      : "";
+    if (!name) {
+      return [];
+    }
+
+    const nextEntry: Record<string, unknown> = {
+      ...(entry as Record<string, unknown>),
+      name,
+    };
+    if (nextEntry.type === "http" && !("headers" in nextEntry)) {
+      nextEntry.headers = [];
+    }
+
+    return [nextEntry];
+  });
+
+  if (servers.length !== value.length) {
+    return {
+      error: "mcpServers must be an array of objects with a non-empty name",
+    };
+  }
+
+  return {
+    servers,
+  };
+}
+
 type JsonRpcResponseFactory = (
   id: string | number | null,
   result: unknown,
@@ -156,6 +218,29 @@ interface HandleSessionNewArgs {
   serverUrlOverride?: string;
 }
 
+async function resolveKanbanHistoryMemoryPolicy(params: {
+  workspaceId: string;
+  boardId?: string;
+  taskId?: string;
+}) {
+  const system = getRoutaSystem();
+  let effectiveBoardId = typeof params.boardId === "string" && params.boardId.trim().length > 0
+    ? params.boardId.trim()
+    : undefined;
+
+  if (!effectiveBoardId && params.taskId) {
+    const task = await system.taskStore.get(params.taskId);
+    effectiveBoardId = task?.boardId?.trim() || undefined;
+  }
+
+  if (!effectiveBoardId) {
+    return getDefaultKanbanHistoryMemoryPolicy();
+  }
+
+  const workspace = await system.workspaceStore.get(params.workspaceId);
+  return getKanbanHistoryMemoryPolicy(workspace?.metadata, effectiveBoardId);
+}
+
 export async function handleSessionNew({
   id,
   params,
@@ -175,6 +260,9 @@ export async function handleSessionNew({
   const specialistLocale = (p.specialistLocale as string | undefined) ?? "en";
   const specialist = await loadSpecialistConfig(specialistId, specialistLocale);
   const customSystemPrompt = (p.systemPrompt as string | undefined)?.trim() || undefined;
+  const requestedBoardId = typeof p.boardId === "string" && p.boardId.trim().length > 0
+    ? p.boardId.trim()
+    : undefined;
 
   const defaultProvider = isServerlessEnvironment() ? "claude-code-sdk" : "opencode";
   const requestedProvider = (p.provider as string | undefined);
@@ -209,6 +297,7 @@ export async function handleSessionNew({
   const authJson = (p.authJson as string | undefined);
   const autoApprovePermissions = p.autoApprovePermissions === true;
   const taskAdaptiveHarnessOptions = parseTaskAdaptiveHarnessOptions(p.taskAdaptiveHarness);
+  const requestedAcpMcpServers = parseRequestedAcpMcpServers(p.mcpServers);
 
   if (customCommand !== undefined && (typeof customCommand !== "string" || !customCommand.trim())) {
     return jsonrpcResponse(id ?? null, null, {
@@ -220,6 +309,12 @@ export async function handleSessionNew({
     return jsonrpcResponse(id ?? null, null, {
       code: -32602,
       message: "customArgs must be an array of strings",
+    });
+  }
+  if (requestedAcpMcpServers.error) {
+    return jsonrpcResponse(id ?? null, null, {
+      code: -32602,
+      message: requestedAcpMcpServers.error,
     });
   }
   if (!workspaceId) {
@@ -319,8 +414,15 @@ export async function handleSessionNew({
   }
 
   let taskAdaptiveHarnessSummary: string | undefined;
+  let relevantHistoryMemorySection: string | undefined;
+  let relevantFeatureTreeContextSection: string | undefined;
   if (taskAdaptiveHarnessOptions) {
     try {
+      const historyMemoryPolicy = await resolveKanbanHistoryMemoryPolicy({
+        workspaceId,
+        boardId: requestedBoardId,
+        taskId: taskAdaptiveHarnessOptions.taskId,
+      });
       const taskAdaptiveHarness = await assembleTaskAdaptiveHarness(cwd, {
         ...taskAdaptiveHarnessOptions,
         role: taskAdaptiveHarnessOptions.role ?? role ?? specialist?.role,
@@ -330,6 +432,72 @@ export async function handleSessionNew({
       resolvedToolMode = resolvedToolMode ?? taskAdaptiveHarness.recommendedToolMode;
       resolvedMcpProfile = resolvedMcpProfile ?? taskAdaptiveHarness.recommendedMcpProfile;
       resolvedAllowedNativeTools = resolvedAllowedNativeTools ?? taskAdaptiveHarness.recommendedAllowedNativeTools;
+
+      const repoRootForPreload = await resolveRepoRoot({ workspaceId }).catch(() => cwd);
+      const mergedFeatureIds = [
+        ...(taskAdaptiveHarnessOptions.featureIds ?? []),
+        ...(taskAdaptiveHarness.featureId ? [taskAdaptiveHarness.featureId] : []),
+      ];
+      const mergedFilePaths = [
+        ...(taskAdaptiveHarnessOptions.filePaths ?? []),
+        ...taskAdaptiveHarness.selectedFiles,
+      ];
+      const shouldConsiderCrossTaskPreload = historyMemoryPolicy.mode !== "off";
+      let relevantFeatureTreeContext:
+        | Awaited<ReturnType<typeof loadRelevantFeatureTreeContext>>
+        | undefined;
+      if (shouldConsiderCrossTaskPreload) {
+        relevantFeatureTreeContext = await loadRelevantFeatureTreeContext({
+          repoPath: repoRootForPreload,
+          hints: buildFeatureTreeRetrievalHints({
+            featureIds: mergedFeatureIds,
+            query: taskAdaptiveHarnessOptions.query ?? taskAdaptiveHarnessOptions.taskLabel,
+            filePaths: mergedFilePaths,
+            routeCandidates: taskAdaptiveHarnessOptions.routeCandidates,
+            apiCandidates: taskAdaptiveHarnessOptions.apiCandidates,
+            moduleHints: taskAdaptiveHarnessOptions.moduleHints,
+            symptomHints: taskAdaptiveHarnessOptions.symptomHints,
+          }),
+        });
+      }
+
+      const featureCount = new Set([
+        ...mergedFeatureIds,
+        ...(relevantFeatureTreeContext?.features.map((feature) => feature.id) ?? []),
+      ].filter(Boolean)).size;
+      const shouldInjectCrossTaskPreload = shouldInjectKanbanHistoryMemory(historyMemoryPolicy, {
+        featureCount,
+        matchedSessions: taskAdaptiveHarness.matchedSessionIds.length,
+        matchedFiles: taskAdaptiveHarness.selectedFiles.length,
+        confidence: taskAdaptiveHarness.matchConfidence,
+      });
+
+      if (shouldInjectCrossTaskPreload) {
+        const relevantHistoryMemories = await loadRelevantTaskHistoryMemories({
+          workspaceId,
+          repoPath: repoRootForPreload,
+          hints: buildHistoryMemoryRetrievalHints({
+            taskId: taskAdaptiveHarnessOptions.taskId,
+            taskLabel: taskAdaptiveHarnessOptions.taskLabel,
+            query: taskAdaptiveHarnessOptions.query ?? taskAdaptiveHarnessOptions.taskLabel,
+            featureIds: mergedFeatureIds,
+            filePaths: mergedFilePaths,
+            routeCandidates: taskAdaptiveHarnessOptions.routeCandidates,
+            apiCandidates: taskAdaptiveHarnessOptions.apiCandidates,
+            moduleHints: taskAdaptiveHarnessOptions.moduleHints,
+            symptomHints: taskAdaptiveHarnessOptions.symptomHints,
+          }),
+        });
+        relevantHistoryMemorySection = buildRelevantHistoryMemoryPromptSection(
+          relevantHistoryMemories,
+          taskAdaptiveHarnessOptions.locale ?? specialistLocale,
+        );
+        relevantFeatureTreeContextSection = buildRelevantFeatureTreePromptSection(
+          relevantFeatureTreeContext?.features ?? [],
+          taskAdaptiveHarnessOptions.locale ?? specialistLocale,
+          relevantFeatureTreeContext?.warnings,
+        );
+      }
     } catch (error) {
       console.warn("[ACP Route] Task-Adaptive Harness assembly failed:", error);
     }
@@ -338,6 +506,8 @@ export async function handleSessionNew({
   const specialistPromptSections = [
     customSystemPrompt,
     buildSpecialistSystemPrompt(specialist),
+    relevantHistoryMemorySection,
+    relevantFeatureTreeContextSection,
     taskAdaptiveHarnessSummary,
   ].filter((section): section is string => typeof section === "string" && section.trim().length > 0);
   const specialistSystemPrompt = specialistPromptSections.length > 0
@@ -523,17 +693,14 @@ export async function handleSessionNew({
           },
         );
       } else {
-        const extraArgs: string[] = [];
-        if (model && model.trim()) {
-          extraArgs.push("-m", model.trim());
-        }
+        const extraArgs = buildProviderModelArgs(provider, model);
         acpSessionId = await manager.createSession(
           sessionId,
           cwd,
           forwardSessionUpdate,
           provider,
           modeId,
-          extraArgs.length > 0 ? extraArgs : undefined,
+          extraArgs,
           undefined,
           workspaceId,
           resolvedToolMode,
@@ -544,6 +711,7 @@ export async function handleSessionNew({
             role,
             autoApprovePermissions,
           },
+          requestedAcpMcpServers.servers,
         );
       }
 

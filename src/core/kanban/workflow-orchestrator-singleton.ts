@@ -33,6 +33,7 @@ import { getKanbanSessionConcurrencyLimit as getBoardSessionConcurrencyLimit } f
 import { getKanbanDevSessionSupervision } from "./board-session-supervision";
 import { getKanbanAutoProvider } from "./board-auto-provider";
 import { upsertTaskLaneSession } from "./task-lane-history";
+import { refreshTaskLaneExperienceMemory } from "./task-lane-experience";
 import { completeRunningSessionsOutsideColumn } from "./task-session-transition";
 import { analyzeFlowForTasks } from "./flow-ledger";
 import { resolveTaskWorktreeTruth } from "./task-worktree-truth";
@@ -216,17 +217,12 @@ async function startKanbanTaskSession(
   const sessionProviderId = providerOverride
     ?? sessionStep?.providerId
     ?? effectiveAutomation.providerId;
-  const taskForSession = {
+  const taskForSessionBase = {
     ...nextTask,
     assignedProvider: sessionProviderId,
     assignedRole: sessionStep?.role ?? effectiveAutomation.role,
     assignedSpecialistId: sessionStep?.specialistId ?? effectiveAutomation.specialistId,
     assignedSpecialistName: sessionStep?.specialistName ?? effectiveAutomation.specialistName,
-  };
-  const summaryContext = {
-    evidenceSummary: await buildTaskEvidenceSummary(taskForSession, system),
-    storyReadiness: await buildTaskStoryReadiness(taskForSession, system),
-    investValidation: buildTaskInvestValidation(taskForSession),
   };
 
   // Compute board-level flow guidance for the agent
@@ -243,6 +239,12 @@ async function startKanbanTaskSession(
         boardId: nextTask.boardId,
       })
     : undefined;
+  const taskForSession = refreshTaskLaneExperienceMemory(taskForSessionBase, { flowReport });
+  const summaryContext = {
+    evidenceSummary: await buildTaskEvidenceSummary(taskForSession, system),
+    storyReadiness: await buildTaskStoryReadiness(taskForSession, system),
+    investValidation: buildTaskInvestValidation(taskForSession),
+  };
 
   const triggerResult = await triggerAssignedTaskAgent({
     origin: getInternalApiOrigin(),
@@ -293,6 +295,7 @@ async function startKanbanTaskSession(
       recoveryReason: params.supervision?.recoveryReason,
       status: "running",
     });
+    refreshTaskLaneExperienceMemory(nextTask, { flowReport });
     nextTask.lastSyncError = undefined;
     if (nextTask.worktreeId) {
       await system.worktreeStore.assignSession(nextTask.worktreeId, triggerResult.sessionId);

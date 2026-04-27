@@ -329,6 +329,38 @@ export function createSqliteSystem(): RoutaSystem {
 
 const GLOBAL_KEY = "__routa_system__";
 
+type WorkflowOrchestratorSingletonModule =
+  typeof import("./kanban/workflow-orchestrator-singleton");
+
+function resolveWorkflowOrchestratorSingletonModule(
+  value: unknown,
+): WorkflowOrchestratorSingletonModule {
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    if (typeof record.startWorkflowOrchestrator === "function") {
+      return record as WorkflowOrchestratorSingletonModule;
+    }
+
+    const defaultExport = record.default;
+    if (defaultExport && typeof defaultExport === "object") {
+      const defaultRecord = defaultExport as Record<string, unknown>;
+      if (typeof defaultRecord.startWorkflowOrchestrator === "function") {
+        return defaultRecord as WorkflowOrchestratorSingletonModule;
+      }
+    }
+
+    const moduleExports = record["module.exports"];
+    if (moduleExports && typeof moduleExports === "object") {
+      const moduleExportsRecord = moduleExports as Record<string, unknown>;
+      if (typeof moduleExportsRecord.startWorkflowOrchestrator === "function") {
+        return moduleExportsRecord as WorkflowOrchestratorSingletonModule;
+      }
+    }
+  }
+
+  throw new TypeError("startWorkflowOrchestrator is not a function");
+}
+
 export function getRoutaSystem(): RoutaSystem {
   const g = globalThis as Record<string, unknown>;
   if (!g[GLOBAL_KEY]) {
@@ -352,8 +384,9 @@ export function getRoutaSystem(): RoutaSystem {
 
     // Start the workflow orchestrator to listen for column transitions
     const system = g[GLOBAL_KEY] as RoutaSystem;
-    const { startWorkflowOrchestrator } =
-      require("./kanban/workflow-orchestrator-singleton") as typeof import("./kanban/workflow-orchestrator-singleton");
+    const { startWorkflowOrchestrator } = resolveWorkflowOrchestratorSingletonModule(
+      require("./kanban/workflow-orchestrator-singleton"),
+    );
     startWorkflowOrchestrator(system);
 
     // Set up EventBus → KanbanEventBroadcaster bridge for file changes

@@ -21,7 +21,9 @@ import { useTranslation } from "@/i18n";
 import type {
   AggregatedSelectionSession,
   FeatureDetail,
+  FeatureSummary,
   FrictionProfileSnapshot,
+  RetrospectiveMemoryResponse,
 } from "./types";
 import {
   buildSessionAnalysisSessionName,
@@ -52,6 +54,57 @@ function emptyFrictionProfileSnapshot(): FrictionProfileSnapshot {
     fileProfiles: {},
     featureProfiles: {},
   };
+}
+
+function emptyRetrospectiveMemoryResponse(): RetrospectiveMemoryResponse {
+  return {
+    storageRoot: "",
+    matchedMemories: [],
+  };
+}
+
+function compareRetrospectiveFeatureCandidates(left: FeatureSummary, right: FeatureSummary): number {
+  const leftIsInferred = left.status === "inferred";
+  const rightIsInferred = right.status === "inferred";
+  if (leftIsInferred !== rightIsInferred) {
+    return leftIsInferred ? 1 : -1;
+  }
+
+  if (right.sessionCount !== left.sessionCount) {
+    return right.sessionCount - left.sessionCount;
+  }
+
+  if (right.changedFiles !== left.changedFiles) {
+    return right.changedFiles - left.changedFiles;
+  }
+
+  const leftSurfaceCount = left.sourceFileCount + left.pageCount + left.apiCount;
+  const rightSurfaceCount = right.sourceFileCount + right.pageCount + right.apiCount;
+  if (rightSurfaceCount !== leftSurfaceCount) {
+    return rightSurfaceCount - leftSurfaceCount;
+  }
+
+  if (left.updatedAt !== right.updatedAt) {
+    return right.updatedAt.localeCompare(left.updatedAt);
+  }
+
+  return left.name.localeCompare(right.name);
+}
+
+function deriveRetrospectiveFeatureIds(
+  features: FeatureSummary[],
+  prioritizedFeatureId: string,
+  limit = 4,
+): string[] {
+  const rankedIds = [...features]
+    .filter((feature) => Boolean(feature.id))
+    .sort(compareRetrospectiveFeatureCandidates)
+    .map((feature) => feature.id);
+
+  return [...new Set([
+    ...(prioritizedFeatureId ? [prioritizedFeatureId] : []),
+    ...rankedIds,
+  ])].slice(0, limit);
 }
 
 export function FeatureExplorerPageClient({
@@ -90,6 +143,9 @@ export function FeatureExplorerPageClient({
   const [frictionProfileSnapshot, setFrictionProfileSnapshot] = useState<FrictionProfileSnapshot>(emptyFrictionProfileSnapshot);
   const [isRefreshingFrictionProfiles, setIsRefreshingFrictionProfiles] = useState(false);
   const [frictionProfilesError, setFrictionProfilesError] = useState<string | null>(null);
+  const [retrospectiveMemoryResponse, setRetrospectiveMemoryResponse] = useState<RetrospectiveMemoryResponse>(emptyRetrospectiveMemoryResponse);
+  const [isLoadingRetrospectiveMemory, setIsLoadingRetrospectiveMemory] = useState(false);
+  const [retrospectiveMemoryError, setRetrospectiveMemoryError] = useState<string | null>(null);
   const hasRepoSelectionOverride = Object.prototype.hasOwnProperty.call(repoSelectionOverrides, workspaceId);
   const manualRepoSelection = hasRepoSelectionOverride
     ? (repoSelectionOverrides[workspaceId] ?? null)
@@ -309,6 +365,89 @@ export function FeatureExplorerPageClient({
     }, {}),
     [capabilityTreeNodes],
   );
+  const prioritizedRetrospectiveFeatureId = surfaceOnlySelection
+    ? ""
+    : (resolvedFeatureDetail?.id ?? activeFeature?.id ?? effectiveFeatureId);
+  const retrospectiveFeatureIds = useMemo(
+    () => deriveRetrospectiveFeatureIds(features, prioritizedRetrospectiveFeatureId),
+    [features, prioritizedRetrospectiveFeatureId],
+  );
+  const retrospectiveFeatureKey = retrospectiveFeatureIds.join("|");
+  const retrospectiveFileKey = selectedFilePaths.join("|");
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function fetchRetrospectiveMemories() {
+      if (!effectiveRepoSelection?.path) {
+        setRetrospectiveMemoryResponse(emptyRetrospectiveMemoryResponse());
+        setRetrospectiveMemoryError(null);
+        setIsLoadingRetrospectiveMemory(false);
+        return;
+      }
+
+      if (retrospectiveFeatureIds.length === 0 && selectedFilePaths.length === 0) {
+        setRetrospectiveMemoryResponse(emptyRetrospectiveMemoryResponse());
+        setRetrospectiveMemoryError(null);
+        setIsLoadingRetrospectiveMemory(false);
+        return;
+      }
+
+      setIsLoadingRetrospectiveMemory(true);
+
+      try {
+        const params = new URLSearchParams({
+          workspaceId,
+          repoPath: effectiveRepoSelection.path,
+        });
+        for (const featureId of retrospectiveFeatureIds) {
+          params.append("featureId", featureId);
+        }
+        for (const filePath of selectedFilePaths) {
+          params.append("filePath", filePath);
+        }
+
+        const response = await desktopAwareFetch(`/feature-explorer/retrospectives?${params.toString()}`);
+        const payload = await response.json().catch(() => null) as RetrospectiveMemoryResponse | { error?: string; details?: string } | null;
+
+        if (!response.ok) {
+          throw new Error(
+            (payload && "details" in payload && payload.details)
+            || (payload && "error" in payload && payload.error)
+            || t.featureExplorer.retrospectiveHistoryError,
+          );
+        }
+
+        if (!cancelled) {
+          setRetrospectiveMemoryResponse(payload && "matchedMemories" in payload ? payload : emptyRetrospectiveMemoryResponse());
+          setRetrospectiveMemoryError(null);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setRetrospectiveMemoryResponse(emptyRetrospectiveMemoryResponse());
+          setRetrospectiveMemoryError(err instanceof Error ? err.message : t.featureExplorer.retrospectiveHistoryError);
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoadingRetrospectiveMemory(false);
+        }
+      }
+    }
+
+    void fetchRetrospectiveMemories();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    effectiveRepoSelection?.path,
+    retrospectiveFeatureKey,
+    retrospectiveFeatureIds,
+    retrospectiveFileKey,
+    selectedFilePaths,
+    t.featureExplorer.retrospectiveHistoryError,
+    workspaceId,
+  ]);
 
   useEffect(() => {
     const urlState = readFeatureExplorerUrlState();
@@ -1172,6 +1311,9 @@ export function FeatureExplorerPageClient({
               selectedScopeSessions={selectedScopeSessions}
               selectedSurface={selectedSurface}
               selectedSurfaceFeatureNames={selectedSurfaceFeatureNames}
+              retrospectiveMemories={retrospectiveMemoryResponse.matchedMemories}
+              retrospectiveMemoryLoading={isLoadingRetrospectiveMemory}
+              retrospectiveMemoryError={retrospectiveMemoryError}
               onOpenSessionAnalysis={handleOpenSessionAnalysisDrawer}
               t={t}
             />

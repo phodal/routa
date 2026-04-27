@@ -188,6 +188,25 @@ const en: TranslationDictionary = {
     spec: "Spec",
   },
 
+  canvas: {
+    renderModeDynamic: "Dynamic",
+    renderModePrebuilt: "Prebuilt",
+    viewerToggleLightTheme: "Switch to light theme",
+    viewerToggleDarkTheme: "Switch to dark theme",
+    viewerCannotRender:
+      "Cannot render canvas: missing source for dynamic mode or canvasType for prebuilt mode.",
+    viewerCompilationError: "Canvas compilation error:",
+    liveEntryLabel: "Use Canvas",
+    liveEntryShortLabel: "Canvas",
+    livePanelTitle: "Canvas",
+    livePanelPending: "Waiting for a canvas file.",
+    livePanelMaterializing: "Rendering canvas...",
+    livePanelOpen: "Open canvas",
+    livePanelClose: "Close canvas panel",
+    livePanelDetectedFile: "Detected file",
+    livePanelError: "Canvas render setup failed",
+  },
+
   featureExplorer: {
     title: "Feature Explorer",
     subtitle: "Review feature-scoped changes, supporting context, screenshots, and related API probes.",
@@ -385,6 +404,17 @@ const en: TranslationDictionary = {
     frictionProfilesReady: "Friction profile ready",
     frictionProfilesMissing: "No friction profile yet",
     frictionProfilesError: "Friction profile refresh failed",
+    retrospectiveHistoryTitle: "Saved history",
+    retrospectiveHistoryLoading: "Loading saved history…",
+    retrospectiveHistoryEmpty: "No saved history yet",
+    retrospectiveHistoryError: "Saved history failed to load",
+    retrospectiveHistoryFeature: "Feature",
+    retrospectiveHistoryFile: "File",
+    retrospectiveHistoryScopeLabel: "Scope",
+    retrospectiveHistoryNextAskLabel: "Next ask",
+    retrospectiveHistoryMustIncludeLabel: "Must include",
+    retrospectiveHistoryAvoidLabel: "Avoid",
+    retrospectiveHistoryStillNeedLabel: "Still need",
   },
 
   settings: {

@@ -7,8 +7,10 @@ import type {
   TaskLaneSessionStatus,
 } from "../models/task";
 import type { KanbanBoard } from "../models/kanban";
+import { refreshTaskLaneExperienceMemory } from "./task-lane-experience";
 
-type TaskLaneHistoryState = Pick<Task, "laneSessions" | "laneHandoffs" | "triggerSessionId" | "columnId">;
+type TaskLaneHistoryState = Pick<Task, "laneSessions" | "laneHandoffs" | "triggerSessionId" | "columnId">
+  & Partial<Pick<Task, "id" | "title" | "objective" | "contextSearchSpec" | "jitContextSnapshot">>;
 
 export function ensureTaskLaneHistory(task: TaskLaneHistoryState): void {
   if (!task.laneSessions) {
@@ -37,6 +39,7 @@ export function upsertTaskLaneSession(
     if (!existing.status) {
       existing.status = session.status ?? "running";
     }
+    refreshTaskLaneExperienceMemory(task);
     return existing;
   }
 
@@ -69,6 +72,7 @@ export function upsertTaskLaneSession(
     completedAt: session.completedAt,
   };
   task.laneSessions.push(created);
+  refreshTaskLaneExperienceMemory(task);
   return created;
 }
 
@@ -91,6 +95,7 @@ export function markTaskLaneSessionStatus(
   if (status !== "running") {
     entry.completedAt = new Date().toISOString();
   }
+  refreshTaskLaneExperienceMemory(task);
   return entry;
 }
 
@@ -211,9 +216,11 @@ export function upsertTaskLaneHandoff(
   const existing = task.laneHandoffs.find((entry) => entry.id === handoff.id);
   if (existing) {
     Object.assign(existing, handoff);
+    refreshTaskLaneExperienceMemory(task);
     return existing;
   }
   task.laneHandoffs.push(handoff);
+  refreshTaskLaneExperienceMemory(task);
   return handoff;
 }
 

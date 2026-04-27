@@ -69,7 +69,7 @@ describe("KanbanCardDetail provider override", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Execution" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Execution" }));
     fireEvent.click(screen.getByText("Card session override").closest("summary")!);
 
     const providerDropdown = screen.getByTestId("kanban-detail-provider-override");

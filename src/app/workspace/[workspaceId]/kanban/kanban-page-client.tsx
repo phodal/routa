@@ -442,6 +442,7 @@ export function KanbanPageClient() {
       options?.systemPrompt,
       true,
       options?.taskAdaptiveHarness,
+      options?.boardId,
     );
 
     if (!result?.sessionId) {

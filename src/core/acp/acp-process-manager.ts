@@ -117,6 +117,37 @@ export class AcpProcessManager {
         return combined.length > 0 ? combined : undefined;
     }
 
+    private combineAcpMcpServers(
+        autoMcpServers?: Array<Record<string, unknown>>,
+        requestedMcpServers?: Array<Record<string, unknown>>,
+    ): Array<Record<string, unknown>> | undefined {
+        const combined = [...(autoMcpServers ?? []), ...(requestedMcpServers ?? [])];
+        if (combined.length === 0) {
+            return undefined;
+        }
+
+        const deduped = new Map<string, Record<string, unknown>>();
+        const anonymousServers: Array<Record<string, unknown>> = [];
+
+        for (const server of combined) {
+            const name = typeof server.name === "string" ? server.name.trim() : "";
+            if (!name) {
+                anonymousServers.push(server);
+                continue;
+            }
+
+            if (deduped.has(name)) {
+                deduped.delete(name);
+            }
+            deduped.set(name, {
+                ...server,
+                name,
+            });
+        }
+
+        return [...anonymousServers, ...deduped.values()];
+    }
+
     private async prepareMcpForSession(
         sessionId: string,
         presetId: string,
@@ -131,6 +162,13 @@ export class AcpProcessManager {
         }
 
         const baseConfig = getDefaultRoutaMcpConfig(workspaceId, sessionId, toolMode, mcpProfile, serverUrlOverride);
+        if (presetId === "codex-acp") {
+            this.mcpSessionCleanups.delete(sessionId);
+            return {
+                acpMcpServers: buildAcpHttpMcpServers(baseConfig) as unknown as Array<Record<string, unknown>>,
+            };
+        }
+
         const mcpConfig = cwd ? { ...baseConfig, cwd } : baseConfig;
         const mcpResult = await ensureMcpForProvider(presetId, mcpConfig);
         if (mcpResult.cleanup) {
@@ -143,8 +181,8 @@ export class AcpProcessManager {
             providerArgs: mcpResult.providerArgs && mcpResult.providerArgs.length > 0
                 ? mcpResult.providerArgs
                 : undefined,
-            acpMcpServers: presetId === "codex"
-                ? buildAcpHttpMcpServers(baseConfig) as Array<Record<string, unknown>>
+            acpMcpServers: presetId === "codex" || presetId === "codex-acp"
+                ? buildAcpHttpMcpServers(baseConfig) as unknown as Array<Record<string, unknown>>
                 : undefined,
         };
     }
@@ -195,6 +233,7 @@ export class AcpProcessManager {
         mcpProfile?: McpServerProfile,
         serverUrlOverride?: string,
         sessionContext?: Omit<AcpSessionContext, "sessionId">,
+        requestedAcpMcpServers?: Array<Record<string, unknown>>,
     ): Promise<string> {
         // Check if we should use OpenCode SDK adapter (serverless + configured)
         if (presetId === "opencode" && shouldUseOpencodeAdapter()) {
@@ -222,7 +261,10 @@ export class AcpProcessManager {
 
             await proc.start();
             await proc.initialize();
-            const acpSessionId = await proc.newSession(cwd, mcpSetup?.acpMcpServers);
+            const acpSessionId = await proc.newSession(
+                cwd,
+                this.combineAcpMcpServers(mcpSetup?.acpMcpServers, requestedAcpMcpServers),
+            );
             proc.setSessionContext({
                 sessionId,
                 provider: sessionContext?.provider ?? presetId,
@@ -269,6 +311,8 @@ export class AcpProcessManager {
         serverUrlOverride?: string,
         sessionContext?: Omit<AcpSessionContext, "sessionId">,
         providerSessionId?: string,
+        requestedAcpMcpServers?: Array<Record<string, unknown>>,
+        extraArgs?: string[],
     ): Promise<string> {
         try {
             const mcpSetup = await this.prepareMcpForSession(
@@ -283,7 +327,7 @@ export class AcpProcessManager {
             const config = await buildConfigFromPreset(
                 presetId,
                 cwd,
-                this.combineProviderArgs(mcpSetup?.providerArgs),
+                this.combineProviderArgs(mcpSetup?.providerArgs, extraArgs),
                 undefined,
                 mcpSetup?.mcpConfigs,
             );
@@ -292,7 +336,11 @@ export class AcpProcessManager {
             await proc.start();
             await proc.initialize();
             const resolvedProviderSessionId = providerSessionId ?? sessionId;
-            await proc.loadSession(resolvedProviderSessionId, cwd, mcpSetup?.acpMcpServers);
+            await proc.loadSession(
+                resolvedProviderSessionId,
+                cwd,
+                this.combineAcpMcpServers(mcpSetup?.acpMcpServers, requestedAcpMcpServers),
+            );
             proc.setSessionContext({
                 sessionId,
                 provider: sessionContext?.provider ?? presetId,

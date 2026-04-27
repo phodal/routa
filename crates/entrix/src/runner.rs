@@ -1,16 +1,18 @@
 //! Shell runner — execute metric commands via subprocess.
 
-mod support;
+pub(crate) mod support;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::thread;
+use std::time::Duration;
 use std::time::Instant;
 
 use regex::Regex;
 
 use crate::model::{Gate, Metric, MetricResult, ResultState};
+use crate::run_deadline::RunDeadline;
 use support::{
     augment_runner_path, is_infra_failure, run_command_with_timeout, smart_truncate,
     CommandRunOutput,
@@ -26,6 +28,7 @@ pub struct ShellRunner {
     timeout: u64,
     env_overrides: HashMap<String, String>,
     output_callback: Option<OutputCallback>,
+    deadline: Option<RunDeadline>,
 }
 
 impl ShellRunner {
@@ -35,6 +38,7 @@ impl ShellRunner {
             timeout: 300,
             env_overrides: HashMap::new(),
             output_callback: None,
+            deadline: None,
         }
     }
 
@@ -50,6 +54,11 @@ impl ShellRunner {
 
     pub fn with_output_callback(mut self, output_callback: OutputCallback) -> Self {
         self.output_callback = Some(output_callback);
+        self
+    }
+
+    pub fn with_deadline(mut self, deadline: Option<RunDeadline>) -> Self {
+        self.deadline = deadline;
         self
     }
 
@@ -88,7 +97,24 @@ impl ShellRunner {
         }
 
         let start = Instant::now();
-        let timeout = metric.timeout_seconds.unwrap_or(self.timeout);
+        let configured_timeout =
+            Duration::from_secs(metric.timeout_seconds.unwrap_or(self.timeout));
+        let timeout_budget = self
+            .deadline
+            .as_ref()
+            .map(|deadline| deadline.budget_for(configured_timeout))
+            .unwrap_or(crate::run_deadline::DeadlineBudget {
+                timeout: configured_timeout,
+                capped_by_run_deadline: false,
+            });
+
+        if timeout_budget.timeout.is_zero() {
+            return self
+                .deadline
+                .as_ref()
+                .expect("deadline should exist when timeout budget is zero")
+                .timeout_result_before_start(metric);
+        }
 
         // Build the environment
         let mut env: HashMap<String, String> = std::env::vars().collect();
@@ -104,7 +130,7 @@ impl ShellRunner {
             &command_str,
             &project_root,
             &env_clone,
-            timeout,
+            timeout_budget.timeout,
             self.output_callback.as_ref(),
             metric,
         ) {
@@ -117,10 +143,20 @@ impl ShellRunner {
                 let elapsed = start.elapsed().as_secs_f64() * 1000.0;
 
                 if timed_out {
-                    let timed_out_output = if output_truncated.trim().is_empty() {
-                        format!("TIMEOUT ({timeout}s)")
+                    let timeout_header = if timeout_budget.capped_by_run_deadline {
+                        let deadline = self
+                            .deadline
+                            .as_ref()
+                            .expect("deadline should exist when capped by run deadline");
+                        deadline.mark_triggered();
+                        deadline.timeout_message()
                     } else {
-                        format!("TIMEOUT ({timeout}s)\n{output_truncated}")
+                        format!("TIMEOUT ({}s)", timeout_budget.timeout.as_secs())
+                    };
+                    let timed_out_output = if output_truncated.trim().is_empty() {
+                        timeout_header
+                    } else {
+                        format!("{timeout_header}\n{output_truncated}")
                     };
 
                     MetricResult::new(metric.name.clone(), false, timed_out_output, metric.tier)

@@ -414,6 +414,13 @@ export function HomeInput({
 
         if (result?.sessionId) {
           const promptText = context.skill ? `/${context.skill} ${text}` : text;
+          const pendingPrompt = context.skill
+            ? {
+                text,
+                skillName: context.skill,
+                skillRepoPath: effectiveCwd,
+              }
+            : text;
           const url = effectiveBuildSessionUrl
             ? effectiveBuildSessionUrl(wsId ?? null, result.sessionId)
             : wsId
@@ -424,7 +431,7 @@ export function HomeInput({
               console.error("[HomeInput] Failed to send direct prompt:", error);
             });
           } else {
-            storePendingPrompt(result.sessionId, promptText);
+            storePendingPrompt(result.sessionId, pendingPrompt);
           }
           onSessionCreated?.(result.sessionId, promptText, {
             cwd: effectiveCwd,

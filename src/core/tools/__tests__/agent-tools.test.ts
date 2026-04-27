@@ -9,6 +9,7 @@ import { InMemoryAgentStore } from "../../store/agent-store";
 import { InMemoryConversationStore } from "../../store/conversation-store";
 import { InMemoryTaskStore } from "../../store/task-store";
 import { createTask } from "../../models/task";
+import { getHttpSessionStore } from "../../acp/http-session-store";
 
 describe("AgentTools.createTask", () => {
   let tools: AgentTools;
@@ -233,6 +234,105 @@ describe("AgentTools.updateTask synthetic completion", () => {
     });
 
     expect(result.success).toBe(true);
+    const updated = await taskStore.get(task.id);
+    expect(updated?.contextSearchSpec).toEqual({
+      query: "jit context kanban",
+      featureCandidates: ["kanban-workflow"],
+      relatedFiles: ["src/app/workspace/[workspaceId]/kanban/kanban-card-detail.tsx"],
+    });
+  });
+
+  it("strips speculative backlog contextSearchSpec updates before repo inspection", async () => {
+    const task = createTask({
+      id: "task-context-search-strip",
+      title: "Context search spec strip",
+      objective: "Do not persist speculative retrieval hints",
+      workspaceId: "workspace-1",
+      columnId: "backlog",
+    });
+    await taskStore.save(task);
+
+    const sessionId = `session-update-no-confirm-${Date.now()}`;
+    const sessionStore = getHttpSessionStore();
+    sessionStore.upsertSession({
+      sessionId,
+      workspaceId: "workspace-1",
+      cwd: "/tmp/repo",
+      createdAt: new Date().toISOString(),
+    });
+    sessionStore.pushNotificationToHistory(sessionId, {
+      sessionId,
+      update: {
+        sessionUpdate: "tool_call",
+        tool: "search_cards",
+        kind: "task",
+      },
+    });
+
+    const result = await tools.updateTask({
+      taskId: task.id,
+      sessionId,
+      updates: {
+        contextSearchSpec: {
+          query: "jit context kanban",
+          featureCandidates: ["kanban-workflow"],
+          relatedFiles: ["src/app/workspace/[workspaceId]/kanban/kanban-card-detail.tsx"],
+        },
+      },
+      agentId: "system",
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.data).toMatchObject({
+      warnings: [expect.stringContaining("Ignored contextSearchSpec")],
+    });
+
+    const updated = await taskStore.get(task.id);
+    expect(updated?.contextSearchSpec).toBeUndefined();
+  });
+
+  it("persists backlog contextSearchSpec updates after confirmed repo inspection", async () => {
+    const task = createTask({
+      id: "task-context-search-confirm",
+      title: "Context search spec confirm",
+      objective: "Persist retrieval hints once confirmed",
+      workspaceId: "workspace-1",
+      columnId: "backlog",
+    });
+    await taskStore.save(task);
+
+    const sessionId = `session-update-confirm-${Date.now()}`;
+    const sessionStore = getHttpSessionStore();
+    sessionStore.upsertSession({
+      sessionId,
+      workspaceId: "workspace-1",
+      cwd: "/tmp/repo",
+      createdAt: new Date().toISOString(),
+    });
+    sessionStore.pushNotificationToHistory(sessionId, {
+      sessionId,
+      update: {
+        sessionUpdate: "tool_call",
+        tool: "load_feature_tree_context",
+        kind: "glob",
+      },
+    });
+
+    const result = await tools.updateTask({
+      taskId: task.id,
+      sessionId,
+      updates: {
+        contextSearchSpec: {
+          query: "jit context kanban",
+          featureCandidates: ["kanban-workflow"],
+          relatedFiles: ["src/app/workspace/[workspaceId]/kanban/kanban-card-detail.tsx"],
+        },
+      },
+      agentId: "system",
+    });
+
+    expect(result.success).toBe(true);
+
     const updated = await taskStore.get(task.id);
     expect(updated?.contextSearchSpec).toEqual({
       query: "jit context kanban",

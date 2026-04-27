@@ -88,6 +88,10 @@ mod tests {
         assert!(contract
             .imports
             .allowed_modules
+            .contains(&"routa/canvas".to_string()));
+        assert!(contract
+            .imports
+            .allowed_modules
             .contains(&"@canvas-sdk".to_string()));
         assert_eq!(
             contract.storage.project_canvas_root,

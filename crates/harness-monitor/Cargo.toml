@@ -1,6 +1,6 @@
 [package]
 name = "harness-monitor"
-version = "0.17.2"
+version = "0.18.1"
 edition = "2021"
 license.workspace = true
 authors.workspace = true
@@ -19,7 +19,7 @@ clap = { version = "4", features = ["derive", "env"] }
 crossterm = "0.28"
 rusqlite = { version = "0.32", features = ["bundled"] }
 ratatui = "0.29"
-entrix = { version = "0.17.2", path = "../entrix" }
+entrix = { version = "0.18.1", path = "../entrix" }
 trace-parser = { path = "../trace-parser" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

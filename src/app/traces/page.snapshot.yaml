@@ -1,22 +1,23 @@
 # page-id: traces
 # route: /traces?view=trace
 # source-page: src/app/traces/page.tsx
-# url: http://127.0.0.1:50777/traces?view=trace
+# url: http://127.0.0.1:58066/traces?view=trace
 # title: Routa - Multi-Agent Coordinator
-# generated-at: 2026-04-11T06:28:28.704Z
+# generated-at: 2026-04-27T14:25:07.362Z
 # generator: playwright
 # playwright-version: 1.58.2
 - banner:
   - button "Default Workspace"
   - link "Home":
     - /url: /
-  - 'button "Docker {version}" [disabled]'
+  - button "Docker fixture" [disabled]
   - link "MCP ready":
     - /url: /settings/mcp?tab=tools
   - button "EN"
   - button "中文"
-  - button "Light" [pressed]
+  - button "Light"
   - button "Dark"
+  - button "System" [pressed]
 - complementary:
   - img "Routa"
   - text: Routa
@@ -31,12 +32,16 @@
       - /url: /workspace/default/kanban
     - link "Team":
       - /url: /workspace/default/team
+  - link "Spec":
+    - /url: /workspace/default/spec
+  - link "Feature Explorer":
+    - /url: /workspace/default/feature-explorer
   - link "Harness":
     - /url: /settings/harness?workspaceId=default
   - link "Fluency":
     - /url: /settings/fluency?workspaceId=default
   - link "Settings":
-    - /url: /settings
+    - /url: /settings?workspaceId=default
 - main:
   - heading "Agent Trace Viewer" [level=1]
   - paragraph: Browse and analyze agent execution traces
@@ -49,24 +54,9 @@
   - button "Trace"
   - complementary:
     - heading "sessions" [level=2]
-    - paragraph: 7 sessions found
-    - button "Stabilize Page Snapshot Fixtures · Backlog Refiner 2 <localized-datetime> CRAFTER opencode"
+    - paragraph: 2 sessions found
+    - button "Stabilize Page Snapshot Fixtures · Backlog Refiner 1 <localized-datetime> CRAFTER opencode"
     - button "Snapshot Fixture Session 6 <localized-datetime> CRAFTER opencode"
-    - button "<id>… 423 <localized-datetime>":
-      - code: <id>…
-      - text: 423 <localized-datetime>
-    - button "<id>… 83 <localized-datetime>":
-      - code: <id>…
-      - text: 83 <localized-datetime>
-    - button "<id>… 3 <localized-datetime>":
-      - code: <id>…
-      - text: 3 <localized-datetime>
-    - button "<id>… 102 <localized-datetime>":
-      - code: <id>…
-      - text: 102 <localized-datetime>
-    - button "<id>… 3 <localized-datetime>":
-      - code: <id>…
-      - text: 3 <localized-datetime>
   - region "Trace content":
     - text: 🔗 EventBridge View 1 events
     - button "All"

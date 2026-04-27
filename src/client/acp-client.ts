@@ -36,12 +36,18 @@ export interface AcpNewSessionResult {
 }
 
 export interface AcpTaskAdaptiveHarnessOptions {
+  taskId?: string;
   taskLabel?: string;
   locale?: string;
+  query?: string;
   featureId?: string;
   featureIds?: string[];
   filePaths?: string[];
+  routeCandidates?: string[];
+  apiCandidates?: string[];
   historySessionIds?: string[];
+  moduleHints?: string[];
+  symptomHints?: string[];
   taskType?: "implementation" | "planning" | "analysis" | "review";
   maxFiles?: number;
   maxSessions?: number;
@@ -207,6 +213,7 @@ export class BrowserAcpClient {
    */
   async newSession(params: {
     cwd?: string;
+    boardId?: string;
     /** Git branch to scope the session to (optional) */
     branch?: string;
     /** Optional display name for the session */
@@ -218,7 +225,15 @@ export class BrowserAcpClient {
     parentSessionId?: string;
     crafterProvider?: string;
     gateProvider?: string;
-    mcpServers?: Array<{ name: string; url?: string }>;
+    mcpServers?: Array<{
+      name: string;
+      type?: "http" | "stdio";
+      url?: string;
+      command?: string;
+      args?: string[];
+      headers?: Array<{ name: string; value: string }>;
+      env?: Record<string, string>;
+    }>;
     workspaceId?: string;
     toolMode?: "essential" | "full";
     /** Optional allowlist for provider-native tools such as Bash/Read/Edit. */
@@ -260,6 +275,7 @@ export class BrowserAcpClient {
       gateProvider: params.gateProvider,
       mcpServers: params.mcpServers ?? [],
       workspaceId: params.workspaceId,
+      boardId: params.boardId,
       toolMode: params.toolMode,
       allowedNativeTools: params.allowedNativeTools,
       mcpProfile: params.mcpProfile,

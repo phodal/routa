@@ -2,8 +2,12 @@
 
 import type { AcpTaskAdaptiveHarnessOptions } from "@/client/acp-client";
 import type { McpServerProfile } from "@/core/mcp/mcp-server-profiles";
-import type { KanbanRequiredTaskField } from "@/core/models/kanban";
-import type { TaskAnalysisStatus, TaskContextSearchSpec } from "@/core/models/task";
+import type { KanbanHistoryMemoryPolicy, KanbanRequiredTaskField } from "@/core/models/kanban";
+import type {
+  TaskAnalysisStatus,
+  TaskContextSearchSpec,
+  TaskJitContextSnapshot,
+} from "@/core/models/task";
 import type { TaskDeliveryReadiness } from "@/core/kanban/task-delivery-readiness";
 
 export interface SessionInfo {
@@ -46,6 +50,7 @@ export interface TaskRunInfo {
 }
 
 export interface KanbanAgentPromptOptions {
+  boardId?: string;
   provider?: string;
   role?: string;
   toolMode?: "essential" | "full";
@@ -66,6 +71,7 @@ export type KanbanDevSessionCompletionRequirement =
   | "completion_summary"
   | "verification_report";
 export type KanbanTransportInfo = "acp" | "a2a";
+export type KanbanHistoryMemoryPolicyInfo = KanbanHistoryMemoryPolicy;
 
 export interface KanbanDevSessionSupervisionInfo {
   mode: KanbanDevSessionSupervisionMode;
@@ -201,6 +207,7 @@ export interface TaskInfo {
   /** Associated codebase IDs for this task */
   codebaseIds?: string[];
   contextSearchSpec?: TaskContextSearchSpec;
+  jitContextSnapshot?: TaskJitContextSnapshot;
   /** Git worktree ID for this task */
   worktreeId?: string;
   completionSummary?: string;
@@ -327,6 +334,7 @@ export interface KanbanBoardInfo {
   isDefault: boolean;
   githubTokenConfigured?: boolean;
   autoProviderId?: string;
+  historyMemoryPolicy?: KanbanHistoryMemoryPolicy;
   sessionConcurrencyLimit?: number;
   devSessionSupervision?: KanbanDevSessionSupervisionInfo;
   queue?: KanbanBoardQueueInfo;

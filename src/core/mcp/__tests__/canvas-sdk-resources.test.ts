@@ -52,7 +52,7 @@ describe("canvas sdk mcp resources", () => {
 
     const manifest = await client.readResource({ uri: CANVAS_SDK_MANIFEST_RESOURCE_URI });
     const manifestText = getTextContent(manifest.contents[0]);
-    expect(manifestText).toContain('"moduleSpecifier": "@canvas-sdk"');
+    expect(manifestText).toContain('"moduleSpecifier": "routa/canvas"');
     expect(manifestText).toContain('"resource://routa/canvas-sdk/defs/primitives"');
 
     const primitives = await client.readResource({ uri: "resource://routa/canvas-sdk/defs/primitives" });

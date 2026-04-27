@@ -22,6 +22,10 @@ const CANVAS_SDK_DATA_DISPLAY_DEF: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../../resources/canvas/sdk/data-display.d.ts"
 ));
+const CANVAS_SDK_HOOKS_DEF: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../resources/canvas/sdk/hooks.d.ts"
+));
 const CANVAS_SDK_INDEX_DEF: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../../resources/canvas/sdk/index.d.ts"
@@ -40,12 +44,13 @@ const CANVAS_SDK_TOKENS_DEF: &str = include_str!(concat!(
 ));
 
 const CANVAS_SDK_DEFINITION_FILES: &[(&str, &str)] = &[
-    ("charts", CANVAS_SDK_CHARTS_DEF),
+    ("primitives", CANVAS_SDK_PRIMITIVES_DEF),
+    ("hooks", CANVAS_SDK_HOOKS_DEF),
+    ("data-display", CANVAS_SDK_DATA_DISPLAY_DEF),
     ("containers", CANVAS_SDK_CONTAINERS_DEF),
     ("controls", CANVAS_SDK_CONTROLS_DEF),
-    ("data-display", CANVAS_SDK_DATA_DISPLAY_DEF),
+    ("charts", CANVAS_SDK_CHARTS_DEF),
     ("index", CANVAS_SDK_INDEX_DEF),
-    ("primitives", CANVAS_SDK_PRIMITIVES_DEF),
     ("theme-context", CANVAS_SDK_THEME_CONTEXT_DEF),
     ("tokens", CANVAS_SDK_TOKENS_DEF),
 ];
@@ -100,7 +105,7 @@ mod tests {
         assert_eq!(resource.mime_type, "application/json");
         assert!(resource
             .text
-            .contains("\"moduleSpecifier\": \"@canvas-sdk\""));
+            .contains("\"moduleSpecifier\": \"routa/canvas\""));
     }
 
     #[test]

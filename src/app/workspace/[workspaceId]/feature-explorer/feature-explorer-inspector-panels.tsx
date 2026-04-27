@@ -16,6 +16,7 @@ import type {
   AggregatedSelectionSession,
   ApiDetail,
   FeatureDetail,
+  RetrospectiveMemoryEntry,
 } from "./types";
 import {
   type ExplorerSurfaceItem,
@@ -99,6 +100,73 @@ function describeSurfaceKind(
   }
 }
 
+type RetrospectiveSummaryFieldKey =
+  | "scope"
+  | "nextAsk"
+  | "mustInclude"
+  | "avoid"
+  | "stillNeed";
+
+interface RetrospectiveSummaryField {
+  key: RetrospectiveSummaryFieldKey;
+  value: string;
+}
+
+const RETROSPECTIVE_SUMMARY_LABELS: Array<{ key: RetrospectiveSummaryFieldKey; label: string }> = [
+  { key: "scope", label: "Scope:" },
+  { key: "nextAsk", label: "Next ask:" },
+  { key: "mustInclude", label: "Must include:" },
+  { key: "avoid", label: "Avoid:" },
+  { key: "stillNeed", label: "Still need:" },
+];
+
+function parseRetrospectiveSummary(summary: string): RetrospectiveSummaryField[] {
+  const normalized = summary.replace(/\r/g, "").trim();
+  if (!normalized) {
+    return [];
+  }
+
+  const matches = [...normalized.matchAll(/Scope:|Next ask:|Must include:|Avoid:|Still need:/g)];
+  if (matches.length === 0) {
+    return [];
+  }
+
+  return matches.flatMap((match, index) => {
+    const label = match[0];
+    const startIndex = match.index ?? 0;
+    const nextIndex = matches[index + 1]?.index ?? normalized.length;
+    const config = RETROSPECTIVE_SUMMARY_LABELS.find((item) => item.label === label);
+    const value = normalized
+      .slice(startIndex + label.length, nextIndex)
+      .replace(/\n+/g, " ")
+      .trim();
+
+    if (!config || !value) {
+      return [];
+    }
+
+    return [{ key: config.key, value }];
+  });
+}
+
+function describeRetrospectiveSummaryField(
+  key: RetrospectiveSummaryFieldKey,
+  t: ReturnType<typeof useTranslation>["t"],
+): string {
+  switch (key) {
+    case "scope":
+      return t.featureExplorer.retrospectiveHistoryScopeLabel;
+    case "nextAsk":
+      return t.featureExplorer.retrospectiveHistoryNextAskLabel;
+    case "mustInclude":
+      return t.featureExplorer.retrospectiveHistoryMustIncludeLabel;
+    case "avoid":
+      return t.featureExplorer.retrospectiveHistoryAvoidLabel;
+    case "stillNeed":
+      return t.featureExplorer.retrospectiveHistoryStillNeedLabel;
+  }
+}
+
 function ContextSection({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="rounded-sm border border-desktop-border bg-desktop-bg-primary p-2.5">
@@ -153,12 +221,24 @@ function InlineMetricPill({ label, value }: { label: string; value: string }) {
   );
 }
 
+function describeRetrospectiveScope(
+  entry: RetrospectiveMemoryEntry,
+  t: ReturnType<typeof useTranslation>["t"],
+): string {
+  return entry.scope === "feature"
+    ? t.featureExplorer.retrospectiveHistoryFeature
+    : t.featureExplorer.retrospectiveHistoryFile;
+}
+
 export function ContextPanel({
   featureDetail,
   selectedFileCount,
   selectedScopeSessions,
   selectedSurface,
   selectedSurfaceFeatureNames,
+  retrospectiveMemories,
+  retrospectiveMemoryLoading,
+  retrospectiveMemoryError,
   onOpenSessionAnalysis,
   t,
 }: {
@@ -167,13 +247,19 @@ export function ContextPanel({
   selectedScopeSessions: AggregatedSelectionSession[];
   selectedSurface: ExplorerSurfaceItem | null;
   selectedSurfaceFeatureNames: string[];
+  retrospectiveMemories: RetrospectiveMemoryEntry[];
+  retrospectiveMemoryLoading: boolean;
+  retrospectiveMemoryError: string | null;
   onOpenSessionAnalysis?: () => void;
   t: ReturnType<typeof useTranslation>["t"];
 }) {
   const [copiedResumeCommand, setCopiedResumeCommand] = useState("");
   const [expandedPromptSessions, setExpandedPromptSessions] = useState<Record<string, boolean>>({});
+  const hasRetrospectiveContent = retrospectiveMemoryLoading
+    || Boolean(retrospectiveMemoryError)
+    || retrospectiveMemories.length > 0;
 
-  if (!featureDetail && !selectedSurface) {
+  if (!featureDetail && !selectedSurface && !hasRetrospectiveContent) {
     return (
       <div className="space-y-3 py-4">
         <div className="text-[13px] font-semibold text-desktop-text-primary">
@@ -193,6 +279,13 @@ export function ContextPanel({
   const canOpenSessionAnalysis = selectedFileCount > 0
     && selectedScopeSessions.length > 0
     && typeof onOpenSessionAnalysis === "function";
+  const displayedRetrospectiveMemories = [...retrospectiveMemories].sort((left, right) => {
+    if (left.scope !== right.scope) {
+      return left.scope === "feature" ? -1 : 1;
+    }
+
+    return right.updatedAt.localeCompare(left.updatedAt);
+  });
 
   return (
     <div className="space-y-2">
@@ -245,6 +338,67 @@ export function ContextPanel({
           </div>
         </ContextSection>
       ) : null}
+
+      <ContextSection title={t.featureExplorer.retrospectiveHistoryTitle}>
+        {retrospectiveMemoryLoading ? (
+          <SignalEmptyState message={t.featureExplorer.retrospectiveHistoryLoading} />
+        ) : retrospectiveMemoryError ? (
+          <SignalEmptyState message={retrospectiveMemoryError || t.featureExplorer.retrospectiveHistoryError} />
+        ) : displayedRetrospectiveMemories.length > 0 ? (
+          <div className="space-y-1.5">
+            {displayedRetrospectiveMemories.map((entry) => {
+              const structuredSummary = parseRetrospectiveSummary(entry.summary);
+
+              return (
+                <div
+                  key={`${entry.scope}:${entry.targetId}`}
+                  className="rounded-sm border border-desktop-border bg-desktop-bg-secondary px-2.5 py-2"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="rounded-sm border border-desktop-border bg-desktop-bg-primary px-1.5 py-0.5 text-[10px] font-semibold text-desktop-text-secondary">
+                          {describeRetrospectiveScope(entry, t)}
+                        </span>
+                        <div className="min-w-0 flex-1 break-all text-[11px] font-medium leading-5 text-desktop-text-primary">
+                          {entry.scope === "feature"
+                            ? entry.featureName ?? entry.featureId ?? entry.targetId
+                            : entry.targetId}
+                        </div>
+                      </div>
+                    </div>
+                    <span className="shrink-0 text-[10px] text-desktop-text-secondary">
+                      {formatShortDate(entry.updatedAt)}
+                    </span>
+                  </div>
+                  <div className="mt-1.5 rounded-sm border border-desktop-border bg-desktop-bg-primary px-2 py-1.5">
+                    {structuredSummary.length > 0 ? (
+                      <div className="space-y-1.5">
+                        {structuredSummary.map((field) => (
+                          <div key={field.key} className="space-y-0.5">
+                            <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-desktop-text-secondary">
+                              {describeRetrospectiveSummaryField(field.key, t)}
+                            </div>
+                            <div className="break-words text-[11px] leading-5 text-desktop-text-primary">
+                              {field.value}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="whitespace-pre-wrap break-words text-[11px] leading-5 text-desktop-text-secondary">
+                        {entry.summary}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <SignalEmptyState message={t.featureExplorer.retrospectiveHistoryEmpty} />
+        )}
+      </ContextSection>
 
       <ContextSection title={t.featureExplorer.selectedFileSignals}>
         {selectedFileCount > 0 ? (

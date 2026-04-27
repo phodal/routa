@@ -27,6 +27,7 @@ import {
 import type { McpServerProfile } from "@/core/mcp/mcp-server-profiles";
 import { pendingAcpCreations } from "@/core/acp/pending-acp-creations";
 import { persistSessionHistorySnapshot } from "@/core/acp/session-history";
+import { buildProviderModelArgs } from "@/core/acp/provider-model-args";
 
 type JsonRpcResponseFactory = (
   id: string | number | null,
@@ -162,6 +163,59 @@ function getPromptErrorData(error: unknown): Record<string, unknown> | undefined
     };
   }
   return undefined;
+}
+
+function maybePushSyntheticTurnComplete(
+  store: ReturnType<typeof getHttpSessionStore>,
+  sessionId: string,
+  result: unknown,
+): void {
+  if (!result || typeof result !== "object") {
+    return;
+  }
+
+  const payload = result as Record<string, unknown>;
+  const stopReason = typeof payload.stopReason === "string" ? payload.stopReason : undefined;
+  if (!stopReason) {
+    return;
+  }
+
+  const lastNotification = store.getHistory(sessionId).at(-1);
+  const lastUpdate = lastNotification?.update as Record<string, unknown> | undefined;
+  if (lastUpdate?.sessionUpdate === "turn_complete") {
+    return;
+  }
+
+  const rawUsage = payload.usage;
+  const usageRecord = rawUsage && typeof rawUsage === "object"
+    ? rawUsage as Record<string, unknown>
+    : undefined;
+  const inputTokens = typeof usageRecord?.input_tokens === "number"
+    ? usageRecord.input_tokens
+    : typeof usageRecord?.inputTokens === "number"
+      ? usageRecord.inputTokens
+      : undefined;
+  const outputTokens = typeof usageRecord?.output_tokens === "number"
+    ? usageRecord.output_tokens
+    : typeof usageRecord?.outputTokens === "number"
+      ? usageRecord.outputTokens
+      : undefined;
+
+  store.pushNotification({
+    sessionId,
+    update: {
+      sessionUpdate: "turn_complete",
+      stopReason,
+      ...(inputTokens !== undefined || outputTokens !== undefined
+        ? {
+            usage: {
+              ...(inputTokens !== undefined ? { input_tokens: inputTokens } : {}),
+              ...(outputTokens !== undefined ? { output_tokens: outputTokens } : {}),
+            },
+          }
+        : {}),
+    },
+  });
 }
 
 function isAcpErrorLike(error: unknown): error is AcpErrorLike {
@@ -303,6 +357,7 @@ async function ensurePromptSessionExists(args: {
   const specialistId = recoveredSession?.specialistId;
   const specialistSystemPrompt = storedSession?.specialistSystemPrompt;
   const providerSessionId = recoveredSession?.routaAgentId ?? sessionId;
+  const modelArgs = buildProviderModelArgs(provider, recoveredSession?.model ?? storedSession?.model);
 
   try {
     const preset = getPresetById(provider);
@@ -397,6 +452,8 @@ async function ensurePromptSessionExists(args: {
             role,
           },
           providerSessionId,
+          undefined,
+          modelArgs,
         );
         console.log(`[ACP Route] Native Codex resume succeeded for session ${sessionId}`);
       } catch (resumeError) {
@@ -407,7 +464,7 @@ async function ensurePromptSessionExists(args: {
           forwardSessionUpdate,
           provider,
           undefined,
-          undefined,
+          modelArgs,
           undefined,
           workspaceId,
           toolMode,
@@ -417,6 +474,7 @@ async function ensurePromptSessionExists(args: {
             provider,
             role,
           },
+          undefined,
         );
       }
     } else {
@@ -426,7 +484,7 @@ async function ensurePromptSessionExists(args: {
         forwardSessionUpdate,
         provider,
         undefined,
-        undefined,
+        modelArgs,
         undefined,
         workspaceId,
         toolMode,
@@ -436,6 +494,7 @@ async function ensurePromptSessionExists(args: {
           provider,
           role,
         },
+        undefined,
       );
     }
 
@@ -917,6 +976,7 @@ export async function handleSessionPrompt({
       }
       try {
         const result = await restarted.prompt(sessionId, promptText);
+        maybePushSyntheticTurnComplete(store, sessionId, result);
         store.flushAgentBuffer(sessionId);
         void persistSessionHistorySnapshot(sessionId, store);
         return jsonrpcResponse(id ?? null, result);
@@ -943,6 +1003,7 @@ export async function handleSessionPrompt({
 
     try {
       const result = await claudeProc.prompt(sessionId, promptText);
+      maybePushSyntheticTurnComplete(store, sessionId, result);
       store.flushAgentBuffer(sessionId);
       void persistSessionHistorySnapshot(sessionId, store);
       return jsonrpcResponse(id ?? null, result);
@@ -987,6 +1048,7 @@ export async function handleSessionPrompt({
 
   try {
     const result = await proc.prompt(acpSessionId, promptText);
+    maybePushSyntheticTurnComplete(store, sessionId, result);
     store.flushAgentBuffer(sessionId);
     void persistSessionHistorySnapshot(sessionId, store);
     return jsonrpcResponse(id ?? null, result);

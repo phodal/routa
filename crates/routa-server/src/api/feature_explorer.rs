@@ -384,6 +384,21 @@ fn collect_session_stats(
     )
 }
 
+fn collect_feature_analysis_paths(feature_id: &str, analyses: &[SessionAnalysis]) -> Vec<String> {
+    analyses
+        .iter()
+        .flat_map(|analysis| {
+            analysis
+                .feature_links
+                .iter()
+                .filter(move |feature_link| feature_link.feature_id == feature_id)
+                .map(|feature_link| feature_link.via_path.clone())
+        })
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect()
+}
+
 fn build_feature_trace_input_from_transcript(
     repo_root: &Path,
     transcript: &trace_parser::TranscriptSessionBackfill,
@@ -532,8 +547,18 @@ fn record_analysis(
         .take(MAX_FILE_SIGNAL_CHANGED_FILES)
         .cloned()
         .collect::<Vec<_>>();
+    let signal_file_paths = changed_files
+        .iter()
+        .cloned()
+        .chain(
+            analysis
+                .feature_links
+                .iter()
+                .map(|feature_link| feature_link.via_path.clone()),
+        )
+        .collect::<BTreeSet<_>>();
 
-    for file_path in changed_files {
+    for file_path in signal_file_paths {
         let entry = targets.file_stats.entry(file_path.clone()).or_default();
         entry.change_count += 1;
         entry.session_ids.insert(session_id.to_string());
@@ -1728,7 +1753,7 @@ async fn get_feature_detail(
     .map_err(map_context_error)?;
 
     let feature_tree = load_feature_tree(&repo_root).map_err(map_error)?;
-    let (session_stats, file_stats, file_signals, _analyses) =
+    let (session_stats, file_stats, file_signals, analyses) =
         collect_session_stats(&repo_root, &feature_tree);
 
     let feature = feature_tree
@@ -1759,6 +1784,11 @@ async fn get_feature_detail(
     for link in &surface_links {
         if !all_files.contains(&link.source_path) {
             all_files.push(link.source_path.clone());
+        }
+    }
+    for analysis_path in collect_feature_analysis_paths(&feature.id, &analyses) {
+        if !all_files.contains(&analysis_path) {
+            all_files.push(analysis_path);
         }
     }
     all_files.sort();
@@ -1898,12 +1928,19 @@ async fn get_feature_files(
         })?;
 
     let surface_catalog = FeatureSurfaceCatalog::from_repo_root(&repo_root).unwrap_or_default();
+    let (_session_stats, _file_stats, _file_signals, analyses) =
+        collect_session_stats(&repo_root, &feature_tree);
     let mut all_files: Vec<String> = feature.source_files.clone();
     for source_file in &feature.source_files {
         for link in surface_catalog.best_links_for_path(source_file) {
             if !all_files.contains(&link.source_path) {
                 all_files.push(link.source_path.clone());
             }
+        }
+    }
+    for analysis_path in collect_feature_analysis_paths(&feature.id, &analyses) {
+        if !all_files.contains(&analysis_path) {
+            all_files.push(analysis_path);
         }
     }
     all_files.sort();
@@ -2180,5 +2217,116 @@ mod tests {
         assert!(sessions
             .iter()
             .all(|session| session.session_id != "sess-1"));
+    }
+
+    #[test]
+    fn record_analysis_uses_feature_via_path_for_file_signals_when_changed_files_do_not_match() {
+        let mut stats = HashMap::new();
+        let mut file_stats = HashMap::new();
+        let mut file_signals = HashMap::new();
+        let signal_context = SessionSignalContext {
+            provider: "codex".to_string(),
+            prompt_history: vec!["inspect workspace overview".to_string()],
+            tool_history: vec!["exec_command".to_string()],
+            resume_command: Some("codex resume sess-overview".to_string()),
+            diagnostics: None,
+        };
+        let analysis = SessionAnalysis {
+            session_id: "sess-overview".to_string(),
+            changed_files: vec!["src/app/workspace/[workspaceId]/overview/page.tsx".to_string()],
+            tool_call_counts: BTreeMap::new(),
+            prompt_previews: Vec::new(),
+            file_operation_counts: BTreeMap::new(),
+            surface_links: Vec::new(),
+            feature_links: vec![ProductFeatureLink {
+                feature_id: "workspace-overview".to_string(),
+                feature_name: "Workspace Overview".to_string(),
+                route: Some("/workspace/:workspaceId/overview".to_string()),
+                via_path: "src/app/workspace/[workspaceId]/overview/page.tsx".to_string(),
+                confidence: SurfaceLinkConfidence::High,
+            }],
+        };
+
+        record_analysis(
+            &mut AnalysisRecordTargets {
+                stats: &mut stats,
+                file_stats: &mut file_stats,
+                file_signals: &mut file_signals,
+            },
+            "sess-overview",
+            &signal_context,
+            &["src/client/diagnostics.ts".to_string()],
+            &analysis,
+            "2026-04-21T15:00:00",
+        );
+
+        let overview_stat = file_stats
+            .get("src/app/workspace/[workspaceId]/overview/page.tsx")
+            .expect("overview file stat");
+        assert_eq!(overview_stat.change_count, 1);
+        assert_eq!(overview_stat.session_ids.len(), 1);
+
+        let overview_signal = file_signals
+            .get("src/app/workspace/[workspaceId]/overview/page.tsx")
+            .expect("overview file signal");
+        assert_eq!(overview_signal.sessions.len(), 1);
+        assert_eq!(overview_signal.sessions[0].session_id, "sess-overview");
+        assert_eq!(
+            overview_signal.sessions[0].changed_files,
+            vec!["src/client/diagnostics.ts".to_string()]
+        );
+    }
+
+    #[test]
+    fn collect_feature_analysis_paths_returns_unique_paths_for_feature() {
+        let analyses = vec![
+            SessionAnalysis {
+                session_id: "sess-1".to_string(),
+                changed_files: Vec::new(),
+                tool_call_counts: BTreeMap::new(),
+                prompt_previews: Vec::new(),
+                file_operation_counts: BTreeMap::new(),
+                surface_links: Vec::new(),
+                feature_links: vec![
+                    ProductFeatureLink {
+                        feature_id: "workspace-overview".to_string(),
+                        feature_name: "Workspace Overview".to_string(),
+                        route: Some("/workspace/:workspaceId/overview".to_string()),
+                        via_path: "src/app/workspace/[workspaceId]/overview/page.tsx".to_string(),
+                        confidence: SurfaceLinkConfidence::High,
+                    },
+                    ProductFeatureLink {
+                        feature_id: "workspace-overview".to_string(),
+                        feature_name: "Workspace Overview".to_string(),
+                        route: Some("/workspace/:workspaceId".to_string()),
+                        via_path: "src/app/workspace/[workspaceId]/page.tsx".to_string(),
+                        confidence: SurfaceLinkConfidence::High,
+                    },
+                ],
+            },
+            SessionAnalysis {
+                session_id: "sess-2".to_string(),
+                changed_files: Vec::new(),
+                tool_call_counts: BTreeMap::new(),
+                prompt_previews: Vec::new(),
+                file_operation_counts: BTreeMap::new(),
+                surface_links: Vec::new(),
+                feature_links: vec![ProductFeatureLink {
+                    feature_id: "workspace-overview".to_string(),
+                    feature_name: "Workspace Overview".to_string(),
+                    route: Some("/workspace/:workspaceId".to_string()),
+                    via_path: "src/app/workspace/[workspaceId]/page.tsx".to_string(),
+                    confidence: SurfaceLinkConfidence::High,
+                }],
+            },
+        ];
+
+        assert_eq!(
+            collect_feature_analysis_paths("workspace-overview", &analyses),
+            vec![
+                "src/app/workspace/[workspaceId]/overview/page.tsx".to_string(),
+                "src/app/workspace/[workspaceId]/page.tsx".to_string(),
+            ]
+        );
     }
 }

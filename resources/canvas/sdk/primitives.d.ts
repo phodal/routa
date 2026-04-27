@@ -36,9 +36,10 @@ export type TextProps = {
     as?: "p" | "span";
     weight?: TextWeight;
     italic?: boolean;
+    truncate?: boolean | "start" | "end";
     style?: CSSProperties;
 };
-export declare function Text({ children, tone, size, as, weight, italic, style, }: TextProps): JSX.Element;
+export declare function Text({ children, tone, size, as, weight, italic, truncate, style, }: TextProps): JSX.Element;
 export type H1Props = {
     children?: ReactNode;
     style?: CSSProperties;

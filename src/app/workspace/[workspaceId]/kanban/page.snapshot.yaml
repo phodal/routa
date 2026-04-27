@@ -1,10 +1,25 @@
 # page-id: kanban
 # route: /workspace/default/kanban
 # source-page: src/app/workspace/[workspaceId]/kanban/page.tsx
-# url: http://127.0.0.1:50777/workspace/default/kanban
+# url: http://127.0.0.1:58066/workspace/default/kanban?boardId=snapshot-board-default
 # title: Routa - Multi-Agent Coordinator
-# generated-at: 2026-04-11T06:28:26.463Z
+# generated-at: 2026-04-27T14:25:04.035Z
 # generator: playwright
 # playwright-version: 1.58.2
-- text: Backlog 0 cards Auto · Auto (OpenCode) · CRAFTER Todo 0 cards Auto · Auto (OpenCode) · CRAFTER Dev 0 cards Auto · Auto (OpenCode) · CRAFTER Review 0 cards Auto · Auto (OpenCode) · GATE Done 0 cards Auto · Auto (OpenCode) · GATE
+- text: Backlog 1 cards Auto · Auto (OpenCode) · CRAFTER
+- button "Open Stabilize Page Snapshot Fixtures":
+  - button "Drag card Stabilize Page Snapshot Fixtures"
+  - button "Delete task"
+  - text: Idle Not synced
+  - button "Run"
+  - text: L Stabilize Page Snapshot Fixtures
+  - paragraph: Introduce deterministic fixture data for snapshot validation.
+  - text: snapshot ci
+- text: Todo 0 cards Auto · Auto (OpenCode) · CRAFTER Dev 0 cards Auto · Auto (OpenCode) · CRAFTER Review 0 cards Auto · Auto (OpenCode) · GATE Done 1 cards Auto · Auto (OpenCode) · GATE
+- button "Open Validate Snapshot Pipeline":
+  - button "Drag card Validate Snapshot Pipeline"
+  - button "Delete task"
+  - text: "Done Queued #1 M Validate Snapshot Pipeline"
+  - paragraph: Verify the snapshot validator runs against fixture data.
+  - text: snapshot
 - status

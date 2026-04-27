@@ -16,6 +16,7 @@ import { GenerateFeatureTreeDrawer } from "./generate-feature-tree-drawer";
 import type {
   AggregatedSelectionSession,
   FeatureDetail,
+  RetrospectiveMemoryEntry,
 } from "./types";
 import type { ExplorerSurfaceItem } from "./surface-navigation";
 
@@ -27,6 +28,9 @@ export function FeatureExplorerInspectorPane({
   selectedScopeSessions,
   selectedSurface,
   selectedSurfaceFeatureNames,
+  retrospectiveMemories,
+  retrospectiveMemoryLoading,
+  retrospectiveMemoryError,
   onOpenSessionAnalysis,
   t,
 }: {
@@ -35,6 +39,9 @@ export function FeatureExplorerInspectorPane({
   selectedScopeSessions: AggregatedSelectionSession[];
   selectedSurface: ExplorerSurfaceItem | null;
   selectedSurfaceFeatureNames: string[];
+  retrospectiveMemories: RetrospectiveMemoryEntry[];
+  retrospectiveMemoryLoading: boolean;
+  retrospectiveMemoryError: string | null;
   onOpenSessionAnalysis: () => void;
   t: TranslationT;
 }) {
@@ -47,6 +54,9 @@ export function FeatureExplorerInspectorPane({
           selectedScopeSessions={selectedScopeSessions}
           selectedSurface={selectedSurface}
           selectedSurfaceFeatureNames={selectedSurfaceFeatureNames}
+          retrospectiveMemories={retrospectiveMemories}
+          retrospectiveMemoryLoading={retrospectiveMemoryLoading}
+          retrospectiveMemoryError={retrospectiveMemoryError}
           onOpenSessionAnalysis={onOpenSessionAnalysis}
           t={t}
         />

@@ -1,6 +1,6 @@
+use routa_core::models::task::TaskContextSearchSpec;
 use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::BTreeMap;
-use routa_core::models::task::TaskContextSearchSpec;
 
 fn deserialize_explicit_nullable_string<'de, D>(
     deserializer: D,

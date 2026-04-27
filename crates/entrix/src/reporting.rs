@@ -10,6 +10,7 @@ pub fn report_to_dict(report: &FitnessReport) -> Value {
         "final_score": report.final_score,
         "hard_gate_blocked": report.hard_gate_blocked,
         "score_blocked": report.score_blocked,
+        "runtime_timed_out": report.runtime_timed_out,
         "dimensions": report.dimensions.iter().map(|ds| {
             json!({
                 "name": ds.dimension,
@@ -73,12 +74,14 @@ mod tests {
             final_score: 100.0,
             hard_gate_blocked: false,
             score_blocked: false,
+            runtime_timed_out: false,
         };
 
         let dict = report_to_dict(&report);
         assert_eq!(dict["final_score"], 100.0);
         assert_eq!(dict["hard_gate_blocked"], false);
         assert_eq!(dict["score_blocked"], false);
+        assert_eq!(dict["runtime_timed_out"], false);
         assert_eq!(dict["dimensions"][0]["name"], "quality");
         assert_eq!(dict["dimensions"][0]["weight"], 24);
         assert_eq!(dict["dimensions"][0]["results"][0]["name"], "lint");

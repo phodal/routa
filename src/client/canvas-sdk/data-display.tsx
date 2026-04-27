@@ -3,7 +3,7 @@
 import type { CSSProperties, ReactNode, JSX } from "react";
 
 import { useHostTheme } from "./theme-context";
-import { canvasTypography } from "./tokens";
+import { canvasRadius, canvasTypography } from "./tokens";
 import { mergeStyle } from "./primitives";
 
 // ---------------------------------------------------------------------------
@@ -25,6 +25,7 @@ export type TableProps = {
   rowTone?: Array<TableRowTone | undefined>;
   framed?: boolean;
   striped?: boolean;
+  stickyHeader?: boolean;
   style?: CSSProperties;
   emptyMessage?: ReactNode;
 };
@@ -44,6 +45,7 @@ export function Table({
   rowTone,
   framed = true,
   striped,
+  stickyHeader,
   style,
   emptyMessage,
 }: TableProps): JSX.Element {
@@ -56,7 +58,8 @@ export function Table({
         border: `1px solid ${tokens.stroke.tertiary}`,
         borderRadius: 8,
         background: tokens.bg.editor,
-        overflow: "auto clip",
+        overflowX: "auto",
+        overflowY: stickyHeader ? "auto" : "clip",
       }
     : { width: "100%" };
 
@@ -83,62 +86,94 @@ export function Table({
     verticalAlign: "top",
   });
 
-  return (
-    <div style={mergeStyle(wrapperStyle, style)}>
-      <table style={tableStyle}>
-        <thead style={{ background: tokens.fill.tertiary }}>
+  if (headers.length === 0) {
+    return (
+      <div
+        style={mergeStyle(
+          {
+            color: tokens.text.secondary,
+            fontSize: "14px",
+            lineHeight: "20px",
+          },
+          style,
+        )}
+      >
+        Add at least one header.
+      </div>
+    );
+  }
+
+  const table = (
+    <table style={mergeStyle(tableStyle, framed ? undefined : style)}>
+      <thead
+        style={{
+          background: tokens.fill.tertiary,
+          position: stickyHeader ? "sticky" : undefined,
+          top: stickyHeader ? 0 : undefined,
+          zIndex: stickyHeader ? 2 : undefined,
+        }}
+      >
+        <tr>
+          {headers.map((h, i) => (
+            <th key={i} scope="col" style={thStyle(i)}>
+              {h}
+            </th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {rows.length === 0 ? (
           <tr>
-            {headers.map((h, i) => (
-              <th key={i} scope="col" style={thStyle(i)}>
-                {h}
-              </th>
-            ))}
+            <td
+              colSpan={headers.length}
+              style={{
+                padding: "16px 12px",
+                textAlign: "center",
+                color: tokens.text.tertiary,
+              }}
+            >
+              {emptyMessage ?? "No rows."}
+            </td>
           </tr>
-        </thead>
-        <tbody>
-          {rows.length === 0 && emptyMessage ? (
-            <tr>
-              <td
-                colSpan={headers.length}
+        ) : (
+          rows.map((row, ri) => {
+            const tone = rowTone?.[ri];
+            const bg = tone
+              ? ROW_TONE_BG[tone]
+              : striped && ri % 2 === 1
+                ? tokens.fill.quaternary
+                : undefined;
+            return (
+              <tr
+                key={ri}
                 style={{
-                  padding: "16px 12px",
-                  textAlign: "center",
-                  color: tokens.text.tertiary,
+                  borderBottom:
+                    ri < rows.length - 1
+                      ? `1px solid ${tokens.stroke.tertiary}`
+                      : undefined,
+                  background: bg,
                 }}
               >
-                {emptyMessage}
-              </td>
-            </tr>
-          ) : (
-            rows.map((row, ri) => {
-              const tone = rowTone?.[ri];
-              const bg = tone
-                ? ROW_TONE_BG[tone]
-                : striped && ri % 2 === 0
-                  ? tokens.fill.quaternary
-                  : undefined;
-              return (
-                <tr
-                  key={ri}
-                  style={{
-                    borderBottom:
-                      ri < rows.length - 1
-                        ? `1px solid ${tokens.stroke.tertiary}`
-                        : undefined,
-                    background: bg,
-                  }}
-                >
-                  {headers.map((_, ci) => (
-                    <td key={ci} style={tdStyle(ci)}>
-                      {row[ci] ?? ""}
-                    </td>
-                  ))}
-                </tr>
-              );
-            })
-          )}
-        </tbody>
-      </table>
+                {headers.map((_, ci) => (
+                  <td key={ci} style={tdStyle(ci)}>
+                    {row[ci] ?? null}
+                  </td>
+                ))}
+              </tr>
+            );
+          })
+        )}
+      </tbody>
+    </table>
+  );
+
+  if (!framed) {
+    return table;
+  }
+
+  return (
+    <div style={mergeStyle(wrapperStyle, style)}>
+      {table}
     </div>
   );
 }
@@ -204,10 +239,17 @@ export type PillTone =
   | "warning"
   | "info";
 
+export type PillSize = "sm" | "md";
+
 export type PillProps = {
   children?: ReactNode;
   active?: boolean;
   tone?: PillTone;
+  size?: PillSize;
+  leadingContent?: ReactNode;
+  keyboardHint?: string;
+  disabled?: boolean;
+  title?: string;
   style?: CSSProperties;
   onClick?: () => void;
 };
@@ -226,6 +268,11 @@ export function Pill({
   children,
   active,
   tone = "neutral",
+  size = "md",
+  leadingContent,
+  keyboardHint,
+  disabled,
+  title,
   style,
   onClick,
 }: PillProps): JSX.Element {
@@ -237,24 +284,117 @@ export function Pill({
     alignItems: "center",
     justifyContent: "center",
     boxSizing: "border-box",
-    borderRadius: 9999,
+    borderRadius: canvasRadius.full,
     whiteSpace: "nowrap",
     userSelect: "none",
     fontFamily: "inherit",
     fontWeight: 400,
-    fontSize: "12px",
-    lineHeight: "14px",
+    fontSize: size === "sm" ? "11px" : "12px",
+    lineHeight: size === "sm" ? "13px" : "14px",
     background: active ? `${color}22` : "transparent",
     color,
-    border: `1px solid ${color}`,
-    padding: "6px 10px",
-    gap: "6px",
-    cursor: onClick ? "pointer" : "default",
-    opacity: 1,
+    border: size === "sm" ? "none" : `1px solid ${color}`,
+    padding: size === "sm" ? "2px 6px" : "6px 10px",
+    gap: size === "sm" ? "4px" : "6px",
+    cursor: disabled ? "not-allowed" : onClick ? "pointer" : "default",
+    opacity: disabled ? 0.5 : 1,
   };
   return (
-    <span style={mergeStyle(base, style)} onClick={onClick}>
+    <span
+      style={mergeStyle(base, style)}
+      title={title}
+      onClick={disabled ? undefined : onClick}
+    >
+      {leadingContent ? (
+        <span style={{ flexShrink: 0, color: "inherit" }}>
+          {leadingContent}
+        </span>
+      ) : null}
       <span style={{ flexShrink: 0, color: "inherit" }}>{children}</span>
+      {keyboardHint ? (
+        <span style={{ color: tokens.text.tertiary }}>{keyboardHint}</span>
+      ) : null}
     </span>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Callout
+// ---------------------------------------------------------------------------
+
+export type CalloutTone = "info" | "success" | "warning" | "danger" | "neutral";
+
+export type CalloutProps = {
+  children?: ReactNode;
+  tone?: CalloutTone;
+  title?: ReactNode;
+  icon?: ReactNode;
+  style?: CSSProperties;
+};
+
+const CALLOUT_TONE_COLOR: Record<CalloutTone, string> = {
+  info: "rgba(112, 176, 216, 0.88)",
+  success: "rgba(82, 184, 150, 0.88)",
+  warning: "rgba(240, 160, 64, 0.88)",
+  danger: "rgba(252, 107, 131, 0.88)",
+  neutral: "currentColor",
+};
+
+const CALLOUT_TONE_BG: Record<CalloutTone, string> = {
+  info: "rgba(112, 176, 216, 0.10)",
+  success: "rgba(82, 184, 150, 0.10)",
+  warning: "rgba(240, 160, 64, 0.10)",
+  danger: "rgba(252, 107, 131, 0.10)",
+  neutral: "transparent",
+};
+
+export function Callout({
+  children,
+  tone = "info",
+  title,
+  icon,
+  style,
+}: CalloutProps): JSX.Element {
+  const { tokens } = useHostTheme();
+  const toneColor =
+    tone === "neutral" ? tokens.text.secondary : CALLOUT_TONE_COLOR[tone];
+  const base: CSSProperties = {
+    display: "flex",
+    gap: 10,
+    width: "100%",
+    boxSizing: "border-box",
+    padding: "10px 12px",
+    borderRadius: canvasRadius.lg,
+    border: `1px solid ${
+      tone === "neutral" ? tokens.stroke.tertiary : `${toneColor}55`
+    }`,
+    background: tone === "neutral" ? tokens.fill.quaternary : CALLOUT_TONE_BG[tone],
+    color: tokens.text.secondary,
+  };
+
+  return (
+    <div style={mergeStyle(base, style)}>
+      {icon ? (
+        <div style={{ flexShrink: 0, color: toneColor, lineHeight: "20px" }}>
+          {icon}
+        </div>
+      ) : null}
+      <div style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 4 }}>
+        {title ? (
+          <div
+            style={{
+              ...canvasTypography.small,
+              color: toneColor,
+              fontWeight: 600,
+            }}
+          >
+            {title}
+          </div>
+        ) : null}
+        <div style={{ ...canvasTypography.body, color: tokens.text.secondary }}>
+          {children}
+        </div>
+      </div>
+    </div>
   );
 }

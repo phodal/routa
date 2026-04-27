@@ -5,10 +5,10 @@ import { describe, expect, it } from "vitest";
 import { compileCanvasTsx } from "../compiler";
 
 describe("compileCanvasTsx", () => {
-  it("compiles valid TSX with @canvas-sdk imports", () => {
+  it("compiles valid TSX with routa/canvas imports", () => {
     const source = `
 import React from "react";
-import { Stack, H1, Text } from "@canvas-sdk";
+import { Stack, H1, Text } from "routa/canvas";
 
 export default function MyCanvas() {
   return (
@@ -24,6 +24,71 @@ export default function MyCanvas() {
     if (result.ok) {
       expect(typeof result.Component).toBe("function");
     }
+  });
+
+  it("keeps legacy cursor/canvas imports working", () => {
+    const source = `
+import { Stack, H1, Text } from "cursor/canvas";
+
+export default function CursorCompatCanvas() {
+  return <Stack><H1>Cursor compat</H1><Text>Still supported</Text></Stack>;
+}
+`;
+    const result = compileCanvasTsx(source);
+    expect(result.ok).toBe(true);
+  });
+
+  it("keeps legacy @canvas-sdk imports working", () => {
+    const source = `
+import { Stack, H1, Text } from "@canvas-sdk";
+
+export default function LegacyCanvas() {
+  return <Stack><H1>Legacy</H1><Text>Still supported</Text></Stack>;
+}
+`;
+    const result = compileCanvasTsx(source);
+    expect(result.ok).toBe(true);
+  });
+
+  it("compiles Cursor-compatible hooks, forms, and charts", () => {
+    const source = `
+import { Stack, TextInput, LineChart, useCanvasState } from "routa/canvas";
+
+export default function MyCanvas() {
+  const [query, setQuery] = useCanvasState("query", "");
+  return (
+    <Stack>
+      <TextInput value={query} onChange={setQuery} />
+      <LineChart categories={["A", "B"]} series={[{ name: "Score", data: [1, 2] }]} />
+    </Stack>
+  );
+}
+`;
+    const result = compileCanvasTsx(source);
+    expect(result.ok).toBe(true);
+  });
+
+  it("compiles Cursor-compatible diff and DAG helpers", () => {
+    const source = `
+import { Card, CardBody, DiffView, computeDAGLayout } from "routa/canvas";
+
+export default function MyCanvas() {
+  const layout = computeDAGLayout({
+    nodes: [{ id: "a" }, { id: "b" }],
+    edges: [{ from: "a", to: "b" }],
+  });
+  return (
+    <Card>
+      <CardBody>
+        <span>{layout.nodes.length}</span>
+        <DiffView path="demo.ts" lines={[{ type: "added", content: "const x = 1;", lineNumber: 1 }]} />
+      </CardBody>
+    </Card>
+  );
+}
+`;
+    const result = compileCanvasTsx(source);
+    expect(result.ok).toBe(true);
   });
 
   it("compiles without explicit React import (JSX classic)", () => {

@@ -1,5 +1,6 @@
 "use client";
 
+import { createContext, useContext } from "react";
 import type { CSSProperties, ReactNode, JSX } from "react";
 
 import { useHostTheme } from "./theme-context";
@@ -121,9 +122,11 @@ export type TextWeight = "normal" | "medium" | "semibold" | "bold";
 const fontWeightMap: Record<TextWeight, number> = {
   normal: 400,
   medium: 500,
-  semibold: 600,
-  bold: 700,
+  semibold: 590,
+  bold: 650,
 };
+
+const TypographyInlineContext = createContext(false);
 
 export type TextProps = {
   children?: ReactNode;
@@ -132,6 +135,7 @@ export type TextProps = {
   as?: "p" | "span";
   weight?: TextWeight;
   italic?: boolean;
+  truncate?: boolean | "start" | "end";
   style?: CSSProperties;
 };
 
@@ -139,13 +143,17 @@ export function Text({
   children,
   tone = "primary",
   size = "body",
-  as = "p",
+  as,
   weight = "normal",
   italic,
+  truncate,
   style,
 }: TextProps): JSX.Element {
   const { tokens } = useHostTheme();
+  const isInline = useContext(TypographyInlineContext);
+  const Tag = as ?? (isInline ? "span" : "p");
   const typo = size === "small" ? canvasTypography.small : canvasTypography.body;
+  const truncateMode = truncate === true ? "end" : truncate;
   const base: CSSProperties = {
     margin: 0,
     color: tokens.text[tone],
@@ -153,9 +161,19 @@ export function Text({
     lineHeight: typo.lineHeight,
     fontWeight: fontWeightMap[weight],
     fontStyle: italic ? "italic" : undefined,
+    overflow: truncateMode ? "hidden" : undefined,
+    textOverflow: truncateMode ? "ellipsis" : undefined,
+    whiteSpace: truncateMode ? "nowrap" : undefined,
+    direction: truncateMode === "start" ? "rtl" : undefined,
+    textAlign: truncateMode === "start" ? "left" : undefined,
   };
-  const Tag = as;
-  return <Tag style={mergeStyle(base, style)}>{children}</Tag>;
+  return (
+    <Tag style={mergeStyle(base, style)}>
+      <TypographyInlineContext.Provider value={true}>
+        {truncateMode === "start" ? <bdi>{children}</bdi> : children}
+      </TypographyInlineContext.Provider>
+    </Tag>
+  );
 }
 
 export type H1Props = { children?: ReactNode; style?: CSSProperties };
@@ -167,7 +185,13 @@ export function H1({ children, style }: H1Props): JSX.Element {
     color: tokens.text.primary,
     ...canvasTypography.h1,
   };
-  return <h1 style={mergeStyle(base, style)}>{children}</h1>;
+  return (
+    <h1 style={mergeStyle(base, style)}>
+      <TypographyInlineContext.Provider value={true}>
+        {children}
+      </TypographyInlineContext.Provider>
+    </h1>
+  );
 }
 
 export type H2Props = { children?: ReactNode; style?: CSSProperties };
@@ -179,7 +203,13 @@ export function H2({ children, style }: H2Props): JSX.Element {
     color: tokens.text.primary,
     ...canvasTypography.h2,
   };
-  return <h2 style={mergeStyle(base, style)}>{children}</h2>;
+  return (
+    <h2 style={mergeStyle(base, style)}>
+      <TypographyInlineContext.Provider value={true}>
+        {children}
+      </TypographyInlineContext.Provider>
+    </h2>
+  );
 }
 
 export type H3Props = { children?: ReactNode; style?: CSSProperties };
@@ -191,7 +221,13 @@ export function H3({ children, style }: H3Props): JSX.Element {
     color: tokens.text.primary,
     ...canvasTypography.h3,
   };
-  return <h3 style={mergeStyle(base, style)}>{children}</h3>;
+  return (
+    <h3 style={mergeStyle(base, style)}>
+      <TypographyInlineContext.Provider value={true}>
+        {children}
+      </TypographyInlineContext.Provider>
+    </h3>
+  );
 }
 
 export type CodeProps = { children?: ReactNode; style?: CSSProperties };
@@ -202,8 +238,9 @@ export function Code({ children, style }: CodeProps): JSX.Element {
     fontFamily:
       'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace',
     fontSize: "0.92em",
-    background: tokens.fill.tertiary,
-    padding: "1px 4px",
+    background: tokens.fill.quaternary,
+    color: tokens.text.primary,
+    padding: "2px 5px",
     borderRadius: 4,
   };
   return <code style={mergeStyle(base, style)}>{children}</code>;

@@ -1,0 +1,98 @@
+{
+  "name": "routa-vscode",
+  "displayName": "Routa",
+  "description": "Run Routa inside VS Code as a local multi-agent coordination workspace.",
+  "version": "0.1.0",
+  "publisher": "phodal",
+  "private": true,
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onCommand:routa.open",
+    "onCommand:routa.startServer",
+    "onCommand:routa.stopServer",
+    "onCommand:routa.openInBrowser",
+    "onCommand:routa.openWebviewDeveloperTools",
+    "onCommand:routa.copyMcpEndpoint"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "routa.open",
+        "title": "%routa.command.open%",
+        "category": "Routa"
+      },
+      {
+        "command": "routa.startServer",
+        "title": "%routa.command.startServer%",
+        "category": "Routa"
+      },
+      {
+        "command": "routa.stopServer",
+        "title": "%routa.command.stopServer%",
+        "category": "Routa"
+      },
+      {
+        "command": "routa.openInBrowser",
+        "title": "%routa.command.openInBrowser%",
+        "category": "Routa"
+      },
+      {
+        "command": "routa.openWebviewDeveloperTools",
+        "title": "%routa.command.openWebviewDeveloperTools%",
+        "category": "Routa"
+      },
+      {
+        "command": "routa.copyMcpEndpoint",
+        "title": "%routa.command.copyMcpEndpoint%",
+        "category": "Routa"
+      }
+    ],
+    "configuration": {
+      "title": "Routa",
+      "properties": {
+        "routa.server.executablePath": {
+          "type": "string",
+          "default": "",
+          "description": "%routa.config.executablePath%"
+        },
+        "routa.server.port": {
+          "type": "number",
+          "default": 0,
+          "minimum": 0,
+          "maximum": 65535,
+          "description": "%routa.config.port%"
+        },
+        "routa.server.staticDir": {
+          "type": "string",
+          "default": "",
+          "description": "%routa.config.staticDir%"
+        },
+        "routa.server.extraArgs": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "description": "%routa.config.extraArgs%"
+        },
+        "routa.workspace.autoRegisterCurrentFolder": {
+          "type": "boolean",
+          "default": true,
+          "description": "%routa.config.autoRegisterCurrentFolder%"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "node ../../node_modules/typescript/bin/tsc -p tsconfig.json",
+    "build": "esbuild src/extension.ts --bundle --platform=node --format=cjs --external:vscode --outfile=out/extension.js",
+    "prepare-assets": "node scripts/prepare-assets.mjs"
+  }
+}

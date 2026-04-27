@@ -281,7 +281,11 @@ describe("HomeInput", () => {
     expect(args[11]).toBe("main");
 
     await waitFor(() => {
-      expect(storePendingPromptMock).toHaveBeenCalledWith("session-1", "/fix-tests Ship it");
+      expect(storePendingPromptMock).toHaveBeenCalledWith("session-1", {
+        text: "Ship it",
+        skillName: "fix-tests",
+        skillRepoPath: "/repo/main",
+      });
     });
     expect(promptSessionMock).not.toHaveBeenCalled();
     expect(onSessionCreated).toHaveBeenCalledWith(

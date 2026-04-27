@@ -32,6 +32,7 @@ export interface CanvasTokens {
     accent: {
         primary: string;
         control: string;
+        controlHover: string;
     };
     diff: {
         insertedLine: string;
@@ -42,15 +43,37 @@ export interface CanvasTokens {
 }
 export interface CanvasPalette {
     foreground: string;
+    foregroundSecondary: string;
+    foregroundTertiary: string;
+    foregroundQuaternary: string;
+    editor: string;
+    chrome: string;
+    sidebar: string;
+    elevated: string;
+    fillPrimary: string;
+    fillSecondary: string;
+    fillTertiary: string;
+    fillQuaternary: string;
+    strokePrimary: string;
+    strokeSecondary: string;
+    strokeTertiary: string;
     background: string;
     accent: string;
+    buttonBackground: string;
+    buttonForeground: string;
+    buttonHoverBackground: string;
+    link: string;
+    diffInsertedLine: string;
+    diffRemovedLine: string;
+    diffStripAdded: string;
+    diffStripRemoved: string;
     success: string;
     warning: string;
     danger: string;
     info: string;
 }
-export interface CanvasTheme {
-    kind: "dark" | "light";
+export interface CanvasTheme extends CanvasTokens {
+    kind: string;
     tokens: CanvasTokens;
     palette: CanvasPalette;
 }
@@ -60,13 +83,20 @@ export declare const darkPalette: CanvasPalette;
 export declare const lightPalette: CanvasPalette;
 export declare const darkTheme: CanvasTheme;
 export declare const lightTheme: CanvasTheme;
+export declare const canvasPaletteDark: CanvasPalette;
+export declare const canvasPaletteLight: CanvasPalette;
+export declare const canvasTokens: CanvasTokens;
+export declare const canvasTokensLight: CanvasTokens;
 /** Spacing scale (px) matching canvas design language. */
 export declare const canvasSpacing: Record<number, number>;
 /** Border radius scale (px). */
 export declare const canvasRadius: {
+    readonly none: 0;
+    readonly xs: 2;
     readonly sm: 4;
     readonly md: 6;
     readonly lg: 8;
+    readonly xl: 12;
     readonly full: 9999;
 };
 /** Typography presets. */
@@ -82,8 +112,8 @@ export declare const canvasTypography: {
         readonly fontWeight: 590;
     };
     readonly h3: {
-        readonly fontSize: "15px";
-        readonly lineHeight: "20px";
+        readonly fontSize: "16px";
+        readonly lineHeight: "22px";
         readonly fontWeight: 590;
     };
     readonly body: {

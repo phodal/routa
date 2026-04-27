@@ -226,45 +226,39 @@ describe("KanbanTaskChangesTab", () => {
 
     fireEvent.click(await screen.findByTestId("kanban-commit-row-abc1234567890"));
 
-    const openPackageDiffShadowRoot = async () => {
-      const fileSection = await screen.findByTestId("kanban-commit-file-section-package.json");
-      const diffContainer = fileSection.querySelector("diffs-container");
-      const shadowRoot = diffContainer?.shadowRoot;
-      if (!shadowRoot) {
-        throw new Error("package.json diff shadow root is not mounted");
-      }
-      return shadowRoot;
-    };
+    const packageSection = await screen.findByTestId("kanban-commit-file-section-package.json");
+    const getPackageDiffShadowRoot = () => packageSection.querySelector("diffs-container")?.shadowRoot ?? null;
 
-    await waitFor(async () => {
-      expect((await openPackageDiffShadowRoot()).textContent).toContain('"version": "1.1.0"');
+    await waitFor(() => {
+      const shadowRoot = getPackageDiffShadowRoot();
+      expect(shadowRoot).toBeTruthy();
+      expect(shadowRoot?.textContent ?? "").toContain('"version": "1.1.0"');
     });
     expect(screen.getByTestId("kanban-commit-files-changed").textContent).toContain("2 Files Changed");
     expect(screen.getByTestId("kanban-commit-diff-scroll-area")).toBeTruthy();
-    expect(screen.getByTestId("kanban-commit-file-section-package.json")).toBeTruthy();
+    expect(packageSection).toBeTruthy();
     expect(screen.getByTestId("kanban-commit-file-section-src/editor.ts")).toBeTruthy();
-    expect((await openPackageDiffShadowRoot()).textContent).not.toContain("context10");
+    expect(getPackageDiffShadowRoot()?.textContent ?? "").not.toContain("context10");
 
-    const hiddenLinesButton = (await openPackageDiffShadowRoot()).querySelector("[data-expand-button]");
+    const hiddenLinesButton = getPackageDiffShadowRoot()?.querySelector("[data-expand-button]");
     expect(hiddenLinesButton).toBeTruthy();
-    expect((await openPackageDiffShadowRoot()).textContent).toContain("hidden lines");
+    expect(getPackageDiffShadowRoot()?.textContent ?? "").toContain("hidden lines");
     hiddenLinesButton?.dispatchEvent(new MouseEvent("click", { bubbles: true, composed: true }));
 
-    await waitFor(async () => {
-      expect((await openPackageDiffShadowRoot()).textContent).toContain("context10");
+    await waitFor(() => {
+      expect(getPackageDiffShadowRoot()?.textContent ?? "").toContain("context10");
     });
 
-    const packageSection = screen.getByTestId("kanban-commit-file-section-package.json");
     fireEvent.click(packageSection.querySelector("summary")!);
     expect((packageSection as HTMLDetailsElement).open).toBe(false);
     await waitFor(() => {
       expect(packageSection.querySelector("diffs-container")).toBeNull();
     });
     fireEvent.click(packageSection.querySelector("summary")!);
-    await waitFor(async () => {
-      expect((await openPackageDiffShadowRoot()).textContent).toContain('"version": "1.1.0"');
+    await waitFor(() => {
+      expect(getPackageDiffShadowRoot()?.textContent ?? "").toContain('"version": "1.1.0"');
     });
-    expect((await openPackageDiffShadowRoot()).textContent).not.toContain("context10");
+    expect(getPackageDiffShadowRoot()?.textContent ?? "").not.toContain("context10");
 
     await waitFor(() => {
       const editorSection = container.querySelector("[data-testid='kanban-commit-file-section-src/editor.ts']");
@@ -296,4 +290,5 @@ describe("KanbanTaskChangesTab", () => {
     fireEvent.click(screen.getByTestId("kanban-commit-row-abc1234567890"));
     expect(screen.queryByTestId("kanban-commit-files-changed")).toBeNull();
   });
+
 });

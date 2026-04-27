@@ -17,7 +17,7 @@ pub(crate) fn print_json<T: serde::Serialize>(value: &T) {
 }
 
 pub(crate) fn print_report_text(report: &FitnessReport, verbose: bool) {
-    let status = if report.hard_gate_blocked || report.score_blocked {
+    let status = if report.runtime_timed_out || report.hard_gate_blocked || report.score_blocked {
         "FAIL"
     } else {
         "PASS"
@@ -27,6 +27,7 @@ pub(crate) fn print_report_text(report: &FitnessReport, verbose: bool) {
     println!("Final score: {:.1}%", report.final_score);
     println!("Hard gate blocked: {}", report.hard_gate_blocked);
     println!("Score blocked: {}", report.score_blocked);
+    println!("Runtime timed out: {}", report.runtime_timed_out);
 
     for dimension in &report.dimensions {
         println!(

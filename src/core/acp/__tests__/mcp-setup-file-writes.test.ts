@@ -45,6 +45,7 @@ describe("mcp-setup file-based providers", () => {
     const { providerSupportsMcp, getMcpStatus, ensureMcpForProvider } = await import("../mcp-setup");
 
     expect(providerSupportsMcp("claude-registry")).toBe(true);
+    expect(providerSupportsMcp("codex-acp")).toBe(true);
     expect(providerSupportsMcp("qoder")).toBe(true);
     expect(providerSupportsMcp("unknown-provider")).toBe(false);
     expect(getMcpStatus("claude-registry", ["{}"])).toEqual({
@@ -109,6 +110,20 @@ describe("mcp-setup file-based providers", () => {
     expect(raw).toContain('url = "http://127.0.0.1:3210/api/mcp"');
     expect(raw).toContain("enabled = true");
     expect(result.summary).toContain("codex: wrote private overlay");
+  });
+
+  it("reports codex-acp as ACP mcpServers only", async () => {
+    const { ensureMcpForProvider } = await import("../mcp-setup");
+
+    const result = await ensureMcpForProvider("codex-acp", {
+      routaServerUrl: "http://127.0.0.1:3210",
+      includeCustomServers: false,
+      cwd: "/workspace/routa-codex-acp",
+    });
+
+    expect(result.mcpConfigs).toEqual([]);
+    expect(result.providerArgs).toBeUndefined();
+    expect(result.summary).toBe("codex-acp: ACP mcpServers only");
   });
 
   it("adds and removes qoder MCP servers through the qodercli lifecycle", async () => {

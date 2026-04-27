@@ -7,6 +7,7 @@ import { resetWorkflowOrchestrator } from "../../kanban/workflow-orchestrator-si
 import { InMemoryKanbanBoardStore } from "../../store/kanban-board-store";
 import { InMemoryTaskStore } from "../../store/task-store";
 import { KanbanTools } from "../kanban-tools";
+import { getHttpSessionStore } from "../../acp/http-session-store";
 
 const isGitRepository = vi.fn();
 const isBareGitRepository = vi.fn();
@@ -122,6 +123,113 @@ describe("KanbanTools", () => {
     });
 
     expect(result.success).toBe(true);
+    const tasks = await taskStore.listByWorkspace("default");
+    expect(tasks[0]).toMatchObject({
+      contextSearchSpec: {
+        query: "jit context kanban",
+        featureCandidates: ["kanban-workflow"],
+        relatedFiles: ["src/app/workspace/[workspaceId]/kanban/kanban-card-detail.tsx"],
+      },
+    });
+  });
+
+  it("strips speculative backlog contextSearchSpec when the session has not inspected the repo", async () => {
+    const boardStore = new InMemoryKanbanBoardStore();
+    const taskStore = new InMemoryTaskStore();
+    const tools = new KanbanTools(boardStore, taskStore);
+    const sessionStore = getHttpSessionStore();
+
+    const board = createKanbanBoard({
+      id: "board-1",
+      workspaceId: "default",
+      name: "Default Board",
+      isDefault: true,
+    });
+    await boardStore.save(board);
+
+    const sessionId = `session-backlog-no-confirm-${Date.now()}`;
+    sessionStore.upsertSession({
+      sessionId,
+      workspaceId: "default",
+      cwd: "/tmp/repo",
+      createdAt: new Date().toISOString(),
+    });
+    sessionStore.pushNotificationToHistory(sessionId, {
+      sessionId,
+      update: {
+        sessionUpdate: "tool_call",
+        tool: "search_cards",
+        kind: "task",
+      },
+    });
+
+    const result = await tools.createCard({
+      workspaceId: "default",
+      title: "Created with speculative hints",
+      columnId: "backlog",
+      sessionId,
+      contextSearchSpec: {
+        query: "jit context kanban",
+        featureCandidates: ["kanban-workflow"],
+        relatedFiles: ["src/app/workspace/[workspaceId]/kanban/kanban-card-detail.tsx"],
+      },
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.data).toMatchObject({
+      warnings: [expect.stringContaining("Ignored contextSearchSpec")],
+    });
+
+    const tasks = await taskStore.listByWorkspace("default");
+    expect(tasks[0]?.contextSearchSpec).toBeUndefined();
+  });
+
+  it("persists backlog contextSearchSpec after confirmed repo inspection", async () => {
+    const boardStore = new InMemoryKanbanBoardStore();
+    const taskStore = new InMemoryTaskStore();
+    const tools = new KanbanTools(boardStore, taskStore);
+    const sessionStore = getHttpSessionStore();
+
+    const board = createKanbanBoard({
+      id: "board-1",
+      workspaceId: "default",
+      name: "Default Board",
+      isDefault: true,
+    });
+    await boardStore.save(board);
+
+    const sessionId = `session-backlog-confirm-${Date.now()}`;
+    sessionStore.upsertSession({
+      sessionId,
+      workspaceId: "default",
+      cwd: "/tmp/repo",
+      createdAt: new Date().toISOString(),
+    });
+    sessionStore.pushNotificationToHistory(sessionId, {
+      sessionId,
+      update: {
+        sessionUpdate: "tool_call",
+        kind: "bash",
+        rawInput: { command: "rg --files src/app" },
+      },
+    });
+
+    const result = await tools.decomposeTasks({
+      workspaceId: "default",
+      columnId: "backlog",
+      sessionId,
+      tasks: [{
+        title: "Confirmed retrieval hints",
+        contextSearchSpec: {
+          query: "jit context kanban",
+          featureCandidates: ["kanban-workflow"],
+          relatedFiles: ["src/app/workspace/[workspaceId]/kanban/kanban-card-detail.tsx"],
+        },
+      }],
+    });
+
+    expect(result.success).toBe(true);
+
     const tasks = await taskStore.listByWorkspace("default");
     expect(tasks[0]).toMatchObject({
       contextSearchSpec: {

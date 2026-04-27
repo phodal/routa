@@ -78,6 +78,8 @@ export class AcpProcess {
     private _config: AcpProcessConfig;
     private _initResult: AcpInitResult | null = null;
     private _sessionContext: AcpSessionContext | null = null;
+    private lastSyntheticTurnStopReason: string | null = null;
+    private lastStderrErrorMessage: string | null = null;
 
     constructor(config: AcpProcessConfig, onNotification: NotificationHandler) {
         this._config = config;
@@ -167,6 +169,7 @@ export class AcpProcess {
         this.process.stderr?.on("data", (chunk: Buffer) => {
             const text = chunk.toString("utf-8").trim();
             if (text) {
+                this.rememberStderrError(text);
                 console.error(`[AcpProcess:${displayName} stderr] ${text}`);
                 // Forward stderr to frontend as process_output notification
                 // This allows xterm.js to display agent process output
@@ -575,6 +578,10 @@ export class AcpProcess {
                 }
                 return;
             }
+
+            if (this.handleLateTurnCompleteResult(msg.result)) {
+                return;
+            }
         }
 
         // Agent→Client requests (has id and method, expects response)
@@ -585,14 +592,15 @@ export class AcpProcess {
 
         // Notification (no id, has method) - e.g. session/update
         if (msg.method) {
-            const updateType = (msg.params as Record<string, unknown>)?.update;
+            const enrichedMsg = this.enrichAcpStatusError(msg);
+            const updateType = (enrichedMsg.params as Record<string, unknown>)?.update;
             const sessionUpdate = updateType
                 ? (updateType as Record<string, unknown>)?.sessionUpdate
-                : (msg.params as Record<string, unknown>)?.sessionUpdate;
+                : (enrichedMsg.params as Record<string, unknown>)?.sessionUpdate;
             console.log(
-                `[AcpProcess:${this._config.displayName}] Notification: ${msg.method} (${sessionUpdate ?? "unknown"})`
+                `[AcpProcess:${this._config.displayName}] Notification: ${enrichedMsg.method} (${sessionUpdate ?? "unknown"})`
             );
-            this.onNotification(msg);
+            this.onNotification(enrichedMsg);
             return;
         }
 
@@ -600,6 +608,95 @@ export class AcpProcess {
             `[AcpProcess:${this._config.displayName}] Unhandled message:`,
             JSON.stringify(msg)
         );
+    }
+
+    private handleLateTurnCompleteResult(result: unknown): boolean {
+        if (!result || typeof result !== "object") {
+            return false;
+        }
+
+        const payload = result as Record<string, unknown>;
+        const stopReason = typeof payload.stopReason === "string"
+            ? payload.stopReason
+            : undefined;
+        if (!stopReason) {
+            return false;
+        }
+
+        if (this.lastSyntheticTurnStopReason === stopReason) {
+            return true;
+        }
+
+        this.lastSyntheticTurnStopReason = stopReason;
+        this.onNotification({
+            jsonrpc: "2.0",
+            method: "session/update",
+            params: {
+                sessionId: this._sessionId ?? "pending",
+                update: {
+                    sessionUpdate: "turn_complete",
+                    stopReason,
+                },
+            },
+        });
+        return true;
+    }
+
+    private rememberStderrError(text: string): void {
+        const firstBrace = text.indexOf("{");
+        const lastBrace = text.lastIndexOf("}");
+        if (firstBrace < 0 || lastBrace <= firstBrace) {
+            return;
+        }
+
+        try {
+            const payload = JSON.parse(text.slice(firstBrace, lastBrace + 1)) as Record<string, unknown>;
+            const errorRecord = payload.error && typeof payload.error === "object"
+                ? payload.error as Record<string, unknown>
+                : undefined;
+            const message = typeof errorRecord?.message === "string"
+                ? errorRecord.message
+                : typeof payload.message === "string"
+                    ? payload.message
+                    : undefined;
+            if (message?.trim()) {
+                this.lastStderrErrorMessage = message.trim();
+            }
+        } catch {
+            // Stderr is not structured for many providers.
+        }
+    }
+
+    private enrichAcpStatusError(msg: JsonRpcMessage): JsonRpcMessage {
+        const params = msg.params && typeof msg.params === "object"
+            ? msg.params as Record<string, unknown>
+            : undefined;
+        const update = params?.update && typeof params.update === "object"
+            ? params.update as Record<string, unknown>
+            : undefined;
+
+        if (
+            update?.sessionUpdate !== "acp_status" ||
+            update.status !== "error" ||
+            update.error !== "Internal error" ||
+            !this.lastStderrErrorMessage
+        ) {
+            return msg;
+        }
+
+        const enrichedError = this.lastStderrErrorMessage;
+        this.lastStderrErrorMessage = null;
+
+        return {
+            ...msg,
+            params: {
+                ...params,
+                update: {
+                    ...update,
+                    error: enrichedError,
+                },
+            },
+        };
     }
 
     /**

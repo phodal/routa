@@ -27,6 +27,7 @@ const {
     getSession: vi.fn(),
     getConsolidatedHistory: vi.fn(() => []),
     upsertSession: vi.fn(),
+    updateSessionAcpStatus: vi.fn(),
     pushNotification: vi.fn(),
     pushUserMessage: vi.fn(),
   };
@@ -399,6 +400,66 @@ describe("/api/acp POST", () => {
     });
   });
 
+  it("forwards explicit ACP mcpServers when creating sessions", async () => {
+    acpProcessManager.createSession.mockResolvedValue("session-codex-acp");
+
+    const response = await POST(
+      new NextRequest("http://localhost/api/acp", {
+        method: "POST",
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 21,
+          method: "session/new",
+          params: {
+            provider: "codex-acp",
+            workspaceId: "default",
+            cwd: "/tmp/project",
+            mcpServers: [
+              {
+                name: "routa-coordination",
+                type: "http",
+                url: "http://localhost/api/mcp?wsId=default",
+              },
+            ],
+          },
+        }),
+      }),
+    );
+
+    expect(acpProcessManager.createSession).toHaveBeenCalledWith(
+      expect.any(String),
+      "/tmp/project",
+      expect.any(Function),
+      "codex-acp",
+      undefined,
+      undefined,
+      undefined,
+      "default",
+      undefined,
+      undefined,
+      "http://localhost",
+      expect.objectContaining({
+        provider: "codex-acp",
+      }),
+      [
+        {
+          headers: [],
+          name: "routa-coordination",
+          type: "http",
+          url: "http://localhost/api/mcp?wsId=default",
+        },
+      ],
+    );
+    await expect(response.json()).resolves.toMatchObject({
+      jsonrpc: "2.0",
+      id: 21,
+      result: {
+        provider: "codex-acp",
+        acpStatus: "connecting",
+      },
+    });
+  });
+
   it("rejects prompt methods when an embedded session is owned by another instance", async () => {
     getRequiredRunnerUrl.mockReturnValue("http://runner.internal");
     getSessionRoutingRecord.mockResolvedValue({
@@ -562,6 +623,8 @@ describe("/api/acp POST", () => {
         role: "DEVELOPER",
       },
       "codex-thread-1",
+      undefined,
+      undefined,
     );
     expect(acpProcessManager.createSession).not.toHaveBeenCalled();
     await expect(response.json()).resolves.toMatchObject({
@@ -622,6 +685,7 @@ describe("/api/acp POST", () => {
         provider: "codex",
         role: "CRAFTER",
       },
+      undefined,
     );
     await expect(response.json()).resolves.toMatchObject({
       jsonrpc: "2.0",

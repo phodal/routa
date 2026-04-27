@@ -98,6 +98,13 @@ describe("/api/kanban/boards GET", () => {
     workspaceStore.get.mockResolvedValue({
       metadata: {
         "kanbanAutoProvider:board-1": "codex",
+        "kanbanHistoryMemoryPolicy:board-1": JSON.stringify({
+          mode: "force",
+          minMatchedSessions: 4,
+          minMatchedFiles: 5,
+          minFeatureCandidates: 2,
+          minConfidence: "high",
+        }),
       },
     });
     getBoardSnapshot.mockResolvedValue({
@@ -170,6 +177,13 @@ describe("/api/kanban/boards GET", () => {
     expect(data.boards[0]).toMatchObject({
       id: "board-1",
       autoProviderId: "codex",
+      historyMemoryPolicy: {
+        mode: "force",
+        minMatchedSessions: 4,
+        minMatchedFiles: 5,
+        minFeatureCandidates: 2,
+        minConfidence: "high",
+      },
     });
     expect(processKanbanColumnTransition).toHaveBeenCalledWith(system, expect.objectContaining({
       cardId: "task-1",

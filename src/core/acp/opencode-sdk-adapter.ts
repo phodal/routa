@@ -714,7 +714,7 @@ export class OpencodeSdkAdapter {
                 sessionUpdate: "tool_call_update",
                 title: toolName !== "unknown" ? toolName : (state.title ?? toolName),
                 toolCallId,
-                status: "completed",
+                status: "failed",
                 rawOutput: state.error ?? "Tool execution failed",
               },
             });

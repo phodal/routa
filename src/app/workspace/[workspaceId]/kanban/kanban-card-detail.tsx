@@ -63,6 +63,9 @@ export interface KanbanCardDetailProps {
   onProviderChange?: (providerId: string | null) => void;
   onRepositoryChange?: (codebaseIds: string[]) => void;
   onSelectSession?: (sessionId: string) => void;
+  jitContextSessionId?: string | null;
+  onLoadJitContextIntoSession?: (sessionId: string, prompt: string) => Promise<void>;
+  onOpenJitContextHistoryAnalysis?: (prompt: string, targetWindow: Window | null) => Promise<void>;
   isFullscreen?: boolean;
   onToggleFullscreen?: (next: boolean) => void;
   onClose?: () => void;
@@ -73,6 +76,8 @@ export interface KanbanCardDetailProps {
 
 const ROLE_OPTIONS = ["CRAFTER", "ROUTA", "GATE", "DEVELOPER"];
 type KanbanDetailTabId = "overview" | "readiness" | "execution" | "jitContext" | "changes" | "evidence" | "runs";
+
+const persistedKanbanDetailTabs = new Map<string, KanbanDetailTabId>();
 
 function getProviderName(providerId: string | undefined, availableProviders: AcpProviderInfo[]): string {
   if (!providerId) return "Workspace default";
@@ -245,6 +250,9 @@ export function KanbanCardDetail({
   onProviderChange,
   onRepositoryChange,
   onSelectSession,
+  jitContextSessionId,
+  onLoadJitContextIntoSession,
+  onOpenJitContextHistoryAnalysis,
   isFullscreen = false,
   onToggleFullscreen,
   onClose,
@@ -263,7 +271,6 @@ export function KanbanCardDetail({
   const [isTitleEditing, setIsTitleEditing] = useState(false);
   const [isDescriptionEditing, setIsDescriptionEditing] = useState(false);
   const [isTestCasesEditing, setIsTestCasesEditing] = useState(false);
-  const [tabSelections, setTabSelections] = useState<Partial<Record<string, KanbanDetailTabId>>>({});
   const titleInputRef = useRef<HTMLTextAreaElement | null>(null);
   const testCasesInputRef = useRef<HTMLTextAreaElement | null>(null);
   const displayedTitle = isTitleEditing ? editTitle : task.title;
@@ -279,6 +286,15 @@ export function KanbanCardDetail({
     if (taskCodebaseIds.length === 0) return null;
     const primaryCodebase = codebases.find((codebase) => codebase.id === taskCodebaseIds[0]);
     return primaryCodebase?.repoPath ?? null;
+  };
+
+  const getTaskHistoryRepositoryPath = (): string | null => {
+    const taskCodebaseIds = task.codebaseIds && task.codebaseIds.length > 0 ? task.codebaseIds : allCodebaseIds;
+    if (taskCodebaseIds.length === 0) {
+      return getTaskRepositoryPath();
+    }
+    const primaryCodebase = codebases.find((codebase) => codebase.id === taskCodebaseIds[0]);
+    return primaryCodebase?.repoPath ?? getTaskRepositoryPath();
   };
 
   const currentLane = useMemo(
@@ -300,8 +316,14 @@ export function KanbanCardDetail({
   const splitMode = !fullWidth;
   const compactMode = splitMode;
   const tabStateKey = `${task.id}:${splitMode ? "split" : "full"}`;
-  const storedTab = tabSelections[tabStateKey];
-  const activeTab = storedTab ?? "overview";
+  const [tabSelection, setTabSelection] = useState<{
+    key: string;
+    tab: KanbanDetailTabId;
+  } | null>(null);
+  const activeTab = tabSelection?.key === tabStateKey
+    ? tabSelection.tab
+    : persistedKanbanDetailTabs.get(tabStateKey) ?? "overview";
+  const tabListId = `kanban-detail-tabs-${task.id}`;
   const storyReadinessValue = task.storyReadiness
     ? (task.storyReadiness.ready ? t.kanbanDetail.readyForDev : t.kanbanDetail.blockedForDev)
     : null;
@@ -474,22 +496,36 @@ export function KanbanCardDetail({
         </section>
 
         <div className="border-b border-slate-200/80 dark:border-[#232736]">
-          <div className="flex min-w-0 gap-1 overflow-x-auto">
+          <div
+            className="flex min-w-0 gap-1 overflow-x-auto"
+            role="tablist"
+            aria-label={t.kanbanDetail.cardDetail}
+            id={tabListId}
+          >
             {detailTabs.map((tab) => {
               const active = tab.id === activeTab;
+              const tabId = `kanban-detail-tab-${task.id}-${tab.id}`;
+              const panelId = `kanban-detail-panel-${task.id}-${tab.id}`;
               return (
                 <button
                   key={tab.id}
                   type="button"
                   onClick={() => {
-                    setTabSelections((current) => ({ ...current, [tabStateKey]: tab.id }));
+                    persistedKanbanDetailTabs.set(tabStateKey, tab.id);
+                    setTabSelection({ key: tabStateKey, tab: tab.id });
                   }}
+                  id={tabId}
+                  role="tab"
+                  aria-selected={active}
+                  aria-controls={panelId}
+                  tabIndex={active ? 0 : -1}
                   className={`shrink-0 border-b-2 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] transition-colors ${
                     active
                       ? "border-b-amber-600 text-slate-900 dark:border-b-amber-400 dark:text-slate-100"
                       : "border-b-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
                   }`}
                   aria-pressed={active}
+                  data-testid={`kanban-detail-tab-${tab.id}`}
                 >
                   {tab.label}
                 </button>
@@ -498,7 +534,13 @@ export function KanbanCardDetail({
           </div>
         </div>
 
-        <div className={compactMode ? "space-y-2" : "space-y-3"}>
+        <div
+          className={compactMode ? "space-y-2" : "space-y-3"}
+          id={`kanban-detail-panel-${task.id}-${activeTab}`}
+          role="tabpanel"
+          aria-labelledby={`kanban-detail-tab-${task.id}-${activeTab}`}
+          data-testid={`kanban-detail-panel-${activeTab}`}
+        >
           {activeTab === "overview" && (
             <>
               <section className={compactMode ? "space-y-1.5 border-b border-slate-200/80 py-1.5 dark:border-[#232736]" : "space-y-2 border-b border-slate-200/70 py-2 dark:border-[#232736]"}>
@@ -743,8 +785,12 @@ export function KanbanCardDetail({
             <JitContextPanel
               task={task}
               workspaceId={resolvedWorkspaceId || undefined}
-              repoPath={getTaskRepositoryPath()}
+              repoPath={getTaskHistoryRepositoryPath()}
               specialistLanguage={specialistLanguage}
+              activeSessionId={jitContextSessionId}
+              onPatchTask={onPatchTask}
+              onLoadIntoSession={onLoadJitContextIntoSession}
+              onOpenHistoryAnalysis={onOpenJitContextHistoryAnalysis}
               compact={compactMode}
             />
           )}

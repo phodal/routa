@@ -357,6 +357,85 @@ describe("AcpProcess codex permission handling", () => {
     vi.useRealTimers();
   });
 
+  it("uses structured stderr details for generic acp_status internal errors", async () => {
+    vi.useFakeTimers();
+    const onNotification = vi.fn();
+    const fakeProcess = new FakeProcess();
+    spawnMock.mockReturnValue(fakeProcess);
+
+    const process = createProcess(onNotification);
+    const startPromise = process.start();
+    await vi.advanceTimersByTimeAsync(500);
+    await startPromise;
+
+    fakeProcess.stderr.emit(
+      "data",
+      Buffer.from(
+        'ERROR codex_acp::thread: Unhandled error during turn: {"type":"error","status":400,"error":{"type":"invalid_request_error","message":"The model requires a newer version of Codex."}} Some(Other)\n',
+        "utf-8",
+      ),
+    );
+    fakeProcess.stdout.emit(
+      "data",
+      Buffer.from(JSON.stringify({
+        jsonrpc: "2.0",
+        method: "session/update",
+        params: {
+          sessionId: "codex-session",
+          update: {
+            sessionUpdate: "acp_status",
+            status: "error",
+            error: "Internal error",
+          },
+        },
+      }) + "\n", "utf-8"),
+    );
+
+    expect(onNotification).toHaveBeenLastCalledWith({
+      jsonrpc: "2.0",
+      method: "session/update",
+      params: {
+        sessionId: "codex-session",
+        update: {
+          sessionUpdate: "acp_status",
+          status: "error",
+          error: "The model requires a newer version of Codex.",
+        },
+      },
+    });
+
+    fakeProcess.stdout.emit(
+      "data",
+      Buffer.from(JSON.stringify({
+        jsonrpc: "2.0",
+        method: "session/update",
+        params: {
+          sessionId: "codex-session",
+          update: {
+            sessionUpdate: "acp_status",
+            status: "error",
+            error: "Internal error",
+          },
+        },
+      }) + "\n", "utf-8"),
+    );
+
+    expect(onNotification).toHaveBeenLastCalledWith({
+      jsonrpc: "2.0",
+      method: "session/update",
+      params: {
+        sessionId: "codex-session",
+        update: {
+          sessionUpdate: "acp_status",
+          status: "error",
+          error: "Internal error",
+        },
+      },
+    });
+
+    vi.useRealTimers();
+  });
+
   it("rejects pending requests when the process exits", async () => {
     vi.useFakeTimers();
     const fakeProcess = new FakeProcess();
@@ -373,5 +452,37 @@ describe("AcpProcess codex permission handling", () => {
 
     await expect(pending).rejects.toThrow("Codex process exited (code=1)");
     vi.useRealTimers();
+  });
+
+  it("converts late stopReason responses into turn_complete notifications", () => {
+    const onNotification = vi.fn();
+    const process = createProcess(onNotification);
+
+    process.setSessionContext({
+      sessionId: "session-1",
+      provider: "codex",
+      role: "CRAFTER",
+    });
+
+    (process as any)._sessionId = "acp-session-1";
+    (process as any).handleMessage({
+      jsonrpc: "2.0",
+      id: 3,
+      result: {
+        stopReason: "end_turn",
+      },
+    });
+
+    expect(onNotification).toHaveBeenCalledWith({
+      jsonrpc: "2.0",
+      method: "session/update",
+      params: {
+        sessionId: "acp-session-1",
+        update: {
+          sessionUpdate: "turn_complete",
+          stopReason: "end_turn",
+        },
+      },
+    });
   });
 });

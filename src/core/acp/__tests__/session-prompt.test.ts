@@ -22,6 +22,7 @@ const managerMock = vi.hoisted(() => ({
 
 const storeMock = vi.hoisted(() => ({
   getSession: vi.fn(),
+  getHistory: vi.fn(() => []),
   updateSessionAcpStatus: vi.fn(),
   pushUserMessage: vi.fn(),
   flushAgentBuffer: vi.fn(),
@@ -175,6 +176,7 @@ describe("session-prompt", () => {
     managerMock.getProcess.mockReturnValue(undefined);
     managerMock.getAcpSessionId.mockReturnValue(undefined);
     managerMock.getPresetId.mockReturnValue("opencode");
+    storeMock.getHistory.mockReturnValue([]);
 
     storeMock.getSession.mockImplementation((sessionId: string) => ({
       sessionId,
@@ -364,5 +366,34 @@ describe("session-prompt", () => {
 
     expect(consumeAcpPromptResponseMock).toHaveBeenCalledOnce();
     expect(storeMock.pushUserMessage).toHaveBeenCalledWith("dispatch-1", "ship it");
+  });
+
+  it("pushes a synthetic turn_complete notification when prompt returns only stopReason", async () => {
+    managerMock.getProcess.mockReturnValue({
+      alive: true,
+      prompt: vi.fn(async () => ({ stopReason: "end_turn" })),
+    });
+    managerMock.getAcpSessionId.mockReturnValue("agent-789");
+
+    await handleSessionPrompt({
+      id: 6,
+      params: {
+        sessionId: "proc-2",
+        prompt: "continue",
+      },
+      jsonrpcResponse: (id, result, error) => new Response(JSON.stringify({ id, result, error })),
+      createSessionUpdateForwarder: () => vi.fn(),
+      buildMcpConfigForClaude: vi.fn(async () => []),
+      requireWorkspaceId: vi.fn(() => "ws-1"),
+      encodeSsePayload: JSON.stringify,
+    });
+
+    expect(storeMock.pushNotification).toHaveBeenCalledWith({
+      sessionId: "proc-2",
+      update: {
+        sessionUpdate: "turn_complete",
+        stopReason: "end_turn",
+      },
+    });
   });
 });

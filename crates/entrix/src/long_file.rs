@@ -602,11 +602,7 @@ fn normalize_comment(comment: &RawComment, placement: &str) -> LongFileComment {
         .split_whitespace()
         .collect::<Vec<_>>()
         .join(" ");
-    let preview = if preview.len() > 120 {
-        format!("{}...", &preview[..117])
-    } else {
-        preview
-    };
+    let preview = truncate_comment_preview(preview, 120);
     LongFileComment {
         start_line: comment.start_line,
         end_line: comment.end_line,
@@ -614,6 +610,16 @@ fn normalize_comment(comment: &RawComment, placement: &str) -> LongFileComment {
         placement: placement.to_string(),
         preview,
     }
+}
+
+fn truncate_comment_preview(preview: String, max_chars: usize) -> String {
+    if preview.chars().count() <= max_chars {
+        return preview;
+    }
+
+    let content_chars = max_chars.saturating_sub(3);
+    let prefix = preview.chars().take(content_chars).collect::<String>();
+    format!("{prefix}...")
 }
 
 fn symbol_commit_count(
@@ -817,5 +823,26 @@ mod tests {
         assert_eq!(result.files[0].file_path, "src/large.ts");
         assert!(result.files[0].over_budget);
         assert_eq!(result.files[0].functions.len(), 2);
+    }
+
+    #[test]
+    fn normalize_comment_truncates_unicode_preview_on_char_boundary() {
+        let comment = RawComment {
+            start_line: 1,
+            end_line: 1,
+            line_count: 1,
+            text: format!(
+                "// ── Tools that don't require workspaceId {}",
+                "─".repeat(160)
+            ),
+        };
+
+        let normalized = normalize_comment(&comment, "leading");
+
+        assert!(normalized.preview.ends_with("..."));
+        assert_eq!(normalized.preview.chars().count(), 120);
+        assert!(normalized
+            .preview
+            .is_char_boundary(normalized.preview.len()));
     }
 }

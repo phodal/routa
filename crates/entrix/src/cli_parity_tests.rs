@@ -61,6 +61,7 @@ fn run_defaults() {
             assert!(args.metrics.is_empty());
             assert!(!args.json);
             assert!(args.output.is_none());
+            assert_eq!(args.max_runtime_seconds, 30 * 60);
         }
         _ => panic!("expected run command"),
     }
@@ -102,6 +103,8 @@ fn run_all_flags() {
         "eslint_pass",
         "--metric",
         "ts_typecheck_pass",
+        "--max-runtime-seconds",
+        "900",
     ]);
     match cli.command {
         Some(Command::Run(args)) => {
@@ -124,6 +127,7 @@ fn run_all_flags() {
             assert_eq!(args.metrics, vec!["eslint_pass", "ts_typecheck_pass"]);
             assert!(!args.json);
             assert_eq!(args.output.as_deref(), Some("report.json"));
+            assert_eq!(args.max_runtime_seconds, 900);
         }
         _ => panic!("expected run command"),
     }

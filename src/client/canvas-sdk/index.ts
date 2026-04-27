@@ -11,6 +11,10 @@ export {
   type CanvasPalette,
   darkTheme,
   lightTheme,
+  canvasPaletteDark,
+  canvasPaletteLight,
+  canvasTokens,
+  canvasTokensLight,
   canvasSpacing,
   canvasRadius,
   canvasTypography,
@@ -21,6 +25,14 @@ export {
   useHostTheme,
   type CanvasHostTheme,
 } from "./theme-context";
+
+// Host state hooks
+export {
+  useCanvasState,
+  useCanvasAction,
+  type CanvasAction,
+  type SetCanvasState,
+} from "./hooks";
 
 // Primitives (layout + typography)
 export {
@@ -54,6 +66,7 @@ export {
   Table,
   Stat,
   Pill,
+  Callout,
   type TableProps,
   type TableColumnAlign,
   type TableRowTone,
@@ -61,6 +74,9 @@ export {
   type StatTone,
   type PillProps,
   type PillTone,
+  type PillSize,
+  type CalloutProps,
+  type CalloutTone,
 } from "./data-display";
 
 // Containers
@@ -69,6 +85,8 @@ export {
   CardHeader,
   CardBody,
   type CardProps,
+  type CardSize,
+  type CardVariant,
   type CardHeaderProps,
   type CardBodyProps,
 } from "./containers";
@@ -76,16 +94,54 @@ export {
 // Controls
 export {
   Button,
+  TextInput,
+  TextArea,
+  Checkbox,
+  Toggle,
+  Select,
+  IconButton,
   type ButtonProps,
   type ButtonVariant,
+  type TextInputProps,
+  type TextAreaProps,
+  type CheckboxProps,
+  type ToggleProps,
+  type SelectOption,
+  type SelectProps,
+  type IconButtonProps,
 } from "./controls";
 
 // Charts
 export {
   BarChart,
+  LineChart,
   PieChart,
   type BarChartProps,
   type BarChartEntry,
+  type ChartDataPoint,
+  type ChartSeries,
+  type ChartTone,
+  type LineChartProps,
   type PieChartProps,
   type PieChartEntry,
 } from "./charts";
+
+// Diff rendering
+export {
+  DiffStats,
+  DiffView,
+  type DiffStatsProps,
+  type DiffLineType,
+  type DiffLineData,
+  type DiffViewProps,
+} from "./diff-view";
+
+// DAG layout
+export {
+  computeDAGLayout,
+  type DAGLayoutOptions,
+  type DAGLayoutNode,
+  type DAGLayoutEdge,
+  type DAGLayoutRank,
+  type DAGLayoutResult,
+} from "./dag-layout";

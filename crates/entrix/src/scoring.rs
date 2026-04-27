@@ -83,6 +83,7 @@ pub fn score_report(dimension_scores: &[DimensionScore], min_score: f64) -> Fitn
         final_score,
         hard_gate_blocked: !all_hard_gate_failures.is_empty(),
         score_blocked: total_weight > 0 && final_score < min_score,
+        runtime_timed_out: false,
     }
 }
 

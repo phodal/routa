@@ -45,6 +45,20 @@ export interface GitHubPRListItem {
   baseRef: string;
 }
 
+export interface GitHubIssueComment {
+  id: string;
+  body: string;
+  url: string;
+  userLogin?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface GitHubIssueCommentRef {
+  id: string;
+  url: string;
+}
+
 export type GitHubAccessSource = "board" | "env" | "gh" | "none";
 
 interface GitHubAccessOptions {
@@ -354,4 +368,97 @@ export async function updateGitHubIssue(repo: string, issueNumber: number, paylo
   if (!response.ok) {
     throw new Error(`GitHub issue update failed: ${response.status} ${await response.text()}`);
   }
+}
+
+export async function listGitHubIssueComments(
+  repo: string,
+  issueNumber: number,
+  options?: { perPage?: number; token?: string },
+): Promise<GitHubIssueComment[]> {
+  const token = options?.token?.trim() || getGitHubToken();
+  const perPage = Math.max(1, Math.min(options?.perPage ?? 100, 100));
+
+  const response = await fetchGitHub(
+    `https://api.github.com/repos/${repo}/issues/${issueNumber}/comments?per_page=${perPage}`,
+    {
+      method: "GET",
+      headers: getHeaders(token),
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error(`GitHub issue comment list failed: ${response.status} ${await response.text()}`);
+  }
+
+  const data = await response.json() as Array<{
+    id: number;
+    body?: string | null;
+    html_url: string;
+    created_at?: string;
+    updated_at?: string;
+    user?: { login?: string | null } | null;
+  }>;
+
+  return data.map((item) => ({
+    id: String(item.id),
+    body: item.body ?? "",
+    url: item.html_url,
+    userLogin: item.user?.login ?? undefined,
+    createdAt: item.created_at,
+    updatedAt: item.updated_at,
+  }));
+}
+
+export async function createGitHubIssueComment(
+  repo: string,
+  issueNumber: number,
+  body: string,
+): Promise<GitHubIssueCommentRef> {
+  const token = getGitHubToken();
+  if (!token) {
+    throw new Error("GITHUB_TOKEN is not configured.");
+  }
+
+  const response = await fetchGitHub(`https://api.github.com/repos/${repo}/issues/${issueNumber}/comments`, {
+    method: "POST",
+    headers: getHeaders(token),
+    body: JSON.stringify({ body }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`GitHub issue comment create failed: ${response.status} ${await response.text()}`);
+  }
+
+  const data = await response.json() as { id: number; html_url: string };
+  return {
+    id: String(data.id),
+    url: data.html_url,
+  };
+}
+
+export async function updateGitHubIssueComment(
+  repo: string,
+  commentId: string,
+  body: string,
+): Promise<GitHubIssueCommentRef> {
+  const token = getGitHubToken();
+  if (!token) {
+    throw new Error("GITHUB_TOKEN is not configured.");
+  }
+
+  const response = await fetchGitHub(`https://api.github.com/repos/${repo}/issues/comments/${commentId}`, {
+    method: "PATCH",
+    headers: getHeaders(token),
+    body: JSON.stringify({ body }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`GitHub issue comment update failed: ${response.status} ${await response.text()}`);
+  }
+
+  const data = await response.json() as { id: number; html_url: string };
+  return {
+    id: String(data.id),
+    url: data.html_url,
+  };
 }

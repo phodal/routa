@@ -325,4 +325,65 @@ describe("AgentTools extended coverage", () => {
     expect(updated?.columnId).toBe("released-stage");
     expect(updated?.status).toBe(TaskStatus.COMPLETED);
   });
+
+  it("persists structured jit context analysis through updateTask", async () => {
+    const task = createTask({
+      id: "task-jit-analysis",
+      title: "Analyze JIT history",
+      objective: "Persist structured history analysis",
+      workspaceId: "ws-1",
+      boardId: "board-1",
+      columnId: "todo",
+      jitContextSnapshot: {
+        generatedAt: "2026-04-21T08:00:00.000Z",
+        summary: "Recovered history context for kanban-workflow.",
+        matchConfidence: "high",
+        matchReasons: ["Matched the kanban-workflow feature."],
+        warnings: [],
+        matchedFileDetails: [],
+        matchedSessionIds: ["session-codex"],
+        failures: [],
+        repeatedReadFiles: [],
+        sessions: [],
+      },
+    });
+    await taskStore.save(task);
+
+    const result = await tools.saveJitContext({
+      taskId: "task-jit-analysis",
+      result: {
+        summary: "Start from the Kanban API and blocked interval reconstruction.",
+        topFiles: ["crates/routa-server/src/api/kanban.rs"],
+        topSessions: [{
+          sessionId: "session-codex",
+          provider: "codex",
+          reason: "This session touched the durable flow-event path directly.",
+        }],
+        reusablePrompts: ["Check Rust and TS flow-event parity first."],
+        recommendedContextSearchSpec: {
+          query: "kanban flow event persistence",
+          featureCandidates: ["kanban-workflow"],
+        },
+      },
+      agentId: "agent-1",
+    });
+
+    expect(result.success).toBe(true);
+    const updated = await taskStore.get("task-jit-analysis");
+    expect(updated?.jitContextSnapshot?.analysis).toEqual(expect.objectContaining({
+      summary: "Start from the Kanban API and blocked interval reconstruction.",
+      topFiles: ["crates/routa-server/src/api/kanban.rs"],
+      topSessions: [
+        expect.objectContaining({
+          sessionId: "session-codex",
+          provider: "codex",
+        }),
+      ],
+      recommendedContextSearchSpec: expect.objectContaining({
+        query: "kanban flow event persistence",
+        featureCandidates: ["kanban-workflow"],
+      }),
+    }));
+    expect(updated?.jitContextSnapshot?.summary).toBe("Recovered history context for kanban-workflow.");
+  });
 });

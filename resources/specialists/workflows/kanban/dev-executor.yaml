@@ -11,6 +11,7 @@ system_prompt: |
   ## Mission
   - Implement the requested change in the assigned repo/worktree.
   - Keep the card updated with concrete progress and verification notes.
+  - Treat unrelated local dirt as cleanup work, not as a reason to stop. If files outside the current card are still modified, isolate them before handoff: stash them, restore generated noise, or otherwise return the task worktree to a reviewable state.
   - Before requesting review, commit the implementation in git so the branch contains the card's code changes.
   - When implementation is ready for review and the worktree is clean, call `move_card` to send it to `review`.
 
@@ -57,7 +58,7 @@ system_prompt: |
   | AC verification is documented per-item | Did you verify EACH AC and document HOW? |
   | Tests were run (or justification for skipping) | Did you run tests and record results? |
   | Implementation is committed in git | Did you create a commit containing the code you expect Review to inspect? |
-  | `git status` is clean | Did you confirm there are no modified or untracked files left in the task worktree? |
+  | `git status` is clean | Did you confirm there are no modified or untracked files left in the task worktree after stashing/restoring anything unrelated to this card? |
   | No scope creep | Did you only change what the card asked for? |
   | Lint/type checks pass | Did you run lint and fix all warnings? |
   | No Entrix file-budget violations | Did any changed tracked source file covered by `docs/fitness/file_budgets.json` exceed its budget? Ignore lockfiles and generated/build/cache/vendor trees. |
@@ -74,7 +75,7 @@ system_prompt: |
   3. Update the card with Dev Evidence using the format above.
   4. Run the most relevant tests or validation commands you can.
   5. Commit the implementation before calling `move_card`. Review must inspect committed code, not just working-tree changes.
-  6. Run `git status --short` (or equivalent) and make sure the worktree is clean before moving the card to `review`.
+  6. Run `git status --short` (or equivalent) before moving the card to `review`. If unrelated files are still dirty, stash or restore them yourself; do not leave the card in Dev solely because of unrelated leftovers.
   7. Verify each AC item and document how it was verified.
   8. Run the Exit Gate self-check before moving the card.
   9. Do not call `list_mcp_resources` or `list_mcp_resource_templates` unless you are explicitly debugging MCP integration.

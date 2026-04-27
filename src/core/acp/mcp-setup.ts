@@ -86,11 +86,17 @@ export interface McpSetupResult {
 
 // ─── Public API ────────────────────────────────────────────────────────
 
-export function providerSupportsMcp(providerId: string): boolean {
-  // Strip -registry suffix to check base provider ID
-  const baseId = providerId.endsWith("-registry")
+function normalizeProviderIdForMcp(providerId: string): string {
+  return providerId.endsWith("-registry")
     ? providerId.slice(0, -"-registry".length)
     : providerId;
+}
+
+export function providerSupportsMcp(providerId: string): boolean {
+  const baseId = normalizeProviderIdForMcp(providerId);
+  if (baseId === "codex-acp") {
+    return true;
+  }
   const supported: McpSupportedProvider[] = ["claude", "auggie", "opencode", "codex", "gemini", "kimi", "copilot", "qoder"];
   return supported.includes(baseId as McpSupportedProvider);
 }
@@ -227,10 +233,7 @@ export async function ensureMcpForProvider(
     }
   }
 
-  // Strip -registry suffix to get base provider ID for MCP setup
-  const baseId = providerId.endsWith("-registry")
-    ? providerId.slice(0, -"-registry".length)
-    : providerId;
+  const baseId = normalizeProviderIdForMcp(providerId);
 
   switch (baseId) {
     case "opencode":
@@ -241,6 +244,11 @@ export async function ensureMcpForProvider(
       return await ensureMcpForClaude(mcpEndpoint, cfg.workspaceId, customServers);
     case "codex":
       return await ensureMcpForCodex(mcpEndpoint, customServers, cfg.cwd);
+    case "codex-acp":
+      return {
+        mcpConfigs: [],
+        summary: "codex-acp: ACP mcpServers only",
+      };
     case "gemini":
       return await ensureMcpForGemini(mcpEndpoint, customServers);
     case "kimi":
@@ -690,6 +698,7 @@ async function ensureMcpForCodex(
 ): Promise<McpSetupResult> {
   try {
     const mcpServers = normalizeCodexServerConfigs(mcpEndpoint, customServers);
+    const providerArgs = buildCodexProviderArgs(cwd, mcpServers);
 
     await fs.promises.mkdir(ROUTA_CODEX_CONFIG_DIR, { recursive: true });
     await fs.promises.writeFile(
@@ -704,7 +713,7 @@ async function ensureMcpForCodex(
 
     return {
       mcpConfigs: [],
-      providerArgs: buildCodexProviderArgs(cwd, mcpServers),
+      providerArgs,
       summary: `codex: wrote private overlay ${ROUTA_CODEX_CONFIG_FILE}`,
     };
   } catch (err) {

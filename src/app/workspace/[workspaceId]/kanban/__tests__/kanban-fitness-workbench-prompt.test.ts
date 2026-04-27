@@ -151,7 +151,7 @@ describe("buildKanbanFitnessWorkbenchUserPrompt", () => {
     expect(prompt).toContain("read_canvas_sdk_resource");
     expect(prompt).toContain("resource://routa/canvas-sdk/manifest");
     expect(prompt).toContain("resource://routa/canvas-sdk/defs/primitives");
-    expect(prompt).toContain("Import only from `@canvas-sdk` or `react`.");
+    expect(prompt).toContain("Import only from `routa/canvas` or `react`.");
     expect(prompt).not.toContain("Compact API surface:");
   });
 });

@@ -5,9 +5,7 @@
 
 use std::path::PathBuf;
 
-use routa_server::feature_tree::{
-    ensure_feature_tree_success, run_feature_tree_script, workspace_root,
-};
+use routa_server::feature_tree::{ensure_feature_tree_success, run_feature_tree_script};
 
 fn repo_root(repo_path: Option<&str>) -> Result<PathBuf, String> {
     let resolved = repo_path
@@ -21,9 +19,18 @@ fn repo_root(repo_path: Option<&str>) -> Result<PathBuf, String> {
         ));
     }
 
-    resolved
+    let canonical = resolved
         .canonicalize()
-        .map_err(|e| format!("Failed to resolve repository path: {e}"))
+        .map_err(|e| format!("Failed to resolve repository path: {e}"))?;
+
+    if !canonical.is_dir() {
+        return Err(format!(
+            "Repository path must be a directory: {}",
+            canonical.display()
+        ));
+    }
+
+    Ok(canonical)
 }
 
 fn print_stdout(output: &std::process::Output) {
@@ -42,7 +49,7 @@ pub fn preflight(repo_path: Option<&str>, json_output: bool) -> Result<(), Strin
         repo_root.to_string_lossy().to_string(),
     ];
 
-    let output = run_feature_tree_script(&args, &workspace_root())?;
+    let output = run_feature_tree_script(&args, &repo_root)?;
     ensure_feature_tree_success(&output, "Feature tree preflight failed")?;
 
     if json_output {
@@ -100,7 +107,7 @@ pub fn generate(
         eprintln!("🌳 Generating feature tree…");
     }
 
-    let output = run_feature_tree_script(&args, &workspace_root())?;
+    let output = run_feature_tree_script(&args, &repo_root)?;
     ensure_feature_tree_success(&output, "Feature tree generation failed")?;
 
     if json_output || dry_run {
@@ -143,7 +150,7 @@ pub fn commit(
         args.push(metadata_path.to_string_lossy().to_string());
     }
 
-    let output = run_feature_tree_script(&args, &workspace_root())?;
+    let output = run_feature_tree_script(&args, &repo_root)?;
     ensure_feature_tree_success(&output, "Feature tree commit failed")?;
 
     if json_output {
@@ -217,8 +224,10 @@ pub fn inspect(repo_path: Option<&str>) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::workspace_root;
+    use super::repo_root;
     use routa_server::feature_tree::feature_tree_script_path;
+    use routa_server::feature_tree::workspace_root;
+    use tempfile::NamedTempFile;
 
     #[test]
     fn resolves_workspace_root_to_repo_root() {
@@ -231,5 +240,13 @@ mod tests {
     fn resolves_feature_tree_script_from_workspace_root() {
         let script = feature_tree_script_path().expect("script path should resolve");
         assert!(script.ends_with("scripts/docs/feature-tree-generator.ts"));
+    }
+
+    #[test]
+    fn rejects_repo_paths_that_are_not_directories() {
+        let temp_file = NamedTempFile::new().expect("temp file");
+        let error = repo_root(Some(temp_file.path().to_str().expect("utf-8 path")))
+            .expect_err("file path should fail");
+        assert!(error.contains("must be a directory"));
     }
 }

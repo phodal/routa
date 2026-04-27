@@ -873,12 +873,46 @@ mod tests {
         )
         .await
         .expect("create card should succeed");
-        let created_task = state
+        let mut created_task = state
             .task_store
             .get(&created.card.id)
             .await
             .expect("task lookup should succeed")
             .expect("task should exist after create");
+        created_task.trigger_session_id = Some("session-backlog-existing".to_string());
+        created_task.last_sync_error = None;
+        created_task.session_ids = vec!["session-backlog-existing".to_string()];
+        created_task.lane_sessions = vec![TaskLaneSession {
+            session_id: "session-backlog-existing".to_string(),
+            routa_agent_id: None,
+            column_id: Some("backlog".to_string()),
+            column_name: Some("Backlog".to_string()),
+            step_id: None,
+            step_index: None,
+            step_name: Some("Backlog Refiner".to_string()),
+            provider: Some("codex".to_string()),
+            role: Some("CRAFTER".to_string()),
+            specialist_id: None,
+            specialist_name: Some("Backlog Refiner".to_string()),
+            transport: Some("acp".to_string()),
+            external_task_id: None,
+            context_id: None,
+            attempt: Some(1),
+            loop_mode: None,
+            completion_requirement: None,
+            objective: Some(created_task.objective.clone()),
+            last_activity_at: None,
+            recovered_from_session_id: None,
+            recovery_reason: None,
+            status: TaskLaneSessionStatus::Running,
+            started_at: Utc::now().to_rfc3339(),
+            completed_at: None,
+        }];
+        state
+            .task_store
+            .save(&created_task)
+            .await
+            .expect("task save should succeed");
         let existing_session_ids = created_task.session_ids.clone();
         let existing_lane_sessions = created_task.lane_sessions.clone();
 

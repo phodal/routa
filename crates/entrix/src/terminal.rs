@@ -273,7 +273,9 @@ impl TerminalReporter {
             println!("These failures are likely checker/tooling problems, not code defects.");
         }
 
-        if report.hard_gate_blocked {
+        if report.runtime_timed_out {
+            println!("BLOCK - Runtime exceeded the max execution budget");
+        } else if report.hard_gate_blocked {
             let failures = report
                 .dimensions
                 .iter()

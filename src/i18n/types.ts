@@ -194,6 +194,24 @@ export interface TranslationDictionary extends ExtendedTranslationDictionarySect
     spec: string;
   };
 
+  canvas: {
+    renderModeDynamic: string;
+    renderModePrebuilt: string;
+    viewerToggleLightTheme: string;
+    viewerToggleDarkTheme: string;
+    viewerCannotRender: string;
+    viewerCompilationError: string;
+    liveEntryLabel: string;
+    liveEntryShortLabel: string;
+    livePanelTitle: string;
+    livePanelPending: string;
+    livePanelMaterializing: string;
+    livePanelOpen: string;
+    livePanelClose: string;
+    livePanelDetectedFile: string;
+    livePanelError: string;
+  };
+
   featureExplorer: {
     title: string;
     subtitle: string;
@@ -391,6 +409,17 @@ export interface TranslationDictionary extends ExtendedTranslationDictionarySect
     frictionProfilesReady: string;
     frictionProfilesMissing: string;
     frictionProfilesError: string;
+    retrospectiveHistoryTitle: string;
+    retrospectiveHistoryLoading: string;
+    retrospectiveHistoryEmpty: string;
+    retrospectiveHistoryError: string;
+    retrospectiveHistoryFeature: string;
+    retrospectiveHistoryFile: string;
+    retrospectiveHistoryScopeLabel: string;
+    retrospectiveHistoryNextAskLabel: string;
+    retrospectiveHistoryMustIncludeLabel: string;
+    retrospectiveHistoryAvoidLabel: string;
+    retrospectiveHistoryStillNeedLabel: string;
   };
 
   // Settings panel

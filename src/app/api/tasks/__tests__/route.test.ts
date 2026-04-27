@@ -197,6 +197,40 @@ describe("/api/tasks GET", () => {
     });
   });
 
+  it("hides speculative backlog history memory from list responses", async () => {
+    taskStore.listByWorkspace.mockResolvedValueOnce([
+      createTask({
+        id: "task-legacy-backlog-history",
+        title: "Legacy backlog card",
+        objective: "Do not surface stale history memory before refinement",
+        workspaceId: "workspace-1",
+        boardId: "board-1",
+        columnId: "backlog",
+        status: TaskStatus.PENDING,
+        jitContextSnapshot: {
+          generatedAt: "2026-04-22T07:37:30.509Z",
+          summary: "Speculative feature-explorer history memory.",
+          matchConfidence: "high",
+          matchReasons: ["Recovered stale feature-explorer files."],
+          warnings: [],
+          matchedFileDetails: [],
+          matchedSessionIds: ["session-1"],
+          failures: [],
+          repeatedReadFiles: [],
+          sessions: [],
+        },
+      }),
+    ]);
+
+    const response = await GET(new NextRequest("http://localhost/api/tasks?workspaceId=workspace-1"));
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.tasks).toHaveLength(1);
+    expect(data.tasks[0].contextSearchSpec).toBeUndefined();
+    expect(data.tasks[0].jitContextSnapshot).toBeUndefined();
+  });
+
   it("rejects task listing without workspaceId", async () => {
     const response = await GET(new NextRequest("http://localhost/api/tasks"));
     const data = await response.json();
@@ -358,6 +392,38 @@ describe("/api/tasks GET", () => {
         relatedFiles: ["src/app/workspace/[workspaceId]/kanban/kanban-card-detail.tsx"],
       }),
     }));
+  });
+
+  it("strips speculative backlog history memory when creating a fresh backlog card", async () => {
+    const response = await POST(new NextRequest("http://localhost/api/tasks", {
+      method: "POST",
+      body: JSON.stringify({
+        title: "Legacy imported backlog card",
+        objective: "Do not persist speculative history memory before refinement",
+        workspaceId: "workspace-1",
+        columnId: "backlog",
+        jitContextSnapshot: {
+          generatedAt: "2026-04-22T08:00:00.000Z",
+          summary: "Speculative feature history",
+          matchConfidence: "high",
+          matchReasons: ["Matched a weak feature candidate."],
+          warnings: [],
+          matchedFileDetails: [],
+          matchedSessionIds: ["session-1"],
+          failures: [],
+          repeatedReadFiles: [],
+          sessions: [],
+        },
+      }),
+      headers: { "Content-Type": "application/json" },
+    }));
+    const data = await response.json();
+
+    expect(response.status).toBe(201);
+    expect(taskStore.save).toHaveBeenCalledWith(expect.not.objectContaining({
+      jitContextSnapshot: expect.anything(),
+    }));
+    expect(data.task.jitContextSnapshot).toBeUndefined();
   });
 
   it("imports an existing GitHub issue without creating a new one", async () => {

@@ -19,6 +19,8 @@ import type { KanbanAutomationStep, KanbanTransport } from "../models/kanban";
 import type { FlowDiagnosisReport } from "./flow-ledger-types";
 import { formatFlowGuidanceForPrompt } from "./flow-ledger";
 import { buildKanbanTaskAdaptiveHarnessOptions } from "./task-adaptive";
+import { buildSavedHistoryMemoryPromptSection } from "./context-preload";
+import { buildLaneExperiencePromptSection } from "./task-lane-experience";
 
 export interface TaskPromptSummaryContext {
   evidenceSummary?: TaskEvidenceSummary;
@@ -139,6 +141,8 @@ export function buildTaskPrompt(
         "- **create_card**: Create exactly one follow-up backlog card if the current card must be refined into a single user story",
         "- **decompose_tasks**: Create multiple backlog cards when the current card clearly contains multiple independent stories",
         "- **create_note**: Create notes for planning or refinement context",
+        "- **load_feature_tree_context**: Load feature tree summaries, APIs, and source files when you need to confirm feature ownership or narrow related files",
+        `- **confirm_feature_tree_story_context**: Confirm the strongest feature-tree match and get a normalized contextSearchSpec plus a prompt-ready \`feature_tree\` YAML block. When refining this card, pass taskId: "${task.id}" so confirmed hints persist to the task.`,
         "- **list_artifacts**: Check whether the required artifacts already exist for this card",
         "- **provide_artifact**: Save test results, code diffs, or other evidence as structured Kanban artifacts",
         "- **capture_screenshot**: Capture and store a screenshot artifact when visual proof is required",
@@ -150,6 +154,7 @@ export function buildTaskPrompt(
         `- **update_task**: Update structured task fields such as scope, acceptanceCriteria, verificationCommands, and testCases. Use taskId: "${task.id}" when the next move is blocked on story readiness.`,
         `- **update_card**: Update this card's title, description, priority, or labels. Use cardId: "${task.id}"`,
         "- **create_note**: Create notes for documentation or progress tracking",
+        "- **load_feature_tree_context**: Load feature tree summaries, APIs, and source files when you need to confirm feature ownership or narrow related files",
         "- **list_artifacts**: Check whether the required artifacts already exist for this card",
         "- **provide_artifact**: Save test results, code diffs, or other evidence as structured Kanban artifacts",
         "- **capture_screenshot**: Capture and store a screenshot artifact when visual proof is required",
@@ -171,12 +176,16 @@ export function buildTaskPrompt(
     ? [
         "1. Treat backlog as planning and refinement, not implementation",
         "2. Clarify or decompose the work into backlog-ready stories when needed",
-        "3. Do not use native tools such as Bash, Read, Write, Edit, Glob, or Grep in backlog planning",
-        "4. Do not use GitHub CLI commands such as gh issue create",
-        "5. Do not start implementation work in this column",
-        "6. Report what backlog story or stories were created or refined",
-        `7. ${moveInstruction}`,
-        "8. If the next transition is artifact-gated, create the required artifacts before calling `move_card`.",
+        "3. If Relevant History Memory or Relevant Feature Tree Context is provided, use it first to narrow the story scope.",
+        `4. Prefer feature-tree confirmation first: call \`load_feature_tree_context\`, or \`confirm_feature_tree_story_context\` with taskId: "${task.id}", before broader Grep/Glob when feature-tree evidence exists.`,
+        "5. You may use read-only native tools such as Read, Grep, and Glob for limited repo inspection only after feature-tree evidence is still weak or ambiguous; do not use Bash, Write, or Edit in backlog planning.",
+        "6. Do not use GitHub CLI commands such as gh issue create",
+        "7. Do not start implementation work in this column",
+        "8. Only write contextSearchSpec after feature-tree confirmation or repo inspection confirms the feature/files; otherwise leave it empty and keep searching.",
+        "9. When feature-tree context is confirmed, include an optional `feature_tree` block in the canonical YAML using the confirmed feature ID/name and strongest source files/routes/APIs.",
+        "10. Report what backlog story or stories were created or refined",
+        `11. ${moveInstruction}`,
+        "12. If the next transition is artifact-gated, create the required artifacts before calling `move_card`.",
       ]
     : [
         "1. Complete the work assigned to this column stage",
@@ -346,6 +355,15 @@ export function buildTaskPrompt(
       ]
     : [];
 
+  const savedHistoryMemoryPrompt = buildSavedHistoryMemoryPromptSection(task);
+  const savedHistoryMemorySection = savedHistoryMemoryPrompt
+    ? [savedHistoryMemoryPrompt]
+    : [];
+  const laneExperiencePrompt = buildLaneExperiencePromptSection(task);
+  const laneExperienceSection = laneExperiencePrompt
+    ? [laneExperiencePrompt]
+    : [];
+
   return [
     `You are assigned to Kanban task: ${task.title}`,
     "",
@@ -375,6 +393,8 @@ export function buildTaskPrompt(
     ...contractGateSection,
     ...deliveryGateSection,
     ...evidenceBundleSection,
+    ...savedHistoryMemorySection,
+    ...laneExperienceSection,
     ...laneRunHistorySection,
     ...laneHandoffSection,
     ...devVerificationSection,

@@ -5,15 +5,9 @@ import { createContext, useContext, type ReactNode } from "react";
 import {
   darkTheme,
   type CanvasTheme,
-  type CanvasTokens,
-  type CanvasPalette,
 } from "./tokens";
 
-export interface CanvasHostTheme {
-  readonly kind: string;
-  readonly tokens: CanvasTokens;
-  readonly palette: CanvasPalette;
-}
+export type CanvasHostTheme = CanvasTheme;
 
 const ThemeContext = createContext<CanvasTheme>(darkTheme);
 

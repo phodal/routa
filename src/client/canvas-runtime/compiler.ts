@@ -3,10 +3,10 @@
  *
  * Compiles agent-generated TSX source into a React component using sucrase,
  * then evaluates it inside a restricted module scope where the only available
- * import is `@canvas-sdk` (the Canvas SDK barrel).
+ * import is `routa/canvas` (plus legacy compatibility aliases).
  *
  * Security boundaries:
- *  - Only `@canvas-sdk` is resolvable; any other import throws at runtime.
+ *  - Only the Canvas SDK aliases are resolvable; any other import throws.
  *  - No access to `window`, `document`, `fetch`, `localStorage`, etc.
  *  - No dynamic `import()` — only synchronous `require()` via the shim.
  *  - Sucrase strips TypeScript types but does NOT execute code.
@@ -44,25 +44,30 @@ export type CompileOutcome = CompileResult | CompileError;
  */
 const MODULE_WHITELIST: Record<string, unknown> = {
   react: React,
+  "routa/canvas": CanvasSDK,
+  "cursor/canvas": CanvasSDK,
   "@canvas-sdk": CanvasSDK,
-  "@canvas-sdk/primitives": CanvasSDK,
-  "@canvas-sdk/data-display": CanvasSDK,
-  "@canvas-sdk/containers": CanvasSDK,
-  "@canvas-sdk/controls": CanvasSDK,
-  "@canvas-sdk/charts": CanvasSDK,
-  "@canvas-sdk/tokens": CanvasSDK,
-  "@canvas-sdk/theme-context": CanvasSDK,
 };
 
 function normalizeCanvasModuleSpecifier(specifier: string): string {
+  if (specifier.startsWith("routa/canvas/")) {
+    return "routa/canvas";
+  }
+  if (specifier.startsWith("cursor/canvas/")) {
+    return "cursor/canvas";
+  }
+  if (specifier.startsWith("@canvas-sdk/")) {
+    return "@canvas-sdk";
+  }
+
   const sdkPrefixes = getCanvasGenerationContract().imports.normalizedPrefixes;
 
   for (const prefix of sdkPrefixes) {
     if (specifier === prefix) {
-      return "@canvas-sdk";
+      return "routa/canvas";
     }
     if (specifier.startsWith(`${prefix}/`)) {
-      return `@canvas-sdk/${specifier.slice(prefix.length + 1)}`;
+      return "routa/canvas";
     }
   }
 
@@ -77,11 +82,11 @@ function normalizeCanvasModuleSpecifier(specifier: string): string {
  * Compile agent-generated TSX source into a mountable React component.
  *
  * The source must `export default` a function component (no props required).
- * It may import from `react` and `@canvas-sdk` only.
+ * It may import from `react` and the Canvas SDK alias only.
  *
  * Example source:
  * ```tsx
- * import { Stack, H1, Text, BarChart } from "@canvas-sdk";
+ * import { Stack, H1, Text, BarChart } from "routa/canvas";
  *
  * export default function MyCanvas() {
  *   return (

@@ -19,6 +19,7 @@ import {ChatPanel} from "@/client/components/chat-panel";
 import {SpecialistManager} from "@/client/components/specialist-manager";
 import {CraftersView} from "@/client/components/task-panel";
 import {AgentInstallPanel} from "@/client/components/agent-install-panel";
+import {SessionCanvasPanel} from "@/client/components/session-canvas-panel";
 import {LeftSidebar} from "./left-sidebar";
 import {DesktopAppShell} from "@/client/components/desktop-app-shell";
 import {WorkspaceSwitcher} from "@/client/components/workspace-switcher";
@@ -31,11 +32,13 @@ import {DockerConfigModal, loadDefaultProviders, loadProviderConnectionConfig, g
 import { useRealSessionParams } from "./use-real-session-params";
 import { type AgentRole, type SpecialistOption, useSessionPageBootstrap } from "./use-session-page-bootstrap";
 import { useSessionCrafters } from "./use-session-crafters";
+import { useSessionCanvasArtifacts } from "./use-session-canvas-artifacts";
 import { RepoSlideSessionPanel } from "./repo-slide-session-panel";
 import { Select } from "@/client/components/select";
 import { useTranslation } from "@/i18n";
 import { ChevronDown, Columns2, ScrollText, X } from "lucide-react";
 import { desktopAwareFetch } from "@/client/utils/diagnostics";
+import { buildLiveCanvasAgentPrompt } from "@/core/canvas/session-canvas-prompt";
 
 
 interface SessionRecord {
@@ -229,6 +232,7 @@ export function SessionPageClient() {
   const [dockerErrorMessage, setDockerErrorMessage] = useState<string | null>(null);
   // Input text to restore when a docker session fails before prompt was sent
   const [dockerRetryText, setDockerRetryText] = useState<string | null>(null);
+  const [canvasPromptEnabled, setCanvasPromptEnabled] = useState(false);
   const navigationTargetRef = useRef<string | null>(null);
   const displaySessionId = focusedSessionId ?? sessionId;
 
@@ -764,6 +768,13 @@ export function SessionPageClient() {
     resolveAgentConfig,
   });
 
+  const sessionCanvas = useSessionCanvasArtifacts({
+    workspaceId,
+    sessionId: displaySessionId,
+    updates: acpUpdates,
+    repoPath: repoSelection?.path,
+  });
+
   // Notes are now pre-filtered by useNotes(workspaceId, sessionId)
   // - Task notes: only those with matching sessionId
   // - Spec/general notes: workspace-wide (no sessionId) or matching sessionId
@@ -816,6 +827,32 @@ export function SessionPageClient() {
     updatedAt: new Date().toISOString(),
   };
   const isPlanningSession = activeSessionRecord?.mcpProfile === "kanban-planning";
+  const handlePrepareCanvasPrompt = () => {
+    setCanvasPromptEnabled((enabled) => !enabled);
+  };
+  const decorateCanvasPrompt = (request: string) => {
+    return buildLiveCanvasAgentPrompt({
+      repoPath: repoSelection?.path,
+      request,
+    });
+  };
+  const handleCanvasPromptSent = () => {
+    setCanvasPromptEnabled(false);
+  };
+  const activeInputPrefill = dockerRetryText !== null
+    ? { source: "docker" as const, text: dockerRetryText }
+    : null;
+  const chatInputPrefill = activeInputPrefill?.text ?? null;
+  const handleInputPrefillConsumed = () => {
+    if (activeInputPrefill?.source === "docker") {
+      setDockerRetryText(null);
+      return;
+    }
+  };
+  const hasSessionCanvasPanel = Boolean(
+    sessionCanvas.activeCanvas || sessionCanvas.isMaterializing || sessionCanvas.error,
+  );
+  const showRightSidebar = !isEmbedMode && (hasSessionCanvasPanel || crafterAgents.length > 0);
   const agentSelector = (
     <div className="relative">
       <Select
@@ -861,15 +898,7 @@ export function SessionPageClient() {
 
       {isPlanningSession && !isEmbedMode ? (
         <div className="border-b border-black/6 bg-[#f7f3ea] px-5 py-4 dark:border-white/8 dark:bg-[#10161d]">
-          <div className="mx-auto flex w-full max-w-6xl flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <div className="min-w-0">
-              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-500">
-                {t.workspace.planningSessionTitle}
-              </div>
-              <div className="mt-1 text-sm text-slate-700 dark:text-slate-200">
-                {t.workspace.planningSessionDescription}
-              </div>
-            </div>
+          <div className="mx-auto flex w-full max-w-6xl items-center justify-end">
             <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
@@ -967,13 +996,19 @@ export function SessionPageClient() {
             activeWorkspaceId={workspaceId}
             onWorkspaceChange={handleWorkspaceSelect}
             codebases={codebases}
-            inputPrefill={dockerRetryText}
-            onInputPrefillConsumed={() => setDockerRetryText(null)}
+            inputPrefill={chatInputPrefill}
+            onInputPrefillConsumed={handleInputPrefillConsumed}
+            onPrepareCanvasPrompt={handlePrepareCanvasPrompt}
+            canvasPromptActive={canvasPromptEnabled}
+            canvasPromptLabel={t.canvas.liveEntryLabel}
+            canvasPromptShortLabel={t.canvas.liveEntryShortLabel}
+            onDecoratePrompt={canvasPromptEnabled ? decorateCanvasPrompt : undefined}
+            onDecoratedPromptSent={handleCanvasPromptSent}
           />
         </div>
 
-        {/* ─── Right Sidebar: CRAFTERs running status ─────────────── */}
-        {!isEmbedMode && crafterAgents.length > 0 && (
+        {/* ─── Right Sidebar: live Canvas or CRAFTERs running status ─────────────── */}
+        {showRightSidebar && (
           <>
             {/* Right sidebar resize handle */}
             <div
@@ -986,45 +1021,56 @@ export function SessionPageClient() {
               className="hidden md:flex shrink-0 border-l border-[var(--dt-border)] bg-[var(--dt-bg-primary)] flex-col overflow-hidden"
               style={{ width: `${sidebarWidth}px` }}
             >
-              {/* CRAFTER agents header */}
-              <div className="px-3 py-2 border-b border-[var(--dt-border)] flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-semibold text-[var(--dt-text-primary)]">
-                    {t.sessions.craftersLabel}
-                  </span>
-                  <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-[var(--dt-bg-active)] text-[var(--dt-accent)]">
-                    {crafterAgents.length}
-                  </span>
-                </div>
-                {/* Concurrency control */}
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] font-medium text-[var(--dt-text-secondary)] uppercase tracking-wider">
-                    {t.sessions.concurrencyLabel}
-                  </span>
-                  <div className="flex items-center rounded-md border border-[var(--dt-border)] overflow-hidden">
-                    {[1, 2].map((n) => (
-                      <button
-                        key={n}
-                        onClick={() => handleConcurrencyChange(n)}
-                        className={`px-2 py-0.5 text-[11px] font-medium transition-colors ${
-                          concurrency === n
-                            ? "bg-[var(--dt-accent)] text-[var(--dt-accent-text)]"
-                            : "bg-[var(--dt-bg-primary)] text-[var(--dt-text-secondary)] hover:bg-[var(--dt-bg-active)]"
-                        }`}
-                      >
-                        {n}
-                      </button>
-                    ))}
+              {hasSessionCanvasPanel ? (
+                <SessionCanvasPanel
+                  activeCanvas={sessionCanvas.activeCanvas}
+                  error={sessionCanvas.error}
+                  isMaterializing={sessionCanvas.isMaterializing}
+                  onClose={sessionCanvas.clearActiveCanvas}
+                />
+              ) : (
+                <>
+                  {/* CRAFTER agents header */}
+                  <div className="px-3 py-2 border-b border-[var(--dt-border)] flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-semibold text-[var(--dt-text-primary)]">
+                        {t.sessions.craftersLabel}
+                      </span>
+                      <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-[var(--dt-bg-active)] text-[var(--dt-accent)]">
+                        {crafterAgents.length}
+                      </span>
+                    </div>
+                    {/* Concurrency control */}
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-medium text-[var(--dt-text-secondary)] uppercase tracking-wider">
+                        {t.sessions.concurrencyLabel}
+                      </span>
+                      <div className="flex items-center rounded-md border border-[var(--dt-border)] overflow-hidden">
+                        {[1, 2].map((n) => (
+                          <button
+                            key={n}
+                            onClick={() => handleConcurrencyChange(n)}
+                            className={`px-2 py-0.5 text-[11px] font-medium transition-colors ${
+                              concurrency === n
+                                ? "bg-[var(--dt-accent)] text-[var(--dt-accent-text)]"
+                                : "bg-[var(--dt-bg-primary)] text-[var(--dt-text-secondary)] hover:bg-[var(--dt-bg-active)]"
+                            }`}
+                          >
+                            {n}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                   </div>
-                </div>
-              </div>
-              {/* CRAFTERs content */}
-              <CraftersView
-                agents={crafterAgents}
-                activeCrafterId={activeCrafterId}
-                onSelectCrafter={handleSelectCrafter}
-                onUpdateAgentMessages={handleUpdateAgentMessages}
-              />
+                  {/* CRAFTERs content */}
+                  <CraftersView
+                    agents={crafterAgents}
+                    activeCrafterId={activeCrafterId}
+                    onSelectCrafter={handleSelectCrafter}
+                    onUpdateAgentMessages={handleUpdateAgentMessages}
+                  />
+                </>
+              )}
             </aside>
           </>
         )}
