@@ -476,7 +476,7 @@ export default function HarnessConsolePage() {
     const props = { repoLabel: selectedRepoLabel, unsupportedMessage: unsupportedRepoMessage };
     switch (selectedGovernanceNodeId) {
       case "thinking":
-        return <HarnessSpecSourcesPanel {...props} data={specSourcesState.data} loading={specSourcesState.loading} error={specSourcesState.error} variant="compact" />;
+        return <HarnessSpecSourcesPanel workspaceId={workspaceId} codebaseId={activeRepoCodebaseId} repoPath={activeRepoPath} {...props} data={specSourcesState.data} loading={specSourcesState.loading} error={specSourcesState.error} variant="compact" />;
       case "coding":
         return <HarnessDesignDecisionPanel {...props} data={designDecisionsState.data} loading={designDecisionsState.loading} error={designDecisionsState.error} variant="compact" />;
       case "build":
@@ -871,7 +871,7 @@ export default function HarnessConsolePage() {
           />
         );
       case "spec-sources":
-        return <HarnessSpecSourcesPanel {...sharedProps} data={specSourcesState.data} loading={specSourcesState.loading} error={specSourcesState.error} hideHeader />;
+        return <HarnessSpecSourcesPanel workspaceId={workspaceId} codebaseId={activeRepoCodebaseId} repoPath={activeRepoPath} {...sharedProps} data={specSourcesState.data} loading={specSourcesState.loading} error={specSourcesState.error} hideHeader />;
       case "agent-instructions":
         return <HarnessAgentInstructionsPanel workspaceId={workspaceId} codebaseId={activeRepoCodebaseId} repoPath={activeRepoPath} {...sharedProps} data={instructionsState.data} loading={instructionsState.loading} error={instructionsState.error} onAuditRerun={reloadInstructions} hideHeader />;
       case "design-decisions":

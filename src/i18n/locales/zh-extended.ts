@@ -63,6 +63,11 @@ export const zhExtended: ExtendedTranslationDictionarySections = {
       specSingular: "{count} 规格",
       qoderIntegration: "检测到 Qoder 集成，但未找到规格文档。",
       integrationDetected: "检测到 {system} 集成，但未找到规格文档。",
+      previewFile: "预览",
+      previewLoading: "正在加载预览...",
+      previewClose: "关闭",
+      previewError: "加载文件内容失败",
+      previewNotFound: "文件未找到",
     },
     repoSignals: {
       loadingSignals: "正在加载仓库信号...",

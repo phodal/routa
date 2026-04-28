@@ -12,6 +12,8 @@ import type {
 import { HarnessSectionCard, HarnessSectionStateFrame } from "@/client/components/harness-section-card";
 import { useTranslation } from "@/i18n";
 import { ChevronDown, ChevronRight } from "lucide-react";
+import { desktopAwareFetch } from "@/client/utils/diagnostics";
+import { resolveApiPath } from "@/client/config/backend";
 
 
 type SpecSourcesPanelProps = {
@@ -22,6 +24,9 @@ type SpecSourcesPanelProps = {
   error?: string | null;
   variant?: "full" | "compact";
   hideHeader?: boolean;
+  workspaceId?: string;
+  codebaseId?: string;
+  repoPath?: string;
 };
 
 type SpecSourceI18nLabels = {
@@ -32,6 +37,17 @@ type SpecSourceI18nLabels = {
   specCount: (count: number) => string;
   qoderIntegration: string;
   integrationDetected: (system: string) => string;
+  previewFile: string;
+  previewLoading: string;
+  previewClose: string;
+  previewError: string;
+  previewNotFound: string;
+};
+
+type FilePreviewContext = {
+  workspaceId?: string;
+  codebaseId?: string;
+  repoPath?: string;
 };
 
 const CONFIDENCE_STYLES: Record<SpecConfidence, { bg: string; text: string }> = {
@@ -128,7 +144,83 @@ function ChevronIcon({ expanded, className }: { expanded: boolean; className?: s
   );
 }
 
-function KiroFeatureTree({ features, labels }: { features: SpecFeature[]; labels: SpecSourceI18nLabels }) {
+type PreviewState =
+  | { status: "idle" }
+  | { status: "loading" }
+  | { status: "ready"; content: string }
+  | { status: "error"; message: string };
+
+function SpecFilePreviewButton({
+  filePath,
+  context,
+  labels,
+}: {
+  filePath: string;
+  context: FilePreviewContext;
+  labels: Pick<SpecSourceI18nLabels, "previewFile" | "previewLoading" | "previewClose" | "previewError" | "previewNotFound">;
+}) {
+  const [preview, setPreview] = useState<PreviewState>({ status: "idle" });
+
+  const togglePreview = async () => {
+    if (preview.status === "ready" || preview.status === "error") {
+      setPreview({ status: "idle" });
+      return;
+    }
+
+    setPreview({ status: "loading" });
+    try {
+      const params = new URLSearchParams({ filePath });
+      if (context.workspaceId) params.set("workspaceId", context.workspaceId);
+      if (context.codebaseId) params.set("codebaseId", context.codebaseId);
+      if (context.repoPath) params.set("repoPath", context.repoPath);
+
+      const response = await desktopAwareFetch(resolveApiPath(`/api/harness/spec-sources/file?${params.toString()}`));
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const errorMsg = typeof payload?.error === "string" ? payload.error : labels.previewError;
+        if (response.status === 404) {
+          setPreview({ status: "error", message: labels.previewNotFound });
+        } else {
+          setPreview({ status: "error", message: errorMsg });
+        }
+        return;
+      }
+      setPreview({ status: "ready", content: typeof payload.content === "string" ? payload.content : "" });
+    } catch {
+      setPreview({ status: "error", message: labels.previewError });
+    }
+  };
+
+  const isOpen = preview.status === "ready" || preview.status === "error";
+  const buttonLabel = isOpen ? labels.previewClose : labels.previewFile;
+
+  return (
+    <div>
+      <button
+        type="button"
+        aria-label={buttonLabel}
+        className="ml-1 rounded px-1.5 py-0.5 text-[9px] font-medium text-desktop-text-secondary hover:bg-desktop-bg-secondary hover:text-desktop-text-primary"
+        onClick={togglePreview}
+      >
+        {preview.status === "loading" ? labels.previewLoading : buttonLabel}
+      </button>
+
+      {preview.status === "ready" && (
+        <pre className="mt-1 max-h-48 overflow-y-auto rounded border border-desktop-border bg-desktop-bg-secondary px-2 py-1.5 text-[9px] font-mono text-desktop-text-primary whitespace-pre-wrap break-all">
+          {preview.content}
+        </pre>
+      )}
+
+      {preview.status === "error" && (
+        <div className="mt-1 rounded border border-red-200 bg-red-50/50 px-2 py-1 text-[9px] text-red-600">
+          {preview.message}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function KiroFeatureTree({ features, labels, context }: { features: SpecFeature[]; labels: SpecSourceI18nLabels; context?: FilePreviewContext }) {
   const [expandedFeatures, setExpandedFeatures] = useState<Set<string> | null>(null);
   const activeExpandedFeatures = expandedFeatures ?? new Set<string>();
 
@@ -160,9 +252,14 @@ function KiroFeatureTree({ features, labels }: { features: SpecFeature[]; labels
             </button>
 
             {isExpanded && feature.documents.map((doc) => (
-              <div key={doc.path} className="ml-5 flex items-center gap-1.5 rounded px-1.5 py-0.5 text-[10px]">
-                <SpecTypeTag label={labels.typeLabels[doc.type] ?? doc.type} />
-                <span className="min-w-0 truncate font-mono text-desktop-text-primary">{doc.path}</span>
+              <div key={doc.path} className="ml-5 rounded px-1.5 py-0.5 text-[10px]">
+                <div className="flex items-center gap-1.5">
+                  <SpecTypeTag label={labels.typeLabels[doc.type] ?? doc.type} />
+                  <span className="min-w-0 truncate font-mono text-desktop-text-primary">{doc.path}</span>
+                  {context && (
+                    <SpecFilePreviewButton filePath={doc.path} context={context} labels={labels} />
+                  )}
+                </div>
               </div>
             ))}
           </div>
@@ -172,20 +269,25 @@ function KiroFeatureTree({ features, labels }: { features: SpecFeature[]; labels
   );
 }
 
-function FlatSpecList({ specs, labels }: { specs: SpecSource["children"]; labels: SpecSourceI18nLabels }) {
+function FlatSpecList({ specs, labels, context }: { specs: SpecSource["children"]; labels: SpecSourceI18nLabels; context?: FilePreviewContext }) {
   return (
     <div className="space-y-0.5">
       {specs.map((spec) => (
-        <div key={spec.path} className="flex items-center gap-2 rounded px-1.5 py-0.5 text-[10px] hover:bg-desktop-bg-secondary/60">
-          <SpecTypeTag label={labels.typeLabels[spec.type] ?? spec.type} />
-          <span className="min-w-0 truncate font-mono text-desktop-text-primary">{spec.path}</span>
+        <div key={spec.path} className="rounded px-1.5 py-0.5 text-[10px] hover:bg-desktop-bg-secondary/60">
+          <div className="flex items-center gap-2">
+            <SpecTypeTag label={labels.typeLabels[spec.type] ?? spec.type} />
+            <span className="min-w-0 truncate font-mono text-desktop-text-primary">{spec.path}</span>
+            {context && (
+              <SpecFilePreviewButton filePath={spec.path} context={context} labels={labels} />
+            )}
+          </div>
         </div>
       ))}
     </div>
   );
 }
 
-function SpecSourceCard({ source, expanded, onToggle, labels }: { source: SpecSource; expanded: boolean; onToggle: () => void; labels: SpecSourceI18nLabels }) {
+function SpecSourceCard({ source, expanded, onToggle, labels, context }: { source: SpecSource; expanded: boolean; onToggle: () => void; labels: SpecSourceI18nLabels; context?: FilePreviewContext }) {
   const icon = SYSTEM_ICONS[source.system] ?? source.system.charAt(0).toUpperCase();
   const hasFeatures = source.features && source.features.length > 0;
   const specCount = hasFeatures ? source.features!.length : source.children.length;
@@ -228,9 +330,9 @@ function SpecSourceCard({ source, expanded, onToggle, labels }: { source: SpecSo
       {expanded && (
         <div className="max-h-80 overflow-y-auto border-t border-desktop-border px-3 py-2">
           {hasFeatures ? (
-            <KiroFeatureTree features={source.features!} labels={labels} />
+            <KiroFeatureTree features={source.features!} labels={labels} context={context} />
           ) : source.children.length > 0 ? (
-            <FlatSpecList specs={source.children} labels={labels} />
+            <FlatSpecList specs={source.children} labels={labels} context={context} />
           ) : source.status === "installed-only" ? (
             <div className="rounded-sm border border-sky-200 bg-sky-50/50 px-2.5 py-2 text-[10px] text-sky-700">
               {source.system === "qoder"
@@ -244,12 +346,13 @@ function SpecSourceCard({ source, expanded, onToggle, labels }: { source: SpecSo
   );
 }
 
-function SourceGroup({ title, sources, expandedKeys, onToggle, labels }: {
+function SourceGroup({ title, sources, expandedKeys, onToggle, labels, context }: {
   title: string;
   sources: SpecSource[];
   expandedKeys: Set<string>;
   onToggle: (key: string) => void;
   labels: SpecSourceI18nLabels;
+  context?: FilePreviewContext;
 }) {
   if (sources.length === 0) return null;
 
@@ -268,6 +371,7 @@ function SourceGroup({ title, sources, expandedKeys, onToggle, labels }: {
               expanded={expandedKeys.has(key)}
               onToggle={() => onToggle(key)}
               labels={labels}
+              context={context}
             />
           );
         })}
@@ -284,6 +388,9 @@ export function HarnessSpecSourcesPanel({
   error,
   variant = "full",
   hideHeader = false,
+  workspaceId,
+  codebaseId,
+  repoPath,
 }: SpecSourcesPanelProps) {
   const { t } = useTranslation();
   const sources = useMemo(
@@ -342,7 +449,17 @@ export function HarnessSpecSourcesPanel({
       : t.harness.specSources.specCount.replace('{count}', `${count}`),
     qoderIntegration: t.harness.specSources.qoderIntegration,
     integrationDetected: (system: string) => t.harness.specSources.integrationDetected.replace('{system}', system),
+    previewFile: t.harness.specSources.previewFile,
+    previewLoading: t.harness.specSources.previewLoading,
+    previewClose: t.harness.specSources.previewClose,
+    previewError: t.harness.specSources.previewError,
+    previewNotFound: t.harness.specSources.previewNotFound,
   }), [t]);
+
+  // Only provide file preview context when at least one context param is available
+  const filePreviewContext: FilePreviewContext | undefined = (workspaceId || codebaseId || repoPath)
+    ? { workspaceId, codebaseId, repoPath }
+    : undefined;
 
   const isCompact = variant === "compact";
 
@@ -382,6 +499,7 @@ export function HarnessSpecSourcesPanel({
               expanded={activeExpandedKeys.has(key)}
               onToggle={() => toggleKey(key)}
               labels={labels}
+              context={filePreviewContext}
             />
           );
         }) : null}
@@ -414,10 +532,10 @@ export function HarnessSpecSourcesPanel({
 
       {!loading && !unsupportedMessage && sources.length > 0 ? (
         <div className="mt-3 space-y-3" data-testid="spec-sources-full">
-          <SourceGroup title={t.harness.specSources.nativeTools} sources={nativeTools} expandedKeys={activeExpandedKeys} onToggle={toggleKey} labels={labels} />
-          <SourceGroup title={t.harness.specSources.frameworks} sources={frameworks} expandedKeys={activeExpandedKeys} onToggle={toggleKey} labels={labels} />
-          <SourceGroup title={t.harness.specSources.integrations} sources={integrations} expandedKeys={activeExpandedKeys} onToggle={toggleKey} labels={labels} />
-          <SourceGroup title={t.harness.specSources.legacy} sources={legacy} expandedKeys={activeExpandedKeys} onToggle={toggleKey} labels={labels} />
+          <SourceGroup title={t.harness.specSources.nativeTools} sources={nativeTools} expandedKeys={activeExpandedKeys} onToggle={toggleKey} labels={labels} context={filePreviewContext} />
+          <SourceGroup title={t.harness.specSources.frameworks} sources={frameworks} expandedKeys={activeExpandedKeys} onToggle={toggleKey} labels={labels} context={filePreviewContext} />
+          <SourceGroup title={t.harness.specSources.integrations} sources={integrations} expandedKeys={activeExpandedKeys} onToggle={toggleKey} labels={labels} context={filePreviewContext} />
+          <SourceGroup title={t.harness.specSources.legacy} sources={legacy} expandedKeys={activeExpandedKeys} onToggle={toggleKey} labels={labels} context={filePreviewContext} />
         </div>
       ) : null}
 

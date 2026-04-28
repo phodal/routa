@@ -63,6 +63,11 @@ export const enExtended: ExtendedTranslationDictionarySections = {
       specSingular: "{count} spec",
       qoderIntegration: "Qoder integration detected. No spec documents found.",
       integrationDetected: "{system} integration detected, but no spec documents found.",
+      previewFile: "Preview",
+      previewLoading: "Loading preview...",
+      previewClose: "Close",
+      previewError: "Failed to load file content",
+      previewNotFound: "File not found",
     },
     repoSignals: {
       loadingSignals: "Loading repository signals...",

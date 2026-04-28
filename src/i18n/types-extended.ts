@@ -62,6 +62,11 @@ export interface ExtendedTranslationDictionarySections extends TailTranslationDi
       specSingular: string;
       qoderIntegration: string;
       integrationDetected: string;
+      previewFile: string;
+      previewLoading: string;
+      previewClose: string;
+      previewError: string;
+      previewNotFound: string;
     };
     repoSignals: {
       loadingSignals: string;
