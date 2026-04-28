@@ -13,7 +13,7 @@ tags:
   - tool-continuity
 reported_by: "user"
 github_issue: 528
-github_state: open
+github_state: closed
 github_url: "https://github.com/phodal/routa/issues/528"
 ---
 

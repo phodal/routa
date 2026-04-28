@@ -1,15 +1,17 @@
 ---
 title: "ACP provider inventory can report providers as installed when no runnable adapter exists"
 date: "2026-04-06"
-status: open
+status: resolved
 severity: medium
 area: cli
 tags: ["cli", "acp", "provider", "inventory", "installation", "codex"]
 reported_by: "Codex"
 related_issues: ["https://github.com/phodal/routa/issues/364"]
 github_issue: 364
-github_state: "open"
+github_state: "closed"
 github_url: "https://github.com/phodal/routa/issues/364"
+resolved_at: "2026-04-15"
+resolution: "Synced during issue hygiene on 2026-04-28 after GitHub issue #364 was confirmed closed."
 ---
 
 # ACP provider inventory can report providers as installed when no runnable adapter exists

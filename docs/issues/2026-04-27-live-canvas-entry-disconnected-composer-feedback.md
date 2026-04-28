@@ -9,7 +9,7 @@ tags: ["canvas", "session", "ux", "dogfood"]
 reported_by: "codex"
 related_issues: ["https://github.com/phodal/routa/pull/536"]
 github_issue: 537
-github_state: open
+github_state: closed
 github_url: "https://github.com/phodal/routa/issues/537"
 ---
 

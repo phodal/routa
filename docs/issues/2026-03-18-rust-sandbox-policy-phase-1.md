@@ -8,7 +8,7 @@ tags: ["github", "gh-180", "sandbox", "rust", "runtime-governance", "phase-1"]
 reported_by: "codex"
 related_issues: ["https://github.com/phodal/routa/issues/180", "https://github.com/phodal/routa/issues/41", "https://github.com/phodal/routa/issues/137"]
 github_issue: 180
-github_state: "open"
+github_state: "closed"
 github_url: "https://github.com/phodal/routa/issues/180"
 ---
 

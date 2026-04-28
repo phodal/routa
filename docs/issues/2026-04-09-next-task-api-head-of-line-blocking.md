@@ -1,13 +1,14 @@
 ---
 title: "Next.js task APIs suffer head-of-line blocking from heavy task list serialization"
 date: "2026-04-09"
-status: open
+status: resolved
 severity: high
 area: "kanban"
 tags: [api, kanban, performance, nextjs, fitness-candidate]
 github_issue: 406
-github_state: "open"
+github_state: "closed"
 github_url: "https://github.com/phodal/routa/issues/406"
+resolved_at: "2026-04-12"
 related_issues:
   - "docs/issues/2026-04-07-task-changes-api-performance.md"
   - "docs/issues/2026-03-19-kanban-initial-refresh-storm.md"
@@ -147,6 +148,10 @@ Add a `task_api_latency_probe` after the API shape is fixed. Suggested advisory 
 | Task list payload for 25 cards | `< 250KB` unless explicitly expanded |
 
 The probe should run against deterministic fixture data instead of the developer's real remote Neon database.
+
+## Issue Hygiene
+
+- 2026-04-28: synced local status after confirming GitHub issue `#406` was closed on 2026-04-12. The performance-fitness probe remains a follow-up improvement, not an active incident tracker.
 
 ## Relevant Files
 

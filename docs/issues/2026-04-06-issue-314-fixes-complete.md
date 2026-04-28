@@ -11,7 +11,7 @@ related_issues:
   - "https://github.com/phodal/routa/issues/314"
   - "2026-04-06-playbook-verification-report.md"
 github_issue: 314
-github_state: "open"  # Verified 2026-04-18: still open on GitHub, all acceptance criteria met
+github_state: "closed"
 github_url: "https://github.com/phodal/routa/issues/314"
 resolved_at: "2026-04-11"
 resolution: "Reclassified as a progress note under the still-open GitHub issue #314, not a separate active local issue."

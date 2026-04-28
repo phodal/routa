@@ -8,7 +8,7 @@ area: "kanban"
 tags: [kanban, card-detail, navigation, url-state, ui]
 reported_by: "xpsuper"
 github_issue: 445
-github_state: "open"
+github_state: "closed"
 github_url: "https://github.com/phodal/routa/issues/445"
 related_issues: [
   "docs/issues/2026-04-08-kanban-detail-information-architecture-and-session-pane-friction.md"
