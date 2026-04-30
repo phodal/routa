@@ -477,13 +477,16 @@ Multi-agent coordination platform. This document is auto-generated from:
 | POST | `/api/mcp-servers` | Create a new custom MCP server | `src/app/api/mcp-servers/route.ts` | `crates/routa-server/src/api/mcp_servers.rs` |
 | PUT | `/api/mcp-servers` | Update an existing custom MCP server | `src/app/api/mcp-servers/route.ts` | `crates/routa-server/src/api/mcp_servers.rs` |
 
-### Memory (3)
+### System Memory (6)
 
 | Method | Endpoint | Details | Next.js | Rust |
 |--------|----------|---------|---------|------|
-| DELETE | `/api/memory` | Delete memory entries | `src/app/api/memory/route.ts` | `crates/routa-server/src/api/memory.rs` |
-| GET | `/api/memory` | List memory entries for a workspace | `src/app/api/memory/route.ts` | `crates/routa-server/src/api/memory.rs` |
-| POST | `/api/memory` | Create a memory entry | `src/app/api/memory/route.ts` | `crates/routa-server/src/api/memory.rs` |
+| DELETE | `/api/memory` | Deprecated alias for system memory monitoring reset | `src/app/api/memory/route.ts` | `crates/routa-server/src/api/memory.rs` |
+| GET | `/api/memory` | Deprecated alias for runtime memory stats | `src/app/api/memory/route.ts` | `crates/routa-server/src/api/memory.rs` |
+| POST | `/api/memory` | Deprecated alias for runtime memory cleanup | `src/app/api/memory/route.ts` | `crates/routa-server/src/api/memory.rs` |
+| DELETE | `/api/system/memory` | Clear runtime memory monitoring history | `src/app/api/system/memory/route.ts` | `crates/routa-server/src/api/memory.rs` |
+| GET | `/api/system/memory` | Get runtime memory monitoring stats | `src/app/api/system/memory/route.ts` | `crates/routa-server/src/api/memory.rs` |
+| POST | `/api/system/memory` | Trigger runtime memory cleanup | `src/app/api/system/memory/route.ts` | `crates/routa-server/src/api/memory.rs` |
 
 ### Notes (6)
 
@@ -805,4 +808,3 @@ Multi-agent coordination platform. This document is auto-generated from:
 | Method | Endpoint | Source Files |
 |--------|----------|--------------|
 | POST | `/api/sessions/{session_id}/fork` | `crates/routa-server/src/api/sessions.rs` |
-

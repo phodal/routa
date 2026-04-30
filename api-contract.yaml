@@ -6264,59 +6264,138 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
-  # ── Memory ──
-  /api/memory:
+  # ── System Memory ──
+  /api/system/memory:
     get:
-      operationId: listMemory
-      summary: List memory entries for a workspace
+      operationId: getSystemMemoryStats
+      summary: Get runtime memory monitoring stats
       parameters:
-        - name: workspaceId
+        - name: history
           in: query
           schema:
-            type: string
+            type: boolean
+          description: Include recent memory snapshots when supported
+        - name: cleanup
+          in: query
+          schema:
+            type: boolean
+          description: Trigger cleanup before returning stats
+        - name: aggressive
+          in: query
+          schema:
+            type: boolean
+          description: Use aggressive session cleanup when cleanup is requested
       responses:
         "200":
-          description: Memory entries
+          description: Runtime memory stats and optional history
           content:
             application/json:
               schema:
                 type: object
+                additionalProperties: true
                 properties:
-                  entries:
+                  current:
+                    type: object
+                    description: Current Node.js runtime memory stats
+                  stats:
+                    type: object
+                    description: Current desktop system memory stats
+                  sessionStore:
+                    type: object
+                  snapshots:
+                    type: array
+                    items:
+                      type: object
+                  history:
                     type: array
                     items:
                       type: object
     post:
-      operationId: createMemoryEntry
-      summary: Create a memory entry
+      operationId: cleanupSystemMemory
+      summary: Trigger runtime memory cleanup
       requestBody:
-        required: true
         content:
           application/json:
             schema:
               type: object
+              properties:
+                forceGC:
+                  type: boolean
+                aggressive:
+                  type: boolean
       responses:
         "200":
-          description: Created entry
-    delete:
-      operationId: deleteMemoryEntry
-      summary: Delete memory entries
-      parameters:
-        - name: workspaceId
-          in: query
-          schema:
-            type: string
-        - name: id
-          in: query
-          schema:
-            type: string
-      responses:
-        "200":
-          description: Deleted
+          description: Cleanup result
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/DeletedResponse"
+                type: object
+                additionalProperties: true
+    delete:
+      operationId: resetSystemMemoryMonitoring
+      summary: Clear runtime memory monitoring history
+      parameters:
+        - name: sessions
+          in: query
+          schema:
+            type: boolean
+          description: Also clear in-memory HTTP session state when supported
+      responses:
+        "200":
+          description: Reset result
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
+  /api/memory:
+    get:
+      deprecated: true
+      operationId: getLegacySystemMemoryStats
+      summary: Deprecated alias for /api/system/memory
+      responses:
+        "200":
+          description: Runtime memory stats and optional history
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+    post:
+      deprecated: true
+      operationId: cleanupLegacySystemMemory
+      summary: Deprecated alias for /api/system/memory cleanup
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                forceGC:
+                  type: boolean
+                aggressive:
+                  type: boolean
+      responses:
+        "200":
+          description: Cleanup result
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+    delete:
+      deprecated: true
+      operationId: resetLegacySystemMemoryMonitoring
+      summary: Deprecated alias for /api/system/memory reset
+      responses:
+        "200":
+          description: Reset result
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
 
   # ── Polling ──
   /api/polling/config:

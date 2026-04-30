@@ -119,7 +119,7 @@ function SystemInfoFooter() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await desktopAwareFetch("/api/memory?history=true");
+      const res = await desktopAwareFetch("/api/system/memory?history=true");
       if (res.ok) {
         const data = await res.json();
         if (data?.current && typeof data.current.level === "string") {

@@ -146,7 +146,8 @@ Important invariant:
 ### Note, Memory, Artifact
 
 - Notes support collaborative knowledge capture and use CRDT-based real-time behavior on the TypeScript side.
-- Memory endpoints store workspace-scoped contextual records.
+- Runtime/process memory monitoring is a system API at `/api/system/memory`; `/api/memory` remains only as a deprecated compatibility alias for that diagnostics surface.
+- Workspace delivery memory is a product domain for evidence-backed contextual records and must use explicit product surfaces such as `/api/workspace-memory`, `/api/agent-memory`, or `/api/memory-pack` when those layers are implemented.
 - Artifacts are structured outputs exchanged between agents, workflows, or coordination tools.
 - Shared sessions enable multi-user or multi-agent coordination with event broadcasting and prompt dispatch (`src/core/shared-session/`).
 
