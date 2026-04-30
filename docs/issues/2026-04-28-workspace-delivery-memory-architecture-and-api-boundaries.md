@@ -1,5 +1,5 @@
 ---
-title: "Define Workspace Delivery Memory architecture and resolve memory API boundary collision"
+title: "Define Workspace Delivery Memory architecture and resolve /api/memory API boundary collision"
 date: "2026-04-28"
 kind: issue
 status: open
@@ -17,11 +17,12 @@ related_issues:
   - "docs/issues/2026-04-21-task-adaptive-harness-jit-history-session-context.md"
   - "docs/issues/2026-04-21-task-adaptive-harness-kanban-backlog-refine-and-card-detail.md"
   - "docs/issues/2026-04-25-reasoning-bank-style-agent-experience-memory.md"
-github_issue: null
-github_state: null
-github_url: null
+github_issue: 538
+github_state: open
+github_url: "https://github.com/phodal/routa/pull/538"
 references:
   - "https://github.com/phodal/routa/issues/301"
+  - "https://github.com/phodal/routa/issues/535"
   - "https://github.com/phodal/routa/issues/515"
   - "https://github.com/phodal/routa/issues/516"
   - "https://github.com/phodal/routa/blob/main/docs/ARCHITECTURE.md"
@@ -33,7 +34,7 @@ references:
   - "https://arxiv.org/abs/2507.05257"
 ---
 
-# Define Workspace Delivery Memory architecture and resolve memory API boundary collision
+# Define Workspace Delivery Memory architecture and resolve /api/memory API boundary collision
 
 ## What Happened
 
@@ -53,6 +54,23 @@ A naming/semantic collision also exists around `/api/memory`:
 
 This collision risks long-term confusion in API contracts, UI labels, and cross-backend parity.
 
+## Current Update - 2026-04-30
+
+The P0 API boundary split has been applied:
+
+- `/api/system/memory` is now the canonical runtime/process memory monitoring route in both Next.js and desktop Axum.
+- `/api/memory` remains as a deprecated compatibility alias for runtime memory monitoring and returns deprecation headers.
+- The settings system info footer now calls `/api/system/memory`.
+- `api-contract.yaml`, `docs/ARCHITECTURE.md`, and `docs/product-specs/FEATURE_TREE.md` describe the runtime diagnostics route separately from workspace delivery memory.
+
+This tracker remains open for the product-domain layers that are not implemented yet: `/api/workspace-memory`, `/api/agent-memory`, and `/api/memory-pack`.
+
+## Deduplication Context
+
+- #301 covered role memory baseline work and should stay closed.
+- #535 tracks reasoning strategy/experience memory and is a narrower sub-track.
+- This PR tracks the broader workspace delivery memory architecture and the API boundary collision that blocked clear implementation.
+
 ## Expected Behavior
 
 Routa should formalize memory as **workspace-scoped delivery context**, not generic chat-history persistence.
@@ -67,6 +85,7 @@ The architecture should define four layers:
 Routa should also split API surfaces to remove ambiguity:
 
 - `/api/system/memory` for runtime/process monitoring
+- `/api/memory` as a deprecated compatibility alias for runtime/process monitoring during migration
 - `/api/workspace-memory` for cross-session memory records
 - `/api/agent-memory` for session/role working memory
 - `/api/memory-pack` for task-adaptive pack assembly
@@ -123,7 +142,7 @@ Add memory quality metrics into harness/fitness:
 ## Acceptance Criteria
 
 - Memory domain terms and API boundaries are unambiguous in docs and implementation.
-- `/api/memory` semantic collision is removed via explicit route split (or equivalent contract-level migration plan).
+- `/api/memory` semantic collision is removed via explicit route split and compatibility deprecation metadata.
 - Role memory and memory pack contracts are defined and traceable.
 - Workspace memory records are evidence-backed, queryable, and lifecycle-managed.
 - Procedural memory changes require Gate/human approval before influencing specialist behavior.
@@ -133,8 +152,12 @@ Add memory quality metrics into harness/fitness:
 
 - `docs/ARCHITECTURE.md`
 - `docs/product-specs/FEATURE_TREE.md`
+- `api-contract.yaml`
+- `src/app/api/system/memory/route.ts`
 - `src/app/api/memory/route.ts`
-- `crates/routa-server/src/api/`
+- `crates/routa-server/src/api/memory.rs`
+- `crates/routa-server/src/api/mod.rs`
+- `src/client/components/settings-panel.tsx`
 - `src/core/kanban/context-preload.ts`
 - `src/core/trace/`
 - `src/core/orchestration/`
@@ -142,6 +165,7 @@ Add memory quality metrics into harness/fitness:
 ## References
 
 - https://github.com/phodal/routa/issues/301
+- https://github.com/phodal/routa/issues/535
 - https://github.com/phodal/routa/issues/515
 - https://github.com/phodal/routa/issues/516
 - https://docs.langchain.com/oss/python/concepts/memory
