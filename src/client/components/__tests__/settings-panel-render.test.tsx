@@ -59,7 +59,7 @@ describe("SettingsPanel render", () => {
     localStorage.clear();
     desktopAwareFetch.mockReset();
     desktopAwareFetch.mockImplementation(async (url: string) => {
-      if (url.startsWith("/api/memory")) {
+      if (url.startsWith("/api/system/memory")) {
         return {
           ok: true,
           json: async () => ({

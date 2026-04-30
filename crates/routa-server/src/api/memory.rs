@@ -1,5 +1,7 @@
 use axum::{
     extract::{Query, State},
+    http::{header, HeaderMap, HeaderName, HeaderValue},
+    response::IntoResponse,
     routing::get,
     Json, Router,
 };
@@ -17,12 +19,21 @@ pub fn router() -> Router<AppState> {
     )
 }
 
+pub fn legacy_router() -> Router<AppState> {
+    Router::new().route(
+        "/",
+        get(get_legacy_memory_stats)
+            .post(cleanup_legacy_memory)
+            .delete(reset_legacy_memory),
+    )
+}
+
 #[derive(Debug, Deserialize)]
 struct MemoryQuery {
     history: Option<bool>,
 }
 
-/// GET /api/memory — Get memory usage statistics.
+/// GET /api/system/memory — Get memory usage statistics.
 ///
 /// For desktop version, returns system memory info.
 async fn get_memory_stats(
@@ -75,7 +86,15 @@ async fn get_memory_stats(
     }
 }
 
-/// POST /api/memory — Trigger memory cleanup.
+/// GET /api/memory — Deprecated alias for /api/system/memory.
+async fn get_legacy_memory_stats(
+    state: State<AppState>,
+    query: Query<MemoryQuery>,
+) -> impl IntoResponse {
+    (legacy_headers(), get_memory_stats(state, query).await)
+}
+
+/// POST /api/system/memory — Trigger memory cleanup.
 ///
 /// For desktop version, this is a no-op.
 async fn cleanup_memory(State(_state): State<AppState>) -> Json<serde_json::Value> {
@@ -86,7 +105,12 @@ async fn cleanup_memory(State(_state): State<AppState>) -> Json<serde_json::Valu
     }))
 }
 
-/// DELETE /api/memory — Reset memory monitoring.
+/// POST /api/memory — Deprecated alias for /api/system/memory.
+async fn cleanup_legacy_memory(state: State<AppState>) -> impl IntoResponse {
+    (legacy_headers(), cleanup_memory(state).await)
+}
+
+/// DELETE /api/system/memory — Reset memory monitoring.
 ///
 /// For desktop version, this is a no-op.
 async fn reset_memory(State(_state): State<AppState>) -> Json<serde_json::Value> {
@@ -94,4 +118,34 @@ async fn reset_memory(State(_state): State<AppState>) -> Json<serde_json::Value>
         "success": true,
         "message": "Memory monitoring reset not needed in desktop version"
     }))
+}
+
+/// DELETE /api/memory — Deprecated alias for /api/system/memory.
+async fn reset_legacy_memory(state: State<AppState>) -> impl IntoResponse {
+    (legacy_headers(), reset_memory(state).await)
+}
+
+fn legacy_headers() -> HeaderMap {
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        HeaderName::from_static("deprecation"),
+        HeaderValue::from_static("true"),
+    );
+    headers.insert(
+        header::LINK,
+        HeaderValue::from_static("</api/system/memory>; rel=\"successor-version\""),
+    );
+    headers.insert(
+        HeaderName::from_static("warning"),
+        HeaderValue::from_static("299 - \"Deprecated API route; use /api/system/memory\""),
+    );
+    headers.insert(
+        HeaderName::from_static("x-routa-deprecated-route"),
+        HeaderValue::from_static("/api/memory"),
+    );
+    headers.insert(
+        HeaderName::from_static("x-routa-replacement-route"),
+        HeaderValue::from_static("/api/system/memory"),
+    );
+    headers
 }
