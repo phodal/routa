@@ -4,7 +4,7 @@
 #   docker compose up
 #
 # Postgres profile: uses a bundled Postgres container
-#   docker compose --profile postgres up
+#   ROUTA_DB_DRIVER=postgres docker compose --profile postgres up
 #
 # Production Postgres (external):
 #   Set DATABASE_URL in .env before running `docker compose up`.
@@ -21,23 +21,42 @@ services:
       # SQLite mode (default) — no external DB required
       ROUTA_DB_DRIVER: ${ROUTA_DB_DRIVER:-sqlite}
       ROUTA_DB_PATH: /app/data/routa.db
-      # Set DATABASE_URL (and ROUTA_DB_DRIVER=postgres) in .env to use Postgres.
+      # Set ROUTA_DB_DRIVER=postgres in .env to use the bundled Postgres profile.
+      # Set DATABASE_URL to override the bundled database with an external Postgres.
       # Example for the bundled postgres service:
       #   DATABASE_URL=postgresql://routa:routa_secret@postgres:5432/routa
-      DATABASE_URL: ${DATABASE_URL:-}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://routa:${POSTGRES_PASSWORD:-routa_secret}@postgres:5432/routa}
     volumes:
       - routa_data:/app/data
     depends_on:
       postgres:
         condition: service_healthy
         required: false  # only enforced when the postgres profile is active
+      migrate:
+        condition: service_completed_successfully
+        required: false  # only enforced when the postgres profile is active
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/health || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 30s
+
+  # ── PostgreSQL schema sync (optional) ───────────────────────────────────
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: migrator
+    profiles:
+      - postgres
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql://routa:${POSTGRES_PASSWORD:-routa_secret}@postgres:5432/routa}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
 
   # ── PostgreSQL (optional) ─────────────────────────────────────────────────
   postgres:

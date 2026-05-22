@@ -20,6 +20,7 @@ build
 .env
 .env*.local
 .env.local
+docker-compose.override.yml
 
 # IDE / OS
 .vscode

@@ -13,9 +13,20 @@ RUN apk add --no-cache libc6-compat python3 make g++
 WORKDIR /app
 
 COPY package.json package-lock.json ./
-RUN npm ci --legacy-peer-deps
+COPY apps/desktop/package.json ./apps/desktop/package.json
+COPY packages/office-render/package.json ./packages/office-render/package.json
+RUN npm ci --ignore-scripts --legacy-peer-deps
 
-# ── Stage 2: build ───────────────────────────────────────────────────────
+# ── Stage 2: database schema migrator ────────────────────────────────────
+FROM base AS migrator
+WORKDIR /app
+
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+
+CMD ["npm", "run", "db:push"]
+
+# ── Stage 3: build ───────────────────────────────────────────────────────
 FROM base AS builder
 WORKDIR /app
 
@@ -28,7 +39,7 @@ COPY . .
 # standalone chunks directory so ROUTA_DB_DRIVER=sqlite works at runtime.
 RUN npm run build:docker
 
-# ── Stage 3: production runner ────────────────────────────────────────────
+# ── Stage 4: production runner ────────────────────────────────────────────
 FROM base AS runner
 WORKDIR /app
 
