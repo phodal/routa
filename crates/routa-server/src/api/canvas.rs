@@ -454,7 +454,7 @@ async fn list_canvas(
 
     let mut artifacts = state.artifact_store.list_by_workspace(workspace_id).await?;
     artifacts.retain(|artifact| artifact.artifact_type == ArtifactType::Canvas);
-    artifacts.sort_by(|left, right| right.created_at.cmp(&left.created_at));
+    artifacts.sort_by_key(|artifact| std::cmp::Reverse(artifact.created_at));
 
     let items = artifacts
         .into_iter()

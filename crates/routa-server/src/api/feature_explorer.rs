@@ -2045,7 +2045,7 @@ mod tests {
         assert_eq!(session_recovery.session_ids.len(), 1);
         assert_eq!(session_recovery.changed_files.len(), 1);
         assert_eq!(session_recovery.updated_at, "2026-04-17T09:00:00");
-        assert!(stats.get("workspace-overview").is_none());
+        assert!(!stats.contains_key("workspace-overview"));
 
         let file_stat = file_stats
             .get("src/app/workspace/[workspaceId]/sessions/page.tsx")

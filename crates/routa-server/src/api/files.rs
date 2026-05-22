@@ -207,7 +207,7 @@ async fn search_files(
         })
         .collect();
 
-    scored.sort_by(|a, b| b.score.cmp(&a.score));
+    scored.sort_by_key(|item| std::cmp::Reverse(item.score));
     let total = scored.len();
     scored.truncate(limit);
 

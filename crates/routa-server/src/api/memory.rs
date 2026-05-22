@@ -89,8 +89,7 @@ async fn get_memory_stats(
             },
         }))
     } else {
-        Json(serde_json::json!({ "current": stats })
-        )
+        Json(serde_json::json!({ "current": stats }))
     }
 }
 

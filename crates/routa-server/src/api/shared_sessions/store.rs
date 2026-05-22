@@ -224,7 +224,7 @@ impl SharedSessionStore {
                 }
             }
         }
-        approvals.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        approvals.sort_by_key(|approval| std::cmp::Reverse(approval.created_at));
         approvals
     }
 

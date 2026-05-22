@@ -89,7 +89,7 @@ async fn list_shared_sessions(
         })
         .cloned()
         .collect();
-    sessions.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+    sessions.sort_by_key(|session| std::cmp::Reverse(session.created_at));
 
     Ok(Json(json!({
         "sessions": sessions

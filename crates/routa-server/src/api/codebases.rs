@@ -938,7 +938,7 @@ fn build_focus_directories(tree: &RepoTreeNode) -> Vec<serde_json::Value> {
         .iter()
         .filter(|c| c.node_type == "directory")
         .collect();
-    focus_dirs.sort_by(|a, b| b.file_count.unwrap_or(0).cmp(&a.file_count.unwrap_or(0)));
+    focus_dirs.sort_by_key(|dir| std::cmp::Reverse(dir.file_count.unwrap_or(0)));
 
     focus_dirs
         .into_iter()
