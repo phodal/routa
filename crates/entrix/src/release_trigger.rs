@@ -138,15 +138,13 @@ pub fn evaluate_release_triggers(
 
     for rule in rules {
         match rule.rule_type.as_str() {
-            "manifest_missing" => {
-                if artifacts.is_empty() {
-                    triggers.push(TriggerMatch {
-                        name: rule.name.clone(),
-                        severity: rule.severity.clone(),
-                        action: rule.action.clone(),
-                        reasons: vec!["release manifest contained no artifacts".to_string()],
-                    });
-                }
+            "manifest_missing" if artifacts.is_empty() => {
+                triggers.push(TriggerMatch {
+                    name: rule.name.clone(),
+                    severity: rule.severity.clone(),
+                    action: rule.action.clone(),
+                    reasons: vec!["release manifest contained no artifacts".to_string()],
+                });
             }
             "unexpected_file" => {
                 let mut reasons = Vec::new();

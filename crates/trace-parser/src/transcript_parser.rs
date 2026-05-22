@@ -85,7 +85,7 @@ pub fn collect_recent_transcript_summaries_for_client(
     let mut transcripts = collect_recent_transcripts(&session_roots)?;
     transcripts
         .retain(|(_, modified_ms)| now_ms.saturating_sub(*modified_ms) <= BACKFILL_WINDOW_MS);
-    transcripts.sort_by(|a, b| b.1.cmp(&a.1));
+    transcripts.sort_by_key(|item| std::cmp::Reverse(item.1));
 
     let recent_candidates = transcripts
         .iter()
@@ -124,7 +124,7 @@ pub fn collect_broad_transcript_summaries(
     let now_ms = Utc::now().timestamp_millis();
     let mut transcripts = collect_recent_transcripts(&session_roots)?;
     transcripts.retain(|(_, modified_ms)| now_ms.saturating_sub(*modified_ms) <= BROAD_WINDOW_MS);
-    transcripts.sort_by(|a, b| b.1.cmp(&a.1));
+    transcripts.sort_by_key(|item| std::cmp::Reverse(item.1));
     Ok(collect_matching_transcript_summaries(
         &transcripts,
         repo_root,
@@ -146,7 +146,7 @@ pub fn collect_active_transcript_summaries(
     let mut transcripts = collect_recent_transcripts(&session_roots)?;
     transcripts
         .retain(|(_, modified_ms)| now_ms.saturating_sub(*modified_ms) <= BACKFILL_WINDOW_MS);
-    transcripts.sort_by(|a, b| b.1.cmp(&a.1));
+    transcripts.sort_by_key(|item| std::cmp::Reverse(item.1));
 
     let recent_candidates = transcripts
         .iter()
@@ -497,12 +497,11 @@ fn parse_codex_jsonl_backfill(
                         .filter(|value| !value.is_empty())
                         .map(str::to_string);
                 }
-                Some("task_complete") => {
+                Some("task_complete")
                     if entry.pointer("/payload/turn_id").and_then(Value::as_str)
-                        == current_turn.turn_id.as_deref()
-                    {
-                        current_turn.completed = true;
-                    }
+                        == current_turn.turn_id.as_deref() =>
+                {
+                    current_turn.completed = true;
                 }
                 _ => {}
             },

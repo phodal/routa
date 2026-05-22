@@ -1248,15 +1248,11 @@ fn repair_truncated_json_candidate(candidate: &str) -> String {
         match ch {
             '"' => in_string = true,
             '{' | '[' => stack.push(ch),
-            '}' => {
-                if stack.last() == Some(&'{') {
-                    stack.pop();
-                }
+            '}' if stack.last() == Some(&'{') => {
+                stack.pop();
             }
-            ']' => {
-                if stack.last() == Some(&'[') {
-                    stack.pop();
-                }
+            ']' if stack.last() == Some(&'[') => {
+                stack.pop();
             }
             _ => {}
         }

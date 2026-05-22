@@ -600,7 +600,7 @@ fn recent_prompt_history_for_run(
                     .map(|prompt| (task.updated_at_ms, prompt))
             })
             .collect::<Vec<_>>();
-        task_prompts.sort_by(|a, b| b.0.cmp(&a.0));
+        task_prompts.sort_by_key(|item| std::cmp::Reverse(item.0));
         prompts = task_prompts
             .into_iter()
             .map(|(_, prompt)| prompt)

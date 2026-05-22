@@ -137,7 +137,7 @@ review_triggers:
     .expect("write review triggers");
 
     let cache = AppCache::new(&dir.path().to_string_lossy());
-    let files = vec![
+    let files = [
         FileView {
             rel_path: "src/a.rs".to_string(),
             dirty: true,
