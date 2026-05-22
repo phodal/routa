@@ -33,9 +33,12 @@ impl Default for DockerDetector {
 impl DockerDetector {
     /// Create a new DockerDetector instance.
     pub fn new() -> Self {
+        let now = Instant::now();
+        let stale_cached_at = stale_cache_instant(now, Duration::from_secs(3600));
+
         Self {
             cached_status: Arc::new(RwLock::new(None)),
-            cached_at: Arc::new(RwLock::new(Instant::now() - Duration::from_secs(3600))),
+            cached_at: Arc::new(RwLock::new(stale_cached_at)),
             refresh_lock: Arc::new(Mutex::new(())),
         }
     }
@@ -263,9 +266,9 @@ impl DockerDetector {
 /// proper PATH (Linux, or when launched from a terminal).
 pub fn resolve_docker_bin() -> String {
     let candidates: &[&str] = &[
-        "/usr/local/bin/docker",       // Docker Desktop, OrbStack (macOS)
-        "/opt/homebrew/bin/docker",    // Homebrew (Apple Silicon)
-        "/usr/bin/docker",             // Linux system install
+        "/usr/local/bin/docker",    // Docker Desktop, OrbStack (macOS)
+        "/opt/homebrew/bin/docker", // Homebrew (Apple Silicon)
+        "/usr/bin/docker",          // Linux system install
     ];
 
     for path in candidates {
@@ -279,10 +282,7 @@ pub fn resolve_docker_bin() -> String {
 }
 
 /// Expanded PATH directories that should be searched for docker.
-const EXTRA_PATH_DIRS: &[&str] = &[
-    "/usr/local/bin",
-    "/opt/homebrew/bin",
-];
+const EXTRA_PATH_DIRS: &[&str] = &["/usr/local/bin", "/opt/homebrew/bin"];
 
 /// Pre-resolved docker binary path (computed once at first use).
 static DOCKER_BIN: OnceLock<String> = OnceLock::new();
@@ -318,11 +318,22 @@ fn docker_command() -> Command {
     command
 }
 
+fn stale_cache_instant(now: Instant, stale_by: Duration) -> Instant {
+    now.checked_sub(stale_by).unwrap_or(now)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use tokio::sync::Notify;
+
+    #[test]
+    fn stale_cache_instant_saturates_on_underflow() {
+        let now = Instant::now();
+
+        assert_eq!(stale_cache_instant(now, Duration::MAX), now);
+    }
 
     #[tokio::test]
     async fn check_availability_coalesces_concurrent_requests() {
