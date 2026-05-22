@@ -356,6 +356,8 @@ export function buildTaskPrompt(
         "## Contract Gates",
         "",
         `Moving this card to ${transitionArtifacts.nextColumn.name ?? nextColumnId ?? "the next column"} requires ${formatContractRules(transitionArtifacts.nextColumn.automation.contractRules)} in the description.`,
+        "If the current description is missing or has invalid canonical YAML, first call `update_card` with the full corrected description containing exactly one canonical ```yaml``` story contract.",
+        "`update_card` comments, progress notes, and completion summaries do not satisfy this contract gate; the YAML must be persisted in the description before `move_card`.",
         "Do not call `move_card` until the canonical YAML parses cleanly and satisfies the required schema.",
         "Todo and downstream lanes will not silently repair malformed canonical YAML. Regenerate it in Backlog before retrying.",
         "",
