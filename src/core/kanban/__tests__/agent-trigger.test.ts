@@ -289,6 +289,8 @@ describe("buildTaskPrompt", () => {
 
     expect(prompt).toContain("## Contract Gates");
     expect(prompt).toContain("Moving this card to Todo requires one valid canonical ```yaml``` story contract");
+    expect(prompt).toContain("call `update_card` with the full corrected description");
+    expect(prompt).toContain("comments, progress notes, and completion summaries do not satisfy this contract gate");
     expect(prompt).toContain("Todo and downstream lanes will not silently repair malformed canonical YAML");
   });
 
