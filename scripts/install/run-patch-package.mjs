@@ -1,5 +1,6 @@
 import { createRequire } from "node:module";
 import { spawnSync } from "node:child_process";
+import path from "node:path";
 
 const require = createRequire(import.meta.url);
 
@@ -7,7 +8,14 @@ function resolvePatchPackageBin() {
   try {
     const pkgPath = require.resolve("patch-package/package.json");
     const pkg = require(pkgPath);
-    return require.resolve(`patch-package/${pkg.bin["patch-package"]}`);
+    const binEntry =
+      typeof pkg.bin === "string" ? pkg.bin : pkg.bin?.["patch-package"];
+
+    if (!binEntry) {
+      return null;
+    }
+
+    return path.resolve(path.dirname(pkgPath), binEntry);
   } catch {
     return null;
   }
